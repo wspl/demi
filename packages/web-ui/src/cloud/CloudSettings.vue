@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as devicesText } from '../devices/locales/text'
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import type { CloudState } from './types'
@@ -53,13 +55,16 @@ const busy = computed(
 const storage = computed(() => {
   const { volumes, limits } = props.cloud
   const size = (current: number | undefined, limit: number) =>
-    current === undefined ? `${formatBytes(limit)} max` : formatByteRatio(current, limit)
-  return `System ${size(volumes?.systemBytes, limits.systemBytes)} · Home ${size(volumes?.homeBytes, limits.homeBytes)}`
+    current === undefined ? t('storage.max', { size: formatBytes(limit) }) : formatByteRatio(current, limit)
+  return t('storage.line', {
+    system: size(volumes?.systemBytes, limits.systemBytes),
+    home: size(volumes?.homeBytes, limits.homeBytes),
+  })
 })
 /** The Cloud's one line, as a device's row has: its system and how this page reaches it. */
 const line = computed(() => {
   const system = props.cloud.report.os?.name
-  return system ? `${system} · Connected via relay` : 'Connected via relay'
+  return system ? t('environment.connected', { system }) : devicesText('connected.relay')
 })
 function begin() {
   submitted.value = false
@@ -78,11 +83,11 @@ function reset() {
 
 <template>
   <SettingsGroup
-    title="Cloud"
-    description="Shared by all your Cloud projects."
+    :title="t('settings.title')"
+    :description="t('settings.description')"
   >
     <SettingsRow
-      label="Your Cloud environment"
+      :label="t('environment.title')"
       :description="line"
       :navigable="cloud.deviceId !== null"
       isolate-controls
@@ -92,15 +97,15 @@ function reset() {
         size="sm"
         :disabled="cloud.state === 'resetting'"
         @click="begin"
-        >Reset Environment</Button
+        >{{ t('environment.reset') }}</Button
       >
     </SettingsRow>
     <SettingsRow
       v-if="cloud.newerImage"
-      label="A newer system image is available"
-      description="Resetting keeps your home files and removes installed system packages."
+      :label="t('environment.newerImage')"
+      :description="t('environment.newerImageDescription')"
     />
-    <SettingsRow label="Storage" :description="storage" />
+    <SettingsRow :label="t('storage.title')" :description="storage" />
     <CloudResetDialog
       :is-open="open"
       :overlay-store="overlayStore"

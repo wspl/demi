@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
@@ -25,10 +26,10 @@ export function chipFamily(os: NonNullable<DeviceReport['os']>): TitleText | nul
   switch (os.arch) {
     case 'aarch64':
     case 'arm':
-      return os.name.startsWith('macOS') ? 'Apple silicon' : 'ARM'
+      return os.name.startsWith('macOS') ? t('report.appleSilicon') : t('report.arm')
     case 'x86_64':
     case 'x86':
-      return 'Intel'
+      return t('report.intel')
     default:
       return null
   }
@@ -62,7 +63,13 @@ export function runnerState(runnerVersion: string | null, serverRelease: string 
 }
 
 export const RUNNER_STATE_LABEL: Record<RunnerState, SentenceText> = {
-  current: 'Up to date',
-  outdated: 'Update available',
-  development: 'Development build',
+  get current() {
+    return t('runner.current')
+  },
+  get outdated() {
+    return t('runner.outdated')
+  },
+  get development() {
+    return t('runner.development')
+  },
 }

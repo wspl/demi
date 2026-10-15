@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { Archive, Pin, PinOff } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -119,22 +120,22 @@ const rowClass = computed(() => [
     >
       <!-- A pinned row offers Unpin before Archive; Pin is in the row's menu
            (`product.md` § Conversations and projects). -->
-      <Tooltip v-if="conversation.pinned" content="Unpin" class="flex items-center">
+      <Tooltip v-if="conversation.pinned" :content="t('row.unpin')" class="flex items-center">
         <IconButton
           :icon="PinOff"
           :icon-size="phone ? ICON_PX.in32 : ICON_PX.in20"
           :size="phone ? 'lg' : 'sm'"
           variant="ghost"
-          aria-label="Unpin"
+          :aria-label="t('row.unpin')"
           @click.stop="emit('unpin')"
         />
       </Tooltip>
-      <Tooltip content="Archive" class="flex items-center">
+      <Tooltip :content="t('row.archive')" class="flex items-center">
         <IconButton
           :icon="Archive"
           :size="phone ? 'lg' : 'sm'"
           variant="ghost"
-          aria-label="Archive"
+          :aria-label="t('row.archive')"
           :disabled="conversation.status === 'active'"
           @click.stop="emit('archive')"
         />

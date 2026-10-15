@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue } from '@demicodes/utils'
@@ -77,7 +78,7 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
       'subagents',
       (current) => ({ ...current, enabled }),
       () => putSubagents({ enabled }),
-      enabled ? 'Could Not Turn Subagents On' : 'Could Not Turn Subagents Off',
+      enabled ? t('subagents.turnOnFailed') : t('subagents.turnOffFailed'),
     )
   }
 
@@ -87,7 +88,7 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
       limit,
       (current) => ({ ...current, [limit]: value }),
       () => putSubagents({ [limit]: value }),
-      'Could Not Change the Limit',
+      t('subagents.limitFailed'),
     )
   }
 
@@ -111,7 +112,7 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
         const profile = await patchProfile(id, { enabled })
         return settingsAnswer((current) => withProfile(current, profile))
       },
-      enabled ? 'Could Not Enable the Profile' : 'Could Not Disable the Profile',
+      enabled ? t('subagents.enableFailed') : t('subagents.disableFailed'),
     )
   }
 

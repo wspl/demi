@@ -1,9 +1,9 @@
-import { countUnlessOne } from '@demicodes/utils'
+import { t } from './locales/text'
 import { showToast, updateToast } from '../infra/toast'
 import type { HeadlineText } from '../ui/ui-text'
 
 function archivedTitle(count: number): HeadlineText {
-  return `${countUnlessOne(count, 'Conversation')} Archived`
+  return t('archivedToast.title', { count }, count)
 }
 
 /**
@@ -16,7 +16,7 @@ export function showArchived(count: number, undo: () => void): string {
   return showToast({
     title: archivedTitle(count),
     tone: 'success',
-    action: { label: 'Undo', run: undo },
+    action: { label: t('archivedToast.undo'), run: undo },
   })
 }
 
@@ -28,6 +28,6 @@ export function showArchived(count: number, undo: () => void): string {
 export function updateArchived(id: string, count: number, undo: () => void): void {
   updateToast(id, {
     title: archivedTitle(count),
-    action: { label: 'Undo', run: undo },
+    action: { label: t('archivedToast.undo'), run: undo },
   })
 }

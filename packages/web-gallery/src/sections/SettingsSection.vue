@@ -16,7 +16,7 @@ import GallerySkillsCalls from '../components/GallerySkillsCalls.vue'
 import GalleryWebSearchCalls from '../components/GalleryWebSearchCalls.vue'
 import GalleryWebSearchShowcase from '../components/GalleryWebSearchShowcase.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
-import { SETTINGS_SECTIONS, withUsersSection } from '@demicodes/web-ui/settings/sections'
+import { settingsSections as productSections, withUsersSection } from '@demicodes/web-ui/settings/sections'
 import GallerySettingsProviders from '../components/GallerySettingsProviders.vue'
 import { createSettingsState, gallerySessions, incompleteProviders, mockProviders } from '../fixtures/settings'
 import { galleryPageHost, openExaSignIn, skillsPlugin, webPlugin } from '../fixtures/plugins'
@@ -190,7 +190,7 @@ providePageHost(
 // The full mock's user is the master, whose rail lists Users.
 const sections = computed(() =>
   withUsersSection(
-    withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, (plugin) =>
+    withPluginSections(productSections(), PLUGIN_PAGES, (plugin) =>
       full.plugins.some((entry) => entry.id === plugin && entry.enabled),
     ),
     'master',
@@ -439,7 +439,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             :overlay-store="appOverlayStore"
             account-id="alex"
             email="alex@example.com"
-            email-unavailable="This server can’t send email. Ask your administrator."
+            email-unavailable
             :email-phase="{ kind: 'form', currentEmail: 'alex@example.com' }"
             :password-phase="{ kind: 'form' }"
             :sessions="noMailSessions"

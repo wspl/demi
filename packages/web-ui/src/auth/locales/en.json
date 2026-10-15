@@ -1,0 +1,94 @@
+{
+  "password": {
+    "hint": "At least {count} characters.",
+    "tooShort": "A password has at least {count} characters.",
+    "differ": "The two passwords differ.",
+    "required": "Required"
+  },
+  "page": {
+    "tagline": "A Place to Think and Build",
+    "taglineBody": "Everything starts with a conversation."
+  },
+  "account": {
+    "fallback": "Account"
+  },
+  "signIn": {
+    "title": "Sign In",
+    "message": "Sign in with your email.",
+    "expired": "Your session ended. Sign in again.",
+    "email": "Email",
+    "password": "Password",
+    "passkey": "Sign In with Passkey",
+    "forgot": "Forgot your password? Ask your administrator to reset it.",
+    "locked": "Too many failed sign-ins. Try again in {time}."
+  },
+  "setup": {
+    "title": "Set Up Demi",
+    "message": "Create the master account that manages Demi.",
+    "taken": "Demi is set up already. Sign in with its master account.",
+    "name": "Name",
+    "email": "Email",
+    "password": "Password",
+    "confirm": "Confirm password",
+    "create": "Create Account",
+    "passkeyTitle": "Add a Passkey",
+    "passkeyMessage": "Sign in with Touch ID, Face ID or your password manager. You can also add one later in Settings.",
+    "addPasskey": "Add Passkey",
+    "skip": "Skip"
+  },
+  "choose": {
+    "title": "Choose Your Password",
+    "message": "Choose a password of your own to continue.",
+    "new": "New password",
+    "confirm": "Confirm new password",
+    "signOut": "Sign Out",
+    "choose": "Choose Password"
+  },
+  "offer": {
+    "label": "Add a passkey",
+    "title": "Use a passkey next time?",
+    "notNow": "Not Now",
+    "add": "Add Passkey",
+    "passwordTitle": "Enter Your Password",
+    "passwordMessage": "Confirm it’s you to add the passkey.",
+    "password": "Password",
+    "readyTitle": "Passkey Ready",
+    "readyMessage": "Your password manager already has a passkey for Demi."
+  },
+  "unlock": {
+    "ios": "Sign in with Face ID or Touch ID instead of your password.",
+    "mac": "Sign in with Touch ID instead of your password.",
+    "windows": "Sign in with Windows Hello instead of your password.",
+    "android": "Sign in with your fingerprint, face or screen lock instead of your password.",
+    "other": "Sign in with your device’s screen lock instead of your password."
+  },
+  "handoff": {
+    "title": "Hand Off to Your Phone",
+    "confirm": "Confirm it’s you. Your phone then opens this page, signed in to this account.",
+    "scan": "Scan with your phone’s camera.",
+    "done": "Handed off to {browser}.",
+    "codeTitle": "Sign-In Code",
+    "codeConfirm": "Confirm it’s you. A code then signs {name}’s phone in to their account.",
+    "codeScan": "Scan with their phone’s camera.",
+    "codeDone": "Signed in on {browser}.",
+    "readyScan": "Or scan with their phone’s camera to sign it in.",
+    "making": "Making a code",
+    "qr": "QR code",
+    "expires": "Expires in {left}",
+    "expired": "This code has expired.",
+    "usePasskey": "Use Passkey",
+    "showNew": "Show New Code"
+  },
+  "verify": {
+    "title": "Confirm It’s You",
+    "password": "Password"
+  },
+  "handoffPage": {
+    "openingTitle": "Handing Off",
+    "openingMessage": "Opening the page from your other device.",
+    "opening": "Opening…",
+    "failedTitle": "Couldn’t Hand Off",
+    "expired": "This code expired or was already used. Show a new code, or sign in here.",
+    "failed": "The code didn’t work. Show a new code, or sign in here."
+  }
+}

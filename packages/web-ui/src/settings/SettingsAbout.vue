@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import AsyncRegion from '../ui/AsyncRegion.vue'
+import { t } from './locales/text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -29,15 +30,15 @@ const emit = defineEmits<{
 <template>
   <SettingsPage
     v-if="acknowledgementsOpen"
-    title="Acknowledgements"
-    :description="acknowledgements.status === 'missing' ? undefined : 'Open-source software in Demi, under its licenses.'"
-    back="About"
+    :title="t('about.acknowledgements.title')"
+    :description="acknowledgements.status === 'missing' ? undefined : t('about.acknowledgements.description')"
+    :back="t('about.title')"
     @back="acknowledgementsOpen = false"
   >
     <SettingsGroup>
       <AsyncRegion
         :state="acknowledgements.status === 'failed' ? 'failed' : acknowledgements.status === 'loading' ? 'loading' : 'ready'"
-        label="Loading acknowledgements…"
+        :label="t('about.acknowledgements.loading')"
         :error="acknowledgements.status === 'failed' ? acknowledgements.error.message : undefined"
         :request-id="acknowledgements.status === 'failed' ? acknowledgements.error.requestId : null"
         @retry="emit('retry')"
@@ -50,19 +51,19 @@ const emit = defineEmits<{
           v-else
           class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
         >
-          No acknowledgements in this build
+          {{ t('about.acknowledgements.none') }}
         </div>
       </AsyncRegion>
     </SettingsGroup>
   </SettingsPage>
-  <SettingsPage v-else title="About">
+  <SettingsPage v-else :title="t('about.title')">
     <SettingsGroup>
-      <SettingsRow label="Version">
+      <SettingsRow :label="t('about.version')">
         <span class="select-text text-[13px] tabular-nums text-fg-body">{{ version }}</span>
       </SettingsRow>
       <SettingsRow
-        label="Acknowledgements"
-        description="The open-source software Demi includes, and its licenses."
+        :label="t('about.acknowledgements.title')"
+        :description="t('about.acknowledgements.description')"
         navigable
         @click="acknowledgementsOpen = true"
       />

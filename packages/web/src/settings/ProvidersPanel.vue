@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -115,7 +116,7 @@ watch(
         saveModels(
           provider,
           provider.models.filter((entry) => entry.id !== model.id),
-        ).catch((error: unknown) => report('Could Not Remove the Model', error))
+        ).catch((error: unknown) => report(t('providers.removeModelFailed'), error))
     "
   />
   <ProviderLoginDialog

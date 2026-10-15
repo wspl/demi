@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { Archive, ArrowRight, Copy, Pin, PinOff, TextCursorInput, Trash2 } from '@lucide/vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
@@ -36,11 +37,7 @@ const single = computed(() => (props.targets.length === 1
 const allPinned = computed(
   () => props.targets.length > 0 && props.targets.every((target) => target.pinned)
 )
-const many = computed(
-  () => (props.targets.length > 1
-    ? ` ${props.targets.length} Conversations`
-    : '')
-)
+const count = computed(() => props.targets.length)
 </script>
 
 <template>
@@ -48,37 +45,37 @@ const many = computed(
     <MenuItem
       v-if="!shown"
       :icon="ArrowRight"
-      label="Open"
+      :label="t('selection.open')"
       shortcut="↵"
       @select="emit('open', single.id)"
     />
     <MenuItem
       :icon="TextCursorInput"
-      label="Rename"
+      :label="t('selection.rename')"
       shortcut="F2"
       @select="emit('rename', single.id)"
     />
     <MenuItem
       :icon="Copy"
-      label="Copy Conversation ID"
+      :label="t('selection.copyId')"
       @select="emit('copyId', single.id)"
     />
   </template>
   <MenuItem
     :icon="allPinned ? PinOff : Pin"
-    :label="`${allPinned ? 'Unpin' : 'Pin'}${many}`"
+    :label="allPinned ? (count > 1 ? t('selection.unpinMany', { count }) : t('selection.unpin')) : (count > 1 ? t('selection.pinMany', { count }) : t('selection.pin'))"
     shortcut="⌘⇧P"
     @select="emit('pin', ids, !allPinned)"
   />
   <MenuItem
     :icon="Archive"
-    :label="`Archive${many}`"
+    :label="count > 1 ? t('selection.archiveMany', { count }) : t('selection.archive')"
     @select="emit('archive', ids)"
   />
   <MenuDivider />
   <MenuItem
     :icon="Trash2"
-    :label="`Delete${many}…`"
+    :label="count > 1 ? t('selection.deleteMany', { count }) : t('selection.delete')"
     is-danger
     @select="emit('delete', ids)"
   />

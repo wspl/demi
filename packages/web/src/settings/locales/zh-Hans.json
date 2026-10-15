@@ -1,0 +1,62 @@
+{
+  "corrections": {
+    "invalidCredentials": "这不是你当前的密码。",
+    "invalidCode": "该验证码错误或已过期。请使用最新的验证码。"
+  },
+  "credentials": {
+    "showFailed": "无法显示该值"
+  },
+  "devices": {
+    "revokeFailed": "无法撤销设备",
+    "renameFailed": "无法重命名设备",
+    "routeFailed": "无法更改连接路径",
+    "resetNotStarted": "重置未能开始。请检查网络连接后重试。"
+  },
+  "plugins": {
+    "turnOnFailed": "无法开启插件",
+    "turnOffFailed": "无法关闭插件"
+  },
+  "providers": {
+    "saveFailed": "无法保存提供程序",
+    "testFailed": "无法测试提供程序",
+    "refreshModelsFailed": "无法刷新模型",
+    "removeFailed": "无法删除提供程序",
+    "cliUpdateFailed": "无法更新命令行工具",
+    "removeAccountFailed": "无法删除帐户",
+    "testAccountFailed": "无法测试帐户",
+    "addFailed": "无法添加提供程序",
+    "cliReadFailed": "无法读取命令行工具",
+    "checkUpdatesFailed": "无法检查更新",
+    "cliInstallFailed": "无法安装命令行工具",
+    "usageFailed": "无法刷新使用情况",
+    "reorderFailed": "无法重新排序帐户",
+    "switchFailed": "无法切换帐户",
+    "cancelLoginFailed": "无法取消登录",
+    "loginStopped": "此登录已不再运行。",
+    "removeModelFailed": "无法删除模型"
+  },
+  "subagents": {
+    "turnOnFailed": "无法开启子智能体",
+    "turnOffFailed": "无法关闭子智能体",
+    "limitFailed": "无法更改上限",
+    "enableFailed": "无法启用配置文件",
+    "disableFailed": "无法禁用配置文件"
+  },
+  "users": {
+    "newPasswordFailed": "无法生成新密码",
+    "roleFailed": "无法更改角色",
+    "disableFailed": "无法禁用帐户",
+    "enableFailed": "无法启用帐户",
+    "signOutFailed": "无法注销该帐户",
+    "loading": "正在加载用户…",
+    "loadFailed": "无法加载用户。"
+  },
+  "about": {
+    "acknowledgementsFailed": "无法加载致谢。"
+  },
+  "dialog": {
+    "nameFailed": "无法更改你的名称",
+    "emailFailed": "无法更改电子邮件",
+    "passwordFailed": "无法更改密码"
+  }
+}

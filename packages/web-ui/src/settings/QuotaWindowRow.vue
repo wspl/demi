@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import Meter from '../ui/Meter.vue'
 import ResetTime from '../ui/ResetTime.vue'
 import { formatPercent } from '../ui/percent'
@@ -21,7 +22,7 @@ defineProps<{ window: SettingsQuotaWindow }>()
       <span class="shrink-0 text-fg-body">{{ window.label }}</span>
       <span class="ml-auto flex min-w-0 items-baseline">
         <ResetTime v-if="window.resetsAt" class="min-w-0 truncate" :timestamp="window.resetsAt" />
-        <span class="shrink-0"><template v-if="window.resetsAt">&nbsp;·&nbsp;</template>{{ formatPercent(window.used, window.max) }} used</span>
+        <span class="shrink-0"><template v-if="window.resetsAt">&nbsp;·&nbsp;</template>{{ t('quota.used', { share: formatPercent(window.used, window.max) }) }}</span>
       </span>
     </div>
     <Meter :value="window.used" :max="window.max" :label="window.label" />

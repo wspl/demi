@@ -15,7 +15,7 @@ import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { SIDEBAR_WIDTH } from '@demicodes/web-ui/sidebar/sidebar-width'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
-import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
+import { settingsSections as productSections } from '@demicodes/web-ui/settings/sections'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { showRefused } from '@demicodes/web-ui/sidebar/refused-toast'
 import { dismissToast } from '@demicodes/web-ui/infra/toast'
@@ -55,7 +55,7 @@ const pluginOn = (plugin: string) =>
 /** New's keys as the keyboard settings set them by default. */
 const newShortcut = APP_SHORTCUTS.find((shortcut) => shortcut.id === 'new')?.keys
 const searchShortcut = APP_SHORTCUTS.find((shortcut) => shortcut.id === 'search')?.keys
-const settingsSections = computed(() => withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, pluginOn))
+const settingsSections = computed(() => withPluginSections(productSections(), PLUGIN_PAGES, pluginOn))
 const sectionEntries = computed(() => sidebarEntries(PLUGIN_PAGES, pluginOn))
 const settingsOpen = ref(false)
 const settingsTab = ref<SettingsTab | null>(null)
@@ -217,7 +217,7 @@ function archiveRows(list: Ref<SidebarConversation[]>, ids: string[]): void {
     }
     // One batch request refused them all, as the product's does.
     const requestId = simulatedRequestId(`archive ${ids.join(' ')}`)
-    showRefused('Archive', refused.map((conversation) => ({
+    showRefused('archive', refused.map((conversation) => ({
       title: conversation.title,
       reasons: ['A conversation with running work cannot be archived, restored or moved'],
       requestId,

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { computed, ref } from 'vue'
 import { Ellipsis, KeyRound, LogIn, LogOut, UserCheck, UserCog, UserX } from '@lucide/vue'
 import type { Component } from 'vue'
@@ -25,7 +27,7 @@ import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsNewUser, SettingsUser, SettingsUsersHost, UserAddOutcome } from './types'
-import { ROLE_LABEL, assignableRoles, userActions, type UserAction } from './users'
+import { roleLabel, assignableRoles, userActions, type UserAction } from './users'
 
 /**
  * Settings › Users (`product.md` § User system), which only the master and
@@ -72,8 +74,8 @@ const ready = ref<{
   host: HandoffHost
   wording: HandoffWording
   account: { id: string; email: string } | null
-  /** What the step says above the password. */
-  lead: string
+  /** What the step says above the password: the account added, or its password reset. */
+  lead: 'added' | 'reset' | null
   password: string | null
 } | null>(null)
 const readyOpen = ref(false)
@@ -157,7 +159,7 @@ async function carryOut(dialog: Dialog, user: SettingsUser, call: () => Promise<
 
 async function add(user: SettingsNewUser): Promise<void> {
   addError.value = undefined
-  const outcome = await confirmed(() => props.host.add(user), 'Confirm it’s you to add an account.')
+  const outcome = await confirmed(() => props.host.add(user), t('users.confirm.add'))
   if (outcome === null) {
     return
   }
@@ -165,9 +167,9 @@ async function add(user: SettingsNewUser): Promise<void> {
     open.value = null
     ready.value = {
       host: props.host.signInCode(outcome.id),
-      wording: userReadyWording('Add User', outcome.nickname),
+      wording: userReadyWording(t('addUser.title'), outcome.nickname),
       account: { id: outcome.id, email: user.email },
-      lead: `The account for ${user.email} is ready.`,
+      lead: 'added',
       password: outcome.password,
     }
     readyOpen.value = true
@@ -183,13 +185,13 @@ async function resetPassword(): Promise<void> {
     return
   }
   try {
-    const outcome = await confirmed(() => props.host.newPassword(user.id), 'Confirm it’s you to reset a password.')
+    const outcome = await confirmed(() => props.host.newPassword(user.id), t('users.confirm.resetPassword'))
     if (outcome?.kind === 'made') {
       ready.value = {
         host: props.host.signInCode(user.id),
-        wording: userReadyWording('Reset Password', nameOf(user)),
+        wording: userReadyWording(t('users.reset.action'), nameOf(user)),
         account: { id: user.id, email: user.email },
-        lead: `${user.email} has a new password.`,
+        lead: 'reset',
         password: outcome.password,
       }
       readyOpen.value = true
@@ -205,7 +207,7 @@ async function makeAnotherPassword(): Promise<boolean> {
   if (!account) {
     return false
   }
-  const outcome = await confirmed(() => props.host.newPassword(account.id), 'Confirm it’s you to make a new password.')
+  const outcome = await confirmed(() => props.host.newPassword(account.id), t('users.confirm.newPassword'))
   if (outcome?.kind !== 'made' || !ready.value) {
     return false
   }
@@ -239,7 +241,7 @@ function showSignInCode(user: SettingsUser): void {
     host: props.host.signInCode(user.id),
     wording: signInCodeWording(nameOf(user)),
     account: null,
-    lead: '',
+    lead: null,
     password: null,
   }
   readyOpen.value = true
@@ -262,13 +264,21 @@ function run(action: UserAction, user: SettingsUser): void | Promise<void> {
   }
 }
 
-const ACTION_LABEL: Record<UserAction, string> = {
-  resetPassword: 'Reset Password…',
-  changeRole: 'Change Role…',
-  signInCode: 'Sign-In Code…',
-  signOutEverywhere: 'Sign Out Everywhere…',
-  disable: 'Disable Account…',
-  enable: 'Enable Account',
+function actionLabel(action: UserAction): string {
+  switch (action) {
+    case 'resetPassword':
+      return t('users.action.resetPassword')
+    case 'changeRole':
+      return t('users.action.changeRole')
+    case 'signInCode':
+      return t('users.action.signInCode')
+    case 'signOutEverywhere':
+      return t('users.action.signOutEverywhere')
+    case 'disable':
+      return t('users.action.disable')
+    case 'enable':
+      return t('users.action.enable')
+  }
 }
 
 const ACTION_ICONS: Record<UserAction, Component> = {
@@ -288,10 +298,10 @@ function closeDialog(): void {
 </script>
 
 <template>
-  <SettingsPage title="Users" description="Everyone who can sign in to this server.">
-    <SettingsGroup title="Accounts">
+  <SettingsPage :title="t('users.title')" :description="t('users.description')">
+    <SettingsGroup :title="t('users.accounts')">
       <template #actions>
-        <Button size="sm" @click="openAdd">Add User…</Button>
+        <Button size="sm" @click="openAdd">{{ t('users.add') }}</Button>
       </template>
       <SettingsRow
         v-for="user in host.users"
@@ -305,9 +315,9 @@ function closeDialog(): void {
           <Avatar :account-id="user.id" :name="user.nickname" :email="user.email" :size="32" />
         </template>
         <template v-if="user.id === host.viewerId || user.disabled || user.choosesPassword" #tags>
-          <Tag v-if="user.id === host.viewerId">You</Tag>
-          <Tag v-if="user.disabled" tone="warning">Disabled</Tag>
-          <Tag v-if="user.choosesPassword">Hasn’t Chosen a Password</Tag>
+          <Tag v-if="user.id === host.viewerId">{{ t('users.you') }}</Tag>
+          <Tag v-if="user.disabled" tone="warning">{{ t('users.disabled') }}</Tag>
+          <Tag v-if="user.choosesPassword">{{ t('users.choosesPassword') }}</Tag>
         </template>
         <template #description>
           <!-- On a narrow page the email has a line of its own, so no separator dangles at a line's end. -->
@@ -316,21 +326,21 @@ function closeDialog(): void {
               <span class="basis-full break-all @md:basis-auto">{{ user.email }}</span>
               <span aria-hidden="true" class="hidden @md:inline">·</span>
             </template>
-            <span>{{ ROLE_LABEL[user.role] }}</span>
+            <span>{{ roleLabel(user.role) }}</span>
             <span aria-hidden="true">·</span>
-            <span v-if="user.lastActiveAt">Active <RelativeTime :timestamp="user.lastActiveAt" /></span>
-            <span v-else>Not signed in yet</span>
+            <span v-if="user.lastActiveAt">{{ t('users.lastActive') }} <RelativeTime :timestamp="user.lastActiveAt" /></span>
+            <span v-else>{{ t('users.neverSignedIn') }}</span>
           </div>
         </template>
         <template v-if="actionsOf(user).length" #accessory>
           <Dropdown :overlay-store="overlayStore">
             <template #trigger="{ isOpen }">
-              <Tooltip content="Actions">
+              <Tooltip :content="t('users.actions')">
                 <IconButton
                   :icon="Ellipsis"
                   size="sm"
                   variant="ghost"
-                  :aria-label="`Actions for ${nameOf(user)}`"
+                  :aria-label="t('users.actionsFor', { name: nameOf(user) })"
                   :pressed="isOpen"
                 />
               </Tooltip>
@@ -341,7 +351,7 @@ function closeDialog(): void {
                   <MenuDivider v-if="action === 'signOutEverywhere'" />
                   <MenuItem
                     :icon="ACTION_ICONS[action]"
-                    :label="ACTION_LABEL[action]"
+                    :label="actionLabel(action)"
                     :is-danger="action === 'disable'"
                     :operation="onUser(action, user)"
                     @select="run(action, user)"
@@ -377,14 +387,14 @@ function closeDialog(): void {
   <ConfirmDialog
     :is-open="open === 'reset'"
     :overlay-store="overlayStore"
-    :title="`Reset ${targetName}’s password?`"
-    action="Reset Password"
+    :title="t('users.reset.title', { name: targetName })"
+    :action="t('users.reset.action')"
     :operation="onUser('resetPassword', target)"
     @close="closeDialog"
     @confirm="resetPassword"
   >
     <p>
-      Demi makes a new first password and shows it once. Their current password stops working. Signed-in browsers and passkeys stay.
+      {{ t('users.reset.body') }}
     </p>
   </ConfirmDialog>
   <HandoffDialog
@@ -398,7 +408,7 @@ function closeDialog(): void {
   >
     <template v-if="ready.account && ready.password !== null" #code-lead>
       <p class="text-[13px] leading-5 text-fg-muted">
-        {{ ready.lead }} Give them this password, or have them scan the code.
+        {{ t(ready.lead === 'added' ? 'users.ready.added' : 'users.ready.reset', { email: ready.account.email }) }}
       </p>
       <FirstPasswordCard :password="ready.password" :make="makeAnotherPassword" />
     </template>
@@ -415,30 +425,30 @@ function closeDialog(): void {
   <ConfirmDialog
     :is-open="open === 'signOut'"
     :overlay-store="overlayStore"
-    :title="`Sign ${targetName} out everywhere?`"
-    action="Sign Out Everywhere"
+    :title="t('users.signOutEverywhere.title', { name: targetName })"
+    :action="t('users.signOutEverywhere.action')"
     :operation="onUser('signOutEverywhere', target)"
     @close="closeDialog"
     @confirm="signOutEverywhere"
   >
     <p>
-      Every browser signed in as {{ targetName }} returns to the sign-in page. They can sign in again.
+      {{ t('users.signOutEverywhere.body', { name: targetName }) }}
     </p>
   </ConfirmDialog>
   <ConfirmDialog
     :is-open="open === 'disable'"
     :overlay-store="overlayStore"
-    :title="`Disable ${targetName}’s account?`"
-    action="Disable Account"
+    :title="t('users.disable.title', { name: targetName })"
+    :action="t('users.disable.action')"
     :operation="onUser('disable', target)"
     @close="closeDialog"
     @confirm="disableAccount"
   >
     <p>
-      {{ targetName }} is signed out everywhere and can’t sign in. Their Cloud stops and their devices disconnect.
+      {{ t('users.disable.body', { name: targetName }) }}
     </p>
     <p>
-      Nothing is removed. Enable Account restores access.
+      {{ t('users.disable.note') }}
     </p>
   </ConfirmDialog>
 </template>

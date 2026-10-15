@@ -1,0 +1,148 @@
+{
+  "state": {
+    "online": "上線",
+    "updating": "更新中",
+    "offline": "離線"
+  },
+  "route": {
+    "automatic": "自動",
+    "direct": "優先使用 P2P",
+    "server": "僅使用中繼",
+    "automaticDescription": "使用較快的路徑。",
+    "directDescription": "只要能連線就使用 P2P。",
+    "serverDescription": "不使用 P2P。"
+  },
+  "stage": {
+    "permission": "權限",
+    "gathering": "正在收集位址",
+    "checking": "正在尋找路徑",
+    "handshake": "加密交握",
+    "channel": "正在開啟通道",
+    "connected": "已連線"
+  },
+  "path": {
+    "thisComputer": "這台電腦",
+    "localNetwork": "區域網路",
+    "internet": "P2P",
+    "relay": "中繼",
+    "sentence": "{path} · {address}"
+  },
+  "connected": {
+    "relay": "透過中繼連線",
+    "thisComputer": "透過這台電腦連線",
+    "localNetwork": "透過區域網路連線",
+    "internet": "透過 P2P 連線"
+  },
+  "reason": {
+    "slower": "P2P 目前較慢。",
+    "blocked": "此瀏覽器封鎖區域網路存取。",
+    "unreachable": "你的網路封鎖了 P2P 連線。",
+    "browserNetwork": "你的網路封鎖了連線。",
+    "deviceNetwork": "裝置的網路封鎖了連線。",
+    "busy": "裝置的連線過多。",
+    "dropped": "P2P 連線已中斷。",
+    "notOffered": "P2P 僅在裝置所在的網路中可用。"
+  },
+  "latency": {
+    "under": "低於 0.1 ms",
+    "path": "{path} {latency}",
+    "lost": "{path} {latency}，遺失 {loss}",
+    "relay": "中繼 {latency}"
+  },
+  "address": {
+    "hidden": "已被瀏覽器隱藏"
+  },
+  "report": {
+    "appleSilicon": "Apple 晶片",
+    "arm": "ARM",
+    "intel": "Intel"
+  },
+  "runner": {
+    "current": "已是最新",
+    "outdated": "有可用更新",
+    "development": "開發版本"
+  },
+  "page": {
+    "cloud": "雲端",
+    "startSentence": "在裝置上啟動 Demi：",
+    "connection": "連線",
+    "route": "連線路徑",
+    "p2p": "P2P",
+    "details": "詳細資料…",
+    "latency": "延遲",
+    "measure": "測量",
+    "measuring": "正在測量…",
+    "noAnswer": "無回應",
+    "device": "裝置",
+    "name": "名稱",
+    "rename": "重新命名…",
+    "system": "系統",
+    "notReported": "尚未回報",
+    "runner": "執行器",
+    "runnerUpdates": "它會在下次連線時自行更新。",
+    "paired": "配對日期",
+    "revokeThis": "撤銷此裝置",
+    "revoke": "撤銷…",
+    "lastSeen": "最後上線"
+  },
+  "details": {
+    "title": "連線詳細資料",
+    "ran": "開始時間",
+    "took": "耗時",
+    "endedAt": "結束於",
+    "thisBrowser": "此瀏覽器",
+    "theDevice": "裝置",
+    "paths": "路徑",
+    "pathInUse": "使用中的路徑",
+    "localAccess": "區域網路存取",
+    "nextAttempt": "下次嘗試",
+    "none": "無",
+    "local": "本機：{list}",
+    "public": "公用：{list}",
+    "answered": "已回應 {answered} / {tried}",
+    "busy": "裝置忙碌",
+    "dropped": "已連線，隨後中斷",
+    "unknown": "未知",
+    "ms": "{ms} ms",
+    "s": "{s} 秒"
+  },
+  "permission": {
+    "granted": "已允許",
+    "prompt": "尚未回應",
+    "denied": "已封鎖",
+    "allowInSite": "請在此網站的設定中允許。",
+    "notAsked": "此瀏覽器未詢問"
+  },
+  "pairing": {
+    "title": "新增裝置",
+    "setupHint": "在裝置上啟動執行器以取得配對碼。",
+    "doneHint": "裝置已連結到你的帳戶，可以使用了。",
+    "codeHint": "輸入執行器顯示的配對碼。",
+    "system": "系統",
+    "systemLabel": "裝置系統",
+    "runInPowerShell": "在裝置上的 PowerShell 中執行，並保持開啟。",
+    "runInTerminal": "在裝置上的終端機中執行，並保持開啟。",
+    "copyInstall": "複製安裝命令",
+    "code": "配對碼",
+    "paste": "貼上代碼",
+    "pair": "配對裝置",
+    "invalidCode": "此代碼不可用。請貼上執行器的最新代碼。",
+    "rateLimited": "嘗試次數過多。請等待一分鐘後重試。",
+    "unavailable": "無法連線到 Demi。請檢查網路連線後重試。"
+  },
+  "revoke": {
+    "title": "撤銷此裝置？",
+    "action": "撤銷",
+    "body": "「{device}」將從你的裝置中移除。如果其執行器已連線，它會從裝置上自行移除。",
+    "projects": "此專案也會一併移除。其檔案保留在裝置上，其對話保留在側邊欄中。"
+  },
+  "rename": {
+    "title": "重新命名裝置",
+    "label": "裝置名稱"
+  },
+  "startHint": {
+    "powershell": "如果執行器已停止，請在裝置上的 PowerShell 中執行此命令。",
+    "terminal": "如果執行器已停止，請在裝置上的終端機中執行此命令。",
+    "copy": "複製啟動命令"
+  }
+}

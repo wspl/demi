@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
@@ -82,7 +83,7 @@ export const useCredentialSettings = defineStore('credential-settings', () => {
       const response = await apiRequest(`/credentials/${encodeURIComponent(id)}/values`)
       return (await readResponse(response, credentialValuesSchema)).values
     } catch (error) {
-      reportError('Could Not Show the Value', error, { userVisible: true })
+      reportError(t('credentials.showFailed'), error, { userVisible: true })
       return null
     }
   }

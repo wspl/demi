@@ -1,0 +1,27 @@
+{
+  "keep": {
+    "1h": "1 小時",
+    "1d": "1 天",
+    "30d": "30 天",
+    "always": "一律"
+  },
+  "request": {
+    "allowTitle": "允許此對話 {action}？",
+    "agentRan": "代理程式執行了",
+    "subagentRan": "子代理程式 {number}（「{description}」）執行了",
+    "deny": "拒絕",
+    "allowConversation": "允許此對話",
+    "allow": "允許",
+    "dontAllow": "不允許",
+    "decline": "拒絕",
+    "save": "儲存",
+    "updateCredential": "更新憑證",
+    "saveCredential": "儲存憑證",
+    "keepUntil": "保留至",
+    "needsValues": "每個欄位都需要一個不超過 64 KiB 的值。",
+    "allowCredentialTitle": "允許此對話使用憑證「{name}」？",
+    "removed": "已移除",
+    "youRemoved": "你已移除此憑證。",
+    "progress": "{position} / {count}"
+  }
+}

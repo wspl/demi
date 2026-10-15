@@ -1,0 +1,148 @@
+{
+  "state": {
+    "online": "オンライン",
+    "updating": "更新中",
+    "offline": "オフライン"
+  },
+  "route": {
+    "automatic": "自動",
+    "direct": "P2P を優先",
+    "server": "リレーのみ",
+    "automaticDescription": "より速い経路を使います。",
+    "directDescription": "接続できるときは常に P2P を使います。",
+    "serverDescription": "P2P を使いません。"
+  },
+  "stage": {
+    "permission": "許可",
+    "gathering": "アドレスを収集中",
+    "checking": "経路を検索中",
+    "handshake": "暗号化ハンドシェイク",
+    "channel": "チャンネルを開いています",
+    "connected": "接続済み"
+  },
+  "path": {
+    "thisComputer": "このコンピューター",
+    "localNetwork": "LAN",
+    "internet": "P2P",
+    "relay": "リレー",
+    "sentence": "{path} · {address}"
+  },
+  "connected": {
+    "relay": "リレー経由で接続",
+    "thisComputer": "このコンピューター経由で接続",
+    "localNetwork": "LAN 経由で接続",
+    "internet": "P2P 経由で接続"
+  },
+  "reason": {
+    "slower": "現在は P2P のほうが遅くなっています。",
+    "blocked": "このブラウザーはローカルネットワークへのアクセスをブロックしています。",
+    "unreachable": "ネットワークが P2P 接続をブロックしています。",
+    "browserNetwork": "ネットワークがブロックしています。",
+    "deviceNetwork": "デバイスのネットワークがブロックしています。",
+    "busy": "デバイスの接続数が多すぎます。",
+    "dropped": "P2P 接続が切断されました。",
+    "notOffered": "P2P はデバイスと同じネットワークでのみ使えます。"
+  },
+  "latency": {
+    "under": "0.1 ms 未満",
+    "path": "{path} {latency}",
+    "lost": "{path} {latency}、損失 {loss}",
+    "relay": "リレー {latency}"
+  },
+  "address": {
+    "hidden": "ブラウザーにより非表示"
+  },
+  "report": {
+    "appleSilicon": "Apple シリコン",
+    "arm": "ARM",
+    "intel": "Intel"
+  },
+  "runner": {
+    "current": "最新です",
+    "outdated": "アップデートあり",
+    "development": "開発ビルド"
+  },
+  "page": {
+    "cloud": "クラウド",
+    "startSentence": "デバイスで Demi を起動します:",
+    "connection": "接続",
+    "route": "経路",
+    "p2p": "P2P",
+    "details": "詳細…",
+    "latency": "レイテンシ",
+    "measure": "測定",
+    "measuring": "測定中…",
+    "noAnswer": "応答なし",
+    "device": "デバイス",
+    "name": "名前",
+    "rename": "名前を変更…",
+    "system": "システム",
+    "notReported": "まだ報告されていません",
+    "runner": "ランナー",
+    "runnerUpdates": "次回の接続時に自動で更新されます。",
+    "paired": "ペアリング日",
+    "revokeThis": "このデバイスを取り消す",
+    "revoke": "取り消す…",
+    "lastSeen": "最終確認"
+  },
+  "details": {
+    "title": "接続の詳細",
+    "ran": "実行日時",
+    "took": "所要時間",
+    "endedAt": "終了段階",
+    "thisBrowser": "このブラウザー",
+    "theDevice": "デバイス",
+    "paths": "経路",
+    "pathInUse": "使用中の経路",
+    "localAccess": "ローカルネットワークへのアクセス",
+    "nextAttempt": "次回の試行",
+    "none": "なし",
+    "local": "ローカル: {list}",
+    "public": "パブリック: {list}",
+    "answered": "応答 {answered} / {tried}",
+    "busy": "デバイスがビジー状態でした",
+    "dropped": "接続後に切断されました",
+    "unknown": "不明",
+    "ms": "{ms} ms",
+    "s": "{s} 秒"
+  },
+  "permission": {
+    "granted": "許可済み",
+    "prompt": "まだ応答していません",
+    "denied": "ブロック済み",
+    "allowInSite": "このサイトの設定で許可してください。",
+    "notAsked": "このブラウザーは確認していません"
+  },
+  "pairing": {
+    "title": "デバイスを追加",
+    "setupHint": "デバイスでランナーを起動して、ペアリングコードを取得します。",
+    "doneHint": "デバイスがアカウントにリンクされ、使用できます。",
+    "codeHint": "ランナーに表示されたペアリングコードを入力します。",
+    "system": "システム",
+    "systemLabel": "デバイスのシステム",
+    "runInPowerShell": "デバイスの PowerShell で実行し、開いたままにします。",
+    "runInTerminal": "デバイスのターミナルで実行し、開いたままにします。",
+    "copyInstall": "インストールコマンドをコピー",
+    "code": "ペアリングコード",
+    "paste": "コードを貼り付け",
+    "pair": "デバイスをペアリング",
+    "invalidCode": "このコードは使えません。ランナーの最新のコードを貼り付けてください。",
+    "rateLimited": "試行回数が多すぎます。1 分待ってからやり直してください。",
+    "unavailable": "Demi に接続できませんでした。接続を確認して、もう一度お試しください。"
+  },
+  "revoke": {
+    "title": "このデバイスを取り消しますか？",
+    "action": "取り消す",
+    "body": "「{device}」がデバイスの一覧から外れます。ランナーが接続されている場合は、デバイスから自動的に削除されます。",
+    "projects": "このプロジェクトも一緒に外れます。ファイルはデバイスに残り、会話はサイドバーに残ります。"
+  },
+  "rename": {
+    "title": "デバイスの名前を変更",
+    "label": "デバイス名"
+  },
+  "startHint": {
+    "powershell": "ランナーが停止している場合は、デバイスの PowerShell でこれを実行します。",
+    "terminal": "ランナーが停止している場合は、デバイスのターミナルでこれを実行します。",
+    "copy": "起動コマンドをコピー"
+  }
+}

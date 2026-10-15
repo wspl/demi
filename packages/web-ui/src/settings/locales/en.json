@@ -1,0 +1,621 @@
+{
+  "about": {
+    "title": "About",
+    "version": "Version",
+    "acknowledgements": {
+      "title": "Acknowledgements",
+      "description": "Open-source software in Demi and its licenses.",
+      "loading": "Loading acknowledgements…",
+      "none": "No acknowledgements"
+    }
+  },
+  "account": {
+    "title": "Account",
+    "description": "Your name, email and sign-in.",
+    "profile": {
+      "title": "Profile",
+      "avatar": "Avatar",
+      "displayName": "Display name",
+      "nameRequired": "Enter a name.",
+      "email": "Email",
+      "verified": "Verified",
+      "changeEmail": "Change email",
+      "password": "Password",
+      "passwordChanged": "Last changed {date}.",
+      "changePassword": "Change password",
+      "change": "Change",
+      "emailUnavailable": "This server can’t send email. Ask your administrator."
+    },
+    "session": {
+      "title": "Session",
+      "signOut": "Sign out",
+      "signOutDescription": "Ends this browser’s session. Conversations stay on the server.",
+      "signOutButton": "Sign Out"
+    },
+    "danger": {
+      "title": "Danger Zone",
+      "delete": "Delete account",
+      "deleteDescription": "Removes your account, devices and every conversation. This cannot be undone.",
+      "deleteButton": "Delete Account"
+    }
+  },
+  "archived": {
+    "title": "Archived",
+    "description": "Conversations removed from the sidebar.",
+    "search": "Search archived",
+    "searchLabel": "Search archived conversations",
+    "loading": "Loading archived conversations…",
+    "open": "Open",
+    "restore": "Restore",
+    "delete": "Delete…",
+    "none": "No archived conversations",
+    "noResults": "No results"
+  },
+  "data": {
+    "title": "Data & Privacy",
+    "description": "What is kept and who can see it.",
+    "diagnostics": {
+      "title": "Diagnostics",
+      "send": "Send usage data",
+      "sendDescription": "Crashes and feature usage. Never prompts, transcripts or file contents."
+    },
+    "danger": {
+      "title": "Danger Zone",
+      "deleteAll": "Delete all conversations",
+      "deleteAllDescription": "Projects and settings stay.",
+      "deleteAllButton": "Delete All"
+    }
+  },
+  "devices": {
+    "title": "Devices",
+    "description": "Machines your conversations can work on.",
+    "yours": "Your Devices",
+    "add": "Add Device…",
+    "loading": "Loading devices…",
+    "lastSeen": "Last seen",
+    "none": "No devices"
+  },
+  "keyboard": {
+    "title": "Keyboard",
+    "description": "Click Change, then press the new keys.",
+    "shortcuts": "Shortcuts",
+    "resetAll": "Reset all shortcuts",
+    "reset": "Reset",
+    "typesText": "{keys} types text. Add ⌘ or ⌃.",
+    "taken": "{keys} is already used by {action}.",
+    "actions": {
+      "new": "New conversation",
+      "search": "Search conversations",
+      "sidebar": "Toggle sidebar",
+      "settings": "Open settings"
+    }
+  },
+  "notifications": {
+    "title": "Notifications",
+    "description": "When the agent needs you, or is done.",
+    "browser": {
+      "title": "Browser",
+      "label": "Browser notifications",
+      "blocked": "Blocked in this browser’s site settings.",
+      "thisBrowser": "On this browser only.",
+      "unsupported": "This browser doesn’t support notifications."
+    },
+    "when": {
+      "title": "Notify me when",
+      "turnFinishes": "A turn finishes",
+      "turnFails": "A turn fails",
+      "needsPermission": "Demi needs permission",
+      "turnOnFirst": "Turn on browser notifications first."
+    }
+  },
+  "passkeys": {
+    "title": "Passkeys",
+    "add": "Add Passkey…",
+    "synced": "Synced",
+    "thisDeviceOnly": "This device only",
+    "added": "Added",
+    "lastUsed": "Last used",
+    "rename": "Rename…",
+    "renameLabel": "Rename {name}",
+    "remove": "Remove…",
+    "removeLabel": "Remove {name}",
+    "none": "No passkeys",
+    "renameTitle": "Rename Passkey",
+    "nameLabel": "Passkey name",
+    "removeTitle": "Remove “{name}”?",
+    "removeBody": "It can no longer sign in. Your password and other passkeys still work.",
+    "removeAction": "Remove"
+  },
+  "sessions": {
+    "title": "Signed-In Browsers",
+    "thisBrowser": "This browser",
+    "signedIn": "Signed in",
+    "signedInWithCode": "Signed in with a code from {name}",
+    "lastActive": "Last active",
+    "signOut": "Sign Out…",
+    "signOutLabel": "Sign out {name}",
+    "signOutTitle": "Sign out {name}?",
+    "signOutAction": "Sign Out",
+    "signOutBody": "Its open pages return to the sign-in page. Conversations stay on the server."
+  },
+  "instructions": {
+    "title": "Instructions",
+    "description": "Followed in every conversation, with each project’s AGENTS.md or CLAUDE.md.",
+    "personal": "Personal instructions",
+    "personalDescription": "For example, the language to reply in.",
+    "save": "Save"
+  },
+  "firstPassword": {
+    "label": "Password",
+    "new": "New Password",
+    "copy": "Copy password"
+  },
+  "dialog": {
+    "title": "Settings",
+    "search": "Filter settings",
+    "sections": "Settings sections",
+    "back": "Back"
+  },
+  "listItem": {
+    "remove": "Remove"
+  },
+  "plugins": {
+    "title": "Plugins",
+    "description": "What the agent and this app can do.",
+    "none": "No plugins"
+  },
+  "quota": {
+    "unavailable": "Usage not available yet",
+    "used": "{share} used"
+  },
+  "sections": {
+    "agent": "Agent",
+    "workspace": "Workspace",
+    "general": {
+      "keywords": "appearance,look",
+      "themeKeywords": "dark mode,light mode,appearance",
+      "accentKeywords": "color,colour",
+      "textSizeKeywords": "font size,text size,transcript"
+    },
+    "account": {
+      "avatarKeywords": "picture,photo",
+      "displayNameKeywords": "nickname,name",
+      "emailKeywords": "address,e-mail",
+      "signOutKeywords": "log out,logout"
+    },
+    "notifications": {
+      "keywords": "browser,alert",
+      "browserKeywords": "notify",
+      "finishesKeywords": "done,complete",
+      "failsKeywords": "error",
+      "permissionKeywords": "permission request"
+    },
+    "providers": {
+      "keywords": "models,api key,anthropic,openai,claude code,codex,base url,catalog"
+    },
+    "credentials": {
+      "keywords": "token,secret,sign-in,saved login"
+    },
+    "instructions": {
+      "keywords": "personal instructions,custom instructions,AGENTS.md,CLAUDE.md,rules"
+    },
+    "subagents": {
+      "keywords": "profile,spawn,delegate,child agent",
+      "maxLiveKeywords": "limit,live,unlimited",
+      "maxDepthKeywords": "limit,level,grandchild,unlimited"
+    },
+    "plugins": {
+      "keywords": "plugin,extension"
+    },
+    "devices": {
+      "keywords": "add device,pairing code,claim,revoke,runner,machine",
+      "cloudKeywords": "cloud,reset environment",
+      "storageKeywords": "disk,space"
+    },
+    "archived": {
+      "keywords": "archive,restore,conversation"
+    },
+    "keyboard": {
+      "keywords": "shortcut,hotkey,binding"
+    },
+    "data": {
+      "keywords": "transcripts,usage data,delete"
+    },
+    "about": {
+      "keywords": "version,licenses,open source,third-party,notices"
+    },
+    "users": {
+      "keywords": "accounts,people,admin,add user,invite,reset password,role,disable,sign out everywhere"
+    }
+  },
+  "changeEmail": {
+    "title": "Change Email",
+    "formHint": "You sign in with the new address from now on.",
+    "verifyHint": "A {count}-digit code went to {email}. Enter it to finish.",
+    "doneHint": "Your email is now {email}.",
+    "newEmail": "New email",
+    "currentPassword": "Current password",
+    "code": "Code",
+    "codeLabel": "Verification code",
+    "sameAsCurrent": "That is already your email.",
+    "resent": "A new code went to {email}.",
+    "nothingArrived": "Nothing arrived?",
+    "sendAgain": "Send It Again",
+    "verify": "Verify"
+  },
+  "changePassword": {
+    "title": "Change Password",
+    "hint": "Enter your current password and choose a new one.",
+    "current": "Current password",
+    "new": "New password",
+    "confirm": "Confirm new password",
+    "unchanged": "That is your current password.",
+    "done": "Password changed"
+  },
+  "changeRole": {
+    "title": "Change Role",
+    "current": "{name}’s role is {role}.",
+    "role": "Role"
+  },
+  "addPasskey": {
+    "title": "Add Passkey",
+    "hint": "Enter your password. Your browser saves a passkey for signing in.",
+    "password": "Password",
+    "required": "Required"
+  },
+  "roles": {
+    "master": "Master",
+    "admin": "Admin",
+    "user": "User",
+    "masterDescription": "Owns the server and manages every account.",
+    "adminDescription": "Adds and manages users.",
+    "userDescription": "Manages no other account."
+  },
+  "users": {
+    "title": "Users",
+    "description": "Everyone who can sign in to this server.",
+    "accounts": "Accounts",
+    "add": "Add User…",
+    "you": "You",
+    "disabled": "Disabled",
+    "choosesPassword": "Hasn’t chosen a password",
+    "lastActive": "Last active",
+    "neverSignedIn": "Not signed in yet",
+    "actions": "Actions",
+    "actionsFor": "Actions for {name}",
+    "action": {
+      "resetPassword": "Reset Password…",
+      "changeRole": "Change Role…",
+      "signInCode": "Sign-In Code…",
+      "signOutEverywhere": "Sign Out Everywhere…",
+      "disable": "Disable Account…",
+      "enable": "Enable Account"
+    },
+    "confirm": {
+      "add": "Confirm it’s you to add an account.",
+      "resetPassword": "Confirm it’s you to reset a password.",
+      "newPassword": "Confirm it’s you to make a new password."
+    },
+    "ready": {
+      "added": "The account for {email} is ready. Give them this password, or have them scan the code.",
+      "reset": "{email} has a new password. Give them this password, or have them scan the code."
+    },
+    "reset": {
+      "title": "Reset {name}’s password?",
+      "action": "Reset Password",
+      "body": "Demi makes a new first password and shows it once. Their current password stops working. Signed-in browsers and passkeys stay."
+    },
+    "signOutEverywhere": {
+      "title": "Sign {name} out everywhere?",
+      "action": "Sign Out Everywhere",
+      "body": "Every browser signed in as {name} returns to the sign-in page. They can sign in again."
+    },
+    "disable": {
+      "title": "Disable {name}’s account?",
+      "action": "Disable Account",
+      "body": "{name} is signed out everywhere and can’t sign in. Their Cloud stops and their devices disconnect.",
+      "note": "Nothing is removed. Enable Account restores access."
+    }
+  },
+  "addUser": {
+    "title": "Add User",
+    "hint": "They choose their own password at first sign-in.",
+    "email": "Email",
+    "role": "Role",
+    "adminAdds": "An admin adds users.",
+    "emailTaken": "An account already has that email address."
+  },
+  "credentials": {
+    "title": "Credentials",
+    "yours": "Your Credentials",
+    "new": "New Credential…",
+    "secret": "Secret",
+    "visible": "Visible",
+    "show": "Show {label}",
+    "hide": "Hide {label}",
+    "keptUntil": "Kept until",
+    "always": "Always",
+    "lastUsed": "Last used",
+    "never": "Never",
+    "edit": "Edit",
+    "none": "No credentials",
+    "saveFailed": "Could Not Save the Credential",
+    "deleteFailed": "Could Not Delete the Credential",
+    "deleteTitle": "Delete “{name}”?",
+    "deleteBody": "Agents can no longer read it in any conversation. This cannot be undone."
+  },
+  "credentialDialog": {
+    "edit": "Edit Credential",
+    "new": "New Credential",
+    "name": "Name",
+    "note": "Note",
+    "noteDescription": "Optional. Why an agent needs it.",
+    "keepUntil": "Keep until",
+    "fields": "Fields",
+    "addField": "Add Field",
+    "fieldsMax": "A credential has at most {max} fields.",
+    "label": "Label",
+    "readAs": "Read as",
+    "labelPlaceholder": "API key",
+    "labelOf": "Label of field {n}",
+    "removeField": "Remove field {n}",
+    "needsField": "A credential needs a field.",
+    "kind": "Kind",
+    "value": "Value",
+    "keepSaved": "Leave empty to keep it",
+    "valueOf": "Value of field {n}",
+    "create": "Create Credential"
+  },
+  "credentialFields": {
+    "required": "Required",
+    "maxChars": "Use at most {max} characters.",
+    "maxBytes": "Use at most 64 KiB."
+  },
+  "subagents": {
+    "title": "Subagents",
+    "description": "Child agents that take on parts of a task.",
+    "switchDescription": "Turning off doesn’t stop running subagents.",
+    "maxLive": "Maximum subagents",
+    "maxLiveDescription": "The most subagents one conversation runs at once.",
+    "maxLiveConfirmTitle": "Allow unlimited subagents?",
+    "maxDepth": "Maximum depth",
+    "maxDepthDescription": "At 1, only the main agent starts subagents.",
+    "maxDepthConfirmTitle": "Allow unlimited depth?",
+    "allowUnlimited": "Allow Unlimited",
+    "unlimitedWarning": "This can make conversations unstable and use many tokens.",
+    "profiles": "Profiles",
+    "profilesDescription": "Without a profile, a subagent inherits its parent’s settings.",
+    "newProfile": "New Profile…",
+    "unavailable": "Unavailable",
+    "context": "Context {size}",
+    "noInstructions": "No instructions",
+    "ownInstructions": "Own instructions",
+    "mayStart": "Children may spawn",
+    "noSpawning": "No spawning",
+    "edit": "Edit",
+    "none": "No profiles",
+    "saveFailed": "Could Not Save the Profile",
+    "deleteFailed": "Could Not Delete the Profile",
+    "deleteTitle": "Delete “{name}”?",
+    "deleteBody": "Agents can no longer use it. Running subagents continue."
+  },
+  "profile": {
+    "new": "New Profile",
+    "edit": "Edit Profile",
+    "hint": "An agent picks a profile by its description.",
+    "name": "Name",
+    "nameDescription": "Required. Lowercase letters, digits and hyphens, starting with a letter.",
+    "description": "Description",
+    "descriptionDescription": "Required. When the agent should use it, in one line.",
+    "model": "Model",
+    "fast": "Fast",
+    "context": "Context",
+    "contextDescription": "The context window its subagents use.",
+    "instructions": "Instructions",
+    "instructionsDescription": "Optional. Added to Demi’s own instructions.",
+    "mayStart": "Children may spawn",
+    "mayStartDescription": "Lets its subagents start subagents.",
+    "delete": "Delete",
+    "create": "Create Profile",
+    "parentModel": "Parent’s model",
+    "providerGone": "Its provider is gone. Choose another model.",
+    "modelGone": "The model {model} is gone. Choose another model.",
+    "effortGone": "{model} no longer offers the effort {effort}. Choose another effort.",
+    "tierGone": "{model} no longer offers the tier {tier}. Choose another tier.",
+    "nameCharacters": "Use only lowercase letters, digits and hyphens.",
+    "nameStart": "Start the name with a letter.",
+    "nameLength": "Use at most {max} characters.",
+    "nameDefault": "“default” is the name of the inherit profile. Choose another name."
+  },
+  "providers": {
+    "title": "Providers",
+    "loading": "Loading providers…",
+    "subscriptions": "Subscriptions",
+    "apiKeys": "API Keys",
+    "name": "Provider name",
+    "rename": "Rename",
+    "saving": "Saving…",
+    "addAccount": "Add Account",
+    "showInMenu": "Show in model menu",
+    "state": {
+      "setup": "Not set up",
+      "signedOut": "Signed out",
+      "error": "Failed",
+      "unreachable": "Can’t be reached"
+    },
+    "rotation": {
+      "title": "Rotation",
+      "manual": "Manual",
+      "inOrder": "In Order",
+      "balanced": "Balanced",
+      "manualHint": "Every agent uses the active account.",
+      "inOrderHint": "Agents use the first account in the list that has not reached its limit.",
+      "balancedHint": "Each agent takes the account with the most room left."
+    },
+    "account": {
+      "active": "Active",
+      "limitReached": "Limit reached",
+      "activate": "Activate",
+      "refreshUsage": "Refresh usage",
+      "test": "Test connection",
+      "remove": "Remove",
+      "reorder": "Drag to reorder",
+      "move": "Move {label}",
+      "none": "No accounts"
+    },
+    "connection": {
+      "endpoint": "Endpoint",
+      "protocol": "Protocol",
+      "apiKey": "API key",
+      "keyOptional": "Optional. Stored encrypted on the server.",
+      "keyStored": "Stored encrypted on the server.",
+      "keyReplace": "Enter a new key to replace",
+      "keyPaste": "Paste your API key",
+      "test": "Test connection",
+      "testDescription": "Sends one short request to the first enabled model.",
+      "testing": "Testing…",
+      "connected": "Connected",
+      "failed": "Failed",
+      "enableModel": "Enable a model first"
+    },
+    "cli": {
+      "title": "Command-Line Tool",
+      "version": "Version",
+      "versionDescription": "Follows the newest version and updates itself.",
+      "check": "Check for updates",
+      "unreadable": "Couldn’t read the newest version",
+      "noAnswer": "No answer",
+      "notInstalled": "Not installed",
+      "installing": "Installing on Cloud",
+      "installFailed": "Couldn’t install on Cloud",
+      "install": "Install"
+    },
+    "models": {
+      "title": "Models",
+      "updated": "Updated",
+      "refresh": "Refresh",
+      "catalog": "Catalog",
+      "manual": "Manual",
+      "filterModels": "Filter models",
+      "add": "Add Model",
+      "loading": "Loading models…",
+      "unknown": "Capabilities unknown. Edit to fill them in.",
+      "accepts": "Accepts {types}",
+      "reasoning": "Reasoning · {efforts}",
+      "fast": "Has a fast tier",
+      "edit": "Edit",
+      "remove": "Remove",
+      "details": "Details",
+      "enable": "Enable {name}",
+      "noResults": "No results",
+      "signInToSee": "Sign in to see models",
+      "none": "No models"
+    },
+    "removeProvider": {
+      "title": "Remove “{name}”?",
+      "keyOnly": "Its API key goes with it.",
+      "keyAndModels": "Its API key and its model go with it. | Its API key and its {count} models go with it.",
+      "history": "Conversations using its models keep their history and need another model."
+    },
+    "removeAccount": {
+      "title": "Remove the account “{label}”?",
+      "keeps": "{name} keeps using its active account.",
+      "switches": "{name} switches to “{next}”.",
+      "none": "{name} is left without an account and can’t be used until you add one.",
+      "forgets": "Demi forgets its sign-in. You can add it again with Add Account."
+    },
+    "removeModel": {
+      "title": "Remove the model “{name}”?",
+      "body": "It leaves {provider}’s model list and the model menus. You can add it again with its ID."
+    },
+    "warning": {
+      "title": "Use several accounts?",
+      "body": "Using several personal subscriptions to get past their usage limits may be against the vendor’s terms.",
+      "once": "Demi won’t ask again."
+    },
+    "connected": "{account} Connected",
+    "testFailed": "{account} Test Failed",
+    "addModelFailed": "Could Not Add the Model",
+    "saveModelFailed": "Could Not Save the Model",
+    "duplicateModel": "Another model of this provider has this ID"
+  },
+  "addProvider": {
+    "title": "Add Provider",
+    "compatible": "Compatible API",
+    "compatibleHint": "A proxy or your own server",
+    "proxy": "proxy",
+    "vendors": "Vendors",
+    "loading": "Loading vendors…",
+    "noResults": "No results"
+  },
+  "addModel": {
+    "title": "Add Model",
+    "hint": "Search models.dev or choose Custom.",
+    "model": "Model",
+    "searchFailed": "Couldn’t search models.dev.",
+    "adding": "Adding…",
+    "list": "Models",
+    "search": "Search",
+    "custom": "Custom"
+  },
+  "modelDialog": {
+    "edit": "Edit Model",
+    "id": "Model ID",
+    "name": "Name",
+    "nameDescription": "Shown in the model menu. Defaults to the ID.",
+    "contextWindow": "Context window",
+    "maxOutput": "Max output",
+    "optional": "Optional",
+    "reasoning": "Reasoning",
+    "reasoningDescription": "First is the default.",
+    "fastTier": "Fast tier",
+    "fastTierDescription": "Optional. Service tier ID.",
+    "acceptedFiles": "Accepted files",
+    "textAlways": "Text is always accepted.",
+    "unknown": "Unknown",
+    "textOnly": "Text only",
+    "none": "None",
+    "accept": "Accept {label}",
+    "removeExtension": "Remove {ext}",
+    "delete": "Delete Model",
+    "duplicateId": "Another model of this provider has this ID"
+  },
+  "presets": {
+    "images": "Images",
+    "videos": "Videos",
+    "documents": "Documents"
+  },
+  "efforts": {
+    "minimal": "Minimal",
+    "low": "Low",
+    "medium": "Medium",
+    "high": "High",
+    "max": "Max"
+  },
+  "login": {
+    "title": "Sign In to {vendor}",
+    "deviceHint": "Enter this code on the vendor’s page.",
+    "codeHint": "Sign in on the vendor’s page, then paste the code it shows.",
+    "doneActive": "Signed in. This account is now active for {vendor}.",
+    "doneKept": "Signed in. {vendor} keeps using its active account.",
+    "failedHint": "The sign-in didn’t complete.",
+    "waitingCloud": "Waiting for your Cloud to connect…",
+    "installing": "Installing the command-line tool on your Cloud…",
+    "startingTool": "Starting the command-line tool…",
+    "contacting": "Contacting {vendor}…",
+    "copyCode": "Copy code",
+    "openInBrowser": "Open in Browser",
+    "copyLink": "Copy link",
+    "copyLinkHint": "Copy the link to sign in from another browser or device",
+    "waiting": "Waiting",
+    "waitingExpires": "Waiting · code expires in {left}",
+    "paste": "Paste the code",
+    "code": "Code",
+    "signingIn": "Signing in…",
+    "waitingCode": "Waiting for the code",
+    "waitingCodeExpires": "Waiting for the code · expires in {left}"
+  },
+  "provider": {
+    "endpointInvalid": "Enter an http or https address."
+  }
+}

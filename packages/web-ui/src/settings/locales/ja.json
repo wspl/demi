@@ -1,0 +1,621 @@
+{
+  "about": {
+    "title": "バージョン情報",
+    "version": "バージョン",
+    "acknowledgements": {
+      "title": "謝辞",
+      "description": "Demi に含まれるオープンソースソフトウェアとそのライセンス。",
+      "loading": "謝辞を読み込んでいます…",
+      "none": "謝辞はありません"
+    }
+  },
+  "account": {
+    "title": "アカウント",
+    "description": "名前、メールアドレス、サインインの設定。",
+    "profile": {
+      "title": "プロフィール",
+      "avatar": "アバター",
+      "displayName": "表示名",
+      "nameRequired": "名前を入力してください。",
+      "email": "メール",
+      "verified": "確認済み",
+      "changeEmail": "メールの変更",
+      "password": "パスワード",
+      "passwordChanged": "最終変更: {date}",
+      "changePassword": "パスワードの変更",
+      "change": "変更",
+      "emailUnavailable": "このサーバーはメールを送信できません。管理者に問い合わせてください。"
+    },
+    "session": {
+      "title": "セッション",
+      "signOut": "サインアウト",
+      "signOutDescription": "このブラウザーのセッションを終了します。会話はサーバーに残ります。",
+      "signOutButton": "サインアウト"
+    },
+    "danger": {
+      "title": "危険な操作",
+      "delete": "アカウントを削除",
+      "deleteDescription": "アカウント、デバイス、すべての会話を削除します。この操作は取り消せません。",
+      "deleteButton": "アカウントを削除"
+    }
+  },
+  "archived": {
+    "title": "アーカイブ済み",
+    "description": "サイドバーから外した会話。",
+    "search": "アーカイブ済みを検索",
+    "searchLabel": "アーカイブ済みの会話を検索",
+    "loading": "アーカイブ済みの会話を読み込んでいます…",
+    "open": "開く",
+    "restore": "復元",
+    "delete": "削除…",
+    "none": "アーカイブ済みの会話はありません",
+    "noResults": "結果がありません"
+  },
+  "data": {
+    "title": "データとプライバシー",
+    "description": "保存される内容と閲覧できる人。",
+    "diagnostics": {
+      "title": "診断",
+      "send": "使用状況データを送信",
+      "sendDescription": "クラッシュと機能の使用状況。プロンプト、会話履歴、ファイルの内容は含まれません。"
+    },
+    "danger": {
+      "title": "危険な操作",
+      "deleteAll": "すべての会話を削除",
+      "deleteAllDescription": "プロジェクトと設定は残ります。",
+      "deleteAllButton": "すべて削除"
+    }
+  },
+  "devices": {
+    "title": "デバイス",
+    "description": "会話の作業先にできるマシン。",
+    "yours": "あなたのデバイス",
+    "add": "デバイスを追加…",
+    "loading": "デバイスを読み込んでいます…",
+    "lastSeen": "最終確認",
+    "none": "デバイスはありません"
+  },
+  "keyboard": {
+    "title": "キーボード",
+    "description": "「変更」をクリックして、新しいキーを押します。",
+    "shortcuts": "ショートカット",
+    "resetAll": "すべてのショートカットをリセット",
+    "reset": "リセット",
+    "typesText": "{keys} は文字入力になります。⌘ または ⌃ を加えてください。",
+    "taken": "{keys} はすでに「{action}」に使われています。",
+    "actions": {
+      "new": "新しい会話",
+      "search": "会話を検索",
+      "sidebar": "サイドバーの切り替え",
+      "settings": "設定を開く"
+    }
+  },
+  "notifications": {
+    "title": "通知",
+    "description": "エージェントの確認が必要なときや完了したとき。",
+    "browser": {
+      "title": "ブラウザー",
+      "label": "ブラウザー通知",
+      "blocked": "このブラウザーのサイト設定でブロックされています。",
+      "thisBrowser": "このブラウザーのみ。",
+      "unsupported": "このブラウザーは通知に対応していません。"
+    },
+    "when": {
+      "title": "通知するタイミング",
+      "turnFinishes": "ターンが完了したとき",
+      "turnFails": "ターンが失敗したとき",
+      "needsPermission": "Demi が許可を求めたとき",
+      "turnOnFirst": "先にブラウザー通知をオンにしてください。"
+    }
+  },
+  "passkeys": {
+    "title": "パスキー",
+    "add": "パスキーを追加…",
+    "synced": "同期済み",
+    "thisDeviceOnly": "このデバイスのみ",
+    "added": "追加日",
+    "lastUsed": "最終使用",
+    "rename": "名前を変更…",
+    "renameLabel": "「{name}」の名前を変更",
+    "remove": "削除…",
+    "removeLabel": "「{name}」を削除",
+    "none": "パスキーはありません",
+    "renameTitle": "パスキーの名前を変更",
+    "nameLabel": "パスキー名",
+    "removeTitle": "「{name}」を削除しますか？",
+    "removeBody": "このパスキーではサインインできなくなります。パスワードとほかのパスキーは引き続き使えます。",
+    "removeAction": "削除"
+  },
+  "sessions": {
+    "title": "サインイン中のブラウザー",
+    "thisBrowser": "このブラウザー",
+    "signedIn": "サインイン日",
+    "signedInWithCode": "{name} のコードでサインイン",
+    "lastActive": "最終アクティビティ",
+    "signOut": "サインアウト…",
+    "signOutLabel": "「{name}」をサインアウト",
+    "signOutTitle": "「{name}」をサインアウトしますか？",
+    "signOutAction": "サインアウト",
+    "signOutBody": "開いているページはサインインページに戻ります。会話はサーバーに残ります。"
+  },
+  "instructions": {
+    "title": "指示",
+    "description": "すべての会話で、各プロジェクトの AGENTS.md や CLAUDE.md とともに従います。",
+    "personal": "個人用の指示",
+    "personalDescription": "例: 返信に使う言語。",
+    "save": "保存"
+  },
+  "firstPassword": {
+    "label": "パスワード",
+    "new": "新しいパスワード",
+    "copy": "パスワードをコピー"
+  },
+  "dialog": {
+    "title": "設定",
+    "search": "設定を絞り込む",
+    "sections": "設定のセクション",
+    "back": "戻る"
+  },
+  "listItem": {
+    "remove": "削除"
+  },
+  "plugins": {
+    "title": "プラグイン",
+    "description": "エージェントとこのアプリでできること。",
+    "none": "プラグインはありません"
+  },
+  "quota": {
+    "unavailable": "使用状況はまだ利用できません",
+    "used": "{share} 使用済み"
+  },
+  "sections": {
+    "agent": "エージェント",
+    "workspace": "ワークスペース",
+    "general": {
+      "keywords": "外観,見た目",
+      "themeKeywords": "ダークモード,ライトモード,外観",
+      "accentKeywords": "色,カラー",
+      "textSizeKeywords": "フォントサイズ,文字サイズ,会話履歴"
+    },
+    "account": {
+      "avatarKeywords": "画像,写真",
+      "displayNameKeywords": "ニックネーム,名前",
+      "emailKeywords": "アドレス,メールアドレス",
+      "signOutKeywords": "ログアウト"
+    },
+    "notifications": {
+      "keywords": "ブラウザー,アラート",
+      "browserKeywords": "通知",
+      "finishesKeywords": "完了,終了",
+      "failsKeywords": "エラー",
+      "permissionKeywords": "許可の要求"
+    },
+    "providers": {
+      "keywords": "モデル,API キー,anthropic,openai,claude code,codex,ベース URL,カタログ"
+    },
+    "credentials": {
+      "keywords": "トークン,シークレット,サインイン,保存済みのログイン"
+    },
+    "instructions": {
+      "keywords": "個人用の指示,カスタム指示,AGENTS.md,CLAUDE.md,ルール"
+    },
+    "subagents": {
+      "keywords": "プロファイル,起動,委任,サブエージェント",
+      "maxLiveKeywords": "制限,実行中,無制限",
+      "maxDepthKeywords": "制限,階層,孫,無制限"
+    },
+    "plugins": {
+      "keywords": "プラグイン,拡張機能"
+    },
+    "devices": {
+      "keywords": "デバイスを追加,ペアリングコード,登録,取り消し,ランナー,マシン",
+      "cloudKeywords": "クラウド,環境をリセット",
+      "storageKeywords": "ディスク,容量"
+    },
+    "archived": {
+      "keywords": "アーカイブ,復元,会話"
+    },
+    "keyboard": {
+      "keywords": "ショートカット,ホットキー,割り当て"
+    },
+    "data": {
+      "keywords": "会話履歴,使用状況データ,削除"
+    },
+    "about": {
+      "keywords": "バージョン,ライセンス,オープンソース,サードパーティ,通知"
+    },
+    "users": {
+      "keywords": "アカウント,メンバー,管理者,ユーザーを追加,招待,パスワードをリセット,ロール,無効化,すべてサインアウト"
+    }
+  },
+  "changeEmail": {
+    "title": "メールの変更",
+    "formHint": "今後は新しいアドレスでサインインします。",
+    "verifyHint": "{email} に {count} 桁のコードを送信しました。入力して完了します。",
+    "doneHint": "メールアドレスは {email} になりました。",
+    "newEmail": "新しいメール",
+    "currentPassword": "現在のパスワード",
+    "code": "コード",
+    "codeLabel": "確認コード",
+    "sameAsCurrent": "すでにこのメールアドレスです。",
+    "resent": "{email} に新しいコードを送信しました。",
+    "nothingArrived": "届きませんか？",
+    "sendAgain": "再送信",
+    "verify": "確認"
+  },
+  "changePassword": {
+    "title": "パスワードの変更",
+    "hint": "現在のパスワードを入力し、新しいパスワードを設定します。",
+    "current": "現在のパスワード",
+    "new": "新しいパスワード",
+    "confirm": "新しいパスワードの確認",
+    "unchanged": "現在のパスワードと同じです。",
+    "done": "パスワードを変更しました"
+  },
+  "changeRole": {
+    "title": "ロールを変更",
+    "current": "{name} のロールは{role}です。",
+    "role": "ロール"
+  },
+  "addPasskey": {
+    "title": "パスキーを追加",
+    "hint": "パスワードを入力します。ブラウザーがサインイン用のパスキーを保存します。",
+    "password": "パスワード",
+    "required": "必須"
+  },
+  "roles": {
+    "master": "オーナー",
+    "admin": "管理者",
+    "user": "ユーザー",
+    "masterDescription": "サーバーを所有し、すべてのアカウントを管理します。",
+    "adminDescription": "ユーザーを追加・管理します。",
+    "userDescription": "ほかのアカウントは管理しません。"
+  },
+  "users": {
+    "title": "ユーザー",
+    "description": "このサーバーにサインインできるすべての人。",
+    "accounts": "アカウント",
+    "add": "ユーザーを追加…",
+    "you": "あなた",
+    "disabled": "無効",
+    "choosesPassword": "パスワード未設定",
+    "lastActive": "最終アクティビティ",
+    "neverSignedIn": "まだサインインしていません",
+    "actions": "操作",
+    "actionsFor": "「{name}」の操作",
+    "action": {
+      "resetPassword": "パスワードをリセット…",
+      "changeRole": "ロールを変更…",
+      "signInCode": "サインインコード…",
+      "signOutEverywhere": "すべての場所でサインアウト…",
+      "disable": "アカウントを無効化…",
+      "enable": "アカウントを有効化"
+    },
+    "confirm": {
+      "add": "アカウントを追加するには、本人確認が必要です。",
+      "resetPassword": "パスワードをリセットするには、本人確認が必要です。",
+      "newPassword": "新しいパスワードを作成するには、本人確認が必要です。"
+    },
+    "ready": {
+      "added": "{email} のアカウントを作成しました。このパスワードを伝えるか、コードをスキャンしてもらってください。",
+      "reset": "{email} の新しいパスワードを作成しました。このパスワードを伝えるか、コードをスキャンしてもらってください。"
+    },
+    "reset": {
+      "title": "「{name}」のパスワードをリセットしますか？",
+      "action": "パスワードをリセット",
+      "body": "Demi が新しい初期パスワードを作成し、一度だけ表示します。現在のパスワードは使えなくなります。サインイン中のブラウザーとパスキーはそのまま残ります。"
+    },
+    "signOutEverywhere": {
+      "title": "「{name}」をすべての場所でサインアウトしますか？",
+      "action": "すべての場所でサインアウト",
+      "body": "「{name}」でサインインしているすべてのブラウザーがサインインページに戻ります。再度サインインできます。"
+    },
+    "disable": {
+      "title": "「{name}」のアカウントを無効化しますか？",
+      "action": "アカウントを無効化",
+      "body": "「{name}」はすべての場所でサインアウトされ、サインインできなくなります。クラウドは停止し、デバイスは切断されます。",
+      "note": "何も削除されません。「アカウントを有効化」でアクセスを元に戻せます。"
+    }
+  },
+  "addUser": {
+    "title": "ユーザーを追加",
+    "hint": "初回のサインイン時に本人がパスワードを設定します。",
+    "email": "メール",
+    "role": "ロール",
+    "adminAdds": "管理者はユーザーのみ追加できます。",
+    "emailTaken": "このメールアドレスはすでに使われています。"
+  },
+  "credentials": {
+    "title": "認証情報",
+    "yours": "あなたの認証情報",
+    "new": "新しい認証情報…",
+    "secret": "シークレット",
+    "visible": "表示",
+    "show": "「{label}」を表示",
+    "hide": "「{label}」を非表示",
+    "keptUntil": "保持期限",
+    "always": "常に",
+    "lastUsed": "最終使用",
+    "never": "なし",
+    "edit": "編集",
+    "none": "認証情報はありません",
+    "saveFailed": "認証情報を保存できませんでした",
+    "deleteFailed": "認証情報を削除できませんでした",
+    "deleteTitle": "「{name}」を削除しますか？",
+    "deleteBody": "エージェントはどの会話でもこの認証情報を読み取れなくなります。この操作は取り消せません。"
+  },
+  "credentialDialog": {
+    "edit": "認証情報を編集",
+    "new": "新しい認証情報",
+    "name": "名前",
+    "note": "メモ",
+    "noteDescription": "任意。エージェントが必要とする理由。",
+    "keepUntil": "保持期限",
+    "fields": "フィールド",
+    "addField": "フィールドを追加",
+    "fieldsMax": "1 つの認証情報のフィールドは最大 {max} 個です。",
+    "label": "ラベル",
+    "readAs": "読み取り名",
+    "labelPlaceholder": "API キー",
+    "labelOf": "フィールド {n} のラベル",
+    "removeField": "フィールド {n} を削除",
+    "needsField": "認証情報には 1 つ以上のフィールドが必要です。",
+    "kind": "種類",
+    "value": "値",
+    "keepSaved": "空のままにすると現在の値を維持します",
+    "valueOf": "フィールド {n} の値",
+    "create": "認証情報を作成"
+  },
+  "credentialFields": {
+    "required": "必須",
+    "maxChars": "{max} 文字以内にしてください。",
+    "maxBytes": "64 KiB 以内にしてください。"
+  },
+  "subagents": {
+    "title": "サブエージェント",
+    "description": "タスクの一部を受け持つ子エージェント。",
+    "switchDescription": "オフにしても、実行中のサブエージェントは止まりません。",
+    "maxLive": "サブエージェントの最大数",
+    "maxLiveDescription": "1 つの会話で同時に実行できるサブエージェントの最大数。",
+    "maxLiveConfirmTitle": "サブエージェントを無制限にしますか？",
+    "maxDepth": "最大の階層",
+    "maxDepthDescription": "1 の場合、サブエージェントを起動できるのはメインのエージェントだけです。",
+    "maxDepthConfirmTitle": "階層を無制限にしますか？",
+    "allowUnlimited": "無制限にする",
+    "unlimitedWarning": "会話が不安定になり、多くのトークンを消費する可能性があります。",
+    "profiles": "プロファイル",
+    "profilesDescription": "プロファイルがない場合、サブエージェントは親の設定を引き継ぎます。",
+    "newProfile": "新しいプロファイル…",
+    "unavailable": "利用不可",
+    "context": "コンテキスト {size}",
+    "noInstructions": "指示なし",
+    "ownInstructions": "独自の指示",
+    "mayStart": "子も起動できる",
+    "noSpawning": "起動不可",
+    "edit": "編集",
+    "none": "プロファイルはありません",
+    "saveFailed": "プロファイルを保存できませんでした",
+    "deleteFailed": "プロファイルを削除できませんでした",
+    "deleteTitle": "「{name}」を削除しますか？",
+    "deleteBody": "エージェントはこのプロファイルを使えなくなります。実行中のサブエージェントは続行されます。"
+  },
+  "profile": {
+    "new": "新しいプロファイル",
+    "edit": "プロファイルを編集",
+    "hint": "エージェントは説明をもとにプロファイルを選びます。",
+    "name": "名前",
+    "nameDescription": "必須。小文字、数字、ハイフン。先頭は文字にします。",
+    "description": "説明",
+    "descriptionDescription": "必須。エージェントがいつ使うかを 1 行で。",
+    "model": "モデル",
+    "fast": "高速",
+    "context": "コンテキスト",
+    "contextDescription": "サブエージェントが使うコンテキストウィンドウ。",
+    "instructions": "指示",
+    "instructionsDescription": "任意。Demi 自身の指示に追加されます。",
+    "mayStart": "子も起動できる",
+    "mayStartDescription": "サブエージェントがサブエージェントを起動できるようにします。",
+    "delete": "削除",
+    "create": "プロファイルを作成",
+    "parentModel": "親のモデル",
+    "providerGone": "プロバイダーが見つかりません。別のモデルを選んでください。",
+    "modelGone": "モデル {model} が見つかりません。別のモデルを選んでください。",
+    "effortGone": "{model} は推論の強度 {effort} に対応しなくなりました。別の強度を選んでください。",
+    "tierGone": "{model} はティア {tier} に対応しなくなりました。別のティアを選んでください。",
+    "nameCharacters": "小文字、数字、ハイフンのみ使用できます。",
+    "nameStart": "名前の先頭は文字にしてください。",
+    "nameLength": "{max} 文字以内にしてください。",
+    "nameDefault": "「default」は継承プロファイルの名前です。別の名前を選んでください。"
+  },
+  "providers": {
+    "title": "プロバイダー",
+    "loading": "プロバイダーを読み込んでいます…",
+    "subscriptions": "サブスクリプション",
+    "apiKeys": "API キー",
+    "name": "プロバイダー名",
+    "rename": "名前を変更",
+    "saving": "保存中…",
+    "addAccount": "アカウントを追加",
+    "showInMenu": "モデルメニューに表示",
+    "state": {
+      "setup": "未設定",
+      "signedOut": "サインアウト済み",
+      "error": "失敗",
+      "unreachable": "接続できません"
+    },
+    "rotation": {
+      "title": "ローテーション",
+      "manual": "手動",
+      "inOrder": "順番",
+      "balanced": "バランス",
+      "manualHint": "すべてのエージェントが有効なアカウントを使います。",
+      "inOrderHint": "エージェントは、一覧で制限に達していない最初のアカウントを使います。",
+      "balancedHint": "各エージェントは、残りの余裕が最も多いアカウントを使います。"
+    },
+    "account": {
+      "active": "有効",
+      "limitReached": "制限に達しました",
+      "activate": "有効にする",
+      "refreshUsage": "使用状況を更新",
+      "test": "接続をテスト",
+      "remove": "削除",
+      "reorder": "ドラッグして並べ替え",
+      "move": "「{label}」を移動",
+      "none": "アカウントはありません"
+    },
+    "connection": {
+      "endpoint": "エンドポイント",
+      "protocol": "プロトコル",
+      "apiKey": "API キー",
+      "keyOptional": "任意。サーバーに暗号化して保存されます。",
+      "keyStored": "サーバーに暗号化して保存されます。",
+      "keyReplace": "新しいキーを入力して置き換え",
+      "keyPaste": "API キーを貼り付け",
+      "test": "接続をテスト",
+      "testDescription": "有効な最初のモデルに短いリクエストを 1 件送信します。",
+      "testing": "テスト中…",
+      "connected": "接続済み",
+      "failed": "失敗",
+      "enableModel": "先にモデルを有効にしてください"
+    },
+    "cli": {
+      "title": "コマンドラインツール",
+      "version": "バージョン",
+      "versionDescription": "最新バージョンに追従し、自動で更新されます。",
+      "check": "アップデートを確認",
+      "unreadable": "最新バージョンを読み取れませんでした",
+      "noAnswer": "応答なし",
+      "notInstalled": "未インストール",
+      "installing": "クラウドにインストール中",
+      "installFailed": "クラウドにインストールできませんでした",
+      "install": "インストール"
+    },
+    "models": {
+      "title": "モデル",
+      "updated": "更新",
+      "refresh": "更新",
+      "catalog": "カタログ",
+      "manual": "手動",
+      "filterModels": "モデルを絞り込む",
+      "add": "モデルを追加",
+      "loading": "モデルを読み込んでいます…",
+      "unknown": "機能が不明です。編集して入力してください。",
+      "accepts": "{types} に対応",
+      "reasoning": "推論 · {efforts}",
+      "fast": "高速ティアあり",
+      "edit": "編集",
+      "remove": "削除",
+      "details": "詳細",
+      "enable": "「{name}」を有効にする",
+      "noResults": "結果がありません",
+      "signInToSee": "サインインするとモデルが表示されます",
+      "none": "モデルはありません"
+    },
+    "removeProvider": {
+      "title": "「{name}」を削除しますか？",
+      "keyOnly": "API キーも一緒に削除されます。",
+      "keyAndModels": "API キーと {count} 個のモデルも一緒に削除されます。",
+      "history": "このモデルを使っている会話は履歴が残りますが、別のモデルが必要になります。"
+    },
+    "removeAccount": {
+      "title": "アカウント「{label}」を削除しますか？",
+      "keeps": "{name} は引き続き有効なアカウントを使います。",
+      "switches": "{name} は「{next}」に切り替わります。",
+      "none": "{name} のアカウントがなくなり、追加するまで使えなくなります。",
+      "forgets": "Demi はこのサインイン情報を削除します。「アカウントを追加」でもう一度追加できます。"
+    },
+    "removeModel": {
+      "title": "モデル「{name}」を削除しますか？",
+      "body": "{provider} のモデル一覧とモデルメニューから外れます。ID を使ってもう一度追加できます。"
+    },
+    "warning": {
+      "title": "複数のアカウントを使いますか？",
+      "body": "複数の個人用サブスクリプションで使用制限を回避することは、ベンダーの規約に反する場合があります。",
+      "once": "この確認は今後表示されません。"
+    },
+    "connected": "「{account}」に接続しました",
+    "testFailed": "「{account}」のテストに失敗しました",
+    "addModelFailed": "モデルを追加できませんでした",
+    "saveModelFailed": "モデルを保存できませんでした",
+    "duplicateModel": "このプロバイダーの別のモデルがこの ID を使っています"
+  },
+  "addProvider": {
+    "title": "プロバイダーを追加",
+    "compatible": "互換 API",
+    "compatibleHint": "プロキシまたは自前のサーバー",
+    "proxy": "プロキシ",
+    "vendors": "ベンダー",
+    "loading": "ベンダーを読み込んでいます…",
+    "noResults": "結果がありません"
+  },
+  "addModel": {
+    "title": "モデルを追加",
+    "hint": "models.dev を検索するか、「カスタム」を選びます。",
+    "model": "モデル",
+    "searchFailed": "models.dev を検索できませんでした。",
+    "adding": "追加中…",
+    "list": "モデル",
+    "search": "検索",
+    "custom": "カスタム"
+  },
+  "modelDialog": {
+    "edit": "モデルを編集",
+    "id": "モデル ID",
+    "name": "名前",
+    "nameDescription": "モデルメニューに表示されます。既定では ID です。",
+    "contextWindow": "コンテキストウィンドウ",
+    "maxOutput": "最大出力",
+    "optional": "任意",
+    "reasoning": "推論",
+    "reasoningDescription": "最初のものが既定です。",
+    "fastTier": "高速ティア",
+    "fastTierDescription": "任意。サービスティア ID。",
+    "acceptedFiles": "受け付けるファイル",
+    "textAlways": "テキストは常に受け付けます。",
+    "unknown": "不明",
+    "textOnly": "テキストのみ",
+    "none": "なし",
+    "accept": "{label}を受け付ける",
+    "removeExtension": "{ext} を削除",
+    "delete": "モデルを削除",
+    "duplicateId": "このプロバイダーの別のモデルがこの ID を使っています"
+  },
+  "presets": {
+    "images": "画像",
+    "videos": "動画",
+    "documents": "ドキュメント"
+  },
+  "efforts": {
+    "minimal": "最小",
+    "low": "低",
+    "medium": "中",
+    "high": "高",
+    "max": "最大"
+  },
+  "login": {
+    "title": "{vendor} にサインイン",
+    "deviceHint": "ベンダーのページでこのコードを入力してください。",
+    "codeHint": "ベンダーのページでサインインし、表示されたコードを貼り付けてください。",
+    "doneActive": "サインインしました。このアカウントが {vendor} の有効なアカウントになりました。",
+    "doneKept": "サインインしました。{vendor} は引き続き有効なアカウントを使います。",
+    "failedHint": "サインインを完了できませんでした。",
+    "waitingCloud": "クラウドの接続を待っています…",
+    "installing": "クラウドにコマンドラインツールをインストールしています…",
+    "startingTool": "コマンドラインツールを起動しています…",
+    "contacting": "{vendor} に接続しています…",
+    "copyCode": "コードをコピー",
+    "openInBrowser": "ブラウザーで開く",
+    "copyLink": "リンクをコピー",
+    "copyLinkHint": "リンクをコピーして、別のブラウザーやデバイスからサインインします",
+    "waiting": "待機中",
+    "waitingExpires": "待機中 · コードの有効期限まであと {left}",
+    "paste": "コードを貼り付け",
+    "code": "コード",
+    "signingIn": "サインイン中…",
+    "waitingCode": "コードを待っています",
+    "waitingCodeExpires": "コードを待っています · 有効期限まであと {left}"
+  },
+  "provider": {
+    "endpointInvalid": "http または https のアドレスを入力してください。"
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "menu": {
+    "where": "此对话的运行位置",
+    "runOn": "运行于",
+    "addDevice": "添加设备…",
+    "attached": "已附加",
+    "detach": "分离"
+  },
+  "lock": {
+    "archived": "此对话已存档。",
+    "moving": "此对话正在移动。"
+  },
+  "choices": {
+    "offline": "此设备已离线。"
+  },
+  "move": {
+    "title": "将此对话移动到 {host}？",
+    "titleStop": "停止智能体并将此对话移动到 {host}？",
+    "runsHome": "它将在那里的主目录中运行。",
+    "runsIn": "它将在 {directory} 中运行。",
+    "runsOwn": "它将在那里的专属目录中运行。",
+    "filesStay": "{host} 上的文件会保留在原处。",
+    "agentLearns": "智能体会在下次工作时得知此移动，或在你告知时立即得知。",
+    "stopAndMove": "停止并移动",
+    "move": "移动",
+    "stopMoveTell": "停止、移动并告知智能体",
+    "moveAndTell": "移动并告知智能体"
+  },
+  "stop": {
+    "agent": "智能体",
+    "subagents": "{count} 个子智能体",
+    "commands": "{count} 个命令",
+    "sentence": "{list}将停止。"
+  },
+  "project": {
+    "title": "新建项目",
+    "selectFolder": "选择文件夹",
+    "loading": "正在加载设备…",
+    "cloudDescription": "托管的工作区，立即可用。",
+    "device": "设备",
+    "deviceDescription": "你的某台设备上的目录。",
+    "chooseDevice": "选择设备",
+    "name": "项目名称",
+    "addDevice": "添加设备…",
+    "noDevices": "没有设备",
+    "directory": "目录",
+    "browse": "浏览…",
+    "called": "项目将命名为 {name}。",
+    "takesName": "项目将使用文件夹的名称。",
+    "add": "添加项目",
+    "create": "创建项目"
+  },
+  "directory": {
+    "switch": "切换目录",
+    "chooseAnother": "选择其他目录…",
+    "useThis": "使用此文件夹"
+  }
+}

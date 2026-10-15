@@ -1,0 +1,62 @@
+{
+  "corrections": {
+    "invalidCredentials": "That is not your current password.",
+    "invalidCode": "That code is wrong or expired. Use the newest one."
+  },
+  "credentials": {
+    "showFailed": "Could Not Show the Value"
+  },
+  "devices": {
+    "revokeFailed": "Could Not Revoke Device",
+    "renameFailed": "Could Not Rename Device",
+    "routeFailed": "Could Not Change the Route",
+    "resetNotStarted": "The reset didn’t start. Check your connection and try again."
+  },
+  "plugins": {
+    "turnOnFailed": "Could Not Turn the Plugin On",
+    "turnOffFailed": "Could Not Turn the Plugin Off"
+  },
+  "providers": {
+    "saveFailed": "Could Not Save the Provider",
+    "testFailed": "Could Not Test the Provider",
+    "refreshModelsFailed": "Could Not Refresh the Models",
+    "removeFailed": "Could Not Remove the Provider",
+    "cliUpdateFailed": "Could Not Update the Command-Line Tool",
+    "removeAccountFailed": "Could Not Remove the Account",
+    "testAccountFailed": "Could Not Test the Account",
+    "addFailed": "Could Not Add the Provider",
+    "cliReadFailed": "Could Not Read the Command-Line Tool",
+    "checkUpdatesFailed": "Could Not Check for Updates",
+    "cliInstallFailed": "Could Not Install the Command-Line Tool",
+    "usageFailed": "Could Not Refresh Usage",
+    "reorderFailed": "Could Not Reorder the Accounts",
+    "switchFailed": "Could Not Switch Accounts",
+    "cancelLoginFailed": "Could Not Cancel the Sign-In",
+    "loginStopped": "This sign-in is no longer running.",
+    "removeModelFailed": "Could Not Remove the Model"
+  },
+  "subagents": {
+    "turnOnFailed": "Could Not Turn Subagents On",
+    "turnOffFailed": "Could Not Turn Subagents Off",
+    "limitFailed": "Could Not Change the Limit",
+    "enableFailed": "Could Not Enable the Profile",
+    "disableFailed": "Could Not Disable the Profile"
+  },
+  "users": {
+    "newPasswordFailed": "Could Not Make a New Password",
+    "roleFailed": "Could Not Change the Role",
+    "disableFailed": "Could Not Disable the Account",
+    "enableFailed": "Could Not Enable the Account",
+    "signOutFailed": "Could Not Sign the Account Out",
+    "loading": "Loading users…",
+    "loadFailed": "Couldn’t load the users."
+  },
+  "about": {
+    "acknowledgementsFailed": "Couldn’t load the acknowledgements."
+  },
+  "dialog": {
+    "nameFailed": "Could Not Change Your Name",
+    "emailFailed": "Could Not Change Email",
+    "passwordFailed": "Could Not Change Password"
+  }
+}

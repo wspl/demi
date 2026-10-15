@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import type { CredentialFieldKind } from '../permissions/types'
 import type { SentenceText } from '../ui/ui-text'
 import type { SettingsCredentialDraftField } from './types'
@@ -33,17 +34,17 @@ export function fieldNameFor(label: string, taken: Iterable<string>): string {
 /** What breaks the rule of a name, a label or a value, said under its field; null when it holds. */
 export function textProblem(text: string, max: number): SentenceText | null {
   if (text.trim() === '') {
-    return 'Required'
+    return t('credentialFields.required')
   }
-  return [...text.trim()].length > max ? `Use at most ${max} characters.` : null
+  return [...text.trim()].length > max ? t('credentialFields.maxChars', { max }) : null
 }
 
 /** What breaks the rule of a value's size; a value may be empty only where the field keeps its saved one. */
 export function valueProblem(value: string, keepsSaved: boolean): SentenceText | null {
   if (value === '') {
-    return keepsSaved ? null : 'Required'
+    return keepsSaved ? null : t('credentialFields.required')
   }
-  return new TextEncoder().encode(value).length > VALUE_MAX_BYTES ? 'Use at most 64 KiB.' : null
+  return new TextEncoder().encode(value).length > VALUE_MAX_BYTES ? t('credentialFields.maxBytes') : null
 }
 
 /** A field of the editor: a saved field keeps its name, a new one is named from its label as the label is typed. */

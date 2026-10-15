@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { timeLeft } from '@demicodes/utils'
 import { Check, ExternalLink } from '@lucide/vue'
@@ -95,34 +97,24 @@ function submitCode(): void {
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    :label="`Sign In to ${vendorName}`"
+    :label="t('login.title', { vendor: vendorName })"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-5 px-5 pt-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">
-          Sign In to {{ vendorName }}
+          {{ t('login.title', { vendor: vendorName }) }}
         </h3>
         <!-- While it starts, the body alone says so. -->
         <p
           v-if="phase.kind !== 'starting'"
           class="mt-0.5 text-[13px] leading-5 text-fg-muted"
         >
-          <template v-if="phase.kind === 'device'"
-            >Enter this code on the vendor’s page.</template
-          >
-          <template v-else-if="phase.kind === 'code'"
-            >Sign in on the vendor’s page, then paste the code it
-            shows.</template
-          >
-          <template v-else-if="phase.kind === 'done' && phase.active"
-            >Signed in. This account is now active for
-            {{ vendorName }}.</template
-          >
-          <template v-else-if="phase.kind === 'done'"
-            >Signed in. {{ vendorName }} keeps using its active account.</template
-          >
-          <template v-else>The sign-in did not complete.</template>
+          <template v-if="phase.kind === 'device'">{{ t('login.deviceHint') }}</template>
+          <template v-else-if="phase.kind === 'code'">{{ t('login.codeHint') }}</template>
+          <template v-else-if="phase.kind === 'done' && phase.active">{{ t('login.doneActive', { vendor: vendorName }) }}</template>
+          <template v-else-if="phase.kind === 'done'">{{ t('login.doneKept', { vendor: vendorName }) }}</template>
+          <template v-else>{{ t('login.failedHint') }}</template>
         </p>
       </header>
 
@@ -131,16 +123,10 @@ function submitCode(): void {
         class="flex items-center gap-2 py-4 text-chrome text-fg-muted"
       >
         <IndeterminateSpinner :size="ICON_PX.in24" />
-        <template v-if="phase.stage === 'waiting_for_cloud'"
-          >Waiting for your Cloud to connect…</template
-        >
-        <template v-else-if="phase.stage === 'installing'"
-          >Installing the command-line tool on your Cloud…</template
-        >
-        <template v-else-if="phase.stage === 'starting'"
-          >Starting the command-line tool…</template
-        >
-        <template v-else>Contacting {{ vendorName }}…</template>
+        <template v-if="phase.stage === 'waiting_for_cloud'">{{ t('login.waitingCloud') }}</template>
+        <template v-else-if="phase.stage === 'installing'">{{ t('login.installing') }}</template>
+        <template v-else-if="phase.stage === 'starting'">{{ t('login.startingTool') }}</template>
+        <template v-else>{{ t('login.contacting', { vendor: vendorName }) }}</template>
       </div>
 
       <div v-else-if="phase.kind === 'device'" class="flex flex-col gap-4">
@@ -151,23 +137,23 @@ function submitCode(): void {
             class="select-all font-mono text-[22px] tracking-[0.25em] text-fg-emphasis"
             >{{ phase.code }}</span
           >
-          <CopyButton :source="phase.code" label="Copy code" size="md" />
+          <CopyButton :source="phase.code" :label="t('login.copyCode')" size="md" />
         </div>
         <div class="flex flex-wrap items-center gap-3">
           <Button variant="primary" @click="emit('open', phase.url)">
-            Open in Browser
+            {{ t('login.openInBrowser') }}
             <ExternalLink :size="ICON_PX.in24" />
           </Button>
           <!-- For a web browser on another machine, or another profile: the link alone. -->
           <CopyButton
             :source="phase.url"
-            label="Copy link"
-            hint="Copy the link to sign in from another browser or device"
+            :label="t('login.copyLink')"
+            :hint="t('login.copyLinkHint')"
             size="md"
           />
           <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
             <IndeterminateSpinner :size="ICON_PX.in20" />
-            Waiting<template v-if="left"> · code expires in {{ left }}</template>
+            {{ left ? t('login.waitingExpires', { left }) : t('login.waiting') }}
           </span>
         </div>
       </div>
@@ -176,14 +162,14 @@ function submitCode(): void {
       <div v-else-if="phase.kind === 'code'" class="flex flex-col gap-4">
         <div class="flex flex-wrap items-center gap-3">
           <Button @click="emit('open', phase.url)">
-            Open in Browser
+            {{ t('login.openInBrowser') }}
             <ExternalLink :size="ICON_PX.in24" />
           </Button>
           <!-- For a web browser on another machine, or another profile: the link alone. -->
           <CopyButton
             :source="phase.url"
-            label="Copy link"
-            hint="Copy the link to sign in from another browser or device"
+            :label="t('login.copyLink')"
+            :hint="t('login.copyLinkHint')"
             size="md"
           />
         </div>
@@ -191,8 +177,8 @@ function submitCode(): void {
           <TextInput
             v-model="code"
             trim
-            placeholder="Paste the code"
-            aria-label="Code"
+            :placeholder="t('login.paste')"
+            :aria-label="t('login.code')"
             class="flex-1"
             :disabled="phase.submitted"
             @keydown.enter="submitCode"
@@ -201,19 +187,15 @@ function submitCode(): void {
             variant="primary"
             :disabled="!code || phase.submitted"
             @click="submitCode"
-            >Continue</Button
+            >{{ uiText('common.continue') }}</Button
           >
         </div>
         <!-- The vendor's own words for a code it refused; the sign-in waits for another. -->
         <InlineError v-if="phase.error && !phase.submitted" :message="phase.error" />
         <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
           <IndeterminateSpinner :size="ICON_PX.in20" />
-          <template v-if="phase.submitted">Signing in…</template>
-          <template v-else
-            >Waiting for the code<template v-if="left">
-              · expires in {{ left }}</template
-            ></template
-          >
+          <template v-if="phase.submitted">{{ t('login.signingIn') }}</template>
+          <template v-else>{{ left ? t('login.waitingCodeExpires', { left }) : t('login.waitingCode') }}</template>
         </span>
       </div>
 
@@ -232,15 +214,15 @@ function submitCode(): void {
         v-if="phase.kind === 'done'"
         variant="primary"
         @click="emit('close')"
-        >Done</Button
+        >{{ uiText('common.done') }}</Button
       >
       <template v-else>
         <!-- A failed sign-in has nothing left to cancel. -->
         <Button @click="emit('close')">{{
-          phase.kind === 'failed' ? 'Close' : 'Cancel'
+          phase.kind === 'failed' ? uiText('common.close') : uiText('common.cancel')
         }}</Button>
         <Button v-if="phase.kind === 'failed'" @click="emit('retry')"
-          >Try Again</Button
+          >{{ uiText('common.retry') }}</Button
         >
       </template>
     </template>

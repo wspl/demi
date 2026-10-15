@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { offersEffort, offersTier, type ModelSettings } from '../agent/model-selection'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import type { SentenceText } from '../ui/ui-text'
@@ -17,17 +18,17 @@ export function profileMissing(
     return null
   }
   if (!providers.some((provider) => provider.id === model.providerId)) {
-    return 'Its provider is gone. Choose another model.'
+    return t('profile.providerGone')
   }
   const listed = (models[model.providerId] ?? []).find((candidate) => candidate.id === model.modelId)
   if (!listed) {
-    return `The model ${model.modelId} is gone. Choose another model.`
+    return t('profile.modelGone', { model: model.modelId })
   }
   if (model.thinkingEffort !== null && !offersEffort(listed, model.thinkingEffort)) {
-    return `${listed.name} no longer offers the effort ${model.thinkingEffort}. Choose another effort.`
+    return t('profile.effortGone', { model: listed.name, effort: model.thinkingEffort })
   }
   if (model.serviceTierId !== null && !offersTier(listed, model.serviceTierId)) {
-    return `${listed.name} no longer offers the tier ${model.serviceTierId}. Choose another tier.`
+    return t('profile.tierGone', { model: listed.name, tier: model.serviceTierId })
   }
   return null
 }
@@ -39,7 +40,7 @@ export function profileModelLabel(
   models: Record<string, ModelInfo[]>,
 ): string {
   if (!model) {
-    return 'Parent’s model'
+    return t('profile.parentModel')
   }
   const provider = providers.find((candidate) => candidate.id === model.providerId)
   const listed = (models[model.providerId] ?? []).find((candidate) => candidate.id === model.modelId)
@@ -61,16 +62,16 @@ export function profileNameProblem(name: string): SentenceText | null {
     return null
   }
   if (!/^[a-z0-9-]*$/.test(name)) {
-    return 'Use only lowercase letters, digits and hyphens.'
+    return t('profile.nameCharacters')
   }
   if (!/^[a-z]/.test(name)) {
-    return 'Start the name with a letter.'
+    return t('profile.nameStart')
   }
   if (name.length > PROFILE_NAME_MAX) {
-    return `Use at most ${PROFILE_NAME_MAX} characters.`
+    return t('profile.nameLength', { max: PROFILE_NAME_MAX })
   }
   if (name === 'default') {
-    return '“default” is the name of the inherit profile. Choose another name.'
+    return t('profile.nameDefault')
   }
   return null
 }

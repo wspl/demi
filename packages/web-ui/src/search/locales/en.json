@@ -1,0 +1,10 @@
+{
+  "title": "Search",
+  "placeholder": "Search conversations",
+  "failed": "Couldn’t search.",
+  "searching": "Searching…",
+  "list": "Conversations",
+  "archived": "Archived",
+  "noConversations": "No conversations",
+  "noResults": "No results"
+}

@@ -1,14 +1,25 @@
+import { t } from './locales/text'
+
 /**
  * The rule a password being set follows (`web-api.md` § Account API), shared
  * by every form that sets one, and what each form says when it is broken.
  */
 export const PASSWORD_MIN_LENGTH = 8
 
-export const PASSWORD_HINT = `At least ${PASSWORD_MIN_LENGTH} characters.`
+/** What a field for a new password says about its rule. */
+export function passwordHint(): string {
+  return t('password.hint', { count: PASSWORD_MIN_LENGTH })
+}
 
-export const PASSWORD_TOO_SHORT = `A password has at least ${PASSWORD_MIN_LENGTH} characters.`
+/** What a form says when the password is shorter than the rule. */
+export function passwordTooShort(): string {
+  return t('password.tooShort', { count: PASSWORD_MIN_LENGTH })
+}
 
-export const PASSWORDS_DIFFER = 'The two passwords differ.'
+/** What a form says when the two passwords typed differ. */
+export function passwordsDiffer(): string {
+  return t('password.differ')
+}
 
 /** A password typed so far that is too short to be set. */
 export function isTooShort(password: string): boolean {

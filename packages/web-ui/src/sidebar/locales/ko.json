@@ -1,0 +1,105 @@
+{
+  "nav": {
+    "new": "새로 만들기",
+    "search": "검색",
+    "archived": "보관됨"
+  },
+  "groups": {
+    "conversations": "대화",
+    "projects": "프로젝트",
+    "addProject": "프로젝트 추가",
+    "newConversation": "새 대화"
+  },
+  "list": {
+    "loading": "대화를 로드하는 중…",
+    "failed": "대화를 로드할 수 없습니다."
+  },
+  "foot": {
+    "handOff": "휴대폰으로 핸드오프",
+    "settings": "설정"
+  },
+  "account": {
+    "label": "계정",
+    "settings": "설정",
+    "signOut": "로그아웃"
+  },
+  "row": {
+    "unpin": "고정 해제",
+    "archive": "보관"
+  },
+  "project": {
+    "newConversation": "새 대화"
+  },
+  "device": {
+    "removed": "제거된 장치",
+    "cloud": "클라우드"
+  },
+  "dot": {
+    "needsYou": "결정이 필요합니다"
+  },
+  "selection": {
+    "open": "열기",
+    "rename": "이름 바꾸기",
+    "copyId": "대화 ID 복사",
+    "pin": "고정",
+    "pinMany": "대화 {count}개 고정",
+    "unpin": "고정 해제",
+    "unpinMany": "대화 {count}개 고정 해제",
+    "archive": "보관",
+    "archiveMany": "대화 {count}개 보관",
+    "delete": "삭제…",
+    "deleteMany": "대화 {count}개 삭제…"
+  },
+  "projectMenu": {
+    "newHere": "여기에 새 대화",
+    "fold": "접기",
+    "unfold": "펼치기",
+    "select": "대화 선택",
+    "remove": "프로젝트 제거"
+  },
+  "delete": {
+    "title": "“{title}”을(를) 삭제하시겠습니까?",
+    "titleMany": "대화 {count}개를 삭제하시겠습니까?",
+    "one": "메시지와 파일이 삭제됩니다. 이 작업은 실행 취소할 수 없습니다.",
+    "many": "메시지와 파일이 삭제됩니다. 이 작업은 실행 취소할 수 없습니다.",
+    "filesOne": "변경한 파일은 프로젝트에 남습니다.",
+    "filesMany": "변경한 파일은 각 프로젝트에 남습니다."
+  },
+  "archivedToast": {
+    "title": "대화 {count}개를 보관했습니다",
+    "undo": "실행 취소"
+  },
+  "refused": {
+    "quote": "“{name}”",
+    "line": "{name}: {reasons}",
+    "archive": {
+      "one": "{name}을(를) 보관할 수 없습니다",
+      "many": "대화 {count}개를 보관할 수 없습니다"
+    },
+    "restore": {
+      "one": "{name}을(를) 복원할 수 없습니다",
+      "many": "대화 {count}개를 복원할 수 없습니다"
+    },
+    "pin": {
+      "one": "{name}을(를) 고정할 수 없습니다",
+      "many": "대화 {count}개를 고정할 수 없습니다"
+    },
+    "unpin": {
+      "one": "{name}을(를) 고정 해제할 수 없습니다",
+      "many": "대화 {count}개를 고정 해제할 수 없습니다"
+    },
+    "delete": {
+      "one": "{name}을(를) 삭제할 수 없습니다",
+      "many": "대화 {count}개를 삭제할 수 없습니다"
+    },
+    "move": {
+      "one": "{name}을(를) 이동할 수 없습니다",
+      "many": "대화 {count}개를 이동할 수 없습니다"
+    }
+  },
+  "layout": {
+    "sidebarWidth": "사이드바 너비",
+    "openSidebar": "사이드바 열기",
+    "workPanelWidth": "작업 패널 너비"
+  }
+}

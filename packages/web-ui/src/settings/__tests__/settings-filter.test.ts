@@ -1,10 +1,10 @@
 import { expect, test } from 'bun:test'
-import { SETTINGS_SECTIONS } from '../sections'
+import { settingsSections } from '../sections'
 import { filterSettings, firstMatch } from '../settings-filter'
 
 // Cost: pure functions over the product's rail; under a millisecond.
 function found(query: string) {
-  return filterSettings(SETTINGS_SECTIONS, query).flatMap((group) =>
+  return filterSettings(settingsSections(), query).flatMap((group) =>
     group.matches.map((match) => [match.item.id, ...match.settings.map((entry) => entry.label)]),
   )
 }
@@ -23,9 +23,9 @@ test('a section found by its own name lists none of its settings', () => {
 })
 
 test('Enter opens the first setting found, skipping a section still in development', () => {
-  expect(firstMatch(filterSettings(SETTINGS_SECTIONS, 'password'))).toEqual({ section: 'account', setting: 'Password' })
-  expect(firstMatch(filterSettings(SETTINGS_SECTIONS, 'keyboard'))).toEqual({ section: 'keyboard', setting: null })
+  expect(firstMatch(filterSettings(settingsSections(), 'password'))).toEqual({ section: 'account', setting: 'Password' })
+  expect(firstMatch(filterSettings(settingsSections(), 'keyboard'))).toEqual({ section: 'keyboard', setting: null })
   // Data & Privacy is in development: it is listed, but nothing opens.
-  expect(firstMatch(filterSettings(SETTINGS_SECTIONS, 'usage data'))).toBeNull()
+  expect(firstMatch(filterSettings(settingsSections(), 'usage data'))).toBeNull()
   expect(found('nothing like this')).toEqual([])
 })

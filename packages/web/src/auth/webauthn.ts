@@ -1,3 +1,4 @@
+import { coded } from '@demicodes/web-ui/infra/errors'
 /**
  * The browser's side of passkeys (`backend.md` § Authentication and
  * ownership): the options the backend gives, handed to
@@ -108,7 +109,7 @@ export async function createPasskey(options: CreationOptionsJson): Promise<Regis
     throw error
   }
   if (!(credential instanceof PublicKeyCredential) || !(credential.response instanceof AuthenticatorAttestationResponse)) {
-    throw new Error('The browser gave no passkey.')
+    throw coded(new Error('The browser gave no passkey.'), 'no_passkey')
   }
   return registrationJson(credential, credential.response)
 }
@@ -137,7 +138,7 @@ export async function signWithPasskey(
     throw error
   }
   if (!(credential instanceof PublicKeyCredential) || !(credential.response instanceof AuthenticatorAssertionResponse)) {
-    throw new Error('The browser gave no passkey.')
+    throw coded(new Error('The browser gave no passkey.'), 'no_passkey')
   }
   return authenticationJson(credential, credential.response)
 }

@@ -6,7 +6,7 @@ import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
 import type { SettingsTab } from '@demicodes/web-ui/settings/types'
-import { SETTINGS_SECTIONS } from '@demicodes/web-ui/settings/sections'
+import { settingsSections as productSections } from '@demicodes/web-ui/settings/sections'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { providePageHost, sidebarEntries, withPluginSections } from '@demicodes/web-ui/plugins/page'
@@ -136,7 +136,7 @@ providePageHost(
 const settingsOpen = ref(false)
 const settingsTab = ref<SettingsTab | null>(null)
 const settingsSections = computed(() =>
-  withPluginSections(SETTINGS_SECTIONS, PLUGIN_PAGES, (plugin) =>
+  withPluginSections(productSections(), PLUGIN_PAGES, (plugin) =>
     settings.plugins.some((entry) => entry.id === plugin && entry.enabled),
   ),
 )

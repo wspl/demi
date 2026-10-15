@@ -5,7 +5,8 @@ import ShortcutRecorder from '../ui/ShortcutRecorder.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import { shortcutRefusal } from './shortcuts'
+import { t } from './locales/text'
+import { shortcutAction, shortcutRefusal } from './shortcuts'
 import type { SettingsKeyBinding } from './types'
 
 /**
@@ -43,14 +44,14 @@ function reset(): void {
 
 <template>
   <SettingsPage
-    title="Keyboard"
-    description="Click Change, then press the new keys."
+    :title="t('keyboard.title')"
+    :description="t('keyboard.description')"
   >
-    <SettingsGroup title="Shortcuts">
+    <SettingsGroup :title="t('keyboard.shortcuts')">
       <SettingsRow
         v-for="binding in bindings"
         :key="binding.id"
-        :label="binding.action"
+        :label="shortcutAction(binding.id)"
       >
         <template v-if="refused?.id === binding.id" #description>
           <span role="status" class="text-on-warning">{{ refused.reason }}</span>
@@ -63,8 +64,8 @@ function reset(): void {
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup>
-      <SettingsRow label="Reset all shortcuts">
-        <Button size="sm" @click="reset">Reset</Button>
+      <SettingsRow :label="t('keyboard.resetAll')">
+        <Button size="sm" @click="reset">{{ t('keyboard.reset') }}</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

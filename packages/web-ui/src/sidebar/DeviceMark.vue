@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed } from 'vue'
 import DeviceIcon from '@demicodes/web-ui/devices/DeviceIcon.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
@@ -25,9 +26,9 @@ const phone = usePhone()
 const label = computed(() => {
   const host = props.host
   if (host.kind === 'cloud') {
-    return 'Cloud'
+    return t('device.cloud')
   }
-  return host.kind === 'paired' ? `${host.name} · ${DEVICE_STATE_LABEL[host.state]}` : 'Removed device'
+  return host.kind === 'paired' ? `${host.name} · ${DEVICE_STATE_LABEL[host.state]}` : t('device.removed')
 })
 </script>
 

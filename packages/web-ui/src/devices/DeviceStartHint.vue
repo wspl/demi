@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import CopyCode from '../ui/CopyCode.vue'
 import type { SentenceText } from '../ui/ui-text'
 import type { DeviceStart } from './installation'
@@ -22,10 +23,10 @@ defineProps<{
       {{
         sentence
           ?? (start.system === 'windows'
-            ? 'If its runner stopped, run this in PowerShell on the device.'
-            : 'If its runner stopped, run this in a terminal on the device.')
+            ? t('startHint.powershell')
+            : t('startHint.terminal'))
       }}
     </p>
-    <CopyCode :code="start.command" copy-label="Copy start command" />
+    <CopyCode :code="start.command" :copy-label="t('startHint.copy')" />
   </div>
 </template>

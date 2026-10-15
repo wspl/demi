@@ -1,0 +1,148 @@
+{
+  "state": {
+    "online": "在线",
+    "updating": "正在更新",
+    "offline": "离线"
+  },
+  "route": {
+    "automatic": "自动",
+    "direct": "优先 P2P",
+    "server": "仅中继",
+    "automaticDescription": "使用更快的路径。",
+    "directDescription": "只要能连接就使用 P2P。",
+    "serverDescription": "从不使用 P2P。"
+  },
+  "stage": {
+    "permission": "权限",
+    "gathering": "正在收集地址",
+    "checking": "正在查找路径",
+    "handshake": "加密握手",
+    "channel": "正在打开通道",
+    "connected": "已连接"
+  },
+  "path": {
+    "thisComputer": "此计算机",
+    "localNetwork": "局域网",
+    "internet": "P2P",
+    "relay": "中继",
+    "sentence": "{path} · {address}"
+  },
+  "connected": {
+    "relay": "通过中继连接",
+    "thisComputer": "通过此计算机连接",
+    "localNetwork": "通过局域网连接",
+    "internet": "通过 P2P 连接"
+  },
+  "reason": {
+    "slower": "P2P 目前较慢。",
+    "blocked": "此浏览器禁止访问本地网络。",
+    "unreachable": "你的网络阻止了 P2P 连接。",
+    "browserNetwork": "你的网络阻止了连接。",
+    "deviceNetwork": "设备的网络阻止了连接。",
+    "busy": "设备的连接过多。",
+    "dropped": "P2P 连接已断开。",
+    "notOffered": "P2P 仅在设备所在的网络中可用。"
+  },
+  "latency": {
+    "under": "低于 0.1 ms",
+    "path": "{path} {latency}",
+    "lost": "{path} {latency}，丢包 {loss}",
+    "relay": "中继 {latency}"
+  },
+  "address": {
+    "hidden": "已被浏览器隐藏"
+  },
+  "report": {
+    "appleSilicon": "Apple 芯片",
+    "arm": "ARM",
+    "intel": "Intel"
+  },
+  "runner": {
+    "current": "已是最新",
+    "outdated": "有可用更新",
+    "development": "开发版本"
+  },
+  "page": {
+    "cloud": "云",
+    "startSentence": "在设备上启动 Demi：",
+    "connection": "连接",
+    "route": "连接路径",
+    "p2p": "P2P",
+    "details": "详细信息…",
+    "latency": "延迟",
+    "measure": "测量",
+    "measuring": "正在测量…",
+    "noAnswer": "无响应",
+    "device": "设备",
+    "name": "名称",
+    "rename": "重命名…",
+    "system": "系统",
+    "notReported": "尚未报告",
+    "runner": "运行器",
+    "runnerUpdates": "它会在下次连接时自行更新。",
+    "paired": "配对日期",
+    "revokeThis": "撤销此设备",
+    "revoke": "撤销…",
+    "lastSeen": "最后在线"
+  },
+  "details": {
+    "title": "连接详细信息",
+    "ran": "开始时间",
+    "took": "耗时",
+    "endedAt": "结束于",
+    "thisBrowser": "此浏览器",
+    "theDevice": "设备",
+    "paths": "路径",
+    "pathInUse": "使用中的路径",
+    "localAccess": "本地网络访问",
+    "nextAttempt": "下次尝试",
+    "none": "无",
+    "local": "本地：{list}",
+    "public": "公共：{list}",
+    "answered": "已响应 {answered} / {tried}",
+    "busy": "设备繁忙",
+    "dropped": "已连接，随后断开",
+    "unknown": "未知",
+    "ms": "{ms} ms",
+    "s": "{s} 秒"
+  },
+  "permission": {
+    "granted": "已允许",
+    "prompt": "尚未回应",
+    "denied": "已阻止",
+    "allowInSite": "请在此网站的设置中允许。",
+    "notAsked": "此浏览器未询问"
+  },
+  "pairing": {
+    "title": "添加设备",
+    "setupHint": "在设备上启动运行器以获取配对码。",
+    "doneHint": "设备已关联到你的帐户，可以使用了。",
+    "codeHint": "输入运行器显示的配对码。",
+    "system": "系统",
+    "systemLabel": "设备系统",
+    "runInPowerShell": "在设备上的 PowerShell 中运行，并保持其打开。",
+    "runInTerminal": "在设备上的终端中运行，并保持其打开。",
+    "copyInstall": "复制安装命令",
+    "code": "配对码",
+    "paste": "粘贴代码",
+    "pair": "配对设备",
+    "invalidCode": "此代码不可用。请粘贴运行器的最新代码。",
+    "rateLimited": "尝试次数过多。请等待一分钟后重试。",
+    "unavailable": "无法连接到 Demi。请检查网络连接后重试。"
+  },
+  "revoke": {
+    "title": "撤销此设备？",
+    "action": "撤销",
+    "body": "“{device}”将从你的设备中移除。如果其运行器已连接，它会从设备上自行卸载。",
+    "projects": "此项目也会一并移除。其文件保留在设备上，其对话保留在侧边栏中。"
+  },
+  "rename": {
+    "title": "重命名设备",
+    "label": "设备名称"
+  },
+  "startHint": {
+    "powershell": "如果运行器已停止，请在设备上的 PowerShell 中运行此命令。",
+    "terminal": "如果运行器已停止，请在设备上的终端中运行此命令。",
+    "copy": "复制启动命令"
+  }
+}

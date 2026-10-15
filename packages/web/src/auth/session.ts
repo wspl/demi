@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { coded, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import {
   identitySchema,
   setupStatusSchema,
@@ -48,7 +48,7 @@ type SessionState =
 async function readIdentity(response: Response): Promise<User> {
   const parsed = identitySchema.safeParse(await response.json())
   if (!parsed.success) {
-    throw new Error('The server returned an invalid account response.')
+    throw coded(new Error('The server returned an invalid account response.'), 'unreadable_response')
   }
   return parsed.data.user
 }

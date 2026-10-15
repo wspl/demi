@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, provide, ref, watch } from 'vue'
 import { useElementSize, useEventListener } from '@vueuse/core'
 import { useEscapeClose } from '../composables/useEscapeClose'
@@ -187,7 +188,7 @@ useEventListener(sidebar, 'touchmove', swipeMove, { passive: false })
       :min="SIDEBAR_WIDTH.min"
       :max="SIDEBAR_WIDTH.max"
       :default-value="SIDEBAR_WIDTH.default"
-      label="Sidebar width"
+      :label="t('layout.sidebarWidth')"
       @commit="emit('resizeEnd', $event)"
     />
     <main data-region class="flex min-w-0 flex-1 flex-col overflow-hidden">
@@ -199,7 +200,7 @@ useEventListener(sidebar, 'touchmove', swipeMove, { passive: false })
         <IconButton
           :icon="PanelLeft"
           variant="ghost"
-          aria-label="Open sidebar"
+          :aria-label="t('layout.openSidebar')"
           @click="open = true"
         />
         <span class="px-2 text-chrome text-fg-muted">{{ label }}</span>
@@ -214,7 +215,7 @@ useEventListener(sidebar, 'touchmove', swipeMove, { passive: false })
       :min="asideDragBounds.min"
       :max="asideDragBounds.max"
       :default-value="asideWidthFor(ASIDE_SHARE.default, sharedWidth)"
-      label="Work panel width"
+      :label="t('layout.workPanelWidth')"
       @update:model-value="asideShare = asideShareFor($event, sharedWidth)"
       @commit="emit('asideResizeEnd', asideShareFor($event, sharedWidth))"
     />

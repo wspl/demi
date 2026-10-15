@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 /** Presentation models for the settings surfaces. Hosts map their own state onto these. */
 import type { ShownError } from '../infra/errors'
 import { VIDEO_FILE_EXTENSIONS } from '@demicodes/protocol'
@@ -53,9 +54,13 @@ export interface SettingsNavItem {
   keyboard?: boolean
 }
 
+/** The groups the rail captions; each is worded in the page's language. */
+export type SettingsGroupId = 'agent' | 'workspace'
+
 /** Sections grouped under a small caption, the way a long rail is read. */
 export interface SettingsNavGroup {
-  label?: TitleText
+  /** The caption's id; the rail words it (`settingsGroupName`). None for the groups without a caption. */
+  id?: SettingsGroupId
   items: SettingsNavItem[]
 }
 
@@ -114,7 +119,6 @@ export interface SettingsArchivedConversation {
 /** A shortcut the keyboard page lists and rebinds. */
 export interface SettingsKeyBinding {
   id: string
-  action: string
   /** In the recorder's notation, e.g. `⇧⌘O`. */
   keys: string
 }
@@ -156,16 +160,28 @@ export type SettingsRotation = 'manual' | 'in_order' | 'balanced'
 export const ROTATIONS: readonly SettingsRotation[] = ['manual', 'in_order', 'balanced']
 
 export const ROTATION_LABELS: Record<SettingsRotation, TitleText> = {
-  manual: 'Manual',
-  in_order: 'In Order',
-  balanced: 'Balanced',
+  get manual() {
+    return t('providers.rotation.manual')
+  },
+  get in_order() {
+    return t('providers.rotation.inOrder')
+  },
+  get balanced() {
+    return t('providers.rotation.balanced')
+  },
 }
 
 /** What each rotation does, as the menu's row says it. */
 export const ROTATION_HINTS: Record<SettingsRotation, SentenceText> = {
-  manual: 'Every agent uses the active account.',
-  in_order: 'Agents use the first account in the list that has not reached its limit.',
-  balanced: 'Each agent takes the account with the most room left.',
+  get manual() {
+    return t('providers.rotation.manualHint')
+  },
+  get in_order() {
+    return t('providers.rotation.inOrderHint')
+  },
+  get balanced() {
+    return t('providers.rotation.balancedHint')
+  },
 }
 
 /** The protocols a compatible API can speak, which its page offers (`product.md` § Models & providers). */
@@ -316,17 +332,23 @@ export const EXTENSION_PRESETS: {
 }[] = [
   {
     id: 'images',
-    label: 'Images',
+    get label() {
+      return t('presets.images')
+    },
     extensions: ['.png', '.jpg', '.jpeg', '.gif', '.webp'],
   },
   {
     id: 'videos',
-    label: 'Videos',
+    get label() {
+      return t('presets.videos')
+    },
     extensions: VIDEO_FILE_EXTENSIONS.map((extension) => `.${extension}`),
   },
   {
     id: 'documents',
-    label: 'Documents',
+    get label() {
+      return t('presets.documents')
+    },
     extensions: ['.pdf'],
   },
 ]
