@@ -786,16 +786,18 @@ one where the title stands, which a double-click on the title does too. The
 model writes a title once, for the first message; after that the title is the
 user's to change.
 
-Every title records its origin, one of `placeholder` ("New conversation",
-before any send), `message`, `generated`, and `user`. A `message` title is
+Every title records its origin, one of `placeholder` (before any send),
+`message`, `generated`, and `user`. A `placeholder` title holds no words:
+the page shows it as *New conversation* in the reader's language
+([Localization](localization.md)), so a conversation started in one
+language reads right in another. A `message` title is
 the message as the user reads it, plain text: `` `pnpm build` `` gives
 `pnpm build`, and no Markdown mark or escape shows, its lines joined by
 spaces. A generated title is
 written only while the title is still the one the request started from, in the
 same statement that checks it, so a rename that lands while the request is in
 flight wins and is never overwritten. A rename is a title that differs from
-the current one; a patch that repeats the current title, as the web app's
-record creation does with the placeholder, changes no origin. A Fork's title,
+the current one; a patch that repeats the current title, changes no origin. A Fork's title,
 the source's with " (Fork)", has origin `user`: it is already a settled name
 and is not regenerated.
 
