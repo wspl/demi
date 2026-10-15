@@ -244,7 +244,7 @@ export const useNotifications = defineStore('notifications', () => {
           requests = (await readPermissions(summary.id)).requests
         } catch (error) {
           if (!signal.aborted) {
-            reportError('Could Not Read the Permission Requests for a Notification', error)
+            reportError(t('failures.readPermissionRequests'), error)
           }
           return
         }
