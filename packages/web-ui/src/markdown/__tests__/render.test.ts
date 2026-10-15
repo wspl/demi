@@ -148,8 +148,9 @@ test('inline code that names a file the Host has opens it as a link of words; an
   // Until the Host answers, all of it is code.
   expect(renderMarkdown(reply, { files, codeFiles: null })).not.toContain('data-file-link')
   const html = renderMarkdown(reply, { files, codeFiles: new Set(['/work/src/a.ts', '/work/README.md', '/work/src/b.ts']) })
-  const a = `<a href="/work/src/a.ts" data-file-link data-line="42" class="icon-link">${lead('data-file-icon="a.ts"', 'src')}/a.ts:42</a>`
-  expect(html).toBe(`<p>See ${a}, <code>src/gone.ts</code>, ${fileLink('/work/README.md', 'README.md')}, <code>runner</code> and src/b.ts.</p>\n`)
+  // A link followed by ASCII punctuation keeps no space before it, as any icon link.
+  const a = `<a href="/work/src/a.ts" data-file-link data-line="42" class="icon-link icon-link-tight">${lead('data-file-icon="a.ts"', 'src')}/a.ts:42</a>`
+  expect(html).toBe(`<p>See ${a}, <code>src/gone.ts</code>, ${fileLink('/work/README.md', 'README.md').replace('"icon-link"', '"icon-link icon-link-tight"')}, <code>runner</code> and src/b.ts.</p>\n`)
 })
 
 test('a link to an agent shows its mark and opens it; a number the conversation does not have is its text', () => {
