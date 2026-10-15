@@ -1378,9 +1378,11 @@ rewritten, such as Codex's `call_7Qm…|fc_68e…`. Each provider sends an id
 that its vendor's rules do not allow under a form they do, made from the
 stored id alone when the request is built: Anthropic allows letters, digits,
 `_` and `-`, so `call_7Qm…|fc_68e…` goes as `x_` and the id's bytes in
-unpadded base64url, and the call's result names the same form. The form
+unpadded base64url, and the call's result names the same form; an
+allowed id that itself starts with `x_` goes the same way, so no two ids
+meet in one form. The form
 depends only on the stored id, so every request sends the same bytes and
-the cached prefix holds, two ids never meet in one form, and a switch back
+the cached prefix holds, and a switch back
 to Codex sends its own id again, unchanged.
 
 An image, video or document is replayed as a text that names it and says why
