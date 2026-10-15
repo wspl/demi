@@ -174,6 +174,10 @@ impl RemoteHost {
             return Ok(self.job(id, claimed));
         };
         let claimed = self.0.jobs.start(id.clone(), entry, &link);
+        // A start that carries pipes never goes again: its pipes end with
+        // the call that opened them (`sessions-and-targets.md` § Recovery
+        // and persistence).
+        let piped = job.stdin.is_some() || job.stdout.is_some();
         let start = Inbound::JobStart {
             job_id: id.clone(),
             manifest_hash: job
@@ -196,7 +200,9 @@ impl RemoteHost {
         // Nothing ran between the start's queueing and this: a connection
         // that ends later finds the start kept, which its runner's next
         // hello may need again.
-        self.0.jobs.sent(&id, link.instance(), start);
+        if !piped {
+            self.0.jobs.sent(&id, link.instance(), start);
+        }
         Ok(self.job(id, claimed))
     }
 
@@ -965,8 +971,15 @@ impl RemoteJob {
         &self.id
     }
 
-    /// The connection that serves the job's device now.
+    /// The connection that serves the job's device now, for the job's
+    /// controls: none while the job's start waits to go again over it,
+    /// since a signal or input sent before the start would reach no job;
+    /// the job goes on over the connection once its start is queued, which
+    /// [`Self::reattached`] tells.
     fn link(&self) -> Option<Link> {
+        if self.jobs.resending(&self.id) {
+            return None;
+        }
         match &*self.device.borrow() {
             DeviceLink::Online(link) if !link.is_closed() => Some(link.clone()),
             _ => None,
