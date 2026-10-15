@@ -781,7 +781,11 @@ function endpointCheck(value: string) {
 
               <!-- Accounts (subscription) -->
               <template v-if="selected.kind === 'subscription'">
-                <div ref="accountList" class="contents">
+                <!-- The wrapper is the card's child, so the card's hairline rule does not reach the
+                     rows inside it: the same hairline goes between every two accounts here, so each
+                     account with its usage bars reads as one group, as a list's rows do in macOS
+                     Settings. -->
+                <div ref="accountList" class="contents [&>*+*]:border-t [&>*+*]:border-line-subtle">
                 <SettingsRow
                   v-for="account in selected.accounts"
                   :key="account.id"
