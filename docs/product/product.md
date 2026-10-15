@@ -768,6 +768,12 @@ Two other retries are not this and keep their own places: reloading a history
 that failed to load, and resending a message whose delivery is unconfirmed.
 They recover reading and delivery, not a turn.
 
+### Sharing
+
+The header's **⋯** menu shares the conversation, and an answer's **Share**,
+beside Fork, shares that answer, each as a read-only snapshot anyone with
+its link can read ([Sharing](sharing.md)).
+
 ### Conversation titles
 
 A user opens a conversation with "why does `pnpm build` fail with TS2307 after

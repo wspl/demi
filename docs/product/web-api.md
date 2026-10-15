@@ -48,6 +48,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Instructions | `PUT /instructions { text }`; the text is part of the product state ([Instructions](#instructions)) |
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `DELETE /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }` |
 | Search | `GET /search?q=<query>` finds the caller's conversations ([Search](#search)) |
+| Sharing | `POST /conversations/:id/shares { kind, blockId? }`, `PUT /conversations/:id/shares/:token`, `DELETE /conversations/:id/shares/:token`; public `GET /shares/:token`, `GET /shares/:token/transcript?node=&before=\|after=\|around=`, `GET /shares/:token/transcript/blocks/:blockId?node=`, `GET /shares/:token/blobs/:sha256` ([Sharing](#sharing)) |
 | Conversation history | `GET /conversations/:id/transcript?node=&before=\|after=\|around=` reads one page of an agent's transcript, `GET /conversations/:id/transcript/blocks/:blockId?node=` one block whole, `GET /conversations/:id/subagents` the conversation's subagents and `GET /conversations/:id/commands/:commandId` where the call that started a command lies ([Conversation history](#conversation-history)); `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `POST /conversations/:id/fs/exists`, `WS /conversations/:id/fs/watch`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
@@ -82,6 +83,7 @@ Each route authenticates its caller in one of these ways
 | `WS /sync` | The session cookie, which the route checks without renewing the session |
 | Every other path under `/api`, unknown paths included, except the runner transport | The session cookie, which the session gate checks |
 | The runner transport, `WS /runner` and the pipes at `/pipes/:id` | A runner's device token; an unpaired runner's socket waits without one until a user claims its code |
+| The public share routes under `/shares/:token`, whose token is the key ([Sharing](#sharing)) | None; a session cookie is ignored |
 | The public installation routes and the [web app build](#serving-the-web-app-build) | None |
 
 The first three rows are the web app's routes. Such a route answers 403
@@ -1461,6 +1463,39 @@ Checkpoint output changes advance a persisted revision; user input alone does
 not. A page sends `POST /api/conversations/:id/read { revision }` for the
 output it actually showed. Acknowledgements only move forward, and revisions
 beyond current output are refused.
+
+## Sharing
+
+A share is a read-only snapshot of a conversation or of one answer, behind a
+random link ([Sharing](sharing.md)).
+
+`POST /conversations/:id/shares { kind: "conversation" }` or `{ kind:
+"answer", blockId }` answers `{ token, url, kind, blockId?, takenAt }`: the
+existing share when there is one, a new snapshot otherwise. `blockId` must be
+the text that ends the agent's reply to a message, a `forkable` text block
+that ends its reply, else 400 `share_target_invalid`. The conversation's
+header and an answer read whether a share exists from the conversation's
+`shares` in the product state, `{ token, kind, blockId? }` each, so the
+dialog opens on the existing link. `PUT /conversations/:id/shares/:token`
+takes the conversation's snapshot again under the same token and answers as
+`POST`; an answer's share answers 409 `share_not_updatable`. `DELETE` removes
+the share. An archived conversation can be shared and unshared.
+
+The public routes take no session and ignore one:
+
+| Route | Answers |
+| --- | --- |
+| `GET /shares/:token` | `{ kind, title, takenAt }` |
+| `GET /shares/:token/transcript?node=&before=\|after=\|around=` | A page of the snapshot, as [Pages](#pages) answers it, `instructions` always empty; `node` a subagent's number the snapshot holds |
+| `GET /shares/:token/transcript/blocks/:blockId?node=` | One block whole, with the command output it shows |
+| `GET /shares/:token/blobs/:sha256?type=` | A blob the snapshot shows |
+
+A token that names no share, a node or block the snapshot lacks, and a blob
+it does not show answer 404 `share_not_found`, the same for each, so the
+answer tells nothing of what exists. Every public answer carries
+`X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer` and
+`Cache-Control: private, no-store`, so a removed share is not served from a
+cache. The web app build serves the shared page at `/s/:token`.
 
 ## Search
 
