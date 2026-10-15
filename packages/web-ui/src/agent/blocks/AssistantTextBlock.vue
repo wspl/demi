@@ -12,6 +12,7 @@ withDefaults(defineProps<{
   forkState?: MessageForkState
   share?: AnswerShare
   shareWait?: boolean
+  hideFork?: boolean
   /** Regenerate in the footer; absent where it is not offered. */
   regenerate?: () => void
   isStreaming?: boolean
@@ -39,6 +40,7 @@ const arrivals = useTextArrivals()
       :fork-state="forkState"
       :share="share"
       :share-wait="shareWait"
+      :hide-fork="hideFork"
       :regenerate="regenerate"
     />
   </div>

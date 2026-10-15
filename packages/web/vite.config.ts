@@ -97,8 +97,29 @@ function directHotUpdates(): Plugin {
   }
 }
 
+/**
+ * The shared page's own entry (`sharing.md` § Safety): the build emits
+ * `share.html` beside `index.html`, which the backend serves at
+ * `/s/:token`; the development server answers that address with it the
+ * same way.
+ */
+function sharedPage(): Plugin {
+  return {
+    name: 'demi-shared-page',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((request, _response, next) => {
+        if (request.url && /^\/s\/[^/?#]+\/?(?:[?#]|$)/.test(request.url)) {
+          request.url = '/share.html'
+        }
+        next()
+      })
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [vue(), tailwindcss(), webBuild(), directServiceWorker(), directHotUpdates()],
+  plugins: [vue(), tailwindcss(), webBuild(), directServiceWorker(), directHotUpdates(), sharedPage()],
   // The repository's `.env` carries the local development account
   // (`DEMI_DEV_EMAIL`, `DEMI_DEV_PASSWORD`); the sign-in page fills it in
   // during development only.
@@ -111,6 +132,12 @@ export default defineConfig({
     // `xtask notices` reads it (`builds-and-releases.md` § Licenses in a
     // release).
     license: { fileName: '.vite/license.json' },
+    rollupOptions: {
+      input: {
+        index: resolve(import.meta.dirname, 'index.html'),
+        share: resolve(import.meta.dirname, 'share.html'),
+      },
+    },
   },
   resolve: {
     alias: {

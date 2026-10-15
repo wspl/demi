@@ -99,6 +99,13 @@ export function messageFileTarget(target: string, places: MessagePlaces): Messag
   return path === null ? null : { path, line: targetLine(target) }
 }
 
+/**
+ * How a link to the web opens in a new tab: with no hold on the page, no
+ * referrer, which on a shared page would carry its link, and no
+ * endorsement a crawler would follow (`sharing.md` § Safety).
+ */
+export const WEB_LINK_REL = 'noopener noreferrer nofollow'
+
 export function isHttpUrl(path: string): boolean {
   return path.startsWith('http://') || path.startsWith('https://')
 }
