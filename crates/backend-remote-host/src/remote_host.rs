@@ -174,43 +174,29 @@ impl RemoteHost {
             return Ok(self.job(id, claimed));
         };
         let claimed = self.0.jobs.start(id.clone(), entry, &link);
-        // A job's manifest and its start travel together: the runner holds
-        // one manifest at a time.
-        let _turn = link.job_turn().acquire().await;
-        let sent = async {
-            if let Some(commands) = &job.commands
-                && link.sent_manifest().as_deref() != Some(commands.hash())
-            {
-                link.set_sent_manifest(Some(commands.hash().to_owned()));
-                link.send(&Inbound::Manifest {
-                    manifest: commands.wire().clone(),
-                })
-                .await?;
-            }
-            link.send(&Inbound::JobStart {
-                job_id: id.clone(),
-                manifest_hash: job
-                    .commands
-                    .as_ref()
-                    .map(|commands| commands.hash().to_owned()),
-                context: job.context,
-                viewable: job.viewable,
-                script: job.script,
-                cwd: job.cwd,
-                env: job.env,
-                stdin: job.stdin,
-                stdout: job.stdout,
-            })
-            .await
+        let start = Inbound::JobStart {
+            job_id: id.clone(),
+            manifest_hash: job
+                .commands
+                .as_ref()
+                .map(|commands| commands.hash().to_owned()),
+            context: job.context,
+            viewable: job.viewable,
+            script: job.script,
+            cwd: job.cwd,
+            env: job.env,
+            stdin: job.stdin,
+            stdout: job.stdout,
         };
-        if let Err(error) = sent.await {
-            // What the runner received is uncertain: the next job sends its
-            // manifest again.
-            link.set_sent_manifest(None);
+        if let Err(error) = link.send_job_start(job.commands.as_ref(), &start).await {
             self.0.jobs.forget(&id);
             claimed.shared.finish(JobEnd::lost(&error.message));
             return Err(error);
         }
+        // Nothing ran between the start's queueing and this: a connection
+        // that ends later finds the start kept, which its runner's next
+        // hello may need again.
+        self.0.jobs.sent(&id, link.instance(), start);
         Ok(self.job(id, claimed))
     }
 
