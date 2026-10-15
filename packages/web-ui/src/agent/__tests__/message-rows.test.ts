@@ -3,6 +3,7 @@ import { effectScope, nextTick, reactive } from 'vue'
 import type { Block } from '@demicodes/protocol'
 import { addPage, EMPTY_TRANSCRIPT, heldBlocks } from '@demicodes/conversation-client'
 import { useMessageRows, type MessageRows, type MessageRowsSource } from '../message-rows'
+import { useOpenRuns } from '../open-runs'
 import { waitingAs, type MessageListBlock } from '../pending-steers'
 import { rowKey } from '../row-key'
 import { createdAt, model, userBlock } from './agent-harness'
@@ -27,6 +28,7 @@ const call = (id: string, status: 'executing' | 'completed', run = id): Block =>
   toolName: 'shell',
   status,
   input: JSON.stringify({ script: 'sleep 2 && echo done', description: 'Wait two seconds' }),
+  endedAt: status === 'executing' ? null : createdAt,
   output: [],
   view: null,
 })
@@ -89,29 +91,26 @@ function follow(state: MessageRowsSource) {
   return { list, step, stop: () => scope.stop() }
 }
 
-// The run starts with thinking, or with a call the model is still writing:
-// either way its row is the same from that first step to the turn's end.
-test.each(['thinking', 'call being written'] as const)('a sent message, its run from %s and its answer only add rows, keep the answer before them closed, and the run is one shimmering row in the tail row\'s place', async (first) => {
+// The run starts with thinking, or with a call the model is still writing
+// (`runtime.md` § Work groups): what runs takes the Requesting row's place,
+// in the same row; once it ended, it is the run's row, which keeps that row,
+// and the turn waits for the model in a Requesting row under it.
+test.each(['thinking', 'call being written'] as const)('a sent message, its run from %s and its answer only add rows, keep the answer before them closed, and what runs takes the tail row\'s place', async (first) => {
   const state = answered()
   const { list, step: follows, stop } = follow(state)
   const run = () => list.rows.value.find((row) => row.type === 'work_group')
-  let tailKey: string | null = null
+  const tail = () => list.rows.value.at(-1)!
   async function step(name: string, change: () => void): Promise<void> {
     await follows(name, change)
     // The answer before the message keeps Copy and Fork while the message is delivered.
     expect({ name, footer: list.footerIds.value.has('a-1') }).toEqual({ name, footer: true })
-    // The tail row, then the run that takes its place, is one row.
-    const key = list.keyOf(list.rows.value.at(-1)!)
-    if (tailKey !== null && list.rows.value.at(-1)?.type !== 'text') {
-      expect({ name, key }).toEqual({ name, key: tailKey })
-    }
   }
 
   await step('sent', () => {
     state.pendingSubmissions = [{ id: 'm-2', way: 'send', text: 'Run the command, then reply.', attachments: [], error: null }]
   })
-  expect(list.rows.value.at(-1)?.type).toBe('activity_slot')
-  tailKey = list.keyOf(list.rows.value.at(-1)!)
+  expect(tail().type).toBe('activity_slot')
+  const tailKey = list.keyOf(tail())
   await step('running', () => {
     state.phase = 'running'
   })
@@ -130,11 +129,11 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
     }
   })
   // A call shows from its title: without it, the tail row stays.
-  expect(run() !== undefined).toBe(first === 'thinking')
+  expect([tail().type, list.keyOf(tail())]).toEqual([first === 'thinking' ? 'thinking' : 'activity_slot', tailKey])
   await step('call being written', () => {
     state.pendingCalls = writing('Wait two seconds')
   })
-  expect(run()).toBeDefined()
+  expect([tail().type, list.keyOf(tail())]).toEqual(['pending_call', tailKey])
   // The call's block comes before the page drops the call being written.
   // The run starts at its first block: the thinking, or the call's own.
   const runOf = first === 'thinking' ? 'k-1' : 'c-1'
@@ -144,17 +143,22 @@ test.each(['thinking', 'call being written'] as const)('a sent message, its run 
   await step('call written', () => {
     state.pendingCalls = []
   })
+  // The command runs: its own row, the turn's activity, and the run shows nothing yet.
+  expect([tail().type, list.keyOf(tail())]).toEqual(['tool_call', tailKey])
+  expect(run()).toBeUndefined()
+  expect(list.slot.value).toBeNull()
   await step('command ended', () => {
     state.blocks = state.blocks.map((block) => block.id === 'c-1' ? call('c-1', 'completed', runOf) : block)
   })
-  // While the model is waited for, the run's row is the turn's activity: it
-  // shimmers, and no Requesting row shows under it.
-  expect(run()?.live).toBe(true)
-  expect(list.slot.value).toBeNull()
+  // It joined the run, whose row is the one it ran in, and Requesting stands under it.
+  expect(run()?.steps.map((each) => each.id)).toEqual(['c-1'])
+  expect(list.keyOf(run()!)).toBe(tailKey)
+  expect(tail().type).toBe('activity_slot')
   await step('answer', () => {
     state.blocks = [...state.blocks, text('a-2', 'Done.')]
   })
-  expect(run()?.live).toBe(false)
+  expect(list.keyOf(run()!)).toBe(tailKey)
+  expect(tail().type).toBe('text')
   await step('idle', () => {
     state.phase = 'idle'
   })
@@ -378,14 +382,15 @@ test.each(transitions)('$name: no row goes while another takes its place, and th
 })
 
 // Continue after a Stop and Resume after an error: the Stopped row or the
-// error record rolls into Requesting, and the turn's first step joins the
-// run above, as the backend stores it (`runtime.md` § Work groups): the
-// run's row keeps its key and shows the step as its newest, and the
-// Requesting row goes, once, the one shrink the user asked for.
+// error record rolls into Requesting, and the turn's first step belongs to
+// the run above, as the backend stores it (`runtime.md` § Work groups): it
+// runs in the Requesting row's place, under the run, whose row keeps its
+// key, and once it ended it joins the run and its row goes, the answer
+// taking its place.
 test.each([
   { name: 'Continue after a Stop', record: abort('x-1'), unwind: replace('x-1', abort('x-1', true)) },
   { name: 'Resume after an error', record: failure('e-1'), unwind: drop('e-1') },
-])('$name: the next step joins the run above, and the Requesting row goes once', async ({ record, unwind }) => {
+])('$name: the next step runs in the Requesting row\'s place and joins the run above once it ended', async ({ record, unwind }) => {
   const state = answered()
   state.blocks = workedOn(record)
   const { list, step, stop } = follow(state)
@@ -399,15 +404,16 @@ test.each([
   await step('unwound', () => unwind(state))
   await step('resume written', () => append(resumed('r-1'))(state))
   expect(list.rows.value.at(-1)?.type).toBe('activity_slot')
-  await step('call', () => append(call('c-2', 'executing', 'c-1'))(state), [tail])
-  const runs = runRow()
-  expect(runs.map((row) => row.type === 'work_group' && [row.live, row.steps.map((each) => each.id)])).toEqual([[true, ['c-1', 'c-2']]])
-  expect(list.keyOf(runs[0]!)).toBe(run)
-  expect(list.rows.value.at(-1)).toBe(runs[0])
+  await step('call', () => append(call('c-2', 'executing', 'c-1'))(state))
+  expect(runRow().map((row) => row.type === 'work_group' && row.steps.map((each) => each.id))).toEqual([['c-1']])
+  expect(list.keyOf(runRow()[0]!)).toBe(run)
+  expect([list.rows.value.at(-1)?.id, list.keyOf(list.rows.value.at(-1)!)]).toEqual(['c-2', tail])
   await step('answer', () => {
     replace('c-2', call('c-2', 'completed', 'c-1'))(state)
     append(text('a-2', 'Fixed.'))(state)
   })
+  expect(runRow().map((row) => row.type === 'work_group' && row.steps.map((each) => each.id))).toEqual([['c-1', 'c-2']])
+  expect(list.keyOf(runRow()[0]!)).toBe(run)
   await step('ended', phase('idle').bind(null, state))
   stop()
 })
@@ -430,9 +436,8 @@ function running(): MessageRowsSource {
 
 // A call being written shows from its title (`runtime.md` § Calls being
 // written): until the model has written its description, the tail row goes
-// on saying Requesting, counting from the wait's start, and a run goes on
-// showing its newest step; then the face rolls to the call's row, in the
-// same row.
+// on saying Requesting, counting from the wait's start, under the run if
+// there is one; then it rolls to the call's row, in the same row.
 test('a call being written without its description leaves the face as it was, then rolls to its title', async () => {
   const opened = (description: string | null) => [{ toolUseId: 'c-2-use', toolName: 'shell', description }]
 
@@ -453,7 +458,7 @@ test('a call being written without its description leaves the face as it was, th
     asked.waitingSince = null
   })
   const call = first.list.rows.value.at(-1)!
-  expect(call.type === 'work_group' && call.steps.map((each) => each.id)).toEqual(['pending-call:c-2-use'])
+  expect(call.id).toBe('pending-call:c-2-use')
   expect(first.list.keyOf(call)).toBe(requesting)
   expect(first.list.slot.value).toBeNull()
   first.stop()
@@ -464,13 +469,16 @@ test('a call being written without its description leaves the face as it was, th
   const run = () => next.list.rows.value.find((row) => row.type === 'work_group')
   const before = run()!
   expect(before.type === 'work_group' && before.steps.map((each) => each.id)).toEqual(['c-1'])
-  expect(next.list.slot.value).toBeNull()
+  expect(next.list.slot.value?.kind).toBe('requesting')
+  const waiting = next.list.keyOf(next.list.rows.value.at(-1)!)
   await next.step('title written', () => {
     busy.pendingCalls = opened('Run the login test')
   })
   const after = run()!
-  expect(after.type === 'work_group' && after.steps.map((each) => each.id)).toEqual(['c-1', 'pending-call:c-2-use'])
+  expect(after.type === 'work_group' && after.steps.map((each) => each.id)).toEqual(['c-1'])
   expect(next.list.keyOf(after)).toBe(next.list.keyOf(before))
+  const writing = next.list.rows.value.at(-1)!
+  expect([writing.id, next.list.keyOf(writing)]).toEqual(['pending-call:c-2-use', waiting])
   next.stop()
 })
 
@@ -500,8 +508,7 @@ test.each([
   })
   expect(list.slot.value).toBeNull()
   const row = list.rows.value.at(-1)!
-  expect(row.type === 'work_group' && [row.live, row.steps.map((each) => [each.type, each.id])])
-    .toEqual([true, [['thinking', 'k-1']]])
+  expect([row.type, row.id]).toEqual(['thinking', 'k-1'])
   expect(list.keyOf(row)).toBe(requesting)
 
   await step('answer', () => {
@@ -540,9 +547,9 @@ test('a steer on its way has its line from the send, and keeps its row and its l
     state.pendingSubmissions = []
   })
   expect(seen).toEqual([
-    { name: 'sent', index: 2, line: 'steer' },
-    { name: 'listed', index: 2, line: 'steer' },
-    { name: 'confirmed', index: 2, line: 'steer' },
+    { name: 'sent', index: 3, line: 'steer' },
+    { name: 'listed', index: 3, line: 'steer' },
+    { name: 'confirmed', index: 3, line: 'steer' },
   ])
   // The turn reads it at its next step: the row is the steer written.
   await step('read', () => {
@@ -595,13 +602,13 @@ test('a queued message on its way is counted under the queue divider from the se
 
 // Messages that wait stay out of the turn's flow (`product.md` § Following
 // the agent's work): what the turn does is read from the transcript alone.
-test('a steer waiting under a run the model is still writing adds no Requesting row', async () => {
+test('a steer waiting under a call the model is still writing adds no Requesting row', async () => {
   const state = running()
   state.pendingSteers = [{ id: 's-1', content: [{ type: 'text', text: 'Also check the sign-up page.' }] }]
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
   await nextTick()
-  expect(drawnRows(list)).toEqual(['message:m-1', 'work:c-1-use', 'message:s-1'])
+  expect(drawnRows(list)).toEqual(['message:m-1', 'run:c-1', 'work:c-2-use', 'message:s-1'])
   expect(list.slot.value).toBeNull()
   scope.stop()
 })
@@ -621,15 +628,15 @@ test('while the model is waited for, the Requesting row stands right after the t
 
 // A command's notice and an agent's receipt that arrive while the agent works
 // are steps of its run (`runtime.md` § Work groups): the run stays one row
-// under its name, the turn's activity, with no Requesting row under it.
-test('a notice and a receipt join the running run, which stays one row under one name', async () => {
+// under its name, and the turn waits for the model under it.
+test('a notice and a receipt join the run, which stays one row under one name over the Requesting row', async () => {
   const state = running()
   state.pendingCalls = []
   const scope = effectScope()
   const list = scope.run(() => useMessageRows(() => state))!
   const drawn = () => drawnRows(list)
   const before = drawn()
-  expect(before).toEqual(['message:m-1', 'work:c-1-use'])
+  expect(before).toEqual(['message:m-1', 'run:c-1', 'tail-row:1'])
 
   state.blocks = [...state.blocks, {
     type: 'wakeup',
@@ -661,9 +668,9 @@ test('a notice and a receipt join the running run, which stays one row under one
   }]
   await nextTick()
   expect(drawn()).toEqual(before)
-  const run = list.rows.value.at(-1)
-  expect(run?.type === 'work_group' && run.live && run.steps.map((step) => step.id)).toEqual(['c-1', 'n-1', 'm-2'])
-  expect(list.slot.value).toBeNull()
+  const run = list.rows.value.find((row) => row.type === 'work_group')
+  expect(run?.type === 'work_group' && run.steps.map((step) => step.id)).toEqual(['c-1', 'n-1', 'm-2'])
+  expect(list.slot.value?.kind).toBe('requesting')
   scope.stop()
 })
 
@@ -694,15 +701,71 @@ const thought = (id: string, body: string, run = id): Block => ({ type: 'thinkin
 // it did live, each thinking with text among them, and a thinking without
 // text, as Gemini signs before each call, or of white space only, nowhere.
 test.each([
-  ['thinking before the answer', [thought('k-1', 'The folder is the workspace.'), text('a-2', 'Three files.')], 'work:k-1 [k-1]'],
-  ['thinking before a call', [thought('k-1', 'List the folder first.'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [k-1 c-1]'],
+  ['thinking before the answer', [thought('k-1', 'The folder is the workspace.'), text('a-2', 'Three files.')], 'run:k-1 [k-1]'],
+  ['thinking before a call', [thought('k-1', 'List the folder first.'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'run:k-1 [k-1 c-1]'],
   // Thinking blocks next to each other are one step (`runtime.md` § Work groups).
-  ['two thoughts before the answer', [thought('k-1', 'The folder is the workspace.'), thought('k-2', 'Count its files.', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [k-1]'],
-  ['textless thinking before a call', [thought('k-1', ''), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [c-1]'],
-  ['white-space-only thinking before a call', [thought('k-1', ' \n'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'work:k-1 [c-1]'],
+  ['two thoughts before the answer', [thought('k-1', 'The folder is the workspace.'), thought('k-2', 'Count its files.', 'k-1'), text('a-2', 'Three files.')], 'run:k-1 [k-1]'],
+  ['textless thinking before a call', [thought('k-1', ''), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'run:k-1 [c-1]'],
+  ['white-space-only thinking before a call', [thought('k-1', ' \n'), call('c-1', 'completed', 'k-1'), text('a-2', 'Three files.')], 'run:k-1 [c-1]'],
 ] as const)('a turn with %s shows the same rows after the page is reopened', (_name, turn, run) => {
   const blocks = [userBlock('u-2', 'm-2', 'What is in the folder?'), ...turn]
   const live = finishedRows(blocks)
   expect(live).toContain(run)
   expect(finishedRows(reopened(blocks))).toEqual(live)
+})
+
+// Review: parallel calls return in any order (`runtime.md` § Work groups).
+// A step the reader opened while it ran is still open as the run it starts,
+// and a run the reader opened stays the same open row when a call that
+// started before the one that joined it returns; while a call still runs,
+// the turn waits for it, so no Requesting row shows. Before, the run was
+// named after its first ended step: A returning after B made it another
+// row, closed.
+test('a run stays the same open row as parallel calls return out of order, and Requesting waits for the last', async () => {
+  const state = reactive<MessageRowsSource>({
+    ...answered(),
+    blocks: [userBlock('u-2', 'm-2', 'Run both suites.'), call('a', 'executing')],
+    phase: 'running',
+  })
+  const scope = effectScope()
+  const { list, runs } = scope.run(() => {
+    const list = useMessageRows(() => state)
+    return { list, runs: useOpenRuns(() => list.rows.value, () => state.conversationId, list.keyOf) }
+  })!
+  const runRow = () => list.rows.value.find((row) => row.type === 'work_group')
+  const lone = list.keyOf(list.rows.value.at(-1)!)
+  runs.setOpen(lone, true)
+
+  state.blocks = [...state.blocks, call('b', 'executing', 'a')]
+  await nextTick()
+  state.blocks = state.blocks.map((block) => block.id === 'b' ? call('b', 'completed', 'a') : block)
+  await nextTick()
+  expect(runRow()?.steps.map((step) => step.id)).toEqual(['b'])
+  expect(list.slot.value).toBeNull()
+  const key = list.keyOf(runRow()!)
+  runs.setOpen(key, true)
+
+  state.blocks = state.blocks.map((block) => block.id === 'a' ? call('a', 'completed', 'a') : block)
+  await nextTick()
+  expect(runRow()?.steps.map((step) => step.id)).toEqual(['a', 'b'])
+  expect(list.keyOf(runRow()!)).toBe(key)
+  expect(runs.isOpen(key)).toBe(true)
+  expect(list.slot.value?.kind).toBe('requesting')
+  scope.stop()
+
+  // A lone call opened while it runs is still open as the run it starts.
+  const alone = reactive<MessageRowsSource>({ ...answered(), blocks: [userBlock('u-2', 'm-2', 'Run it.'), call('c', 'executing')], phase: 'running' })
+  const second = effectScope()
+  const opened = second.run(() => {
+    const list = useMessageRows(() => alone)
+    return { list, runs: useOpenRuns(() => list.rows.value, () => alone.conversationId, list.keyOf) }
+  })!
+  const ran = opened.list.keyOf(opened.list.rows.value.at(-1)!)
+  opened.runs.setOpen(ran, true)
+  alone.blocks = alone.blocks.map((block) => block.id === 'c' ? call('c', 'completed') : block)
+  await nextTick()
+  const ended = opened.list.rows.value.find((row) => row.type === 'work_group')!
+  expect(opened.list.keyOf(ended)).toBe(ran)
+  expect(opened.runs.isOpen(ran)).toBe(true)
+  second.stop()
 })

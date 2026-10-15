@@ -1789,47 +1789,44 @@ commands*, and a click opens it to every step.
   running turn, as what the agent does now; once anything follows it or the
   turn ends, it has nothing to show and goes, from the transcript and from
   the steps of an opened row.
-- The run at the end of a running turn is one row, from its first step until
-  the turn ends or another block follows the run: the same row throughout,
-  so a step that joins never adds a row that then merges into it. Folded, it
-  has two lines: the steps before the newest, read as an ended run reads
-  (below), *Ran 3 commands, checked 1 command*, and under it the newest
-  step, its face and tag as a lone step's. For example:
+- **Only a step that has ended joins its run.** A call joins its run once
+  it returns, one whose command goes on in the background included, and
+  thinking once it is written; what is still running, a call being written
+  or waiting for its result, or thinking being written, is a row of its own
+  under the run, never a line of it. So at the end of a running turn the
+  run is what has happened, and the row under it what happens now:
 
   ```text
-  ls tests/                       2s      one step: one line
-  Ran 1 command                           a second step arrives: the first
-  bun test auth                   12s     joins the line above
-  Ran 1 command                           it ends; the turn waits for the
-  bun test auth               Failed      model, and the step stays
-  Ran 2 commands                          the next step arrives, and the
-  chmod +x scripts/run.sh                 count takes the one before
-  Ran 3 commands                          the answer comes: one line, as an
-                                          ended run reads
+  ls tests/                     2s        one step runs: its own row
+  ls tests/                               it returns; the next is written
+  bun test auth                 12s       and runs, a row of its own
+  Ran 2 commands                          it returns and joins the run;
+  Requesting                              the turn waits for the model
+  Ran 2 commands                          the next step runs under the
+  chmod +x scripts/run.sh                 run, which now holds two
+  Ran 3 commands                          it returns: the answer follows
   ```
 
-  The newest step stays on the second line until a step replaces it or the
-  run ends, a call being written rolling over to its description once
-  written, and the call's block, which then takes its place, keeping that
-  face. The first line shows once a step before the newest says something:
-  steps of thinking alone read nothing, so a run of thinking and one call is
-  still one line. Only the second line shimmers, as what runs; the first is
-  done. A click on either line opens the run. While it holds a lone
-  call, opening it shows the call, not a stack of one step, as an ended lone
-  call does. From its second step on, opened, the row stands still as a
-  stack and what runs, *Running 4 commands*, with the steps under it, and
-  once the run has lasted more than 3 seconds, for how long, *Running 4
-  commands for 1m 32s*, counting up as *Thinking for 9s* does; an ended
-  run's title names no time;
-  opening and folding change the row at once rather than rolling it. The
-  run's first step rolls into the tail row first, as any block does.
-- The run's row is the turn's activity, so no Requesting row shows under it,
-  and it shimmers for as long as the turn has not moved past it: while its
-  newest step runs, and after that step ended, while the request that
-  carries its result waits for the model's next output. For example, a
-  command ends after 2 seconds and the model's next words come 3 seconds
-  later: the row shimmers for all 5. A row that stops shimmering finishes
-  the sweep under way rather than cutting it.
+  The run reads and opens as an ended run does (below), at once, whether
+  folded or opened, and a step that joins it never changes whether it is
+  open; while it holds one step, it reads and opens as that step. The row
+  under it is the step that runs, its face and tag as a lone step's, and
+  opens on its own, its command and output, as a lone step does; when that
+  step ends it leaves its row and joins the run, and the next step, or
+  Requesting while the turn waits for the model, takes the row. Only that
+  row shimmers, as what runs; the run is done. A step that runs for more
+  than 3 seconds shows for how long, counting up as *Thinking for 9s* does.
+  A run says its total time in its sentence, running or ended, as *Thought
+  for 5s* does: *Ran 3 commands for 1m 32s*, *Ran 2 commands, checked 1
+  command for 40s*, the time last:
+  the time its steps took, each from its start to its end, added up, so a
+  command the agent left running in the background counts only until its
+  call returned, and the time the turn waited for the model between steps
+  is not counted. A call's block records when its call returned
+  (`endedAt`, set as its result is stored); a thinking block ends where the
+  next block starts. Steps of thinking alone read nothing,
+  so a run that holds only thinking shows only once a step that says
+  something joins it.
 - An ended run stays one row when it holds a call and another step, and a
   lone thinking stays its own row; a lone call is its own row. The row reads
   what the run did, each kind of call once, in the order the run first did
@@ -1850,9 +1847,8 @@ commands*, and a click opens it to every step.
   ended, as one the agent left running and ended its turn on, wears its
   time on the ended run's row too, *Ran 3 commands* then the time tag, until
   it ends, so a folded row never hides that something still runs.
-- A running run's second line is its newest step's face, its tag included:
-  the time while the step's command runs, and *Failed* or *Stopped* once it
-  ended so, while the turn waits for the model.
+- The row of the step that runs shows its tag: the time while its command
+  runs; once the step ends, its tag goes with it into the run.
 - Folded, the files the run's calls changed show under the row, each once,
   counted from its two ends within the run ([What the conversation
   shows](../execution/edit-tracking.md#what-the-conversation-shows)); open,

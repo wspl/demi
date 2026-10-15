@@ -11,15 +11,13 @@ import type { ToolPicture } from '../tool-media'
  * leads where the detail is.
  */
 defineProps<{
-  /** The row is the turn's activity, as a run's row is, and shimmers. */
-  loading?: boolean
   /** The images and videos a command's end report carries, small in the row's line. */
   pictures?: readonly ToolPicture[]
 }>()
 </script>
 
 <template>
-  <FunctionalBlock :expandable="false" :loading="loading" :pictures="pictures">
+  <FunctionalBlock :expandable="false" :pictures="pictures">
     <template #icon>
       <slot name="icon" />
     </template>

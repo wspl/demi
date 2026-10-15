@@ -3,7 +3,6 @@ import { computed } from 'vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import type { PendingCallRenderBlock } from '../pending-steers'
 import FunctionalBlock from './FunctionalBlock.vue'
-import StepFace from './StepFace.vue'
 import { toolRowIcon } from './tool-row-icon'
 
 /**
@@ -22,6 +21,6 @@ const icon = computed(() => toolRowIcon(props.step.call.toolName))
     <template #icon>
       <component :is="icon" :size="ICON_PX.in28" />
     </template>
-    <StepFace :step="step" />
+    <span class="min-w-0 truncate">{{ step.call.description }}</span>
   </FunctionalBlock>
 </template>

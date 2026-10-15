@@ -80,6 +80,7 @@ const call = (id: string, description: string, output: ToolResultContentBlock[])
   toolName: 'shell',
   status: 'completed',
   input: JSON.stringify({ script: 'demi browser screenshot t1 | demi file view', description }),
+  endedAt: createdAt,
   output,
   view: null,
 })

@@ -1626,6 +1626,7 @@ mod tests {
             "input": "{}",
             "status": "completed",
             "output": [],
+            "endedAt": Timestamp::UNIX_EPOCH,
             "view": {
                 "kind": "shell",
                 "status": "exited",

@@ -205,6 +205,7 @@ fn a_call_of_a_tool_the_request_no_longer_declares_is_replayed_with_its_result_a
         Block::ToolCall(ToolCallBlock {
             run: None,
             entries: Vec::new(),
+            ended_at: None,
             id: BlockId::try_from(id).unwrap(),
             created_at: Timestamp::UNIX_EPOCH,
             model: model.clone(),
@@ -265,6 +266,7 @@ fn each_request_replays_a_tool_results_media_only_where_its_provider_carries_the
     let call = Block::ToolCall(ToolCallBlock {
         run: None,
         entries: Vec::new(),
+        ended_at: None,
         id: BlockId::try_from("c1").unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
         model: model.clone(),
