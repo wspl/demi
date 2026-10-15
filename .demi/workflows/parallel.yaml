@@ -7,7 +7,7 @@ instructions: |
   - A subagent only executes: it writes code to a design the main agent settled, runs tests, or checks a result, and reports what it found. Research a subagent does is input to the main agent's decision, not the decision.
 
   Which profile
-  - pure-ui: only pure UI work whose design is settled (styles, layout, copy, component markup, gallery specimens). Anything touching state, data flow, optimistic updates, sockets, protocols, the backend, concurrency or a bug's diagnosis goes to implement.
+  - pure-ui: only pure UI work whose design is settled (styles, layout, copy, component markup, gallery specimens), and every sweeping change that follows a pattern already built, such as moving strings into catalogues or a global rename: it costs far less, so prefer it whenever the work allows. Building a framework or an architecture, and anything touching state, data flow, optimistic updates, sockets, protocols, the backend, concurrency or a bug's diagnosis goes to implement.
   - implement: every other implementation to a settled design, and the rework a review or an acceptance sends back.
   - research: read-only questions whose answers you need for a decision.
   - investigate: hard problems and measurements: a bug or a slowness to reproduce and explain, or options to measure on probes, VMs and sandboxes before you decide a design.
