@@ -1373,14 +1373,14 @@ such as `yield` or `shell_status` in a transcript from before they were
 removed, is replayed with its result as the model's text, `[called yield {"durationMs":600000}: yield
 scheduled]`, since a vendor may refuse a call of a tool it was not given.
 
-A tool call keeps the id its provider gave it, and every id Demi stores is
-one every vendor accepts, letters, digits, `_` and `-` (Anthropic's rule, the
-strictest), so a model switch replays the history as it is, in either
-direction. Codex's call carries two ids, its call id and its item id, which
-it needs back on replay; it stores them joined by `-`, `call_7Qm…-fc_68e…`,
-and on replay splits at the last `-` only when what follows starts with
-`fc_`, as Codex's item ids do; any other id, such as Google's
-`shell_123e4567-e89b-…`, is a call id whole.
+A tool call keeps the id its provider gave it, stored once and never
+rewritten, such as Codex's `call_7Qm…|fc_68e…`, its call id and item id
+joined by `|`. A provider whose vendor restricts ids sends each id with
+every character its vendor does not allow replaced by `_`, the call and its
+result alike: Anthropic allows letters, digits, `_` and `-`, so that id goes
+to Claude as `call_7Qm…_fc_68e…`. The form follows from the stored id alone,
+so every request sends the same bytes and the cached prefix holds, and a
+switch back to Codex sends its own id again, unchanged.
 
 An image, video or document is replayed as a text that names it and says why
 it was not sent when the request's model does not accept its type
