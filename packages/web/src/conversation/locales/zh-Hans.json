@@ -8,8 +8,8 @@
     "editMessage": "无法编辑消息",
     "deleteMessage": "无法删除消息",
     "saveDrafts": "无法保存草稿",
-    "restoreDrafts": "无法还原草稿",
-    "restoreStoredDraft": "无法还原草稿",
+    "restoreDrafts": "无法恢复草稿",
+    "restoreStoredDraft": "无法恢复草稿",
     "readDraft": "无法读取草稿",
     "readSaved": "无法读取已保存的消息",
     "readHosts": "无法读取主机",
@@ -19,12 +19,12 @@
     "reorderConversations": "无法重新排序对话",
     "updateReadStatus": "无法更新已读状态",
     "reloadConversation": "无法重新加载对话",
-    "detachDevice": "无法分离设备",
+    "detachDevice": "无法取消关联设备",
     "changeModel": "无法更改模型",
     "changeWorkflow": "无法更改工作流",
     "clearDraft": "无法清除草稿",
     "recallMessage": "无法撤回消息",
-    "restoreDraft": "无法还原草稿",
+    "restoreDraft": "无法恢复草稿",
     "dismissDraft": "无法放弃草稿",
     "connectionLost": "连接已断开",
     "connectionLostMessage": "Demi 可能没有收到你的请求。重新连接后请检查对话。",
@@ -42,7 +42,7 @@
   "savedDeleted": "已删除保存的消息",
   "newConversation": "新对话",
   "composer": {
-    "cloudResetting": "云正在重置。"
+    "cloudResetting": "云端正在重置。"
   },
   "workflows": {
     "hostSilent": "主机没有响应。"

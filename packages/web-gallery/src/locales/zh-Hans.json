@@ -29,7 +29,7 @@
     "signin": {
       "signin": "登录",
       "setup": "设置",
-      "handoff": "手机交接",
+      "handoff": "手机接力",
       "starting": "启动中"
     },
     "primitives": {
@@ -49,7 +49,7 @@
     "session": {
       "tabs": "标签栏",
       "composer": "输入框",
-      "blocks": "块",
+      "blocks": "区块",
       "lengths": "长度",
       "changes": "更改",
       "turns": "轮次",
@@ -59,11 +59,11 @@
       "windows": "窗口"
     },
     "dialogs": {
-      "account": "帐户",
+      "account": "账户",
       "providers": "供应商",
       "devices": "设备",
-      "workspace": "工作区",
-      "cloud": "云",
+      "workspace": "工作空间",
+      "cloud": "云端",
       "skills": "技能",
       "search": "搜索"
     },

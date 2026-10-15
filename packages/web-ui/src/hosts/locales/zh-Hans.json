@@ -3,11 +3,11 @@
     "where": "此对话的运行位置",
     "runOn": "运行于",
     "addDevice": "添加设备…",
-    "attached": "已附加",
-    "detach": "分离"
+    "attached": "已关联",
+    "detach": "取消关联"
   },
   "lock": {
-    "archived": "此对话已存档。",
+    "archived": "此对话已归档。",
     "moving": "此对话正在移动。"
   },
   "choices": {
@@ -36,7 +36,7 @@
     "title": "新建项目",
     "selectFolder": "选择文件夹",
     "loading": "正在加载设备…",
-    "cloudDescription": "托管的工作区，立即可用。",
+    "cloudDescription": "托管的工作空间，立即可用。",
     "device": "设备",
     "deviceDescription": "你的某台设备上的目录。",
     "chooseDevice": "选择设备",
