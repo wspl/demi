@@ -11,7 +11,7 @@ import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 import { EMPTY_TRANSCRIPT } from '@demicodes/web-ui/transport/protocol'
 import { lookupAttachment } from '../api/attachments'
 import type { SharedConversation as Share } from '../api/generated/web-api'
-import type { HistoryHolder } from '../conversation/history'
+import type { HistoryHolder } from '../conversation/history-reads'
 import { agentFragment, shownAgent } from './address'
 import { createShareReads, readShare, shareBlobUrl, sharePath, shareSnapshot } from './reads'
 

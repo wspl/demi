@@ -3,7 +3,7 @@ import type { SharedAgent } from '@demicodes/web-ui/share/shared-agents'
 import { EMPTY_TRANSCRIPT } from '@demicodes/web-ui/transport/protocol'
 import { ApiError, apiRequest, apiUrl, readResponse } from '../api/client'
 import { sharedConversationSchema, type SharedConversation } from '../api/generated/web-api'
-import { createHistoryReads, type HistoryHolder } from '../conversation/history'
+import { createHistoryReads, type HistoryHolder } from '../conversation/history-reads'
 
 /**
  * The public routes of share `token` (`web-api.md` § Sharing), the only
