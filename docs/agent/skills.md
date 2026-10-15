@@ -207,7 +207,7 @@ and the catalog names the `SKILL.md` at its own path on the Host. Demi does
 not check them first: the user chose the directory, and the agent runs its
 code in any case.
 
-**The runner says when they change; a request never waits for the Host.** The
+**The runner says when they change; a request does not wait for the Host.** The
 plugin reads them through its port's
 [Host files](../architecture/plugins.md#reading-a-conversations-files), which
 never wakes a Host, and keeps them current with the runner's
@@ -220,10 +220,12 @@ never wakes a Host, and keeps them current with the runner's
   changed, it searches again in the background and keeps the new result.
   The subscriptions are released when no loaded conversation uses that
   directory on that Host.
-- A request lists what the plugin holds at that moment and never waits for
-  a search. Until the first search answers, or while the Host is stopped or
-  offline, the request lists no project skill; the catalog block that
-  follows the search reaches the next request. For example, on a stopped
+- A request lists what the plugin holds at that moment. Only the first
+  search of a directory holds a request, and for at most 5 seconds, as the
+  [instruction files](instructions.md#when-it-is-sent) do; past that, or
+  while the Host is stopped or offline, the request lists no project skill,
+  and the catalog block that follows the search reaches the next request.
+  For example, on a stopped
   Cloud the first request lists no project skill; the model's first command
   wakes the Cloud, the Host's coming online starts the search, and a request
   after it lists them. An edit to a `SKILL.md` reaches the next request.
@@ -387,7 +389,8 @@ made on the page does.
   no longer on is removed from the Host at its next installation.
 - The project directory's `.agents/skills` and `.claude/skills` skills, and
   no others, are in the catalog at their own paths, for every node of the
-  conversation; a request never waits for their search; on a stopped Cloud
+  conversation; a request waits at most 5 seconds for their first search and
+  never for a later one; on a stopped Cloud
   they appear at a request after the Cloud woke, and no search wakes it; an
   edit to a `SKILL.md` reaches the next request without a new search being
   asked for; a project skill shadows a user skill of the same name.
