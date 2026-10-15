@@ -42,8 +42,8 @@ test.each<{ language: Language; lines: string; kind: string; marked: string; lin
     language: 'ko',
     lines: 'TypeScript · 1줄 · 4 B',
     kind: 'TS 파일',
-    marked: '충돌: 타인이 삭제',
-    link: '/tmp/gone.log에 대한 심볼 링크이며 대상이 없습니다',
+    marked: '충돌: 상대 쪽에서 삭제',
+    link: '/tmp/gone.log에 대한 심볼릭 링크(대상 없음)',
     uploads: '파일 1개',
   },
 ])('a $language page words the file area in $language', ({ language, lines, kind, marked, link, uploads }) => {
