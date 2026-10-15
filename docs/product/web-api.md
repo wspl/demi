@@ -314,7 +314,7 @@ A device in `GET /devices` and in the product state carries, besides its
 name and online state, `os`, the operating system and architecture its runner
 last reported, and `runnerVersion`, the runner release it last reported, such
 as `0.1.16`; both are null before its runner first connected; `mark`, the
-logo and number of its [mark](product.md#conversations-and-projects):
+logo and number of its [mark](product.md#conversations-and-projects), null for the Cloud:
 `{ logo, number }`, where `logo` is `apple`, `windows`, `ubuntu`, `debian`,
 `fedora`, `arch`, `centos`, `redhat`, `mint` or `tux`, which the backend
 derives from the platform and the reported distribution, and `number` is
