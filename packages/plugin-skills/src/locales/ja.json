@@ -42,5 +42,32 @@
     "remove": "ソースを削除できませんでした",
     "switchSkill": "スキルを切り替えられませんでした",
     "switchSkills": "スキルを切り替えられませんでした"
+  },
+  "permissions": {
+    "skills_manage": {
+      "action": "スキルの管理",
+      "title": "スキルの管理",
+      "description": "「スキルの管理」を許可すると、この会話のエージェントはスキルのソースの追加、更新、削除と、スキルのオンとオフの切り替えを行えます。スキルはすべての会話で使われ、オンのスキルは会話が使用するすべてのホストにインストールされます。"
+    }
+  },
+  "problems": {
+    "fetch": {
+      "repository_too_large": "リポジトリが {limit} を超えています。",
+      "no_commit": "リポジトリにコミットがありません。",
+      "too_many_skills": "リポジトリのスキルが {limit} 個を超えています。",
+      "files_too_large": "スキルのファイルが {limit} を超えています。",
+      "no_skill": "リポジトリにスキルがありません。"
+    },
+    "skip": {
+      "too_large": "SKILL.md が {limit} を超えています。",
+      "not_utf8": "SKILL.md が UTF-8 ではありません。",
+      "no_front_matter": "SKILL.md にフロントマターがありません。",
+      "front_matter_invalid": "フロントマターが有効な YAML ではありません。",
+      "no_description": "フロントマターに説明がありません。"
+    }
+  },
+  "refusals": {
+    "invalid_origin": "「所有者/リポジトリ」または Git URL を入力してください。",
+    "source_exists": "{origin} は既に追加されています。"
   }
 }

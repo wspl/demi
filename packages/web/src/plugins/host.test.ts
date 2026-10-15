@@ -189,7 +189,8 @@ test('a call the page cannot send while the backend restarts goes once it is bac
 test("an answer of the backend's own rejects at once, even while the banner shows", async () => {
   channels.last().end(1001, 'backend_closing')
   const fetched = page('skills').plugin.call('fetch_source', { source: 'src_1' }, z.null())
-  await expect(fetched).rejects.toMatchObject({ reason: 'catalog_unavailable', message: 'The source could not be fetched' })
+  // The backend's own code, in the page's words.
+  await expect(fetched).rejects.toMatchObject({ reason: 'catalog_unavailable', message: 'The list of vendors couldn’t be loaded.' })
 })
 
 test("a read of a conversation's plugin state while the backend restarts shows no failure, and reads once it is back", async () => {

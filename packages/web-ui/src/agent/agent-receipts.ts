@@ -1,6 +1,8 @@
 import type { AgentMessage } from '@demicodes/protocol'
 import { inject, provide, type InjectionKey } from 'vue'
 import { homePath } from '../files/paths'
+import { codeText } from '../infra/errors'
+import { useCredentialAction, wordedActions } from '../permissions/types'
 import { around, t } from './locales/text'
 
 /**
@@ -30,16 +32,20 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
     ({ notice, title: senderName(message), inline: false, after: '', tag })
   switch (event.type) {
     // The user's decision on a permission request, which reached the agent as this message.
-    case 'permission':
+    case 'permission': {
+      const action = permissionAction(event)
       return plain(event.outcome === 'allowed'
-        ? t('transcript.receipt.allowed', { action: event.action })
-        : t('transcript.receipt.denied', { action: event.action }))
+        ? t('transcript.receipt.allowed', { action })
+        : t('transcript.receipt.denied', { action }))
+    }
     // The user's move of the conversation, which the user told the agent of.
     case 'moved':
       return plain(t('transcript.receipt.moved', { host: event.host, path: homePath(event.path, event.home) }))
     // Demi's notice that a move the agent asked for failed, and why, as the row's own words.
     case 'move_failed':
-      return plain(t('transcript.receipt.moveFailed', { reason: event.reason }))
+      return plain(t('transcript.receipt.moveFailed', {
+        reason: (event.code ? codeText(event.code) : null) ?? event.reason,
+      }))
     // A message from the main agent reaches one of its children.
     case 'message':
       return message.sender?.number === 0 ? mainAgentMessage() : named(t('transcript.receipt.fromAgent'))
@@ -63,6 +69,19 @@ export function receiptRow(message: AgentMessage): ReceiptRow {
 function mainAgentMessage(): ReceiptRow {
   const [before, after] = around('transcript.receipt.fromMain', 'agent')
   return { notice: before, title: t('transcript.receipt.mainAgent'), inline: true, after, tag: null }
+}
+
+/**
+ * What a permission decision let the conversation do, in the page's words
+ * (`localization.md` § Text from the backend): its categories' actions, or
+ * the use of a saved credential; the English the message recorded for a
+ * decision recorded before ids were, which names neither.
+ */
+function permissionAction(event: Extract<AgentMessage['event'], { type: 'permission' }>): string {
+  if (event.credential) {
+    return useCredentialAction(event.credential)
+  }
+  return (event.categories?.length ? wordedActions(event.categories) : null) ?? event.action
 }
 
 /** The agent a message names: its description, or its number when it has none. */

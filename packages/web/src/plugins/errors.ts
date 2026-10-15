@@ -2,11 +2,16 @@ import { errorMessage } from '@demicodes/web-ui/infra/errors'
 import { PluginCallError } from '@demicodes/web-ui/plugins/page'
 import { ApiError, UnreadableResponse } from '../api/client'
 
-/** A refusal the backend answered, as a page sees it: the plugin's reason, or the backend's code, and the answer's status. */
+/**
+ * A refusal the backend answered, as a page sees it: the plugin's reason
+ * with the plugin's own English, which its page words by the reason
+ * (`localization.md` § Text from the backend), or the backend's code with
+ * the page's words for it, and the answer's status.
+ */
 function refusal(error: ApiError): PluginCallError {
   return new PluginCallError(
     error.reason ?? error.code ?? `status_${error.status}`,
-    errorMessage(error),
+    error.reason ? error.message : errorMessage(error),
     { type: 'status', status: error.statusLine },
     { requestId: error.requestId },
   )

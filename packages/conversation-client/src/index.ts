@@ -1,4 +1,4 @@
-export { ActionOutlivedError, ConversationClient, EditRejectedError, SavedGoneError, SessionError, SteerRejectedError, type HeldEdge } from './client'
+export { ActionOutlivedError, ConversationClient, EditRejectedError, RefusedError, SavedGoneError, SessionError, SteerRejectedError, type HeldEdge } from './client'
 export type { ConversationClientListener, ClientSessionEvent, Failures, ServerFrameOf } from './events'
 export {
   EMPTY_TRANSCRIPT,

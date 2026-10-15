@@ -857,7 +857,10 @@ export function createSettingsState() {
             { name: 'agent-browser', description: 'Browse and act on a page the agent can see.', warnings: [], enabled: false, disableModelInvocation: false },
             { name: 'find-skills', description: 'Search installed skills when the next step is unclear.', warnings: [], enabled: true, disableModelInvocation: true },
           ],
-          skipped: [{ path: 'skills/draft/SKILL.md', reason: 'the front matter has no description' }],
+          skipped: [
+            { path: 'skills/draft/SKILL.md', reason: 'the front matter has no description', problem: { code: 'no_description' } },
+            { path: 'skills/huge/SKILL.md', reason: 'the file is larger than 256 KiB', problem: { code: 'too_large', limitBytes: 262_144 } },
+          ],
         },
         {
           id: 'anthropic',
@@ -892,7 +895,7 @@ export function createSettingsState() {
           origin: 'https://github.com/example/broken-skills',
           fetching: false,
           updateAvailable: false,
-          failure: { at: ahead(-60 * 60_000), message: 'Repository not found' },
+          failure: { at: ahead(-60 * 60_000), message: 'The repository has more than 500 skills', problem: { code: 'too_many_skills', limit: 500 } },
           skills: [
           ],
           skipped: [],

@@ -1,7 +1,7 @@
 {
   "notifications": {
     "turnStopped": "輪次因錯誤而停止。",
-    "allowTo": "允許此對話 {action} 嗎？",
+    "allowTo": "允許此對話{action}嗎？",
     "saveCredential": "儲存憑證「{name}」？",
     "allowUse": "允許此對話使用「{name}」嗎？"
   },

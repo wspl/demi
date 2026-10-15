@@ -200,13 +200,13 @@ test('an unchanged answer is read to its end, so the browser counts it answered,
 // (`localization.md` § Text from the backend). No I/O.
 test('a refusal is worded from its code and params, and from its message for a code the page does not know', () => {
   const full = JSON.stringify({ code: 'saved_full', message: 'The conversation keeps 200 messages saved for later', params: { limit: 200 }, requestId: 'req_full000000000001' })
-  const unknown = JSON.stringify({ code: 'invalid_query', message: 'Unknown query parameter refresh', requestId: 'req_query00000000001' })
+  const unknown = JSON.stringify({ code: 'from_a_newer_backend', message: 'Unknown query parameter refresh', requestId: 'req_query00000000001' })
   try {
     createPageI18n('en')
     expect(shownError(apiError(409, full)).message).toBe('A conversation keeps up to 200 messages saved for later.')
     createPageI18n('zh-Hans')
     expect(shownError(apiError(409, full)).message).toBe('一个对话最多保留 200 条稍后发送的消息。')
-    expect(shownError(apiError(400, unknown))).toEqual({ message: 'Unknown query parameter refresh', requestId: 'req_query00000000001' })
+    expect({ ...shownError(apiError(400, unknown)) }).toEqual({ message: 'Unknown query parameter refresh', requestId: 'req_query00000000001' })
   } finally {
     createPageI18n('en')
   }

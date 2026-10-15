@@ -6,7 +6,7 @@
     "always": "一律"
   },
   "request": {
-    "allowTitle": "允許此對話 {action}？",
+    "allowTitle": "允許此對話{action}？",
     "agentRan": "代理程式執行了",
     "subagentRan": "子代理程式 {number}（「{description}」）執行了",
     "deny": "拒絕",
@@ -23,5 +23,33 @@
     "removed": "已移除",
     "youRemoved": "你已移除此憑證。",
     "progress": "{position} / {count}"
+  },
+  "useCredential": "使用憑證「{name}」",
+  "categories": {
+    "host_devices": {
+      "action": "管理裝置",
+      "title": "管理裝置",
+      "description": "「管理裝置」可讓此對話的代理程式列出您的裝置、將裝置附加至此對話或從中中斷連結，以及將可執行命令的電腦與您的帳戶配對。代理程式會以您的身分在已附加的裝置上執行命令。"
+    },
+    "credentials_manage": {
+      "action": "管理憑證",
+      "title": "管理憑證",
+      "description": "「管理憑證」可讓此對話的代理程式移除您已儲存的憑證。您的憑證可用於您允許使用它們的每個對話。"
+    },
+    "providers_manage": {
+      "action": "管理提供者",
+      "title": "管理提供者",
+      "description": "新增、變更和移除您的提供者及其模型，您的每個對話都可以使用它們。"
+    },
+    "conversation_organize": {
+      "action": "整理對話",
+      "title": "整理對話",
+      "description": "「整理對話」可讓此對話的代理程式重新命名此對話、列出您的專案、將目錄設為專案，以及將此對話移入或移出專案。專案會顯示在您每部裝置的側邊欄中。"
+    },
+    "agent_profiles": {
+      "action": "變更子代理程式設定檔",
+      "title": "變更子代理程式設定檔",
+      "description": "建立、編輯和刪除您的每個對話都可以使用的子代理程式設定檔。"
+    }
   }
 }

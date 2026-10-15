@@ -1,17 +1,16 @@
 <script setup lang="ts">
 import Toast from '@demicodes/web-ui/ui/Toast.vue'
-import { errorFacts } from '@demicodes/web-ui/agent/error-detail'
+import { failureHeadline } from '@demicodes/web-ui/agent/error-detail'
 import ErrorNotice from '@demicodes/web-ui/ui/ErrorNotice.vue'
 import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
-import { CONVERSATION_UNREADABLE } from '@demicodes/web-ui/agent/session-status'
 import SessionNoticeBar from '@demicodes/web-ui/agent/SessionNoticeBar.vue'
 import { t as agentText } from '@demicodes/web-ui/agent/locales/text'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 import { productWould } from '../product-would'
-import { requestFailure } from '../fixtures/request-failures'
+import { refusalFailure } from '../fixtures/request-failures'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { ref } from 'vue'
@@ -21,8 +20,17 @@ import { ref } from 'vue'
  * each one sits; this page is the reference for what each one looks like.
  */
 
-/** A refused request, as the product shows one: its words and the ID the backend answered with. */
-const refused = requestFailure('Another change of this provider is still running.')
+/** A refused request, as the product shows one: the catalogue's words for its code and the ID the backend answered with. */
+const refused = refusalFailure('provider_busy')
+/** A refusal that carries a value its words need: an upload over the size an attachment may have. */
+const tooLarge = refusalFailure('too_large', { limitBytes: 26_214_400 })
+/** The transcript read the server could not do, in the page's words. */
+const unreadable = refusalFailure('conversation_unreadable')
+/** The moment the specimens' failures are read at, and the one a usage limit lifts at. */
+const now = new Date('2026-09-20T12:00:00.000Z')
+const lifts = '2026-09-22T07:37:39.000Z'
+const creditsResponse = 'OpenAI API request failed with HTTP 401: {"type":"error","error":{"type":"CreditsError","message":"Insufficient balance. Manage your billing here: https://vendor.example/billing"}}'
+const rateResponse = 'Anthropic API request failed with HTTP 429: This request would exceed the rate limit of 50 requests per minute for your organization. Retry after 12 seconds.'
 /** Whether the failure toast specimen is still shown; Close hides it, Show Again brings it back. */
 const toastShown = ref(true)
 
@@ -66,34 +74,33 @@ const usageLimitPayload = JSON.stringify({
   <div class="space-y-8">
     <GallerySection
       title="ErrorNotice · a Failure in the Conversation"
-      note="One tinted bar, full width where it sits. The first line is what the source said, never Demi’s reading of it: a plain sentence is the whole record; a message that wraps a vendor’s JSON body leads with the sentence inside it and keeps the full text below; only a message with no sentence to lead with gets the neutral line. Then, when the vendor names it, the moment it works again; the status, Demi’s own code and the request ids stay in the copied report. The provider response folds open under a chevron, whole, exactly as it arrived. Copy takes the whole report. A turn’s failure carries no button: Resume sits in the dock above the composer. With one line the controls sit centred; with facts they hold the first line."
+      note="One tinted bar, full width where it sits. The headline is the page’s, worded from the failure’s code in the reader’s language, and, when the vendor names it, the moment it works again. What the vendor said stays as it came, untranslated, under Provider Response, which folds open under a chevron. The status, the code and the request ids stay in the copied report. Copy takes the whole report. A turn’s failure carries no button: Resume sits in the dock above the composer."
     >
-      <GallerySpecimen wide variant="A plain sentence is the whole record · when it lifts leads the facts · the vendor payload behind a disclosure">
+      <GallerySpecimen wide variant="A usage limit · the headline from the code with when it lifts · the vendor payload behind a disclosure">
         <ErrorNotice
-          label="The usage limit has been reached"
-          :facts="errorFacts('2026-09-22T07:37:39.000Z', new Date('2026-09-20T12:00:00.000Z'))"
+          :label="failureHeadline('usage_limit', lifts, now)"
           :raw="usageLimitPayload"
           copy-text="The usage limit has been reached"
         />
       </GallerySpecimen>
-      <GallerySpecimen wide variant="A wrapped vendor body · its sentence first, the full text below">
+      <GallerySpecimen wide variant="A rate limit · the headline from the code, the vendor’s sentence behind the disclosure">
         <ErrorNotice
-          label="Insufficient balance. Manage your billing here: https://vendor.example/billing"
-          detail='OpenAI API request failed with HTTP 401: {"type":"error","error":{"type":"CreditsError","message":"Insufficient balance. Manage your billing here: https://vendor.example/billing"}}'
-          copy-text="OpenAI API request failed with HTTP 401"
-        />
-      </GallerySpecimen>
-      <GallerySpecimen wide variant="No sentence to lead with · the neutral line over the text">
-        <ErrorNotice
-          label="The turn failed"
-          detail="Anthropic API request failed with HTTP 429: This request would exceed the rate limit of 50 requests per minute for your organization. Retry after 12 seconds. Your current usage is 50 requests in the last 60 seconds across all models."
+          :label="failureHeadline('rate_limit', null, now)"
+          :raw="rateResponse"
           copy-text="Anthropic API request failed with HTTP 429"
         />
       </GallerySpecimen>
-      <GallerySpecimen wide variant="A refused frame · the socket's Request ID under the sentence">
+      <GallerySpecimen wide variant="A vendor’s own code · the neutral line, the vendor’s text behind the disclosure">
         <ErrorNotice
-          label="Use the transcript for an archived conversation’s history"
-          :request-id="requestFailure('Use the transcript for an archived conversation’s history').requestId"
+          :label="failureHeadline('CreditsError', null, now)"
+          :raw="creditsResponse"
+          copy-text="OpenAI API request failed with HTTP 401"
+        />
+      </GallerySpecimen>
+      <GallerySpecimen wide variant="A refused frame · the catalogue’s words, the socket’s Request ID under them">
+        <ErrorNotice
+          :label="refusalFailure('conversation_archived').message"
+          :request-id="refusalFailure('conversation_archived').requestId"
         />
       </GallerySpecimen>
     </GallerySection>
@@ -109,8 +116,8 @@ const usageLimitPayload = JSON.stringify({
               status="failed"
               label="Couldn’t load this conversation."
               loading-label="Loading conversation…"
-              :detail="CONVERSATION_UNREADABLE"
-              :request-id="requestFailure(CONVERSATION_UNREADABLE).requestId"
+              :detail="unreadable.message"
+              :request-id="unreadable.requestId"
               :on-retry="retryRestore"
             />
           </div>
@@ -167,10 +174,10 @@ const usageLimitPayload = JSON.stringify({
       <GallerySpecimen wide variant="Danger · the request's ID under the message, which Copy takes">
         <Toast
           v-if="toastShown"
-          title="Could Not Save the Provider"
-          message="HTTP 503: the endpoint is unavailable."
+          :title="agentText('composer.couldntAttach')"
+          :message="tooLarge.message"
           tone="danger"
-          :request-id="requestFailure('HTTP 503: the endpoint is unavailable.').requestId"
+          :request-id="tooLarge.requestId"
           @dismiss="toastShown = false"
         />
         <Button v-else size="sm" @click="toastShown = true">Show Again</Button>

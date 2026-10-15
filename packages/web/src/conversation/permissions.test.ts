@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { until } from '@vueuse/core'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { shallowRef } from 'vue'
+import { formatBytes } from '@demicodes/web-ui/files/format'
 import { conversationSummary, productState } from '../__tests__/product-state'
 import { playChannels } from '../__tests__/sync-channel'
 import { useProduct } from '../state/product'
@@ -192,11 +193,11 @@ test('the values of a credential go with the answer, the card stays until they a
   const state = permissions.stateFor(CONVERSATION)
   await until(() => state.requests.length).toBe(3)
 
-  decide = () => Response.json({ requestId: 'req_test000000000001', code: 'invalid_answer', message: 'The value of “API key” can be at most 64 KiB.' }, { status: 400 })
+  decide = () => Response.json({ requestId: 'req_test000000000001', code: 'invalid_answer', message: 'The value of “API key” can be at most 64 KiB.', params: { field: 'API key', limitBytes: 65_536 } }, { status: 400 })
   await permissions.decide(CONVERSATION, 'cr-1', 'allow', { values: { key: 'AIza' }, keep: '1d' })
   expect(state.requests.map((request) => request.id)).toEqual(['cr-1', 'al-1', 'al-2'])
   // The user corrects the value in the card: no request to trace.
-  expect(state.error).toEqual({ message: 'The value of “API key” can be at most 64 KiB.', requestId: null })
+  expect({ ...state.error }).toEqual({ message: `The value of “API key” can be at most ${formatBytes(65_536)}.`, requestId: null })
   expect(state.deciding).toBe(false)
 
   decide = () => new Response(null, { status: 204 })
