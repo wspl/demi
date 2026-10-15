@@ -3,6 +3,7 @@ export type { ConversationClientListener, ClientSessionEvent, Failures, ServerFr
 export {
   EMPTY_TRANSCRIPT,
   addPage,
+  addWindow,
   applyTranscriptPatches,
   heldBlocks,
   heldEdge,
@@ -11,6 +12,7 @@ export {
   windowEnd,
   windowOf,
   withWholeBlock,
+  type Held,
   type HeldBlock,
   type HeldTranscript,
   type TextArrival,

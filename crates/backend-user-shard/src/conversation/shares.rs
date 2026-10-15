@@ -11,7 +11,7 @@ use bytes::Bytes;
 use demi_backend_blobs::ObjectError;
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_attachments::{AttachmentNumber, AttachmentRow};
-use demi_backend_database::shares::{self, Added, ShareRecord, SharedAgent};
+use demi_backend_database::shares::{self, Added, ShareRecord};
 use demi_backend_database::tree::{self, BlockRead, PageQuery, PageRead, Transcript};
 use demi_backend_page_sync::Part;
 use demi_shared_types::{BlobRef, BlockId};
@@ -203,9 +203,8 @@ impl Shard {
         }
     }
 
-    /// A page of what the share's list holds of the transcript of the agent
-    /// `query` names, the root's without one; none when the conversation has no
-    /// database.
+    /// A page of what the share's list holds; none when the conversation
+    /// has no database.
     pub async fn share_page(
         &self,
         share: &ShareRecord,
@@ -213,7 +212,6 @@ impl Shard {
     ) -> Result<Option<PageRead>, StorageError> {
         let transcript = Transcript::Shared {
             token: share.token.clone(),
-            agent: query.node.unwrap_or(0),
         };
         self.services()
             .conversations
@@ -230,15 +228,9 @@ impl Shard {
     }
 
     /// A block the share's list holds, whole.
-    pub async fn share_block(
-        &self,
-        share: &ShareRecord,
-        agent: u64,
-        block: BlockId,
-    ) -> Result<Option<BlockRead>, StorageError> {
+    pub async fn share_block(&self, share: &ShareRecord, block: BlockId) -> Result<Option<BlockRead>, StorageError> {
         let transcript = Transcript::Shared {
             token: share.token.clone(),
-            agent,
         };
         self.services()
             .conversations
@@ -246,17 +238,6 @@ impl Shard {
                 tree::read_block(connection, &transcript, &block)
             })
             .await
-    }
-
-    /// The subagents the share holds.
-    pub async fn shared_agents(&self, share: &ShareRecord) -> Result<Vec<SharedAgent>, StorageError> {
-        let token = share.token.clone();
-        Ok(self
-            .services()
-            .conversations
-            .read(&share.conversation, move |connection| shares::shared_agents(connection, &token))
-            .await?
-            .unwrap_or_default())
     }
 
     /// The attachment `number` when the share's text names it.

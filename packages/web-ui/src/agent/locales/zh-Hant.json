@@ -103,6 +103,7 @@
       "document": "文件"
     },
     "shellFallback": "執行 shell 指令",
+    "stepsNotShared": "{count} 個步驟未分享",
     "turnFailed": "輪次失敗。",
     "failureResets": "{failure}{reset}。",
     "work": {
@@ -177,7 +178,7 @@
   "share": {
     "titleConversation": "分享對話",
     "titleAnswer": "分享回覆",
-    "whoConversation": "任何擁有連結的人都可以閱讀此對話，包括指令及其輸出。之後的訊息不包含在內。",
+    "whoConversation": "任何擁有連結的人都可以閱讀此對話中的訊息，但看不到其間的工作過程。之後的訊息不包含在內。",
     "whoAnswer": "任何擁有連結的人都可以閱讀此回覆及其所回應的訊息。",
     "field": "分享連結",
     "copyLink": "複製連結",

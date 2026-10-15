@@ -103,6 +103,7 @@
       "document": "文档"
     },
     "shellFallback": "运行 shell 命令",
+    "stepsNotShared": "{count} 个步骤未分享",
     "turnFailed": "轮次失败。",
     "failureResets": "{failure}{reset}。",
     "work": {
@@ -177,7 +178,7 @@
   "share": {
     "titleConversation": "分享对话",
     "titleAnswer": "分享回复",
-    "whoConversation": "任何拥有链接的人都可以阅读此对话，包括命令及其输出。之后的消息不包括在内。",
+    "whoConversation": "任何拥有链接的人都可以阅读此对话中的消息，但看不到其间的工作过程。之后的消息不包括在内。",
     "whoAnswer": "任何拥有链接的人都可以阅读此回复及其所回应的消息。",
     "field": "分享链接",
     "copyLink": "复制链接",

@@ -49,6 +49,7 @@ export interface ModelInfo {
 export {
   EMPTY_TRANSCRIPT,
   addPage,
+  addWindow,
   applyTranscriptPatches,
   heldBlocks,
   latestWindow,
@@ -57,6 +58,7 @@ export {
   windowOf,
   withWholeBlock,
   type ClientSessionEvent,
+  type Held,
   type HeldBlock,
   type HeldTranscript,
 } from '@demicodes/conversation-client'

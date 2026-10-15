@@ -18,6 +18,7 @@ import AssistantTextBlock from './AssistantTextBlock.vue'
 import ToolCallBlock from './ToolCallBlock.vue'
 import PendingCallBlock from './PendingCallBlock.vue'
 import WorkGroupBlock from './WorkGroupBlock.vue'
+import StepsNotSharedBlock from './StepsNotSharedBlock.vue'
 import ErrorBlock from './ErrorBlock.vue'
 import AccountSwitchBlock from './AccountSwitchBlock.vue'
 import StoppedBlock from './StoppedBlock.vue'
@@ -159,6 +160,11 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
     />
     <QueueDivider
       v-else-if="block.type === 'queue_divider'"
+      v-bind="attrs"
+      :count="block.count"
+    />
+    <StepsNotSharedBlock
+      v-else-if="block.type === 'steps_not_shared'"
       v-bind="attrs"
       :count="block.count"
     />

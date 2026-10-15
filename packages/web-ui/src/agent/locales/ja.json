@@ -103,6 +103,7 @@
       "document": "ドキュメント"
     },
     "shellFallback": "シェルコマンドを実行",
+    "stepsNotShared": "{count} 件のステップは共有されていません",
     "turnFailed": "ターンが失敗しました。",
     "failureResets": "{failure}{reset}されます。",
     "work": {
@@ -177,7 +178,7 @@
   "share": {
     "titleConversation": "チャットを共有",
     "titleAnswer": "応答を共有",
-    "whoConversation": "リンクを知っている全員が、このチャットを読むことができます。コマンドとその出力も含まれます。以降のメッセージは含まれません。",
+    "whoConversation": "リンクを知っている全員が、このチャットのメッセージを読むことができます。その間の作業は含まれません。以降のメッセージは含まれません。",
     "whoAnswer": "リンクを知っている全員が、この応答と、それに対するメッセージを読むことができます。",
     "field": "共有リンク",
     "copyLink": "リンクをコピー",

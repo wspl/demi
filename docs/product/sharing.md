@@ -16,16 +16,27 @@ again.
 
 | | An answer | The conversation |
 | --- | --- | --- |
-| Holds | The user's message and the text that ends the agent's reply to it, the text that carries Copy and Fork ([Following the agent's work](product.md#following-the-agents-work)), with the attachments and media they show | Every block the transcript shows, as the conversation shows it: messages, thinking, tool calls with their scripts and outputs, permission receipts, compaction dividers, and each subagent's transcript, opened from its link |
+| Holds | The user's message and the agent's texts of its reply, up to the text that ends it, the one that carries Copy and Fork ([Following the agent's work](product.md#following-the-agents-work)), with the attachments and media they show; the work between them as one line ([Steps not shared](#steps-not-shared)) | The user's messages and the agent's texts, with the attachments and media they show, in order; the work between them as one line ([Steps not shared](#steps-not-shared)) |
 | Title | The conversation's title when shared | The same |
 
 A share never holds what the user's own conversation does not show either,
 such as the context blocks, the instructions' text or the system prompt, and
 nothing of a Host: the working tree, the files, the browser tabs or a
 command still running. A link in the shared text that opens something of a
-Host, a file path or a `commit:` link, is plain text there; an `agent:` link
-opens that subagent's transcript in a conversation's share and is plain text
-in an answer's. The page names no sharer.
+Host or of the conversation's work, a file path, a `commit:` link or an
+`agent:` link, is plain text there. The page names no sharer.
+
+### Steps not shared
+
+A share holds what was said, not the work: as in ChatGPT's and Claude's
+shared links, nothing the agent did between its texts is shown, so no
+command, its output, a file's contents or a subagent's transcript becomes
+public by being shared. A step is a thinking block or a call, a command or
+a subagent started; each run of steps between two shown blocks, or after
+the last one while the agent was still working, reads as one muted line in
+its place, *12 steps not shared*, so a reader sees that work happened
+there. Other blocks, notices and receipts, show nothing and count nothing,
+and a run without a step shows no line. The line does not open.
 
 ## Making, updating and removing a share
 
@@ -39,8 +50,8 @@ ChatGPT's share dialog fills in its link. A failure says so in the dialog,
 with Try Again. Update Link shows the same progress in place of the link.
 A share that exists already opens with its link. Making a link copies
 nothing but the few blocks still changing ([Storage and routes](#storage-and-routes)),
-so even a long conversation's link takes a moment. The dialog says who can read it, *Anyone with the link can read this
-conversation, including commands and their output. Later messages are not
+so even a long conversation's link takes a moment. The dialog says who can read it, *Anyone with the link can read the messages
+of this conversation, not the work between them. Later messages are not
 included.*, or for an answer *Anyone with the link can read this answer and
 the message it replies to.*, and holds:
 
@@ -68,8 +79,7 @@ list of a user's shares yet: a share is found from what it shares.
   list and nothing else: a block, a page, an agent, a blob or an
   attachment is served only when the list holds it, so what is not on the
   list, a hidden block, a block written after the link was made, another
-  version of an edited message, a subagent started later or a command's
-  later output, is out of reach by construction, not by a rule each route
+  version of an edited message, a subagent, a command or its output, is out of reach by construction, not by a rule each route
   repeats. Anything not on the list, asked by index, block id, page
   anchor, agent number or hash, answers the same 404 as a token that names
   no share, so a reader cannot even tell that it exists. Tests ask the
@@ -99,8 +109,10 @@ What it shows stays in the conversation's database, where the transcript
 already holds it, so a share copies almost nothing:
 
 - **A list of what it holds.** A share is a list, made when the link is
-  made: each block it shows, in the order it shows them, numbered from 0,
-  by the transcript row it reads, its agent's and its own position, and
+  made: each block it shows, the root's `user` and `steer` blocks and the
+  agent's texts, in order, numbered from 0, by the transcript row it reads,
+  and between two of them, where the conversation shows work, an entry
+  holding the number of steps not shared; and
   each attachment those blocks show, found through the conversation's index
   of the attachments each block names; a blob is the share's when a block on
   its list names it, found through the conversation's index of the blobs
@@ -110,11 +122,9 @@ already holds it, so a share copies almost nothing:
   2 MB, made from the transcript's index without reading a block's text.
   A block it lists does not change afterwards: the transcript only
   appends, and a compaction keeps every block ([Compaction](../agent/compaction.md)).
-- **What still changes is copied.** A block that is still changing when the
-  link is made, a call not yet returned or a command whose output still
-  grows, is copied into the share as it stands, with the output its view
-  holds then, and its entry in the list points at the copy, so a command's
-  later output never becomes public. That is a handful of blocks at most.
+- **What still changes is copied.** A text still being written when the
+  link is made is copied into the share as it stands, and its entry points
+  at the copy, so what the agent writes later never becomes public.
 - **Rows it lists do not change.** A settled row is never rewritten or
   removed: an edit or Regenerate adds a branch beside it
   ([Versions](../agent/message-editing.md#versions)). The exceptions are the
@@ -128,12 +138,9 @@ already holds it, so a share copies almost nothing:
 The list is the whole of what a share can show: every share route reads
 through it and nothing else ([Safety](#safety)).
 
-A conversation's share shows every block except `context` blocks, the hidden inputs that
-carry the execution context, instructions and skills, and `response` blocks,
-the usage of a request; the shared page hides the rest as the conversation
-does, with the same rule, so the backend keeps no second list of what a page
-shows. The page's compaction dividers read their summary sizes from the
-blocks the share holds. Deleting the
+Shares made before this rule, which held every block and its subagents,
+are removed by the migration that brings it, and their links answer *This
+shared link does not exist*. Deleting the
 conversation removes both in its first step
 ([Deleting a conversation](../backend/storage.md#deleting-a-conversation)), and
 the blobs a share shows stay referenced while it does

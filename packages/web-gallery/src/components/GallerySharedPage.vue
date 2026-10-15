@@ -1,42 +1,47 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
 import SharedConversation from '@demicodes/web-ui/share/SharedConversation.vue'
 import SharedLinkMissing from '@demicodes/web-ui/share/SharedLinkMissing.vue'
-import { wholeHistory } from '@demicodes/web-ui/agent/history'
+import type { SharedItem } from '@demicodes/web-ui/share/shared-items'
+import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 import { galleryAttachment } from '../fixtures/attachments'
-import { SHARED_TITLE, sharedAgentBlocks, sharedAgents, sharedRootBlocks } from '../fixtures/shared'
+import { SHARED_TITLE, sharedAnswerItems, sharedItems } from '../fixtures/shared'
 
 /**
- * A share's page (`sharing.md`), over a snapshot the gallery holds whole: an
- * agent's link shows its transcript in place and Back returns, as the
- * page's address and the browser's Back do in the product.
+ * A share's page (`sharing.md`), over a share the gallery holds whole: what
+ * was said, and each run of the agent's work between as a line that counts
+ * its steps.
  */
-const agent = ref<number | null>(null)
-const root = wholeHistory(sharedRootBlocks())
-const child = wholeHistory(sharedAgentBlocks())
-const history = computed(() => (agent.value === null ? root : child))
-// The snapshot is held whole, so no row reads a block.
-const readBlock = async () => {}
+function whole(items: SharedItem[]): HeldTranscript<SharedItem> {
+  return { length: items.length, windows: [{ start: 0, blocks: items }] }
+}
+const conversation = whole(sharedItems())
+const answer = whole(sharedAnswerItems())
 </script>
 
 <template>
   <GallerySection
     title="Shared Page"
-    note="What anyone with a share's link reads, without an account: the snapshot's transcript as the conversation shows it, under its title, with a small Shared from Demi at the foot and nothing that acts. An agent's link opens that subagent's transcript in place, under a header with its name and profile, and Back returns to the conversation. A file or a commit of the Host is its text, since the page reaches no Host; an attachment shows. The page follows the reader's system for light or dark and for its language."
+    note="What anyone with a share's link reads, without an account: the messages and the agent's texts under the conversation's title, with a small Shared from Demi at the foot and nothing that acts. The work between them, thinking, commands and subagents, is one muted line that counts its steps and does not open. A file, a commit or an agent is its text, since the page reaches neither the Host nor the work; an attachment shows. The page follows the reader's system for light or dark and for its language."
   >
-    <GallerySpecimen variant="a conversation with a subagent" wide>
-      <div class="gallery-frame h-[36rem]">
+    <GallerySpecimen variant="a conversation" wide>
+      <div class="gallery-frame h-[46rem]">
         <SharedConversation
           :title="SHARED_TITLE"
-          :agents="sharedAgents"
-          :agent="agent"
-          :history="history"
+          :history="conversation"
           load="ready"
-          :read-block="readBlock"
           :attachment="galleryAttachment"
-          @open-agent="(number) => (agent = number)"
+        />
+      </div>
+    </GallerySpecimen>
+    <GallerySpecimen variant="an answer" wide>
+      <div class="gallery-frame h-[34rem]">
+        <SharedConversation
+          :title="SHARED_TITLE"
+          :history="answer"
+          load="ready"
+          :attachment="galleryAttachment"
         />
       </div>
     </GallerySpecimen>

@@ -97,3 +97,21 @@ export async function waitFor(
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 }
+
+/**
+ * Runs work by key one run at a time: a call for a key whose run is under
+ * way shares that run's promise instead of starting another, and the key is
+ * free again once the run settles, whether it succeeded or failed.
+ */
+export function oneRunPerKey<K, T>(): (key: K, work: () => Promise<T>) => Promise<T> {
+  const running = new Map<K, Promise<T>>()
+  return (key, work) => {
+    const pending = running.get(key)
+    if (pending) {
+      return pending
+    }
+    const run = work().finally(() => running.delete(key))
+    running.set(key, run)
+    return run
+  }
+}
