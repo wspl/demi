@@ -75,6 +75,7 @@ fn invocation(path: &[&str], args: Value) -> RpcInvocation {
         caller: None,
         stdin: false,
         pipes: None,
+        brought: None,
     }
 }
 

@@ -1,7 +1,6 @@
 {
   "notifications": {
     "turnStopped": "轮次因错误而停止。",
-    "allowTo": "允许此对话{action}吗？",
     "saveCredential": "保存凭据“{name}”？",
     "allowUse": "允许此对话使用“{name}”吗？"
   },

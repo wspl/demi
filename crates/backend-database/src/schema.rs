@@ -77,7 +77,9 @@ impl ReadBlob for NoBlobs {
 /// subagent profile had a Context of its own, and the one with a profile's
 /// Context before an API-key entry's sealed configuration had a format,
 /// and the one with that format before account rotation, and the one with
-/// account rotation before a placeholder title held no words.
+/// account rotation before a placeholder title held no words, the one with
+/// placeholder titles before interrupted turns were kept, and the one with
+/// interrupted turns before a conversation kept the hosts it may reach.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -189,8 +191,48 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.placeholder-titles.sql"),
             migration: Migration::Sql(CONTROL_FROM_PLACEHOLDER_TITLES),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.interrupted-turns.sql"),
+            migration: Migration::Sql(CONTROL_FROM_INTERRUPTED_TURNS),
+        },
     ],
 };
+
+/// From the control schema that keeps the turns a shutdown interrupted to
+/// the one in which a conversation keeps the hosts it may reach and a request
+/// may ask for one (`sessions-and-targets.md` § Hosts a conversation may
+/// reach, `permissions.md` § Hosts), which replace the Manage Devices
+/// category. Every attached host seeds its conversation's list: a host
+/// attached by name took Manage Devices to attach, and one attached with a
+/// directory is a primary target the conversation left, which the list
+/// holds anyway. The grants of Manage Devices go, and so do the undecided
+/// requests that asked for it, which no command asks for any more; a
+/// decided one stays until its message is delivered.
+const CONTROL_FROM_INTERRUPTED_TURNS: &str = "
+ALTER TABLE permission_requests ADD COLUMN host_device_id TEXT
+    CHECK (host_device_id IS NULL OR kind = 'permission');
+ALTER TABLE permission_requests ADD COLUMN pairing_code TEXT
+    CHECK (pairing_code IS NULL OR (kind = 'permission' AND host_device_id IS NULL));
+CREATE TABLE reachable_hosts (
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  device_id       TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+  added_at        INTEGER NOT NULL,
+  PRIMARY KEY (conversation_id, device_id)
+) STRICT;
+CREATE INDEX reachable_hosts_of_device ON reachable_hosts (device_id);
+CREATE TABLE pairing_passes (
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  code            TEXT NOT NULL,
+  allowed_at      INTEGER NOT NULL,
+  PRIMARY KEY (conversation_id, code)
+) STRICT;
+INSERT INTO reachable_hosts (conversation_id, device_id, added_at)
+  SELECT conversation_id, device_id, attached_at FROM conversation_hosts;
+DELETE FROM permission_grants WHERE category = 'host.devices';
+DELETE FROM permission_requests
+  WHERE kind = 'permission' AND decision IS NULL
+    AND EXISTS (SELECT 1 FROM json_each(categories) WHERE value = 'host.devices');
+";
 
 /// From the control schema where a placeholder title holds no words to the
 /// one that keeps the root turns a graceful shutdown interrupted
@@ -2219,6 +2261,11 @@ CREATE TABLE permission_requests (
   decision          TEXT CHECK (decision IN ('allowed', 'denied')),
   decided_at        INTEGER,
   read              INTEGER NOT NULL DEFAULT 0 CHECK (read IN (0, 1)),
+  -- The host a permission request asks to reach (permissions.md § Hosts):
+  -- a device, or the pairing code of a computer `demi host pair` pairs; none
+  -- for a request of categories alone, whose categories are then one or more.
+  host_device_id    TEXT CHECK (host_device_id IS NULL OR kind = 'permission'),
+  pairing_code      TEXT CHECK (pairing_code IS NULL OR (kind = 'permission' AND host_device_id IS NULL)),
   CHECK ((kind = 'permission') = (categories IS NOT NULL)),
   CHECK ((kind = 'permission') = (credential_name IS NULL)),
   CHECK ((kind = 'credential') = (ask IS NOT NULL)),
@@ -2234,6 +2281,27 @@ CREATE TABLE permission_grants (
   category        TEXT NOT NULL,
   granted_at      INTEGER NOT NULL,
   PRIMARY KEY (conversation_id, category)
+) STRICT;
+
+-- The hosts a conversation may reach besides its primary one
+-- (sessions-and-targets.md § Hosts a conversation may reach): each primary
+-- target it left, each host attached to it, and each host the user allowed
+-- when an agent asked; kept for the conversation's life, as a grant is.
+CREATE TABLE reachable_hosts (
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  device_id       TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
+  added_at        INTEGER NOT NULL,
+  PRIMARY KEY (conversation_id, device_id)
+) STRICT;
+CREATE INDEX reachable_hosts_of_device ON reachable_hosts (device_id);
+
+-- The pairing codes the user let a conversation pair (permissions.md
+-- § Hosts): its next `demi host pair` of the code is dispatched, once.
+CREATE TABLE pairing_passes (
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  code            TEXT NOT NULL,
+  allowed_at      INTEGER NOT NULL,
+  PRIMARY KEY (conversation_id, code)
 ) STRICT;
 
 CREATE TABLE credential_allowances (
@@ -2959,6 +3027,47 @@ mod tests {
             .unwrap();
         let migrated: ForkMetadata = json("conversation_fork_operations", "metadata", &text).unwrap();
         assert_eq!(migrated, metadata);
+    }
+
+    /// A conversation's attached hosts seed the hosts it may reach, which
+    /// replace Manage Devices: its grants go, and so does an undecided
+    /// request for it, while a decided one waits for its message.
+    /// Planted defect this catches: a migration that seeded nothing, after
+    /// which a conversation could no longer attach again a device it had
+    /// attached, or move back to the host it had left, without asking.
+    #[test]
+    fn attached_hosts_seed_the_hosts_a_conversation_may_reach_and_manage_devices_goes() {
+        let shipped = include_str!("schema/control-0.1.22-dev.interrupted-turns.sql");
+        let (_directory, path, mut connection) = database(shipped);
+        connection.execute_batch("PRAGMA foreign_keys = OFF;").unwrap();
+        connection
+            .execute_batch(
+                "INSERT INTO conversation_hosts (conversation_id, device_id, cwd, attached_at)
+                   VALUES ('c1', 'd1', NULL, 5), ('c1', 'd2', '/work', 6), ('c2', 'd1', NULL, 7);
+                 INSERT INTO permission_grants (conversation_id, category, granted_at)
+                   VALUES ('c1', 'host.devices', 1), ('c1', 'conversation.organize', 1);
+                 INSERT INTO permission_requests (id, conversation_id, kind, categories, command, node_id, created_at, decision, decided_at)
+                   VALUES ('r1', 'c2', 'permission', '[\"conversation.organize\",\"host.devices\"]', 'demi conversation move a', 'c2', 1, NULL, NULL),
+                          ('r2', 'c2', 'permission', '[\"host.devices\"]', 'demi host attach b', 'c2', 1, 'allowed', 2),
+                          ('r3', 'c2', 'permission', '[\"skills.manage\"]', 'demi skills add c', 'c2', 1, NULL, NULL);",
+            )
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let rows = |sql: &str| -> Vec<String> {
+            connection
+                .prepare(sql)
+                .unwrap()
+                .query_map([], |row| row.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap()
+        };
+        assert_eq!(
+            rows("SELECT conversation_id || ' ' || device_id || ' ' || added_at FROM reachable_hosts ORDER BY 1"),
+            ["c1 d1 5", "c1 d2 6", "c2 d1 7"]
+        );
+        assert_eq!(rows("SELECT category FROM permission_grants"), ["conversation.organize"]);
+        assert_eq!(rows("SELECT id FROM permission_requests ORDER BY id"), ["r2", "r3"]);
     }
 
     /// A switch announced before the upgrade is not announced again: a node

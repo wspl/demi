@@ -35,7 +35,7 @@ pub mod testing;
 
 pub use builders::{Call, GroupBuilder, LeafBuilder, TypedRpc};
 pub use commands::{Checked, CommandSet, DEMI_ROOT, Declared, RegisterError};
-pub use demi_command_declarations::{CapabilityIndex, IndexGroup};
+pub use demi_command_declarations::{BroughtKind, CapabilityIndex, IndexGroup};
 pub use environment::{
     BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, Newest, Numbers, PageFeed,
@@ -56,6 +56,6 @@ pub use output::{
 pub use record::{CommandRecord, Ending, PageState, PageView, TAIL_CHARS};
 pub use reserved::{RESERVED_NAMES, is_reserved};
 pub use rpc::{
-    PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, RpcError, RpcHandler,
+    BroughtHost, PortError, PortRequest, PortResponse, PortTransport, RelayedPipes, RpcError, RpcHandler,
     RpcInvocation, RpcPort,
 };

@@ -6,7 +6,7 @@
 use std::{future::Future, marker::PhantomData, rc::Rc};
 
 use demi_command_declarations::{
-    Category, Group, Leaf, LeafKind, LeafOutput, NativeOperation, Node, Schema, StdinRead,
+    BringsHost, BroughtKind, Category, Group, Leaf, LeafKind, LeafOutput, NativeOperation, Node, Schema, StdinRead,
     command_schema_settings,
 };
 use futures_util::future::{LocalBoxFuture, ready};
@@ -296,12 +296,25 @@ impl LeafBuilder {
         self
     }
 
-    /// The string field of the input that names a device or a project the
-    /// call may bring into the conversation: the dispatch resolves it and
-    /// asks for Manage Devices too when it is a paired device the
-    /// conversation does not reach (`permissions.md` § Several categories).
+    /// The string field of the input that names a host the call may bring
+    /// into the conversation: the dispatch resolves it once, asks the user
+    /// for that host when the conversation may not reach it, and hands it to
+    /// the handler as the invocation's `brought` (`permissions.md` § Hosts).
     pub fn brings_host(mut self, field: impl Into<String>) -> Self {
-        self.leaf.brings_host = Some(field.into());
+        self.leaf.brings_host = Some(BringsHost {
+            field: field.into(),
+            names: BroughtKind::Host,
+        });
+        self
+    }
+
+    /// [`Self::brings_host`] for a field that names a project, which stands
+    /// for the project's host.
+    pub fn brings_project(mut self, field: impl Into<String>) -> Self {
+        self.leaf.brings_host = Some(BringsHost {
+            field: field.into(),
+            names: BroughtKind::Project,
+        });
         self
     }
 

@@ -310,6 +310,8 @@ async fn run(
             stdin: stdin.as_ref().map(|pipe| pipe.id().to_owned()),
             stdout: stdout.id().to_owned(),
         }),
+        // The dispatch resolves the call's host.
+        brought: None,
     };
     let port = Rc::new(RelayPort {
         link: link.clone(),

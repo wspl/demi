@@ -42,6 +42,7 @@ function view(request: PermissionRequest): RequestView {
         kind: 'permission',
         id: request.id,
         categories: request.categories.map(category),
+        host: request.host,
         command: request.command,
         subagent: request.agent,
       }

@@ -19,12 +19,17 @@ export interface PermissionCategoryView {
   description: string | null
 }
 
-/** One undecided request: the command an agent ran without the grants of its categories, one or more. */
+/** A host a request asks the conversation to reach: a device by the name the user knows it by, or the computer a pairing pairs. */
+export type PermissionHostView = { kind: 'device'; deviceId: string; name: string } | { kind: 'pairing' }
+
+/** One undecided request: the command an agent ran without the grants of its categories or the host it brings, at least one of the two. */
 export interface PermissionRequestView {
   kind: 'permission'
   id: string
   /** The categories the conversation lacked, in the backend's order. */
   categories: PermissionCategoryView[]
+  /** The host the command asks to reach; null for a request of categories alone. */
+  host: PermissionHostView | null
   /** The command line as the agent ran it. */
   command: string
   /** The subagent that ran it; null for the root. */
@@ -131,14 +136,45 @@ export function categoryDescription(category: PermissionCategoryView): string | 
 }
 
 /**
- * The actions of the categories `ids` as one phrase in the page's words;
- * null when a catalogue lacks one of them, which then shows its English.
+ * The actions of the categories `ids`, then the actions `more`, worded
+ * already, as one phrase in the page's words; null when a catalogue lacks
+ * one of the categories, which then shows its English.
  */
-export function wordedActions(ids: readonly string[]): string | null {
+export function wordedActions(ids: readonly string[], more: readonly string[] = []): string | null {
   const actions = ids.map((id) => categoryText(id, 'action'))
   return actions.every((action) => action !== null)
-    ? new Intl.ListFormat(pageLanguage(), { type: 'conjunction' }).format(actions)
+    ? new Intl.ListFormat(pageLanguage(), { type: 'conjunction' }).format([...actions, ...more])
     : null
+}
+
+/** What reaching the host lets the conversation do, completing “Allow this conversation to …”: `reach build-box`. */
+export function hostAction(host: PermissionHostView): string {
+  return host.kind === 'device' ? reachAction(host.name) : t('host.pair')
+}
+
+/** What reaching the host named `name` lets the conversation do: `reach build-box`. */
+export function reachAction(name: string): string {
+  return t('host.reach', { host: name })
+}
+
+/** What reaching the host allows, as the card explains it. */
+export function hostDescription(host: PermissionHostView): string {
+  return host.kind === 'device' ? t('host.description', { host: host.name }) : t('host.pairingDescription')
+}
+
+/** The host's title among a request's parts: its name, or *New Computer* for a pairing. */
+export function hostTitle(host: PermissionHostView): string {
+  return host.kind === 'device' ? host.name : t('host.pairingTitle')
+}
+
+/** The card's title: a host alone asks to reach it, anything else to do its parts' actions. */
+export function requestTitle(request: Pick<PermissionRequestView, 'categories' | 'host'>): string {
+  if (request.categories.length === 0 && request.host) {
+    return request.host.kind === 'device'
+      ? t('host.allowTitle', { host: request.host.name })
+      : t('host.allowPairingTitle')
+  }
+  return t('request.allowTitle', { action: requestAction(request) })
 }
 
 /** What a request to use the saved credential `name` lets the conversation do. */
@@ -147,12 +183,16 @@ export function useCredentialAction(name: string): string {
 }
 
 /**
- * What the request lets the conversation do: its categories' actions joined
- * with "and", as the card's title and the agent's message join them
- * (`permissions.md` § Several categories).
+ * What the request lets the conversation do: its categories' actions and
+ * its host's joined with "and", as the card's title and the agent's message
+ * join them (`permissions.md` § Hosts).
  */
-export function requestAction(request: Pick<PermissionRequestView, 'categories'>): string {
-  return new Intl.ListFormat(pageLanguage(), { type: 'conjunction' }).format(request.categories.map(categoryAction))
+export function requestAction(request: Pick<PermissionRequestView, 'categories' | 'host'>): string {
+  const actions = request.categories.map(categoryAction)
+  if (request.host) {
+    actions.push(hostAction(request.host))
+  }
+  return new Intl.ListFormat(pageLanguage(), { type: 'conjunction' }).format(actions)
 }
 
 /** The category's title, such as “Manage Skills”, as its description names it: its words, else its English action in title case, or its id as it is when it is no longer declared. */
@@ -163,10 +203,12 @@ export function categoryTitle(category: PermissionCategoryView): string {
 /**
  * The requests left once the user decided `id` (`permissions.md`
  * § Requests): an allow of a permission request grants its categories and
- * decides every permission request they complete, a deny decides that one
- * alone, and a credential or an allowance is decided alone either way. A
- * request that also needs a category granted before is left for the
- * backend's answer to decide, since the page does not know the grants.
+ * its host and decides every permission request they complete, a deny
+ * decides that one alone, and a credential or an allowance is decided alone
+ * either way. A request that also needs a category granted before, or
+ * another host, is left for the backend's answer to decide, since the page
+ * knows neither the grants nor the hosts the conversation reaches; so is
+ * another pairing, whose code the page does not know.
  */
 export function afterDecision(
   requests: readonly RequestView[],
@@ -181,7 +223,14 @@ export function afterDecision(
     return requests.filter((request) => request.id !== id)
   }
   const granted = new Set(decided.categories.map((category) => category.id))
+  const reached = (host: PermissionHostView | null) =>
+    host === null ||
+    (host.kind === 'device' && decided.host?.kind === 'device' && host.deviceId === decided.host.deviceId)
   return requests.filter(
-    (request) => request.kind !== 'permission' || !request.categories.every((category) => granted.has(category.id)),
+    (request) =>
+      request.id !== id &&
+      (request.kind !== 'permission' ||
+        !request.categories.every((category) => granted.has(category.id)) ||
+        !reached(request.host)),
   )
 }

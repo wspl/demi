@@ -3,10 +3,13 @@
 //! inputs): `list` names the Hosts the calling conversation reaches,
 //! `current` its primary Host, and `shell --host` runs a script on one of
 //! them as one job there; `install-command` prints the command that installs
-//! the runner on a computer; with the user's Manage Devices, `devices` lists
-//! the user's devices, `pair` pairs the computer whose installer shows a
-//! code and attaches it, `attach` attaches one at once, and `detach` marks
-//! one to detach once the conversation's work ends. A `shell`
+//! the runner on a computer; `devices` lists the user's devices, `pair`
+//! pairs the computer whose installer shows a code and attaches it, `attach`
+//! attaches one at once, `detach` marks one to detach once the
+//! conversation's work ends, and `move` makes a host and a directory where
+//! the conversation runs once its work ends. The dispatch asks the user
+//! before a call brings in a host the conversation may not reach, and before
+//! every pairing (`permissions.md` § Hosts). A `shell`
 //! job carries its invoking job's command context, caller and commands, and
 //! its standard input and output are the calling command's (a script read
 //! from stdin leaves the job none):
@@ -21,13 +24,16 @@ use std::future::Future;
 use std::rc::{Rc, Weak};
 
 use demi_backend_database::conversation_index::{
-    AttachedHostRecord, ExecutionTarget, RecordChange,
+    AttachedHostRecord, ChangeOutcome, ExecutionTarget, RecordChange,
 };
-use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob};
+use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob, host_paths};
 use demi_command_declarations::MAX_STDIN_BODY;
 use demi_host_interface::{
-    Call, GroupBuilder, LeafBuilder, ProcessEnd, RpcError, RpcInvocation, RpcPort, TypedRpc,
+    Call, DEMI_ROOT, FileKind, GroupBuilder, HostErrorKind, HostFs, LeafBuilder, ProcessEnd, RpcError,
+    BroughtHost, RpcInvocation, RpcPort, TypedRpc,
 };
+use demi_runner_protocol::files::FsFailure;
+use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_shared_types::StreamKind;
 use demi_backend_runners::claims::ClaimRefusal;
 use demi_backend_runners::install::install_commands;
@@ -43,21 +49,17 @@ use crate::access::{HostRole, ReachableHost};
 use crate::transition::ChangeRefusal;
 
 const SUMMARY: &str =
-    "The hosts this conversation reaches: list them, show the primary one, run a command on another, pair a computer, attach or detach the user's devices.";
+    "The hosts this conversation reaches: list them, show the primary one, run a command on another, pair a computer, attach or detach the user's devices, move this conversation to another host.";
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Lists the computers this conversation can reach, its primary Host and the devices attached to it, and runs a command on another one; lists the user's devices and attaches or detaches one; pairs a computer you can run commands on, such as one you reach by ssh, with the user's account. Use it when a task involves a second machine: fetching a file from the user's laptop, checking a server, or running something where a particular device is.";
+const ENTRY: &str = "Lists the computers this conversation can reach, its primary Host and the devices attached to it, and runs a command on another one; lists the user's devices and attaches or detaches one; moves this conversation to another host and directory; pairs a computer you can run commands on, such as one you reach by ssh, with the user's account. Use it when a task involves a second machine: fetching a file from the user's laptop, checking a server, or running something where a particular device is.";
 
-/// The permission category of the commands that change the devices a
-/// conversation reaches (`sessions-and-targets.md` § What the agent can
-/// change), which the dispatch also asks for when a call brings a paired
-/// device into the conversation (`permissions.md` § Several categories).
-pub const MANAGE_DEVICES: &str = "host.devices";
+/// The path of `demi host pair`, which always brings a host the
+/// conversation may not reach (`permissions.md` § Hosts).
+const PAIR_PATH: [&str; 3] = [DEMI_ROOT, "host", "pair"];
 
-const MANAGE_DEVICES_ACTION: &str = "manage devices";
-
-const MANAGE_DEVICES_DESCRIPTION: &str = "Manage Devices lets the agents of this conversation list your devices, attach them to this conversation or detach them, and pair a computer they can run commands on with your account. The agents run commands as you on an attached device.";
+const MOVE_SUMMARY: &str = "Make another host where this conversation runs, or another directory there: `demi host move <host> <directory>`, the host by name or id from `demi host devices` (`Cloud` for the user's Cloud), the directory an absolute path that exists there. The move applies when this conversation's work ends, and the host it leaves stays attached.";
 
 const DEVICES_SUMMARY: &str = "The user's paired devices and the Cloud, with their states and what each is to this conversation.";
 
@@ -85,6 +87,7 @@ pub(crate) struct NoArgs {}
 #[serde(deny_unknown_fields)]
 struct AttachArgs {
     /// Device name or id from demi host devices
+    #[expect(dead_code, reason = "the dispatch resolves it, as the call's `brought`")]
     device: String,
 }
 
@@ -113,6 +116,18 @@ struct PairArgs {
     /// The pairing code the computer's installer shows
     #[schemars(length(min = 1))]
     code: String,
+}
+
+/// The input of `demi host move`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct MoveArgs {
+    /// Host name or device id from demi host devices; Cloud for the user's Cloud
+    #[expect(dead_code, reason = "the dispatch resolves it, as the call's `brought`")]
+    host: String,
+    /// An absolute directory on that host, which must exist
+    #[schemars(length(min = 1))]
+    directory: String,
 }
 
 /// The input of `demi host detach`.
@@ -156,11 +171,9 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
                 .failure_output("writes the reason to stderr and exits non-zero (127 when the host cannot run bash)")
                 .bind(TypedRpc::new(verb(shard.clone(), shell))),
         )
-        .permission(MANAGE_DEVICES, MANAGE_DEVICES_ACTION, MANAGE_DEVICES_DESCRIPTION)
         .leaf(
             LeafBuilder::rpc("devices", DEVICES_SUMMARY)
                 .input::<NoArgs>()
-                .permission(MANAGE_DEVICES)
                 .bind(TypedRpc::new(verb(shard.clone(), devices))),
         )
         .leaf(
@@ -172,23 +185,149 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
             LeafBuilder::rpc("pair", PAIR_SUMMARY)
                 .input::<PairArgs>()
                 .positionals(["code"])
-                .permission(MANAGE_DEVICES)
                 .bind(TypedRpc::new(verb(shard.clone(), pair))),
         )
         .leaf(
             LeafBuilder::rpc("attach", ATTACH_SUMMARY)
                 .input::<AttachArgs>()
                 .positionals(["device"])
-                .permission(MANAGE_DEVICES)
+                .brings_host("device")
                 .bind(TypedRpc::new(verb(shard.clone(), attach))),
         )
         .leaf(
             LeafBuilder::rpc("detach", DETACH_SUMMARY)
                 .input::<DetachArgs>()
                 .positionals(["host"])
-                .permission(MANAGE_DEVICES)
-                .bind(TypedRpc::new(verb(shard, detach))),
+                .bind(TypedRpc::new(verb(shard.clone(), detach))),
         )
+        .leaf(
+            LeafBuilder::rpc("move", MOVE_SUMMARY)
+                .input::<MoveArgs>()
+                .positionals(["host", "directory"])
+                .brings_host("host")
+                .bind(TypedRpc::new(verb(shard, move_to))),
+        )
+}
+
+/// The pairing code of a call of `demi host pair`, which always brings a
+/// host the conversation may not reach (`permissions.md` § Hosts); none for
+/// any other call.
+pub fn pairing_code(invocation: &RpcInvocation) -> Option<String> {
+    if invocation.path != PAIR_PATH {
+        return None;
+    }
+    invocation
+        .args
+        .get("code")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_owned)
+}
+
+/// A device a host name or id names, as `demi host move` and the dispatch
+/// read it: the device, and the name the user knows it by.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NamedDevice {
+    pub device: DeviceId,
+    pub name: String,
+    /// Whether it is the user's Cloud.
+    pub cloud: bool,
+}
+
+/// The host `wanted` names, as a `bringsHost` argument that names a host is
+/// resolved, once, by the dispatch (`permissions.md` § Hosts): of the hosts
+/// it may stand for, the first in this order: a host of the conversation by
+/// the name it goes by there or its id, a device by its id, a paired device
+/// by its name, and the user's Cloud by `Cloud`, which makes its device on
+/// its first use.
+pub async fn resolve_host(
+    shard: &dyn HostShard,
+    conversation: &ConversationId,
+    wanted: &str,
+) -> Result<NamedDevice, RpcError> {
+    devices_named(shard, conversation, wanted)
+        .await?
+        .into_iter()
+        .next()
+        .ok_or_else(|| RpcError::Failed(format!("{wanted}: no host of this name or id (see `demi host devices`)")))
+}
+
+/// The host the dispatch resolved for the call's `bringsHost` argument.
+pub fn brought(invocation: &RpcInvocation) -> Result<&BroughtHost, RpcError> {
+    invocation
+        .brought
+        .as_ref()
+        .ok_or_else(|| RpcError::Failed("the dispatch resolved no host for this call".into()))
+}
+
+/// Each of the user's devices `wanted` may name, in [`resolve_host`]'s order.
+async fn devices_named(
+    shard: &dyn HostShard,
+    conversation: &ConversationId,
+    wanted: &str,
+) -> Result<Vec<NamedDevice>, RpcError> {
+    let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
+    let control = shard.control();
+    let mut found: Vec<NamedDevice> = Vec::new();
+    let mut push = |named: NamedDevice| {
+        if !found.iter().any(|each| each.device == named.device) {
+            found.push(named);
+        }
+    };
+    let cloud = control.managed_device(shard.user().clone()).await.map_err(failed)?;
+    let is_cloud = |device: &DeviceId| cloud.as_ref().is_some_and(|cloud| cloud.id == *device);
+    for host in reachable(shard, conversation).await? {
+        if host.name == wanted || host.device.as_str() == wanted {
+            push(NamedDevice {
+                cloud: is_cloud(&host.device),
+                name: if is_cloud(&host.device) { "Cloud".to_owned() } else { host.name },
+                device: host.device,
+            });
+        }
+    }
+    let paired = control.paired_devices(shard.user().clone()).await.map_err(failed)?;
+    for device in paired.iter().filter(|device| device.id.as_str() == wanted || device.name == wanted) {
+        push(NamedDevice {
+            device: device.id.clone(),
+            name: device.name.clone(),
+            cloud: false,
+        });
+    }
+    let cloud = match cloud {
+        Some(cloud) if cloud.id.as_str() == wanted => Some(cloud),
+        _ if wanted == "Cloud" => Some(shard.cloud_shard().cloud_device().await.map_err(failed)?),
+        _ => None,
+    };
+    if let Some(cloud) = cloud {
+        push(NamedDevice {
+            device: cloud.id,
+            name: "Cloud".to_owned(),
+            cloud: true,
+        });
+    }
+    Ok(found)
+}
+
+/// Records the move to `target` as the conversation's pending move, which
+/// the shard makes once its tree is next idle (`sessions-and-targets.md`
+/// § Switch the primary target).
+pub async fn pend_move(
+    shard: &dyn HostShard,
+    conversation: &ConversationId,
+    target: ConversationTarget,
+) -> Result<(), RpcError> {
+    match shard
+        .control()
+        .set_pending_move(conversation.clone(), target)
+        .await
+        .map_err(|error| RpcError::Failed(error.to_string()))?
+    {
+        Ok(_) => {
+            shard.settle_when_idle(conversation);
+            Ok(())
+        }
+        Err(ChangeOutcome::Archived) => Err(RpcError::Failed("this conversation is archived".into())),
+        Err(_) => Err(RpcError::Failed("this conversation is gone".into())),
+    }
 }
 
 /// A handler over the live shard; a call after the shard closed fails.
@@ -334,29 +473,20 @@ async fn attach(
     call: Call<AttachArgs>,
     port: RpcPort,
 ) -> Result<u8, RpcError> {
-    let Call {
-        args: AttachArgs { device: wanted },
-        invocation,
-    } = call;
+    let Call { invocation, .. } = call;
     let conversation = conversation_of(&invocation)?;
-    let paired = shard
-        .control()
-        .paired_devices(shard.user().clone())
-        .await
-        .map_err(|error| RpcError::Failed(error.to_string()))?;
-    let found = paired
-        .iter()
-        .find(|device| device.name == wanted)
-        .or_else(|| paired.iter().find(|device| device.id.as_str() == wanted));
-    let Some(device) = found else {
-        return Err(RpcError::Failed(format!(
-            "{wanted}: no paired device of this name or id (see `demi host devices`); the Cloud is attached only when the conversation moves off it"
-        )));
-    };
-    let attached = attach_device(&*shard, &conversation, &device.id, &device.name).await?;
+    let host = brought(&invocation)?;
+    if host.cloud {
+        return Err(RpcError::Failed(
+            "Cloud: the Cloud is attached only when the conversation moves off it".into(),
+        ));
+    }
+    let device = DeviceId::try_from(host.device.clone())
+        .map_err(|_| RpcError::Failed("the dispatch resolved no device".into()))?;
+    let attached = attach_device(&*shard, &conversation, &device, &host.name).await?;
     port.stdout(format!(
         "Attached {} as {attached}; run commands there with `demi host shell --host {attached} <script>`.\n",
-        device.name
+        host.name
     ))
     .await?;
     Ok(0)
@@ -487,6 +617,111 @@ async fn detach(
     ))
     .await?;
     Ok(0)
+}
+
+/// `demi host move`: checks that the directory is one on the host now, then
+/// records the move, which applies when the conversation's work ends
+/// (`sessions-and-targets.md` § What the agent can change).
+async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let Call {
+        args: MoveArgs { directory, .. },
+        invocation,
+    } = call;
+    let conversation = conversation_of(&invocation)?;
+    let brought = brought(&invocation)?;
+    let host = NamedDevice {
+        device: DeviceId::try_from(brought.device.clone())
+            .map_err(|_| RpcError::Failed("the dispatch resolved no device".into()))?,
+        name: brought.name.clone(),
+        cloud: brought.cloud,
+    };
+    let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
+    let record = shard
+        .control()
+        .device(host.device.clone())
+        .await
+        .map_err(failed)?
+        .ok_or_else(|| RpcError::Failed(format!("{}: the device is gone", host.name)))?;
+    if !host_paths(record.platform).is_absolute(&directory) {
+        return Err(RpcError::Failed(format!(
+            "{directory}: give an absolute directory on {}",
+            host.name
+        )));
+    }
+    // A command stopped while the Host wakes or answers releases its access
+    // and records no move.
+    tokio::select! {
+        checked = check_directory(&*shard, &host, &record, &directory) => checked?,
+        () = port.cancelled() => return Err(RpcError::Failed("the call was cancelled".into())),
+    }
+    let target = if host.cloud {
+        ConversationTarget::Cloud {
+            path: Some(directory.clone()),
+        }
+    } else {
+        ConversationTarget::Device {
+            device_id: host.device.clone(),
+            path: directory.clone(),
+        }
+    };
+    let conversation_record = shard
+        .owned_conversation(&conversation)
+        .await
+        .map_err(|error| RpcError::Failed(error.to_string()))?;
+    // A move to where it runs replaces a move that waits, and is made as
+    // nothing.
+    let there = conversation_record.target == target;
+    pend_move(&*shard, &conversation, target).await?;
+    if there {
+        port.stdout("This conversation runs there already.\n").await?;
+    } else {
+        port.stdout(format!(
+            "The move to {} ({directory}) applies when this conversation's work ends; until then commands run where they do now.\n",
+            host.name
+        ))
+        .await?;
+    }
+    Ok(0)
+}
+
+/// Whether `directory` is a directory on `host` now: through device access
+/// for a paired device, whose runner must be connected, and machine access
+/// for the Cloud, which wakes it (`sessions-and-targets.md` § Every way to
+/// a Host).
+async fn check_directory(
+    shard: &dyn HostShard,
+    host: &NamedDevice,
+    record: &demi_backend_database::devices::DeviceRecord,
+    directory: &str,
+) -> Result<(), RpcError> {
+    let stat = if host.cloud {
+        let access = shard
+            .cloud_shard()
+            .machine_access()
+            .await
+            .map_err(|error| RpcError::Failed(format!("Cloud: {error}")))?;
+        access.host.stat(directory).await
+    } else {
+        let Some(access) = shard.devices().device_access(&host.device) else {
+            return Err(RpcError::Failed(shard.offline(record).message));
+        };
+        access.stat(directory).await
+    };
+    let missing = || RpcError::Failed(format!("{directory} is not a directory on {}", host.name));
+    match stat {
+        Ok(stat) if stat.kind == FileKind::Directory => Ok(()),
+        Ok(_) => Err(missing()),
+        Err(error) => match &error.kind {
+            HostErrorKind::Failed { code }
+                if matches!(FsFailure::of(code.as_deref()), FsFailure::NotFound)
+                    || code.as_deref() == Some("ENOTDIR") =>
+            {
+                Err(missing())
+            }
+            HostErrorKind::Offline => Err(RpcError::Failed(shard.offline(record).message)),
+            _ => Err(RpcError::Failed(format!("{directory} on {}: {}", host.name, error.message))),
+        },
+    }
 }
 
 async fn current(

@@ -13,12 +13,12 @@ use std::rc::{Rc, Weak};
 
 use bytes::Bytes;
 use demi_backend_database::sequences;
-use demi_backend_host_access::host_commands::{MANAGE_DEVICES, reachable};
+use demi_backend_host_access::host_commands::{pairing_code, reachable};
 use demi_backend_host_access::root_of;
 use demi_backend_plugins::Lost;
 use demi_backend_remote_host::{DirectAdmission, JobOrigin, LinkPolicy, PackageEvent};
 use demi_backend_runners::host_key::conversation_of;
-use demi_command_declarations::Category;
+use demi_backend_database::permissions::AskedHost;
 use demi_command_protocol::ServiceSequence;
 use demi_host_interface::{RpcError, RpcInvocation, RpcPort};
 use demi_runner_protocol::wire::VolumeName;
@@ -62,11 +62,11 @@ impl LinkPolicy for ShardPolicy {
     }
 
     /// Runs the call in its node's commands: once the command set checked
-    /// the call, the categories it needs, its leaf's and Manage Devices when
-    /// its `bringsHost` argument brings a paired device into the
-    /// conversation, are checked against the conversation's grants before
-    /// the handler runs (`permissions.md` § The check, § Several
-    /// categories).
+    /// the call, what it needs, its leaf's category and the host its
+    /// `bringsHost` argument brings into the conversation, or the computer
+    /// `demi host pair` pairs, is checked against the conversation's grants
+    /// and the hosts it may reach before the handler runs (`permissions.md`
+    /// § The check, § Hosts).
     fn dispatch(
         &self,
         job: Rc<JobOrigin>,
@@ -79,25 +79,32 @@ impl LinkPolicy for ShardPolicy {
             let commands = shard.commands().commands_of(&job).map_err(RpcError::Failed)?;
             let checked = commands.check(&invocation)?;
             let handler = checked.handler.clone();
-            let mut needed: Vec<&Category> = checked.category.into_iter().collect();
-            if let Some(named) = &checked.brings_host
-                && let Some(devices) = commands.category(MANAGE_DEVICES)
-                && !needed.contains(&devices)
-            {
-                let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
-                    .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
-                if shard
-                    .brings_paired_device(&conversation, named)
-                    .await
-                    .map_err(RpcError::Failed)?
-                {
-                    needed.push(devices);
+            let needed: Vec<_> = checked.category.into_iter().collect();
+            // The host is resolved here once: the check asks for that very
+            // device, and the handler acts on it without reading the name
+            // again, so a rename meanwhile cannot make them differ.
+            let brought = match &checked.brings_host {
+                Some((kind, named)) => {
+                    let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
+                        .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
+                    Some(shard.resolve_brought(&conversation, *kind, named).await?)
                 }
-            }
-            if !needed.is_empty() {
-                demi_backend_permissions::check(shard.permission_shard(), &invocation, &needed)
+                None => None,
+            };
+            let host = match (pairing_code(&invocation), &brought) {
+                (Some(code), _) => Some(AskedHost::Pairing(code)),
+                (None, Some(brought)) => Some(AskedHost::Device(
+                    DeviceId::try_from(brought.device.clone())
+                        .map_err(|_| RpcError::Failed("the resolved host has no id".into()))?,
+                )),
+                (None, None) => None,
+            };
+            if !needed.is_empty() || host.is_some() {
+                demi_backend_permissions::check(shard.permission_shard(), &invocation, &needed, host)
                     .await?;
             }
+            let mut invocation = invocation;
+            invocation.brought = brought;
             handler.call(invocation, port).await
         })
     }

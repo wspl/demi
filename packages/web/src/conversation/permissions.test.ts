@@ -75,6 +75,7 @@ function answer(revision: number, waiting: number): () => Response {
         kind: 'permission',
         id: `pr-${index}`,
         categories: [{ id: 'skills.manage', action: 'manage skills', description: 'Manage Skills.' }],
+        host: null,
         command: 'demi skills add acme/tools',
         agent: null,
         createdAt: '2026-10-05T00:00:00.000Z',

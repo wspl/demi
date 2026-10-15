@@ -1,7 +1,6 @@
 {
   "notifications": {
     "turnStopped": "The turn stopped with an error.",
-    "allowTo": "Allow this conversation to {action}?",
     "saveCredential": "Save the credential “{name}”?",
     "allowUse": "Allow this conversation to use “{name}”?"
   },

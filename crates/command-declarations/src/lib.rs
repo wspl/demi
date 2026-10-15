@@ -10,8 +10,8 @@
 //!
 //! A group may declare permission categories, and a leaf names the one it
 //! needs as its `permission` (`permissions.md` § Categories), and the input
-//! field that may bring a device into the conversation as its `bringsHost`
-//! (`permissions.md` § Several categories): the declaration is all a
+//! field that may bring a host into the conversation as its `bringsHost`
+//! (`permissions.md` § Hosts): the declaration is all a
 //! command does about permissions, which the backend's dispatch checks
 //! before a handler runs.
 
@@ -149,11 +149,29 @@ pub struct Leaf<B = Binding> {
     /// The id of the permission category the command needs, which one of
     /// its groups declares; only an `rpc` leaf names one.
     pub permission: Option<String>,
-    /// The string input field that names a device or a project the call may
-    /// bring into the conversation, which the dispatch resolves; only an
-    /// `rpc` leaf names one.
-    pub brings_host: Option<String>,
+    /// The string input field that names a host or a project the call may
+    /// bring into the conversation, which the dispatch resolves once and
+    /// hands to the handler; only an `rpc` leaf names one.
+    pub brings_host: Option<BringsHost>,
     pub kind: LeafKind<B>,
+}
+
+/// A leaf's input field that brings a host into the conversation
+/// (`permissions.md` § Hosts), and what it names.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BringsHost {
+    pub field: String,
+    pub names: BroughtKind,
+}
+
+/// What a `bringsHost` field names: a host by a name or id it goes by, or a
+/// project by its id or name, which stands for the project's host.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BroughtKind {
+    Host,
+    Project,
 }
 
 /// When a leaf reads its stdin field, by the options the command line gives.
@@ -432,7 +450,7 @@ impl<B> Node<B> {
             }
             Self::Leaf(leaf) => {
                 leaf.validate()?;
-                if let Some(field) = &leaf.brings_host {
+                if let Some(BringsHost { field, .. }) = &leaf.brings_host {
                     if matches!(leaf.kind, LeafKind::Native(_)) {
                         return Err(invalid(format!(
                             "native command {} names a bringsHost field; only an rpc command can",
@@ -844,7 +862,7 @@ struct RawLeaf<B> {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    brings_host: Option<String>,
+    brings_host: Option<BringsHost>,
     kind: RawKind,
     #[serde(
         default,

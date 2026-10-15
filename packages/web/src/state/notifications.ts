@@ -5,7 +5,7 @@ import { truncate } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { markdownPlainText } from '@demicodes/web-ui/markdown/plain-text'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
-import { requestAction } from '@demicodes/web-ui/permissions/types'
+import { requestTitle } from '@demicodes/web-ui/permissions/types'
 import { t } from './locales/text'
 import { readPermissions } from '../api/permissions'
 import type { ConversationSummary, LastTurn, PermissionRequest } from '../api/generated/web-api'
@@ -140,16 +140,15 @@ export function follow(
 /** What a request asks the user, as its card's title asks it. */
 function requestQuestion(request: PermissionRequest): string {
   switch (request.kind) {
-    case 'permission': {
-      const action = requestAction({
+    case 'permission':
+      return requestTitle({
         categories: request.categories.map((category) => ({
           id: category.id,
           action: category.action ?? null,
           description: null,
         })),
+        host: request.host,
       })
-      return t('notifications.allowTo', { action })
-    }
     case 'credential':
       return t('notifications.saveCredential', { name: request.name })
     case 'allowance':
