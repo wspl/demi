@@ -683,6 +683,7 @@ mod tests {
             .id;
         let os = OperatingSystem {
             name: "Windows 11 Pro (build 26100)".into(),
+            distribution: None,
             arch: "x86_64".into(),
         };
         control

@@ -630,15 +630,20 @@ fn operating_system() -> wire::OperatingSystem {
         System::long_os_version().unwrap_or_else(|| "Windows".to_owned()),
         System::kernel_version().map(|build| format!("(build {build})")),
     );
+    #[cfg(any(target_os = "macos", windows))]
+    let distribution = None;
     // The distribution's name and version from os-release, such as
-    // `Ubuntu 26.04`.
+    // `Ubuntu 26.04`, and its `ID`, such as `ubuntu`.
     #[cfg(not(any(target_os = "macos", windows)))]
     let name = named(
         System::name().unwrap_or_else(|| "Linux".to_owned()),
         System::os_version(),
     );
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let distribution = Some(System::distribution_id()).filter(|id| !id.is_empty());
     wire::OperatingSystem {
         name,
+        distribution,
         arch: std::env::consts::ARCH.to_owned(),
     }
 }

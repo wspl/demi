@@ -226,6 +226,7 @@ pub(crate) fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -
             platform: RunnerPlatform::Linux,
             os: wire::OperatingSystem {
                 name: "Ubuntu 26.04".into(),
+                distribution: Some("ubuntu".into()),
                 arch: "x86_64".into(),
             },
             version: "0".into(),
