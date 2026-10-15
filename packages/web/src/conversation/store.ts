@@ -92,7 +92,7 @@ import { useSession } from '../auth/session'
 import type { Conversation, PendingSend, ProductAttachment } from '../state/types'
 import { applyConversationEvent, updateLiveStatus } from './activity'
 import { composerWriting, createRecordSync, newRecord, type Writing } from './record'
-import { createHistoryReads } from './history'
+import { createConversationHistoryReads } from './history'
 import { findCallBlock, shellCallOf } from './terminals'
 import { t } from './locales/text'
 import { EMPTY_TRANSCRIPT, addPage, heldBlocks } from '@demicodes/web-ui/transport/protocol'
@@ -198,7 +198,7 @@ export const useConversations = defineStore('conversations', () => {
   let lifetime = new AbortController()
   const cache = new ConversationCache()
   /** The history a conversation's page reads beyond its opening (`web-application.md` § Transcript windows). */
-  const history = createHistoryReads(
+  const history = createConversationHistoryReads(
     () => lifetime.signal,
     (conversation) => cache.get(conversation.id)?.runtime != null,
   )

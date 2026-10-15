@@ -47,6 +47,8 @@ const props = defineProps<{
   fork?: () => Promise<void>
   forkState?: MessageForkState
   share?: AnswerShare
+  /** No answer offers Fork, as on a share's page. */
+  hideFork?: boolean
   /** What the provider read out of this error block's failure record. */
   failure?: ProviderFailureFacts
   /** The block just arrived in a live transcript: a chrome row slides in from the left as it fades in. */
@@ -190,6 +192,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         :fork-state="forkState"
         :share="share"
         :share-wait="!block.forkable"
+        :hide-fork="hideFork"
         :regenerate="regenerate"
       />
       <div

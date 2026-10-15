@@ -50,7 +50,7 @@ test('a link opens a Host file or a web page, and anything else stays text', () 
   expect(html).toContain(fileLink('C:/Users/alex/a.txt', 'windows'))
   expect(html).toContain(fileLink('/tmp/a.txt', 'url'))
   expect(html).toContain(fileLink('/work/out/my chart.png', 'spaced'))
-  expect(html).toContain('<a href="https://example.com/a" target="_blank" rel="noopener noreferrer">web</a>')
+  expect(html).toContain('<a href="https://example.com/a" target="_blank" rel="noopener noreferrer nofollow">web</a>')
   for (const text of ['section', 'mail', 'word'])
     expect(html).toContain(`<p>${text}</p>`)
 })
@@ -86,7 +86,7 @@ test('a link or image path starting ~/ names the Host home, and stays text while
 
 test('an image inside a link follows the link', () => {
   expect(renderMarkdown('[![build](https://example.com/badge.svg)](https://example.com/ci)', { files }))
-    .toBe('<p class="media-lone"><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer"><img src="https://example.com/badge.svg" alt="build" /></a></p>\n')
+    .toBe('<p class="media-lone"><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer nofollow"><img src="https://example.com/badge.svg" alt="build" /></a></p>\n')
   expect(renderMarkdown('[![chart](out/chart.png)](docs/charts.md)', { files, hostImages: shownImages('/work/out/chart.png') }))
     .toContain(`<a href="/work/docs/charts.md" data-file-link><img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" data-host-file="/work/out/chart.png" /></a>`)
 })
@@ -284,7 +284,7 @@ test('images after a list item’s words stand side by side under them', () => {
 
 test('an image inside a link counts as an image of a run, and follows its link', () => {
   expect(renderMarkdown(`[![build](https://example.com/badge.svg)](https://example.com/ci)\n${shot(1)}`, { files }))
-    .toBe(`<p class="media-run"><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer"><img src="https://example.com/badge.svg" alt="build" /></a>${item(1)}</p>\n`)
+    .toBe(`<p class="media-run"><a href="https://example.com/ci" target="_blank" rel="noopener noreferrer nofollow"><img src="https://example.com/badge.svg" alt="build" /></a>${item(1)}</p>\n`)
 })
 
 // Dollar signs follow Pandoc's rule (`file-previews.md` § Markdown); a file

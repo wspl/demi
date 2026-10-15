@@ -63,6 +63,8 @@ const props = withDefaults(defineProps<{
   fork?: MessageForkHandler
   /** Shares the answer the text block `blockId` ends; absent, no footer offers Share. */
   share?: (blockId: string) => Promise<void>
+  /** No answer offers Fork, as on a share's page, which acts on no conversation (`sharing.md` § Safety). */
+  hideFork?: boolean
   editTargetId?: string
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
@@ -424,6 +426,7 @@ defineExpose({
                 :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
                 :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
                 :share="share ? answerShare(renderBlocks[item.index]!.id) : undefined"
+                :hide-fork="hideFork"
                 :failure="failures?.[renderBlocks[item.index]!.id]"
                 :summary-tokens="summaryTokens.get(renderBlocks[item.index]!.id)"
                 :entering="isEntering(String(item.key))"
