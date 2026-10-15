@@ -46,7 +46,7 @@ use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::{Digest as _, Sha256};
 
-use crate::claude::{claude_models, settled};
+use crate::claude::{PackageService, claude_models, settled};
 use crate::conversations::{
     Socket, anthropic, choose, create, events, kinds, last_text, message, message_start, send,
     text_block, thinking_block, tool_use_block, transcript, usage,
@@ -1240,4 +1240,31 @@ async fn the_cli_reads_its_token_from_a_descriptor_in_its_own_directory_and_a_re
     drop(socket);
     world.backend.close().await;
     assert!(!directory.exists());
+}
+
+/// What the install left is kept for the Cloud's runner connection
+/// (`claude-code.md` § Which version): with the Cloud's `demi.claude-code`
+/// service stopped, so that the package answers nothing, a conversation
+/// starts the installed CLI and its turn ends.
+// Several seconds: see the first scenario.
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+async fn the_installed_cli_starts_while_the_package_answers_nothing() {
+    let world = World::start().await;
+    let mut service = PackageService::of(&world.harness);
+    service.freeze();
+    world.answers(message(
+        vec![text_block(0, &["Hello."])],
+        "end_turn",
+        json!({ "input_tokens": 8, "output_tokens": 1 }),
+        1,
+    ));
+    let mut socket = world.conversation().await;
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a41", "Hi")
+        .await;
+    assert_eq!(last_text(&world.blocks().await), "Hello.");
+    drop(service);
+    drop(socket);
+    world.backend.close().await;
 }

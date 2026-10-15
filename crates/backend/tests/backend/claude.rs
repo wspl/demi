@@ -36,7 +36,7 @@ use tokio_util::sync::CancellationToken;
 
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::{Block, LoginStage};
-use demi_web_api_protocol::diagnostics::ServerLogLine;
+use demi_web_api_protocol::diagnostics::{ServerLog, ServerLogLine};
 use demi_web_api_protocol::state::SyncEvent;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{
@@ -48,7 +48,7 @@ use serde_json::{Value, json};
 use crate::accounts::{awaited, ended, followed, login_state, start_login};
 use crate::diagnostics::{lines_of, request_id};
 use crate::conversations::{Socket, choose, create, last_text, on_device, transcript};
-use crate::support::{Harness, ServerLogCapture, Session, TestBackend, eventually};
+use crate::support::{Harness, PATIENCE, ServerLogCapture, Session, TestBackend, eventually};
 
 const CONVERSATION: &str = "3c1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01";
 /// The version the distribution names as its newest.
@@ -130,12 +130,24 @@ fn manifest(version: &str) -> MockResponse {
         .chunk(body.to_string())
 }
 
+/// The scripted CLI as `version` of it: each version's bytes differ, as
+/// two releases' executables do.
+fn scripted(version: &str) -> String {
+    format!("{SCRIPTED_CLI}# {version}\n")
+}
+
+/// The SHA-256 of `bytes`, in lowercase hex.
+fn sha256(bytes: &[u8]) -> String {
+    format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(bytes))
+}
+
 /// Installs `version` of the scripted CLI in `cache`, a runner's artifact
 /// cache, as the runner installs a download of it, and answers the
-/// executable's path.
+/// executable's path. The cache then removes the line's other versions.
 async fn install_by_hand(cache: &std::path::Path, version: &str) -> String {
     let source = tempfile::NamedTempFile::new().unwrap();
-    std::fs::write(source.path(), SCRIPTED_CLI).unwrap();
+    let bytes = scripted(version);
+    std::fs::write(source.path(), &bytes).unwrap();
     let cache = ArtifactCache::new(cache.to_owned(), None, None)
         .await
         .unwrap();
@@ -144,8 +156,8 @@ async fn install_by_hand(cache: &std::path::Path, version: &str) -> String {
         name: "Claude Code",
         version,
         artifact: PackageArtifact {
-            sha256: format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(SCRIPTED_CLI)),
-            size: SCRIPTED_CLI.len() as u64,
+            sha256: sha256(bytes.as_bytes()),
+            size: bytes.len() as u64,
         },
         form: &ArtifactForm::File,
     };
@@ -1032,4 +1044,327 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     );
     backend.close().await;
     log.close().await;
+}
+
+/// The kept versions' scenarios: a Cloud whose runner shares the artifact
+/// cache `cache`, and the backend with its master, a Claude Code entry
+/// whose account is stored as a sign-in stores it, and its server log.
+struct Kept {
+    harness: Harness,
+    backend: TestBackend,
+    master: Session,
+    provider: String,
+    log: ServerLogCapture,
+}
+
+impl Kept {
+    async fn start(distribution: &MockVendor, catalog: &MockVendor, cache: &std::path::Path) -> Self {
+        let harness = Harness::new()
+            .with_claude_package()
+            .with_claude_releases(distribution.url("/releases"))
+            .with_models_dev(catalog.url("/api.json"));
+        let shared = cache.to_string_lossy().into_owned();
+        harness
+            .manager
+            .script(|script| script.artifacts = Some(shared));
+        let log = ServerLogCapture::open(&harness);
+        let (backend, master) = harness.start_set_up().await;
+        let secret = json!({
+            "accessToken": "access-kept",
+            "refreshToken": "refresh-kept",
+            "expiresAt": "2100-01-01T00:00:00.000Z",
+            "scopes": ["user:inference", "user:profile"],
+            "subscriptionType": "max",
+            "accountId": "kept",
+            "email": "kept@example.test",
+        });
+        let provider = backend
+            .seed_subscription(&master, "claude-code", "Claude", "account:kept", secret.to_string())
+            .await;
+        Self {
+            harness,
+            backend,
+            master,
+            provider,
+            log,
+        }
+    }
+
+    /// Says hello in the new conversation `n` on the entry, and answers
+    /// what its CLI process said, or why the turn failed.
+    async fn said(&self, n: u8) -> String {
+        let id = format!("6a1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a{n:02}");
+        create(&self.backend, &self.master, &id).await;
+        choose(&self.backend, &self.master, &id, &self.provider, "claude-opus-4-8").await;
+        let mut socket = Socket::connect(&self.backend, &self.master, &id).await;
+        socket.open().await;
+        socket.chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello").await;
+        let blocks = transcript(&self.backend, &self.master, &id).await.blocks;
+        match blocks.last() {
+            Some(Block::Error(failed)) => format!("failed: {}", failed.message),
+            _ => last_text(&blocks),
+        }
+    }
+
+    /// Whether the server log holds a line whose message starts with
+    /// `words`.
+    async fn holds(&self, words: &str) -> bool {
+        let read = self
+            .backend
+            .get("/api/server/log?limit=1000", Some(&self.master))
+            .await;
+        assert_eq!(read.status, StatusCode::OK);
+        read.json::<ServerLog>()
+            .lines
+            .iter()
+            .any(|line| line.message.starts_with(words))
+    }
+
+    /// Once the server log holds a line whose message starts with `words`.
+    async fn logged(&self, words: &str) {
+        eventually(words, || self.holds(words)).await;
+    }
+
+    async fn close(self) {
+        self.backend.close().await;
+        self.log.close().await;
+    }
+}
+
+/// The Cloud's `demi.claude-code` service, which a test freezes so that
+/// no operation of the package answers, or kills as a crash would. One
+/// left frozen goes on when the test ends.
+pub(crate) struct PackageService {
+    pid: rustix::process::Pid,
+    frozen: bool,
+}
+
+impl PackageService {
+    /// The service the Cloud's runner started last.
+    pub(crate) fn of(harness: &Harness) -> Self {
+        let log = harness.manager.log(&the_cloud(harness));
+        let started = format!(
+            "service {} started (pid ",
+            demi_command_package_claude_code_protocol::PACKAGE
+        );
+        let pid = log
+            .lines()
+            .rev()
+            .find_map(|line| {
+                let after = &line[line.find(&started)? + started.len()..];
+                after.split(')').next()?.parse().ok()
+            })
+            .and_then(rustix::process::Pid::from_raw)
+            .unwrap_or_else(|| panic!("the Cloud's runner started no package service: {log}"));
+        Self { pid, frozen: false }
+    }
+
+    fn signal(&self, signal: rustix::process::Signal) {
+        rustix::process::kill_process(self.pid, signal).unwrap();
+    }
+
+    pub(crate) fn freeze(&mut self) {
+        self.signal(rustix::process::Signal::STOP);
+        self.frozen = true;
+    }
+
+    fn crash(mut self) {
+        self.signal(rustix::process::Signal::KILL);
+        self.frozen = false;
+    }
+}
+
+impl Drop for PackageService {
+    fn drop(&mut self) {
+        if self.frozen {
+            self.signal(rustix::process::Signal::CONT);
+        }
+    }
+}
+
+/// The versions a Cloud has are asked once per runner connection, and
+/// asked again at the next start once the package's service ended unsaid
+/// or the connection ended (`claude-code.md` § Which version): while the
+/// package cannot answer, another conversation starts the version the
+/// first one's start was told of; a version installed by hand meanwhile,
+/// which removed the one before, is what starts after each.
+// A few seconds: the Cloud boots twice and starts four CLI processes and
+// those prepared ahead.
+#[tokio::test]
+async fn a_clouds_versions_are_asked_once_per_connection_and_again_after_a_lost_package_or_a_new_connection() {
+    let cache = tempfile::tempdir().unwrap();
+    // No release is ever believed, so nothing starts an install.
+    let distribution = MockVendor::start().await;
+    distribution.respond_at("/releases/latest", MockResponse::status(503));
+    let catalog = MockVendor::start().await;
+    catalog.respond_at("/api.json", claude_models());
+    let older = install_by_hand(cache.path(), OLDER).await;
+    let kept = Kept::start(&distribution, &catalog, cache.path()).await;
+    let said = kept.said(1).await;
+    assert!(said.starts_with(&format!("cli={older} ")), "{said}");
+    let mut service = PackageService::of(&kept.harness);
+    service.freeze();
+    let said = kept.said(2).await;
+    assert!(said.starts_with(&format!("cli={older} ")), "{said}");
+
+    // The package's service crashes: the runner says so, and the next start
+    // asks.
+    let newest = install_by_hand(cache.path(), NEWEST).await;
+    service.crash();
+    kept.logged("the Claude Code versions kept for the device were dropped: its package was lost")
+        .await;
+    let said = kept.said(3).await;
+    assert!(said.starts_with(&format!("cli={newest} ")), "{said}");
+
+    // The runner crashes: the next start wakes the Cloud and asks over the
+    // new connection.
+    let third = install_by_hand(cache.path(), "2.1.4").await;
+    kept.harness.manager.kill(&the_cloud(&kept.harness)).await;
+    let said = kept.said(4).await;
+    assert!(said.starts_with(&format!("cli={third} ")), "{said}");
+    kept.close().await;
+}
+
+/// A first ask of the Cloud's versions that every start waiting for it gave
+/// up on is dropped with them (`claude-code.md` § Which version). An update
+/// to the newest release fails, as the distribution's address is not
+/// HTTPS, which drops what is kept while the Cloud's package service runs
+/// on; a line record that is a FIFO holds the service's listing of the
+/// versions, so the one ask two settings reads share hangs, and the reads
+/// go away. The hung ask then answers with a version that is gone; the next
+/// start asks again rather than take that answer, and starts the CLI
+/// without finding an executable gone.
+// A second or two: the Cloud boots and starts two CLI processes and those
+// prepared ahead.
+#[tokio::test]
+async fn concurrent_first_starts_share_one_ask_and_one_they_all_gave_up_on_is_asked_again() {
+    use rustix::fs::{Mode, OFlags};
+
+    let cache = tempfile::tempdir().unwrap();
+    let (distribution, catalog) = vendors().await;
+    let older = install_by_hand(cache.path(), OLDER).await;
+    let kept = Kept::start(&distribution, &catalog, cache.path()).await;
+    let said = kept.said(1).await;
+    assert!(said.starts_with(&format!("cli={older} ")), "{said}");
+    let record = cache.path().join(format!("{}.line.json", "ef".repeat(32)));
+    let made = std::process::Command::new("mkfifo").arg(&record).status().unwrap();
+    assert!(made.success());
+    // The settings read the newest release, which **Install** then fails to
+    // install beside the one the Cloud has.
+    let read = cli(&kept.backend, &kept.master, &kept.provider).await;
+    assert_eq!(read.newest, NewestVersion::Read { version: NEWEST.into() });
+    let started = kept
+        .backend
+        .post(&format!("/api/providers/{}/cli/install", kept.provider), Some(&kept.master), json!({}))
+        .await;
+    assert_eq!(started.status, StatusCode::ACCEPTED);
+    kept.logged("the Cloud's Claude Code was not updated").await;
+
+    // The listing opens the record and waits for bytes: a writer that opens
+    // it without blocking finds the ask there, and holds it hung.
+    let path = format!("/api/providers/{}/cli", kept.provider);
+    let reads = futures_util::future::join(
+        kept.backend.get(&path, Some(&kept.master)),
+        kept.backend.get(&path, Some(&kept.master)),
+    );
+    let asked = async {
+        loop {
+            match rustix::fs::open(&record, OFlags::WRONLY | OFlags::NONBLOCK | OFlags::CLOEXEC, Mode::empty()) {
+                Ok(writer) => break writer,
+                Err(rustix::io::Errno::NXIO) => tokio::time::sleep(Duration::from_millis(20)).await,
+                Err(error) => panic!("the record could not be opened: {error}"),
+            }
+        }
+    };
+    let writer = tokio::select! {
+        _ = reads => panic!("the settings read answered while the ask hung"),
+        writer = tokio::time::timeout(PATIENCE, asked) => writer.expect("the ask reaches the record"),
+    };
+    kept.logged("the ask of the device's Claude Code versions was given up by every start that waited for it")
+        .await;
+    // The two reads shared one ask: the Cloud ran the package's status
+    // twice in all, for the first start and for them.
+    let statuses = kept
+        .harness
+        .manager
+        .log(&the_cloud(&kept.harness))
+        .matches("stream:claude-code.status opened")
+        .count();
+    assert_eq!(statuses, 2);
+
+    // The FIFO leaves the cache, and the hung listing reads from it a record
+    // of a newer version whose executable is gone: the hung ask's answer
+    // names it, and a start that took that answer would find it gone.
+    let held = tempfile::tempdir().unwrap();
+    std::fs::rename(&record, held.path().join("fifo")).unwrap();
+    let gone = json!({
+        "package": demi_command_package_claude_code_protocol::PACKAGE,
+        "name": "Claude Code",
+        "version": "9.9.9",
+        "path": held.path().join("claude"),
+        "installedAt": u64::MAX,
+    });
+    rustix::io::write(&writer, gone.to_string().as_bytes()).unwrap();
+    drop(writer);
+    let said = kept.said(2).await;
+    assert!(said.starts_with(&format!("cli={older} ")), "{said}");
+    assert!(
+        !kept.holds("the Claude Code versions kept for the device were dropped: its executable was gone").await,
+        "a start took the hung ask's answer"
+    );
+    kept.close().await;
+}
+
+/// A start that finds the executable it was given gone drops what is
+/// kept (`claude-code.md` § Which version): after a runner sharing the
+/// cache installed another version and removed the one a start was told
+/// of, the next start asks again and starts the new one.
+// A second or two: the Cloud boots and starts a few CLI processes and
+// those prepared ahead.
+#[tokio::test]
+async fn a_start_that_finds_its_executable_gone_makes_the_next_ask_again() {
+    let cache = tempfile::tempdir().unwrap();
+    let distribution = MockVendor::start().await;
+    distribution.respond_at("/releases/latest", MockResponse::status(503));
+    let catalog = MockVendor::start().await;
+    catalog.respond_at("/api.json", claude_models());
+    let older = install_by_hand(cache.path(), OLDER).await;
+    let kept = Kept::start(&distribution, &catalog, cache.path()).await;
+    let said = kept.said(1).await;
+    assert!(said.starts_with(&format!("cli={older} ")), "{said}");
+
+    let newest = install_by_hand(cache.path(), NEWEST).await;
+    assert!(!std::path::Path::new(&older).exists());
+    // This start fails, unless a process prepared ahead for the first
+    // conversation found the executable gone before it.
+    let said = kept.said(2).await;
+    assert!(said.starts_with("failed: ") || said.starts_with(&format!("cli={newest} ")), "{said}");
+    kept.logged("the Claude Code versions kept for the device were dropped: its executable was gone")
+        .await;
+    let said = kept.said(3).await;
+    assert!(said.starts_with(&format!("cli={newest} ")), "{said}");
+    kept.close().await;
+}
+
+/// A failed install drops what is kept (`claude-code.md` § Which version):
+/// **Install** on a Cloud with none fails, the CLI is then installed by
+/// hand, and the next start asks and starts it.
+// A few seconds: the Cloud boots and starts a CLI process and the one
+// prepared ahead.
+#[tokio::test]
+async fn a_failed_install_makes_the_next_start_ask_the_cloud_again() {
+    let cache = tempfile::tempdir().unwrap();
+    let (distribution, catalog) = vendors().await;
+    let kept = Kept::start(&distribution, &catalog, cache.path()).await;
+    let started = kept
+        .backend
+        .post(&format!("/api/providers/{}/cli/install", kept.provider), Some(&kept.master), json!({}))
+        .await;
+    assert_eq!(started.status, StatusCode::ACCEPTED);
+    let failed = settled(&kept.backend, &kept.master, &kept.provider).await.install;
+    assert!(matches!(failed, Some(CliInstall::Failed { .. })), "{failed:?}");
+    let older = install_by_hand(cache.path(), OLDER).await;
+    let said = kept.said(1).await;
+    assert!(said.starts_with(&format!("cli={older} ")), "{said}");
+    kept.close().await;
 }
