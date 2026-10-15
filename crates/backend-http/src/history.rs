@@ -7,7 +7,8 @@
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::tree::{self, BlockRead, PageQuery, PageRead, Transcript};
+use demi_backend_database::StorageError;
+use demi_backend_database::tree::{self, BlockRead, Entry, PageQuery, PageRead, Transcript};
 use demi_backend_host_access::root_of;
 use demi_backend_user_shard::conversation::{SubagentsError, failure_facts};
 use demi_conversation_socket_protocol::{index_u32, light};
@@ -90,15 +91,28 @@ pub(super) fn page_answer(
             instructions,
             summaries,
             versions,
-        }) => Ok(TranscriptPage {
-            start: index_u32(start),
-            length: index_u32(length),
-            blocks: light(&blocks),
-            failures: None,
-            instructions,
-            summaries,
-            versions,
-        }),
+        }) => {
+            let blocks = blocks
+                .into_iter()
+                .map(|entry| match entry {
+                    Entry::Block(block) => Ok(block),
+                    Entry::StepsNotShared(_) => Err(ApiError::conversation_unreadable(StorageError::Corrupt {
+                        table: "blocks",
+                        column: "block",
+                        reason: "an agent's transcript holds a run of steps not shared".to_owned(),
+                    })),
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(TranscriptPage {
+                start: index_u32(start),
+                length: index_u32(length),
+                blocks: light(&blocks),
+                failures: None,
+                instructions,
+                summaries,
+                versions,
+            })
+        }
         Some(PageRead::NoNode) => Err(no_node()),
         Some(PageRead::NoBlock) => Err(no_block()),
         Some(PageRead::Outside) => Err(outside()),

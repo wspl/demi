@@ -2,6 +2,7 @@ import {
   latestWindow,
   windowEnd,
   windowOf,
+  type Held,
   type HeldBlock,
   type HeldTranscript,
   type TranscriptWindow,
@@ -29,7 +30,7 @@ export interface TranscriptReveal {
  * the reader went to, or else the latest; none held yet, an empty one at
  * the start.
  */
-export function shownWindow(history: HeldTranscript, shownAt: string | null): TranscriptWindow {
+export function shownWindow<B extends Held>(history: HeldTranscript<B>, shownAt: string | null): TranscriptWindow<B> {
   return (shownAt === null ? undefined : windowOf(history, shownAt))
     ?? latestWindow(history)
     ?? history.windows.at(-1)
@@ -37,8 +38,30 @@ export function shownWindow(history: HeldTranscript, shownAt: string | null): Tr
 }
 
 /** Where a window stands in its transcript: whether it reaches the start, the end, and is the latest. */
-export function windowEdges(history: HeldTranscript, window: TranscriptWindow): { atStart: boolean; atEnd: boolean } {
+export function windowEdges<B extends Held>(
+  history: HeldTranscript<B>,
+  window: TranscriptWindow<B>,
+): { atStart: boolean; atEnd: boolean } {
   return { atStart: window.start === 0, atEnd: windowEnd(window) >= history.length }
+}
+
+/**
+ * Where the page next to `window` on `side` is read from (`web-api.md`
+ * § Pages): the index of the window's item at that edge and its id, which
+ * the page must still hold there; none where the window reaches the
+ * transcript's start or end.
+ */
+export function pageBeside<B extends Held>(
+  history: HeldTranscript<B>,
+  window: TranscriptWindow<B>,
+  side: 'before' | 'after',
+): { index: number; edge: string } | null {
+  const edge = side === 'before' ? window.blocks[0] : window.blocks.at(-1)
+  const { atStart, atEnd } = windowEdges(history, window)
+  if (!edge || (side === 'before' ? atStart : atEnd)) {
+    return null
+  }
+  return { index: side === 'before' ? window.start : windowEnd(window) - 1, edge: edge.id }
 }
 
 /** A whole transcript held at once, as a gallery specimen or a test gives it. */

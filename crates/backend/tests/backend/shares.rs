@@ -1,7 +1,8 @@
 //! Sharing (`sharing.md`, `web-api.md` § Sharing): an answer's share holds
-//! the message and the text that ends the reply to it; a conversation's
-//! holds every agent's transcript but its hidden inputs, with the media its
-//! blocks show, as it was when it was taken until the owner takes it again;
+//! the message and the texts of the reply to it; a conversation's holds the
+//! root's messages and texts, with the media they show, as they were when it
+//! was taken until the owner takes it again, and in place of the agent's
+//! work between them the number of its steps, never a step itself;
 //! the public routes answer the token alone, ignore a session and answer
 //! every miss alike; and a share goes with its conversation or its Stop
 //! Sharing, at once.
@@ -10,10 +11,10 @@ use std::sync::Arc;
 
 use demi_provider_common::testing::MockVendor;
 use demi_conversation_socket_protocol::{ServerFrame, TranscriptPatch};
-use demi_shared_types::{Block, SessionPhase, ToolView};
-use demi_web_api_protocol::conversations::{TranscriptPage, WholeBlock};
+use demi_shared_types::{Block, SessionPhase};
+use demi_provider_common::testing::event;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::shares::{ShareAnswer, ShareKind, SharedConversation};
+use demi_web_api_protocol::shares::{ShareAnswer, ShareKind, SharedConversation, SharedEntry, SharedTranscriptPage};
 use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 use serde_json::json;
@@ -52,15 +53,38 @@ async fn public(backend: &TestBackend, token: &str, path: &str, session: Option<
     read
 }
 
-async fn page(backend: &TestBackend, token: &str, query: &str) -> TranscriptPage {
+async fn page(backend: &TestBackend, token: &str, query: &str) -> SharedTranscriptPage {
     let read = public(backend, token, &format!("/transcript{query}"), None).await;
     assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
     read.json()
 }
 
-/// The texts of `blocks`.
-fn texts(blocks: &[Block]) -> Vec<String> {
-    blocks
+/// The blocks of `entries`.
+fn blocks(entries: &[SharedEntry]) -> Vec<Block> {
+    entries
+        .iter()
+        .filter_map(|entry| match entry {
+            SharedEntry::Block(block) => Some(block.clone()),
+            SharedEntry::StepsNotShared(_) => None,
+        })
+        .collect()
+}
+
+/// Each of `entries` as its block's type, or `steps N` for a run of steps
+/// not shared.
+fn entries(entries: &[SharedEntry]) -> Vec<String> {
+    entries
+        .iter()
+        .map(|entry| match entry {
+            SharedEntry::Block(block) => kinds(std::slice::from_ref(block)).remove(0),
+            SharedEntry::StepsNotShared(count) => format!("steps {count}"),
+        })
+        .collect()
+}
+
+/// The texts of `entries`.
+fn texts(entries: &[SharedEntry]) -> Vec<String> {
+    blocks(entries)
         .iter()
         .filter_map(|block| match block {
             Block::Text(text) => Some(text.text.clone()),
@@ -77,7 +101,7 @@ fn missed(read: &Answer, what: &str) {
 
 // Two questions, the first answered after a call; the first answer is shared.
 #[tokio::test]
-async fn an_answers_share_holds_its_message_and_answer_alone_until_the_owner_stops_sharing() {
+async fn an_answers_share_holds_its_message_and_reply_alone_until_the_owner_stops_sharing() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -100,15 +124,15 @@ async fn an_answers_share_holds_its_message_and_answer_alone_until_the_owner_sto
     socket.chat("m1", "Question one").await;
     vendor.respond(answer(&["Answer two."], 10, 2));
     socket.chat("m2", "Question two").await;
-    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    let own = transcript(&backend, &master, FIRST).await.blocks;
     let text = |wanted: &str| {
-        blocks
+        own
             .iter()
             .find_map(|block| match block {
                 Block::Text(text) if text.text == wanted => Some(text.clone()),
                 _ => None,
             })
-            .unwrap_or_else(|| panic!("no text {wanted}: {blocks:?}"))
+            .unwrap_or_else(|| panic!("no text {wanted}: {own:?}"))
     };
     let (looking, first) = (text("Looking it up."), text("Answer one."));
     assert!(looking.forkable, "a text before a call is complete, yet the agent went on");
@@ -134,18 +158,21 @@ async fn an_answers_share_holds_its_message_and_answer_alone_until_the_owner_sto
     let again = shared(&share(&backend, &master, json!({ "kind": "answer", "blockId": first.id })).await);
     assert!(matches!(again, ShareAnswer::Answer { token: same, .. } if same.as_str() == token));
 
-    // Anyone reads the message and its answer, and nothing else.
+    // Anyone reads the message and the texts of its reply, the call between
+    // them as one step not shared, and nothing else.
     let about: SharedConversation = public(&backend, &token, "", None).await.json();
     assert_eq!(about.kind, ShareKind::Answer);
     assert_eq!(about.taken_at, taken_at);
     let read = page(&backend, &token, "").await;
-    assert_eq!(kinds(&read.blocks), ["user", "text"]);
-    assert_eq!(texts(&read.blocks), ["Answer one."]);
-    let Block::User(question) = &read.blocks[0] else { unreachable!() };
+    assert_eq!(entries(&read.blocks), ["user", "text", "steps 1", "text"]);
+    assert_eq!(texts(&read.blocks), ["Looking it up.", "Answer one."]);
+    let SharedEntry::Block(Block::User(question)) = &read.blocks[0] else { unreachable!() };
     assert_eq!(serde_json::to_value(&question.content).unwrap()[0]["text"], "Question one");
+    let call = own.iter().find(|block| matches!(block, Block::ToolCall(_))).unwrap();
+    missed(&public(&backend, &token, &format!("/transcript/blocks/{}", call.id()), None).await, "a call");
     // Another user's session changes nothing.
     let as_stranger = public(&backend, &token, "/transcript", Some(&stranger)).await;
-    assert_eq!(as_stranger.json::<TranscriptPage>(), read);
+    assert_eq!(as_stranger.json::<SharedTranscriptPage>(), read);
 
     // Any complete text of the conversation's agent is an answer, with the
     // message that starts its request; a message is none. An answer is
@@ -157,8 +184,9 @@ async fn an_answers_share_holds_its_message_and_answer_alone_until_the_owner_sto
     };
     assert_ne!(earlier.as_str(), token);
     let earlier = page(&backend, earlier.as_str(), "").await;
+    assert_eq!(entries(&earlier.blocks), ["user", "text"]);
     assert_eq!(texts(&earlier.blocks), ["Looking it up."]);
-    assert_eq!(earlier.blocks[0].id(), read.blocks[0].id());
+    assert_eq!(blocks(&earlier.blocks)[0].id(), &question.id);
     let refusal = share(&backend, &master, json!({ "kind": "answer", "blockId": question.id })).await;
     assert_eq!(refusal.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::ShareTargetInvalid));
     let retaken = backend
@@ -190,36 +218,41 @@ async fn an_answers_share_holds_its_message_and_answer_alone_until_the_owner_sto
 
 /// The root's answer once its child reports.
 const SAID: &str =
-    "the helper said hi: ![The shot](attachment:a1), [the notes](attachment:a2), [a preview](attachment:a3-preview)";
+    "the helper said hi: ![The shot](attachment:a1), [the notes](attachment:a3), [a preview](attachment:a4-preview)";
 
 /// The root's answer once its later child reports.
 const AFTER_LATER: &str = "after the later child";
 
-// A few seconds: the root runs three shell jobs on a real device, one of them
-// the spawn of a child.
+// A few seconds: the root thinks and runs three shell jobs on a real device,
+// one of them the spawn of a child, which runs one.
 #[tokio::test]
-async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_were_until_taken_again() {
+async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_until_taken_again() {
     let scripts = Arc::new(Scripts::default());
     let (_harness, backend, master, _paired, root, _provider) = tree_on(&scripts, Harness::new()).await;
     std::fs::write(format!("{root}/shown.png"), &*PNG).unwrap();
     std::fs::write(format!("{root}/notes.md"), "# Notes\n").unwrap();
     std::fs::write(format!("{root}/preview.md"), "# Preview\n").unwrap();
+    // An image only the child uploads.
+    let viewed = demi_agent_store::testing::png(4, 4, 2);
+    std::fs::write(format!("{root}/viewed.png"), viewed.as_bytes()).unwrap();
     let stranger = backend.make_user(&master, "stranger@example.test", "user").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
     let shot = upload(&backend, &master, "shot.png", "image/png", &PNG).await;
     let unsent = demi_agent_store::testing::png(5, 5, 1);
     let unsent = upload(&backend, &master, "other.png", "image/png", unsent.as_bytes()).await;
-    scripts.child(vec![say("hi from the child")]);
+    scripts.child(vec![shell("c1", &format!("demi attachment upload {root}/viewed.png")), say("hi from the child")]);
+    let mut thought = shell("t1", "printf 'hello from the command\\n' && demi attachment upload shown.png");
+    thought.insert(0, event::thinking("The file is in the root."));
     scripts.root(
         FIRST,
         vec![
-            shell("t1", "printf 'hello from the command\\n' && demi attachment upload shown.png"),
+            thought,
             shell("t2", "demi agent spawn --description helper <<< 'Say hi'"),
             say("asked the helper"),
             // The child's completion wakes the idle parent.
-            // a2 and a3 do not exist yet; `a3-preview` is no attachment's
-            // name.
+            // a2 is the child's; a3 and a4 do not exist yet; `a4-preview`
+            // is no attachment's name.
             say(SAID),
         ],
     );
@@ -240,6 +273,10 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
         .await;
     let own = transcript(&backend, &master, FIRST).await;
     let child = own.subagents[0].child.number;
+    // The child's attachment, which no text of the root names.
+    let viewed = backend.get(&format!("/api/conversations/{FIRST}/attachments/a2"), Some(&master)).await;
+    assert_eq!(viewed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&viewed.body));
+    let viewed = viewed.json::<demi_web_api_protocol::attachments::ConversationAttachment>().blob;
 
     let ShareAnswer::Conversation { token, .. } =
         shared(&share(&backend, &master, json!({ "kind": "conversation" })).await)
@@ -249,42 +286,37 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
     let token = token.as_str().to_owned();
     let about: SharedConversation = public(&backend, &token, "", Some(&stranger)).await.json();
     assert_eq!(about.kind, ShareKind::Conversation);
-    assert_eq!(about.agents.len(), 1);
-    assert_eq!((about.agents[0].number, about.agents[0].description.as_str()), (child, "helper"));
 
-    // The root's transcript, without the hidden inputs and the requests'
-    // usage the conversation holds, and without its instructions.
+    // The root's message and texts; in place of its thinking and calls,
+    // their number, and nothing for the notice of the child's end between
+    // its texts or the hidden inputs and usage the conversation holds.
     let root = page(&backend, &token, "").await;
     assert_eq!(root.start, 0);
     let held = kinds(&own.blocks);
-    assert!(held.contains(&"context".to_owned()) && held.contains(&"response".to_owned()), "{held:?}");
-    let expected: Vec<String> = held
-        .into_iter()
-        .filter(|kind| kind != "context" && kind != "response")
-        .collect();
-    assert_eq!(kinds(&root.blocks), expected);
+    for kind in ["context", "response", "thinking", "tool_call"] {
+        assert!(held.contains(&kind.to_owned()), "{kind} in {held:?}");
+    }
+    assert_eq!(entries(&root.blocks), ["user", "steps 3", "text", "text"], "{held:?}");
+    assert_eq!(texts(&root.blocks), ["asked the helper", SAID]);
     assert!(root.instructions.is_empty());
-    let hidden = own.blocks.iter().find(|block| matches!(block, Block::Context(_))).unwrap();
+    // No step, hidden block or subagent is reached, by id, by number or by
+    // a blob only a step shows.
+    for block in own.blocks.iter().filter(|block| !matches!(block, Block::User(_) | Block::Text(_))) {
+        missed(
+            &public(&backend, &token, &format!("/transcript/blocks/{}", block.id()), None).await,
+            &format!("a {} block", kinds(std::slice::from_ref(block))[0]),
+        );
+    }
+    for query in [format!("?node={child}"), "?node=99".to_owned()] {
+        missed(&public(&backend, &token, &format!("/transcript{query}"), None).await, &format!("agent {query}"));
+    }
+    let said = own.blocks.iter().find(|block| matches!(block, Block::Text(_))).unwrap();
     missed(
-        &public(&backend, &token, &format!("/transcript/blocks/{}", hidden.id()), None).await,
-        "a hidden block",
+        &public(&backend, &token, &format!("/transcript/blocks/{}?node={child}", said.id()), None).await,
+        "a block asked of a subagent",
     );
-    // A call reads whole with the output its view shows.
-    let call = root
-        .blocks
-        .iter()
-        .find(|block| matches!(block, Block::ToolCall(_)))
-        .unwrap_or_else(|| panic!("the first call: {:?}", root.blocks));
-    let whole = public(&backend, &token, &format!("/transcript/blocks/{}", call.id()), None).await;
-    let WholeBlock { block: Block::ToolCall(whole), failures } = whole.json() else { panic!("a call") };
-    assert!(failures.is_none());
-    let Some(ToolView::Shell(view)) = &whole.view else { panic!("a shell call: {whole:?}") };
-    assert!(view.chunks.iter().any(|chunk| chunk.text.contains("hello from the command")), "{view:?}");
-
-    // The child's transcript, by the number its link names.
-    let helper = page(&backend, &token, &format!("?node={child}")).await;
-    assert!(texts(&helper.blocks).contains(&"hi from the child".to_owned()), "{:?}", helper.blocks);
-    missed(&public(&backend, &token, "/transcript?node=99", None).await, "an agent it lacks");
+    missed(&public(&backend, &token, "/attachments/a2", None).await, "a subagent's attachment");
+    missed(&public(&backend, &token, &format!("/blobs/{viewed}"), None).await, "a subagent's blob");
 
     // The media its blocks show, and no other blob of the owner's.
     let image = public(&backend, &token, &format!("/blobs/{}?type=image/png", shot.sha256), None).await;
@@ -314,8 +346,7 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
     assert_eq!(named.name, "shown.png");
     let bytes = public(&backend, &answer, &format!("/blobs/{}", named.blob), None).await;
     assert_eq!(bytes.body, *PNG);
-    missed(&public(&backend, &answer, "/attachments/a2", None).await, "an attachment that did not exist");
-    assert!(public(&backend, &answer, "", None).await.json::<SharedConversation>().agents.is_empty());
+    missed(&public(&backend, &answer, "/attachments/a3", None).await, "an attachment that did not exist");
     // A number past the column's range is no attachment, here and in the
     // conversation's own route.
     let past = "a9223372036854775808";
@@ -361,10 +392,10 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
         .iter()
         .find(|block| matches!(block, Block::Text(text) if text.text == "later answer"))
         .unwrap();
-    let edge = root.blocks[0].id();
+    let edge = blocks(&root.blocks)[0].id().clone();
     assert!(!texts(&page(&backend, &token, "").await.blocks).contains(&"later answer".to_owned()));
     for (path, what) in [
-        ("/attachments/a2".to_owned(), "an attachment uploaded since"),
+        ("/attachments/a3".to_owned(), "an attachment uploaded since"),
         (format!("/transcript/blocks/{}", later_answer.id()), "a block written since"),
         (format!("/transcript?around={}", later_answer.id()), "a page around a block written since"),
         (format!("/transcript?before={length}&edge={edge}"), "an index past the list"),
@@ -374,20 +405,17 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
     ] {
         missed(&public(&backend, &token, &path, None).await, what);
     }
-    let about: SharedConversation = public(&backend, &token, "", None).await.json();
-    assert_eq!(about.agents.len(), 1);
     let retaken = backend
         .put(&format!("/api/conversations/{FIRST}/shares/{token}"), &master, json!({}))
         .await;
     assert!(matches!(shared(&retaken), ShareAnswer::Conversation { token: same, .. } if same.as_str() == token));
     assert!(texts(&page(&backend, &token, "").await.blocks).contains(&"later answer".to_owned()));
-    let helper = page(&backend, &token, &format!("?node={later_child}")).await;
-    assert!(texts(&helper.blocks).contains(&"hi from the later child".to_owned()), "{:?}", helper.blocks);
-    let notes = public(&backend, &token, "/attachments/a2", None).await;
+    missed(&public(&backend, &token, &format!("/transcript?node={later_child}"), None).await, "a subagent");
+    let notes = public(&backend, &token, "/attachments/a3", None).await;
     assert_eq!(notes.status, StatusCode::OK, "{}", String::from_utf8_lossy(&notes.body));
     assert_eq!(notes.json::<demi_web_api_protocol::attachments::ConversationAttachment>().name, "notes.md");
     // A target with more after the number names no attachment.
-    missed(&public(&backend, &token, "/attachments/a3", None).await, "a3-preview");
+    missed(&public(&backend, &token, "/attachments/a4", None).await, "a4-preview");
 
     // Archiving keeps it; deleting the conversation removes it.
     let archived = backend

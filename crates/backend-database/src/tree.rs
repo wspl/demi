@@ -752,6 +752,13 @@ pub(crate) fn path_blocks(
     Ok(blocks)
 }
 
+/// The blocks at the positions `range` of `node`'s current path, all of
+/// which it holds.
+pub fn agent_blocks(connection: &Connection, node: &NodeId, range: Range<usize>) -> Result<Vec<Block>, StorageError> {
+    let path = Path::read(connection, node.as_str())?;
+    path_blocks(connection, node, &path, count(range.start)..count(range.end))
+}
+
 /// Hands each block at the positions `range` of `node`'s path to `take` in
 /// order, with its position, decoded one at a time: exactly one row for each
 /// position of the range.
@@ -1361,35 +1368,47 @@ pub fn root_blocks(connection: &Connection) -> Result<Vec<Block>, StorageError> 
 pub enum Transcript {
     /// The transcript of the node, the blocks below its block count.
     Agent(NodeId),
-    /// The list of the share's token for the agent of that number, 0 for the
-    /// root's: each block at its position on the list, read from the row
-    /// the entry names or from the share's copy. The list is the whole of
-    /// what it reads: no read reaches a row the list does not name.
-    Shared { token: ShareToken, agent: u64 },
+    /// The share's list of the token: each entry at its position on the
+    /// list, a block read from the row the entry names or from the share's
+    /// copy, or a run of steps not shared. The list is the whole of what it
+    /// reads: no read reaches a row the list does not name.
+    Shared { token: ShareToken },
 }
 
-/// The blocks of a share's list, as the `FROM` of a query that names them
-/// `entry` and `block`: each entry with the block it shows, its row's or
-/// its copy's. `?1` is the token and `?2` the agent.
+/// What a transcript holds at an index (`web-api.md` § Sharing): a block,
+/// or, on a share's list only, the number of steps not shared in a run.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Entry {
+    Block(Block),
+    StepsNotShared(u64),
+}
+
+impl Entry {
+    /// Its block; none for a run of steps.
+    pub fn block(&self) -> Option<&Block> {
+        match self {
+            Self::Block(block) => Some(block),
+            Self::StepsNotShared(_) => None,
+        }
+    }
+
+    /// The id of its block; none for a run of steps.
+    pub fn id(&self) -> Option<&BlockId> {
+        self.block().map(Block::id)
+    }
+}
+
+/// The entries of a share's list, as the `FROM` of a query that names them
+/// `entry`, `row` and `copy`: each entry with the block it shows, its row's
+/// or its copy's, or neither for a run of steps. `?1` is the token.
 const LISTED: &str = "share_entries AS entry
   LEFT JOIN blocks AS row ON row.node_id = entry.node_id AND row.idx = entry.idx
   LEFT JOIN share_blocks AS copy
-    ON entry.node_id IS NULL AND copy.token = entry.token AND copy.agent = entry.agent AND copy.idx = entry.position";
+    ON entry.node_id IS NULL AND copy.token = entry.token AND copy.idx = entry.position";
 
 impl Transcript {
-    /// The token and the agent of a share's list, as `?1` and `?2`.
-    fn listed(token: &ShareToken, agent: u64) -> [Value; 2] {
-        // A number past the column's names no agent, as a query may: -1
-        // matches no entry.
-        [
-            Value::Text(token.as_str().to_owned()),
-            Value::Integer(i64::try_from(agent).unwrap_or(-1)),
-        ]
-    }
-
-    /// How many blocks the transcript holds; none when there is no such
-    /// transcript: a node the tree lacks, or an agent the list holds no
-    /// block of, but the root's, which a share always holds.
+    /// How many entries the transcript holds; none when there is no such
+    /// transcript: a node the tree lacks. A share always holds its list.
     pub fn length(&self, connection: &Connection) -> Result<Option<usize>, StorageError> {
         let length: Option<i64> = match self {
             Self::Agent(node) => connection
@@ -1399,14 +1418,11 @@ impl Transcript {
                     |row| row.get(0),
                 )
                 .optional()?,
-            Self::Shared { token, agent } => {
-                let held: i64 = connection.query_row(
-                    "SELECT COUNT(*) FROM share_entries WHERE token = ?1 AND agent = ?2",
-                    params_from_iter(Self::listed(token, *agent)),
-                    |row| row.get(0),
-                )?;
-                (held > 0 || *agent == 0).then_some(held)
-            }
+            Self::Shared { token } => Some(connection.query_row(
+                "SELECT COUNT(*) FROM share_entries WHERE token = ?1",
+                [token.as_str()],
+                |row| row.get(0),
+            )?),
         };
         length
             .map(|length| decode("path_runs", "length", usize::try_from(length)))
@@ -1414,9 +1430,9 @@ impl Transcript {
     }
 
     /// The indices of the `user` blocks among its first `length` blocks,
-    /// where its requests start. A share's are found through the indices of
-    /// block types, the transcript's and the copies', without reading a
-    /// block.
+    /// where its requests start. A share's are found through the
+    /// transcript's index of block types, and its few copies, without
+    /// reading a listed row.
     pub fn user_blocks(&self, connection: &Connection, length: usize) -> Result<Vec<usize>, StorageError> {
         let agent_sql = format!(
             "SELECT {POSITION} FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
@@ -1430,23 +1446,24 @@ impl Transcript {
                 &agent_sql,
                 vec![Value::Text(node.as_str().to_owned()), Value::Integer(count(length))],
             ),
-            Self::Shared { token, agent } => (
-                // From the agent's user blocks in the index of block types
-                // to their entries, so no other block is visited.
+            Self::Shared { token } => (
+                // From the root's user blocks in the index of block types
+                // to their entries, so no other block is visited; and the
+                // messages the share holds as copies, the few a write
+                // rewrote after the list was made (`shares::keep_rewritten`).
                 "SELECT entry.position FROM nodes
                    CROSS JOIN blocks AS row INDEXED BY blocks_by_type
                      ON row.node_id = nodes.id AND json_extract(row.block, '$.type') = 'user'
                    CROSS JOIN share_entries AS entry INDEXED BY share_entries_by_row
                      ON entry.token = ?1 AND entry.node_id = row.node_id AND entry.idx = row.idx
-                 WHERE nodes.number = ?2 AND entry.agent = ?2 AND entry.position < ?3
+                 WHERE nodes.parent_id IS NULL AND entry.position < ?2
                  UNION
-                 SELECT entry.position FROM share_blocks AS copy INDEXED BY share_blocks_by_type
-                   CROSS JOIN share_entries AS entry
-                     ON entry.token = copy.token AND entry.agent = copy.agent AND entry.position = copy.idx
-                 WHERE copy.token = ?1 AND copy.agent = ?2 AND json_extract(copy.block, '$.type') = 'user'
-                   AND entry.node_id IS NULL AND entry.position < ?3
+                 SELECT entry.position FROM share_blocks AS copy
+                   JOIN share_entries AS entry ON entry.token = copy.token AND entry.position = copy.idx
+                 WHERE copy.token = ?1 AND json_extract(copy.block, '$.type') = 'user'
+                   AND entry.node_id IS NULL AND entry.position < ?2
                  ORDER BY 1",
-                [Self::listed(token, *agent).as_slice(), &[Value::Integer(count(length))]].concat(),
+                vec![Value::Text(token.as_str().to_owned()), Value::Integer(count(length))],
             ),
         };
         let mut statement = connection.prepare(sql)?;
@@ -1459,39 +1476,42 @@ impl Transcript {
         Ok(users)
     }
 
-    /// Its blocks at the indices `range`, all of which it holds.
-    pub fn blocks_in(&self, connection: &Connection, range: Range<usize>) -> Result<Vec<Block>, StorageError> {
-        let bounds = [Value::Integer(count(range.start)), Value::Integer(count(range.end))];
+    /// Its entries at the indices `range`, all of which it holds.
+    pub fn entries_in(&self, connection: &Connection, range: Range<usize>) -> Result<Vec<Entry>, StorageError> {
+        let (start, end) = (Value::Integer(count(range.start)), Value::Integer(count(range.end)));
         let (sql, parameters): (String, Vec<Value>) = match self {
             Self::Agent(node) => {
-                let path = Path::read(connection, node.as_str())?;
-                return path_blocks(connection, node, &path, count(range.start)..count(range.end));
+                return Ok(agent_blocks(connection, node, range)?.into_iter().map(Entry::Block).collect());
             }
-            Self::Shared { token, agent } => (
+            Self::Shared { token } => (
                 format!(
-                    "SELECT entry.position, coalesce(row.block, copy.block) FROM {LISTED}
-                     WHERE entry.token = ?1 AND entry.agent = ?2 AND entry.position >= ?3 AND entry.position < ?4
+                    "SELECT entry.position, coalesce(row.block, copy.block), entry.steps FROM {LISTED}
+                     WHERE entry.token = ?1 AND entry.position >= ?2 AND entry.position < ?3
                      ORDER BY entry.position"
                 ),
-                [Self::listed(token, *agent).as_slice(), &bounds].concat(),
+                vec![Value::Text(token.as_str().to_owned()), start, end],
             ),
         };
         let mut statement = connection.prepare(&sql)?;
         let mut rows = statement.query(params_from_iter(parameters))?;
-        let mut blocks = Vec::with_capacity(range.len());
+        let mut entries = Vec::with_capacity(range.len());
         while let Some(row) = rows.next()? {
             let index: i64 = row.get(0)?;
+            let at = range.start + entries.len();
             // A share's entry whose row or copy is gone holds no block.
-            let text: Option<String> = row.get(1)?;
-            let (true, Some(text)) = (index == count(range.start + blocks.len()), text) else {
-                return Err(self.gap(range.start + blocks.len()));
+            let entry = match (index == count(at), row.get::<_, Option<String>>(1)?, row.get::<_, Option<i64>>(2)?) {
+                (true, Some(text), None) => Entry::Block(json(self.table(), "block", &text)?),
+                (true, None, Some(steps)) => {
+                    Entry::StepsNotShared(decode("share_entries", "steps", u64::try_from(steps))?)
+                }
+                _ => return Err(self.gap(at)),
             };
-            blocks.push(json(self.table(), "block", &text)?);
+            entries.push(entry);
         }
-        if blocks.len() != range.len() {
-            return Err(self.gap(range.start + blocks.len()));
+        if entries.len() != range.len() {
+            return Err(self.gap(range.start + entries.len()));
         }
-        Ok(blocks)
+        Ok(entries)
     }
 
     /// The index of the block `id` among its first `length` blocks. A
@@ -1517,20 +1537,19 @@ impl Transcript {
                 &agent_sql,
                 [&[Value::Text(node.as_str().to_owned())][..], &wanted].concat(),
             ),
-            Self::Shared { token, agent } => (
+            Self::Shared { token } => (
                 // From the rows of that id to the entry that names one.
                 "SELECT entry.position FROM blocks AS row INDEXED BY blocks_by_id
                    CROSS JOIN share_entries AS entry INDEXED BY share_entries_by_row
                      ON entry.token = ?1 AND entry.node_id = row.node_id AND entry.idx = row.idx
-                 WHERE json_extract(row.block, '$.id') = ?3 AND entry.agent = ?2 AND entry.position < ?4
+                 WHERE json_extract(row.block, '$.id') = ?2 AND entry.position < ?3
                  UNION ALL
                  SELECT entry.position FROM share_blocks AS copy
-                   JOIN share_entries AS entry
-                     ON entry.token = copy.token AND entry.agent = copy.agent AND entry.position = copy.idx
-                 WHERE copy.token = ?1 AND copy.agent = ?2 AND json_extract(copy.block, '$.id') = ?3
-                   AND entry.node_id IS NULL AND entry.position < ?4
+                   JOIN share_entries AS entry ON entry.token = copy.token AND entry.position = copy.idx
+                 WHERE copy.token = ?1 AND json_extract(copy.block, '$.id') = ?2
+                   AND entry.node_id IS NULL AND entry.position < ?3
                  LIMIT 1",
-                [Self::listed(token, *agent).as_slice(), &wanted].concat(),
+                [&[Value::Text(token.as_str().to_owned())][..], &wanted].concat(),
             ),
         };
         let index: Option<i64> = connection
@@ -1585,10 +1604,10 @@ impl Transcript {
     fn gap(&self, index: usize) -> StorageError {
         match self {
             Self::Agent(node) => gap(node, index),
-            Self::Shared { token, agent } => StorageError::Corrupt {
+            Self::Shared { token } => StorageError::Corrupt {
                 table: "share_entries",
                 column: "position",
-                reason: format!("agent {agent} of share {token} has no block {index}"),
+                reason: format!("share {token} has no entry {index}"),
             },
         }
     }
@@ -1602,7 +1621,7 @@ pub enum PageRead {
     Page {
         start: usize,
         length: usize,
-        blocks: Vec<Block>,
+        blocks: Vec<Entry>,
         instructions: Vec<InstructionEntry>,
         summaries: Vec<CompactionSummary>,
         /// The versions of the page's blocks that have others; none in a
@@ -1658,8 +1677,8 @@ pub fn read_page(
         if index >= length {
             return Ok(Err(PageRead::Outside));
         }
-        let held = transcript.blocks_in(connection, index..index + 1)?;
-        Ok(if held[0].id() == edge { Ok(index) } else { Err(PageRead::Changed) })
+        let held = transcript.entries_in(connection, index..index + 1)?;
+        Ok(if held[0].id() == Some(edge) { Ok(index) } else { Err(PageRead::Changed) })
     };
     let at = match (query.before, query.after, query.around) {
         (None, None, None) => PageAt::Latest,
@@ -1681,13 +1700,13 @@ pub fn read_page(
     let requests = requests(length, &users);
     // Each request the selection sizes is read once, and the page is made
     // of those it keeps.
-    let mut read: HashMap<usize, Vec<Block>> = HashMap::new();
+    let mut read: HashMap<usize, Vec<Entry>> = HashMap::new();
     let mut failed = None;
     let range = page(&requests, at, |request| {
-        match transcript.blocks_in(connection, request.clone()) {
-            Ok(blocks) => {
-                let bytes = light_bytes(&blocks);
-                read.insert(request.start, blocks);
+        match transcript.entries_in(connection, request.clone()) {
+            Ok(entries) => {
+                let bytes = entries_bytes(&entries);
+                read.insert(request.start, entries);
                 bytes
             }
             Err(error) => {
@@ -1699,7 +1718,7 @@ pub fn read_page(
     if let Some(error) = failed {
         return Err(error);
     }
-    let blocks: Vec<Block> = requests
+    let blocks: Vec<Entry> = requests
         .iter()
         .filter(|request| range.start <= request.start && request.end <= range.end)
         .flat_map(|request| {
@@ -1708,11 +1727,11 @@ pub fn read_page(
         })
         .collect();
     let mut summaries = Vec::new();
-    for block in &blocks {
-        if let Block::CompactionMarker(marker) = block
+    for entry in &blocks {
+        if let Entry::Block(Block::CompactionMarker(marker)) = entry
             && let Some(index) = transcript.block_index(connection, &marker.boundary_id, length)?
-            && let Block::CompactionBoundary(boundary) =
-                &transcript.blocks_in(connection, index..index + 1)?[0]
+            && let Entry::Block(Block::CompactionBoundary(boundary)) =
+                &transcript.entries_in(connection, index..index + 1)?[0]
         {
             summaries.push(CompactionSummary {
                 marker: marker.id.clone(),
@@ -1727,7 +1746,9 @@ pub fn read_page(
             held.into_iter()
                 .map(|(position, versions)| {
                     let at = decode("path_runs", "start", usize::try_from(position))?;
-                    Ok(BlockVersions::new(blocks[at - range.start].id().clone(), versions))
+                    // An agent's transcript holds blocks alone.
+                    let id = blocks[at - range.start].id().ok_or_else(|| gap(node, at))?;
+                    Ok(BlockVersions::new(id.clone(), versions))
                 })
                 .collect::<Result<_, StorageError>>()?
         }
@@ -1762,8 +1783,24 @@ pub fn read_block(
     let Some(index) = transcript.block_index(connection, id, length)? else {
         return Ok(BlockRead::NoBlock);
     };
-    let mut blocks = transcript.blocks_in(connection, index..index + 1)?;
-    Ok(BlockRead::Block(blocks.remove(0)))
+    match transcript.entries_in(connection, index..index + 1)?.remove(0) {
+        Entry::Block(block) => Ok(BlockRead::Block(block)),
+        // An entry found by a block's id holds that block.
+        Entry::StepsNotShared(_) => Ok(BlockRead::NoBlock),
+    }
+}
+
+/// The size of whole requests' `entries` as a page sends them: its blocks
+/// in their light form, and each run of steps as its count.
+fn entries_bytes(entries: &[Entry]) -> usize {
+    let steps: usize = entries
+        .iter()
+        .filter_map(|entry| match entry {
+            Entry::Block(_) => None,
+            Entry::StepsNotShared(count) => Some(format!(r#"{{"type":"steps_not_shared","count":{count}}}"#).len()),
+        })
+        .sum();
+    light_bytes(entries.iter().filter_map(Entry::block)) + steps
 }
 
 /// A subagent as [`subagents`] reads it: its record, the model selection

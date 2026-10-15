@@ -59,10 +59,13 @@ pub enum Shape {
     /// An object whose keys are data, such as failure facts by block id.
     Record(Box<Shape>),
     Object(Object),
-    /// An internally tagged enum: each variant an object with the tag.
+    /// An internally tagged enum: each variant an object with the tag, and
+    /// the variants of each named union in `joined`, tagged the same way,
+    /// such as a share's page entry, a block or its own variant.
     Union {
         tag: String,
         variants: Vec<Variant>,
+        joined: Vec<String>,
     },
     /// A value or `null`.
     Nullable(Box<Shape>),
@@ -630,18 +633,24 @@ fn read_one_of(options: &Value, at: &str) -> Result<Shape, Unsupported> {
     if let Some(values) = string_set(options) {
         return Ok(Shape::Enum(values));
     }
-    let variants = options
-        .iter()
-        .enumerate()
-        .map(|(index, option)| read_variant(option, &format!("{at}[{index}]")))
-        .collect::<Result<Vec<_>, _>>()?;
+    // An option that only refers to another definition joins that union's
+    // variants; Zod checks at once that it is tagged the same way.
+    let mut joined = Vec::new();
+    let mut variants = Vec::new();
+    for (index, option) in options.iter().enumerate() {
+        let at = format!("{at}[{index}]");
+        match option.as_object().and_then(|map| map.get("$ref").filter(|_| map.len() == 1)) {
+            Some(target) => joined.push(reference(target, &at)?),
+            None => variants.push(read_variant(option, &at)?),
+        }
+    }
     let tag = discriminator(&variants).ok_or_else(|| {
         unsupported(
             at,
             "variants without one required string tag they all carry (an externally tagged or untagged enum)",
         )
     })?;
-    Ok(Shape::Union { tag, variants })
+    Ok(Shape::Union { tag, variants, joined })
 }
 
 /// The values of a `oneOf` whose every option is a string `const` or
