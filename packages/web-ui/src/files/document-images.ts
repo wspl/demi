@@ -1,7 +1,7 @@
 import { nextTick, watch } from 'vue'
 import { HOST_FILE_ATTRIBUTE, HOST_SRCSET_ATTRIBUTE, hostSrcsetCandidates, srcsetText } from '../markdown/document'
 import { useHostImagesAt } from '../markdown/host-images'
-import { t } from './locales/text'
+import { imagePlaceholderHtml } from '../markdown/image-placeholder'
 import type { FileContents } from './types'
 
 /**
@@ -13,7 +13,8 @@ import type { FileContents } from './types'
  * address of its file's version the page keeps, where it stands, so a new
  * version loads in place and nothing else of the document is rendered
  * again; one whose file is still being read, or is not there, shows its alt
- * text. A `srcset` that names Host files (`HOST_SRCSET_ATTRIBUTE`) is
+ * text in the placeholder box, never as an image without an address, which
+ * the web browser draws as a broken picture. A `srcset` that names Host files (`HOST_SRCSET_ATTRIBUTE`) is
  * written once each of its Host files is read, each candidate at the address
  * of its file's version; a candidate whose file is not there drops out.
  *
@@ -36,12 +37,11 @@ export function useDocumentImages(options: {
 
   /** Shows `image`'s alt text in its place. */
   function fail(image: HTMLImageElement): void {
-    const placeholder = document.createElement('span')
-    placeholder.className = 'inline-flex max-w-full items-center rounded-md border border-dashed border-line px-2 py-0.5 align-middle text-[12px] text-fg-muted'
-    const words = image.alt.trim() || t('view.imageFailed')
-    placeholder.setAttribute('role', 'img')
-    placeholder.setAttribute('aria-label', words)
-    placeholder.textContent = words
+    const made = document.createElement('template')
+    made.innerHTML = imagePlaceholderHtml(image.alt)
+    const placeholder = made.content.firstElementChild
+    if (!(placeholder instanceof HTMLElement))
+      return
     failed.set(placeholder, image)
     image.replaceWith(placeholder)
   }
@@ -73,25 +73,21 @@ export function useDocumentImages(options: {
     const images = [...options.root()?.querySelectorAll<HTMLImageElement>(`img[${HOST_FILE_ATTRIBUTE}]`) ?? [], ...placeholders.keys()]
     for (const image of images) {
       const shown = hostImages.value.get(image.getAttribute(HOST_FILE_ATTRIBUTE) ?? '')
-      const src = shown?.state === 'shown' ? shown.src : null
       const placeholder = placeholders.get(image)
-      // A file that is not there shows its alt text, as an image that does not load does.
-      if (shown?.state === 'none') {
+      // A file that is not there, or not read yet, shows its alt text, as an image that does not load does.
+      if (shown === undefined || shown.state !== 'shown') {
         if (!placeholder)
           fail(image)
         continue
       }
       if (placeholder) {
         // A failed image tries again only for a version it has not tried.
-        if (src === null || src === image.getAttribute('src'))
+        if (shown.src === image.getAttribute('src'))
           continue
         placeholder.replaceWith(image)
         failed.delete(placeholder)
       }
-      if (src === null)
-        image.removeAttribute('src')
-      else
-        image.setAttribute('src', src)
+      image.setAttribute('src', shown.src)
     }
     for (const element of options.root()?.querySelectorAll(`[${HOST_SRCSET_ATTRIBUTE}]`) ?? [])
       setSrcset(element)
