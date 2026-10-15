@@ -28,13 +28,17 @@ use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::{
-    commands::{Invoked, fail_one, verb},
+    commands::{Invoked, fail, fail_one, verb},
     tree::{CommandPlace, Tree},
 };
 use crate::AgentServer;
 
 /// The characters of one line a page shows.
 const LINE_CHARS: usize = 2_000;
+
+/// The exit status of a call the runner cancelled (`commands.md` § Handle
+/// an `rpc` call); its relay ends it with the cause all the same.
+const CANCELLED: u8 = 130;
 
 /// The size of the writes `--raw` makes.
 const RAW_CHUNK_BYTES: usize = 1024 * 1024;
@@ -189,13 +193,25 @@ async fn status<H: HostResolver>(
             Ok(wait) => Duration::from_millis(wait),
             Err(reason) => return fail(&format!("--wait {text}: {reason}")),
         };
-        wait_for_ends(&call.tree, &args.id, wait).await;
+        // A stopped call stops waiting, and lets go of its look with it:
+        // nobody reads what it would show, and a handler left waiting would
+        // show the end to no one (`runtime.md` § Command reports). A call
+        // stopped as the commands end is stopped all the same.
+        tokio::select! {
+            biased;
+            () = port.cancelled() => return Ok(CANCELLED),
+            () = wait_for_ends(&call.tree, &args.id, wait) => {}
+        }
     }
     let mut failed = false;
     let mut shown = Vec::new();
+    let mut moves = Vec::new();
     for id in &args.id {
         match status_one(&call.tree, &call.caller, id, change).await {
-            Ok(text) => shown.push(text),
+            Ok(Shown { text, moved }) => {
+                shown.push(text);
+                moves.extend(moved);
+            }
             Err(reason) => {
                 failed = true;
                 fail_one(&port, &call.command, id, &reason).await?;
@@ -204,7 +220,35 @@ async fn status<H: HostResolver>(
     }
     let printed: Vec<String> = notes.into_iter().chain([shown.join("\n\n")]).collect();
     port.stdout(format!("{}\n", printed.join("\n")).into_bytes()).await?;
+    // Only what reached the caller was seen: a look its call could not
+    // print moves nothing, so an end it showed no one is reported as any
+    // end is (`runtime.md` § Command reports).
+    if let Some(looking) = &looking {
+        for (command, moved) in moves {
+            match moved {
+                Moved::End => looking.saw_end(&command).await,
+                Moved::Place(seen) => looking.set_place(&command, seen).await,
+            }
+        }
+    }
     Ok(u8::from(failed))
+}
+
+/// What a look at one command shows, and how it moves the looking node's
+/// place in the command's output once the call has printed it.
+struct Shown {
+    text: String,
+    moved: Option<(CommandId, Moved)>,
+}
+
+/// Where a look moves the looking node's place in a command's output.
+enum Moved {
+    /// To the end of a command the node's own environment holds, which
+    /// releases its handle: its end tells the node nothing more.
+    End,
+    /// To the place it holds; to [`Seen::ALL`] for an ended command, whose
+    /// end then tells the node nothing more.
+    Place(Seen),
 }
 
 /// A duration as `--wait` and `--interval` take it, such as `30s`, `5m`
@@ -246,13 +290,13 @@ async fn wait_for_ends<H: HostResolver>(tree: &Tree<H>, ids: &[String], wait: Du
 /// whose command no shells hold any more, from its own place in the
 /// command's whole output: each look shows the output since the node's own
 /// last look and moves only its place (`runtime.md` § The `demi shell`
-/// commands).
+/// commands), once the caller printed it.
 async fn status_one<H: HostResolver>(
     tree: &Tree<H>,
     caller: &NodeId,
     id: &str,
     change: Option<IntervalChange>,
-) -> Result<String, String> {
+) -> Result<Shown, String> {
     let unknown = || "no such command in this conversation".to_owned();
     let command = CommandId::try_from(id).map_err(|_| unknown())?;
     let looking = tree
@@ -291,7 +335,7 @@ async fn status_one<H: HostResolver>(
         interval_ms,
         ..Look::default()
     };
-    if let Some(node) = held.as_ref().filter(|node| node.id() == caller) {
+    if held.as_ref().is_some_and(|node| node.id() == caller) {
         let environment = environment
             .as_ref()
             .ok_or_else(|| format!("command {id} is no longer held"))?;
@@ -301,14 +345,15 @@ async fn status_one<H: HostResolver>(
             ..look
         };
         lines.push(look_text(&status, look));
-        if !matches!(status.state, CommandState::Running { .. }) {
-            node.saw_end(&command).await;
-        }
-        return Ok(lines.join("\n"));
+        let moved = (!matches!(status.state, CommandState::Running { .. })).then_some((command, Moved::End));
+        return Ok(Shown {
+            text: lines.join("\n"),
+            moved,
+        });
     }
     let running = environment.filter(|environment| environment.ended(&command).now_or_never().is_none());
     let place = looking.place(&command).await;
-    let shown = match running {
+    let (shown, seen) = match running {
         Some(environment) => {
             let whole = environment
                 .read_output(&command)
@@ -330,8 +375,9 @@ async fn status_one<H: HostResolver>(
                 unreachable: environment.unreachable(&command),
                 ..look
             };
-            looking.set_place(&command, whole.seen_through()).await;
-            whole_look_text(&command, state, running_ms, idle_ms, Arc::new(whole), place, look)
+            let seen = whole.seen_through();
+            let text = whole_look_text(&command, state, running_ms, idle_ms, Arc::new(whole), place, look);
+            (text, Some(seen))
         }
         // An end a look showed tells the node nothing more, however the
         // command ended (`runtime.md` § Command reports).
@@ -341,7 +387,6 @@ async fn status_one<H: HostResolver>(
                 output: StoredOutput::Stored { output, .. },
                 ..
             })) => {
-                looking.set_place(&command, Seen::ALL).await;
                 let state = match end {
                     CommandEnd::Exited { exit_code } => CommandState::Exited {
                         exit_code,
@@ -355,21 +400,25 @@ async fn status_one<H: HostResolver>(
                     },
                     CommandEnd::Unrecorded => {
                         lines.extend(ended_lines(id, end));
-                        return Ok(lines.join("\n"));
+                        return Ok(Shown {
+                            text: lines.join("\n"),
+                            moved: Some((command, Moved::Place(Seen::ALL))),
+                        });
                     }
                 };
-                whole_look_text(&command, state, 0, 0, Arc::new(output), place, look)
+                let text = whole_look_text(&command, state, 0, 0, Arc::new(output), place, look);
+                (text, Some(Seen::ALL))
             }
-            Ok(Some(StoredCommand { end, .. })) => {
-                looking.set_place(&command, Seen::ALL).await;
-                ended_lines(id, end).join("\n")
-            }
-            Ok(None) => ended_lines(id, CommandEnd::Unrecorded).join("\n"),
+            Ok(Some(StoredCommand { end, .. })) => (ended_lines(id, end).join("\n"), Some(Seen::ALL)),
+            Ok(None) => (ended_lines(id, CommandEnd::Unrecorded).join("\n"), None),
             Err(error) => return Err(format!("the output of {id} could not be read: {error}")),
         },
     };
     lines.push(shown);
-    Ok(lines.join("\n"))
+    Ok(Shown {
+        text: lines.join("\n"),
+        moved: seen.map(|seen| (command, Moved::Place(seen))),
+    })
 }
 
 /// What a look shows of a command whose output the conversation does not
@@ -763,10 +812,4 @@ impl Page<'_> {
 /// The characters `lines` take, each with its newline.
 fn chars(lines: &[String]) -> usize {
     lines.iter().map(|line| line.chars().count() + 1).sum()
-}
-
-/// A failure, which the dispatcher tells after the command's path:
-/// `demi shell output: <reason>` on stderr, exit 1.
-fn fail(reason: &str) -> Result<u8, RpcError> {
-    Err(RpcError::Failed(reason.to_owned()))
 }
