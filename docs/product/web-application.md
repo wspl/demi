@@ -416,7 +416,10 @@ conversation; the panel button covers the screen with the work panel, and
   its height or a flick, Escape and Back, and springs back from a shorter
   pull; a pull down at the top of its scrolled content becomes the close;
   it stops at 90% of the screen and scrolls; focus moves in and returns to
-  the control that opened it; the page behind does not scroll.
+  the control that opened it; the page behind does not scroll. A menu sheet
+  has no heading, as an iOS menu has none: what it acts on is the control
+  the user just tapped, still in view above it, so the title's sheet starts
+  with Share Conversation…, not with the title again.
 - **Back closes before it leaves.** The browser's Back closes the sheet,
   window, panel or drawer on top before it leaves the page, so a phone's
   back gesture undoes what the last tap opened.
