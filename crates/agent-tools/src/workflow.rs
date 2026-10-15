@@ -21,6 +21,16 @@ pub const WORKFLOW_FILE_MAX_BYTES: u64 = 1024 * 1024;
 
 /// The most characters a workflow's name has.
 const NAME_MAX: usize = 60;
+/// The most characters of a name that reads as a menu item; `check` warns
+/// of a longer one.
+const MENU_NAME_MAX: usize = 30;
+/// What a menu item's name does not hold: colons, plus signs and brackets,
+/// ASCII and full-width, which mark a task's title rather than the name of
+/// a way of working; `check` warns of them.
+const MENU_NAME_MARKS: &[char] = &[
+    ':', '：', '+', '＋', '(', ')', '[', ']', '{', '}', '<', '>', '（', '）', '［', '］',
+    '｛', '｝', '＜', '＞', '【', '】', '「', '」', '『', '』', '《', '》', '〈', '〉', '〔', '〕',
+];
 /// The most characters of instructions, a workflow's or a profile's.
 const INSTRUCTIONS_MAX: usize = 65_536;
 /// The most characters of a profile's description.
@@ -33,7 +43,7 @@ pub const WORKFLOWS_HELP: &str = r#"A workflow is a group of subagent profiles w
 Where: .demi/workflows/<id>.yaml in the nearest directory, from the working directory up to the git repository's root, that has a .demi/workflows/ directory. The file's name without .yaml is the workflow's id.
 
 Fields:
-  name          What the menu shows: 1 to 60 characters. Required.
+  name          What the Workflow menu shows, so name it as a menu item: the way of working in a few words, never the task at hand, in English Title Case or as the user's language writes a menu item. Up to 30 characters, with no colon, plus sign or brackets; check warns of a name that is not. Good: Review Team, Parallel Development, 并行开发. Bad: wasm32 port: lead + implement worker, Review (strict), wasm32 移植：主管 + 实现 worker. 1 to 60 characters. Required.
   instructions  For the agent leading the conversation: when to use which profile and how to split the work. Up to 65,536 characters. Optional.
   profiles      The workflow's profiles, a list. Required. Each has:
     id            The --profile value of demi agent spawn: 1 to 40 lowercase letters, digits and hyphens, starting with a letter; not default; unique in the list. Required.
@@ -117,6 +127,29 @@ pub struct WorkflowProfile {
     #[serde(default)]
     #[garde(custom(context_needs_model(&self.model)))]
     pub context: Option<ContextChoice>,
+}
+
+impl Workflow {
+    /// Why the name does not read as a menu item, for `check` to warn of:
+    /// longer than a menu item's, or holding a colon, a plus sign or a
+    /// bracket. The workflow works whatever its name.
+    pub fn name_warning(&self) -> Option<String> {
+        let mut faults = Vec::new();
+        if self.name.chars().count() > MENU_NAME_MAX {
+            faults.push(format!("is over {MENU_NAME_MAX} characters"));
+        }
+        if self.name.contains(MENU_NAME_MARKS) {
+            faults.push("has a colon, a plus sign or brackets".to_owned());
+        }
+        if faults.is_empty() {
+            return None;
+        }
+        Some(format!(
+            "the name {} {}; the Workflow menu shows it as a menu item, the way of working in a few words, such as Review Team or Parallel Development.",
+            self.name,
+            faults.join(" and "),
+        ))
+    }
 }
 
 /// Why a workflow file does not read: the line and the field that are
@@ -289,6 +322,39 @@ mod tests {
         for (text, reason) in cases {
             let error = parse_workflow(text).unwrap_err();
             assert_eq!(error.reason(), reason, "{text}");
+        }
+    }
+
+    /// A name that does not read as a menu item, a task's title with a
+    /// colon, a plus sign or brackets or one over 30 characters, still
+    /// reads, with a warning that says why; a short name in the user's
+    /// language reads without one.
+    #[test]
+    fn a_name_that_is_not_a_menu_items_reads_with_a_warning() {
+        let warned = [
+            ("wasm32 移植：主管 + 实现 worker", "has a colon, a plus sign or brackets;"),
+            ("Port: Lead", "has a colon, a plus sign or brackets;"),
+            ("Lead ＋ Worker", "has a colon, a plus sign or brackets;"),
+            ("Review (strict)", "has a colon, a plus sign or brackets;"),
+            ("Review [strict]", "has a colon, a plus sign or brackets;"),
+            ("评审【严格】", "has a colon, a plus sign or brackets;"),
+            ("Parallel Development With Review", "is over 30 characters;"),
+            (
+                "wasm32 port: lead + implement worker",
+                "is over 30 characters and has a colon, a plus sign or brackets;",
+            ),
+        ];
+        for (name, fault) in warned {
+            let workflow = parse_workflow(&format!("name: '{name}'\nprofiles: []\n")).unwrap();
+            let warning = workflow.name_warning().unwrap_or_default();
+            assert!(
+                warning.starts_with(&format!("the name {} {fault}", workflow.name)),
+                "{name}: {warning}"
+            );
+        }
+        for name in ["Parallel Development", "并行开发", "Équipe de relecture"] {
+            let workflow = parse_workflow(&format!("name: '{name}'\nprofiles: []\n")).unwrap();
+            assert_eq!(workflow.name_warning(), None, "{name}");
         }
     }
 }
