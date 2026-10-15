@@ -231,8 +231,14 @@ policy makes the attempts unwelcome.
   each entry current again once its subscriptions are `live` and the numbers
   say so ([What the service keeps](../architecture/plugin-pages.md#what-the-service-keeps)).
   Moving costs no reconnect wait.
-- **A failure goes back to the relay at once.** A channel that fails, or a
-  peer whose connection fails, sets the choice to `relay`. A read, text or
+- **A channel that never opened is tried once more.** A channel that closes
+  before it opens while its peer stays connected, as one whose opening the
+  runner could not acknowledge does, says nothing about the path: the
+  operation opens a new channel and runs there, and its sibling operations
+  go on. A second such close for the same operation is a failure, below.
+- **A failure goes back to the relay at once.** A channel that fails after
+  it opened, a second channel that never opened, or a peer whose connection
+  fails, sets the choice to `relay`. A read, text or
   listing that failed on the direct channel runs again on the relay; a write
   that failed is retried once on the relay, since a write that did not finish
   leaves the file as it was; a stream or watch reopens on the relay.
