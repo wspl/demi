@@ -26,7 +26,7 @@ use futures_util::stream::{self, Stream};
 use crate::Shared;
 use crate::failure::read_failure;
 use crate::live::{LiveCli, Next};
-use crate::output::{ContentBlock, Line, Printed, StreamEvent, Streaming, TurnEnd};
+use crate::output::{Answered, ContentBlock, Line, Printed, StreamEvent, Streaming, TurnEnd};
 use crate::placement::Placement;
 use crate::prepared::Prepared;
 use crate::timing::{self, RunTiming, Took};
@@ -347,9 +347,7 @@ fn run(
                         // that repeats what streamed.
                         let mut complete = None;
                         if !live.streaming.as_ref().is_some_and(|streaming| streaming.repeats(&id)) {
-                            complete = Some(live.streaming.take().unwrap_or_default().replaced());
-                            live.collecting.clear();
-                            live.writing.clear();
+                            complete = Some(live.abandon_streaming());
                             live.last_call.answered(message.usage());
                         }
                         for Printed { raw, block } in message.content() {
@@ -370,14 +368,17 @@ fn run(
                                 },
                                 Some(block) => match &mut complete {
                                     Some(replaced) => {
-                                        let (events, wrote) = replaced.events(block);
+                                        let (events, answered) = replaced.events(block);
                                         for event in events {
                                             live.mirror.observe(&event);
                                             yielded = true;
                                             timing.delta();
                                             yield event;
                                         }
-                                        live.mirror.printed(id.clone(), raw, wrote);
+                                        match answered {
+                                            Answered::Repeats(index) => live.mirror.printed_at(id.clone(), raw, index),
+                                            Answered::New(wrote) => live.mirror.printed(id.clone(), raw, wrote),
+                                        }
                                     }
                                     // What streamed wrote the block: reasoning
                                     // opens one at its start, and text with its
@@ -395,18 +396,24 @@ fn run(
                                 None => live.mirror.printed(id.clone(), raw, false),
                             }
                         }
-                        if complete.is_some() && !live.collecting.is_empty() {
-                            let batch = std::mem::take(&mut live.collecting);
-                            let events = live.hand_over(batch, &request);
-                            runtime.live = Some(live);
-                            for event in events {
+                        if let Some(replaced) = complete.take() {
+                            for event in live.mirror.left_out(replaced.unrepeated()) {
                                 yield event;
                             }
-                            return;
+                            if !live.collecting.is_empty() {
+                                let batch = std::mem::take(&mut live.collecting);
+                                let events = live.hand_over(batch, &request);
+                                runtime.live = Some(live);
+                                for event in events {
+                                    yield event;
+                                }
+                                return;
+                            }
                         }
                     }
                     Some(Line::TranscriptMirror(line)) => {
-                        for event in live.mirror.mirrored(line.entries, &request) {
+                        let streaming = live.streaming.as_ref().and_then(Streaming::id).map(str::to_owned);
+                        for event in live.mirror.mirrored(line.entries, &request, streaming.as_deref()) {
                             yield event;
                         }
                     }
@@ -419,14 +426,21 @@ fn run(
                             // A new message abandons one whose stream never
                             // stopped, and the calls it collected.
                             StreamEvent::MessageStart(start) => {
+                                let abandoned = live.abandon_streaming();
+                                for event in live.mirror.left_out(abandoned.unrepeated()) {
+                                    yield event;
+                                }
                                 live.streaming = Some(Streaming::new(start.message_id()));
-                                live.collecting.clear();
-                                live.writing.clear();
                             }
+                            // The message's entries, held while it streamed,
+                            // now have their blocks.
                             StreamEvent::MessageStop(_) => {
                                 if live.collecting.is_empty() {
                                     live.streaming = None;
                                     live.writing.clear();
+                                    for event in live.mirror.place(&request, false, None) {
+                                        yield event;
+                                    }
                                     continue;
                                 }
                                 let batch = std::mem::take(&mut live.collecting);
@@ -451,7 +465,7 @@ fn run(
                             }
                             live.mirror.observe(&event);
                             if let Some(streaming) = &mut live.streaming {
-                                streaming.observe(&event);
+                                streaming.observe(&event, live.mirror.last_block());
                             }
                             yielded = true;
                             timing.delta();
