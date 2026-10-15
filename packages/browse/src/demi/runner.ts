@@ -124,13 +124,15 @@ async function pair(tool: Tool, generation: number, backend?: string): Promise<s
   await page.goto(`${webBase(slot)}/settings/devices`)
   // Each step is a locator, which Playwright finds again for each attempt:
   // a button the dialog replaces while it is clicked, as Continue is, is
-  // clicked once it is there again.
-  await page.getByRole('button', { name: 'Add Device…' }).click()
-  const dialog = page.getByRole('dialog', { name: 'Add Device' })
-  await dialog.getByRole('button', { name: 'Continue' }).click()
-  await dialog.getByLabel('Pairing code').fill(code)
-  await dialog.getByRole('button', { name: 'Pair Device' }).click()
-  await dialog.getByRole('button', { name: 'Done' }).click({ timeout: RUNNER_MS })
+  // clicked once it is there again. Each control is found by its role and
+  // the hook `DevicePairingDialog` gives it, so pairing works whatever
+  // language the page speaks.
+  await page.getByRole('button').and(page.locator('[data-add-device]')).click()
+  const dialog = page.getByRole('dialog').filter({ has: page.locator('[data-device-pairing]') })
+  await dialog.getByRole('button').and(dialog.locator('[data-pairing-continue]')).click()
+  await dialog.getByRole('textbox').and(dialog.locator('[data-pairing-code]')).fill(code)
+  await dialog.getByRole('button').and(dialog.locator('[data-pair-device]')).click()
+  await dialog.getByRole('button').and(dialog.locator('[data-pairing-done]')).click({ timeout: RUNNER_MS })
   const device = await untilReady('The runner', started, async () => lineOf(started.group.log, PAIRED)?.[1] ?? null, RUNNER_MS)
   updateState(slot, (state) => {
     state.runner = { generation, device }

@@ -95,12 +95,6 @@ export async function conversationAddress(page: Page): Promise<void> {
 }
 
 /**
- * The transcript's tail row while the conversation waits (`ActivitySlot.vue`):
- * Requesting, with how long once past a second, or Connecting.
- */
-const WAITING_ROW = /^(Requesting( for .+)?|Connecting)$/
-
-/**
  * What the page shows of a turn that runs or is about to: the composer's
  * Stop, which stays from the send of the message that starts the turn to
  * its end, or the transcript's Requesting or Connecting row, which also
@@ -108,12 +102,14 @@ const WAITING_ROW = /^(Requesting( for .+)?|Connecting)$/
  * shows neither.
  */
 export async function pageActivity(page: Page): Promise<string | null> {
-  // The composer's own Stop, not the one of the agent's browser address bar.
-  const stop = page.locator('.composer-shell').getByRole('button', { name: 'Stop', exact: true })
+  // The composer's own Stop, not the one of the agent's browser address bar,
+  // and the row by the hooks `SessionComposer` and `ActivitySlot` give them,
+  // so the page is read in any language; the row's words name it in a report.
+  const stop = page.getByRole('button').and(page.locator('[data-composer-stop]'))
   if (await stop.filter({ visible: true }).count() > 0) {
     return 'Stop'
   }
-  const row = page.getByText(WAITING_ROW).filter({ visible: true })
+  const row = page.locator('[data-transcript-wait]').filter({ visible: true })
   return await row.count() > 0 ? await row.first().innerText() : null
 }
 

@@ -19,9 +19,6 @@ import { conversationAddress, conversationId, summary, TURN_MS, waitSummary, typ
 /** How long the page may take to show a failure the backend already reports. */
 const SHOW_MS = 10_000
 
-/** The label of the notice a message the page could not deliver shows (`PendingSubmission.vue`). */
-const UNDELIVERED = 'This message was not delivered.'
-
 export interface MessageOptions {
   /** Files on this machine the message carries, attached through the composer's file input. */
   files?: string[]
@@ -43,7 +40,8 @@ export async function messageOn(slot: Slot, page: Page, text: string, options: M
   const known = conversationId(page)
   // The turn that ended last before the message, which the message's turn follows.
   const before = known === null ? null : (await summary(slot, page, known))?.lastTurn?.id ?? null
-  const composer = page.getByRole('textbox', { name: 'Message', exact: true })
+  // The composer's field, by the hook `MessageEditor` gives it, in any language.
+  const composer = page.getByRole('textbox').and(page.locator('[data-composer]'))
   // A file is a capsule in the message's text (`product.md` § Attachments).
   const capsules = composer.locator('.message-capsule')
   const held = await capsules.allInnerTexts()
@@ -74,7 +72,8 @@ export async function messageOn(slot: Slot, page: Page, text: string, options: M
   if (options.wait === false) {
     return { conversation: id, turn: null }
   }
-  const undelivered = page.getByRole('alert').filter({ hasText: UNDELIVERED })
+  // The notice a message the page could not deliver shows (`AgentMessageVirtualBlock`).
+  const undelivered = page.locator('[data-delivery-failure]').getByRole('alert')
   const end = await waitSummary(slot, page, id, {
     ended: (summary) => summary.lastTurn !== null && summary.lastTurn.id !== before,
     what: 'the turn of the message to end',
