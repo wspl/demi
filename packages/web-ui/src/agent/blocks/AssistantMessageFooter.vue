@@ -3,6 +3,8 @@ import { t } from '../locales/text'
 import { GitFork, RefreshCw, Share } from '@lucide/vue'
 import type { MessageForkState } from '../message-fork'
 import type { AnswerShare } from '../sharing'
+import type { VersionChoice } from '../versions'
+import VersionSwitcher from './VersionSwitcher.vue'
 import CopyButton from '../../ui/CopyButton.vue'
 import IconButton from '../../ui/IconButton.vue'
 import Tooltip from '../../ui/Tooltip.vue'
@@ -27,11 +29,14 @@ defineProps<{
    * § Regenerate and the Up Arrow key); absent elsewhere.
    */
   regenerate?: () => void
+  /** The versions of this answer, first in the footer, as ChatGPT shows them; absent with none. */
+  versions?: VersionChoice
 }>()
 </script>
 
 <template>
   <div class="mt-2 flex flex-wrap items-center gap-1 text-fg-faint">
+    <VersionSwitcher v-if="versions" :choice="versions" />
     <CopyButton :source="content" />
     <Tooltip v-if="!hideFork" :content="t('transcript.assistant.fork')" :disabled="!fork">
       <IconButton

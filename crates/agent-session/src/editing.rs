@@ -1,18 +1,22 @@
-//! Message editing (`message-editing.md`): an accepted edit replaces a user
-//! message and everything after it with a new user turn, commits the
-//! rewritten history with its receipt in one save, and then infers on a fresh
-//! runtime. A Fork (`conversation-fork.md`) copies a prefix into a new root's
-//! first checkpoint.
+//! Message editing (`message-editing.md`): an accepted edit continues the
+//! conversation from a new version of a user message, and Regenerate from a
+//! new version of its answer; either commits the new branch with its receipt
+//! in one save, leaving the old one stored, and then infers on a fresh
+//! runtime. A switch of versions makes another branch current. A Fork
+//! (`conversation-fork.md`) copies a prefix into a new root's first
+//! checkpoint.
 
 use std::rc::Rc;
 
 use demi_agent_store::{Checkpoint, CheckpointState, CheckpointUpdate, EditReceipt};
 use demi_agent_transcript::{CutError, ForkEnd, TranscriptLog, before_user, fork_prefix};
 use demi_command_protocol::canonical_digest;
-use demi_conversation_socket_protocol::{AgentCode, EditRequest, MediaRef, Refusal, TranscriptVersion};
+use demi_conversation_socket_protocol::{
+    AgentCode, EditRequest, MediaRef, RegenerateRequest, Refusal, TranscriptVersion,
+};
 use demi_provider_common::ProviderRuntime;
 use demi_shared_types::{
-    BlobRef, Block, BlockId, DocumentSource, MediaSource, OperationId, UserContentBlock,
+    BlobRef, Block, BlockId, DocumentSource, MediaSource, OperationId, UserBlock, UserContentBlock,
 };
 use tokio::sync::watch;
 
@@ -41,7 +45,9 @@ pub struct EditSubmission {
     pub operation_id: OperationId,
     pub target: BlockId,
     pub version: TranscriptVersion,
-    pub content: Vec<EditContent>,
+    /// The new version's content; none for Regenerate, which keeps the
+    /// message as it is and makes a new version of its answer.
+    pub content: Option<Vec<EditContent>>,
     pub digest: String,
 }
 
@@ -156,6 +162,11 @@ pub fn edit_digest(request: &EditRequest) -> String {
     canonical_digest(request).expect("an edit request serializes")
 }
 
+/// The digest of a Regenerate request, as an edit's is made.
+pub fn regenerate_digest(request: &RegenerateRequest) -> String {
+    canonical_digest(request).expect("a regenerate request serializes")
+}
+
 /// The edit action (`message-editing.md` § Behavior and ownership):
 /// prepares the replacement turn beside the accepted history, commits it
 /// with its receipt in one save, adopts it, closes the runtimes it
@@ -178,7 +189,11 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
                 .and_then(|edit| edit.submission.take())
         })
         .expect("an edit action has its submission");
-    let preamble = cancel.guard(s.runtime.preamble()).await?;
+    // Regenerate keeps the message, with the preamble it was sent with.
+    let preamble = match submission.content {
+        Some(_) => cancel.guard(s.runtime.preamble()).await?,
+        None => None,
+    };
     let Candidate {
         blocks,
         mut runtime,
@@ -244,8 +259,56 @@ impl Candidate {
         let Some(Block::User(target)) = blocks.get(prefix.len()) else {
             unreachable!("the prefix ends before the user block");
         };
-        let content = submission
-            .content
+        let model = core.landing_selection().clone();
+        let turn = core.turn();
+        let blocks = match &submission.content {
+            Some(content) => {
+                let content = Self::content(target, content)?;
+                let mut candidate = TranscriptLog::new(prefix, s.ids.clone(), core.clock());
+                candidate.push_user(turn.clone(), &model, content, preamble);
+                candidate.blocks().to_vec()
+            }
+            // The message stays, and the new answer follows it.
+            None => blocks[..=prefix.len()].to_vec(),
+        };
+        let runtime = core
+            .switch
+            .as_ref()
+            .and_then(|switch| switch.runtime.as_deref())
+            .or(core.provider.held())
+            .expect("an idle session's runtime is in its slot")
+            .fresh();
+        let receipt = EditReceipt {
+            operation_id: submission.operation_id.clone(),
+            digest: submission.digest.clone(),
+            turn_id: turn,
+        };
+        let mut edits = core.edits.clone();
+        edits.push(receipt.clone());
+        let update = core.rewrite_update(&blocks, true);
+        let update = CheckpointUpdate {
+            state: CheckpointState {
+                phase: demi_shared_types::SessionPhase::Running,
+                queue: Vec::new(),
+                edits,
+                model: model.clone(),
+                ..update.state
+            },
+            ..update
+        };
+        Ok(Self {
+            blocks,
+            runtime,
+            update,
+            receipt,
+            model,
+        })
+    }
+
+    /// The new version's content: each reference to a file the edited
+    /// message `target` holds in that block's place.
+    fn content(target: &UserBlock, content: &[EditContent]) -> Result<Vec<UserContentBlock>, EditError> {
+        content
             .iter()
             .map(|part| match part {
                 EditContent::Content(block) => Ok(block.clone()),
@@ -266,45 +329,41 @@ impl Candidate {
                         })
                 }
             })
-            .collect::<Result<Vec<_>, _>>()?;
-        let model = core.landing_selection().clone();
-        let turn = core.turn();
-        let mut candidate = TranscriptLog::new(prefix, s.ids.clone(), core.clock());
-        candidate.push_user(turn.clone(), &model, content, preamble);
-        let blocks = candidate.blocks().to_vec();
-        let runtime = core
-            .switch
-            .as_ref()
-            .and_then(|switch| switch.runtime.as_deref())
-            .or(core.provider.held())
-            .expect("an idle session's runtime is in its slot")
-            .fresh();
-        let receipt = EditReceipt {
-            operation_id: submission.operation_id.clone(),
-            digest: submission.digest.clone(),
-            turn_id: turn,
-        };
-        let mut edits = core.edits.clone();
-        edits.push(receipt.clone());
-        let update = CheckpointUpdate {
-            state: CheckpointState {
-                phase: demi_shared_types::SessionPhase::Running,
-                queue: Vec::new(),
-                edits,
-                model: model.clone(),
-                ..core.checkpoint_state()
-            },
-            changed_blocks: blocks.iter().cloned().enumerate().collect(),
-            block_count: blocks.len(),
-        };
-        Ok(Self {
-            blocks,
-            runtime,
-            update,
-            receipt,
-            model,
-        })
+            .collect()
     }
+}
+
+/// A switch of versions (`message-editing.md` § Versions), admitted as an
+/// edit is: in the session's save order, the store makes the latest leaf of
+/// the `to`th version at the block `target`'s place current, and the
+/// session adopts that path from there as one rewrite batch, on fresh
+/// runtimes, so nothing a provider kept of the path it left reaches the
+/// next request. Nothing else changes.
+pub(super) async fn switch(
+    s: &Rc<SessionShared>,
+    cancel: &TurnCancel,
+    target: &BlockId,
+    to: u32,
+) -> Result<(), TurnError> {
+    let reservation = cancel
+        .guard(s.runtime.reserve_edit())
+        .await?
+        .map_err(|message| TurnError::refused(AgentCode::FrameFailed, message))?;
+    cancel.check()?;
+    persist::flush(s).await?;
+    let position = s
+        .read(|core| core.transcript.position(target))
+        .ok_or_else(|| TurnError::refused(AgentCode::EditTarget, "The conversation holds no such block"))?;
+    let switched = {
+        let _turn = s.persist_gate.acquire().await;
+        s.store.switch(position, to).await?
+    };
+    let discarded = s.update(|core| core.adopt_switch(switched));
+    for mut runtime in discarded {
+        runtime.close().await;
+    }
+    drop(reservation);
+    Ok(())
 }
 
 /// The kind of block a kept medium names, and the blob it names.
@@ -364,6 +423,7 @@ pub fn fork_seed(
 ) -> Result<Checkpoint, ForkError> {
     let prefix = fork_prefix(blocks, end)?.to_vec();
     Ok(Checkpoint {
+        versions: Default::default(),
         state: CheckpointState {
             phase: demi_shared_types::SessionPhase::Idle,
             queue: Vec::new(),

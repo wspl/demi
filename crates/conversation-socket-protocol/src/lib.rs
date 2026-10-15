@@ -13,14 +13,15 @@ mod server;
 mod transcript;
 
 pub use client::{
-    ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef, SavedDelivery,
+    ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef, RegenerateRequest, SavedDelivery,
 };
 pub use server::{
     AbortResult, AbortTarget, AgentCode, CommandView, EditOutcome, Failures, JobModel, JobPhase, Refusal,
     ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome, SubagentChild, SubagentEvent, SubagentJob, SubagentSummary,
 };
 pub use transcript::{
-    LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, TranscriptPatch, TranscriptVersion, index_u32, latest_page_start, light,
+    BlockVersions, LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, TranscriptPatch, TranscriptVersion, Versions, index_u32,
+    latest_page_start, light,
     light_bytes, page, requests, reset_start,
 };
 

@@ -354,9 +354,14 @@ Host. The node lifecycle and its commits are defined in
 
 For example, saving a streamed assistant block updates that block's row and
 the node checkpoint together. It does not serialize the whole transcript into
-the node's state. Rewinding history deletes rows beyond the new block count.
-The journal is therefore a
-sequence of indexed blocks, not an append-only database.
+the node's state. A row changes only while its block is produced; once
+settled it is never rewritten or deleted: an edit, Regenerate, a retry or an
+unwind adds rows on a new branch and moves the node's current leaf
+([Versions](../agent/message-editing.md#versions)). The `blocks` table is
+therefore append-only once a block settles, a tree of rows by row number,
+each naming the row it follows; the node keeps its current leaf and the
+runs of row numbers its current path is made of, the second stored copy of
+derived data after the search index, kept for page reads.
 
 Each atomic commit of the tree store, such as creating, saving or closing a
 node ([Persistence](../agent/subagents.md#persistence)), is one transaction on
@@ -374,7 +379,7 @@ carries and its order belong to the tree store contract
 Changed output advances `output_revision` in the checkpoint transaction; input
 alone does not. Input is the user's messages and steers, and the context,
 command-report (`wakeup`), agent-message and resume blocks the session writes before a request;
-everything else a save changes, and rows a rewrite removes, is output. A
+everything else a save changes, and a change of the current path, is output. A
 summary read takes the phase, the output revision, the latest terminal
 block and the highest attachment number without loading the transcript; a
 conversation that has no database file yet reads as idle with revision 0 and
@@ -617,10 +622,11 @@ user follows the users' shards
 ([Multi-worker storage placement](#multi-worker-storage-placement)).
 
 The index is derived: everything in it is read from the conversations, so it
-is never migrated, backed up or replicated, and it is the one stored copy of
-data that this document allows to be derived, for speed. Its version is the
-digest of its schema, as for the databases. A row is keyed by its
-conversation, agent and block ids, never by a number SQLite may give to another row.
+is never migrated, backed up or replicated, and with a node's current path
+runs it is one of the two stored copies of derived data this document
+allows, for speed. Its version is the digest of its schema, as for the
+databases. A row is keyed by its conversation, agent and block ids, never
+by a number SQLite may give to another row.
 
 **It follows the transcript's changes, not the transcript.** For example, a
 turn adds three blocks to a root of 11,000: the index replaces three rows,

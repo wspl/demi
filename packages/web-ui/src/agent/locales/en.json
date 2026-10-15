@@ -85,6 +85,11 @@
       "rejected": "The edit was not accepted.",
       "unconfirmed": "Could Not Confirm the Edit"
     },
+    "versions": {
+      "previous": "Previous Version",
+      "next": "Next Version",
+      "position": "Version {index} of {count}"
+    },
     "connecting": "Connecting",
     "newFile": "New file",
     "picture": {

@@ -714,6 +714,14 @@ impl SessionStore for GatedStore {
         self.inner.load()
     }
 
+    fn switch(
+        &self,
+        position: usize,
+        version: u32,
+    ) -> LocalBoxFuture<'_, Result<demi_agent_store::Switched, StoreError>> {
+        self.inner.switch(position, version)
+    }
+
     fn blobs(&self) -> &dyn demi_agent_store::media::BlobStore {
         self.inner.blobs()
     }

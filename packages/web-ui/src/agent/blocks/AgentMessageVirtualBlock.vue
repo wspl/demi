@@ -9,6 +9,7 @@ import { rowFace } from '../row-key'
 import RowRoll from '../../ui/RowRoll.vue'
 import ErrorNotice from '../../ui/ErrorNotice.vue'
 import type { PendingSubmissionState } from '../types'
+import type { VersionChoice } from '../versions'
 import UserBlock from './UserBlock.vue'
 import ThinkingBlock from './ThinkingBlock.vue'
 import AgentReceiptBlock from './AgentReceiptBlock.vue'
@@ -44,6 +45,8 @@ const props = defineProps<{
   editable?: boolean
   /** Regenerate in an answer's footer; absent where it is not offered. */
   regenerate?: () => void
+  /** The versions the row shows: an edited message's, or a regenerated answer's in its footer. */
+  versions?: VersionChoice
   fork?: () => Promise<void>
   forkState?: MessageForkState
   share?: AnswerShare
@@ -129,6 +132,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       :content="block.content"
       :brief="childBrief(transcript?.node ?? null, block.content)"
       :editable="editable"
+      :versions="versions"
       @edit="emit('editUser', block.id)"
     />
     <UserBlock
@@ -200,6 +204,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         :share-wait="!block.forkable"
         :hide-fork="hideFork"
         :regenerate="regenerate"
+        :versions="versions"
       />
       <div
         v-else-if="block.type === 'tool_call'"

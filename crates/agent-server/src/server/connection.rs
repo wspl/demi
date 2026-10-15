@@ -10,12 +10,12 @@ use std::{
 };
 
 use demi_agent_session::{
-    AgentSession, EditCheck, EditSubmission, accepted, edit_digest,
+    AgentSession, EditCheck, EditSubmission, accepted, edit_digest, regenerate_digest,
 };
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
-    AgentCode, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, Refusal, RemoveOutcome, ServerFrame,
-    SteerOutcome,
+    AgentCode, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, RegenerateRequest, Refusal, RemoveOutcome,
+    ServerFrame, SteerOutcome,
 };
 use demi_provider_common::Ahead;
 use demi_shared_types::{BlockId, NodeId, SessionPhase, TurnId};
@@ -452,6 +452,24 @@ impl<H: HostResolver> Connection<H> {
                     outcome,
                 });
             }
+            ClientFrame::Regenerate { request } => {
+                let operation_id = request.operation_id.clone();
+                let outcome = match regenerate(session, request).await {
+                    Ok(turn_id) => EditOutcome::Accepted { turn_id },
+                    Err(refusal) => EditOutcome::Rejected { refusal },
+                };
+                self.send(ServerFrame::EditResult {
+                    operation_id,
+                    outcome,
+                });
+            }
+            // The switch's patches reach every connection, and the tree
+            // tells which children it moved; only a refusal is this one's.
+            ClientFrame::SwitchVersion { block_id, to, version } => {
+                if let Err(refusal) = session.switch_version(block_id, to, &version).await {
+                    self.reject(kind, refusal);
+                }
+            }
             // What the command prints and its end reach every attached
             // connection as its `shell_output` (`runtime.md` § Live output);
             // only the write's acknowledgement is a reply.
@@ -528,7 +546,7 @@ impl<H: HostResolver> Connection<H> {
                     operation_id: request.operation_id,
                     target: request.target_block_id,
                     version: request.version,
-                    content,
+                    content: Some(content),
                     digest,
                 };
                 session.hold_media(media);
@@ -546,6 +564,25 @@ impl<H: HostResolver> Drop for Connection<H> {
     fn drop(&mut self) {
         self.detach();
     }
+}
+
+/// A Regenerate's acceptance, as an edit's: a repeated request is answered
+/// from its receipt, or shares the acceptance in flight; a new one returns
+/// once the new answer's branch is durable.
+async fn regenerate(session: &AgentSession, request: RegenerateRequest) -> Result<TurnId, Refusal> {
+    let digest = regenerate_digest(&request);
+    let submission = EditSubmission {
+        operation_id: request.operation_id,
+        target: request.target_block_id,
+        version: request.version,
+        content: None,
+        digest,
+    };
+    let receipt = session
+        .edit_and_send(submission)
+        .await
+        .map_err(|error| error.refusal())?;
+    Ok(receipt.turn_id)
 }
 
 /// Why a session refuses an action that needs it idle, or none when it is

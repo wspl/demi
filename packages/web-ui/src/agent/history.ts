@@ -7,6 +7,8 @@ import {
   type TranscriptWindow,
 } from '@demicodes/conversation-client'
 
+export type { HeldBlock } from '@demicodes/conversation-client'
+
 /**
  * The blocks at the transcript's end, its latest window, which the stream
  * keeps live (`web-application.md` § Transcript windows): what a running

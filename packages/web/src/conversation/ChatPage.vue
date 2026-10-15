@@ -301,6 +301,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :aside-open="work.stateFor(conversation.id).open"
     @update:message-edit="conversation.messageEdit = $event"
     @regenerate="store.regenerate(conversation, $event)"
+    @switch-version="(id, to) => store.switchVersion(conversation!, id, to)"
     @save-scroll="saveScroll"
     :reveal="store.reveal?.conversationId === conversation.id ? store.reveal : null"
     @revealed="store.reveal = null"

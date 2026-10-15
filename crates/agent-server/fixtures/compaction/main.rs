@@ -473,6 +473,8 @@ impl Conversation {
             state: idle_state(model),
             changed_blocks: fixture.blocks.into_iter().enumerate().collect(),
             block_count,
+            moved_from: None,
+            version: false,
         };
         store
             .create_node(NodeRecord::root(root.clone(), SystemClock.now()), initial)
@@ -582,6 +584,7 @@ impl Conversation {
         let seed = Checkpoint {
             state: idle_state(self.model.clone()),
             transcript: self.blocks(),
+            versions: Default::default(),
         };
         self.server
             .initialize_fork(&copy, seed)

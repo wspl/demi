@@ -85,6 +85,11 @@
       "rejected": "編輯未被接受。",
       "unconfirmed": "無法確認編輯"
     },
+    "versions": {
+      "previous": "上一個版本",
+      "next": "下一個版本",
+      "position": "第 {index} 個版本，共 {count} 個"
+    },
     "connecting": "正在連線",
     "newFile": "新增檔案",
     "picture": {

@@ -11,15 +11,18 @@ use std::{
 
 use demi_provider_common::UserPart;
 use demi_shared_types::{
-    B64Bytes, BlobRef, Block, CommandEnd, CommandId, FileExtension, Model, ModelSelection, NodeId,
+    B64Bytes, BlobRef, Block, BlockId, CommandEnd, CommandId, FileExtension, Model, ModelSelection, NodeId,
     QueuedMessage, Sequence, Timestamp, UserContentBlock,
 };
 use futures_util::future::LocalBoxFuture;
 
+use demi_conversation_socket_protocol::Versions;
+
 use crate::{
     AgentTreeStore, Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, NodeClose, NodeRecord,
-    RunningCommand,
-    SessionStore, StoreError, StoredCommand, media::BlobStore,
+    RunningCommand, SessionStore, StoreError, StoredCommand, StoredSubagent, Switched,
+    media::BlobStore,
+    versions::{Sibling, version_rows, versions_of},
 };
 
 /// A model selection of the provider `provider` with a 100,000-token window.
@@ -131,8 +134,81 @@ pub fn sent_text(text: &str) -> Vec<UserPart> {
 struct StoredNode {
     record: NodeRecord,
     state: CheckpointState,
-    blocks: BTreeMap<usize, Block>,
-    block_count: usize,
+    /// The node's rows by their number, never removed.
+    rows: Vec<StoredRow>,
+    /// The current path: the row at each position.
+    path: Vec<u64>,
+    /// The row a cut left off the path's end that no row replaced yet.
+    cut: Option<u64>,
+}
+
+/// One row of a node's tree.
+#[derive(Debug, Clone)]
+struct StoredRow {
+    block: Block,
+    follows: Option<u64>,
+    replaces: Option<u64>,
+}
+
+impl StoredNode {
+    fn row(&self, row: u64) -> &StoredRow {
+        &self.rows[usize::try_from(row).expect("a row number fits")]
+    }
+
+    /// The rows that follow `parent`, with the rows they replace.
+    fn siblings(&self, parent: Option<u64>) -> Vec<Sibling> {
+        (0u64..)
+            .zip(&self.rows)
+            .filter(|(_, row)| row.follows == parent)
+            .map(|(number, row)| Sibling {
+                row: number,
+                replaces: row.replaces,
+            })
+            .collect()
+    }
+
+    /// The row `row` was carried from through every compaction that
+    /// carried it: one that replaces a row with another parent is that
+    /// row's block on a new branch; `row` itself otherwise.
+    fn carried(&self, row: u64) -> u64 {
+        let mut row = row;
+        while let Some(replaced) = self
+            .row(row)
+            .replaces
+            .filter(|replaced| self.row(*replaced).follows != self.row(row).follows)
+        {
+            row = replaced;
+        }
+        row
+    }
+
+    /// The parent of the place whose versions `position` shows: its own,
+    /// or, for a block a compaction carried whose own place holds none,
+    /// the place it was carried from.
+    fn shown_place(&self, position: usize) -> Option<u64> {
+        let own = position.checked_sub(1).map(|before| self.path[before]);
+        let row = self.path[position];
+        if versions_of(&self.siblings(own), row).is_some() {
+            return own;
+        }
+        self.row(self.carried(row)).follows
+    }
+
+    /// The versions at each position of the path from `from` on: a place's
+    /// at the block that stands there, or at the block a compaction carried
+    /// from there, which the boundary then stands in for without showing
+    /// them (`message-editing.md` § Versions).
+    fn versions(&self, from: usize) -> BTreeMap<usize, Versions> {
+        let mut shown: BTreeMap<Option<u64>, (usize, Versions)> = BTreeMap::new();
+        for position in 0..self.path.len() {
+            let parent = self.shown_place(position);
+            let row = self.carried(self.path[position]);
+            if let Some(versions) = versions_of(&self.siblings(parent), row) {
+                shown.insert(parent, (position, versions));
+            }
+        }
+        shown.into_values().filter(|(position, _)| *position >= from).collect()
+    }
 }
 
 #[derive(Debug, Default, Clone)]
@@ -142,6 +218,8 @@ struct Stored {
     /// The next number of each sequence that gave one out.
     sequences: BTreeMap<Sequence, u64>,
     failing_saves: usize,
+    /// The nodes whose checkpoint reads as corrupt.
+    unreadable: Vec<NodeId>,
     save_hold: Option<Rc<Hold>>,
     number_hold: Option<Rc<Hold>>,
     /// The holds on reads of a node's children, by the node.
@@ -242,9 +320,26 @@ impl MemoryTreeStore {
         self.stored.borrow_mut().running.entry(node).or_default().push(running);
     }
 
+    /// Makes the checkpoint of `id` read as corrupt from now on, as a
+    /// stored state that no longer decodes does.
+    pub fn corrupt(&self, id: &NodeId) {
+        self.stored.borrow_mut().unreadable.push(id.clone());
+    }
+
     /// Every save so far, in order, with the node it was for.
     pub fn saves(&self) -> Vec<(NodeId, CheckpointUpdate)> {
         self.stored.borrow().saves.clone()
+    }
+
+    /// Every row the node's tree holds, on its path or not, in the order
+    /// they were written.
+    pub fn rows(&self, id: &NodeId) -> Vec<Block> {
+        self.stored
+            .borrow()
+            .nodes
+            .get(id)
+            .map(|node| node.rows.iter().map(|row| row.block.clone()).collect())
+            .unwrap_or_default()
     }
 
     /// The node's checkpoint as the store keeps it.
@@ -315,20 +410,16 @@ fn missing(id: &NodeId) -> StoreError {
 }
 
 fn load(stored: &Stored, id: &NodeId) -> Result<Option<Checkpoint>, StoreError> {
+    if stored.unreadable.contains(id) {
+        return Err(StoreError::Corrupt(format!("the checkpoint of node {id} does not decode")));
+    }
     let Some(node) = stored.nodes.get(id) else {
         return Ok(None);
     };
-    let transcript = (0..node.block_count)
-        .map(|index| {
-            node.blocks
-                .get(&index)
-                .cloned()
-                .ok_or_else(|| StoreError::Corrupt(format!("node {id} has no block row {index}")))
-        })
-        .collect::<Result<_, _>>()?;
     Ok(Some(Checkpoint {
         state: node.state.clone(),
-        transcript,
+        transcript: node.path.iter().map(|row| node.row(*row).block.clone()).collect(),
+        versions: node.versions(0),
     }))
 }
 
@@ -341,11 +432,50 @@ fn apply_save(
 ) -> Result<(), StoreError> {
     let completions = update.carried_completions()?;
     let node = stored.nodes.get_mut(id).ok_or_else(|| missing(id))?;
-    for (index, block) in &update.changed_blocks {
-        node.blocks.insert(*index, block.clone());
+    let stored_length = node.path.len();
+    let cut = update
+        .moved_from
+        .unwrap_or(usize::MAX)
+        .min(update.block_count)
+        .min(stored_length);
+    // A block carried to the new branch under its id replaces its row
+    // there, whose versions it keeps.
+    let mut moved: BTreeMap<BlockId, u64> = BTreeMap::new();
+    if cut < stored_length {
+        node.cut = Some(node.path[cut]);
+        moved = node.path[cut..].iter().map(|row| (node.row(*row).block.id().clone(), *row)).collect();
+        node.path.truncate(cut);
     }
-    node.blocks.retain(|index, _| *index < update.block_count);
-    node.block_count = update.block_count;
+    if update.version {
+        node.cut = None;
+    }
+    for (position, block) in &update.changed_blocks {
+        if *position < cut {
+            let row = usize::try_from(node.path[*position]).expect("a row number fits");
+            node.rows[row].block = block.clone();
+            continue;
+        }
+        if *position != node.path.len() {
+            return Err(StoreError::Failed(format!("a save of node {id} skips position {}", node.path.len())));
+        }
+        let follows = node.path.last().copied();
+        let replaces = match moved.remove(block.id()) {
+            Some(row) => {
+                node.cut = None;
+                Some(row)
+            }
+            None => node.cut.take().filter(|cut| node.row(*cut).follows == follows),
+        };
+        node.rows.push(StoredRow {
+            block: block.clone(),
+            follows,
+            replaces,
+        });
+        node.path.push(u64::try_from(node.rows.len() - 1).expect("a row number fits"));
+    }
+    if node.path.len() != update.block_count {
+        return Err(StoreError::Failed(format!("a save of node {id} leaves its path short")));
+    }
     node.state = update.state.clone();
     for round in completions {
         if let Some(child) = stored.nodes.get_mut(&round.child)
@@ -388,6 +518,52 @@ impl SessionStore for MemorySessionStore {
         Box::pin(async move { load(&self.stored.borrow(), &self.id) })
     }
 
+    fn switch(&self, position: usize, version: u32) -> LocalBoxFuture<'_, Result<Switched, StoreError>> {
+        Box::pin(async move {
+            let mut stored = self.stored.borrow_mut();
+            let node = stored.nodes.get_mut(&self.id).ok_or_else(|| missing(&self.id))?;
+            if position >= node.path.len() {
+                return Err(StoreError::Failed(format!("the path of node {} ends before {position}", self.id)));
+            }
+            let parent = node.shown_place(position);
+            let from = match parent {
+                None => 0,
+                Some(parent) => node
+                    .path
+                    .iter()
+                    .position(|row| *row == parent)
+                    .ok_or_else(|| StoreError::Failed(format!("the path of node {} leaves its place", self.id)))?
+                    + 1,
+            };
+            let members = version_rows(&node.siblings(parent), version)
+                .ok_or_else(|| StoreError::Failed(format!("position {position} holds no version {version}")))?;
+            // A row follows an older one, so one pass in order finds every
+            // row below the version's; the latest of them is a leaf.
+            let mut below: Vec<u64> = members;
+            for (number, row) in (0u64..).zip(&node.rows) {
+                if row.follows.is_some_and(|follows| below.contains(&follows)) && !below.contains(&number) {
+                    below.push(number);
+                }
+            }
+            let leaf = below.into_iter().max().expect("a version has a row");
+            let mut tail = vec![leaf];
+            while let Some(follows) = node.row(*tail.last().expect("the tail has a row")).follows
+                && Some(follows) != parent
+            {
+                tail.push(follows);
+            }
+            tail.reverse();
+            node.path.truncate(from);
+            node.path.extend(tail);
+            node.cut = None;
+            Ok(Switched {
+                from,
+                blocks: node.path[from..].iter().map(|row| node.row(*row).block.clone()).collect(),
+                versions: node.versions(from),
+            })
+        })
+    }
+
     fn blobs(&self) -> &dyn BlobStore {
         &*self.blobs
     }
@@ -424,16 +600,28 @@ impl AgentTreeStore for MemoryTreeStore {
         })
     }
 
-    fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<(NodeRecord, ModelSelection)>, StoreError>> {
+    fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<StoredSubagent>, StoreError>> {
         Box::pin(async move {
             let stored = self.stored.borrow();
-            let mut subagents: Vec<(NodeRecord, ModelSelection)> = stored
+            let started_on_path = |record: &NodeRecord| {
+                let (Some(call), Some(parent)) = (&record.started_by, &record.parent) else {
+                    return true;
+                };
+                stored.nodes.get(parent).is_none_or(|parent| {
+                    parent.path.iter().any(|row| parent.row(*row).block.id() == call)
+                })
+            };
+            let mut subagents: Vec<StoredSubagent> = stored
                 .nodes
                 .values()
                 .filter(|node| node.record.parent.is_some())
-                .map(|node| (node.record.clone(), node.state.model.clone()))
+                .map(|node| StoredSubagent {
+                    record: node.record.clone(),
+                    model: node.state.model.clone(),
+                    started_on_path: started_on_path(&node.record),
+                })
                 .collect();
-            subagents.sort_by_key(|(record, _)| record.number);
+            subagents.sort_by_key(|subagent| subagent.record.number);
             Ok(subagents)
         })
     }
@@ -457,8 +645,9 @@ impl AgentTreeStore for MemoryTreeStore {
                 StoredNode {
                     record,
                     state: initial.state.clone(),
-                    blocks: BTreeMap::new(),
-                    block_count: 0,
+                    rows: Vec::new(),
+                    path: Vec::new(),
+                    cut: None,
                 },
             );
             apply_save(&mut stored, &id, initial)
@@ -529,28 +718,6 @@ impl AgentTreeStore for MemoryTreeStore {
             let node = stored.nodes.get_mut(id).ok_or_else(|| missing(id))?;
             if node.record.round == round {
                 node.record.delivered = true;
-            }
-            Ok(())
-        })
-    }
-
-    fn delete_node<'a>(&'a self, id: &'a NodeId) -> LocalBoxFuture<'a, Result<(), StoreError>> {
-        Box::pin(async move {
-            let mut stored = self.stored.borrow_mut();
-            let mut doomed = vec![id.clone()];
-            let mut index = 0;
-            while let Some(parent) = doomed.get(index).cloned() {
-                doomed.extend(
-                    stored
-                        .nodes
-                        .values()
-                        .filter(|node| node.record.parent.as_ref() == Some(&parent))
-                        .map(|node| node.record.id.clone()),
-                );
-                index += 1;
-            }
-            for doomed in doomed {
-                stored.nodes.remove(&doomed);
             }
             Ok(())
         })
@@ -711,6 +878,7 @@ pub mod store_contract {
             closed: None,
             delivered: false,
             forked_from: None,
+            started_by: None,
             cwd: parent.map(|_| directory("/work")),
         }
     }
@@ -740,6 +908,8 @@ pub mod store_contract {
             },
             block_count: blocks.len(),
             changed_blocks: blocks.into_iter().enumerate().collect(),
+            moved_from: Some(0),
+            version: false,
         }
     }
 
@@ -822,6 +992,160 @@ pub mod store_contract {
             .create_node(node, initial)
             .await
             .expect("a new node is created");
+    }
+
+    /// A block of the agent's text `text`, its id the text.
+    fn said(text: &str) -> Block {
+        Block::Text(demi_shared_types::TextBlock {
+            id: text.try_into().expect("a test block id is not empty"),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: test_model(),
+            text: text.to_owned(),
+            forkable: true,
+            entries: Vec::new(),
+        })
+    }
+
+    /// A save of the path's blocks `blocks` from `from` on, of `length`
+    /// blocks, as a rewrite from `from` that `version` makes a version.
+    fn rewrite(from: usize, blocks: Vec<Block>, length: usize, version: bool) -> CheckpointUpdate {
+        CheckpointUpdate {
+            changed_blocks: (from..).zip(blocks).collect(),
+            block_count: length,
+            moved_from: Some(from),
+            version,
+            ..update(Vec::new(), Vec::new())
+        }
+    }
+
+    fn versions(index: u32, count: u32) -> demi_conversation_socket_protocol::Versions {
+        demi_conversation_socket_protocol::Versions { index, count }
+    }
+
+    /// `message-editing.md` § Versions: an edit adds a version beside the
+    /// rows it leaves, which stay as written; the session's own rewrite
+    /// stands in for what it replaces and is no version; Regenerate's cut
+    /// makes the next row a version of its own; a switch makes the latest
+    /// leaf of a version current, and the load restores that path.
+    pub async fn a_rewrite_keeps_its_rows_and_a_switch_brings_them_back(store: &dyn AgentTreeStore) {
+        create(store, record("root", None, 0), update(Vec::new(), Vec::new())).await;
+        let root = store.session_store(&id("root"));
+        let load = || async {
+            let checkpoint = root.load().await.expect("the store reads").expect("the node has one");
+            (checkpoint.transcript, checkpoint.versions)
+        };
+        let first = vec![said("u1"), said("a1"), said("u2"), said("a2")];
+        root.save(update(Vec::new(), first.clone())).await.expect("the save commits");
+
+        // An edit of the second message.
+        root.save(rewrite(2, vec![said("u2-edited"), said("a2-edited")], 4, true))
+            .await
+            .expect("the edit commits");
+        let (blocks, held) = load().await;
+        assert_eq!(blocks, [said("u1"), said("a1"), said("u2-edited"), said("a2-edited")]);
+        assert_eq!(held.into_iter().collect::<Vec<_>>(), [(2, versions(2, 2))]);
+        // A retry of its answer is no version of its own.
+        root.save(rewrite(3, vec![said("a2-retried")], 4, false))
+            .await
+            .expect("the retry commits");
+        let (_, held) = load().await;
+        assert_eq!(held.into_iter().collect::<Vec<_>>(), [(2, versions(2, 2))]);
+
+        // Back to the first version: its rows as they were written.
+        let switched = root.switch(2, 1).await.expect("the switch commits");
+        assert_eq!(switched.blocks, [said("u2"), said("a2")]);
+        assert_eq!(switched.versions.into_iter().collect::<Vec<_>>(), [(2, versions(1, 2))]);
+        assert_eq!(load().await.0, first);
+        // And to the second again: where that branch ended, the retry.
+        let switched = root.switch(2, 2).await.expect("the switch commits");
+        assert_eq!(switched.blocks, [said("u2-edited"), said("a2-retried")]);
+        assert!(root.switch(2, 3).await.is_err(), "a version its place lacks");
+        assert!(root.switch(4, 1).await.is_err(), "a place past the path");
+
+        // Regenerate cuts after the message; the answer that follows in a
+        // later save is a version of its own, and the retry's row and the
+        // row it replaced are one version.
+        root.save(rewrite(3, Vec::new(), 3, true)).await.expect("the cut commits");
+        root.save(CheckpointUpdate {
+            moved_from: Some(3),
+            ..update(Vec::new(), vec![said("u1"), said("a1"), said("u2-edited"), said("a2-regenerated")])
+        })
+        .await
+        .expect("the answer commits");
+        let (blocks, held) = load().await;
+        assert_eq!(blocks[3], said("a2-regenerated"));
+        assert_eq!(
+            held.into_iter().collect::<Vec<_>>(),
+            [(2, versions(2, 2)), (3, versions(2, 2))]
+        );
+    }
+
+    /// `message-editing.md` § Versions: a subagent tells whether the call
+    /// that started it is on its parent's current path; one no call
+    /// started is on every path. Builds the tree the store's own reading
+    /// of whole subtrees is checked on: `root` holds `a1`, which started
+    /// `kept`; `gone` was started by a block the root's path no longer
+    /// holds, and `under` by `g1`, which `gone`'s path holds.
+    pub async fn a_subagent_tells_whether_its_start_is_on_its_parents_path(store: &dyn AgentTreeStore) {
+        create(store, record("root", None, 0), update(Vec::new(), vec![said("u1"), said("a1")])).await;
+        for (node, parent, number, start, blocks) in [
+            ("kept", "root", 1, Some("a1"), vec![said("k1")]),
+            ("gone", "root", 2, Some("a0"), vec![said("g1")]),
+            ("under", "gone", 3, Some("g1"), vec![said("n1")]),
+            ("unknown", "root", 4, None, Vec::new()),
+        ] {
+            let child = NodeRecord {
+                started_by: start.map(|block| block.try_into().expect("a test block id is not empty")),
+                ..record(node, Some(parent), number)
+            };
+            create(store, child, update(Vec::new(), blocks)).await;
+        }
+        let started: Vec<(u64, bool)> = store
+            .subagents()
+            .await
+            .expect("the store reads")
+            .into_iter()
+            .map(|subagent| (subagent.record.number, subagent.started_on_path))
+            .collect();
+        assert_eq!(started, [(1, true), (2, false), (3, true), (4, true)]);
+    }
+
+    /// `message-editing.md` § Versions: a message that compaction carries
+    /// past its boundary keeps its versions, which its new position shows
+    /// and the boundary does not, and switching there brings back the
+    /// branch before the compaction.
+    pub async fn a_compaction_keeps_the_versions_of_what_it_carries(store: &dyn AgentTreeStore) {
+        create(store, record("root", None, 0), update(Vec::new(), Vec::new())).await;
+        let root = store.session_store(&id("root"));
+        let load = || async {
+            let checkpoint = root.load().await.expect("the store reads").expect("the node has one");
+            (checkpoint.transcript, checkpoint.versions.into_iter().collect::<Vec<_>>())
+        };
+        let first = vec![said("u1"), said("a1"), said("u2"), said("a2")];
+        root.save(update(Vec::new(), first.clone())).await.expect("the save commits");
+        root.save(rewrite(2, vec![said("u2-edited"), said("a2-edited")], 4, true))
+            .await
+            .expect("the edit commits");
+
+        // The boundary goes in before the edited message, which it keeps.
+        let carried = vec![said("u1"), said("a1"), said("boundary"), said("u2-edited"), said("a2-edited")];
+        root.save(CheckpointUpdate {
+            moved_from: Some(2),
+            changed_blocks: (2..).zip(carried[2..].iter().cloned()).collect(),
+            ..update(Vec::new(), carried.clone())
+        })
+        .await
+        .expect("the compaction commits");
+        assert_eq!(load().await, (carried.clone(), vec![(3, versions(2, 2))]));
+
+        // Its first version is the branch before the compaction.
+        let switched = root.switch(3, 1).await.expect("the switch commits");
+        assert_eq!(switched.from, 2);
+        assert_eq!(switched.blocks, [said("u2"), said("a2")]);
+        assert_eq!(load().await, (first, vec![(2, versions(1, 2))]));
+        let switched = root.switch(2, 2).await.expect("the switch commits");
+        assert_eq!(switched.blocks, carried[2..]);
+        assert_eq!(load().await, (carried, vec![(3, versions(2, 2))]));
     }
 
     pub async fn create_queues_the_first_message_with_the_node_and_a_save_replaces_it(
@@ -942,7 +1266,7 @@ pub mod store_contract {
         assert!(delivered(store, "b").await);
     }
 
-    pub async fn reopen_makes_a_closed_node_live_with_its_message_and_delete_takes_the_subtree(
+    pub async fn reopen_makes_a_closed_node_live_with_its_message(
         store: &dyn AgentTreeStore,
     ) {
         create(
@@ -997,14 +1321,6 @@ pub mod store_contract {
             (None, 2, resumed, false)
         );
         assert_eq!(queue(store, "child").await, [message("m2")]);
-
-        store
-            .delete_node(&id("child"))
-            .await
-            .expect("the subtree is deleted");
-        assert!(stored(store, "child").await.is_none());
-        assert!(stored(store, "grandchild").await.is_none());
-        assert!(stored(store, "root").await.is_some());
     }
 
     pub async fn a_completion_of_an_earlier_round_marks_the_current_one_undelivered(

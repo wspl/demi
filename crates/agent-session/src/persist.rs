@@ -41,18 +41,20 @@ pub(crate) async fn flush(s: &SessionShared) -> Result<(), StoreError> {
     write_if_dirty(s).await
 }
 
-/// Commits a history rewrite (`runtime.md` § Saving): in the session's save
-/// order, the store commits every retained row, and only then does the
-/// session adopt them and publish one `replace` patch. A failed save changes
-/// nothing.
+/// Commits a history rewrite of the session's own, a retry, an unwind or a
+/// dropped attempt (`runtime.md` § Saving): in the session's save order, the
+/// store commits the new branch, which stands in for what it replaces and
+/// leaves it stored (`message-editing.md` § Versions), and only then does
+/// the session adopt it and publish one `replace` patch. A failed save
+/// changes nothing.
 pub(crate) async fn commit_rewrite(
     s: &SessionShared,
     blocks: Vec<Block>,
 ) -> Result<(), StoreError> {
     let _turn = s.persist_gate.acquire().await;
-    let update = s.read(|core| core.rewrite_update(&blocks));
+    let update = s.read(|core| core.rewrite_update(&blocks, false));
     s.store.save(update).await?;
-    s.update(|core| core.adopt_rewrite(blocks));
+    s.update(|core| core.adopt_rewrite(blocks, false));
     Ok(())
 }
 

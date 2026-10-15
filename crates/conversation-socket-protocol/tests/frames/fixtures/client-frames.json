@@ -78,6 +78,26 @@
     }
   },
   {
+    "type": "regenerate",
+    "request": {
+      "operationId": "regenerate-1",
+      "targetBlockId": "u1",
+      "version": {
+        "epoch": "epoch-1",
+        "revision": 12
+      }
+    }
+  },
+  {
+    "type": "switch_version",
+    "blockId": "u1",
+    "to": 1,
+    "version": {
+      "epoch": "epoch-1",
+      "revision": 13
+    }
+  },
+  {
     "type": "steer",
     "steerId": "steer-1",
     "content": [

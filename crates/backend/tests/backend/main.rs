@@ -77,6 +77,7 @@ mod titles;
 mod uploads;
 mod usage;
 mod users;
+mod versions;
 mod work;
 mod workflows;
 mod workspaces;

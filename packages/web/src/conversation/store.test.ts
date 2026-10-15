@@ -592,6 +592,7 @@ test('sidebar stays active until the last running child closes after its parent 
     subagentId: 'child-one',
     number: 1,
     parentSessionId: conversation.id,
+    onPath: true,
     description: 'First child',
     profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase: 'running' as const,
@@ -629,7 +630,7 @@ test('sidebar stays active until the last running child closes after its parent 
 test('a resumed child\'s record takes its new round\'s start, end and model', () => {
   const conversation = useConversations().items[0]!
   const job = {
-    subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Look',
+    subagentId: 'child', number: 1, parentSessionId: conversation.id, onPath: true, description: 'Look',
     profile: 'research', model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
   }
@@ -654,7 +655,7 @@ test('a live child\'s phase frames set its own phase, not the root\'s', () => {
     type: 'subagent',
     event: 'started',
     job: {
-      subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Serve',
+      subagentId: 'child', number: 1, parentSessionId: conversation.id, onPath: true, description: 'Serve',
       profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work', phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
     },
   })
@@ -705,7 +706,7 @@ test('a command\'s live frames build what the page shows of it, until its end', 
 
   // A subagent's command takes its call from the child's transcript; a call without a description is titled by its script.
   const job = {
-    subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Child', profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
+    subagentId: 'child', number: 1, parentSessionId: conversation.id, onPath: true, description: 'Child', profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
   }
   applyConversationEvent(conversation, { type: 'subagent', event: 'started', job })
@@ -765,6 +766,7 @@ test('a child keeps the failure facts of its transcript, which resets and patche
     subagentId: 'child',
     number: 1,
     parentSessionId: conversation.id,
+    onPath: true,
     description: 'Child',
     profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase: 'running' as const,
@@ -789,6 +791,7 @@ test('a child’s directory follows its changed frames, with the round untouched
     subagentId: 'mover',
     number: 2,
     parentSessionId: conversation.id,
+    onPath: true,
     description: 'Mover',
     profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase: 'running' as const,
@@ -808,6 +811,7 @@ test('restored running children keep an idle parent active in the sidebar', () =
     id: 'restored-child',
     number: 1,
     name: 'Restored child',
+    onPath: true,
     profile: null,
     model: RUNS_ON,
     round: 1,
@@ -2419,7 +2423,7 @@ async function openWithSession(id: string, handshake: ServerFrame[] = []) {
 /** A child of the conversation `FIRST`, as the backend lists it. */
 function child(subagentId: string, number: number, phase: 'running' | 'completed') {
   return {
-    subagentId, number, parentSessionId: FIRST, description: `Agent ${number}`,
+    subagentId, number, parentSessionId: FIRST, onPath: true, description: `Agent ${number}`,
     profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase, startedAt: '2026-09-13T00:00:00.000Z', endedAt: phase === 'running' ? null : '2026-09-13T00:01:00.000Z',
   }
@@ -2653,7 +2657,7 @@ const transcriptReads = () => requests.filter((request) => request.path.endsWith
 // openings, no wait.
 test('a conversation that opens again after its socket dropped shows what ended while it was away', async () => {
   const running = {
-    subagentId: 'reader', number: 1, parentSessionId: FIRST, description: 'Read the notes',
+    subagentId: 'reader', number: 1, parentSessionId: FIRST, onPath: true, description: 'Read the notes',
     profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work',
     phase: 'running' as const, startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
   }
@@ -3779,7 +3783,7 @@ test('a child\'s usage frame sets its own record\'s usage', () => {
     type: 'subagent',
     event: 'started',
     job: {
-      subagentId: 'child', number: 1, parentSessionId: conversation.id, description: 'Serve',
+      subagentId: 'child', number: 1, parentSessionId: conversation.id, onPath: true, description: 'Serve',
       profile: null, model: RUNS_ON, round: 1, forkedFrom: null, cwd: '/work', phase: 'running', startedAt: '2026-09-13T00:00:00.000Z', endedAt: null,
     },
   })

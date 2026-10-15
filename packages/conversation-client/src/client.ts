@@ -9,6 +9,7 @@ import {
   type PendingSteer,
   type ProviderErrorDiagnostics,
   type QueuedMessage,
+  type RegenerateRequest,
   type RemoveOutcome,
   type SavedDelivery,
   type ServerFrame,
@@ -256,15 +257,42 @@ export class ConversationClient {
 
   /** Resolves on the edit's own durable receipt, whatever the transcript shows before it. */
   editAndSend(request: EditRequest): Promise<void> {
+    return this.editRequest({ type: 'edit_and_send', request }, request.operationId)
+  }
+
+  /**
+   * Regenerate (`message-editing.md` § Regenerate and the Up Arrow key): a
+   * new version of the answer to the message `request` names; resolves on
+   * its durable receipt, as an edit does.
+   */
+  regenerate(request: RegenerateRequest): Promise<void> {
+    return this.editRequest({ type: 'regenerate', request }, request.operationId)
+  }
+
+  /**
+   * Makes the `to`th version at the place of the block `blockId` current
+   * (`message-editing.md` § Versions), from the transcript `version` the
+   * page shows. The rewrite reaches the transcript as patches; a refusal
+   * arrives as a `rejected` frame.
+   */
+  switchVersion(blockId: string, to: number, version: TranscriptVersion): void {
+    this.sendFrame({ type: 'switch_version', blockId, to, version })
+  }
+
+  /** An edit's or a Regenerate's request, which its `edit_result` answers. */
+  private editRequest(
+    frame: Extract<ClientFrame, { type: 'edit_and_send' | 'regenerate' }>,
+    operationId: string,
+  ): Promise<void> {
     return this.request(
-      { type: 'edit_and_send', request },
+      frame,
       (event) => {
-        if (event.type === 'edit_result' && event.operationId === request.operationId) {
+        if (event.type === 'edit_result' && event.operationId === operationId) {
           return event.outcome.status === 'accepted'
             ? { resolve: undefined }
             : { reject: new EditRejectedError(event.outcome) }
         }
-        if (event.type === 'rejected' && event.command === 'edit_and_send') {
+        if (event.type === 'rejected' && event.command === frame.type) {
           return { reject: new EditRejectedError(event) }
         }
         if (event.type === 'error' && event.code === 'invalid_frame') {
@@ -631,6 +659,7 @@ export class ConversationClient {
           start: frame.start,
           length: frame.length,
           blocks: frame.blocks,
+          versions: frame.versions ?? [],
           failures: frame.failures ?? {},
           asked: this.asked,
         })

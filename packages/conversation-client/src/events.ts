@@ -1,5 +1,6 @@
 import type {
   Block,
+  BlockVersions,
   PendingCall,
   PendingSteer,
   ProviderFailureFacts,
@@ -42,6 +43,8 @@ export type ClientSessionEvent =
       start: number
       length: number
       blocks: Block[]
+      /** The versions of its blocks that have others (`message-editing.md` § Versions). */
+      versions: BlockVersions[]
       /** The facts of the error blocks in `blocks`. */
       failures: Failures
       /** The index the client named in its `open` or `sync_transcript`; a reset elsewhere means a rewrite. */
