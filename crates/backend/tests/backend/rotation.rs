@@ -358,6 +358,34 @@ async fn without_rotation_a_usage_limit_offers_to_continue_with_the_other_accoun
     setup.backend.close().await;
 }
 
+// A backend, two turns: about half a second.
+#[tokio::test]
+async fn a_limit_after_only_the_vendors_record_mirrored_moves_the_agent_to_another_account() {
+    let setup = two_accounts(true).await;
+    let (first, second) = (setup.first.clone(), setup.second.clone());
+    // Two accounts of equal room: the agent takes the first.
+    setup.rotate("balanced").await;
+    create(&setup.backend, &setup.master, FIRST).await;
+    choose(&setup.backend, &setup.master, FIRST, &setup.entry, "m").await;
+    let mut socket = Socket::connect(&setup.backend, &setup.master, FIRST).await;
+    socket.open().await;
+    socket.chat("m1", "one").await;
+
+    // Its account runs out after Claude Code mirrored the last tool's
+    // result, before the model wrote anything: the same request goes on
+    // with the other account, and no error is recorded.
+    setup.runs.mirrors_first.store(true, std::sync::atomic::Ordering::SeqCst);
+    used_up(&setup.runs, &[&first]);
+    let turn = socket.chat("m2", "two").await;
+    assert_eq!(usage_account(&turn), Some(second.to_string()));
+    assert_eq!(accounts_run(&setup.runs), [first.as_str(), first.as_str(), second.as_str()]);
+    let blocks = transcript(&setup.backend, &setup.master, FIRST).await.blocks;
+    let tail = kinds(&blocks);
+    assert_eq!(tail[tail.len() - 4..], ["user", "account_switch", "text", "response"]);
+    assert!(!blocks.iter().any(|block| matches!(block, Block::Error(_))), "{tail:?}");
+    setup.backend.close().await;
+}
+
 // A backend, a probe, one turn: about a quarter of a second.
 #[tokio::test]
 async fn a_limit_reached_mid_answer_ends_the_turn_with_the_moment_of_the_agents_own_account() {

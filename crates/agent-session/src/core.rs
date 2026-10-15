@@ -1468,15 +1468,11 @@ impl SessionCore {
         // or a call being written once its title is. The response's usage
         // and a call without its title show nothing, and the row goes on
         // saying Requesting.
-        let shows = matches!(
-            event,
-            ProviderEvent::ThinkingStart
-                | ProviderEvent::ThinkingDelta(_)
-                | ProviderEvent::ThinkingSignature(_)
-                | ProviderEvent::RedactedThinking(_)
-                | ProviderEvent::TextDelta(_)
-                | ProviderEvent::ToolCall(_)
-        );
+        let shows = event.is_output()
+            && !matches!(
+                event,
+                ProviderEvent::ToolCallStart { .. } | ProviderEvent::ToolCallInput { .. }
+            );
         let before = self.transcript.blocks().len();
         self.apply_event_to_transcript(event);
         if shows || self.writing.iter().any(|writing| writing.call.description.is_some()) {
