@@ -30,12 +30,14 @@ use crate::work::{Driven, resident, say, shell, switch};
 const FIRST: &str = "5e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a05";
 
 /// A network between a runner and the backend that can drop every
-/// connection it carries, and refuse new ones until it is opened again.
+/// connection it carries, and refuse new ones until it is opened again, or
+/// stop carrying what the backend sends.
 pub(crate) struct Network {
     pub(crate) url: String,
     /// Each change drops every connection.
     cuts: watch::Sender<u64>,
     refusing: Arc<AtomicBool>,
+    stalled: Arc<AtomicBool>,
     _accepting: AbortOnDropHandle<()>,
 }
 
@@ -45,7 +47,8 @@ impl Network {
         let url = format!("http://{}", listener.local_addr().unwrap());
         let cuts = watch::Sender::new(0);
         let refusing = Arc::new(AtomicBool::new(false));
-        let (watching, refused) = (cuts.subscribe(), refusing.clone());
+        let stalled = Arc::new(AtomicBool::new(false));
+        let (watching, refused, stalling) = (cuts.subscribe(), refusing.clone(), stalled.clone());
         let accepting = tokio::spawn(async move {
             let mut connections = tokio::task::JoinSet::new();
             loop {
@@ -54,15 +57,23 @@ impl Network {
                     drop(client);
                     continue;
                 }
-                connections.spawn(carry(client, backend, watching.clone()));
+                connections.spawn(carry(client, backend, watching.clone(), stalling.clone()));
             }
         });
         Self {
             url,
             cuts,
             refusing,
+            stalled,
             _accepting: AbortOnDropHandle::new(accepting),
         }
+    }
+
+    /// Drops what the backend sends from now on, without closing anything,
+    /// as a connection whose runner no longer reads it does until the next
+    /// cut.
+    pub(crate) fn stall(&self) {
+        self.stalled.store(true, Ordering::SeqCst);
     }
 
     /// Drops every connection without a close, as a network that went away
@@ -72,20 +83,46 @@ impl Network {
         self.cuts.send_modify(|cut| *cut += 1);
     }
 
-    /// Carries connections again.
+    /// Carries connections again, and what the backend sends on them.
     pub(crate) fn open(&self) {
+        self.stalled.store(false, Ordering::SeqCst);
         self.refusing.store(false, Ordering::SeqCst);
     }
 }
 
-/// Carries one connection until the network drops it.
-async fn carry(mut client: TcpStream, backend: SocketAddr, mut cuts: watch::Receiver<u64>) {
+/// Carries one connection until the network drops it; while it stalls,
+/// what the backend sends goes nowhere.
+async fn carry(
+    mut client: TcpStream,
+    backend: SocketAddr,
+    mut cuts: watch::Receiver<u64>,
+    stalled: Arc<AtomicBool>,
+) {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let Ok(mut server) = TcpStream::connect(backend).await else {
         return;
     };
     cuts.mark_unchanged();
+    let (mut from_runner, mut to_runner) = client.split();
+    let (mut from_backend, mut to_backend) = server.split();
+    let up = tokio::io::copy(&mut from_runner, &mut to_backend);
+    let down = async {
+        let mut buffer = vec![0; 16 * 1024];
+        loop {
+            let read = from_backend.read(&mut buffer).await?;
+            if read == 0 {
+                return Ok::<_, std::io::Error>(());
+            }
+            if !stalled.load(Ordering::SeqCst) {
+                to_runner.write_all(&buffer[..read]).await?;
+            }
+        }
+    };
+    // Either side's end ends the connection, as the other test sockets'
+    // ends do.
     tokio::select! {
-        _ = tokio::io::copy_bidirectional(&mut client, &mut server) => {}
+        _ = up => {}
+        _ = down => {}
         _ = cuts.changed() => {}
     }
 }
@@ -227,6 +264,95 @@ async fn a_connection_that_comes_back_within_the_grace_stops_nothing_and_the_end
     let shown = work.turn(vec![shell("t2", &read, 10_000), say("read")]).await;
     assert_eq!(shown_output(&shown.received[0]), "before\nduring\nafter\n");
     assert_eq!(running_jobs(&harness), 0, "the job's record goes with its end");
+    backend.close().await;
+}
+
+/// Starts `printf x >> runs; exit 7` as command t1, whose start goes into a
+/// connection its runner no longer reads, and answers its number. The turn
+/// first runs t0, which waits while the network stalls, so the requests the
+/// turn makes of the Host before t1 are answered and t1's start is not.
+async fn started_unreceived(work: &mut Driven<'_>, network: &Network, home: &Path) -> String {
+    let before = work
+        .start(vec![
+            shell("t0", "touch stall; while [ ! -f stalled ]; do sleep 0.05; done", 10_000),
+            resident("t1", "printf x >> runs; exit 7"),
+            say("waiting"),
+        ])
+        .await;
+    until_exists(&home.join("stall")).await;
+    network.stall();
+    std::fs::write(home.join("stalled"), "").unwrap();
+    work.socket.until_idle().await;
+    let started = work.observe(before);
+    let result = &started.received[1];
+    assert!(result.starts_with("status: running"), "{result}");
+    field(result, "commandId").to_owned()
+}
+
+/// A command whose start went into a connection its runner no longer read:
+/// the runner it went to, the same one, reconnects without listing it, and
+/// the start goes again, so the command runs once and ends as usual, late,
+/// with no loss reported (`sessions-and-targets.md` § Recovery and
+/// persistence). The production case: a Mac's connection dropped silently
+/// and command 33 was reported lost.
+// About four seconds: a real device pairs, its job is a login shell, and
+// the call that starts it waits for two quiet seconds.
+#[tokio::test]
+async fn a_command_sent_into_a_dead_connection_starts_late_once_when_the_same_runner_is_back() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let network = Network::start(backend.address()).await;
+    let alpha = backend.pair_through(&master, "alpha", &network.url).await;
+    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+
+    let command = started_unreceived(&mut work, &network, &home).await;
+    assert!(!home.join("runs").exists(), "the runner never received the start");
+    network.cut();
+    backend.until_online(&master, alpha.id(), false).await;
+    work.script(vec![say("noted")]);
+    network.open();
+
+    until_requested(&vendor, &format!("Command {command} (t1) ended with exit code 7.")).await;
+    assert_eq!(std::fs::read_to_string(home.join("runs")).unwrap(), "x");
+    assert_eq!(requested(&vendor, &format!("Command {command} (t1) was lost")), 0);
+    backend.close().await;
+}
+
+/// A command whose start went into a connection its runner no longer read,
+/// when another runner process comes back, such as one started anew: that
+/// runner may have run it, so it is lost and never sent again.
+// Several seconds: a real device pairs, its job is a login shell, the call
+// that starts it waits for two quiet seconds, and the runner starts anew.
+#[tokio::test]
+async fn a_command_another_runner_does_not_list_is_lost_and_never_sent_again() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let network = Network::start(backend.address()).await;
+    let mut alpha = backend.pair_through(&master, "alpha", &network.url).await;
+    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
+    let home = alpha.runner.home_dir().to_owned();
+
+    let command = started_unreceived(&mut work, &network, &home).await;
+    network.cut();
+    backend.until_online(&master, alpha.id(), false).await;
+    alpha.runner.kill().await;
+    work.script(vec![say("noted")]);
+    network.open();
+    alpha.runner.start_again();
+
+    until_requested(
+        &vendor,
+        &format!(
+            "Command {command} (t1) was lost: {}. Start it again if it is still needed.",
+            demi_backend_remote_host::RUNNER_RESTARTED
+        ),
+    )
+    .await;
+    work.socket.until_idle().await;
+    assert!(!home.join("runs").exists(), "the command never ran");
     backend.close().await;
 }
 
