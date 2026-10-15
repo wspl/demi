@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { operations, type Operation } from '../ui/operations'
-import { requestIdOf, type ShownError } from '../infra/errors'
+import { errorMessage, requestIdOf, type ShownError } from '../infra/errors'
 import {
   computed,
   h,
@@ -223,7 +223,7 @@ function toFailure(err: unknown): FileBrowserFailure {
   }
   return {
     kind: 'other',
-    message: err instanceof Error ? err.message : String(err),
+    message: errorMessage(err),
   }
 }
 

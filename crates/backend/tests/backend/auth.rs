@@ -869,10 +869,10 @@ async fn a_verification_mail_is_in_the_recipients_language() {
         harness.mailbox.sent().pop().unwrap()
     };
 
-    // With System, the first language the browser last reported that Demi
-    // speaks: the Chinese of Taiwan is Traditional.
+    // With System, the language the user's page last resolved and
+    // reported, whatever the browser's tags, which the page alone reads.
     let system = mail_after(json!({
-        "locale": { "timeZone": "Asia/Taipei", "languages": ["fr-FR", "zh-TW", "en"] }
+        "locale": { "timeZone": "Asia/Taipei", "languages": ["en-US"], "language": "zh-Hant" }
     }))
     .await;
     assert_eq!(system.subject, "你的 Demi 驗證碼");

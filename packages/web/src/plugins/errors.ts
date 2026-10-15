@@ -1,3 +1,4 @@
+import { errorMessage } from '@demicodes/web-ui/infra/errors'
 import { PluginCallError } from '@demicodes/web-ui/plugins/page'
 import { ApiError, UnreadableResponse } from '../api/client'
 
@@ -5,7 +6,7 @@ import { ApiError, UnreadableResponse } from '../api/client'
 function refusal(error: ApiError): PluginCallError {
   return new PluginCallError(
     error.reason ?? error.code ?? `status_${error.status}`,
-    error.message,
+    errorMessage(error),
     { type: 'status', status: error.statusLine },
     { requestId: error.requestId },
   )
@@ -36,5 +37,5 @@ export function readFailure(error: unknown): PluginCallError {
   if (error instanceof UnreadableResponse) {
     return unreadable(error)
   }
-  return new PluginCallError('failed', error instanceof Error ? error.message : String(error))
+  return new PluginCallError('failed', errorMessage(error))
 }

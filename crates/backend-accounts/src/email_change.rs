@@ -44,11 +44,11 @@ pub struct VerificationMail {
 
 impl VerificationMail {
     fn new(email: EmailAddress, code: String, expires_at: Timestamp, language: Language) -> Self {
-        let locale = language.to_string();
-        let subject = rust_i18n::t!("verification.subject", locale = &locale).into_owned();
+        let locale = language.tag();
+        let subject = rust_i18n::t!("verification.subject", locale = locale).into_owned();
         let body = rust_i18n::t!(
             "verification.body",
-            locale = &locale,
+            locale = locale,
             code = &code,
             email = email.as_str(),
             minutes = CHALLENGE_POLICY.lifetime.as_mins()
@@ -180,15 +180,13 @@ impl EmailChanges {
         else {
             return Ok(StartOutcome::Refused(StartRefusal::CoolingDown));
         };
-        // The recipient's chosen language, or with System the first of the
-        // languages their browser last reported that Demi speaks.
+        // The recipient's chosen language, or with System the one their
+        // page last resolved (`localization.md` § Text from the backend).
         let preferences = self.control.preferences(user.clone()).await?;
-        let language = preferences.language.unwrap_or(LanguageChoice::System).resolve(
-            preferences
-                .locale
-                .iter()
-                .flat_map(|locale| locale.languages.iter().map(String::as_str)),
-        );
+        let language = preferences
+            .language
+            .unwrap_or(LanguageChoice::System)
+            .resolve(preferences.locale.and_then(|locale| locale.language));
         let verification = VerificationMail::new(email.clone(), code, expires_at, language);
         if let Err(error) = mail.send_verification(verification).await {
             tracing::warn!(

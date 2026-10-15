@@ -1,3 +1,5 @@
+import { z } from 'zod'
+
 /**
  * The languages Demi speaks and how the page chooses one
  * (`localization.md` § Choosing the language).
@@ -66,4 +68,25 @@ export function resolveLanguage(choice: LanguageChoice, browser: readonly string
     }
   }
   return 'en'
+}
+
+const SHOWN_LANGUAGE_KEY = 'demi-language'
+const languageSchema = z.enum(LANGUAGES)
+
+/**
+ * The language the page last showed in this browser, which it starts in,
+ * so a user whose choice differs from the browser's sees no other language
+ * before the preferences arrive; null before the first.
+ */
+export function lastShownLanguage(): Language | null {
+  if (typeof localStorage === 'undefined')
+    return null
+  const kept = languageSchema.safeParse(localStorage.getItem(SHOWN_LANGUAGE_KEY))
+  return kept.success ? kept.data : null
+}
+
+/** Remembers `language` as the one the page shows, for its next start. */
+export function keepShownLanguage(language: Language): void {
+  if (typeof localStorage !== 'undefined')
+    localStorage.setItem(SHOWN_LANGUAGE_KEY, language)
 }

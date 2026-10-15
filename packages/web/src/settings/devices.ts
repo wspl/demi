@@ -134,7 +134,7 @@ export const useDeviceSettings = defineStore('device-settings', () => {
         }
         resetError.value = shownError(
           error,
-          refused ? error.message : 'The reset could not start. Check your connection and try again.',
+          refused ? undefined : 'The reset could not start. Check your connection and try again.',
         )
       }
     }

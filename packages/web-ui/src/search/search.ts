@@ -1,3 +1,4 @@
+import { errorMessage } from '../infra/errors'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 
 /**
@@ -72,7 +73,7 @@ export function useConversationSearch(source: () => SearchSource, recent: () => 
         answered.value = {
           kind: 'failed',
           query: text,
-          detail: error instanceof Error ? error.message : String(error),
+          detail: errorMessage(error),
         }
       }
     } finally {

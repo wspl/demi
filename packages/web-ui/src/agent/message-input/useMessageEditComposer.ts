@@ -1,3 +1,4 @@
+import { errorMessage } from '../../infra/errors'
 import { computed, onScopeDispose, ref, shallowRef, toRaw, watch } from 'vue'
 import {
   changeMessageEditContent,
@@ -193,7 +194,7 @@ export function useMessageEditComposer(options: {
       // composer's to tell.
       setTransfer(id, { phase: 'failed' })
       if (added.value.get(id)?.file) {
-        attachmentError.value = `${name}: ${error instanceof Error ? error.message : String(error)}`
+        attachmentError.value = `${name}: ${errorMessage(error)}`
       }
       return false
     }

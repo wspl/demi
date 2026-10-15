@@ -13,7 +13,7 @@ import {
 } from '@demicodes/web-ui/theme/appTheme'
 import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
 import { createPageI18n, setPageLanguage } from '@demicodes/web-ui/i18n/text'
-import { resolveLanguage } from '@demicodes/web-ui/i18n/languages'
+import { keepShownLanguage, lastShownLanguage, resolveLanguage } from '@demicodes/web-ui/i18n/languages'
 import { reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
 import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { useConversations } from './conversation/store'
@@ -37,9 +37,12 @@ import { returnAddress, signInAddress } from './auth/return'
 import './style.css'
 
 // The page's text instance, before anything reads a text; it speaks the
-// browser's language until the user's choice arrives.
+// language it last showed, or the browser's the first time, until the
+// user's choice arrives (`localization.md` § Choosing the language).
 const browserLanguages = shallowRef(navigator.languages)
-const i18n = createPageI18n(resolveLanguage('system', browserLanguages.value))
+const startLanguage = lastShownLanguage() ?? resolveLanguage('system', browserLanguages.value)
+const i18n = createPageI18n(startLanguage)
+setPageLanguage(startLanguage)
 const pinia = createPinia()
 const router = createRouter({
   history: createWebHistory(),
@@ -233,8 +236,15 @@ const stopTheme = applyThemeToDocument()
 // another page included, applies at once (`localization.md` § Choosing the
 // language).
 const stopLanguage = watch(
-  () => resolveLanguage(preferences.language, browserLanguages.value),
-  setPageLanguage,
+  () => (product.snapshot ? resolveLanguage(preferences.language, browserLanguages.value) : null),
+  (language) => {
+    // Until the preferences arrive the page stays in the language it
+    // started in.
+    if (language !== null) {
+      setPageLanguage(language)
+      keepShownLanguage(language)
+    }
+  },
   { immediate: true },
 )
 // The page reports its own facts when they may have changed: once the

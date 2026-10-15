@@ -2,8 +2,9 @@
 //! reported locale passes before it is saved, and how a patch merges into
 //! what is saved.
 
-use demi_command_protocol::CommandLocale;
+
 use demi_web_api_protocol::settings::{
+    BrowserLocale,
     ContextLimitChange, ContextLimits, Preferences, PreferencesPatch,
 };
 use icu_locale::{Locale, LocaleCanonicalizer};
@@ -36,7 +37,7 @@ pub fn check(mut patch: PreferencesPatch) -> Result<CheckedPatch, LocaleError> {
 /// ignore case, and its tags canonicalized as a web browser's
 /// `Intl.getCanonicalLocales` does: `zh-cn` becomes `zh-CN` and `iw` becomes
 /// `he`, and a tag that repeats an earlier one goes.
-fn canonical(locale: CommandLocale) -> Result<CommandLocale, LocaleError> {
+fn canonical(locale: BrowserLocale) -> Result<BrowserLocale, LocaleError> {
     let zone = IanaParserExtended::new().parse(&locale.time_zone);
     if zone.time_zone.is_unknown() {
         return Err(LocaleError::UnknownTimeZone(locale.time_zone));
@@ -54,9 +55,10 @@ fn canonical(locale: CommandLocale) -> Result<CommandLocale, LocaleError> {
             languages.push(canonical);
         }
     }
-    Ok(CommandLocale {
+    Ok(BrowserLocale {
         time_zone: zone.normalized.to_owned(),
         languages,
+        language: locale.language,
     })
 }
 

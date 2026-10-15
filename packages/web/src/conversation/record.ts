@@ -1,3 +1,4 @@
+import { errorMessage } from '@demicodes/web-ui/infra/errors'
 import { markRaw, type Raw } from 'vue'
 import type { ClientContent } from '@demicodes/protocol'
 import { SerialQueue } from '@demicodes/utils'
@@ -153,7 +154,7 @@ function isRefusal(error: unknown): boolean {
 
 /** The words a refusal stands in the list with. */
 function reasonOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+  return errorMessage(error)
 }
 
 export function createRecordSync(options: {
