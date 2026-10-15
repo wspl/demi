@@ -20,7 +20,7 @@ export const GALLERY_MARKS = {
  * `devices`, the whole of a specimen's account, with the marks they show among themselves
  * (`shownMark`): a Mac alone of its logo there shows no number.
  */
-export function shownAmong<T extends { mark: DeviceMark | null }>(devices: T[]): T[] {
-  const marks = devices.map((device) => device.mark)
-  return devices.map((device) => ({ ...device, mark: device.mark && shownMark(device.mark, marks) }))
+export function shownAmong<T extends { mark?: DeviceMark | null }>(devices: T[]): T[] {
+  const marks = devices.map((device) => device.mark ?? null)
+  return devices.map((device) => (device.mark ? { ...device, mark: shownMark(device.mark, marks) } : device))
 }

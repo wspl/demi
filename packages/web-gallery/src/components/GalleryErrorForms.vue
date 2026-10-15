@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { GALLERY_MARKS } from '../fixtures/device-marks'
+import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { correction, requestFailure } from '../fixtures/request-failures'
 import { ref } from 'vue'
 import EmailLoginPage from '@demicodes/web-ui/auth/EmailLoginPage.vue'
@@ -160,9 +160,9 @@ const failedProjectHost = ref<WorkspaceHostChoice>({ kind: 'device', deviceId: '
             <WorkspaceDialog
               :is-open="open"
               :overlay-store="appOverlayStore"
-              :devices="[
+              :devices="shownAmong([
                 { id: 'preview-device', name: 'Preview laptop', state: 'online', mark: GALLERY_MARKS.mac },
-              ]"
+              ])"
               :source-for="() => hosts[0]!.source"
               :last-host="failedProjectHost"
               :message="requestFailure('Could not create the project. The selected device is offline.')"

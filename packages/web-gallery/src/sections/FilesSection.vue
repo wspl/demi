@@ -27,7 +27,7 @@ import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import { productWould } from '../product-would'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
-import { createGalleryRemoteFileHosts, laptopTree } from '../fixtures/files'
+import { createGalleryRemoteFileHosts, GALLERY_FILE_HOST_MARKS, laptopTree } from '../fixtures/files'
 import { createGalleryWorkspace } from '../fixtures/workspace'
 import { useGalleryView } from '../gallery-views'
 
@@ -86,7 +86,12 @@ const { view } = useGalleryView()
 
 // New project: the working-environment dialog over the same hosts; a created project joins the list.
 const workspaceDevices = ref<WorkspaceDevice[]>(
-  pairedHosts.map(({ id, label, state, mark }) => ({ id, name: label, state, mark: mark ?? null })),
+  pairedHosts.map(({ id, label, state }) => ({
+    id,
+    name: label,
+    state,
+    mark: GALLERY_FILE_HOST_MARKS[id] ?? null,
+  })),
 )
 /** The list as the dialog shows it: a Mac paired beside alex-mbp gives both their numbers. */
 const shownWorkspaceDevices = computed(() => shownAmong(workspaceDevices.value))
