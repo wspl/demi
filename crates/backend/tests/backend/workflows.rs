@@ -200,6 +200,25 @@ async fn menu(backend: &TestBackend, master: &Session) -> serde_json::Value {
     serde_json::to_value(listed.json::<ConversationWorkflows>()).unwrap()
 }
 
+/// The menu's list once `holds` says it holds a change made on the Host,
+/// which the backend learns of through the runner's file watch, as a page
+/// that heard of it reads the list again.
+async fn menu_once(
+    backend: &TestBackend,
+    master: &Session,
+    holds: impl Fn(&serde_json::Value) -> bool,
+) -> serde_json::Value {
+    let listed = std::cell::RefCell::new(serde_json::Value::Null);
+    eventually("the menu holds the change", || async {
+        let now = menu(backend, master).await;
+        let held = holds(&now);
+        listed.replace(now);
+        held
+    })
+    .await;
+    listed.into_inner()
+}
+
 // A few seconds: a real runner on a paired device answers the reads, and
 // three turns run a shell job each.
 #[tokio::test]
@@ -267,8 +286,8 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
 
     // Review Team chosen at the turn's start; mid-turn the user chooses No
     // Subagents, Review Team's instructions change, and the user chooses it
-    // again: the next request carries them as the file is now, not the read
-    // the turn began with.
+    // again: once the runner said the file changed, the next request carries
+    // them as the file is now, not as the turn began with.
     choose(&backend, &master, json!({ "type": "workflow", "id": "review" })).await;
     let started = repo.join("started");
     let go = repo.join("go");
@@ -284,7 +303,11 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     })
     .await;
     choose(&backend, &master, json!({ "type": "none" })).await;
-    std::fs::write(workflows.join("review.yaml"), REVIEW.replace("REVIEW STEPS", "REVIEW STEPS TWO")).unwrap();
+    let changed = REVIEW
+        .replace("REVIEW STEPS", "REVIEW STEPS TWO")
+        .replace("Review Team", "Review Team Two");
+    std::fs::write(workflows.join("review.yaml"), changed).unwrap();
+    menu_once(&backend, &master, |listed| listed["workflows"][2]["name"] == "Review Team Two").await;
     choose(&backend, &master, json!({ "type": "workflow", "id": "review" })).await;
     std::fs::write(&go, "").unwrap();
     work.socket.until_idle().await;
@@ -301,7 +324,7 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     std::fs::create_dir_all(home.join("shared-workflows")).unwrap();
     std::fs::write(home.join("shared-workflows/review.yaml"), REVIEW).unwrap();
     std::os::unix::fs::symlink(home.join("shared-workflows"), &workflows).unwrap();
-    let listed = menu(&backend, &master).await;
+    let listed = menu_once(&backend, &master, |listed| !listed["unavailable"].is_null()).await;
     assert_eq!(listed["directory"], json!(path(&workflows)));
     assert_eq!(listed["unavailable"], json!("Workflows are files of the project, not links."));
     assert_eq!(listed["workflows"], json!([]));
@@ -313,20 +336,27 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     std::fs::create_dir_all(home.join("shared-demi/workflows")).unwrap();
     std::fs::write(home.join("shared-demi/workflows/review.yaml"), REVIEW).unwrap();
     std::os::unix::fs::symlink(home.join("shared-demi"), repo.join(".demi")).unwrap();
-    let listed = menu(&backend, &master).await;
+    let listed = menu_once(&backend, &master, |listed| listed["watch"][0]["path"] == path(&repo)).await;
     assert_eq!(listed["directory"], json!(path(&workflows)));
     assert_eq!(listed["unavailable"], json!("Workflows are files of the project, not links."));
     assert_eq!(listed["workflows"], json!([]));
     assert_eq!(listed["watch"], json!([{ "kind": "folder_names", "path": path(&repo) }]));
 
     // A `.demi` the Host cannot read is not looked past: its workflows are
-    // unavailable, and none of a directory above is offered instead.
-    std::fs::remove_file(repo.join(".demi")).unwrap();
-    std::fs::create_dir_all(repo.join(".demi/workflows")).unwrap();
-    std::fs::write(repo.join(".demi/workflows/review.yaml"), REVIEW).unwrap();
+    // unavailable, and none of a directory above is offered instead. It
+    // arrives unreadable, in one rename the watch reports.
+    let locked = home.join("locked-demi");
+    std::fs::create_dir_all(locked.join("workflows")).unwrap();
+    std::fs::write(locked.join("workflows/review.yaml"), REVIEW).unwrap();
     use std::os::unix::fs::PermissionsExt;
-    std::fs::set_permissions(repo.join(".demi"), std::fs::Permissions::from_mode(0o000)).unwrap();
-    let listed = menu(&backend, &master).await;
+    // Not readable, but writable, which a rename of a directory needs.
+    std::fs::set_permissions(&locked, std::fs::Permissions::from_mode(0o300)).unwrap();
+    std::fs::remove_file(repo.join(".demi")).unwrap();
+    std::fs::rename(&locked, repo.join(".demi")).unwrap();
+    let listed = menu_once(&backend, &master, |listed| {
+        listed["unavailable"].as_str().is_some_and(|reason| reason.starts_with("the Host cannot read"))
+    })
+    .await;
     std::fs::set_permissions(repo.join(".demi"), std::fs::Permissions::from_mode(0o755)).unwrap();
     let reason = listed["unavailable"].as_str().unwrap_or_default().to_owned();
     assert!(reason.starts_with(&format!("the Host cannot read {}: ", path(&repo.join(".demi")))), "{listed}");
@@ -396,5 +426,36 @@ async fn a_new_conversation_lists_its_directorys_workflows_and_keeps_the_choice_
     assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
     let created = created.json::<demi_web_api_protocol::conversations::CreatedConversation>();
     assert_eq!(created.conversation.workflow, WorkflowChoice::Workflow { id: "review".into() });
+    backend.close().await;
+}
+
+// About five seconds: the first searches wait their whole hold for a runner
+// that answers nothing.
+//
+// Planted defect it catches: the workflows searched after the instruction
+// files, each holding the first request 5 seconds of its own.
+#[tokio::test]
+async fn with_a_workflow_chosen_the_first_request_waits_one_hold_for_both_searches() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let alpha = backend.pair(&master, "alpha").await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
+    create(&backend, &master, FIRST).await;
+    let repo = alpha.runner.home_dir().join("repo");
+    std::fs::create_dir_all(repo.join(".git")).unwrap();
+    std::fs::create_dir_all(repo.join(".demi/workflows")).unwrap();
+    std::fs::write(repo.join(".demi/workflows/review.yaml"), REVIEW).unwrap();
+    switch(&backend, &master, FIRST, &alpha, &repo).await;
+    choose(&backend, &master, json!({ "type": "workflow", "id": "review" })).await;
+    let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
+
+    alpha.runner.suspend();
+    let started = tokio::time::Instant::now();
+    work.turn(vec![say("hello")]).await;
+    let waited = started.elapsed();
+    alpha.runner.resume();
+    // One hold of 5 seconds, not two after each other.
+    assert!(waited < std::time::Duration::from_secs(8), "{waited:?}");
     backend.close().await;
 }

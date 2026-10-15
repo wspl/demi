@@ -103,6 +103,7 @@ impl Plugin for Instance {
                     Ok(Reply::Exit { code })
                 }
                 Request::Context { .. } => Err(PluginError::undeclared("context source")),
+                Request::ProjectSearch { .. } => Err(PluginError::undeclared("project search")),
                 Request::PanelTab { .. } => Err(PluginError::undeclared("panel kind")),
                 Request::PackageMessage { .. } | Request::PackageLost { .. } => {
                     Err(PluginError::undeclared("package messages"))

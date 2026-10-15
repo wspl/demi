@@ -266,8 +266,8 @@ async fn a_skill_turned_on_has_a_host_directory_and_reaches_the_catalog_at_its_p
         files.sort();
         assert_eq!(files, [("SKILL.md", false), ("scripts/check.sh", true)]);
 
-        // The Host is not running: the catalog lists the user skills alone.
-        let block = plugged.context("/home/me/app", "t1", &[]).await.unwrap();
+        // No project searched: the catalog lists the user skills alone.
+        let block = plugged.context(&[]).await.unwrap();
         let path = location("review", review.files.clone());
         assert!(
             block.contains(&format!("<location>{path}</location>")),
@@ -280,9 +280,9 @@ async fn a_skill_turned_on_has_a_host_directory_and_reaches_the_catalog_at_its_p
         assert!(!block.contains("hidden"), "{block}");
         // Told already, the model gets nothing new; after a compaction it is
         // told again.
-        assert_eq!(plugged.context("/home/me/app", "t2", &[&block]).await, None);
+        assert_eq!(plugged.context(&[&block]).await, None);
         assert_eq!(
-            plugged.context("/home/me/app", "t3", &[]).await,
+            plugged.context(&[]).await,
             Some(block.clone())
         );
 
@@ -292,7 +292,7 @@ async fn a_skill_turned_on_has_a_host_directory_and_reaches_the_catalog_at_its_p
         assert!(plugged.demi.directories().is_empty());
         assert_eq!(
             plugged
-                .context("/home/me/app", "t4", &[&block])
+                .context(&[&block])
                 .await
                 .as_deref(),
             Some("No skills are available now.")
@@ -417,7 +417,7 @@ async fn an_update_keeps_each_skill_on_or_off_by_name_drops_those_the_new_commit
 }
 
 #[tokio::test]
-async fn project_skills_up_to_the_repository_root_are_listed_at_their_paths_and_shadow_user_skills()
+async fn the_project_directorys_skills_alone_are_listed_at_their_paths_and_shadow_user_skills()
 {
     local(async {
         let repos = Repos::new();
@@ -428,32 +428,32 @@ async fn project_skills_up_to_the_repository_root_are_listed_at_their_paths_and_
         let project = |name: &str, description: &str| {
             skill_md(&format!("name: {name}\ndescription: {description}"))
         };
-        let near = project("release", "Release from web.");
-        let far = project("release", "Release from the root.");
-        let review = project("review", "The repository's review.");
-        let outside = project("outside", "Above the repository.");
-        let claude = project("tests", "Write tests.");
+        let agents = project("release", "Release from .agents.");
+        let claude_twin = project("release", "Release from .claude.");
+        let review = project("review", "The project's review.");
+        let tests = project("tests", "Write tests.");
+        let nested = project("nested", "In a directory below the project.");
+        let outside = project("outside", "Above the project.");
         plugged.host(&[
-            ("/home/me/app/.git/HEAD", "ref: refs/heads/main"),
-            ("/home/me/app/web/.claude/skills/release/SKILL.md", &near),
-            ("/home/me/app/.agents/skills/release/SKILL.md", &far),
+            ("/home/.git/HEAD", "ref: refs/heads/main"),
+            ("/home/me/app/.agents/skills/release/SKILL.md", &agents),
+            ("/home/me/app/.claude/skills/release/SKILL.md", &claude_twin),
             ("/home/me/app/.agents/skills/group/review/SKILL.md", &review),
-            ("/home/me/app/.claude/skills/tests/SKILL.md", &claude),
+            ("/home/me/app/.claude/skills/tests/SKILL.md", &tests),
+            ("/home/me/app/web/.agents/skills/nested/SKILL.md", &nested),
             ("/home/me/.agents/skills/outside/SKILL.md", &outside),
+            ("/home/.agents/skills/outside/SKILL.md", &outside),
         ]);
 
-        let block = plugged
-            .context("/home/me/app/web", "t1", &[])
-            .await
-            .unwrap();
+        plugged.search("/home/me/app").await;
+        let block = plugged.context(&[]).await.unwrap();
         assert!(
-            block.contains("<location>/home/me/app/web/.claude/skills/release/SKILL.md</location>"),
+            block.contains("<location>/home/me/app/.agents/skills/release/SKILL.md</location>"),
             "{block}"
         );
-        assert!(!block.contains("Release from the root."), "{block}");
+        assert!(!block.contains("Release from .claude."), "{block}");
         assert!(
-            block
-                .contains("<location>/home/me/app/.agents/skills/group/review/SKILL.md</location>"),
+            block.contains("<location>/home/me/app/.agents/skills/group/review/SKILL.md</location>"),
             "{block}"
         );
         assert!(!block.contains("Review a change."), "{block}");
@@ -461,40 +461,12 @@ async fn project_skills_up_to_the_repository_root_are_listed_at_their_paths_and_
             block.contains("<location>/home/me/app/.claude/skills/tests/SKILL.md</location>"),
             "{block}"
         );
+        assert!(!block.contains("nested"), "{block}");
         assert!(!block.contains("outside"), "{block}");
         // Sorted by name.
         let release = block.find("<name>release</name>").unwrap();
         let tests = block.find("<name>tests</name>").unwrap();
         assert!(release < tests);
-    })
-    .await;
-}
-
-#[tokio::test]
-async fn on_a_stopped_host_project_skills_appear_after_it_woke_and_a_turn_searches_once() {
-    local(async {
-        let repos = Repos::new();
-        let plugged = Plugged::new(&repos.skills());
-        let release = skill_md("name: release\ndescription: Cut a release.");
-
-        // Stopped: no search answers, and nothing was ever told.
-        assert_eq!(plugged.context("/home/me/app", "t1", &[]).await, None);
-        // Woken by the turn's first command: the turn's next request finds
-        // the repository's skills.
-        plugged.host(&[("/home/me/app/.agents/skills/release/SKILL.md", &release)]);
-        let block = plugged.context("/home/me/app", "t1", &[]).await.unwrap();
-        assert!(block.contains("<name>release</name>"), "{block}");
-        // The turn searched; its later requests keep what it found.
-        plugged.host(&[]);
-        assert_eq!(plugged.context("/home/me/app", "t1", &[&block]).await, None);
-        // The next turn searches again.
-        assert_eq!(
-            plugged
-                .context("/home/me/app", "t2", &[&block])
-                .await
-                .as_deref(),
-            Some("No skills are available now.")
-        );
     })
     .await;
 }
@@ -520,7 +492,8 @@ async fn a_catalog_over_its_budget_shortens_every_description_then_counts_the_sk
             .map(|(path, text)| (path.as_str(), text.as_str()))
             .collect();
         plugged.host(&files);
-        let block = plugged.context("/repo", "t1", &[]).await.unwrap();
+        plugged.search("/repo").await;
+        let block = plugged.context(&[]).await.unwrap();
         assert!(block.chars().count() <= 8_000, "{}", block.chars().count());
         assert_eq!(block.matches("<skill>").count(), 30);
         assert_eq!(block.matches("…</description>").count(), 30);
@@ -548,7 +521,8 @@ async fn a_catalog_over_its_budget_shortens_every_description_then_counts_the_sk
             .map(|(path, text)| (path.as_str(), text.as_str()))
             .collect();
         plugged.host(&files);
-        let block = plugged.context("/repo", "t2", &[]).await.unwrap();
+        plugged.search("/repo").await;
+        let block = plugged.context(&[]).await.unwrap();
         assert!(block.chars().count() <= 8_000, "{}", block.chars().count());
         assert!(!block.contains("<description>"), "{block}");
         let shown = block.matches("<skill>").count();
@@ -588,13 +562,14 @@ fn a_shutdown_during_a_fetch_leaves_the_source_as_it_was() {
             .unwrap();
         let source = added["source"].as_str().unwrap().to_owned();
         // The shard closes with the fetch under way.
-        let Plugged { plugin, demi, root } = first;
+        let Plugged { plugin, demi, root, .. } = first;
         drop(plugin);
 
         let second = Plugged {
             plugin: loopback(skills.instance()),
             demi: demi.clone(),
             root,
+            project: Default::default(),
         };
         let other = second.add("acme/other").await;
         demi.until(|demi| {

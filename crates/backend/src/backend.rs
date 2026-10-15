@@ -542,6 +542,28 @@ impl Backend {
             .expect("the user's shard serves while the backend runs")
     }
 
+    /// The paths `user`'s device `device` is subscribed to on its runner
+    /// now, by every holder (`runner.md` § Watching files).
+    #[cfg(feature = "testing")]
+    pub async fn subscribed(
+        &self,
+        user: &demi_web_api_protocol::ids::UserId,
+        device: &demi_web_api_protocol::ids::DeviceId,
+    ) -> Vec<String> {
+        let device = device.clone();
+        self.shards
+            .shards()
+            .of(user)
+            .call(move |shard, _| async move {
+                let Some(link) = demi_backend_host_access::HostShard::devices(&*shard).link(&device) else {
+                    return Vec::new();
+                };
+                link.subscribed().into_iter().map(|subject| subject.path).collect()
+            })
+            .await
+            .expect("the user's shard serves while the backend runs")
+    }
+
     /// Resolves once no collection of `user`'s blob namespace runs or is to
     /// follow (`storage.md` § Deleting a conversation).
     #[cfg(feature = "testing")]

@@ -3,9 +3,11 @@
 //! directory that has it, from the conversation's working directory up to
 //! the root of its git repository, read through the conversation's host
 //! access, or through device access for a new conversation before its
-//! first message, and parsed with the one parser. The spawns, `demi agent
-//! workflows`, the Workflow menu and the instructions block read them here,
-//! as the files are at that moment.
+//! first message, and parsed with the one parser. The shard keeps each
+//! conversation directory's workflows current with the runner's file watch
+//! (`project_files`), and the spawns, `demi agent workflows`, `demi agent
+//! profiles list`, the Workflow menu and the instructions block take what it
+//! holds.
 
 use demi_agent_tools::{
     ChosenWorkflow, ConversationProfiles, EFFORT_OFF, ListedWorkflow, WORKFLOW_FILE_MAX_BYTES,
@@ -13,7 +15,10 @@ use demi_agent_tools::{
     parse_workflow, workflow_id,
 };
 use demi_backend_host_access::plugin_files::ReadFilesError;
+use demi_backend_host_access::access::HostAccessError;
+use demi_backend_host_access::kept::Wait;
 use demi_backend_host_access::transition::ChangeRefusal;
+use std::rc::Rc;
 use std::future::Future;
 
 use demi_backend_host_access::plugin_files::look_files;
@@ -90,7 +95,7 @@ impl ProjectWorkflows {
 
     /// The Workflow menu's list, by id (`web-api.md` § Workflows of a
     /// directory).
-    fn menu(self) -> (ConversationWorkflows, ReadAt) {
+    fn menu(&self) -> (ConversationWorkflows, ReadAt) {
         let workflows = self
             .files
             .iter()
@@ -102,12 +107,12 @@ impl ProjectWorkflows {
             })
             .collect();
         let answer = ConversationWorkflows {
-            directory: self.directory,
-            unavailable: self.unavailable,
+            directory: self.directory.clone(),
+            unavailable: self.unavailable.clone(),
             workflows,
-            watch: self.watch,
+            watch: self.watch.clone(),
         };
-        (answer, self.read_at)
+        (answer, self.read_at.clone())
     }
 }
 
@@ -305,34 +310,52 @@ pub enum DeviceWorkflowsRefusal {
     Host(HostError),
 }
 
-/// No workflows: what a conversation whose directory is gone has.
-fn none(read_at: ReadAt) -> ProjectWorkflows {
-    ProjectWorkflows {
+/// The workflows of `directory`, the conversation `id`'s, read now through
+/// its host access in the form that never wakes its Host. A directory that
+/// is gone has none, and is watched for coming back.
+pub(crate) async fn search_conversation_workflows(
+    shard: &Shard,
+    id: &ConversationId,
+    device: &DeviceId,
+    directory: &str,
+) -> Result<ProjectWorkflows, ReadFilesError> {
+    let paths = shard
+        .host_paths(id)
+        .await
+        .map_err(|error| ReadFilesError::Access(error.into()))?;
+    let host = shard.host_shard();
+    let cancel = CancellationToken::new();
+    let cancel = &cancel;
+    let found = search_workflows(paths, directory, |reads| async move {
+        host.read_files_on(id, Some(device), &reads, cancel).await
+    })
+    .await?;
+    Ok(found.unwrap_or_else(|NoDirectory(read_at)| ProjectWorkflows {
         directory: None,
         unavailable: None,
         files: Vec::new(),
-        watch: Vec::new(),
+        watch: vec![WatchSubject {
+            kind: WatchKind::FolderNames,
+            path: directory.to_owned(),
+        }],
         read_at,
-    }
+    }))
 }
 
 impl Shard {
-    /// The workflows of the conversation `id`'s working directory, read now
-    /// through its host access in the form that never wakes its Host.
+    /// The workflows the shard holds for the conversation `id`'s working
+    /// directory; [`ReadFilesError::NotRunning`] while it holds none, as
+    /// on a Host that has not run since. `wait` says whether a search under
+    /// way for a change the runner reported is waited for.
     pub(crate) async fn project_workflows(
         &self,
         id: &ConversationId,
-        cancel: &CancellationToken,
-    ) -> Result<ProjectWorkflows, ReadFilesError> {
-        let paths = self
-            .host_paths(id)
+        wait: Wait,
+    ) -> Result<Rc<ProjectWorkflows>, ReadFilesError> {
+        self.kept_workflows(id, wait)
             .await
-            .map_err(|error| ReadFilesError::Access(error.into()))?;
-        let cwd = self.placement(id).await?.directory;
-        let host = self.host_shard();
-        let found = search_workflows(paths, &cwd, |reads| async move { host.read_files(id, &reads, cancel).await }).await?;
-        // A conversation whose directory is gone has none.
-        Ok(found.unwrap_or_else(|NoDirectory(read_at)| none(read_at)))
+            .map_err(|error| ReadFilesError::Access(HostAccessError::Host(HostError::failed(None, error))))?
+            .ok_or(ReadFilesError::NotRunning)
     }
 
     /// The Workflow menu's list for a new conversation that works in
@@ -345,6 +368,10 @@ impl Shard {
         device: &DeviceId,
         directory: &str,
     ) -> Result<(ConversationWorkflows, ReadAt), DeviceWorkflowsRefusal> {
+        // What a loaded conversation there keeps already.
+        if let Some(found) = self.project_files().workflows.held(device, directory.to_owned()) {
+            return Ok(found.menu());
+        }
         let host = self.devices().device_access(device).ok_or(DeviceWorkflowsRefusal::Offline)?;
         let paths = host.identity().paths;
         let host = &host;
@@ -356,19 +383,21 @@ impl Shard {
     }
 
     /// The Workflow menu's list for the conversation `id` (`GET
-    /// /conversations/:id/workflows`), with what the page watches.
+    /// /conversations/:id/workflows`), with what the page watches. The page
+    /// asks when the runner reported a change, so a search under way for one
+    /// is waited for.
     pub async fn menu_workflows(
         &self,
         id: &ConversationId,
     ) -> Result<(ConversationWorkflows, ReadAt), ReadFilesError> {
-        Ok(self.project_workflows(id, &CancellationToken::new()).await?.menu())
+        Ok(self.project_workflows(id, Wait::Current).await?.menu())
     }
 
     /// `demi agent workflows list` for the conversation `id`.
     pub(crate) async fn workflow_listing(&self, id: &ConversationId) -> Result<WorkflowListing, String> {
         let chosen = self.workflow_choice(id).await?;
         let found = self
-            .project_workflows(id, &CancellationToken::new())
+            .project_workflows(id, Wait::First)
             .await
             .map_err(|error| format!("the project's workflows cannot be read: {error}"))?;
         let workflows = found
@@ -386,8 +415,8 @@ impl Shard {
             .collect();
         Ok(WorkflowListing {
             chosen,
-            directory: found.directory,
-            unavailable: found.unavailable,
+            directory: found.directory.clone(),
+            unavailable: found.unavailable.clone(),
             workflows,
         })
     }
@@ -418,7 +447,7 @@ impl Shard {
             WorkflowChoice::Workflow { id } => id,
         };
         let found = self
-            .project_workflows(id, &CancellationToken::new())
+            .project_workflows(id, Wait::First)
             .await
             .map_err(|error| error.to_string())?;
         if let Some(reason) = found.unavailable(&chosen) {

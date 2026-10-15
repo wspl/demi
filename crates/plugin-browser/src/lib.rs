@@ -227,6 +227,7 @@ impl Plugin for Instance {
                     conversation: None, ..
                 } => Err(PluginError::undeclared("user state")),
                 Request::Context { .. } => Err(PluginError::undeclared("context source")),
+                Request::ProjectSearch { .. } => Err(PluginError::undeclared("project search")),
             }
         })
     }

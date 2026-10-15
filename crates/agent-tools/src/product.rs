@@ -325,8 +325,8 @@ pub trait SubagentSource {
         Box::pin(async { Ok(ConversationProfiles::Settings) })
     }
 
-    /// The workflows of the conversation `root`'s working directory and its
-    /// choice, read now.
+    /// The workflows of the conversation `root`'s working directory, as the
+    /// product holds them, and its choice.
     fn workflows<'a>(&'a self, _root: &'a NodeId) -> LocalBoxFuture<'a, Result<WorkflowListing, String>> {
         Box::pin(async { Err(NO_WORKFLOWS.to_owned()) })
     }

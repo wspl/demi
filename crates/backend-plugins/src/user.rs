@@ -30,9 +30,10 @@ use demi_plugin_interface::{
 use demi_shared_types::{B64Bytes, BlobRef, NodeId, Timestamp, TurnId};
 use demi_web_api_protocol::conversations::PluginRevision;
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::ids::{ConversationId, UserId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use demi_web_api_protocol::panel::{PanelChange, PanelEffect, WorkPanel};
 use demi_web_api_protocol::plugins::{PluginEntry, PluginStateAnswer};
+use demi_web_api_protocol::workflows::WatchSubject;
 use futures_util::future::LocalBoxFuture;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
@@ -59,10 +60,12 @@ pub trait ProductPort {
     ) -> LocalBoxFuture<'a, Result<Value, PortFailure>>;
 
     /// Reads `reads` on the conversation's primary Host in the form that never
-    /// wakes it; [`PortRefusal::NotRunning`] when it is not running.
+    /// wakes it; [`PortRefusal::NotRunning`] when it is not running, or, with
+    /// `on`, when it is no longer that device's.
     fn read_host_files<'a>(
         &'a self,
         conversation: &'a ConversationId,
+        on: Option<&'a DeviceId>,
         reads: Vec<HostRead>,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>>;
@@ -219,12 +222,27 @@ impl Shared {
         rpc: Option<RpcPort>,
         cancel: CancellationToken,
     ) -> Result<Reply, PluginError> {
+        self.request_on(plugin, request, conversation, None, rpc, cancel).await
+    }
+
+    /// [`Shared::request`], whose reads of the conversation's files are
+    /// bound to the primary Host of `host` when one is named.
+    pub(crate) async fn request_on(
+        self: &Rc<Self>,
+        plugin: usize,
+        request: Request,
+        conversation: Option<ConversationId>,
+        host: Option<DeviceId>,
+        rpc: Option<RpcPort>,
+        cancel: CancellationToken,
+    ) -> Result<Reply, PluginError> {
         let transport = RequestPort {
             shared: self.clone(),
             plugin,
             conversation,
             rpc,
             cancel: cancel.clone(),
+            host,
         };
         let port = PluginPort::new(Rc::new(transport), cancel);
         self.instances[plugin].call(request, port).await
@@ -570,6 +588,7 @@ impl UserPlugins {
             paths: asked.paths,
             turn: asked.turn,
             seen: asked.seen,
+            project: asked.project,
         };
         let reply = self
             .0
@@ -579,6 +598,52 @@ impl UserPlugins {
             Reply::Context { text } => Ok(text),
             reply => Err(PluginError::failed(format!(
                 "the plugin answered a context request with {reply:?}"
+            ))),
+        }
+    }
+
+    /// Whether `plugin` declares a project search and the user has it on.
+    pub async fn searches_projects(&self, plugin: &PluginId) -> Result<bool, StorageError> {
+        let Some((index, registered)) = self.0.registry.plugin(plugin.as_str()) else {
+            return Ok(false);
+        };
+        Ok(registered.factory.manifest().project_search && self.enabled().await?[index])
+    }
+
+    /// Asks `plugin`, which declares a project search, to search
+    /// `directory`, the conversation's project directory on the primary Host
+    /// of `device`, which its reads are bound to: what it found and what
+    /// tells of a change to it; none while the user has it off.
+    pub async fn project_search(
+        &self,
+        plugin: &PluginId,
+        conversation: &ConversationId,
+        device: &DeviceId,
+        directory: String,
+        paths: demi_host_interface::HostPaths,
+        cancel: CancellationToken,
+    ) -> Result<Option<(Value, Vec<WatchSubject>)>, PluginError> {
+        let Some((index, _)) = self.0.registry.plugin(plugin.as_str()) else {
+            return Ok(None);
+        };
+        let enabled = self.enabled().await.map_err(PluginError::failed)?;
+        if !enabled[index] {
+            return Ok(None);
+        }
+        let request = Request::ProjectSearch {
+            user: self.0.user.clone(),
+            conversation: conversation.clone(),
+            directory,
+            paths,
+        };
+        let reply = self
+            .0
+            .request_on(index, request, Some(conversation.clone()), Some(device.clone()), None, cancel)
+            .await?;
+        match reply {
+            Reply::Project { found, watch } => Ok(Some((found, watch))),
+            reply => Err(PluginError::failed(format!(
+                "the plugin answered a project search with {reply:?}"
             ))),
         }
     }
@@ -922,6 +987,9 @@ pub struct ContextAsk {
     /// The text of the source's own blocks the model receives, oldest
     /// first.
     pub seen: Vec<String>,
+    /// What the plugin's project search last found, for a plugin that
+    /// declares one.
+    pub project: Option<Value>,
 }
 
 /// One request's port: the call's rpc port for a command, the user's
@@ -933,6 +1001,9 @@ struct RequestPort {
     conversation: Option<ConversationId>,
     rpc: Option<RpcPort>,
     cancel: CancellationToken,
+    /// The device whose primary Host a project search was asked of, which
+    /// its reads are bound to.
+    host: Option<DeviceId>,
 }
 
 impl RequestPort {
@@ -1026,7 +1097,7 @@ impl RequestPort {
             },
             PortMessage::ReadHostFiles { reads } => PortAnswer::HostFiles {
                 files: product
-                    .read_host_files(self.conversation()?, reads, &self.cancel)
+                    .read_host_files(self.conversation()?, self.host.as_ref(), reads, &self.cancel)
                     .await?,
             },
             PortMessage::Changed { scope } => {

@@ -62,11 +62,7 @@ impl Shard {
             change,
             ConversationChange::Record(RecordChange::Pinned(_) | RecordChange::Archived(_))
         );
-        let chooses = matches!(change, ConversationChange::Record(RecordChange::Workflow(_)));
         let switched = self.apply_change(id, change).await?;
-        if chooses {
-            self.workflow_choice_changed(id);
-        }
         self.mark(Part::Conversation(id.clone()));
         if reorders {
             self.mark(Part::ConversationOrder);
@@ -180,6 +176,10 @@ impl Shard {
     /// the conversation's new directory (`subagents.md` § Working
     /// directory).
     pub(crate) async fn switched(&self, id: &ConversationId) {
+        // What it kept of its project's files where it worked is released at
+        // once, before anything awaits; its next request keeps where it
+        // works now.
+        self.project_files().release(id);
         self.restart_idle(id);
         self.agent().placement_changed(&root_of(id)).await;
     }
