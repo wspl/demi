@@ -10,7 +10,8 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use bytes::Bytes;
 use demi_backend_blobs::ObjectError;
 use demi_backend_database::StorageError;
-use demi_backend_database::shares::{self, Added, ShareRecord};
+use demi_backend_database::conversation_attachments::{AttachmentNumber, AttachmentRow};
+use demi_backend_database::shares::{self, Added, ShareRecord, SharedAgent};
 use demi_backend_database::tree::{self, BlockRead, PageQuery, PageRead, Transcript};
 use demi_backend_page_sync::Part;
 use demi_shared_types::{BlobRef, BlockId};
@@ -243,6 +244,34 @@ impl Shard {
                 tree::read_block(connection, &transcript, &block)
             })
             .await
+    }
+
+    /// The subagents the snapshot holds.
+    pub async fn shared_agents(&self, share: &ShareRecord) -> Result<Vec<SharedAgent>, StorageError> {
+        let token = share.token.clone();
+        Ok(self
+            .services()
+            .conversations
+            .read(&share.conversation, move |connection| shares::shared_agents(connection, &token))
+            .await?
+            .unwrap_or_default())
+    }
+
+    /// The attachment `number` when the snapshot's text names it.
+    pub async fn shared_attachment(
+        &self,
+        share: &ShareRecord,
+        number: AttachmentNumber,
+    ) -> Result<Option<AttachmentRow>, StorageError> {
+        let token = share.token.clone();
+        Ok(self
+            .services()
+            .conversations
+            .read(&share.conversation, move |connection| {
+                shares::shown_attachment(connection, &token, number)
+            })
+            .await?
+            .flatten())
     }
 
     /// The bytes of `blob` when the snapshot shows it.

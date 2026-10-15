@@ -493,6 +493,10 @@ fn public_shares() -> Router<AppState> {
             get(shares::block),
         )
         .route("/api/shares/{token}/blobs/{sha256}", get(shares::blob))
+        .route(
+            "/api/shares/{token}/attachments/{attachment}",
+            get(shares::attachment),
+        )
         .layer(middleware::map_response(shares::public_headers))
 }
 
