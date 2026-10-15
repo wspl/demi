@@ -28,7 +28,7 @@ use demi_runner_process::{
 use demi_runner_protocol::wire::{self, OutputStream, Signal};
 use futures_util::{FutureExt, StreamExt};
 use std::{
-    collections::{BTreeMap, HashMap},
+    collections::{BTreeMap, HashMap, HashSet},
     io,
     path::PathBuf,
     sync::{
@@ -63,6 +63,9 @@ const PIPE_GRACE: std::time::Duration = std::time::Duration::from_secs(30);
 /// find it, and learns of each end through `finished`.
 pub struct JobTable {
     entries: HashMap<WorkId, Entry>,
+    /// Every job id the table started, which it never starts again
+    /// (`sessions-and-targets.md` § Recovery and persistence).
+    started: HashSet<String>,
     running: JoinSet<WorkId>,
     config: Arc<JobConfig>,
     closed: CancellationToken,
@@ -156,6 +159,7 @@ impl JobTable {
     pub fn new(config: JobConfig) -> Self {
         Self {
             entries: HashMap::new(),
+            started: HashSet::new(),
             running: JoinSet::new(),
             config: Arc::new(config),
             closed: CancellationToken::new(),
@@ -177,6 +181,18 @@ impl JobTable {
             .count()
     }
 
+    /// Whether the job `job` was started by this table, running or not: a
+    /// job id starts once in a runner's life, so a start the backend sent
+    /// again, or the first one arriving after it, runs nothing twice.
+    pub fn started(&self, job: &str) -> bool {
+        self.started.contains(job)
+    }
+
+    /// Whether the job `job` runs.
+    pub fn runs(&self, job: &str) -> bool {
+        self.entries.contains_key(&WorkId::Job(job.to_owned()))
+    }
+
     /// Registers the task at once, so the input and signals that follow find
     /// it, and runs its setup and work in a task of its own.
     pub fn start(&mut self, spec: TaskSpec) -> io::Result<()> {
@@ -192,6 +208,9 @@ impl JobTable {
         };
         if self.entries.contains_key(&key) {
             return Err(io::Error::other("duplicate live task id"));
+        }
+        if let WorkId::Job(job) = &key {
+            self.started.insert(job.clone());
         }
         let (input, receiver) = mpsc::channel(INPUT_QUEUE);
         let (signals, signal_receiver) = mpsc::channel(SIGNAL_QUEUE);

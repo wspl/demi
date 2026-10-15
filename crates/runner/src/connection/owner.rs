@@ -635,6 +635,11 @@ impl Owner<'_> {
     /// Starts a job or raw process, or routes its input and signals. A start
     /// that cannot begin is answered with its exit.
     async fn task(&mut self, message: Inbound) -> io::Result<()> {
+        if let Inbound::JobStart { job_id, .. } = &message
+            && self.kept.jobs.started(job_id)
+        {
+            return self.started_again(job_id).await;
+        }
         let routed = self.start_or_route(&message);
         self.registered.management.set_jobs(self.kept.jobs.job_count());
         let Err(error) = routed else {
@@ -647,6 +652,25 @@ impl Owner<'_> {
         };
         tracing::warn!("backend work could not start: {error}");
         let reply = failure_exit(&work, error.to_string()).map_err(io::Error::other)?;
+        self.send(reply).await
+    }
+
+    /// Answers a second start of `job` with the job the runner has, since
+    /// it starts a job id once in its life (`sessions-and-targets.md`
+    /// § Recovery and persistence): a job that runs goes on; one that ended
+    /// answers its exit again while its directory lasts; and one released,
+    /// whose end the backend has, or one that failed before it made its
+    /// directory, answers that it was started already.
+    async fn started_again(&mut self, job: &str) -> io::Result<()> {
+        tracing::warn!(job, "a job was started again; it runs once");
+        if self.kept.jobs.runs(job) {
+            return Ok(());
+        }
+        let reply = match self.kept.directories.exit(job) {
+            Some(exit) => exit,
+            None => failure_exit(&WorkId::Job(job.to_owned()), format!("job {job} was started already"))
+                .map_err(io::Error::other)?,
+        };
         self.send(reply).await
     }
 
