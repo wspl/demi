@@ -393,6 +393,12 @@ conversation; the panel button covers the screen with the work panel, and
   callout, a message's long press still selects its text, and a long press
   opens the menu a right-click opens on the desktop. Controls the desktop
   shows on hover show at rest, a sidebar row's on the open row.
+- **One phone scale.** Every control on a phone is drawn at the phone's
+  size, not the desktop's with a larger invisible target: a button, an
+  icon, a row, a tab, a switch and their text take the phone metrics
+  web-ui owns, one set every component reads, as iOS's own apps draw theirs
+  (the gallery's Phone section lists them). A target is the control as it
+  is drawn, so neighbors never share one.
 - **One bar.** The sidebar button; the conversation's title, centered, one
   line, with a chevron, and a status dot before it while the Host is not
   online; the panel button. A tap on the title opens a sheet with the

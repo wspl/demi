@@ -17,7 +17,7 @@ defineProps<{
 
 <template>
   <div
-    class="inline-flex select-none items-center text-fg-faint"
+    class="inline-flex select-none items-center text-fg-faint phone:gap-2"
     role="group"
     :aria-label="t('transcript.versions.position', { index: choice.index, count: choice.count })"
   >
@@ -31,7 +31,7 @@ defineProps<{
         @click.stop="choice.choose(choice.index - 1)"
       />
     </Tooltip>
-    <span class="min-w-6 text-center text-[12px] leading-6 tabular-nums">{{ choice.index }}/{{ choice.count }}</span>
+    <span class="min-w-6 text-center text-caption leading-6 tabular-nums phone:leading-9">{{ choice.index }}/{{ choice.count }}</span>
     <Tooltip :content="t('transcript.versions.next')" :disabled="choice.disabled || choice.index >= choice.count">
       <IconButton
         :icon="ChevronRight"

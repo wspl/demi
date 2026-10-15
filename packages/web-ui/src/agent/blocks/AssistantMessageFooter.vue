@@ -35,7 +35,8 @@ defineProps<{
 </script>
 
 <template>
-  <div class="mt-2 flex flex-wrap items-center gap-1 text-fg-faint">
+  <!-- A phone's actions are 36 px, 8 apart, each its own target. -->
+  <div class="mt-2 flex flex-wrap items-center gap-1 text-fg-faint phone:gap-2">
     <VersionSwitcher v-if="versions" :choice="versions" />
     <CopyButton :source="content" />
     <Tooltip v-if="!hideFork" :content="t('transcript.assistant.fork')" :disabled="!fork">
@@ -70,6 +71,6 @@ defineProps<{
         @click="regenerate()"
       />
     </Tooltip>
-    <RelativeTime :timestamp="createdAt" class="ml-1 text-[11px] leading-6" />
+    <RelativeTime :timestamp="createdAt" class="ml-1 text-caption leading-6 phone:leading-9" />
   </div>
 </template>

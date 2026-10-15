@@ -92,6 +92,7 @@
     },
     "connecting": "接続中",
     "newFile": "新しいファイル",
+    "moreFiles": "+{count} ファイル",
     "picture": {
       "open": "{name} を拡大して開く",
       "play": "{name} を再生"

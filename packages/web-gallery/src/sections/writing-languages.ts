@@ -182,6 +182,7 @@ const SIMPLIFIED: LanguageWriting = {
     ['Undo', '撤销', 'Codex, ChatGPT, Claude, Apple; 撤消 is the old form'],
     ['Open With', '打开方式', 'Codex, ChatGPT, Apple'],
     ['File', '文件', 'Codex, ChatGPT, Claude, Apple'],
+    ['+3 Files (the pill for the files a row has no room for)', '+3 个文件', 'GitHub’s and VS Code’s file counts; the figure and counter as in 3 个文件'],
     ['Folder', '文件夹', 'Codex, ChatGPT, Apple'],
   ],
 }
@@ -331,6 +332,7 @@ const TRADITIONAL: LanguageWriting = {
     ['Undo', '復原', 'Codex, ChatGPT, Claude. Apple’s 還原 is Restore here'],
     ['Open With', '打開方式', 'Apple. ChatGPT says 開啟方式, and Demi’s Open is 開啟 throughout'],
     ['File', '檔案', 'Codex, ChatGPT, Claude, Apple'],
+    ['+3 Files (the pill for the files a row has no room for)', '+3 個檔案', 'GitHub’s and VS Code’s file counts; the counter 個 as in 3 個檔案'],
     ['Folder', '資料夾', 'Codex, ChatGPT. Apple’s 檔案夾 is less usual'],
   ],
 }
@@ -480,6 +482,7 @@ const JAPANESE: LanguageWriting = {
     ['Undo', '元に戻す', 'Codex, ChatGPT, Claude'],
     ['Open With', 'このアプリケーションで開く', 'Apple'],
     ['File', 'ファイル', 'Codex, ChatGPT, Claude, Apple'],
+    ['+3 Files (the pill for the files a row has no room for)', '+3 ファイル', 'GitHub’s and VS Code’s file counts; a pill has no room for 件の'],
     ['Folder', 'フォルダー', 'ChatGPT, Codex; the long vowel as Microsoft’s style guide has written it since 2008, one spelling everywhere, as in サーバー and ユーザー'],
   ],
 }
@@ -632,6 +635,7 @@ const KOREAN: LanguageWriting = {
     ['Undo', '실행 취소', 'Codex, ChatGPT, Claude, Apple'],
     ['Open With', '다음으로 열기', 'Codex, Apple'],
     ['File', '파일', 'Codex, ChatGPT, Claude, Apple'],
+    ['+3 Files (the pill for the files a row has no room for)', '+3개 파일', 'GitHub’s and VS Code’s file counts; the counter 개 joins the figure'],
     ['Folder', '폴더', 'Codex, ChatGPT, Apple'],
     ['Shortcut', '단축키', 'ChatGPT, Apple, not 바로 가기 키'],
     ['Load', '불러오기', 'ChatGPT, not 로드'],
