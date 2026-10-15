@@ -10,7 +10,7 @@
     }
   },
   "account": {
-    "title": "帳戶",
+    "title": "帳號",
     "description": "你的名稱、電子郵件和登入方式。",
     "profile": {
       "title": "個人檔案",
@@ -34,9 +34,9 @@
     },
     "danger": {
       "title": "危險區域",
-      "delete": "刪除帳戶",
-      "deleteDescription": "刪除你的帳戶、裝置和所有對話。此動作無法復原。",
-      "deleteButton": "刪除帳戶"
+      "delete": "刪除帳號",
+      "deleteDescription": "刪除你的帳號、裝置和所有對話。此操作無法復原。",
+      "deleteButton": "刪除帳號"
     }
   },
   "archived": {
@@ -46,7 +46,7 @@
     "searchLabel": "搜尋已封存的對話",
     "loading": "正在載入已封存的對話…",
     "open": "開啟",
-    "restore": "還原",
+    "restore": "取消封存",
     "delete": "刪除…",
     "none": "沒有已封存的對話",
     "noResults": "沒有結果"
@@ -68,7 +68,7 @@
   },
   "devices": {
     "title": "裝置",
-    "description": "對話可以在其上運作的電腦。",
+    "description": "對話可以在其上執行的電腦。",
     "yours": "你的裝置",
     "add": "新增裝置…",
     "loading": "正在載入裝置…",
@@ -84,7 +84,7 @@
     "typesText": "{keys} 會輸入文字。請加上 ⌘ 或 ⌃。",
     "taken": "{keys} 已用於「{action}」。",
     "actions": {
-      "new": "新增對話",
+      "new": "新對話",
       "search": "搜尋對話",
       "sidebar": "切換側邊欄",
       "settings": "開啟設定"
@@ -92,7 +92,7 @@
   },
   "notifications": {
     "title": "通知",
-    "description": "代理程式需要你或已完成時。",
+    "description": "智慧體需要你處理或完成時。",
     "browser": {
       "title": "瀏覽器",
       "label": "瀏覽器通知",
@@ -102,8 +102,8 @@
     },
     "when": {
       "title": "在以下情況通知我",
-      "turnFinishes": "一個輪次完成",
-      "turnFails": "一個輪次失敗",
+      "turnFinishes": "輪次完成",
+      "turnFails": "輪次失敗",
       "needsPermission": "Demi 需要權限",
       "turnOnFirst": "請先開啟瀏覽器通知。"
     }
@@ -129,7 +129,7 @@
   "sessions": {
     "title": "已登入的瀏覽器",
     "thisBrowser": "此瀏覽器",
-    "signedIn": "登入於",
+    "signedIn": "登入時間",
     "signedInWithCode": "使用 {name} 提供的代碼登入",
     "lastActive": "上次活動",
     "signOut": "登出…",
@@ -140,7 +140,7 @@
   },
   "instructions": {
     "title": "指示",
-    "description": "在每個對話中遵循，與各專案的 AGENTS.md 或 CLAUDE.md 一同生效。",
+    "description": "每個對話都會遵循，並與各專案的 AGENTS.md 或 CLAUDE.md 一併套用。",
     "personal": "個人指示",
     "personalDescription": "例如回覆所用的語言。",
     "save": "儲存"
@@ -161,15 +161,15 @@
   },
   "plugins": {
     "title": "外掛程式",
-    "description": "代理程式和此應用程式可以做的事。",
+    "description": "智慧體和此應用程式可以做的事。",
     "none": "沒有外掛程式"
   },
   "quota": {
-    "unavailable": "使用量暫不可用",
+    "unavailable": "用量資料尚未提供",
     "used": "已使用 {share}"
   },
   "sections": {
-    "agent": "代理程式",
+    "agent": "智慧體",
     "workspace": "工作區",
     "general": {
       "keywords": "外觀,樣式",
@@ -180,15 +180,15 @@
     "account": {
       "avatarKeywords": "圖片,相片",
       "displayNameKeywords": "暱稱,名稱",
-      "emailKeywords": "地址,信箱",
-      "signOutKeywords": "註銷,退出登入"
+      "emailKeywords": "位址,信箱",
+      "signOutKeywords": "登出,退出登入"
     },
     "notifications": {
       "keywords": "瀏覽器,提醒",
       "browserKeywords": "通知",
       "finishesKeywords": "完成,結束",
       "failsKeywords": "錯誤,出錯",
-      "permissionKeywords": "權限要求,請求許可"
+      "permissionKeywords": "權限請求,請求許可"
     },
     "providers": {
       "keywords": "模型,API 金鑰,anthropic,openai,claude code,codex,基礎 URL,目錄"
@@ -200,7 +200,7 @@
       "keywords": "個人指示,自訂指示,AGENTS.md,CLAUDE.md,規則"
     },
     "subagents": {
-      "keywords": "設定檔,產生,委派,子代理程式",
+      "keywords": "設定檔,產生,委派,子智慧體",
       "maxLiveKeywords": "限制,執行中,無限制",
       "maxDepthKeywords": "限制,層級,孫代,無限制"
     },
@@ -213,10 +213,10 @@
       "storageKeywords": "磁碟,空間"
     },
     "archived": {
-      "keywords": "封存,還原,對話"
+      "keywords": "封存,取消封存,對話"
     },
     "keyboard": {
-      "keywords": "快速鍵,熱鍵,繫結"
+      "keywords": "快速鍵,熱鍵,綁定"
     },
     "data": {
       "keywords": "對話紀錄,使用資料,刪除"
@@ -225,7 +225,7 @@
       "keywords": "版本,授權,開放原始碼,第三方,聲明"
     },
     "users": {
-      "keywords": "帳戶,人員,管理員,新增使用者,邀請,重設密碼,角色,停用,全部登出"
+      "keywords": "帳號,人員,管理員,新增使用者,邀請,重設密碼,角色,停用,全部登出"
     }
   },
   "changeEmail": {
@@ -267,14 +267,14 @@
     "master": "擁有者",
     "admin": "管理員",
     "user": "使用者",
-    "masterDescription": "擁有伺服器並管理所有帳戶。",
+    "masterDescription": "擁有伺服器並管理所有帳號。",
     "adminDescription": "新增和管理使用者。",
-    "userDescription": "不管理其他帳戶。"
+    "userDescription": "不管理其他帳號。"
   },
   "users": {
     "title": "使用者",
     "description": "所有可以登入此伺服器的人。",
-    "accounts": "帳戶",
+    "accounts": "帳號",
     "add": "新增使用者…",
     "you": "你",
     "disabled": "已停用",
@@ -287,17 +287,17 @@
       "resetPassword": "重設密碼…",
       "changeRole": "變更角色…",
       "signInCode": "登入代碼…",
-      "signOutEverywhere": "在所有位置登出…",
-      "disable": "停用帳戶…",
-      "enable": "啟用帳戶"
+      "signOutEverywhere": "登出所有瀏覽器…",
+      "disable": "停用帳號…",
+      "enable": "啟用帳號"
     },
     "confirm": {
-      "add": "請確認是你本人，以新增帳戶。",
+      "add": "請確認是你本人，以新增帳號。",
       "resetPassword": "請確認是你本人，以重設密碼。",
       "newPassword": "請確認是你本人，以產生新密碼。"
     },
     "ready": {
-      "added": "{email} 的帳戶已就緒。將此密碼交給對方，或讓對方掃描 QR 碼。",
+      "added": "{email} 的帳號已就緒。將此密碼交給對方，或讓對方掃描 QR 碼。",
       "reset": "{email} 有了新密碼。將此密碼交給對方，或讓對方掃描 QR 碼。"
     },
     "reset": {
@@ -306,15 +306,15 @@
       "body": "Demi 會產生新的初始密碼並僅顯示一次。對方目前的密碼將失效。已登入的瀏覽器和通行密鑰維持不變。"
     },
     "signOutEverywhere": {
-      "title": "在所有位置登出「{name}」？",
-      "action": "在所有位置登出",
+      "title": "登出「{name}」的所有瀏覽器？",
+      "action": "登出所有瀏覽器",
       "body": "以「{name}」登入的每個瀏覽器都會返回登入頁面。對方可以重新登入。"
     },
     "disable": {
-      "title": "停用「{name}」的帳戶？",
-      "action": "停用帳戶",
-      "body": "「{name}」會在所有位置登出，且無法登入。對方的雲端會停止，裝置會中斷連線。",
-      "note": "不會移除任何內容。「啟用帳戶」可恢復存取。"
+      "title": "停用「{name}」的帳號？",
+      "action": "停用帳號",
+      "body": "「{name}」的所有瀏覽器都會登出，且無法再登入。對方的雲端會停止，裝置會中斷連線。",
+      "note": "不會移除任何內容。「啟用帳號」可恢復存取。"
     }
   },
   "addUser": {
@@ -323,7 +323,7 @@
     "email": "電子郵件",
     "role": "角色",
     "adminAdds": "管理員只能新增使用者。",
-    "emailTaken": "已有帳戶使用該電子郵件地址。"
+    "emailTaken": "已有帳號使用該電子郵件地址。"
   },
   "credentials": {
     "title": "憑證",
@@ -342,14 +342,14 @@
     "saveFailed": "無法儲存憑證",
     "deleteFailed": "無法刪除憑證",
     "deleteTitle": "刪除「{name}」？",
-    "deleteBody": "代理程式將無法在任何對話中再讀取它。此動作無法復原。"
+    "deleteBody": "智慧體將無法在任何對話中再讀取它。此操作無法復原。"
   },
   "credentialDialog": {
     "edit": "編輯憑證",
     "new": "新增憑證",
     "name": "名稱",
     "note": "備註",
-    "noteDescription": "選填。代理程式為何需要它。",
+    "noteDescription": "選填。智慧體為何需要它。",
     "keepUntil": "保留至",
     "fields": "欄位",
     "addField": "新增欄位",
@@ -372,49 +372,49 @@
     "maxBytes": "最大 64 KiB。"
   },
   "subagents": {
-    "title": "子代理程式",
-    "description": "分擔任務部分工作的子代理程式。",
-    "switchDescription": "關閉不會停止正在執行的子代理程式。",
-    "maxLive": "子代理程式上限",
-    "maxLiveDescription": "一個對話同時執行的子代理程式最大數量。",
-    "maxLiveConfirmTitle": "允許無限數量的子代理程式？",
+    "title": "子智慧體",
+    "description": "分擔任務部分工作的子智慧體。",
+    "switchDescription": "關閉不會停止正在執行的子智慧體。",
+    "maxLive": "子智慧體上限",
+    "maxLiveDescription": "一個對話同時執行的子智慧體最大數量。",
+    "maxLiveConfirmTitle": "允許無限數量的子智慧體？",
     "maxDepth": "最大層級",
-    "maxDepthDescription": "為 1 時，只有主代理程式可以啟動子代理程式。",
+    "maxDepthDescription": "為 1 時，只有主智慧體可以啟動子智慧體。",
     "maxDepthConfirmTitle": "允許無限層級？",
     "allowUnlimited": "允許無限制",
     "unlimitedWarning": "這可能導致對話不穩定，並消耗大量權杖。",
     "profiles": "設定檔",
-    "profilesDescription": "沒有設定檔時，子代理程式會繼承其上層的設定。",
+    "profilesDescription": "沒有設定檔時，子智慧體會繼承其上層的設定。",
     "newProfile": "新增設定檔…",
     "unavailable": "無法使用",
     "context": "上下文 {size}",
     "noInstructions": "無指示",
-    "ownInstructions": "自有指示",
-    "mayStart": "子級可再啟動子代理程式",
-    "noSpawning": "不可啟動子代理程式",
+    "ownInstructions": "專屬指示",
+    "mayStart": "可再啟動子智慧體",
+    "noSpawning": "不可啟動子智慧體",
     "edit": "編輯",
     "none": "沒有設定檔",
     "saveFailed": "無法儲存設定檔",
     "deleteFailed": "無法刪除設定檔",
     "deleteTitle": "刪除「{name}」？",
-    "deleteBody": "代理程式將無法再使用它。正在執行的子代理程式會繼續執行。"
+    "deleteBody": "智慧體將無法再使用它。正在執行的子智慧體會繼續執行。"
   },
   "profile": {
     "new": "新增設定檔",
     "edit": "編輯設定檔",
-    "hint": "代理程式根據描述選擇設定檔。",
+    "hint": "智慧體根據描述選擇設定檔。",
     "name": "名稱",
     "nameDescription": "必填。小寫字母、數字和連字號，以字母開頭。",
     "description": "描述",
-    "descriptionDescription": "必填。用一行說明代理程式何時使用它。",
+    "descriptionDescription": "必填。用一行說明智慧體何時使用它。",
     "model": "模型",
     "fast": "快速",
     "context": "上下文",
-    "contextDescription": "其子代理程式使用的上下文視窗。",
+    "contextDescription": "其子智慧體使用的上下文視窗。",
     "instructions": "指示",
     "instructionsDescription": "選填。附加到 Demi 自身的指示之後。",
-    "mayStart": "子級可再啟動子代理程式",
-    "mayStartDescription": "允許其子代理程式啟動子代理程式。",
+    "mayStart": "可再啟動子智慧體",
+    "mayStartDescription": "允許其子智慧體啟動子智慧體。",
     "delete": "刪除",
     "create": "建立設定檔",
     "parentModel": "上層模型",
@@ -435,7 +435,7 @@
     "name": "供應商名稱",
     "rename": "重新命名",
     "saving": "正在儲存…",
-    "addAccount": "新增帳戶",
+    "addAccount": "新增帳號",
     "showInMenu": "在模型選單中顯示",
     "state": {
       "setup": "尚未設定",
@@ -448,20 +448,20 @@
       "manual": "手動",
       "inOrder": "依序",
       "balanced": "平衡",
-      "manualHint": "每個代理程式都使用作用中的帳戶。",
-      "inOrderHint": "代理程式使用清單中第一個未達限制的帳戶。",
-      "balancedHint": "每個代理程式使用剩餘額度最多的帳戶。"
+      "manualHint": "每個智慧體都使用目前選用的帳號。",
+      "inOrderHint": "智慧體使用清單中第一個未達上限的帳號。",
+      "balancedHint": "每個智慧體使用剩餘額度最多的帳號。"
     },
     "account": {
-      "active": "作用中",
-      "limitReached": "已達限制",
-      "activate": "啟用",
-      "refreshUsage": "重新整理使用量",
+      "active": "使用中",
+      "limitReached": "已達上限",
+      "activate": "設為使用中",
+      "refreshUsage": "重新整理用量",
       "test": "測試連線",
       "remove": "移除",
       "reorder": "拖曳以重新排序",
       "move": "移動「{label}」",
-      "none": "沒有帳戶"
+      "none": "沒有帳號"
     },
     "connection": {
       "endpoint": "端點",
@@ -469,10 +469,10 @@
       "apiKey": "API 金鑰",
       "keyOptional": "選填。加密儲存於伺服器上。",
       "keyStored": "加密儲存於伺服器上。",
-      "keyReplace": "輸入新金鑰以取代",
+      "keyReplace": "輸入新金鑰即可取代",
       "keyPaste": "貼上你的 API 金鑰",
       "test": "測試連線",
-      "testDescription": "向第一個已啟用的模型傳送一個簡短要求。",
+      "testDescription": "向第一個已啟用的模型傳送一個簡短請求。",
       "testing": "正在測試…",
       "connected": "已連線",
       "failed": "失敗",
@@ -499,7 +499,7 @@
       "filterModels": "篩選模型",
       "add": "新增模型",
       "loading": "正在載入模型…",
-      "unknown": "功能未知。編輯以補齊。",
+      "unknown": "尚不清楚功能，請編輯補齊。",
       "accepts": "接受 {types}",
       "reasoning": "推理 · {efforts}",
       "fast": "有快速層級",
@@ -518,19 +518,19 @@
       "history": "使用其模型的對話會保留歷史記錄，但需要改用其他模型。"
     },
     "removeAccount": {
-      "title": "移除帳戶「{label}」？",
-      "keeps": "{name} 會繼續使用其作用中的帳戶。",
-      "switches": "{name} 會切換到「{next}」。",
-      "none": "{name} 將沒有帳戶，在你新增帳戶之前無法使用。",
-      "forgets": "Demi 會忘記其登入資訊。你可以透過「新增帳戶」重新新增。"
+      "title": "移除帳號「{label}」？",
+      "keeps": "{name} 會繼續使用目前的帳號。",
+      "switches": "{name} 會改用「{next}」。",
+      "none": "{name} 將沒有帳號，在你新增帳號之前無法使用。",
+      "forgets": "Demi 會忘記其登入資訊。你可以透過「新增帳號」重新新增。"
     },
     "removeModel": {
       "title": "移除模型「{name}」？",
       "body": "它會從 {provider} 的模型清單和模型選單中移除。你可以使用其 ID 重新新增。"
     },
     "warning": {
-      "title": "使用多個帳戶？",
-      "body": "使用多個個人訂閱來繞過其使用限制，可能違反供應商的條款。",
+      "title": "使用多個帳號？",
+      "body": "使用多個個人訂閱來繞過其使用上限，可能違反供應商的條款。",
       "once": "Demi 不會再次詢問。"
     },
     "connected": "「{account}」已連線",
@@ -542,8 +542,8 @@
   "addProvider": {
     "title": "新增供應商",
     "compatible": "相容 API",
-    "compatibleHint": "代理或你自己的伺服器",
-    "proxy": "代理",
+    "compatibleHint": "代理伺服器或你自己的伺服器",
+    "proxy": "代理伺服器",
     "vendors": "供應商",
     "loading": "正在載入供應商…",
     "noResults": "沒有結果"
@@ -596,13 +596,13 @@
     "title": "登入 {vendor}",
     "deviceHint": "在供應商的頁面上輸入此代碼。",
     "codeHint": "在供應商的頁面上登入，然後貼上它顯示的代碼。",
-    "doneActive": "已登入。此帳戶現在是 {vendor} 的作用中帳戶。",
-    "doneKept": "已登入。{vendor} 會繼續使用其作用中的帳戶。",
+    "doneActive": "已登入。{vendor} 現在使用此帳號。",
+    "doneKept": "已登入。{vendor} 會繼續使用目前的帳號。",
     "failedHint": "登入未完成。",
     "waitingCloud": "正在等待你的雲端連線…",
     "installing": "正在你的雲端上安裝命令列工具…",
     "startingTool": "正在啟動命令列工具…",
-    "contacting": "正在聯絡 {vendor}…",
+    "contacting": "正在連線到 {vendor}…",
     "copyCode": "複製代碼",
     "openInBrowser": "在瀏覽器中開啟",
     "copyLink": "複製連結",
@@ -616,6 +616,6 @@
     "waitingCodeExpires": "正在等待代碼 · {left} 後過期"
   },
   "provider": {
-    "endpointInvalid": "輸入 http 或 https 位址。"
+    "endpointInvalid": "請輸入 http 或 https 網址。"
   }
 }

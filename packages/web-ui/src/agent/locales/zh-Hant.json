@@ -1,35 +1,35 @@
 {
   "transcript": {
     "accountSwitch": {
-      "usage": "{from} 已達到使用限制，改用 {to} 繼續。",
-      "usageReset": "{from} 已達到使用限制，{reset}，改用 {to} 繼續。",
-      "window": "{from} 已達到 {window} 限制，改用 {to} 繼續。",
-      "windowReset": "{from} 已達到 {window} 限制，{reset}，改用 {to} 繼續。"
+      "usage": "{from} 已達使用上限，改用 {to} 繼續。",
+      "usageReset": "{from} 已達使用上限，{reset}，改用 {to} 繼續。",
+      "window": "{from} 已達 {window} 上限，改用 {to} 繼續。",
+      "windowReset": "{from} 已達 {window} 上限，{reset}，改用 {to} 繼續。"
     },
     "notice": {
       "titled": "{notice}："
     },
     "receipt": {
-      "allowed": "您已允許此對話執行以下操作：{action}",
-      "denied": "您已拒絕此對話執行以下操作：{action}",
-      "moved": "您已將此對話移到 {host} · {path}",
+      "allowed": "你已允許此對話{action}",
+      "denied": "你已拒絕此對話{action}",
+      "moved": "你已將此對話移到 {host} · {path}",
       "moveFailed": "移動失敗：{reason}",
       "fromMain": "來自{agent}的訊息",
-      "mainAgent": "主代理程式",
-      "fromAgent": "來自代理程式的訊息",
-      "finished": "代理程式已完成",
-      "failed": "代理程式失敗",
-      "stopped": "代理程式已停止",
-      "unnamed": "代理程式 {number}"
+      "mainAgent": "主智慧體",
+      "fromAgent": "來自智慧體的訊息",
+      "finished": "智慧體已完成",
+      "failed": "智慧體失敗",
+      "stopped": "智慧體已停止",
+      "unnamed": "智慧體 {number}"
     },
     "report": {
-      "finished": "命令已完成",
-      "failed": "命令失敗，結束代碼 {code}",
-      "stoppedByYou": "命令已由您停止",
-      "stoppedByAgent": "命令已由另一個代理程式停止",
-      "stopped": "命令已停止",
-      "lost": "已失去對命令的追蹤",
-      "untitled": "命令 {id}"
+      "finished": "指令已完成",
+      "failed": "指令失敗，結束代碼 {code}",
+      "stoppedByYou": "指令已由你停止",
+      "stoppedByAgent": "指令已由另一個智慧體停止",
+      "stopped": "指令已停止",
+      "lost": "已失去對指令的追蹤",
+      "untitled": "指令 {id}"
     },
     "runEnd": {
       "failed": "失敗",
@@ -53,31 +53,31 @@
       "briefly": "稍作思考",
       "nowFor": "思考中 {span}",
       "doneFor": "已思考 {span}",
-      "requesting": "要求中",
-      "requestingFor": "要求中 {span}"
+      "requesting": "請求中",
+      "requestingFor": "請求中 {span}"
     },
     "compaction": {
       "running": "正在壓縮上下文…",
       "done": "上下文已壓縮",
-      "doneTo": "上下文已壓縮至約 {tokens} 個 token"
+      "doneTo": "上下文已壓縮至約 {tokens} 個權杖"
     },
     "stopped": "已停止",
-    "queued": "已排入佇列 {count} 則",
+    "queued": "{count} 則佇列中",
     "user": {
       "edit": "編輯",
       "showMore": "顯示較多",
       "showLess": "顯示較少",
-      "sendsNext": "將在代理程式的下一步傳送",
+      "sendsNext": "將在智慧體的下一步傳送",
       "sendNow": "立即傳送",
       "recall": "收回",
       "recalled": "訊息已收回",
       "notDelivered": "此訊息未能送達。"
     },
     "assistant": {
-      "fork": "衍生",
-      "forkWait": "此訊息完成後可衍生。",
+      "fork": "分岔",
+      "forkWait": "此訊息完成後可分岔。",
       "regenerate": "重新產生",
-      "forkFailed": "無法從此訊息衍生"
+      "forkFailed": "無法從此訊息分岔"
     },
     "edit": {
       "rejected": "編輯未被接受。",
@@ -86,69 +86,69 @@
     "connecting": "正在連線",
     "newFile": "新增檔案",
     "picture": {
-      "open": "放大開啟 {name}",
+      "open": "放大檢視 {name}",
       "play": "播放 {name}"
     },
     "gone": {
       "line": "{kind}未儲存：{reason}",
       "image": "圖片",
-      "video": "視訊",
+      "video": "影片",
       "document": "文件"
     },
-    "shellFallback": "執行 shell 命令",
+    "shellFallback": "執行 shell 指令",
     "turnFailed": "輪次失敗。",
     "failureResets": "{failure}{reset}。",
     "work": {
-      "ran": "執行了 {count} 個命令",
-      "checked": "檢查了 {count} 個命令",
+      "ran": "執行了 {count} 個指令",
+      "checked": "檢查了 {count} 個指令",
       "used": "使用了 {tool}",
-      "running": "正在執行 {count} 個命令",
-      "checking": "正在檢查 {count} 個命令",
+      "running": "正在執行 {count} 個指令",
+      "checking": "正在檢查 {count} 個指令",
       "using": "正在使用 {tool}",
       "joined": "{first}，{next}",
       "runningFor": "{what}，已 {time}",
       "command": {
-        "finished": "{count} 個命令已完成",
-        "failed": "{count} 個命令失敗",
-        "stopped": "{count} 個命令已停止",
-        "stopping": "{count} 個命令正在停止",
-        "lost": "{count} 個命令已遺失"
+        "finished": "{count} 個指令已完成",
+        "failed": "{count} 個指令失敗",
+        "stopped": "{count} 個指令已停止",
+        "stopping": "{count} 個指令正在停止",
+        "lost": "{count} 個指令已遺失"
       },
       "agent": {
-        "finished": "{count} 個代理程式已完成",
-        "failed": "{count} 個代理程式失敗",
-        "stopped": "{count} 個代理程式已停止"
+        "finished": "{count} 個智慧體已完成",
+        "failed": "{count} 個智慧體失敗",
+        "stopped": "{count} 個智慧體已停止"
       },
-      "heard": "收到 {count} 個代理程式的訊息"
+      "heard": "收到 {count} 個智慧體的訊息"
     }
   },
   "subagents": {
-    "mainAgent": "主代理程式",
-    "agentNumber": "代理程式 {number}",
+    "mainAgent": "主智慧體",
+    "agentNumber": "智慧體 {number}",
     "phase": {
-      "running": "正在執行",
+      "running": "執行中",
       "completed": "已完成",
       "error": "失敗",
       "aborted": "已停止"
     },
-    "forkedFrom": "衍生自 {agent}",
+    "forkedFrom": "分岔自 {agent}",
     "inherited": "繼承自此對話",
     "fast": "快速",
-    "chip": "{count} 個代理程式",
-    "stopAgent": "停止代理程式",
-    "copyId": "複製代理程式 ID",
-    "closeTab": "關閉索引標籤",
+    "chip": "{count} 個智慧體",
+    "stopAgent": "停止智慧體",
+    "copyId": "複製智慧體 ID",
+    "closeTab": "關閉分頁",
     "stopAll": "全部停止",
-    "none": "沒有執行中的代理程式",
+    "none": "沒有執行中的智慧體",
     "completed": "已完成",
     "searchCompleted": "搜尋已完成",
-    "noneCompleted": "沒有已完成的子代理程式",
+    "noneCompleted": "沒有已完成的子智慧體",
     "thinkingOff": "思考已關閉"
   },
   "terminals": {
-    "endCommand": "終止命令",
-    "closeTab": "關閉索引標籤",
-    "chip": "{count} 個正在執行"
+    "endCommand": "結束指令",
+    "closeTab": "關閉分頁",
+    "chip": "{count} 個執行中"
   },
   "session": {
     "loading": "正在載入對話…",
@@ -167,17 +167,17 @@
     "runsOn": "執行於",
     "backToConversation": "對話",
     "archived": "此對話已封存。",
-    "restore": "還原對話"
+    "restore": "取消封存對話"
   },
   "dock": {
     "scrollToBottom": "捲動到底部",
     "resume": "恢復",
     "continue": "繼續",
-    "stillOffline": "{name} 仍處於離線狀態",
+    "stillOffline": "{name} 仍為離線",
     "continueWith": "改用 {label} 繼續"
   },
   "notices": {
-    "hostOffline": "{name} 處於離線狀態。",
+    "hostOffline": "{name} 已離線。",
     "moveHost": "移到其他主機…",
     "pluginsChanged": "外掛程式已變更",
     "replacedDraft": "較新的儲存取代了{draft}",
@@ -187,7 +187,7 @@
     "dismissDraft": "關閉被取代的草稿"
   },
   "composer": {
-    "placeholder": "詢問任何問題…",
+    "placeholder": "想問什麼都可以…",
     "message": "訊息",
     "noModels": "沒有可用的模型",
     "configureModels": "設定模型",
@@ -233,12 +233,12 @@
     "off": "關閉",
     "default": "預設（{window}）",
     "effort": {
-      "minimal": "最小",
+      "minimal": "最低",
       "low": "低",
       "medium": "中",
       "high": "高",
       "xhigh": "超高",
-      "max": "最大值"
+      "max": "最高"
     },
     "loading": "正在載入模型…",
     "loadFailed": "無法載入模型。",
@@ -248,7 +248,7 @@
     "label": "工作流程",
     "labelTip": "工作流程：{name}",
     "default": "預設",
-    "none": "無子代理程式",
+    "none": "無子智慧體",
     "reading": "正在讀取工作流程…",
     "failed": "無法讀取工作流程",
     "unavailable": "工作流程無法使用",
@@ -259,20 +259,20 @@
     "windowUsed": "上下文視窗，已使用 {percent}",
     "tip": "上下文 {figure}",
     "compacting": "正在壓縮上下文…",
-    "unavailable": "無法取得上下文使用情況",
+    "unavailable": "無法取得上下文用量",
     "compact": "壓縮",
     "untilCompaction": "距離壓縮還有 {tokens}",
     "afterTurn": "輪次結束後可用",
     "availableFrom": "上下文達到 {from} 後可用（目前 {now}）",
-    "usageLimits": "使用限制",
-    "refreshUsage": "重新整理使用量",
+    "usageLimits": "使用上限",
+    "refreshUsage": "重新整理用量",
     "instructions": "指示",
     "personalInstructions": "個人指示",
     "workflowInstructions": "工作流程：{name}",
     "row": {
       "messages": "訊息",
       "systemPrompt": "系統提示詞",
-      "commands": "命令",
+      "commands": "指令",
       "instructions": "指示",
       "skills": "技能",
       "otherContext": "其他上下文",
@@ -291,11 +291,11 @@
   "panel": {
     "more": "更多",
     "windowHeight": "視窗高度",
-    "duplicate": "重複索引標籤",
+    "duplicate": "複製分頁",
     "closeOthers": "關閉其他",
     "closeRight": "向右關閉",
     "closeLeft": "向左關閉",
-    "cannotShow": "無法顯示此索引標籤。",
+    "cannotShow": "無法顯示此分頁。",
     "nothingOpen": "沒有開啟的內容",
     "noFiles": "沒有檔案或變更"
   }

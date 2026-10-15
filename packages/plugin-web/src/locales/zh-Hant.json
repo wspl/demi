@@ -4,7 +4,7 @@
     "keywords": "網路, 網頁, 搜尋, Exa, API 金鑰, 登入"
   },
   "account": {
-    "label": "Exa 帳戶",
+    "label": "Exa 帳號",
     "signedIn": "已登入",
     "notConnected": "未連線",
     "signOut": "登出",
@@ -21,12 +21,12 @@
   "inUse": {
     "label": "目前使用",
     "key": "你的 API 金鑰",
-    "account": "你的 Exa 帳戶",
+    "account": "你的 Exa 帳號",
     "anonymous": "匿名，有限制"
   },
   "refusals": {
-    "keyRefused": "Exa 拒絕了此金鑰。請確認是否完整複製。",
-    "exaUnavailable": "Exa 沒有回應用於檢查金鑰的搜尋。請再試一次。"
+    "keyRefused": "Exa 拒絕了此金鑰。請確認金鑰已完整複製。",
+    "exaUnavailable": "Exa 沒有回應檢查金鑰用的搜尋。請再試一次。"
   },
   "errors": {
     "signIn": "無法開始 Exa 登入",
