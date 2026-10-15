@@ -757,8 +757,11 @@ mod tests {
             control.close().await.unwrap();
             // The schema before format 2, which the one before account
             // rotation, the one before a placeholder title held no words and
-            // the one before interrupted turns were marked follow in the
-            // history.
+            // The schema before format 2, which the one before account
+            // rotation, the one before a placeholder title held no words, the
+            // one before interrupted turns were marked and the one before a
+            // conversation kept the hosts it may reach follow in the history.
+            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 4);
             schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 3);
             (data, path, own.id, proxy.id)
         };
