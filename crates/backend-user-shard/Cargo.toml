@@ -51,6 +51,7 @@ demi-runner-protocol = { path = "../runner-protocol" }
 demi-host-interface = { path = "../host-interface" }
 demi-web-api-protocol = { path = "../web-api-protocol" }
 axum = { version = "0.8", features = ["ws"] }
+base64.workspace = true
 bytes.workspace = true
 async-stream = "0.3"
 futures-util.workspace = true

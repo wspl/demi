@@ -24,6 +24,7 @@ pub(crate) mod retry_resume;
 mod runs_on;
 pub mod search;
 pub mod settings;
+pub mod shares;
 mod socket;
 mod summary;
 pub(crate) mod titles;

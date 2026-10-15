@@ -16,6 +16,7 @@ use demi_web_api_protocol::conversations::{
     TurnOutcome,
 };
 use demi_web_api_protocol::ids::ProviderId;
+use demi_web_api_protocol::shares::ConversationShare;
 use futures_util::future::try_join_all;
 
 use crate::shard::Shard;
@@ -88,6 +89,14 @@ impl Shard {
         };
         let plugin_revisions = self.plugins().plugin_revisions(&record.id);
         let permissions_revision = self.permission_revisions().of(&record.id);
+        let shares = self
+            .services()
+            .control
+            .shares_of(record.id.clone())
+            .await?
+            .into_iter()
+            .map(|share| ConversationShare::new(share.token, share.target))
+            .collect();
         Ok(ConversationSummary {
             unread: facts.revision > record.read_revision,
             plugins_changed,
@@ -116,6 +125,7 @@ impl Shard {
             permission_requests: record.permission_requests,
             unread_permission_requests: record.unread_permission_requests,
             permissions_revision,
+            shares,
         })
     }
 }
