@@ -2036,11 +2036,26 @@ html[data-theme="light"] .file-pill {
   text-decoration: none;
 }
 
-/* A document's image is scaled down to the document's width alone; a tall one makes it longer, as on GitHub. */
+/* A document's image is scaled down to the document's width alone; a tall one makes it longer, as on GitHub.
+   One its `width` and `height` both size keeps its proportions when it is scaled down. */
 .markdown-document img {
   max-width: 100%;
   max-height: none;
   border-radius: 0;
+  object-fit: contain;
+}
+
+/* A document's image is HTML's own inline image, as on GitHub, not the block
+   Tailwind's preflight makes every image: a centered paragraph centers it,
+   badges written one per line sit on one line, and its `width` and `height`
+   attributes size it, which preflight's `height: auto` would override. Rolling
+   back this layer leaves the browser's own rules and the attributes. */
+@layer base {
+  .markdown-document img {
+    display: revert-layer;
+    vertical-align: revert-layer;
+    height: revert-layer;
+  }
 }
 
 .markdown-document summary {
