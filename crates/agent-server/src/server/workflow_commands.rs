@@ -20,7 +20,7 @@ const WORKFLOWS_GROUP: &str = "The project's workflows, groups of subagent profi
 
 const LIST_SUMMARY: &str = "List the workflows of this conversation's project as the composer's Workflow menu does: the one this conversation uses marked with *, and a file that does not read with why. A read.";
 
-const CHECK_SUMMARY: &str = "Check a workflow file with the parser that reads it: prints its name and profiles, or fails naming the line and the field that are wrong. Run it on every workflow file you write or change before you report it.";
+const CHECK_SUMMARY: &str = "Check a workflow file with the parser that reads it: prints its name and profiles, with a warning when the name does not read as a menu item, or fails naming the line and the field that are wrong. Run it on every workflow file you write or change before you report it.";
 
 /// The input of `demi agent workflows list`, which takes none.
 #[derive(Deserialize, JsonSchema)]
@@ -78,7 +78,11 @@ async fn check<H: HostResolver>(call: Invoked<H, CheckArgs>, port: RpcPort) -> R
             } else {
                 format!("profiles {}", profiles.join(", "))
             };
-            out(&port, format!("{file} reads: {}, {profiles}.\n", workflow.name)).await
+            let mut text = format!("{file} reads: {}, {profiles}.\n", workflow.name);
+            if let Some(warning) = workflow.name_warning() {
+                text.push_str(&format!("Warning: {warning}\n"));
+            }
+            out(&port, text).await
         }
         Err(error) => fail(&format!("{file} does not read: {error}")),
     }
