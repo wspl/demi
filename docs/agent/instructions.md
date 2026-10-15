@@ -91,16 +91,18 @@ after the execution context and before the plugins
 ([Context](runtime.md#context)). Every node asks it with its own working
 directory, a subagent too, a profile's included.
 
-- The project files are kept current by the runner, and a request never
+- The project files are kept current by the runner, and a request hardly
   waits for the Host. For each Host and working directory a loaded
   conversation's nodes use, the source searches once, through the
   conversation's host access in the form that never wakes a Host, and
   subscribes with the runner's [file watch](../execution/runner.md#watching-files)
   to each file the search reads or would read, whether it exists yet or not;
   when a subscription says one changed, it searches again in the background.
-  A request uses the result held at that moment: until the first search
-  answers, or while the Host is stopped or offline, it uses the last result
-  or none, and the block that follows the search reaches the next request. An
+  A request uses the result held at that moment. Only the first search of a
+  directory holds a request, so that a new conversation's first request
+  carries its instructions, and for at most 5 seconds; past that, or while
+  the Host is stopped or offline, the request uses the last result or none,
+  and the block that follows the search reaches the next request. An
   edit to a file therefore reaches the model at the next request. A Host that
   comes online again is searched again; a failed search or subscription is
   logged and the last result kept. The subscriptions are released when no
