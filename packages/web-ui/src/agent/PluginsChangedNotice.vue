@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from './locales/text'
+import { t as shared } from '../locales/text'
 import Button from '../ui/Button.vue'
 
 /**
@@ -24,10 +26,10 @@ const emit = defineEmits<{
     role="status"
   >
     <span class="min-w-0 flex-1 truncate">
-      Plugins changed
+      {{ t('notices.pluginsChanged') }}
     </span>
     <span class="plugins-changed-notice-reload">
-      <Button size="sm" :disabled="reloading" @click="emit('reload')">Reload</Button>
+      <Button size="sm" :disabled="reloading" @click="emit('reload')">{{ shared('common.reload') }}</Button>
     </span>
   </div>
 </template>

@@ -290,7 +290,6 @@ onMounted(async () => {
         </template>
         <template #composer>
           <GalleryComposer
-            placeholder="Ask anything…"
             :running="session.phase === 'running' || flow.startingTurn.value"
             :compacting="session.phase === 'compacting'"
             :usage="session.contextUsage ?? undefined"

@@ -42,7 +42,6 @@
   "savedDeleted": "已刪除儲存的訊息",
   "newConversation": "新對話",
   "composer": {
-    "placeholder": "詢問任何問題…",
     "cloudResetting": "雲端正在重設。"
   },
   "workflows": {

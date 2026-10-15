@@ -50,7 +50,7 @@ function composer(markdown = '', capsules: { id: string; name: string }[] = [], 
   document.body.append(element)
   const editor = new Editor({
     element,
-    extensions: composerExtensions({ placeholder: '', submit: () => {}, cancel: () => false, editLast: () => false, intake }),
+    extensions: composerExtensions({ placeholder: () => '', submit: () => {}, cancel: () => false, editLast: () => false, intake }),
     content: parseUserMarkdown(markdown, capsules),
     enableInputRules: false,
     enablePasteRules: false,

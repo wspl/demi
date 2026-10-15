@@ -37,7 +37,7 @@ function press(content: JSONContent, key: Key): Pressed {
   const editor = new Editor({
     element: null,
     extensions: composerExtensions({
-      placeholder: '',
+      placeholder: () => '',
       submit: (otherWay) => pressed.sent.push(otherWay),
       cancel: () => {
         pressed.cancelled += 1

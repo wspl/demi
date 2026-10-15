@@ -42,7 +42,6 @@
   "savedDeleted": "저장된 메시지를 삭제했습니다",
   "newConversation": "새 대화",
   "composer": {
-    "placeholder": "무엇이든 물어보세요…",
     "cloudResetting": "클라우드를 재설정하는 중입니다."
   },
   "workflows": {

@@ -2,6 +2,7 @@ import type { SentenceText } from '../ui/ui-text'
 import type { ShownError } from '../infra/errors'
 import { isCompactionDivider } from './visible-blocks'
 import type { HostMenuHost } from '../hosts/types'
+import { t } from './locales/text'
 
 /** Sidebar conversation list, or a session that is not reconnecting. */
 export type ListLoad = 'ready' | 'loading' | 'failed'
@@ -141,27 +142,27 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
   action?: 'retry' | 'create'
 } {
   if (kind === 'loading') {
-    return { label: 'Loading conversation…' }
+    return { label: t('session.loading') }
   }
   if (kind === 'failed') {
     return {
-      label: 'Couldn’t load this conversation.',
+      label: t('session.loadFailed'),
       action: 'retry',
     }
   }
   if (kind === 'missing') {
     return {
-      label: 'Conversation not found.',
+      label: t('session.notFound'),
       action: 'create',
     }
   }
   if (kind === 'none') {
     return {
-      label: 'No conversation open',
+      label: t('session.noneOpen'),
       action: 'create',
     }
   }
-  return { label: 'No messages' }
+  return { label: t('session.empty') }
 }
 
 /**

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from './locales/text'
+import { t as shared } from '../locales/text'
 import { ArrowUp, Paperclip, Pencil, RotateCw, Trash2 } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import { ICON_PX } from '../ui/icon-metrics'
@@ -47,47 +49,47 @@ function onSaved(action: 'edit' | 'send' | 'retry' | 'delete', id: string) {
       >
         <span class="min-w-0 truncate">{{ row.preview }}</span>
         <template #actions>
-          <span v-if="row.state === 'notSaved'" class="mr-1 whitespace-nowrap text-on-danger">Not Saved</span>
+          <span v-if="row.state === 'notSaved'" class="mr-1 whitespace-nowrap text-on-danger">{{ t('composer.saved.notSaved') }}</span>
           <span v-if="row.attachmentCount" class="mr-1 inline-flex items-center gap-0.5 whitespace-nowrap text-fg-subtle">
             <Paperclip :size="ICON_PX.in28" class="shrink-0" />
             {{ row.attachmentCount }}
           </span>
-          <Tooltip content="Edit" class="inline-flex saved-action">
+          <Tooltip :content="t('composer.saved.edit')" class="inline-flex saved-action">
             <IconButton
               :icon="Pencil"
               variant="ghost"
               size="xs"
-              aria-label="Edit"
+              :aria-label="t('composer.saved.edit')"
               :operation="onSaved('edit', row.id)"
               @click.stop="onEdit?.(row.id)"
             />
           </Tooltip>
-          <Tooltip v-if="row.state === 'notSaved'" content="Retry" class="inline-flex saved-action">
+          <Tooltip v-if="row.state === 'notSaved'" :content="shared('common.retry')" class="inline-flex saved-action">
             <IconButton
               :icon="RotateCw"
               variant="ghost"
               size="xs"
-              aria-label="Retry"
+              :aria-label="shared('common.retry')"
               :operation="onSaved('retry', row.id)"
               @click.stop="onRetry?.(row.id)"
             />
           </Tooltip>
-          <Tooltip v-else content="Send" class="inline-flex saved-action">
+          <Tooltip v-else :content="t('composer.saved.send')" class="inline-flex saved-action">
             <IconButton
               :icon="ArrowUp"
               variant="ghost"
               size="xs"
-              aria-label="Send"
+              :aria-label="t('composer.saved.send')"
               :operation="onSaved('send', row.id)"
               @click.stop="onSend?.(row.id)"
             />
           </Tooltip>
-          <Tooltip content="Delete" class="inline-flex saved-action">
+          <Tooltip :content="t('composer.saved.delete')" class="inline-flex saved-action">
             <IconButton
               :icon="Trash2"
               variant="ghost"
               size="xs"
-              aria-label="Delete"
+              :aria-label="t('composer.saved.delete')"
               :operation="onSaved('delete', row.id)"
               @click.stop="onDelete?.(row.id)"
             />

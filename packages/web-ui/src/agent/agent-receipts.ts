@@ -1,6 +1,7 @@
 import type { AgentMessage } from '@demicodes/protocol'
 import { inject, provide, type InjectionKey } from 'vue'
 import { homePath } from '../files/paths'
+import { around, t } from './locales/text'
 
 /**
  * A receipt's row (`subagents.md` § Product rendering): what happened, in
@@ -13,8 +14,10 @@ export interface ReceiptRow {
   notice: string
   /** The agent the row names; none for a row the user's own decision or Demi makes. */
   title: string | null
-  /** The title ends the notice's sentence, with no colon between. */
+  /** The title stands inside the notice's sentence, with no colon: the sentence is `notice`, the title, then `after`. */
   inline: boolean
+  /** What follows an inline title in the sentence; empty where the language ends it with the title. */
+  after: string
   /** The tag after the title: only what went wrong. */
   tag: 'failed' | 'stopped' | null
 }
@@ -22,42 +25,50 @@ export interface ReceiptRow {
 /** The row an agent message shows as in the transcript. */
 export function receiptRow(message: AgentMessage): ReceiptRow {
   const event = message.event
-  const plain = (notice: string): ReceiptRow => ({ notice, title: null, inline: false, tag: null })
+  const plain = (notice: string): ReceiptRow => ({ notice, title: null, inline: false, after: '', tag: null })
   const named = (notice: string, tag: ReceiptRow['tag'] = null): ReceiptRow =>
-    ({ notice, title: senderName(message), inline: false, tag })
+    ({ notice, title: senderName(message), inline: false, after: '', tag })
   switch (event.type) {
     // The user's decision on a permission request, which reached the agent as this message.
     case 'permission':
       return plain(event.outcome === 'allowed'
-        ? `You allowed this conversation to ${event.action}`
-        : `You denied this conversation permission to ${event.action}`)
+        ? t('transcript.receipt.allowed', { action: event.action })
+        : t('transcript.receipt.denied', { action: event.action }))
     // The user's move of the conversation, which the user told the agent of.
     case 'moved':
-      return plain(`You moved this conversation to ${event.host} · ${homePath(event.path, event.home)}`)
+      return plain(t('transcript.receipt.moved', { host: event.host, path: homePath(event.path, event.home) }))
     // Demi's notice that a move the agent asked for failed, and why, as the row's own words.
     case 'move_failed':
-      return plain(`Move failed: ${event.reason}`)
+      return plain(t('transcript.receipt.moveFailed', { reason: event.reason }))
     // A message from the main agent reaches one of its children.
     case 'message':
-      return message.sender?.number === 0
-        ? { notice: 'Message from', title: 'main agent', inline: true, tag: null }
-        : named('Message from agent')
+      return message.sender?.number === 0 ? mainAgentMessage() : named(t('transcript.receipt.fromAgent'))
     case 'completion':
       switch (event.outcome) {
         case 'completed':
-          return named('Agent finished')
+          return named(t('transcript.receipt.finished'))
         case 'failed':
-          return named('Agent failed', 'failed')
+          return named(t('transcript.receipt.failed'), 'failed')
         case 'aborted':
-          return named('Agent stopped', 'stopped')
+          return named(t('transcript.receipt.stopped'), 'stopped')
       }
   }
+}
+
+/**
+ * *Message from main agent*, its title inside the sentence: the catalogue's
+ * one sentence is split at the agent, so a language that puts the agent
+ * before its words (*メインエージェントからのメッセージ*) is worded as it reads.
+ */
+function mainAgentMessage(): ReceiptRow {
+  const [before, after] = around('transcript.receipt.fromMain', 'agent')
+  return { notice: before, title: t('transcript.receipt.mainAgent'), inline: true, after, tag: null }
 }
 
 /** The agent a message names: its description, or its number when it has none. */
 function senderName(message: AgentMessage): string {
   const sender = message.sender
-  return sender?.description.trim() || `Agent ${sender?.number ?? ''}`.trim()
+  return sender?.description.trim() || t('transcript.receipt.unnamed', { number: sender?.number ?? '' }).trim()
 }
 
 /**

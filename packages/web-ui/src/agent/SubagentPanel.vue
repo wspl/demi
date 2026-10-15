@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, nextTick, ref, watch } from 'vue'
 import { Bot, CircleStop, Copy, X } from '@lucide/vue'
 import type { InstructionEntry } from '@demicodes/protocol'
@@ -157,19 +158,19 @@ function closeTab(id: string): void {
     <template #tabMenu="{ id }">
       <MenuItem
         :icon="CircleStop"
-        label="Stop Agent"
+        :label="t('subagents.stopAgent')"
         :disabled="agentOf(id)?.phase !== 'running'"
         @select="emit('abortAgent', id)"
       />
       <MenuItem
         :icon="Copy"
-        label="Copy Agent ID"
+        :label="t('subagents.copyId')"
         @select="copyAgentId(id)"
       />
       <MenuDivider />
       <MenuItem
         :icon="X"
-        label="Close Tab"
+        :label="t('subagents.closeTab')"
         :disabled="agentOf(id)?.phase === 'running'"
         @select="closeTab(id)"
       />
@@ -177,7 +178,7 @@ function closeTab(id: string): void {
     <template #stripMenu>
       <MenuItem
         :icon="CircleStop"
-        label="Stop All"
+        :label="t('subagents.stopAll')"
         :disabled="!anyRunning"
         @select="emit('abort')"
       />
@@ -224,6 +225,6 @@ function closeTab(id: string): void {
         @refresh-limits="emit('refreshLimits', active.model.providerId, active.contextUsage?.account ?? null, $event)"
       />
     </div>
-    <RegionStatus v-else class="h-full" status="note" :icon="Bot" label="No agents running" />
+    <RegionStatus v-else class="h-full" status="note" :icon="Bot" :label="t('subagents.none')" />
   </SessionOverlay>
 </template>

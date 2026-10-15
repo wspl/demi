@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from './locales/text'
+import { t as shared } from '../locales/text'
 import { computed, inject, ref, watch } from 'vue'
 import { isFocusedElementEditable, useElementSize } from '@vueuse/core'
 import type { ContextUsage, InstructionEntry } from '@demicodes/protocol'
@@ -25,7 +27,7 @@ import SavedEntry from './SavedEntry.vue'
 import SavedList from './SavedList.vue'
 import { asksSaveForLater, saveForLaterKeys, type SavedRow } from './saved'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
-import { COMPACT_AFTER_TURN, type UsageLimits } from './context-usage'
+import { compactAfterTurn, type UsageLimits } from './context-usage'
 import ModelSelector from './ModelSelector.vue'
 import WorkflowMenu from './WorkflowMenu.vue'
 import type { WorkflowChoice, WorkflowList } from './workflow-menu'
@@ -60,7 +62,7 @@ import {
 
 const props = withDefaults(
   defineProps<{
-    placeholder: PlaceholderText
+    placeholder?: PlaceholderText
     /**
      * A turn runs, or the message that starts one is on its way: Stop shows
      * from the send to the turn's end, and a message is queued meanwhile.
@@ -364,10 +366,10 @@ const sendDisabled = computed(
 )
 const sendBlockReason = computed(() => {
   if (modelState.value.kind === 'unavailable') {
-    return 'This model is unavailable. Choose another to send.'
+    return t('composer.modelUnavailable')
   }
   if (modelsLoading.value) {
-    return 'The models are still loading.'
+    return t('composer.modelsLoading')
   }
   if (props.disabled) {
     return undefined
@@ -381,7 +383,7 @@ const sendBlockReason = computed(() => {
 // refused edit is the product's toast.
 watch(edit.attachmentError, (message) => {
   if (message) {
-    showToast({ title: 'Couldn’t Attach', message, tone: 'danger' })
+    showToast({ title: t('composer.couldntAttach'), message, tone: 'danger' })
   }
 })
 /** The replaced version as the offer shows it; none while there is none, or while a message is edited. */
@@ -393,22 +395,26 @@ const replacedPreview = computed(() =>
 /** Why Compact cannot run now apart from how full the context is: the session takes it only while idle. */
 const compactUnavailable = computed(() => {
   if (shownEdit.value) {
-    return 'Available after the edit'
+    return t('composer.afterEdit')
   }
   if (props.running) {
-    return COMPACT_AFTER_TURN
+    return compactAfterTurn()
   }
   return null
 })
 /** The agent works: a message steers it or waits in the queue, one or the other (`product.md` § Steer or queue). */
 const working = computed(() => props.running || props.compacting)
 const submitLabel = computed(() => shownEdit.value
-  ? shownEdit.value.phase === 'uncertain' ? 'Retry' : 'Save and resend'
-  : working.value ? sendWayLabel(props.sendWhileRunning) : 'Send',
+  ? shownEdit.value.phase === 'uncertain' ? shared('common.retry') : t('composer.saveAndResend')
+  : working.value ? sendWayLabel(props.sendWhileRunning) : t('composer.send'),
 )
 /** The send button's tip: while the agent works, also the key that sends the other way. */
 const submitTip = computed(() => !shownEdit.value && working.value
-  ? `${submitLabel.value} · ${otherWayKeys()} to ${sendWayLabel(otherWay(props.sendWhileRunning)).toLowerCase()}`
+  ? t('composer.sendOtherWay', {
+      way: submitLabel.value,
+      keys: otherWayKeys(),
+      other: sendWayLabel(otherWay(props.sendWhileRunning)).toLowerCase(),
+    })
   : submitLabel.value,
 )
 
@@ -545,8 +551,8 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
     <SessionNoticeBar
       v-if="archived"
       key="archived"
-      label="This conversation is archived."
-      action="Restore Conversation"
+      :label="t('session.archived')"
+      :action="t('session.restore')"
       @action="emit('restore')"
     />
     <SessionNoticeBar
@@ -560,9 +566,9 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         modelState.kind === 'none' && (!modelLoad || modelLoad === 'ready')
       "
       key="none"
-      label="No models available"
+      :label="t('composer.noModels')"
       :action="
-        canConfigure !== false ? 'Configure Models' : undefined
+        canConfigure !== false ? t('composer.configureModels') : undefined
       "
       @action="emit('configure')"
     />
@@ -617,8 +623,8 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :disabled="!edit.editable.value"
             :markdown="edit.markdown.value"
             :attachments="edit.capsules.value"
-            :placeholder="placeholder"
-            label="Message"
+            :placeholder="placeholder ?? t('composer.placeholder')"
+            :label="t('composer.message')"
             @change="edit.change"
             @submit="submit"
             @cancel="edit.cancel"
@@ -637,9 +643,9 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :attachments="carried"
             :shown-from-outside="draftShown"
             :autofocus="takesFocus"
-            :placeholder="placeholder"
+            :placeholder="placeholder ?? t('composer.placeholder')"
             :edit-last="editLast"
-            label="Message"
+            :label="t('composer.message')"
             @change="changeDraft"
             @submit="submit"
             @files="addFiles"
@@ -660,13 +666,13 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             <template #trigger="{ isOpen }">
               <!-- A press on the paperclip takes no focus, as on the send button: the message keeps it until the
                    menu takes it, and gets it back when the menu closes. -->
-              <Tooltip content="Attach">
+              <Tooltip :content="t('composer.attach')">
                 <IconButton
                   :icon="Paperclip"
                   variant="ghost"
                   circle
                   :pressed="isOpen"
-                  aria-label="Attach"
+                  :aria-label="t('composer.attach')"
                   @mousedown.prevent
                 />
               </Tooltip>
@@ -675,13 +681,13 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               <Menu>
                 <MenuItem
                   :icon="FileIcon"
-                  :label="remoteFiles ? 'Attach Local Files…' : 'Attach Files…'"
+                  :label="remoteFiles ? t('composer.attachLocalFiles') : t('composer.attachFiles')"
                   @select="pickFiles(close)"
                 />
                 <MenuItem
                   v-if="remoteFiles && !shownEdit"
                   :icon="HardDrive"
-                  label="Attach Remote File…"
+                  :label="t('composer.attachRemoteFile')"
                   @select="attachRemote"
                 />
               </Menu>
@@ -741,35 +747,35 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
         </template>
 
         <template #actions>
-          <Tooltip v-if="shownEdit" content="Cancel edit">
+          <Tooltip v-if="shownEdit" :content="t('composer.cancelEdit')">
             <IconButton
               :icon="X"
               variant="ghost"
               circle
-              aria-label="Cancel edit"
+              :aria-label="t('composer.cancelEdit')"
               :disabled="!edit.editable.value"
               :tabindex="edit.editable.value ? 0 : -1"
               @click="edit.cancel"
               @keydown.enter.space.prevent="edit.cancel"
             />
           </Tooltip>
-          <Tooltip v-if="canSaveForLater" :content="`Save for Later  ${saveForLaterKeys()}`">
+          <Tooltip v-if="canSaveForLater" :content="t('composer.saveForLaterKeys', { keys: saveForLaterKeys() })">
             <IconButton
               :icon="NotebookPen"
               variant="ghost"
               circle
-              aria-label="Save for Later"
+              :aria-label="t('composer.saveForLater')"
               @mousedown.prevent
               @click="emit('saveForLater')"
             />
           </Tooltip>
           <!-- Stop stays for the whole turn, beside the send button while the message holds text. -->
-          <Tooltip v-if="(running || compacting) && !shownEdit" content="Stop">
+          <Tooltip v-if="(running || compacting) && !shownEdit" :content="t('composer.stop')">
             <IconButton
               :icon="Square"
               variant="ghost"
               circle
-              aria-label="Stop"
+              :aria-label="t('composer.stop')"
               :operation="conversationId ? { action: 'stop', target: `conversation:${conversationId}` } : undefined"
               @mousedown.prevent
               @click="onStop?.()"
@@ -801,7 +807,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             variant="ghost"
             circle
             disabled
-            aria-label="Send"
+            :aria-label="t('composer.send')"
           />
         </template>
       </ComposerShell>

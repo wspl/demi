@@ -10,6 +10,7 @@ import { useMessageFiles } from '../../markdown/message-files'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '../../markdown/user-markdown'
 import { useAutofocus } from '../../ui/autofocus'
 import { reportError } from '../../infra/errors'
+import { t } from '../locales/text'
 import { useMediaAddress } from '../media-source'
 import {
   copiedMessageHtml,
@@ -115,7 +116,7 @@ let landing: number | null = null
 const editor = new Editor({
   extensions: props.composer
     ? composerExtensions({
-        placeholder: props.placeholder,
+        placeholder: () => props.placeholder,
         submit: (otherWay) => emit('submit', otherWay),
         cancel: () => {
           if (props.cancelable) {
@@ -190,6 +191,9 @@ onBeforeUnmount(() => {
 })
 
 watch(editable, (value) => editor.setEditable(value, false))
+// The placeholder and the field's labels are read again on a state update, which a
+// change of the page's language is not: an empty one shows the new words at once.
+watch(() => [props.placeholder, props.label], () => editor.view.dispatch(editor.state.tr))
 // A composer that changes shape, as a paste of many lines opens it, keeps
 // the caret in view: the text scrolled while the composer was one line high,
 // which leaves its box at the top once it holds six.
@@ -403,7 +407,7 @@ function copySelection(view: EditorView, event: ClipboardEvent): boolean {
   // clipboard takes it, with the forms above, while the copy is a gesture.
   if (forms.clipboard.image) {
     void navigator.clipboard.write([clipboardItem(forms)])
-      .catch((error: unknown) => reportError('Couldn’t Copy the Picture', error))
+      .catch((error: unknown) => reportError(t('attachments.couldntCopyPicture'), error))
   }
   return true
 }

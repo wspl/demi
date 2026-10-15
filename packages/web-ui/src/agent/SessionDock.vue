@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, inject, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useElementSize } from '@vueuse/core'
 import { ChevronDown } from '@lucide/vue'
@@ -79,7 +80,7 @@ const scrollBottom = computed(() =>
           :icon="ChevronDown"
           variant="solid"
           circle
-          aria-label="Scroll to bottom"
+          :aria-label="t('dock.scrollToBottom')"
           @click="emit('scrollToBottom')"
           @transitionend.stop
         />

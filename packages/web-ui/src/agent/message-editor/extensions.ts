@@ -489,7 +489,7 @@ function messageExtensions(): AnyExtension[] {
  * composer's keys, and what it takes in from pastes and drops.
  */
 export function composerExtensions(
-  options: MessageKeyOptions & { placeholder: string; intake?: IntakeOptions },
+  options: MessageKeyOptions & { placeholder: () => string; intake?: IntakeOptions },
 ): AnyExtension[] {
   return [
     ...messageExtensions(),

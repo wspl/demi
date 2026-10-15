@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../locales/text'
 import Tag from '../../ui/Tag.vue'
 import Tooltip from '../../ui/Tooltip.vue'
 import type { SentenceText } from '../../ui/ui-text'
@@ -16,17 +17,11 @@ defineProps<{
   hint?: SentenceText
 }>()
 
-const LABEL: Record<RunEndKind, string> = {
-  failed: 'Failed',
-  stopped: 'Stopped',
-  stopping: 'Stopping…',
-  lost: 'Lost',
-}
 </script>
 
 <template>
   <Tooltip v-if="hint" :content="hint" class="flex shrink-0 items-center">
-    <Tag :tone="kind === 'failed' ? 'danger' : 'neutral'">{{ LABEL[kind] }}</Tag>
+    <Tag :tone="kind === 'failed' ? 'danger' : 'neutral'">{{ t(`transcript.runEnd.${kind}`) }}</Tag>
   </Tooltip>
-  <Tag v-else :tone="kind === 'failed' ? 'danger' : 'neutral'" class="shrink-0">{{ LABEL[kind] }}</Tag>
+  <Tag v-else :tone="kind === 'failed' ? 'danger' : 'neutral'" class="shrink-0">{{ t(`transcript.runEnd.${kind}`) }}</Tag>
 </template>

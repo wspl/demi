@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { KEEPS_WINDOWS } from '../../ui/window-stack'
+import { t } from '../locales/text'
 
 /**
  * What a notice row says (`runtime.md` § Command reports, `subagents.md`
@@ -20,8 +21,10 @@ defineProps<{
   notice: string
   /** What the notice names; none for a notice that names nothing. */
   title?: string | null
-  /** The title ends the notice's sentence, with no colon between. */
+  /** The title stands inside the notice's sentence, with no colon between; the words keep their own spaces. */
   inline?: boolean
+  /** What follows an inline title in the sentence. */
+  after?: string
   /** Brings where the title came from into view; none when nothing can. */
   go?: (() => void) | undefined
 }>()
@@ -34,7 +37,7 @@ defineProps<{
     class="notice-label flex min-w-0 items-center"
     :class="inline ? 'notice-label-inline' : ''"
   >
-    <span class="notice-words">{{ notice }}{{ inline ? '' : ':' }}</span>
+    <span v-if="notice" class="notice-words">{{ inline ? notice : t('transcript.notice.titled', { notice }) }}</span>
     <span class="notice-title">
       <!-- The title's click is its own, never the row's. -->
       <button
@@ -46,6 +49,7 @@ defineProps<{
       >{{ title }}</button>
       <span v-else class="notice-title-text text-fg-muted">{{ title }}</span>
     </span>
+    <span v-if="after" class="notice-words">{{ after }}</span>
   </span>
 </template>
 
@@ -61,9 +65,13 @@ defineProps<{
   gap: var(--notice-gap);
 }
 
-/* The words and the name that ends their sentence are a space apart. */
+/* The words of an inline sentence keep their own spaces, as the language writes them. */
 .notice-label-inline {
-  --notice-gap: 0.25em;
+  --notice-gap: 0;
+}
+
+.notice-label-inline .notice-words {
+  white-space: pre;
 }
 
 .notice-words {

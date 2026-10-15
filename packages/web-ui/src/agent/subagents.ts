@@ -3,10 +3,10 @@ import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { ConversationStatus } from './conversation-status'
 import type { MessageEditContent } from './message-editing'
 import { effortWord } from './reasoning'
-import { countOf } from '@demicodes/utils'
 import { formatSpan } from '../ui/dates'
+import { t } from './locales/text'
 import { elapsedBetween } from '../composables/useElapsedTime'
-import { COMPACT_AFTER_TURN } from './context-usage'
+import { compactAfterTurn } from './context-usage'
 
 export type SubagentPhase = 'running' | 'completed' | 'aborted' | 'error'
 
@@ -78,7 +78,7 @@ export interface SubagentRecord extends AgentRun {
 export function agentCompaction(agent: SubagentRecord): { compacting: boolean, unavailableReason: string | null } {
   return {
     compacting: agent.sessionPhase === 'compacting',
-    unavailableReason: agent.sessionPhase === 'running' ? COMPACT_AFTER_TURN : null,
+    unavailableReason: agent.sessionPhase === 'running' ? compactAfterTurn() : null,
   }
 }
 
@@ -115,7 +115,7 @@ export function runEffortWords(model: JobModel): string | null {
   if (model.effort === null) {
     return null
   }
-  return model.effort === 'off' ? 'Thinking off' : effortWord(model.effort)
+  return model.effort === 'off' ? t('subagents.thinkingOff') : effortWord(model.effort)
 }
 
 export function isSubagentRunning(phase: SubagentPhase): boolean {
@@ -203,7 +203,7 @@ export function agentsChipLabel(agents: readonly SubagentRecord[]): string | nul
   if (running === 0) {
     return null
   }
-  return countOf(running, 'Agent')
+  return t('subagents.chip', { count: running }, running)
 }
 
 /**
