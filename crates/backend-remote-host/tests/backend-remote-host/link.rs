@@ -268,16 +268,138 @@ async fn admission_holds_calls_and_process_lifetimes_and_a_refusal_sends_nothing
     );
     assert!(matches!(process.exit.await, ProcessEnd::Lost(_)));
     // The job waits for the runner's next connection, holding the Host's
-    // admission, until that runner's hello settles it: the same runner,
-    // which lists nothing, never received it.
+    // admission: the same runner, which lists nothing, never received it,
+    // so it goes again and holds the admission until its end.
     assert!(job.ended().is_none());
     assert_eq!(gate.state().demand, 1);
-    let _next = device.connect(None);
+    let mut next = device.connect(None);
+    assert!(
+        drain(&mut next).await.iter().any(|message| matches!(message,
+            Inbound::JobStart { job_id, .. } if job_id == job.id())),
+        "the job's start goes again"
+    );
+    assert_eq!(gate.state().demand, 1);
+    next.send(job_exit(job.id(), Some(0), None)).await;
+    assert_eq!(job.end().await.status, ProcessEnd::Exited(0));
+    assert_eq!(gate.state().demand, 0);
+}
+
+/// A stop issued while a job's start waits to go again over the new
+/// connection reaches the job after its start, so the runner stops it at
+/// once instead of starting it unstopped. A few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_stop_while_a_jobs_start_waits_to_go_again_follows_the_start() {
+    let device = device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let job = host.start_job(job_start("sleep 60")).await.unwrap();
+    drain(&mut link).await;
+    link.close().await;
+    let mut again = device.connect(None);
+    // The stop runs its first step before the start that goes again is
+    // queued: the connection already serves the device.
+    let mut stopping = {
+        let job = job.clone();
+        Box::pin(async move { job.stop().await })
+    };
+    std::future::poll_fn(|cx| {
+        assert!(stopping.as_mut().poll(cx).is_pending());
+        std::task::Poll::Ready(())
+    })
+    .await;
+    let stopped = tokio::task::spawn_local(stopping);
+    let sent: Vec<Inbound> = drain(&mut again)
+        .await
+        .into_iter()
+        .filter(|message| matches!(message, Inbound::JobStart { .. } | Inbound::JobKill { .. }))
+        .collect();
+    assert!(
+        matches!(&sent[..], [
+            Inbound::JobStart { job_id: started, .. },
+            Inbound::JobKill { job_id: stopped, signal: Some(Signal::Terminate) },
+        ] if started == job.id() && stopped == job.id()),
+        "{sent:?}"
+    );
+    again.send(job_exit(job.id(), None, Some("TERM"))).await;
+    assert!(matches!(stopped.await.unwrap().status, ProcessEnd::Signalled(_)));
+}
+
+/// A job's start goes again over a new connection only when the runner it
+/// went to, the same instance since, does not list it, and only once; a
+/// runner that lists it has it, and one of another instance may have run
+/// it, so it is lost (`sessions-and-targets.md` § Recovery and
+/// persistence). A few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_jobs_start_goes_again_once_and_only_to_the_runner_that_did_not_receive_it() {
+    let starts = |sent: &[Inbound], id: &str| {
+        sent.iter()
+            .filter(|message| matches!(message, Inbound::JobStart { job_id, .. } if job_id == id))
+            .count()
+    };
+    // The same runner lists nothing: the start goes again, once.
+    let device = device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let job = host.start_job(job_start("true")).await.unwrap();
+    assert_eq!(starts(&drain(&mut link).await, job.id()), 1);
+    link.close().await;
+    let mut again = device.connect(None);
+    assert_eq!(starts(&drain(&mut again).await, job.id()), 1);
+    assert!(job.ended().is_none());
+    again.close().await;
+    let mut third = device.connect(None);
+    assert_eq!(starts(&drain(&mut third).await, job.id()), 0, "a start goes again once");
     assert_eq!(
         job.end().await.status,
         ProcessEnd::Lost(demi_backend_remote_host::NEVER_RECEIVED.into())
     );
-    assert_eq!(gate.state().demand, 0);
+
+    // The same runner lists it: it has it, and nothing goes again.
+    let device = self::device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let job = host.start_job(job_start("sleep 1")).await.unwrap();
+    drain(&mut link).await;
+    link.close().await;
+    let mut again = device.connect_with(None, 1, vec![kept_job(job.id(), 0, false)]);
+    assert_eq!(starts(&drain(&mut again).await, job.id()), 0);
+    again.send(job_exit(job.id(), Some(0), None)).await;
+    assert_eq!(job.end().await.status, ProcessEnd::Exited(0));
+
+    // A start that carries pipes is lost with them, by the same runner too.
+    let device = self::device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let piped = JobStart {
+        stdout: Some(demi_runner_protocol::wire::PipeRef {
+            id: "out".into(),
+            url: "http://backend/pipes/out".into(),
+        }),
+        ..job_start("true")
+    };
+    let job = host.start_job(piped).await.unwrap();
+    drain(&mut link).await;
+    link.close().await;
+    let mut again = device.connect(None);
+    assert_eq!(starts(&drain(&mut again).await, job.id()), 0);
+    assert_eq!(
+        job.end().await.status,
+        ProcessEnd::Lost(demi_backend_remote_host::NEVER_RECEIVED.into())
+    );
+
+    // Another runner lists nothing: the job is lost, and nothing goes again.
+    let device = self::device();
+    let mut link = device.connect(None);
+    let host = device.host("/work", Admission::Free);
+    let job = host.start_job(job_start("true")).await.unwrap();
+    drain(&mut link).await;
+    link.close().await;
+    let mut other = device.connect_with(None, 2, Vec::new());
+    assert_eq!(starts(&drain(&mut other).await, job.id()), 0);
+    assert_eq!(
+        job.end().await.status,
+        ProcessEnd::Lost(demi_backend_remote_host::RUNNER_RESTARTED.into())
+    );
 }
 
 #[tokio::test(flavor = "local")]
@@ -548,9 +670,10 @@ async fn jobs_share_the_selected_manifest_only_within_one_connection() {
         })
         .collect();
     assert_eq!(hashes, [first.hash(), second.hash(), first.hash()]);
-    // A new connection carries its first manifest again.
+    // A new connection carries its first manifest again. Its runner is
+    // another one, so the jobs above are lost rather than sent again.
     link.close().await;
-    let mut link = device.connect(None);
+    let mut link = device.connect_with(None, 2, Vec::new());
     start(&first).await.unwrap();
     assert_eq!(kinds(&drain(&mut link).await), ["manifest", "job_start"]);
     // A manifest that cannot go leaves the selection unknown: the next job

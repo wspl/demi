@@ -240,6 +240,13 @@ impl JobDirectories {
         frames
     }
 
+    /// The exit of `job`, once it ended and while its directory lasts.
+    pub fn exit(&self, job: &str) -> Option<wire::Frame> {
+        self.lock()
+            .get(job)
+            .and_then(|held| held.exit.as_ref().map(|(frame, _)| frame.clone()))
+    }
+
     /// The kept output of `job`, while its directory lasts.
     pub fn output(&self, job: &str) -> Option<KeptReader> {
         self.lock().get(job).map(|held| held.output.clone())
