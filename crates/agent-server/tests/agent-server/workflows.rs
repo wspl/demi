@@ -187,7 +187,7 @@ async fn workflows_list_marks_the_choice_and_check_names_the_line_and_field_that
         ),
         (
             "/workspace/.demi/workflows/port.yaml".to_owned(),
-            "name: \"wasm32 port: lead + worker\"\nprofiles: []\n".to_owned(),
+            "name: \"Payments: lead + worker\"\nprofiles: []\n".to_owned(),
         ),
         (
             "/workspace/.demi/workflows/bad.yaml".to_owned(),
@@ -209,7 +209,7 @@ async fn workflows_list_marks_the_choice_and_check_names_the_line_and_field_that
     assert_eq!(task_title.code, 0, "{task_title:?}");
     assert_eq!(
         task_title.stdout,
-        ".demi/workflows/port.yaml reads: wasm32 port: lead + worker, no profiles.\nWarning: the name wasm32 port: lead + worker has a colon, a plus sign or brackets; the Workflow menu shows it as a menu item, the way of working in a few words, such as Review Team or Parallel Development.\n"
+        ".demi/workflows/port.yaml reads: Payments: lead + worker, no profiles.\nWarning: the name Payments: lead + worker has a colon, a plus sign or brackets; the Workflow menu shows it as a menu item, the way of working in a few words, such as Review Team or Parallel Development.\n"
     );
     let bad = agent(&fixture.server, &root(), "workflows check", json!({ "file": ".demi/workflows/bad.yaml" })).await;
     assert!(

@@ -43,7 +43,7 @@ pub const WORKFLOWS_HELP: &str = r#"A workflow is a group of subagent profiles w
 Where: .demi/workflows/<id>.yaml in the nearest directory, from the working directory up to the git repository's root, that has a .demi/workflows/ directory. The file's name without .yaml is the workflow's id.
 
 Fields:
-  name          What the Workflow menu shows, so name it as a menu item: the way of working in a few words, never the task at hand, in English Title Case or as the user's language writes a menu item. Up to 30 characters, with no colon, plus sign or brackets; check warns of a name that is not. Good: Review Team, Parallel Development, 并行开发. Bad: wasm32 port: lead + implement worker, Review (strict), wasm32 移植：主管 + 实现 worker. 1 to 60 characters. Required.
+  name          What the Workflow menu shows, so name it as a menu item: the way of working in a few words, never the task at hand, in English Title Case or as the user's language writes a menu item. Up to 30 characters, with no colon, plus sign or brackets; check warns of a name that is not. Good: Review Team, Parallel Development, 并行开发. Bad: Payments refactor: lead + 2 workers, Review (strict), 支付重构：主管 + 两个 worker. 1 to 60 characters. Required.
   instructions  For the agent leading the conversation: when to use which profile and how to split the work. Up to 65,536 characters. Optional.
   profiles      The workflow's profiles, a list. Required. Each has:
     id            The --profile value of demi agent spawn: 1 to 40 lowercase letters, digits and hyphens, starting with a letter; not default; unique in the list. Required.
@@ -332,7 +332,7 @@ mod tests {
     #[test]
     fn a_name_that_is_not_a_menu_items_reads_with_a_warning() {
         let warned = [
-            ("wasm32 移植：主管 + 实现 worker", "has a colon, a plus sign or brackets;"),
+            ("支付重构：主管 + 两个 worker", "has a colon, a plus sign or brackets;"),
             ("Port: Lead", "has a colon, a plus sign or brackets;"),
             ("Lead ＋ Worker", "has a colon, a plus sign or brackets;"),
             ("Review (strict)", "has a colon, a plus sign or brackets;"),
@@ -340,7 +340,7 @@ mod tests {
             ("评审【严格】", "has a colon, a plus sign or brackets;"),
             ("Parallel Development With Review", "is over 30 characters;"),
             (
-                "wasm32 port: lead + implement worker",
+                "Payments refactor: lead + 2 workers",
                 "is over 30 characters and has a colon, a plus sign or brackets;",
             ),
         ];

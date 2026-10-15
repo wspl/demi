@@ -70,7 +70,7 @@ const hostStatusItems = hostDevices.map((device) => ({
 const menuDevices: HostDeviceOption[] = shownAmong([
   { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer', mark: GALLERY_MARKS.mac },
   // A Windows computer keeps the name Windows gave it, which fits the button whole.
-  { id: 'studio', name: 'ALEX-PC', state: 'online', path: 'localNetwork', mark: GALLERY_MARKS.windows },
+  { id: 'studio', name: 'DESKTOP-4KQ7M2A', state: 'online', path: 'localNetwork', mark: GALLERY_MARKS.windows },
   { id: 'build', name: 'build-box', state: 'online', path: 'internet', mark: GALLERY_MARKS.ubuntu },
   { id: 'office', name: 'Office Mac mini', state: 'online', path: 'relay', mark: GALLERY_MARKS.macMini },
   { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'online', mark: GALLERY_MARKS.fedora },

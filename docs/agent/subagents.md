@@ -607,7 +607,7 @@ next spawn on its agents can start `explore` and `reviewer`.
   conversation's composer, so it names the way of working, never the task at
   hand, in a few words as the user's language writes a menu item, in
   English Title Case, *Parallel Development* or *Review Team*, not
-  *wasm32 port: lead + implement worker*. `demi agent workflows --help`
+  *Payments refactor: lead + 2 workers*. `demi agent workflows --help`
   says so with examples, and `demi agent workflows check` warns of a name
   over 30 characters or with a colon, a plus sign or brackets; the workflow
   works whatever its name, and the menu shows it as it is.
