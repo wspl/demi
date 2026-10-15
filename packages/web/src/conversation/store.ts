@@ -976,7 +976,12 @@ export const useConversations = defineStore('conversations', () => {
     return {
       get: () => conversation.messageEdit,
       set: (state) => { conversation.messageEdit = state },
-      send: async (request) => {
+      send: async (request, regenerate) => {
+        if (regenerate) {
+          const { operationId, targetBlockId, version } = request
+          await (await runtimeFor(conversation)).regenerate({ operationId, targetBlockId, version })
+          return
+        }
         const edit = sentEditRequest(request)
         const runtime = await runtimeFor(conversation)
         await runtime.editAndSend(edit)
@@ -2815,6 +2820,8 @@ export const useConversations = defineStore('conversations', () => {
     submitEdit: (conversation: Conversation) => submitMessageEdit(editHost(conversation)),
     regenerate: (conversation: Conversation, request: MessageEditRequest) =>
       regenerateMessage(editHost(conversation), request),
+    switchVersion: (conversation: Conversation, blockId: string, to: number) =>
+      action(conversation, (runtime) => runtime.switchVersion(blockId, to)),
     addFiles,
     claimFile,
     waitingForUploads,

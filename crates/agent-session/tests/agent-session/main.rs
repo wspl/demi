@@ -442,9 +442,9 @@ fn edit_of(
         operation_id: OperationId::try_from(operation).unwrap(),
         target,
         version: snapshot.version,
-        content: vec![EditContent::Content(UserContentBlock::Text {
+        content: Some(vec![EditContent::Content(UserContentBlock::Text {
             text: replacement.to_owned(),
-        })],
+        })]),
         digest: format!("{operation}:{replacement}"),
     }
 }
@@ -1536,6 +1536,14 @@ impl SessionStore for SlowStore {
         self.inner.load()
     }
 
+    fn switch(
+        &self,
+        position: usize,
+        version: u32,
+    ) -> LocalBoxFuture<'_, Result<demi_agent_store::Switched, StoreError>> {
+        self.inner.switch(position, version)
+    }
+
     fn blobs(&self) -> &dyn demi_agent_store::media::BlobStore {
         self.inner.blobs()
     }
@@ -2034,6 +2042,18 @@ async fn a_streamed_delta_touches_only_its_turns_blocks_on_a_long_transcript() {
         }
     }
     let history = checkpoint.transcript.len();
+    // The store holds the history the session restores from.
+    store
+        .session_store(&root())
+        .save(demi_agent_store::CheckpointUpdate {
+            state: checkpoint.state.clone(),
+            changed_blocks: checkpoint.transcript.iter().cloned().enumerate().skip(turn_blocks.len()).collect(),
+            block_count: history,
+            moved_from: None,
+            version: false,
+        })
+        .await
+        .unwrap();
     let deltas: Vec<String> = (0..200).map(|index| format!("d{index} ")).collect();
     let mut events: Vec<ProviderEvent> = deltas.iter().map(|delta| event::text(delta)).collect();
     events.push(event::response(1, 1));

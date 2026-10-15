@@ -14,7 +14,7 @@ import {
   type ClientSessionEvent,
 } from '@demicodes/conversation-client'
 import { asError, createId, deferred } from '@demicodes/utils'
-import type { ClientContent, EditRequest, SavedDelivery, TranscriptVersion } from '@demicodes/protocol'
+import type { ClientContent, EditRequest, RegenerateRequest, SavedDelivery, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
 import { pendingReturnCheck, waitToReconnect } from '../transport/liveness'
 import { failureHeadline } from './error-detail'
@@ -261,9 +261,33 @@ export class ConversationRuntime {
     return this.client.value?.transcriptVersion() ?? null
   }
 
-  async editAndSend(request: EditRequest): Promise<void> {
+  editAndSend(request: EditRequest): Promise<void> {
+    return this.edit(request.targetBlockId, (client) => client.editAndSend(request))
+  }
+
+  /** Regenerate: a new version of the answer to the message `request` names, sent as an edit is. */
+  regenerate(request: RegenerateRequest): Promise<void> {
+    return this.edit(request.targetBlockId, (client) => client.regenerate(request))
+  }
+
+  /**
+   * Shows the `to`th version at the place of the block `blockId`
+   * (`message-editing.md` § Versions), from the transcript the page shows;
+   * the path's new blocks arrive as the transcript's patches. Nothing is
+   * sent before the transcript has a version, which the controls cannot be
+   * shown without.
+   */
+  async switchVersion(blockId: string, to: number): Promise<void> {
     const client = await this.ensureOpen()
-    const replacesVisibleTarget = windowOf(this.options.state.history, request.targetBlockId) !== undefined
+    const version = client.transcriptVersion()
+    if (version) {
+      client.switchVersion(blockId, to, version)
+    }
+  }
+
+  private async edit(targetBlockId: string, send: (client: ConversationClient) => Promise<void>): Promise<void> {
+    const client = await this.ensureOpen()
+    const replacesVisibleTarget = windowOf(this.options.state.history, targetBlockId) !== undefined
     let receivedError = false
     const unsubscribe = client.subscribe((event) => {
       if (event.type === 'error') {
@@ -271,7 +295,7 @@ export class ConversationRuntime {
       }
     })
     try {
-      await client.editAndSend(request)
+      await send(client)
       // Reconciliation can confirm an earlier edit after its generation failed.
       // That receipt must not erase the current turn's recovery action.
       if (replacesVisibleTarget && !receivedError) {

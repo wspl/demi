@@ -328,7 +328,8 @@ command it ran then with `demi conversation history open 4214`.
 The commands read the transcript, which keeps every block, from the
 conversation's database: they reach no Host and need no permission. An agent
 reads its own transcript, the root's or a subagent's, and a block is named
-by its index in it, `4213`, which never changes. An index is written bare,
+by its position on the transcript's current path, `4213`, which only an
+edit before it changes ([Versions](message-editing.md#versions)). An index is written bare,
 without `#`, which a shell would read as a comment, so every line the
 commands print can be run as it stands.
 

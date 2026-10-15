@@ -19,6 +19,7 @@ function agent(
 ): SubagentRecord {
   return {
     number: 1,
+    onPath: true,
     profile: null,
     model: { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false },
     round: 1,

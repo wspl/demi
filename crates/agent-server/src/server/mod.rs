@@ -462,6 +462,8 @@ impl<H: HostResolver> AgentServer<H> {
             state: seed.state,
             changed_blocks: seed.transcript.into_iter().enumerate().collect(),
             block_count,
+            moved_from: None,
+            version: false,
         };
         let record = NodeRecord::root(destination.clone(), self.deps.clock.now());
         (self.deps.stores)(destination)

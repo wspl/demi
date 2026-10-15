@@ -174,7 +174,7 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
     ));
     let [
         TranscriptPatch::Truncate { length: 3 },
-        TranscriptPatch::Add { index: 3, value: Block::User(replacement) },
+        TranscriptPatch::Add { index: 3, value: Block::User(replacement), .. },
     ] = patches
     else {
         panic!("{patches:#?}")

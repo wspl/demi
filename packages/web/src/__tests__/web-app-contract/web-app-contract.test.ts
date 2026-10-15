@@ -12,6 +12,7 @@ import {
   sentEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
+import type { HeldBlock } from '@demicodes/web-ui/agent/history'
 import { ConversationSocketError, connectConversationClient } from '@demicodes/web-ui/transport/conversation-socket'
 import {
   EMPTY_TRANSCRIPT,
@@ -161,8 +162,8 @@ async function connect(id: string) {
 
 type Client = Awaited<ReturnType<typeof connectConversationClient>>
 
-/** The root's blocks a client's page holds. */
-function transcriptOf(client: Client): Block[] {
+/** The root's blocks a client's page holds, with their versions. */
+function transcriptOf(client: Client): HeldBlock[] {
   return heldBlocks(held.get(client) ?? EMPTY_TRANSCRIPT)
 }
 
@@ -505,14 +506,18 @@ test('an edit of the last message replaces it and what follows, and an edit of a
     const edited = transcriptOf(client)
     expect(kinds(edited)).toEqual(['user', 'context', 'text', 'response', 'user', 'text', 'response'])
     expect(edited.slice(0, 4)).toEqual(blocks.slice(0, 4))
-    expect(edited[4]).toMatchObject({ type: 'user', content: [{ type: 'text', text: 'Edited second message' }] })
+    // The edit is the second version of its message, the replaced one the first.
+    expect(edited[4]).toMatchObject({
+      type: 'user', content: [{ type: 'text', text: 'Edited second message' }], versions: { index: 2, count: 2 },
+    })
     expect(edited[5]).toMatchObject({ type: 'text', text: 'Answer to the edit.' })
     // The model read the first exchange and the edit, never the replaced message.
     const request = userTexts(vendor.turns().at(-1))
     expect(request).toContain('First message')
     expect(request).toContain('Edited second message')
     expect(request).not.toContain('Second message')
-    expect(edited).toEqual((await coldTranscript(id)).blocks)
+    // A block read whole carries no versions; the page holds them beside it.
+    expect(edited.map(({ versions: _, ...block }) => block)).toEqual((await coldTranscript(id)).blocks)
 
     // An editor opened on the old version is refused, although its message
     // is still there, and nothing changes.

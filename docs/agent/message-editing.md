@@ -1,14 +1,85 @@
 # Message editing and resend
 
-Editing a user message replaces that message and everything after it with a new
-user turn. For example, in a conversation that reads A, answer A, B, answer B,
-C, answer C, editing B removes B and everything after it and continues from B′:
+Editing a user message continues the conversation from a new version of that
+message, and keeps the old one with everything that followed it. For example,
+in a conversation that reads A, answer A, B, answer B, C, answer C, editing B
+continues from B′, and the user can switch back to B and its answers at any
+time:
 
 ```text
-A → answer A → B → answer B → C → answer C
-                    edit B and submit
-A → answer A → B′ → answer B′
+A → answer A → B  → answer B → C → answer C      version 1
+             └→ B′ → answer B′                   version 2, shown
 ```
+
+Nothing is deleted: the conversation's database only adds rows
+([Versions](#versions)). Regenerate does the same to an answer.
+
+## Versions
+
+A transcript is a tree of blocks, and what the conversation shows, replays
+to the model and continues from is one path through it, the **current
+path**: from the first block to the current leaf.
+
+- **A block is written once.** A block's row is written while the block is
+  produced, a streamed text growing or a call taking its result, and never
+  goes away; once it has settled it changes only where a later event marks
+  it, a command's view that a later call rewrites, a stop that a resume
+  continues, an entry added to a block's list, never its content. Each row has a **row number**,
+  its index in its agent's transcript in the order rows were written, which
+  never changes and is never given to another row, and it names the row it
+  follows, the row before it on its path.
+- **An edit adds a sibling.** The edited message's new version follows the
+  same row the old one follows, and its turn follows it. **Regenerate** adds
+  a new answer that follows the same message as the old answer, as a new
+  turn with its own turn id. Either makes the new branch's last row the
+  current leaf.
+- **A compaction keeps versions.** A message or answer that compaction
+  keeps after its boundary keeps its versions, and its switcher.
+- **A child is never deleted.** A subagent whose stored state cannot be
+  rebuilt is closed as failed, with its transcript kept.
+- **The session's own rewrites add branches too.** A retry after a failure,
+  a resume's unwind, or a compaction cut inside a turn leaves what it
+  replaces as a branch of its own, kept as written and never offered as a
+  version: only an edit and Regenerate make versions the user sees.
+- **Switching.** A message with versions shows *‹ 2/3 ›* under it, and an
+  answer with versions in its footer, as ChatGPT and Claude show theirs, in
+  the order they were made. Choosing another version makes the latest leaf
+  of that branch current, so the user returns to where that branch ended.
+  The switch is one operation of the session, admitted as an edit is
+  ([Admission](#admission)), so it is refused while the agent works; it
+  changes nothing but the current path, and the next message continues
+  from what the conversation then shows. Files, commands that ran and other
+  effects stay as they are, as for an edit.
+- **What follows the path.** Replay, the context estimate, compaction,
+  the conversation's pages, Copy, Fork and a new share read the current
+  path; a compaction applies to the path it ran on, and replay starts at the
+  last boundary on the current path. A subagent belongs to the branch its
+  start is on: its node records the call that started it, and the Agents
+  window, `agent:` links and a new share hold the children started on the
+  current path, and their own children;
+  a child stored before versions existed counts as on every path. A
+  command started on another branch stays reachable by its number, since
+  it ran. The search index holds the current path, so
+  a switch replaces the rows of the blocks that leave and enter it.
+- **Positions and row numbers.** The page and its patches address blocks by
+  their position on the current path, as before, and a switch is one
+  rewrite batch: a `truncate` at the first position that differs, then an
+  `add` for each block of the new path from there
+  ([Patches and versions](runtime.md#patches-and-versions)). What must stay
+  valid across switches, a share's list and the search index's rows, names
+  a row by its row number, never by position; `demi conversation history`
+  numbers blocks by their position on the current path, as the agent reads
+  them, which an edit changes only after the message it edits. A block's id names it on the current path: a block
+  read whole by id reads the current path's block, since a compaction
+  inside a turn carries a block to a new branch under the same id.
+
+The node stores, besides its rows, its current leaf; the runs of row
+numbers its current path is made of are kept with the leaf in the same
+transaction, derived from the rows and the leaf, so a page of the path reads
+an index range instead of walking a long chain of rows
+([Conversation state and transactions](../backend/storage.md#conversation-state-and-transactions)).
+A conversation stored before versions existed is one path: each row follows
+the one before it, and its last row is the leaf.
 
 ## Behavior and ownership
 
@@ -153,14 +224,12 @@ restores the composer draft.
 ### Regenerate and the Up Arrow key
 
 Regenerate asks for a new answer to the last message, as Retry does in
-ChatGPT and Claude. It is an edit of the last `user` block with its content
-unchanged: the same operation, admission and result, so the answer and
-everything after the message are replaced by a new turn, while files and the
-other effects of the removed turn stay as they are
-([Commit and idempotency](#commit-and-idempotency)). The page offers it in
-the footer of the last answer, beside Copy and Fork, exactly when it offers
-editing the last message, and sends it at once, without opening the editor
-and without asking.
+ChatGPT and Claude. It adds a new answer beside the old one, which stays as
+a version of the answer ([Versions](#versions)); its admission is an
+edit's, and files and the other effects of the old answer stay as they are.
+The page offers it in the footer of the last answer, beside Copy and Fork,
+exactly when it offers editing the last message, and sends it at once,
+without opening the editor and without asking.
 
 In the main composer, the Up Arrow key opens the editor on the last message,
 as in Slack and Discord, when the composer is empty and the page offers
@@ -175,8 +244,9 @@ loaded from storage, and the requests delivered to the provider. Provider
 assertions use hand-authored expected inference items; building the expected
 result with the production replay would conceal replay defects.
 
-1. The retained prefix is unchanged. The replacement appears once. No removed
-   answer, steer, tool result, or invalid summary reaches later inference.
+1. The retained prefix is unchanged. The replacement appears once. No answer,
+   steer, tool result or summary of another branch reaches later inference,
+   and every row of the old branch is still stored, unchanged.
 2. Before durable acceptance, neither clients nor the replacement provider
    observe the candidate history. A failed save leaves both memory and storage
    unchanged, including after pending checkpoint work has finished.

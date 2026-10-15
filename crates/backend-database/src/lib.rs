@@ -24,6 +24,7 @@ pub mod interrupted_turns;
 pub mod managed;
 pub mod panels;
 pub mod passkeys;
+mod path;
 pub mod permissions;
 pub mod plugin_secrets;
 pub mod plugin_values;

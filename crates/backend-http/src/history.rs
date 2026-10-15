@@ -81,6 +81,7 @@ pub(super) fn page_answer(
             failures: None,
             instructions: Vec::new(),
             summaries: Vec::new(),
+            versions: Vec::new(),
         }),
         Some(PageRead::Page {
             start,
@@ -88,6 +89,7 @@ pub(super) fn page_answer(
             blocks,
             instructions,
             summaries,
+            versions,
         }) => Ok(TranscriptPage {
             start: index_u32(start),
             length: index_u32(length),
@@ -95,6 +97,7 @@ pub(super) fn page_answer(
             failures: None,
             instructions,
             summaries,
+            versions,
         }),
         Some(PageRead::NoNode) => Err(no_node()),
         Some(PageRead::NoBlock) => Err(no_block()),

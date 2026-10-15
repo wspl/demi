@@ -35,6 +35,12 @@ export interface SubagentRecord extends AgentRun {
   number: number
   name: string
   /**
+   * Whether the call that started it is on its parent's current path: the
+   * Agents window and `agent:` links show only the children that are
+   * (`message-editing.md` § Versions).
+   */
+  onPath: boolean
+  /**
    * What its session does while it is live, as its `phase` frames say: a
    * child idle beside a command it left running shows no Requesting row
    * (`runtime.md` § Frame protocol).
@@ -83,7 +89,7 @@ export function agentCompaction(agent: SubagentRecord): { compacting: boolean, u
 }
 
 /** What a child's job sets on its record: who it is, and its round as the job says it now. */
-export type SubagentJobFields = Pick<SubagentRecord, 'id' | 'number' | 'name'> & AgentRun
+export type SubagentJobFields = Pick<SubagentRecord, 'id' | 'number' | 'name' | 'onPath'> & AgentRun
 
 /**
  * A child's record fields from its job, a `subagent` frame's or the
@@ -95,6 +101,7 @@ export function subagentJobFields(job: SubagentJob): SubagentJobFields {
     id: job.subagentId,
     number: job.number,
     name: job.description,
+    onPath: job.onPath,
     profile: job.profile,
     model: job.model,
     round: job.round,

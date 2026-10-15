@@ -197,6 +197,7 @@ export function workSubagent(): SubagentRecord {
   return {
     id: 'ag-suite',
     number: 3,
+    onPath: true,
     name: 'Find the old suite paths',
     ...runsOn('research', SONNET),
     phase: 'running',
@@ -233,6 +234,7 @@ export function gallerySubagents(): SubagentRecord[] {
     {
       id: 'ag-cookie',
       number: 1,
+      onPath: true,
       name: 'Find the cookie assertion',
       ...runsOn(null, OPUS),
       phase: 'running',
@@ -273,6 +275,7 @@ export function gallerySubagents(): SubagentRecord[] {
     {
       id: 'ag-logout',
       number: 2,
+      onPath: true,
       name: 'Check the logout path',
       ...runsOn('frontend', { ...SONNET, effort: 'high', fast: true }, { forkedFrom: 1, cwd: SLOT_ROOT }),
       phase: 'running',
@@ -316,6 +319,7 @@ export function gallerySubagents(): SubagentRecord[] {
     {
       id: 'ag-snapshot',
       number: 7,
+      onPath: true,
       name: 'Snapshot strings',
       ...runsOn('quick', { ...HAIKU, effort: 'off' }),
       phase: 'running',
@@ -339,6 +343,7 @@ export function gallerySubagents(): SubagentRecord[] {
     {
       id: 'ag-comments',
       number: 4,
+      onPath: true,
       name: 'Update helper comments',
       ...runsOn(null, OPUS, { round: 2 }),
       phase: 'completed',
@@ -376,6 +381,7 @@ export function gallerySubagents(): SubagentRecord[] {
     {
       id: 'ag-fixture',
       number: 6,
+      onPath: true,
       name: 'Run the fixture server',
       ...runsOn('browser', SONNET),
       phase: 'error',
@@ -417,6 +423,7 @@ export function gallerySubagents(): SubagentRecord[] {
     {
       id: 'ag-ci',
       number: 5,
+      onPath: true,
       name: 'CI screenshot review',
       ...runsOn('review', { ...OPUS, effort: 'medium' }),
       phase: 'aborted',
@@ -476,6 +483,7 @@ export function briefSubagent(): SubagentRecord {
   return {
     id: 'ag-flake',
     number: 8,
+    onPath: true,
     name: 'Find why the login test flakes',
     ...runsOn('research', SONNET),
     phase: 'running',
@@ -501,6 +509,7 @@ export function slotSubagent(): SubagentRecord {
   return {
     id: SLOT_NODE,
     number: 9,
+    onPath: true,
     name: 'Rename the cookie in the slot',
     ...runsOn('frontend', SONNET, { cwd: `${SLOT_ROOT}/src/auth` }),
     phase: 'running',

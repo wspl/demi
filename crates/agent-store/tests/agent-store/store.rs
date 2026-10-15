@@ -21,8 +21,8 @@ async fn a_save_delivers_the_completions_its_transcript_carries_and_only_those()
 }
 
 #[tokio::test(flavor = "local")]
-async fn reopen_makes_a_closed_node_live_with_its_message_and_delete_takes_the_subtree() {
-    store_contract::reopen_makes_a_closed_node_live_with_its_message_and_delete_takes_the_subtree(
+async fn reopen_makes_a_closed_node_live_with_its_message() {
+    store_contract::reopen_makes_a_closed_node_live_with_its_message(
         &*MemoryTreeStore::new(),
     )
     .await;
@@ -58,4 +58,19 @@ async fn children_list_in_spawn_order_and_a_close_keeps_its_result() {
 #[tokio::test(flavor = "local")]
 async fn each_sequence_gives_its_numbers_once_in_order() {
     store_contract::each_sequence_gives_its_numbers_once_in_order(&*MemoryTreeStore::new()).await;
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_subagent_tells_whether_its_start_is_on_its_parents_path() {
+    store_contract::a_subagent_tells_whether_its_start_is_on_its_parents_path(&*MemoryTreeStore::new()).await;
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_compaction_keeps_the_versions_of_what_it_carries() {
+    store_contract::a_compaction_keeps_the_versions_of_what_it_carries(&*MemoryTreeStore::new()).await;
+}
+
+#[tokio::test(flavor = "local")]
+async fn a_rewrite_keeps_its_rows_and_a_switch_brings_them_back() {
+    store_contract::a_rewrite_keeps_its_rows_and_a_switch_brings_them_back(&*MemoryTreeStore::new()).await;
 }

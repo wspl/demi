@@ -115,12 +115,13 @@ already holds it, so a share copies almost nothing:
   grows, is copied into the share as it stands, with the output its view
   holds then, and its entry in the list points at the copy, so a command's
   later output never becomes public. That is a handful of blocks at most.
-- **What is rewritten is copied first.** Any write that replaces or
-  removes a row a share lists, an edit or a retry that replaces a turn, a
-  command's view that a later call rewrites, first copies the row as the
-  share shows it into the share, in the same transaction, and points the
-  entry at the copy, so a share never shows a row's later content and never
-  loses one.
+- **Rows it lists do not change.** A settled row is never rewritten or
+  removed: an edit or Regenerate adds a branch beside it
+  ([Versions](../agent/message-editing.md#versions)). The exceptions are the
+  few settled rows a later event still marks, a command's view a later call
+  rewrites, a stop marked continued; such a write first copies the row as
+  the share shows it into the share, in the same transaction, and points
+  the entry at the copy.
 - **Update Link** makes the list anew and drops the old one with its
   copies.
 

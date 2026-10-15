@@ -580,6 +580,7 @@ impl Shard {
                 length,
                 blocks,
                 version,
+                versions,
                 ..
             } => {
                 let failures = failure_facts(assembly, &blocks).await;
@@ -589,6 +590,7 @@ impl Shard {
                     blocks,
                     version,
                     failures,
+                    versions,
                 }
             }
             ServerFrame::TranscriptPatch {
@@ -667,13 +669,20 @@ fn carries_uploads(frame: &ClientFrame) -> bool {
         .any(|part| matches!(part, ClientContent::Upload { .. }))
 }
 
-/// The answer to a frame the backend refused: an edit's `edit_result`, a
+/// The answer to a frame the backend refused: an edit's or a Regenerate's
+/// `edit_result`, a
 /// removal's `remove_result` `gone_on`, since it reached no session to hold
 /// what it names (`runtime.md` § Pending steers), and an `error` frame for
 /// any other.
 fn refused_frame(frame: ClientFrame, code: ErrorCode, message: String) -> ServerFrame {
     match frame {
         ClientFrame::EditAndSend { request } => ServerFrame::EditResult {
+            operation_id: request.operation_id,
+            outcome: EditOutcome::Rejected {
+                refusal: Refusal::new(code, message),
+            },
+        },
+        ClientFrame::Regenerate { request } => ServerFrame::EditResult {
             operation_id: request.operation_id,
             outcome: EditOutcome::Rejected {
                 refusal: Refusal::new(code, message),

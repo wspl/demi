@@ -155,7 +155,7 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
     // sending the kept turn again.
     assert!(matches!(
         &patches[..2],
-        [TranscriptPatch::Truncate { length: 3 }, TranscriptPatch::Add { index: 3, value }]
+        [TranscriptPatch::Truncate { length: 3 }, TranscriptPatch::Add { index: 3, value, .. }]
             if value == &blocks[3]
     ));
     let rewrites = patches
@@ -532,7 +532,7 @@ async fn an_edit_of_the_first_a_middle_or_the_last_message_keeps_exactly_the_blo
         assert_eq!(user.turn_id, receipt.turn_id);
         assert!(matches!(
             &patches.borrow()[..2],
-            [TranscriptPatch::Truncate { length }, TranscriptPatch::Add { index: added, value }]
+            [TranscriptPatch::Truncate { length }, TranscriptPatch::Add { index: added, value, .. }]
                 if *length as usize == index && *added as usize == index && value == &blocks[index]
         ));
         assert_eq!(copy.checkpoint(&root()).unwrap().transcript, blocks);
