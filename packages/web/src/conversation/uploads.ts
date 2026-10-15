@@ -10,8 +10,7 @@ import {
   type UploadedFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { CopiedStoredFile } from '@demicodes/web-ui/agent/message-input/copied-message'
-import { asError } from '@demicodes/utils'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import { errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
 import { blobUrl, claimStoredFile, uploadAttachment } from '../api/uploads'
 import type { Conversation, ProductAttachment } from '../state/types'
 
@@ -124,7 +123,7 @@ export function createConversationUploads(
       try {
         await (running.get(item.id) ?? uploadFile(item))
       } catch (error) {
-        throw new Error(`${item.name} did not upload. ${asError(error).message}`)
+        throw new Error(`${item.name} did not upload. ${errorMessage(error)}`)
       }
     }
     if (!item.upload) {

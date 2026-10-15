@@ -14,7 +14,7 @@
       "textSize": "メッセージのフォント サイズ",
       "messages": "メッセージ",
       "sendWhileRunning": "エージェントの作業中の Enter",
-      "sendWhileRunningDescription": "「操作」は実行中のターンにメッセージを送信します。「キューに追加」はターンの終了を待ちます。{keys} でもう一方の方法を使います。",
+      "sendWhileRunningDescription": "「割り込み」は実行中のターンにメッセージを送信します。「キューに追加」はターンの終了を待ちます。{keys} でもう一方の方法を使います。",
       "resumeAtRetry": "使用制限のリセット後に再開",
       "resumeAtRetryDescription": "使用制限で停止したターンを、制限がリセットされたときに再開します。",
       "preview": {
@@ -41,7 +41,7 @@
     }
   },
   "sendWay": {
-    "steer": "操作",
+    "steer": "割り込み",
     "queue": "キューに追加"
   },
   "dates": {

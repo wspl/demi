@@ -625,9 +625,12 @@ const sources: readonly Required<Source>[] = [
         <div class="max-w-5xl rounded-xl border border-line">
           <h3 class="border-b border-line px-3 py-2 text-[13px] font-medium text-fg-emphasis">Glossary</h3>
           <dl class="grid grid-cols-2 gap-x-6 gap-y-1 px-3 py-2 text-[12px] leading-5 sm:grid-cols-3 lg:grid-cols-4">
-            <div v-for="[english, term] in writing.glossary" :key="english" class="flex justify-between gap-2">
+            <div v-for="[english, term, reason] in writing.glossary" :key="english" class="flex justify-between gap-2">
               <dt class="text-fg-muted" lang="en">{{ english }}</dt>
-              <dd class="text-fg-body">{{ term }}</dd>
+              <dd class="text-right text-fg-body">
+                {{ term }}
+                <span v-if="reason" class="block text-[11px] leading-4 text-fg-subtle" lang="en">{{ reason }}</span>
+              </dd>
             </div>
           </dl>
         </div>

@@ -3,7 +3,7 @@ import { defineStore } from 'pinia'
 import { useSession } from '../auth/session'
 import { fileExtensionSchema } from '@demicodes/protocol'
 import { SerialQueue } from '@demicodes/utils'
-import { reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { errorMessage, reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
@@ -460,7 +460,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         signal.throwIfAborted()
         testResults.value[provider.id] = {
           state: 'error',
-          detail: error instanceof Error ? error.message : String(error),
+          detail: errorMessage(error),
         }
         throw error
       }

@@ -3,7 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { z } from 'zod'
 import SettingsSkills from './SettingsSkills.vue'
 import type { AddSourceAnswer, SettingsSkillDraft, SettingsSkillSource } from './types'
-import { PluginCallError, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
+import { errorMessage, PluginCallError, usePage, type HeadlineText } from '@demicodes/plugin-sdk'
 import {
   addedSourceSchema,
   skillsStateSchema,
@@ -71,7 +71,7 @@ async function add(draft: SettingsSkillDraft): Promise<AddSourceAnswer> {
     return { kind: 'added' }
   } catch (error) {
     if (error instanceof PluginCallError && ORIGIN_REFUSALS.includes(error.reason)) {
-      return { kind: 'refused', message: error.message }
+      return { kind: 'refused', message: errorMessage(error) }
     }
     page.errors.report('Could Not Add the Source', error)
     return { kind: 'failed' }

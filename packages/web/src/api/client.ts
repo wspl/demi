@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
 import { httpStatusLine } from '@demicodes/utils'
-import { errorBodySchema, type ErrorBody, type ErrorCode } from './generated/web-api'
+import { errorBodySchema, errorCodeSchema, type ErrorBody, type ErrorCode } from './generated/web-api'
 
 /** The header every answer of the backend names its request in. */
 export const REQUEST_ID_HEADER = 'X-Request-Id'
@@ -15,7 +15,7 @@ export class ApiError extends Error {
   readonly status: number
   /** The answer's status line, such as `500 Internal Server Error`, with the code's standard phrase where the answer carried none, as HTTP/2's do. */
   readonly statusLine: string
-  readonly code: ErrorCode | null
+  readonly code: ErrorCode | UnknownErrorCode | null
   /** A plugin's own word for its refusal, with `plugin_refused`. */
   readonly reason: string | null
   /** How many seconds the answer's `Retry-After` asks to wait, as a locked sign-in's does. */
@@ -37,7 +37,7 @@ export class ApiError extends Error {
 
   constructor(
     status: number,
-    code: ErrorCode | null,
+    code: ErrorCode | UnknownErrorCode | null,
     message: string,
     reason: string | null = null,
     retryAfterSeconds: number | null = null,
@@ -75,7 +75,7 @@ export function onSessionExpired(handler: () => void): () => void {
   }
 }
 
-export function notifySessionExpired(code: ErrorCode): void {
+export function notifySessionExpired(code: ErrorCode | UnknownErrorCode): void {
   // A request an account still to choose its password sent is refused as a
   // session that ended is: the page asks who it is and shows what it finds.
   if (code === 'unauthenticated' || code === 'password_choice_required') {
@@ -285,6 +285,17 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Pr
   throw apiError(response.status, await response.text(), response.headers, response.statusText)
 }
 
+/**
+ * A code this page does not know, as a newer backend may send: kept, so the
+ * error still says its message and names its request, and told apart from
+ * every known code, so a comparison with a misspelled code does not compile.
+ */
+const unknownErrorCodeSchema = z.string().brand<'UnknownErrorCode'>()
+export type UnknownErrorCode = z.infer<typeof unknownErrorCodeSchema>
+
+/** The error envelope, read with any code (`localization.md` § Text from the backend). */
+const errorEnvelopeSchema = errorBodySchema.extend({ code: errorCodeSchema.or(unknownErrorCodeSchema) })
+
 /** `Retry-After` in seconds; its date form is not one the backend sends. */
 const retryAfterSchema = z.coerce.number().int().nonnegative()
 
@@ -302,7 +313,7 @@ export function apiError(status: number, text: string, headers: Headers = new He
     // A reverse proxy can return HTML instead of the backend error contract.
     body = null
   }
-  const parsed = errorBodySchema.safeParse(body)
+  const parsed = errorEnvelopeSchema.safeParse(body)
   if (parsed.success) {
     notifySessionExpired(parsed.data.code)
   }

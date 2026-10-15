@@ -114,7 +114,44 @@ fn page_language(headers: &HeaderMap) -> Language {
         .collect();
     // Stable: languages of one weight keep the header's order.
     ranked.sort_by(|a, b| b.1.total_cmp(&a.1));
-    Language::first_spoken(ranked.into_iter().map(|(tag, _)| tag))
+    ranked
+        .into_iter()
+        .find_map(|(tag, _)| spoken_for(tag))
+        .unwrap_or(Language::English)
+}
+
+/// The language Demi speaks for the BCP 47 tag `tag`, if any: Traditional
+/// Chinese for `zh-Hant` and the Chinese of Taiwan, Hong Kong and Macao,
+/// Simplified for any other `zh`, a script the tag names winning over its
+/// region (`localization.md` § Choosing the language). The page resolves
+/// its own language; this reads only a request's `Accept-Language`.
+fn spoken_for(tag: &str) -> Option<Language> {
+    let mut subtags = tag.split(['-', '_']);
+    match subtags.next()?.to_ascii_lowercase().as_str() {
+        "en" => Some(Language::English),
+        "ja" => Some(Language::Japanese),
+        "ko" => Some(Language::Korean),
+        "zh" => {
+            let mut traditional_region = false;
+            for subtag in subtags {
+                if subtag.eq_ignore_ascii_case("hant") {
+                    return Some(Language::TraditionalChinese);
+                }
+                if subtag.eq_ignore_ascii_case("hans") {
+                    return Some(Language::SimplifiedChinese);
+                }
+                traditional_region |= ["tw", "hk", "mo"]
+                    .iter()
+                    .any(|region| subtag.eq_ignore_ascii_case(region));
+            }
+            Some(if traditional_region {
+                Language::TraditionalChinese
+            } else {
+                Language::SimplifiedChinese
+            })
+        }
+        _ => None,
+    }
 }
 
 /// A page of one sentence under its title, in `language`. A vendor's answer
@@ -124,4 +161,37 @@ fn page(language: Language, title: &str, text: &str) -> Html<String> {
     Html(format!(
         "<!doctype html><html lang=\"{language}\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width\"><title>{title}</title><body style=\"font: 15px/1.5 -apple-system, system-ui, sans-serif; margin: 4em auto; max-width: 32em; padding: 0 1em\"><p>{text}</p></body></html>"
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use axum::http::HeaderValue;
+
+    use super::*;
+
+    // The first language the header prefers that Demi speaks, by weight and
+    // then order; a table, no I/O.
+    #[test]
+    fn a_page_speaks_the_first_accepted_language_demi_speaks() {
+        use Language::*;
+        for (accepted, spoken) in [
+            ("zh-TW", TraditionalChinese),
+            ("zh-HK", TraditionalChinese),
+            ("zh-MO", TraditionalChinese),
+            ("zh-Hant", TraditionalChinese),
+            ("zh-Hans-HK", SimplifiedChinese),
+            ("zh-CN", SimplifiedChinese),
+            ("zh", SimplifiedChinese),
+            ("en-GB, zh-CN", English),
+            ("fr, ja-JP;q=0.9, en;q=0.8", Japanese),
+            ("en;q=0.5, ko", Korean),
+            ("ko;q=0, fr", English),
+            ("fr", English),
+            ("", English),
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert(ACCEPT_LANGUAGE, HeaderValue::from_static(accepted));
+            assert_eq!(page_language(&headers), spoken, "{accepted:?}");
+        }
+    }
 }

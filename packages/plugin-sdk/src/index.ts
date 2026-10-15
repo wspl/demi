@@ -36,6 +36,8 @@ export type {
 } from '@demicodes/web-ui/plugins/streams'
 export type { HostArtifact } from '@demicodes/web-ui/devices/installed'
 export type { OverlayStore } from '@demicodes/web-ui/overlay/overlayStore'
+// What the page says of a failure, in the page's language (`localization.md` § Text from the backend).
+export { errorMessage } from '@demicodes/web-ui/infra/errors'
 export type { SettingsRowStatus } from '@demicodes/web-ui/settings/types'
 // The style a plugin's own prop of UI text declares (the gallery's Writing page).
 export type { HeadlineText, PlaceholderText, SentenceText, TitleText } from '@demicodes/web-ui/ui/ui-text'

@@ -5,7 +5,7 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   userPreferencesSchema,
-  type CommandLocale,
+  type BrowserLocale,
   type ContextLimitChange,
   type Preferences,
   type PreferencesPatch,
@@ -14,6 +14,7 @@ import {
 import { useProduct, type Answer, type ProductChange } from './product'
 import { APP_SHORTCUTS } from '@demicodes/web-ui/settings/shortcuts'
 import { appThemeStore } from '@demicodes/web-ui/theme/appTheme'
+import { resolveLanguage } from '@demicodes/web-ui/i18n/languages'
 import { DEFAULT_SEND_WHILE_RUNNING } from '@demicodes/web-ui/agent/send-way'
 import { DEFAULT_ACCENT, DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 
@@ -261,7 +262,8 @@ export const usePreferences = defineStore('preferences', () => {
    */
   let reported: { sent: string; stored: string } | null = null
   /**
-   * Sends the web browser's time zone and languages, and the color scheme the
+   * Sends the web browser's time zone and languages with the language the
+   * page resolves from them, and the color scheme the
    * page shows, whichever differ from the stored ones; commands receive them,
    * and the conversation browser starts with them (`web-api.md` § User
    * preferences). The caller calls it when the page's own facts may have
@@ -365,15 +367,19 @@ export const usePreferences = defineStore('preferences', () => {
 })
 
 /**
- * The web browser's own time zone and languages, as the backend stores them;
- * null when it reports neither.
+ * The web browser's own time zone and languages, as the backend stores them,
+ * and the language the page resolves for System from them, which the
+ * backend's mail reads rather than resolving it again (`localization.md` §
+ * Choosing the language); null when the browser reports neither.
  */
-function webBrowserLocale(): CommandLocale | null {
+function webBrowserLocale(): BrowserLocale | null {
   const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone
   const reported = navigator.languages?.length ? navigator.languages : [navigator.language]
   try {
     const languages = Intl.getCanonicalLocales(reported.filter(Boolean)).slice(0, 16)
-    return timeZone && languages.length > 0 ? { timeZone, languages } : null
+    return timeZone && languages.length > 0
+      ? { timeZone, languages, language: resolveLanguage('system', languages) }
+      : null
   } catch {
     return null
   }

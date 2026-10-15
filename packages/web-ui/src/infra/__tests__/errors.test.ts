@@ -1,4 +1,6 @@
 import { afterEach, expect, test } from 'bun:test'
+import { computed, reactive } from 'vue'
+import { createPageI18n } from '../../i18n/text'
 import { formError, reportError, reportPageErrorsWith, shownError, type PageErrorReport } from '../errors'
 import { dismissToast, toasts } from '../toast'
 
@@ -94,4 +96,43 @@ test('a refusal the user corrects in the form names no request and says the page
     .toEqual({ message: 'That is not your current password.', requestId: null })
   expect(formError(new Coded('internal_error', 'The store failed'), corrections))
     .toEqual({ message: 'The store failed', requestId: 'req_k3v9x2m7qd4h8w1p' })
+})
+
+/** A refusal with its code and the values its text needs, as an API error carries them. */
+class Worded extends Refused {
+  constructor(readonly code: string, message: string, readonly params: Record<string, unknown> = {}) {
+    super(message, 'req_k3v9x2m7qd4h8w1p')
+  }
+}
+
+// The email form's refusal of a taken address: the catalogue's words, which
+// the form gives no words of its own for, and no request, since the user
+// corrects it there.
+test('a refusal the form leaves to the catalogue says its words and names no request', () => {
+  const shown = formError(new Worded('email_taken', 'The email address is taken'), { email_taken: null })
+  expect(shown).toEqual({ message: 'Another account uses this email address.', requestId: null })
+})
+
+// A failure keeps what it was, and the page words it as it shows it: a
+// language chosen while it shows rewords it, inline and in its toast
+// (`localization.md` § Text from the backend).
+test('an error shown before the language changes is reworded in the new language, inline and in its toast', () => {
+  const refusal = new Worded('saved_full', 'The conversation keeps 200 messages saved for later', { limit: 200 })
+  try {
+    const inline = reactive(shownError(refusal))
+    const said = computed(() => inline.message)
+    reportError('Could Not Save the Message', refusal, { userVisible: true, expected: true })
+    const toast = computed(() => toasts[0]!.message)
+    expect([said.value, toast.value]).toEqual([
+      'A conversation keeps up to 200 messages saved for later.',
+      'A conversation keeps up to 200 messages saved for later.',
+    ])
+    createPageI18n('ja')
+    expect([said.value, toast.value]).toEqual([
+      '1 つの会話で後で送信するために保存できるメッセージは 200 件までです。',
+      '1 つの会話で後で送信するために保存できるメッセージは 200 件までです。',
+    ])
+  } finally {
+    createPageI18n('en')
+  }
 })

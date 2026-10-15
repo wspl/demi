@@ -4,6 +4,7 @@
 
 use demi_command_protocol::{ColorScheme, CommandCaller, CommandContext, CommandLocale};
 use demi_web_api_protocol::ids::{ConversationId, ProviderId, UserId};
+use demi_web_api_protocol::settings::BrowserLocale;
 
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
@@ -76,7 +77,9 @@ pub struct Reported {
 pub async fn reported(control: &ControlService, user: &UserId) -> Result<Reported, StorageError> {
     let preferences = control.preferences(user.clone()).await?;
     Ok(Reported {
-        locale: preferences.locale.unwrap_or_else(default_locale),
+        locale: preferences
+            .locale
+            .map_or_else(default_locale, BrowserLocale::command_locale),
         color_scheme: preferences.color_scheme.unwrap_or(DEFAULT_COLOR_SCHEME),
     })
 }

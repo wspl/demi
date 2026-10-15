@@ -31,8 +31,8 @@ export interface LanguageWriting {
   /** The section's title: the language's name in itself. */
   title: string
   rules: readonly TextRule[]
-  /** Demi's terms: the English term, and this language's. */
-  glossary: readonly (readonly [string, string])[]
+  /** Demi's terms: the English term, this language's, and why it is not VS Code's where it is not. */
+  glossary: readonly (readonly [string, string, string?])[]
 }
 
 const SIMPLIFIED: LanguageWriting = {
@@ -144,7 +144,7 @@ const TRADITIONAL: LanguageWriting = {
     ['Host', '主機'], ['Cloud', '雲端'], ['Device', '裝置'], ['Runner', '執行器'], ['Relay', '中繼'],
     ['Provider', '提供者'], ['Model', '模型'], ['Account', '帳戶'], ['Subscription', '訂閱'],
     ['Profile', '設定檔'], ['Workflow', '工作流程'], ['Skill', '技能'], ['Plugin', '外掛程式'],
-    ['Credential', '憑證'], ['Instructions', '指示'], ['Context', '內容'], ['Compaction', '壓縮'],
+    ['Credential', '憑證'], ['Instructions', '指示'], ['Context', '上下文', 'Not VS Code’s 內容, which is also Content'], ['Compaction', '壓縮'],
     ['Reasoning', '推理'], ['Turn', '輪次'], ['Transcript', '對話紀錄'], ['Attachment', '附件'],
     ['Working directory', '工作目錄'], ['Workspace', '工作區'], ['Changes', '變更'],
     ['Uncommitted Changes', '未提交的變更'], ['Commit', '提交'], ['Branch', '分支'], ['Sign in', '登入'],
@@ -201,7 +201,7 @@ const JAPANESE: LanguageWriting = {
     ['Provider', 'プロバイダー'], ['Model', 'モデル'], ['Account', 'アカウント'], ['Subscription', 'サブスクリプション'],
     ['Profile', 'プロファイル'], ['Workflow', 'ワークフロー'], ['Skill', 'スキル'], ['Plugin', 'プラグイン'],
     ['Credential', '認証情報'], ['Instructions', '指示'], ['Context', 'コンテキスト'], ['Compaction', '圧縮'],
-    ['Reasoning', '推論'], ['Turn', 'ターン'], ['Transcript', '会話履歴'], ['Attachment', '添付ファイル'],
+    ['Reasoning', '推論'], ['Turn', 'ターン'], ['Steer', '割り込み', 'Not VS Code’s 操作, which reads as any operation'], ['Transcript', '会話履歴'], ['Attachment', '添付ファイル'],
     ['Working directory', '作業ディレクトリ'], ['Workspace', 'ワークスペース'], ['Changes', '変更点'],
     ['Uncommitted Changes', 'コミットされていない変更'], ['Commit', 'コミット'], ['Branch', 'ブランチ'],
     ['Sign in', 'サインイン'], ['Passkey', 'パスキー'], ['Usage', '使用状況'], ['Limit', '制限'],

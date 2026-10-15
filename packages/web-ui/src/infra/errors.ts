@@ -57,10 +57,12 @@ export function requestIdOf(error: unknown): string | null {
 
 /**
  * An error as the page shows it in a form or a row: its words, and the ID
- * of the request it came from, which goes beside them.
+ * of the request it came from, which goes beside them. The words are made
+ * as they are read, from the failure the error keeps, so a language chosen
+ * while it shows rewords it.
  */
 export interface ShownError {
-  message: SentenceText
+  readonly message: SentenceText
   requestId: string | null
 }
 
@@ -89,9 +91,16 @@ export function errorMessage(error: unknown): SentenceText {
 
 /** `error` as the page shows it, in `message`'s words when given. */
 export function shownError(error: unknown, message?: SentenceText): ShownError {
+  return worded(() => message ?? errorMessage(error), requestIdOf(error))
+}
+
+/** A shown error whose words `words` makes each time they are read. */
+function worded(words: () => SentenceText, requestId: string | null): ShownError {
   return {
-    message: message ?? errorMessage(error),
-    requestId: requestIdOf(error),
+    get message() {
+      return words()
+    },
+    requestId,
   }
 }
 
@@ -120,7 +129,7 @@ export function formError(
 ): ShownError {
   const code = error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : null
   if (code !== null && code in corrections) {
-    return { message: corrections[code] ?? errorMessage(error), requestId: null }
+    return worded(() => corrections[code] ?? errorMessage(error), null)
   }
   return shownError(error)
 }
@@ -182,7 +191,7 @@ export function reportError(
     return
   const toast = showToast({
     title,
-    message: options.message ?? errorMessage(error),
+    message: () => options.message ?? errorMessage(error),
     tone: 'danger',
     requestId,
   })

@@ -38,6 +38,7 @@ import { useNotifications } from '../state/notifications'
 import { useConversations } from '../conversation/store'
 import DevicesPanel from './DevicesPanel.vue'
 import { useSettingsAddress } from './address'
+import { CODE_CORRECTIONS, EMAIL_CORRECTIONS, PASSWORD_CORRECTIONS } from './corrections'
 import { usePluginSettings } from './plugins'
 import ProvidersPanel from './ProvidersPanel.vue'
 import InstructionsPanel from './InstructionsPanel.vue'
@@ -46,20 +47,6 @@ import CredentialsPanel from './CredentialsPanel.vue'
 import UsersPanel from './UsersPanel.vue'
 import AboutPanel from './AboutPanel.vue'
 import type { Action } from '@demicodes/web-ui/ui/operations'
-
-/**
- * The refusals the user corrects in the form they filled, in the page's
- * words (`web-api.md` § Resource index): they name no request.
- */
-const PASSWORD_CORRECTIONS = { invalid_credentials: 'That is not your current password.' } as const
-const EMAIL_CORRECTIONS = {
-  ...PASSWORD_CORRECTIONS,
-  email_taken: 'That email address is already in use.',
-} as const
-const CODE_CORRECTIONS = {
-  invalid_code: 'That code is wrong or expired. Use the newest one.',
-  email_taken: 'That email address is already in use.',
-} as const
 
 defineProps<{
   /** Signs this browser out; Sign Out works until the page goes to the sign-in page. */
