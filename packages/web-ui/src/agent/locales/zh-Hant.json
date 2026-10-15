@@ -76,6 +76,8 @@
     "assistant": {
       "fork": "分岔",
       "forkWait": "此訊息完成後可分岔。",
+      "share": "分享",
+      "shareWait": "此訊息完成後可分享。",
       "regenerate": "重新產生",
       "forkFailed": "無法從此訊息分岔"
     },
@@ -167,7 +169,24 @@
     "runsOn": "執行於",
     "backToConversation": "對話",
     "archived": "此對話已封存。",
-    "restore": "取消封存對話"
+    "restore": "取消封存對話",
+    "shareConversation": "分享對話…"
+  },
+  "share": {
+    "titleConversation": "分享對話",
+    "titleAnswer": "分享回覆",
+    "whoConversation": "任何擁有連結的人都可以閱讀此對話，包括指令及其輸出。之後的訊息不包含在內。",
+    "whoAnswer": "任何擁有連結的人都可以閱讀此回覆及其所回應的訊息。",
+    "field": "分享連結",
+    "copyLink": "複製連結",
+    "updateLink": "更新連結",
+    "stopSharing": "停止分享",
+    "updated": "連結已更新",
+    "updatedMessage": "連結現在顯示對話的目前內容。",
+    "failedConversation": "無法分享對話",
+    "failedAnswer": "無法分享回覆",
+    "failedUpdate": "無法更新連結",
+    "failedStop": "無法停止分享"
   },
   "dock": {
     "scrollToBottom": "捲動到底部",

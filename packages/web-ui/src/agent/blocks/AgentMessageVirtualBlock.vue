@@ -25,6 +25,7 @@ import QueueDivider from './QueueDivider.vue'
 import PendingSubmission from '../PendingSubmission.vue'
 import ActivitySlot from './ActivitySlot.vue'
 import type { MessageForkState } from '../message-fork'
+import type { AnswerShare } from '../sharing'
 import { provideBlockScope } from '../whole-blocks'
 import IndeterminateSpinner from '../../ui/IndeterminateSpinner.vue'
 import { useTranscript } from '../edit-selection'
@@ -45,6 +46,7 @@ const props = defineProps<{
   regenerate?: () => void
   fork?: () => Promise<void>
   forkState?: MessageForkState
+  share?: AnswerShare
   /** What the provider read out of this error block's failure record. */
   failure?: ProviderFailureFacts
   /** The block just arrived in a live transcript: a chrome row slides in from the left as it fades in. */
@@ -186,6 +188,8 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         :created-at="block.createdAt"
         :fork="block.forkable ? fork : undefined"
         :fork-state="forkState"
+        :share="share"
+        :share-wait="!block.forkable"
         :regenerate="regenerate"
       />
       <div

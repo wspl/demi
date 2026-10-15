@@ -25,6 +25,7 @@ import { lookupCodeFiles } from '../api/code-files'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import type { Conversation } from '../state/types'
+import { conversationShareService } from './sharing'
 
 const store = useConversations()
 const providerSettings = useProviderSettings()
@@ -227,6 +228,13 @@ const files = computed<ConversationFiles | undefined>(() => {
 /** What a child's context card in the Agents window shows and opens beside its usage. */
 const card = useContextCard(() => files.value?.open)
 
+/** What the header's menu and an answer's footer share with, once the conversation has a record and the page knows the backend's public address. */
+const share = computed(() => {
+  const current = conversation.value
+  const publicUrl = product.snapshot?.publicUrl
+  return current?.persistence === 'synced' && publicUrl ? conversationShareService(current.id, publicUrl) : undefined
+})
+
 async function fork(request: MessageForkRequest): Promise<void> {
   const sourceId = conversation.value?.id
   if (!sourceId) {
@@ -250,6 +258,8 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :resume-at-retry="preferences.resumeAtRetry"
     @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
     :fork="fork"
+    :share="share"
+    :shares="conversation.shares"
     :select-edit="selectEdit"
     :files="files"
     :primary-host="primaryHost"

@@ -76,6 +76,8 @@
     "assistant": {
       "fork": "分叉",
       "forkWait": "此消息完成后可分叉。",
+      "share": "分享",
+      "shareWait": "此消息完成后可分享。",
       "regenerate": "重新生成",
       "forkFailed": "无法从此消息分叉"
     },
@@ -167,7 +169,24 @@
     "runsOn": "运行于",
     "backToConversation": "对话",
     "archived": "此对话已归档。",
-    "restore": "恢复对话"
+    "restore": "恢复对话",
+    "shareConversation": "分享对话…"
+  },
+  "share": {
+    "titleConversation": "分享对话",
+    "titleAnswer": "分享回复",
+    "whoConversation": "任何拥有链接的人都可以阅读此对话，包括命令及其输出。之后的消息不包括在内。",
+    "whoAnswer": "任何拥有链接的人都可以阅读此回复及其所回应的消息。",
+    "field": "分享链接",
+    "copyLink": "复制链接",
+    "updateLink": "更新链接",
+    "stopSharing": "停止分享",
+    "updated": "链接已更新",
+    "updatedMessage": "链接现在显示对话的当前内容。",
+    "failedConversation": "无法分享对话",
+    "failedAnswer": "无法分享回复",
+    "failedUpdate": "无法更新链接",
+    "failedStop": "无法停止分享"
   },
   "dock": {
     "scrollToBottom": "滚动到底部",

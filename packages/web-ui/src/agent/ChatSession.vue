@@ -8,7 +8,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { ArrowRightLeft, ChevronDown, PanelLeft, PanelRight, Play, TextCursorInput } from '@lucide/vue'
+import { ArrowRightLeft, ChevronDown, Ellipsis, PanelLeft, PanelRight, Play, Share, TextCursorInput } from '@lucide/vue'
 import type { InstructionEntry, TranscriptVersion } from '@demicodes/protocol'
 import {
   beginMessageEdit,
@@ -37,6 +37,8 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
 import type { HostMenuHost } from '../hosts/types'
 import type { MessageForkHandler } from './message-fork'
+import { shareOperation, useShare, type ExistingShare, type ShareService } from './sharing'
+import ShareDialog from './ShareDialog.vue'
 import type { UsageLimits } from './context-usage'
 
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
@@ -46,7 +48,10 @@ import { conversationTitle } from './conversation-title'
 import Sheet from '../ui/Sheet.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import RenameDialog from '../ui/RenameDialog.vue'
+import Dropdown from '../ui/Dropdown.vue'
 import Menu from '../ui/Menu.vue'
+import MenuDivider from '../ui/MenuDivider.vue'
+import MenuItem from '../ui/MenuItem.vue'
 import SidebarSelectionMenu from '../sidebar/SidebarSelectionMenu.vue'
 import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
 import { copyId } from './copy-id'
@@ -80,6 +85,14 @@ const props = withDefaults(defineProps<{
   messageEdit?: MessageEditState | null
   selectEdit?: EditSelectionHandler
   fork?: MessageForkHandler
+  /**
+   * Shares the conversation, and an answer by its footer's Share, as the
+   * share dialog asks (`sharing.md`); absent, the conversation has nothing to
+   * share yet, as one not saved, and neither control is offered.
+   */
+  share?: ShareService
+  /** The conversation's shares, which the dialog opens on instead of making another. */
+  shares?: readonly ExistingShare[]
   /** Whether the app frame's work panel is open; absent when the host has none. */
   asideOpen?: boolean
   /**
@@ -140,6 +153,9 @@ const props = withDefaults(defineProps<{
 })
 /** The share of the session area's height the dock's windows keep; the host keeps it (`dock-window.ts`). */
 const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_WINDOW_SHARE.default })
+
+const sharing = useShare(() => props.share, () => props.shares ?? [])
+const shareConversation = { kind: 'conversation' } as const
 
 const emit = defineEmits<{
   /** The dock windows' share settled: a drag ended, a key or a double-click applied. */
@@ -494,9 +510,18 @@ watch(
         <template #header>
           <p class="break-words text-[15px] font-medium text-fg-emphasis">{{ shownTitle }}</p>
         </template>
-        <Menu v-if="listed">
+        <Menu v-if="listed || share">
+          <template v-if="share">
+            <MenuItem
+              :icon="Share"
+              :label="t('session.shareConversation')"
+              @select="fromTitleSheet(() => void sharing.start(shareConversation))"
+            />
+            <MenuDivider v-if="listed" />
+          </template>
           <SidebarSelectionMenu
-          :targets="[{ id: conversation.id, pinned: listed.pinned }]"
+            v-if="listed"
+            :targets="[{ id: conversation.id, pinned: listed.pinned }]"
             shown
             @rename="fromTitleSheet(() => (renaming = true))"
             @copy-id="fromTitleSheet(() => void copyId(conversation.id))"
@@ -576,6 +601,28 @@ watch(
         <div class="min-w-0 flex-1">
           <slot name="workspace" />
         </div>
+        <Dropdown v-if="share" :overlay-store="appOverlayStore">
+          <template #trigger="{ isOpen }">
+            <Tooltip :content="t('panel.more')" class="shrink-0">
+              <IconButton
+                :icon="Ellipsis"
+                variant="ghost"
+                :aria-label="t('panel.more')"
+                :pressed="isOpen"
+              />
+            </Tooltip>
+          </template>
+          <template #content="{ close }">
+            <Menu @click="close">
+              <MenuItem
+                :icon="Share"
+                :label="t('session.shareConversation')"
+                :operation="shareOperation(shareConversation)"
+                @select="sharing.start(shareConversation)"
+              />
+            </Menu>
+          </template>
+        </Dropdown>
         <!-- Only while the panel is closed: open, its own fold control closes it. -->
         <Tooltip
           v-if="asideOpen === false"
@@ -623,6 +670,7 @@ watch(
             :removing="removing"
             :read-only="!canEdit"
             :fork="fork"
+            :share="share ? (blockId) => sharing.start({ kind: 'answer', blockId }) : undefined"
             :edit-target-id="messageEdit?.request.targetBlockId"
             @retry-submission="(id) => emit('retrySubmission', id)"
             :bottom-offset="surface?.dockHeight ?? 0"
@@ -716,5 +764,18 @@ watch(
         </template>
       </SessionSurface>
     </div>
+    <ShareDialog
+      v-if="sharing.shown.value"
+      :is-open="sharing.isOpen.value"
+      :overlay-store="appOverlayStore"
+      :kind="sharing.shown.value.target.kind"
+      :url="sharing.shown.value.url"
+      :token="sharing.shown.value.token"
+      :copied="sharing.copied.value"
+      :on-update="sharing.update"
+      :on-stop="sharing.stop"
+      @copy="sharing.copy"
+      @close="sharing.close"
+    />
   </section>
 </template>

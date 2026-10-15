@@ -76,6 +76,8 @@
     "assistant": {
       "fork": "Fork",
       "forkWait": "Fork is available after this message completes.",
+      "share": "Share",
+      "shareWait": "Share is available after this message completes.",
       "regenerate": "Regenerate",
       "forkFailed": "Could Not Fork from This Message"
     },
@@ -167,7 +169,24 @@
     "runsOn": "Runs On",
     "backToConversation": "Conversation",
     "archived": "This conversation is archived.",
-    "restore": "Restore Conversation"
+    "restore": "Restore Conversation",
+    "shareConversation": "Share Conversation…"
+  },
+  "share": {
+    "titleConversation": "Share Conversation",
+    "titleAnswer": "Share Answer",
+    "whoConversation": "Anyone with the link can read this conversation, including commands and their output. Later messages are not included.",
+    "whoAnswer": "Anyone with the link can read this answer and the message it replies to.",
+    "field": "Share link",
+    "copyLink": "Copy Link",
+    "updateLink": "Update Link",
+    "stopSharing": "Stop Sharing",
+    "updated": "Link Updated",
+    "updatedMessage": "The link now shows the conversation as it is.",
+    "failedConversation": "Could Not Share Conversation",
+    "failedAnswer": "Could Not Share Answer",
+    "failedUpdate": "Could Not Update Link",
+    "failedStop": "Could Not Stop Sharing"
   },
   "dock": {
     "scrollToBottom": "Scroll to bottom",

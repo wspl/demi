@@ -8,6 +8,7 @@ import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import { demoModel } from '../fixtures/blocks'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { useGalleryShares } from '../fixtures/sharing'
 
 const createdAt = new Date(Date.now() - 35_000).toISOString()
 const source = reactive<ChatSessionState>({
@@ -31,6 +32,7 @@ const source = reactive<ChatSessionState>({
   ]),
 })
 const current = ref<ChatSessionState>(source)
+const { shares, service: share } = useGalleryShares()
 const outcome = ref<'success' | 'hold' | 'failure'>('success')
 const completion = shallowRef<Deferred<void> | null>(null)
 const failed = new Set<string>()
@@ -74,7 +76,7 @@ onBeforeUnmount(() => completion.value?.reject(new Error('Preview closed')))
       <Button v-if="current.id !== source.id" @click="current = source">Back to Source</Button>
     </div>
     <div class="gallery-frame flex h-[440px] bg-surface">
-      <ChatSession :conversation="current" :has-provider="true" :fork="fork" />
+      <ChatSession :conversation="current" :has-provider="true" :fork="fork" :share="share" :shares="shares" />
     </div>
   </div>
 </template>
