@@ -1,13 +1,13 @@
 import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
 import { httpStatusLine } from '@demicodes/utils'
-import { errorBodySchema, type ErrorCode } from './generated/web-api'
+import { errorBodySchema, type ErrorBody, type ErrorCode } from './generated/web-api'
 
 /** The header every answer of the backend names its request in. */
 export const REQUEST_ID_HEADER = 'X-Request-Id'
 
 /**
- * A request the backend refused, with its `{ code, message, requestId }`;
+ * A request the backend refused, with its `{ code, message, params, requestId }`;
  * `code` is null when something in front of the backend answered instead,
  * and `requestId` too unless the answer still named its request.
  */
@@ -32,6 +32,8 @@ export class ApiError extends Error {
   readonly requestId: string | null
   /** With `provider_busy` for a sign-in's start, the caller's own sign-in that holds the entry. */
   readonly loginId: string | null
+  /** The values the page's text for `code` is filled with (`localization.md` § Text from the backend). */
+  readonly params: NonNullable<ErrorBody['params']>
 
   constructor(
     status: number,
@@ -44,6 +46,7 @@ export class ApiError extends Error {
     credentialId: string | null = null,
     requestId: string | null = headers.get(REQUEST_ID_HEADER),
     loginId: string | null = null,
+    params: NonNullable<ErrorBody['params']> = {},
   ) {
     super(message)
     this.name = 'ApiError'
@@ -56,6 +59,7 @@ export class ApiError extends Error {
     this.credentialId = credentialId
     this.requestId = requestId
     this.loginId = loginId
+    this.params = params
   }
 }
 
@@ -281,14 +285,14 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Pr
   throw apiError(response.status, await response.text(), response.headers, response.statusText)
 }
 
-/**
- * The error a failed answer stands for: the backend's `{ code, message }`,
- * or its status alone when something in front of the backend answered. An
- * expired session is noticed on the way.
- */
 /** `Retry-After` in seconds; its date form is not one the backend sends. */
 const retryAfterSchema = z.coerce.number().int().nonnegative()
 
+/**
+ * The error a failed answer stands for: the backend's `{ code, message,
+ * params }`, or its status alone when something in front of the backend
+ * answered. An expired session is noticed on the way.
+ */
 export function apiError(status: number, text: string, headers: Headers = new Headers(), statusText = ''): ApiError {
   const retryAfter = headers.get('Retry-After')
   let body: unknown
@@ -313,6 +317,7 @@ export function apiError(status: number, text: string, headers: Headers = new He
     parsed.success ? parsed.data.credentialId ?? null : null,
     parsed.success ? parsed.data.requestId : headers.get(REQUEST_ID_HEADER),
     parsed.success ? parsed.data.loginId ?? null : null,
+    parsed.success ? parsed.data.params ?? {} : {},
   )
 }
 

@@ -12,6 +12,7 @@ import { baseName } from '@demicodes/utils'
 import { provideMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { RouterLink, RouterView, useRoute } from 'vue-router'
 import GalleryAppearanceMenu from './components/GalleryAppearanceMenu.vue'
+import GalleryLanguageMenu from './components/GalleryLanguageMenu.vue'
 import { useGalleryView } from './gallery-views'
 import { galleryBlobUrl } from './fixtures/blobs'
 import { galleryConversationFiles } from './fixtures/message-files'
@@ -98,7 +99,10 @@ const mainClass = computed(() => {
       class="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-line bg-surface px-5"
     >
       <Segmented v-model="view" :options="views" />
-      <GalleryAppearanceMenu />
+      <div class="flex items-center gap-1">
+        <GalleryLanguageMenu />
+        <GalleryAppearanceMenu />
+      </div>
     </header>
 
     <ScrollArea ref="main" class="flex-1" :viewport-class="`gallery-viewport ${mainClass}`">

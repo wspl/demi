@@ -40,6 +40,12 @@ export type { SettingsRowStatus } from '@demicodes/web-ui/settings/types'
 // The style a plugin's own prop of UI text declares (the gallery's Writing page).
 export type { HeadlineText, PlaceholderText, SentenceText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 
+// The plugin's own text in every language Demi speaks (`localization.md` §
+// Where the text lives): `definePluginText(PLUGIN, { en, ... })` in its
+// `src/locales/text.ts`.
+export { definePluginText, type Catalogue, type Text } from '@demicodes/web-ui/i18n/text'
+export type { Language } from '@demicodes/web-ui/i18n/languages'
+
 // The plugin kit (`plugin-pages.md` § The plugin kit).
 // Streams: the liveness a stream's protocol uses.
 export {

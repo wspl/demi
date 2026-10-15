@@ -1,3 +1,5 @@
+import { formatDecimal } from './numbers'
+
 const THOUSAND = 1_000
 const MILLION = 1_000_000
 
@@ -13,10 +15,9 @@ export function formatTokens(tokens: number | null): string {
     return `${scaled(tokens / MILLION)}M`
   if (tokens >= THOUSAND)
     return `${scaled(tokens / THOUSAND)}K`
-  return String(tokens)
+  return formatDecimal(tokens, 0)
 }
 
 function scaled(value: number): string {
-  const text = value.toFixed(1)
-  return text.endsWith('.0') ? text.slice(0, -2) : text
+  return formatDecimal(value, 1)
 }

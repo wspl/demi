@@ -1,16 +1,22 @@
-import { createApp } from 'vue'
+import { createApp, watch } from 'vue'
+import { createPageI18n, setPageLanguage } from '@demicodes/web-ui/i18n/text'
+import { resolveLanguage } from '@demicodes/web-ui/i18n/languages'
 import { applyThemeToDocument } from '@demicodes/web-ui/theme/appTheme'
 import { applyTranscriptTextSize, DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
 import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
 import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
 import { simulatedRequestId } from './fixtures/request-failures'
-import { persistGalleryState } from './gallery-state'
+import { galleryState, persistGalleryState } from './gallery-state'
 import { router } from './router'
 import { installSizeAudit } from './size-audit'
 import App from './App.vue'
 import './style.css'
 
+// The gallery speaks the language its chrome's switch, or Settings ›
+// General's specimen, chose, as the product speaks the user's.
+const i18n = createPageI18n(resolveLanguage(galleryState.language, navigator.languages))
+watch(() => resolveLanguage(galleryState.language, navigator.languages), setPageLanguage, { immediate: true })
 applyThemeToDocument()
 persistGalleryState()
 // The transcript reads the user's text size, as in the product; Settings'
@@ -26,5 +32,5 @@ setHistoryTraversal((delta) => router.options.history.go(delta, false))
 reportPageErrorsWith((report) => new Promise((resolve) => {
   setTimeout(() => resolve(simulatedRequestId(`${report.title}\n${report.detail}`)), 400)
 }))
-createApp(App).use(router).mount('#app')
+createApp(App).use(router).use(i18n).mount('#app')
 installSizeAudit((run) => router.afterEach(run))

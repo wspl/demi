@@ -4,6 +4,7 @@ import { shownError, type ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import Button from '../ui/Button.vue'
 import TextArea from '../ui/TextArea.vue'
+import { formatCount } from '../ui/numbers'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 
@@ -88,7 +89,7 @@ async function submit(): Promise<void> {
           </div>
           <span v-else />
           <span class="shrink-0 tabular-nums" :class="tooLong ? 'text-on-danger' : 'text-fg-subtle'">
-            {{ length.toLocaleString('en-US') }} / {{ LIMIT.toLocaleString('en-US') }}
+            {{ formatCount(length) }} / {{ formatCount(LIMIT) }}
           </span>
         </div>
       </div>

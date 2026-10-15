@@ -405,13 +405,13 @@ function resetShortcuts(): void {
   >
     <SettingsGeneral
       v-if="section === 'general'"
-      language="English"
+      :language="preferences.language"
       :theme="resources.appearance.theme"
       :tone="resources.appearance.tone"
       :accent="resources.appearance.accent"
       :font-size="resources.appearance.fontSize"
       :overlay-store="appOverlayStore"
-      :languages="['English']"
+      @update:language="preferences.update({ language: $event })"
       @update:theme="preferences.update({ appearance: { theme: $event } })"
       @update:tone="preferences.update({ appearance: { tone: $event } })"
       @update:accent="preferences.update({ appearance: { accent: $event } })"

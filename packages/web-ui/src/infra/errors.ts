@@ -1,3 +1,4 @@
+import { find } from '../locales/text'
 import { showToast, showToastRequestId } from './toast'
 import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
@@ -63,10 +64,33 @@ export interface ShownError {
   requestId: string | null
 }
 
+/**
+ * What the page says of `error`, the one place a failure becomes words
+ * (`localization.md` § Text from the backend): a refusal's catalogue text
+ * for its `code`, filled with its `params`, such as `{ limit: 200 }`; its
+ * own `message` for a code the catalogue has no text for, as a newer
+ * backend may send, and for any other failure.
+ */
+export function errorMessage(error: unknown): SentenceText {
+  if (!(error instanceof Error)) {
+    return String(error)
+  }
+  if ('code' in error && typeof error.code === 'string') {
+    const params = 'params' in error && typeof error.params === 'object' && error.params !== null
+      ? Object.fromEntries(Object.entries(error.params))
+      : {}
+    const worded = find(`errors.${error.code}`, params)
+    if (worded !== null) {
+      return worded
+    }
+  }
+  return error.message
+}
+
 /** `error` as the page shows it, in `message`'s words when given. */
 export function shownError(error: unknown, message?: SentenceText): ShownError {
   return {
-    message: message ?? (error instanceof Error ? error.message : String(error)),
+    message: message ?? errorMessage(error),
     requestId: requestIdOf(error),
   }
 }
@@ -96,7 +120,7 @@ export function formError(
 ): ShownError {
   const code = error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : null
   if (code !== null && code in corrections) {
-    return { message: corrections[code] ?? (error instanceof Error ? error.message : String(error)), requestId: null }
+    return { message: corrections[code] ?? errorMessage(error), requestId: null }
   }
   return shownError(error)
 }
@@ -158,7 +182,7 @@ export function reportError(
     return
   const toast = showToast({
     title,
-    message: options.message ?? message,
+    message: options.message ?? errorMessage(error),
     tone: 'danger',
     requestId,
   })

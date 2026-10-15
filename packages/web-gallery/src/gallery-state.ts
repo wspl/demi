@@ -12,6 +12,7 @@ import {
   themeModeSchema,
   type ThemeMode,
 } from '@demicodes/web-ui/theme/appTheme'
+import { LANGUAGES, type LanguageChoice } from '@demicodes/web-ui/i18n/languages'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 
 const paradigmIdSchema = z.enum(['ink', 'warm', 'flat'])
@@ -24,7 +25,6 @@ export type AccentId = ProductAccent
 export type FontId = z.infer<typeof fontIdSchema>
 export const FONT_IDS = fontIdSchema.options
 
-export const ACCENTS = PRODUCT_ACCENTS
 
 /**
  * A theme the gallery can show: the product's two tones, Ink and Warm, and
@@ -77,6 +77,8 @@ export interface GalleryState {
   mode: ThemeMode
   accent: AccentId
   font: FontId
+  /** The language the gallery speaks, as the product's Settings › General chooses it. */
+  language: LanguageChoice
 }
 
 function paradigmById(id: ParadigmId): Paradigm {
@@ -96,6 +98,7 @@ const storedGalleryStateSchema = z.object({
   mode: themeModeSchema,
   accent: accentIdSchema,
   font: fontIdSchema,
+  language: z.enum(['system', ...LANGUAGES]),
 })
 
 function readStored(): GalleryState | null {
@@ -118,6 +121,7 @@ function initialState(): GalleryState {
     mode: 'dark',
     accent: DEFAULT_ACCENT,
     font: 'system',
+    language: 'system',
   }
 }
 

@@ -1,24 +1,72 @@
-import { formatSpan } from '@demicodes/utils'
-import dayjs from 'dayjs'
-import relativeTime from 'dayjs/plugin/relativeTime'
+import { pageLanguage } from '../i18n/text'
+import { t } from '../locales/text'
 
-dayjs.extend(relativeTime)
-
-// The interface's dates and times, whatever the browser's locale: English,
-// with a 12-hour clock everywhere ("6:12 PM", never "18:12"). The pieces
-// below are the ones every wording shares.
-const CLOCK = 'h:mm A'
-const MONTH_DAY = 'MMM D'
-const MONTH_DAY_YEAR = 'MMM D, YYYY'
+// The interface's dates, times, ages and spans, in the page's language
+// (`localization.md` § Where the text lives): Intl says each date and time
+// as the language does ("6:12 PM", "下午6:12"), and the catalogue words the
+// compact forms Intl has no words for ("2h", "2 小时").
 
 const MINUTE_MS = 60_000
 const HOUR_MS = 60 * MINUTE_MS
 const DAY_MS = 24 * HOUR_MS
 const WEEK_MS = 7 * DAY_MS
 
-/** `inYear` for a moment in `now`'s year, `otherYear` for one in any other: a year is named only when it is not this one. */
-function byYear(moment: dayjs.Dayjs, now: Date, inYear: string, otherYear: string): string {
-  return moment.year() === dayjs(now).year() ? inYear : otherYear
+/** The moment `timestamp` in Intl's words of `options`. */
+function intl(timestamp: Date, options: Intl.DateTimeFormatOptions): string {
+  return new Intl.DateTimeFormat(pageLanguage(), options).format(timestamp)
+}
+
+/** A time on the clock: "6:12 PM". */
+function clock(moment: Date): string {
+  return intl(moment, { hour: 'numeric', minute: '2-digit' })
+}
+
+/** A day of `now`'s year without its year, "Sep 2", or of another with it, "Sep 2, 2025". */
+function day(moment: Date, now: Date): string {
+  const year = moment.getFullYear() === now.getFullYear() ? undefined : 'numeric'
+  return intl(moment, { month: 'short', day: 'numeric', year })
+}
+
+/** A weekday in short: "Sat". */
+function weekday(moment: Date): string {
+  return intl(moment, { weekday: 'short' })
+}
+
+/** Whether `a` and `b` fall on one day of the local calendar. */
+function sameDay(a: Date, b: Date): boolean {
+  return a.toDateString() === b.toDateString()
+}
+
+/** `moment` moved to the start of its minute, or of the next one with `up` when it is inside one. */
+function toMinute(moment: Date, up: boolean): Date {
+  const start = Math.floor(moment.getTime() / MINUTE_MS) * MINUTE_MS
+  return new Date(up && start < moment.getTime() ? start + MINUTE_MS : start)
+}
+
+/**
+ * A distance in time as Intl says it for the page's language, rounded to
+ * its largest unit as a person would: "3 minutes ago", "in 2 hours".
+ */
+function relative(ms: number): string {
+  const format = new Intl.RelativeTimeFormat(pageLanguage(), { numeric: 'auto' })
+  const sign = Math.sign(ms) || 1
+  const seconds = Math.abs(ms) / 1000
+  const units: [Intl.RelativeTimeFormatUnit, number][] = [
+    ['minute', 60],
+    ['hour', 60 * 60],
+    ['day', 24 * 60 * 60],
+    ['month', 30 * 24 * 60 * 60],
+    ['year', 365 * 24 * 60 * 60],
+  ]
+  // Each unit holds until the next one would round to one: 45 minutes is
+  // "1 hour", 22 hours "1 day", 26 days "1 month" and 11 months "1 year".
+  const next: Record<string, number> = { minute: 45 * 60, hour: 22 * 60 * 60, day: 26 * 24 * 60 * 60, month: 320 * 24 * 60 * 60 }
+  for (const [unit, size] of units) {
+    if (unit === 'year' || seconds < next[unit]!) {
+      return format.format(sign * Math.max(1, Math.round(seconds / size)), unit)
+    }
+  }
+  throw new Error('unreachable: the year unit always answers')
 }
 
 /**
@@ -28,8 +76,8 @@ function byYear(moment: dayjs.Dayjs, now: Date, inYear: string, otherYear: strin
  * seconds ago" rather than "in a few seconds".
  */
 export function formatPast(timestamp: string, now: Date | number): string {
-  const moment = dayjs(timestamp)
-  return (moment.isAfter(now) ? dayjs(now) : moment).from(now)
+  const past = Math.max(0, new Date(now).getTime() - new Date(timestamp).getTime())
+  return past < 45_000 ? t('dates.fewSecondsAgo') : relative(-past)
 }
 
 /**
@@ -37,8 +85,8 @@ export function formatPast(timestamp: string, now: Date | number): string {
  * passed reads "in a few seconds", since what it names is about to happen.
  */
 export function formatUntil(timestamp: string, now: Date | number): string {
-  const moment = dayjs(timestamp)
-  return moment.isAfter(now) ? moment.from(now) : 'in a few seconds'
+  const left = new Date(timestamp).getTime() - new Date(now).getTime()
+  return left < 45_000 ? t('dates.inFewSeconds') : relative(left)
 }
 
 /**
@@ -47,24 +95,25 @@ export function formatUntil(timestamp: string, now: Date | number): string {
  * 2", with the year when it is not `now`'s.
  */
 export function formatAge(timestamp: string, now: Date | number): string {
-  const moment = dayjs(timestamp)
-  const past = Math.max(0, dayjs(now).diff(moment))
+  const moment = new Date(timestamp)
+  const at = new Date(now)
+  const past = Math.max(0, at.getTime() - moment.getTime())
   if (past < MINUTE_MS)
-    return 'now'
+    return t('dates.age.now')
   if (past < HOUR_MS)
-    return `${Math.floor(past / MINUTE_MS)}m`
+    return t('dates.age.minutes', { count: Math.floor(past / MINUTE_MS) })
   if (past < DAY_MS)
-    return `${Math.floor(past / HOUR_MS)}h`
+    return t('dates.age.hours', { count: Math.floor(past / HOUR_MS) })
   if (past < WEEK_MS)
-    return `${Math.floor(past / DAY_MS)}d`
+    return t('dates.age.days', { count: Math.floor(past / DAY_MS) })
   if (past < 5 * WEEK_MS)
-    return `${Math.floor(past / WEEK_MS)}w`
-  return moment.format(byYear(moment, now instanceof Date ? now : new Date(now), MONTH_DAY, MONTH_DAY_YEAR))
+    return t('dates.age.weeks', { count: Math.floor(past / WEEK_MS) })
+  return day(moment, at)
 }
 
-/** A day in the interface's English: "October 7, 2026". */
+/** A day in full: "October 7, 2026". */
 export function formatDay(timestamp: string): string {
-  return dayjs(timestamp).format('MMMM D, YYYY')
+  return intl(new Date(timestamp), { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
 /** The Modified column and a file's card, one shape for every row: "Sep 2, 2026 6:12 PM"; empty for an unknown time. */
@@ -72,8 +121,11 @@ export function formatModified(iso: string | undefined): string {
   if (!iso) {
     return ''
   }
-  const time = dayjs(iso)
-  return time.isValid() ? time.format(`${MONTH_DAY_YEAR} ${CLOCK}`) : ''
+  const time = new Date(iso)
+  if (Number.isNaN(time.getTime())) {
+    return ''
+  }
+  return `${intl(time, { month: 'short', day: 'numeric', year: 'numeric' })} ${clock(time)}`
 }
 
 /**
@@ -81,8 +133,34 @@ export function formatModified(iso: string | undefined): string {
  * with its year when that is not `now`'s year.
  */
 export function formatMoment(timestamp: string, now: Date = new Date()): string {
-  const moment = dayjs(timestamp)
-  return moment.format(byYear(moment, now, `dddd, MMMM D [at] ${CLOCK}`, `dddd, MMMM D, YYYY [at] ${CLOCK}`))
+  const moment = new Date(timestamp)
+  const year = moment.getFullYear() === now.getFullYear() ? undefined : 'numeric'
+  return intl(moment, { weekday: 'long', month: 'long', day: 'numeric', year, hour: 'numeric', minute: '2-digit' })
+}
+
+/**
+ * A span of time in the interface's duration words, counted as a timer
+ * counts: "42s", "2m 14s" (the seconds left out on the minute), "1h 5m"
+ * (the minutes left out on the hour, the seconds never shown). Every unit is
+ * floored, so a span reads as what has fully passed. The thinking label, the
+ * command time tag, the agent status bar and the reset times all say their
+ * spans with it.
+ */
+export function formatSpan(ms: number): string {
+  const seconds = Math.floor(Math.max(0, ms) / 1000)
+  if (seconds < 60) {
+    return t('dates.span.seconds', { seconds })
+  }
+  const minutes = Math.floor(seconds / 60)
+  if (minutes < 60) {
+    return seconds % 60
+      ? t('dates.span.minutesSeconds', { minutes, seconds: seconds % 60 })
+      : t('dates.span.minutes', { minutes })
+  }
+  const hours = Math.floor(minutes / 60)
+  return minutes % 60
+    ? t('dates.span.hoursMinutes', { hours, minutes: minutes % 60 })
+    : t('dates.span.hours', { hours })
 }
 
 /**
@@ -96,17 +174,15 @@ export function formatMoment(timestamp: string, now: Date = new Date()): string 
  * as the line that says an agent moved to another account does.
  */
 export function formatRetryAt(verb: 'Resets' | 'Resume' | 'resetting', timestamp: string, now: Date): string {
-  const exact = dayjs(timestamp)
-  const minute = exact.startOf('minute')
-  const moment = minute.isSame(exact) ? minute : minute.add(1, 'minute')
-  const clock = moment.format(CLOCK)
-  if (moment.isSame(now, 'day')) {
-    return `${verb} at ${clock}`
+  const moment = toMinute(new Date(timestamp), true)
+  const at = clock(moment)
+  if (sameDay(moment, now)) {
+    return t(`dates.retry.${verb}.today`, { clock: at })
   }
-  if (Math.abs(moment.diff(now)) < WEEK_MS - DAY_MS) {
-    return `${verb} ${moment.format('ddd')} at ${clock}`
+  if (Math.abs(moment.getTime() - now.getTime()) < WEEK_MS - DAY_MS) {
+    return t(`dates.retry.${verb}.weekday`, { weekday: weekday(moment), clock: at })
   }
-  return `${verb} ${moment.format(byYear(moment, now, MONTH_DAY, MONTH_DAY_YEAR))} at ${clock}`
+  return t(`dates.retry.${verb}.day`, { day: day(moment, now), clock: at })
 }
 
 /**
@@ -122,25 +198,25 @@ export function formatRetryAt(verb: 'Resets' | 'Resume' | 'resetting', timestamp
  * minute.
  */
 export function formatReset(timestamp: string, now: Date): string {
-  const left = dayjs(timestamp).diff(now)
+  const left = new Date(timestamp).getTime() - now.getTime()
   if (left <= 0) {
-    return 'Resets now'
+    return t('dates.reset.now')
   }
   if (left < MINUTE_MS) {
-    return 'Resets in <1m'
+    return t('dates.reset.underMinute')
   }
   if (left < HOUR_MS) {
-    return `Resets in ${Math.floor(left / MINUTE_MS)}m`
+    return t('dates.reset.in', { span: t('dates.span.minutes', { minutes: Math.floor(left / MINUTE_MS) }) })
   }
   if (left < DAY_MS) {
-    return `Resets in ${formatSpan(left)}`
+    return t('dates.reset.in', { span: formatSpan(left) })
   }
   // A vendor states a reset to the second or less, as 3:59:59.6 PM for
   // 4:00 PM: a moment is named by its nearest minute.
-  const moment = dayjs(timestamp).add(30, 'second').startOf('minute')
+  const moment = toMinute(new Date(new Date(timestamp).getTime() + 30_000), false)
   if (left < WEEK_MS) {
     // 7 days ahead would name today's weekday, so the weekday stops at 6.
-    return `Resets ${moment.format(`ddd ${CLOCK}`)}`
+    return t('dates.reset.weekday', { weekday: weekday(moment), clock: clock(moment) })
   }
-  return `Resets ${moment.format(byYear(moment, now, MONTH_DAY, MONTH_DAY_YEAR))}`
+  return t('dates.reset.day', { day: day(moment, now) })
 }

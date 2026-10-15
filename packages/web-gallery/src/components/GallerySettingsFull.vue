@@ -289,7 +289,7 @@ function resetShortcuts() {
 <template>
   <SettingsGeneral
     v-if="tab === 'general'"
-    v-model:language="s.general.language"
+    v-model:language="galleryState.language"
     v-model:tone="tone"
     v-model:accent="accent"
     v-model:font-size="s.general.fontSize"
@@ -297,7 +297,6 @@ function resetShortcuts() {
     v-model:resume-at-retry="galleryMessages.resumeAtRetry"
     :theme="s.general.theme"
     :overlay-store="appOverlayStore"
-    :languages="['English', '简体中文', '日本語']"
     @update:theme="setThemeChoice"
   />
 
