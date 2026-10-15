@@ -64,6 +64,9 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
         .json::<demi_web_api_protocol::conversations::ConversationUpdate>()
         .conversation
         .model;
+    backend
+        .patch(&source_path, &master, json!({ "workflow": { "type": "none" } }))
+        .await;
     let mut source = Socket::connect(&backend, &master, FIRST).await;
     source.open().await;
     vendor.respond(answer(&["A1"], 1, 1));
@@ -102,8 +105,9 @@ async fn a_fork_keeps_the_history_through_the_chosen_text_while_the_source_runs_
     );
     assert_eq!(destination.status, ConversationStatus::Idle);
     assert_eq!(
-        destination.model, settings,
-        "the destination inherits the source's model settings"
+        (&destination.model, &destination.workflow),
+        (&settings, &demi_shared_types::WorkflowChoice::None),
+        "the destination keeps the source's model settings and workflow"
     );
     // A Cloud destination shares the source's directory.
     let directory = format!("/home/demi/sessions/{FIRST}");

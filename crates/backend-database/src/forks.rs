@@ -47,6 +47,10 @@ pub struct ForkMetadata {
     #[serde(deserialize_with = "Option::deserialize")]
     #[garde(dive)]
     pub model: Option<ModelSelection>,
+    /// The source's Workflow menu choice, which the destination keeps as it
+    /// keeps the model (`subagents.md` § Workflows of a project).
+    #[garde(dive)]
+    pub workflow: WorkflowChoice,
     #[garde(skip)]
     pub created_at: Timestamp,
     #[garde(dive)]
@@ -136,7 +140,7 @@ impl ControlService {
     }
 
     /// Publishes the destination `id` reserved: its conversation first in
-    /// the owner's sidebar, with the title, target, model and attached hosts
+    /// the owner's sidebar, with the title, target, model, workflow and attached hosts
     /// of the attempt, the title the user's. A destination published already
     /// is answered as it is. An attached host whose device is gone since is
     /// left out, as its revocation left the source.
@@ -162,8 +166,7 @@ impl ControlService {
                     pinned: false,
                     target: &metadata.target,
                     model: metadata.model.as_ref(),
-                    // A Fork is a new conversation, which starts with Default.
-                    workflow: &WorkflowChoice::Default,
+                    workflow: &metadata.workflow,
                     context_version: metadata.context_version,
                     at: metadata.created_at,
                 },

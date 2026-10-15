@@ -88,6 +88,7 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
         }
     }
     preferences.last_model = patch.last_model.or(preferences.last_model);
+    preferences.last_workflow = patch.last_workflow.or(preferences.last_workflow);
     preferences.last_project_host = patch.last_project_host.or(preferences.last_project_host);
     preferences.language = patch.language.or(preferences.language);
     preferences.locale = patch.locale.or(preferences.locale);

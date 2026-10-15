@@ -3,11 +3,13 @@
 //! target and the page calls a project. A workspace is a pointer: renaming or
 //! deleting it touches no file.
 
-use demi_shared_types::Timestamp;
+use demi_shared_types::{Timestamp, WorkflowChoice};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use serde_with::rust::unwrap_or_skip;
 
+use crate::conversations::ModelSettings;
 use crate::files::AbsolutePath;
 use crate::ids::{DeviceId, WorkspaceId};
 use crate::text::Trimmed;
@@ -25,6 +27,17 @@ pub struct WorkspaceDto {
     pub path: String,
     pub name: String,
     pub created_at: Timestamp,
+    /// The model settings the project's next conversation starts with, as
+    /// last chosen in it (`web-api.md` § User preferences); absent before
+    /// the first choice.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "ModelSettings")]
+    pub last_model: Option<ModelSettings>,
+    /// The Workflow menu choice the project's next conversation starts
+    /// with; absent before the first choice.
+    #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
+    #[schemars(with = "WorkflowChoice")]
+    pub last_workflow: Option<WorkflowChoice>,
 }
 
 /// `GET /workspaces`: the user's workspaces, in their sidebar order.
@@ -64,10 +77,21 @@ pub enum CreateWorkspace {
     },
 }
 
-/// `PATCH /workspaces/:id`: a new name.
+/// `PATCH /workspaces/:id`: a new name, or the model settings or workflow
+/// last chosen in the project; each field replaces its value.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
-#[serde(deny_unknown_fields)]
-pub struct RenameWorkspace {
-    #[garde(length(chars, min = 1, max = WORKSPACE_NAME_MAX))]
-    pub name: Trimmed,
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChangeWorkspace {
+    #[serde(default, with = "unwrap_or_skip")]
+    #[schemars(with = "Trimmed")]
+    #[garde(inner(length(chars, min = 1, max = WORKSPACE_NAME_MAX)))]
+    pub name: Option<Trimmed>,
+    #[serde(default, with = "unwrap_or_skip")]
+    #[schemars(with = "ModelSettings")]
+    #[garde(dive)]
+    pub last_model: Option<ModelSettings>,
+    #[serde(default, with = "unwrap_or_skip")]
+    #[schemars(with = "WorkflowChoice")]
+    #[garde(dive)]
+    pub last_workflow: Option<WorkflowChoice>,
 }

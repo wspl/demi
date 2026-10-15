@@ -595,6 +595,7 @@ mod tests {
                 title: Some("Fork".into()),
                 target: on_alpha.clone(),
                 model: None,
+                workflow: demi_shared_types::WorkflowChoice::Default,
                 created_at: "2026-10-14T08:00:00Z".parse().unwrap(),
                 attached_hosts: Vec::new(),
                 context_version: 7,
