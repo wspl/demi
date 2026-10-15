@@ -4,10 +4,11 @@ Demi has no general permission system: the agent runs commands on its Host,
 edits files and opens pages without asking, because the user chose the Host
 and the working directory. It asks only before an agent acts on Demi itself,
 on what the user owns beyond the conversation: managing the user's skills,
-organizing conversations and projects, managing the devices a conversation
-reaches; later, for example, reading another conversation. Each such power is
-one broad **category**, and a user who allows a category allows it for one
-conversation ([Grants](#grants)).
+organizing conversations and projects, reaching a host the conversation
+could not reach before; later, for example, reading another conversation.
+Each such power is one broad **category**, and a user who allows a category
+allows it for one conversation ([Grants](#grants)); a host is allowed on its
+own, one host at a time ([Hosts](#hosts)).
 
 ## A request, end to end
 
@@ -123,10 +124,9 @@ The check is the same for a plugin's command, the product's `demi host` and
 the agent runtime's `demi agent`; no handler takes part in it, and a handler
 never sees a permission.
 
-- **The categories the call needs**: its leaf's `permission`, and Manage
-  Devices when the call brings a paired device into the conversation
-  ([Several categories](#several-categories)). A call that needs none is
-  dispatched.
+- **What the call needs**: its leaf's `permission`, and the host the call
+  brings into the conversation when the conversation may not reach it
+  ([Hosts](#hosts)). A call that needs nothing is dispatched.
 - **A grant of each in the call's conversation**, whichever agent of the
   tree runs it: the call is dispatched.
 - **A category without a grant**: the backend records one request for every
@@ -206,46 +206,50 @@ after reporting the refusal, the message goes to its nearest live ancestor,
 the root at last, which owns the work the subagent was doing. The message then
 names the subagent that asked.
 
-### Several categories
+### Hosts
 
-One command can need two categories: `demi conversation move ledable-app`
-needs Organize Conversations, and when ledable-app is on a paired device the
-conversation neither runs on nor has attached, moving there brings that
-device in, which is Manage Devices. The user decides once for the command:
+A host is allowed on its own: the list of hosts a conversation may reach
+grows one host at a time, by the user's answer to the agent that asked
+([Hosts a conversation may reach](../execution/sessions-and-targets.md#hosts-a-conversation-may-reach)).
+A leaf whose argument names a host, a device or a project declares that
+argument as `bringsHost`; the check resolves it, a project to its host, and
+needs that host when the conversation may not reach it. `demi host pair`
+always brings a host the conversation may not reach, since the computer is
+not yet paired, and names it by its pairing code. The request holds the host
+as `host`, beside the categories, and one command that needs both, such as
+`demi conversation move ledable-app` into a project on a host the
+conversation lacks without Organize Conversations, is one request:
 
 ```text
 +---------------------------------------------------------------+
-| Allow this conversation to organize conversations and manage  |
-| devices?                                                      |
+| Allow this conversation to organize conversations and reach   |
+| build-box?                                                    |
 |                                                               |
 | The agent ran                                                 |
 |   demi conversation move ledable-app                          |
 |                                                               |
 | ▸ Organize Conversations                                      |
 |   Organize Conversations lets the agents of this ...          |
-| ▸ Manage Devices                                              |
-|   Manage Devices lets the agents of this conversation ...     |
+| ▸ build-box                                                   |
+|   The agents of this conversation run commands as you on      |
+|   build-box, and can make it where this conversation runs.    |
 |                                                               |
-|                     [ Deny ]  [ Allow for This Conversation ] |
+|                                         [ Deny ]  [ Allow ]   |
 +---------------------------------------------------------------+
 ```
 
-The request holds only the categories the conversation lacks, so a
-conversation that already organizes conversations is asked about Manage
-Devices alone, with the one-category card. Allow grants them all and Deny
-none: a grant of one would not let the command run. The decision's message
-joins the actions with "and" as the title does.
-
-Which device a call brings is the dispatch's to resolve, not a handler's: a
-leaf whose argument names a device or a project declares that argument as
-`bringsHost`, and the check resolves it, a project to its device, and adds
-Manage Devices when it is a paired device that is neither the conversation's
-primary Host nor attached. `demi conversation move` declares its project, and
-`demi host attach` needs Manage Devices as its own `permission`.
+The request holds only what the conversation lacks. Allow grants all of it
+and Deny none: a part would not let the command run. A request for a host
+alone says *Allow this conversation to reach build-box?*, and for a pairing
+*Allow this conversation to pair a computer and reach it?*; its button reads
+**Allow**, since a host is allowed for this conversation by nature, while a
+request of categories alone keeps **Allow for This Conversation**. The
+decision's message joins the actions with "and" as the title does: `reach
+build-box`, `pair a computer and reach it`.
 
 ## Grants
 
-A grant is one category allowed in one conversation. It covers every agent
+A grant is one category, or one host, allowed in one conversation. It covers every agent
 of the conversation's tree, the root and every subagent, those spawned later
 included, and every command of the category. It lasts for the
 conversation's life: it never expires, and nothing revokes it. The product
@@ -336,7 +340,10 @@ calls a real model.
 | A second `demi skills` change in the same conversation, by a subagent | It runs without a request |
 | The same command in another conversation | It raises a request |
 | The user denies it | The agent receives the denied message; no grant is stored; the next attempt raises a new request |
-| `demi conversation move` into a project on a device the conversation lacks, without either grant | One request of both categories; the card shows both; Allow grants both and the command then runs; with Organize Conversations granted before, the request holds Manage Devices alone |
+| `demi conversation move` into a project on a host the conversation may not reach, without Organize Conversations | One request of the category and the host; Allow grants both and the command then runs; with Organize Conversations granted before, the request holds the host alone |
+| `demi host move build-box /srv/app` to a host the conversation may not reach; later `demi host move Cloud` back, `demi host attach build-box` | The first asks *reach build-box?*; once allowed, the later ones ask nothing |
+| `demi host pair <code>` twice | Each asks *pair a computer and reach it?* |
+| `demi host devices` | Lists without asking |
 | The agent runs the command twice before a decision | One request, with the newer command line; a subagent's request of the same category stays beside it |
 | Two subagents' requests of Manage Skills and one of another category; the user allows the first | Both subagents receive the allowed message; the other request stays |
 | A subagent asked and closed before the decision | Its parent receives the message, naming the subagent |

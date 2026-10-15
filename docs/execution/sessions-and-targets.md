@@ -230,8 +230,8 @@ transcript still shows the user the move.
 ## Attached hosts
 
 The conversation's agents attach the devices their work needs, with
-`demi host attach`, which the user allows once per conversation
-([What the agent can change](#what-the-agent-can-change)); the product offers
+`demi host attach`, which the user allows for each host
+([Hosts a conversation may reach](#hosts-a-conversation-may-reach)); the product offers
 no way to attach one by hand, and the user detaches one from the header's
 menu ([Where a conversation runs](../product/product.md#where-a-conversation-runs)).
 Each device appears once across the primary and attached bindings.
@@ -275,47 +275,64 @@ The backend brokers the byte streams. Attachment changes advance execution conte
 for each node. Revoking a paired device terminates its connection, which ends every
 conversation's state on it.
 
+## Hosts a conversation may reach
+
+Each conversation keeps the hosts the user has let it reach: the hosts the
+user chose for it, as its primary Host or a project's, a departed primary
+target, and each host the user allowed when an agent asked. An agent works
+on any of them without asking again: it attaches one, detaches it, attaches
+it again or makes it where the conversation runs. Reaching any other host,
+the Cloud included, needs the user's permission for that host, asked when
+the agent first tries, one host per request, and an allowed host stays on
+the list for the conversation's life, as a grant does
+([Grants](../agent/permissions.md#grants)). Listing the user's devices asks
+nothing: seeing a device is not reaching it.
+
+For example, the user has long reached a server through ssh, then pairs it
+as `build-box` and keeps a project there. In a conversation on the Cloud the
+agent runs `demi host move build-box /srv/ledable`; the card asks *Allow this
+conversation to reach build-box?*, the user allows it, and when the
+conversation's work ends it runs on build-box in `/srv/ledable`, the Cloud
+attached. A later `demi host move Cloud` asks nothing, since the Cloud was
+the conversation's own.
+
 ## What the agent can change
 
 The agent can change where its own conversation runs, its title and the
-devices it reaches, with commands of two [permission
-categories](../agent/permissions.md#categories), each allowed once per
-conversation:
+hosts it reaches:
 
-| Command | Does | Category |
+| Command | Does | Permission |
 | --- | --- | --- |
 | `demi conversation rename "<title>"` | Renames this conversation ([Conversation titles](../product/product.md#conversation-titles)) | `conversation.organize` |
 | `demi conversation projects` | Lists the user's projects: name, Host, directory | `conversation.organize` |
-| `demi conversation move <project>` | Moves this conversation into a project, by name or id | `conversation.organize` |
+| `demi conversation move <project>` | Moves this conversation into a project, by name or id | `conversation.organize`, and the project's host when the conversation may not reach it |
 | `demi conversation move --out` | Moves it out of its project, to the same directory on the same Host | `conversation.organize` |
 | `demi conversation create-project <name> [<directory>]` | Makes a project of a directory on the primary Host, its shell's directory by default, and moves this conversation into it | `conversation.organize` |
-| `demi host devices` | Lists the user's paired devices and the Cloud, with their states | `host.devices` |
+| `demi host move <host> [<directory>]` | Makes `<host>` where this conversation runs, in `<directory>`, by default the conversation's directory there, else the device's home; the primary Host it leaves is attached | The host, when the conversation may not reach it |
+| `demi host devices` | Lists the user's paired devices and the Cloud, with their states | none |
 | `demi host install-command [--system linux\|macos\|windows]` | Prints the command that installs the runner on a computer, as Add Device shows it; it holds no credential | none |
-| `demi host pair <code>` | Pairs the computer whose installer shows `<code>` with the user's account and attaches it to this conversation ([Installation, pairing and removal](runner.md#installation-pairing-and-removal)) | `host.devices` |
-| `demi host attach <device>` | Attaches a device to this conversation | `host.devices` |
-| `demi host detach <host>` | Detaches one | `host.devices` |
+| `demi host pair <code>` | Pairs the computer whose installer shows `<code>` with the user's account and attaches it to this conversation ([Installation, pairing and removal](runner.md#installation-pairing-and-removal)) | The new host, every time |
+| `demi host attach <device>` | Attaches a device to this conversation | The device, when the conversation may not reach it |
+| `demi host detach <host>` | Detaches one; the conversation may still reach it | none |
 
-The categories:
+`conversation.organize` is the one category:
 
 | Id | Action | Description |
 | --- | --- | --- |
 | `conversation.organize` | organize conversations | Organize Conversations lets the agents of this conversation rename it, list your projects, make a project of a directory, and move this conversation into or out of one. Projects show in your sidebar on every device. |
-| `host.devices` | manage devices | Manage Devices lets the agents of this conversation list your devices, attach them to this conversation or detach them, and pair a computer they can run commands on with your account. The agents run commands as you on an attached device. |
 
-`move` and `create-project` change where the conversation runs, and make a
-[pending move](#switch-the-primary-target) that applies when the tree is next
-idle; they print that the move applies when this conversation's work ends.
+`move`, `create-project` and `host move` change where the conversation
+runs, and make a [pending move](#switch-the-primary-target) that applies
+when the tree is next idle; they print that the move applies when this
+conversation's work ends.
 `detach` is a transition too, which the command's own job and its working
 tree would always find busy, so it waits the same way: it marks the
 attachment to end, prints that the device is detached when this
 conversation's work ends, and the backend detaches it then, in the same
 transition as a pending move; the device stays usable until then, and an
 `attach` of it before then cancels the mark. `rename` and `attach` apply at
-once. An attach or detach is announced to every node in its next
-execution-context block, as one the user makes. A move into a project on a paired device that is neither the primary
-Host nor attached brings that device into the conversation, so it also needs Manage
-Devices, and one request asks for both
-([Several categories](../agent/permissions.md#several-categories)).
+once. An attach, a detach or a move is announced to every node in its next
+execution-context block, as one the user makes.
 
 ## Host operations
 
