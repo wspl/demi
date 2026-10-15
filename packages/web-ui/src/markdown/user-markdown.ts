@@ -501,6 +501,38 @@ export function closingFormat(
   return formats && !waiting ? { length: last.raw.length, nodes: mergeText(inlineNodes([last], [])) } : null
 }
 
+/**
+ * What typing `typed` after `tail` formats: every construct it closes, as
+ * typing it a character at a time would, since a run of text can arrive in
+ * one input, as dictation, a text replacement or an automation types it.
+ * The composer replaces the tail and the typed text, `length` characters,
+ * with `nodes`; null when nothing closes. With nothing typed, the tail alone
+ * is read, as after an input method's text lands.
+ */
+export function typedFormat(
+  before: readonly JSONContent[],
+  tail: string,
+  typed: string,
+): { length: number; nodes: JSONContent[] } | null {
+  let formatted: JSONContent[] = []
+  let run = tail
+  for (const char of typed === '' ? [''] : typed) {
+    run += char
+    const closed = closingFormat([...before, ...formatted], run)
+    if (!closed)
+      continue
+    const plain = run.slice(0, run.length - closed.length)
+    formatted = mergeText([...formatted, ...(plain ? [{ type: 'text', text: plain }] : []), ...closed.nodes])
+    run = ''
+  }
+  if (formatted.length === 0)
+    return null
+  return {
+    length: tail.length + typed.length,
+    nodes: mergeText([...formatted, ...(run ? [{ type: 'text', text: run }] : [])]),
+  }
+}
+
 /** The info string of the code block a line of text opens, or null for a line that opens none. */
 export function fenceInfo(line: string): string | null {
   return fenceOf(line)?.info ?? null

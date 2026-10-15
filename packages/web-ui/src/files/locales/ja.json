@@ -199,5 +199,14 @@
     "commitsFailed": "コミットを一覧表示できませんでした。",
     "searchBranches": "ブランチを検索",
     "checkedOut": "チェックアウト済み"
+  },
+  "document": {
+    "alert": {
+      "note": "注記",
+      "tip": "ヒント",
+      "important": "重要",
+      "warning": "警告",
+      "caution": "注意"
+    }
   }
 }

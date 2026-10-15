@@ -1,6 +1,6 @@
 import type { InstructionEntry } from '@demicodes/protocol'
 
-/** What an instructions block holds for a conversation in `~/Projects/demi/packages/web`: personal instructions, the root's file and the package's. */
+/** What an instructions block holds for a conversation in `~/Projects/shop/packages/web`: personal instructions, the root's file and the package's. */
 export const demoInstructions: InstructionEntry[] = [
   { kind: 'personal' },
   { kind: 'file', path: '/Users/alex/Projects/shop/AGENTS.md' },

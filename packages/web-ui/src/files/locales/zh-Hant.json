@@ -199,5 +199,14 @@
     "commitsFailed": "無法列出提交。",
     "searchBranches": "搜尋分支",
     "checkedOut": "已簽出"
+  },
+  "document": {
+    "alert": {
+      "note": "備註",
+      "tip": "提示",
+      "important": "重要",
+      "warning": "警告",
+      "caution": "注意"
+    }
   }
 }

@@ -4,6 +4,7 @@ import {
   ATTACHMENT_MARK as MARK,
   bareUrls,
   closingFormat,
+  typedFormat,
   parseUserMarkdown,
   serializeUserMarkdown,
 } from '../user-markdown'
@@ -218,4 +219,17 @@ test('typing a closing delimiter formats the construct it closes', () => {
     expect(closingFormat([], tail)).toBeNull()
   }
   expect(closingFormat([], 'The **modal**')).toEqual({ length: 9, nodes: [text('modal', 'bold')] })
+})
+
+test('a run of text typed at once formats every construct it closes, as typing it a character at a time does', () => {
+  const link = (words: string, href: string) => ({ type: 'text', text: words, marks: [{ type: 'link', attrs: { href, title: null } }] })
+  // As an automation or dictation types it: one input of the whole line.
+  expect(typedFormat([], 'Open ', '[README.md](README.md) and [README.zh-CN.md](README.zh-CN.md)')).toEqual({
+    length: 66,
+    nodes: [{ type: 'text', text: 'Open ' }, link('README.md', 'README.md'), { type: 'text', text: ' and ' }, link('README.zh-CN.md', 'README.zh-CN.md')],
+  })
+  // Bold waits for its second star there too, and what follows the last construct stays text.
+  expect(typedFormat([], '', '**a** and *b* end')).toEqual({ length: 17, nodes: [text('a', 'bold'), text(' and '), text('b', 'italic'), text(' end')] })
+  expect(typedFormat([], 'a *b', '*')).toEqual({ length: 5, nodes: [text('a '), text('b', 'italic')] })
+  expect(typedFormat([], '', 'snake_case and 2 * 3')).toBeNull()
 })

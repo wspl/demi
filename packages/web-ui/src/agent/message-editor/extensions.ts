@@ -16,7 +16,7 @@ import { keepComposition } from '@demicodes/utils'
 import { VueNodeViewRenderer } from '@tiptap/vue-3'
 import { isHttpUrl, isLikelyFilePath } from '../../markdown/filePath'
 import { codeRuns, codeTextColor } from '../../markdown/highlight'
-import { bareUrls, closesFence, closingFormat, fenceInfo } from '../../markdown/user-markdown'
+import { bareUrls, closesFence, fenceInfo, typedFormat } from '../../markdown/user-markdown'
 import AttachmentNodeView from './AttachmentNodeView.vue'
 import { readCapsule } from './capsules'
 import ImageNodeView from './ImageNodeView.vue'
@@ -184,7 +184,7 @@ function formatTyped(view: EditorView, from: number, to: number, text: string): 
     return false
   }
   const { before, tail } = runBefore($from)
-  const closed = closingFormat(before, tail + text)
+  const closed = typedFormat(before, tail, text)
   if (!closed) {
     return false
   }

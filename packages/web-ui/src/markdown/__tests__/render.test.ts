@@ -91,11 +91,12 @@ test('an image inside a link follows the link', () => {
     .toContain(`<a href="/work/docs/charts.md" data-file-link><img src="/raw?path=${encodeURIComponent('/work/out/chart.png')}" alt="chart" data-host-file="/work/out/chart.png" /></a>`)
 })
 
-test('a Host image shows its alt text while its file is read, and as words when the Host has no file there', () => {
+test('a Host image shows its alt text in the placeholder box while its file is read and when the Host has no file there', () => {
+  const box = '<span class="image-placeholder" role="img" aria-label="chart">chart</span>'
   const reading = renderMarkdown('![chart](out/chart.png)', { files, hostImages: new Map() })
-  expect(reading).toBe('<p class="media-lone">chart</p>\n')
+  expect(reading).toBe(`<p class="media-lone">${box}</p>\n`)
   const none = renderMarkdown('see ![chart](out/chart.png)', { files, hostImages: new Map([['/work/out/chart.png', { state: 'none' }]]) })
-  expect(none).toBe('<p>see chart</p>\n')
+  expect(none).toBe(`<p>see ${box}</p>\n`)
 })
 
 test('without a Host, paths stay text and Host images show their alt text', () => {
