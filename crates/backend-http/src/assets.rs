@@ -138,7 +138,9 @@ async fn shared_page(path: PathBuf, token: String, request: Request) -> Response
 /// plain name, an address and a port leaves the routes at `'self'`.
 ///
 /// Styles may be inline: the transcript's Markdown renders KaTeX and sized
-/// media with `style` attributes, and a style cannot run code.
+/// media with `style` attributes, and a style cannot run code. Fonts and
+/// images may be `data:` URLs, as the build inlines its smallest fonts and
+/// the page its empty icon; neither reaches anywhere.
 fn shared_page_policy(token: &str, host: Option<&str>) -> String {
     let plain = |host: &&str| {
         !host.is_empty()
@@ -157,7 +159,7 @@ fn shared_page_policy(token: &str, host: Option<&str>) -> String {
         None => "'self'".to_owned(),
     };
     format!(
-        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; \
+        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; \
          img-src {routes} blob: data:; media-src {routes} blob:; connect-src {routes}; \
          base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
     )

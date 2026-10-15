@@ -319,6 +319,7 @@ async fn a_shared_link_answers_its_own_entry_under_a_policy_that_reaches_only_it
     for directive in [
         "default-src 'none'".to_owned(),
         "script-src 'self'".to_owned(),
+        "font-src 'self' data:".to_owned(),
         format!("connect-src {routes}"),
         format!("img-src {routes} blob: data:"),
         "frame-ancestors 'none'".to_owned(),
