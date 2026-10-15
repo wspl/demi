@@ -95,16 +95,8 @@ backend's scenario suites in [Scenarios](scenarios.md).
 - An intermittent failure is a race against time, so its fix removes the
   race rather than outlasting it: the test drives the clock the code reads,
   or waits for the event, and its outcome then no longer depends on how busy
-  the machine is. A fix of that kind is proven by its reasoning, a planted
-  defect that fails it, and the test alone 20 times.
-- Load is a tool for reproducing, not for proof. When a failure shows only
-  while other tests run, the test runs again and again beside a load of the
-  workspace's test programs until it fails and its actual output is seen,
-  and the cause is read from that output. The load runs in the Lima VM, never
-  on the developer's own machine, which stays usable: at most four workers,
-  each under `nice -n 19`, and stopped within an hour, found or not. Where a
-  race cannot be removed from the test, its fix is proven the same way, 200
-  runs in that VM without a failure.
+  the machine is. A fix of that kind is proven by its reasoning and a planted
+  defect that fails it.
 
 ## Cost
 
