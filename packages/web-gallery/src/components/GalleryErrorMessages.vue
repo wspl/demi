@@ -174,7 +174,7 @@ failUpload()
   <div class="space-y-8">
     <GallerySection
       title="Turn Failures · the Record in the Transcript"
-      note="What the provider said, led by its sentence, the facts a support thread asks for, and Copy. No record carries a button: Resume sits in the dock above the composer."
+      note="The page’s headline for the failure’s code, in the reader’s language; what the provider said, untranslated, under Provider Response; the facts a support thread asks for in Copy. No record carries a button: Resume sits in the dock above the composer."
     >
       <GallerySpecimen
         v-for="block in records"
