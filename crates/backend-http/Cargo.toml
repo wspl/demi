@@ -75,6 +75,7 @@ tracing.workspace = true
 typed-path = "0.12"
 uuid = { version = "1", features = ["v4"] }
 url = "2"
+rust-i18n = "4.2.4"
 
 [dev-dependencies]
 demi-backend-user-shard = { path = "../backend-user-shard", features = ["testing"] }

@@ -4,6 +4,8 @@
 use axum::Json;
 use axum::http::{HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
+use std::collections::BTreeMap;
+
 use demi_web_api_protocol::error::{ErrorBody, ErrorCode};
 use demi_web_api_protocol::ids::LoginId;
 use demi_web_api_protocol::passkeys::PasskeyId;
@@ -42,6 +44,8 @@ pub(crate) struct ApiError {
     status: StatusCode,
     code: ErrorCode,
     message: String,
+    /// The values the page's text for the code needs.
+    params: BTreeMap<String, serde_json::Value>,
     /// A plugin's own word for its refusal.
     reason: Option<String>,
     /// The passkey a refused sign-in names.
@@ -75,6 +79,7 @@ impl ApiError {
             status,
             code,
             message: message.into(),
+            params: BTreeMap::new(),
             reason: None,
             credential_id: None,
             login_id: None,
@@ -82,6 +87,13 @@ impl ApiError {
             etag: None,
             read_at: None,
         }
+    }
+
+    /// The error with the value `name` that the page's text for its code
+    /// is filled with (`localization.md` § Text from the backend).
+    pub(crate) fn with_param(mut self, name: &str, value: impl Into<serde_json::Value>) -> Self {
+        self.params.insert(name.to_owned(), value.into());
+        self
     }
 
     /// The error as the answer of a read the Host took at `read_at`.
@@ -319,6 +331,7 @@ impl IntoResponse for ApiError {
         let body = ErrorBody {
             code: self.code,
             message: self.message,
+            params: self.params,
             reason: self.reason,
             credential_id: self.credential_id,
             login_id: self.login_id,

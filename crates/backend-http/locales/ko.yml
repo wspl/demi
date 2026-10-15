@@ -1,0 +1,17 @@
+_version: 1
+oauth:
+  signed_in:
+    title: "%{vendor}에 로그인됨"
+    text: "%{vendor}에 로그인했습니다. 이 탭을 닫아도 됩니다."
+  unknown_plugin:
+    title: "로그인을 찾을 수 없음"
+    text: "Demi에는 여기에서 로그인하는 항목이 없습니다. 이 탭을 닫으십시오."
+  unknown_state:
+    title: "로그인 만료됨"
+    text: "이 로그인은 만료되었거나 이미 사용되었거나 다른 계정에서 시작되었습니다. 이 탭을 닫고 Demi에서 다시 로그인하십시오."
+  denied:
+    title: "%{vendor}에 로그인하지 않음"
+    text: "%{vendor}에서 로그인하지 못했습니다(%{error}). 이 탭을 닫고 Demi에서 다시 시도하십시오."
+  exchange_failed:
+    title: "%{vendor}에 로그인하지 않음"
+    text: "%{vendor}에서 로그인을 완료하지 못했습니다: %{failure}. 이 탭을 닫고 Demi에서 다시 시도하십시오."

@@ -364,7 +364,10 @@ impl Child {
     pub fn kill(&mut self) -> std::io::Result<()> {
         match &mut self.inner {
             Running::Process(child) => match child.kill() {
-                #[cfg(unix)]
+                // `libc` is optional: a build of uucore without it, as a
+                // proc macro's dependency through `ignore` is, has no
+                // processes of its own to kill.
+                #[cfg(all(unix, feature = "libc"))]
                 Err(error) if error.raw_os_error() == Some(libc::ESRCH) => Ok(()),
                 result => result,
             },

@@ -224,6 +224,103 @@ pub enum SendWhileRunning {
     Queue,
 }
 
+/// A language Demi speaks (`localization.md`): its text, the page's and
+/// the backend's, is written in each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum Language {
+    #[serde(rename = "en")]
+    English,
+    #[serde(rename = "zh-Hans")]
+    SimplifiedChinese,
+    #[serde(rename = "zh-Hant")]
+    TraditionalChinese,
+    #[serde(rename = "ja")]
+    Japanese,
+    #[serde(rename = "ko")]
+    Korean,
+}
+
+serde_plain::derive_display_from_serialize!(Language);
+
+impl Language {
+    /// The first of `tags`, BCP 47 language tags in the order of
+    /// preference, that Demi speaks; English when none is
+    /// (`localization.md` § Choosing the language).
+    pub fn first_spoken<'a>(tags: impl IntoIterator<Item = &'a str>) -> Self {
+        tags.into_iter()
+            .find_map(Self::of_tag)
+            .unwrap_or(Self::English)
+    }
+
+    /// The language Demi speaks for `tag`, if any: Traditional Chinese
+    /// for `zh-Hant` and the Chinese of Taiwan, Hong Kong and Macao, which
+    /// write it, and Simplified Chinese for any other `zh`. A script the tag
+    /// names wins over its region: `zh-Hans-HK` is Simplified.
+    fn of_tag(tag: &str) -> Option<Self> {
+        let mut subtags = tag.split(['-', '_']);
+        let primary = subtags.next().unwrap_or_default().to_ascii_lowercase();
+        match primary.as_str() {
+            "en" => Some(Self::English),
+            "ja" => Some(Self::Japanese),
+            "ko" => Some(Self::Korean),
+            "zh" => {
+                let mut traditional_region = false;
+                for subtag in subtags {
+                    if subtag.eq_ignore_ascii_case("hant") {
+                        return Some(Self::TraditionalChinese);
+                    }
+                    if subtag.eq_ignore_ascii_case("hans") {
+                        return Some(Self::SimplifiedChinese);
+                    }
+                    traditional_region |= ["tw", "hk", "mo"]
+                        .iter()
+                        .any(|region| subtag.eq_ignore_ascii_case(region));
+                }
+                Some(if traditional_region {
+                    Self::TraditionalChinese
+                } else {
+                    Self::SimplifiedChinese
+                })
+            }
+            _ => None,
+        }
+    }
+}
+
+/// The language the user chose in Settings › General: one Demi speaks, or
+/// the system's, which follows the browser's languages. Absent means
+/// `system`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+pub enum LanguageChoice {
+    #[serde(rename = "system")]
+    System,
+    #[serde(rename = "en")]
+    English,
+    #[serde(rename = "zh-Hans")]
+    SimplifiedChinese,
+    #[serde(rename = "zh-Hant")]
+    TraditionalChinese,
+    #[serde(rename = "ja")]
+    Japanese,
+    #[serde(rename = "ko")]
+    Korean,
+}
+
+impl LanguageChoice {
+    /// The language the choice speaks, the first of `browser`'s that Demi
+    /// speaks for `system`.
+    pub fn resolve<'a>(self, browser: impl IntoIterator<Item = &'a str>) -> Language {
+        match self {
+            Self::System => Language::first_spoken(browser),
+            Self::English => Language::English,
+            Self::SimplifiedChinese => Language::SimplifiedChinese,
+            Self::TraditionalChinese => Language::TraditionalChinese,
+            Self::Japanese => Language::Japanese,
+            Self::Korean => Language::Korean,
+        }
+    }
+}
+
 /// A user's saved preferences.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -251,6 +348,16 @@ pub struct Preferences {
     #[schemars(with = "ProjectHostChoice")]
     #[garde(dive)]
     pub last_project_host: Option<ProjectHostChoice>,
+    /// The language of the user's pages and of the mail the backend sends
+    /// them (`localization.md` § Choosing the language).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "LanguageChoice")]
+    #[garde(skip)]
+    pub language: Option<LanguageChoice>,
     /// The time zone and languages the user's browser last reported, which
     /// commands receive in their command context: a zone the backend knows,
     /// in its IANA spelling, and each language once as its canonical tag.
@@ -427,6 +534,16 @@ pub struct PreferencesPatch {
     #[schemars(with = "ProjectHostChoice")]
     #[garde(dive)]
     pub last_project_host: Option<ProjectHostChoice>,
+    /// The language of the user's pages and of the mail the backend sends
+    /// them (`localization.md` § Choosing the language).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "LanguageChoice")]
+    #[garde(skip)]
+    pub language: Option<LanguageChoice>,
     /// A time zone the backend does not know or a malformed language tag is
     /// refused.
     #[serde(
@@ -515,6 +632,38 @@ pub struct UserPreferences {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // The browser's languages, as `navigator.languages` or a stored locale
+    // lists them, and the language System speaks for them.
+    #[test]
+    fn system_speaks_the_first_browser_language_demi_speaks() {
+        use Language::*;
+        for (browser, spoken) in [
+            (&["zh-TW"][..], TraditionalChinese),
+            (&["zh-HK"], TraditionalChinese),
+            (&["zh-MO"], TraditionalChinese),
+            (&["zh-Hant"], TraditionalChinese),
+            (&["zh-Hans-HK"], SimplifiedChinese),
+            (&["zh-CN"], SimplifiedChinese),
+            (&["zh"], SimplifiedChinese),
+            (&["en-GB", "zh-CN"], English),
+            (&["fr", "ja-JP", "en"], Japanese),
+            (&["fr", "ko-KR"], Korean),
+            (&["fr"], English),
+            (&[], English),
+        ] {
+            assert_eq!(
+                LanguageChoice::System.resolve(browser.iter().copied()),
+                spoken,
+                "{browser:?}"
+            );
+        }
+        assert_eq!(
+            LanguageChoice::Korean.resolve(["zh-TW"]),
+            Korean,
+            "a chosen language is spoken whatever the browser's"
+        );
+    }
 
     #[test]
     fn the_patch_schema_is_strict_optional_throughout_and_bounded() {

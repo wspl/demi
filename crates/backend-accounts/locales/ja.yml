@@ -1,0 +1,4 @@
+_version: 1
+verification:
+  subject: "Demi の確認コード"
+  body: "アカウントのメールアドレスを %{email} に変更するには、Demi で %{code} を入力してください。このコードの有効期限は %{minutes} 分です。\n\nこの変更を依頼していない場合は、このメールを無視してください。"
