@@ -1,6 +1,6 @@
 import type { Block, ChangedFile, EditedFile, PathChange } from '@demicodes/protocol'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
-import { demoModel, inRun, listedFile, listedFiles, ownLists, shellView, uncopiedFile, withLists } from './blocks'
+import { demoModel, inRun, listedFile, listedFiles, ownLists, shellView, uncopiedFile, withEnd, withLists } from './blocks'
 import { editCopies } from './blobs'
 import { ago } from './time'
 import { SLOT_ROOT, WORKSPACE_ROOT } from './workspace'
@@ -66,7 +66,7 @@ function shell(
   files?: EditedFile[],
   pathChanges?: PathChange[],
 ): ToolCallBlock {
-  return {
+  return withEnd({
     type: 'tool_call',
     id,
     createdAt: ago(offsetMs),
@@ -82,7 +82,7 @@ function shell(
       files,
       ...(pathChanges ? { pathChanges } : {}),
     }),
-  }
+  })
 }
 
 /** The files a shell call's view lists. */

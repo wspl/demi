@@ -22,6 +22,7 @@ const call = (id: string, run: string): Block => ({
   toolName: 'shell',
   status: 'completed',
   input: JSON.stringify({ script: `echo ${id}`, description: `Run ${id}` }),
+  endedAt: createdAt,
   output: [],
   view: null,
 })
@@ -55,7 +56,7 @@ test('a block folded in a run opens the run and is shown by its own row; the run
   const scope = effectScope()
   const { rows, runs } = scope.run(() => {
     const list = useMessageRows(() => state)
-    return { rows: list.rows, runs: useOpenRuns(() => list.rows.value, () => state.conversationId) }
+    return { rows: list.rows, runs: useOpenRuns(() => list.rows.value, () => state.conversationId, list.keyOf) }
   })!
   const runRow = (step: string) => rows.value.find((row) => row.type === 'work_group' && row.steps.some((item) => item.id === step))!.id
   const sevenRun = runRow('c-5')

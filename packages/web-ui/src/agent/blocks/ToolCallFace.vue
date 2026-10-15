@@ -8,8 +8,8 @@ import { shellTitle, toolRenderKind, trimToolSummary } from '../tool-rendering'
 
 /**
  * What a call's row says on its line (`runtime.md` § Rendering boundary),
- * wherever the row stands: alone, among an opened run's steps, or as the
- * folded face of the run whose newest step it is (§ Work groups). A
+ * wherever the row stands: alone, while it runs under its run, or among an
+ * opened run's steps (§ Work groups). A
  * `shell` call reads its title and its command's tag; a call of another
  * tool its name and its input, or its failure, in short, marked Failed
  * when it failed.

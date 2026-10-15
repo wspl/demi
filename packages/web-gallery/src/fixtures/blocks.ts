@@ -179,16 +179,34 @@ function iso(offsetMs: number): string {
   return new Date(Date.now() - offsetMs).toISOString()
 }
 
+/**
+ * When a call that started at `createdAt` returned, as its block records
+ * it: none while it executes; a shell call once its command ran the time its
+ * view says, any other call at once.
+ */
+export function returnedAt(createdAt: string, status: ToolCallBlock['status'], view: ToolCallBlock['view']): string | null {
+  if (status === 'executing')
+    return null
+  return new Date(Date.parse(createdAt) + (view?.kind === 'shell' ? view.runningMs : 0)).toISOString()
+}
+
+/** `call` with when it returned, as `returnedAt` says. */
+export function withEnd(call: Omit<ToolCallBlock, 'endedAt'>): ToolCallBlock {
+  return { ...call, endedAt: returnedAt(call.createdAt, call.status, call.view) }
+}
+
 function toolCall(
   partial: Pick<ToolCallBlock, 'id' | 'toolName' | 'input' | 'status'> & Partial<ToolCallBlock>
 ): ToolCallBlock {
+  const createdAt = partial.createdAt ?? iso(120_000)
   return {
     type: 'tool_call',
-    createdAt: iso(120_000),
+    createdAt,
     model: demoModel,
     toolUseId: `${partial.id}-use`,
     output: [],
     view: null,
+    endedAt: returnedAt(createdAt, partial.status, partial.view ?? null),
     ...partial,
   }
 }
@@ -1661,10 +1679,11 @@ export function steppedRunCall(stage: number): (typeof STEPPED_RUN_CALLS)[number
 
 /**
  * A running turn's run at `stage` of `STEPPED_RUN_STAGES` (`runtime.md`
- * § Work groups), as the transcript shows it while the run goes: one step;
- * a second that joins, the first moving to the line above; the second ended
- * wrong while the model is waited for, its face staying; a third; and the
- * answer, which ends the run. Its newest running call is `steppedRunCall`'s.
+ * § Work groups), as the transcript shows it while the run goes: one step
+ * runs, its own row; it returned and a second runs under it; the second
+ * returned failed and joined the run, Requesting under it while the model
+ * is waited for; a third runs under the run; and the answer, after the third
+ * joined. Its newest running call is `steppedRunCall`'s.
  */
 export function steppedRunBlocks(stage: number): Block[] {
   const called = [1, 2, 2, 3, 3][stage]!

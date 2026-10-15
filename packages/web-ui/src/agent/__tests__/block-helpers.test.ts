@@ -58,7 +58,7 @@ function tool(options: { view?: Extract<Block, { type: 'tool_call' }>['view'] })
     toolName: 'shell',
     input: '{}',
     status: 'completed',
-    output: [{ type: 'text', text: 'status: exited' }],
+    endedAt: '1970-01-01T00:00:00.000Z', output: [{ type: 'text', text: 'status: exited' }],
     view: options.view ?? null,
   }
 }

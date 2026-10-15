@@ -33,6 +33,7 @@ import { distanceFromBottom } from '../composables/scroll-bottom'
 import { highlightFound } from '../ui/found-highlight'
 import { provideTranscript } from './edit-selection'
 import { useOpenRuns } from './open-runs'
+import { followedBlockId } from './work-groups'
 import { storedRequests } from '../files/request-changes'
 import { blockDirectories, blockMessageFiles } from './working-directory'
 import { useMessageFiles } from '../markdown/message-files'
@@ -204,9 +205,10 @@ const transcriptIndexById = computed(
     new Map(visibleTranscriptBlocks.value.map((block, index) => [block.id, index]))
 )
 
+// A row's streaming and end follow its transcript block: a joined thinking step's last part.
 function transcriptIndexAt(index: number): number {
   const block = renderBlocks.value[index]
-  return block ? transcriptIndexById.value.get(block.id) ?? -1 : -1
+  return block ? transcriptIndexById.value.get(followedBlockId(block)) ?? -1 : -1
 }
 
 function isStreamingThinkingAt(index: number): boolean {
@@ -256,7 +258,7 @@ onBeforeUnmount(() => {
 })
 
 // The runs the reader or a reveal opened, which stay open while the list shows this transcript.
-const runs = useOpenRuns(() => renderBlocks.value, () => props.conversationId)
+const runs = useOpenRuns(() => renderBlocks.value, () => props.conversationId, keyOf)
 // A block a search result opened: shown once the history holds it, after the list placed itself,
 // and marked as it appears; the next request or leaving the list ends a mark still waiting.
 let revealing: AbortController | null = null
@@ -418,7 +420,7 @@ defineExpose({
             <MessageEditRegion :muted="mutedIds.has(renderBlocks[item.index]!.id)">
               <AgentMessageVirtualBlock
                 :block="renderBlocks[item.index]!"
-                :open="runs.isOpen(renderBlocks[item.index]!.id)"
+                :open="runs.isOpen(keyOf(renderBlocks[item.index]!))"
                 :is-thinking-streaming="isStreamingThinkingAt(item.index)"
                 :is-text-streaming="isStreamingTextAt(item.index)"
                 :show-assistant-footer="footerIds.has(renderBlocks[item.index]!.id)"
@@ -432,7 +434,7 @@ defineExpose({
                 :entering="isEntering(String(item.key))"
                 :editable="renderBlocks[item.index]!.id === editableUserId"
                 :regenerate="renderBlocks[item.index]!.id === regenerateId ? regenerate : undefined"
-                @update:open="(open) => runs.setOpen(renderBlocks[item.index]!.id, open)"
+                @update:open="(open) => runs.setOpen(keyOf(renderBlocks[item.index]!), open)"
                 @recall-steer="(id) => emit('recallSteer', id)"
                 @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
                 @recall-queued="(id) => emit('recallQueued', id)"

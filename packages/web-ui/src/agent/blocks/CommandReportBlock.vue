@@ -21,8 +21,6 @@ import { provideBlockScope } from '../whole-blocks'
  */
 const props = defineProps<{
   reports: readonly CommandReport[]
-  /** The notice is a lone step of the running turn, its activity: its newest row shimmers. */
-  working?: boolean
 }>()
 
 // What a notice shows, the light form keeps: its rows never open to read the block whole.
@@ -42,7 +40,7 @@ const rows = computed(() => props.reports.flatMap((report, index) => reportShown
       v-for="(row, index) in rows"
       :key="row.key"
     >
-      <NoticeRow :loading="working && index === rows.length - 1" :pictures="row.media.pictures">
+      <NoticeRow :pictures="row.media.pictures">
         <template #icon>
           <component :is="NOTICE_ICON" :size="ICON_PX.in28" />
         </template>

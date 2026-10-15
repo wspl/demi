@@ -86,6 +86,7 @@ fn tool_call(status: ToolCallStatus) -> Block {
     Block::ToolCall(ToolCallBlock {
         run: None,
         entries: Vec::new(),
+        ended_at: None,
         id: id("call"),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),

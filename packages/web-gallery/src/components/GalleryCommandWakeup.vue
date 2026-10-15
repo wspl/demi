@@ -5,7 +5,7 @@ import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
-import { demoModel, shellView } from '../fixtures/blocks'
+import { demoModel, shellView, withEnd } from '../fixtures/blocks'
 
 /**
  * A command that outlives its call, from start to the answer its end wakes
@@ -26,12 +26,12 @@ const created = () => new Date().toISOString()
 const title = 'Run the end-to-end suite'
 const input = JSON.stringify({ script: 'sh scripts/e2e.sh', description: title, intervalMs: 30_000 })
 function call(status: 'executing' | 'completed'): Block {
-  return {
+  return withEnd({
     type: 'tool_call', id: 'wake-call', run: 'wake-call', createdAt: created(), model: demoModel,
     toolUseId: 'wake-call-use', toolName: 'shell', input, status,
     output: status === 'executing' ? [] : [{ type: 'text', text: 'status: running\ncommandId: 4\noutput:\nscenario 1 ok\nscenario 5 ok\n' }],
     view: status === 'executing' ? null : shellView({ commandId: '4', status: 'running', runningMs: 30_000, chunks: [{ stream: 'stdout', text: 'scenario 1 ok\n…\nscenario 5 ok\n' }] }),
-  }
+  })
 }
 /** A block of the report; one of progress alone is in no run, as it shows nothing. */
 function report(id: string, event: CommandReport['event'], output: string): Block {

@@ -104,11 +104,8 @@
       "ran": "运行了 {count} 条命令",
       "checked": "检查了 {count} 条命令",
       "used": "使用了 {tool}",
-      "running": "正在运行 {count} 条命令",
-      "checking": "正在检查 {count} 条命令",
-      "using": "正在使用 {tool}",
       "joined": "{first}，{next}",
-      "runningFor": "{what}，已持续 {time}",
+      "took": "{what}，用时 {span}",
       "command": {
         "finished": "{count} 条命令已完成",
         "failed": "{count} 条命令失败",

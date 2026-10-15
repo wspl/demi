@@ -57,7 +57,12 @@ const props = defineProps<{
   summaryTokens?: number
 }>()
 
-/** A run's row is open, as the list keeps it (`useOpenRuns`); other rows ignore it. */
+/**
+ * A run's row, or the row of a step that runs under it, is open, as the
+ * list keeps it by the key it draws the row under (`useOpenRuns`), so a
+ * step opened while it runs is still open as the run it starts; other rows
+ * ignore it.
+ */
 const runOpen = defineModel<boolean>('open', { default: false })
 
 const emit = defineEmits<{
@@ -177,6 +182,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       />
       <ThinkingBlock
         v-else-if="block.type === 'thinking'"
+        v-model:open="runOpen"
         :thinking="block.text"
         :is-streaming="isThinkingStreaming"
         :created-at="block.createdAt"
@@ -200,6 +206,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         class="overflow-hidden px-[var(--agent-pad-x,2rem)]"
       >
         <ToolCallBlock
+          v-model:open="runOpen"
           :block="block"
         />
       </div>

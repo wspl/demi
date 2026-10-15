@@ -7,8 +7,9 @@ import { isWorkStep, workRowId } from './work-groups'
  * the message the server confirmed are one row, named by the message's id,
  * which the confirmed message keeps as its turn's id; a steer waiting for
  * the turn and the steer written, and a queued message and the message it
- * becomes, likewise. A step shown alone is named as the run it starts, so
- * it is the same row as that run's group. The list keeps a row it names the
+ * becomes, likewise. A run is named after the run the backend stored, and
+ * a step that runs after itself; the row a lone step ran in becomes its
+ * run's row by taking its place (`succeedKeys`). The list keeps a row it names the
  * same, with the height it measured, and changes it in place, rather than
  * building a new one that it lays out at a guess for a frame. What replaces
  * a row of another name takes the key the list draws it under
@@ -39,8 +40,8 @@ export function rowKey(block: MessageListBlock): string {
  * changes under the key it keeps rolls the new face over the old one
  * (`RowRoll`), as the Stopped row rolls into Requesting and Requesting into
  * the step it waited for. A message is one face from its send to the
- * message written, and a run one face from its first step on, whose own
- * row rolls its steps.
+ * message written, and a run one face from its first step, while it runs,
+ * on: a step that ends becomes its run's row without a roll.
  */
 export function rowFace(row: MessageListBlock): string {
   if (isWorkStep(row) || row.type === 'work_group') {

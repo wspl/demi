@@ -14,8 +14,9 @@ export interface RevealTarget {
 }
 
 export interface OpenRuns {
-  isOpen: (run: string) => boolean
-  setOpen: (run: string, open: boolean) => void
+  /** Whether the run whose row the list draws under `key` is open. */
+  isOpen: (key: string) => boolean
+  setOpen: (key: string, open: boolean) => void
   /**
    * Where the block `id` shows, opening the run that folds it, as a tree
    * opens the folders above a search result (`runtime.md` § Command
@@ -26,13 +27,19 @@ export interface OpenRuns {
 }
 
 /**
- * The runs of a transcript list that are open, by their rows' ids
- * (`runtime.md` § Work groups). The list owns them rather than each run's
+ * The runs of a transcript list that are open, by the keys the list draws
+ * their rows under (`keyOf`, `runtime.md` § Work groups): the row a lone
+ * step ran in is the run's row once the step ended, so a step opened while
+ * it runs is still open as the run it starts. The list owns them rather than each run's
  * row, so a reveal opens a run whatever the row's state, and a run stays as
  * the reader left it when its row scrolls out of the drawn range and back.
  * Another `scope`, the list showing another transcript, starts folded.
  */
-export function useOpenRuns(rows: () => readonly MessageListBlock[], scope: () => string): OpenRuns {
+export function useOpenRuns(
+  rows: () => readonly MessageListBlock[],
+  scope: () => string,
+  keyOf: (row: MessageListBlock) => string,
+): OpenRuns {
   const open = reactive(new Set<string>())
   watch(scope, () => open.clear())
 
@@ -55,7 +62,7 @@ export function useOpenRuns(rows: () => readonly MessageListBlock[], scope: () =
         if (row.steps.length === 1) {
           return { row: row.id, step: null }
         }
-        open.add(row.id)
+        open.add(keyOf(row))
         return { row: row.id, step: step.id }
       }
       if (row.id === id) {

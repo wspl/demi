@@ -8,8 +8,6 @@ import { toolRenderKind } from '../tool-rendering'
 
 const props = defineProps<{
   block: ToolCallBlock
-  /** The call is the row of a run the running turn has not moved past: it shimmers whatever the call's state (`runtime.md` § Work groups). */
-  working?: boolean
 }>()
 const isOpen = defineModel<boolean>('open', { default: false })
 
@@ -23,12 +21,10 @@ const renderKind = computed(() => toolRenderKind(props.block.toolName))
     v-model:open="isOpen"
     :block="block"
     :input="parsedInput"
-    :working="working"
   />
   <ToolGenericBlock
     v-else
     v-model:open="isOpen"
     :block="block"
-    :working="working"
   />
 </template>

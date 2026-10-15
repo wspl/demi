@@ -62,7 +62,7 @@ function shellCall(
     toolName: 'shell',
     input: JSON.stringify({ script: 'true', description }),
     status: 'completed',
-    output: [],
+    endedAt: createdAt, output: [],
     view: {
       kind: 'shell',
       status: 'exited',

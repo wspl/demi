@@ -104,11 +104,8 @@
       "ran": "ran {count} command | ran {count} commands",
       "checked": "checked {count} command | checked {count} commands",
       "used": "used {tool}",
-      "running": "running {count} command | running {count} commands",
-      "checking": "checking {count} command | checking {count} commands",
-      "using": "using {tool}",
       "joined": "{first}, {next}",
-      "runningFor": "{what} for {time}",
+      "took": "{what} for {span}",
       "command": {
         "finished": "{count} command finished | {count} commands finished",
         "failed": "{count} command failed | {count} commands failed",
