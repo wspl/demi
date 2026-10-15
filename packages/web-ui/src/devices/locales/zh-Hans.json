@@ -21,7 +21,7 @@
     "connected": "已连接"
   },
   "path": {
-    "thisComputer": "此计算机",
+    "thisComputer": "此电脑",
     "localNetwork": "局域网",
     "internet": "P2P",
     "relay": "中继",
@@ -29,7 +29,7 @@
   },
   "connected": {
     "relay": "通过中继连接",
-    "thisComputer": "通过此计算机连接",
+    "thisComputer": "通过此电脑连接",
     "localNetwork": "通过局域网连接",
     "internet": "通过 P2P 连接"
   },
@@ -63,7 +63,7 @@
     "development": "开发版本"
   },
   "page": {
-    "cloud": "云",
+    "cloud": "云端",
     "startSentence": "在设备上启动 Demi：",
     "connection": "连接",
     "route": "连接路径",
@@ -83,7 +83,7 @@
     "paired": "配对日期",
     "revokeThis": "撤销此设备",
     "revoke": "撤销…",
-    "lastSeen": "最后在线"
+    "lastSeen": "上次在线"
   },
   "details": {
     "title": "连接详细信息",
@@ -98,7 +98,7 @@
     "nextAttempt": "下次尝试",
     "none": "无",
     "local": "本地：{list}",
-    "public": "公共：{list}",
+    "public": "公网：{list}",
     "answered": "已响应 {answered} / {tried}",
     "busy": "设备繁忙",
     "dropped": "已连接，随后断开",
@@ -116,7 +116,7 @@
   "pairing": {
     "title": "添加设备",
     "setupHint": "在设备上启动运行器以获取配对码。",
-    "doneHint": "设备已关联到你的帐户，可以使用了。",
+    "doneHint": "设备已关联到你的账户，可以使用了。",
     "codeHint": "输入运行器显示的配对码。",
     "system": "系统",
     "systemLabel": "设备系统",

@@ -229,7 +229,7 @@ test('the email form says a taken address in the catalogue’s words without a r
   try {
     createPageI18n('zh-Hans')
     for (const corrections of [EMAIL_CORRECTIONS, CODE_CORRECTIONS]) {
-      expect(formError(apiError(409, taken), corrections)).toEqual({ message: '另一个帐户已使用此电子邮件地址。', requestId: null })
+      expect(formError(apiError(409, taken), corrections)).toEqual({ message: '另一个账户已使用此电子邮件地址。', requestId: null })
     }
   } finally {
     createPageI18n('en')

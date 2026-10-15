@@ -12,7 +12,7 @@ test('a failed turn’s headline is worded from its code and when it works again
     expect(failureHeadline('usage_limit', reset, now)).toBe('You’ve reached your usage limit. Resets at 7:04 PM.')
     expect(failureHeadline('rate_limit', null, now)).toBe('The provider is limiting requests.')
     createPageI18n('zh-Hans')
-    expect(failureHeadline('usage_limit', reset, now)).toBe('已达到使用限制。19:04 重置。')
+    expect(failureHeadline('usage_limit', reset, now)).toBe('已达到用量限额。19:04 重置。')
     createPageI18n('ja')
     expect(failureHeadline('usage_limit', reset, now)).toBe('利用上限に達しました。19:04 にリセットされます。')
   } finally {
