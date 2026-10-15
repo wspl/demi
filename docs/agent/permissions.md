@@ -260,8 +260,11 @@ transcript records the answer. A user who wants to decide again works in
 another conversation.
 
 Archiving keeps a conversation's grants, so a restored conversation has them.
-Fork copies none: a forked conversation is a new one, and the user decides for
-it again.
+Fork copies no category: a forked conversation is a new one, and the user
+decides for it again. It copies the source's attached hosts, which the user
+forked along with the work they hold, and with them their place on the
+reachable list; a host the source was allowed but no longer has attached is
+not copied ([Conversation Fork](conversation-fork.md)).
 
 ## What the user sees
 
