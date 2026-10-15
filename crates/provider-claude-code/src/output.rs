@@ -400,12 +400,17 @@ impl ContentBlock {
     }
 }
 
-/// A block of a streamed response as its events showed it.
-enum Shown {
+/// A block of a streamed response as its events showed it, at its
+/// position among the blocks the run's events wrote.
+struct Shown {
+    at: usize,
+    kind: ShownKind,
+}
+
+enum ShownKind {
     Thinking { text: String, signed: bool },
     Text(String),
-    /// Redacted reasoning or a tool use being written.
-    Other,
+    Redacted,
 }
 
 /// The assistant response the CLI is streaming (`claude-code.md` §
@@ -434,44 +439,65 @@ impl Streaming {
         self.id == *id
     }
 
-    /// Notes an event the run yielded of this response, as the agent writes
-    /// it into blocks.
-    pub(crate) fn observe(&mut self, event: &ProviderEvent) {
-        match event {
-            ProviderEvent::ThinkingStart => self.shown.push(Shown::Thinking {
-                text: String::new(),
-                signed: false,
-            }),
-            ProviderEvent::ThinkingDelta(piece) => match self.shown.last_mut() {
-                Some(Shown::Thinking { text, signed: false }) => text.push_str(piece),
-                _ => self.shown.push(Shown::Thinking {
-                    text: piece.clone(),
-                    signed: false,
-                }),
-            },
-            ProviderEvent::ThinkingSignature(_) => {
-                if let Some(Shown::Thinking { signed, .. }) = self.shown.last_mut() {
-                    *signed = true;
-                }
-            }
-            ProviderEvent::TextDelta(piece) => match self.shown.last_mut() {
-                Some(Shown::Text(text)) => text.push_str(piece),
-                _ => self.shown.push(Shown::Text(piece.clone())),
-            },
-            ProviderEvent::RedactedThinking(_) | ProviderEvent::ToolCallStart { .. } => {
-                self.shown.push(Shown::Other)
-            }
-            _ => {}
-        }
+    /// The id of the message being streamed, when its start named one.
+    pub(crate) fn id(&self) -> Option<&str> {
+        self.id.as_deref()
     }
 
-    /// The response abandoned for a complete answer that replaces it.
+    /// Notes an event the run yielded of this response, which went to the
+    /// block at `at` ([`crate::mirror::Mirror::last_block`]). A tool use
+    /// being written is no block, and a thinking start opens none until
+    /// the next event.
+    pub(crate) fn observe(&mut self, event: &ProviderEvent, at: Option<usize>) {
+        let Some(at) = at else {
+            return;
+        };
+        let last = self.shown.last_mut().filter(|shown| shown.at == at);
+        let kind = match (event, last) {
+            (ProviderEvent::ThinkingDelta(piece), Some(Shown { kind: ShownKind::Thinking { text, .. }, .. })) => {
+                text.push_str(piece);
+                return;
+            }
+            (ProviderEvent::ThinkingSignature(_), Some(Shown { kind: ShownKind::Thinking { signed, .. }, .. })) => {
+                *signed = true;
+                return;
+            }
+            (ProviderEvent::TextDelta(piece), Some(Shown { kind: ShownKind::Text(text), .. })) => {
+                text.push_str(piece);
+                return;
+            }
+            (ProviderEvent::ThinkingDelta(piece), None) => ShownKind::Thinking {
+                text: piece.clone(),
+                signed: false,
+            },
+            (ProviderEvent::ThinkingSignature(_), None) => ShownKind::Thinking {
+                text: String::new(),
+                signed: true,
+            },
+            (ProviderEvent::TextDelta(piece), None) => ShownKind::Text(piece.clone()),
+            (ProviderEvent::RedactedThinking(_), _) => ShownKind::Redacted,
+            _ => return,
+        };
+        self.shown.push(Shown { at, kind });
+    }
+
+    /// What the response showed, which a complete answer that replaces it
+    /// is shown against.
     pub(crate) fn replaced(self) -> Replaced {
         Replaced {
             shown: self.shown.into_iter(),
+            unrepeated: Vec::new(),
             departed: false,
         }
     }
+}
+
+/// Where a block of a complete answer went.
+pub(crate) enum Answered {
+    /// It repeats, or goes on with, the shown block at this position.
+    Repeats(usize),
+    /// It is new, and whether its events wrote a block.
+    New(bool),
 }
 
 /// What an abandoned stream showed, which the complete answer that
@@ -480,73 +506,84 @@ impl Streaming {
 /// broke off in: as long as it does, only the rest is shown, so the agent's
 /// blocks go on as the answer's. From the first block that departs from
 /// what showed, the answer is shown whole, after what showed, since the
-/// agent's blocks are only ever added to.
+/// agent's blocks are only ever added to; the shown blocks it did not
+/// repeat stay on the page, and the CLI left them out of its history.
 pub(crate) struct Replaced {
     shown: std::vec::IntoIter<Shown>,
+    unrepeated: Vec<usize>,
     departed: bool,
 }
 
 impl Replaced {
-    /// The events of the answer's next block, without what of it already
-    /// showed, and whether the block shows at all.
-    pub(crate) fn events(&mut self, block: ContentBlock) -> (Vec<ProviderEvent>, bool) {
-        if !self.departed {
-            let shown = self.shown.next();
-            // Only the block the stream broke off in goes on; an earlier one
-            // showed whole.
-            let last = self.shown.len() == 0;
-            let continues = |shown: &str, whole: &str| {
-                if last {
-                    whole.starts_with(shown)
-                } else {
-                    whole == shown
-                }
-            };
-            match (shown, block) {
-                (Some(Shown::Text(shown)), ContentBlock::Text(block))
-                    if continues(&shown, &block.text) =>
-                {
-                    let rest = &block.text[shown.len()..];
-                    let events = if rest.is_empty() {
-                        Vec::new()
-                    } else {
-                        vec![ProviderEvent::TextDelta(rest.to_owned())]
-                    };
-                    return (events, true);
-                }
-                (Some(Shown::Thinking { text: shown, signed }), ContentBlock::Thinking(block))
-                    if continues(
-                        &shown,
-                        block
-                            .thinking
-                            .as_deref()
-                            .or(block.text.as_deref())
-                            .unwrap_or_default(),
-                    ) =>
-                {
-                    let text = block.thinking.or(block.text).unwrap_or_default();
-                    let mut events = Vec::new();
-                    if text.len() > shown.len() {
-                        events.push(ProviderEvent::ThinkingDelta(text[shown.len()..].to_owned()));
-                    }
-                    if let Some(signature) = block.signature.filter(|_| !signed) {
-                        events.push(ProviderEvent::ThinkingSignature(signature));
-                    }
-                    return (events, true);
-                }
-                (_, block) => {
-                    self.departed = true;
-                    return Self::whole(block);
-                }
-            }
-        }
-        Self::whole(block)
+    /// The positions of the shown blocks the answer did not repeat, once
+    /// the whole answer was read.
+    pub(crate) fn unrepeated(mut self) -> Vec<usize> {
+        self.unrepeated.extend(self.shown.map(|shown| shown.at));
+        self.unrepeated
     }
 
-    fn whole(block: ContentBlock) -> (Vec<ProviderEvent>, bool) {
+    /// The events of the answer's next block, without what of it already
+    /// showed, and where the block went.
+    pub(crate) fn events(&mut self, block: ContentBlock) -> (Vec<ProviderEvent>, Answered) {
+        if self.departed {
+            return Self::whole(block);
+        }
+        let Some(Shown { at, kind }) = self.shown.next() else {
+            self.departed = true;
+            return Self::whole(block);
+        };
+        // Only the block the stream broke off in goes on; an earlier one
+        // showed whole.
+        let last = self.shown.len() == 0;
+        let continues = |shown: &str, whole: &str| {
+            if last {
+                whole.starts_with(shown)
+            } else {
+                whole == shown
+            }
+        };
+        match (kind, block) {
+            (ShownKind::Text(shown), ContentBlock::Text(block)) if continues(&shown, &block.text) => {
+                let rest = &block.text[shown.len()..];
+                let events = if rest.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![ProviderEvent::TextDelta(rest.to_owned())]
+                };
+                (events, Answered::Repeats(at))
+            }
+            (ShownKind::Thinking { text: shown, signed }, ContentBlock::Thinking(block))
+                if continues(
+                    &shown,
+                    block
+                        .thinking
+                        .as_deref()
+                        .or(block.text.as_deref())
+                        .unwrap_or_default(),
+                ) =>
+            {
+                let text = block.thinking.or(block.text).unwrap_or_default();
+                let mut events = Vec::new();
+                if text.len() > shown.len() {
+                    events.push(ProviderEvent::ThinkingDelta(text[shown.len()..].to_owned()));
+                }
+                if let Some(signature) = block.signature.filter(|_| !signed) {
+                    events.push(ProviderEvent::ThinkingSignature(signature));
+                }
+                (events, Answered::Repeats(at))
+            }
+            (_, block) => {
+                self.unrepeated.push(at);
+                self.departed = true;
+                Self::whole(block)
+            }
+        }
+    }
+
+    fn whole(block: ContentBlock) -> (Vec<ProviderEvent>, Answered) {
         let events = block.events();
         let wrote = !events.is_empty();
-        (events, wrote)
+        (events, Answered::New(wrote))
     }
 }
 

@@ -37,7 +37,7 @@ use tokio_util::task::AbortOnDropHandle;
 use crate::input::{self, ControlRequest, ControlResponse, Input, MCP_SERVER, McpReply};
 use crate::mcp::{self, Mcp, McpEvent};
 use crate::mirror::Mirror;
-use crate::output::{ControlRequestLine, LastCall, Line, Streaming};
+use crate::output::{ControlRequestLine, LastCall, Line, Replaced, Streaming};
 use crate::placement::{CliSite, ConfigDir, Placed, Placement};
 use crate::session::SessionFile;
 use crate::account::expiring;
@@ -541,7 +541,7 @@ impl LiveCli {
             match line {
                 Some(Line::ControlRequest(line)) => self.control_request(line).await?,
                 Some(Line::TranscriptMirror(line)) => {
-                    events.extend(self.mirror.mirrored(line.entries, request));
+                    events.extend(self.mirror.mirrored(line.entries, request, None));
                 }
                 Some(Line::Assistant(line)) => {
                     let id = line.message_id();
@@ -687,6 +687,19 @@ impl LiveCli {
         Ok(())
     }
 
+    /// Abandons the response being streamed, whose calls never run and
+    /// whose entries belong to no block: what it showed, which the caller
+    /// keeps out of the session where nothing repeats it.
+    pub(crate) fn abandon_streaming(&mut self) -> Replaced {
+        self.collecting.clear();
+        self.writing.clear();
+        let streaming = self.streaming.take().unwrap_or_default();
+        if let Some(id) = streaming.id() {
+            self.mirror.abandon(id.to_owned());
+        }
+        streaming.replaced()
+    }
+
     /// Writes the user messages `request` gained since the process last
     /// received one, steers included.
     pub(crate) async fn send_new_user_messages(
@@ -730,7 +743,7 @@ impl LiveCli {
         for call in &events {
             self.mirror.observe(call);
         }
-        events.extend(self.mirror.place(request, false));
+        events.extend(self.mirror.place(request, false, None));
         events.push(ProviderEvent::response(
             self.last_call.take(),
             FAMILY,

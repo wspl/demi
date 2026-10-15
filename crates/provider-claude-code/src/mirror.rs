@@ -7,10 +7,11 @@
 //! made them ended, so a block of a run is named by its position among the
 //! run's blocks while the run lasts, and by its items in later requests.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 
 use demi_provider_common::{EntriesOf, InferenceItem, InferenceRequest, ProviderEvent};
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::session;
 
@@ -39,8 +40,12 @@ enum Placing {
     Block(Spot),
     /// It stands for no block, and belongs to the next one.
     Next,
-    /// Its block is not known yet: the line that names it is still to come.
+    /// Its block is not known yet: the line that names it is still to come,
+    /// or its message is still streaming.
     Later,
+    /// It is of a response abandoned for a complete answer, which the CLI
+    /// left out of its history: it belongs to no block.
+    Abandoned,
 }
 
 /// One process's mirror.
@@ -71,6 +76,8 @@ pub(crate) struct Mirror {
     next: Vec<Value>,
     /// Entries whose block is not known yet, in order.
     waiting: VecDeque<Value>,
+    /// The messages whose stream was abandoned for a complete answer.
+    abandoned: HashSet<String>,
 }
 
 impl Mirror {
@@ -108,7 +115,34 @@ impl Mirror {
         self.thinking = None;
         self.redacted = None;
         self.text = None;
-        self.place(request, true)
+        self.place(request, true, None)
+    }
+
+    /// The position of the block the latest event went to.
+    pub(crate) fn last_block(&self) -> Option<usize> {
+        self.written.checked_sub(1)
+    }
+
+    /// The events that keep out of the session the blocks at `blocks`,
+    /// which an abandoned stream showed and its complete answer did not
+    /// repeat: the CLI left them out of its history.
+    pub(crate) fn left_out(&self, blocks: Vec<usize>) -> Vec<ProviderEvent> {
+        blocks
+            .into_iter()
+            .map(|index| ProviderEvent::Entries {
+                of: EntriesOf::Output(index),
+                entries: vec![session::left_out()],
+            })
+            .collect()
+    }
+
+    /// Notes that the stream of message `id` was abandoned: the CLI asked
+    /// again and keeps only the answer it got then, so an entry of this
+    /// message that it mirrors belongs to no block.
+    pub(crate) fn abandon(&mut self, id: String) {
+        self.contents
+            .retain(|(printed, _, _)| printed.as_deref() != Some(id.as_str()));
+        self.abandoned.insert(id);
     }
 
     /// Notes an event the run yields: the block it writes, as the agent
@@ -185,6 +219,16 @@ impl Mirror {
         self.contents.push((id, block, spot));
     }
 
+    /// Notes a content block of a complete answer that repeats the block
+    /// the run wrote at `index`.
+    pub(crate) fn printed_at(&mut self, id: Option<String>, block: Value, index: usize) {
+        let spot = Spot::Output {
+            run: self.run,
+            index,
+        };
+        self.contents.push((id, block, Some(spot)));
+    }
+
     /// Notes the user messages at `items` of the request, written to the
     /// process in order.
     pub(crate) fn gave(&mut self, items: impl IntoIterator<Item = usize>) {
@@ -194,31 +238,56 @@ impl Mirror {
     /// The events of a batch of entries the CLI printed: each entry that
     /// names its block, with the entries before it that belong to the next
     /// block. Entries the CLI keeps outside its chain, which have no id,
-    /// belong to no block.
+    /// belong to no block. An entry of the message `streaming` waits for
+    /// the message's end, since a stream can still be abandoned.
     pub(crate) fn mirrored(
         &mut self,
         entries: Vec<Value>,
         request: &InferenceRequest,
+        streaming: Option<&str>,
     ) -> Vec<ProviderEvent> {
-        self.waiting
-            .extend(entries.into_iter().filter(|entry| entry["uuid"].is_string()));
-        self.place(request, false)
+        self.waiting.extend(
+            entries
+                .into_iter()
+                .filter(|entry| entry["uuid"].is_string())
+                .flat_map(per_block),
+        );
+        self.place(request, false, streaming)
     }
 
     /// The events of the entries whose block is now known, in order; with
     /// `settle`, an entry whose block is still unknown belongs to the next.
-    pub(crate) fn place(&mut self, request: &InferenceRequest, settle: bool) -> Vec<ProviderEvent> {
+    /// An entry of the message `streaming` is not known yet.
+    pub(crate) fn place(
+        &mut self,
+        request: &InferenceRequest,
+        settle: bool,
+        streaming: Option<&str>,
+    ) -> Vec<ProviderEvent> {
         let mut events: Vec<ProviderEvent> = Vec::new();
         while let Some(entry) = self.waiting.front() {
-            let placing = placing(
-                entry,
-                request,
-                &mut self.tools,
-                &mut self.contents,
-                &mut self.given,
-            );
+            let id = entry["message"]["id"].as_str();
+            let placing = if entry["type"] == "assistant"
+                && id.is_some_and(|id| self.abandoned.contains(id))
+            {
+                Placing::Abandoned
+            } else if entry["type"] == "assistant" && id.is_some() && id == streaming {
+                Placing::Later
+            } else {
+                placing(
+                    entry,
+                    request,
+                    &mut self.tools,
+                    &mut self.contents,
+                    &mut self.given,
+                )
+            };
             let spot = match placing {
                 Placing::Block(spot) => spot,
+                Placing::Abandoned => {
+                    self.waiting.pop_front();
+                    continue;
+                }
                 Placing::Later if !settle => break,
                 Placing::Next | Placing::Later => {
                     let entry = self.waiting.pop_front().expect("an entry was looked at");
@@ -307,6 +376,31 @@ fn placing(
             .map_or(Placing::Next, |index| Placing::Block(Spot::Item(index))),
         _ => Placing::Next,
     }
+}
+
+/// `entry` as one entry per content block. The CLI writes a streamed
+/// message as an entry per block, of the same message id, and joins them
+/// back into one message when it reads its session; a complete answer it
+/// writes as one entry of all its blocks. Each block's entry goes to its
+/// own block, so the answer's text, reasoning and calls are each given
+/// once by the block they belong to; each entry but the first gets an id
+/// of its own.
+fn per_block(entry: Value) -> Vec<Value> {
+    let count = match entry["message"]["content"].as_array() {
+        Some(content) if entry["type"] == "assistant" && content.len() > 1 => content.len(),
+        _ => return vec![entry],
+    };
+    (0..count)
+        .map(|index| {
+            let mut part = entry.clone();
+            let block = entry["message"]["content"][index].clone();
+            part["message"]["content"] = Value::Array(vec![block]);
+            if index > 0 {
+                part["uuid"] = Value::String(Uuid::new_v4().to_string());
+            }
+            part
+        })
+        .collect()
 }
 
 /// The item of the latest result of `tool_use_id` in `request`.
