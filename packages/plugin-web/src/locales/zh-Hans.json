@@ -1,0 +1,37 @@
+{
+  "settings": {
+    "title": "网络搜索",
+    "keywords": "网络, 网页, 搜索, Exa, API 密钥, 登录"
+  },
+  "account": {
+    "label": "Exa 帐户",
+    "signedIn": "已登录",
+    "notConnected": "未连接",
+    "signOut": "退出登录",
+    "signIn": "登录"
+  },
+  "key": {
+    "label": "API 密钥",
+    "description": "提供所有筛选条件，例如域名和日期。",
+    "unchecked": "未检查：{reason}",
+    "remove": "移除",
+    "placeholder": "Exa API 密钥",
+    "save": "保存"
+  },
+  "inUse": {
+    "label": "当前使用",
+    "key": "你的 API 密钥",
+    "account": "你的 Exa 帐户",
+    "anonymous": "匿名，有限制"
+  },
+  "refusals": {
+    "keyRefused": "Exa 拒绝了此密钥。请检查是否完整复制。",
+    "exaUnavailable": "Exa 没有响应用于检查密钥的搜索。请重试。"
+  },
+  "errors": {
+    "signIn": "无法开始 Exa 登录",
+    "signOut": "无法退出 Exa",
+    "saveKey": "无法保存密钥",
+    "removeKey": "无法移除密钥"
+  }
+}

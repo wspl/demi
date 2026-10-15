@@ -6,6 +6,8 @@ import { highlightTree } from '@lezer/highlight'
 import { CircleMinus } from '@lucide/vue'
 import { h, render } from 'vue'
 import { ICON_PX } from '../ui/icon-metrics'
+import { formatCount } from '../ui/numbers'
+import { t } from './locales/text'
 
 /**
  * How long one diff may take, in milliseconds, before the rest of it is
@@ -22,8 +24,6 @@ const MARGIN = 3
 const MIN_FOLDED = 4
 /** Removed text longer than this is not colored by its language, as the merge package's default. */
 const HIGHLIGHT_LIMIT = 3000
-/** What the diff says after a line the file ends with no newline after, as GitHub says it. */
-const NO_NEWLINE = 'No newline at end of file'
 
 /** `text`, with a newline after its last line when it has none. */
 function terminated(text: Text): Text {
@@ -134,10 +134,12 @@ function noNewlineRow(): HTMLElement {
     render(h(CircleMinus, { size: ICON_PX.in20, 'aria-hidden': 'true' }), row)
     const copy = document.importNode(row, true)
     render(null, row)
-    copy.append(NO_NEWLINE)
     noNewlineTemplate = copy
   }
-  return document.importNode(noNewlineTemplate, true)
+  // What the diff says after a line the file ends with no newline after, as GitHub says it.
+  const row = document.importNode(noNewlineTemplate, true)
+  row.append(t('diff.noNewline'))
+  return row
 }
 
 /** The lines a chunk removed, colored by the file's language, shown above what replaced them. */
@@ -298,7 +300,7 @@ class FoldedLines extends WidgetType {
   toDOM(view: EditorView): HTMLElement {
     const row = document.createElement('div')
     row.className = 'cm-collapsedLines'
-    row.textContent = view.state.phrase('$ unchanged lines', this.lines)
+    row.textContent = t('diff.unchanged', { count: formatCount(this.lines) }, this.lines)
     row.addEventListener('click', (event) => {
       const at = view.posAtDOM(event.target as Node)
       view.dispatch({ effects: uncollapseUnchanged.of(at) })

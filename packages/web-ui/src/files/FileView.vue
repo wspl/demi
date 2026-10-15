@@ -19,10 +19,12 @@ import TreeFrame from './TreeFrame.vue'
 import { downloadUrl } from './download'
 import { fileBar, type ShownFile } from './file-bar'
 import { TREE_WIDTH } from './file-view'
-import { formatByteRatio, linkDescription } from './format'
+import { formatByteRatio, linkSentence } from './format'
+import { t as shared } from '../locales/text'
+import { t } from './locales/text'
 import { baseName } from '@demicodes/utils'
 import { normalizePath, parentPath } from './paths'
-import { hasSourceView, MISSING_FILE, previewKind, TOO_LARGE_NOTE } from './preview'
+import { hasSourceView, missingFile, previewKind, tooLargeNote } from './preview'
 import { useShowing } from './showing'
 import { useTextStart } from './text-start'
 import type { FileBrowserSource } from './types'
@@ -159,7 +161,7 @@ const state = computed<TextState>(() => {
   if (props.path === null || media.value !== null || leadsToFolder.value || brokenLink.value !== null)
     return { phase: 'idle' }
   if (!props.source.showText)
-    return { phase: 'failed', message: 'This source cannot read files.', requestId: null }
+    return { phase: 'failed', message: t('view.noSource'), requestId: null }
   const entry = shown.entry.value
   if (!entry)
     return { phase: 'loading' }
@@ -174,7 +176,7 @@ const state = computed<TextState>(() => {
       return { phase: 'missing' }
     case null:
       return entry.failure
-        ? { phase: 'failed', message: entry.failure.message ?? 'The file could not be read.', requestId: entry.failure.requestId ?? null }
+        ? { phase: 'failed', message: entry.failure.message ?? t('view.readFailedDetail'), requestId: entry.failure.requestId ?? null }
         : { phase: 'loading' }
   }
 })
@@ -189,7 +191,7 @@ watch(() => shown.entry.value?.reading, (reading, wasReading) => {
 /** Why the last read of the file shown could not be made, while what it answered before stays. */
 const staleBecause = computed(() => {
   const entry = shown.entry.value
-  return entry?.answer && entry.failure && brokenLink.value === null ? entry.failure.message ?? 'The read failed.' : null
+  return entry?.answer && entry.failure && brokenLink.value === null ? entry.failure.message ?? t('view.readAgainFailed') : null
 })
 
 /** The start of a text file too large for the text read, while one is shown. */
@@ -199,7 +201,7 @@ const start = useTextStart(
 )
 /** The line over a large file's start: how much of how much shows. */
 const startNote = computed(() => start.value?.phase === 'ready'
-  ? `Showing ${formatByteRatio(start.value.shown, start.value.size)}`
+  ? t('view.startOf', { ratio: formatByteRatio(start.value.shown, start.value.size) })
   : null)
 
 /** The image or video shown, whose read Retry repeats. */
@@ -220,14 +222,16 @@ async function retryLink(): Promise<void> {
 const placeholder = computed(() => {
   const current = state.value
   if (brokenLink.value)
-    return { status: 'failed' as const, icon: MISSING_FILE.icon, label: `${linkDescription(brokenLink.value)}.`, detail: null, requestId: null, retry: retryLink }
-  if (current.phase === 'missing')
-    return { status: 'failed' as const, icon: MISSING_FILE.icon, label: MISSING_FILE.label, detail: null, requestId: null }
+    return { status: 'failed' as const, icon: missingFile().icon, label: linkSentence(brokenLink.value), detail: null, requestId: null, retry: retryLink }
+  if (current.phase === 'missing') {
+    const missing = missingFile()
+    return { status: 'failed' as const, icon: missing.icon, label: missing.label, detail: null, requestId: null }
+  }
   if (current.phase === 'failed')
-    return { status: 'failed' as const, icon: undefined, label: 'Could not read this file.', detail: current.message, requestId: current.requestId }
+    return { status: 'failed' as const, icon: undefined, label: t('view.readFailed'), detail: current.message, requestId: current.requestId }
   if (current.phase === 'idle')
-    return { status: 'note' as const, icon: undefined, label: 'Select a file.', detail: null, requestId: null }
-  return { status: 'loading' as const, icon: undefined, label: 'Reading…', detail: null, requestId: null }
+    return { status: 'note' as const, icon: undefined, label: t('view.selectFile'), detail: null, requestId: null }
+  return { status: 'loading' as const, icon: undefined, label: t('reading'), detail: null, requestId: null }
 })
 
 /** What the media preview of a file reports it shows, the image's zoom included. */
@@ -365,7 +369,7 @@ async function go(target: string): Promise<void> {
   }
   const root = normalizePath(props.root)
   if (target !== root && !target.startsWith(`${root}/`)) {
-    showToast({ title: 'Not in This Workspace', message: `The tree shows ${props.rootName ?? root} only.`, tone: 'neutral' })
+    showToast({ title: t('view.notInWorkspaceTitle'), message: t('view.notInWorkspace', { name: props.rootName ?? root }), tone: 'neutral' })
     return
   }
   located.value = target
@@ -391,15 +395,15 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <TreeFrame ref="frame" v-model:open="tree" v-model:width="treeWidth" name="file tree">
+  <TreeFrame ref="frame" v-model:open="tree" v-model:width="treeWidth" tree="files">
     <template #header>
       <!-- Back and Forward move through the files this view has shown. -->
       <div class="flex shrink-0 items-center">
-        <Tooltip content="Back">
-          <IconButton :icon="ArrowLeft" variant="ghost" aria-label="Back" :disabled="!canBack" @click="emit('back')" />
+        <Tooltip :content="t('actions.back')">
+          <IconButton :icon="ArrowLeft" variant="ghost" :aria-label="t('actions.back')" :disabled="!canBack" @click="emit('back')" />
         </Tooltip>
-        <Tooltip content="Forward">
-          <IconButton :icon="ArrowRight" variant="ghost" aria-label="Forward" :disabled="!canForward" @click="emit('forward')" />
+        <Tooltip :content="t('actions.forward')">
+          <IconButton :icon="ArrowRight" variant="ghost" :aria-label="t('actions.forward')" :disabled="!canForward" @click="emit('forward')" />
         </Tooltip>
       </div>
       <!-- Crumbs open menus of what lies beside them: another file is a pick away. -->
@@ -427,20 +431,20 @@ onBeforeUnmount(() => {
       <RegionNote
         v-if="shown.entry.value?.answer && shown.entry.value.unwatched && !brokenLink"
         :icon="History"
-        label="Showing this file as it was last read."
+        :label="t('view.notWatched')"
         :detail="shown.entry.value.unwatched"
-        action="Refresh"
+        :action="t('actions.refresh')"
         @action="shown.retry"
       />
       <RegionNote
         v-if="staleBecause"
         :icon="RefreshCw"
-        label="Could not refresh this file."
+        :label="t('view.refreshFailed')"
         :detail="staleBecause"
-        action="Retry"
+        :action="shared('common.retry')"
         @action="shown.retry"
       />
-      <RegionNote v-if="startNote" :icon="FileText" :label="startNote" action="Download" @action="download" />
+      <RegionNote v-if="startNote" :icon="FileText" :label="startNote" :action="t('actions.download')" @action="download" />
       <div class="min-h-0 flex-1">
         <!-- Kept while a broken link's sentence shows, its read Retry's to repeat. -->
         <FilePreview
@@ -478,7 +482,7 @@ onBeforeUnmount(() => {
           v-else-if="state.phase === 'card' && start?.phase !== 'loading' && path"
           :path="path"
           :contents="source.contents"
-          :note="state.tooLarge ? TOO_LARGE_NOTE : null"
+          :note="state.tooLarge ? tooLargeNote() : null"
         />
         <!-- It centres in the space beside a tree shown over the view. -->
         <div v-else class="h-full" :style="{ paddingInlineEnd: `${overlap}px` }">
@@ -487,7 +491,7 @@ onBeforeUnmount(() => {
             :status="placeholder.status"
             :icon="placeholder.icon"
             :label="placeholder.label"
-            loading-label="Reading…"
+            :loading-label="t('reading')"
             :detail="placeholder.detail"
             :request-id="placeholder.requestId"
             :on-retry="placeholder.retry ?? shown.retry"

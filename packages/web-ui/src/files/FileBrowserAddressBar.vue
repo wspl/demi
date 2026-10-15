@@ -13,6 +13,7 @@ import PathInput from './PathInput.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { fitCrumbs, pathCrumbs, type CrumbFit } from './crumb-fit'
 import { parentPath, typedPath } from './paths'
+import { t } from './locales/text'
 import type { FileBrowserSource } from './types'
 
 /**
@@ -186,7 +187,7 @@ watch(() => props.path, () => {
     :source="source"
     :base="base"
     kind="any"
-    aria-label="Path"
+    :aria-label="t('browser.path')"
     @keydown="onKeydown"
     @complete-file="commit"
     @blur="editing = false"
@@ -196,7 +197,7 @@ watch(() => props.path, () => {
     ref="bar"
     class="relative flex h-7 min-w-0 cursor-default select-none items-center overflow-hidden rounded-md bg-surface-raised px-1 ring-1 ring-inset ring-line"
     role="navigation"
-    aria-label="Current path"
+    :aria-label="t('browser.currentPath')"
     @click="startEdit"
   >
     <!-- Clipped, the row ends at its right edge, so what overflows is the left. -->

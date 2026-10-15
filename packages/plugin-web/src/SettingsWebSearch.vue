@@ -12,6 +12,7 @@ import {
   type SentenceText,
 } from '@demicodes/plugin-sdk'
 import type { InUse, WebState } from './generated/plugin'
+import { t } from './locales/text'
 
 /**
  * Settings › Web Search (`web.md` § Settings › Web Search): the user's Exa
@@ -40,10 +41,10 @@ const props = defineProps<{
 /** The key being typed, kept by the caller so a refusal leaves it in the field. */
 const keyDraft = defineModel<string>('keyDraft', { default: '' })
 
-const IN_USE: Record<InUse, SentenceText> = {
-  key: 'Your API key',
-  account: 'Your Exa account',
-  anonymous: 'Anonymous, limited',
+const IN_USE: Record<InUse, () => SentenceText> = {
+  key: () => t('inUse.key'),
+  account: () => t('inUse.account'),
+  anonymous: () => t('inUse.anonymous'),
 }
 
 const account = computed(() => props.state?.account ?? null)
@@ -58,35 +59,35 @@ function save(): unknown {
 </script>
 
 <template>
-  <SettingsPage title="Web Search">
+  <SettingsPage :title="t('settings.title')">
     <SettingsGroup title="Exa">
-      <SettingsRow label="Exa account">
+      <SettingsRow :label="t('account.label')">
         <span class="text-chrome text-fg-muted">{{
-          account ? (account.email ?? 'Signed in') : 'Not connected'
+          account ? (account.email ?? t('account.signedIn')) : t('account.notConnected')
         }}</span>
         <Button
           v-if="account"
           size="sm"
           :operation="operation?.('sign_out', 'account')"
           @click="onSignOut?.()"
-          >Sign Out</Button
+          >{{ t('account.signOut') }}</Button
         >
         <Button
           v-else
           size="sm"
           :operation="operation?.('sign_in', 'account')"
           @click="onSignIn?.()"
-          >Sign In</Button
+          >{{ t('account.signIn') }}</Button
         >
       </SettingsRow>
-      <SettingsRow label="API key" description="Offers every filter, such as domains and dates.">
+      <SettingsRow :label="t('key.label')" :description="t('key.description')">
         <template v-if="keyProblem && !key" #detail>
           <InlineError :message="keyProblem" />
         </template>
         <!-- A key saved while Exa could not tell whether it searches: the next search decides. -->
         <template v-else-if="key?.unchecked" #detail>
           <p role="status" class="text-[12px] leading-4 text-fg-subtle">
-            Not checked: {{ key.unchecked }}
+            {{ t('key.unchecked', { reason: key.unchecked }) }}
           </p>
         </template>
         <template v-if="key">
@@ -95,7 +96,7 @@ function save(): unknown {
             size="sm"
             :operation="operation?.('remove_key', 'key')"
             @click="onRemoveKey?.()"
-            >Remove</Button
+            >{{ t('key.remove') }}</Button
           >
         </template>
         <template v-else>
@@ -104,8 +105,8 @@ function save(): unknown {
             masked="secret"
             trim
             size="sm"
-            placeholder="Exa API key"
-            aria-label="Exa API key"
+            :placeholder="t('key.placeholder')"
+            :aria-label="t('key.placeholder')"
             class="w-48 max-w-full"
             @keydown.enter="saveButton?.press()"
           />
@@ -115,12 +116,12 @@ function save(): unknown {
             :disabled="!keyDraft"
             :operation="operation?.('save_key', 'key')"
             @click="save"
-            >Save</Button
+            >{{ t('key.save') }}</Button
           >
         </template>
       </SettingsRow>
-      <SettingsRow label="In use">
-        <span class="text-chrome text-fg-muted">{{ IN_USE[state?.inUse ?? 'anonymous'] }}</span>
+      <SettingsRow :label="t('inUse.label')">
+        <span class="text-chrome text-fg-muted">{{ IN_USE[state?.inUse ?? 'anonymous']() }}</span>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

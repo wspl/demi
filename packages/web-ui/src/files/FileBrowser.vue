@@ -50,7 +50,9 @@ import {
 import { baseName } from '@demicodes/utils'
 import { directoryParts, joinPath, normalizePath, parentPath } from './paths'
 import { readLinkAgain } from './link-activation'
-import { linkDescription } from './format'
+import { linkSentence } from './format'
+import { t as shared } from '../locales/text'
+import { t } from './locales/text'
 import { failureShown } from './file-cache'
 import { useShowing } from './showing'
 import {
@@ -173,7 +175,7 @@ function placeIcon(place: FileBrowserPlace): Component {
 
 const confirmLabel = computed(
   () =>
-    props.confirmLabel ?? (props.mode === 'file' ? 'Open' : 'Select Folder'),
+    props.confirmLabel ?? (props.mode === 'file' ? t('browser.open') : t('browser.selectFolder')),
 )
 const canConfirm = computed(() => {
   if (props.confirmDisabled || (props.confirmOperation !== undefined && operations.runs(props.confirmOperation))) {
@@ -192,7 +194,7 @@ const status = computed(() => {
       ? landmarkIcon(joinPath(path.value, entry.name), props.source)
       : undefined
     return {
-      lead: entry.isDirectory ? 'Selected folder:' : 'Selected file:',
+      lead: entry.isDirectory ? t('browser.selectedFolder') : t('browser.selectedFile'),
       isDirectory: entry.isDirectory,
       name: entry.name,
       icon,
@@ -200,14 +202,14 @@ const status = computed(() => {
   }
   if (props.mode === 'file') {
     return {
-      lead: 'Select a file',
+      lead: t('browser.selectFile'),
       isDirectory: false,
       name: null,
       icon: undefined,
     }
   }
   return {
-    lead: 'Select a folder, or use',
+    lead: t('browser.selectFolderOrUse'),
     isDirectory: true,
     name: baseName(path.value) || '/',
     icon: landmarkIcon(path.value, props.source),
@@ -297,7 +299,7 @@ async function current(entry: FileBrowserEntry): Promise<FileBrowserEntry | unde
     // Its folder could not be listed again: said where the browser says what
     // went wrong, and nothing is opened or chosen.
     if (!signal.aborted)
-      error.value = { message: toFailure(failure).message ?? 'Could not read the link again.', requestId: requestIdOf(failure) }
+      error.value = { message: toFailure(failure).message ?? t('browser.linkReadFailed'), requestId: requestIdOf(failure) }
     return undefined
   }
 }
@@ -309,7 +311,7 @@ async function current(entry: FileBrowserEntry): Promise<FileBrowserEntry | unde
  */
 function choose(entry: FileBrowserEntry): void {
   if (entry.link?.broken) {
-    error.value = { message: `${linkDescription(entry.link)}.`, requestId: null }
+    error.value = { message: linkSentence(entry.link), requestId: null }
     return
   }
   emit('select', joinPath(path.value, entry.name))
@@ -365,7 +367,7 @@ async function createFolder(folderName: string) {
       return
     }
     error.value = {
-      message: toFailure(err).message ?? `${folderName} could not be created.`,
+      message: toFailure(err).message ?? t('browser.folderNotCreated', { name: folderName }),
       requestId: requestIdOf(err),
     }
     return
@@ -412,7 +414,7 @@ onBeforeUnmount(() => pending?.abort())
           :overlay-store="appOverlayStore"
           variant="field"
           width="fill"
-          trigger-label="Device"
+          :trigger-label="t('browser.device')"
         >
           <template #trigger>
             <component
@@ -421,7 +423,7 @@ onBeforeUnmount(() => pending?.abort())
               class="shrink-0 text-fg-muted"
             />
             <span class="min-w-0 flex-1 truncate">{{
-              currentHost?.label ?? 'Device'
+              currentHost?.label ?? t('browser.device')
             }}</span>
           </template>
           <template #content="{ triggerWidth }">
@@ -442,7 +444,7 @@ onBeforeUnmount(() => pending?.abort())
                     : undefined
                 "
                 :disabled="host.id !== CLOUD_HOST_ID && host.state !== 'online' && !host.canWake"
-                disabled-reason="This device is offline."
+                :disabled-reason="t('browser.deviceOffline')"
                 :label="host.label"
                 choice
                 :is-selected="host.id === hostId"
@@ -453,29 +455,29 @@ onBeforeUnmount(() => pending?.abort())
         </Dropdown>
       </div>
       <div class="flex shrink-0 items-center">
-        <Tooltip content="Back">
+        <Tooltip :content="t('actions.back')">
           <IconButton
             :icon="ArrowLeft"
             variant="ghost"
-            aria-label="Back"
+            :aria-label="t('actions.back')"
             :disabled="!canBack"
             @click="back"
           />
         </Tooltip>
-        <Tooltip content="Forward" class="hidden @md:inline-flex">
+        <Tooltip :content="t('actions.forward')" class="hidden @md:inline-flex">
           <IconButton
             :icon="ArrowRight"
             variant="ghost"
-            aria-label="Forward"
+            :aria-label="t('actions.forward')"
             :disabled="!canForward"
             @click="forward"
           />
         </Tooltip>
-        <Tooltip content="Up">
+        <Tooltip :content="t('browser.up')">
           <IconButton
             :icon="ArrowUp"
             variant="ghost"
-            aria-label="Up"
+            :aria-label="t('browser.up')"
             :disabled="path === '/'"
             @click="up"
           />
@@ -496,12 +498,12 @@ onBeforeUnmount(() => pending?.abort())
           class="@md:hidden"
         >
           <template #trigger="{ isOpen }">
-            <Tooltip content="Places">
+            <Tooltip :content="t('browser.places')">
               <IconButton
                 :icon="MapPin"
                 variant="ghost"
                 :pressed="isOpen"
-                aria-label="Places"
+                :aria-label="t('browser.places')"
               />
             </Tooltip>
           </template>
@@ -510,7 +512,7 @@ onBeforeUnmount(() => pending?.abort())
               <MenuGroup
                 v-for="(group, index) in places"
                 :key="group.label ?? index"
-                :label="group.label ?? 'Places'"
+                :label="group.label ?? t('browser.places')"
               >
                 <MenuItem
                   v-for="place in group.places"
@@ -526,23 +528,23 @@ onBeforeUnmount(() => pending?.abort())
             </Menu>
           </template>
         </Dropdown>
-        <Tooltip v-if="source.createDirectory" content="New folder">
+        <Tooltip v-if="source.createDirectory" :content="t('browser.newFolder')">
           <IconButton
             :icon="FolderPlus"
             variant="ghost"
-            aria-label="New folder"
+            :aria-label="t('browser.newFolder')"
             :disabled="!!failure || loading"
             @click="folderCreation = 'naming'"
           />
         </Tooltip>
         <Tooltip
-          :content="showHidden ? 'Hide hidden files' : 'Show hidden files'"
+          :content="showHidden ? t('browser.hideHidden') : t('browser.showHidden')"
         >
           <IconButton
             :icon="showHidden ? EyeOff : Eye"
             variant="ghost"
             :pressed="showHidden"
-            :aria-label="showHidden ? 'Hide hidden files' : 'Show hidden files'"
+            :aria-label="showHidden ? t('browser.hideHidden') : t('browser.showHidden')"
             @click="showHidden = !showHidden"
           />
         </Tooltip>
@@ -558,7 +560,7 @@ onBeforeUnmount(() => pending?.abort())
           v-for="(group, index) in places"
           :key="group.label ?? index"
           class="flex flex-col gap-0.5"
-          :aria-label="group.label ?? 'Places'"
+          :aria-label="group.label ?? t('browser.places')"
         >
           <div
             v-if="group.label"
@@ -630,7 +632,7 @@ onBeforeUnmount(() => pending?.abort())
       </div>
       <!-- Cancel before the default button, as a dialog's footer has them (Dialog). -->
       <div class="flex shrink-0 items-center justify-end gap-2">
-        <Button @click="emit('cancel')">Cancel</Button>
+        <Button @click="emit('cancel')">{{ shared('common.cancel') }}</Button>
         <Button
           variant="primary"
           :disabled="!canConfirm && !(confirmOperation && operations.runs(confirmOperation))"

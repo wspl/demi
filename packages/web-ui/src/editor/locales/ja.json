@@ -1,0 +1,21 @@
+{
+  "search": {
+    "label": "検索",
+    "matchCase": "大文字と小文字を区別する",
+    "wholeWord": "単語単位で検索する",
+    "regexp": "正規表現を使用する",
+    "previous": "前の一致項目",
+    "next": "次の一致項目"
+  },
+  "syntaxColorsUnavailable": "構文の色分けを使用できません",
+  "diff": {
+    "unchanged": "変更されていない {count} 行",
+    "noNewline": "ファイルの末尾に改行がありません"
+  },
+  "fold": {
+    "folded": "折りたたまれたコード",
+    "unfold": "展開",
+    "foldLine": "行を折りたたむ",
+    "unfoldLine": "行を展開"
+  }
+}

@@ -12,6 +12,7 @@ import { changeTreeRows, type ChangeTreeFile, type ChangeTreeRow } from './chang
 import { gitMark } from './git-status'
 import { baseName } from '@demicodes/utils'
 import type { SentenceText } from '../ui/ui-text'
+import { t } from './locales/text'
 
 /**
  * The changed files beside the diff as a tree, in both of the Change view's
@@ -97,12 +98,12 @@ function tooltip(row: ChangeTreeRow): string {
     @activate="activate"
   >
     <template #captionTrailing>
-      <Tooltip v-if="refresh" content="Refresh" class="ml-2 shrink-0">
+      <Tooltip v-if="refresh" :content="t('actions.refresh')" class="ml-2 shrink-0">
         <IconButton
           :icon="RefreshCw"
           size="xs"
           variant="ghost"
-          aria-label="Refresh"
+          :aria-label="t('actions.refresh')"
           spin-on-click
           :spinning="refreshing"
           @click="refresh()"
@@ -127,7 +128,7 @@ function tooltip(row: ChangeTreeRow): string {
     </template>
     <template #after>
       <div v-if="truncated" class="select-none px-2 py-2 text-[11px] text-fg-faint">
-        More files changed than the list holds.
+        {{ t('changes.truncated') }}
       </div>
     </template>
   </Tree>

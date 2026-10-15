@@ -35,6 +35,7 @@ import SubagentProfileDialog from '@demicodes/web-ui/settings/SubagentProfileDia
 import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
 import { createSubagentState, demoSubagentProfiles } from '../fixtures/subagent-profiles'
 import { productWould } from '../product-would'
+import { t as webSearchText } from '@demicodes/plugin-web/locales/text'
 import { demoProviders } from '../fixtures/catalog'
 import { composerModels } from '../fixtures/context-limits'
 import SettingsDevices from '@demicodes/web-ui/settings/SettingsDevices.vue'
@@ -643,7 +644,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             <GalleryWebSearchShowcase
               :state="{ account: null, key: null, inUse: 'anonymous' }"
               draft="exa_12ab"
-              key-problem="Exa refused this key. Check that it was copied whole."
+              :key-problem="webSearchText('refusals.keyRefused')"
             />
           </div>
         </GallerySpecimen>

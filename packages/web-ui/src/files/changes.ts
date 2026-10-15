@@ -7,6 +7,7 @@ import type { RequestChangeSource, RequestFile } from './request-changes'
 import type { CommitHistorySource } from './history'
 import { relativePath, resolveHostPath } from './paths'
 import type { FileContents } from './types'
+import { t } from './locales/text'
 
 /**
  * One changed file as the change view and the file pills list it: its
@@ -74,12 +75,12 @@ export type ReadCallChange = (copies: EditCopies, signal?: AbortSignal) => Promi
 /** What an empty change set says in place of its files, by why it is empty. */
 export function emptyChangeSetText(source: ChangeSetSource): string {
   if (source.unavailable === 'no-repository') {
-    return 'Not a Git repository'
+    return t('changes.notGit')
   }
   if (source.failure) {
-    return 'Could not list the changes.'
+    return t('changes.listFailed')
   }
-  return 'No changes'
+  return t('changes.none')
 }
 
 /**

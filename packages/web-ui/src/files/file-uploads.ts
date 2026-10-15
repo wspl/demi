@@ -1,6 +1,7 @@
 import { reactive } from 'vue'
 import { shownError, type ShownError } from '../infra/errors'
 import { createId } from '@demicodes/utils'
+import { t } from './locales/text'
 import { joinPath, relativePath } from './paths'
 import { FileBrowserError, type FileBrowserSource } from './types'
 
@@ -299,17 +300,17 @@ export class FileUploads {
     switch (step.kind) {
       case 'remove':
         if (!this.source.remove)
-          throw new Error('This host cannot delete what is there.')
+          throw new Error(t('uploads.cannotRemove'))
         await this.source.remove(step.path, signal)
         return
       case 'directory':
         if (!this.source.createDirectory)
-          throw new Error('This host cannot make folders.')
+          throw new Error(t('uploads.cannotCreateFolder'))
         await this.source.createDirectory(step.path, signal)
         return
       case 'file':
         if (!this.source.upload)
-          throw new Error('This host cannot take files.')
+          throw new Error(t('uploads.cannotTake'))
         await this.source.upload(step.path, step.file, { replace: step.replace, signal, progress })
     }
   }
@@ -373,7 +374,7 @@ function recentPace(start: number): (sent: number) => number | null {
 
 function failureOf(error: unknown): ShownError {
   if (error instanceof FileBrowserError && error.kind === 'exists')
-    return shownError(error, 'A file with this name is there now.')
+    return shownError(error, t('uploads.nameTaken'))
   return shownError(error)
 }
 

@@ -2,6 +2,7 @@
 import { computed, ref } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import FileBrowserDialog from './FileBrowserDialog.vue'
+import { t } from './locales/text'
 import type {
   FileBrowserHost,
   FileBrowserSource,
@@ -51,13 +52,13 @@ defineExpose({ open })
     :is-open="isOpen"
     :overlay-store="overlayStore"
     mode="file"
-    title="Attach Remote File"
+    :title="t('browser.attachRemoteFile')"
     :source="host.source"
     :initial-path="host.cwd"
     :places="host.places"
     :hosts="hosts"
     :host-id="hostId ?? undefined"
-    confirm-label="Attach"
+    :confirm-label="t('browser.attach')"
     @select="select"
     @close="isOpen = false"
     @update:host-id="hostId = $event"

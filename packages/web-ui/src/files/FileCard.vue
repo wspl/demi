@@ -8,6 +8,7 @@ import FileIcon from './FileIcon.vue'
 import { downloadUrl } from './download'
 import { formatModified } from '../ui/dates'
 import { entryKind, formatBytes } from './format'
+import { t } from './locales/text'
 import type { FileDescription } from './types'
 import type { SentenceText } from '../ui/ui-text'
 
@@ -38,7 +39,7 @@ const facts = computed(() => [
     <div v-if="note" class="text-[12px] text-fg-muted">{{ note }}</div>
     <Button v-if="download" class="mt-2" size="sm" @click="downloadUrl(download)">
       <Download :size="ICON_PX.in24" />
-      Download
+      {{ t('actions.download') }}
     </Button>
   </div>
 </template>

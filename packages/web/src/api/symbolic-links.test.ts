@@ -161,18 +161,18 @@ test('links show as their targets, unfold at any depth, open their target, and a
   const view = show('/w/old.log')
   try {
     // The sentence is the listing's, whatever the read of the file answered.
-    await until(shows('Symbolic link to /gone/old.log, which does not exist.'), 'the gone target is said')
-    expect(document.body.textContent).not.toContain('This file does not exist.')
+    await until(shows('Symbolic link to /gone/old.log, which doesn’t exist.'), 'the gone target is said')
+    expect(document.body.textContent).not.toContain('This file doesn’t exist.')
     expect(rows()).toEqual([
       ['src', '4px', 'false', null],
       ['vendor', '4px', 'false', 'Symbolic link to ../shared/vendor'],
       ['config.json', '4px', null, 'Symbolic link to /home/ana/.config/app.json'],
-      ['old.log', '4px', null, 'Symbolic link to /gone/old.log, which does not exist'],
-      ['secret', '4px', null, 'Symbolic link to /root/notes, which cannot be read: permission denied'],
+      ['old.log', '4px', null, 'Symbolic link to /gone/old.log, which doesn’t exist'],
+      ['secret', '4px', null, 'Symbolic link to /root/notes, which can’t be read: permission denied'],
     ])
 
     row('secret').click()
-    await until(shows('Symbolic link to /root/notes, which cannot be read: permission denied.'), 'the unreadable target is said')
+    await until(shows('Symbolic link to /root/notes, which can’t be read: permission denied.'), 'the unreadable target is said')
 
     // A link to a folder unfolds into the target's entries, listed by the link's own path, a link back up again.
     row('vendor').click()
@@ -216,7 +216,7 @@ test('expanding or opening a link reads its target again: gone now says so, ther
     delete backend.folders['/w/vendor']
     expect(rows()).toEqual([
       ['vendor', '4px', 'false', 'Symbolic link to ../shared/vendor'],
-      ['data', '4px', null, 'Symbolic link to /mnt/data, which does not exist'],
+      ['data', '4px', null, 'Symbolic link to /mnt/data, which doesn’t exist'],
     ])
 
     row('data').click()
@@ -225,9 +225,9 @@ test('expanding or opening a link reads its target again: gone now says so, ther
     expect(view.shown.value).toBe(null)
 
     row('vendor').click()
-    await until(shows('Symbolic link to ../shared/vendor, which does not exist.'), 'the link whose folder went says so')
+    await until(shows('Symbolic link to ../shared/vendor, which doesn’t exist.'), 'the link whose folder went says so')
     expect(view.shown.value).toBe('/w/vendor')
-    expect(rows().find(([name]) => name === 'vendor')).toEqual(['vendor', '4px', null, 'Symbolic link to ../shared/vendor, which does not exist'])
+    expect(rows().find(([name]) => name === 'vendor')).toEqual(['vendor', '4px', null, 'Symbolic link to ../shared/vendor, which doesn’t exist'])
   } finally {
     view.unmount()
   }
@@ -237,7 +237,7 @@ test('a link to an image that is gone says so, and Retry shows the image once it
   const backend = host({ '/w': [linked('logo.png', '/srv/logo.png', { kind: 'missing' })] })
   const view = show('/w/logo.png')
   try {
-    await until(shows('Symbolic link to /srv/logo.png, which does not exist.'), 'the gone image is said')
+    await until(shows('Symbolic link to /srv/logo.png, which doesn’t exist.'), 'the gone image is said')
 
     backend.folders['/w'] = [linked('logo.png', '/srv/logo.png', { kind: 'file' })]
     backend.texts['/w/logo.png'] = 'PNG'
@@ -284,12 +284,12 @@ test('a link opened by its path, as from a message, reads its folder again: a ta
   app.mount(element)
   try {
     await until(() => rows().length === 1, 'the workspace lists')
-    expect(rows()[0]![3]).toBe('Symbolic link to /srv/notes.txt, which does not exist')
+    expect(rows()[0]![3]).toBe('Symbolic link to /srv/notes.txt, which doesn’t exist')
     const srv = files.root.children['srv'] as MemoryDirectory
     srv.children['notes.txt'] = textFile('Back again\n', at)
     shown.value = '/w/notes.txt'
     await until(shows('Back again'), 'the file shows')
-    expect(document.body.textContent).not.toContain('which does not exist')
+    expect(document.body.textContent).not.toContain('which doesn’t exist')
   } finally {
     app.unmount()
   }
@@ -309,7 +309,7 @@ test('a link opened again shows its target once it is back, though its file was 
   const app = createApp({ render: () => h(FileView, { source: files, root: '/w', path: shown.value, onOpen: (to: string) => { shown.value = to } }) })
   app.mount(element)
   try {
-    await until(shows('Symbolic link to /srv/notes.txt, which does not exist.'), 'the gone target is said')
+    await until(shows('Symbolic link to /srv/notes.txt, which doesn’t exist.'), 'the gone target is said')
     row('README.md').click()
     await until(shows('Read me'), 'another file shows')
     const srv = files.root.children['srv'] as MemoryDirectory
@@ -383,7 +383,7 @@ for (const mode of ['file', 'directory'] as const) {
       await until(() => option('data')?.textContent!.includes('9 B') === true, 'the row says what the link is now')
       await drain()
       if (mode === 'file')
-        await until(shows('Symbolic link to /mnt/data, which does not exist.'), 'the picker says why')
+        await until(shows('Symbolic link to /mnt/data, which doesn’t exist.'), 'the picker says why')
       expect(view.picked).toEqual([])
       expect(backend.asked).not.toContain('/ /w/data')
     } finally {
@@ -403,7 +403,7 @@ test('the attachment picker attaches no link whose target cannot be read, and sa
     const open = () => [...document.querySelectorAll<HTMLElement>('[role=button]')].find((button) => button.textContent!.trim() === 'Open')!
     await until(() => open().getAttribute('aria-disabled') !== 'true', 'Open is offered for the selected file')
     open().click()
-    await until(shows('Symbolic link to /root/notes, which cannot be read: permission denied.'), 'the picker says why')
+    await until(shows('Symbolic link to /root/notes, which can’t be read: permission denied.'), 'the picker says why')
     expect(view.picked).toEqual([])
   } finally {
     view.unmount()
@@ -445,7 +445,7 @@ test('the link shown, opened again from the tree, reads its file again: a target
   const backend = host({ '/w': [linked('notes.txt', '/srv/notes.txt', { kind: 'missing' })] })
   const view = show('/w/notes.txt')
   try {
-    await until(shows('Symbolic link to /srv/notes.txt, which does not exist.'), 'the gone target is said')
+    await until(shows('Symbolic link to /srv/notes.txt, which doesn’t exist.'), 'the gone target is said')
     backend.folders['/w'] = [linked('notes.txt', '/srv/notes.txt', { kind: 'file' })]
     backend.texts['/w/notes.txt'] = 'Back again\n'
     const listings = () => backend.asked.filter((request) => request === '/ /w').length
@@ -478,7 +478,7 @@ test('Enter on the path bar with the path shown reads the link again, as a web b
     backend.folders['/w'] = [linked('old.log', '/srv/old.log', { kind: 'missing' })]
     delete backend.texts['/w/old.log']
     await enterSamePath()
-    await until(shows('Symbolic link to /srv/old.log, which does not exist.'), 'the gone target is said')
+    await until(shows('Symbolic link to /srv/old.log, which doesn’t exist.'), 'the gone target is said')
     // It comes back: entered again, the file shows.
     backend.folders['/w'] = [linked('old.log', '/srv/old.log', { kind: 'file' })]
     backend.texts['/w/old.log'] = 'Built again.\n'

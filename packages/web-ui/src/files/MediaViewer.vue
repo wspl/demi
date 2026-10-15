@@ -7,6 +7,7 @@ import RegionStatus from '../ui/RegionStatus.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import ImagePreview from './ImagePreview.vue'
 import MediaPreview from './MediaPreview.vue'
+import { formatCount } from '../ui/numbers'
 import { formatZoom } from './image-zoom'
 import { mediumKey, useMediumSource, type MediaViewerState, type ShownMedium } from './media-viewer'
 import type { StepReach } from './swipe-step'
@@ -62,11 +63,11 @@ watch(src, () => {
   failed.value = false
 })
 
-/** What the title bar tells of the medium: its place among the transcript's, its pixel size and an image's zoom, *3 of 12 · 1280 × 720 · 50%*. */
+/** What the title bar tells of the medium: its place among the transcript's, its pixel size and an image's zoom, *3 / 12 · 1280 × 720 · 50%*. */
 function details(withZoom: boolean): string {
   const place = props.viewer.position.value
   return [
-    place ? `${place.at} of ${place.of}` : null,
+    place ? `${formatCount(place.at)} / ${formatCount(place.of)}` : null,
     size.value ? `${size.value.width} × ${size.value.height}` : null,
     withZoom && size.value && zoom.value !== null ? formatZoom(zoom.value) : null,
   ].filter((part) => part !== null).join(' · ')
