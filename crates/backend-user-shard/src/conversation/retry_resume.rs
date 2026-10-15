@@ -126,7 +126,10 @@ impl Shard {
                 return;
             }
         }
-        match self.resume_unfinished_turn(conversation, error, None).await {
+        match self
+            .resume_unfinished_turn(conversation, |failed| &failed.id == error, None)
+            .await
+        {
             Ok(true) => tracing::info!(%conversation, "a failed turn resumed at its retry time"),
             Ok(false) => {}
             Err(why) => {
@@ -135,19 +138,19 @@ impl Shard {
         }
     }
 
-    /// Resumes the conversation's unfinished turn whose record is `error`,
-    /// as the user's Resume would: the conversation's tree opens if it is
-    /// closed, the backend prepares the Resume as it prepares the user's,
-    /// and the root resumes only while it rests with that record as its
-    /// last turn's. `reason`, when given, is what the resume tells the
-    /// model in place of the reason the user's Resume would carry. Answers
-    /// whether the turn resumed; false when the backend would refuse the
-    /// user's Resume, as for an archived conversation, or the turn is no
-    /// longer the one `error` ended.
+    /// Resumes the conversation's unfinished turn, as the user's Resume
+    /// would: the conversation's tree opens if it is closed, the backend
+    /// prepares the Resume as it prepares the user's, and the root resumes
+    /// only while it rests with a last turn whose record `ended` accepts.
+    /// `reason`, when given, is what the resume tells the model in place of
+    /// the reason the user's Resume would carry. Answers whether the turn
+    /// resumed; false when the backend would refuse the user's Resume, as
+    /// for an archived conversation, or the last turn did not end as
+    /// `ended` expects.
     pub(crate) async fn resume_unfinished_turn(
         &self,
         conversation: &ConversationId,
-        error: &BlockId,
+        ended: impl Fn(&ErrorBlock) -> bool,
         reason: Option<&str>,
     ) -> Result<bool, String> {
         self.restore_tree(conversation).await?;
@@ -169,7 +172,7 @@ impl Shard {
         let unchanged = session.phase() == SessionPhase::Idle
             && session
                 .failed_turn()
-                .is_some_and(|failed| &failed.id == error);
+                .is_some_and(|failed| ended(&failed));
         if !unchanged {
             return Ok(false);
         }

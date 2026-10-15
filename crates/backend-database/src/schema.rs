@@ -199,8 +199,7 @@ pub(crate) const CONTROL: Schema = Schema {
 /// the user's Resume.
 const CONTROL_FROM_PLACEHOLDER_TITLES: &str = "
 CREATE TABLE interrupted_turns (
-  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  error_block_id  TEXT NOT NULL
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE
 ) STRICT;
 ";
 
@@ -2245,12 +2244,11 @@ CREATE TABLE credential_allowances (
 ) STRICT;
 CREATE INDEX credential_allowances_of_credential ON credential_allowances (credential_id);
 
--- A conversation whose root's turn a graceful shutdown interrupted, with the
--- `interrupted` record that shutdown wrote, which the next start resumes
+-- A conversation whose root's running turn a graceful shutdown began to
+-- interrupt, marked before the turn was aborted, which the next start resumes
 -- once (`failures-and-recovery.md` § The unfinished turn).
 CREATE TABLE interrupted_turns (
-  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
-  error_block_id  TEXT NOT NULL
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE
 ) STRICT;
 
 -- A conversation's deletion that has not reached its last step: its record
