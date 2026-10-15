@@ -13,7 +13,7 @@ use std::{
     rc::Rc,
 };
 
-use demi_runner_protocol::wire::{self, JOB_VIEW_BYTES, KeptJob};
+use demi_runner_protocol::wire::{self, Inbound, JOB_VIEW_BYTES, KeptJob};
 use demi_shared_types::StreamKind;
 use tokio::{sync::watch, time::Instant};
 use tokio_util::sync::CancellationToken;
@@ -34,7 +34,8 @@ pub const CLOUD_RESTARTED: &str = "the Cloud restarted";
 /// Why a paired device's job is lost when its runner started anew.
 pub const RUNNER_RESTARTED: &str = "the Host's runner started anew after it ended";
 /// Why a job is lost that the runner which kept its connection's jobs never
-/// received.
+/// received, when the backend cannot send it again: it sent it again once
+/// already, or a restarted backend knows it only from its records.
 pub const NEVER_RECEIVED: &str = "its Host's runner never received it";
 /// Why a job is lost that the runner stopped once its connection stayed
 /// away for the grace.
@@ -90,6 +91,11 @@ pub(crate) struct JobEntry {
     /// Whether an agent took it up and said whose it is; true for a job
     /// started here.
     claimed: watch::Sender<bool>,
+    /// The instance of the runner its start went to, once it went.
+    sent_to: Option<u64>,
+    /// Its start, while the backend may send it again: until the runner
+    /// lists the job, or the start went again once.
+    start: Option<Inbound>,
 }
 
 /// What arrives of a job while its kept output is read again after a new
@@ -236,6 +242,9 @@ pub(crate) struct Adoption {
     pub(crate) release: Vec<String>,
     /// Running jobs that go on, whose output the backend reads again.
     pub(crate) resync: Vec<(String, wire::OutputLengths)>,
+    /// Jobs the same runner never received, whose starts go again over the
+    /// new connection, with the commands each needs.
+    pub(crate) resend: Vec<(String, Inbound, Option<CommandSelection>)>,
 }
 
 impl DeviceJobs {
@@ -265,9 +274,34 @@ impl DeviceJobs {
                 unreached: false,
                 parked: false,
                 claimed: watch::Sender::new(true),
+                sent_to: None,
+                start: None,
             },
         );
         claimed
+    }
+
+    /// The start of the job `id` went to the runner of `instance`, which
+    /// may not receive it: until that runner lists the job, the backend
+    /// keeps `start` to send it again.
+    pub(crate) fn sent(&self, id: &str, instance: u64, start: Inbound) {
+        self.with(id, |job| {
+            job.sent_to = Some(instance);
+            job.start = Some(start);
+        });
+    }
+
+    /// The start of the job `id` went again over `link`: the job goes on
+    /// over it from now on. When it could not go, the connection ended
+    /// first, and the start waits for the same runner's next connection.
+    pub(crate) fn resent(&self, link: &Link, id: &str, start: Result<(), Inbound>) {
+        self.with(id, |job| match start {
+            Ok(()) if job.attached.as_ref().is_some_and(|attached| attached.is(link)) => {
+                job.attachments.send_modify(|count| *count += 1);
+            }
+            Ok(()) => {}
+            Err(start) => job.start = Some(start),
+        });
     }
 
     /// Takes up the job `id`, which the backend recorded as running: the
@@ -291,6 +325,8 @@ impl DeviceJobs {
             unreached: false,
             parked: false,
             claimed: watch::Sender::new(false),
+            sent_to: None,
+            start: None,
         });
         job.parked = false;
         job.origin = entry.origin;
@@ -409,9 +445,11 @@ impl DeviceJobs {
     /// Matches the jobs `hello` lists with those the device knows, for the
     /// new connection `link` (`sessions-and-targets.md` § Recovery and
     /// persistence): a job that runs goes on, one that ended waits for its
-    /// exit, which follows the hello's answer, and one the runner does not
-    /// list is lost. A job the backend's records name and the table does
-    /// not is parked for the agent that takes it up again.
+    /// exit, which follows the hello's answer, one the runner does not list
+    /// although it is the runner its start went to is sent again, once,
+    /// since that runner lists every job it received, and any other one the
+    /// runner does not list is lost. A job the backend's records name and
+    /// the table does not is parked for the agent that takes it up again.
     pub(crate) fn adopt(&self, link: &Link, hello: Hello) -> Adoption {
         let mut table = self.0.borrow_mut();
         let previous = table
@@ -453,6 +491,8 @@ impl DeviceJobs {
             job.attached = Some(link.downgrade());
             job.away_since = None;
             job.attachments.send_modify(|count| *count += 1);
+            // The runner has it: its start never goes again.
+            job.start = None;
             job.unreached = kept.ended.as_ref().is_some_and(|end| end.unreached);
             // A restarted backend, or one whose connection missed a
             // `job_outliving`, learns from the hello what keeps the job
@@ -481,6 +521,20 @@ impl DeviceJobs {
             .map(|(id, _)| id.clone())
             .collect();
         for id in unlisted {
+            let Some(job) = table.jobs.get_mut(&id) else {
+                continue;
+            };
+            // The runner its start went to, the same since, never received
+            // it: it goes again, and goes on over this connection once it
+            // went.
+            if job.sent_to == Some(hello.instance)
+                && let Some(start) = job.start.take()
+            {
+                job.attached = Some(link.downgrade());
+                job.away_since = None;
+                adoption.resend.push((id, start, job.commands.clone()));
+                continue;
+            }
             if let Some(job) = table.jobs.remove(&id) {
                 job.lose(lost);
             }
@@ -573,6 +627,8 @@ impl JobEntry {
             unreached: false,
             parked: true,
             claimed: watch::Sender::new(false),
+            sent_to: None,
+            start: None,
         }
     }
 
