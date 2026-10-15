@@ -44,8 +44,9 @@ pub(super) struct Setup {
     pub(super) limits: Limits,
 }
 
-/// The user's two limits on a conversation's subagents (`subagents.md`
-/// § Limits), each none for Unlimited.
+/// The user's two limits on subagents (`subagents.md` § Limits): the live
+/// subagents of all the user's conversations together and each tree's
+/// depth, each none for Unlimited.
 #[derive(Debug, Clone, Copy)]
 pub(super) struct Limits {
     pub(super) max_live: Option<NonZeroU32>,

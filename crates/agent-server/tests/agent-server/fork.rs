@@ -269,7 +269,7 @@ async fn a_fork_is_refused_without_a_completed_text_and_by_the_checks_of_a_spawn
     let full = fork(&fixture, message(1)).await;
     assert_eq!(
         refused(&full),
-        "demi agent fork: this conversation has 1 live subagents and Settings > Subagents allows 1; wait for one to finish (`demi agent list`), or do this work in this session.\n"
+        "demi agent fork: 1 subagents are live across your conversations, 1 of them in this one, and Settings > Subagents allows 1; wait for one to finish, or do this work in this session.\n"
     );
 
     // Nothing was created: the next number went to the spawn in between.
