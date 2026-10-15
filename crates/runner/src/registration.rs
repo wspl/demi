@@ -240,6 +240,13 @@ async fn reconnect(
             tracing::info!("connecting to {}", registered.backend.url());
         }
         let result = connection(registered, kept).await;
+        // A connection that went online starts the retries over: its failure
+        // is a new one, logged and retried after the first delay, however
+        // long ago the last failure was (`runner.md` § Host log).
+        if management.phase() == Phase::Online {
+            failure = None;
+            delay = Duration::from_millis(250);
+        }
         let result = match result {
             Ok(Attempt::Update(update)) => {
                 let Some(installed) = installed else {
@@ -284,11 +291,7 @@ async fn reconnect(
                 return Ok(Ending::Stopped);
             }
             Ok(End::Revoked(projects)) => return Ok(Ending::Removed(projects)),
-            Ok(End::Disconnected) => {
-                tracing::warn!("backend connection lost");
-                failure = None;
-                delay = Duration::from_millis(250);
-            }
+            Ok(End::Disconnected) => tracing::warn!("backend connection lost"),
             Err(error) => {
                 let text = format!("connection ended: {error}");
                 if failure.as_ref() == Some(&text) {
