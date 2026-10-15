@@ -776,6 +776,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
               variant="ghost"
               circle
               :aria-label="t('composer.stop')"
+              data-composer-stop
               :operation="conversationId ? { action: 'stop', target: `conversation:${conversationId}` } : undefined"
               @mousedown.prevent
               @click="onStop?.()"

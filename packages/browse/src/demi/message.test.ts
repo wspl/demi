@@ -2,7 +2,9 @@
 // backend, in Playwright's own Chromium, which `bun browse` installs on its
 // first call: about a second, the browser's start, and `demi.turn`'s looks
 // at the backend, four a second. No cheaper test shows what the page shows,
-// which is what the calls report and wait for.
+// which is what the calls report and wait for. The stand-in speaks Japanese:
+// the calls find the page's controls by the hooks the web app's components
+// give them, never by their words.
 import { afterAll, beforeAll, expect, test } from 'bun:test'
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -34,7 +36,7 @@ const conversations: ConversationSummary[] = [
  * the notice the send answers with.
  */
 const PAGE = `<!doctype html>
-<div class="composer-shell"><textarea aria-label="Message"></textarea></div>
+<div><textarea data-composer aria-label="メッセージ"></textarea></div>
 <div id="flow"></div>
 <script>
   const composer = document.querySelector('textarea')
@@ -43,9 +45,10 @@ const PAGE = `<!doctype html>
     event.preventDefault()
     const flow = document.getElementById('flow')
     const stop = document.createElement('button')
-    stop.setAttribute('aria-label', 'Stop')
+    stop.setAttribute('aria-label', '停止')
+    stop.setAttribute('data-composer-stop', '')
     composer.after(stop)
-    flow.innerHTML = '<div><span>Requesting</span></div>'
+    flow.innerHTML = '<div data-transcript-wait="requesting"><span>リクエスト中</span></div>'
     const answer = await fetch(location.pathname + '/send', { method: 'POST', body: composer.value })
     flow.innerHTML = await answer.text()
     stop.remove()
@@ -61,7 +64,7 @@ const PAGE = `<!doctype html>
 function composerPage(draft: string): string {
   return `<!doctype html>
 <div><input type="file" multiple hidden>
-<div class="composer-shell"><div contenteditable="true" role="textbox" aria-label="Message">${draft}</div></div></div>
+<div><div contenteditable="true" role="textbox" data-composer aria-label="メッセージ">${draft}</div></div></div>
 <script>
   const input = document.querySelector('input')
   const composer = document.querySelector('[role=textbox]')
@@ -129,14 +132,14 @@ const server = Bun.serve({
     }
     if (path === `/chat/${UNDELIVERED}/send`) {
       // The backend refused the creation: it holds no conversation, and the page says so.
-      return new Response(notice('This message was not delivered.', 'That device is the conversation’s primary host', 'Retry'))
+      return new Response(`<div data-delivery-failure>${notice('このメッセージは送信されませんでした。', 'That device is the conversation’s primary host', '再試行')}</div>`)
     }
     if (path === `/chat/${FAILING}/send`) {
       conversations.push(conversationSummary(FAILING, 'Failing', {
         revision: 1,
         lastTurn: { id: 'block-1', outcome: 'failed', answerStart: null },
       }))
-      return new Response(notice('The provider returned an error.', 'Rate limit exceeded', 'Copy Report'))
+      return new Response(notice('プロバイダがエラーを返しました。', 'Rate limit exceeded', 'レポートをコピー'))
     }
     if (path === `/chat/${ATTACHING}` || path === `/chat/${DRAFTED}`) {
       const draft = path.endsWith(DRAFTED) ? 'Look at <span class="message-capsule" contenteditable="false">chart.png</span>' : ''
@@ -208,10 +211,10 @@ test.skipIf(!existsSync(chromium.executablePath()))(
         .then(() => 'answered', (error: unknown) => error instanceof Failure ? error.message : String(error))
     // Either would wait the call's ten minutes for a turn, past the test's limit.
     expect(await failure(UNDELIVERED)).toBe(
-      `Conversation ${UNDELIVERED}: This message was not delivered. That device is the conversation’s primary host`,
+      `Conversation ${UNDELIVERED}: このメッセージは送信されませんでした。 That device is the conversation’s primary host`,
     )
     expect(await failure(FAILING)).toBe(
-      `The turn of the message failed in conversation ${FAILING}: The provider returned an error. Rate limit exceeded`,
+      `The turn of the message failed in conversation ${FAILING}: プロバイダがエラーを返しました。 Rate limit exceeded`,
     )
   },
 )

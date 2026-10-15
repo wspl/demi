@@ -234,6 +234,10 @@ function fieldAttributes(): Record<string, string> {
   if (props.disabled) {
     attributes['aria-disabled'] = 'true'
   }
+  // The product checks write in the composer by it, in any language (`browse.md`).
+  if (props.composer) {
+    attributes['data-composer'] = ''
+  }
   return attributes
 }
 

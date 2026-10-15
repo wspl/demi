@@ -125,7 +125,8 @@ const pageProjects = computed(() =>
     />
     <SettingsGroup :title="t('devices.yours')">
       <template #actions>
-        <Button size="sm" @click="open()">{{ t('devices.add') }}</Button>
+        <!-- data-add-device: the product checks pair a runner through it in any language (`browse.md`). -->
+        <Button size="sm" data-add-device @click="open()">{{ t('devices.add') }}</Button>
       </template>
       <AsyncRegion
         :state="load"
