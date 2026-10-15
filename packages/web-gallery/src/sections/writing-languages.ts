@@ -386,7 +386,7 @@ const JAPANESE: LanguageWriting = {
     ['Skill', 'スキル', 'Codex, ChatGPT'],
     ['Plugin', 'プラグイン', 'ChatGPT, Apple'],
     ['Extension', '拡張機能', 'ChatGPT, Claude; Apple’s 機能拡張 is the system’s own kind'],
-    ['Connector', 'コネクタ', 'ChatGPT'],
+    ['Connector', 'コネクター', 'ChatGPT'],
     ['Credential', '認証情報', 'No product names it; the everyday word for sign-in data'],
     ['API key', 'API キー', 'ChatGPT, spaced as the first rule'],
     ['Instructions', '指示', 'Codex, ChatGPT, Apple; not 手順, which is steps'],
