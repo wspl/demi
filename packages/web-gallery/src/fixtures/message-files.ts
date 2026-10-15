@@ -40,4 +40,6 @@ export function galleryConversationFiles(
  */
 export const namedFilesMarkdown = `The cookie is renamed in [cookie.ts](src/auth/cookie.ts), and [session.ts](src/auth/session.ts#L5) reads it under the new name. The setup steps the [README](README.md#L42) lists still hold; from the home it is [~/Projects/demi/README.md](~/Projects/demi/README.md). The fix went in as [Fix the cart total when a coupon empties it](commit:${LINKED_COMMIT}).
 
+在中文句子里，字符与图标之间同样留出间距：已经提交了[修正优惠券清空后的购物车合计](commit:${LINKED_COMMIT})，请查看。
+
 Written as code, \`src/auth/cookie.ts\` and \`tests/login/auth.test.ts\` open, and \`README.md:42\` opens at its line; \`src/auth/token.ts\` is not in the workspace and stays code, and a bare name such as \`cookie\` is never asked about.`
