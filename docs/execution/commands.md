@@ -97,10 +97,14 @@ groups declares that category with its `action` and `description`. The
 declaration is all a command does about permissions: the backend's dispatch
 checks the conversation's grant before the handler runs
 ([The check](../agent/permissions.md#the-check)). A leaf whose input field
-names a device or a project that the call may bring into the conversation
-declares that field as `bringsHost`, as `demi conversation move` declares its
-project, and the dispatch needs that host when the conversation may not
-reach it ([Hosts](../agent/permissions.md#hosts)). The
+names a host or a project that the call may bring into the conversation
+declares that field as `bringsHost`, with what it names, `{ field, names:
+"host" | "project" }`: `demi conversation move` declares its project,
+`demi host move` its host. The dispatch resolves the field once, by the one
+rule for what it names, needs that host when the conversation may not reach
+it ([Hosts](../agent/permissions.md#hosts)), and hands the handler the host
+it resolved, so the handler acts on the host the check allowed and never
+reads the name again. The
 runner ignores these fields.
 
 A group contains subcommands and does not execute a handler. A command name
