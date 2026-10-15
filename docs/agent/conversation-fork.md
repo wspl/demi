@@ -173,7 +173,9 @@ The destination's execution-context revision starts where the source's stood
 at the Fork, so the context blocks its copied transcript holds are older than
 any it is announced later, its first switch included.
 
-Attached hosts and their directories are copied as configuration; a device
+Attached hosts and their directories are copied as configuration, and the
+destination may reach them as the source did
+([Hosts](permissions.md#hosts)); a device
 revoked before the destination is published is left out, as its revocation
 detached it from the source. Processes, shell handles, and jobs are not copied.
 The destination's first ordinary execution uses its own node identity on the
