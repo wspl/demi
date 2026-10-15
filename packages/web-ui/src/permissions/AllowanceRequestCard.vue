@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { KeyRound } from '@lucide/vue'
 import Button from '../ui/Button.vue'
@@ -25,24 +26,24 @@ const emit = defineEmits<{
   decide: [id: string, decision: PermissionDecision]
 }>()
 
-const title = computed(() => `Allow this conversation to use the credential “${props.request.name}”?`)
+const title = computed(() => t('request.allowCredentialTitle', { name: props.request.name }))
 </script>
 
 <template>
   <RequestFrame :title="title" :icon="KeyRound" :count="count">
     <div v-if="request.removed" class="flex items-center gap-2 pl-6 leading-5 text-fg-muted">
-      <Tag tone="warning">Removed</Tag>
-      You removed this credential.
+      <Tag tone="warning">{{ t('request.removed') }}</Tag>
+      {{ t('request.youRemoved') }}
     </div>
     <template #footer>
-      <Button size="sm" :disabled="deciding" @click="emit('decide', request.id, 'deny')">Don’t Allow</Button>
+      <Button size="sm" :disabled="deciding" @click="emit('decide', request.id, 'deny')">{{ t('request.dontAllow') }}</Button>
       <Button
         v-if="!request.removed"
         size="sm"
         variant="primary"
         :disabled="deciding"
         @click="emit('decide', request.id, 'allow')"
-      >Allow</Button>
+      >{{ t('request.allow') }}</Button>
     </template>
   </RequestFrame>
 </template>

@@ -1,0 +1,34 @@
+{
+  "settings": {
+    "title": "雲端",
+    "description": "由你所有的雲端專案共用。"
+  },
+  "environment": {
+    "title": "你的雲端環境",
+    "reset": "重設環境",
+    "newerImage": "有更新的系統映像可用",
+    "newerImageDescription": "重設會保留你的個人檔案，並移除已安裝的系統套件。",
+    "connected": "{system} · 透過中繼連線"
+  },
+  "storage": {
+    "title": "儲存空間",
+    "line": "系統 {system} · 個人 {home}",
+    "max": "最大 {size}"
+  },
+  "reset": {
+    "title": "重設雲端環境",
+    "body": "停止雲端工作，並重設系統套件和設定。你的個人檔案和雲端專案會保留。",
+    "starting": "正在開始重設…",
+    "retry": "重試重設",
+    "close": "關閉",
+    "cancel": "取消"
+  },
+  "phase": {
+    "stopping": "正在停止雲端工作…",
+    "saving": "正在儲存個人檔案…",
+    "rebuilding": "正在重建系統…",
+    "booting": "正在啟動雲端…",
+    "ready": "雲端已就緒。",
+    "failed": "重設失敗。"
+  }
+}

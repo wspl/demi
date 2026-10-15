@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed } from 'vue'
 import Button from '../ui/Button.vue'
@@ -7,10 +8,10 @@ import TextInput from '../ui/TextInput.vue'
 import AuthPage from './AuthPage.vue'
 import { isEmail } from './email'
 import {
-  PASSWORD_HINT,
   PASSWORD_MIN_LENGTH,
-  PASSWORD_TOO_SHORT,
-  PASSWORDS_DIFFER,
+  passwordHint,
+  passwordTooShort,
+  passwordsDiffer,
   differs,
   isTooShort,
 } from './password'
@@ -77,8 +78,8 @@ function submit() {
 <template>
   <AuthPage
     v-if="phase.passkey"
-    title="Add a Passkey"
-    message="Sign in with Touch ID, Face ID or your password manager. You can also add one later in Settings."
+    :title="t('setup.passkeyTitle')"
+    :message="t('setup.passkeyMessage')"
   >
     <div class="flex flex-col gap-4">
       <!-- The line keeps its height with nothing to say, so a message never moves the buttons. -->
@@ -92,15 +93,15 @@ function submit() {
         :loading="phase.passkey.busy"
         @click="emit('addPasskey')"
       >
-        Add Passkey
+        {{ t('setup.addPasskey') }}
       </Button>
-      <Button size="lg" class="w-full" :disabled="phase.passkey.busy" @click="emit('skipPasskey')">Skip</Button>
+      <Button size="lg" class="w-full" :disabled="phase.passkey.busy" @click="emit('skipPasskey')">{{ t('setup.skip') }}</Button>
     </div>
   </AuthPage>
   <AuthPage
     v-else-if="phase.taken"
-    title="Set Up Demi"
-    message="Demi is set up already. Sign in with its master account."
+    :title="t('setup.title')"
+    :message="t('setup.taken')"
   >
     <Button
       size="lg"
@@ -108,17 +109,17 @@ function submit() {
       class="w-full"
       @click="emit('signIn')"
     >
-      Sign In
+      {{ t('signIn.title') }}
     </Button>
   </AuthPage>
   <AuthPage
     v-else
-    title="Set Up Demi"
-    message="Create the master account that manages Demi."
+    :title="t('setup.title')"
+    :message="t('setup.message')"
   >
     <form class="flex flex-col gap-4" @submit.prevent="submit">
       <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-        Name
+        {{ t('setup.name') }}
         <TextInput
           v-model="name"
           size="lg"
@@ -130,7 +131,7 @@ function submit() {
         />
       </label>
       <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-        Email
+        {{ t('setup.email') }}
         <TextInput
           v-model="email"
           size="lg"
@@ -142,7 +143,7 @@ function submit() {
         />
       </label>
       <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-        Password
+        {{ t('setup.password') }}
         <TextInput
           v-model="password"
           size="lg"
@@ -152,12 +153,10 @@ function submit() {
           :disabled="phase.busy"
           @keydown.enter="submit"
         />
-        <span class="text-[12px] leading-4 text-fg-subtle">{{
-          PASSWORD_HINT
-        }}</span>
+        <span class="text-[12px] leading-4 text-fg-subtle">{{ passwordHint() }}</span>
       </label>
       <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-        Confirm password
+        {{ t('setup.confirm') }}
         <TextInput
           v-model="confirmation"
           size="lg"
@@ -169,8 +168,8 @@ function submit() {
         />
       </label>
       <InlineError v-if="phase.error" :message="phase.error.message" :request-id="phase.error.requestId" />
-      <InlineError v-else-if="tooShort" :message="PASSWORD_TOO_SHORT" />
-      <InlineError v-else-if="mismatch" :message="PASSWORDS_DIFFER" />
+      <InlineError v-else-if="tooShort" :message="passwordTooShort()" />
+      <InlineError v-else-if="mismatch" :message="passwordsDiffer()" />
       <Button
         size="lg"
         variant="primary"
@@ -179,7 +178,7 @@ function submit() {
         :loading="phase.busy"
         @click="submit"
       >
-        Create Account
+        {{ t('setup.create') }}
       </Button>
     </form>
   </AuthPage>

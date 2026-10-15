@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, reactive, ref, useId } from 'vue'
 import { KeyRound } from '@lucide/vue'
@@ -40,7 +41,7 @@ const emit = defineEmits<{
   decide: [id: string, decision: PermissionDecision, credential?: CredentialAnswer]
 }>()
 
-const title = computed(() => (props.request.renewal ? 'Update the Credential' : 'Save a Credential'))
+const title = computed(() => (props.request.renewal ? t('request.updateCredential') : t('request.saveCredential')))
 const values = reactive<Record<string, string>>(Object.fromEntries(props.request.fields.map((field) => [field.name, ''])))
 const keep = ref<CredentialKeep>(props.request.keep)
 const formId = useId()
@@ -85,20 +86,20 @@ function save(): void {
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span class="text-[12px] leading-4 text-fg-muted">Keep until</span>
+        <span class="text-[12px] leading-4 text-fg-muted">{{ t('request.keepUntil') }}</span>
         <Segmented v-model="keep" :options="KEEP_OPTIONS" size="sm" :disabled="deciding" />
       </div>
       <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
     </form>
     <template #footer>
-      <Button size="sm" :disabled="deciding" @click="emit('decide', request.id, 'deny')">Decline</Button>
+      <Button size="sm" :disabled="deciding" @click="emit('decide', request.id, 'deny')">{{ t('request.decline') }}</Button>
       <Button
         size="sm"
         variant="primary"
         :disabled="!complete || deciding"
-        disabled-reason="Every field needs a value of up to 64 KiB."
+        :disabled-reason="t('request.needsValues')"
         @click="save"
-      >Save</Button>
+      >{{ t('request.save') }}</Button>
     </template>
   </RequestFrame>
 </template>

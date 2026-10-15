@@ -1,0 +1,27 @@
+{
+  "keep": {
+    "1h": "1시간",
+    "1d": "1일",
+    "30d": "30일",
+    "always": "항상"
+  },
+  "request": {
+    "allowTitle": "이 대화에서 {action}을(를) 허용하시겠습니까?",
+    "agentRan": "에이전트가 실행했습니다",
+    "subagentRan": "하위 에이전트 {number}(“{description}”)이(가) 실행했습니다",
+    "deny": "거부",
+    "allowConversation": "이 대화에서 허용",
+    "allow": "허용",
+    "dontAllow": "허용 안 함",
+    "decline": "거절",
+    "save": "저장",
+    "updateCredential": "자격 증명 업데이트",
+    "saveCredential": "자격 증명 저장",
+    "keepUntil": "보관 기간",
+    "needsValues": "모든 필드에 64 KiB 이하의 값이 필요합니다.",
+    "allowCredentialTitle": "이 대화에서 자격 증명 “{name}”을(를) 사용하도록 허용하시겠습니까?",
+    "removed": "제거됨",
+    "youRemoved": "이 자격 증명을 제거했습니다.",
+    "progress": "{position} / {count}"
+  }
+}

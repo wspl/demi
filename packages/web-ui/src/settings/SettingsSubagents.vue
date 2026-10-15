@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { formError, type ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import { TriangleAlert } from '@lucide/vue'
@@ -99,9 +101,9 @@ function missing(profile: SettingsSubagentProfile): string | null {
 function traits(profile: SettingsSubagentProfile): string[] {
   return [
     profileModelLabel(profile.model, props.providers, props.catalogModels),
-    ...(profile.contextLimit === null ? [] : [`Context ${formatTokens(profile.contextLimit)}`]),
-    profile.instructions === null ? 'No instructions' : 'Own instructions',
-    profile.canSpawn ? 'Children may spawn' : 'No spawning',
+    ...(profile.contextLimit === null ? [] : [t('subagents.context', { size: formatTokens(profile.contextLimit) })]),
+    profile.instructions === null ? t('subagents.noInstructions') : t('subagents.ownInstructions'),
+    profile.canSpawn ? t('subagents.mayStart') : t('subagents.noSpawning'),
   ]
 }
 
@@ -152,7 +154,7 @@ function save(draft: SettingsSubagentDraft): Promise<void> {
   // The draft stays, for the dialog to keep its fields until the backend took them.
   current.draft = draft
   const id = current.id
-  return answerInDialog(() => shownEditor(id), 'Could Not Save the Profile', failed, () => props.saveProfile(id, draft))
+  return answerInDialog(() => shownEditor(id), t('subagents.saveFailed'), failed, () => props.saveProfile(id, draft))
 }
 
 /** Deleting asks first, over the profile's dialog. */
@@ -163,7 +165,7 @@ async function remove(): Promise<void> {
   if (!id) {
     return
   }
-  await answerInDialog(() => shownEditor(id), 'Could Not Delete the Profile', failed, () => props.deleteProfile(id))
+  await answerInDialog(() => shownEditor(id), t('subagents.deleteFailed'), failed, () => props.deleteProfile(id))
   // The question closes with its answer, if it still asks about this profile.
   if (editor.value?.id === id) {
     deleteOpen.value = false
@@ -175,68 +177,68 @@ const empty = computed(() => props.profiles.length === 0)
 
 <template>
   <SettingsPage
-    title="Subagents"
-    description="Child agents that take on parts of a task."
+    :title="t('subagents.title')"
+    :description="t('subagents.description')"
   >
     <SettingsGroup>
       <SettingsRow
-        label="Subagents"
-        description="Turning off doesn’t stop running subagents."
+        :label="t('subagents.title')"
+        :description="t('subagents.switchDescription')"
       >
         <Switch
           :model-value="enabled"
           size="sm"
           class="ml-1"
-          :aria-label="`Subagents ${enabled ? 'on' : 'off'}`"
+          :aria-label="t('subagents.title')"
           @update:model-value="emit('switch', $event)"
         />
       </SettingsRow>
       <SettingsRow
-        label="Maximum subagents"
-        description="The most subagents one conversation runs at once."
+        :label="t('subagents.maxLive')"
+        :description="t('subagents.maxLiveDescription')"
       >
         <template v-if="limitProblems.maxLive" #detail>
           <InlineError :message="limitProblems.maxLive" />
         </template>
         <LimitField
           :model-value="maxLive"
-          label="Maximum subagents"
+          :label="t('subagents.maxLive')"
           :overlay-store="overlayStore"
-          confirm-title="Allow unlimited subagents?"
-          confirm-action="Allow Unlimited"
+          :confirm-title="t('subagents.maxLiveConfirmTitle')"
+          :confirm-action="t('subagents.allowUnlimited')"
           @commit="emit('setLimit', 'maxLive', $event)"
           @problem="limitProblems.maxLive = $event"
         >
-          <p>This can make conversations unstable and use many tokens.</p>
+          <p>{{ t('subagents.unlimitedWarning') }}</p>
         </LimitField>
       </SettingsRow>
       <SettingsRow
-        label="Maximum depth"
-        description="At 1, only the main agent starts subagents."
+        :label="t('subagents.maxDepth')"
+        :description="t('subagents.maxDepthDescription')"
       >
         <template v-if="limitProblems.maxDepth" #detail>
           <InlineError :message="limitProblems.maxDepth" />
         </template>
         <LimitField
           :model-value="maxDepth"
-          label="Maximum depth"
+          :label="t('subagents.maxDepth')"
           :overlay-store="overlayStore"
-          confirm-title="Allow unlimited depth?"
-          confirm-action="Allow Unlimited"
+          :confirm-title="t('subagents.maxDepthConfirmTitle')"
+          :confirm-action="t('subagents.allowUnlimited')"
           @commit="emit('setLimit', 'maxDepth', $event)"
           @problem="limitProblems.maxDepth = $event"
         >
-          <p>This can make conversations unstable and use many tokens.</p>
+          <p>{{ t('subagents.unlimitedWarning') }}</p>
         </LimitField>
       </SettingsRow>
     </SettingsGroup>
 
     <SettingsGroup
-      title="Profiles"
-      description="Without a profile, a subagent inherits its parent’s settings."
+      :title="t('subagents.profiles')"
+      :description="t('subagents.profilesDescription')"
     >
       <template #actions>
-        <Button size="sm" @click="open(null)">New Profile…</Button>
+        <Button size="sm" @click="open(null)">{{ t('subagents.newProfile') }}</Button>
       </template>
       <SettingsRow
         v-for="profile in profiles"
@@ -253,19 +255,19 @@ const empty = computed(() => props.profiles.length === 0)
           <Tooltip :content="missing(profile) ?? ''">
             <Tag tone="warning">
               <TriangleAlert :size="ICON_PX.in20" class="mr-1" />
-              Unavailable
+              {{ t('subagents.unavailable') }}
             </Tag>
           </Tooltip>
         </template>
         <template #detail>
           <TagLine :items="traits(profile)" />
         </template>
-        <Button size="sm" @click="open(profile)">Edit</Button>
+        <Button size="sm" @click="open(profile)">{{ t('subagents.edit') }}</Button>
         <Switch
           :model-value="profile.enabled"
           size="sm"
           class="ml-1"
-          :aria-label="`${profile.name} ${profile.enabled ? 'on' : 'off'}`"
+          :aria-label="profile.name"
           @update:model-value="emit('switchProfile', profile.id, $event)"
         />
       </SettingsRow>
@@ -273,7 +275,7 @@ const empty = computed(() => props.profiles.length === 0)
         v-if="empty"
         class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
       >
-        No profiles
+        {{ t('subagents.none') }}
       </div>
     </SettingsGroup>
 
@@ -296,13 +298,13 @@ const empty = computed(() => props.profiles.length === 0)
     <ConfirmDialog
       :is-open="deleteOpen"
       :overlay-store="overlayStore"
-      :title="`Delete the profile “${editor?.draft.name ?? ''}”?`"
-      action="Delete"
+      :title="t('subagents.deleteTitle', { name: editor?.draft.name ?? '' })"
+      :action="uiText('common.delete')"
       :operation="editing('delete', editor?.id ?? null)"
       @close="deleteOpen = false"
       @confirm="remove"
     >
-      <p>Agents can no longer use it. Running subagents continue.</p>
+      <p>{{ t('subagents.deleteBody') }}</p>
     </ConfirmDialog>
   </SettingsPage>
 </template>

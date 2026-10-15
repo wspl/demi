@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { onMounted, ref } from 'vue'
 import { reportError, shownError } from '@demicodes/web-ui/infra/errors'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
@@ -62,7 +63,7 @@ async function signOut(): Promise<void> {
     // A new document releases account-scoped stores, sockets and draft data.
     window.location.replace('/login')
   } catch (error) {
-    reportError('Could Not Sign Out', error, { userVisible: true })
+    reportError(t('login.signOutFailed'), error, { userVisible: true })
   }
 }
 </script>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { computed } from 'vue'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
@@ -35,10 +37,11 @@ const emit = defineEmits<{
 /** The question as a sentence: while the agent works, moving stops it first. */
 const title = computed(() => {
   const host = props.question?.host
-  return props.question?.stops
-    ? `Stop the agent and move this conversation to ${host}?`
-    : `Move this conversation to ${host}?`
+  return props.question?.stops ? t('move.titleStop', { host }) : t('move.title', { host })
 })
+// The directory stands in its own span, so the sentence is split around where it goes.
+const DIRECTORY_MARK = '\u0001'
+const runsIn = computed(() => t('move.runsIn', { directory: DIRECTORY_MARK }).split(DIRECTORY_MARK))
 </script>
 
 <template>
@@ -56,23 +59,23 @@ const title = computed(() => {
       <div class="flex flex-col gap-3 text-[13px] leading-5 text-fg-muted">
         <p v-if="question?.stops">{{ stopSentence(question.stops) }}</p>
         <p>
-          <template v-if="question?.directory === '~'">It will run in the home directory there.</template>
-          <template v-else-if="question?.directory">It will run in <span class="break-all text-fg-body">{{ question.directory }}</span>.</template>
-          <template v-else>It will run in a directory of its own there.</template>
-          Files on {{ question?.fromCloud ? 'the Cloud' : question?.from }} stay there.
+          <template v-if="question?.directory === '~'">{{ t('move.runsHome') }}</template>
+          <template v-else-if="question?.directory">{{ runsIn[0] }}<span class="break-all text-fg-body">{{ question.directory }}</span>{{ runsIn[1] }}</template>
+          <template v-else>{{ t('move.runsOwn') }}</template>
+          {{ t('move.filesStay', { host: question?.fromCloud ? uiText('common.cloud') : (question?.from ?? '') }) }}
         </p>
-        <p>The agent learns of the move when it next works, or now if you tell it.</p>
+        <p>{{ t('move.agentLearns') }}</p>
       </div>
     </div>
     <template #footer>
-      <Button @click="emit('close')">Cancel</Button>
-      <Button :operation="answers?.move" @click="emit('move', false)">{{ question?.stops ? 'Stop and Move' : 'Move' }}</Button>
+      <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
+      <Button :operation="answers?.move" @click="emit('move', false)">{{ question?.stops ? t('move.stopAndMove') : t('move.move') }}</Button>
       <Button
         variant="primary"
         :operation="answers?.tell"
         @click="emit('move', true)"
       >
-        {{ question?.stops ? 'Stop, Move and Tell Agent' : 'Move and Tell Agent' }}
+        {{ question?.stops ? t('move.stopMoveTell') : t('move.moveAndTell') }}
       </Button>
     </template>
   </Dialog>

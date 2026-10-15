@@ -1,0 +1,105 @@
+{
+  "nav": {
+    "new": "新建",
+    "search": "搜索",
+    "archived": "已存档"
+  },
+  "groups": {
+    "conversations": "对话",
+    "projects": "项目",
+    "addProject": "添加项目",
+    "newConversation": "新建对话"
+  },
+  "list": {
+    "loading": "正在加载对话…",
+    "failed": "无法加载对话。"
+  },
+  "foot": {
+    "handOff": "接力到手机",
+    "settings": "设置"
+  },
+  "account": {
+    "label": "帐户",
+    "settings": "设置",
+    "signOut": "注销"
+  },
+  "row": {
+    "unpin": "取消固定",
+    "archive": "存档"
+  },
+  "project": {
+    "newConversation": "新建对话"
+  },
+  "device": {
+    "removed": "已移除的设备",
+    "cloud": "云"
+  },
+  "dot": {
+    "needsYou": "需要你决定"
+  },
+  "selection": {
+    "open": "打开",
+    "rename": "重命名",
+    "copyId": "复制对话 ID",
+    "pin": "固定",
+    "pinMany": "固定 {count} 个对话",
+    "unpin": "取消固定",
+    "unpinMany": "取消固定 {count} 个对话",
+    "archive": "存档",
+    "archiveMany": "存档 {count} 个对话",
+    "delete": "删除…",
+    "deleteMany": "删除 {count} 个对话…"
+  },
+  "projectMenu": {
+    "newHere": "在此新建对话",
+    "fold": "折叠",
+    "unfold": "展开",
+    "select": "选择对话",
+    "remove": "删除项目"
+  },
+  "delete": {
+    "title": "删除“{title}”？",
+    "titleMany": "删除 {count} 个对话？",
+    "one": "它的消息和文件将被删除。此操作无法撤消。",
+    "many": "它们的消息和文件将被删除。此操作无法撤消。",
+    "filesOne": "它更改过的文件会保留在项目中。",
+    "filesMany": "它们更改过的文件会保留在各自的项目中。"
+  },
+  "archivedToast": {
+    "title": "已存档 {count} 个对话",
+    "undo": "撤消"
+  },
+  "refused": {
+    "quote": "“{name}”",
+    "line": "{name}：{reasons}",
+    "archive": {
+      "one": "无法存档{name}",
+      "many": "无法存档 {count} 个对话"
+    },
+    "restore": {
+      "one": "无法恢复{name}",
+      "many": "无法恢复 {count} 个对话"
+    },
+    "pin": {
+      "one": "无法固定{name}",
+      "many": "无法固定 {count} 个对话"
+    },
+    "unpin": {
+      "one": "无法取消固定{name}",
+      "many": "无法取消固定 {count} 个对话"
+    },
+    "delete": {
+      "one": "无法删除{name}",
+      "many": "无法删除 {count} 个对话"
+    },
+    "move": {
+      "one": "无法移动{name}",
+      "many": "无法移动 {count} 个对话"
+    }
+  },
+  "layout": {
+    "sidebarWidth": "侧边栏宽度",
+    "openSidebar": "打开侧边栏",
+    "workPanelWidth": "工作面板宽度"
+  }
+}

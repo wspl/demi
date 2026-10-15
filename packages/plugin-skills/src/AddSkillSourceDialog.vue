@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, ref, watch } from 'vue'
 import type { OverlayStore } from '@demicodes/plugin-sdk'
 import { Button } from '@demicodes/plugin-sdk'
@@ -59,25 +60,25 @@ async function submit() {
     :is-open="isOpen"
     :overlay-store="overlayStore"
     size="wide"
-    label="Add Source"
+    :label="t('addSource.title')"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Add Source</h3>
-        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">A Git repository. Each SKILL.md in it is a skill.</p>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('addSource.title') }}</h3>
+        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">{{ t('addSource.hint') }}</p>
       </header>
 
       <div
         class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
       >
-        <SettingsRow label="Repository" description="owner/repository or a Git URL.">
+        <SettingsRow :label="t('addSource.repository')" :description="t('addSource.repositoryHint')">
           <TextInput
             v-model="origin"
             focused
             class="w-72 max-w-full"
             placeholder="owner/repository"
-            aria-label="Repository"
+            :aria-label="t('addSource.repository')"
             literal
           />
         </SettingsRow>
@@ -85,15 +86,15 @@ async function submit() {
       <InlineError v-if="refusal" :message="refusal" />
     </div>
     <template #footer-leading>
-      <ExternalLink href="https://skills.sh">Browse skills.sh</ExternalLink>
+      <ExternalLink href="https://skills.sh">{{ t('addSource.browse') }}</ExternalLink>
     </template>
     <template #footer>
-      <Button @click="emit('close')">Cancel</Button>
+      <Button @click="emit('close')">{{ t('addSource.cancel') }}</Button>
       <Button
         variant="primary"
         :disabled="!canAdd"
         @click="submit"
-      >Add Source</Button>
+      >{{ t('addSource.title') }}</Button>
     </template>
   </Dialog>
 </template>

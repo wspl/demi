@@ -7,6 +7,7 @@ import TextInput from '../ui/TextInput.vue'
 import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { ICON_PX } from '../ui/icon-metrics'
+import { t } from './locales/text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -62,23 +63,23 @@ const shown = computed(() => {
 
 <template>
   <SettingsPage
-    title="Archived"
-    description="Conversations removed from the sidebar."
+    :title="t('archived.title')"
+    :description="t('archived.description')"
   >
     <SettingsGroup>
       <template #header>
         <TextInput
           v-model="query"
           search
-          placeholder="Search archived"
-          aria-label="Search archived conversations"
+          :placeholder="t('archived.search')"
+          :aria-label="t('archived.searchLabel')"
         >
           <template #prefix><Search :size="ICON_PX.in24" /></template>
         </TextInput>
       </template>
       <AsyncRegion
         :state="load"
-        label="Loading archived conversations…"
+        :label="t('archived.loading')"
         @retry="emit('retry')"
       >
         <SettingsRow
@@ -90,17 +91,15 @@ const shown = computed(() => {
           isolate-controls
           @click="emit('open', conversation.id)"
         >
-          <Button size="sm" variant="ghost" @click="emit('open', conversation.id)">Open</Button>
-          <Button size="sm" @click="emit('restore', conversation.id)">Restore</Button>
-          <Button size="sm" variant="danger" @click="askDelete(conversation)">Delete…</Button>
+          <Button size="sm" variant="ghost" @click="emit('open', conversation.id)">{{ t('archived.open') }}</Button>
+          <Button size="sm" @click="emit('restore', conversation.id)">{{ t('archived.restore') }}</Button>
+          <Button size="sm" variant="danger" @click="askDelete(conversation)">{{ t('archived.delete') }}</Button>
         </SettingsRow>
         <div
           v-if="!shown.length"
           class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
         >
-          {{
-            query ? 'No matches' : 'No archived conversations'
-          }}
+          {{ query ? t('archived.noResults') : t('archived.none') }}
         </div>
       </AsyncRegion>
     </SettingsGroup>

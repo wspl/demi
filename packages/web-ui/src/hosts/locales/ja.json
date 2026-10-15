@@ -1,0 +1,58 @@
+{
+  "menu": {
+    "where": "この会話の実行先",
+    "runOn": "実行先",
+    "addDevice": "デバイスを追加…",
+    "attached": "アタッチ済み",
+    "detach": "デタッチ"
+  },
+  "lock": {
+    "archived": "この会話はアーカイブされています。",
+    "moving": "この会話は移動中です。"
+  },
+  "choices": {
+    "offline": "このデバイスはオフラインです。"
+  },
+  "move": {
+    "title": "この会話を {host} に移動しますか？",
+    "titleStop": "エージェントを停止して、この会話を {host} に移動しますか？",
+    "runsHome": "そこのホームディレクトリで実行されます。",
+    "runsIn": "{directory} で実行されます。",
+    "runsOwn": "そこの専用ディレクトリで実行されます。",
+    "filesStay": "{host} のファイルはそのまま残ります。",
+    "agentLearns": "エージェントは次に作業するときに移動を知ります。今すぐ知らせることもできます。",
+    "stopAndMove": "停止して移動",
+    "move": "移動",
+    "stopMoveTell": "停止して移動し、エージェントに通知",
+    "moveAndTell": "移動してエージェントに通知"
+  },
+  "stop": {
+    "agent": "エージェント",
+    "subagents": "{count} 個のサブエージェント",
+    "commands": "{count} 個のコマンド",
+    "sentence": "{list}が停止します。"
+  },
+  "project": {
+    "title": "新しいプロジェクト",
+    "selectFolder": "フォルダーを選択",
+    "loading": "デバイスを読み込んでいます…",
+    "cloudDescription": "管理されたワークスペースで、すぐに使えます。",
+    "device": "デバイス",
+    "deviceDescription": "いずれかのデバイスにあるディレクトリ。",
+    "chooseDevice": "デバイスを選択",
+    "name": "プロジェクト名",
+    "addDevice": "デバイスを追加…",
+    "noDevices": "デバイスはありません",
+    "directory": "ディレクトリ",
+    "browse": "参照…",
+    "called": "プロジェクト名は {name} になります。",
+    "takesName": "プロジェクト名にはフォルダー名が使われます。",
+    "add": "プロジェクトを追加",
+    "create": "プロジェクトを作成"
+  },
+  "directory": {
+    "switch": "ディレクトリを切り替える",
+    "chooseAnother": "別のディレクトリを選択…",
+    "useThis": "このフォルダーを使用"
+  }
+}

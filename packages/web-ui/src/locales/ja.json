@@ -103,7 +103,8 @@
     "no_model_available": "この会話で使用できるモデルがありません。",
     "models_not_loaded": "モデルを読み込めませんでした。{failure}",
     "source_conversation_unavailable": "元の会話は使用できません。",
-    "file_not_owned": "このアカウントのファイルにありません。"
+    "file_not_owned": "このアカウントのファイルにありません。",
+    "no_passkey": "ブラウザーがパスキーを提供しませんでした。"
   },
   "common": {
     "ok": "OK",
@@ -122,6 +123,12 @@
     "loading": "読み込み中…",
     "undo": "元に戻す",
     "cloud": "クラウド",
-    "workspace": "ワークスペース"
+    "workspace": "ワークスペース",
+    "add": "追加",
+    "back": "戻る",
+    "continue": "続行",
+    "delete": "削除",
+    "remove": "削除",
+    "save": "保存"
   }
 }

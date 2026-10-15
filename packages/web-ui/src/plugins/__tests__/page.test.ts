@@ -47,22 +47,21 @@ function host(parts: Partial<PageHost> = {}): PageHost {
   }
 }
 
-test("a plugin's section joins the end of its group, or a group of its own, while the user has the plugin on", () => {
-  const section = (id: string, group: string) => ({ group, item: { id, label: id, icon: nothing }, component: nothing })
+test("a plugin's section joins the end of its group while the user has the plugin on", () => {
+  const section = (id: string, group: 'agent' | 'workspace') => ({ group, item: { id, label: id, icon: nothing }, component: nothing })
   const pages = [
-    definePage({ plugin: 'skills', settings: section('skills', 'Agent') }),
-    definePage({ plugin: 'notes', settings: section('notes', 'Notes') }),
+    definePage({ plugin: 'skills', settings: section('skills', 'agent') }),
+    definePage({ plugin: 'notes', settings: section('notes', 'workspace') }),
     definePage({ plugin: 'browser' }),
   ]
   const rail: SettingsNavGroup[] = [
-    { label: 'Agent', items: [{ id: 'models', label: 'Models', icon: nothing }] },
-    { label: 'Workspace', items: [{ id: 'devices', label: 'Devices', icon: nothing }] },
+    { id: 'agent', items: [{ id: 'models', label: 'Models', icon: nothing }] },
+    { id: 'workspace', items: [{ id: 'devices', label: 'Devices', icon: nothing }] },
   ]
   const joined = withPluginSections(rail, pages, () => true)
-  expect(joined.map((group) => [group.label, group.items.map((item) => item.id)])).toEqual([
-    ['Agent', ['models', 'skills']],
-    ['Workspace', ['devices']],
-    ['Notes', ['notes']],
+  expect(joined.map((group) => [group.id, group.items.map((item) => item.id)])).toEqual([
+    ['agent', ['models', 'skills']],
+    ['workspace', ['devices', 'notes']],
   ])
   expect(rail[0]!.items.map((item) => item.id)).toEqual(['models'])
   const off = withPluginSections(rail, pages, (plugin) => plugin !== 'skills')

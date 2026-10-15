@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import InlineError from '../ui/InlineError.vue'
 import TextInput from '../ui/TextInput.vue'
 import { hiddenUsername } from '../ui/field-autofill'
@@ -22,13 +23,13 @@ defineProps<{
     class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
     @submit.prevent="verification.submitPassword()"
   >
-    <SettingsRow label="Password">
+    <SettingsRow :label="t('verify.password')">
       <template v-if="verification.passwordProblem.value" #detail>
         <InlineError :message="verification.passwordProblem.value" />
       </template>
       <TextInput
         v-model="verification.password.value"
-        aria-label="Password"
+        :aria-label="t('verify.password')"
         masked="password"
         focused
         autocomplete="current-password"

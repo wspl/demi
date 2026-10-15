@@ -1,0 +1,10 @@
+{
+  "title": "検索",
+  "placeholder": "会話を検索",
+  "failed": "検索できませんでした。",
+  "searching": "検索中…",
+  "list": "会話",
+  "archived": "アーカイブ済み",
+  "noConversations": "会話はありません",
+  "noResults": "結果がありません"
+}

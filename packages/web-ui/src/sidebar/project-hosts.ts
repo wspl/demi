@@ -1,15 +1,16 @@
+import { t } from './locales/text'
 import type { SidebarDevice, SidebarProject } from './types'
 
 /** What a host is called where the sidebar names it: the Cloud, a device by its name, or a removed one. */
 export function projectHostName(project: SidebarProject): string {
   if (project.hostKind === 'cloud') {
-    return 'Cloud'
+    return t('device.cloud')
   }
   return deviceName(project.device)
 }
 
 function deviceName(device: SidebarDevice): string {
-  return device.kind === 'paired' ? device.name : 'Removed device'
+  return device.kind === 'paired' ? device.name : t('device.removed')
 }
 
 /**

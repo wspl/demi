@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, ref } from 'vue'
 import { Plus, Unlink } from '@lucide/vue'
 import Dropdown from '../ui/Dropdown.vue'
@@ -107,7 +108,7 @@ function connect() {
         <Button
           variant="ghost"
           class="max-w-full"
-          aria-label="Where this conversation runs"
+          :aria-label="t('menu.where')"
           :loading="pending || detaching"
         >
           <component :is="hostGlyph(primaryHost)" :size="ICON_PX.in28" class="shrink-0" />
@@ -125,7 +126,7 @@ function connect() {
     </template>
     <template #content>
       <Menu class="max-w-80">
-        <MenuGroup label="Run On">
+        <MenuGroup :label="t('menu.runOn')">
           <HostChoices
             :primary-host="primaryHost"
             :devices="devices"
@@ -133,9 +134,9 @@ function connect() {
             :locked="locked ? MOVE_LOCK_REASON[locked] : undefined"
             @choose="choose"
           />
-          <MenuItem label="Add Device…" :icon="Plus" @select="connect" />
+          <MenuItem :label="t('menu.addDevice')" :icon="Plus" @select="connect" />
         </MenuGroup>
-        <MenuGroup v-if="attachedHosts.length" label="Attached">
+        <MenuGroup v-if="attachedHosts.length" :label="t('menu.attached')">
           <MenuItem
             v-for="host in attachedHosts"
             :key="host.id"
@@ -147,12 +148,12 @@ function connect() {
             @select="chooseAttached(host)"
           >
             <template #actions>
-              <Tooltip content="Detach" class="inline-flex">
+              <Tooltip :content="t('menu.detach')" class="inline-flex">
                 <IconButton
                   :icon="Unlink"
                   variant="ghost"
                   size="xs"
-                  aria-label="Detach"
+                  :aria-label="t('menu.detach')"
                   :disabled="!!locked"
                   :operation="{ action: `detach:${host.id}`, target: hostsTarget }"
                   @click.stop="detach(host.id)"

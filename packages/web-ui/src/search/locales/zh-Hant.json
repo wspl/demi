@@ -1,0 +1,10 @@
+{
+  "title": "搜尋",
+  "placeholder": "搜尋對話",
+  "failed": "無法搜尋。",
+  "searching": "正在搜尋…",
+  "list": "對話",
+  "archived": "已封存",
+  "noConversations": "沒有對話",
+  "noResults": "沒有結果"
+}

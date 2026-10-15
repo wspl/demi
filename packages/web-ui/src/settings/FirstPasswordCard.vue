@@ -2,6 +2,7 @@
 import Button from '../ui/Button.vue'
 import CopyButton from '../ui/CopyButton.vue'
 import TextInput from '../ui/TextInput.vue'
+import { t } from './locales/text'
 import SettingsRow from './SettingsRow.vue'
 
 /**
@@ -19,12 +20,12 @@ defineProps<{
 
 <template>
   <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
-    <SettingsRow label="Password">
-      <Button size="sm" @click="make()">New Password</Button>
+    <SettingsRow :label="t('firstPassword.label')">
+      <Button size="sm" @click="make()">{{ t('firstPassword.new') }}</Button>
       <template #below>
         <div class="flex items-center gap-1">
-          <TextInput :model-value="password" aria-label="Password" literal readonly class="min-w-0 flex-1 font-mono" />
-          <CopyButton :source="password" label="Copy password" />
+          <TextInput :model-value="password" :aria-label="t('firstPassword.label')" literal readonly class="min-w-0 flex-1 font-mono" />
+          <CopyButton :source="password" :label="t('firstPassword.copy')" />
         </div>
       </template>
     </SettingsRow>

@@ -1,0 +1,58 @@
+{
+  "menu": {
+    "where": "Where this conversation runs",
+    "runOn": "Run On",
+    "addDevice": "Add Device…",
+    "attached": "Attached",
+    "detach": "Detach"
+  },
+  "lock": {
+    "archived": "This conversation is archived.",
+    "moving": "This conversation is moving."
+  },
+  "choices": {
+    "offline": "This device is offline."
+  },
+  "move": {
+    "title": "Move this conversation to {host}?",
+    "titleStop": "Stop the agent and move this conversation to {host}?",
+    "runsHome": "It will run in the home directory there.",
+    "runsIn": "It will run in {directory}.",
+    "runsOwn": "It will run in a directory of its own there.",
+    "filesStay": "Files on {host} stay there.",
+    "agentLearns": "The agent learns of the move when it next works, or now if you tell it.",
+    "stopAndMove": "Stop and Move",
+    "move": "Move",
+    "stopMoveTell": "Stop, Move and Tell Agent",
+    "moveAndTell": "Move and Tell Agent"
+  },
+  "stop": {
+    "agent": "the agent",
+    "subagents": "{count} subagent | {count} subagents",
+    "commands": "{count} command | {count} commands",
+    "sentence": "{list} will stop."
+  },
+  "project": {
+    "title": "New Project",
+    "selectFolder": "Select Folder",
+    "loading": "Loading devices…",
+    "cloudDescription": "A managed workspace, ready at once.",
+    "device": "Device",
+    "deviceDescription": "A directory on one of your devices.",
+    "chooseDevice": "Choose a device",
+    "name": "Project name",
+    "addDevice": "Add Device…",
+    "noDevices": "No devices",
+    "directory": "Directory",
+    "browse": "Browse…",
+    "called": "The project will be called {name}.",
+    "takesName": "The project takes the folder’s name.",
+    "add": "Add Project",
+    "create": "Create Project"
+  },
+  "directory": {
+    "switch": "Switch directory",
+    "chooseAnother": "Choose Another Directory…",
+    "useThis": "Use This Folder"
+  }
+}

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { Folder, FolderOpen, SquarePen } from '@lucide/vue'
 import FoldChevron from '@demicodes/web-ui/ui/FoldChevron.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -83,12 +84,12 @@ const emit = defineEmits<{
     <span
       class="absolute inset-y-0 right-[calc(var(--spacing-hit-sm)+4px)] flex items-center opacity-0 pointer-events-none transition-opacity duration-150 motion-reduce:transition-none group-hover/project:opacity-100 group-hover/project:pointer-events-auto focus-within:opacity-100 focus-within:pointer-events-auto phone:right-9 phone:opacity-100 phone:pointer-events-auto"
     >
-      <Tooltip content="New conversation" class="flex items-center">
+      <Tooltip :content="t('project.newConversation')" class="flex items-center">
         <IconButton
           :icon="SquarePen"
           :size="phone ? 'lg' : 'sm'"
           variant="ghost"
-          aria-label="New conversation"
+          :aria-label="t('project.newConversation')"
           tabindex="0"
           @keydown.enter.stop.prevent="emit('create')"
           @keydown.space.stop.prevent="emit('create')"

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { ref, watch } from 'vue'
 import { KeyRound } from '@lucide/vue'
 import type { ShownError } from '../infra/errors'
@@ -101,7 +103,7 @@ function notNow(): void {
 /** Add Passkey or Continue: the button works until the host and the browser's prompt have answered. */
 async function addPasskey(): Promise<void> {
   if (step.value === 'password' && password.value === '') {
-    passwordProblem.value = 'Required'
+    passwordProblem.value = t('password.required')
     return
   }
   answer()
@@ -137,26 +139,26 @@ async function addPasskey(): Promise<void> {
 <template>
   <WizardStep
     v-if="step === 'ask'"
-    title="Use a passkey next time?"
+    :title="t('offer.title')"
     :icon="KeyRound"
     :message="unlock"
   >
     <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
     <template #actions>
-      <Button @click="notNow">Not Now</Button>
-      <Button variant="primary" :operation="adding" @click="addPasskey">Add Passkey</Button>
+      <Button @click="notNow">{{ t('offer.notNow') }}</Button>
+      <Button variant="primary" :operation="adding" @click="addPasskey">{{ t('offer.add') }}</Button>
     </template>
   </WizardStep>
   <WizardStep
     v-else-if="step === 'password'"
-    title="Enter Your Password"
+    :title="t('offer.passwordTitle')"
     :icon="KeyRound"
-    message="Confirm it’s you to add the passkey."
+    :message="t('offer.passwordMessage')"
   >
     <form class="flex flex-col gap-2" @submit.prevent="continueButton?.press()">
       <TextInput
         v-model="password"
-        aria-label="Password"
+        :aria-label="t('offer.password')"
         masked="password"
         focused
         autocomplete="current-password"
@@ -167,18 +169,18 @@ async function addPasskey(): Promise<void> {
     </form>
     <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
     <template #actions>
-      <Button @click="notNow">Not Now</Button>
-      <Button ref="continueButton" variant="primary" :operation="adding" @click="addPasskey">Continue</Button>
+      <Button @click="notNow">{{ t('offer.notNow') }}</Button>
+      <Button ref="continueButton" variant="primary" :operation="adding" @click="addPasskey">{{ uiText('common.continue') }}</Button>
     </template>
   </WizardStep>
   <WizardStep
     v-else
-    title="Passkey Ready"
-    message="Your password manager already has a passkey for Demi."
+    :title="t('offer.readyTitle')"
+    :message="t('offer.readyMessage')"
     :icon="KeyRound"
   >
     <template #actions>
-      <Button variant="primary" @click="emit('close')">Continue</Button>
+      <Button variant="primary" @click="emit('close')">{{ uiText('common.continue') }}</Button>
     </template>
   </WizardStep>
 </template>

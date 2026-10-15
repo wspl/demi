@@ -1,0 +1,148 @@
+{
+  "state": {
+    "online": "온라인",
+    "updating": "업데이트 중",
+    "offline": "오프라인"
+  },
+  "route": {
+    "automatic": "자동",
+    "direct": "P2P 우선",
+    "server": "릴레이만",
+    "automaticDescription": "더 빠른 경로를 사용합니다.",
+    "directDescription": "연결되면 항상 P2P를 사용합니다.",
+    "serverDescription": "P2P를 사용하지 않습니다."
+  },
+  "stage": {
+    "permission": "권한",
+    "gathering": "주소 수집 중",
+    "checking": "경로 찾는 중",
+    "handshake": "암호화 핸드셰이크",
+    "channel": "채널 여는 중",
+    "connected": "연결됨"
+  },
+  "path": {
+    "thisComputer": "이 컴퓨터",
+    "localNetwork": "LAN",
+    "internet": "P2P",
+    "relay": "릴레이",
+    "sentence": "{path} · {address}"
+  },
+  "connected": {
+    "relay": "릴레이를 통해 연결됨",
+    "thisComputer": "이 컴퓨터를 통해 연결됨",
+    "localNetwork": "LAN을 통해 연결됨",
+    "internet": "P2P를 통해 연결됨"
+  },
+  "reason": {
+    "slower": "현재 P2P가 더 느립니다.",
+    "blocked": "이 브라우저가 로컬 네트워크 접근을 차단합니다.",
+    "unreachable": "네트워크가 P2P 연결을 차단합니다.",
+    "browserNetwork": "네트워크가 차단합니다.",
+    "deviceNetwork": "장치의 네트워크가 차단합니다.",
+    "busy": "장치의 연결이 너무 많습니다.",
+    "dropped": "P2P 연결이 끊어졌습니다.",
+    "notOffered": "P2P는 장치와 같은 네트워크에서만 작동합니다."
+  },
+  "latency": {
+    "under": "0.1 ms 미만",
+    "path": "{path} {latency}",
+    "lost": "{path} {latency}, 손실 {loss}",
+    "relay": "릴레이 {latency}"
+  },
+  "address": {
+    "hidden": "브라우저에서 숨김"
+  },
+  "report": {
+    "appleSilicon": "Apple 실리콘",
+    "arm": "ARM",
+    "intel": "Intel"
+  },
+  "runner": {
+    "current": "최신 상태",
+    "outdated": "업데이트 사용 가능",
+    "development": "개발 빌드"
+  },
+  "page": {
+    "cloud": "클라우드",
+    "startSentence": "장치에서 Demi를 시작하십시오:",
+    "connection": "연결",
+    "route": "경로",
+    "p2p": "P2P",
+    "details": "자세히…",
+    "latency": "지연 시간",
+    "measure": "측정",
+    "measuring": "측정 중…",
+    "noAnswer": "응답 없음",
+    "device": "장치",
+    "name": "이름",
+    "rename": "이름 바꾸기…",
+    "system": "시스템",
+    "notReported": "아직 보고되지 않음",
+    "runner": "러너",
+    "runnerUpdates": "다음에 연결할 때 자동으로 업데이트됩니다.",
+    "paired": "페어링한 날짜",
+    "revokeThis": "이 장치 해지",
+    "revoke": "해지…",
+    "lastSeen": "마지막 확인"
+  },
+  "details": {
+    "title": "연결 세부 정보",
+    "ran": "실행 시간",
+    "took": "소요 시간",
+    "endedAt": "종료 단계",
+    "thisBrowser": "이 브라우저",
+    "theDevice": "장치",
+    "paths": "경로",
+    "pathInUse": "사용 중인 경로",
+    "localAccess": "로컬 네트워크 접근",
+    "nextAttempt": "다음 시도",
+    "none": "없음",
+    "local": "로컬: {list}",
+    "public": "공용: {list}",
+    "answered": "응답 {answered} / {tried}",
+    "busy": "장치가 사용 중이었습니다",
+    "dropped": "연결된 후 끊어짐",
+    "unknown": "알 수 없음",
+    "ms": "{ms} ms",
+    "s": "{s}초"
+  },
+  "permission": {
+    "granted": "허용됨",
+    "prompt": "아직 응답하지 않음",
+    "denied": "차단됨",
+    "allowInSite": "이 사이트의 설정에서 허용하십시오.",
+    "notAsked": "이 브라우저가 묻지 않음"
+  },
+  "pairing": {
+    "title": "장치 추가",
+    "setupHint": "장치에서 러너를 시작해 페어링 코드를 받으십시오.",
+    "doneHint": "장치가 계정에 연결되어 사용할 수 있습니다.",
+    "codeHint": "러너가 표시한 페어링 코드를 입력하십시오.",
+    "system": "시스템",
+    "systemLabel": "장치 시스템",
+    "runInPowerShell": "장치의 PowerShell에서 실행하고 열어 두십시오.",
+    "runInTerminal": "장치의 터미널에서 실행하고 열어 두십시오.",
+    "copyInstall": "설치 명령 복사",
+    "code": "페어링 코드",
+    "paste": "코드 붙여넣기",
+    "pair": "장치 페어링",
+    "invalidCode": "이 코드는 사용할 수 없습니다. 러너의 최신 코드를 붙여넣으십시오.",
+    "rateLimited": "시도 횟수가 너무 많습니다. 1분 후에 다시 시도하십시오.",
+    "unavailable": "Demi에 연결할 수 없습니다. 연결을 확인하고 다시 시도하십시오."
+  },
+  "revoke": {
+    "title": "이 장치를 해지하시겠습니까?",
+    "action": "해지",
+    "body": "“{device}”이(가) 내 장치에서 제거됩니다. 러너가 연결되어 있으면 장치에서 자동으로 제거됩니다.",
+    "projects": "이 프로젝트도 함께 제거됩니다. 파일은 장치에 남고 대화는 사이드바에 남습니다."
+  },
+  "rename": {
+    "title": "장치 이름 바꾸기",
+    "label": "장치 이름"
+  },
+  "startHint": {
+    "powershell": "러너가 중지된 경우 장치의 PowerShell에서 이 명령을 실행하십시오.",
+    "terminal": "러너가 중지된 경우 장치의 터미널에서 이 명령을 실행하십시오.",
+    "copy": "시작 명령 복사"
+  }
+}

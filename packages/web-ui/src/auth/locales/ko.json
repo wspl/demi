@@ -1,0 +1,94 @@
+{
+  "password": {
+    "hint": "{count}자 이상이어야 합니다.",
+    "tooShort": "암호는 {count}자 이상이어야 합니다.",
+    "differ": "두 암호가 일치하지 않습니다.",
+    "required": "필수"
+  },
+  "page": {
+    "tagline": "생각하고 만드는 공간",
+    "taglineBody": "모든 것은 대화에서 시작됩니다."
+  },
+  "account": {
+    "fallback": "계정"
+  },
+  "signIn": {
+    "title": "로그인",
+    "message": "이메일로 로그인합니다.",
+    "expired": "세션이 끝났습니다. 다시 로그인하십시오.",
+    "email": "이메일",
+    "password": "암호",
+    "passkey": "패스키로 로그인",
+    "forgot": "암호를 잊으셨습니까? 관리자에게 다시 설정을 요청하십시오.",
+    "locked": "로그인 실패 횟수가 너무 많습니다. {time} 후에 다시 시도하십시오."
+  },
+  "setup": {
+    "title": "Demi 설정",
+    "message": "Demi를 관리할 소유자 계정을 만듭니다.",
+    "taken": "Demi가 이미 설정되었습니다. 소유자 계정으로 로그인하십시오.",
+    "name": "이름",
+    "email": "이메일",
+    "password": "암호",
+    "confirm": "암호 확인",
+    "create": "계정 만들기",
+    "passkeyTitle": "패스키 추가",
+    "passkeyMessage": "Touch ID, Face ID 또는 암호 관리자로 로그인할 수 있습니다. 나중에 설정에서 추가할 수도 있습니다.",
+    "addPasskey": "패스키 추가",
+    "skip": "건너뛰기"
+  },
+  "choose": {
+    "title": "암호 선택",
+    "message": "계속하려면 직접 사용할 암호를 선택하십시오.",
+    "new": "새 암호",
+    "confirm": "새 암호 확인",
+    "signOut": "로그아웃",
+    "choose": "암호 선택"
+  },
+  "offer": {
+    "label": "패스키 추가",
+    "title": "다음부터 패스키를 사용하시겠습니까?",
+    "notNow": "나중에",
+    "add": "패스키 추가",
+    "passwordTitle": "암호 입력",
+    "passwordMessage": "패스키를 추가하려면 본인 확인이 필요합니다.",
+    "password": "암호",
+    "readyTitle": "패스키 준비됨",
+    "readyMessage": "암호 관리자에 Demi의 패스키가 이미 있습니다."
+  },
+  "unlock": {
+    "ios": "암호 대신 Face ID 또는 Touch ID로 로그인합니다.",
+    "mac": "암호 대신 Touch ID로 로그인합니다.",
+    "windows": "암호 대신 Windows Hello로 로그인합니다.",
+    "android": "암호 대신 지문, 얼굴 또는 화면 잠금으로 로그인합니다.",
+    "other": "암호 대신 장치의 화면 잠금으로 로그인합니다."
+  },
+  "handoff": {
+    "title": "휴대폰으로 핸드오프",
+    "confirm": "본인 확인이 필요합니다. 확인 후 휴대폰에서 이 페이지가 열리고 이 계정으로 로그인됩니다.",
+    "scan": "휴대폰 카메라로 스캔하십시오.",
+    "done": "{browser}(으)로 핸드오프했습니다.",
+    "codeTitle": "로그인 코드",
+    "codeConfirm": "본인 확인이 필요합니다. 확인 후 코드로 “{name}”의 휴대폰이 해당 계정으로 로그인됩니다.",
+    "codeScan": "상대방 휴대폰의 카메라로 스캔하십시오.",
+    "codeDone": "{browser}에서 로그인했습니다.",
+    "readyScan": "또는 상대방 휴대폰의 카메라로 스캔하여 로그인합니다.",
+    "making": "코드 생성 중",
+    "qr": "QR 코드",
+    "expires": "{left} 후 만료",
+    "expired": "이 코드가 만료되었습니다.",
+    "usePasskey": "패스키 사용",
+    "showNew": "새 코드 표시"
+  },
+  "verify": {
+    "title": "본인 확인",
+    "password": "암호"
+  },
+  "handoffPage": {
+    "openingTitle": "핸드오프 중",
+    "openingMessage": "다른 장치의 페이지를 여는 중입니다.",
+    "opening": "여는 중…",
+    "failedTitle": "핸드오프할 수 없습니다",
+    "expired": "이 코드는 만료되었거나 이미 사용되었습니다. 새 코드를 표시하거나 여기에서 로그인하십시오.",
+    "failed": "이 코드가 작동하지 않았습니다. 새 코드를 표시하거나 여기에서 로그인하십시오."
+  }
+}

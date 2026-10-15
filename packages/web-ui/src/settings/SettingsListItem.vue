@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { Trash2 } from '@lucide/vue'
 import { pressOnKey } from '@demicodes/web-ui/ui/button-events'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -78,7 +79,7 @@ const emit = defineEmits<{
         :icon="Trash2"
         variant="danger"
         size="xs"
-        aria-label="Remove"
+        :aria-label="t('listItem.remove')"
         :loading="removing"
         :disabled="removeDisabled && !removing"
         @click.stop="emit('remove')"

@@ -21,7 +21,7 @@ import { CONVERSATION_UNREADABLE, transcriptShown } from '@demicodes/web-ui/agen
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { Slot } from '@demicodes/web-ui/infra/slot'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
-import { showRefused, type Refusal } from '@demicodes/web-ui/sidebar/refused-toast'
+import { showRefused, type Refusal, type RefusedAction } from '@demicodes/web-ui/sidebar/refused-toast'
 import { forkConversation } from '../api/message-fork'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import {
@@ -1469,7 +1469,7 @@ export const useConversations = defineStore('conversations', () => {
     ids: string[],
     changes: Pick<ConversationPatch, 'pinned' | 'archived' | 'target' | 'notifyAgent'>,
     shown: boolean,
-    action: TitleText,
+    action: RefusedAction,
   ): Promise<{ success: boolean; changed: string[] }> {
     // A draft has no agent to tell: the first send creates what the user sees.
     const { notifyAgent: _told, ...fields } = changes
@@ -1585,7 +1585,7 @@ export const useConversations = defineStore('conversations', () => {
    */
   async function archive(ids: string[]): Promise<boolean> {
     const shown = ids.filter((id) => items.value.some((item) => item.id === id && !item.archived))
-    const done = applyBatch(ids, { archived: true }, true, 'Archive')
+    const done = applyBatch(ids, { archived: true }, true, 'archive')
     if (!shown.length) {
       return (await done).success
     }
@@ -1649,7 +1649,7 @@ export const useConversations = defineStore('conversations', () => {
           forget(id)
         }
         if (refusals.length) {
-          showRefused('Delete', refusals)
+          showRefused('delete', refusals)
         }
         return refusals.length === 0
       })
@@ -1664,7 +1664,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /** Brings archived conversations back at once; answers whether every one came back. */
   async function restore(ids: string[]): Promise<boolean> {
-    const { success } = await applyBatch(ids, { archived: false }, true, 'Restore')
+    const { success } = await applyBatch(ids, { archived: false }, true, 'restore')
     return success
   }
 
@@ -2663,12 +2663,12 @@ export const useConversations = defineStore('conversations', () => {
     // § Responding to the user). Any other move waits for its Host.
     if (conversation?.persistence === 'synced' && target.kind === 'workspace'
       && executionFor({ target, cwd: '' }).deviceId === executionFor(conversation).deviceId) {
-      void applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, true, 'Move')
+      void applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, true, 'move')
       return Promise.resolve(true)
     }
     return changeConversations(
       [id],
-      async () => (await applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false, 'Move')).success,
+      async () => (await applyBatch([id], notifyAgent ? { target, notifyAgent } : { target }, false, 'move')).success,
       false,
     )
   }
@@ -2722,7 +2722,7 @@ export const useConversations = defineStore('conversations', () => {
     reloadList: () => product.reconnect(),
     reloadSession,
     pin: async (ids: string[], pinned: boolean) =>
-      (await applyBatch(ids, { pinned }, true, pinned ? 'Pin' : 'Unpin')).success,
+      (await applyBatch(ids, { pinned }, true, pinned ? 'pin' : 'unpin')).success,
     archive,
     restore,
     remove,

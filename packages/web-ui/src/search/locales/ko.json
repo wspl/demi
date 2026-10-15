@@ -1,0 +1,10 @@
+{
+  "title": "검색",
+  "placeholder": "대화 검색",
+  "failed": "검색할 수 없습니다.",
+  "searching": "검색 중…",
+  "list": "대화",
+  "archived": "보관됨",
+  "noConversations": "대화 없음",
+  "noResults": "결과 없음"
+}

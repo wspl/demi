@@ -15,7 +15,7 @@ import ChangePasswordDialog, {
   type ChangePasswordPhase,
 } from './ChangePasswordDialog.vue'
 import { inDevelopment } from '../ui/disabled'
-import type { SentenceText } from '../ui/ui-text'
+import { t } from './locales/text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsPasskeys from './SettingsPasskeys.vue'
@@ -41,11 +41,10 @@ const props = defineProps<{
   email: string
   emailVerified?: boolean
   /**
-   * Why the email cannot be changed, when it cannot: the server sends no
-   * mail, which the change needs for its code. The row says so from the
-   * start and offers no change.
+   * The email cannot be changed: the server sends no mail, which the change
+   * needs for its code. The row says so from the start and offers no change.
    */
-  emailUnavailable?: SentenceText
+  emailUnavailable?: boolean
   /** When the password last changed, formatted by the host. */
   passwordChanged?: string | null
   emailPhase: ChangeEmailPhase
@@ -81,26 +80,23 @@ const emit = defineEmits<{
 /** Why the name in the field is not saved; it stays in the field until it is fixed. */
 const nameProblem = ref<string | null>(null)
 function checkName(value: string): string | null {
-  return value.trim() ? null : 'Enter a name.'
+  return value.trim() ? null : t('account.profile.nameRequired')
 }
 </script>
 
 <template>
-  <SettingsPage title="Account" description="Who you are here.">
-    <SettingsGroup title="Profile">
-      <SettingsRow
-        label="Avatar"
-        description="Your initials."
-      >
+  <SettingsPage :title="t('account.title')" :description="t('account.description')">
+    <SettingsGroup :title="t('account.profile.title')">
+      <SettingsRow :label="t('account.profile.avatar')">
         <Avatar :account-id="accountId" :name="name" :email="email" :size="32" />
       </SettingsRow>
-      <SettingsRow label="Display name">
+      <SettingsRow :label="t('account.profile.displayName')">
         <template v-if="nameProblem" #detail>
           <InlineError :message="nameProblem" />
         </template>
         <CommitTextInput
           :model-value="name"
-          aria-label="Display name"
+          :aria-label="t('account.profile.displayName')"
           :validate="checkName"
           @problem="nameProblem = $event"
           @commit="name = $event.trim()"
@@ -108,31 +104,31 @@ function checkName(value: string): string | null {
           class="w-56 max-w-full"
         />
       </SettingsRow>
-      <SettingsRow label="Email" :description="emailUnavailable">
+      <SettingsRow :label="t('account.profile.email')" :description="emailUnavailable ? t('account.profile.emailUnavailable') : undefined">
         <template v-if="emailVerified" #tags
-          ><Tag tone="success">Verified</Tag></template
+          ><Tag tone="success">{{ t('account.profile.verified') }}</Tag></template
         >
         <span class="text-chrome text-fg-muted">{{ email }}</span>
         <Button
           size="sm"
-          aria-label="Change email"
-          :disabled="!!emailUnavailable"
-          :disabled-reason="emailUnavailable"
+          :aria-label="t('account.profile.changeEmail')"
+          :disabled="emailUnavailable"
+          :disabled-reason="emailUnavailable ? t('account.profile.emailUnavailable') : undefined"
           @click="emit('changeEmail')"
-          >Change</Button
+          >{{ t('account.profile.change') }}</Button
         >
       </SettingsRow>
       <SettingsRow
-        label="Password"
+        :label="t('account.profile.password')"
         :description="
-          passwordChanged ? `Last changed ${passwordChanged}.` : undefined
+          passwordChanged ? t('account.profile.passwordChanged', { date: passwordChanged }) : undefined
         "
       >
         <Button
           size="sm"
-          aria-label="Change password"
+          :aria-label="t('account.profile.changePassword')"
           @click="emit('changePassword')"
-          >Change</Button
+          >{{ t('account.profile.change') }}</Button
         >
       </SettingsRow>
     </SettingsGroup>
@@ -157,22 +153,22 @@ function checkName(value: string): string | null {
     />
     <SettingsPasskeys v-if="passkeys" :host="passkeys" :overlay-store="overlayStore" :email="email" />
     <SettingsSessions :host="sessions" :overlay-store="overlayStore" />
-    <SettingsGroup title="Session">
+    <SettingsGroup :title="t('account.session.title')">
       <SettingsRow
-        label="Sign out"
-        description="Ends this browser’s session. Conversations stay on the server."
+        :label="t('account.session.signOut')"
+        :description="t('account.session.signOutDescription')"
       >
-        <Button size="sm" :operation="THIS_SESSION" @click="onSignOut?.()">Sign Out</Button>
+        <Button size="sm" :operation="THIS_SESSION" @click="onSignOut?.()">{{ t('account.session.signOutButton') }}</Button>
       </SettingsRow>
     </SettingsGroup>
-    <SettingsGroup title="Danger Zone">
+    <SettingsGroup :title="t('account.danger.title')">
       <SettingsRow
-        label="Delete account"
-        description="Removes your account, devices and every conversation. This cannot be undone."
+        :label="t('account.danger.delete')"
+        :description="t('account.danger.deleteDescription')"
         disabled
         :disabled-reason="inDevelopment()"
       >
-        <Button size="sm" variant="danger" disabled>Delete Account</Button>
+        <Button size="sm" variant="danger" disabled>{{ t('account.danger.deleteButton') }}</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

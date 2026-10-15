@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, ref, useId, watch } from 'vue'
 import { FolderOpen, Plus, X } from '@lucide/vue'
@@ -78,14 +80,22 @@ type Kind = 'cloud' | 'device'
 const kindOptions = [
   {
     value: 'cloud',
-    label: 'Cloud',
-    description: 'A managed workspace, ready at once.',
+    get label() {
+      return uiText('common.cloud')
+    },
+    get description() {
+      return t('project.cloudDescription')
+    },
     icon: hostIcon({ kind: 'cloud' }),
   },
   {
     value: 'device',
-    label: 'Device',
-    description: 'A directory on one of your devices.',
+    get label() {
+      return t('project.device')
+    },
+    get description() {
+      return t('project.deviceDescription')
+    },
     icon: hostIcon({ kind: 'device' }),
   },
 ] as const satisfies readonly ChoiceCardOption<Kind>[]
@@ -100,7 +110,7 @@ const browsing = ref(false)
 const device = computed(
   () => props.devices.find((entry) => entry.id === deviceId.value) ?? null,
 )
-const deviceLabel = computed(() => device.value?.name ?? 'Choose a device')
+const deviceLabel = computed(() => device.value?.name ?? t('project.chooseDevice'))
 const browserHosts = computed(() =>
   props.devices.map((entry) => ({
     id: entry.id,
@@ -120,7 +130,7 @@ const deviceAction = useDeviceProjectAction({
   source: () => browserSource.value,
   path: () => (props.isOpen && kind.value === 'device' ? path.value : ''),
 })
-const action = computed(() => (kind.value === 'cloud' ? 'Create Project' : deviceAction.value))
+const action = computed(() => (kind.value === 'cloud' || deviceAction.value === 'create' ? t('project.create') : t('project.add')))
 const directoryId = useId()
 /** What a device project will be called: the directory's name. */
 const projectName = computed(() => baseName(path.value))
@@ -205,7 +215,7 @@ function selectDevice(id: string, close: () => void): void {
     :is-open="isOpen"
     :overlay-store="overlayStore"
     :size="browsing ? 'lg' : 'md'"
-    label="New Project"
+    :label="t('project.title')"
     hide-close
     @close="emit('close')"
   >
@@ -213,11 +223,11 @@ function selectDevice(id: string, close: () => void): void {
       <header
         class="flex h-11 shrink-0 select-none items-center justify-between gap-2 border-b border-line pl-4 pr-2"
       >
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Select Folder</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('project.selectFolder') }}</h3>
         <IconButton
           :icon="X"
           variant="ghost"
-          aria-label="Close"
+          :aria-label="uiText('common.close')"
           @click="emit('close')"
         />
       </header>
@@ -240,17 +250,17 @@ function selectDevice(id: string, close: () => void): void {
       <header
         class="flex select-none items-center justify-between border-b border-line py-3 pl-5 pr-3"
       >
-        <h2 class="text-[15px] font-medium text-fg-emphasis">New Project</h2>
+        <h2 class="text-[15px] font-medium text-fg-emphasis">{{ t('project.title') }}</h2>
         <IconButton
           :icon="X"
           variant="ghost"
-          aria-label="Close"
+          :aria-label="uiText('common.close')"
           @click="emit('close')"
         />
       </header>
       <AsyncRegion
         :state="load"
-        label="Loading devices…"
+        :label="t('project.loading')"
         @retry="emit('retry')"
       >
         <div class="flex flex-col gap-4 px-5 pt-4">
@@ -263,7 +273,7 @@ function selectDevice(id: string, close: () => void): void {
             v-if="kind === 'cloud'"
             class="flex flex-col gap-1.5 text-chrome text-fg-muted"
           >
-            Project name
+            {{ t('project.name') }}
             <TextInput
               v-model="name"
               :disabled="creating"
@@ -273,7 +283,7 @@ function selectDevice(id: string, close: () => void): void {
           </label>
           <template v-else>
             <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-              Device
+              {{ t('project.device') }}
               <span class="flex items-center gap-2">
                 <!-- The menu fills the row, the way the file browser's device picker does; Add Device sits after it. -->
                 <Dropdown
@@ -281,7 +291,7 @@ function selectDevice(id: string, close: () => void): void {
                   :disabled="creating"
                   variant="field"
                   width="fill"
-                  trigger-label="Device"
+                  :trigger-label="t('project.device')"
                   class="flex-1"
                 >
                   <template #trigger>
@@ -303,7 +313,7 @@ function selectDevice(id: string, close: () => void): void {
                         :indicator-label="DEVICE_STATE_LABEL[entry.state]"
                         :value="entry.state === 'online' ? undefined : DEVICE_STATE_LABEL[entry.state]"
                         :disabled="entry.state !== 'online'"
-                        disabled-reason="This device is offline."
+                        :disabled-reason="t('choices.offline')"
                         choice
                         :is-selected="deviceId === entry.id"
                         @select="selectDevice(entry.id, close)"
@@ -312,7 +322,7 @@ function selectDevice(id: string, close: () => void): void {
                         v-if="!devices.length"
                         class="select-none px-2 py-3 text-center text-chrome text-fg-subtle"
                       >
-                        No devices
+                        {{ t('project.noDevices') }}
                       </div>
                     </Menu>
                   </template>
@@ -323,7 +333,7 @@ function selectDevice(id: string, close: () => void): void {
                   @click="emit('connectDevice', paired)"
                 >
                   <Plus :size="14" />
-                  Add Device…
+                  {{ t('project.addDevice') }}
                 </Button>
               </span>
             </div>
@@ -331,7 +341,7 @@ function selectDevice(id: string, close: () => void): void {
                  the gaps between, to the field, which would take the focus back and reopen
                  its completion (`product.md` § Conversations and projects). -->
             <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-              <span :id="`${directoryId}-label`">Directory</span>
+              <span :id="`${directoryId}-label`">{{ t('project.directory') }}</span>
               <span class="flex items-center gap-2">
                 <!-- Completes from the device's folders as it is typed; Return outside the completion creates. -->
                 <PathInput
@@ -350,13 +360,13 @@ function selectDevice(id: string, close: () => void): void {
                   @click="browsing = true"
                 >
                   <FolderOpen :size="14" />
-                  Browse…
+                  {{ t('project.browse') }}
                 </Button>
               </span>
               <span :id="`${directoryId}-hint`" class="text-[12px] leading-4 text-fg-subtle">{{
                 projectName
-                  ? `The project will be called ${projectName}.`
-                  : 'The project takes the folder’s name.'
+                  ? t('project.called', { name: projectName })
+                  : t('project.takesName')
               }}</span>
             </div>
           </template>
@@ -365,7 +375,7 @@ function selectDevice(id: string, close: () => void): void {
       </AsyncRegion>
     </template>
     <template v-if="!browsing && (load ?? 'ready') === 'ready'" #footer>
-      <Button @click="emit('close')">Cancel</Button>
+      <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
       <Button
         variant="primary"
         :disabled="!canCreate && !creating"

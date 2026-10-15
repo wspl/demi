@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, ref, watch } from 'vue'
 import { Lock } from '@lucide/vue'
 import type { ShownError } from '../infra/errors'
@@ -12,10 +13,10 @@ import Wizard from '../ui/Wizard.vue'
 import WizardStep from '../ui/WizardStep.vue'
 import PasskeyOfferSteps from './PasskeyOfferSteps.vue'
 import {
-  PASSWORD_HINT,
   PASSWORD_MIN_LENGTH,
-  PASSWORD_TOO_SHORT,
-  PASSWORDS_DIFFER,
+  passwordHint,
+  passwordTooShort,
+  passwordsDiffer,
   differs,
   isTooShort,
 } from './password'
@@ -109,20 +110,20 @@ async function submit(): Promise<void> {
   <Wizard
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Choose Your Password"
+    :label="t('choose.title')"
     :step="step === 'choose' ? 'choose' : 'offer'"
     :skippable="step !== 'choose'"
     @close="emit('done')"
   >
     <WizardStep
       v-if="step === 'choose'"
-      title="Choose Your Password"
+      :title="t('choose.title')"
       :icon="Lock"
-      message="Choose a password of your own to continue."
+      :message="t('choose.message')"
     >
       <form class="flex flex-col gap-4" @submit.prevent="chooseButton?.press()">
         <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-          New password
+          {{ t('choose.new') }}
           <TextInput
             v-model="password"
             masked="password"
@@ -130,10 +131,10 @@ async function submit(): Promise<void> {
             name="password"
             focused
           />
-          <span class="text-[12px] leading-4 text-fg-subtle">{{ PASSWORD_HINT }}</span>
+          <span class="text-[12px] leading-4 text-fg-subtle">{{ passwordHint() }}</span>
         </label>
         <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-          Confirm new password
+          {{ t('choose.confirm') }}
           <TextInput
             v-model="confirmation"
             masked="password"
@@ -143,11 +144,11 @@ async function submit(): Promise<void> {
         </label>
         <input v-bind="hiddenUsername(email)" />
         <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
-        <InlineError v-else-if="tooShort" :message="PASSWORD_TOO_SHORT" />
-        <InlineError v-else-if="mismatch" :message="PASSWORDS_DIFFER" />
+        <InlineError v-else-if="tooShort" :message="passwordTooShort()" />
+        <InlineError v-else-if="mismatch" :message="passwordsDiffer()" />
       </form>
       <template #actions>
-        <Button @click="emit('signOut')">Sign Out</Button>
+        <Button @click="emit('signOut')">{{ t('choose.signOut') }}</Button>
         <Button
           ref="chooseButton"
           variant="primary"
@@ -155,7 +156,7 @@ async function submit(): Promise<void> {
           :operation="{ action: 'choose', target: 'account:password' }"
           @click="submit"
         >
-          Choose Password
+          {{ t('choose.choose') }}
         </Button>
       </template>
     </WizardStep>
