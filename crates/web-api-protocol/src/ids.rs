@@ -50,6 +50,12 @@ demi_shared_types::id!(
 );
 
 demi_shared_types::id!(
+    /// A share's token (`sharing.md` § Safety): 128 random bits in URL-safe
+    /// base64, the only key to the share.
+    ShareToken
+);
+
+demi_shared_types::id!(
     /// An upload's id, which the backend assigns and a frame names the
     /// upload by.
     AttachmentId

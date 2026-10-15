@@ -167,6 +167,15 @@ pub enum ErrorCode {
     ConversationUnreadable,
     /// The conversation is archived: restore it first.
     ConversationArchived,
+    /// An answer's share names a block that is not the text that ends the
+    /// agent's reply to a message (`web-api.md` § Sharing).
+    ShareTargetInvalid,
+    /// An answer's share is never taken again: its answer does not change.
+    ShareNotUpdatable,
+    /// No share answers the token, or the snapshot holds no such agent,
+    /// block or blob: one answer for each, so it tells nothing of what
+    /// exists.
+    ShareNotFound,
     /// The conversation has no undecided permission request of that id:
     /// another page decided it, an Allow of its category did, or a newer
     /// request replaced it.
