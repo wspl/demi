@@ -213,7 +213,7 @@
       "storageKeywords": "磁盘,空间"
     },
     "archived": {
-      "keywords": "归档,存档,恢复,对话"
+      "keywords": "归档,恢复,对话"
     },
     "keyboard": {
       "keywords": "快捷键,热键,绑定"
@@ -225,7 +225,7 @@
       "keywords": "版本,许可证,开源,第三方,声明"
     },
     "users": {
-      "keywords": "账户,账号,人员,管理员,添加用户,邀请,重置密码,角色,禁用,全部退出登录"
+      "keywords": "账户,人员,管理员,添加用户,邀请,重置密码,角色,禁用,全部退出登录"
     }
   },
   "changeEmail": {
