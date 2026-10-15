@@ -430,6 +430,7 @@ impl Shard {
                 gid: 20,
                 hostname: "test".into(),
                 home_dir: home.into(),
+                scratch_root: "/demi/scratch".into(),
             },
             kernel: None,
             shell: None,

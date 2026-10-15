@@ -315,6 +315,9 @@ hosts it reaches:
 | `demi host attach <device>` | Attaches a device to this conversation | The device, when the conversation may not reach it |
 | `demi host detach <host>` | Detaches one; the conversation may still reach it | none |
 
+`demi conversation history` reads this agent's own transcript and needs no
+permission ([Reading the earlier history](../agent/compaction.md#reading-the-earlier-history)).
+
 `conversation.organize` is the one category:
 
 | Id | Action | Description |

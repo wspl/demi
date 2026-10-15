@@ -272,7 +272,7 @@ async fn the_index_applies_each_save_on_top_of_the_one_before_and_reads_a_conver
         .execute("DELETE FROM texts WHERE text = 'Second answer bravoword'", [])
         .unwrap();
     index
-        .execute("UPDATE conversations SET revision = revision - 1", [])
+        .execute("UPDATE agents SET revision = revision - 1 WHERE agent = 0", [])
         .unwrap();
     drop(index);
     assert_eq!(search(&backend, &master, "bravoword").await, vec![]);

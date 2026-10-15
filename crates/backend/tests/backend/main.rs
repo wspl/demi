@@ -39,6 +39,7 @@ mod files;
 mod forks;
 mod handoff;
 mod history;
+mod history_commands;
 mod holding_edge;
 mod hosts;
 mod install;

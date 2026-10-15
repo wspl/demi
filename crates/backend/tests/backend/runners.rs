@@ -238,6 +238,7 @@ pub(crate) fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -
                 gid: 1,
                 hostname: "raw".into(),
                 home_dir: "/home/raw".into(),
+                scratch_root: "/demi/scratch".into(),
             },
             kernel: None,
             shell: None,

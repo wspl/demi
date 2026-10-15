@@ -184,6 +184,7 @@ impl TestDevice {
                 gid: 20,
                 hostname: "test".into(),
                 home_dir: "/work".into(),
+                scratch_root: "/demi/scratch".into(),
                 paths: demi_host_interface::HostPaths::Posix,
             },
         }

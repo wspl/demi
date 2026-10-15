@@ -27,6 +27,7 @@ use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
 use serde::Deserialize;
 
+use super::history::history_group;
 use crate::shard::Shard;
 
 /// The permission category of the commands that organize the conversation.
@@ -36,11 +37,11 @@ const ORGANIZE_ACTION: &str = "organize conversations";
 
 const ORGANIZE_DESCRIPTION: &str = "Organize Conversations lets the agents of this conversation rename it, list your projects, make a project of a directory, and move this conversation into or out of one. Projects show in your sidebar on every device.";
 
-const SUMMARY: &str = "This conversation in the user's sidebar: rename it, list the user's projects, move it into or out of one, or make one of a directory.";
+const SUMMARY: &str = "This conversation in the user's sidebar: rename it, list the user's projects, move it into or out of one, or make one of a directory; and your own history in it, which history searches and reads.";
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Renames this conversation, lists the user's projects, and moves this conversation into or out of a project, or into a new project made of a directory, which changes where its commands run once its work ends. Use it when the user asks to organize the conversation, or when the work belongs in a project of the user's.";
+const ENTRY: &str = "Renames this conversation, lists the user's projects, and moves this conversation into or out of a project, or into a new project made of a directory, which changes where its commands run once its work ends. Use it when the user asks to organize the conversation, or when the work belongs in a project of the user's. Its history commands search and read your own earlier history, such as what a compaction summarized.";
 
 const RENAME_SUMMARY: &str = "Rename this conversation, as its title in the user's sidebar.";
 
@@ -117,8 +118,9 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<CreateProjectArgs>()
                 .positionals(["name", "directory"])
                 .permission(ORGANIZE)
-                .bind(TypedRpc::new(verb(shard, create_project))),
+                .bind(TypedRpc::new(verb(shard.clone(), create_project))),
         )
+        .group(history_group(shard))
 }
 
 /// A handler over the live shard, for the product's groups that act in it;

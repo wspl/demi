@@ -7,7 +7,7 @@
     },
     {
       "role": "user",
-      "content": "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary."
+      "content": "The earlier part of this conversation was compacted. The user's messages from it follow as they were written, then a summary of the rest. Continue the work from where it stands; do not mention or restate the summary. What the summary leaves out is still in the conversation: `demi conversation history` finds and reads it."
     },
     {
       "role": "user",
