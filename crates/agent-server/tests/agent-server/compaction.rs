@@ -12,7 +12,7 @@ use demi_agent_server::{
 use demi_agent_store::{AgentTreeStore, testing::MemoryTreeStore};
 use demi_agent_tools::{SubagentSettings, Toolset};
 use demi_agent_transcript::testing::SequentialIds;
-use demi_conversation_socket_protocol::{ClientFrame, ClientFrameKind, ServerFrame};
+use demi_conversation_socket_protocol::{AgentCode, ClientFrame, ClientFrameKind, Refusal, ServerFrame};
 use demi_host_interface::CommandSet;
 use demi_provider_common::{
     ErrorCode,
@@ -97,7 +97,12 @@ async fn the_page_is_told_the_usage_and_compacts_only_from_half_the_window() {
         client.next().await,
         Some(ServerFrame::Rejected {
             command: ClientFrameKind::Compact,
-            reason: "Available from 50% context (now 30%)".into(),
+            refusal: Refusal::new(
+                AgentCode::CompactionUnavailable,
+                "Available from 50% context (now 30%)"
+            )
+            .with_param("thresholdPercent", 50)
+            .with_param("usedPercent", 30),
         })
     );
 
@@ -380,7 +385,7 @@ async fn a_subagent_reports_its_own_usage_and_compact_names_it() {
         page.next().await,
         Some(ServerFrame::Rejected {
             command: ClientFrameKind::Compact,
-            reason: "The agent has ended".into(),
+            refusal: Refusal::new(AgentCode::AgentEnded, "The agent has ended"),
         })
     );
 }

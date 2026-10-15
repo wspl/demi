@@ -1,5 +1,5 @@
-import { pageLanguage } from '../i18n/text'
-import { t } from './locales/text'
+import { findText, pageLanguage } from '../i18n/text'
+import { find, t } from './locales/text'
 import { titleCase } from '@demicodes/utils'
 
 /**
@@ -106,9 +106,44 @@ export const KEEP_OPTIONS: readonly { value: CredentialKeep; label: string }[] =
   },
 ]
 
-/** What the category lets the conversation do: its action, or its id when it is no longer declared. */
-export function categoryAction(category: PermissionCategoryView): string {
-  return category.action ?? category.id
+/**
+ * The page's words for the category `id` (`localization.md` § Text from the
+ * backend): Demi's own categories' from this catalogue, a plugin's from the
+ * plugin's, under its id, which the category's id starts with, as
+ * `skills.manage` is the `skills` plugin's. A catalogue key holds no dot, so
+ * the id's dots are underscores there. Null for a category no catalogue
+ * words, which shows the command set's English.
+ */
+function categoryText(id: string, field: 'action' | 'title' | 'description'): string | null {
+  const key = id.replaceAll('.', '_')
+  const plugin = id.split('.')[0]
+  return find(`categories.${key}.${field}`) ?? findText(`plugins.${plugin}.permissions.${key}.${field}`)
+}
+
+/** What the category lets the conversation do, completing “Allow this conversation to …”: its words, its declared action, or its id when it is no longer declared. */
+export function categoryAction(category: Pick<PermissionCategoryView, 'id' | 'action'>): string {
+  return categoryText(category.id, 'action') ?? category.action ?? category.id
+}
+
+/** What a grant of the category allows; none for a category no longer declared. */
+export function categoryDescription(category: PermissionCategoryView): string | null {
+  return category.description === null ? null : categoryText(category.id, 'description') ?? category.description
+}
+
+/**
+ * The actions of the categories `ids` as one phrase in the page's words;
+ * null when a catalogue lacks one of them, which then shows its English.
+ */
+export function wordedActions(ids: readonly string[]): string | null {
+  const actions = ids.map((id) => categoryText(id, 'action'))
+  return actions.every((action) => action !== null)
+    ? new Intl.ListFormat(pageLanguage(), { type: 'conjunction' }).format(actions)
+    : null
+}
+
+/** What a request to use the saved credential `name` lets the conversation do. */
+export function useCredentialAction(name: string): string {
+  return t('useCredential', { name })
 }
 
 /**
@@ -120,12 +155,9 @@ export function requestAction(request: Pick<PermissionRequestView, 'categories'>
   return new Intl.ListFormat(pageLanguage(), { type: 'conjunction' }).format(request.categories.map(categoryAction))
 }
 
-/** The category's title: its action in title case, such as "Manage Skills", as its description names it; its id as it is when it is no longer declared. */
+/** The category's title, such as “Manage Skills”, as its description names it: its words, else its English action in title case, or its id as it is when it is no longer declared. */
 export function categoryTitle(category: PermissionCategoryView): string {
-  if (category.action === null) {
-    return category.id
-  }
-  return titleCase(category.action)
+  return categoryText(category.id, 'title') ?? (category.action === null ? category.id : titleCase(category.action))
 }
 
 /**

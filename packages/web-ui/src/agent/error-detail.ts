@@ -1,71 +1,42 @@
 import type { ProviderErrorDiagnostics } from '@demicodes/protocol'
-import { z } from 'zod'
+import { codeText } from '../infra/errors'
 import { formatRetryAt } from '../ui/dates'
 import type { SentenceText } from '../ui/ui-text'
 import { t } from './locales/text'
 
-/** A first line stays one line: past this the source's text goes in the body. */
-const HEADLINE_MAX_LENGTH = 160
-
-/** What a failure record shows: the first line, and the body when the first line is not the whole story. */
-export interface ErrorPresentation {
-  label: SentenceText
-  detail: string | null
+/**
+ * The headline of a failed turn (`localization.md` § Text from the
+ * backend): the catalogue's words for its failure code, such as
+ * `usage_limit`, and, when the provider names the moment it works again,
+ * that moment counted from `now`: “You’ve reached your usage limit. Resets
+ * at 9:00 PM.” A code the catalogue has no words for, as a vendor's own,
+ * and a failure without a code read “The turn failed.”; what the vendor
+ * said shows below it, untranslated.
+ */
+export function failureHeadline(code: string | null | undefined, retryAt: string | null, now: Date): SentenceText {
+  const failure = (code ? codeText(code) : null) ?? t('transcript.turnFailed')
+  return retryAt === null
+    ? failure
+    : t('transcript.failureResets', { failure, reset: formatRetryAt('Resets', retryAt, now) })
 }
 
-const vendorErrorSchema = z.object({
-  error: z.union([
-    z.string(),
-    z.object({ message: z.string() }),
-  ]).optional(),
-  message: z.string().optional(),
-})
-
-/** The sentence a vendor put in its JSON error body, from the shapes vendors share; null when there is none. */
-function vendorSentence(message: string): string | null {
-  const start = message.indexOf('{')
-  if (start === -1)
-    return null
-  let body: unknown
-  try {
-    body = JSON.parse(message.slice(start))
-  } catch {
-    return null
+/**
+ * What a failure record shows under its headline: the vendor's response
+ * as it arrived, indented when it is JSON, behind Provider Response, for a
+ * failure a provider reported; and the record's own text in the body only
+ * for a failure the page has no words for that no provider reported, as a
+ * record an older release wrote.
+ */
+export function failureSource(
+  message: string,
+  code: string | null | undefined,
+  diagnostics: ProviderErrorDiagnostics | undefined,
+): { raw: string | null; detail: string | null } {
+  if (diagnostics) {
+    return { raw: diagnostics.upstream ? prettyUpstream(diagnostics.upstream) : message.trim() || null, detail: null }
   }
-  const parsed = vendorErrorSchema.safeParse(body)
-  if (!parsed.success)
-    return null
-  const error = parsed.data.error
-  const sentence = typeof error === 'string' ? error : error?.message ?? parsed.data.message
-  return sentence?.trim() || null
-}
-
-/**
- * The first line of a failure is what its source said, never Demi's reading of
- * it. A plain sentence is the whole record. A message that wraps a vendor's
- * JSON body leads with the sentence inside it and keeps the full text below.
- * Only a message with no sentence to lead with falls back to a neutral line.
- */
-export function errorPresentation(message: string): ErrorPresentation {
-  const text = message.trim()
-  const sentence = vendorSentence(text)
-  if (sentence !== null && sentence.length <= HEADLINE_MAX_LENGTH && !sentence.includes('\n'))
-    return { label: sentence, detail: text }
-  if (text.length > 0 && text.length <= HEADLINE_MAX_LENGTH && !text.includes('\n'))
-    return { label: text, detail: null }
-  return { label: t('transcript.turnFailed'), detail: text || null }
-}
-
-/**
- * The line under a failure: when the provider says it works again, counted
- * from `now`, which is what the reader does next. The status, the normalized
- * code and the request ids are bookkeeping for a support thread; they go in
- * the copied report.
- */
-export function errorFacts(retryAt: string | null, now: Date): string[] {
-  if (retryAt === null)
-    return []
-  return [formatRetryAt('Resets', retryAt, now)]
+  const worded = code ? codeText(code) !== null : false
+  return { raw: null, detail: worded ? null : message.trim() || null }
 }
 
 /** What the copy button puts on the clipboard: the upstream message and every diagnostic. */

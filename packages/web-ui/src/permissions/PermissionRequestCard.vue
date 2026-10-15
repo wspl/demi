@@ -7,6 +7,7 @@ import CodeText from '../ui/CodeText.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import RequestFrame from './RequestFrame.vue'
 import {
+  categoryDescription,
   categoryTitle,
   requestAction,
   type PermissionDecision,
@@ -60,11 +61,11 @@ const ran = computed(() => {
           class="flex flex-col pt-1 leading-5"
         >
           <span class="font-medium text-fg-body">{{ categoryTitle(category) }}</span>
-          <p class="text-fg-muted">{{ category.description }}</p>
+          <p class="text-fg-muted">{{ categoryDescription(category) }}</p>
         </div>
       </template>
       <p v-else-if="described.length" class="pt-1 leading-5 text-fg-muted">
-        {{ described[0]!.description }}
+        {{ categoryDescription(described[0]!) }}
       </p>
     </div>
     <template #footer>

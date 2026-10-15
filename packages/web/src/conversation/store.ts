@@ -17,7 +17,7 @@ import {
 import { coded, errorMessage, reportError, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
 import { t as shared } from '@demicodes/web-ui/locales/text'
 import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
-import { CONVERSATION_UNREADABLE, transcriptShown } from '@demicodes/web-ui/agent/session-status'
+import { transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
 import { Slot } from '@demicodes/web-ui/infra/slot'
 import { showArchived, updateArchived } from '@demicodes/web-ui/sidebar/archived-toast'
@@ -1149,10 +1149,9 @@ export const useConversations = defineStore('conversations', () => {
   function failOpening(conversation: Conversation, error: unknown): void {
     console.error('The conversation did not open', error)
     conversation.load = 'failed'
-    conversation.lastError = shownError(
-      error,
-      error instanceof ApiError && error.code === 'conversation_unreadable' ? CONVERSATION_UNREADABLE : undefined,
-    )
+    // A refusal is worded from its code, as `conversation_unreadable` is in
+    // the page's words rather than the server's, which name its files.
+    conversation.lastError = shownError(error)
   }
 
   /**

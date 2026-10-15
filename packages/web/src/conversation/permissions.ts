@@ -1,6 +1,6 @@
 import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
-import { formError, reportError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { codeText, formError, reportError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { t } from './locales/text'
 import {
   afterDecision,
@@ -71,6 +71,22 @@ function view(request: PermissionRequest): RequestView {
  * is not read back; one refused goes back to the requests as they were, and
  * another page's decision reaches this one through the summary.
  */
+/**
+ * Why the values in a credential card do not fit its request, in the page's
+ * words: the field without a value, or the one over the size a value may
+ * have; null for an answer the card did not send as it should, which the
+ * catalogue's text for the refusal says.
+ */
+function answerProblem(error: ApiError): string | null {
+  const { field, limitBytes } = error.params
+  if (typeof field !== 'string') {
+    return null
+  }
+  return typeof limitBytes === 'number'
+    ? codeText('invalid_answer_too_large', { field, limitBytes })
+    : codeText('invalid_answer_missing', { field })
+}
+
 export const usePermissions = defineStore('permissions', () => {
   const product = useProduct()
   const states = reactive(new Map<string, PermissionsState>())
@@ -184,7 +200,7 @@ export const usePermissions = defineStore('permissions', () => {
         // The values do not suit the request: said under the form, which keeps what was typed.
         if (error.code === 'invalid_answer' || error.code === 'credential_fields_differ') {
           // A value the request refused, which the user corrects in the card.
-          state.error = formError(error, { invalid_answer: null })
+          state.error = formError(error, { invalid_answer: answerProblem(error) })
           return
         }
       }

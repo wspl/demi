@@ -148,7 +148,7 @@ fn project_skill(paths: HostPaths, directory: &str, text: &[u8], size: u64) -> O
     let name = paths.file_name(directory);
     let too_large = usize::try_from(size).map_or(true, |size| size > SKILL_MD_MAX_BYTES);
     let parsed = if too_large {
-        Err("SKILL.md is larger than 256 KiB".to_owned())
+        Err(skill::NotASkill::too_large())
     } else {
         skill::parse(name, text)
     };

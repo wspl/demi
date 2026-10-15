@@ -47,7 +47,7 @@ use demi_agent_store::{
 use demi_agent_transcript::{
     ForkEnd, IdSource, TranscriptLog, last_answer, last_failure, turn_record,
 };
-use demi_conversation_socket_protocol::{AbortResult, TranscriptPatch, TranscriptVersion};
+use demi_conversation_socket_protocol::{AbortResult, AgentCode, Refusal, TranscriptPatch, TranscriptVersion};
 use demi_provider_common::{Ahead, ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
@@ -219,6 +219,17 @@ pub enum AdmissionError {
     Editing,
 }
 
+impl AdmissionError {
+    /// The refusal as the page words it.
+    pub fn refusal(&self) -> Refusal {
+        let code = match self {
+            Self::Closed => AgentCode::SessionClosed,
+            Self::Editing => AgentCode::EditInProgress,
+        };
+        Refusal::new(code, self.to_string())
+    }
+}
+
 /// Why a steer was refused (`runtime.md` § Steers).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum SteerError {
@@ -230,6 +241,19 @@ pub enum SteerError {
     Finishing,
     #[error("A message edit is being prepared")]
     Editing,
+}
+
+impl SteerError {
+    /// The refusal as the page words it.
+    pub fn refusal(&self) -> Refusal {
+        let code = match self {
+            Self::NotRunning => AgentCode::NothingToSteer,
+            Self::Stopped => AgentCode::TurnStopping,
+            Self::Finishing => AgentCode::TurnFinishing,
+            Self::Editing => AgentCode::EditInProgress,
+        };
+        Refusal::new(code, self.to_string())
+    }
 }
 
 /// Why an agent message was refused (`subagents.md` § Communication).
@@ -281,9 +305,17 @@ impl From<&ProviderFailure> for ErrorReport {
 
 impl From<StoreError> for ErrorReport {
     fn from(error: StoreError) -> Self {
+        Self::agent(AgentCode::SaveFailed, error.to_string())
+    }
+}
+
+impl ErrorReport {
+    /// A failure of the agent's own, which `code` names to the page and
+    /// `message` says in English.
+    pub fn agent(code: AgentCode, message: impl Into<String>) -> Self {
         Self {
-            message: error.to_string(),
-            code: None,
+            message: message.into(),
+            code: Some(code.to_string()),
             diagnostics: None,
         }
     }
@@ -348,13 +380,9 @@ pub(crate) enum TurnError {
 }
 
 impl TurnError {
-    /// The action cannot do what it was asked.
-    pub(crate) fn refused(message: impl Into<String>) -> Self {
-        Self::Failed(Box::new(ErrorReport {
-            message: message.into(),
-            code: None,
-            diagnostics: None,
-        }))
+    /// The action cannot do what it was asked, for `code`.
+    pub(crate) fn refused(code: AgentCode, message: impl Into<String>) -> Self {
+        Self::Failed(Box::new(ErrorReport::agent(code, message)))
     }
 }
 
@@ -849,13 +877,13 @@ impl AgentSession {
     /// taken (`compaction.md` § When compaction runs): below half the window
     /// in use, unless the unfinished turn failed for its size. A usage that
     /// cannot be read refuses it with the read's failure.
-    pub async fn compaction_refusal(&self) -> Option<String> {
+    pub async fn compaction_refusal(&self) -> Option<Refusal> {
         let size_refused = self
             .shared
             .read(|core| compaction::size_refused(core.transcript.blocks()));
         match self.context_usage().await {
             Ok(usage) => compaction_refusal(&usage, size_refused),
-            Err(report) => Some(report.message),
+            Err(report) => Some(Refusal::new(AgentCode::FrameFailed, report.message)),
         }
     }
 

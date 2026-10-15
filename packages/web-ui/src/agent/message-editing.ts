@@ -167,7 +167,10 @@ function sentEditContent(part: MessageEditContent): ClientContent {
     case 'image':
     case 'video':
       if (part.source.type !== 'ref') {
-        throw new EditRejectedError(`The message’s ${part.type} is not stored with the conversation, so an edit cannot keep it`)
+        throw new EditRejectedError({
+          code: 'edit_media_not_stored',
+          reason: `The message’s ${part.type} is not stored with the conversation, so an edit cannot keep it`,
+        })
       }
       return { type: 'media', media: { type: part.type, ref: part.source.ref, mediaType: part.source.mediaType } }
     case 'document':

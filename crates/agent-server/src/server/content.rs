@@ -7,7 +7,7 @@
 
 use demi_agent_session::EditContent;
 use demi_agent_store::media::HeldMedia;
-use demi_conversation_socket_protocol::ClientContent;
+use demi_conversation_socket_protocol::{AgentCode, ClientContent, Refusal};
 use demi_shared_types::UserContentBlock;
 use futures_util::future::LocalBoxFuture;
 
@@ -62,10 +62,17 @@ pub struct ContentError {
 }
 
 impl ContentError {
+    /// The refusal of the steer or the edit whose files these are, as the
+    /// page words it: the code the error has, else `frame_failed`.
+    pub(crate) fn refusal(&self) -> Refusal {
+        let code = self.code.clone().unwrap_or_else(|| AgentCode::FrameFailed.to_string());
+        Refusal::new(code, &self.message)
+    }
+
     fn invalid(message: impl Into<String>) -> Self {
         Self {
             message: message.into(),
-            code: None,
+            code: Some(AgentCode::FrameFailed.to_string()),
         }
     }
 }

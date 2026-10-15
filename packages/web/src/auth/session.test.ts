@@ -194,7 +194,7 @@ describe('cookie session', () => {
     const session = useSession()
     respond({ requestId: 'req_test000000000001', code: 'internal_error', message: 'The session store could not be read' }, 500)
     await session.restore()
-    expect(session.current).toEqual({ status: 'failed', error: { message: 'The session store could not be read', requestId: 'req_test000000000001' } })
+    expect(session.current).toEqual({ status: 'failed', error: { message: 'Something went wrong on the server.', requestId: 'req_test000000000001' } })
     respond({ user })
     await session.restore()
     expect(session.user).toEqual(user)

@@ -24,6 +24,8 @@ use demi_shared_types::{Block, BlockId, ModelSelection, ShellToolView, ToolView}
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
+use demi_conversation_socket_protocol::AgentCode;
+
 use super::{
     ErrorReport, SessionEvent, SessionShared, TurnError,
     cancel::{CancelReason, TurnCancel},
@@ -390,11 +392,7 @@ pub(super) async fn system_prompt(
     match cancel.guard(s.runtime.system_prompt(model)).await? {
         Ok(prompt) => Ok(prompt),
         Err(message) => {
-            let report = ErrorReport {
-                message,
-                code: None,
-                diagnostics: None,
-            };
+            let report = ErrorReport::agent(AgentCode::PromptUnavailable, message);
             s.update(|core| core.record_failure(&report));
             Err(TurnError::Failed(Box::new(report)))
         }

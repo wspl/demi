@@ -18,7 +18,7 @@ use demi_agent_store::{
 use demi_agent_transcript::CutError;
 use demi_conversation_socket_protocol::MediaRef;
 use demi_conversation_socket_protocol::{
-    ClientContent, ClientFrame, EditOutcome, EditRequest, ServerFrame, TranscriptPatch,
+    AgentCode, ClientContent, ClientFrame, EditOutcome, EditRequest, Refusal, ServerFrame, TranscriptPatch,
     TranscriptVersion,
 };
 use demi_provider_common::{
@@ -94,9 +94,9 @@ fn tells_of_an_edit(frame: &ServerFrame) -> bool {
     )
 }
 
-fn rejected(reason: &str) -> EditOutcome {
+fn rejected(code: AgentCode, reason: &str) -> EditOutcome {
     EditOutcome::Rejected {
-        reason: reason.to_owned(),
+        refusal: Refusal::new(code, reason),
     }
 }
 
@@ -146,7 +146,7 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
         .await;
     let stale = edit_outcome(&client.received());
 
-    assert_eq!(not_user, rejected(&CutError::NotUserMessage.to_string()));
+    assert_eq!(not_user, rejected(AgentCode::EditTarget, &CutError::NotUserMessage.to_string()));
     let EditOutcome::Accepted { turn_id } = edit_outcome(&frames) else {
         panic!("{frames:#?}")
     };
@@ -218,11 +218,11 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
     );
     assert_eq!(
         conflicting,
-        rejected("The edit operation ID was used for a different request")
+        rejected(AgentCode::EditConflict, "The edit operation ID was used for a different request")
     );
     assert_eq!(
         stale,
-        rejected("The conversation changed; reopen the message to edit it")
+        rejected(AgentCode::EditStale, "The conversation changed; reopen the message to edit it")
     );
     assert_eq!(script.remaining(), 0);
 
@@ -246,7 +246,7 @@ async fn an_edit_replaces_its_message_and_what_follows_once_and_infers_on_a_fres
         .await;
     assert_eq!(
         edit_outcome(&reopened.received()),
-        rejected("The conversation changed; reopen the message to edit it")
+        rejected(AgentCode::EditStale, "The conversation changed; reopen the message to edit it")
     );
     reopened
         .send(edit("op1", &target, &before.version, client_text("B2")))
@@ -382,9 +382,9 @@ async fn an_edit_is_refused_while_work_waits_and_a_failed_save_changes_nothing()
 
     assert_eq!(
         busy,
-        rejected("Message editing requires a settled session with no pending work")
+        rejected(AgentCode::EditBusy, "Message editing requires a settled session with no pending work")
     );
-    assert_eq!(failed, rejected("the database refused the save"));
+    assert_eq!(failed, rejected(AgentCode::SaveFailed, "the database refused the save"));
     assert_eq!(after_failure, before);
     assert_eq!(stored.transcript, before.blocks);
     assert!(stored.state.edits.is_empty());
@@ -536,9 +536,9 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     assert_eq!(
         refusals,
         [
-            rejected("The edited message holds no attachment at /elsewhere/chart.png"),
-            rejected(&format!("The edited message holds no image {elsewhere}")),
-            rejected(&format!("The edited message holds no video {png_blob}")),
+            rejected(AgentCode::EditFileMissing, "The edited message holds no attachment at /elsewhere/chart.png"),
+            rejected(AgentCode::EditFileMissing, &format!("The edited message holds no image {elsewhere}")),
+            rejected(AgentCode::EditFileMissing, &format!("The edited message holds no video {png_blob}")),
         ]
     );
     let kept = vec![
@@ -741,7 +741,7 @@ async fn an_edit_waits_for_no_child_and_an_edit_and_a_child_start_refuse_each_ot
         .await;
     assert_eq!(
         edit_outcome(&client.received()),
-        rejected("Cannot edit while children or completion notifications are pending")
+        rejected(AgentCode::FrameFailed, "Cannot edit while children or completion notifications are pending")
     );
     assert_eq!(fixture.store.record(&child).unwrap(), live);
     reading.open();
@@ -793,7 +793,7 @@ async fn an_edit_waits_for_no_child_and_an_edit_and_a_child_start_refuse_each_ot
             .await;
         assert_eq!(
             edit_outcome(&client.received()),
-            rejected("Cannot edit while a child lifecycle operation is in progress")
+            rejected(AgentCode::FrameFailed, "Cannot edit while a child lifecycle operation is in progress")
         );
         gate.release();
         assert_eq!(starting.await.code, 0);
@@ -858,7 +858,7 @@ async fn a_completion_whose_saves_failed_refuses_an_edit_until_a_later_save_deli
     until(|| tree.is_quiescent()).await;
     assert_eq!(
         edit_outcome(&client.received()),
-        rejected("Cannot edit while children or completion notifications are pending")
+        rejected(AgentCode::FrameFailed, "Cannot edit while children or completion notifications are pending")
     );
     assert_eq!(store.record(&child).unwrap(), undelivered);
 

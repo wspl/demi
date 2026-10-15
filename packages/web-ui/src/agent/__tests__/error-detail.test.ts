@@ -1,45 +1,35 @@
 import { expect, test } from 'bun:test'
-import { errorFacts, errorPresentation, errorReportText, prettyUpstream } from '../error-detail'
+import { createPageI18n } from '../../i18n/text'
+import { errorReportText, failureHeadline, failureSource, prettyUpstream } from '../error-detail'
 
-test('a plain sentence from the source is the whole record', () => {
-  expect(errorPresentation('The usage limit has been reached')).toEqual({
-    label: 'The usage limit has been reached',
-    detail: null,
-  })
-  expect(errorPresentation('The agent session was shut down while this turn was running.')).toEqual({
-    label: 'The agent session was shut down while this turn was running.',
-    detail: null,
-  })
-})
-
-test('a wrapped vendor body leads with the sentence inside it and keeps the full text', () => {
-  const credits = 'OpenAI API request failed with HTTP 401: {"type":"error","error":{"type":"CreditsError","message":"Insufficient balance."}}'
-  expect(errorPresentation(credits)).toEqual({ label: 'Insufficient balance.', detail: credits })
-  const plan = 'OpenAI API request failed with HTTP 429: {"error":{"code":"1311","message":"当前订阅套餐暂未开放GLM-5.3-Highspeed权限"}}'
-  expect(errorPresentation(plan)).toEqual({ label: '当前订阅套餐暂未开放GLM-5.3-Highspeed权限', detail: plan })
-  expect(errorPresentation('Upstream said: {"error":"model overloaded"}').label).toBe('model overloaded')
-  expect(errorPresentation('Gateway: {"message":"try later"}').label).toBe('try later')
-})
-
-test('a message with no sentence to lead with gets the neutral line over its text', () => {
-  const long = `Request failed: ${'x'.repeat(300)}`
-  expect(errorPresentation(long)).toEqual({ label: 'The turn failed', detail: long })
-  expect(errorPresentation('first line\nsecond line')).toEqual({
-    label: 'The turn failed',
-    detail: 'first line\nsecond line',
-  })
-  expect(errorPresentation('HTTP 500: {"unexpected":true}')).toEqual({
-    label: 'HTTP 500: {"unexpected":true}',
-    detail: null,
-  })
-  expect(errorPresentation('HTTP 500: {not json')).toEqual({ label: 'HTTP 500: {not json', detail: null })
-  expect(errorPresentation('')).toEqual({ label: 'The turn failed', detail: null })
-})
-
-test('the facts line says when the provider says it works again, and nothing without it', () => {
+// A failed turn's headline is the page's, worded from the failure's code
+// and the moment the provider says it works again (`localization.md` § Text
+// from the backend); the vendor's own text stays under Provider Response.
+test('a failed turn’s headline is worded from its code and when it works again, in the page’s language', () => {
   const now = new Date(2026, 9, 11, 8, 15)
-  expect(errorFacts(new Date(2026, 9, 11, 19, 3, 55).toISOString(), now)).toEqual(['Resets at 7:04 PM'])
-  expect(errorFacts(null, now)).toEqual([])
+  const reset = new Date(2026, 9, 11, 19, 3, 55).toISOString()
+  try {
+    expect(failureHeadline('usage_limit', reset, now)).toBe('You’ve reached your usage limit. Resets at 7:04 PM.')
+    expect(failureHeadline('rate_limit', null, now)).toBe('The provider is limiting requests.')
+    createPageI18n('zh-Hans')
+    expect(failureHeadline('usage_limit', reset, now)).toBe('已达到使用限制。19:04 重置。')
+    createPageI18n('ja')
+    expect(failureHeadline('usage_limit', reset, now)).toBe('使用制限に達しました。19:04 にリセットされます。')
+  } finally {
+    createPageI18n('en')
+  }
+})
+
+test('a code the page has no words for reads the neutral line, and the vendor’s text shows as it came', () => {
+  const now = new Date(2026, 9, 11, 8, 15)
+  expect(failureHeadline('insufficient_quota_xyz', null, now)).toBe('The turn failed.')
+  expect(failureHeadline(null, null, now)).toBe('The turn failed.')
+  const vendor = 'OpenAI API request failed with HTTP 401: {"error":{"message":"Insufficient balance."}}'
+  expect(failureSource(vendor, 'insufficient_quota_xyz', { source: 'http', httpStatus: 401 })).toEqual({ raw: vendor, detail: null })
+  expect(failureSource(vendor, 'usage_limit', { source: 'http', upstream: '{"a":1}' })).toEqual({ raw: '{\n  "a": 1\n}', detail: null })
+  // Demi's own failure needs no source line; one the page has no words for keeps its text.
+  expect(failureSource('The turn was interrupted.', 'interrupted', undefined)).toEqual({ raw: null, detail: null })
+  expect(failureSource('An older release’s words.', null, undefined)).toEqual({ raw: null, detail: 'An older release’s words.' })
 })
 
 test('the report is the upstream message followed by every diagnostic', () => {

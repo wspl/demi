@@ -12,7 +12,7 @@
 //! calls a real model.
 
 use demi_conversation_socket_protocol::{
-    ClientFrame, ClientFrameKind, SavedDelivery, ServerFrame, SteerOutcome,
+    ClientFrame, ClientFrameKind, Refusal, SavedDelivery, ServerFrame, SteerOutcome,
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::{Block, BlockId, MediaSource, TurnId, UserContentBlock};
@@ -457,7 +457,7 @@ async fn a_saved_message_is_sent_once_as_the_composer_chose_and_leaves_the_list(
         rejected.last(),
         Some(&ServerFrame::Rejected {
             command: ClientFrameKind::SendSaved,
-            reason: ErrorCode::SavedNotFound.to_string(),
+            refusal: Refusal::new(ErrorCode::SavedNotFound, "No such message saved for later"),
         })
     );
     assert!(

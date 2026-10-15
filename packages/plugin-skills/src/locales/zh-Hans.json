@@ -42,5 +42,32 @@
     "remove": "无法删除来源",
     "switchSkill": "无法切换技能",
     "switchSkills": "无法切换技能"
+  },
+  "permissions": {
+    "skills_manage": {
+      "action": "管理技能",
+      "title": "管理技能",
+      "description": "“管理技能”允许此对话的智能体添加、更新和删除技能源，以及打开或关闭技能。你的技能可用于每个对话，已打开的技能会安装到你的对话使用的每台主机上。"
+    }
+  },
+  "problems": {
+    "fetch": {
+      "repository_too_large": "存储库大于 {limit}。",
+      "no_commit": "存储库没有提交。",
+      "too_many_skills": "存储库中的技能超过 {limit} 个。",
+      "files_too_large": "技能的文件大于 {limit}。",
+      "no_skill": "存储库中没有技能。"
+    },
+    "skip": {
+      "too_large": "SKILL.md 大于 {limit}。",
+      "not_utf8": "SKILL.md 不是 UTF-8 编码。",
+      "no_front_matter": "SKILL.md 没有前置元数据。",
+      "front_matter_invalid": "前置元数据不是有效的 YAML。",
+      "no_description": "前置元数据没有描述。"
+    }
+  },
+  "refusals": {
+    "invalid_origin": "请输入“所有者/存储库”或 Git URL。",
+    "source_exists": "已添加 {origin}。"
   }
 }

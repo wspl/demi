@@ -9,7 +9,7 @@ use std::rc::Rc;
 use demi_agent_store::{Checkpoint, CheckpointState, CheckpointUpdate, EditReceipt};
 use demi_agent_transcript::{CutError, ForkEnd, TranscriptLog, before_user, fork_prefix};
 use demi_command_protocol::canonical_digest;
-use demi_conversation_socket_protocol::{EditRequest, MediaRef, TranscriptVersion};
+use demi_conversation_socket_protocol::{AgentCode, EditRequest, MediaRef, Refusal, TranscriptVersion};
 use demi_provider_common::ProviderRuntime;
 use demi_shared_types::{
     BlobRef, Block, BlockId, DocumentSource, MediaSource, OperationId, UserContentBlock,
@@ -17,6 +17,7 @@ use demi_shared_types::{
 use tokio::sync::watch;
 
 use super::{
+    ErrorReport,
     SessionShared, TurnError, cancel::TurnCancel, compaction, core::SessionCore, persist, turn,
 };
 
@@ -64,8 +65,34 @@ pub enum EditError {
     #[error("The agent session is closed")]
     Closed,
     /// Preparing or saving the edit failed, or the node refused it.
-    #[error("{0}")]
-    Failed(String),
+    #[error("{}", .0.message)]
+    Failed(Box<ErrorReport>),
+}
+
+impl EditError {
+    /// The refusal as the page words it.
+    pub fn refusal(&self) -> Refusal {
+        let code = match self {
+            Self::Conflict => AgentCode::EditConflict,
+            Self::Busy => AgentCode::EditBusy,
+            Self::Stale => AgentCode::EditStale,
+            Self::Target(_) => AgentCode::EditTarget,
+            Self::UnknownAttachment(_) | Self::UnknownMedia { .. } => AgentCode::EditFileMissing,
+            Self::Stopped => AgentCode::EditStopped,
+            Self::Closed => AgentCode::SessionClosed,
+            Self::Failed(report) => {
+                return Refusal {
+                    code: report
+                        .code
+                        .clone()
+                        .unwrap_or_else(|| AgentCode::FrameFailed.to_string()),
+                    params: Default::default(),
+                    reason: report.message.clone(),
+                };
+            }
+        };
+        Refusal::new(code, self.to_string())
+    }
 }
 
 /// What the session knows of an edit's operation before the edit runs.
@@ -140,7 +167,7 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
     let reservation = cancel
         .guard(s.runtime.reserve_edit())
         .await?
-        .map_err(TurnError::refused)?;
+        .map_err(|message| TurnError::refused(AgentCode::FrameFailed, message))?;
     cancel.check()?;
     // Earlier throttled checkpoints settle before the edit's save.
     persist::flush(s).await?;
@@ -160,7 +187,14 @@ pub(super) async fn run(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<()
         model,
     } = s
         .read(|core| Candidate::prepare(core, s, &submission, preamble))
-        .map_err(|error| TurnError::refused(error.to_string()))?;
+        .map_err(|error| {
+            let refusal = error.refusal();
+            TurnError::Failed(Box::new(ErrorReport {
+                message: refusal.reason,
+                code: Some(refusal.code),
+                diagnostics: None,
+            }))
+        })?;
     let saved = {
         let _turn = s.persist_gate.acquire().await;
         match cancel.check() {

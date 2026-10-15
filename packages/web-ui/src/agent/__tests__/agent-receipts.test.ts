@@ -1,5 +1,6 @@
 import { expect, test } from 'bun:test'
 import type { AgentMessage } from '@demicodes/protocol'
+import { createPageI18n } from '../../i18n/text'
 import { receiptOrigin, receiptRow } from '../agent-receipts'
 
 // Cost: pure, a few milliseconds for the file.
@@ -62,4 +63,28 @@ test('a receipt opens the block it names in its sender’s transcript, the root�
     .toEqual({ node: 'ag-3', blockId: null })
   expect(receiptOrigin(fromAgent({ type: 'message' }, 'root-call', 0)))
     .toEqual({ node: null, blockId: 'root-call' })
+})
+
+// A decision and a failed move carry ids and a code, which the page words in
+// its language; the English they recorded is for an older record and the
+// agent (`localization.md` § Text from the backend).
+test('a decision and a failed move are worded from their ids and code in the page’s language', () => {
+  const plain = (event: AgentMessage['event']): AgentMessage =>
+    ({ id: 'p1', recipientId: 'conversation-1', timestamp: '2026-10-11T12:00:00.000Z', content: 'Body.', event })
+  const both = plain({
+    type: 'permission', outcome: 'allowed', action: 'manage devices and manage credentials',
+    categories: ['host.devices', 'credentials.manage'], credential: null,
+  })
+  const credential = plain({ type: 'permission', outcome: 'denied', action: 'use the credential “GitHub”', categories: [], credential: 'GitHub' })
+  const moveFailed = plain({ type: 'move_failed', reason: 'the conversation is archived', code: 'conversation_archived' })
+  try {
+    createPageI18n('zh-Hans')
+    expect(receiptRow(both).notice).toBe('你已允许此对话执行以下操作：管理设备和管理凭据')
+    createPageI18n('ja')
+    expect(receiptRow(both).notice).toBe('この会話に次の操作を許可しました: デバイスの管理、認証情報の管理')
+    expect(receiptRow(credential).notice).toBe('この会話に次の操作を許可しませんでした: 認証情報「GitHub」の使用')
+    expect(receiptRow(moveFailed).notice).toBe('移動できませんでした: この会話はアーカイブされています。先に復元してください。')
+  } finally {
+    createPageI18n('en')
+  }
 })

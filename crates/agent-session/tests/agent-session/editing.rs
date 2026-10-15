@@ -5,6 +5,8 @@
 //! replacement's turn fails.
 
 use demi_agent_transcript::testing::RESUME_TEXT;
+use demi_agent_session::ErrorReport;
+use demi_conversation_socket_protocol::AgentCode;
 use demi_shared_types::BlockId;
 
 use super::*;
@@ -72,7 +74,10 @@ async fn while_an_edit_saves_nothing_of_it_shows_and_the_session_admits_only_the
     gate.release();
     assert_eq!(
         failing.await.unwrap(),
-        Err(EditError::Failed("the database refused the save".into()))
+        Err(EditError::Failed(Box::new(ErrorReport::agent(
+            AgentCode::SaveFailed,
+            "the database refused the save"
+        ))))
     );
     assert_eq!(session.transcript(), before);
     assert!(patches.borrow().is_empty());
@@ -206,7 +211,10 @@ async fn a_stop_while_an_edit_prepares_rejects_it_and_while_it_saves_the_save_de
     gate.release();
     assert_eq!(
         failing.await.unwrap(),
-        Err(EditError::Failed("the database refused the save".into()))
+        Err(EditError::Failed(Box::new(ErrorReport::agent(
+            AgentCode::SaveFailed,
+            "the database refused the save"
+        ))))
     );
     assert_eq!(
         stopping.await.unwrap().target,

@@ -1,4 +1,4 @@
-import type { ShownError } from '@demicodes/web-ui/infra/errors'
+import { coded, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 
 /** Lowercase Crockford base-32, the alphabet of the backend's request IDs. */
 const ALPHABET = '0123456789abcdefghjkmnpqrstvwxyz'
@@ -25,6 +25,15 @@ export function simulatedRequestId(seed: string): string {
 /** A failure the backend answered, as the product shows it: its words and its request. */
 export function requestFailure(message: string): ShownError {
   return { message, requestId: simulatedRequestId(message) }
+}
+
+/**
+ * A refusal of the backend's as the page shows it: the catalogue's words for
+ * `code`, filled with `params` and worded again when the language changes,
+ * and the request it answered.
+ */
+export function refusalFailure(code: string, params: Readonly<Record<string, string | number>> = {}): ShownError {
+  return shownError(Object.assign(coded(new Error(code), code, params), { requestId: simulatedRequestId(code) }))
 }
 
 /**

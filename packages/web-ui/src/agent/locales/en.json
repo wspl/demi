@@ -96,7 +96,8 @@
       "document": "Document"
     },
     "shellFallback": "Run shell command",
-    "turnFailed": "The turn failed",
+    "turnFailed": "The turn failed.",
+    "failureResets": "{failure} {reset}.",
     "work": {
       "ran": "ran {count} command | ran {count} commands",
       "checked": "checked {count} command | checked {count} commands",
