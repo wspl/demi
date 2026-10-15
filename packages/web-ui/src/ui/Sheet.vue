@@ -17,10 +17,13 @@ import { stackAbove } from '../overlay/stacking'
  * rises from the screen's bottom edge over a scrim, as wide as the screen and
  * at most 90% of its height, its content scrolling inside it. Every phone
  * sheet is this one, a menu's (Popover) and a page's own, such as the
- * conversation's title sheet.
+ * conversation's title sheet. It has no heading of its own: a menu sheet has
+ * none, as an iOS menu has none, since what it acts on is the control just
+ * tapped, still in view above it; a sheet that is a form or a page carries
+ * its title in its content.
  *
  * It closes as iOS's and Android's sheets do: a tap on the scrim; a drag down
- * on its grabber or its header, past 30% of its height or flicked
+ * on its grabber, past 30% of its height or flicked
  * (`dragCloses`), else it springs back; a pull down at the top of its
  * scrolled content, which turns into that same drag; Escape, when a store
  * is given to stand in (`overlayStore`; a menu's Popover stands in it
@@ -30,7 +33,7 @@ import { stackAbove } from '../overlay/stacking'
  */
 const props = defineProps<{
   open: boolean
-  /** The sheet's accessible name, when no header names it. */
+  /** The sheet's accessible name: what it acts on, which no heading in it says. */
   label?: string
   /** Where Escape is decided; absent, the sheet's owner handles Escape. */
   overlayStore?: OverlayStore
@@ -41,8 +44,6 @@ const emit = defineEmits<{
 }>()
 
 defineSlots<{
-  /** A title over the content, which a drag also takes. */
-  header?(): unknown
   default(): unknown
 }>()
 
@@ -211,9 +212,6 @@ const panelStyle = computed(() => ({
       >
         <div data-sheet-handle class="sheet-handle flex h-5 shrink-0 items-center justify-center">
           <span class="h-1 w-9 rounded-full bg-fg-faint opacity-60" />
-        </div>
-        <div v-if="$slots.header" data-sheet-handle class="sheet-handle shrink-0 px-4 pb-2">
-          <slot name="header" />
         </div>
         <div ref="body" class="sheet-body min-h-0 flex-1 overflow-y-auto overscroll-contain">
           <slot />

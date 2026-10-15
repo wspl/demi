@@ -514,10 +514,8 @@ watch(
         @click="emit('openAside')"
       />
       <span v-else class="size-hit shrink-0" />
-      <Sheet :open="titleSheetOpen" :overlay-store="appOverlayStore" @close="titleSheetOpen = false">
-        <template #header>
-          <p class="break-words text-[15px] font-medium text-fg-emphasis">{{ shownTitle }}</p>
-        </template>
+      <!-- A menu sheet: the title it acts on stays in the bar above it, so the sheet repeats no heading. -->
+      <Sheet :open="titleSheetOpen" :label="shownTitle" :overlay-store="appOverlayStore" @close="titleSheetOpen = false">
         <Menu v-if="listed || share">
           <template v-if="share">
             <MenuItem
