@@ -321,17 +321,17 @@ const JAPANESE: LanguageWriting = {
   rules: [
     {
       title: 'A half-width space between Japanese and Latin letters or digits',
-      rule: 'A Latin word, a name or a figure inside Japanese has a half-width space on each side, as Apple’s and VS Code’s Japanese do.',
+      rule: 'A Latin word, a name or a figure inside Japanese has a half-width space on each side, as Apple’s and ChatGPT’s Japanese do.',
       right: ['Finder で開く', '3 個のファイル'],
       wrong: ['Finderで開く', '3個のファイル'],
-      source: 'macOS 26; VS Code’s Japanese pack',
+      source: 'macOS 26; ChatGPT',
     },
     {
       title: '「」 quotes and full-width 。、',
       rule: 'A quoted name stands between 「」. A sentence takes full-width 。 and 、.',
       right: ['「OpenAI API」を削除しますか？', '名前、パス'],
       wrong: ['"OpenAI API"を削除しますか?', '名前, パス'],
-      source: 'VS Code’s Japanese pack; Microsoft Japanese Style Guide',
+      source: 'macOS 26; ChatGPT; Microsoft Japanese Style Guide',
     },
     {
       title: 'Full-width parentheses, a half-width colon',
@@ -345,14 +345,14 @@ const JAPANESE: LanguageWriting = {
       rule: 'A label, a menu item or a button names the thing or the action, as macOS’s do.',
       right: ['保存', 'キャンセル', 'キューに追加'],
       wrong: ['保存します。', 'キャンセルする。'],
-      source: 'macOS 26; VS Code’s Japanese pack',
+      source: 'macOS 26; Codex; ChatGPT',
     },
     {
       title: 'Sentences in です・ます',
       rule: 'A sentence the page says is polite, in です・ます.',
       right: ['接続できませんでした。'],
       wrong: ['接続できなかった。'],
-      source: 'Microsoft Japanese Style Guide',
+      source: 'Microsoft Japanese Style Guide; ChatGPT',
     },
     {
       title: 'Quantities as in English, dates and times as Intl writes them',
@@ -428,7 +428,7 @@ const JAPANESE: LanguageWriting = {
     ['Archived', 'アーカイブ済み', 'The state of Archive'],
     ['Unarchive', 'アーカイブを解除', 'ChatGPT'],
     ['Pin', 'ピン留め', 'Codex, ChatGPT, Apple'],
-    ['Unpin', 'ピン留めを外す', 'The everyday verb for taking a pin off; Codex, ChatGPT and Apple’s 解除 is the formal one'],
+    ['Unpin', 'ピン留めを解除', 'Codex, ChatGPT, Apple; not 外す, a plainer verb none of them uses'],
     ['Rename', '名前を変更', 'Codex, ChatGPT; Apple’s 名称変更 is a noun'],
     ['Delete', '削除', 'Codex, ChatGPT, Apple'],
     ['Share', '共有', 'Codex, ChatGPT, Apple'],
@@ -436,7 +436,7 @@ const JAPANESE: LanguageWriting = {
     ['Regenerate', '再生成', 'Not ChatGPT’s もう一度試す, which is Try again and runs the request once more'],
     ['Settings', '設定', 'Codex, ChatGPT, Claude, Apple'],
     ['General', '一般', 'ChatGPT, Apple'],
-    ['Filter', 'フィルタ', 'Apple; ChatGPT’s フィルター is the longer spelling'],
+    ['Filter', 'フィルター', 'ChatGPT, Codex; the long vowel as Microsoft’s style guide has written it since 2008, like フォルダー and ブラウザー'],
     ['Allow', '許可', 'ChatGPT, Claude, Apple'],
     ['Always Allow', '常に許可', 'ChatGPT, Claude, Apple'],
     ['Deny', '拒否', 'Codex, ChatGPT, Apple'],
@@ -450,7 +450,7 @@ const JAPANESE: LanguageWriting = {
     ['Undo', '元に戻す', 'Codex, ChatGPT, Claude'],
     ['Open With', 'このアプリケーションで開く', 'Apple'],
     ['File', 'ファイル', 'Codex, ChatGPT, Claude, Apple'],
-    ['Folder', 'フォルダ', 'Apple, Codex; ChatGPT writes フォルダー as well'],
+    ['Folder', 'フォルダー', 'ChatGPT, Codex; the long vowel as Microsoft’s style guide has written it since 2008, one spelling everywhere, as in サーバー and ユーザー'],
   ],
 }
 

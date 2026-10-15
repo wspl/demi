@@ -12,7 +12,7 @@
   },
   "key": {
     "label": "API キー",
-    "description": "ドメインや日付など、すべてのフィルタを使用できます。",
+    "description": "ドメインや日付など、すべてのフィルターを使用できます。",
     "unchecked": "未確認: {reason}",
     "remove": "削除",
     "placeholder": "Exa API キー",
