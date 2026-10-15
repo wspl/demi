@@ -168,11 +168,30 @@ title: demi
 tags: [agents, cloud]
 ---
 
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/lockup-dark.svg">
+    <img alt="demi" src="assets/lockup-light.svg" height="48">
+  </picture>
+</p>
+
+<p align="center">
+  <a href="#getting-started"><img alt="Docs" src="assets/badge-docs.svg"></a>
+  <a href="#why-a-cloud"><img alt="Cloud" src="assets/badge-cloud.svg"></a>
+  <a href="https://bun.sh"><img alt="Bun" src="assets/badge-bun.svg"></a>
+</p>
+
 <p align="center"><img src="assets/photo.png" width="240" alt="The test pattern"></p>
 
 # demi
 
 Conversations that run commands on Cloud or your own machines.
+
+> [!NOTE]
+> The Cloud sleeps while nothing runs; a message wakes it.
+
+> [!WARNING]
+> Pairing a device lets the agent run commands on it.
 
 - [Getting started](#getting-started)
 - [The guide](docs/guides/getting-started.md), and [the session cookie](/src/auth/cookie.ts)
@@ -227,6 +246,28 @@ const logoSvg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" w
 `
 
 const logoSvgBefore = logoSvg.replace('#3b82f6', '#f97316').replace('rx="24"', 'rx="8"')
+
+/** The README's logo for a light page, the mark beside the name, and for a dark one, `ink` its name's color. */
+function lockupSvg(ink: string): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <rect x="4" y="6" width="48" height="48" rx="12" fill="#3b82f6"/>
+  <circle cx="28" cy="30" r="11" fill="#ffffff"/>
+  <text x="64" y="44" font-family="system-ui, sans-serif" font-size="40" font-weight="700" fill="${ink}">demi</text>
+</svg>
+`
+}
+
+/** A README badge as shields.io draws one: a gray label and a colored value, 20 px high. */
+function badgeSvg(label: string, value: string, color: string): string {
+  const labelWidth = 8 + label.length * 7
+  const width = labelWidth + 8 + value.length * 7
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="20">
+  <rect width="${labelWidth}" height="20" rx="3" fill="#555"/>
+  <rect x="${labelWidth}" width="${width - labelWidth}" height="20" rx="3" fill="${color}"/>
+  <g fill="#fff" font-family="Verdana, sans-serif" font-size="11"><text x="5" y="14">${label}</text><text x="${labelWidth + 4}" y="14">${value}</text></g>
+</svg>
+`
+}
 
 const packageJson = `{
   "name": "demi",
@@ -287,6 +328,11 @@ function tree(): MemoryDirectory {
     // Files the work panel previews rather than reads as text (`file-previews.md`).
     assets: dir({
       'logo.svg': textFile(logoSvg, at),
+      'lockup-light.svg': textFile(lockupSvg('#1a1d24'), at),
+      'lockup-dark.svg': textFile(lockupSvg('#f5f5f5'), at),
+      'badge-docs.svg': textFile(badgeSvg('docs', 'guide', '#3b82f6'), at),
+      'badge-cloud.svg': textFile(badgeSvg('cloud', 'sleeps', '#8b5cf6'), at),
+      'badge-bun.svg': textFile(badgeSvg('runs on', 'bun', '#14b8a6'), at),
       'photo.png': assetFile('/fixtures/preview/photo.png', 15822, at),
       'page-full.png': assetFile('/fixtures/preview/page-full.png', 8035, at),
       'demo.mp4': assetFile('/fixtures/preview/demo.mp4', 31814, at),
