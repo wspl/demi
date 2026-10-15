@@ -101,6 +101,9 @@ afterEach(async () => {
   channels.restore()
 })
 
+const CLOUD = 'c1c2c3c4-0000-4000-8000-000000000001'
+const cloud = { ...laptop, id: CLOUD, kind: 'managed' as const, name: 'Cloud', home: '/home/demi', mark: null }
+
 /** Lets the event loop turn until `done`, at most 50 times. */
 async function until(done: () => boolean): Promise<void> {
   for (let turn = 0; turn < 50 && !done(); turn += 1) {
@@ -146,5 +149,45 @@ test('a conversation moved to another directory of the same Host lists and watch
   await until(() => list.value.state === 'read' && list.value.workflows[0]?.name === 'Review of /home/ada/repo-b (3)')
   expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-b', 3).workflows })
   expect(read).toHaveLength(3)
+  scope.stop()
+})
+
+test('a new conversation in a Cloud project reads its project’s workflows and keeps the one the project remembers', async () => {
+  const product = useProduct()
+  const app = {
+    id: 'app', deviceId: CLOUD, path: '/home/demi/projects/app', name: 'App', createdAt: '2026-09-10T00:00:00.000Z',
+    lastWorkflow: { type: 'workflow' as const, id: 'review' },
+  }
+  channels.last().send({ type: 'snapshot', state: productState({ devices: [laptop, cloud], workspaces: [app], conversations: [] }) })
+  await nextTick()
+  // The device route answers the project's directory, once the test says.
+  let answer!: () => void
+  const answered = new Promise<void>((resolve) => { answer = resolve })
+  const backend = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith(`/api/devices/${CLOUD}/workflows?`)) {
+      read.push(path)
+      await answered
+      return Response.json(workflowsOf('/home/demi/projects/app', 1), { headers: { 'x-demi-read-at': 'e.1' } })
+    }
+    return backend(input, init)
+  }) as typeof fetch
+  const store = useConversations()
+  const id = store.create('app')
+  const conversation = store.items.find((item) => item.id === id)!
+  expect(conversation.workflow).toEqual({ type: 'workflow', id: 'review' })
+  const scope = effectScope()
+  const list = scope.run(() => createApp({}).runWithContext(() =>
+    useConversationWorkflows(() => store.items.find((item) => item.id === id)!)))!
+  await until(() => read.length > 0)
+  expect(read).toEqual([`/api/devices/${CLOUD}/workflows?directory=%2Fhome%2Fdemi%2Fprojects%2Fapp`])
+  // Not read yet is no reason to give the remembered workflow up.
+  expect(list.value.state).toBe('reading')
+  expect(conversation.workflow).toEqual({ type: 'workflow', id: 'review' })
+  answer()
+  await until(() => list.value.state === 'read')
+  expect(conversation.workflow).toEqual({ type: 'workflow', id: 'review' })
+  expect(product.snapshot!.workspaces[0]!.lastWorkflow).toEqual({ type: 'workflow', id: 'review' })
   scope.stop()
 })

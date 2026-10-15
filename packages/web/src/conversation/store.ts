@@ -83,6 +83,8 @@ import {
   type WorkflowChoice,
 } from '../api/generated/web-api'
 import { isEmptyMessage, joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
+import { startingChoices, startingWorkflow, type RememberedChoices } from '@demicodes/web-ui/agent/starting-choices'
+import type { WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 import { blobPicture, createConversationUploads, sendingFileIds } from './uploads'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
@@ -1675,11 +1677,23 @@ export const useConversations = defineStore('conversations', () => {
     return success
   }
 
+  /**
+   * Opens a new conversation in the project `projectId`, or outside
+   * projects, with the choices last made there (`web-api.md` § User
+   * preferences); an empty one already open there takes them again.
+   */
   function create(projectId: string | null = null): string {
+    const starting = startingChoices(
+      product.snapshot?.workspaces.find((workspace) => workspace.id === projectId) ?? null,
+      { lastModel: preferences.lastModel, lastWorkflow: preferences.lastWorkflow },
+    )
     const empty = items.value.find(
       (item) => isEmptyDraft(item) && !item.archived && item.projectId === projectId,
     )
     if (empty) {
+      empty.model = initialModelSettings(starting.model)
+      empty.workflow = starting.workflow
+      saveDrafts()
       return empty.id
     }
     const now = new Date().toISOString()
@@ -1695,7 +1709,7 @@ export const useConversations = defineStore('conversations', () => {
       revision: 0,
       readRevision: 0,
       unread: false,
-      workflow: { type: 'default' },
+      workflow: starting.workflow,
       pluginsChanged: false,
       draftRevision: 0,
       saved: 0,
@@ -1715,7 +1729,7 @@ export const useConversations = defineStore('conversations', () => {
       lastTurn: null,
     })
     conversation.persistence = 'draft'
-    conversation.model = initialModelSettings(preferences.lastModel)
+    conversation.model = initialModelSettings(starting.model)
     conversation.load = 'ready'
     restored.add(conversation.id)
     items.value.unshift(conversation)
@@ -1782,7 +1796,7 @@ export const useConversations = defineStore('conversations', () => {
     // It applies before the first message goes, so the first turn's spawns
     // and instructions follow it (`subagents.md` § Workflows of a project).
     if (!sameWorkflow(chosen, result.conversation.workflow)) {
-      await changeWorkflow(conversation.id, chosen)
+      await applyWorkflow(conversation.id, chosen)
     }
   }
 
@@ -1967,7 +1981,7 @@ export const useConversations = defineStore('conversations', () => {
     if (conversation.persistence !== 'synced') {
       conversation.model = applyModelChange(shownSettings(conversation), change)
       saveDrafts()
-      rememberModel(conversation.model)
+      rememberModel(conversation)
       return
     }
     // A record without a model takes the whole settings, as a first send
@@ -1992,7 +2006,7 @@ export const useConversations = defineStore('conversations', () => {
         return
       }
       signal.throwIfAborted()
-      rememberModel(conversation.model)
+      rememberModel(conversation)
       // A conversation opened without a usable model opens now with this
       // one, outside the queue: its opening waits for an archive or a
       // restore of it that may stand behind this write.
@@ -2007,18 +2021,44 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Makes `workflow` the conversation's Workflow menu choice
-   * (`product.md` § A conversation's workflow): it shows at once, and a
-   * write that fails or is refused gives the stored choice back.
-   */
-  /**
-   * Makes `workflow` the conversation's Workflow menu choice; settles once
-   * it is written or refused. A conversation without a record keeps it in
-   * its draft, which its first send gives the record, and one whose record
-   * is on its way applies it as soon as the record is made, before its
-   * first message goes.
+   * The user makes `workflow` the conversation's Workflow menu choice
+   * (`product.md` § A conversation's workflow), which its project's next
+   * conversation starts with; settles once it is written or refused.
    */
   async function changeWorkflow(id: string, workflow: WorkflowChoice): Promise<void> {
+    const conversation = items.value.find((item) => item.id === id)
+    if (conversation) {
+      remember(conversation, { lastWorkflow: workflow })
+    }
+    await applyWorkflow(id, workflow)
+  }
+
+  /**
+   * A new conversation that started with a workflow its directory no longer
+   * has goes on with No Subagents once the directory's workflows are read
+   * (`web-api.md` § User preferences); nothing is remembered.
+   */
+  function settleStartingWorkflow(id: string, list: WorkflowList): void {
+    const conversation = items.value.find((item) => item.id === id)
+    if (!conversation || conversation.persistence !== 'draft') {
+      return
+    }
+    const workflow = startingWorkflow(conversation.workflow, list)
+    if (!sameWorkflow(workflow, conversation.workflow)) {
+      conversation.workflow = workflow
+      saveDrafts()
+    }
+  }
+
+  /**
+   * Makes `workflow` the conversation's Workflow menu choice: it shows at
+   * once, and a write that fails or is refused gives the stored choice
+   * back; settles once it is written or refused. A conversation without a
+   * record keeps it in its draft, which its first send gives the record,
+   * and one whose record is on its way applies it as soon as the record is
+   * made, before its first message goes.
+   */
+  async function applyWorkflow(id: string, workflow: WorkflowChoice): Promise<void> {
     const conversation = items.value.find((item) => item.id === id)
     if (conversation && conversation.persistence !== 'synced') {
       conversation.workflow = workflow
@@ -2044,12 +2084,27 @@ export const useConversations = defineStore('conversations', () => {
     return a.type === b.type && (a.type !== 'workflow' || (b.type === 'workflow' && a.id === b.id))
   }
 
-  /** The settings become the user's last choice, which new conversations start with. */
-  function rememberModel(settings: ModelSettings): void {
+  /** The conversation's model settings become the last choice where it belongs. */
+  function rememberModel(conversation: Conversation): void {
+    const settings = conversation.model
     if (!settings.providerId || !settings.modelId) {
       return
     }
-    preferences.update({ lastModel: { ...settings } })
+    remember(conversation, { lastModel: { ...settings } })
+  }
+
+  /**
+   * Saves an explicit choice made in `conversation` where it belongs
+   * (`web-api.md` § User preferences): on its project's workspace, which its
+   * project's next conversation starts with, or in the preferences for one
+   * outside projects.
+   */
+  function remember(conversation: Conversation, choice: RememberedChoices): void {
+    if (conversation.projectId === null) {
+      preferences.update(choice)
+      return
+    }
+    resources.rememberInProject(conversation.projectId, choice)
   }
 
   /**
@@ -2752,6 +2807,7 @@ export const useConversations = defineStore('conversations', () => {
       ),
     changeModel,
     changeWorkflow,
+    settleStartingWorkflow,
     send,
     retrySend,
     editVersion: (conversation: Conversation) =>

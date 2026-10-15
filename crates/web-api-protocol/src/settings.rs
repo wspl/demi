@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use demi_command_protocol::{COMMAND_LOCALE_LANGUAGES, ColorScheme, CommandLocale};
-use demi_shared_types::{Nullable, is_context_limit};
+use demi_shared_types::{Nullable, WorkflowChoice, is_context_limit};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -336,8 +336,9 @@ pub struct Preferences {
     pub appearance: Appearance,
     #[garde(dive)]
     pub shortcuts: Shortcuts,
-    /// The model settings a new conversation starts with, as the user last
-    /// chose them; existing conversations keep their own.
+    /// The model settings a new conversation outside a project starts with,
+    /// as the user last chose them there; existing conversations keep their
+    /// own.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",
@@ -346,6 +347,16 @@ pub struct Preferences {
     #[schemars(with = "ModelSettings")]
     #[garde(dive)]
     pub last_model: Option<ModelSettings>,
+    /// The Workflow menu choice a new conversation outside a project starts
+    /// with, as the user last made it there; absent means No Subagents.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "WorkflowChoice")]
+    #[garde(dive)]
+    pub last_workflow: Option<WorkflowChoice>,
     /// Where New project starts, as the user last chose it.
     #[serde(
         default,
@@ -544,6 +555,14 @@ pub struct PreferencesPatch {
     #[schemars(with = "ModelSettings")]
     #[garde(dive)]
     pub last_model: Option<ModelSettings>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "WorkflowChoice")]
+    #[garde(dive)]
+    pub last_workflow: Option<WorkflowChoice>,
     /// Replaces the saved choice whole.
     #[serde(
         default,

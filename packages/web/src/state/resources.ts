@@ -2,8 +2,12 @@ import { computed, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue, moveBefore } from '@demicodes/utils'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
+import { reportError } from '@demicodes/web-ui/infra/errors'
+import type { RememberedChoices } from '@demicodes/web-ui/agent/starting-choices'
+import { t } from './locales/text'
 import {
   workspaceAnswerSchema,
+  type ChangeWorkspace,
   type ConversationTarget,
   type CreateWorkspace,
   type DeviceDto,
@@ -59,6 +63,8 @@ export const useResources = defineStore('resources', () => {
    * changes the one order of the projects.
    */
   const moves = new SerialQueue()
+  /** The writes of what each project's next conversation starts with, one at a time per project. */
+  const choices = new SerialQueue()
   const preferences = usePreferences()
   const local = ref(emptyLocalState())
   let controller = new AbortController()
@@ -308,6 +314,40 @@ export const useResources = defineStore('resources', () => {
     return workspace.id
   }
 
+  /**
+   * Saves `choice`, made in a conversation of the project `id`, as what the
+   * project's next conversation starts with (`web-api.md` § User
+   * preferences): it shows at once, the write follows the project's earlier
+   * ones, and the channel brings it to the user's other pages.
+   */
+  function rememberInProject(id: string, choice: RememberedChoices): void {
+    const change = product.change('workspaces', (state) => ({
+      ...state,
+      workspaces: state.workspaces.map((workspace) => workspace.id === id ? { ...workspace, ...choice } : workspace),
+    }))
+    const { signal } = controller
+    void choices
+      .run(id, async () => {
+        change.send()
+        const response = await apiRequest(`/workspaces/${encodeURIComponent(id)}`, {
+          method: 'PATCH',
+          signal,
+          ...jsonBody(choice satisfies ChangeWorkspace),
+        })
+        const { workspace } = await readResponse(response, workspaceAnswerSchema)
+        change.land((read) => ({
+          type: 'workspaces',
+          workspaces: read.workspaces.map((candidate) => candidate.id === workspace.id ? workspace : candidate),
+        }))
+      })
+      .catch((error) => {
+        change.drop()
+        if (!signal.aborted) {
+          reportError(t('failures.updateSettings'), error, { userVisible: true })
+        }
+      })
+  }
+
   async function removeProject(id: string): Promise<void> {
     await apiRequest(`/workspaces/${encodeURIComponent(id)}`, {
       method: 'DELETE',
@@ -349,5 +389,6 @@ export const useResources = defineStore('resources', () => {
     reorderProject,
     createProject,
     removeProject,
+    rememberInProject,
   }
 })

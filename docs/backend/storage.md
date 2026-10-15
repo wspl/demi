@@ -187,7 +187,8 @@ input, which the multi-worker control service also relies on
   through one index lookup; it is absent until the backend issues a token. A
   partial unique index permits one managed device per user. A user's paired
   devices are listed by claim time, oldest first, and two claimed within one
-  millisecond by id. `workspaces` names directories on devices; deleting a
+  millisecond by id. `workspaces` names directories on devices, with the model settings and
+  workflow the project's next conversation starts with; deleting a
   workspace never deletes its files. Online status comes from live
   connections, not the last-seen time.
 - **Conversation index:** `conversations` stores ownership, title and its

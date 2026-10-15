@@ -93,6 +93,8 @@ test('creating a project opens a new conversation draft in it, which only the fi
         id: conversation.id,
         pinned: false,
         target: { kind: 'workspace', workspaceId: PROJECT.id },
+        // A project never used starts with No Subagents.
+        workflow: { type: 'none' },
       },
     },
   ])
