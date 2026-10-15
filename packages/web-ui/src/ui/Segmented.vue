@@ -11,7 +11,10 @@ import type { SentenceText, TitleText } from './ui-text'
 /**
  * One of a few exclusive choices, all visible. Segments share one width so the
  * thumb is a single element that slides to the chosen one instead of re-appearing.
- * That width fits the longest label: in a container narrower than the
+ * That width fits the longest label, and a settings row that drops the
+ * control under its label stretches it (`data-field`, except with `iconOnly`
+ * whose segments stay square): the segments then share the row's width, each
+ * label whole. In a container narrower than the
  * segments, as on a phone, they scroll inside their own box instead of
  * squeezing their labels into each other, and the chosen one scrolls into
  * view.
@@ -103,11 +106,12 @@ function choose(clicked: T | undefined) {
     :disabled="!tooltipContent"
     tag="div"
     class="inline-flex max-w-full overflow-x-auto [scrollbar-width:none]"
+    :data-field="iconOnly ? undefined : true"
     :open-delay-ms="80"
   >
     <div
       ref="segments"
-      class="relative grid w-max shrink-0 auto-cols-fr grid-flow-col rounded-md bg-(--fill-color) p-[2px] [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_6%)] *:on-fill"
+      class="relative grid w-max min-w-full shrink-0 auto-cols-fr grid-flow-col rounded-md bg-(--fill-color) p-[2px] [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_6%)] *:on-fill"
       :class="disabled ? 'pointer-events-none cursor-not-allowed opacity-40' : ''"
       role="radiogroup"
       :aria-disabled="disabled || undefined"
