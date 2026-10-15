@@ -686,14 +686,20 @@ const resetPhases: {
       </GallerySection>
       <GallerySection
         title="Share"
-        note="Share Conversation… in the conversation’s ⋯ menu and Share beside Fork in an answer’s footer make the share at once and copy its link, then open this dialog; a share that exists already opens it with its link and no new one. It says who can read the share, and holds the link in a read-only field, which selects when focused, and Copy Link, the default button, which turns to Copied. A conversation’s share has Update Link, which takes the conversation as it is now under the same link and says so in a toast; an answer’s snapshot never changes, so it has none. Stop Sharing, apart at the leading edge, removes the share and closes the dialog; its link then answers that it does not exist. The specimens open on an existing share; Stop Sharing, then Open, makes a new one."
+        note="Share Conversation… in the conversation’s ⋯ menu and Share beside Fork in an answer’s footer open this dialog at once and make the share in it: the field shows Creating link… with a spinner, and Copy Link and Stop Sharing wait, until the link stands there, already copied, with Copy Link turned to Copied. A failure says why under the field, and Try Again takes Copy Link’s place. A share that exists already opens with its link and no new one. It says who can read the share, and holds the link in a read-only field, which selects when focused, and Copy Link, the default button, which turns to Copied. A conversation’s share has Update Link, which moves the share to the conversation as it is now under the same link, Updating link… in the field meanwhile, and says so in a toast; an answer’s share never changes, so it has none. Stop Sharing, apart at the leading edge, removes the share and closes the dialog; its link then answers that it does not exist. Stop Sharing, then Open, makes a new one. The new-share specimens start at Open, which stands for Share, since only a click may write the clipboard."
       >
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen variant="a conversation" wide>
-            <GalleryShareDialog :target="{ kind: 'conversation' }" />
+            <GalleryShareDialog :target="{ kind: 'conversation' }" state="existing" />
           </GallerySpecimen>
           <GallerySpecimen variant="an answer" wide>
-            <GalleryShareDialog :target="{ kind: 'answer', blockId: 'answer-1' }" />
+            <GalleryShareDialog :target="{ kind: 'answer', blockId: 'answer-1' }" state="existing" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="a new share" wide>
+            <GalleryShareDialog :target="{ kind: 'conversation' }" state="new" />
+          </GallerySpecimen>
+          <GallerySpecimen variant="a share that fails first" wide>
+            <GalleryShareDialog :target="{ kind: 'answer', blockId: 'answer-2' }" state="failing" />
           </GallerySpecimen>
         </div>
       </GallerySection>
