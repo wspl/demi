@@ -258,3 +258,47 @@ async fn a_fedramp_account_says_so() {
         Some("true")
     );
 }
+
+/// Codex → Claude → Codex: the history keeps each call's id as its
+/// provider gave it, so Codex's own call goes back with its call id and its
+/// item id as Codex gave them, whatever form Claude was sent, and Claude's
+/// call is a call id whole.
+// Cost: one request to a local stub, a few milliseconds.
+#[tokio::test]
+async fn codexs_ids_come_back_as_codex_gave_them_after_another_vendor() {
+    let call = |model: &str, id: &str| {
+        [
+            InferenceItem::ToolUse {
+                model_id: model.into(),
+                tool_use_id: id.into(),
+                tool_name: "shell_exec".into(),
+                input: json!({ "script": "ls" }),
+            },
+            InferenceItem::ToolResult {
+                tool_use_id: id.into(),
+                output: vec![ResultPart::Text("a.txt".into())],
+                is_error: false,
+            },
+        ]
+    };
+    let mut items = vec![InferenceItem::UserMessage { content: text("list") }];
+    items.extend(call("gpt-5.4", "call_7QmZ|fc_68e0a1"));
+    items.extend(call("claude-opus-5-5", "toolu_01Ab"));
+    let body = body_of(request_with(items)).await;
+    let calls: Vec<(Value, Value)> = body["input"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|item| item["type"] == "function_call" || item["type"] == "function_call_output")
+        .map(|item| (item["call_id"].clone(), item.get("id").cloned().unwrap_or(Value::Null)))
+        .collect();
+    assert_eq!(
+        calls,
+        [
+            (json!("call_7QmZ"), json!("fc_68e0a1")),
+            (json!("call_7QmZ"), Value::Null),
+            (json!("toolu_01Ab"), Value::Null),
+            (json!("toolu_01Ab"), Value::Null),
+        ]
+    );
+}

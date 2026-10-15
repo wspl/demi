@@ -124,6 +124,12 @@ pub mod event {
     }
 }
 
+/// Whether every vendor accepts `id` as a tool call's: letters, digits,
+/// `_` and `-`, Anthropic's rule, the strictest (`runtime.md` § Replay).
+pub fn every_vendor_accepts(id: &str) -> bool {
+    !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+}
+
 /// A request with a user message `hello` and nothing else; tests replace the
 /// fields they care about.
 pub fn inference_request() -> InferenceRequest {
