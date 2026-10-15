@@ -18,7 +18,7 @@ declare global {
   interface Window {
     renderMarkdownDocument: typeof Render
     /** Renders `markdown` into the page's document, at a width of 600 px, and waits for its images. */
-    show(markdown: string): Promise<string[]>
+    show(markdown: string, theme: 'light' | 'dark'): Promise<string[]>
   }
 }
 
@@ -73,8 +73,8 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
       article.className = 'markdown-body markdown-document'
       article.style.width = `${width}px`
       document.body.append(article)
-      window.show = async (markdown) => {
-        const rendered = render(markdown, { path: '/work/README.md', root: '/work' })
+      window.show = async (markdown, theme) => {
+        const rendered = render(markdown, { path: '/work/README.md', root: '/work' }, theme)
         article.innerHTML = rendered.html
         // A Host image's address, as the File view gives it: here the route's, by its file's name.
         for (const image of article.querySelectorAll('img[data-host-file]'))
@@ -99,7 +99,7 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
 
   test('a README’s header: the logo at its tag’s height and centered, the badges on one line at their own size', async () => {
     const opened = await page()
-    await opened.evaluate((markdown) => window.show(markdown), [
+    await opened.evaluate((markdown) => window.show(markdown, 'light'), [
       '<p align="center">',
       '  <picture>',
       '    <img alt="Demi" src="brand/logo-w300h90.svg" height="72">',
@@ -126,7 +126,7 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
   test('GitHub’s alerts show their kind as a title, and a marker not alone on its line stays a quote', async () => {
     const opened = await page()
     const text = await opened.evaluate(async (markdown) => {
-      await window.show(markdown)
+      await window.show(markdown, 'light')
       return document.querySelector('article')!.innerText
     }, [
       '> [!NOTE]',
@@ -151,7 +151,7 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     const opened = await page()
     const row = (cell: string) => `| ${Array.from({ length: 5 }, () => cell).join(' | ')} |`
     const widths = await opened.evaluate(async (markdown) => {
-      await window.show(markdown)
+      await window.show(markdown, 'light')
       return [...document.querySelectorAll('table')].map((table) => table.getBoundingClientRect().width)
     }, [
       row('Product'),
@@ -167,4 +167,40 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     await opened.close()
   })
 
+  const themed = [
+    '<picture>',
+    '  <source media="(prefers-color-scheme: dark)" srcset="https://img.test/dark-w100h20.svg">',
+    '  <source media="(prefers-color-scheme: light)" srcset="https://img.test/light-w100h20.svg">',
+    '  <img alt="Logo" src="https://img.test/plain-w100h20.svg">',
+    '</picture>',
+    '',
+    '![Dark only](https://img.test/donly-w50h20.svg#gh-dark-mode-only) ![Light only](https://img.test/lonly-w50h20.svg#gh-light-mode-only)',
+  ].join('\n')
+
+  for (const [theme, system] of [['dark', 'light'], ['light', 'dark']] as const) {
+    test(`Demi’s ${theme} theme on a ${system} system picks the ${theme} picture and the ${theme}-only image`, async () => {
+      const opened = await page(system)
+      await opened.evaluate(([markdown, shown]) => window.show(markdown, shown), [themed, theme] as const)
+      const images = await boxes(opened)
+      expect(images['Logo']?.src).toBe(`https://img.test/${theme}-w100h20.svg`)
+      expect(Object.keys(images).sort()).toEqual(['Logo', theme === 'dark' ? 'Dark only' : 'Light only'].sort())
+      await opened.close()
+    })
+  }
+
+  test('a srcset’s Host candidates are named for the File view to address, and its web ones stay', async () => {
+    const opened = await page()
+    const result = await opened.evaluate(async (markdown) => {
+      const hostFiles = await window.show(markdown, 'dark')
+      const source = document.querySelector('source')!
+      return { hostFiles, srcset: source.getAttribute('srcset'), host: JSON.parse(source.getAttribute('data-host-srcset') ?? 'null') }
+    }, '<picture><source media="(prefers-color-scheme: dark)" srcset="brand/dark.svg 1x, https://img.test/dark-w200h40.svg 2x"><img alt="Logo" src="brand/light.svg"></picture>')
+    expect(result.srcset).toBeNull()
+    expect(result.host).toEqual([
+      { path: '/work/brand/dark.svg', descriptor: '1x' },
+      { url: 'https://img.test/dark-w200h40.svg', descriptor: '2x' },
+    ])
+    expect(result.hostFiles.sort()).toEqual(['/work/brand/dark.svg', '/work/brand/light.svg'])
+    await opened.close()
+  })
 })
