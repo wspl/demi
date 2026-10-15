@@ -691,7 +691,7 @@ POST /api/conversations/c_81/permissions/requests/pr_3k9
 
 | Route | Body | Does |
 | --- | --- | --- |
-| `GET /api/conversations/:id/permissions` | None | Returns `{ revision, requests }`: the undecided requests, oldest first, each with its categories, none or more, and `host`, the host it asks to reach as `{ deviceId, name }` or `{ pairing: true }` for a pairing, or null ([Hosts](../agent/permissions.md#hosts)), and its agent as null for the root or `{ number, description }`; a category no longer in the user's command set has its `id` alone |
+| `GET /api/conversations/:id/permissions` | None | Returns `{ revision, requests }`: the undecided requests, oldest first, each with its categories, none or more, and `host`, the host it asks to reach as `{ kind: "device", deviceId, name }` or `{ kind: "pairing" }` for a pairing, or null ([Hosts](../agent/permissions.md#hosts)), and its agent as null for the root or `{ number, description }`; a category no longer in the user's command set has its `id` alone |
 | `POST /api/conversations/:id/permissions/requests/:request` | `{ decision: "allow" \| "deny" }`, and for a credential request `credential: { values, keep }` with an allow | Decides the request ([Requests](../agent/permissions.md#requests)), sends its message to the agent, and answers 204 |
 
 Each request carries its `kind`: `permission`, with its categories as above;
