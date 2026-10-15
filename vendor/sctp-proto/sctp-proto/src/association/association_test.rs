@@ -2789,6 +2789,87 @@ fn test_simultaneous_close_allows_reuse_when_peer_reset_arrives_first() -> Resul
     assert_simultaneous_close_allows_reuse(false)
 }
 
+/// The application's own reset of a stream is denied, and the peer then
+/// resets its direction: our outgoing direction is still unconfirmed, so the
+/// stream gets the reciprocal reset, reports no `ResetComplete`, and its id
+/// is not writable again until that reset succeeds.
+#[test]
+fn test_denied_close_then_peer_reset_keeps_id_until_a_reset_succeeds() -> Result<()> {
+    let stream_id = 1;
+    let mut a = Association {
+        state: AssociationState::Established,
+        my_next_tsn: 1,
+        cwnd: 1400,
+        rwnd: 1400,
+        mtu: 1400,
+        ..Default::default()
+    };
+    assert!(
+        a.create_stream(stream_id, false, PayloadProtocolIdentifier::Binary)
+            .is_some()
+    );
+    a.stream(stream_id)?.close()?;
+    let _ = a.gather_outbound(Instant::now());
+    let own = a.active_reconfig.expect("close() sends the outgoing reset");
+    let denied: Box<dyn Param + Send + Sync> = Box::new(ParamReconfigResponse {
+        reconfig_response_sequence_number: own,
+        result: ReconfigResult::Denied,
+    });
+    a.handle_reconfig_param(&denied, &mut vec![])?;
+
+    let peer_reset: Box<dyn Param + Send + Sync> = Box::new(ParamOutgoingResetRequest {
+        reconfig_request_sequence_number: 7,
+        reconfig_response_sequence_number: u32::MAX,
+        sender_last_tsn: a.peer_last_tsn,
+        stream_identifiers: vec![stream_id],
+    });
+    let mut reply = vec![];
+    a.handle_reconfig_param(&peer_reset, &mut reply)?;
+    let reciprocal = reply
+        .iter()
+        .flat_map(|packet| &packet.chunks)
+        .filter_map(|chunk| chunk.as_any().downcast_ref::<ChunkReconfig>())
+        .flat_map(|reconfig| reconfig.param_a.iter().chain(reconfig.param_b.iter()))
+        .find_map(|param| param.as_any().downcast_ref::<ParamOutgoingResetRequest>())
+        .map(|request| request.reconfig_request_sequence_number)
+        .expect("a stream whose own reset failed gets the reciprocal reset");
+    a.control_queue.extend(reply);
+    let _ = a.gather_outbound(Instant::now());
+    assert!(
+        !core::iter::from_fn(|| a.poll())
+            .any(|event| matches!(event, Event::Stream(StreamEvent::ResetComplete { .. }))),
+        "no reset of the stream has succeeded yet"
+    );
+
+    a.handle_data(&ChunkPayloadData {
+        tsn: a.peer_last_tsn.wrapping_add(1),
+        stream_identifier: stream_id,
+        stream_sequence_number: 0,
+        beginning_fragment: true,
+        ending_fragment: true,
+        user_data: Bytes::from_static(b"open"),
+        ..Default::default()
+    })?;
+    assert!(
+        !a.stream(stream_id)?.is_writable(),
+        "the id is not writable again while its outgoing direction is unconfirmed"
+    );
+
+    let performed: Box<dyn Param + Send + Sync> = Box::new(ParamReconfigResponse {
+        reconfig_response_sequence_number: reciprocal,
+        result: ReconfigResult::SuccessPerformed,
+    });
+    a.handle_reconfig_param(&performed, &mut vec![])?;
+    assert!(
+        core::iter::from_fn(|| a.poll()).any(|event| matches!(
+            event,
+            Event::Stream(StreamEvent::ResetComplete { id }) if id == stream_id
+        )),
+        "the reciprocal reset completes the stream"
+    );
+    Ok(())
+}
+
 #[test]
 fn test_reset_complete_before_stop_allows_reuse() -> Result<()> {
     assert_reset_complete_before_shutdown_allows_reuse(false)
