@@ -19,6 +19,7 @@ pub(crate) mod organize;
 pub(crate) mod pending;
 pub(crate) mod product;
 mod providers;
+pub(crate) mod restart_resume;
 pub(crate) mod retry_resume;
 mod runs_on;
 pub mod search;
@@ -51,6 +52,7 @@ pub use self::deletion::finish_deletions;
 pub use self::failure_facts::failure_facts;
 pub use self::fork::{ForkRefusal, recover_forks};
 pub use self::pending::settle_pending;
+pub use self::restart_resume::resume_after_restart;
 pub use self::announcement::SubagentsError;
 pub(crate) use self::product::ShardHosts;
 use self::product::{

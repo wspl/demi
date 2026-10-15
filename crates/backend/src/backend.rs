@@ -23,7 +23,7 @@ use demi_backend_database::server_log::ServerLog;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, runner_socket, web_build};
 use demi_backend_user_shard::conversation::search::index_at_start;
 use demi_backend_user_shard::conversation::{
-    finish_deletions, recover_forks, settle_pending,
+    finish_deletions, recover_forks, resume_after_restart, settle_pending,
 };
 use demi_backend_user_shard::shard::deliver_decisions;
 use demi_backend_user_shard::services::{
@@ -355,6 +355,17 @@ impl Backend {
             tracing::error!(
                 error = &error as &dyn std::error::Error,
                 "the undelivered permission decisions cannot be listed"
+            );
+        }
+        // Each root's turn the last shutdown interrupted goes on, in the
+        // background, as the user's Resume would, unless the user turned that
+        // off (`failures-and-recovery.md` § The unfinished turn). A failure
+        // does not stop the start: the marks stay for the next start, and
+        // meanwhile the turns wait for the user's Resume.
+        if let Err(error) = resume_after_restart(&services.control, &shards.shards()).await {
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "the turns the last shutdown interrupted cannot be listed"
             );
         }
         // Each user's search index catches up with the conversations, in the

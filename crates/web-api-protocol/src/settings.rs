@@ -406,6 +406,18 @@ pub struct Preferences {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub resume_at_retry: Option<bool>,
+    /// Whether a turn a graceful shutdown of the backend interrupted, for a
+    /// deployment, an upgrade or a restart, goes on by itself once the
+    /// backend is back (`failures-and-recovery.md` § The unfinished turn).
+    /// Absent means yes.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub resume_after_restart: Option<bool>,
     /// Whether the user went on past the dialog about using several
     /// subscription accounts (`providers.md` § Account rotation), which then
     /// never shows again. Absent means no.
@@ -590,6 +602,18 @@ pub struct PreferencesPatch {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub resume_at_retry: Option<bool>,
+    /// Whether a turn a graceful shutdown of the backend interrupted, for a
+    /// deployment, an upgrade or a restart, goes on by itself once the
+    /// backend is back (`failures-and-recovery.md` § The unfinished turn).
+    /// Absent means yes.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub resume_after_restart: Option<bool>,
     /// Whether the user went on past the dialog about using several
     /// subscription accounts (`providers.md` § Account rotation), which then
     /// never shows again. Absent means no.
