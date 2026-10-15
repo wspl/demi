@@ -146,6 +146,10 @@ conversation no longer runs, its subagents and background jobs included.
   permission such as the clipboard or local network access.
 - **The gallery.** `demi.gallery('/session?view=blocks')` opens a specimen
   page of the slot's gallery.
+- **Any language.** A helper finds a control by its role and a `data-*`
+  hook the web-ui component carries for it (`data-composer`,
+  `data-add-device`, `data-pairing-code` and the like), never by its words,
+  so a check runs the same with the page in any language.
 - **The product's other parts.** `demi.message(text)` replaces a draft of
   text, `demi.message(text, { files })` attaches the files through the
   composer and waits until each shows as its capsule, and a draft that holds
