@@ -1,0 +1,105 @@
+{
+  "nav": {
+    "new": "New",
+    "search": "Search",
+    "archived": "Archived"
+  },
+  "groups": {
+    "conversations": "Conversations",
+    "projects": "Projects",
+    "addProject": "Add project",
+    "newConversation": "New conversation"
+  },
+  "list": {
+    "loading": "Loading conversations…",
+    "failed": "Couldn’t load conversations."
+  },
+  "foot": {
+    "handOff": "Hand Off to Phone",
+    "settings": "Settings"
+  },
+  "account": {
+    "label": "Account",
+    "settings": "Settings",
+    "signOut": "Sign Out"
+  },
+  "row": {
+    "unpin": "Unpin",
+    "archive": "Archive"
+  },
+  "project": {
+    "newConversation": "New conversation"
+  },
+  "device": {
+    "removed": "Removed device",
+    "cloud": "Cloud"
+  },
+  "dot": {
+    "needsYou": "Needs your decision"
+  },
+  "selection": {
+    "open": "Open",
+    "rename": "Rename",
+    "copyId": "Copy Conversation ID",
+    "pin": "Pin",
+    "pinMany": "Pin {count} Conversations",
+    "unpin": "Unpin",
+    "unpinMany": "Unpin {count} Conversations",
+    "archive": "Archive",
+    "archiveMany": "Archive {count} Conversations",
+    "delete": "Delete…",
+    "deleteMany": "Delete {count} Conversations…"
+  },
+  "projectMenu": {
+    "newHere": "New Conversation Here",
+    "fold": "Fold",
+    "unfold": "Unfold",
+    "select": "Select Conversations",
+    "remove": "Remove Project"
+  },
+  "delete": {
+    "title": "Delete “{title}”?",
+    "titleMany": "Delete {count} Conversations?",
+    "one": "Its messages and files are deleted. This cannot be undone.",
+    "many": "Their messages and files are deleted. This cannot be undone.",
+    "filesOne": "Files it changed stay in the project.",
+    "filesMany": "Files they changed stay in their projects."
+  },
+  "archivedToast": {
+    "title": "Conversation Archived | {count} Conversations Archived",
+    "undo": "Undo"
+  },
+  "refused": {
+    "quote": "“{name}”",
+    "line": "{name}: {reasons}",
+    "archive": {
+      "one": "Could Not Archive {name}",
+      "many": "Could Not Archive {count} Conversations"
+    },
+    "restore": {
+      "one": "Could Not Restore {name}",
+      "many": "Could Not Restore {count} Conversations"
+    },
+    "pin": {
+      "one": "Could Not Pin {name}",
+      "many": "Could Not Pin {count} Conversations"
+    },
+    "unpin": {
+      "one": "Could Not Unpin {name}",
+      "many": "Could Not Unpin {count} Conversations"
+    },
+    "delete": {
+      "one": "Could Not Delete {name}",
+      "many": "Could Not Delete {count} Conversations"
+    },
+    "move": {
+      "one": "Could Not Move {name}",
+      "many": "Could Not Move {count} Conversations"
+    }
+  },
+  "layout": {
+    "sidebarWidth": "Sidebar width",
+    "openSidebar": "Open sidebar",
+    "workPanelWidth": "Work panel width"
+  }
+}

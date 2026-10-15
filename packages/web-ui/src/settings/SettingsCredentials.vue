@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { formError, type ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import { Eye, EyeOff } from '@lucide/vue'
@@ -70,7 +72,7 @@ function shownEditor(id: string | null): Editor | null {
 
 function save(draft: SettingsCredentialDraft): Promise<void> {
   const id = editor.value?.credential?.id ?? null
-  return answerInDialog(() => shownEditor(id), 'Could Not Save the Credential', failed, () => props.saveCredential(id, draft))
+  return answerInDialog(() => shownEditor(id), t('credentials.saveFailed'), failed, () => props.saveCredential(id, draft))
 }
 
 /** Deleting asks first, over the credential's dialog. */
@@ -81,7 +83,7 @@ async function remove(): Promise<void> {
   if (!id) {
     return
   }
-  await answerInDialog(() => shownEditor(id), 'Could Not Delete the Credential', failed, () => props.deleteCredential(id))
+  await answerInDialog(() => shownEditor(id), t('credentials.deleteFailed'), failed, () => props.deleteCredential(id))
   // The question closes with its answer, if it still asks about this credential.
   if (editor.value?.credential?.id === id) {
     deleteOpen.value = false
@@ -142,10 +144,10 @@ const empty = computed(() => props.credentials.length === 0)
 </script>
 
 <template>
-  <SettingsPage title="Credentials">
-    <SettingsGroup title="Your Credentials">
+  <SettingsPage :title="t('credentials.title')">
+    <SettingsGroup :title="t('credentials.yours')">
       <template #actions>
-        <Button size="sm" @click="open(null)">New Credential…</Button>
+        <Button size="sm" @click="open(null)">{{ t('credentials.new') }}</Button>
       </template>
       <div
         v-for="credential in credentials"
@@ -167,7 +169,7 @@ const empty = computed(() => props.credentials.length === 0)
               <div class="grid grid-cols-[max-content_max-content_minmax(0,1fr)] items-center gap-x-2 gap-y-1 text-[12px] leading-4">
                 <template v-for="field in credential.fields" :key="field.name">
                   <span class="min-h-5 content-center text-fg-body">{{ field.label }}</span>
-                  <Tag>{{ field.kind === 'secret' ? 'Secret' : 'Visible' }}</Tag>
+                  <Tag>{{ field.kind === 'secret' ? t('credentials.secret') : t('credentials.visible') }}</Tag>
                   <span class="flex min-h-5 min-w-0 items-center gap-1.5">
                     <template v-if="field.kind === 'secret'">
                       <span
@@ -178,7 +180,7 @@ const empty = computed(() => props.credentials.length === 0)
                         :icon="fieldValue(credential, field) === null ? Eye : EyeOff"
                         size="xs"
                         variant="ghost"
-                        :aria-label="`${fieldValue(credential, field) === null ? 'Show' : 'Hide'} ${field.label}`"
+                        :aria-label="t(fieldValue(credential, field) === null ? 'credentials.show' : 'credentials.hide', { label: field.label })"
                         @click.stop="toggle(credential, field.name)"
                       />
                     </template>
@@ -191,27 +193,27 @@ const empty = computed(() => props.credentials.length === 0)
               </div>
               <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-[12px] leading-4 text-fg-subtle">
                 <span>
-                  Kept until
-                  <span class="text-fg-muted">{{ credential.keepUntil ? formatMoment(credential.keepUntil) : 'Always' }}</span>
+                  {{ t('credentials.keptUntil') }}
+                  <span class="text-fg-muted">{{ credential.keepUntil ? formatMoment(credential.keepUntil) : t('credentials.always') }}</span>
                 </span>
                 <span>
-                  Last used
+                  {{ t('credentials.lastUsed') }}
                   <span class="text-fg-muted">
                     <RelativeTime v-if="credential.lastUsedAt" :timestamp="credential.lastUsedAt" />
-                    <template v-else>Never</template>
+                    <template v-else>{{ t('credentials.never') }}</template>
                   </span>
                 </span>
               </div>
             </div>
           </template>
-          <Button size="sm" @click="open(credential)">Edit</Button>
+          <Button size="sm" @click="open(credential)">{{ t('credentials.edit') }}</Button>
         </SettingsRow>
       </div>
       <div
         v-if="empty"
         class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
       >
-        No credentials
+        {{ t('credentials.none') }}
       </div>
     </SettingsGroup>
 
@@ -230,13 +232,13 @@ const empty = computed(() => props.credentials.length === 0)
     <ConfirmDialog
       :is-open="deleteOpen"
       :overlay-store="overlayStore"
-      :title="`Delete the credential “${editor?.credential?.name ?? ''}”?`"
-      action="Delete"
+      :title="t('credentials.deleteTitle', { name: editor?.credential?.name ?? '' })"
+      :action="uiText('common.delete')"
       :operation="editing('delete', editor?.credential?.id ?? null)"
       @close="deleteOpen = false"
       @confirm="remove"
     >
-      <p>Agents can no longer read it in any conversation. This cannot be undone.</p>
+      <p>{{ t('credentials.deleteBody') }}</p>
     </ConfirmDialog>
   </SettingsPage>
 </template>

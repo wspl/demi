@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { ShieldQuestionMark } from '@lucide/vue'
 import Button from '../ui/Button.vue'
@@ -31,14 +32,14 @@ const emit = defineEmits<{
   decide: [id: string, decision: PermissionDecision]
 }>()
 
-const title = computed(() => `Allow this conversation to ${requestAction(props.request)}?`)
+const title = computed(() => t('request.allowTitle', { action: requestAction(props.request) }))
 /** The categories whose grant the card explains: each with a description the command set still declares. */
 const described = computed(() => props.request.categories.filter((category) => category.description))
 const ran = computed(() => {
   const subagent = props.request.subagent
   return subagent
-    ? `Subagent ${subagent.number}, “${subagent.description}”, ran`
-    : 'The agent ran'
+    ? t('request.subagentRan', { number: subagent.number, description: subagent.description })
+    : t('request.agentRan')
 })
 </script>
 
@@ -71,14 +72,14 @@ const ran = computed(() => {
         size="sm"
         :disabled="deciding"
         @click="emit('decide', request.id, 'deny')"
-        >Deny</Button
+        >{{ t('request.deny') }}</Button
       >
       <Button
         size="sm"
         variant="primary"
         :disabled="deciding"
         @click="emit('decide', request.id, 'allow')"
-        >Allow for This Conversation</Button
+        >{{ t('request.allowConversation') }}</Button
       >
     </template>
   </RequestFrame>

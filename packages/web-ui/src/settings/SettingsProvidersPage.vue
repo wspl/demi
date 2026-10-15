@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { formError, type ShownError } from '../infra/errors'
 import { computed, reactive, ref, watch, type Component } from 'vue'
-import { countUnlessOne, upperFirst } from '@demicodes/utils'
+import { effortLabel } from './efforts'
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { showToast } from '../infra/toast'
 import {
   Brain,
@@ -224,10 +226,18 @@ const providerBadge = {
 /** What each dot says when the pointer is over the mark it sits on. */
 const providerBadgeLabel = {
   ready: undefined,
-  setup: 'Not set up',
-  'signed-out': 'Signed out',
-  error: 'Failed',
-  unreachable: 'Cannot be reached',
+  get setup() {
+    return t('providers.state.setup')
+  },
+  get 'signed-out'() {
+    return t('providers.state.signedOut')
+  },
+  get error() {
+    return t('providers.state.error')
+  },
+  get unreachable() {
+    return t('providers.state.unreachable')
+  },
   disabled: undefined,
 } as const
 
@@ -287,13 +297,13 @@ async function confirm(): Promise<void> {
 
 function askRemoveProvider(provider: SettingsProviderEntry): void {
   ask({
-    title: `Remove “${provider.name}”?`,
-    action: 'Remove',
+    title: t('providers.removeProvider.title', { name: provider.name }),
+    action: uiText('common.remove'),
     body: [
       provider.models.length === 0
-        ? 'Its API key goes with it.'
-        : `Its API key and its ${countUnlessOne(provider.models.length, 'model')} go with it.`,
-      'Conversations using its models keep their history and need another model.',
+        ? t('providers.removeProvider.keyOnly')
+        : t('providers.removeProvider.keyAndModels', { count: provider.models.length }, provider.models.length),
+      t('providers.removeProvider.history'),
     ],
     operation: providerOperation(provider.id, { kind: 'removing' }),
     run: () => props.onRemove?.(provider.id),
@@ -311,14 +321,14 @@ function askRemoveAccount(
 ): void {
   const next = provider.accounts.find((other) => other.id !== account.id)
   const effect = !account.active
-    ? `${provider.name} keeps using its active account.`
+    ? t('providers.removeAccount.keeps', { name: provider.name })
     : next
-      ? `${provider.name} switches to “${next.label}”.`
-      : `${provider.name} is left without an account and can’t be used until you add one.`
+      ? t('providers.removeAccount.switches', { name: provider.name, next: next.label })
+      : t('providers.removeAccount.none', { name: provider.name })
   ask({
-    title: `Remove the account “${account.label}”?`,
-    action: 'Remove',
-    body: [effect, 'Demi forgets its sign-in. You can add it again with Add Account.'],
+    title: t('providers.removeAccount.title', { label: account.label }),
+    action: uiText('common.remove'),
+    body: [effect, t('providers.removeAccount.forgets')],
     operation: providerOperation(provider.id, { kind: 'account', accountId: account.id, action: 'remove' }),
     run: () => props.onRemoveAccount?.(provider, account.id),
   })
@@ -378,9 +388,9 @@ const accountOrder = useListReorder(
 
 function askRemoveModel(provider: SettingsProviderEntry, model: SettingsProviderModel): void {
   ask({
-    title: `Remove the model “${model.name || model.id}”?`,
-    action: 'Remove',
-    body: [`It leaves ${provider.name}’s model list and the model menus. You can add it again with its ID.`],
+    title: t('providers.removeModel.title', { name: model.name || model.id }),
+    action: uiText('common.remove'),
+    body: [t('providers.removeModel.body', { provider: provider.name })],
     // Of its own group: the list's save waits for what the provider does, rather than being refused.
     operation: { action: `removeModel:${model.id}`, target: providerTarget(provider.id) },
     run: async () => {
@@ -437,9 +447,9 @@ watch(testingAccounts, (now, before) => {
     const model = provider.testedWith ? ` · ${provider.testedWith}` : ''
     // A test that failed left the provider's own words; one that passed left none.
     if (!provider.detail) {
-      showToast({ title: `${account.label} Connected${model}`, tone: 'success' })
+      showToast({ title: `${t('providers.connected', { account: account.label })}${model}`, tone: 'success' })
     } else {
-      showToast({ title: `${account.label} Test Failed${model}`, message: provider.detail, tone: 'danger' })
+      showToast({ title: `${t('providers.testFailed', { account: account.label })}${model}`, message: provider.detail, tone: 'danger' })
     }
   }
 })
@@ -448,7 +458,7 @@ watch(testingAccounts, (now, before) => {
 const testBlockReason = computed(() => {
   return selected.value?.models.some((model) => model.enabled)
     ? undefined
-    : 'Enable a model to test with'
+    : t('providers.connection.enableModel')
 })
 
 const modelFilter = ref('')
@@ -521,8 +531,8 @@ async function addModel(draft: SettingsModelDraft): Promise<void> {
   try {
     await answerInDialog(
       () => (modelSearch.value === search && search.open ? search : null),
-      'Could Not Add the Model',
-      (error) => formError(error, { invalid_body: null, duplicate_model: 'Another model of this provider has this ID' }),
+      t('providers.addModelFailed'),
+      (error) => formError(error, { invalid_body: null, duplicate_model: t('providers.duplicateModel') }),
       async () => {
         await props.saveModel(provider, model, null)
         added = true
@@ -600,8 +610,8 @@ async function saveModel(draft: SettingsModelDraft): Promise<void> {
   // A refused field of the model is the user's to correct in the dialog.
   await answerInDialog(
     () => shownModelEditor(provider.id, original?.id ?? null),
-    'Could Not Save the Model',
-    (error) => formError(error, { invalid_body: null, duplicate_model: 'Another model of this provider has this ID' }),
+    t('providers.saveModelFailed'),
+    (error) => formError(error, { invalid_body: null, duplicate_model: t('providers.duplicateModel') }),
     async () => {
       await props.saveModel(provider, draft, original)
       saved = true
@@ -641,10 +651,10 @@ function endpointCheck(value: string) {
 </script>
 
 <template>
-  <SettingsPage wide fill title="Providers">
+  <SettingsPage wide fill :title="t('providers.title')">
     <AsyncRegion
       :state="load"
-      label="Loading providers…"
+      :label="t('providers.loading')"
       @retry="emit('retry')"
     >
       <SettingsSplit
@@ -655,7 +665,7 @@ function endpointCheck(value: string) {
           <div
             class="select-none px-1 pb-1 pt-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
           >
-            Subscriptions
+            {{ t('providers.subscriptions') }}
           </div>
           <SettingsListItem
             v-for="p in subscriptions"
@@ -675,10 +685,10 @@ function endpointCheck(value: string) {
           <div class="flex h-8 select-none items-center pl-1 pt-2">
             <span
               class="text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
-              >API Keys</span
+              >{{ t('providers.apiKeys') }}</span
             >
             <Button size="xs" class="ml-auto" @click="addOpen = true"
-              ><Plus :size="12" /> Add</Button
+              ><Plus :size="12" /> {{ uiText('common.add') }}</Button
             >
           </div>
           <SettingsListItem
@@ -716,7 +726,7 @@ function endpointCheck(value: string) {
                     <TitleInput
                       v-if="renaming"
                       class="w-56 max-w-full"
-                      label="Provider name"
+                      :label="t('providers.name')"
                       :title="selected.name"
                       @submit="rename"
                       @cancel="renaming = false"
@@ -732,12 +742,12 @@ function endpointCheck(value: string) {
                       </h3>
                       <Tooltip
                         v-if="selected.kind === 'api_key'"
-                        content="Rename"
+                        :content="t('providers.rename')"
                         ><IconButton
                           size="sm"
                           variant="ghost"
                           :icon="TextCursorInput"
-                          aria-label="Rename"
+                          :aria-label="t('providers.rename')"
                           @click="renaming = true"
                       /></Tooltip>
                     </template>
@@ -746,18 +756,18 @@ function endpointCheck(value: string) {
                         v-if="runs(selected.id, { kind: 'saving' })"
                         class="flex items-center gap-1 text-[12px] text-fg-subtle"
                         role="status"
-                        ><IndeterminateSpinner :size="12" /> Saving…</span
+                        ><IndeterminateSpinner :size="12" /> {{ t('providers.saving') }}</span
                       >
                       <!-- A subscription grows by accounts; adding one is the header's action. -->
                       <Button
                         v-if="selected.kind === 'subscription'"
                         size="sm"
                         @click="addAccount(selected)"
-                        ><Plus :size="ICON_PX.in24" /> Add Account</Button
+                        ><Plus :size="ICON_PX.in24" /> {{ t('providers.addAccount') }}</Button
                       >
                       <Switch
                         :model-value="selected.enabled"
-                        aria-label="Show in model menu"
+                        :aria-label="t('providers.showInMenu')"
                         @update:model-value="
                           emit('change', selected, { enabled: $event })
                         "
@@ -774,14 +784,14 @@ function endpointCheck(value: string) {
                 <!-- Rotation means something with two accounts or more. -->
                 <SettingsRow
                   v-if="selected.accounts.length >= 2"
-                  label="Rotation"
+                  :label="t('providers.rotation.title')"
                   :description="ROTATION_HINTS[selected.rotation ?? 'manual']"
                 >
                   <Dropdown
                     size="sm"
                     :overlay-store="overlayStore"
                     variant="default"
-                    trigger-label="Rotation"
+                    :trigger-label="t('providers.rotation.title')"
                     :disabled="busy(selected.id)"
                   >
                     <template #trigger>{{ ROTATION_LABELS[selected.rotation ?? 'manual'] }}</template>
@@ -815,7 +825,7 @@ function endpointCheck(value: string) {
                 >
                   <template #tags>
                     <Tag v-if="account.plan">{{ account.plan }}</Tag>
-                    <Tag v-if="account.active" tone="accent">Active</Tag>
+                    <Tag v-if="account.active" tone="accent">{{ t('providers.account.active') }}</Tag>
                     <Tag
                       v-if="
                         account.quota.some(
@@ -823,7 +833,7 @@ function endpointCheck(value: string) {
                         )
                       "
                       tone="danger"
-                      >Limit reached</Tag
+                      >{{ t('providers.account.limitReached') }}</Tag
                     >
                   </template>
                   <template #below>
@@ -840,14 +850,14 @@ function endpointCheck(value: string) {
                     v-if="!account.active"
                     :disabled="busy(selected.id)"
                     @click="emit('activateAccount', selected, account.id)"
-                    >Activate</Button
+                    >{{ t('providers.account.activate') }}</Button
                   >
                   <!-- Automatic refresh shares the same account request with this explicit retry. -->
-                  <Tooltip content="Refresh usage"
+                  <Tooltip :content="t('providers.account.refreshUsage')"
                     ><IconButton
                       size="sm"
                       :icon="RefreshCw"
-                      aria-label="Refresh usage"
+                      :aria-label="t('providers.account.refreshUsage')"
                       spin-on-click
                       :spinning="refreshingUsage?.[selected.id]?.[account.id] === 'manual'"
                       :disabled="busy(selected.id) || refreshingUsage?.[selected.id]?.[account.id] === 'manual'"
@@ -855,34 +865,34 @@ function endpointCheck(value: string) {
                   /></Tooltip>
                   <!-- The test asks with this account, in use or not; its answer is a toast,
                        since the row has no room to keep it. -->
-                  <Tooltip content="Test connection"
+                  <Tooltip :content="t('providers.account.test')"
                     ><IconButton
                       size="sm"
                       :icon="Plug"
-                      aria-label="Test connection"
+                      :aria-label="t('providers.account.test')"
                       :operation="providerOperation(selected.id, { kind: 'account', accountId: account.id, action: 'test' })"
                       :disabled="!selected.models.some((model) => model.enabled)"
                       :disabled-reason="testBlockReason"
                       @click="emit('test', selected, account.id)"
                   /></Tooltip>
-                  <Tooltip content="Remove"
+                  <Tooltip :content="t('providers.account.remove')"
                     ><IconButton
                       size="sm"
                       :icon="Trash2"
                       variant="danger"
-                      aria-label="Remove"
+                      :aria-label="t('providers.account.remove')"
                       :operation="providerOperation(selected.id, { kind: 'account', accountId: account.id, action: 'remove' })"
                       @click="askRemoveAccount(selected, account)"
                   /></Tooltip>
                   <!-- The list's order is the one In Order follows: drag a row by its handle,
                        or move it with the arrow keys. -->
-                  <Tooltip v-if="selected.accounts.length >= 2" content="Drag to reorder"
+                  <Tooltip v-if="selected.accounts.length >= 2" :content="t('providers.account.reorder')"
                     ><IconButton
                       size="sm"
                       variant="ghost"
                       class="cursor-grab touch-none"
                       :icon="GripVertical"
-                      :aria-label="`Move ${account.label}`"
+                      :aria-label="t('providers.account.move', { label: account.label })"
                       @pointerdown="accountOrder.start($event, account.id)"
                       @keydown="accountOrder.keydown($event, account.id)"
                   /></Tooltip>
@@ -892,7 +902,7 @@ function endpointCheck(value: string) {
                   v-if="!selected.accounts.length"
                   class="flex select-none flex-col items-center gap-1.5 px-4 py-6 text-center text-[13px] text-fg-subtle"
                 >
-                  No accounts
+                  {{ t('providers.account.none') }}
                 </div>
               </template>
 
@@ -901,18 +911,18 @@ function endpointCheck(value: string) {
                 <!-- A vendor's endpoint is its vendor's: shown, never edited. A compatible API's
                      protocol and endpoint are the user's, changed any time; what it still lacks is
                      an empty field, never red. -->
-                <SettingsRow v-if="!selected.compatible" label="Endpoint">
+                <SettingsRow v-if="!selected.compatible" :label="t('providers.connection.endpoint')">
                   <span class="min-w-0 select-text break-all text-[13px] text-fg-muted">{{
                     selected.baseUrl
                   }}</span>
                 </SettingsRow>
                 <template v-else>
-                  <SettingsRow label="Protocol">
+                  <SettingsRow :label="t('providers.connection.protocol')">
                     <Dropdown
                       size="sm"
                       :overlay-store="overlayStore"
                       variant="default"
-                      trigger-label="Protocol"
+                      :trigger-label="t('providers.connection.protocol')"
                       :disabled="fieldsLocked(selected)"
                     >
                       <template #trigger>{{ WIRE_API_LABELS[selected.wireApi] }}</template>
@@ -933,14 +943,14 @@ function endpointCheck(value: string) {
                       </template>
                     </Dropdown>
                   </SettingsRow>
-                  <SettingsRow label="Endpoint">
+                  <SettingsRow :label="t('providers.connection.endpoint')">
                     <template v-if="endpointFault" #detail>
                       <InlineError :message="endpointFault" />
                     </template>
                     <CommitTextInput
                       :disabled="fieldsLocked(selected)"
                       :model-value="selected.baseUrl"
-                      aria-label="Endpoint"
+                      :aria-label="t('providers.connection.endpoint')"
                       placeholder="https://api.example.com/v1"
                       literal
                       trim
@@ -952,22 +962,22 @@ function endpointCheck(value: string) {
                   </SettingsRow>
                 </template>
                 <SettingsRow
-                  label="API key"
+                  :label="t('providers.connection.apiKey')"
                   :description="
                     selected.compatible
-                      ? 'Optional. Stored encrypted on the server.'
-                      : 'Stored encrypted on the server.'
+                      ? t('providers.connection.keyOptional')
+                      : t('providers.connection.keyStored')
                   "
                 >
                   <CommitTextInput
                     :disabled="fieldsLocked(selected)"
                     :model-value="selected.apiKey"
-                    aria-label="API key"
+                    :aria-label="t('providers.connection.apiKey')"
                     @commit="emit('change', selected, { apiKey: $event })"
                     masked="secret"
                     trim
                     :stored="selected.keyConfigured"
-                    :placeholder="selected.keyConfigured ? 'Enter a new key to replace' : 'Paste your API key'"
+                    :placeholder="selected.keyConfigured ? t('providers.connection.keyReplace') : t('providers.connection.keyPaste')"
                     class="w-72 max-w-full"
                   />
                 </SettingsRow>
@@ -975,8 +985,8 @@ function endpointCheck(value: string) {
               <!-- A key's test has a row of its own; a subscription's sits on its active account. -->
               <SettingsRow
                 v-if="selected.kind === 'api_key'"
-                label="Test connection"
-                description="Sends one short request to the first enabled model."
+                :label="t('providers.connection.test')"
+                :description="t('providers.connection.testDescription')"
               >
                 <!-- The provider's own words in full, under the row; the page does not paraphrase them. -->
                 <template
@@ -994,12 +1004,12 @@ function endpointCheck(value: string) {
                   v-if="isTesting(selected)"
                   class="flex items-center gap-1.5 text-[12px] text-fg-subtle"
                   ><IndeterminateSpinner :size="ICON_PX.in24" />
-                  Testing…</span
+                  {{ t('providers.connection.testing') }}</span
                 >
                 <span
                   v-else-if="selected.testPassed || selected.testedIn"
                   class="flex items-center gap-1 text-[12px] text-on-success"
-                  ><Check :size="ICON_PX.in24" /> Connected<template
+                  ><Check :size="ICON_PX.in24" /> {{ t('providers.connection.connected') }}<template
                     v-if="selected.testedWith"
                   >
                     · {{ selected.testedWith }}</template
@@ -1012,17 +1022,17 @@ function endpointCheck(value: string) {
                 <span
                   v-else-if="selected.detail"
                   class="min-w-0 truncate text-[12px] text-on-danger"
-                  >Failed<template
+                  >{{ t('providers.connection.failed') }}<template
                     v-if="selected.testedWith"
                   >
                     · {{ selected.testedWith }}</template
                   ></span
                 >
-                <Tooltip content="Test connection"
+                <Tooltip :content="t('providers.account.test')"
                   ><IconButton
                     size="sm"
                     :icon="Plug"
-                    aria-label="Test connection"
+                    :aria-label="t('providers.account.test')"
                     :disabled="
                       selected.configured === false ||
                       busy(selected.id) ||
@@ -1037,21 +1047,21 @@ function endpointCheck(value: string) {
             <!-- The CLI of a provider whose requests are a process: Demi installs the vendor's newest
                on the machines that run it, so this shows what is wanted and what each machine has,
                and only a failure asks for anything. -->
-            <SettingsGroup v-if="selected.cli" title="Command-Line Tool">
+            <SettingsGroup v-if="selected.cli" :title="t('providers.cli.title')">
               <SettingsRow
-                label="Version"
-                description="Follows the newest version and updates itself."
+                :label="t('providers.cli.version')"
+                :description="t('providers.cli.versionDescription')"
               >
                 <span
                   v-if="'version' in selected.cli.newest"
                   class="text-[13px] tabular-nums text-fg-muted"
                   >{{ selected.cli.newest.version }}</span
                 >
-                <Tooltip content="Check for updates"
+                <Tooltip :content="t('providers.cli.check')"
                   ><IconButton
                     size="sm"
                     :icon="RefreshCw"
-                    aria-label="Check for updates"
+                    :aria-label="t('providers.cli.check')"
                     spin-on-click
                     :spinning="runs(selected.id, { kind: 'cli' })"
                     :disabled="busy(selected.id) && !runs(selected.id, { kind: 'cli' })"
@@ -1061,7 +1071,7 @@ function endpointCheck(value: string) {
               <SettingsRow
                 v-if="'error' in selected.cli.newest"
                 compact
-                label="The newest version could not be read"
+                :label="t('providers.cli.unreadable')"
                 :description="selected.cli.newest.error"
               />
               <SettingsRow
@@ -1072,16 +1082,16 @@ function endpointCheck(value: string) {
               >
                 <span class="text-[13px] tabular-nums text-fg-muted">{{
                   machine.versions === null
-                    ? 'No answer'
+                    ? t('providers.cli.noAnswer')
                     : machine.versions.length
                       ? machine.versions.join(', ')
-                      : 'Not installed'
+                      : t('providers.cli.notInstalled')
                 }}</span>
               </SettingsRow>
               <SettingsRow
                 v-if="selected.cli.install && selected.cli.install.state !== 'installed'"
                 compact
-                :label="selected.cli.install.state === 'installing' ? 'Installing on Cloud' : 'Could not install on Cloud'"
+                :label="selected.cli.install.state === 'installing' ? t('providers.cli.installing') : t('providers.cli.installFailed')"
                 :description="selected.cli.install.state === 'failed' ? selected.cli.install.message : undefined"
               >
                 <IndeterminateSpinner v-if="selected.cli.install.state === 'installing'" />
@@ -1090,7 +1100,7 @@ function endpointCheck(value: string) {
                   size="sm"
                   :operation="providerOperation(selected.id, { kind: 'cli' })"
                   @click="onInstallCli?.(selected)"
-                  >Install</Button
+                  >{{ t('providers.cli.install') }}</Button
                 >
               </SettingsRow>
             </SettingsGroup>
@@ -1104,7 +1114,7 @@ function endpointCheck(value: string) {
                   <h3
                     class="text-[15px] font-medium leading-5 text-fg-emphasis"
                   >
-                    Models
+                    {{ t('providers.models.title') }}
                   </h3>
                   <span
                     v-if="
@@ -1112,10 +1122,10 @@ function endpointCheck(value: string) {
                       selected.catalogFetched
                     "
                     class="text-[12px] text-fg-subtle"
-                    >Updated <RelativeTime :timestamp="selected.catalogFetched"
+                    >{{ t('providers.models.updated') }} <RelativeTime :timestamp="selected.catalogFetched"
                   /></span>
                   <span v-if="selected.kind === 'subscription'" class="ml-auto"
-                    ><Tooltip content="Refresh"
+                    ><Tooltip :content="t('providers.models.refresh')"
                       ><IconButton
                         size="sm"
                         :icon="RefreshCw"
@@ -1125,7 +1135,7 @@ function endpointCheck(value: string) {
                           selected.configured === false ||
                           runs(selected.id, { kind: 'refreshing' })
                         "
-                        aria-label="Refresh"
+                        :aria-label="t('providers.models.refresh')"
                         @click="emit('refresh', selected)" /></Tooltip
                   ></span>
                   <Segmented
@@ -1138,8 +1148,8 @@ function endpointCheck(value: string) {
                     "
                     class="ml-auto"
                     :options="[
-                      { value: 'catalog', label: 'Catalog' },
-                      { value: 'manual', label: 'Manual' },
+                      { value: 'catalog', label: t('providers.models.catalog') },
+                      { value: 'manual', label: t('providers.models.manual') },
                     ]"
                   />
                 </header>
@@ -1153,22 +1163,22 @@ function endpointCheck(value: string) {
                   size="sm"
                   v-model="modelFilter"
                   search
-                  placeholder="Filter models"
+                  :placeholder="t('providers.models.filterModels')"
                   bare
                   class="min-w-0 flex-1"
                 >
                   <template #prefix><Search :size="ICON_PX.in24" /></template>
                 </TextInput>
-                <Tooltip content="Add Model"
+                <Tooltip :content="t('providers.models.add')"
                   ><IconButton
                     size="sm"
                     :icon="Plus"
-                    aria-label="Add Model"
+                    :aria-label="t('providers.models.add')"
                     :disabled="fieldsLocked(selected)"
                     @click="openAddModel"
                 /></Tooltip>
                 <!-- A compatible API has no catalog to read again: its models are the ones added. -->
-                <Tooltip v-if="!selected.compatible && selected.modelSource === 'catalog'" content="Refresh"
+                <Tooltip v-if="!selected.compatible && selected.modelSource === 'catalog'" :content="t('providers.models.refresh')"
                   ><IconButton
                     size="sm"
                     :icon="RefreshCw"
@@ -1178,7 +1188,7 @@ function endpointCheck(value: string) {
                       selected.configured === false ||
                       runs(selected.id, { kind: 'refreshing' })
                     "
-                    aria-label="Refresh"
+                    :aria-label="t('providers.models.refresh')"
                     @click="emit('refresh', selected)"
                 /></Tooltip>
               </div>
@@ -1188,7 +1198,7 @@ function endpointCheck(value: string) {
                     ? 'ready'
                     : modelLoad
                 "
-                label="Loading models…"
+                :label="t('providers.models.loading')"
                 @retry="emit('retryModels')"
               >
                 <SettingsRow
@@ -1204,7 +1214,7 @@ function endpointCheck(value: string) {
                   <template #tags>
                     <Tooltip
                       v-if="isUnknown(m)"
-                      content="Capabilities unknown. Edit to fill them in."
+                      :content="t('providers.models.unknown')"
                       ><Tag tone="warning"><TriangleAlert :size="12" /></Tag
                     ></Tooltip>
                     <Tag v-if="m.contextWindow !== null">{{
@@ -1212,15 +1222,15 @@ function endpointCheck(value: string) {
                     }}</Tag>
                     <Tooltip
                       v-if="m.extensions?.length"
-                      :content="`Accepts ${m.extensions?.join(' ')}`"
+                      :content="t('providers.models.accepts', { types: m.extensions?.join(' ') ?? '' })"
                       ><Tag><Image :size="12" /></Tag
                     ></Tooltip>
                     <Tooltip
                       v-if="m.efforts.length"
-                      :content="`Reasoning · ${m.efforts.map(upperFirst).join(', ')}`"
+                      :content="t('providers.models.reasoning', { efforts: m.efforts.map(effortLabel).join(', ') })"
                       ><Tag><Brain :size="12" /></Tag
                     ></Tooltip>
-                    <Tooltip v-if="m.fastTier" content="Has a fast tier"
+                    <Tooltip v-if="m.fastTier" :content="t('providers.models.fast')"
                       ><Tag><Zap :size="12" /></Tag
                     ></Tooltip>
                   </template>
@@ -1230,28 +1240,28 @@ function endpointCheck(value: string) {
                       selected.modelSource === 'manual'
                     "
                   >
-                    <Tooltip content="Edit"
+                    <Tooltip :content="t('providers.models.edit')"
                       ><IconButton
                         size="sm"
                         :icon="SlidersHorizontal"
-                        aria-label="Edit"
+                        :aria-label="t('providers.models.edit')"
                         :disabled="fieldsLocked(selected)"
                         @click="openModel('edit', m)"
                     /></Tooltip>
-                    <Tooltip content="Remove"
+                    <Tooltip :content="t('providers.account.remove')"
                       ><IconButton
                         size="sm"
                         :icon="Trash2"
                         variant="danger"
-                        aria-label="Remove"
+                        :aria-label="t('providers.account.remove')"
                         @click="askRemoveModel(selected, m)"
                     /></Tooltip>
                   </template>
-                  <Tooltip v-else content="Details"
+                  <Tooltip v-else :content="t('providers.models.details')"
                     ><IconButton
                       size="sm"
                       :icon="Info"
-                      aria-label="Details"
+                      :aria-label="t('providers.models.details')"
                       @click="openModel('view', m)"
                   /></Tooltip>
                   <Switch
@@ -1260,7 +1270,7 @@ function endpointCheck(value: string) {
                       emit('toggleModel', selected, m, $event)
                     "
                     size="sm"
-                    :aria-label="`Enable ${m.name || m.id}`"
+                    :aria-label="t('providers.models.enable', { name: m.name || m.id })"
                   />
                 </SettingsRow>
                 <div
@@ -1270,11 +1280,11 @@ function endpointCheck(value: string) {
                   <!-- An empty list is a plain wait, never red: nothing has failed. -->
                   {{
                     modelFilter
-                      ? 'No matches'
+                      ? t('providers.models.noResults')
                       : selected.kind === 'subscription' &&
                           !selected.accounts.length
-                        ? 'Sign in to see models'
-                        : 'No models'
+                        ? t('providers.models.signInToSee')
+                        : t('providers.models.none')
                   }}
                 </div>
               </AsyncRegion>
@@ -1308,7 +1318,7 @@ function endpointCheck(value: string) {
       :is-open="confirmOpen"
       :overlay-store="overlayStore"
       :title="confirming?.title ?? ''"
-      :action="confirming?.action ?? 'Remove'"
+      :action="confirming?.action ?? uiText('common.remove')"
       :operation="confirming?.operation"
       @close="confirmOpen = false"
       @confirm="confirm"
@@ -1318,13 +1328,13 @@ function endpointCheck(value: string) {
     <ConfirmDialog
       :is-open="warningOpen"
       :overlay-store="overlayStore"
-      title="Use several accounts?"
-      action="Continue"
+      :title="t('providers.warning.title')"
+      :action="uiText('common.continue')"
       :on-confirm="continuePastWarning"
       @close="warningOpen = false; warning = null"
     >
-      <p>Using several personal subscriptions to get past their usage limits may be against the vendor’s terms.</p>
-      <p>Demi won’t ask again.</p>
+      <p>{{ t('providers.warning.body') }}</p>
+      <p>{{ t('providers.warning.once') }}</p>
     </ConfirmDialog>
     <ModelDialog
       v-if="modelEditor"

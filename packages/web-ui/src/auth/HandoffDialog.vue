@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { CircleCheck } from '@lucide/vue'
@@ -159,7 +161,7 @@ watch(handedOffTo, (name) => {
           {{ wording.confirm }}
         </p>
       </header>
-      <div v-if="step.kind === 'starting'" class="flex h-40 items-center justify-center" role="status" aria-label="Making a code">
+      <div v-if="step.kind === 'starting'" class="flex h-40 items-center justify-center" role="status" :aria-label="t('handoff.making')">
         <IndeterminateSpinner />
       </div>
       <template v-else-if="step.kind === 'verify'">
@@ -174,7 +176,7 @@ watch(handedOffTo, (name) => {
             class="flex size-48 items-center justify-center rounded-xl bg-white p-3 [&>svg]:size-full"
             :class="{ 'opacity-15': left === null }"
             role="img"
-            aria-label="QR code"
+            :aria-label="t('handoff.qr')"
             :data-url="step.code.url"
             v-html="step.svg"
           />
@@ -185,9 +187,9 @@ watch(handedOffTo, (name) => {
           <template v-if="handedOffTo === null">
             <p v-if="left !== null" class="select-none text-center text-[13px] leading-5 text-fg-muted">
               {{ wording.scan }}
-              <span class="block text-[12px] tabular-nums text-fg-subtle">Expires in {{ left }}</span>
+              <span class="block text-[12px] tabular-nums text-fg-subtle">{{ t('handoff.expires', { left }) }}</span>
             </p>
-            <p v-else class="select-none text-center text-[13px] leading-5 text-fg-muted">This code has expired.</p>
+            <p v-else class="select-none text-center text-[13px] leading-5 text-fg-muted">{{ t('handoff.expired') }}</p>
           </template>
         </div>
         </template>
@@ -195,31 +197,31 @@ watch(handedOffTo, (name) => {
     </div>
     <template #footer>
       <template v-if="step.kind === 'verify'">
-        <Button @click="emit('close')">Cancel</Button>
+        <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
         <Button
           v-if="host.verifyPasskey"
           :operation="verification.withPasskey"
           @click="verification.usePasskey()"
         >
-          Use Passkey
+          {{ t('handoff.usePasskey') }}
         </Button>
         <Button
           variant="primary"
           :operation="verification.withPassword"
           @click="verification.submitPassword()"
         >
-          Continue
+          {{ uiText('common.continue') }}
         </Button>
       </template>
       <template v-else-if="step.kind === 'code' && left === null && handedOffTo === null">
-        <Button @click="emit('close')">Cancel</Button>
-        <Button variant="primary" @click="start">Show New Code</Button>
+        <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
+        <Button variant="primary" @click="start">{{ t('handoff.showNew') }}</Button>
       </template>
       <template v-else-if="step.kind === 'failed'">
-        <Button @click="emit('close')">Cancel</Button>
-        <Button variant="primary" @click="start">Try Again</Button>
+        <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
+        <Button variant="primary" @click="start">{{ uiText('common.retry') }}</Button>
       </template>
-      <Button v-else variant="primary" @click="emit('close')">Done</Button>
+      <Button v-else variant="primary" @click="emit('close')">{{ uiText('common.done') }}</Button>
     </template>
   </Dialog>
 </template>

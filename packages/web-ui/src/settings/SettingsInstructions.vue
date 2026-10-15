@@ -5,6 +5,7 @@ import { computed, ref, watch } from 'vue'
 import Button from '../ui/Button.vue'
 import TextArea from '../ui/TextArea.vue'
 import { formatCount } from '../ui/numbers'
+import { t } from './locales/text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 
@@ -55,12 +56,12 @@ async function submit(): Promise<void> {
 
 <template>
   <SettingsPage
-    title="Instructions"
-    description="What Demi follows in every conversation, together with each project’s AGENTS.md or CLAUDE.md."
+    :title="t('instructions.title')"
+    :description="t('instructions.description')"
   >
     <SettingsGroup
-      title="Personal instructions"
-      description="For example, the language to reply in."
+      :title="t('instructions.personal')"
+      :description="t('instructions.personalDescription')"
     >
       <template #actions>
         <Button
@@ -71,14 +72,14 @@ async function submit(): Promise<void> {
           :disabled="!changed || tooLong"
           @click="submit"
         >
-          Save
+          {{ t('instructions.save') }}
         </Button>
       </template>
       <div class="flex flex-col gap-2 p-3">
         <TextArea
           v-model="draft"
           :rows="12"
-          aria-label="Personal instructions"
+          :aria-label="t('instructions.personal')"
           @keydown.meta.enter.prevent="saveButton?.press()"
           @keydown.ctrl.enter.prevent="saveButton?.press()"
         />

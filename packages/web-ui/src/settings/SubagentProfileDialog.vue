@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import { TriangleAlert, Zap } from '@lucide/vue'
@@ -175,7 +177,7 @@ function save(): unknown {
   })
 }
 
-const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Profile'))
+const title = computed(() => (props.mode === 'create' ? t('profile.new') : t('profile.edit')))
 </script>
 
 <template>
@@ -190,14 +192,14 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
       <header class="min-w-0 select-none p-5 pb-4 pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          An agent picks a profile by its description.
+          {{ t('profile.hint') }}
         </p>
       </header>
 
       <!-- Only the fields scroll; the title and the buttons stay in place. -->
       <ScrollArea class="min-h-0" viewport-class="flex flex-col gap-3 px-5">
         <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
-          <SettingsRow label="Name" description="Required. Lowercase letters, digits and hyphens, starting with a letter.">
+          <SettingsRow :label="t('profile.name')" :description="t('profile.nameDescription')">
             <template v-if="nameProblem" #detail>
               <InlineError :message="nameProblem" />
             </template>
@@ -206,23 +208,23 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               :focused="mode === 'create'"
               class="w-48 max-w-full"
               literal
-              aria-label="Name"
+              :aria-label="t('profile.name')"
             />
           </SettingsRow>
-          <SettingsRow label="Description" description="Required. When the agent should use it, in one line.">
+          <SettingsRow :label="t('profile.description')" :description="t('profile.descriptionDescription')">
             <TextInput
               v-model="draft.description"
               class="w-80 max-w-full"
-              aria-label="Description"
+              :aria-label="t('profile.description')"
             />
           </SettingsRow>
-          <SettingsRow label="Model">
+          <SettingsRow :label="t('profile.model')">
             <Dropdown
               :overlay-store="overlayStore"
               variant="field"
               size="sm"
               width="shrink"
-              trigger-label="Model"
+              :trigger-label="t('profile.model')"
             >
               <template #trigger>
                 <span class="flex min-w-0 items-center gap-1.5">
@@ -230,7 +232,7 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
                   <span class="flex min-w-0 items-center gap-1">
                     <span class="min-w-0 truncate">{{ modelLabel.name }}</span>
                     <span v-if="modelLabel.effort" class="shrink-0 text-fg-subtle">{{ modelLabel.effort }}</span>
-                    <Zap v-if="modelLabel.fast" :size="ICON_PX.in24" class="shrink-0" aria-label="Fast" />
+                    <Zap v-if="modelLabel.fast" :size="ICON_PX.in24" class="shrink-0" :aria-label="t('profile.fast')" />
                   </span>
                 </span>
               </template>
@@ -249,15 +251,15 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
           </SettingsRow>
           <SettingsRow
             v-if="context"
-            label="Context"
-            description="The context window its subagents use."
+            :label="t('profile.context')"
+            :description="t('profile.contextDescription')"
           >
             <Dropdown
               :overlay-store="overlayStore"
               variant="field"
               size="sm"
               width="shrink"
-              trigger-label="Context"
+              :trigger-label="t('profile.context')"
             >
               <template #trigger>
                 <span class="min-w-0 truncate">{{ context.label }}</span>
@@ -270,17 +272,17 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
               </template>
             </Dropdown>
           </SettingsRow>
-          <SettingsRow label="Instructions" description="Optional. Added to Demi’s own instructions." />
+          <SettingsRow :label="t('profile.instructions')" :description="t('profile.instructionsDescription')" />
           <div class="px-4 pb-3">
             <TextArea
               v-model="draft.instructions"
               mono
               :rows="7"
-              aria-label="Instructions"
+              :aria-label="t('profile.instructions')"
             />
           </div>
-          <SettingsRow label="Children may spawn" description="Lets its subagents start subagents.">
-            <Switch v-model="draft.canSpawn" size="sm" class="ml-1" aria-label="Children may spawn" />
+          <SettingsRow :label="t('profile.mayStart')" :description="t('profile.mayStartDescription')">
+            <Switch v-model="draft.canSpawn" size="sm" class="ml-1" :aria-label="t('profile.mayStart')" />
           </SettingsRow>
         </div>
 
@@ -289,12 +291,12 @@ const title = computed(() => (props.mode === 'create' ? 'New Profile' : 'Edit Pr
       <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
     <template v-if="mode === 'edit'" #footer-leading>
-      <Button variant="danger" :operation="deleteOperation" @click="emit('delete')">Delete</Button>
+      <Button variant="danger" :operation="deleteOperation" @click="emit('delete')">{{ uiText('common.delete') }}</Button>
     </template>
     <template #footer>
-      <Button @click="emit('close')">Cancel</Button>
+      <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
       <Button variant="primary" :disabled="!canSave" :operation="saveOperation" @click="save">
-        {{ mode === 'create' ? 'Create Profile' : 'Save' }}
+        {{ mode === 'create' ? t('profile.create') : uiText('common.save') }}
       </Button>
     </template>
   </Dialog>

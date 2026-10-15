@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { defineStore } from 'pinia'
 import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
@@ -32,7 +33,7 @@ export const usePluginSettings = defineStore('plugin-settings', () => {
       })
       .catch((error) => {
         change.drop()
-        reportError(enabled ? 'Could Not Turn the Plugin On' : 'Could Not Turn the Plugin Off', error, {
+        reportError(enabled ? t('plugins.turnOnFailed') : t('plugins.turnOffFailed'), error, {
           userVisible: true,
         })
       })

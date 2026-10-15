@@ -1,0 +1,148 @@
+{
+  "state": {
+    "online": "Online",
+    "updating": "Updating",
+    "offline": "Offline"
+  },
+  "route": {
+    "automatic": "Automatic",
+    "direct": "Prefer P2P",
+    "server": "Relay Only",
+    "automaticDescription": "Uses the faster path.",
+    "directDescription": "P2P whenever it connects.",
+    "serverDescription": "Never uses P2P."
+  },
+  "stage": {
+    "permission": "Permission",
+    "gathering": "Gathering addresses",
+    "checking": "Finding a path",
+    "handshake": "Encryption handshake",
+    "channel": "Opening the channel",
+    "connected": "Connected"
+  },
+  "path": {
+    "thisComputer": "This Computer",
+    "localNetwork": "LAN",
+    "internet": "P2P",
+    "relay": "Relay",
+    "sentence": "{path} · {address}"
+  },
+  "connected": {
+    "relay": "Connected via relay",
+    "thisComputer": "Connected via This Computer",
+    "localNetwork": "Connected via LAN",
+    "internet": "Connected via P2P"
+  },
+  "reason": {
+    "slower": "P2P is slower right now.",
+    "blocked": "This browser blocks local network access.",
+    "unreachable": "Your networks block P2P connections.",
+    "browserNetwork": "Your network blocks it.",
+    "deviceNetwork": "The device’s network blocks it.",
+    "busy": "The device has too many connections.",
+    "dropped": "The P2P connection dropped.",
+    "notOffered": "P2P works only on the device’s network."
+  },
+  "latency": {
+    "under": "under 0.1 ms",
+    "path": "{path} {latency}",
+    "lost": "{path} {latency}, {loss} lost",
+    "relay": "Relay {latency}"
+  },
+  "address": {
+    "hidden": "Hidden by the browser"
+  },
+  "report": {
+    "appleSilicon": "Apple silicon",
+    "arm": "ARM",
+    "intel": "Intel"
+  },
+  "runner": {
+    "current": "Up to date",
+    "outdated": "Update available",
+    "development": "Development build"
+  },
+  "page": {
+    "cloud": "Cloud",
+    "startSentence": "Start Demi on the device:",
+    "connection": "Connection",
+    "route": "Route",
+    "p2p": "P2P",
+    "details": "Details…",
+    "latency": "Latency",
+    "measure": "Measure",
+    "measuring": "Measuring…",
+    "noAnswer": "No answer",
+    "device": "Device",
+    "name": "Name",
+    "rename": "Rename…",
+    "system": "System",
+    "notReported": "Not reported yet",
+    "runner": "Runner",
+    "runnerUpdates": "It updates itself the next time it connects.",
+    "paired": "Paired",
+    "revokeThis": "Revoke this device",
+    "revoke": "Revoke…",
+    "lastSeen": "Last seen"
+  },
+  "details": {
+    "title": "Connection Details",
+    "ran": "Ran",
+    "took": "Took",
+    "endedAt": "Ended at",
+    "thisBrowser": "This browser",
+    "theDevice": "The device",
+    "paths": "Paths",
+    "pathInUse": "Path in use",
+    "localAccess": "Local network access",
+    "nextAttempt": "Next attempt",
+    "none": "None",
+    "local": "Local: {list}",
+    "public": "Public: {list}",
+    "answered": "{answered} / {tried} answered",
+    "busy": "The device was busy",
+    "dropped": "Connected, then dropped",
+    "unknown": "Not known",
+    "ms": "{ms} ms",
+    "s": "{s} s"
+  },
+  "permission": {
+    "granted": "Allowed",
+    "prompt": "Not answered yet",
+    "denied": "Blocked",
+    "allowInSite": "Allow it in this site’s settings.",
+    "notAsked": "Not asked by this browser"
+  },
+  "pairing": {
+    "title": "Add Device",
+    "setupHint": "Start the runner on your device to get a pairing code.",
+    "doneHint": "The device is linked to your account and ready to use.",
+    "codeHint": "Enter the pairing code printed by the runner.",
+    "system": "System",
+    "systemLabel": "Device system",
+    "runInPowerShell": "Run in PowerShell on the device. Keep it open.",
+    "runInTerminal": "Run in a terminal on the device. Keep it open.",
+    "copyInstall": "Copy install command",
+    "code": "Pairing code",
+    "paste": "Paste code",
+    "pair": "Pair Device",
+    "invalidCode": "This code is unavailable. Paste the runner’s latest code.",
+    "rateLimited": "Too many attempts. Wait a minute before trying again.",
+    "unavailable": "Couldn’t reach Demi. Check your connection and try again."
+  },
+  "revoke": {
+    "title": "Revoke this device?",
+    "action": "Revoke",
+    "body": "“{device}” leaves your devices. If its runner is connected, it removes itself from the device.",
+    "projects": "This project goes with it. Its files stay on the device and its conversations stay in the sidebar. | These projects go with it. Their files stay on the device and their conversations stay in the sidebar."
+  },
+  "rename": {
+    "title": "Rename Device",
+    "label": "Device name"
+  },
+  "startHint": {
+    "powershell": "If its runner stopped, run this in PowerShell on the device.",
+    "terminal": "If its runner stopped, run this in a terminal on the device.",
+    "copy": "Copy start command"
+  }
+}

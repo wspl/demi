@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import type { OverlayStore } from '../overlay/overlayStore'
 import RenameDialog from '../ui/RenameDialog.vue'
 
@@ -25,8 +26,8 @@ const emit = defineEmits<{
   <RenameDialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    title="Rename Device"
-    label="Device name"
+    :title="t('rename.title')"
+    :label="t('rename.label')"
     :name="name"
     :max-length="maxLength"
     @close="emit('close')"

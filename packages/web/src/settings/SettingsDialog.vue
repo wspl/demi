@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import SettingsDialog from '@demicodes/web-ui/settings/SettingsDialog.vue'
@@ -10,7 +11,7 @@ import SettingsNotifications from '@demicodes/web-ui/settings/SettingsNotificati
 import SettingsPlugins from '@demicodes/web-ui/settings/SettingsPlugins.vue'
 import type { ChangeEmailPhase } from '@demicodes/web-ui/settings/ChangeEmailDialog.vue'
 import type { ChangePasswordPhase } from '@demicodes/web-ui/settings/ChangePasswordDialog.vue'
-import { SETTINGS_SECTIONS, withUsersSection } from '@demicodes/web-ui/settings/sections'
+import { settingsSections, withUsersSection } from '@demicodes/web-ui/settings/sections'
 import { APP_SHORTCUTS, isAppShortcut } from '@demicodes/web-ui/settings/shortcuts'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { PageScope, settingsPage, withPluginSections } from '@demicodes/web-ui/plugins/page'
@@ -64,7 +65,7 @@ const pluginSettings = usePluginSettings()
 const router = useRouter()
 const lifetime = new AbortController()
 /** The rail lists Users for the master and admins only (`product.md` § User system). */
-const withUsers = computed(() => withUsersSection(SETTINGS_SECTIONS, product.snapshot?.user.role ?? 'user'))
+const withUsers = computed(() => withUsersSection(settingsSections(), product.snapshot?.user.role ?? 'user'))
 const sections = computed(() =>
   withPluginSections(withUsers.value, PLUGIN_PAGES, (plugin) =>
     pluginEnabled(product.snapshot, plugin),
@@ -139,12 +140,11 @@ function rename(nickname: string): Promise<void> {
     })
     .catch((error) => {
       shown.drop()
-      report('Could Not Change Your Name', error)
+      report(t('dialog.nameFailed'), error)
     })
 }
 
 /** Why the email cannot be changed on a server without mail (`web-api.md` § Account API). */
-const EMAIL_UNAVAILABLE = 'This server can’t send email. Ask your administrator.'
 
 const emailDraft = ref({ email: '', password: '', code: '' })
 const passwordDraft = ref({ current: '', next: '', confirm: '' })
@@ -206,7 +206,7 @@ async function submitEmail(email: string, password: string): Promise<void> {
   } catch (error) {
     if (!controller.signal.aborted) {
       if (!emailOpen.value) {
-        report('Could Not Change Email', error)
+        report(t('dialog.emailFailed'), error)
       }
       emailPhase.value = {
         ...previous,
@@ -269,7 +269,7 @@ async function verifyEmail(code: string): Promise<void> {
   } catch (error) {
     if (!controller.signal.aborted) {
       if (!emailOpen.value) {
-        report('Could Not Change Email', error)
+        report(t('dialog.emailFailed'), error)
       }
       emailPhase.value = {
         ...previous,
@@ -320,7 +320,7 @@ async function submitPassword(current: string, next: string): Promise<void> {
   } catch (error) {
     if (!controller.signal.aborted) {
       if (!passwordOpen.value) {
-        report('Could Not Change Password', error)
+        report(t('dialog.passwordFailed'), error)
       }
       passwordPhase.value = {
         kind: 'form',
@@ -420,7 +420,7 @@ function resetShortcuts(): void {
       :overlay-store="appOverlayStore"
       :account-id="resources.userId"
       :email="resources.email"
-      :email-unavailable="product.snapshot?.mail === false ? EMAIL_UNAVAILABLE : undefined"
+      :email-unavailable="product.snapshot?.mail === false"
       :email-phase="emailPhase"
       :password-phase="passwordPhase"
       :passkeys="passkeys.offered ? passkeys : undefined"

@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { shownError, reportError } from '@demicodes/web-ui/infra/errors'
@@ -82,7 +83,7 @@ export const useUserSettings = defineStore('user-settings', () => {
       if (error instanceof ApiError && error.code === 'verification_required') {
         return { kind: 'needsVerification' }
       }
-      reportError('Could Not Make a New Password', error, { userVisible: true })
+      reportError(t('users.newPasswordFailed'), error, { userVisible: true })
       return { kind: 'failed' }
     }
   }
@@ -97,18 +98,18 @@ export const useUserSettings = defineStore('user-settings', () => {
   }
 
   async function setRole(id: string, role: Exclude<UserRole, 'master'>): Promise<void> {
-    await change(id, { role }, 'Could Not Change the Role')
+    await change(id, { role }, t('users.roleFailed'))
   }
 
   async function setDisabled(id: string, disabled: boolean): Promise<void> {
-    await change(id, { disabled }, disabled ? 'Could Not Disable the Account' : 'Could Not Enable the Account')
+    await change(id, { disabled }, disabled ? t('users.disableFailed') : t('users.enableFailed'))
   }
 
   async function signOutEverywhere(id: string): Promise<void> {
     try {
       await apiRequest(`/users/${encodeURIComponent(id)}/sign-out`, { method: 'POST' })
     } catch (error) {
-      reportError('Could Not Sign the Account Out', error, { userVisible: true })
+      reportError(t('users.signOutFailed'), error, { userVisible: true })
     }
   }
 

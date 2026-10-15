@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { defineStore } from 'pinia'
@@ -58,7 +59,7 @@ export async function verifyWithPassword(password: string): Promise<HandoffVerif
     return { kind: 'verified' }
   } catch (error) {
     if (error instanceof ApiError && error.code === 'invalid_credentials') {
-      return { kind: 'wrongPassword', message: 'That is not your password.' }
+      return { kind: 'wrongPassword', message: t('handoff.wrongPassword') }
     }
     return { kind: 'failed', ...shownError(error) }
   }
@@ -137,7 +138,7 @@ export const useSessions = defineStore('sessions', () => {
     } catch (error) {
       // A browser already signed out is what was asked: its row leaves all the same.
       if (!(error instanceof ApiError && error.code === 'session_not_found')) {
-        reportError('Could Not Sign Out the Browser', error, { userVisible: true })
+        reportError(t('handoff.signOutFailed'), error, { userVisible: true })
         return
       }
     }

@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import { t as settingsText } from './locales/text'
+import { formatDecimal } from '../ui/numbers'
+import { t as uiText } from '../locales/text'
+import { t } from '../devices/locales/text'
 import { computed, ref } from 'vue'
 import { upperFirst } from '@demicodes/utils'
 import { Cable, Server, WandSparkles } from '@lucide/vue'
@@ -94,13 +98,13 @@ const attempt = computed(() => direct.value?.attempt ?? null)
 const status = computed<{ tone: StatusDotTone; words: SentenceText }>(() => {
   const shown = device.value
   if (!shown) {
-    return { tone: 'muted', words: 'Connected via relay' }
+    return { tone: 'muted', words: t('connected.relay') }
   }
   const tone = DEVICE_STATE_TONE[shown.state]
   if (shown.state !== 'online') {
     return { tone, words: DEVICE_STATE_LABEL[shown.state] }
   }
-  return { tone, words: direct.value ? connectedVia(direct.value) : 'Connected via relay' }
+  return { tone, words: direct.value ? connectedVia(direct.value) : t('connected.relay') }
 })
 
 /** How to start the runner again, which the header gives while the device is offline. */
@@ -116,7 +120,7 @@ const latency = computed<SentenceText | null>(() => {
   if (!direct.value || !online.value) {
     return null
   }
-  return pathsLatency(direct.value) ?? (direct.value.measuring ? 'Measuring…' : 'No answer')
+  return pathsLatency(direct.value) ?? (direct.value.measuring ? t('page.measuring') : t('page.noAnswer'))
 })
 
 const nextIn = useTimeUntil(() => direct.value?.nextAt ?? new Date().toISOString())
@@ -144,20 +148,14 @@ const measure = useAsked(() => direct.value?.measuring ?? false, () => emit('mea
 
 /** How long an attempt took, as a person reads it. */
 function took(ms: number): string {
-  return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`
+  return ms < 1000 ? t('details.ms', { ms }) : t('details.s', { s: formatDecimal(ms / 1000, 1) })
 }
 
 /** One side's addresses, local and public, each as a person can use it. */
 function addressLines(side: DirectAddresses): string[] {
-  const list = (addresses: readonly string[]) => (addresses.length ? [...new Set(addresses.map(shownAddress))].join(', ') : 'None')
-  return [`Local: ${list(side.local)}`, `Public: ${list(side.public)}`]
+  const list = (addresses: readonly string[]) => (addresses.length ? [...new Set(addresses.map(shownAddress))].join(', ') : t('details.none'))
+  return [t('details.local', { list: list(side.local) }), t('details.public', { list: list(side.public) })]
 }
-
-const PERMISSION_LABEL = {
-  granted: 'Allowed',
-  prompt: 'Not answered yet',
-  denied: 'Blocked',
-} as const
 
 /**
  * The browser's local network permission as the attempt saw it; blocked, it
@@ -165,9 +163,9 @@ const PERMISSION_LABEL = {
  */
 function permission(seen: DirectPermission | null): string | string[] {
   if (seen === null) {
-    return 'Not asked by this browser'
+    return t('permission.notAsked')
   }
-  return seen === 'denied' ? [PERMISSION_LABEL.denied, 'Allow it in this site’s settings.'] : PERMISSION_LABEL[seen]
+  return seen === 'denied' ? [t('permission.denied'), t('permission.allowInSite')] : t(`permission.${seen}`)
 }
 
 /** The last attempt's diagnostics, as the Details sheet lists them, ending with when Demi tries next. */
@@ -178,22 +176,22 @@ const details = computed(() => {
   }
   const ended =
     seen.outcome === 'busy'
-      ? 'The device was busy'
+      ? t('details.busy')
       : seen.outcome === 'dropped'
-        ? 'Connected, then dropped'
+        ? t('details.dropped')
         : seen.stage
           ? DIRECT_STAGE_LABEL[seen.stage]
-          : 'Not known'
+          : t('details.unknown')
   return [
-    { label: 'Ran', value: formatMoment(seen.startedAt) },
-    { label: 'Took', value: took(seen.durationMs) },
-    { label: 'Ended at', value: ended },
-    { label: 'This browser', value: addressLines(seen.browser) },
-    { label: 'The device', value: addressLines(seen.device) },
-    { label: 'Paths', value: `${seen.pairs.answered} / ${seen.pairs.tried} answered` },
-    ...(seen.inUse ? [{ label: 'Path in use', value: addressWithPort(seen.inUse) }] : []),
-    { label: 'Local network access', value: permission(seen.permission) },
-    ...(direct.value?.nextAt ? [{ label: 'Next attempt', value: upperFirst(nextIn.value) }] : []),
+    { label: t('details.ran'), value: formatMoment(seen.startedAt) },
+    { label: t('details.took'), value: took(seen.durationMs) },
+    { label: t('details.endedAt'), value: ended },
+    { label: t('details.thisBrowser'), value: addressLines(seen.browser) },
+    { label: t('details.theDevice'), value: addressLines(seen.device) },
+    { label: t('details.paths'), value: t('details.answered', seen.pairs) },
+    ...(seen.inUse ? [{ label: t('details.pathInUse'), value: addressWithPort(seen.inUse) }] : []),
+    { label: t('details.localAccess'), value: permission(seen.permission) },
+    ...(direct.value?.nextAt ? [{ label: t('details.nextAttempt'), value: upperFirst(nextIn.value) }] : []),
   ]
 })
 
@@ -217,8 +215,8 @@ async function revoke(): Promise<void> {
 
 <template>
   <SettingsPage
-    :title="device?.name ?? 'Cloud'"
-    back="Devices"
+    :title="device?.name ?? t('page.cloud')"
+    :back="settingsText('devices.title')"
     :status-tone="status.tone"
     @back="emit('back')"
   >
@@ -226,19 +224,19 @@ async function revoke(): Promise<void> {
       <component :is="hostIcon({ kind: device ? 'device' : 'cloud' })" :size="24" aria-hidden="true" />
     </template>
     <template #status>
-      {{ status.words }}<span v-if="device?.state === 'offline' && device.seen" class="text-fg-subtle"> · Last seen <RelativeTime :timestamp="device.seen" /></span>
+      {{ status.words }}<span v-if="device?.state === 'offline' && device.seen" class="text-fg-subtle"> · {{ t('page.lastSeen') }} <RelativeTime :timestamp="device.seen" /></span>
     </template>
     <template v-if="offlineStart" #description>
-      <DeviceStartHint sentence="Start Demi on the device:" :start="offlineStart" />
+      <DeviceStartHint :sentence="t('page.startSentence')" :start="offlineStart" />
     </template>
 
-    <SettingsGroup v-if="device" title="Connection">
-      <SettingsRow label="Route" :description="DEVICE_ROUTE_DESCRIPTION[device.direct.route]">
+    <SettingsGroup v-if="device" :title="t('page.connection')">
+      <SettingsRow :label="t('page.route')" :description="DEVICE_ROUTE_DESCRIPTION[device.direct.route]">
         <Dropdown
           size="sm"
           :overlay-store="overlayStore"
           variant="default"
-          trigger-label="Route"
+          :trigger-label="t('page.route')"
         >
           <template #trigger>{{ DEVICE_ROUTE_LABEL[device.direct.route] }}</template>
           <template #content="{ close }">
@@ -256,45 +254,45 @@ async function revoke(): Promise<void> {
           </template>
         </Dropdown>
       </SettingsRow>
-      <SettingsRow v-if="peerAllowed" label="P2P" :description="directSentence ?? undefined">
-        <Button v-if="canTryAgain" size="sm" :loading="tryAgain.loading.value" @click="tryAgain.click">Try Again</Button>
-        <Button v-if="attempt" size="sm" @click="detailsOpen = true">Details…</Button>
+      <SettingsRow v-if="peerAllowed" :label="t('page.p2p')" :description="directSentence ?? undefined">
+        <Button v-if="canTryAgain" size="sm" :loading="tryAgain.loading.value" @click="tryAgain.click">{{ uiText('common.retry') }}</Button>
+        <Button v-if="attempt" size="sm" @click="detailsOpen = true">{{ t('page.details') }}</Button>
       </SettingsRow>
-      <SettingsRow v-if="latency" label="Latency">
+      <SettingsRow v-if="latency" :label="t('page.latency')">
         <span class="text-chrome text-fg-muted">{{ latency }}</span>
-        <Button size="sm" :loading="measure.loading.value" @click="measure.click">Measure</Button>
+        <Button size="sm" :loading="measure.loading.value" @click="measure.click">{{ t('page.measure') }}</Button>
       </SettingsRow>
     </SettingsGroup>
 
-    <SettingsGroup title="Device">
-      <SettingsRow v-if="device" label="Name">
+    <SettingsGroup :title="t('page.device')">
+      <SettingsRow v-if="device" :label="t('page.name')">
         <span class="min-w-0 truncate text-chrome text-fg-muted">{{ device.name }}</span>
-        <Button size="sm" @click="renameOpen = true">Rename…</Button>
+        <Button size="sm" @click="renameOpen = true">{{ t('page.rename') }}</Button>
       </SettingsRow>
-      <SettingsRow label="System">
-        <span class="text-chrome text-fg-muted">{{ system ?? 'Not reported yet' }}</span>
+      <SettingsRow :label="t('page.system')">
+        <span class="text-chrome text-fg-muted">{{ system ?? t('page.notReported') }}</span>
       </SettingsRow>
       <SettingsRow
-        label="Runner"
-        :description="runner === 'outdated' ? 'It updates itself the next time it connects.' : undefined"
+        :label="t('page.runner')"
+        :description="runner === 'outdated' ? t('page.runnerUpdates') : undefined"
       >
-        <span class="text-chrome text-fg-muted">{{ runner ? RUNNER_STATE_LABEL[runner] : 'Not reported yet' }}</span>
+        <span class="text-chrome text-fg-muted">{{ runner ? RUNNER_STATE_LABEL[runner] : t('page.notReported') }}</span>
       </SettingsRow>
-      <SettingsRow v-if="device" label="Paired">
+      <SettingsRow v-if="device" :label="t('page.paired')">
         <span class="text-chrome text-fg-muted">{{ formatDay(device.pairedAt) }}</span>
       </SettingsRow>
     </SettingsGroup>
 
     <SettingsGroup v-if="device">
-      <SettingsRow label="Revoke this device">
-        <Button size="sm" variant="danger" :operation="revoking" @click="revokeOpen = true">Revoke…</Button>
+      <SettingsRow :label="t('page.revokeThis')">
+        <Button size="sm" variant="danger" :operation="revoking" @click="revokeOpen = true">{{ t('page.revoke') }}</Button>
       </SettingsRow>
     </SettingsGroup>
 
     <DetailsSheet
       :is-open="detailsOpen"
       :overlay-store="overlayStore"
-      title="Connection Details"
+      :title="t('details.title')"
       :entries="details"
       @close="detailsOpen = false"
     />

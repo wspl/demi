@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { ref, watch, type Ref } from 'vue'
 import { operations, type Operation } from '../ui/operations'
 import type { ShownError } from '../infra/errors'
@@ -72,7 +73,7 @@ export function useVerification(host: () => VerificationHost, verified: () => vo
   /** Continue, or Return in the field: nothing while the group works. */
   async function submitPassword(): Promise<void> {
     if (password.value === '') {
-      passwordProblem.value = 'Required'
+      passwordProblem.value = t('password.required')
       return
     }
     await operations.run(withPassword, async () => {

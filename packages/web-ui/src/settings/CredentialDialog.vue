@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import { Trash2 } from '@lucide/vue'
@@ -57,10 +59,10 @@ const emit = defineEmits<{
   delete: []
 }>()
 
-const KINDS = [
-  { value: 'secret', label: 'Secret' },
-  { value: 'visible', label: 'Visible' },
-] as const
+const KINDS = computed(() => [
+  { value: 'secret', label: t('credentials.secret') },
+  { value: 'visible', label: t('credentials.visible') },
+] as const)
 
 let keys = 0
 function newField(): EditorField {
@@ -140,13 +142,13 @@ function save(): unknown {
   })
 }
 
-const title = computed(() => (props.credential ? 'Edit Credential' : 'New Credential'))
+const title = computed(() => (props.credential ? t('credentialDialog.edit') : t('credentialDialog.new')))
 const keepLabel = computed(() => {
   if (keep.value !== null) {
     return KEEP_OPTIONS.find((option) => option.value === keep.value)!.label
   }
   const until = props.credential?.keepUntil
-  return until ? formatMoment(until) : 'Always'
+  return until ? formatMoment(until) : t('credentials.always')
 })
 </script>
 
@@ -166,7 +168,7 @@ const keepLabel = computed(() => {
       <!-- Only the fields scroll; the title and the buttons stay in place. -->
       <ScrollArea class="min-h-0" viewport-class="flex flex-col gap-3 px-5">
         <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
-          <SettingsRow label="Name">
+          <SettingsRow :label="t('credentialDialog.name')">
             <template v-if="shown('name', nameProblem)" #detail>
               <InlineError :message="shown('name', nameProblem)!" />
             </template>
@@ -174,23 +176,23 @@ const keepLabel = computed(() => {
               v-model="name"
               :focused="!credential"
               class="w-64 max-w-full"
-              aria-label="Name"
+              :aria-label="t('credentialDialog.name')"
               @blur="touch('name')"
             />
           </SettingsRow>
-          <SettingsRow label="Note" description="Optional. Why an agent needs it.">
+          <SettingsRow :label="t('credentialDialog.note')" :description="t('credentialDialog.noteDescription')">
             <TextInput
               v-model="note"
               class="w-80 max-w-full"
-              aria-label="Note"
+              :aria-label="t('credentialDialog.note')"
             />
           </SettingsRow>
-          <SettingsRow label="Keep until">
+          <SettingsRow :label="t('credentialDialog.keepUntil')">
             <Dropdown
               :overlay-store="overlayStore"
               size="sm"
               variant="default"
-              trigger-label="Keep until"
+              :trigger-label="t('credentialDialog.keepUntil')"
             >
               <template #trigger>{{ keepLabel }}</template>
               <template #content="{ close }">
@@ -210,22 +212,22 @@ const keepLabel = computed(() => {
         </div>
 
         <div class="flex min-h-7 items-center justify-between gap-3 pt-1">
-          <h4 class="select-none text-[13px] font-medium text-fg-emphasis">Fields</h4>
+          <h4 class="select-none text-[13px] font-medium text-fg-emphasis">{{ t('credentialDialog.fields') }}</h4>
           <Button
             size="sm"
             :disabled="fields.length >= FIELDS_MAX"
-            :disabled-reason="`A credential has at most ${FIELDS_MAX} fields.`"
+            :disabled-reason="t('credentialDialog.fieldsMax', { max: FIELDS_MAX })"
             @click="addField"
-          >Add Field</Button>
+          >{{ t('credentialDialog.addField') }}</Button>
         </div>
         <div
           v-for="(field, index) in fields"
           :key="field.key"
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
-          <SettingsRow label="Label">
+          <SettingsRow :label="t('credentialDialog.label')">
             <template v-if="field.saved !== null || field.label.trim() !== ''" #description>
-              Read as <span class="font-mono">{{ namesRead[index] }}</span>
+              {{ t('credentialDialog.readAs') }} <span class="font-mono">{{ namesRead[index] }}</span>
             </template>
             <template v-if="shown(`label:${field.key}`, labelProblems[index]!)" #detail>
               <InlineError :message="shown(`label:${field.key}`, labelProblems[index]!)!" />
@@ -233,24 +235,24 @@ const keepLabel = computed(() => {
             <TextInput
               v-model="field.label"
               class="w-56 max-w-full"
-              placeholder="API key"
-              :aria-label="`Label of field ${index + 1}`"
+              :placeholder="t('credentialDialog.labelPlaceholder')"
+              :aria-label="t('credentialDialog.labelOf', { n: index + 1 })"
               @blur="touch(`label:${field.key}`)"
             />
             <IconButton
               :icon="Trash2"
               size="sm"
               variant="ghost"
-              :aria-label="`Remove field ${index + 1}`"
+              :aria-label="t('credentialDialog.removeField', { n: index + 1 })"
               :disabled="fields.length === 1"
-              disabled-reason="A credential needs a field."
+              :disabled-reason="t('credentialDialog.needsField')"
               @click="removeField(field.key)"
             />
           </SettingsRow>
-          <SettingsRow label="Kind">
+          <SettingsRow :label="t('credentialDialog.kind')">
             <Segmented v-model="field.kind" :options="KINDS" size="sm" />
           </SettingsRow>
-          <SettingsRow label="Value">
+          <SettingsRow :label="t('credentialDialog.value')">
             <template v-if="shown(`value:${field.key}`, valueProblems[index]!)" #detail>
               <InlineError :message="shown(`value:${field.key}`, valueProblems[index]!)!" />
             </template>
@@ -259,8 +261,8 @@ const keepLabel = computed(() => {
               :masked="field.kind === 'secret' ? 'secret' : undefined"
               literal
               class="w-80 max-w-full"
-              :placeholder="field.saved !== null ? 'Leave empty to keep it' : undefined"
-              :aria-label="`Value of field ${index + 1}`"
+              :placeholder="field.saved !== null ? t('credentialDialog.keepSaved') : undefined"
+              :aria-label="t('credentialDialog.valueOf', { n: index + 1 })"
               @blur="touch(`value:${field.key}`)"
             />
           </SettingsRow>
@@ -269,12 +271,12 @@ const keepLabel = computed(() => {
       <InlineError v-if="error" class="px-5 pt-3" :message="error.message" :request-id="error.requestId" />
     </div>
     <template v-if="credential" #footer-leading>
-      <Button variant="danger" :operation="deleteOperation" @click="emit('delete')">Delete</Button>
+      <Button variant="danger" :operation="deleteOperation" @click="emit('delete')">{{ uiText('common.delete') }}</Button>
     </template>
     <template #footer>
-      <Button @click="emit('close')">Cancel</Button>
+      <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
       <Button variant="primary" :disabled="!canSave" :operation="saveOperation" @click="save">
-        {{ credential ? 'Save' : 'Create Credential' }}
+        {{ credential ? uiText('common.save') : t('credentialDialog.create') }}
       </Button>
     </template>
   </Dialog>

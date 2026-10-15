@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { computed, ref } from 'vue'
 import { Terminal } from '@lucide/vue'
 import { vendorsInListOrder } from './provider-defaults'
@@ -40,8 +42,14 @@ const query = ref('')
 
 const q = computed(() => query.value.trim().toLowerCase())
 /** The one row a search for "compatible" or a protocol's name finds, as a search for a vendor finds the vendor. */
-const COMPATIBLE_WORDS = ['compatible api', 'proxy', ...Object.values(WIRE_API_LABELS).map((label) => label.toLowerCase())]
-const compatibleShown = computed(() => !q.value || COMPATIBLE_WORDS.some((words) => words.includes(q.value)))
+const COMPATIBLE_WORDS = computed(() => [
+  'compatible api',
+  'proxy',
+  t('addProvider.compatible').toLowerCase(),
+  t('addProvider.proxy').toLowerCase(),
+  ...Object.values(WIRE_API_LABELS).map((label) => label.toLowerCase()),
+])
+const compatibleShown = computed(() => !q.value || COMPATIBLE_WORDS.value.some((words) => words.includes(q.value)))
 const ordered = computed(() => vendorsInListOrder(props.vendors))
 const results = computed(() =>
   q.value
@@ -59,7 +67,7 @@ const results = computed(() =>
     v-model:query="query"
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Add Provider"
+    :label="t('addProvider.title')"
     @close="emit('close')"
   >
     <div v-if="compatibleShown">
@@ -76,18 +84,18 @@ const results = computed(() =>
             ><Terminal :size="ICON_PX.in24"
           /></span>
           <span class="min-w-0 flex-1 truncate text-chrome text-fg"
-            ><HighlightText text="Compatible API" :query="query"
+            ><HighlightText :text="t('addProvider.compatible')" :query="query"
           /></span>
-          <span class="shrink-0 truncate text-[12px] text-fg-subtle">A proxy or your own server</span>
+          <span class="shrink-0 truncate text-[12px] text-fg-subtle">{{ t('addProvider.compatibleHint') }}</span>
         </button>
       </div>
     </div>
-    <AsyncRegion :state="load" label="Loading vendors…" @retry="emit('retry')">
+    <AsyncRegion :state="load" :label="t('addProvider.loading')" @retry="emit('retry')">
       <div v-if="results.length">
         <div
           class="select-none px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
         >
-          Vendors
+          {{ t('addProvider.vendors') }}
         </div>
         <div
           class="settings-card overflow-hidden rounded-xl border border-line bg-surface-float"
@@ -120,7 +128,7 @@ const results = computed(() =>
         v-if="!compatibleShown && !results.length"
         class="select-none py-6 text-center text-[13px] text-fg-subtle"
       >
-        No matches
+        {{ t('addProvider.noResults') }}
       </div>
     </AsyncRegion>
   </FilterDialog>

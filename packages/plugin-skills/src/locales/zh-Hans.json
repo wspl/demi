@@ -1,0 +1,46 @@
+{
+  "title": "技能",
+  "description": "智能体可以遵循的打包工作流。",
+  "keywords": "技能,工作流,git,SKILL.md",
+  "sources": {
+    "title": "来源",
+    "add": "添加来源…",
+    "none": "没有来源",
+    "adding": "正在添加",
+    "updating": "正在更新",
+    "failed": "失败",
+    "updateAvailable": "有可用更新",
+    "enableAll": "启用“{name}”中的所有技能",
+    "update": "更新",
+    "remove": "删除"
+  },
+  "skill": {
+    "warning": "警告",
+    "nameTaken": "名称已被占用",
+    "nameTakenDetail": "来自 {origin} 的技能“{name}”已开启。关闭它才能使用此技能。",
+    "neverOffered": "从不提供",
+    "neverOfferedDetail": "它设置了 disable-model-invocation。",
+    "notASkill": "不是技能：{reason}"
+  },
+  "removeSource": {
+    "title": "删除“{name}”？",
+    "withSkills": "其技能也会一并删除。你之后可以重新添加该存储库。",
+    "empty": "该来源会从你的技能中移除。你之后可以重新添加该存储库。",
+    "more": "以及另外 {count} 项"
+  },
+  "addSource": {
+    "title": "添加来源",
+    "hint": "一个 Git 存储库。其中每个 SKILL.md 都是一项技能。",
+    "repository": "存储库",
+    "repositoryHint": "owner/repository 或 Git URL。",
+    "browse": "浏览 skills.sh",
+    "cancel": "取消"
+  },
+  "failures": {
+    "add": "无法添加来源",
+    "update": "无法更新来源",
+    "remove": "无法删除来源",
+    "switchSkill": "无法切换技能",
+    "switchSkills": "无法切换技能"
+  }
+}

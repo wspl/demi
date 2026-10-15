@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 
 /**
@@ -55,19 +56,31 @@ export interface HandoffWording {
 }
 
 export const HANDOFF_WORDING: HandoffWording = {
-  title: 'Hand Off to Your Phone',
-  confirm: 'Confirm it’s you. Your phone then opens this page, signed in to this account.',
-  scan: 'Scan with your phone’s camera.',
-  done: (browser) => `Handed off to ${browser}.`,
+  get title() {
+    return t('handoff.title')
+  },
+  get confirm() {
+    return t('handoff.confirm')
+  },
+  get scan() {
+    return t('handoff.scan')
+  },
+  done: (browser) => t('handoff.done', { browser }),
 }
 
 /** An administrator's Sign-In Code… for the account `name`, which signs a phone in to it. */
 export function signInCodeWording(name: string): HandoffWording {
   return {
-    title: 'Sign-In Code',
-    confirm: `Confirm it’s you. A code then signs ${name}’s phone in to their account.`,
-    scan: 'Scan with their phone’s camera.',
-    done: (browser) => `Signed in on ${browser}.`,
+    get title() {
+      return t('handoff.codeTitle')
+    },
+    get confirm() {
+      return t('handoff.codeConfirm', { name })
+    },
+    get scan() {
+      return t('handoff.codeScan')
+    },
+    done: (browser) => t('handoff.codeDone', { browser }),
   }
 }
 
@@ -77,10 +90,18 @@ export function signInCodeWording(name: string): HandoffWording {
  * server made stands beside the code.
  */
 export function userReadyWording(title: string, name: string): HandoffWording {
+  const code = signInCodeWording(name)
   return {
-    ...signInCodeWording(name),
-    title,
-    scan: 'Or scan with their phone’s camera to sign it in.',
+    get title() {
+      return title
+    },
+    get confirm() {
+      return code.confirm
+    },
+    get scan() {
+      return t('handoff.readyScan')
+    },
+    done: code.done,
   }
 }
 

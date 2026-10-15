@@ -1,4 +1,5 @@
 import type { SentenceText } from '../ui/ui-text'
+import { t } from './locales/text'
 import type { SettingsKeyBinding } from './types'
 
 /**
@@ -8,11 +9,27 @@ import type { SettingsKeyBinding } from './types'
  * receives. Search is ⌘K, as in Slack, Linear and ChatGPT.
  */
 export const APP_SHORTCUTS = [
-  { id: 'new', action: 'New conversation', keys: '⇧⌘O' },
-  { id: 'search', action: 'Search conversations', keys: '⌘K' },
-  { id: 'sidebar', action: 'Toggle sidebar', keys: '⌘B' },
-  { id: 'settings', action: 'Open settings', keys: '⌘,' },
+  { id: 'new', keys: '⇧⌘O' },
+  { id: 'search', keys: '⌘K' },
+  { id: 'sidebar', keys: '⌘B' },
+  { id: 'settings', keys: '⌘,' },
 ] as const
+
+/** What the shortcut `id` does, in the page's language, as its row and a refusal name it. */
+export function shortcutAction(id: string): SentenceText {
+  switch (id) {
+    case 'new':
+      return t('keyboard.actions.new')
+    case 'search':
+      return t('keyboard.actions.search')
+    case 'sidebar':
+      return t('keyboard.actions.sidebar')
+    case 'settings':
+      return t('keyboard.actions.settings')
+    default:
+      return id
+  }
+}
 
 export type AppShortcutId = (typeof APP_SHORTCUTS)[number]['id']
 
@@ -36,8 +53,8 @@ export function shortcutRefusal(
   bindings: readonly SettingsKeyBinding[],
 ): SentenceText | null {
   if (!hasCommandModifier(keys)) {
-    return `${keys} types text. Use ⌘ or ⌃ with a key.`
+    return t('keyboard.typesText', { keys })
   }
   const taken = bindings.find((binding) => binding.id !== id && binding.keys === keys)
-  return taken ? `${keys} is already used by ${taken.action}.` : null
+  return taken ? t('keyboard.taken', { keys, action: shortcutAction(taken.id) }) : null
 }

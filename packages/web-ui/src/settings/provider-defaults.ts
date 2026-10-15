@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import type { SentenceText } from '../ui/ui-text'
 import type { SettingsVendor } from './types'
 
@@ -20,5 +21,5 @@ export function endpointProblem(text: string): SentenceText | null {
   } catch {
     // Not an address at all: said below with the rest.
   }
-  return 'Enter an http or https address.'
+  return t('provider.endpointInvalid')
 }

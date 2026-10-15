@@ -1,5 +1,7 @@
+import { pageLanguage } from '../i18n/text'
+import { t } from './locales/text'
 import { ref } from 'vue'
-import { countOf, upperFirst } from '@demicodes/utils'
+import { upperFirst } from '@demicodes/utils'
 import { operations, type Operation } from '../ui/operations'
 import type { SentenceText } from '../ui/ui-text'
 import { isSubagentRunning, type SubagentRecord } from '../agent/subagents'
@@ -11,8 +13,12 @@ export type MoveLock = 'archived' | 'moving'
 
 /** What a lock says on the controls it holds (`product.md` § Where a conversation runs). */
 export const MOVE_LOCK_REASON: Record<MoveLock, SentenceText> = {
-  archived: 'This conversation is archived.',
-  moving: 'This conversation is moving.',
+  get archived() {
+    return t('lock.archived')
+  },
+  get moving() {
+    return t('lock.moving')
+  },
 }
 
 /** What still runs when the question is asked, as the page shows it: moving stops all of it. */
@@ -43,6 +49,12 @@ export function workToStop(conversation: {
   return work.agent || work.subagents > 0 || work.commands > 0 ? work : null
 }
 
+/** The locale a list is joined in: English as the Writing page writes it, without the comma before and. */
+function listLocale(): string {
+  const language = pageLanguage()
+  return language === 'en' ? 'en-GB' : language
+}
+
 /**
  * What stops, as the dialog's first line says it
  * (`product.md` § Where a conversation runs): *The agent, 1 subagent and 2
@@ -50,13 +62,12 @@ export function workToStop(conversation: {
  */
 export function stopSentence(work: WorkToStop): string {
   const parts = [
-    ...(work.agent ? ['the agent'] : []),
-    ...(work.subagents > 0 ? [countOf(work.subagents, 'subagent')] : []),
-    ...(work.commands > 0 ? [countOf(work.commands, 'command')] : []),
+    ...(work.agent ? [t('stop.agent')] : []),
+    ...(work.subagents > 0 ? [t('stop.subagents', { count: work.subagents }, work.subagents)] : []),
+    ...(work.commands > 0 ? [t('stop.commands', { count: work.commands }, work.commands)] : []),
   ]
-  const last = parts.pop()
-  const list = parts.length ? `${parts.join(', ')} and ${last}` : (last ?? 'the agent')
-  return `${upperFirst(list)} will stop.`
+  const list = parts.length ? new Intl.ListFormat(listLocale(), { type: 'conjunction' }).format(parts) : t('stop.agent')
+  return t('stop.sentence', { list: upperFirst(list) })
 }
 
 /** The operations of the question's two answers. */

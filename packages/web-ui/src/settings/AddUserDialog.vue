@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import { computed, ref, watch } from 'vue'
 import type { Component } from 'vue'
 import { ShieldCheck, User } from '@lucide/vue'
@@ -15,7 +17,7 @@ import TextInput from '../ui/TextInput.vue'
 import { isEmail } from '../auth/email'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsNewUser } from './types'
-import { ROLE_DESCRIPTION, ROLE_LABEL } from './users'
+import { roleDescription, roleLabel } from './users'
 
 /**
  * Add User…: the new account's email and its role; the server makes the
@@ -72,19 +74,19 @@ function submit(): unknown {
 </script>
 
 <template>
-  <Dialog :is-open="isOpen" :overlay-store="overlayStore" label="Add User" @close="emit('close')">
+  <Dialog :is-open="isOpen" :overlay-store="overlayStore" :label="t('addUser.title')" @close="emit('close')">
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Add User</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('addUser.title') }}</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          They choose their own password at first sign-in.
+          {{ t('addUser.hint') }}
         </p>
       </header>
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
-        <SettingsRow label="Email">
+        <SettingsRow :label="t('addUser.email')">
           <TextInput
             v-model="email"
-            aria-label="Email"
+            :aria-label="t('addUser.email')"
             placeholder="name@example.com"
             literal
             trim
@@ -93,23 +95,23 @@ function submit(): unknown {
             class="w-48 max-w-full"
           />
         </SettingsRow>
-        <SettingsRow label="Role" :description="ROLE_DESCRIPTION[role]">
+        <SettingsRow :label="t('addUser.role')" :description="roleDescription(role)">
           <Dropdown
             size="sm"
             variant="default"
-            trigger-label="Role"
+            :trigger-label="t('addUser.role')"
             :overlay-store="overlayStore"
             :disabled="roles.length < 2"
-            disabled-reason="An admin adds users."
+            :disabled-reason="t('addUser.adminAdds')"
           >
-            <template #trigger>{{ ROLE_LABEL[role] }}</template>
+            <template #trigger>{{ roleLabel(role) }}</template>
             <template #content="{ close }">
               <Menu>
                 <MenuItem
                   v-for="choice in roles"
                   :key="choice"
                   :icon="ROLE_ICONS[choice]"
-                  :label="ROLE_LABEL[choice]"
+                  :label="roleLabel(choice)"
                   choice
                   :is-selected="role === choice"
                   @select="role = choice; close()"
@@ -120,11 +122,11 @@ function submit(): unknown {
         </SettingsRow>
       </div>
       <InlineError v-if="error?.kind === 'failed'" :message="error.message" :request-id="error.requestId" />
-      <InlineError v-else-if="error?.kind === 'emailTaken'" message="An account already has that email address." />
+      <InlineError v-else-if="error?.kind === 'emailTaken'" :message="t('addUser.emailTaken')" />
     </div>
     <template #footer>
-      <Button @click="emit('close')">Cancel</Button>
-      <Button variant="primary" :disabled="!canSubmit" :operation="operation" @click="submit">Add User</Button>
+      <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
+      <Button variant="primary" :disabled="!canSubmit" :operation="operation" @click="submit">{{ t('addUser.title') }}</Button>
     </template>
   </Dialog>
 </template>

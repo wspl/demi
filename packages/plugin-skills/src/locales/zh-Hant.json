@@ -1,0 +1,46 @@
+{
+  "title": "技能",
+  "description": "代理程式可以遵循的封裝工作流程。",
+  "keywords": "技能,工作流程,git,SKILL.md",
+  "sources": {
+    "title": "來源",
+    "add": "新增來源…",
+    "none": "沒有來源",
+    "adding": "正在新增",
+    "updating": "更新中",
+    "failed": "失敗",
+    "updateAvailable": "有可用更新",
+    "enableAll": "啟用「{name}」中的所有技能",
+    "update": "更新",
+    "remove": "移除"
+  },
+  "skill": {
+    "warning": "警告",
+    "nameTaken": "名稱已被使用",
+    "nameTakenDetail": "來自 {origin} 的技能「{name}」已開啟。關閉它才能使用此技能。",
+    "neverOffered": "從不提供",
+    "neverOfferedDetail": "它設定了 disable-model-invocation。",
+    "notASkill": "不是技能：{reason}"
+  },
+  "removeSource": {
+    "title": "移除「{name}」？",
+    "withSkills": "其技能也會一併移除。你之後可以重新新增該儲存庫。",
+    "empty": "該來源會從你的技能中移除。你之後可以重新新增該儲存庫。",
+    "more": "以及另外 {count} 項"
+  },
+  "addSource": {
+    "title": "新增來源",
+    "hint": "一個 Git 儲存庫。其中每個 SKILL.md 都是一項技能。",
+    "repository": "儲存庫",
+    "repositoryHint": "owner/repository 或 Git URL。",
+    "browse": "瀏覽 skills.sh",
+    "cancel": "取消"
+  },
+  "failures": {
+    "add": "無法新增來源",
+    "update": "無法更新來源",
+    "remove": "無法移除來源",
+    "switchSkill": "無法切換技能",
+    "switchSkills": "無法切換技能"
+  }
+}
