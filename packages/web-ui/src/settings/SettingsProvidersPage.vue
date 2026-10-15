@@ -735,7 +735,7 @@ function endpointCheck(value: string) {
                       <!-- A name that can be changed is also changed by a double-click on it. -->
                       <!-- On a phone the provider is the page, and its name the page's title. -->
                       <h3
-                        class="min-w-0 text-[15px] font-medium text-fg-emphasis @max-md:text-[20px] @max-md:leading-7"
+                        class="min-w-0 text-[20px] font-medium leading-7 text-fg-emphasis wide:text-[15px] wide:leading-normal"
                         @dblclick="selected.kind === 'api_key' && (renaming = true)"
                       >
                         <TruncatedText :text="selected.name" />

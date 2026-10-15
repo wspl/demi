@@ -67,22 +67,22 @@ onBeforeUnmount(leaveBar)
     <!-- The list is a bare rail, not a card: only the detail's own groups draw surfaces.
          Each side scrolls on its own when the host gives the split a height. -->
     <div
-      class="grid h-full grid-rows-[minmax(0,1fr)] gap-x-8 gap-y-4 @md:grid-cols-[11rem_minmax(0,1fr)]"
+      class="grid h-full grid-rows-[minmax(0,1fr)] gap-x-8 gap-y-4 wide:grid-cols-[11rem_minmax(0,1fr)]"
     >
       <!-- Scroll regions clip both axes; the -mx/px pair leaves room for rings at the edges. -->
       <ScrollArea
         class="-mx-1 min-h-0"
-        :class="detailOpen ? 'hidden @md:flex' : 'flex'"
+        :class="detailOpen ? 'hidden wide:flex' : 'flex'"
         viewport-class="flex flex-col gap-0.5 px-1"
       >
         <slot name="list" />
       </ScrollArea>
       <ScrollArea
         class="-mx-1 min-h-0 min-w-0"
-        :class="detailOpen ? 'flex' : 'hidden @md:flex'"
+        :class="detailOpen ? 'flex' : 'hidden wide:flex'"
         viewport-class="px-1"
       >
-        <div v-if="!bar" class="-mx-2 mb-3 flex h-10 items-center gap-1 @md:hidden">
+        <div v-if="!bar" class="-mx-2 mb-3 flex h-10 items-center gap-1 wide:hidden">
           <Button
             variant="ghost"
             size="sm"

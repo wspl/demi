@@ -63,6 +63,19 @@
    the desktop layout is treated as a desktop. */
 @custom-variant phone (@media (max-width: 767px));
 
+/* Settings' side-by-side layout (`SettingsDialog`, `SettingsSplit`): a
+   list beside its page. It holds only off the phone layout and only where
+   the nearest container, the settings dialog, is at least 28rem wide, so
+   a phone of any width, sideways included below 768 px, shows one thing at
+   a time as iOS Settings does, and a narrow catalog host does too. */
+@custom-variant wide {
+  @media (min-width: 768px) {
+    @container (min-width: 28rem) {
+      @slot;
+    }
+  }
+}
+
 @theme {
   --font-mono: "Code Arabic", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   --color-surface-base: var(--surface-base);
