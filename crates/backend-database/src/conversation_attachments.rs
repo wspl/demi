@@ -37,14 +37,16 @@ impl FromStr for AttachmentNumber {
     type Err = NotAnAttachment;
 
     /// `a` and a number from 1, written without leading zeros, as
-    /// [`fmt::Display`] writes it.
+    /// [`fmt::Display`] writes it, within the range the column holds, so a
+    /// number past it names no attachment rather than failing a query.
     fn from_str(text: &str) -> Result<Self, Self::Err> {
         let refused = || NotAnAttachment(text.to_owned());
         let digits = text.strip_prefix('a').ok_or_else(refused)?;
         if digits.starts_with('0') || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
             return Err(refused());
         }
-        digits.parse().map(Self).map_err(|_| refused())
+        let number: i64 = digits.parse().map_err(|_| refused())?;
+        u64::try_from(number).map(Self).map_err(|_| refused())
     }
 }
 
@@ -97,6 +99,23 @@ pub fn read(
              FROM attachments WHERE number = ?1",
         )?
         .query_row([column(number.0)], |row| Ok(decode_row(row)))
+        .optional()?
+        .transpose()
+}
+
+/// The attachment `number` as the snapshot of the share `token` keeps it;
+/// none when it keeps none by it (`sharing.md` § Storage and routes).
+pub fn read_shared(
+    connection: &Connection,
+    token: &str,
+    number: AttachmentNumber,
+) -> Result<Option<AttachmentRow>, StorageError> {
+    connection
+        .prepare_cached(
+            "SELECT number, name, media_type, size, width, height, blob
+             FROM share_attachments WHERE token = ?1 AND number = ?2",
+        )?
+        .query_row(params![token, column(number.0)], |row| Ok(decode_row(row)))
         .optional()?
         .transpose()
 }

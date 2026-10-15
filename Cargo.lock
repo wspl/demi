@@ -1980,6 +1980,7 @@ version = "0.1.21"
 dependencies = [
  "base64 0.22.1",
  "bytes",
+ "comrak",
  "demi-agent-store",
  "demi-backend-remote-host",
  "demi-conversation-socket-protocol",

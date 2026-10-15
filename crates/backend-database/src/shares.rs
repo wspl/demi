@@ -11,6 +11,8 @@ use demi_agent_store::media::block_blobs;
 use demi_shared_types::{BlobRef, Block, BlockId, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, ShareToken, UserId};
 use demi_web_api_protocol::shares::ShareTarget;
+use comrak::nodes::NodeValue;
+use comrak::{Arena, Options, parse_document};
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
 use super::StorageError;
@@ -233,11 +235,19 @@ pub fn take_conversation(transaction: &Transaction<'_>, token: &ShareToken) -> R
     for (agent, block_count, node) in agents {
         let node = decode("nodes", "id", demi_shared_types::NodeId::try_from(node))?;
         let blocks = tree::blocks_of(transaction, &node, block_count)?;
-        let kept = blocks
+        let kept: Vec<&Block> = blocks
             .iter()
-            .filter(|block| !matches!(block, Block::Context(_) | Block::Response(_)));
+            .filter(|block| !matches!(block, Block::Context(_) | Block::Response(_)))
+            .collect();
+        keep_attachments(transaction, token, kept.iter().copied())?;
         insert(transaction, token, agent, kept)?;
     }
+    // Each subagent with the description and profile it has now.
+    transaction.execute(
+        "INSERT INTO share_agents (token, number, description, profile)
+         SELECT ?1, number, description, profile FROM nodes WHERE parent_id IS NOT NULL",
+        [token.as_str()],
+    )?;
     Ok(())
 }
 
@@ -262,6 +272,7 @@ pub fn take_answer(
         return Ok(false);
     };
     remove(transaction, token)?;
+    keep_attachments(transaction, token, [&blocks[index]])?;
     insert(transaction, token, 0, [message, &blocks[index]])?;
     Ok(true)
 }
@@ -291,15 +302,63 @@ fn insert<'a>(
     Ok(())
 }
 
+/// Copies into the snapshot of `token` each attachment the texts among
+/// `blocks` name that exists now, so one uploaded later stays out until the
+/// snapshot is taken again; its blob stays shared.
+fn keep_attachments<'a>(
+    transaction: &Transaction<'_>,
+    token: &ShareToken,
+    blocks: impl IntoIterator<Item = &'a Block>,
+) -> Result<(), StorageError> {
+    let mut copy = transaction.prepare_cached(
+        "INSERT INTO share_attachments (token, number, name, media_type, size, width, height, blob)
+         SELECT ?1, number, name, media_type, size, width, height, blob FROM attachments WHERE number = ?2
+         ON CONFLICT (token, number) DO NOTHING",
+    )?;
+    for block in blocks {
+        let Block::Text(text) = block else {
+            continue;
+        };
+        for number in named_attachments(&text.text) {
+            let number = i64::try_from(number.0).expect("a parsed attachment number fits the column");
+            copy.execute(params![token.as_str(), number])?;
+        }
+    }
+    Ok(())
+}
+
+/// The attachments a text names by a link's or an image's target
+/// `attachment:a3`, as the web app's renderer reads them: the target,
+/// trimmed, is `attachment:` and the number whole (`attachmentId` in
+/// `packages/web-ui/src/markdown/filePath.ts`).
+pub fn named_attachments(text: &str) -> BTreeSet<AttachmentNumber> {
+    let arena = Arena::new();
+    let mut options = Options::default();
+    options.extension.autolink = true;
+    let root = parse_document(&arena, text, &options);
+    root.descendants()
+        .filter_map(|node| match &node.data.borrow().value {
+            NodeValue::Link(link) | NodeValue::Image(link) => link
+                .url
+                .trim()
+                .strip_prefix("attachment:")
+                .and_then(|number| number.parse().ok()),
+            _ => None,
+        })
+        .collect()
+}
+
 /// Removes the snapshot of `token`.
 pub fn remove(connection: &Connection, token: &ShareToken) -> Result<(), StorageError> {
-    connection.execute("DELETE FROM share_blocks WHERE token = ?1", [token.as_str()])?;
+    for table in ["share_blocks", "share_agents", "share_attachments"] {
+        connection.execute(&format!("DELETE FROM {table} WHERE token = ?1"), [token.as_str()])?;
+    }
     Ok(())
 }
 
 /// Whether the snapshot of `token` shows `blob` (`sharing.md` § Safety): one
 /// of its blocks names it, as a medium or a side of an edit, or it is the
-/// blob of an attachment the snapshot's text names.
+/// blob of an attachment the snapshot keeps.
 pub fn shows_blob(connection: &Connection, token: &ShareToken, blob: &BlobRef) -> Result<bool, StorageError> {
     // A block that names the blob holds its name; the rows that do not are
     // left unread.
@@ -313,59 +372,27 @@ pub fn shows_blob(connection: &Connection, token: &ShareToken, blob: &BlobRef) -
             return Ok(true);
         }
     }
-    for number in named_attachments(connection, token)? {
-        if conversation_attachments::read(connection, number)?.is_some_and(|row| row.blob == *blob) {
-            return Ok(true);
-        }
-    }
-    Ok(false)
+    let attachment: Option<i64> = connection
+        .query_row(
+            "SELECT 1 FROM share_attachments WHERE token = ?1 AND blob = ?2 LIMIT 1",
+            params![token.as_str(), blob.as_str()],
+            |row| row.get(0),
+        )
+        .optional()?;
+    Ok(attachment.is_some())
 }
 
-/// The attachment `number` when the snapshot of `token` names it.
+/// The attachment `number` as the snapshot of `token` keeps it.
 pub fn shown_attachment(
     connection: &Connection,
     token: &ShareToken,
     number: AttachmentNumber,
 ) -> Result<Option<AttachmentRow>, StorageError> {
-    if !named_attachments(connection, token)?.contains(&number) {
-        return Ok(None);
-    }
-    conversation_attachments::read(connection, number)
-}
-
-/// The attachments the texts of the snapshot of `token` name by a link
-/// such as `attachment:a3` (`commands.md` § Attachment commands).
-fn named_attachments(
-    connection: &Connection,
-    token: &ShareToken,
-) -> Result<BTreeSet<AttachmentNumber>, StorageError> {
-    let mut statement = connection.prepare(
-        "SELECT block FROM share_blocks
-         WHERE token = ?1 AND json_extract(block, '$.type') = 'text' AND instr(block, 'attachment:a') > 0",
-    )?;
-    let mut rows = statement.query([token.as_str()])?;
-    let mut named = BTreeSet::new();
-    while let Some(row) = rows.next()? {
-        let Block::Text(text) = json("share_blocks", "block", &row.get::<_, String>(0)?)? else {
-            continue;
-        };
-        for (at, _) in text.text.match_indices("attachment:") {
-            let rest = &text.text[at + "attachment:".len()..];
-            let end = rest
-                .char_indices()
-                .skip(1)
-                .find(|(_, character)| !character.is_ascii_digit())
-                .map_or(rest.len(), |(index, _)| index);
-            if let Ok(number) = rest[..end].parse() {
-                named.insert(number);
-            }
-        }
-    }
-    Ok(named)
+    conversation_attachments::read_shared(connection, token.as_str(), number)
 }
 
 /// A subagent the snapshot of `token` holds: its number, its spawn's
-/// description and its profile.
+/// description and its profile, as they were when it was taken.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SharedAgent {
     pub number: u64,
@@ -373,19 +400,16 @@ pub struct SharedAgent {
     pub profile: Option<String>,
 }
 
-/// The subagents the snapshot of `token` holds, in the order they started,
-/// as the tree records them.
+/// The subagents the snapshot of `token` holds, in the order they started.
 pub fn shared_agents(connection: &Connection, token: &ShareToken) -> Result<Vec<SharedAgent>, StorageError> {
     let mut statement = connection.prepare(
-        "SELECT number, description, profile FROM nodes
-         WHERE number IN (SELECT DISTINCT agent FROM share_blocks WHERE token = ?1 AND agent > 0)
-         ORDER BY number",
+        "SELECT number, description, profile FROM share_agents WHERE token = ?1 ORDER BY number",
     )?;
     let mut rows = statement.query([token.as_str()])?;
     let mut agents = Vec::new();
     while let Some(row) = rows.next()? {
         agents.push(SharedAgent {
-            number: decode("nodes", "number", u64::try_from(row.get::<_, i64>(0)?))?,
+            number: decode("share_agents", "number", u64::try_from(row.get::<_, i64>(0)?))?,
             description: row.get(1)?,
             profile: row.get(2)?,
         });
@@ -402,6 +426,11 @@ pub fn snapshot_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, Stor
     while let Some(row) = rows.next()? {
         let block: Block = json("share_blocks", "block", &row.get::<_, String>(0)?)?;
         blobs.extend(block_blobs(&block).cloned());
+    }
+    let mut statement = connection.prepare("SELECT blob FROM share_attachments")?;
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        blobs.insert(decode("share_attachments", "blob", BlobRef::try_from(row.get::<_, String>(0)?))?);
     }
     Ok(blobs)
 }
