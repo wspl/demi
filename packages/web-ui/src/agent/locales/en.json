@@ -1,0 +1,301 @@
+{
+  "transcript": {
+    "accountSwitch": {
+      "usage": "{from} reached its usage limit. Continuing with {to}.",
+      "usageReset": "{from} reached its usage limit, {reset}. Continuing with {to}.",
+      "window": "{from} reached its {window} limit. Continuing with {to}.",
+      "windowReset": "{from} reached its {window} limit, {reset}. Continuing with {to}."
+    },
+    "notice": {
+      "titled": "{notice}:"
+    },
+    "receipt": {
+      "allowed": "You allowed this conversation to {action}",
+      "denied": "You denied this conversation permission to {action}",
+      "moved": "You moved this conversation to {host} · {path}",
+      "moveFailed": "Move failed: {reason}",
+      "fromMain": "Message from {agent}",
+      "mainAgent": "main agent",
+      "fromAgent": "Message from agent",
+      "finished": "Agent finished",
+      "failed": "Agent failed",
+      "stopped": "Agent stopped",
+      "unnamed": "Agent {number}"
+    },
+    "report": {
+      "finished": "Command finished",
+      "failed": "Command failed with exit code {code}",
+      "stoppedByYou": "Command stopped by you",
+      "stoppedByAgent": "Command stopped by another agent",
+      "stopped": "Command stopped",
+      "lost": "Lost track of command",
+      "untitled": "Command {id}"
+    },
+    "runEnd": {
+      "failed": "Failed",
+      "stopped": "Stopped",
+      "stopping": "Stopping…",
+      "lost": "Lost",
+      "exitCode": "Exit code {code}"
+    },
+    "commandStatus": {
+      "lost": "Lost",
+      "lostWhy": "Lost: {reason}",
+      "stopping": "Stopping…",
+      "running": "Running for {span}",
+      "exited": "Exited after {span}",
+      "exitedZero": "Exited with 0 after {span}",
+      "failed": "Failed with exit code {code} after {span}",
+      "stopped": "Stopped after {span}"
+    },
+    "thinking": {
+      "now": "Thinking",
+      "briefly": "Thought briefly",
+      "nowFor": "Thinking for {span}",
+      "doneFor": "Thought for {span}",
+      "requesting": "Requesting",
+      "requestingFor": "Requesting for {span}"
+    },
+    "compaction": {
+      "running": "Compacting context…",
+      "done": "Context compacted",
+      "doneTo": "Context compacted to ~{tokens} tokens"
+    },
+    "stopped": "Stopped",
+    "queued": "{count} queued",
+    "user": {
+      "edit": "Edit",
+      "showMore": "Show More",
+      "showLess": "Show Less",
+      "sendsNext": "Sends at the agent’s next step",
+      "sendNow": "Send Now",
+      "recall": "Recall",
+      "recalled": "Message Recalled",
+      "notDelivered": "This message was not delivered."
+    },
+    "assistant": {
+      "fork": "Fork",
+      "forkWait": "Fork is available after this message completes.",
+      "regenerate": "Regenerate",
+      "forkFailed": "Could Not Fork from This Message"
+    },
+    "edit": {
+      "rejected": "The edit was not accepted.",
+      "unconfirmed": "Could Not Confirm the Edit"
+    },
+    "connecting": "Connecting",
+    "newFile": "New file",
+    "picture": {
+      "open": "Open {name} large",
+      "play": "Play {name}"
+    },
+    "gone": {
+      "line": "{kind} not stored: {reason}",
+      "image": "Image",
+      "video": "Video",
+      "document": "Document"
+    },
+    "shellFallback": "Run shell command",
+    "turnFailed": "The turn failed",
+    "work": {
+      "ran": "ran {count} command | ran {count} commands",
+      "checked": "checked {count} command | checked {count} commands",
+      "used": "used {tool}",
+      "running": "running {count} command | running {count} commands",
+      "checking": "checking {count} command | checking {count} commands",
+      "using": "using {tool}",
+      "joined": "{first}, {next}",
+      "runningFor": "{what} for {time}",
+      "command": {
+        "finished": "{count} command finished | {count} commands finished",
+        "failed": "{count} command failed | {count} commands failed",
+        "stopped": "{count} command stopped | {count} commands stopped",
+        "stopping": "{count} command stopping | {count} commands stopping",
+        "lost": "{count} command lost | {count} commands lost"
+      },
+      "agent": {
+        "finished": "{count} agent finished | {count} agents finished",
+        "failed": "{count} agent failed | {count} agents failed",
+        "stopped": "{count} agent stopped | {count} agents stopped"
+      },
+      "heard": "heard from {count} agent | heard from {count} agents"
+    }
+  },
+  "subagents": {
+    "mainAgent": "Main agent",
+    "agentNumber": "agent {number}",
+    "phase": {
+      "running": "Running",
+      "completed": "Finished",
+      "error": "Failed",
+      "aborted": "Stopped"
+    },
+    "forkedFrom": "Forked from {agent}",
+    "inherited": "Inherited from this conversation",
+    "fast": "Fast",
+    "chip": "{count} Agent | {count} Agents",
+    "stopAgent": "Stop Agent",
+    "copyId": "Copy Agent ID",
+    "closeTab": "Close Tab",
+    "stopAll": "Stop All",
+    "none": "No agents running",
+    "completed": "Completed",
+    "searchCompleted": "Search completed",
+    "noneCompleted": "No completed subagents",
+    "thinkingOff": "Thinking off"
+  },
+  "terminals": {
+    "endCommand": "End Command",
+    "closeTab": "Close Tab",
+    "chip": "{count} Running"
+  },
+  "session": {
+    "loading": "Loading conversation…",
+    "loadFailed": "Couldn’t load this conversation.",
+    "notFound": "Conversation not found",
+    "noneOpen": "No conversation open",
+    "empty": "No messages",
+    "start": "Start a Conversation",
+    "openSidebar": "Open sidebar",
+    "openPanel": "Open panel",
+    "closePanel": "Close panel",
+    "options": "{title}, conversation options",
+    "hostState": "{name} is {state}",
+    "renameTitle": "Rename Conversation",
+    "titleLabel": "Conversation title",
+    "runsOn": "Runs On",
+    "backToConversation": "Conversation",
+    "archived": "This conversation is archived.",
+    "restore": "Restore Conversation"
+  },
+  "dock": {
+    "scrollToBottom": "Scroll to bottom",
+    "resume": "Resume",
+    "continue": "Continue",
+    "stillOffline": "{name} is still offline",
+    "continueWith": "Continue with {label}"
+  },
+  "notices": {
+    "hostOffline": "{name} is offline.",
+    "moveHost": "Move to Another Host…",
+    "pluginsChanged": "Plugins changed",
+    "replacedDraft": "A later save replaced {draft}",
+    "quoted": "“{text}”",
+    "restore": "Restore",
+    "dismiss": "Dismiss",
+    "dismissDraft": "Dismiss the replaced draft"
+  },
+  "composer": {
+    "placeholder": "Ask anything…",
+    "message": "Message",
+    "noModels": "No models available",
+    "configureModels": "Configure Models",
+    "attach": "Attach",
+    "attachFiles": "Attach Files…",
+    "attachLocalFiles": "Attach Local Files…",
+    "attachRemoteFile": "Attach Remote File…",
+    "cancelEdit": "Cancel edit",
+    "saveForLater": "Save for later",
+    "saveForLaterKeys": "Save for later  {keys}",
+    "stop": "Stop",
+    "send": "Send",
+    "saveAndResend": "Save and resend",
+    "sendOtherWay": "{way} · {keys} to {other}",
+    "modelUnavailable": "This model is unavailable. Choose another to send.",
+    "modelsLoading": "The models are still loading.",
+    "couldntAttach": "Couldn’t Attach",
+    "afterEdit": "Available after the edit",
+    "saved": {
+      "count": "{count} Saved",
+      "notSaved": "Not saved",
+      "edit": "Edit",
+      "send": "Send",
+      "delete": "Delete"
+    }
+  },
+  "attachments": {
+    "uploading": "Uploading {percent}% · {name}",
+    "attaching": "Attaching · {name}",
+    "failed": "{name} did not upload. Retry or delete it.",
+    "refused": "{name} is empty or over {limit}.",
+    "retryOrRemove": "Retry or remove the attachments that did not upload",
+    "waitForUpload": "Wait for attachments to finish uploading",
+    "pastedNames": "{list}: pasted the name instead. | {list}: pasted the names instead.",
+    "couldntCopyPicture": "Couldn’t Copy the Picture"
+  },
+  "models": {
+    "parent": "Parent’s Model",
+    "fast": "Fast Mode",
+    "reasoning": "Reasoning",
+    "context": "Context",
+    "model": "Model",
+    "off": "Off",
+    "default": "Default ({window})",
+    "effort": {
+      "minimal": "Minimal",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra High",
+      "max": "Max"
+    },
+    "loading": "Loading models…",
+    "loadFailed": "Couldn’t load models.",
+    "unavailable": "This model is unavailable. Choose another to send."
+  },
+  "workflows": {
+    "label": "Workflow",
+    "labelTip": "Workflow: {name}",
+    "default": "Default",
+    "none": "No Subagents",
+    "reading": "Reading Workflows…",
+    "failed": "Couldn’t Read Workflows",
+    "unavailable": "Workflows Unavailable",
+    "gone": "This workflow is no longer in the project. Choose another."
+  },
+  "context": {
+    "window": "Context window",
+    "windowUsed": "Context window, {percent} used",
+    "tip": "Context {figure}",
+    "compacting": "Compacting context…",
+    "unavailable": "Context usage unavailable",
+    "compact": "Compact",
+    "untilCompaction": "{tokens} until compaction",
+    "afterTurn": "Available after the turn ends",
+    "availableFrom": "Available from {from} context (now {now})",
+    "usageLimits": "Usage limits",
+    "refreshUsage": "Refresh usage",
+    "instructions": "Instructions",
+    "personalInstructions": "Personal instructions",
+    "workflowInstructions": "Workflow: {name}",
+    "row": {
+      "messages": "Messages",
+      "systemPrompt": "System prompt",
+      "commands": "Commands",
+      "instructions": "Instructions",
+      "skills": "Skills",
+      "otherContext": "Other context",
+      "summary": "Summary",
+      "compactionBuffer": "Compaction buffer",
+      "freeSpace": "Free space"
+    }
+  },
+  "address": {
+    "back": "Back",
+    "forward": "Forward",
+    "stop": "Stop",
+    "placeholder": "Enter address",
+    "label": "Browser address"
+  },
+  "panel": {
+    "more": "More",
+    "windowHeight": "Window height",
+    "duplicate": "Duplicate",
+    "closeOthers": "Close Others",
+    "closeRight": "Close to the Right",
+    "closeLeft": "Close to the Left",
+    "cannotShow": "This tab cannot be shown.",
+    "nothingOpen": "Nothing open",
+    "noFiles": "No files or changes"
+  }
+}

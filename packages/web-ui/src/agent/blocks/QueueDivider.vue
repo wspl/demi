@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../locales/text'
 
 defineProps<{
   count: number
@@ -8,7 +9,7 @@ defineProps<{
 <template>
   <div class="flex items-center gap-3 px-[var(--agent-pad-x,2rem)]">
     <div class="h-px flex-1 bg-line-subtle" />
-    <span class="text-row text-fg-row">{{ count }} Queued</span>
+    <span class="text-row text-fg-row">{{ t('transcript.queued', { count }) }}</span>
     <div class="h-px flex-1 bg-line-subtle" />
   </div>
 </template>

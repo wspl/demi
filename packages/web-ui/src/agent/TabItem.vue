@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t as shared } from '../locales/text'
 import { computed, inject } from 'vue'
 import { SquareTerminal, X } from '@lucide/vue'
 import type { ConversationStatus } from './conversation-status'
@@ -154,7 +155,7 @@ function onMenuKey(event: KeyboardEvent): void {
         :icon="X"
         size="xs"
         variant="ghost"
-        aria-label="Close"
+        :aria-label="shared('common.close')"
         class="transition-opacity"
         :class="isActive ? '' : 'opacity-0 group-hover:opacity-100 phone:opacity-100'"
         @pointerdown.stop

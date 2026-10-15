@@ -42,7 +42,6 @@
   "savedDeleted": "Saved Message Deleted",
   "newConversation": "New conversation",
   "composer": {
-    "placeholder": "Ask anything…",
     "cloudResetting": "The Cloud is resetting."
   },
   "workflows": {

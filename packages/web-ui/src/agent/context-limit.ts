@@ -1,6 +1,7 @@
 import { contextLimits } from '@demicodes/protocol'
 import type { ModelInfo } from '../transport/protocol'
 import { formatTokens } from '../ui/token-count'
+import { t } from './locales/text'
 
 /**
  * One model's context limit as the model menu changes it (`models.md`
@@ -59,7 +60,7 @@ export function profileContextOptions(model: ModelInfo): ProfileContextOption[] 
     return []
   }
   return [
-    { label: `Default (${formatTokens(contextWindowInUse(model))})`, tokens: null },
+    { label: t('models.default', { window: formatTokens(contextWindowInUse(model)) }), tokens: null },
     ...options.map((option) => ({ label: formatTokens(option.window), tokens: option.window })),
   ]
 }

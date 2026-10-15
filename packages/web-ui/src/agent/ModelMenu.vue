@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { Brain, CornerLeftUp, Cpu, Layers, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
@@ -80,7 +81,7 @@ function selectParent() {
     <template v-if="rows.parent">
       <MenuItem
         :icon="CornerLeftUp"
-        label="Parent’s Model"
+        :label="t('models.parent')"
         choice
         :is-selected="rows.parent.selected"
         @select="selectParent"
@@ -90,7 +91,7 @@ function selectParent() {
     <MenuItem
       v-if="rows.fast"
       :icon="Zap"
-      label="Fast Mode"
+      :label="t('models.fast')"
       @select="setFast(!rows.fast.on)"
     >
       <template #suffix>
@@ -105,7 +106,7 @@ function selectParent() {
     <MenuItem
       v-if="rows.reasoning"
       :icon="Brain"
-      label="Reasoning"
+      :label="t('models.reasoning')"
       :value="rows.reasoning.value"
     >
       <template #submenu>
@@ -125,7 +126,7 @@ function selectParent() {
     <MenuItem
       v-if="context"
       :icon="Layers"
-      label="Context"
+      :label="t('models.context')"
       :value="context.value"
     >
       <template #submenu>
@@ -136,7 +137,7 @@ function selectParent() {
       </template>
     </MenuItem>
     <MenuDivider v-if="rows.fast || rows.reasoning || context" />
-    <MenuItem :icon="Cpu" label="Model" :value="rows.model.value">
+    <MenuItem :icon="Cpu" :label="t('models.model')" :value="rows.model.value">
       <template #submenu>
         <Menu>
           <MenuGroup

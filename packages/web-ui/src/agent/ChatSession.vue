@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from './locales/text'
+import { t as shared } from '../locales/text'
 import type { ShownError } from '../infra/errors'
 import { provideEditSelection, type EditSelectionHandler } from './edit-selection'
 import { provideResumeAtRetry } from './resume-at-retry'
@@ -457,7 +459,7 @@ watch(
         v-if="drawer"
         :icon="PanelLeft"
         variant="ghost"
-        aria-label="Open sidebar"
+        :aria-label="t('session.openSidebar')"
         @click="drawer.open()"
       />
       <!-- The title is centered between the bar's two buttons, whichever of them shows. -->
@@ -465,14 +467,14 @@ watch(
       <button
         type="button"
         class="flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 px-1 text-fg"
-        :aria-label="`${conversation.title}, conversation options`"
+        :aria-label="t('session.options', { title: conversation.title })"
         :aria-expanded="titleSheetOpen"
         @click="titleSheetOpen = true"
       >
         <StatusDot
           v-if="hostNotReady"
           :tone="DEVICE_STATE_TONE[hostNotReady.state]"
-          :label="`${hostNotReady.name} is ${DEVICE_STATE_LABEL[hostNotReady.state].toLowerCase()}`"
+          :label="t('session.hostState', { name: hostNotReady.name, state: DEVICE_STATE_LABEL[hostNotReady.state].toLowerCase() })"
         />
         <h1 class="min-w-0 truncate text-[15px] font-medium">{{ conversation.title }}</h1>
         <ChevronDown :size="ICON_PX.in20" class="shrink-0 text-fg-subtle" />
@@ -481,7 +483,7 @@ watch(
         v-if="asideOpen !== undefined"
         :icon="PanelRight"
         variant="ghost"
-        aria-label="Open panel"
+        :aria-label="t('session.openPanel')"
         @click="emit('openAside')"
       />
       <span v-else class="size-hit shrink-0" />
@@ -502,7 +504,7 @@ watch(
         </Menu>
         <!-- Where the conversation runs, as the desktop's header shows it beside the title. -->
         <div v-if="$slots.workspace" class="px-4 pb-3 pt-1">
-          <p class="pb-1 text-[12px] text-fg-subtle">Runs On</p>
+          <p class="pb-1 text-[12px] text-fg-subtle">{{ t('session.runsOn') }}</p>
           <div ref="workspaceTarget" />
         </div>
       </Sheet>
@@ -516,8 +518,8 @@ watch(
       <RenameDialog
         :is-open="renameAsked"
         :overlay-store="appOverlayStore"
-        title="Rename Conversation"
-        label="Conversation title"
+        :title="t('session.renameTitle')"
+        :label="t('session.titleLabel')"
         :name="conversation.title"
         :max-length="null"
         @close="renaming = false"
@@ -554,11 +556,11 @@ watch(
           </h1>
           <!-- A cut title shows whole in its tip, as a sidebar row's does. -->
           <Tooltip :trigger="title" :content="conversation.title" :show-if="isTextCut" placement="bottom-start" />
-          <Tooltip content="Rename" class="shrink-0">
+          <Tooltip :content="shared('common.rename')" class="shrink-0">
             <IconButton
               :icon="TextCursorInput"
               variant="ghost"
-              aria-label="Rename"
+              :aria-label="shared('common.rename')"
               :disabled="conversation.archived"
               @click="beginRename"
             />
@@ -574,13 +576,13 @@ watch(
         <!-- Only while the panel is closed: open, its own fold control closes it. -->
         <Tooltip
           v-if="asideOpen === false"
-          content="Open panel"
+          :content="t('session.openPanel')"
           class="shrink-0"
         >
           <IconButton
             :icon="PanelRight"
             variant="ghost"
-            aria-label="Open panel"
+            :aria-label="t('session.openPanel')"
             @click="emit('openAside')"
           />
         </Tooltip>
@@ -653,13 +655,13 @@ watch(
               <!-- The transcript says what happened; the one recovery control is here, over the input. -->
               <Tooltip
                 v-if="recovery"
-                :content="resumeWait ? `${resumeWait} is still offline` : undefined"
+                :content="resumeWait ? t('dock.stillOffline', { name: resumeWait }) : undefined"
                 :disabled="resumeWait === null"
                 class="inline-flex"
               >
                 <SessionDockChip :disabled="resumeWait !== null" @click="recover">
                   <Play :size="ICON_PX.in28" />
-                  {{ recovery === 'resume' ? 'Resume' : 'Continue' }}
+                  {{ recovery === 'resume' ? t('dock.resume') : t('dock.continue') }}
                 </SessionDockChip>
               </Tooltip>
               <SessionDockChip
@@ -667,7 +669,7 @@ watch(
                 @click="emit('continueWith', continueWith.providerId, continueWith.credentialId)"
               >
                 <ArrowRightLeft :size="ICON_PX.in28" />
-                <span class="min-w-0 truncate">Continue with {{ continueWith.label }}</span>
+                <span class="min-w-0 truncate">{{ t('dock.continueWith', { label: continueWith.label }) }}</span>
               </SessionDockChip>
               <TerminalChip
                 :terminals="terminals"

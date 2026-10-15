@@ -1,4 +1,6 @@
 import { baseName } from '@demicodes/utils'
+import { formatBytes } from '../../files/format'
+import { t } from '../locales/text'
 
 /**
  * A failed upload keeps its capsule, which offers Retry; the toast says why it
@@ -210,7 +212,7 @@ export function composerAttachmentFromFile(file: File): ComposerFileAttachment {
  */
 export function attachmentFileError(file: File): string | undefined {
   if (!file.size || file.size > ATTACHMENT_MAX_BYTES) {
-    return `${file.name} is empty or over 25 MB.`
+    return t('attachments.refused', { name: file.name, limit: formatBytes(ATTACHMENT_MAX_BYTES) })
   }
 }
 
@@ -266,10 +268,10 @@ export function attachmentSendBlockReason(
   phases: readonly AttachmentPhase[],
 ): string | undefined {
   if (phases.includes('failed')) {
-    return 'Retry or remove the attachments that did not upload'
+    return t('attachments.retryOrRemove')
   }
   if (phases.includes('uploading') || phases.includes('attaching')) {
-    return 'Wait for attachments to finish uploading'
+    return t('attachments.waitForUpload')
   }
 }
 

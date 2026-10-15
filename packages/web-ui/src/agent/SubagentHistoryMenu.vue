@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { Bot, History } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -49,15 +50,15 @@ function select(id: string, close: () => void): void {
         size="sm"
         variant="ghost"
         :pressed="isOpen"
-        aria-label="Completed"
+        :aria-label="t('subagents.completed')"
       />
     </template>
     <template #content="{ close }">
       <Menu
         class="w-80"
         filterable
-        filter-placeholder="Search completed"
-        empty-text="No completed subagents"
+        :filter-placeholder="t('subagents.searchCompleted')"
+        :empty-text="t('subagents.noneCompleted')"
         :items="items"
         :selected-id="activeId ?? undefined"
         :item-height="28"

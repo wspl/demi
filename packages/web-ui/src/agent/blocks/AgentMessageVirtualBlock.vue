@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '../locales/text'
+import { t as shared } from '../../locales/text'
 import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, useAttrs } from 'vue'
 import { chromeEntrance } from '@demicodes/web-ui/ui/chrome-enter'
@@ -153,7 +155,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-bind="attrs"
       class="flex h-9 items-center justify-center text-fg-faint"
       role="status"
-      aria-label="Loading"
+      :aria-label="shared('common.loading')"
     >
       <IndeterminateSpinner :size="14" />
     </div>
@@ -247,9 +249,9 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         class="px-[var(--agent-pad-x,2rem)]"
       >
         <ErrorNotice
-          label="This message was not delivered."
+          :label="t('transcript.user.notDelivered')"
           :detail="block.submission.error"
-          action="Retry"
+          :action="shared('common.retry')"
           @action="emit('retrySubmission', block.submission.id)"
         />
       </div>
@@ -260,7 +262,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
         <ErrorNotice
           :label="block.failure.label"
           :request-id="block.failure.requestId"
-          :action="block.failure.retry ? 'Retry' : undefined"
+          :action="block.failure.retry ? shared('common.retry') : undefined"
           @action="emit('retryLoad')"
         />
       </div>

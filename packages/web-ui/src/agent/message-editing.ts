@@ -11,6 +11,7 @@ import {
   type TranscriptVersion,
 } from '@demicodes/protocol'
 import { reportError } from '../infra/errors'
+import { t } from './locales/text'
 import type { MessageListBlock } from './pending-steers'
 
 export { EditRejectedError } from '@demicodes/conversation-client'
@@ -246,7 +247,7 @@ async function sendMessageEdit(
       host.set({ phase: rejected ? 'editing' : 'uncertain', request })
     }
     reportError(
-      rejected ? 'The edit was not accepted.' : 'Could Not Confirm the Edit',
+      rejected ? t('transcript.edit.rejected') : t('transcript.edit.unconfirmed'),
       error,
       { userVisible: true, expected: rejected },
     )

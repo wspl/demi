@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../locales/text'
 import LineCounts from '../../files/LineCounts.vue'
 import { computed, ref } from 'vue'
 import { baseName } from '@demicodes/utils'
@@ -97,7 +98,7 @@ const opensRest = computed(() => props.restSelectable?.(hiddenPaths.value) ?? fa
           icon a step back too, never so faint it reads as unavailable. -->
         <span class="relative inline-flex shrink-0 opacity-80 transition-opacity duration-200 ease-out group-hover/pill:opacity-100">
           <FileIcon :name="baseName(file.path)" :is-directory="false" :size="14" />
-          <CornerPlus v-if="file.kind === 'added'" label="New file" />
+          <CornerPlus v-if="file.kind === 'added'" :label="t('transcript.newFile')" />
         </span>
         <!-- Name and counts use different fonts and sizes: align them on the baseline, not the box. -->
         <span class="inline-flex min-w-0 items-baseline gap-1.5">

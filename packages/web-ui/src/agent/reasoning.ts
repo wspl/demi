@@ -1,6 +1,7 @@
 import type { Component } from 'vue'
 import { Battery, BatteryCharging, BatteryFull, BatteryLow, BatteryMedium, Gauge } from '@lucide/vue'
 import { upperFirst } from '@demicodes/utils'
+import { find, t } from './locales/text'
 import type { ModelInfo } from '../transport/protocol'
 import { firstEffort, THINKING_OFF } from './model-selection'
 import type { TitleText } from '../ui/ui-text'
@@ -41,7 +42,7 @@ export function effortIcon(effort: string): Component {
 
 /** An effort as the model menu names it: `high` is High. */
 export function effortWord(effort: string): TitleText {
-  return upperFirst(effort)
+  return find(`models.effort.${effort}`) ?? upperFirst(effort)
 }
 
 export function buildReasoningState(model: ModelInfo | null | undefined): ReasoningState | null {
@@ -54,7 +55,7 @@ export function buildReasoningState(model: ModelInfo | null | undefined): Reason
     icon: effortIcon(effort),
   }))
   const options: ReasoningOption[] = model.reasoning.canDisable
-    ? [{ label: 'Off', effort: THINKING_OFF, icon: effortIcon(THINKING_OFF) }, ...effortOptions]
+    ? [{ label: t('models.off'), effort: THINKING_OFF, icon: effortIcon(THINKING_OFF) }, ...effortOptions]
     : effortOptions
   return { options, firstEffort: first }
 }

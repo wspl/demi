@@ -1,5 +1,6 @@
 import type { Block, InstructionEntry } from '@demicodes/protocol'
 import { baseName, parentPath, relativePath } from '../files/paths'
+import { t } from './locales/text'
 
 /**
  * What the model holds of the user's and the project's instructions: the
@@ -51,9 +52,9 @@ export function instructionRows(entries: readonly InstructionEntry[]): Instructi
   return entries.map((entry) => {
     switch (entry.kind) {
       case 'personal':
-        return { entry, label: 'Personal instructions', path: null }
+        return { entry, label: t('context.personalInstructions'), path: null }
       case 'workflow':
-        return { entry, label: `Workflow: ${entry.name}`, path: entry.path }
+        return { entry, label: t('context.workflowInstructions', { name: entry.name }), path: entry.path }
       case 'file': {
         const label = base === null ? baseName(entry.path) : relativePath(base, entry.path)
         return { entry, label, path: entry.path }

@@ -1,5 +1,6 @@
 import type { MessageListBlock } from './pending-steers'
-import { countOf, upperFirst } from '@demicodes/utils'
+import { upperFirst } from '@demicodes/utils'
+import { t } from './locales/text'
 import { parseToolCallInput, storedShellView } from './block-helpers'
 import { reportMark, reportShown } from './command-reports'
 import { runningTime } from './command-end'
@@ -190,11 +191,6 @@ export function workRowId(first: WorkStep): string {
   return `work:${stepKey(first)}`
 }
 
-/** A command count as a row says it. */
-function commands(count: number): string {
-  return countOf(count, 'command')
-}
-
 /**
  * What a call did, as a group's row counts it: a `shell` call whose script
  * only runs `demi shell status` checks the commands it names; any other
@@ -248,43 +244,53 @@ function callGroups(steps: readonly WorkStep[]): CallGroup[] {
 /** How a row words each kind of call, in the past once the run ended and in the present while it runs. */
 const WORDS = {
   ended: {
-    run: (count: number) => `ran ${commands(count)}`,
-    check: (count: number) => `checked ${commands(count)}`,
-    generic: (_count: number, tool: string) => `used ${tool}`,
+    run: (count: number) => t('transcript.work.ran', { count }, count),
+    check: (count: number) => t('transcript.work.checked', { count }, count),
+    generic: (_count: number, tool: string) => t('transcript.work.used', { tool }),
   },
   running: {
-    run: (count: number) => `running ${commands(count)}`,
-    check: (count: number) => `checking ${commands(count)}`,
-    generic: (_count: number, tool: string) => `using ${tool}`,
+    run: (count: number) => t('transcript.work.running', { count }, count),
+    check: (count: number) => t('transcript.work.checking', { count }, count),
+    generic: (_count: number, tool: string) => t('transcript.work.using', { tool }),
   },
 } satisfies Record<string, Record<CallKind['kind'], (count: number, tool: string) => string>>
+
+/** The phrases of a row joined, as the language lists clauses. */
+function joinPhrases(parts: readonly string[]): string {
+  return parts.reduce((joined, part) => t('transcript.work.joined', { first: joined, next: part }))
+}
 
 /** Each kind of call the run made, once, in the order it first made it, joined as one phrase. */
 function describeCalls(steps: readonly WorkStep[], tense: keyof typeof WORDS): string {
   const parts = callGroups(steps).map((group) => WORDS[tense][group.kind](group.touched.size, group.tool))
-  return upperFirst(parts.join(', '))
-}
-
-/** An agent count as a row says it. */
-function agents(count: number): string {
-  return countOf(count, 'agent')
+  return parts.length === 0 ? '' : upperFirst(joinPhrases(parts))
 }
 
 /**
  * What a notice or a receipt told: a command's end or an agent's end, each
  * by how it ended, as its own row says it, or an agent's update.
  */
-interface Told {
-  subject: 'command' | 'agent' | 'update'
-  ending: string
+type ToldEvent =
+  | { subject: 'command', ending: 'finished' | 'failed' | 'stopped' | 'stopping' | 'lost' }
+  | { subject: 'agent', ending: 'finished' | 'failed' | 'stopped' }
+  | { subject: 'update' }
+
+type Told = ToldEvent & {
   /** The commands or the agents it named, each once. */
   names: Set<string>
 }
 
-/** The words of what the run was told, after the count of what it named. */
-function toldWords({ subject, ending, names }: Told): string {
-  const count = names.size
-  return subject === 'update' ? `heard from ${agents(count)}` : `${subject === 'command' ? commands(count) : agents(count)} ${ending}`
+/** The words of what the run was told: what it named, counted, and how it ended. */
+function toldWords(told: Told): string {
+  const count = told.names.size
+  switch (told.subject) {
+    case 'update':
+      return t('transcript.work.heard', { count }, count)
+    case 'command':
+      return t(`transcript.work.command.${told.ending}`, { count }, count)
+    case 'agent':
+      return t(`transcript.work.agent.${told.ending}`, { count }, count)
+  }
 }
 
 /**
@@ -295,26 +301,27 @@ function toldWords({ subject, ending, names }: Told): string {
  */
 function describeNotices(steps: readonly WorkStep[]): string {
   const told = new Map<string, Told>()
-  const add = (subject: Told['subject'], ending: string, name: string) => {
-    const key = `${subject} ${ending}`
-    const entry = told.get(key) ?? { subject, ending, names: new Set<string>() }
+  const add = (event: ToldEvent, name: string) => {
+    const key = event.subject === 'update' ? event.subject : `${event.subject} ${event.ending}`
+    const entry: Told = told.get(key) ?? { ...event, names: new Set<string>() }
     entry.names.add(name)
     told.set(key, entry)
   }
   for (const step of steps) {
     if (step.type === 'wakeup') {
       for (const report of step.reports.filter(reportShown))
-        add('command', reportMark(report)?.kind ?? 'finished', report.commandId)
+        add({ subject: 'command', ending: reportMark(report)?.kind ?? 'finished' }, report.commandId)
     }
     else if (step.type === 'agent_message') {
       const name = step.message.sender?.id ?? step.id
       if (step.message.event.type === 'completion')
-        add('agent', receiptRow(step.message).tag ?? 'finished', name)
+        add({ subject: 'agent', ending: receiptRow(step.message).tag ?? 'finished' }, name)
       else
-        add('update', '', name)
+        add({ subject: 'update' }, name)
     }
   }
-  return upperFirst([...told.values()].map(toldWords).join(', '))
+  const parts = [...told.values()].map(toldWords)
+  return parts.length === 0 ? '' : upperFirst(joinPhrases(parts))
 }
 
 /**
@@ -328,10 +335,10 @@ function describeNotices(steps: readonly WorkStep[]): string {
 export function workRunning(steps: readonly WorkStep[], elapsedMs: number | null = null): string {
   const ran = callGroups(steps).find((group) => group.kind === 'run')?.touched.size ?? 0
   const what = ran > 0
-    ? `Running ${commands(ran)}`
-    : describeCalls(steps, 'running') || describeNotices(steps) || 'Thinking'
+    ? upperFirst(t('transcript.work.running', { count: ran }, ran))
+    : describeCalls(steps, 'running') || describeNotices(steps) || t('transcript.thinking.now')
   const time = runningTime(elapsedMs)
-  return time === null ? what : `${what} for ${time}`
+  return time === null ? what : t('transcript.work.runningFor', { what, time })
 }
 
 /**

@@ -1,13 +1,14 @@
 import type { CommandReport } from '@demicodes/protocol'
 import { inject, provide, type InjectionKey } from 'vue'
 import type { CommandEndMark } from './command-end'
+import { t } from './locales/text'
 
 /**
  * The call a report row names (`runtime.md` § Command reports): its title, or
  * the command by its number when the title is not known.
  */
 export function reportTitle(report: CommandReport): string {
-  return report.title.trim() || `Command ${report.commandId}`
+  return report.title.trim() || t('transcript.report.untitled', { id: report.commandId })
 }
 
 /**
@@ -23,19 +24,19 @@ export function reportNotice(report: CommandReport): string | null {
     case 'ended': {
       // An end whose status was not recorded reads as one that succeeded.
       const code = event.exitCode ?? 0
-      return code === 0 ? 'Command finished' : `Command failed with exit code ${code}`
+      return code === 0 ? t('transcript.report.finished') : t('transcript.report.failed', { code })
     }
     case 'stopped':
       switch (event.by?.kind) {
         case 'user':
-          return 'Command stopped by you'
+          return t('transcript.report.stoppedByYou')
         case 'agent':
-          return 'Command stopped by another agent'
+          return t('transcript.report.stoppedByAgent')
         default:
-          return 'Command stopped'
+          return t('transcript.report.stopped')
       }
     case 'lost':
-      return 'Lost track of command'
+      return t('transcript.report.lost')
   }
 }
 

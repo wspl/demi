@@ -1,5 +1,6 @@
 import { ref, watch } from 'vue'
 import { reportError } from '../infra/errors'
+import { t } from './locales/text'
 
 export interface MessageForkRequest {
   id: string
@@ -41,7 +42,7 @@ export function useMessageForks(
       if (states.value === scope) {
         failedRequests.set(blockId, request)
       }
-      reportError('Could Not Fork from This Message', error, { userVisible: true })
+      reportError(t('transcript.assistant.forkFailed'), error, { userVisible: true })
     } finally {
       scope.delete(blockId)
     }

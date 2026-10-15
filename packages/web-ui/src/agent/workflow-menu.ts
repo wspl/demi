@@ -1,3 +1,5 @@
+import { t } from './locales/text'
+
 /**
  * The composer's Workflow menu (`product.md` § A conversation's workflow):
  * what the conversation's choice shows as, and the rows the menu offers,
@@ -50,8 +52,6 @@ export interface WorkflowShown {
   unavailable: string | null
 }
 
-const GONE = 'This workflow is no longer in the project. Choose another.'
-
 function sameChoice(a: WorkflowChoice, b: WorkflowChoice): boolean {
   return a.type === b.type && (a.type !== 'workflow' || (b.type === 'workflow' && a.id === b.id))
 }
@@ -59,16 +59,16 @@ function sameChoice(a: WorkflowChoice, b: WorkflowChoice): boolean {
 /** What the trigger shows for `choice`, its name from `list` while it is read. */
 export function workflowShown(choice: WorkflowChoice, list: WorkflowList): WorkflowShown {
   if (choice.type === 'default')
-    return { label: 'Default', unavailable: null }
+    return { label: t('workflows.default'), unavailable: null }
   if (choice.type === 'none')
-    return { label: 'No Subagents', unavailable: null }
+    return { label: t('workflows.none'), unavailable: null }
   if (list.state === 'unavailable')
     return { label: choice.id, unavailable: list.reason }
   if (list.state !== 'read')
     return { label: choice.id, unavailable: null }
   const listed = list.workflows.find((workflow) => workflow.id === choice.id)
   if (!listed)
-    return { label: choice.id, unavailable: GONE }
+    return { label: choice.id, unavailable: t('workflows.gone') }
   return { label: listed.name ?? choice.id, unavailable: listed.unavailable }
 }
 
@@ -85,21 +85,21 @@ export function workflowRows(choice: WorkflowChoice, list: WorkflowList): Workfl
     unavailable,
   })
   const rows = [
-    row('default', 'Default', { type: 'default' }),
-    row('none', 'No Subagents', { type: 'none' }),
+    row('default', t('workflows.default'), { type: 'default' }),
+    row('none', t('workflows.none'), { type: 'none' }),
   ]
   if (list.state === 'reading')
-    return [...rows, row('reading', 'Reading Workflows…', null)]
+    return [...rows, row('reading', t('workflows.reading'), null)]
   if (list.state === 'failed')
-    return [...rows, row('failed', 'Couldn’t Read Workflows', null, list.reason)]
+    return [...rows, row('failed', t('workflows.failed'), null, list.reason)]
   if (list.state === 'unavailable') {
-    const shown = [...rows, row('unavailable', 'Workflows Unavailable', null, list.reason)]
+    const shown = [...rows, row('unavailable', t('workflows.unavailable'), null, list.reason)]
     return choice.type === 'workflow' ? [...shown, row(`workflow:${choice.id}`, choice.id, choice, list.reason)] : shown
   }
   for (const workflow of list.workflows) {
     rows.push(row(`workflow:${workflow.id}`, workflow.name ?? workflow.id, { type: 'workflow', id: workflow.id }, workflow.unavailable))
   }
   if (choice.type === 'workflow' && !list.workflows.some((workflow) => workflow.id === choice.id))
-    rows.push(row(`workflow:${choice.id}`, choice.id, choice, GONE))
+    rows.push(row(`workflow:${choice.id}`, choice.id, choice, t('workflows.gone')))
   return rows
 }

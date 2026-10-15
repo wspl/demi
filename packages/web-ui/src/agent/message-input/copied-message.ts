@@ -1,6 +1,8 @@
 import type { JSONContent } from '@tiptap/core'
 import { z } from 'zod'
 import { jsonOrNull } from '@demicodes/utils'
+import { pageLanguage } from '../../i18n/text'
+import { t } from '../locales/text'
 import { ATTACHMENT_FILE_ATTRIBUTE } from '../../markdown/render'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '../../markdown/user-markdown'
 import type { MessageEditContent } from '../message-editing'
@@ -306,15 +308,13 @@ function namedPicture(image: File, file: CopiedStoredFile): File {
  * The toast that says which pasted files could not be added, their names
  * pasted in their place; none when every file was.
  */
-export function missingFilesToast(names: readonly string[]): { title: 'Couldn’t Attach'; message: string } | null {
+export function missingFilesToast(names: readonly string[]): { title: string; message: string } | null {
   if (!names.length) {
     return null
   }
-  const list = new Intl.ListFormat('en', { type: 'conjunction' }).format(names)
+  const list = new Intl.ListFormat(pageLanguage(), { type: 'conjunction' }).format(names)
   return {
-    title: 'Couldn’t Attach',
-    message: names.length === 1
-      ? `${list}: pasted the name instead.`
-      : `${list}: pasted the names instead.`,
+    title: t('composer.couldntAttach'),
+    message: t('attachments.pastedNames', { list }, names.length),
   }
 }

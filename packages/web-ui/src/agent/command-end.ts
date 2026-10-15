@@ -1,5 +1,6 @@
 import type { ShellViewStatus } from '@demicodes/protocol'
 import { formatSpan } from '../ui/dates'
+import { t } from './locales/text'
 
 /**
  * Where a command is, as a stored view or the command's live frames say it:
@@ -65,24 +66,26 @@ export function runningTime(elapsedMs: number | null): string | null {
  */
 export function commandStatusLine(end: CommandEnd | null, elapsedMs: number | null): string | null {
   if (end?.status === 'lost') {
-    return end.lostReason ? `Lost: ${end.lostReason}` : 'Lost'
+    return end.lostReason ? t('transcript.commandStatus.lostWhy', { reason: end.lostReason }) : t('transcript.commandStatus.lost')
   }
   if (end?.stopping) {
-    return 'Stopping…'
+    return t('transcript.commandStatus.stopping')
   }
   if (elapsedMs === null) {
     return null
   }
-  const time = formatSpan(elapsedMs)
+  const span = formatSpan(elapsedMs)
   switch (end?.status) {
     case undefined:
     case 'running':
-      return `Running for ${time}`
+      return t('transcript.commandStatus.running', { span })
     case 'exited':
       if (end.exitCode === undefined)
-        return `Exited after ${time}`
-      return end.exitCode === 0 ? `Exited with 0 after ${time}` : `Failed with exit code ${end.exitCode} after ${time}`
+        return t('transcript.commandStatus.exited', { span })
+      return end.exitCode === 0
+        ? t('transcript.commandStatus.exitedZero', { span })
+        : t('transcript.commandStatus.failed', { code: end.exitCode, span })
     case 'aborted':
-      return `Stopped after ${time}`
+      return t('transcript.commandStatus.stopped', { span })
   }
 }
