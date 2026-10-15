@@ -1922,7 +1922,11 @@ starts again.
   when a turn starts (a message, a subagent's brief, a wake by a report or a
   message, Retry, Resume), and after each step or input that the turn sends
   on, before the request is built, since building it can read the Host and
-  run a preamble hook. A failed attempt whose output is dropped starts it
+  run a preamble hook. A steer the user sends now, which stops the request
+  and sends another with the message, starts it again: for example, a
+  request has shown nothing for 74 seconds when the user sends a steer now,
+  and Requesting reads 0s from that moment, on every page, the sending one
+  included. A failed attempt whose output is dropped starts it
   again. Within a request, the end of the text the model wrote last starts
   it again when nothing else shows yet, as when a call follows whose title
   is not written: the page says Requesting there, and the server holds when

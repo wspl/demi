@@ -225,6 +225,29 @@ test('a message this page sent counts from its send, also once the server tells 
   expect(slot.value).toEqual({ kind: 'requesting', since: 20_000 })
 })
 
+// The request has shown nothing for 74 s when the user sends a steer now:
+// the server starts the wait again, and the sending page counts from there
+// as every other page does (`runtime.md` § Waiting for the model).
+test('a message this page sent counts from its send only for its own wait, not for one a steer sent now starts', async () => {
+  using session = slotOver('idle', [textBlock()])
+  const { conversation, slot, at } = session
+  at(5_000)
+  conversation.pendingSubmissions = [sent()]
+  await nextTick()
+  at(6_000)
+  conversation.phase = 'running'
+  conversation.waitingSince = 5_400
+  conversation.blocks = [textBlock(), userBlock()]
+  conversation.pendingSubmissions = []
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', since: 5_000 })
+
+  at(79_400)
+  conversation.waitingSince = 79_400
+  await nextTick()
+  expect(slot.value).toEqual({ kind: 'requesting', since: 79_400 })
+})
+
 test('a failed delivery ends the wait, and Retry starts it again from the retry', async () => {
   using session = slotOver('idle', [])
   const { conversation, slot, at } = session

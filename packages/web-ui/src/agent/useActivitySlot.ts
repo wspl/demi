@@ -55,8 +55,10 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   // during a wait counts from it, and runs on across the confirmation of a
   // message and the agent's own retries alike. A wait this page started, by
   // sending a message or a recovery, counts from that action, before the
-  // server has it. Until the server's start arrives, the row counts from
-  // when it began to say Requesting.
+  // server has it; only that wait: a later start the server tells, as for a
+  // steer sent now, is a new wait and counts from the server's start. Until
+  // the server's start arrives, the row counts from when it began to say
+  // Requesting.
   const requesting = computed(() => kind.value === 'requesting')
   const shownSince = ref(Date.now())
   const startedHere = ref(false)
@@ -66,6 +68,14 @@ export function useActivitySlot(sources: ActivitySlotSources): {
       if (isRequesting && (!wasRequesting || currentScope !== previousScope)) {
         shownSince.value = Date.now()
         startedHere.value = startingTurn.value || input().recovering
+      }
+    },
+  )
+  watch(
+    () => [waitingSince(), scope()] as const,
+    ([told, currentScope], [previousTold, previousScope]) => {
+      if (currentScope === previousScope && previousTold !== null && told !== previousTold) {
+        startedHere.value = false
       }
     },
   )

@@ -30,6 +30,52 @@ fn retries(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<SessionEvent
     (subscription, reports)
 }
 
+// A steer sent now stops a request that showed nothing and sends another
+// with it: Requesting reads 0s from that moment, while a retry of the same
+// request before it ran the clock on (`runtime.md` § Waiting for the
+// model). A paused clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_steer_sent_now_starts_the_wait_again_where_a_retry_runs_it_on() {
+    use futures_util::StreamExt;
+    let hang = Turn::Stream(Box::new(|_| futures_util::stream::pending().boxed_local()));
+    let provider = ScriptedRuntime::new([
+        Turn::Events(vec![failure(
+            Some(ErrorCode::RateLimit),
+            Some(Duration::from_millis(1_500)),
+        )]),
+        hang,
+        paced(vec![(1_000, event::text("skipping them")), (0, event::response(1, 1))]),
+    ]);
+    let store = MemoryTreeStore::new();
+    let clock = Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH));
+    let session = start_at(
+        &provider,
+        test_runtime(Vec::new()),
+        &store,
+        SessionConfig::default(),
+        clock,
+    )
+    .await;
+    let (_subscription, waits) = waits(&session);
+
+    let end = session.send(text("run the tests"), turn("t1")).unwrap();
+    tokio::time::sleep(Duration::from_millis(74_000)).await;
+    assert_eq!(session.waited_ms(), Some(74_000), "the retry runs the wait on");
+
+    session
+        .steer(text("skip the e2e tests"), BlockId::try_from("s1").unwrap())
+        .unwrap();
+    session.steer_now(&BlockId::try_from("s1").unwrap());
+    assert_eq!(session.waited_ms(), Some(0), "the steer sent now starts it again");
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    assert_eq!(session.waited_ms(), Some(500));
+    assert_eq!(end.await, Ok(ActionEnd::Completed));
+
+    // Each start is told: the turn's, the steer's, then the answer ends it.
+    assert_eq!(*waits.borrow(), [Some(0), Some(0), None]);
+    assert_eq!(provider.requests().len(), 3);
+}
+
 // A paused clock: a second and a half of the vendor's wait before each
 // retry.
 #[tokio::test(flavor = "local", start_paused = true)]
