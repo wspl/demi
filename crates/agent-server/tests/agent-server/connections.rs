@@ -13,7 +13,7 @@ use demi_agent_server::{
 };
 use demi_agent_store::testing::{MemoryTreeStore, model_of};
 use demi_conversation_socket_protocol::{
-    ClientFrame, ClientFrameKind, EditOutcome, RemoveOutcome, ServerFrame, SteerOutcome,
+    AgentCode, ClientFrame, ClientFrameKind, EditOutcome, Refusal, RemoveOutcome, ServerFrame, SteerOutcome,
 };
 use demi_provider_common::{
     Ahead, InferenceItem, ProviderEvent,
@@ -30,10 +30,10 @@ use crate::{
     },
 };
 
-fn rejected(command: ClientFrameKind, reason: &str) -> ServerFrame {
+fn rejected(command: ClientFrameKind, code: AgentCode, reason: &str) -> ServerFrame {
     ServerFrame::Rejected {
         command,
-        reason: reason.to_owned(),
+        refusal: Refusal::new(code, reason),
     }
 }
 
@@ -486,10 +486,11 @@ async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
     }
     let refused = second.next_until(is_idle).await;
     assert!(
-        refused.contains(&ServerFrame::Rejected {
-            command: ClientFrameKind::Send,
-            reason: "A message edit is being prepared".into(),
-        }),
+        refused.contains(&rejected(
+            ClientFrameKind::Send,
+            AgentCode::EditInProgress,
+            "A message edit is being prepared",
+        )),
         "{refused:?}"
     );
     let edited = first.next_until(is_idle).await;
@@ -510,7 +511,10 @@ async fn connections_acting_at_once_are_decided_by_the_rules_of_one() {
     assert_eq!(
         edit_outcome(&answer),
         EditOutcome::Rejected {
-            reason: "Message editing requires a settled session with no pending work".into(),
+            refusal: Refusal::new(
+                AgentCode::EditBusy,
+                "Message editing requires a settled session with no pending work",
+            ),
         }
     );
     second.next_until(is_idle).await;
@@ -554,9 +558,9 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
     assert_eq!(
         client.received(),
         [
-            rejected(ClientFrameKind::Send, "No session is open"),
-            rejected(ClientFrameKind::Abort, "No session is open"),
-            rejected(ClientFrameKind::SyncTranscript, "No session is open"),
+            rejected(ClientFrameKind::Send, AgentCode::NoSession, "No session is open on this connection"),
+            rejected(ClientFrameKind::Abort, AgentCode::NoSession, "No session is open on this connection"),
+            rejected(ClientFrameKind::SyncTranscript, AgentCode::NoSession, "No session is open on this connection"),
             ServerFrame::RemoveResult {
                 id: "m1".into(),
                 outcome: RemoveOutcome::GoneOn,
@@ -564,7 +568,10 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
             ServerFrame::SteerResult {
                 steer_id: steer_id.clone(),
                 outcome: SteerOutcome::Rejected {
-                    reason: "No session is open on this connection".into(),
+                    refusal: Refusal::new(
+                        AgentCode::NoSession,
+                        "No session is open on this connection",
+                    ),
                 },
             },
             ServerFrame::RemoveResult {
@@ -584,6 +591,7 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
         client.next().await,
         Some(rejected(
             ClientFrameKind::Open,
+            AgentCode::SessionAlreadyOpen,
             "A session is already open on this connection"
         ))
     );
@@ -610,7 +618,7 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
         client.send(frame).await;
         assert_eq!(
             client.next().await,
-            Some(rejected(kind, "Session is busy (running)"))
+            Some(rejected(kind, AgentCode::SessionBusy, "Session is busy (running)"))
         );
     }
 }
@@ -630,11 +638,11 @@ async fn an_unknown_provider_leaves_the_connection_unattached() {
         [
             ServerFrame::Error {
                 message: "Provider \"missing\" is not available".into(),
-                code: None,
+                code: Some(AgentCode::OpenFailed.to_string()),
                 diagnostics: None,
                 request_id: None,
             },
-            rejected(ClientFrameKind::Send, "No session is open"),
+            rejected(ClientFrameKind::Send, AgentCode::NoSession, "No session is open on this connection"),
         ]
     );
     assert!(fixture.server.tree(&conversation()).is_none());

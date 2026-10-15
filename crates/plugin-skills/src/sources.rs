@@ -13,7 +13,7 @@ use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::fetch::{Fetched, Skipped};
+use crate::fetch::{FetchProblem, Fetched, Skipped};
 use crate::skill;
 
 /// A source as its value keeps it.
@@ -53,7 +53,12 @@ pub(crate) struct UserSkill {
 #[serde(rename_all = "camelCase")]
 pub struct Failure {
     pub at: Timestamp,
+    /// What failed, in English, or in git's or the system's words.
     pub message: String,
+    /// What failed, as the page words it; none in a value a fetch before
+    /// codes recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem: Option<FetchProblem>,
 }
 
 impl Source {

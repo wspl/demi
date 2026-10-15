@@ -36,6 +36,7 @@ fn too_large() -> ApiError {
         ErrorCode::TooLarge,
         format!("An upload is at most {ATTACHMENT_MAX_BYTES} bytes"),
     )
+    .with_param("limitBytes", ATTACHMENT_MAX_BYTES)
 }
 
 /// The media type `headers` send the upload's bytes as: one `type/subtype`,

@@ -149,6 +149,8 @@ fn text_the_users_words_and_decisions_end_a_run() {
         AgentMessageEvent::Permission {
             outcome: PermissionOutcome::Allowed,
             action: "manage skills".into(),
+            categories: vec!["skills.manage".into()],
+            credential: None,
         },
     );
     call(&mut log, "c");

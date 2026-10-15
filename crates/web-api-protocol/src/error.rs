@@ -21,9 +21,11 @@ pub struct ErrorBody {
     /// Says what happened in words; for a refused body it names the field and
     /// the reason.
     pub message: String,
-    /// The values the page's text for `code` needs, such as `{ limit: 50 }`.
+    /// The values the page's text for `code` needs, such as `{ limit: 50 }`,
+    /// each a number or a string, and the same for every answer of the code.
+    /// A name says how the page writes its value: one ending in `Bytes` is a
+    /// size, `limitBytes`, and one ending in `At` a moment, as RFC 3339.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    /// Each a number or a string.
     pub params: BTreeMap<String, serde_json::Value>,
     /// With `plugin_refused`, the plugin's snake_case word for the refusal,
     /// such as `tab_not_found`.

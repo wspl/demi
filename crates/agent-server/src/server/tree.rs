@@ -22,7 +22,7 @@ use demi_agent_session::{Continuation, ModelSwitch, SessionEvent, Settle, Status
 use demi_agent_store::{Placement, AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
-use demi_conversation_socket_protocol::{ServerFrame, index_u32, reset_start};
+use demi_conversation_socket_protocol::{AgentCode, ServerFrame, index_u32, reset_start};
 use demi_host_interface::{PageState, PageView, RegisterError, ShellEnvironment};
 use demi_shared_gates::{ActivityGate, GateState, KeyedSerialGate, Reservation};
 use demi_shared_types::{BlockId, Clock, CommandId, NodeId};
@@ -786,7 +786,7 @@ impl<H: HostResolver> Tree<H> {
             tracing::error!(root = %self.root.id(), %error, "the final checkpoint was not saved");
             self.sink.emit(ServerFrame::Error {
                 message: error.to_string(),
-                code: None,
+                code: Some(AgentCode::SaveFailed.to_string()),
                 diagnostics: None,
                 request_id: None,
             });
@@ -804,7 +804,7 @@ impl<H: HostResolver> Tree<H> {
         tracing::error!(root = %self.root.id(), %message, "subagent lifecycle failure");
         self.sink.emit(ServerFrame::Error {
             message,
-            code: None,
+            code: Some(AgentCode::SubagentFailed.to_string()),
             diagnostics: None,
             request_id: None,
         });

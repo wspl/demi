@@ -25,6 +25,7 @@ use demi_backend_permissions::PermissionShard;
 use demi_shared_gates::Reservation;
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId};
 use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::ConversationId;
 use tokio::sync::Notify;
 use tokio_util::task::AbortOnDropHandle;
@@ -146,7 +147,7 @@ impl Shard {
         drop(hold);
         self.mark(Part::Conversation(id.clone()));
         if let (Some(reason), Some(moving)) = (failure, &pending.moving) {
-            self.tell_move_failed(&record, moving, &reason).await;
+            self.tell_move_failed(&record, moving, reason).await;
         }
         match control.pending_changes(id.clone()).await {
             Ok(left) => {
@@ -159,30 +160,34 @@ impl Shard {
 
     /// Makes the pending move `moving` as a user's switch is made: it checks
     /// what a switch checks, not whether the device is online. The error is
-    /// the reason the agent reads.
-    async fn make_move(&self, record: &ConversationRecord, moving: &PendingMove) -> Result<(), String> {
+    /// why, as the agent reads it and the page words it.
+    async fn make_move(&self, record: &ConversationRecord, moving: &PendingMove) -> Result<(), MoveFailure> {
         let host = self.host_shard();
         if record.target == moving.target {
             self.services()
                 .control
                 .drop_pending_move(record.id.clone(), moving.id.clone())
                 .await
-                .map_err(|error| error.to_string())?;
+                .map_err(|error| MoveFailure {
+                    reason: error.to_string(),
+                    code: None,
+                })?;
             return Ok(());
         }
         host.check_destination(&record.owner, &moving.target)
             .await
-            .map_err(|refusal| reason(&refusal))?;
+            .map_err(|refusal| MoveFailure::of(&refusal))?;
         host.switch_target(record, moving.target.clone(), Some(moving.id.clone()))
             .await
-            .map_err(|refusal| reason(&refusal))?;
+            .map_err(|refusal| MoveFailure::of(&refusal))?;
         self.switched(&record.id).await;
         Ok(())
     }
 
     /// Wakes the root with Demi's notice that the move `moving` failed for
     /// `why`, naming where the conversation still runs.
-    async fn tell_move_failed(&self, record: &ConversationRecord, moving: &PendingMove, why: &str) {
+    async fn tell_move_failed(&self, record: &ConversationRecord, moving: &PendingMove, failure: MoveFailure) {
+        let why = &failure.reason;
         let host = self.host_shard();
         let place = match host.resolve_target(record).await {
             Ok(target) => self.place(&target).await,
@@ -204,6 +209,7 @@ impl Shard {
             content: content.clone(),
             event: AgentMessageEvent::MoveFailed {
                 reason: why.to_owned(),
+                code: failure.code.map(|code| code.to_string()),
             },
             origin: None,
         };
@@ -238,14 +244,27 @@ impl Shard {
     }
 }
 
-/// The reason a refused move gives the agent.
-fn reason(refusal: &ChangeRefusal) -> String {
-    match refusal {
-        ChangeRefusal::WorkspaceNotFound => "the project no longer exists".into(),
-        ChangeRefusal::DeviceNotFound => "the device is no longer paired".into(),
-        ChangeRefusal::Conflict => "another move came first".into(),
-        ChangeRefusal::Archived => "the conversation is archived".into(),
-        refusal => refusal.to_string(),
+/// Why a move an agent asked for failed: the reason the agent reads, and
+/// the code of the refusal the page words it from, when a refusal names it.
+struct MoveFailure {
+    reason: String,
+    code: Option<ErrorCode>,
+}
+
+impl MoveFailure {
+    /// The failure of a move the switch refused.
+    fn of(refusal: &ChangeRefusal) -> Self {
+        let reason = match refusal {
+            ChangeRefusal::WorkspaceNotFound => "the project no longer exists".into(),
+            ChangeRefusal::DeviceNotFound => "the device is no longer paired".into(),
+            ChangeRefusal::Conflict => "another move came first".into(),
+            ChangeRefusal::Archived => "the conversation is archived".into(),
+            refusal => refusal.to_string(),
+        };
+        Self {
+            reason,
+            code: Some(refusal.code().0),
+        }
     }
 }
 
