@@ -128,7 +128,7 @@ pub enum Unavailable {
 /// workflow as its file reads at this moment.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConversationProfiles {
-    /// Default: the user's Subagents settings.
+    /// Global Workflow: the user's Subagents settings.
     Settings,
     /// No Subagents: subagents are off for this conversation.
     Off,
