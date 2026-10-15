@@ -235,6 +235,12 @@ impl ScriptedManager {
             .to_owned()
     }
 
+    /// The device's runner's log as it is now, `log/host.log` in its
+    /// state.
+    pub fn log(&self, device: &str) -> String {
+        std::fs::read_to_string(self.state(device).join("log/host.log")).unwrap_or_default()
+    }
+
     /// The device's runner's artifact cache (`native-runtime.md` § The
     /// cache): in its state, unless the script names one.
     pub fn artifacts(&self, device: &str) -> std::path::PathBuf {
