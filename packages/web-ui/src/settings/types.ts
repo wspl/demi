@@ -111,7 +111,8 @@ export interface SettingsPlugin {
 /** An archived conversation as the Archived page lists it. */
 export interface SettingsArchivedConversation {
   id: string
-  title: string
+  /** Null for the placeholder, which shows as New conversation in the reader's language. */
+  title: string | null
   /** When it was archived or last active, formatted by the host. */
   detail?: string
 }

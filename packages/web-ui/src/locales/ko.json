@@ -283,5 +283,8 @@
     "delete": "삭제",
     "remove": "제거",
     "save": "저장"
+  },
+  "conversation": {
+    "untitled": "새 대화"
   }
 }

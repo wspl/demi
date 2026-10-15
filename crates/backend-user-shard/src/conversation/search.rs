@@ -133,8 +133,9 @@ impl Shard {
             .read(&record.id, tree::root_version)
             .await?
             .unwrap_or_default();
-        if indexed.is_some_and(|indexed| indexed.version == version && indexed.title == record.title)
-        {
+        // The placeholder holds no words, which no query finds.
+        let title = record.title.unwrap_or_default();
+        if indexed.is_some_and(|indexed| indexed.version == version && indexed.title == title) {
             return Ok(());
         }
         let (version, blocks) = services
@@ -144,7 +145,7 @@ impl Shard {
             .unwrap_or_default();
         let conversation = IndexedConversation {
             version,
-            title: record.title,
+            title,
             messages: searchable(&blocks),
         };
         services.search.index(user, &record.id, conversation).await
@@ -283,7 +284,7 @@ pub async fn search(
                 })
             });
             let title_ranges = if found.title {
-                title_ranges(&record.title, &words)
+                title_ranges(record.title.as_deref().unwrap_or_default(), &words)
             } else {
                 Vec::new()
             };

@@ -592,7 +592,7 @@ mod tests {
             source: source.clone(),
             block: BlockId::try_from("text-1").unwrap(),
             metadata: ForkMetadata {
-                title: "Fork".into(),
+                title: Some("Fork".into()),
                 target: on_alpha.clone(),
                 model: None,
                 created_at: "2026-10-14T08:00:00Z".parse().unwrap(),
