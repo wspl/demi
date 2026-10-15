@@ -220,7 +220,9 @@ user messages: first this note,
 
 > The earlier part of this conversation was compacted. The user's messages
 > from it follow as they were written, then a summary of the rest. Continue
-> the work from where it stands; do not mention or restate the summary.
+> the work from where it stands; do not mention or restate the summary. What
+> the summary leaves out is still in the conversation:
+> `demi conversation history` finds and reads it.
 
 then each message it kept, as the user message it was, oldest first, then
 the summary in `<summary>` tags. The blocks after it are replayed as usual,
@@ -307,6 +309,73 @@ vendor's cache covers them, but a call the model writes is not run: the
 summary is the text of the answer, and an answer that holds no text, such as
 one that only calls a tool, is a failed summary request, retried as any is
 ([Retries](failures-and-recovery.md#retries)).
+
+## Reading the earlier history
+
+A summary keeps what the work needs next, not every agreement on the way. For
+example, two hours after the user said how the README's feature list should
+read, the conversation is compacted, and later the user asks to rewrite it
+by those rules. The agent runs
+
+```text
+demi conversation history search README feature list
+```
+
+finds the user's message at 4213 with what was said around it, reads the
+discussion with `demi conversation history read 4213..4260`, and opens the
+command it ran then with `demi conversation history open 4214`.
+
+The commands read the transcript, which keeps every block, from the
+conversation's database: they reach no Host and need no permission. An agent
+reads its own transcript, the root's or a subagent's, and a block is named
+by its index in it, `4213`, which never changes. An index is written bare,
+without `#`, which a shell would read as a comment, so every line the
+commands print can be run as it stands.
+
+**`search <words>… [--any] [--page <n>]`** finds the agent's messages, its
+user's or parent's messages and steers, its own text and the description of
+each command it ran, that hold every word, or any with `--any`; words match
+anywhere in a text, in any language, case aside. The newest come first, five
+to a page, and each hit is its index, who wrote it and when, then the
+matching text with the message before and after it, cut around the words to
+about 600 characters, the words marked, so most hits answer without a
+read:
+
+```text
+4213 · user · Oct 14, 3:02 PM
+  [4212 agent] …so the list stays as it is.
+  [4213 user] The README's feature list should name what sets Demi apart…
+  [4214 command] Rewrite the README feature list · exit 0
+Page 1 of 4 · next: demi conversation history search README feature list --page 2
+```
+
+Thinking, scripts and command output are not searched: they are most of a
+transcript's text and drown what was said.
+
+**`read <range>`** prints the conversation in that range as plain text: each
+message and each of the agent's texts whole, as written, and every other
+block as one line saying what it is and how to open it, such as
+`[4214 command: Rewrite the README feature list · exit 0 · 3s]` or
+`[4213/a1 attachment: spec.pdf]`; thinking and the hidden context blocks
+are left out. A block's time reads as the conversation shows it, with the
+year when it is not this year. A range is `4213..4260`, `4213..` or `..4260`. A read
+stops at about 8,000 characters, at a block's end, and its last line says
+where to go on, `Stopped at 4231 · next: demi conversation history read
+4232..4260`; one message longer than that is cut, and the line names `open` on it for
+the rest.
+
+**`open <item> [--page <n>]`** prints what a read names in one line or
+cuts: a command's script, exit code, duration and output, the output a page
+at a time as `demi shell output` pages it; a thinking block's text; a
+subagent's report; a message whole. Each page's last line names the next
+as `open <item> --page <n>`, so a reader stays within `history`. An attachment or an image, `4213/a1`, is saved under
+the scratch directory and its path printed, for `demi file view` or the
+ordinary tools.
+
+Search reads the user's [search index](../backend/storage.md#search-index),
+which therefore holds every agent's messages, texts and command descriptions,
+by agent and index; the product's search shows the root's messages and
+answers among them, as before.
 
 ## Token estimates
 

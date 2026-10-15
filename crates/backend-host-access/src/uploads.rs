@@ -113,6 +113,7 @@ mod tests {
                 gid: 0,
                 hostname: "DESKTOP-4KQ7M2A".into(),
                 home_dir: r"C:\Users\ana".into(),
+                scratch_root: "/demi/scratch".into(),
                 paths: HostPaths::Windows,
             },
         );

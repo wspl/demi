@@ -906,6 +906,7 @@ impl Host for ScriptedHost {
             gid: 1000,
             hostname: "scripted".into(),
             home_dir: "/home/demi".into(),
+            scratch_root: "/demi/scratch".into(),
             paths: demi_host_interface::HostPaths::Posix,
         }
     }

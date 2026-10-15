@@ -1,7 +1,10 @@
 //! Each user's search index (`storage.md` § Search index):
 //! `search/<userId>.sqlite`, an FTS5 table over one row per searchable text,
-//! a conversation's title or the text of one of its root's messages, with
-//! the saved version of each conversation's transcript it was built from.
+//! a conversation's title or the text of a message, an answer or a
+//! command's title of any of its agents, with the saved version of each
+//! agent's transcript it was built from. The product's search finds titles
+//! and the root's messages and answers; `demi conversation history search`
+//! finds an agent's own rows.
 //!
 //! The index is derived from the conversations, so it has no history and no
 //! migration: an index of another schema, or one that fails to open, is
@@ -13,7 +16,7 @@
 //! is FTS5's handle on it within one read alone, since SQLite gives a
 //! removed row's id to the next one.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -22,6 +25,7 @@ use demi_shared_types::{Block, BlockId, UserContentBlock};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::search::LINE_MAX;
 use tokio::sync::broadcast;
+use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params, params_from_iter};
 
 use super::columns::{count, decode};
@@ -33,27 +37,39 @@ use super::{StorageError, schema, sqlite};
 /// `trigram` tokenizer matches any piece of three characters or more, case
 /// ignored, in every language, without splitting words.
 const SCHEMA: &str = r"
--- Each indexed conversation, with the saved version of its root's
--- transcript the rows were built from.
+-- Each indexed conversation.
 CREATE TABLE conversations (
-  id       TEXT PRIMARY KEY COLLATE NOCASE,
-  revision INTEGER NOT NULL CHECK (revision >= 0),
-  blocks   INTEGER NOT NULL CHECK (blocks >= 0)
+  id TEXT PRIMARY KEY COLLATE NOCASE
 ) STRICT;
 
--- One row per searchable text: a conversation's title, which has no block,
--- or the text of one of its root's messages, at the block's index.
+-- Each indexed agent of a conversation, by its number, 0 for the root,
+-- with the saved version of its transcript the rows were built from.
+CREATE TABLE agents (
+  conversation TEXT NOT NULL COLLATE NOCASE,
+  agent        INTEGER NOT NULL CHECK (agent >= 0),
+  revision     INTEGER NOT NULL CHECK (revision >= 0),
+  blocks       INTEGER NOT NULL CHECK (blocks >= 0),
+  PRIMARY KEY (conversation, agent)
+) STRICT;
+
+-- One row per searchable text: a conversation's title, which has no agent
+-- and no block, or the text of an agent's message, answer or command's
+-- title, at the block's index.
 CREATE TABLE texts (
   id           INTEGER PRIMARY KEY,
   conversation TEXT NOT NULL COLLATE NOCASE,
+  agent        INTEGER CHECK (agent >= 0),
+  kind         TEXT CHECK (kind IN ('message', 'answer', 'command')),
   block        TEXT,
   position     INTEGER CHECK (position >= 0),
   text         TEXT NOT NULL,
-  CHECK ((block IS NULL) = (position IS NULL))
+  CHECK ((block IS NULL) = (position IS NULL)),
+  CHECK ((block IS NULL) = (agent IS NULL)),
+  CHECK ((block IS NULL) = (kind IS NULL))
 ) STRICT;
-CREATE UNIQUE INDEX texts_block ON texts (conversation, block) WHERE block IS NOT NULL;
+CREATE UNIQUE INDEX texts_block ON texts (conversation, agent, block) WHERE block IS NOT NULL;
 CREATE UNIQUE INDEX texts_title ON texts (conversation) WHERE block IS NULL;
-CREATE INDEX texts_position ON texts (conversation, position);
+CREATE INDEX texts_position ON texts (conversation, agent, position);
 
 CREATE VIRTUAL TABLE texts_fts USING fts5(
   text,
@@ -103,29 +119,68 @@ pub struct SearchWork {
 /// some (`RecvError::Lagged`).
 const RESETS_WAITING: usize = 64;
 
-/// What the index holds of one conversation: the saved version of its
-/// transcript and the title it was indexed with.
+/// What the index holds of one conversation: the saved version of each
+/// agent's transcript, by the agent's number, and the title it was indexed
+/// with.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Indexed {
-    pub version: SavedVersion,
+    pub versions: BTreeMap<u64, SavedVersion>,
     pub title: String,
 }
 
 /// A conversation as the indexer gives it to the index.
 #[derive(Debug, Clone)]
 pub struct IndexedConversation {
-    pub version: SavedVersion,
     pub title: String,
-    /// The searchable text of each of the root's messages, oldest first.
+    pub agents: Vec<IndexedAgent>,
+}
+
+/// One agent of a conversation as the indexer gives it to the index: its
+/// number, the saved version of its transcript, and the searchable text of
+/// its blocks, oldest first.
+#[derive(Debug, Clone)]
+pub struct IndexedAgent {
+    pub agent: u64,
+    pub version: SavedVersion,
     pub messages: Vec<IndexedMessage>,
 }
 
-/// The searchable text of one message: its block and the block's index.
+/// The searchable text of one block: the block and its index.
 #[derive(Debug, Clone)]
 pub struct IndexedMessage {
     pub block: BlockId,
     pub position: usize,
+    pub text: Searchable,
+}
+
+/// What a block holds that a search finds: which kind of text, and the
+/// text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Searchable {
+    pub kind: SearchKind,
     pub text: String,
+}
+
+/// The kinds of a block's searchable text. The product's search finds a
+/// root's messages and answers; an agent's history search finds all three.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SearchKind {
+    /// A `user` or `steer` block's text.
+    Message,
+    /// An agent's text.
+    Answer,
+    /// The title of a command a `shell` call ran.
+    Command,
+}
+
+impl SearchKind {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Message => "message",
+            Self::Answer => "answer",
+            Self::Command => "command",
+        }
+    }
 }
 
 /// A conversation a query found: whether its title holds every word, and
@@ -147,22 +202,25 @@ pub struct FoundMessage {
     pub ranges: Vec<[u32; 2]>,
 }
 
-/// What one save changed of a conversation's root transcript
-/// (`storage.md` § Search index): the saved version it follows, the one it
+/// What one save changed of an agent's transcript (`storage.md` § Search
+/// index): the agent's number, the saved version it follows, the one it
 /// brought the transcript to, whose block count is where it cut the rest,
 /// and each block it wrote.
 #[derive(Debug, Clone)]
 pub struct TranscriptChange {
+    pub agent: u64,
     pub before: SavedVersion,
     pub version: SavedVersion,
     pub written: Vec<WrittenBlock>,
 }
 
 impl TranscriptChange {
-    /// The change a save from `before` to `version` made by writing
-    /// `blocks`, each at its index, with their searchable text alone.
-    pub fn new(before: SavedVersion, version: SavedVersion, blocks: &[(usize, Block)]) -> Self {
+    /// The change a save of the agent `agent` from `before` to `version`
+    /// made by writing `blocks`, each at its index, with their searchable
+    /// text alone.
+    pub fn new(agent: u64, before: SavedVersion, version: SavedVersion, blocks: &[(usize, Block)]) -> Self {
         Self {
+            agent,
             before,
             version,
             written: blocks
@@ -178,12 +236,12 @@ impl TranscriptChange {
 }
 
 /// A block a save wrote, at its index, with its searchable text; none when
-/// it has none, such as a tool call.
+/// it has none, such as thinking.
 #[derive(Debug, Clone)]
 pub struct WrittenBlock {
     pub block: BlockId,
     pub position: usize,
-    pub text: Option<String>,
+    pub text: Option<Searchable>,
 }
 
 impl SearchIndexes {
@@ -249,25 +307,29 @@ impl SearchIndexes {
     ) -> Result<Option<Indexed>, StorageError> {
         let conversation = conversation.clone();
         self.with(user, move |connection| {
-            let row: Option<(i64, i64, String)> = connection
+            let title: Option<String> = connection
                 .query_row(
-                    "SELECT c.revision, c.blocks, t.text FROM conversations c
+                    "SELECT t.text FROM conversations c
                      JOIN texts t ON t.conversation = c.id AND t.block IS NULL
                      WHERE c.id = ?1",
                     [conversation.as_str()],
-                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    |row| row.get(0),
                 )
                 .optional()?;
-            row.map(|(revision, blocks, title)| {
-                Ok(Indexed {
-                    version: SavedVersion {
-                        revision: decode("conversations", "revision", u64::try_from(revision))?,
-                        blocks: decode("conversations", "blocks", u64::try_from(blocks))?,
-                    },
-                    title,
-                })
-            })
-            .transpose()
+            let Some(title) = title else {
+                return Ok(None);
+            };
+            let mut statement =
+                connection.prepare("SELECT agent, revision, blocks FROM agents WHERE conversation = ?1")?;
+            let mut rows = statement.query([conversation.as_str()])?;
+            let mut versions = BTreeMap::new();
+            while let Some(row) = rows.next()? {
+                versions.insert(
+                    decode("agents", "agent", u64::try_from(row.get::<_, i64>(0)?))?,
+                    version_of(row.get(1)?, row.get(2)?)?,
+                );
+            }
+            Ok(Some(Indexed { versions, title }))
         })
         .await
     }
@@ -303,24 +365,16 @@ impl SearchIndexes {
             .with(user, move |connection| {
                 let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
                 let mut rows = remove_rows(&transaction, &conversation)?;
-                transaction.execute(
-                    "INSERT INTO conversations (id, revision, blocks) VALUES (?1, ?2, ?3)",
-                    params![
-                        conversation.as_str(),
-                        integer(indexed.version.revision),
-                        integer(indexed.version.blocks)
-                    ],
-                )?;
-                insert_text(&transaction, &conversation, None, &indexed.title)?;
-                for message in &indexed.messages {
-                    insert_text(
-                        &transaction,
-                        &conversation,
-                        Some((&message.block, message.position)),
-                        &message.text,
-                    )?;
+                transaction.execute("INSERT INTO conversations (id) VALUES (?1)", [conversation.as_str()])?;
+                insert_title(&transaction, &conversation, &indexed.title)?;
+                rows += 1;
+                for agent in &indexed.agents {
+                    set_version(&transaction, &conversation, agent.agent, agent.version)?;
+                    for message in &agent.messages {
+                        insert_text(&transaction, &conversation, agent.agent, message)?;
+                    }
+                    rows += agent.messages.len();
                 }
-                rows += 1 + indexed.messages.len();
                 transaction.commit()?;
                 Ok(rows)
             })
@@ -332,9 +386,9 @@ impl SearchIndexes {
         Ok(())
     }
 
-    /// Applies one save's `change` to the conversation's rows, in one
-    /// transaction, when the index holds the conversation at exactly the
-    /// version the change follows: each written block's row replaced when
+    /// Applies one save's `change` to the rows of its agent, in one
+    /// transaction, when the index holds the agent at exactly the version
+    /// the change follows, an agent it holds nothing of at the empty one: each written block's row replaced when
     /// its text or its index changed and removed when it has no text, any
     /// other block's row at its index removed, the rows from the change's
     /// block count on removed, and the change's version recorded. Answers
@@ -351,26 +405,34 @@ impl SearchIndexes {
         let applied = self
             .with(user, move |connection| {
                 let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                if held_version(&transaction, &conversation)? != Some(change.before) {
+                if !holds(&transaction, &conversation)? {
                     return Ok(None);
                 }
-                let id = conversation.as_str();
+                let held = held_version(&transaction, &conversation, change.agent)?.unwrap_or_default();
+                if held != change.before {
+                    return Ok(None);
+                }
+                let (id, agent) = (conversation.as_str(), integer(change.agent));
                 let mut rows = transaction
-                    .prepare_cached("DELETE FROM texts WHERE conversation = ?1 AND position >= ?2")?
-                    .execute(params![id, integer(change.version.blocks)])?;
+                    .prepare_cached("DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND position >= ?3")?
+                    .execute(params![id, agent, integer(change.version.blocks)])?;
                 for written in &change.written {
                     let (block, position) = (written.block.as_str(), count(written.position));
                     rows += transaction
                         .prepare_cached(
-                            "DELETE FROM texts WHERE conversation = ?1 AND position = ?2 AND block <> ?3",
+                            "DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND position = ?3 AND block <> ?4",
                         )?
-                        .execute(params![id, position, block])?;
-                    let held: Option<(i64, String)> = transaction
-                        .prepare_cached("SELECT position, text FROM texts WHERE conversation = ?1 AND block = ?2")?
-                        .query_row(params![id, block], |row| Ok((row.get(0)?, row.get(1)?)))
+                        .execute(params![id, agent, position, block])?;
+                    let held: Option<(i64, String, String)> = transaction
+                        .prepare_cached(
+                            "SELECT position, kind, text FROM texts WHERE conversation = ?1 AND agent = ?2 AND block = ?3",
+                        )?
+                        .query_row(params![id, agent, block], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
                         .optional()?;
                     let unchanged = match (&held, &written.text) {
-                        (Some((at, held)), Some(text)) => *at == position && held == text,
+                        (Some((at, kind, held)), Some(text)) => {
+                            *at == position && kind == text.kind.as_str() && *held == text.text
+                        }
                         (None, None) => true,
                         _ => false,
                     };
@@ -379,18 +441,20 @@ impl SearchIndexes {
                     }
                     if held.is_some() {
                         rows += transaction
-                            .prepare_cached("DELETE FROM texts WHERE conversation = ?1 AND block = ?2")?
-                            .execute(params![id, block])?;
+                            .prepare_cached("DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND block = ?3")?
+                            .execute(params![id, agent, block])?;
                     }
                     if let Some(text) = &written.text {
-                        insert_text(&transaction, &conversation, Some((&written.block, written.position)), text)?;
+                        let message = IndexedMessage {
+                            block: written.block.clone(),
+                            position: written.position,
+                            text: text.clone(),
+                        };
+                        insert_text(&transaction, &conversation, change.agent, &message)?;
                         rows += 1;
                     }
                 }
-                transaction.execute(
-                    "UPDATE conversations SET revision = ?2, blocks = ?3 WHERE id = ?1",
-                    params![id, integer(change.version.revision), integer(change.version.blocks)],
-                )?;
+                set_version(&transaction, &conversation, change.agent, change.version)?;
                 transaction.commit()?;
                 Ok(Some(rows))
             })
@@ -420,7 +484,7 @@ impl SearchIndexes {
                 "DELETE FROM texts WHERE conversation = ?1 AND block IS NULL",
                 [conversation.as_str()],
             )?;
-            insert_text(&transaction, &conversation, None, &title)?;
+            insert_title(&transaction, &conversation, &title)?;
             transaction.commit()?;
             Ok(true)
         })
@@ -441,6 +505,53 @@ impl SearchIndexes {
             remove_rows(&transaction, &conversation)?;
             transaction.commit()?;
             Ok(())
+        })
+        .await
+    }
+
+    /// The block indices of the texts of the conversation's agent `agent`
+    /// that hold every one of `words`, or any with `any`, case ignored,
+    /// newest first: what `demi conversation history search` finds
+    /// (`compaction.md` § Reading the earlier history). A word is found as
+    /// [`SearchIndexes::find`] finds it: through the trigram index, or by a
+    /// scan when it is shorter.
+    pub async fn find_in(
+        &self,
+        user: &UserId,
+        conversation: &ConversationId,
+        agent: u64,
+        words: Vec<String>,
+        any: bool,
+    ) -> Result<Vec<usize>, StorageError> {
+        let conversation = conversation.clone();
+        self.with(user, move |connection| {
+            let mut conditions = Vec::new();
+            // `?1` and `?2` come first, so each `?` after them is the next
+            // word's.
+            let mut values = vec![Value::Text(conversation.as_str().to_owned()), Value::Integer(integer(agent))];
+            for word in &words {
+                if word.chars().count() >= TRIGRAM {
+                    // The word a phrase, so FTS5 reads none of it as an
+                    // operator.
+                    conditions.push("t.id IN (SELECT rowid FROM texts_fts WHERE texts_fts MATCH ?)");
+                    values.push(Value::Text(format!("\"{}\"", word.replace('"', "\"\""))));
+                } else {
+                    conditions.push(r"t.text LIKE ? ESCAPE '\'");
+                    values.push(Value::Text(format!("%{}%", escape_like(word))));
+                }
+            }
+            let joined = conditions.join(if any { " OR " } else { " AND " });
+            let mut statement = connection.prepare(&format!(
+                "SELECT t.position FROM texts t
+                 WHERE t.conversation = ?1 AND t.agent = ?2 AND ({joined})
+                 ORDER BY t.position DESC"
+            ))?;
+            let mut rows = statement.query(params_from_iter(values))?;
+            let mut found = Vec::new();
+            while let Some(row) = rows.next()? {
+                found.push(decode("texts", "position", usize::try_from(row.get::<_, i64>(0)?))?);
+            }
+            Ok(found)
         })
         .await
     }
@@ -489,6 +600,9 @@ impl SearchIndexes {
                 // each under its record's spelling.
                 let ranks: HashMap<ConversationId, usize> =
                     ranked.into_iter().enumerate().map(|(rank, id)| (id, rank)).collect();
+                // A title, or a message or an answer of the root: the
+                // product's search finds no subagent's text and no command.
+                conditions.push("(t.block IS NULL OR (t.agent = 0 AND t.kind IN ('message', 'answer')))".to_owned());
                 let mut statement = transaction.prepare(&format!(
                     "SELECT t.id, t.conversation, t.position FROM {from} WHERE {}",
                     conditions.join(" AND ")
@@ -554,23 +668,47 @@ impl SearchIndexes {
     }
 }
 
-/// The saved version at which the index holds the conversation; none when
-/// it does not.
+/// The saved version at which the index holds the agent's transcript;
+/// none when it holds nothing of the agent.
 fn held_version(
     transaction: &rusqlite::Transaction<'_>,
     conversation: &ConversationId,
+    agent: u64,
 ) -> Result<Option<SavedVersion>, StorageError> {
     let held: Option<(i64, i64)> = transaction
-        .prepare_cached("SELECT revision, blocks FROM conversations WHERE id = ?1")?
-        .query_row([conversation.as_str()], |row| Ok((row.get(0)?, row.get(1)?)))
+        .prepare_cached("SELECT revision, blocks FROM agents WHERE conversation = ?1 AND agent = ?2")?
+        .query_row(params![conversation.as_str(), integer(agent)], |row| Ok((row.get(0)?, row.get(1)?)))
         .optional()?;
-    held.map(|(revision, blocks)| {
-        Ok(SavedVersion {
-            revision: decode("conversations", "revision", u64::try_from(revision))?,
-            blocks: decode("conversations", "blocks", u64::try_from(blocks))?,
-        })
+    held.map(|(revision, blocks)| version_of(revision, blocks)).transpose()
+}
+
+/// Records the saved version at which the index holds the agent.
+fn set_version(
+    transaction: &rusqlite::Transaction<'_>,
+    conversation: &ConversationId,
+    agent: u64,
+    version: SavedVersion,
+) -> Result<(), StorageError> {
+    transaction
+        .prepare_cached(
+            "INSERT INTO agents (conversation, agent, revision, blocks) VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT (conversation, agent) DO UPDATE SET revision = excluded.revision, blocks = excluded.blocks",
+        )?
+        .execute(params![
+            conversation.as_str(),
+            integer(agent),
+            integer(version.revision),
+            integer(version.blocks)
+        ])?;
+    Ok(())
+}
+
+/// A saved version as the columns hold it.
+fn version_of(revision: i64, blocks: i64) -> Result<SavedVersion, StorageError> {
+    Ok(SavedVersion {
+        revision: decode("agents", "revision", u64::try_from(revision))?,
+        blocks: decode("agents", "blocks", u64::try_from(blocks))?,
     })
-    .transpose()
 }
 
 /// A count of rows as the work counts it.
@@ -586,21 +724,36 @@ fn holds(transaction: &rusqlite::Transaction<'_>, conversation: &ConversationId)
     Ok(held)
 }
 
-/// Adds a row: the conversation's title, or a message's text at its block
-/// and the block's index.
+/// Adds the conversation's title row.
+fn insert_title(
+    transaction: &rusqlite::Transaction<'_>,
+    conversation: &ConversationId,
+    title: &str,
+) -> Result<(), StorageError> {
+    transaction
+        .prepare_cached("INSERT INTO texts (conversation, text) VALUES (?1, ?2)")?
+        .execute(params![conversation.as_str(), title])?;
+    Ok(())
+}
+
+/// Adds the row of an agent's block: its text at the block and its index.
 fn insert_text(
     transaction: &rusqlite::Transaction<'_>,
     conversation: &ConversationId,
-    block: Option<(&BlockId, usize)>,
-    text: &str,
+    agent: u64,
+    message: &IndexedMessage,
 ) -> Result<(), StorageError> {
     transaction
-        .prepare_cached("INSERT INTO texts (conversation, block, position, text) VALUES (?1, ?2, ?3, ?4)")?
+        .prepare_cached(
+            "INSERT INTO texts (conversation, agent, kind, block, position, text) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        )?
         .execute(params![
             conversation.as_str(),
-            block.map(|(block, _)| block.as_str()),
-            block.map(|(_, position)| count(position)),
-            text
+            integer(agent),
+            message.text.kind.as_str(),
+            message.block.as_str(),
+            count(message.position),
+            message.text.text
         ])?;
     Ok(())
 }
@@ -614,6 +767,7 @@ fn remove_rows(
         "DELETE FROM texts WHERE conversation = ?1",
         [conversation.as_str()],
     )?;
+    transaction.execute("DELETE FROM agents WHERE conversation = ?1", [conversation.as_str()])?;
     transaction.execute(
         "DELETE FROM conversations WHERE id = ?1",
         [conversation.as_str()],
@@ -694,16 +848,19 @@ fn open_current(path: &Path) -> Result<Option<Connection>, StorageError> {
     Ok(Some(connection))
 }
 
-/// The text a search finds of a block: a user's message's or steer's, or an
-/// answer's. Thinking, tool calls and their results, commands' output,
+/// The text a search finds of a block: a user's message's or steer's, an
+/// answer's, or the title of the command a `shell` call ran. Thinking,
+/// other tools' calls and every call's result, commands' scripts and output,
 /// files and the blocks the runtime writes have none, and neither does a
 /// message without text.
-pub(crate) fn searchable_text(block: &Block) -> Option<String> {
-    match block {
-        Block::User(_) | Block::Steer(_) => message_text(block),
-        Block::Text(answer) if !answer.text.trim().is_empty() => Some(answer.text.clone()),
-        _ => None,
-    }
+pub fn searchable_text(block: &Block) -> Option<Searchable> {
+    let (kind, text) = match block {
+        Block::User(_) | Block::Steer(_) => (SearchKind::Message, message_text(block)?),
+        Block::Text(answer) if !answer.text.trim().is_empty() => (SearchKind::Answer, answer.text.clone()),
+        Block::ToolCall(call) => (SearchKind::Command, call.shell_command()?.title),
+        _ => return None,
+    };
+    Some(Searchable { kind, text })
 }
 
 /// How many characters of a long line come before its first match.
@@ -794,7 +951,7 @@ fn utf16_ranges(shown: &[char], lead: usize, found: &[(usize, usize)], start: us
 
 /// Where the words occur in `characters`, as character positions, end
 /// exclusive, in order, overlapping ones joined.
-fn occurrences(characters: &[char], words: &[String]) -> Vec<(usize, usize)> {
+pub fn occurrences(characters: &[char], words: &[String]) -> Vec<(usize, usize)> {
     let mut found = Vec::new();
     for word in words {
         let word: Vec<char> = word.chars().collect();
@@ -864,17 +1021,23 @@ mod tests {
 
     fn indexed(title: &str, messages: &[(&str, &str)]) -> IndexedConversation {
         IndexedConversation {
-            version: SavedVersion::default(),
             title: title.to_owned(),
-            messages: messages
-                .iter()
-                .enumerate()
-                .map(|(position, (block, text))| IndexedMessage {
-                    block: BlockId::try_from((*block).to_owned()).unwrap(),
-                    position,
-                    text: (*text).to_owned(),
-                })
-                .collect(),
+            agents: vec![IndexedAgent {
+                agent: 0,
+                version: SavedVersion::default(),
+                messages: messages
+                    .iter()
+                    .enumerate()
+                    .map(|(position, (block, text))| IndexedMessage {
+                        block: BlockId::try_from((*block).to_owned()).unwrap(),
+                        position,
+                        text: Searchable {
+                            kind: SearchKind::Message,
+                            text: (*text).to_owned(),
+                        },
+                    })
+                    .collect(),
+            }],
         }
     }
 
@@ -974,6 +1137,27 @@ mod tests {
             found.message.as_ref().is_some_and(|message| message.line.chars().count() == LINE_MAX)
         }));
         assert_eq!(indexes.work().texts - before.texts, 3);
+    }
+
+    // About 20 ms. An agent's history search finds the agent's own rows
+    // alone: a subagent's search whose index rows of the root came back
+    // would name blocks of the root's transcript by indices of its own.
+    #[tokio::test]
+    async fn a_history_search_finds_its_own_agents_rows_alone() {
+        let data = tempfile::tempdir().unwrap();
+        let indexes = SearchIndexes::open(data.path().join("search")).await.unwrap();
+        let mut conversation_rows = indexed("", &[("r1", "the release switch"), ("r2", "other")]);
+        let mut child = indexed("", &[("c1", "find the release switch"), ("c2", "release notes")]).agents.remove(0);
+        child.agent = 1;
+        conversation_rows.agents.push(child);
+        indexes.index(&user(), &conversation(1), conversation_rows).await.unwrap();
+        let words = |text: &str| text.split_whitespace().map(str::to_owned).collect::<Vec<_>>();
+        let (ana, first) = (user(), conversation(1));
+        let find = |agent, query: &str, any| indexes.find_in(&ana, &first, agent, words(query), any);
+        assert_eq!(find(1, "release switch", false).await.unwrap(), vec![0]);
+        assert_eq!(find(1, "switch notes", true).await.unwrap(), vec![1, 0]);
+        assert_eq!(find(0, "release switch", false).await.unwrap(), vec![0]);
+        assert_eq!(find(0, "notes", false).await.unwrap(), Vec::<usize>::new());
     }
 
     // About 30 ms.
