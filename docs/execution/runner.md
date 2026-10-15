@@ -57,6 +57,15 @@ as answering. For example, a laptop
 whose Wi-Fi blinked reconnects within about 5 seconds instead of being
 refused until the backend's heartbeat gives the old socket up.
 
+The runner retries a lost connection after 250 milliseconds, doubling the
+wait after each attempt that fails, up to 10 seconds. A connection that went
+online starts that over when it ends, however it ends, so a Host that was
+online for hours reconnects at once after a drop rather than after the wait
+an earlier outage grew to. The Host log records each attempt's failure once
+while the same failure repeats, and records again a failure that follows a
+connection that went online, so each drop leaves its reason in the log
+before the next *online* line ([Host log](#host-log)).
+
 A connection's end ends everything it carries. Requests waiting for the
 runner's answer fail as the device being offline, its service streams and
 direct streams close, and its `rpc` calls are stopped, so their handlers see
