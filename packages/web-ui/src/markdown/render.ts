@@ -22,38 +22,59 @@ let activeOptions: MarkdownRenderOptions | undefined
 /** Links open around the renderer: an image inside one follows it instead of opening itself. */
 let openLinks = 0
 
-/** A link that leaves for the web, in a new tab. */
-function webLink(url: string): string {
-  return `<a href="${escapeHtml(url)}" target="_blank" rel="${WEB_LINK_REL}">`
+/** A link that leaves for the web, in a new tab, with `attributes` after its own. */
+function webLink(url: string, attributes = ''): string {
+  return `<a href="${escapeHtml(url)}" target="_blank" rel="${WEB_LINK_REL}"${attributes}>`
 }
 
-/**
- * A link that opens a Host file through the `file` intent, at its line when
- * it names one. A link of text names the file with its icon first, the one
- * the file tree shows for it, which the page puts in its place
- * (`StreamedMarkdown`), so it reads as a file and not as a web page; a link
- * that starts with an icon, a commit's too (`commitLink`), is spaced from the
- * words around it (`icon-link`).
- */
-function fileLink({ path, line }: MessageFileTarget, named: boolean, tight = false): string {
+/** A link that opens a Host file through the `file` intent, at its line when it names one. */
+function fileLink({ path, line }: MessageFileTarget, attributes = ''): string {
   const at = line === null ? '' : ` data-line="${line}"`
-  if (!named)
-    return `<a href="${escapeHtml(path)}" data-file-link${at}>`
-  const icon = `<span class="message-link-icon" data-file-icon="${escapeHtml(baseName(path))}" aria-hidden="true"></span>`
-  return `<a href="${escapeHtml(path)}" class="${iconLinkClass(tight)}" data-file-link${at}>${icon}`
+  return `<a href="${escapeHtml(path)}" data-file-link${at}${attributes}>`
+}
+
+/** A link that opens a commit's changes. */
+function commitLink(commit: string, href: string, attributes = ''): string {
+  return `<a href="${escapeHtml(href)}" data-commit-link="${escapeHtml(commit)}"${attributes}>`
 }
 
 /**
- * A link that opens a commit's changes, with the commit's icon first, which
- * the page puts in its place (`StreamedMarkdown`) as it does a file's, and
- * spaced as a file's link is (`icon-link`).
+ * The place of the icon a message's link wears before its text, which the
+ * page fills (`StreamedMarkdown`): a Host file's or an attachment's file icon
+ * (`data-file-icon`, by the file's name), the commit icon (`data-commit-icon`)
+ * or a web page's link icon (`data-link-icon`).
  */
-function commitLink(commit: string, href: string, body: string, tight: boolean): string {
-  const icon = '<span class="message-link-icon" data-commit-icon aria-hidden="true"></span>'
-  // The icon stays with the first word of the text on its line, as an agent's mark does.
-  const lead = firstWord(body.slice(0, body.search(/<|$/)))
-  return `<a href="${escapeHtml(href)}" class="${iconLinkClass(tight)}" data-commit-link="${escapeHtml(commit)}">`
-    + `<span class="icon-lead">${icon}${lead}</span>${body.slice(lead.length)}</a>`
+function linkIcon(attribute: string): string {
+  return `<span class="message-link-icon" ${attribute} aria-hidden="true"></span>`
+}
+
+/** The icon of a file named `name`, a Host file's or an attachment's. */
+function fileIcon(name: string): string {
+  return linkIcon(`data-file-icon="${escapeHtml(name)}"`)
+}
+
+/**
+ * A message's link that wears an icon, every link of a message but one whose
+ * text is an image (`file-previews.md` § Files named in messages): the link
+ * `open` starts, with the classes that space it from the words around it
+ * (`icon-link`), then its icon and text (`iconLead`).
+ */
+function iconLink(open: (attributes: string) => string, icon: string, body: string, tight: boolean): string {
+  return `${open(` class="${iconLinkClass(tight)}"`)}${iconLead(icon, body)}</a>`
+}
+
+/**
+ * The icon or mark of a link and its text. The icon stays with the first
+ * word of the text on its line. The icon already says what the link is, so
+ * code in its text drops code's look and reads as the words of a link
+ * without code do: `` [`runner.md`](runner.md) `` as `[runner.md](runner.md)`.
+ * The renderer writes inline code as a bare `<code>` around escaped text, so
+ * its tags are the only ones that match.
+ */
+function iconLead(icon: string, body: string): string {
+  const text = body.replace(/<\/?code>/g, '')
+  const lead = firstWord(text.slice(0, text.search(/<|$/)))
+  return `<span class="icon-lead">${icon}${lead}</span>${text.slice(lead.length)}`
 }
 
 /** The classes of a link that starts with an icon, `tight` when ASCII punctuation follows it, which keeps no space after its name. */
@@ -74,7 +95,8 @@ const CLOSING_PUNCTUATION_RE = /^[.,;:!?)\]}]/
 function tightenLinks(tokens: Token[]): void {
   const mark = (inline: readonly Token[]) => inline.forEach((part, index) => {
     const next = inline[index + 1]
-    if (part.type === 'link' && next?.type === 'text' && CLOSING_PUNCTUATION_RE.test(next.raw))
+    // Inline code may become a file's link (`codespan`), so it is marked as a link is.
+    if ((part.type === 'link' || part.type === 'codespan') && next?.type === 'text' && CLOSING_PUNCTUATION_RE.test(next.raw))
       tightLinks.add(part)
   })
   // A walk gives each token, but a table's cells hold their inline tokens apart from it.
@@ -88,7 +110,7 @@ function tightenLinks(tokens: Token[]): void {
   })
 }
 
-/** The links `tightenLinks` marked, by token. */
+/** The links and code spans `tightenLinks` marked, by token. */
 const tightLinks = new WeakSet<Token>()
 
 /**
@@ -110,10 +132,8 @@ function agentLink(number: number, body: string, tight: boolean): string {
     return `<span class="agent-link-missing" data-agent-link="${number}">${body}</span>`
   // A button element lays out as one block, so a long name would move whole
   // to a line of its own: the link is inline text that acts as a button.
-  const lead = firstWord(body.slice(0, body.search(/<|$/)))
   return `<span role="button" tabindex="0" class="agent-link ${iconLinkClass(tight)}" data-agent-link="${number}" ${KEEPS_WINDOWS}>`
-    + `<span class="icon-lead"><span class="agent-link-mark" data-agent-mark="${number}"></span>${lead}</span>`
-    + `${body.slice(lead.length)}</span>`
+    + `${iconLead(`<span class="agent-link-mark" data-agent-mark="${number}"></span>`, body)}</span>`
 }
 
 /**
@@ -240,7 +260,7 @@ function attachmentMedium(attachment: MessageAttachment, token: Tokens.Image): s
   if (attachment.mediaType.startsWith('video/'))
     return attachmentVideo(attachment, alt, title)
   if (!attachment.mediaType.startsWith('image/'))
-    return openLinks > 0 ? alt : `${attachmentLink(attachment)}${alt}</a>`
+    return openLinks > 0 ? alt : iconLink((attributes) => attachmentLink(attachment, attributes), fileIcon(attachment.name), alt, false)
   const image = `<img src="${escapeHtml(attachment.url)}" alt="${alt}"${title}${sizeAttributes(declaredSize(attachment))} />`
   return openLinks > 0 ? image : `${attachmentLink(attachment)}${image}</a>`
 }
@@ -260,16 +280,17 @@ const messageRenderer: RendererObject = {
   code({ text, lang }) {
     return codeBlockHtml(text, lang ?? '')
   },
-  // Inline code that names a file the Host has opens it, in its code look
+  // Inline code that names a file the Host has opens it, as a link of words with the file's icon
   // (`file-previews.md` § Files named in messages).
-  codespan({ text }) {
+  codespan(token) {
+    const { text } = token
     const code = `<code>${escapeHtml(text)}</code>`
     const files = activeOptions?.files
     const existing = activeOptions?.codeFiles
     if (!files?.open || !existing || openLinks > 0)
       return code
     const target = codeFileTarget(text, files.cwd)
-    return target && existing.has(target.path) ? `${fileLink(target, true)}${code}</a>` : code
+    return target && existing.has(target.path) ? iconLink((attributes) => fileLink(target, attributes), fileIcon(baseName(target.path)), code, tightLinks.has(token)) : code
   },
   link(token) {
     openLinks += 1
@@ -279,26 +300,29 @@ const messageRenderer: RendererObject = {
     } finally {
       openLinks -= 1
     }
+    // A link whose text is a picture, as a badge's is, shows the picture alone.
+    const named = !(token.tokens ?? []).some((part) => part.type === 'image')
+    const tight = tightLinks.has(token)
+    const link = (open: (attributes: string) => string, icon: string) =>
+      named ? iconLink(open, icon, body, tight) : `${open('')}${body}</a>`
     if (isHttpUrl(token.href))
-      return `${webLink(token.href)}${body}</a>`
+      return link((attributes) => webLink(token.href, attributes), linkIcon('data-link-icon'))
     const attachment = attachmentId(token.href)
     if (attachment !== null)
-      return attachmentTarget(attachment, body, (found) => `${attachmentLink(found)}${body}</a>`)
+      return attachmentTarget(attachment, body, (found) => link((attributes) => attachmentLink(found, attributes), fileIcon(found.name)))
     const agent = linkedAgent(token.href)
     if (agent !== null)
-      return agentLink(agent, body, tightLinks.has(token))
+      return agentLink(agent, body, tight)
     // A commit opens its changes; nobody to open it, its text alone.
     const commit = linkedCommit(token.href)
     if (commit !== null)
-      return activeOptions?.files?.openCommit ? `${commitLink(commit, token.href, body, tightLinks.has(token))}` : body
+      return activeOptions?.files?.openCommit ? link((attributes) => commitLink(commit, token.href, attributes), linkIcon('data-commit-icon')) : body
     // A file nobody opens is named as text.
     const files = activeOptions?.files
     const target = files?.open ? messageFileTarget(token.href, files) : null
     if (target === null)
       return body
-    // A picture that links a file shows itself, not the file's icon.
-    const named = !(token.tokens ?? []).some((part) => part.type === 'image')
-    return `${fileLink(target, named, tightLinks.has(token))}${body}</a>`
+    return link((attributes) => fileLink(target, attributes), fileIcon(baseName(target.path)))
   },
   image(token) {
     const attachment = attachmentId(token.href)

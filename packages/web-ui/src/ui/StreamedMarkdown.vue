@@ -14,7 +14,7 @@ import { useTranscript } from '@demicodes/web-ui/agent/edit-selection'
 import AgentLinkMark from '@demicodes/web-ui/agent/AgentLinkMark.vue'
 import { attachmentDrag } from '@demicodes/web-ui/agent/message-input/copied-message'
 import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
-import { GitCommitHorizontal } from '@lucide/vue'
+import { GitCommitHorizontal, Link } from '@lucide/vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
@@ -106,7 +106,8 @@ function renderBlock(source: () => string): () => string {
 
 /**
  * The places of a render that components fill: each code block gets its
- * Copy, each file link its file's icon, each commit link its icon, and each agent link its agent's mark
+ * Copy, each link its icon (a file's or an attachment's file icon, a commit's
+ * or a web page's), and each agent link its agent's mark
  * and tip. A render replaces them; the component of each place moves into
  * the new one and keeps its state, as a code block's Copied.
  */
@@ -137,7 +138,7 @@ function placesIn(nodes: readonly ChildNode[], fresh: readonly ChildNode[]): Pla
   ])
   return {
     codeBlocks: within('.code-block'),
-    linkIcons: within('[data-file-icon], [data-commit-icon]'),
+    linkIcons: within('[data-file-icon], [data-commit-icon], [data-link-icon]'),
     agentLinks: within('[data-agent-link]'),
     media: elements.flatMap((element) => messagePictures(element).map((picture) => picture.element)),
   }
@@ -203,7 +204,8 @@ function onMediumLoad(event: Event): void {
   </Teleport>
   <Teleport v-for="(place, index) in linkIcons" :key="index" :to="place">
     <FileIcon v-if="place.dataset.fileIcon !== undefined" :name="place.dataset.fileIcon" :is-directory="false" :size="ICON_PX.in28" />
-    <GitCommitHorizontal v-else :size="ICON_PX.in28" aria-hidden="true" />
+    <GitCommitHorizontal v-else-if="place.dataset.commitIcon !== undefined" :size="ICON_PX.in28" aria-hidden="true" />
+    <Link v-else :size="ICON_PX.in28" aria-hidden="true" />
   </Teleport>
   <PicturePreview
     v-for="(picture, index) in pictures"
