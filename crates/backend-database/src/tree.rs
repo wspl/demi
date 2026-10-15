@@ -33,7 +33,9 @@ use demi_shared_types::{
     ModelSelection, NodeId, QueuedMessage, Sequence, SessionPhase, Timestamp, ToolCallBlock, is_blank,
 };
 use futures_util::future::LocalBoxFuture;
-use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
+use demi_web_api_protocol::ids::ShareToken;
+use rusqlite::types::Value;
+use rusqlite::{Connection, OptionalExtension, Row, Transaction, params, params_from_iter};
 
 use super::StorageError;
 use super::columns::{count, decode, instant, json, to_json};
@@ -1087,114 +1089,183 @@ pub fn root_blocks(connection: &Connection) -> Result<Vec<Block>, StorageError> 
     blocks_of(connection, &decode("nodes", "id", NodeId::try_from(root))?, block_count)
 }
 
-/// How many blocks the transcript of `node` holds; none when the tree has
-/// no such node (`web-api.md` § Pages).
-pub fn transcript_length(
-    connection: &Connection,
-    node: &NodeId,
-) -> Result<Option<usize>, StorageError> {
-    let length: Option<i64> = connection
-        .query_row(
-            "SELECT block_count FROM nodes WHERE id = ?1",
-            [node.as_str()],
-            |row| row.get(0),
-        )
-        .optional()?;
-    length
-        .map(|length| decode("nodes", "block_count", usize::try_from(length)))
-        .transpose()
+/// A transcript a page is read from (`web-api.md` § Pages): an agent's in
+/// the tree, or the copy of one in a share's snapshot (`sharing.md`
+/// § Storage and routes). The pages, their light form and a block read whole
+/// are the same for both; only the rows they come from differ.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Transcript {
+    /// The transcript of the node, the blocks below its block count.
+    Agent(NodeId),
+    /// The snapshot's copy of the transcript of the agent of that number, 0
+    /// for the root's, under the share's token.
+    Shared { token: ShareToken, agent: u64 },
 }
 
-/// The indices of the `user` blocks among the first `length` blocks of
-/// `node`, where its requests start.
-pub fn user_blocks(
-    connection: &Connection,
-    node: &NodeId,
-    length: usize,
-) -> Result<Vec<usize>, StorageError> {
-    let mut statement = connection.prepare(
-        "SELECT idx FROM blocks
-         WHERE node_id = ?1 AND json_extract(block, '$.type') = 'user' AND idx < ?2
-         ORDER BY idx",
-    )?;
-    let mut rows = statement.query(params![node.as_str(), count(length)])?;
-    let mut users = Vec::new();
-    while let Some(row) = rows.next()? {
-        let index: i64 = row.get(0)?;
-        users.push(decode("blocks", "idx", usize::try_from(index))?);
-    }
-    Ok(users)
-}
-
-/// The blocks of `node` at the indices `range`, all of which it holds.
-pub fn blocks_in(
-    connection: &Connection,
-    node: &NodeId,
-    range: Range<usize>,
-) -> Result<Vec<Block>, StorageError> {
-    let mut statement = connection.prepare(
-        "SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3 ORDER BY idx",
-    )?;
-    let mut rows = statement.query(params![node.as_str(), count(range.start), count(range.end)])?;
-    let mut blocks = Vec::with_capacity(range.len());
-    while let Some(row) = rows.next()? {
-        let index: i64 = row.get(0)?;
-        if index != count(range.start + blocks.len()) {
-            return Err(gap(node, range.start + blocks.len()));
+impl Transcript {
+    /// The rows of the transcript, as the `FROM` and `WHERE` of a query in
+    /// which `{rows}` stands for them and `idx` and `block` name their
+    /// columns, with the parameters they take: each query adds its own after
+    /// them, from `?3` on: the tree's rows take one parameter, and `?2 IS
+    /// NULL` gives them a second that holds. The tree's rows past a node's
+    /// block count are not its transcript's, which `length` keeps out.
+    fn rows(&self) -> (&'static str, Vec<Value>) {
+        match self {
+            Self::Agent(node) => (
+                "blocks WHERE node_id = ?1 AND ?2 IS NULL",
+                vec![Value::Text(node.as_str().to_owned()), Value::Null],
+            ),
+            Self::Shared { token, agent } => (
+                "share_blocks WHERE token = ?1 AND agent = ?2",
+                // A number past the column's names no agent, as a query
+                // may: -1 matches no row.
+                vec![
+                    Value::Text(token.as_str().to_owned()),
+                    Value::Integer(i64::try_from(*agent).unwrap_or(-1)),
+                ],
+            ),
         }
-        let text: String = row.get(1)?;
-        blocks.push(json("blocks", "block", &text)?);
     }
-    if blocks.len() != range.len() {
-        return Err(gap(node, range.start + blocks.len()));
+
+    fn statement<'c>(
+        &self,
+        connection: &'c Connection,
+        sql: &str,
+    ) -> Result<(rusqlite::Statement<'c>, Vec<Value>), StorageError> {
+        let (rows, parameters) = self.rows();
+        Ok((connection.prepare(&sql.replace("{rows}", rows))?, parameters))
     }
-    Ok(blocks)
-}
 
-/// The index of the block `id` among the first `length` blocks of `node`.
-pub fn block_index(
-    connection: &Connection,
-    node: &NodeId,
-    id: &BlockId,
-    length: usize,
-) -> Result<Option<usize>, StorageError> {
-    let index: Option<i64> = connection
-        .query_row(
-            "SELECT idx FROM blocks
-             WHERE json_extract(block, '$.id') = ?1 AND node_id = ?2 AND idx < ?3",
-            params![id.as_str(), node.as_str(), count(length)],
-            |row| row.get(0),
-        )
-        .optional()?;
-    index
-        .map(|index| decode("blocks", "idx", usize::try_from(index)))
-        .transpose()
-}
+    /// How many blocks the transcript holds; none when there is no such
+    /// transcript: a node the tree lacks, or an agent the snapshot holds no
+    /// block of, but the root's, which a snapshot always holds.
+    pub fn length(&self, connection: &Connection) -> Result<Option<usize>, StorageError> {
+        let length: Option<i64> = match self {
+            Self::Agent(node) => connection
+                .query_row(
+                    "SELECT block_count FROM nodes WHERE id = ?1",
+                    [node.as_str()],
+                    |row| row.get(0),
+                )
+                .optional()?,
+            Self::Shared { agent, .. } => {
+                let (mut statement, parameters) = self.statement(connection, "SELECT COUNT(*) FROM {rows}")?;
+                let held: i64 = statement.query_row(params_from_iter(parameters), |row| row.get(0))?;
+                (held > 0 || *agent == 0).then_some(held)
+            }
+        };
+        length
+            .map(|length| decode("nodes", "block_count", usize::try_from(length)))
+            .transpose()
+    }
 
-/// The entries of the newest instructions block among the first `length`
-/// blocks of `node`, which the context card lists; none before the first
-/// (`instructions.md` § What the card lists).
-pub fn newest_instructions(
-    connection: &Connection,
-    node: &NodeId,
-    length: usize,
-) -> Result<Vec<InstructionEntry>, StorageError> {
-    let text: Option<String> = connection
-        .query_row(
-            "SELECT block FROM blocks
-             WHERE node_id = ?1 AND json_extract(block, '$.type') = 'context' AND idx < ?2
-               AND json_extract(block, '$.source') = ?3
-             ORDER BY idx DESC LIMIT 1",
-            params![node.as_str(), count(length), INSTRUCTIONS_SOURCE],
-            |row| row.get(0),
-        )
-        .optional()?;
-    let Some(text) = text else {
-        return Ok(Vec::new());
-    };
-    match json("blocks", "block", &text)? {
-        Block::Context(context) => Ok(context.instructions),
-        _ => unreachable!("the query selects a context block"),
+    /// The indices of the `user` blocks among its first `length` blocks,
+    /// where its requests start.
+    pub fn user_blocks(&self, connection: &Connection, length: usize) -> Result<Vec<usize>, StorageError> {
+        let (mut statement, mut parameters) = self.statement(
+            connection,
+            "SELECT idx FROM {rows} AND json_extract(block, '$.type') = 'user' AND idx < ?3 ORDER BY idx",
+        )?;
+        parameters.push(Value::Integer(count(length)));
+        let mut rows = statement.query(params_from_iter(parameters))?;
+        let mut users = Vec::new();
+        while let Some(row) = rows.next()? {
+            let index: i64 = row.get(0)?;
+            users.push(decode(self.table(), "idx", usize::try_from(index))?);
+        }
+        Ok(users)
+    }
+
+    /// Its blocks at the indices `range`, all of which it holds.
+    pub fn blocks_in(&self, connection: &Connection, range: Range<usize>) -> Result<Vec<Block>, StorageError> {
+        let (mut statement, mut parameters) = self.statement(
+            connection,
+            "SELECT idx, block FROM {rows} AND idx >= ?3 AND idx < ?4 ORDER BY idx",
+        )?;
+        parameters.extend([Value::Integer(count(range.start)), Value::Integer(count(range.end))]);
+        let mut rows = statement.query(params_from_iter(parameters))?;
+        let mut blocks = Vec::with_capacity(range.len());
+        while let Some(row) = rows.next()? {
+            let index: i64 = row.get(0)?;
+            if index != count(range.start + blocks.len()) {
+                return Err(self.gap(range.start + blocks.len()));
+            }
+            let text: String = row.get(1)?;
+            blocks.push(json(self.table(), "block", &text)?);
+        }
+        if blocks.len() != range.len() {
+            return Err(self.gap(range.start + blocks.len()));
+        }
+        Ok(blocks)
+    }
+
+    /// The index of the block `id` among its first `length` blocks.
+    pub fn block_index(
+        &self,
+        connection: &Connection,
+        id: &BlockId,
+        length: usize,
+    ) -> Result<Option<usize>, StorageError> {
+        let (mut statement, mut parameters) = self.statement(
+            connection,
+            "SELECT idx FROM {rows} AND json_extract(block, '$.id') = ?3 AND idx < ?4",
+        )?;
+        parameters.extend([Value::Text(id.as_str().to_owned()), Value::Integer(count(length))]);
+        let index: Option<i64> = statement
+            .query_row(params_from_iter(parameters), |row| row.get(0))
+            .optional()?;
+        index
+            .map(|index| decode(self.table(), "idx", usize::try_from(index)))
+            .transpose()
+    }
+
+    /// The entries of the newest instructions block among its first
+    /// `length` blocks, which the context card lists; none before the first
+    /// (`instructions.md` § What the card lists), and none in a snapshot,
+    /// which holds no `context` block.
+    pub fn newest_instructions(
+        &self,
+        connection: &Connection,
+        length: usize,
+    ) -> Result<Vec<InstructionEntry>, StorageError> {
+        let Self::Agent(node) = self else {
+            return Ok(Vec::new());
+        };
+        let text: Option<String> = connection
+            .query_row(
+                "SELECT block FROM blocks
+                 WHERE node_id = ?1 AND json_extract(block, '$.type') = 'context' AND idx < ?2
+                   AND json_extract(block, '$.source') = ?3
+                 ORDER BY idx DESC LIMIT 1",
+                params![node.as_str(), count(length), INSTRUCTIONS_SOURCE],
+                |row| row.get(0),
+            )
+            .optional()?;
+        let Some(text) = text else {
+            return Ok(Vec::new());
+        };
+        match json("blocks", "block", &text)? {
+            Block::Context(context) => Ok(context.instructions),
+            _ => unreachable!("the query selects a context block"),
+        }
+    }
+
+    fn table(&self) -> &'static str {
+        match self {
+            Self::Agent(_) => "blocks",
+            Self::Shared { .. } => "share_blocks",
+        }
+    }
+
+    fn gap(&self, index: usize) -> StorageError {
+        match self {
+            Self::Agent(node) => gap(node, index),
+            Self::Shared { token, agent } => StorageError::Corrupt {
+                table: "share_blocks",
+                column: "idx",
+                reason: format!("agent {agent} of share {token} has no block {index}"),
+            },
+        }
     }
 }
 
@@ -1216,30 +1287,51 @@ pub enum PageRead {
     Invalid(&'static str),
 }
 
-/// The page `query` asks of the transcript of `node`, its blocks whole:
-/// whole requests within the page budget (`web-api.md` § Pages).
+/// Where a page is read from, as its query asks (`web-api.md` § Pages):
+/// none, `before` or `after` with its `edge`, or `around`.
+#[derive(Debug, Clone, Copy)]
+pub struct PageQuery<'a> {
+    pub before: Option<u32>,
+    pub after: Option<u32>,
+    pub around: Option<&'a BlockId>,
+    pub edge: Option<&'a BlockId>,
+}
+
+impl<'a> From<&'a TranscriptQuery> for PageQuery<'a> {
+    fn from(query: &'a TranscriptQuery) -> Self {
+        Self {
+            before: query.before,
+            after: query.after,
+            around: query.around.as_ref(),
+            edge: query.edge.as_ref(),
+        }
+    }
+}
+
+/// The page `query` asks of `transcript`, its blocks whole: whole requests
+/// within the page budget (`web-api.md` § Pages).
 pub fn read_page(
     connection: &Connection,
-    node: &NodeId,
-    query: &TranscriptQuery,
+    transcript: &Transcript,
+    query: PageQuery<'_>,
 ) -> Result<PageRead, StorageError> {
-    let Some(length) = transcript_length(connection, node)? else {
+    let Some(length) = transcript.length(connection)? else {
         return Ok(PageRead::NoNode);
     };
     // The index a page extends from, while the block there is still the
     // `edge` the page holds; otherwise why the read is refused.
     let edge_at = |index: u32| -> Result<Result<usize, PageRead>, StorageError> {
-        let Some(edge) = &query.edge else {
+        let Some(edge) = query.edge else {
             return Ok(Err(PageRead::Invalid("`before` and `after` take an `edge`")));
         };
         let index = usize::try_from(index).unwrap_or(usize::MAX);
         if index >= length {
             return Ok(Err(PageRead::Invalid("an index outside the transcript")));
         }
-        let held = blocks_in(connection, node, index..index + 1)?;
+        let held = transcript.blocks_in(connection, index..index + 1)?;
         Ok(if held[0].id() == edge { Ok(index) } else { Err(PageRead::Changed) })
     };
-    let at = match (query.before, query.after, &query.around) {
+    let at = match (query.before, query.after, query.around) {
         (None, None, None) => PageAt::Latest,
         (Some(index), None, None) => match edge_at(index)? {
             Ok(index) => PageAt::Before(index),
@@ -1249,20 +1341,20 @@ pub fn read_page(
             Ok(index) => PageAt::After(index),
             Err(refusal) => return Ok(refusal),
         },
-        (None, None, Some(block)) => match block_index(connection, node, block, length)? {
+        (None, None, Some(block)) => match transcript.block_index(connection, block, length)? {
             Some(index) => PageAt::Around(index),
             None => return Ok(PageRead::NoBlock),
         },
         _ => return Ok(PageRead::Invalid("one of `before`, `after` and `around`")),
     };
-    let users = user_blocks(connection, node, length)?;
+    let users = transcript.user_blocks(connection, length)?;
     let requests = requests(length, &users);
     // Each request the selection sizes is read once, and the page is made
     // of those it keeps.
     let mut read: HashMap<usize, Vec<Block>> = HashMap::new();
     let mut failed = None;
     let range = page(&requests, at, |request| {
-        match blocks_in(connection, node, request.clone()) {
+        match transcript.blocks_in(connection, request.clone()) {
             Ok(blocks) => {
                 let bytes = light_bytes(&blocks);
                 read.insert(request.start, blocks);
@@ -1288,9 +1380,9 @@ pub fn read_page(
     let mut summaries = Vec::new();
     for block in &blocks {
         if let Block::CompactionMarker(marker) = block
-            && let Some(index) = block_index(connection, node, &marker.boundary_id, length)?
+            && let Some(index) = transcript.block_index(connection, &marker.boundary_id, length)?
             && let Block::CompactionBoundary(boundary) =
-                &blocks_in(connection, node, index..index + 1)?[0]
+                &transcript.blocks_in(connection, index..index + 1)?[0]
         {
             summaries.push(CompactionSummary {
                 marker: marker.id.clone(),
@@ -1302,9 +1394,32 @@ pub fn read_page(
         start: range.start,
         length,
         blocks,
-        instructions: newest_instructions(connection, node, length)?,
+        instructions: transcript.newest_instructions(connection, length)?,
         summaries,
     })
+}
+
+/// What a read of one block whole found (`web-api.md` § Light form).
+pub enum BlockRead {
+    Block(Block),
+    NoNode,
+    NoBlock,
+}
+
+/// The block `id` of `transcript`, whole.
+pub fn read_block(
+    connection: &Connection,
+    transcript: &Transcript,
+    id: &BlockId,
+) -> Result<BlockRead, StorageError> {
+    let Some(length) = transcript.length(connection)? else {
+        return Ok(BlockRead::NoNode);
+    };
+    let Some(index) = transcript.block_index(connection, id, length)? else {
+        return Ok(BlockRead::NoBlock);
+    };
+    let mut blocks = transcript.blocks_in(connection, index..index + 1)?;
+    Ok(BlockRead::Block(blocks.remove(0)))
 }
 
 /// The subagents of the tree, in the order they started, each with the

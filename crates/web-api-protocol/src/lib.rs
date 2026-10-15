@@ -31,6 +31,7 @@ pub mod saved;
 pub mod search;
 pub mod sessions;
 pub mod settings;
+pub mod shares;
 pub mod sidebar;
 pub mod state;
 pub mod subagents;

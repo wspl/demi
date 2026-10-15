@@ -13,7 +13,7 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::Response;
 use demi_backend_database::conversation_index::{ConversationRecord, Creation};
-use demi_backend_database::conversation_attachments::{self, AttachmentNumber};
+use demi_backend_database::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
 use demi_backend_database::tree;
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::conversations::{
@@ -141,7 +141,12 @@ pub(super) async fn attachment(
         .map_err(ApiError::conversation_unreadable)?
         .flatten()
         .ok_or_else(no_attachment)?;
-    Ok(Json(ConversationAttachment {
+    Ok(Json(attachment_answer(row)))
+}
+
+/// An attachment's row as an attachment route answers it.
+pub(super) fn attachment_answer(row: AttachmentRow) -> ConversationAttachment {
+    ConversationAttachment {
         id: row.number.to_string(),
         name: row.name,
         media_type: row.media_type,
@@ -149,7 +154,7 @@ pub(super) async fn attachment(
         width: row.pixels.map(|pixels| pixels.width),
         height: row.pixels.map(|pixels| pixels.height),
         blob: row.blob,
-    }))
+    }
 }
 
 /// `PATCH /conversations/:id`: each field applied on its own, the archive

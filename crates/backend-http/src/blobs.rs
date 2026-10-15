@@ -13,6 +13,7 @@ use axum::extract::{Path, RawQuery, State};
 use axum::http::header::{CACHE_CONTROL, RANGE, VARY};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
+use bytes::Bytes;
 use demi_shared_types::BlobRef;
 use demi_web_api_protocol::error::ErrorCode;
 
@@ -40,9 +41,22 @@ pub(super) async fn blob(
         .get(&blob)
         .await?
         .ok_or_else(no_such_blob)?;
+    let mut answer = blob_answer(&bytes, query.as_deref(), &request);
+    let headers = answer.headers_mut();
+    headers.insert(
+        CACHE_CONTROL,
+        HeaderValue::from_static("private, max-age=31536000, immutable"),
+    );
+    headers.insert(VARY, HeaderValue::from_static("Cookie"));
+    Ok(answer)
+}
+
+/// The bytes of a blob as a blob route answers them: as the media type the
+/// query's `type` asks for, and the part a byte range asks for.
+pub(super) fn blob_answer(bytes: &Bytes, query: Option<&str>, request: &HeaderMap) -> Response {
     // `type` asks to see the bytes as that media type, and is not validated:
     // one the page does not show in place leaves the blob a download.
-    let requested = query.as_deref().and_then(|query| {
+    let requested = query.and_then(|query| {
         url::form_urlencoded::parse(query.as_bytes())
             .find(|(key, _)| key == "type")
             .map(|(_, media_type)| media_type.into_owned())
@@ -51,16 +65,11 @@ pub(super) async fn blob(
     let range = request.get(RANGE).and_then(|value| value.to_str().ok());
     let part = RangeAnswer::of(range, size);
     let mut headers = content_headers(requested.as_deref(), false, None);
-    headers.insert(
-        CACHE_CONTROL,
-        HeaderValue::from_static("private, max-age=31536000, immutable"),
-    );
-    headers.insert(VARY, HeaderValue::from_static("Cookie"));
     headers.extend(part.headers());
-    Ok(match part.part_of(&bytes) {
+    match part.part_of(bytes) {
         Some(body) => (part.status(), headers, body).into_response(),
         None => (part.status(), headers).into_response(),
-    })
+    }
 }
 
 fn no_such_blob() -> ApiError {

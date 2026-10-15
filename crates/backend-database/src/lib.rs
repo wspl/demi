@@ -37,6 +37,7 @@ pub use schema::testing as schema_testing;
 pub use schema::{DatabaseKind, SchemaFit, schema_fit};
 pub mod search;
 pub mod server_log;
+pub mod shares;
 pub mod sequences;
 pub mod sidebar;
 mod sqlite;
