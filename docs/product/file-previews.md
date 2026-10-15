@@ -201,8 +201,11 @@ focus the view shows no caret.
 ## Markdown
 
 Markdown renders as GitHub renders a repository file: GitHub Flavored
-Markdown, with tables, task lists, strikethrough and autolinks, highlighted
-code blocks and KaTeX math. A single line break inside a paragraph joins the
+Markdown, with tables, task lists, strikethrough and autolinks, alerts
+(`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`, titled
+in the reader's language), highlighted code blocks and KaTeX math. An image
+whose file is still being read, or is missing, shows the quiet placeholder
+box with its alt text, never the browser's broken-image icon. A single line break inside a paragraph joins the
 lines, unlike in messages. Task list checkboxes are read-only. Leading YAML
 front matter shows as a YAML code block. A file over 2 MiB shows only its
 source, since rendering that much stalls the page.
