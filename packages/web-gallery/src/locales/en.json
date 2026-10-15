@@ -1,0 +1,76 @@
+{
+  "nav": {
+    "overview": "Overview",
+    "signin": "Sign In & Setup",
+    "surfaces": "Surfaces",
+    "primitives": "Primitives",
+    "controlLayout": "Control Layout",
+    "writing": "Writing",
+    "errors": "Errors",
+    "motion": "Motion",
+    "overlays": "Overlays",
+    "dialogs": "Dialogs",
+    "files": "Files",
+    "session": "Session",
+    "sidebar": "Sidebar",
+    "settings": "Settings",
+    "markdown": "Markdown",
+    "phone": "Phone",
+    "roadmap": "Roadmap"
+  },
+  "views": {
+    "errors": {
+      "primitives": "Primitives",
+      "conversation": "Conversation",
+      "messages": "Messages & Uploads",
+      "forms": "Forms & Settings",
+      "files": "Files"
+    },
+    "signin": {
+      "signin": "Sign In",
+      "setup": "Setup",
+      "handoff": "Phone Handoff",
+      "starting": "Starting"
+    },
+    "primitives": {
+      "buttons": "Buttons",
+      "fields": "Fields",
+      "marks": "Marks"
+    },
+    "overlays": {
+      "menus": "Menus",
+      "dialogs": "Dialogs"
+    },
+    "files": {
+      "browser": "Browser",
+      "tree": "Tree",
+      "dialogs": "Dialogs"
+    },
+    "session": {
+      "tabs": "Tab Strip",
+      "composer": "Composer",
+      "blocks": "Blocks",
+      "lengths": "Lengths",
+      "changes": "Changes",
+      "turns": "Turns",
+      "states": "States",
+      "session": "Session",
+      "panel": "Panel",
+      "windows": "Windows"
+    },
+    "dialogs": {
+      "account": "Account",
+      "providers": "Providers",
+      "devices": "Devices",
+      "workspace": "Workspace",
+      "cloud": "Cloud",
+      "skills": "Skills",
+      "search": "Search"
+    },
+    "page": "Page"
+  },
+  "chrome": {
+    "mode": "Mode",
+    "font": "Font"
+  }
+}

@@ -72,7 +72,7 @@ import { COMMITS_HEIGHT } from '@demicodes/web-ui/files/file-view'
 import type { CommitHistorySource } from '@demicodes/web-ui/files/history'
 import { selectedTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
-import { BrowserTabsError, NEW_TAB_URL, STARTING_LABELS, browserTabDataSchema, serverRefused, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
+import { BrowserTabsError, NEW_TAB_URL, browserTabDataSchema, serverRefused, startingLabel, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
 import { SERVER_FAILED } from '../fixtures/plugins'
 import type { ChangeMode, ChangeSetSource, ChangeSources } from '@demicodes/web-ui/files/changes'
 import { storedRequests, type RequestChangeSource, type RequestEditRef, type RequestEditSelection } from '@demicodes/web-ui/files/request-changes'
@@ -3632,7 +3632,7 @@ onBeforeUnmount(() => {
           <GallerySpecimen
             v-for="phase in STARTING_PHASES"
             :key="phase"
-            :variant="`tabs · before the browser has the tab · ${STARTING_LABELS[phase]}`"
+            :variant="`tabs · before the browser has the tab · ${startingLabel(phase)}`"
             wide
           >
             <div class="gallery-frame flex h-[24rem] overflow-hidden">

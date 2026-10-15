@@ -1,0 +1,122 @@
+{
+  "reasons": {
+    "invalid_input": "브라우저에서는 웹, 파일, 빈 페이지만 열 수 있습니다.",
+    "tab_not_found": "이 페이지는 더 이상 장치에서 열려 있지 않습니다.",
+    "tab_busy": "탭이 다른 요청을 처리하고 있습니다. 잠시 후 다시 시도하십시오.",
+    "stale_ref": "브라우저가 작업하기 전에 페이지가 변경되었습니다.",
+    "stale_cursor": "브라우저 기록을 읽기 전에 변경되었습니다.",
+    "stale_inventory": "페이지의 파일을 읽기 전에 변경되었습니다.",
+    "stale_tools": "페이지의 도구를 사용하기 전에 변경되었습니다.",
+    "target_not_found": "브라우저가 페이지에서 해당 항목을 찾을 수 없습니다.",
+    "ambiguous_target": "페이지의 여러 부분이 일치합니다.",
+    "not_actionable": "페이지의 해당 부분을 지금은 사용할 수 없습니다.",
+    "timeout": "브라우저가 제때 응답하지 않았습니다.",
+    "dialog_blocked": "페이지의 대화 상자가 응답을 기다리고 있습니다.",
+    "dialog_not_found": "페이지에 응답을 기다리는 대화 상자가 없습니다.",
+    "invalid_dialog_action": "그 방법으로는 대화 상자에 응답할 수 없습니다.",
+    "history_boundary": "탭에 해당 방향으로 이동할 페이지가 없습니다.",
+    "navigation_failed": "브라우저가 페이지를 로드할 수 없습니다.",
+    "protected_value": "페이지에서 해당 값을 공개하지 않습니다.",
+    "side_effect_rejected": "브라우저에서 해당 작업으로 페이지를 변경하도록 허용하지 않았습니다.",
+    "unsupported_result": "브라우저에서 페이지가 반환한 내용을 전달할 수 없습니다.",
+    "unsupported_capability": "장치의 브라우저에서 해당 작업을 수행할 수 없습니다.",
+    "cdp_method_denied": "브라우저에서 허용하지 않는 작업입니다.",
+    "output_exists": "같은 이름의 파일이 장치에 이미 있습니다.",
+    "io_error": "장치에서 브라우저에 필요한 파일을 읽거나 쓸 수 없습니다.",
+    "result_too_large": "페이지가 반환한 내용이 브라우저에서 전달할 수 있는 양을 초과합니다.",
+    "partial_failure": "브라우저가 일부만 수행했습니다.",
+    "driver_error": "장치의 브라우저에 문제가 발생했습니다.",
+    "browser_unavailable": "브라우저를 장치에서 시작할 수 없습니다.",
+    "browser_lost": "장치의 브라우저가 중지되었습니다.",
+    "cancelled": "요청이 취소되었습니다.",
+    "outcome_unknown": "브라우저와의 연결이 끊어졌습니다. 결과를 알 수 없습니다.",
+    "capture_unavailable": "이 장치에서는 브라우저의 페이지를 캡처할 수 없습니다.",
+    "capture_failed": "장치에서 페이지를 캡처할 수 없습니다. 다시 시도하는 중입니다.",
+    "capture_stopped": "장치에서 페이지를 캡처할 수 없습니다.",
+    "conversation_not_found": "이 대화는 더 이상 존재하지 않습니다.",
+    "conversation_archived": "이 대화는 보관되었습니다.",
+    "conversation_busy": "대화가 사용 중입니다. 잠시 후 다시 시도하십시오.",
+    "host_stopped": "클라우드가 중지되었습니다.",
+    "device_offline": "장치가 오프라인입니다.",
+    "device_not_found": "장치가 계정에서 제거되었습니다.",
+    "cloud_unavailable": "클라우드를 지금은 사용할 수 없습니다.",
+    "cloud_resetting": "클라우드를 재설정하는 중입니다.",
+    "cloud_capacity": "서버에 클라우드를 시작할 여유가 없습니다.",
+    "cloud_crash_loop": "클라우드 시작이 반복해서 실패하여 중지되었습니다.",
+    "host_operation_failed": "장치와의 연결이 끊어졌습니다.",
+    "unknown_plugin_method": "이 서버에서는 브라우저를 실행할 수 없습니다.",
+    "plugin_disabled": "브라우저 플러그 인이 꺼져 있습니다."
+  },
+  "answers": {
+    "none": "서버가 응답하지 않았습니다.",
+    "unreadable": "서버의 응답을 읽을 수 없습니다.",
+    "refused": "서버에서 해당 작업을 수행할 수 없습니다({status})."
+  },
+  "noBrowser": "이 호스트에 브라우저가 없습니다. 에이전트에게 설치를 요청하십시오.",
+  "starting": {
+    "connecting": "연결하는 중…",
+    "cloud": "클라우드를 시작하는 중…",
+    "browser": "브라우저를 시작하는 중…",
+    "page": "페이지를 여는 중…"
+  },
+  "failures": {
+    "operate": "브라우저를 조작할 수 없습니다",
+    "reloadPage": "페이지를 다시 로드할 수 없습니다",
+    "copyLink": "링크를 복사할 수 없습니다",
+    "paste": "붙여넣을 수 없습니다",
+    "openAddress": "주소를 열 수 없습니다",
+    "goBack": "뒤로 갈 수 없습니다",
+    "goForward": "앞으로 갈 수 없습니다",
+    "stopLoading": "로드를 중지할 수 없습니다",
+    "openPage": "페이지를 열 수 없습니다",
+    "saveDownload": "다운로드를 저장할 수 없습니다",
+    "hostFilesUnreachable": "호스트의 파일에 액세스할 수 없습니다."
+  },
+  "region": {
+    "couldntOpen": "이 페이지를 열 수 없습니다.",
+    "couldntShow": "이 페이지를 표시할 수 없습니다.",
+    "noH264": "이 브라우저는 H.264 비디오를 디코딩할 수 없습니다.",
+    "waiting": "호스트를 기다리는 중…"
+  },
+  "menu": {
+    "openLink": "새 탭에서 링크 열기",
+    "copyLink": "링크 주소 복사",
+    "cut": "잘라내기",
+    "copy": "복사",
+    "paste": "붙여넣기",
+    "back": "뒤로",
+    "forward": "앞으로",
+    "reload": "다시 로드"
+  },
+  "address": {
+    "noBack": "뒤로 갈 페이지가 없습니다",
+    "noForward": "앞으로 갈 페이지가 없습니다"
+  },
+  "downloads": {
+    "title": "다운로드",
+    "save": "저장",
+    "showInFiles": "파일에서 보기",
+    "canceled": "취소됨"
+  },
+  "viewport": {
+    "title": "뷰포트",
+    "web": "웹",
+    "mobile": "모바일",
+    "custom": "사용자 지정 {width} × {height} {scale}"
+  },
+  "dialog": {
+    "leavePage": "이 페이지를 나가시겠습니까?",
+    "says": "{host}의 메시지",
+    "thisPageSays": "이 페이지의 메시지",
+    "answer": "답변",
+    "stay": "페이지에 머무르기",
+    "leave": "나가기",
+    "cancel": "취소",
+    "ok": "확인"
+  },
+  "browserInput": "브라우저 입력",
+  "tab": {
+    "new": "새 탭",
+    "createInBrowser": "대화의 브라우저에 새 탭"
+  }
+}

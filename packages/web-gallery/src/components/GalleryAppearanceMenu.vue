@@ -11,6 +11,8 @@ import {
   PARADIGMS,
   type ParadigmId,
 } from '../gallery-state'
+import { t as ui } from '@demicodes/web-ui/locales/text'
+import { t } from '../locales/text'
 import AccentPicker from './AccentPicker.vue'
 import AxisPicker from './AxisPicker.vue'
 
@@ -33,7 +35,7 @@ function setMode(mode: 'light' | 'dark') {
         :icon="Palette"
         variant="ghost"
         :pressed="isOpen"
-        aria-label="Appearance"
+        :aria-label="ui('settings.general.appearance')"
       />
     </template>
     <template #content>
@@ -42,16 +44,16 @@ function setMode(mode: 'light' | 'dark') {
       >
         <ScrollArea viewport-class="flex flex-col gap-3 p-3">
           <AxisPicker
-            label="Theme"
+            :label="ui('settings.general.theme')"
             :values="paradigmIds"
             :names="paradigmNames"
             :model-value="galleryState.paradigm"
             @update:model-value="applyParadigm"
           />
           <AxisPicker
-            label="Mode"
+            :label="t('chrome.mode')"
             :values="['dark', 'light'] as const"
-            :names="{ dark: 'Dark', light: 'Light' }"
+            :names="{ dark: ui('settings.general.dark'), light: ui('settings.general.light') }"
             :model-value="galleryState.mode"
             @update:model-value="setMode"
           />
@@ -61,9 +63,9 @@ function setMode(mode: 'light' | 'dark') {
           />
           <!-- On trial: the product's face is still being chosen. -->
           <AxisPicker
-            label="Font"
+            :label="t('chrome.font')"
             :values="FONT_IDS"
-            :names="{ system: 'System', inter: 'Inter', geist: 'Geist' }"
+            :names="{ system: ui('settings.general.system'), inter: 'Inter', geist: 'Geist' }"
             :model-value="galleryState.font"
             @update:model-value="galleryState.font = $event"
           />

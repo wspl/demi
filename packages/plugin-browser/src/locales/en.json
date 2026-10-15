@@ -1,0 +1,122 @@
+{
+  "reasons": {
+    "invalid_input": "The browser opens only web, file and blank pages.",
+    "tab_not_found": "This page is no longer open on the device.",
+    "tab_busy": "The tab is busy with another request. Try again in a moment.",
+    "stale_ref": "The page changed before the browser could act on it.",
+    "stale_cursor": "The browser’s records changed before they could be read.",
+    "stale_inventory": "The page’s files changed before they could be read.",
+    "stale_tools": "The page’s tools changed before they could be used.",
+    "target_not_found": "The browser couldn’t find that on the page.",
+    "ambiguous_target": "More than one part of the page matches.",
+    "not_actionable": "That part of the page can’t be used right now.",
+    "timeout": "The browser didn’t answer in time.",
+    "dialog_blocked": "A dialog on the page is waiting for an answer.",
+    "dialog_not_found": "The page has no dialog waiting for an answer.",
+    "invalid_dialog_action": "The dialog can’t be answered that way.",
+    "history_boundary": "The tab has no page to go to in that direction.",
+    "navigation_failed": "The browser couldn’t load the page.",
+    "protected_value": "The page keeps that value private.",
+    "side_effect_rejected": "The browser didn’t let that change the page.",
+    "unsupported_result": "The browser can’t pass on what the page gave.",
+    "unsupported_capability": "The browser on the device can’t do that.",
+    "cdp_method_denied": "The browser doesn’t allow that.",
+    "output_exists": "A file with that name already exists on the device.",
+    "io_error": "The device couldn’t read or write a file the browser needs.",
+    "result_too_large": "The page gave more than the browser can pass on.",
+    "partial_failure": "The browser did only part of that.",
+    "driver_error": "The browser on the device ran into a problem.",
+    "browser_unavailable": "The browser couldn’t start on the device.",
+    "browser_lost": "The browser on the device stopped.",
+    "cancelled": "The request was canceled.",
+    "outcome_unknown": "The connection to the browser broke. The result is unknown.",
+    "capture_unavailable": "This device can’t capture the browser’s pages.",
+    "capture_failed": "The device couldn’t capture the page. It’s trying again.",
+    "capture_stopped": "The device couldn’t capture the page.",
+    "conversation_not_found": "This conversation no longer exists.",
+    "conversation_archived": "This conversation is archived.",
+    "conversation_busy": "The conversation is busy. Try again in a moment.",
+    "host_stopped": "The Cloud is stopped.",
+    "device_offline": "The device is offline.",
+    "device_not_found": "The device was removed from your account.",
+    "cloud_unavailable": "The Cloud isn’t available right now.",
+    "cloud_resetting": "The Cloud is resetting.",
+    "cloud_capacity": "The server has no room to start the Cloud.",
+    "cloud_crash_loop": "The Cloud stopped starting after repeated failures.",
+    "host_operation_failed": "The connection to the device broke.",
+    "unknown_plugin_method": "This server can’t run a browser.",
+    "plugin_disabled": "The Browser plugin is off."
+  },
+  "answers": {
+    "none": "The server didn’t answer.",
+    "unreadable": "The server’s answer couldn’t be read.",
+    "refused": "The server couldn’t do that ({status})."
+  },
+  "noBrowser": "No browser on this Host. Ask the agent to install one.",
+  "starting": {
+    "connecting": "Connecting…",
+    "cloud": "Starting Cloud…",
+    "browser": "Starting the browser…",
+    "page": "Opening the page…"
+  },
+  "failures": {
+    "operate": "Could Not Operate the Browser",
+    "reloadPage": "Could Not Reload the Page",
+    "copyLink": "Could Not Copy the Link",
+    "paste": "Could Not Paste",
+    "openAddress": "Could Not Open the Address",
+    "goBack": "Could Not Go Back",
+    "goForward": "Could Not Go Forward",
+    "stopLoading": "Could Not Stop Loading",
+    "openPage": "Could Not Open the Page",
+    "saveDownload": "Could Not Save the Download",
+    "hostFilesUnreachable": "The Host’s files can’t be reached."
+  },
+  "region": {
+    "couldntOpen": "Couldn’t open this page.",
+    "couldntShow": "Couldn’t show this page.",
+    "noH264": "This browser can’t decode H.264 video.",
+    "waiting": "Waiting for the Host…"
+  },
+  "menu": {
+    "openLink": "Open Link in New Tab",
+    "copyLink": "Copy Link Address",
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "back": "Back",
+    "forward": "Forward",
+    "reload": "Reload"
+  },
+  "address": {
+    "noBack": "No page to go back to",
+    "noForward": "No page to go forward to"
+  },
+  "downloads": {
+    "title": "Downloads",
+    "save": "Save",
+    "showInFiles": "Show in Files",
+    "canceled": "Canceled"
+  },
+  "viewport": {
+    "title": "Viewport",
+    "web": "Web",
+    "mobile": "Mobile",
+    "custom": "Custom {width} × {height} {scale}"
+  },
+  "dialog": {
+    "leavePage": "Leave the page?",
+    "says": "{host} says",
+    "thisPageSays": "This page says",
+    "answer": "Answer",
+    "stay": "Stay",
+    "leave": "Leave",
+    "cancel": "Cancel",
+    "ok": "OK"
+  },
+  "browserInput": "Browser input",
+  "tab": {
+    "new": "New Tab",
+    "createInBrowser": "New Tab in the Conversation’s Browser"
+  }
+}

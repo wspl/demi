@@ -68,7 +68,7 @@ test('a failed read says what happened in the page\'s words, never the backend\'
   const failure = (code: string, message: string) => new Response(JSON.stringify({ requestId: 'req_test000000000001', code, message }), { status: 503 })
   answer(failure('cloud_unavailable', 'Cloud runner reconnect timeout'))
   expect(await reads.readText!('/work/README.md', null).catch((error: unknown) => error))
-    .toMatchObject({ kind: 'other', message: 'The Cloud is not available right now.' })
+    .toMatchObject({ kind: 'other', message: 'The Cloud isn’t available right now.' })
   answer(new Response(JSON.stringify({ requestId: 'req_test000000000001', code: 'device_offline', message: 'runner 4f2 has no connection' }), { status: 409 }))
   expect(await reads.list('/work').catch((error: unknown) => error))
     .toMatchObject({ kind: 'offline', message: 'The device is offline.' })

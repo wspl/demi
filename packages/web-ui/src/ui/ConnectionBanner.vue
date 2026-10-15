@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { WifiOff } from '@lucide/vue'
-import { CONNECTION_WORDS, type ConnectionProblem } from '../transport/connection'
+import { connectionWords, type ConnectionProblem } from '../transport/connection'
 import IndeterminateSpinner from './IndeterminateSpinner.vue'
 import { CONNECTION_BANNER_PX } from './app-bar'
 
@@ -24,6 +24,6 @@ defineProps<{
   >
     <WifiOff v-if="problem === 'offline'" :size="14" class="shrink-0" aria-hidden="true" />
     <IndeterminateSpinner v-else :size="12" class="shrink-0" />
-    <span class="truncate">{{ CONNECTION_WORDS[problem] }}</span>
+    <span class="truncate">{{ connectionWords(problem) }}</span>
   </div>
 </template>

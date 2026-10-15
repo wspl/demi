@@ -1,5 +1,6 @@
 import type { ClaimFile, UploadedFile, UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
+import { coded } from '@demicodes/web-ui/infra/errors'
 import { apiError, apiRequest, apiUrl, invalidResponse, readResponse, untilReached } from './client'
 import { type AttachmentDto, attachmentAnswerSchema, attachmentCheckAnswerSchema } from './generated/web-api'
 
@@ -92,8 +93,8 @@ function sendBytes(
       options.progress(event.loaded)
     }
     // No answer came, which fetch reports as a TypeError: the backend could not be reached.
-    xhr.onerror = () => fail(new TypeError('Upload connection failed.'))
-    xhr.onabort = () => fail(new Error('Upload cancelled.'))
+    xhr.onerror = () => fail(coded(new TypeError('Upload connection failed.'), 'upload_connection_failed'))
+    xhr.onabort = () => fail(coded(new Error('Upload cancelled.'), 'upload_cancelled'))
     xhr.onload = () => {
       if (xhr.status < 200 || xhr.status >= 300) {
         fail(apiError(xhr.status, xhr.responseText, undefined, xhr.statusText))

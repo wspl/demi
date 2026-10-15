@@ -1,0 +1,15 @@
+{
+  "notifications": {
+    "turnStopped": "轮次因错误而停止。",
+    "allowTo": "允许此对话 {action} 吗？",
+    "saveCredential": "保存凭据“{name}”？",
+    "allowUse": "允许此对话使用“{name}”吗？"
+  },
+  "hosts": {
+    "unavailableDevice": "不可用的设备"
+  },
+  "failures": {
+    "updateSettings": "无法更新设置",
+    "changeContextLimit": "无法更改上下文限制"
+  }
+}

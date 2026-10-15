@@ -33,7 +33,7 @@ import { HUE_TONES, hueToneOf } from '@demicodes/web-ui/ui/avatar-tone'
 import { accountDisplayName } from '@demicodes/web-ui/auth/account-display'
 import { providerLogo, vendorLogo } from '@demicodes/web-ui/settings/vendor-logos'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import { IN_DEVELOPMENT } from '@demicodes/web-ui/ui/disabled'
+import { inDevelopment } from '@demicodes/web-ui/ui/disabled'
 import { focusedByKeyboard } from '@demicodes/web-ui/ui/active-row'
 import { usageAt, usageOf } from '../fixtures/catalog'
 import { useCardLimits } from '../fixtures/usage-limits'
@@ -268,7 +268,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             <Button variant="danger" disabled>Disabled</Button>
           </GallerySpecimen>
           <GallerySpecimen variant="disabled · reason">
-            <Button disabled :disabled-reason="IN_DEVELOPMENT">In Development</Button>
+            <Button disabled :disabled-reason="inDevelopment()">In Development</Button>
           </GallerySpecimen>
         </div>
       </GallerySection>
@@ -480,7 +480,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             <IconButton
               :icon="Plus"
               disabled
-              :disabled-reason="IN_DEVELOPMENT"
+              :disabled-reason="inDevelopment()"
               aria-label="In development"
             />
           </GallerySpecimen>
@@ -529,7 +529,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             <Switch
               v-model="enabled"
               disabled
-              :disabled-reason="IN_DEVELOPMENT"
+              :disabled-reason="inDevelopment()"
               label="Available"
             />
           </GallerySpecimen>
@@ -555,7 +555,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
             <Checkbox
               v-model="checkboxOn"
               disabled
-              :disabled-reason="IN_DEVELOPMENT"
+              :disabled-reason="inDevelopment()"
               label="Show unreads"
             />
           </GallerySpecimen>

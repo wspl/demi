@@ -89,6 +89,39 @@
   "errors": {
     "conversation_archived": "この会話はアーカイブされています。先に復元してください。",
     "email_taken": "このメール アドレスは別のアカウントで使用されています。",
-    "saved_full": "1 つの会話で後で送信するために保存できるメッセージは {limit} 件までです。"
+    "saved_full": "1 つの会話で後で送信するために保存できるメッセージは {limit} 件までです。",
+    "host_stopped": "クラウドは停止しています。",
+    "cloud_resetting": "クラウドをリセットしています。",
+    "cloud_capacity": "サーバーにクラウドを起動する余裕がありません。",
+    "cloud_crash_loop": "クラウドの起動に何度も失敗したため、停止しました。",
+    "cloud_unavailable": "クラウドは現在利用できません。",
+    "request_failed": "リクエストに失敗しました ({status})。",
+    "unreadable_response": "サーバーの応答を読み取れませんでした。",
+    "upload_connection_failed": "アップロードの接続が切断されました。",
+    "upload_cancelled": "アップロードがキャンセルされました。",
+    "restore_before_sending": "送信する前にこの会話を復元してください。",
+    "no_model_available": "この会話で使用できるモデルがありません。",
+    "models_not_loaded": "モデルを読み込めませんでした。{failure}",
+    "source_conversation_unavailable": "元の会話は使用できません。",
+    "file_not_owned": "このアカウントのファイルにありません。"
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "キャンセル",
+    "close": "閉じる",
+    "copy": "コピー",
+    "copied": "コピーしました",
+    "done": "完了",
+    "retry": "再試行",
+    "search": "検索",
+    "show": "表示",
+    "hide": "非表示",
+    "rename": "名前の変更",
+    "change": "変更",
+    "reload": "再読み込み",
+    "loading": "読み込み中…",
+    "undo": "元に戻す",
+    "cloud": "クラウド",
+    "workspace": "ワークスペース"
   }
 }

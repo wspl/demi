@@ -5,7 +5,7 @@ import { until } from '@vueuse/core'
 import { waitFor } from '@demicodes/utils'
 import { computed, effectScope, nextTick, ref, shallowRef } from 'vue'
 import {
-  NO_BROWSER,
+  noBrowser,
   BrowserTabsController,
   BrowserTabsError,
   type BrowserTabList,
@@ -98,10 +98,10 @@ test('a new tab waits for the Host to hold the browser the tab list names', () =
   // Until the first list names the browser, nothing says it is missing.
   expect(controller.unavailable.value).toBeNull()
   list.value = { tabs: [], browser: chrome }
-  expect(controller.unavailable.value).toBe(NO_BROWSER)
+  expect(controller.unavailable.value).toBe(noBrowser())
   // Another version of the line is not the one this Demi pins.
   installed.value = [...installed.value, { package: 'demi.browser', name: chrome.name, version: '152.0.7900.12' }]
-  expect(controller.unavailable.value).toBe(NO_BROWSER)
+  expect(controller.unavailable.value).toBe(noBrowser())
   // The agent's `demi browser install` reports the pinned one.
   installed.value = [...installed.value, { package: 'demi.browser', ...chrome }]
   expect(controller.unavailable.value).toBeNull()
@@ -355,8 +355,8 @@ test('a failed call says its reason’s sentence, or how the server answered, or
   }
   expect(said).toEqual([
     ['browser_unavailable', 'The browser couldn’t start on the device.'],
-    [null, 'The server couldn’t do that: 500 Internal Server Error.'],
-    [null, 'The server’s answer could not be read.'],
+    [null, 'The server couldn’t do that (500 Internal Server Error).'],
+    [null, 'The server’s answer couldn’t be read.'],
     [null, 'The server didn’t answer.'],
     [null, 'The server didn’t answer.'],
   ])

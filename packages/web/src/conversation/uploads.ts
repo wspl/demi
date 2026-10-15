@@ -10,7 +10,7 @@ import {
   type UploadedFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { CopiedStoredFile } from '@demicodes/web-ui/agent/message-input/copied-message'
-import { errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
+import { coded, errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
 import { blobUrl, claimStoredFile, uploadAttachment } from '../api/uploads'
 import type { Conversation, ProductAttachment } from '../state/types'
 
@@ -102,7 +102,7 @@ export function createConversationUploads(
         return claimed
       }
       if (!claim.picture) {
-        throw new Error(`It is not among this account's files.`)
+        throw coded(new Error('It is not among this account’s files.'), 'file_not_owned')
       }
       item.claim = undefined
       item.file = claim.picture

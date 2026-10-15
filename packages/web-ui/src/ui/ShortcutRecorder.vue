@@ -2,6 +2,8 @@
 import { computed, nextTick, ref } from 'vue'
 import Button from './Button.vue'
 import KeyCap from './KeyCap.vue'
+import { t as shared } from '../locales/text'
+import { t } from './locales/text'
 import { shortcutKeyCap, shortcutModifiers } from './shortcut'
 
 /**
@@ -65,19 +67,19 @@ const shown = computed(() => (recording.value ? held.value : props.modelValue))
       ref="field"
       tabindex="-1"
       class="inline-flex h-6 items-center justify-end outline-none"
-      :aria-label="recording ? 'Recording shortcut' : undefined"
+      :aria-label="recording ? t('shortcutRecorder.recording') : undefined"
       @keydown="recording && onKeydown($event)"
       @keyup="onKeyup"
       @blur="stop"
     >
       <KeyCap v-if="shown" :keys="shown" />
-      <span v-else class="select-none text-[11px] text-fg-subtle">Press keys…</span>
+      <span v-else class="select-none text-[11px] text-fg-subtle">{{ t('shortcutRecorder.prompt') }}</span>
     </span>
     <!-- mousedown would blur the field and stop recording before the click lands. -->
     <span @mousedown.prevent><Button
         :size="size"
         :pressed="recording"
         @click="recording ? stop() : start()"
-      >Change</Button></span>
+      >{{ shared('common.change') }}</Button></span>
   </span>
 </template>

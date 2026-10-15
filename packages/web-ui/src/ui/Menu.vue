@@ -24,7 +24,9 @@ import { useAutofocus } from './autofocus'
 import { focusByPage } from './focus-by-page'
 import { ICON_PX } from './icon-metrics'
 import { NO_AUTOFILL } from './field-autofill'
-import { NO_RESULTS, type PlaceholderText, type SentenceText } from './ui-text'
+import { noResults, type PlaceholderText, type SentenceText } from './ui-text'
+import { t as shared } from '../locales/text'
+import { t } from './locales/text'
 
 /**
  * A menu: `items` it lays out itself, filterable and virtual when asked, or
@@ -54,8 +56,6 @@ const props = withDefaults(defineProps<{
    */
   iconless?: boolean
 }>(), {
-  filterPlaceholder: 'Search…',
-  emptyText: 'No items',
   autofocus: true,
   iconless: undefined,
 })
@@ -331,7 +331,7 @@ function handleKeydown(event: KeyboardEvent) {
         v-model="filterQuery"
         type="search"
         v-bind="NO_AUTOFILL"
-        :placeholder="filterPlaceholder"
+        :placeholder="filterPlaceholder ?? shared('common.search')"
         class="w-0 min-w-0 flex-1 bg-transparent text-chrome text-fg-body placeholder-fg-subtle outline-none [&::-webkit-search-cancel-button]:appearance-none"
       />
       <span
@@ -346,7 +346,7 @@ function handleKeydown(event: KeyboardEvent) {
       v-if="items != null && filteredItems.length === 0"
       class="px-2 py-3 text-center text-chrome text-fg-subtle"
     >
-      {{ listItems.length > 0 ? NO_RESULTS : emptyText }}
+      {{ listItems.length > 0 ? noResults() : (emptyText ?? t('menu.empty')) }}
     </div>
     <ScrollArea
       v-else

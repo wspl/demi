@@ -13,8 +13,9 @@ import { downloadUrl, formatByteRatio, formatBytes, usePage } from '@demicodes/p
 import { clientPlatform } from '@demicodes/utils'
 import type { LiveDownload } from '../generated/plugin'
 import LiveView from './LiveView.vue'
+import { t } from '../locales/text'
 import { browserShortcut } from './input'
-import { NEW_TAB_URL, STARTING_LABELS, failureSentence, type BrowserTabData, type BrowserTabsController } from './tabs'
+import { NEW_TAB_URL, failureSentence, startingLabel, type BrowserTabData, type BrowserTabsController } from './tabs'
 import { BLANK_PAGE, deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportChoice } from './view'
 
 /**
@@ -67,8 +68,8 @@ const phase = computed(() => props.session.startingPhase(props.tabId, props.data
 /** The tab loads: Stop, the strip's spinner and the progress line show it. */
 const busy = computed(() => props.session.busy(props.tabId, props.data))
 /** Back and Forward are unavailable while the browser says the tab has no page that way, or has said nothing yet. */
-const backReason = computed(() => (live.value?.canGoBack ? null : 'No page to go back to'))
-const forwardReason = computed(() => (live.value?.canGoForward ? null : 'No page to go forward to'))
+const backReason = computed(() => (live.value?.canGoBack ? null : t('address.noBack')))
+const forwardReason = computed(() => (live.value?.canGoForward ? null : t('address.noForward')))
 
 // A shown tab is watched on the page's view, once its area measured the panel; before the browser has its
 // tab, the view watches nothing and tells the Host the panel's size for the tab it opens.
@@ -173,7 +174,7 @@ function submit(url: string): void {
   emit('update', { ...data, url })
   if (bound.value !== undefined) {
     props.session.navigate(bound.value, url).catch((error: unknown) => {
-      errors.report('Could Not Open the Address', error)
+      errors.report(t('failures.openAddress'), error)
       restore()
     })
   }
@@ -191,16 +192,13 @@ function restore(): void {
 }
 
 /** What a toast names when Back, Forward or Reload was refused. */
-const COULD_NOT = {
-  back: 'Could Not Go Back',
-  forward: 'Could Not Go Forward',
-  reload: 'Could Not Reload the Page',
-} as const
+const couldNot = (action: 'back' | 'forward' | 'reload') =>
+  t(action === 'back' ? 'failures.goBack' : action === 'forward' ? 'failures.goForward' : 'failures.reloadPage')
 
 /** Back, Forward and Reload, on the bound tab; a refusal is reported as any failed request is. */
 function history(action: 'back' | 'forward' | 'reload'): void {
   if (bound.value !== undefined) {
-    props.session.history(bound.value, action).catch((error: unknown) => errors.report(COULD_NOT[action], error))
+    props.session.history(bound.value, action).catch((error: unknown) => errors.report(couldNot(action), error))
   }
 }
 
@@ -252,7 +250,7 @@ watch(
 /** What the bubble says of a download: its size, how much has come, or that it stopped. */
 function downloadDetail(download: LiveDownload): string {
   if (download.state === 'canceled') {
-    return 'Canceled'
+    return t('downloads.canceled')
   }
   if (download.state === 'complete') {
     return formatBytes(download.total)
@@ -266,7 +264,7 @@ function downloadDetail(download: LiveDownload): string {
 function save(download: LiveDownload): void {
   const contents = files(props.conversation).workspace?.source.contents
   if (!contents) {
-    errors.report('Could Not Save the Download', new Error('The Host’s files can’t be reached.'))
+    errors.report(t('failures.saveDownload'), new Error(t('failures.hostFilesUnreachable')))
     return
   }
   downloadUrl(contents.url(download.path, { download: true }))
@@ -277,9 +275,6 @@ function showInFiles(download: LiveDownload): void {
   bubble.value = false
   intents.open(props.conversation, { intent: 'file', payload: { path: download.path } })
 }
-
-/** What a toast names when Stop was refused. */
-const COULD_NOT_STOP = 'Could Not Stop Loading'
 
 /**
  * Stop, on the bound tab; a refusal is a toast. Before the browser has the
@@ -293,7 +288,7 @@ function stop(): void {
     return
   }
   if (bound.value !== undefined) {
-    props.session.stop(bound.value).catch((error: unknown) => errors.report(COULD_NOT_STOP, error))
+    props.session.stop(bound.value).catch((error: unknown) => errors.report(t('failures.stopLoading'), error))
   }
 }
 
@@ -303,7 +298,7 @@ function stop(): void {
  * own state; a refused request is a toast.
  */
 function reopen(): Promise<void> {
-  return props.session.bind(props.tabId).catch((error: unknown) => errors.report('Could Not Open the Page', error))
+  return props.session.bind(props.tabId).catch((error: unknown) => errors.report(t('failures.openPage'), error))
 }
 
 // A tab whose browser tab the browser lost opens again once shown, as a web browser reloads a tab it
@@ -339,18 +334,18 @@ watch(
         <!-- The downloads, once the user started one here, as a browser's toolbar shows them. -->
         <Dropdown v-if="downloads.length > 0" v-model:open="bubble" :overlay-store="overlays" class="shrink-0">
           <template #trigger="{ isOpen }">
-            <Tooltip content="Downloads" :disabled="isOpen">
+            <Tooltip :content="t('downloads.title')" :disabled="isOpen">
               <IconButton
                 :icon="ArrowDownToLine"
                 variant="ghost"
-                aria-label="Downloads"
+                :aria-label="t('downloads.title')"
                 aria-haspopup="menu"
                 :pressed="isOpen"
               />
             </Tooltip>
           </template>
           <template #content>
-            <Menu aria-label="Downloads">
+            <Menu :aria-label="t('downloads.title')">
               <MenuItem
                 v-for="download in downloads"
                 :key="download.id"
@@ -360,22 +355,22 @@ watch(
                 @select="download.state === 'complete' && showInFiles(download)"
               >
                 <template #actions>
-                  <Tooltip content="Save" class="inline-flex">
+                  <Tooltip :content="t('downloads.save')" class="inline-flex">
                     <IconButton
                       :icon="Download"
                       variant="ghost"
                       size="xs"
-                      aria-label="Save"
+                      :aria-label="t('downloads.save')"
                       :disabled="download.state !== 'complete'"
                       @click.stop="save(download)"
                     />
                   </Tooltip>
-                  <Tooltip content="Show in Files" class="inline-flex">
+                  <Tooltip :content="t('downloads.showInFiles')" class="inline-flex">
                     <IconButton
                       :icon="FolderSearch"
                       variant="ghost"
                       size="xs"
-                      aria-label="Show in Files"
+                      :aria-label="t('downloads.showInFiles')"
                       :disabled="download.state !== 'complete'"
                       @click.stop="showInFiles(download)"
                     />
@@ -389,11 +384,11 @@ watch(
              says nothing the picture does not. -->
         <Dropdown v-if="viewport" :overlay-store="overlays" class="shrink-0">
           <template #trigger="{ isOpen }">
-            <Tooltip content="Viewport" :disabled="isOpen">
+            <Tooltip :content="t('viewport.title')" :disabled="isOpen">
               <IconButton
                 :icon="MODE_ICONS[viewport.mode]"
                 variant="ghost"
-                aria-label="Viewport"
+                :aria-label="t('viewport.title')"
                 aria-haspopup="menu"
                 :pressed="isOpen"
               />
@@ -429,7 +424,7 @@ watch(
         v-if="data.failure && !opening"
         class="min-h-0 flex-1"
         status="failed"
-        label="Couldn’t open this page."
+        :label="t('region.couldntOpen')"
         :detail="failureSentence(data.failure)"
         :on-retry="reopen"
       />
@@ -437,7 +432,7 @@ watch(
         v-else-if="bound !== undefined && props.session.pictures.value === 'unsupported'"
         class="flex min-h-0 flex-1 items-center justify-center px-6 text-center text-[13px] text-fg-faint"
       >
-        This browser can’t decode H.264 video.
+        {{ t('region.noH264') }}
       </div>
       <!-- Before the browser has the tab: the panel's own background, which says what Demi does from the frame
            the tab starts opening. -->
@@ -445,7 +440,7 @@ watch(
         v-else-if="phase !== null"
         class="min-h-0 flex-1"
         status="loading"
-        :label="STARTING_LABELS[phase]"
+        :label="startingLabel(phase)"
       />
       <LiveView
         v-else-if="live"

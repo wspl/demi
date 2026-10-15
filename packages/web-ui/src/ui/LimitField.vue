@@ -7,7 +7,8 @@ import ConfirmDialog from './ConfirmDialog.vue'
 import Dropdown from './Dropdown.vue'
 import Menu from './Menu.vue'
 import MenuItem from './MenuItem.vue'
-import { LIMIT_PROBLEM, limitStep, parseLimit, type LimitEvent, type LimitPhase, type LimitValue } from './limit-field'
+import { t } from './locales/text'
+import { limitProblem, limitStep, parseLimit, type LimitEvent, type LimitPhase, type LimitValue } from './limit-field'
 import type { HeadlineText, SentenceText, TitleText } from './ui-text'
 
 /**
@@ -39,7 +40,7 @@ const emit = defineEmits<{
 
 const phase = ref<LimitPhase>('shown')
 const limited = computed(() => !props.modelValue.unlimited)
-const choice = computed(() => (limited.value ? 'Limited' : 'Unlimited'))
+const choice = computed(() => (limited.value ? t('limitField.limited') : t('limitField.unlimited')))
 
 function on(event: LimitEvent): void {
   const step = limitStep(props.modelValue, phase.value, event)
@@ -51,7 +52,7 @@ function on(event: LimitEvent): void {
 }
 
 function validate(text: string): SentenceText | null {
-  return parseLimit(text) === null ? LIMIT_PROBLEM : null
+  return parseLimit(text) === null ? limitProblem() : null
 }
 
 function commitText(text: string): void {
@@ -86,14 +87,14 @@ function commitText(text: string): void {
         <Menu>
           <MenuItem
             :icon="Gauge"
-            label="Limited"
+            :label="t('limitField.limited')"
             choice
             :is-selected="limited"
             @select="on('chooseLimited'); close()"
           />
           <MenuItem
             :icon="InfinityIcon"
-            label="Unlimited"
+            :label="t('limitField.unlimited')"
             choice
             :is-selected="!limited"
             @select="on('chooseUnlimited'); close()"

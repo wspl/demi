@@ -1,0 +1,76 @@
+{
+  "nav": {
+    "overview": "概觀",
+    "signin": "登入與設定",
+    "surfaces": "介面",
+    "primitives": "基礎元件",
+    "controlLayout": "控制項版面配置",
+    "writing": "文案",
+    "errors": "錯誤",
+    "motion": "動態",
+    "overlays": "浮層",
+    "dialogs": "對話方塊",
+    "files": "檔案",
+    "session": "工作階段",
+    "sidebar": "側邊欄",
+    "settings": "設定",
+    "markdown": "Markdown",
+    "phone": "手機",
+    "roadmap": "藍圖"
+  },
+  "views": {
+    "errors": {
+      "primitives": "基礎元件",
+      "conversation": "對話",
+      "messages": "訊息與上傳",
+      "forms": "表單與設定",
+      "files": "檔案"
+    },
+    "signin": {
+      "signin": "登入",
+      "setup": "設定",
+      "handoff": "手機接續",
+      "starting": "啟動中"
+    },
+    "primitives": {
+      "buttons": "按鈕",
+      "fields": "欄位",
+      "marks": "標記"
+    },
+    "overlays": {
+      "menus": "功能表",
+      "dialogs": "對話方塊"
+    },
+    "files": {
+      "browser": "瀏覽器",
+      "tree": "樹狀結構",
+      "dialogs": "對話方塊"
+    },
+    "session": {
+      "tabs": "分頁列",
+      "composer": "輸入框",
+      "blocks": "區塊",
+      "lengths": "長度",
+      "changes": "變更",
+      "turns": "輪次",
+      "states": "狀態",
+      "session": "工作階段",
+      "panel": "面板",
+      "windows": "視窗"
+    },
+    "dialogs": {
+      "account": "帳戶",
+      "providers": "提供者",
+      "devices": "裝置",
+      "workspace": "工作區",
+      "cloud": "雲端",
+      "skills": "技能",
+      "search": "搜尋"
+    },
+    "page": "頁面"
+  },
+  "chrome": {
+    "mode": "模式",
+    "font": "字型"
+  }
+}

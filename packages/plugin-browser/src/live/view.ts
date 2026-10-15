@@ -7,6 +7,7 @@
 import type { TitleText } from '@demicodes/plugin-sdk'
 import type { BrowserViewport, CursorRegion } from '../generated/plugin'
 import type { LiveStream } from './session'
+import { t } from '../locales/text'
 
 /**
  * A blank page, as Chrome paints an empty one in the color scheme the
@@ -137,13 +138,13 @@ export interface ViewportChoice {
 
 export function viewportChoices(viewport: BrowserViewport): ViewportChoice[] {
   const choices: ViewportChoice[] = [
-    { mode: 'web', label: 'Web', selectable: true },
-    { mode: 'mobile', label: 'Mobile', selectable: true },
+    { mode: 'web', label: t('viewport.web'), selectable: true },
+    { mode: 'mobile', label: t('viewport.mobile'), selectable: true },
   ]
   if (viewport.mode === 'custom') {
     choices.push({
       mode: 'custom',
-      label: `Custom ${viewport.width} × ${viewport.height} @${viewport.devicePixelRatio}`,
+      label: t('viewport.custom', { width: viewport.width, height: viewport.height, scale: `@${viewport.devicePixelRatio}` }),
       selectable: false,
     })
   }

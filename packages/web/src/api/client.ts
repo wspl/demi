@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
 import { httpStatusLine } from '@demicodes/utils'
+import { coded } from '@demicodes/web-ui/infra/errors'
 import { errorBodySchema, errorCodeSchema, type ErrorBody, type ErrorCode } from './generated/web-api'
 
 /** The header every answer of the backend names its request in. */
@@ -121,6 +122,7 @@ export class UnreadableResponse extends Error {
 
   constructor(message: string, readonly detail: string) {
     super(message)
+    coded(this, 'unreadable_response')
   }
 }
 

@@ -14,11 +14,11 @@ import {
   Sparkles,
   Users
 } from '@lucide/vue'
-import { IN_DEVELOPMENT } from '../ui/disabled'
+import { inDevelopment } from '../ui/disabled'
 import { APP_SHORTCUTS } from './shortcuts'
 import type { SettingsNavGroup, SettingsNavItem, UserRole } from './types'
 
-const deferred = { disabled: true, disabledReason: IN_DEVELOPMENT } as const
+const notYet = () => ({ disabled: true, disabledReason: inDevelopment() }) as const
 
 /** The product's settings rail: every section, grouped the way the rail reads them. */
 export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
@@ -165,7 +165,7 @@ export const SETTINGS_SECTIONS: SettingsNavGroup[] = [
           'usage data',
           'delete'
         ],
-        ...deferred
+        ...notYet()
       },
     ],
   },

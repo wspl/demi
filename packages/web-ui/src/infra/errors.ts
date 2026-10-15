@@ -67,11 +67,22 @@ export interface ShownError {
 }
 
 /**
+ * Marks a failure the page found itself with the `code` its text is looked
+ * up by, `errors.<code>`, and the `params` that text is filled with, as a
+ * refusal of the backend carries them. The message stays English, for the
+ * console and the report; what the page shows is the catalogue's.
+ */
+export function coded<E extends Error>(error: E, code: string, params: Readonly<Record<string, string | number>> = {}): E {
+  return Object.assign(error, { code, params })
+}
+
+/**
  * What the page says of `error`, the one place a failure becomes words
  * (`localization.md` § Text from the backend): a refusal's catalogue text
- * for its `code`, filled with its `params`, such as `{ limit: 200 }`; its
- * own `message` for a code the catalogue has no text for, as a newer
- * backend may send, and for any other failure.
+ * for its `code`, filled with its `params`, such as `{ limit: 200 }`; for
+ * an answer that carries no code, as a proxy's, the text of its HTTP
+ * status; its own `message` for a code the catalogue has no text for, as a
+ * newer backend may send, and for any other failure.
  */
 export function errorMessage(error: unknown): SentenceText {
   if (!(error instanceof Error)) {
@@ -85,6 +96,8 @@ export function errorMessage(error: unknown): SentenceText {
     if (worded !== null) {
       return worded
     }
+  } else if ('code' in error && error.code === null && 'status' in error && typeof error.status === 'number') {
+    return find('errors.request_failed', { status: error.status }) ?? error.message
   }
   return error.message
 }
