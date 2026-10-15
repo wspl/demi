@@ -98,6 +98,12 @@ export const usePreferences = defineStore('preferences', () => {
    */
   const resumeAtRetry = computed(() => product.snapshot?.preferences.resumeAtRetry ?? false)
   /**
+   * Whether a turn a deployment, an upgrade or a restart of the backend
+   * interrupted goes on by itself once the backend is back (`web-api.md`
+   * § User preferences); absent means yes.
+   */
+  const resumeAfterRestart = computed(() => product.snapshot?.preferences.resumeAfterRestart ?? true)
+  /**
    * Whether the user went on past the warning about several subscription
    * accounts, which then never shows again (`providers.md` § Account
    * rotation); absent means no.
@@ -351,6 +357,7 @@ export const usePreferences = defineStore('preferences', () => {
     lastProjectHost,
     sendWhileRunning,
     resumeAtRetry,
+    resumeAfterRestart,
     multiAccountWarned,
     contextLimit,
     setContextLimit,

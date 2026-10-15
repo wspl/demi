@@ -88,6 +88,16 @@ impl Scripts {
             .push_back(answers.into());
     }
 
+    /// More answers for the one child that has asked, such as for its
+    /// requests after a restart.
+    pub(crate) fn child_again(&self, answers: Vec<Answer>) {
+        let mut state = self.state.lock().unwrap();
+        let mut asked = state.children.values_mut();
+        let script = asked.next().expect("a child has asked");
+        assert!(asked.next().is_none(), "one child has asked");
+        script.extend(answers);
+    }
+
     /// Holds the next read of the provider's health, as a catalog read
     /// makes it: answers what says the read arrived and what lets it go on.
     pub(crate) fn hold_next_health(&self) -> (Arc<Notify>, Arc<Notify>) {
@@ -143,6 +153,12 @@ pub(crate) fn shell(id: &str, script: &str) -> Answer {
         ),
         event::response(1, 1),
     ]
+}
+
+/// A request the model never answers: it runs until it is cancelled, as by
+/// a Stop or a shutdown.
+pub(crate) fn hang() -> Answer {
+    Vec::new()
 }
 
 /// The model's closing words.
@@ -231,9 +247,11 @@ struct TreeRuntime(Arc<Scripts>);
 impl ProviderRuntime for TreeRuntime {
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
         let answer = self.0.answer(&request);
-        stream::iter(answer)
-            .take_until(request.cancel.cancelled_owned())
-            .boxed_local()
+        let cancelled = request.cancel.cancelled_owned();
+        if answer.is_empty() {
+            return stream::pending().take_until(cancelled).boxed_local();
+        }
+        stream::iter(answer).take_until(cancelled).boxed_local()
     }
 
     fn fresh(&self) -> Box<dyn ProviderRuntime> {

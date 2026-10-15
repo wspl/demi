@@ -756,9 +756,10 @@ mod tests {
             }
             control.close().await.unwrap();
             // The schema before format 2, which the one before account
-            // rotation and the one before a placeholder title held no words
-            // follow in the history.
-            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 2);
+            // rotation, the one before a placeholder title held no words and
+            // the one before interrupted turns were marked follow in the
+            // history.
+            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 3);
             (data, path, own.id, proxy.id)
         };
         let clock = Arc::new(demi_shared_types::SystemClock);

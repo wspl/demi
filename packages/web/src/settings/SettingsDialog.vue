@@ -407,6 +407,8 @@ function resetShortcuts(): void {
       "
       :send-while-running="preferences.sendWhileRunning"
       @update:send-while-running="preferences.update({ sendWhileRunning: $event })"
+      :resume-after-restart="preferences.resumeAfterRestart"
+      @update:resume-after-restart="preferences.update({ resumeAfterRestart: $event })"
       :resume-at-retry="preferences.resumeAtRetry"
       @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
     />

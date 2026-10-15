@@ -735,6 +735,13 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     work.start(vec![shell("t2", "touch started; sleep 20", 30_000)])
         .await;
     until_exists(&started).await;
+    // The interrupted turn waits for the user, as it does with the user's
+    // `resumeAfterRestart` off, so the next start serves its record as the
+    // shutdown left it.
+    let off = backend
+        .patch("/api/settings/preferences", &master, json!({ "resumeAfterRestart": false }))
+        .await;
+    assert_eq!(off.status, StatusCode::OK);
     // The backend comes back at its address, where the runner reconnects.
     let address = backend.address();
     backend.close().await;
