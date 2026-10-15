@@ -282,7 +282,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Rows"
-        note="Label and explanation on the left, the control on the right. In a card narrower than 24rem the control drops under the label: a text field, a slider or a menu button then fills the row, the menu button keeping its value at the start and its chevron at the end, while a segmented control, a switch and a button keep their size at the right edge. What needs the row’s whole width, such as an account’s usage bars, takes a line of its own under the name and the controls at every width, the controls then aligned with the name; Refresh reads the usage again."
+        note="Label and explanation on the left, the control on the right. Each row decides by its own content: where the label would be left less than 9rem beside its control, the control drops under it, as in iOS Settings, whatever the language or the card’s width. A text field, a slider, a segmented control or a menu button then fills the row, the segments sharing the width with each label whole and the menu button keeping its value at the start and its chevron at the end, while a switch and a button keep their size at the right edge. A title wraps at its words and is cut only where one word is wider than the line. What needs the row’s whole width, such as an account’s usage bars, takes a line of its own under the name and the controls at every width, the controls then aligned with the name; Refresh reads the usage again."
       >
         <GallerySpecimen variant="Wide" wide>
           <div class="w-full max-w-xl">
@@ -292,6 +292,16 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
         <GallerySpecimen variant="Narrow · 320px">
           <div class="w-[320px] max-w-full">
             <GallerySettingsRows />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Phone · 390px · Japanese">
+          <div class="w-[390px] max-w-full" lang="ja">
+            <GallerySettingsRows ja />
+          </div>
+        </GallerySpecimen>
+        <GallerySpecimen variant="Narrow · 280px · Japanese">
+          <div class="w-[280px] max-w-full" lang="ja">
+            <GallerySettingsRows ja />
           </div>
         </GallerySpecimen>
       </GallerySection>
