@@ -20,6 +20,7 @@ pub mod devices;
 pub mod drafts;
 pub mod forks;
 pub mod instructions;
+pub mod interrupted_turns;
 pub mod managed;
 pub mod panels;
 pub mod passkeys;

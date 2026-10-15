@@ -185,8 +185,24 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.account-rotation.sql"),
             migration: Migration::Sql(CONTROL_FROM_ACCOUNT_ROTATION),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.placeholder-titles.sql"),
+            migration: Migration::Sql(CONTROL_FROM_PLACEHOLDER_TITLES),
+        },
     ],
 };
+
+/// From the control schema where a placeholder title holds no words to the
+/// one that keeps the root turns a graceful shutdown interrupted
+/// (`failures-and-recovery.md` § The unfinished turn). A database a shutdown
+/// of the earlier release closed marks none: its interrupted turns wait for
+/// the user's Resume.
+const CONTROL_FROM_PLACEHOLDER_TITLES: &str = "
+CREATE TABLE interrupted_turns (
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  error_block_id  TEXT NOT NULL
+) STRICT;
+";
 
 /// From the control schema with account rotation, whose placeholder titles
 /// held the English "New conversation", to the one where a placeholder
@@ -2228,6 +2244,14 @@ CREATE TABLE credential_allowances (
   PRIMARY KEY (conversation_id, credential_id)
 ) STRICT;
 CREATE INDEX credential_allowances_of_credential ON credential_allowances (credential_id);
+
+-- A conversation whose root's turn a graceful shutdown interrupted, with the
+-- `interrupted` record that shutdown wrote, which the next start resumes
+-- once (`failures-and-recovery.md` § The unfinished turn).
+CREATE TABLE interrupted_turns (
+  conversation_id TEXT PRIMARY KEY COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  error_block_id  TEXT NOT NULL
+) STRICT;
 
 -- A conversation's deletion that has not reached its last step: its record
 -- is gone, and a start finishes what is left (`storage.md` § Deleting a

@@ -294,6 +294,7 @@ function resetShortcuts() {
     v-model:accent="accent"
     v-model:font-size="s.general.fontSize"
     v-model:send-while-running="galleryMessages.sendWhileRunning"
+    v-model:resume-after-restart="galleryMessages.resumeAfterRestart"
     v-model:resume-at-retry="galleryMessages.resumeAtRetry"
     :theme="s.general.theme"
     :overlay-store="appOverlayStore"

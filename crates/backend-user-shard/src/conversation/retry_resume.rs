@@ -112,10 +112,7 @@ impl Shard {
     }
 
     /// Resumes the conversation's failed turn whose record is `error`, as the
-    /// user's Resume would, when the user's preference says so now: the
-    /// conversation's tree opens if it is closed, the backend prepares the
-    /// Resume as it prepares the user's, and the root resumes only while it
-    /// rests with that failure as its last turn's record.
+    /// user's Resume would, when the user's preference says so now.
     async fn resume_failed_turn(&self, conversation: &ConversationId, error: &BlockId) {
         let services = self.services();
         match services.control.preferences(self.user().clone()).await {
@@ -129,26 +126,44 @@ impl Shard {
                 return;
             }
         }
-        if let Err(why) = self.restore_tree(conversation).await {
-            tracing::warn!(%conversation, "a failed turn was not resumed at its retry time: {why}");
-            return;
+        match self.resume_unfinished_turn(conversation, error, None).await {
+            Ok(true) => tracing::info!(%conversation, "a failed turn resumed at its retry time"),
+            Ok(false) => {}
+            Err(why) => {
+                tracing::warn!(%conversation, "a failed turn was not resumed at its retry time: {why}");
+            }
         }
+    }
+
+    /// Resumes the conversation's unfinished turn whose record is `error`,
+    /// as the user's Resume would: the conversation's tree opens if it is
+    /// closed, the backend prepares the Resume as it prepares the user's,
+    /// and the root resumes only while it rests with that record as its
+    /// last turn's. `reason`, when given, is what the resume tells the
+    /// model in place of the reason the user's Resume would carry. Answers
+    /// whether the turn resumed; false when the backend would refuse the
+    /// user's Resume, as for an archived conversation, or the turn is no
+    /// longer the one `error` ended.
+    pub(crate) async fn resume_unfinished_turn(
+        &self,
+        conversation: &ConversationId,
+        error: &BlockId,
+        reason: Option<&str>,
+    ) -> Result<bool, String> {
+        self.restore_tree(conversation).await?;
         let _files = self
             .conversations()
             .slot(conversation)
             .file_gate()
             .enter(Purpose::Demand)
             .await;
-        let reason = match self.resume_frame_reason(conversation).await {
-            Ok(Some(reason)) => reason,
-            Ok(None) => return,
-            Err(error) => {
-                tracing::warn!(%conversation, "a failed turn's resume was not prepared: {error}");
-                return;
-            }
+        let prepared = match self.resume_frame_reason(conversation).await {
+            Ok(Some(prepared)) => prepared,
+            Ok(None) => return Ok(false),
+            Err(error) => return Err(format!("the resume was not prepared: {error}")),
         };
         let Some(tree) = self.agent().tree(&root_of(conversation)) else {
-            return;
+            return Ok(false);
         };
         let session = tree.root().session();
         let unchanged = session.phase() == SessionPhase::Idle
@@ -156,16 +171,14 @@ impl Shard {
                 .failed_turn()
                 .is_some_and(|failed| &failed.id == error);
         if !unchanged {
-            return;
+            return Ok(false);
         }
         // The action reports its course to the conversation's pages as
         // events; a refusal means the session is closing.
-        match session.resume(reason.as_deref()) {
-            Ok(_) => tracing::info!(%conversation, "a failed turn resumed at its retry time"),
-            Err(refusal) => {
-                tracing::warn!(%conversation, "a failed turn was not resumed at its retry time: {refusal}");
-            }
-        }
+        session
+            .resume(reason.or(prepared.as_deref()))
+            .map_err(|refusal| refusal.to_string())?;
+        Ok(true)
     }
 }
 
