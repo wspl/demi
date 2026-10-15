@@ -1,13 +1,13 @@
 {
   "files": {
-    "offline": "장치가 오프라인입니다.",
-    "notFound": "더 이상 존재하지 않습니다.",
+    "offline": "기기가 오프라인입니다.",
+    "notFound": "더 이상 없습니다.",
     "permission": "호스트에서 액세스를 허용하지 않습니다.",
     "exists": "같은 이름의 항목이 이미 있습니다.",
     "binary": "텍스트가 아닙니다.",
     "tooLarge": "너무 큽니다.",
     "other": "호스트가 응답하지 않았습니다.",
     "conversationBusy": "대화의 호스트를 변경하는 중입니다.",
-    "selectDevice": "연결된 장치를 선택하십시오."
+    "selectDevice": "연결된 기기를 선택하십시오."
   }
 }

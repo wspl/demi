@@ -2,15 +2,15 @@
   "notifications": {
     "turnStopped": "턴이 오류로 중지되었습니다.",
     "allowTo": "이 대화에서 {action} 작업을 허용하시겠습니까?",
-    "saveCredential": "자격 증명 “{name}”을(를) 저장하시겠습니까?",
-    "allowUse": "이 대화에서 “{name}”을(를) 사용하도록 허용하시겠습니까?"
+    "saveCredential": "“{name}” 자격 증명을 저장하시겠습니까?",
+    "allowUse": "이 대화에서 “{name}” 사용을 허용하시겠습니까?"
   },
   "hosts": {
-    "unavailableDevice": "사용할 수 없는 장치"
+    "unavailableDevice": "사용할 수 없는 기기"
   },
   "failures": {
     "updateSettings": "설정을 업데이트할 수 없습니다",
-    "changeContextLimit": "컨텍스트 한도를 변경할 수 없습니다",
+    "changeContextLimit": "컨텍스트 길이를 변경할 수 없습니다",
     "readPermissionRequests": "알림의 권한 요청을 읽을 수 없습니다",
     "updateTimeZoneLanguage": "시간대 및 언어를 업데이트할 수 없습니다",
     "readSync": "동기화 채널의 메시지를 읽을 수 없습니다"
