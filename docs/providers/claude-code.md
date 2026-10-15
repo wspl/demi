@@ -583,6 +583,24 @@ call's start and its input pieces at once, as an HTTP provider does
 ([A run](providers.md#a-run)), so the page shows the call being written
 before `message_stop`.
 
+**A complete answer instead of a stream.** When the model's stream stalls or
+fails, the CLI sends the request again without streaming and prints the
+answer as whole `assistant` lines, with no stream events and no
+`message_stop`; the answer is a new response, with a message ID of its own.
+Whether a response streams is therefore decided per response, from its
+`message_start` to its `message_stop`, never once per process: a whole line
+of the response being streamed repeats what streamed, and any other whole line
+is a complete answer, whose tool calls are handed over at once as a batch,
+with the usage its own message carries. The abandoned stream's calls are never
+handed over or run. On the page, what streamed stays: where the complete
+answer repeats it, only what is new is added (streamed *Let me* followed by
+the answer *Let me check the runtime.* adds *check the runtime.*), and from
+its first block that differs, the rest of the answer follows in full. The
+blocks' entries are the complete answer's, once, and nothing of the abandoned
+stream, so a later replay sends what the CLI itself kept. Without this rule
+the provider waited for a `message_stop` that never came while the CLI waited
+for its call's result, and the conversation stood still.
+
 This keeps one CLI process and one MCP session; there is no proxy process and
 no second MCP transport.
 
