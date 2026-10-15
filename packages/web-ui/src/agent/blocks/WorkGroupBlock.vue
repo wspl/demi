@@ -17,7 +17,7 @@ import FileChangePills from './FileChangePills.vue'
 import GoneMediaLines from './GoneMediaLines.vue'
 import { stepIcon } from './tool-row-icon'
 import { runFace, stepKey, workRunning, workSummary, type WorkGroupBlock, type WorkStep } from '../work-groups'
-import { useEditSelection, useTranscript } from '../edit-selection'
+import { useEditSelection, useFilePills, useTranscript } from '../edit-selection'
 import { changeFile, pillSelection, requestFileSelection, runFiles } from '../../files/request-changes'
 import { foldedMedia, splitMedia } from '../tool-media'
 import { useElapsedTime } from '../../composables/useElapsedTime'
@@ -130,11 +130,13 @@ function toggle(): void {
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
 const select = useEditSelection()
 const transcript = useTranscript()
+const pillsShown = useFilePills()
 // Folded, each file the run changed shows once, with its lines from before
 // the run to after its latest call, as that call stored them; a file whose
-// ends were not kept is named alone.
+// ends were not kept is named alone. A conversation outside a project shows
+// none.
 const changed = computed(() => runFiles(calls.value))
-const files = computed(() => changed.value.map(changeFile))
+const files = computed(() => pillsShown() ? changed.value.map(changeFile) : [])
 const media = computed(() => splitMedia(foldedMedia(props.group.steps)))
 
 // A step enters once, as it first appears, the way a row joining the

@@ -2,7 +2,7 @@
 import { t } from './locales/text'
 import { t as shared } from '../locales/text'
 import type { ShownError } from '../infra/errors'
-import { provideEditSelection, type EditSelectionHandler } from './edit-selection'
+import { provideEditSelection, provideFilePills, type EditSelectionHandler } from './edit-selection'
 import { provideResumeAtRetry } from './resume-at-retry'
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
@@ -145,11 +145,18 @@ const props = withDefaults(defineProps<{
    * names, which such a failure's record offers; absent, it offers none.
    */
   resumeAtRetry?: boolean
+  /**
+   * Whether calls and folded runs show the files they changed as pills; the
+   * product shows none for a conversation outside a project
+   * (`edit-tracking.md` § What the conversation shows). Absent, they show.
+   */
+  filePills?: boolean
 }>(), {
   // Vue reads an absent boolean prop as false, which would offer Open panel
   // where there is no panel; absent stays undefined.
   asideOpen: undefined,
   resumeAtRetry: undefined,
+  filePills: true,
 })
 /** The share of the session area's height the dock's windows keep; the host keeps it (`dock-window.ts`). */
 const dockWindowShare = defineModel<number>('dockWindowShare', { default: DOCK_WINDOW_SHARE.default })
@@ -217,6 +224,7 @@ const emit = defineEmits<{
   openInstruction: [entry: InstructionEntry]
 }>()
 provideEditSelection(() => props.selectEdit)
+provideFilePills(() => props.filePills)
 provideResumeAtRetry(() => props.resumeAtRetry === undefined
   ? undefined
   : { on: props.resumeAtRetry, set: (on) => emit('update:resumeAtRetry', on) })
