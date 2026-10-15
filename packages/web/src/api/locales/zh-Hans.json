@@ -1,0 +1,13 @@
+{
+  "files": {
+    "offline": "设备已离线。",
+    "notFound": "它已不存在。",
+    "permission": "主机不允许访问。",
+    "exists": "已存在同名项目。",
+    "binary": "它不是文本。",
+    "tooLarge": "它太大。",
+    "other": "主机没有响应。",
+    "conversationBusy": "对话正在更换主机。",
+    "selectDevice": "请选择已连接的设备。"
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "reasons": {
+    "invalid_input": "浏览器只能打开网页、文件和空白页。",
+    "tab_not_found": "此页面已不在设备上打开。",
+    "tab_busy": "标签页正忙于处理另一个请求。请稍后重试。",
+    "stale_ref": "页面在浏览器操作前发生了变化。",
+    "stale_cursor": "浏览器的记录在读取前发生了变化。",
+    "stale_inventory": "页面的文件在读取前发生了变化。",
+    "stale_tools": "页面的工具在使用前发生了变化。",
+    "target_not_found": "浏览器在页面上找不到该内容。",
+    "ambiguous_target": "页面上有多处匹配。",
+    "not_actionable": "页面的该部分当前无法使用。",
+    "timeout": "浏览器未及时响应。",
+    "dialog_blocked": "页面上的对话框正在等待回应。",
+    "dialog_not_found": "页面上没有等待回应的对话框。",
+    "invalid_dialog_action": "无法以该方式回应对话框。",
+    "history_boundary": "标签页在该方向上没有可转到的页面。",
+    "navigation_failed": "浏览器无法加载页面。",
+    "protected_value": "页面不公开该值。",
+    "side_effect_rejected": "浏览器不允许该操作更改页面。",
+    "unsupported_result": "浏览器无法传递页面返回的内容。",
+    "unsupported_capability": "设备上的浏览器无法执行该操作。",
+    "cdp_method_denied": "浏览器不允许该操作。",
+    "output_exists": "设备上已存在同名文件。",
+    "io_error": "设备无法读取或写入浏览器所需的文件。",
+    "result_too_large": "页面返回的内容超出浏览器可传递的范围。",
+    "partial_failure": "浏览器只完成了其中一部分。",
+    "driver_error": "设备上的浏览器遇到了问题。",
+    "browser_unavailable": "浏览器无法在设备上启动。",
+    "browser_lost": "设备上的浏览器已停止。",
+    "cancelled": "请求已取消。",
+    "outcome_unknown": "与浏览器的连接已断开。结果未知。",
+    "capture_unavailable": "此设备无法捕获浏览器的页面。",
+    "capture_failed": "设备无法捕获页面。正在重试。",
+    "capture_stopped": "设备无法捕获页面。",
+    "conversation_not_found": "此对话已不存在。",
+    "conversation_archived": "此对话已存档。",
+    "conversation_busy": "对话正忙。请稍后重试。",
+    "host_stopped": "云已停止。",
+    "device_offline": "设备已离线。",
+    "device_not_found": "设备已从你的帐户中移除。",
+    "cloud_unavailable": "云目前不可用。",
+    "cloud_resetting": "云正在重置。",
+    "cloud_capacity": "服务器没有足够的空间启动云。",
+    "cloud_crash_loop": "云多次启动失败，已停止尝试。",
+    "host_operation_failed": "与设备的连接已断开。",
+    "unknown_plugin_method": "此服务器无法运行浏览器。",
+    "plugin_disabled": "浏览器插件已关闭。"
+  },
+  "answers": {
+    "none": "服务器没有响应。",
+    "unreadable": "无法读取服务器的响应。",
+    "refused": "服务器无法完成该操作（{status}）。"
+  },
+  "noBrowser": "此主机上没有浏览器。请让智能体安装一个。",
+  "starting": {
+    "connecting": "正在连接…",
+    "cloud": "正在启动云…",
+    "browser": "正在启动浏览器…",
+    "page": "正在打开页面…"
+  },
+  "failures": {
+    "operate": "无法操作浏览器",
+    "reloadPage": "无法重新加载页面",
+    "copyLink": "无法复制链接",
+    "paste": "无法粘贴",
+    "openAddress": "无法打开地址",
+    "goBack": "无法后退",
+    "goForward": "无法前进",
+    "stopLoading": "无法停止加载",
+    "openPage": "无法打开页面",
+    "saveDownload": "无法保存下载内容",
+    "hostFilesUnreachable": "无法访问主机的文件。"
+  },
+  "region": {
+    "couldntOpen": "无法打开此页面。",
+    "couldntShow": "无法显示此页面。",
+    "noH264": "此浏览器无法解码 H.264 视频。",
+    "waiting": "等待主机…"
+  },
+  "menu": {
+    "openLink": "在新标签页中打开链接",
+    "copyLink": "复制链接地址",
+    "cut": "剪切",
+    "copy": "复制",
+    "paste": "粘贴",
+    "back": "后退",
+    "forward": "前进",
+    "reload": "重新加载"
+  },
+  "address": {
+    "noBack": "没有可后退的页面",
+    "noForward": "没有可前进的页面"
+  },
+  "downloads": {
+    "title": "下载",
+    "save": "保存",
+    "showInFiles": "在文件中显示",
+    "canceled": "已取消"
+  },
+  "viewport": {
+    "title": "视口",
+    "web": "Web",
+    "mobile": "移动设备",
+    "custom": "自定义 {width} × {height} {scale}"
+  },
+  "dialog": {
+    "leavePage": "离开此页面？",
+    "says": "{host} 显示",
+    "thisPageSays": "此页面显示",
+    "answer": "回答",
+    "stay": "留在此页面",
+    "leave": "离开",
+    "cancel": "取消",
+    "ok": "确定"
+  },
+  "browserInput": "浏览器输入",
+  "tab": {
+    "new": "新标签页",
+    "createInBrowser": "在对话的浏览器中新建标签页"
+  }
+}

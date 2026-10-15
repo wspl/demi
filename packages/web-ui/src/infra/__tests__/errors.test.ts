@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
 import { computed, reactive } from 'vue'
 import { createPageI18n } from '../../i18n/text'
-import { formError, reportError, reportPageErrorsWith, shownError, type PageErrorReport } from '../errors'
+import { coded, errorMessage, formError, reportError, reportPageErrorsWith, shownError, type PageErrorReport } from '../errors'
 import { dismissToast, toasts } from '../toast'
 
 // An error the page shows names the request it came from, and a failure the
@@ -132,6 +132,20 @@ test('an error shown before the language changes is reworded in the new language
       '1 つの会話で後で送信するために保存できるメッセージは 200 件までです。',
       '1 つの会話で後で送信するために保存できるメッセージは 200 件までです。',
     ])
+  } finally {
+    createPageI18n('en')
+  }
+})
+
+// A failure the page found itself carries the code its words are looked up
+// by, and an answer a proxy gave, which has none, is worded from its status.
+test('a coded page failure and a codeless answer are worded in the page’s language', () => {
+  const lost = coded(new TypeError('Upload connection failed.'), 'upload_connection_failed')
+  const proxied = Object.assign(new Error('Request failed (502).'), { code: null, status: 502 })
+  try {
+    expect([errorMessage(lost), errorMessage(proxied)]).toEqual(['The upload lost its connection.', 'The request failed (502).'])
+    createPageI18n('zh-Hans')
+    expect([errorMessage(lost), errorMessage(proxied)]).toEqual(['上传连接已断开。', '请求失败（502）。'])
   } finally {
     createPageI18n('en')
   }

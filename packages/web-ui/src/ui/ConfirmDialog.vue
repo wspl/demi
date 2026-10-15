@@ -2,6 +2,7 @@
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from './Button.vue'
 import Dialog from './Dialog.vue'
+import { t as shared } from '../locales/text'
 import type { Action, Operation } from './operations'
 import type { HeadlineText, TitleText } from './ui-text'
 
@@ -61,7 +62,7 @@ const emit = defineEmits<{
     <template #footer>
       <!-- Cancel is the default, last: Return and the opening focus never destroy (Dialog). -->
       <Button variant="danger" :operation="operation" @click="onConfirm?.()">{{ action }}</Button>
-      <Button variant="primary" @click="emit('close')">Cancel</Button>
+      <Button variant="primary" @click="emit('close')">{{ shared('common.cancel') }}</Button>
     </template>
   </Dialog>
 </template>

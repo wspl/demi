@@ -1,0 +1,15 @@
+{
+  "notifications": {
+    "turnStopped": "턴이 오류로 중지되었습니다.",
+    "allowTo": "이 대화에서 {action} 작업을 허용하시겠습니까?",
+    "saveCredential": "자격 증명 “{name}”을(를) 저장하시겠습니까?",
+    "allowUse": "이 대화에서 “{name}”을(를) 사용하도록 허용하시겠습니까?"
+  },
+  "hosts": {
+    "unavailableDevice": "사용할 수 없는 장치"
+  },
+  "failures": {
+    "updateSettings": "설정을 업데이트할 수 없습니다",
+    "changeContextLimit": "컨텍스트 한도를 변경할 수 없습니다"
+  }
+}

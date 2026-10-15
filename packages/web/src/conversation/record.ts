@@ -11,6 +11,7 @@ import { changeReplacedDraft, loadDraft, saveDraft } from '../api/drafts'
 import { deleteSaved, editSaved, loadSaved, postSaved, saveFromDraft } from '../api/saved'
 import type { ConversationDraft, DraftFile, ReplacedAction, Revisions, SavedMessage } from '../api/generated/web-api'
 import type { Conversation, ProductAttachment } from '../state/types'
+import { t } from './locales/text'
 
 // A conversation's draft and its messages saved for later, which the backend
 // changes together, as the one slot the page holds of them
@@ -351,7 +352,7 @@ export function createRecordSync(options: {
       }
       // A refused save is reported, and tried again with the next change;
       // one the backend failed is tried again a few seconds later.
-      refused(conversation, change, isRefusal(error) ? 'Could Not Save the Draft' : null, error)
+      refused(conversation, change, isRefusal(error) ? t('failures.saveDraft') : null, error)
       if (!isRefusal(error)) {
         schedule(conversation, DRAFT_RETRY_MS)
       }
@@ -484,7 +485,7 @@ export function createRecordSync(options: {
       { parts: ['draft', 'saved'], meta: { kind: 'save', base: built, answered: null, carries: { id, ...writing, into: 'list' } } },
     )
     follow(conversation)
-    return write(conversation, change, 'Could Not Save the Message', async (signal) => {
+    return write(conversation, change, t('failures.saveMessage'), async (signal) => {
       await options.persist(conversation)
       return saveFromDraft(
         conversation.id,
@@ -530,7 +531,7 @@ export function createRecordSync(options: {
     return write(
       conversation,
       change,
-      'Could Not Edit the Message',
+      t('failures.editMessage'),
       (signal) => editSaved(conversation.id, message.id, { op, id: becomes }, signal),
       () => {
         // The writes before it are answered: what the backend moves is the
@@ -548,7 +549,7 @@ export function createRecordSync(options: {
       parts: ['saved'],
       meta: { kind: 'delete', base: null, answered: null, carries: null },
     })
-    return write(conversation, change, 'Could Not Delete the Message', async (signal) => ({
+    return write(conversation, change, t('failures.deleteMessage'), async (signal) => ({
       revisions: await deleteSaved(conversation.id, id, signal),
     }))
   }
@@ -564,7 +565,7 @@ export function createRecordSync(options: {
       parts: ['saved'],
       meta: { kind: 'resave', base: null, answered: null, carries: { id, ...writing, into: 'list' } },
     })
-    return write(conversation, change, 'Could Not Save the Message', async (signal) => {
+    return write(conversation, change, t('failures.saveMessage'), async (signal) => {
       const answer = await postSaved(conversation.id, { id, text: writing.text, files: writing.files.map(namedFile) }, signal)
       return { revisions: answer.revisions }
     })

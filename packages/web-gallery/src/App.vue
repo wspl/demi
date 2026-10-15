@@ -18,7 +18,7 @@ import { galleryBlobUrl } from './fixtures/blobs'
 import { galleryConversationFiles } from './fixtures/message-files'
 import { createGalleryWorkspace } from './fixtures/workspace'
 import { productWould } from './product-would'
-import { NAV } from './router'
+import { galleryNav } from './router'
 
 provideBlobUrl(galleryBlobUrl)
 // A transcript shown outside a session still names the gallery workspace's
@@ -38,6 +38,7 @@ const main = ref<InstanceType<typeof ScrollArea>>()
 const viewport = computed(() => main.value?.el)
 useSavedScroll(viewport, () => `demi-gallery-scroll:${route.fullPath}`)
 const { views, view } = useGalleryView()
+const nav = computed(() => galleryNav())
 // The navigation is the frame's sidebar, as the product's list is: at a
 // phone's width it opens over the page, and a pick closes it.
 const navOpen = ref(false)
@@ -79,7 +80,7 @@ const mainClass = computed(() => {
         <ScrollArea class="flex-1" viewport-class="px-2 pb-2">
           <nav class="flex flex-col gap-0.5">
             <RouterLink
-              v-for="item in NAV"
+              v-for="item in nav"
               :key="item.path"
               :to="item.path"
               class="rounded-md px-2.5 py-1.5 text-left text-[13px] transition-colors duration-200 ease-out"

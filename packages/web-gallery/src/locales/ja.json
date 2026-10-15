@@ -1,0 +1,76 @@
+{
+  "nav": {
+    "overview": "概要",
+    "signin": "サインインとセットアップ",
+    "surfaces": "サーフェス",
+    "primitives": "プリミティブ",
+    "controlLayout": "コントロールのレイアウト",
+    "writing": "文章表現",
+    "errors": "エラー",
+    "motion": "モーション",
+    "overlays": "オーバーレイ",
+    "dialogs": "ダイアログ",
+    "files": "ファイル",
+    "session": "セッション",
+    "sidebar": "サイドバー",
+    "settings": "設定",
+    "markdown": "Markdown",
+    "phone": "スマートフォン",
+    "roadmap": "ロードマップ"
+  },
+  "views": {
+    "errors": {
+      "primitives": "プリミティブ",
+      "conversation": "会話",
+      "messages": "メッセージとアップロード",
+      "forms": "フォームと設定",
+      "files": "ファイル"
+    },
+    "signin": {
+      "signin": "サインイン",
+      "setup": "セットアップ",
+      "handoff": "スマートフォンへの引き継ぎ",
+      "starting": "起動中"
+    },
+    "primitives": {
+      "buttons": "ボタン",
+      "fields": "フィールド",
+      "marks": "マーク"
+    },
+    "overlays": {
+      "menus": "メニュー",
+      "dialogs": "ダイアログ"
+    },
+    "files": {
+      "browser": "ブラウザー",
+      "tree": "ツリー",
+      "dialogs": "ダイアログ"
+    },
+    "session": {
+      "tabs": "タブバー",
+      "composer": "入力欄",
+      "blocks": "ブロック",
+      "lengths": "長さ",
+      "changes": "変更点",
+      "turns": "ターン",
+      "states": "状態",
+      "session": "セッション",
+      "panel": "パネル",
+      "windows": "ウィンドウ"
+    },
+    "dialogs": {
+      "account": "アカウント",
+      "providers": "プロバイダー",
+      "devices": "デバイス",
+      "workspace": "ワークスペース",
+      "cloud": "クラウド",
+      "skills": "スキル",
+      "search": "検索"
+    },
+    "page": "ページ"
+  },
+  "chrome": {
+    "mode": "モード",
+    "font": "フォント"
+  }
+}

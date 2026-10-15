@@ -5,6 +5,7 @@ import { Button } from '@demicodes/plugin-sdk'
 import { ScrollArea } from '@demicodes/plugin-sdk'
 import { TextInput } from '@demicodes/plugin-sdk'
 import { dialogTitle, keyAnswer } from './dialogs'
+import { t } from '../locales/text'
 
 /**
  * A dialog the watched page opened (`live-view.md` § A browser tab in the
@@ -81,7 +82,7 @@ function key(event: KeyboardEvent): void {
         ref="field"
         v-model="text"
         class="mt-2 w-full"
-        aria-label="Answer"
+        :aria-label="t('dialog.answer')"
       />
       <div class="mt-3 flex justify-end gap-2">
         <Button
@@ -90,10 +91,10 @@ function key(event: KeyboardEvent): void {
           size="sm"
           @click="answer(false)"
         >
-          {{ dialog.type === 'beforeunload' ? 'Stay' : 'Cancel' }}
+          {{ dialog.type === 'beforeunload' ? t('dialog.stay') : t('dialog.cancel') }}
         </Button>
         <Button variant="primary" size="sm" @click="answer(true)">
-          {{ dialog.type === 'beforeunload' ? 'Leave' : 'OK' }}
+          {{ dialog.type === 'beforeunload' ? t('dialog.leave') : t('dialog.ok') }}
         </Button>
       </div>
     </div>

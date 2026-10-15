@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import TextInput from './TextInput.vue'
+import { t } from './locales/text'
 
 /**
  * A title edited where it stands, in the framed field every text input is.
@@ -64,7 +65,7 @@ onMounted(() => {
     ref="field"
     v-model="value"
     :size="size"
-    :aria-label="label ?? 'Title'"
+    :aria-label="label ?? t('titleInput.title')"
     @keydown.enter.stop.prevent="submit"
     @keydown.escape.stop.prevent="cancel"
     @keydown.stop

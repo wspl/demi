@@ -14,7 +14,8 @@ import {
   type MessageEditHost,
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
-import { errorMessage, reportError, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
+import { coded, errorMessage, reportError, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
+import { t as shared } from '@demicodes/web-ui/locales/text'
 import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
 import { CONVERSATION_UNREADABLE, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import { dismissToast, showToast } from '@demicodes/web-ui/infra/toast'
@@ -92,6 +93,7 @@ import { applyConversationEvent, updateLiveStatus } from './activity'
 import { composerWriting, createRecordSync, newRecord, type Writing } from './record'
 import { createHistoryReads } from './history'
 import { findCallBlock, shellCallOf } from './terminals'
+import { t } from './locales/text'
 import { EMPTY_TRANSCRIPT, addPage, heldBlocks } from '@demicodes/web-ui/transport/protocol'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import {
@@ -184,7 +186,7 @@ export const useConversations = defineStore('conversations', () => {
   /** Each conversation's draft as this page last saved or restored it, in the shape `changedDraft` compares. */
   const savedDrafts = new Map<string, string>()
   const uploads = createConversationUploads(saveDrafts, (error) =>
-    report('Could Not Upload the Attachment', error),
+    report(t('failures.uploadAttachment'), error),
   )
   const { uploadInComposer, addFiles, removeFile, releaseSpare, arrangeFiles, retryFile } = uploads
   const recordSync = createRecordSync({
@@ -290,22 +292,22 @@ export const useConversations = defineStore('conversations', () => {
     const detail = error instanceof UnreadableDraftError ? error.detail : undefined
     switch (kind) {
       case 'save':
-        reportError('Could Not Save Drafts', error, {
+        reportError(t('failures.saveDrafts'), error, {
           userVisible: true,
-          message: 'This browser couldn’t store your drafts.',
+          message: t('drafts.storeFailed'),
         })
         break
       case 'restore':
-        reportError('Could Not Restore Drafts', error, {
+        reportError(t('failures.restoreDrafts'), error, {
           userVisible: true,
-          message: 'This browser couldn’t read the stored drafts.',
+          message: t('drafts.readFailed'),
         })
         break
       case 'unreadable':
-        reportError('Could Not Restore a Draft', error, {
+        reportError(t('failures.restoreStoredDraft'), error, {
           userVisible: true,
           detail,
-          message: 'A stored draft couldn’t be read and was set aside. Your other drafts are restored.',
+          message: t('drafts.unreadable'),
         })
         break
     }
@@ -532,15 +534,15 @@ export const useConversations = defineStore('conversations', () => {
         // since this one read them; a conversation whose draft was never
         // read, or that was not opened, reads them when it opens.
         if (current.record.revision('draft') >= 0 && current.record.ask(record.draftRevision, 'draft')) {
-          void recordSync.readDraft(current).catch((error) => report('Could Not Read the Draft', error))
+          void recordSync.readDraft(current).catch((error) => report(t('failures.readDraft'), error))
         }
         if (cache.get(current.id) && current.record.ask(record.savedRevision, 'saved')) {
-          void recordSync.readSaved(current).catch((error) => report('Could Not Read the Saved Messages', error))
+          void recordSync.readSaved(current).catch((error) => report(t('failures.readSaved'), error))
         }
         // Another page or a host's shell changed the hosts since this one
         // read them; a conversation not opened reads them when it opens.
         if (current.attachedHosts.ask(record.hostsRevision) && cache.get(current.id)) {
-          void readHosts(current).catch((error) => report('Could Not Read the Hosts', error))
+          void readHosts(current).catch((error) => report(t('failures.readHosts'), error))
         }
         if (archiveChanged) {
           followArchive(current)
@@ -818,7 +820,7 @@ export const useConversations = defineStore('conversations', () => {
         conversation.pendingSends = draft.pendingSends.map((pending) => ({
           ...pending,
           way: 'send',
-          error: pending.error || 'Delivery was interrupted. Retry to confirm it.',
+          error: pending.error || t('drafts.deliveryInterrupted'),
         }))
         conversation.messageEdit = restoreMessageEdit(draft.messageEdit ?? null)
         // A draft holds model settings only for a conversation without a
@@ -1274,7 +1276,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation.record.ask(summary?.savedRevision ?? 0, 'saved')
     const draftRead = draftRestored.then(() => recordSync.readDraft(conversation, reads.draft))
     // The composer's entry shows the list once read; nothing waits for it.
-    void recordSync.readSaved(conversation).catch((error) => report('Could Not Read the Saved Messages', error))
+    void recordSync.readSaved(conversation).catch((error) => report(t('failures.readSaved'), error))
     const hostsRead = reads.hosts.then((answer) => {
       signal.throwIfAborted()
       // A summary that raised the revision meanwhile started a newer read,
@@ -1332,7 +1334,7 @@ export const useConversations = defineStore('conversations', () => {
     conversation: Conversation,
   ): Promise<ConversationRuntime> {
     if (conversation.archived) {
-      throw new Error('Restore this conversation before sending.')
+      throw coded(new Error('Restore this conversation before sending.'), 'restore_before_sending')
     }
     const cached = cache.get(conversation.id)
     if (cached) {
@@ -1358,10 +1360,11 @@ export const useConversations = defineStore('conversations', () => {
       // A model list that failed is why no model could be picked
       // (`web-application.md` § Model discovery).
       const failure = product.catalogFailure
-      throw new Error(
-        conversation.lastError?.message ??
-          (failure === null ? 'No available model for this conversation.' : `Couldn’t load the models: ${failure}`),
-      )
+      throw conversation.lastError
+        ? new Error(conversation.lastError.message)
+        : failure === null
+          ? coded(new Error('No available model for this conversation.'), 'no_model_available')
+          : coded(new Error(`Couldn’t load the models: ${failure}`), 'models_not_loaded', { failure })
     }
     return runtime
   }
@@ -1411,7 +1414,7 @@ export const useConversations = defineStore('conversations', () => {
     }
     if (failed.length) {
       reportError(
-        'Some fields were not updated.',
+        t('failures.fieldsNotUpdated'),
         failed.map((field) => `${field.field}: ${field.message}`).join('\n'),
         { userVisible: true, expected: true },
       )
@@ -1557,7 +1560,7 @@ export const useConversations = defineStore('conversations', () => {
         return { success, changed }
       })
     } catch (error) {
-      report('Could Not Update Conversations', error)
+      report(t('failures.updateConversations'), error)
       return { success: false, changed }
     } finally {
       // A change the answer did not name, or one whose write failed, leaves.
@@ -1654,7 +1657,7 @@ export const useConversations = defineStore('conversations', () => {
       for (const removal of removals.values()) {
         removal.drop()
       }
-      report('Could Not Delete Conversations', error)
+      report(t('failures.deleteConversations'), error)
       return false
     }
   }
@@ -1675,7 +1678,7 @@ export const useConversations = defineStore('conversations', () => {
     const now = new Date().toISOString()
     const conversation = newConversation({
       id: crypto.randomUUID(),
-      title: 'New conversation',
+      title: t('newConversation'),
       pinned: false,
       archived: false,
       target: projectId
@@ -1793,7 +1796,7 @@ export const useConversations = defineStore('conversations', () => {
       })
       .catch((error) => {
         change.drop()
-        report('Could Not Rename the Conversation', error)
+        report(t('failures.renameConversation'), error)
       })
   }
 
@@ -1848,7 +1851,7 @@ export const useConversations = defineStore('conversations', () => {
       })
       .catch((error) => {
         change.drop()
-        report('Could Not Reorder Conversations', error)
+        report(t('failures.reorderConversations'), error)
       })
   }
 
@@ -1891,7 +1894,7 @@ export const useConversations = defineStore('conversations', () => {
         if (error instanceof ApiError && error.code === 'conversation_not_found') {
           return
         }
-        report('Could Not Update Read Status', error)
+        report(t('failures.updateReadStatus'), error)
       })
   }
 
@@ -1907,7 +1910,7 @@ export const useConversations = defineStore('conversations', () => {
         { method: 'POST', signal: lifetime.signal },
       )
     } catch (error) {
-      report('Could Not Reload the Conversation', error)
+      report(t('failures.reloadConversation'), error)
     }
   }
 
@@ -1936,7 +1939,7 @@ export const useConversations = defineStore('conversations', () => {
         value: (hosts) => hosts.filter((host) => host.deviceId !== deviceId),
       })
     } catch (error) {
-      report('Could Not Detach the Device', error)
+      report(t('failures.detachDevice'), error)
     }
   }
 
@@ -1990,7 +1993,7 @@ export const useConversations = defineStore('conversations', () => {
       }
     } catch (error) {
       shown.drop()
-      report('Could Not Change the Model', error)
+      report(t('failures.changeModel'), error)
     }
   }
 
@@ -2023,7 +2026,7 @@ export const useConversations = defineStore('conversations', () => {
       })
       .catch((error) => {
         change.drop()
-        report('Could Not Change the Workflow', error)
+        report(t('failures.changeWorkflow'), error)
       })
   }
 
@@ -2079,7 +2082,7 @@ export const useConversations = defineStore('conversations', () => {
     try {
       await uploaded(conversation)
     } catch (error) {
-      report('Could Not Save the Message', error)
+      report(t('failures.saveMessage'), error)
       return
     }
     await recordSync.saveForLater(conversation, crypto.randomUUID(), composerWriting(conversation).writing)
@@ -2104,7 +2107,7 @@ export const useConversations = defineStore('conversations', () => {
     try {
       await uploaded(conversation)
     } catch (error) {
-      report('Could Not Edit the Message', error)
+      report(t('failures.editMessage'), error)
       return
     }
     const notSaved = conversation.notSaved.find((row) => row.id === id)
@@ -2175,7 +2178,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /** The toast a deletion shows, whose Undo runs `undo`. */
   function showDeleted(undo: () => void): string {
-    return showToast({ title: 'Saved Message Deleted', tone: 'neutral', action: { label: 'Undo', run: undo } })
+    return showToast({ title: t('savedDeleted'), tone: 'neutral', action: { label: shared('common.undo'), run: undo } })
   }
 
   /** Retry on a message not saved: it is saved again under its own id, and stands as saving meanwhile. */
@@ -2396,7 +2399,7 @@ export const useConversations = defineStore('conversations', () => {
     // Once no message is on its way, the backend has accepted them all: the
     // draft they were written in goes too, everywhere, and a change another
     // page made meanwhile stays to restore.
-    void recordSync.save(conversation).catch((error) => report('Could Not Clear the Draft', error))
+    void recordSync.save(conversation).catch((error) => report(t('failures.clearDraft'), error))
     return true
   }
 
@@ -2461,7 +2464,7 @@ export const useConversations = defineStore('conversations', () => {
         if (back) {
           giveBack(conversation, back)
         }
-        report('Could Not Recall the Message', error)
+        report(t('failures.recallMessage'), error)
       })
       .finally(() => stopRemoving(conversation, id))
   }
@@ -2566,13 +2569,13 @@ export const useConversations = defineStore('conversations', () => {
         // tell whether it got the request, and never sends it again
         // (`web-application.md` § A request the drop interrupts). The drop
         // itself is reported where the socket was replaced.
-        report('Connection Lost', error, {
+        report(t('failures.connectionLost'), error, {
           expected: true,
-          message: 'Demi may not have received your request. Check the conversation once it reconnects.',
+          message: t('failures.connectionLostMessage'),
         })
       } else if (!isRecordedTurnFailure(error)) {
         // A turn that ran and failed is already a record in the transcript.
-        report('The conversation did not accept the request.', error)
+        report(t('failures.requestNotAccepted'), error)
       }
       return false
     }
@@ -2762,9 +2765,9 @@ export const useConversations = defineStore('conversations', () => {
     deleteSaved,
     retrySaved,
     restoreReplaced: (conversation: Conversation) =>
-      void recordSync.act(conversation, 'restore').catch((error) => report('Could Not Restore the Draft', error)),
+      void recordSync.act(conversation, 'restore').catch((error) => report(t('failures.restoreDraft'), error)),
     dismissReplaced: (conversation: Conversation) =>
-      void recordSync.act(conversation, 'dismiss').catch((error) => report('Could Not Dismiss the Draft', error)),
+      void recordSync.act(conversation, 'dismiss').catch((error) => report(t('failures.dismissDraft'), error)),
     initialize,
     stopAll,
     abortSubagents: (conversation: Conversation) =>

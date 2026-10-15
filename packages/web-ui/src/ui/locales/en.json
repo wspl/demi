@@ -1,0 +1,42 @@
+{
+  "noResults": "No results",
+  "inDevelopment": "In development",
+  "asyncRegion": {
+    "error": "Couldn’t load this content."
+  },
+  "menu": {
+    "empty": "No items"
+  },
+  "limitField": {
+    "limited": "Limited",
+    "unlimited": "Unlimited",
+    "problem": "Enter a whole number from 1."
+  },
+  "shortcutRecorder": {
+    "recording": "Recording shortcut",
+    "prompt": "Press keys…"
+  },
+  "requestId": "Request ID: {id}",
+  "errorNotice": {
+    "providerResponse": "Provider Response"
+  },
+  "updateFailed": {
+    "title": "This Page Could Not Be Updated",
+    "body": "Demi has a newer version. Reloading still shows the old one."
+  },
+  "startingScreen": {
+    "connecting": "Connecting to Demi…",
+    "loading": "Loading Demi…",
+    "failed": "Couldn’t check your session."
+  },
+  "themeToggle": {
+    "light": "Light theme",
+    "dark": "Dark theme"
+  },
+  "titleInput": {
+    "title": "Title"
+  },
+  "rowSpinner": {
+    "working": "Working"
+  }
+}

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as shared } from '../locales/text'
+
 /**
  * A thin line along the top of what is loading, such as a page that a tab
  * still shows while the next one loads (`web-application.md` § Responding to
@@ -12,7 +14,7 @@ defineProps<{ active: boolean }>()
   <div
     class="pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden"
     role="progressbar"
-    aria-label="Loading"
+    :aria-label="shared('common.loading')"
     :aria-hidden="!active"
   >
     <div v-if="active" class="progress-line h-full w-1/3 rounded-full bg-accent-fill" />

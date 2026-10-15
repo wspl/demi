@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import RegionStatus from './RegionStatus.vue'
+import { t as shared } from '../locales/text'
+import { t } from './locales/text'
 import type { SentenceText } from './ui-text'
 
 /**
@@ -21,8 +23,6 @@ withDefaults(
   }>(),
   {
     state: 'ready',
-    label: 'Loading…',
-    error: 'Could not load this content.',
     detail: null,
     requestId: null,
     onRetry: () => {},
@@ -36,8 +36,8 @@ withDefaults(
     v-else
     class="min-h-24"
     :status="state"
-    :label="state === 'loading' ? label : error"
-    :loading-label="label"
+    :label="state === 'loading' ? (label ?? shared('common.loading')) : (error ?? t('asyncRegion.error'))"
+    :loading-label="label ?? shared('common.loading')"
     :detail="detail"
     :request-id="requestId"
     :on-retry="onRetry"

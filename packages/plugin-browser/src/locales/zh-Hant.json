@@ -1,0 +1,122 @@
+{
+  "reasons": {
+    "invalid_input": "瀏覽器只能開啟網頁、檔案和空白頁。",
+    "tab_not_found": "此頁面已不在裝置上開啟。",
+    "tab_busy": "分頁正忙於處理另一個要求。請稍後再試。",
+    "stale_ref": "頁面在瀏覽器操作前已變更。",
+    "stale_cursor": "瀏覽器的記錄在讀取前已變更。",
+    "stale_inventory": "頁面的檔案在讀取前已變更。",
+    "stale_tools": "頁面的工具在使用前已變更。",
+    "target_not_found": "瀏覽器在頁面上找不到該內容。",
+    "ambiguous_target": "頁面上有多處相符。",
+    "not_actionable": "頁面的該部分目前無法使用。",
+    "timeout": "瀏覽器未及時回應。",
+    "dialog_blocked": "頁面上的對話方塊正在等待回應。",
+    "dialog_not_found": "頁面上沒有等待回應的對話方塊。",
+    "invalid_dialog_action": "無法以該方式回應對話方塊。",
+    "history_boundary": "分頁在該方向上沒有可前往的頁面。",
+    "navigation_failed": "瀏覽器無法載入頁面。",
+    "protected_value": "頁面不公開該值。",
+    "side_effect_rejected": "瀏覽器不允許該操作變更頁面。",
+    "unsupported_result": "瀏覽器無法傳遞頁面傳回的內容。",
+    "unsupported_capability": "裝置上的瀏覽器無法執行該操作。",
+    "cdp_method_denied": "瀏覽器不允許該操作。",
+    "output_exists": "裝置上已存在同名檔案。",
+    "io_error": "裝置無法讀取或寫入瀏覽器所需的檔案。",
+    "result_too_large": "頁面傳回的內容超出瀏覽器可傳遞的範圍。",
+    "partial_failure": "瀏覽器只完成了其中一部分。",
+    "driver_error": "裝置上的瀏覽器發生問題。",
+    "browser_unavailable": "瀏覽器無法在裝置上啟動。",
+    "browser_lost": "裝置上的瀏覽器已停止。",
+    "cancelled": "要求已取消。",
+    "outcome_unknown": "與瀏覽器的連線已中斷。結果不明。",
+    "capture_unavailable": "此裝置無法擷取瀏覽器的頁面。",
+    "capture_failed": "裝置無法擷取頁面。正在重試。",
+    "capture_stopped": "裝置無法擷取頁面。",
+    "conversation_not_found": "此對話已不存在。",
+    "conversation_archived": "此對話已封存。",
+    "conversation_busy": "對話正忙。請稍後再試。",
+    "host_stopped": "雲端已停止。",
+    "device_offline": "裝置已離線。",
+    "device_not_found": "裝置已從您的帳戶中移除。",
+    "cloud_unavailable": "雲端目前無法使用。",
+    "cloud_resetting": "雲端正在重設。",
+    "cloud_capacity": "伺服器沒有足夠的空間啟動雲端。",
+    "cloud_crash_loop": "雲端多次啟動失敗，已停止嘗試。",
+    "host_operation_failed": "與裝置的連線已中斷。",
+    "unknown_plugin_method": "此伺服器無法執行瀏覽器。",
+    "plugin_disabled": "瀏覽器外掛程式已關閉。"
+  },
+  "answers": {
+    "none": "伺服器沒有回應。",
+    "unreadable": "無法讀取伺服器的回應。",
+    "refused": "伺服器無法完成該操作（{status}）。"
+  },
+  "noBrowser": "此主機上沒有瀏覽器。請要求代理程式安裝一個。",
+  "starting": {
+    "connecting": "正在連線…",
+    "cloud": "正在啟動雲端…",
+    "browser": "正在啟動瀏覽器…",
+    "page": "正在開啟頁面…"
+  },
+  "failures": {
+    "operate": "無法操作瀏覽器",
+    "reloadPage": "無法重新載入頁面",
+    "copyLink": "無法複製連結",
+    "paste": "無法貼上",
+    "openAddress": "無法開啟位址",
+    "goBack": "無法返回上一頁",
+    "goForward": "無法前往下一頁",
+    "stopLoading": "無法停止載入",
+    "openPage": "無法開啟頁面",
+    "saveDownload": "無法儲存下載內容",
+    "hostFilesUnreachable": "無法存取主機的檔案。"
+  },
+  "region": {
+    "couldntOpen": "無法開啟此頁面。",
+    "couldntShow": "無法顯示此頁面。",
+    "noH264": "此瀏覽器無法解碼 H.264 視訊。",
+    "waiting": "等待主機…"
+  },
+  "menu": {
+    "openLink": "在新分頁中開啟連結",
+    "copyLink": "複製連結位址",
+    "cut": "剪下",
+    "copy": "複製",
+    "paste": "貼上",
+    "back": "上一頁",
+    "forward": "下一頁",
+    "reload": "重新載入"
+  },
+  "address": {
+    "noBack": "沒有可返回的頁面",
+    "noForward": "沒有可前往的頁面"
+  },
+  "downloads": {
+    "title": "下載",
+    "save": "儲存",
+    "showInFiles": "在檔案中顯示",
+    "canceled": "已取消"
+  },
+  "viewport": {
+    "title": "檢視區",
+    "web": "Web",
+    "mobile": "行動裝置",
+    "custom": "自訂 {width} × {height} {scale}"
+  },
+  "dialog": {
+    "leavePage": "離開此頁面？",
+    "says": "{host} 顯示",
+    "thisPageSays": "此頁面顯示",
+    "answer": "回答",
+    "stay": "留在此頁面",
+    "leave": "離開",
+    "cancel": "取消",
+    "ok": "確定"
+  },
+  "browserInput": "瀏覽器輸入",
+  "tab": {
+    "new": "新分頁",
+    "createInBrowser": "在對話的瀏覽器中新增分頁"
+  }
+}

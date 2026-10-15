@@ -1,0 +1,42 @@
+{
+  "noResults": "无结果",
+  "inDevelopment": "开发中",
+  "asyncRegion": {
+    "error": "无法加载此内容。"
+  },
+  "menu": {
+    "empty": "无项目"
+  },
+  "limitField": {
+    "limited": "有限制",
+    "unlimited": "无限制",
+    "problem": "请输入大于等于 1 的整数。"
+  },
+  "shortcutRecorder": {
+    "recording": "正在录制快捷键",
+    "prompt": "按下按键…"
+  },
+  "requestId": "请求 ID：{id}",
+  "errorNotice": {
+    "providerResponse": "提供程序响应"
+  },
+  "updateFailed": {
+    "title": "无法更新此页面",
+    "body": "Demi 有新版本。重新加载后仍显示旧页面。"
+  },
+  "startingScreen": {
+    "connecting": "正在连接到 Demi…",
+    "loading": "正在加载 Demi…",
+    "failed": "无法检查你的会话。"
+  },
+  "themeToggle": {
+    "light": "浅色主题",
+    "dark": "深色主题"
+  },
+  "titleInput": {
+    "title": "标题"
+  },
+  "rowSpinner": {
+    "working": "正在处理"
+  }
+}

@@ -6,6 +6,7 @@ import { keptChangeSet, keptHistory } from '@demicodes/web-ui/files/kept-source'
 import type { CommitHistorySource } from '@demicodes/web-ui/files/history'
 import type { ConversationFileService } from '@demicodes/web-ui/plugins/page'
 import type { FileBrowserSource } from '@demicodes/web-ui/files/types'
+import { t as shared } from '@demicodes/web-ui/locales/text'
 import { conversationFileRoutes, fileSource, hostFiles } from '../api/files'
 import { useResources } from '../state/resources'
 import { executionFor } from '../targets/execution'
@@ -123,7 +124,7 @@ export function conversationFiles(conversationId: string): ConversationFileServi
       : null
   })
   // The Cloud's own session directory has no name worth showing; it is the workspace.
-  const name = computed(() => execution.value?.directory === null ? 'Workspace' : undefined)
+  const name = computed(() => execution.value?.directory === null ? shared('common.workspace') : undefined)
   const workspace = computed(() => source.value && root.value
     ? { source: source.value, root: root.value, name: name.value }
     : null)

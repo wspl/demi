@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import SwatchPicker from '@demicodes/web-ui/ui/SwatchPicker.vue'
 import { productAccentOptions } from '@demicodes/web-ui/theme/productAppearance'
+import { t as ui } from '@demicodes/web-ui/locales/text'
 import type { AccentId } from '../gallery-state'
 
 defineProps<{
@@ -14,7 +15,7 @@ const emit = defineEmits<{
 
 <template>
   <div class="flex flex-col gap-1.5">
-    <div class="gallery-label">Accent</div>
+    <div class="gallery-label">{{ ui('settings.general.accent') }}</div>
     <SwatchPicker
       :model-value="modelValue"
       :options="productAccentOptions()"

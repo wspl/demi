@@ -5,6 +5,7 @@ import type { ToastTone } from '../infra/toast'
 import { ICON_PX } from './icon-metrics'
 import Button from './Button.vue'
 import IconButton from './IconButton.vue'
+import { t as shared } from '../locales/text'
 import RequestIdLine from './RequestIdLine.vue'
 import type { HeadlineText, SentenceText, TitleText } from './ui-text'
 
@@ -62,7 +63,7 @@ const emit = defineEmits<{
       :icon="X"
       size="xs"
       variant="ghost"
-      aria-label="Close"
+      :aria-label="shared('common.close')"
       @click="emit('dismiss')"
     />
   </div>

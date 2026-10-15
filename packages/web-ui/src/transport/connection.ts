@@ -1,4 +1,5 @@
 import type { SentenceText } from '../ui/ui-text'
+import { t } from './locales/text'
 
 /**
  * Why the page cannot reach the backend, as its connection banner says
@@ -35,9 +36,7 @@ export function connectionProblem(facts: ConnectionFacts): ConnectionProblem | n
   return facts.hasSnapshot && facts.failedAttempts >= 2 ? 'reconnecting' : null
 }
 
-/** The banner's words for each problem. */
-export const CONNECTION_WORDS: Record<ConnectionProblem, SentenceText> = {
-  offline: 'You’re offline',
-  restarting: 'Demi is restarting',
-  reconnecting: 'Reconnecting to Demi',
+/** The banner's words for `problem`, in the page's language. */
+export function connectionWords(problem: ConnectionProblem): SentenceText {
+  return t(`connection.${problem}`)
 }

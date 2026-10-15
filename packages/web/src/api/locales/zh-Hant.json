@@ -1,0 +1,13 @@
+{
+  "files": {
+    "offline": "裝置已離線。",
+    "notFound": "它已不存在。",
+    "permission": "主機不允許存取。",
+    "exists": "已存在同名項目。",
+    "binary": "它不是文字。",
+    "tooLarge": "它太大。",
+    "other": "主機沒有回應。",
+    "conversationBusy": "對話正在更換主機。",
+    "selectDevice": "請選取已連線的裝置。"
+  }
+}

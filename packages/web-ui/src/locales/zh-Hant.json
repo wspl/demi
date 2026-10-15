@@ -89,6 +89,39 @@
   "errors": {
     "conversation_archived": "此對話已封存。請先還原。",
     "email_taken": "另一個帳戶已使用此電子郵件地址。",
-    "saved_full": "一個對話最多保留 {limit} 則稍後傳送的訊息。"
+    "saved_full": "一個對話最多保留 {limit} 則稍後傳送的訊息。",
+    "host_stopped": "雲端已停止。",
+    "cloud_resetting": "雲端正在重設。",
+    "cloud_capacity": "伺服器沒有足夠的空間啟動雲端。",
+    "cloud_crash_loop": "雲端多次啟動失敗，已停止嘗試。",
+    "cloud_unavailable": "雲端目前無法使用。",
+    "request_failed": "要求失敗（{status}）。",
+    "unreadable_response": "無法讀取伺服器的回應。",
+    "upload_connection_failed": "上傳連線已中斷。",
+    "upload_cancelled": "上傳已取消。",
+    "restore_before_sending": "傳送前請先還原此對話。",
+    "no_model_available": "此對話沒有可用的模型。",
+    "models_not_loaded": "無法載入模型。{failure}",
+    "source_conversation_unavailable": "來源對話無法使用。",
+    "file_not_owned": "它不在此帳戶的檔案中。"
+  },
+  "common": {
+    "ok": "確定",
+    "cancel": "取消",
+    "close": "關閉",
+    "copy": "複製",
+    "copied": "已複製",
+    "done": "完成",
+    "retry": "重試",
+    "search": "搜尋",
+    "show": "顯示",
+    "hide": "隱藏",
+    "rename": "重新命名",
+    "change": "變更",
+    "reload": "重新載入",
+    "loading": "正在載入…",
+    "undo": "復原",
+    "cloud": "雲端",
+    "workspace": "工作區"
   }
 }
