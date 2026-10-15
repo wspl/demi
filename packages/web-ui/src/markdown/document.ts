@@ -7,9 +7,11 @@ import DOMPurify, { type DOMPurify as Purifier } from 'dompurify'
 import katex from 'katex'
 import type { MarkedExtension, Token, Tokens } from 'marked'
 import { gfmHeadingId } from 'marked-gfm-heading-id'
+import { z } from 'zod'
 import { utf8Bytes } from '@demicodes/utils'
 import { t } from '../files/locales/text'
 import { joinPath, parentPath } from '../files/paths'
+import type { ThemeMode } from '../theme/appTheme'
 import { decodedTarget } from './filePath'
 import { codeBlockHtml } from './highlight'
 import { escapeHtml } from './html'
@@ -36,10 +38,26 @@ export interface DocumentPlace {
  */
 export const HOST_FILE_ATTRIBUTE = 'data-host-file'
 
+/**
+ * The attribute an `<img>` or a `<picture>`'s `<source>` carries in place of
+ * a `srcset` that names a Host file, holding its candidates as JSON
+ * (`SrcsetCandidate[]`): each Host candidate takes the address of its file's
+ * version where it stands, as a Host image's `src` does.
+ */
+export const HOST_SRCSET_ATTRIBUTE = 'data-host-srcset'
+
+/** One candidate of a `srcset`: an address on the web, or a Host file, and its descriptor such as `2x`. */
+const srcsetCandidateSchema = z.union([
+  z.object({ url: z.string(), descriptor: z.string() }),
+  z.object({ path: z.string(), descriptor: z.string() }),
+])
+export type SrcsetCandidate = z.infer<typeof srcsetCandidateSchema>
+type WebCandidate = Extract<SrcsetCandidate, { url: string }>
+
 /** A document as the page shows it. */
 export interface RenderedDocument {
   html: string
-  /** The Host paths of the images the document names, each once. */
+  /** The Host paths of the images the document names, `srcset` candidates included, each once. */
   hostFiles: string[]
 }
 
@@ -126,6 +144,9 @@ const githubAlerts: MarkedExtension = {
   },
 }
 
+/** GitHub's fragments that show an image in one theme only. */
+const MODE_ONLY = /#gh-(dark|light)-mode-only$/
+
 // Math placeholders keep the messages' math syntax and hold the TeX as text
 // until sanitizing is done.
 const mathPlaceholders: MarkedExtension = {
@@ -142,17 +163,32 @@ const mathPlaceholders: MarkedExtension = {
 
 const documentMarked = markdownReader({ breaks: false }, gfmHeadingId(), mathPlaceholders, scrollingTable, githubAlerts)
 
+/** What a render in progress reads: where the document sits, and the theme the page shows. */
+interface ActiveRender {
+  place: DocumentPlace
+  theme: ThemeMode
+}
+
 // Hooks belong to a DOMPurify instance, and sanitizing is synchronous, so the
-// hooks read the place of the render in progress.
+// hooks read the render in progress.
 let purifier: Purifier | null = null
-let active: DocumentPlace | null = null
+let active: ActiveRender | null = null
 /** The Host path of each image of the render in progress, until the hook that sets its attribute. */
 const hostFiles = new WeakMap<Node, string>()
+/** The `srcset` of each image or source of the render in progress that names a Host file, until the hook that sets its attribute. */
+const hostSrcsets = new WeakMap<Node, SrcsetCandidate[]>()
+/** The images of the render in progress that show only in the other theme. */
+const otherTheme = new WeakSet<Node>()
 
-/** The document as HTML the page can show as it is, and the Host files its images name. */
-export function renderMarkdownDocument(text: string, place: DocumentPlace): RenderedDocument {
+/**
+ * The document as HTML the page can show as it is, and the Host files its
+ * images name. `theme` is the theme the page shows, which picks a
+ * `<picture>`'s source for a color scheme and GitHub's mode-only images
+ * (`file-previews.md` § Files named in messages), so a new theme is a new render.
+ */
+export function renderMarkdownDocument(text: string, place: DocumentPlace, theme: ThemeMode): RenderedDocument {
   const html = documentMarked.parse(frontMatterAsCode(text), { async: false })
-  active = place
+  active = { place, theme }
   let fragment: DocumentFragment
   try {
     fragment = documentPurifier().sanitize(html, {
@@ -164,8 +200,13 @@ export function renderMarkdownDocument(text: string, place: DocumentPlace): Rend
   } finally {
     active = null
   }
+  sourcesForTheme(fragment, theme)
   renderAfterSanitizing(fragment)
-  const paths = [...fragment.querySelectorAll(`[${HOST_FILE_ATTRIBUTE}]`)].map((image) => image.getAttribute(HOST_FILE_ATTRIBUTE)!)
+  const paths = [
+    ...[...fragment.querySelectorAll(`[${HOST_FILE_ATTRIBUTE}]`)].map((image) => image.getAttribute(HOST_FILE_ATTRIBUTE)!),
+    ...[...fragment.querySelectorAll(`[${HOST_SRCSET_ATTRIBUTE}]`)].flatMap((element) =>
+      hostSrcsetCandidates(element).flatMap((candidate) => 'path' in candidate ? [candidate.path] : [])),
+  ]
   const container = document.createElement('div')
   container.append(fragment)
   return { html: container.innerHTML, hostFiles: [...new Set(paths)] }
@@ -176,9 +217,9 @@ function documentPurifier(): Purifier {
     return purifier
   const instance = DOMPurify(window)
   instance.addHook('uponSanitizeAttribute', (node, data) => {
-    const place = active
-    if (!place)
+    if (!active)
       return
+    const { place, theme } = active
     switch (data.attrName) {
       case 'href': {
         const href = linkTarget(data.attrValue, place)
@@ -189,6 +230,9 @@ function documentPurifier(): Purifier {
         break
       }
       case 'src': {
+        const mode = MODE_ONLY.exec(data.attrValue.trim())?.[1]
+        if (mode !== undefined && mode !== theme)
+          otherTheme.add(node)
         const image = imageTarget(data.attrValue, place)
         if (image && 'url' in image) {
           data.attrValue = image.url
@@ -200,17 +244,21 @@ function documentPurifier(): Purifier {
         break
       }
       case 'srcset': {
-        const candidates = data.attrValue.split(',').flatMap((candidate) => {
-          const [url, ...descriptor] = candidate.trim().split(/\s+/)
-          // A Host image takes its address where it stands, from the version of its file
-          // the page keeps, which one candidate of a set cannot; only `src` names one.
-          const image = url ? imageTarget(url, place) : null
-          return image && 'url' in image ? [[image.url, ...descriptor].join(' ')] : []
+        const candidates = data.attrValue.split(',').flatMap((candidate): SrcsetCandidate[] => {
+          const [target, ...descriptor] = candidate.trim().split(/\s+/)
+          const image = target ? imageTarget(target, place) : null
+          return image ? [{ ...image, descriptor: descriptor.join(' ') }] : []
         })
-        if (candidates.length === 0)
+        if (candidates.some((candidate) => 'path' in candidate)) {
+          // A Host candidate takes its address where it stands, from the version of
+          // its file the page keeps, as a Host image's `src` does.
           data.keepAttr = false
-        else
-          data.attrValue = candidates.join(', ')
+          hostSrcsets.set(node, candidates)
+        } else if (candidates.length === 0) {
+          data.keepAttr = false
+        } else {
+          data.attrValue = srcsetText(candidates.filter((candidate) => 'url' in candidate))
+        }
         break
       }
       case 'class': {
@@ -224,9 +272,16 @@ function documentPurifier(): Purifier {
     }
   })
   instance.addHook('afterSanitizeAttributes', (node) => {
+    if (otherTheme.has(node)) {
+      node.remove()
+      return
+    }
     const hostFile = hostFiles.get(node)
     if (hostFile !== undefined && node.nodeName === 'IMG')
       node.setAttribute(HOST_FILE_ATTRIBUTE, hostFile)
+    const hostSrcset = hostSrcsets.get(node)
+    if (hostSrcset !== undefined && (node.nodeName === 'IMG' || node.nodeName === 'SOURCE'))
+      node.setAttribute(HOST_SRCSET_ATTRIBUTE, JSON.stringify(hostSrcset))
     if (node.nodeName === 'A') {
       const href = node.getAttribute('href') ?? ''
       if (isExternal(href)) {
@@ -246,6 +301,60 @@ function documentPurifier(): Purifier {
   })
   purifier = instance
   return instance
+}
+
+/** The candidates an element's `HOST_SRCSET_ATTRIBUTE` holds, which the renderer wrote. */
+export function hostSrcsetCandidates(element: Element): SrcsetCandidate[] {
+  return z.array(srcsetCandidateSchema).parse(JSON.parse(element.getAttribute(HOST_SRCSET_ATTRIBUTE) ?? '[]'))
+}
+
+/** A `srcset` of addresses, each with its descriptor. */
+export function srcsetText(candidates: WebCandidate[]): string {
+  return candidates.map(({ url, descriptor }) => descriptor === '' ? url : `${url} ${descriptor}`).join(', ')
+}
+
+/**
+ * A `<source>` whose `media` asks for a color scheme, judged by the theme
+ * the page shows, not the system's, since the user may show Dark on a light
+ * system: a query that asks for the other scheme is false, and one that asks
+ * for this one holds as far as the scheme goes. A source none of whose
+ * queries can hold goes, and the `<img>` or a later source shows.
+ */
+function sourcesForTheme(fragment: DocumentFragment, theme: ThemeMode): void {
+  for (const source of fragment.querySelectorAll('source[media]')) {
+    const media = mediaForTheme(source.getAttribute('media')!, theme)
+    if (media === null)
+      source.remove()
+    else
+      source.setAttribute('media', media)
+  }
+}
+
+const COLOR_SCHEME = /\(\s*prefers-color-scheme\s*:\s*(light|dark)\s*\)/gi
+
+/**
+ * A media query list as it reads in `theme`: each query that asks for a
+ * color scheme either goes, when it cannot hold in this theme, or keeps its
+ * other conditions; null when no query is left. A query that `not` negates
+ * is judged on its scheme alone, its other conditions dropped.
+ */
+export function mediaForTheme(media: string, theme: ThemeMode): string | null {
+  if (!/prefers-color-scheme/i.test(media))
+    return media
+  const queries = media.split(',').flatMap((query) => {
+    const schemes = [...query.matchAll(COLOR_SCHEME)].map((match) => match[1]!.toLowerCase())
+    if (schemes.length === 0)
+      return [query.trim()]
+    const asks = schemes.every((scheme) => scheme === theme)
+    if (/^\s*not\b/i.test(query))
+      return asks ? [] : ['all']
+    if (!asks)
+      return []
+    // The scheme holds; what is left of the query decides, `(min-width: 0)`, always true, standing for the scheme.
+    const rest = query.replace(COLOR_SCHEME, '(min-width: 0)').trim()
+    return [/^\(min-width: 0\)(\s+and\s+\(min-width: 0\))*$/.test(rest) ? 'all' : rest]
+  })
+  return queries.length === 0 ? null : queries.join(', ')
 }
 
 /** Math and code, rendered from their text: nothing a document wrote reaches their output. */

@@ -1,5 +1,5 @@
 import { nextTick, watch } from 'vue'
-import { HOST_FILE_ATTRIBUTE } from '../markdown/document'
+import { HOST_FILE_ATTRIBUTE, HOST_SRCSET_ATTRIBUTE, hostSrcsetCandidates, srcsetText } from '../markdown/document'
 import { useHostImagesAt } from '../markdown/host-images'
 import { t } from './locales/text'
 import type { FileContents } from './types'
@@ -13,7 +13,9 @@ import type { FileContents } from './types'
  * address of its file's version the page keeps, where it stands, so a new
  * version loads in place and nothing else of the document is rendered
  * again; one whose file is still being read, or is not there, shows its alt
- * text.
+ * text. A `srcset` that names Host files (`HOST_SRCSET_ATTRIBUTE`) is
+ * written once each of its Host files is read, each candidate at the address
+ * of its file's version; a candidate whose file is not there drops out.
  *
  * An image whose bytes do not load, as while the Host is away, or whose file
  * is not there, shows its alt text in a quiet box in its place, as a web
@@ -91,6 +93,33 @@ export function useDocumentImages(options: {
       else
         image.setAttribute('src', src)
     }
+    for (const element of options.root()?.querySelectorAll(`[${HOST_SRCSET_ATTRIBUTE}]`) ?? [])
+      setSrcset(element)
+  }
+
+  /** Writes the `srcset` of `element` from its candidates' files, once each is read. */
+  function setSrcset(element: Element): void {
+    const candidates = []
+    for (const candidate of hostSrcsetCandidates(element)) {
+      if ('url' in candidate) {
+        candidates.push(candidate)
+        continue
+      }
+      const shown = hostImages.value.get(candidate.path)
+      // Until every file is read, the set could pick a candidate it would not pick whole.
+      if (shown === undefined || shown.state === 'loading') {
+        element.removeAttribute('srcset')
+        return
+      }
+      if (shown.state === 'shown')
+        candidates.push({ url: shown.src, descriptor: candidate.descriptor })
+    }
+    const srcset = srcsetText(candidates)
+    if (srcset === '')
+      element.removeAttribute('srcset')
+    // Set only when it changes, since setting it makes the web browser choose again.
+    else if (element.getAttribute('srcset') !== srcset)
+      element.setAttribute('srcset', srcset)
   }
   watch([html, hostImages], address, { immediate: true, flush: 'post' })
 

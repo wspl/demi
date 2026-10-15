@@ -127,6 +127,25 @@ test('an image that failed to load tries the new version of its file', async () 
   expect(image?.getAttribute('src')).toBe(`/raw?path=${PATH}&version="v2"`)
 })
 
+test('a picture’s Host srcset follows its file at its own address, and a candidate whose file is not there drops out', async () => {
+  const { contents, overwrite } = host()
+  const candidates = JSON.stringify([
+    { path: PATH, descriptor: '1x' },
+    { path: '/w/docs/shots/gone.png', descriptor: '2x' },
+    { url: 'https://example.com/login@3x.png', descriptor: '3x' },
+  ])
+  const document_ = show(`<picture><source data-host-srcset='${candidates}'>${LOGIN}</picture>`, [PATH, '/w/docs/shots/gone.png'], contents)
+  const source = () => document.querySelector('source')
+  expect(source()?.hasAttribute('srcset')).toBe(false)
+  await settle()
+  expect(source()?.getAttribute('srcset')).toBe(`/raw?path=${PATH}&version="v1" 1x, https://example.com/login@3x.png 3x`)
+
+  overwrite('"v2"')
+  await settle()
+  expect(source()?.getAttribute('srcset')).toBe(`/raw?path=${PATH}&version="v2" 1x, https://example.com/login@3x.png 3x`)
+  expect(document_.images()[0]?.getAttribute('src')).toBe(`/raw?path=${PATH}&version="v2"`)
+})
+
 test('an image whose file is not there shows its alt text in a box', async () => {
   const { contents } = host()
   const document_ = show('<p><img data-host-file="/w/docs/shots/gone.png" alt="The gone page"></p>', ['/w/docs/shots/gone.png'], contents)

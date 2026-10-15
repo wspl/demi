@@ -4,6 +4,7 @@ import { renderMarkdownDocument, type DocumentPlace } from '../markdown/document
 import { useDocumentImages } from './document-images'
 import type { FileContents } from './types'
 import { useMarkdownRenderVersion } from '../markdown/highlight'
+import { useTheme } from '../theme/appTheme'
 import { useContentScrollers } from '../composables/useContentScrollers'
 import ScrollArea from '../ui/ScrollArea.vue'
 import CodeBlockCopy from '../markdown/CodeBlockCopy.vue'
@@ -24,10 +25,12 @@ const props = defineProps<{
 const emit = defineEmits<{ open: [path: string] }>()
 
 const renderVersion = useMarkdownRenderVersion()
+const { theme } = useTheme()
 const rendered = computed(() => {
   // The highlighter arriving, or the theme changing, renders the code anew.
   void renderVersion.value
-  return renderMarkdownDocument(props.text, props.place)
+  // The theme also picks the images made for it.
+  return renderMarkdownDocument(props.text, props.place, theme.value)
 })
 const html = computed(() => rendered.value.html)
 const scrollArea = ref<InstanceType<typeof ScrollArea>>()
