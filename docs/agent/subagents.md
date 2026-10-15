@@ -603,7 +603,15 @@ next spawn on its agents can start `explore` and `reviewer`.
   entry is before it opens it,
   *Workflows are files of the project, not links*, so what a workflow says
   is always what the repository holds and what the watch sees.
-- **A workflow** holds `name` (1 to 60 characters), `instructions`
+- **A workflow's name** is a menu item's: what the menu shows beside the
+  conversation's composer, so it names the way of working, never the task at
+  hand, in a few words as the user's language writes a menu item, in
+  English Title Case, *Parallel Development* or *Review Team*, not
+  *wasm32 port: lead + implement worker*. `demi agent workflows --help`
+  says so with examples, and `demi agent workflows check` warns of a name
+  over 30 characters or with a colon, a plus sign or brackets; the workflow
+  works whatever its name, and the menu shows it as it is.
+- **A workflow** holds `name`, `instructions`
   (optional, up to 65,536 characters) and `profiles`, a list of profiles.
   It sets no limit: the [limits](#limits) are the user's Settings alone,
   whatever workflow a conversation uses. A profile has the fields of a user's profile
