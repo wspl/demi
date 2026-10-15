@@ -345,9 +345,16 @@ immutable manifest. Switching A → B → A sends all three selections; existing
 jobs retain their own pinned manifest. A new connection sends its first manifest
 again, even when its hash matches the previous connection. Ordered delivery
 installs a manifest before its job; this avoids revalidating the same command
-schemas before every shell invocation. The runner keeps one installed manifest,
-so a manifest and the job after it travel together: jobs that start at once on
-one connection take turns. A failed send makes the selection
+schemas before every shell invocation. The runner keeps every manifest
+installed on the connection, by its hash, until the connection ends, and a
+job's start names the hash it pins: the job runs with exactly that manifest,
+whichever was installed last. Jobs that start at once on one connection
+therefore never depend on each other's order. For example, a conversation's
+root and its subagent, whose manifests differ in the agent commands, start a
+command at the same moment on the same laptop: the runner installs both
+manifests, and each job takes its own. A start whose hash the connection
+has not installed fails before its script runs, and the backend sends the
+manifest again with the next job. A failed send makes the selection
 uncertain; the next job sends its manifest again, even if it was selected before
 the failed send.
 
