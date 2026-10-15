@@ -951,8 +951,9 @@ A patch replaces it whole; a `deviceId` the user no longer has is kept and
 the dialog chooses no device for it. `language` is `system`, `en`,
 `zh-Hans`, `zh-Hant`, `ja` or `ko`, absent meaning `system` ([Localization](localization.md#choosing-the-language)). `locale` stores the time
 zone and languages the user's browser last reported, as
-`{ timeZone, languages, colorScheme? }` with an IANA zone name, BCP 47 tags in
-preference order and the page's `light` or `dark` scheme. A page sends it
+`{ timeZone, languages, language?, colorScheme? }` with an IANA zone name, BCP 47 tags in
+preference order, the language the page resolved for *System*
+([Localization](localization.md#choosing-the-language)) and the page's `light` or `dark` scheme. A page sends it
 when its own facts may have changed: when it starts, when its browser's
 languages or its theme change, and when the user comes back to it (focus or
 the page becoming visible), so the page the user uses last is the one

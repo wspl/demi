@@ -43,7 +43,13 @@ Settings › General › Language offers *System*, *English*, *简体中文*,
 follow it; *System* is the default and takes the first of the browser's
 languages that Demi speaks, else English: `zh-Hant`, `zh-TW`, `zh-HK` and
 `zh-MO` count as 繁體中文 and any other `zh` tag as 简体中文.
-A change applies at once in every open page, as other preferences do, and
+The page alone resolves *System*, and reports the language it resolved
+with the browser's other facts in the `locale` preference, so the backend
+reads that instead of resolving it again. The page keeps the language it
+last showed in the browser's storage and starts in it, so a user whose
+choice differs from the browser's sees no other language before the
+preferences arrive. A change applies at once in every open page, as other
+preferences do, and
 the document's `lang` follows it, so each language's own font draws its
 characters: one Han character looks different in Chinese, Japanese and
 Korean, and the font stack names each language's system font (PingFang SC,
@@ -92,5 +98,5 @@ The backend sends codes and values, and the page words them:
 - **Emails and the pages the backend renders** are worded by the backend
   from its own catalogue, one per language beside the crate that sends
   them, with `rust-i18n`: an email in the recipient's `language`, or with
-  *System* in the first of the languages their browser last reported (the
-  `locale` preference); a page in the request's `Accept-Language`.
+  *System* in the language their page last resolved (the `locale`
+  preference); a page in the request's `Accept-Language`.
