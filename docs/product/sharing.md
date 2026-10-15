@@ -35,7 +35,8 @@ share at once and opens the share dialog with its link copied, so no step
 asks before the link exists; a share that exists already opens with its
 link. The dialog says who can read it, *Anyone with the link can read this
 conversation, including commands and their output. Later messages are not
-included.*, and holds:
+included.*, or for an answer *Anyone with the link can read this answer and
+the message it replies to.*, and holds:
 
 - **Copy Link**.
 - **Update Link**, for a conversation's share: copies the conversation as
