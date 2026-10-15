@@ -99,8 +99,8 @@ checks the conversation's grant before the handler runs
 ([The check](../agent/permissions.md#the-check)). A leaf whose input field
 names a device or a project that the call may bring into the conversation
 declares that field as `bringsHost`, as `demi conversation move` declares its
-project, and the dispatch adds Manage Devices when it does
-([Several categories](../agent/permissions.md#several-categories)). The
+project, and the dispatch needs that host when the conversation may not
+reach it ([Hosts](../agent/permissions.md#hosts)). The
 runner ignores these fields.
 
 A group contains subcommands and does not execute a handler. A command name
