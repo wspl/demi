@@ -222,7 +222,7 @@ async function revoke(): Promise<void> {
     @back="emit('back')"
   >
     <template #icon>
-      <DeviceIcon v-if="device" :state="device.state" :mark="device.mark" />
+      <DeviceIcon v-if="device" :state="device.state" :mark="device.mark" :size="24" />
       <component :is="hostIcon({ kind: 'cloud' })" v-else :size="24" aria-hidden="true" />
     </template>
     <template #status>
