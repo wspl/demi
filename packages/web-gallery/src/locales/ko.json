@@ -2,7 +2,7 @@
   "nav": {
     "overview": "개요",
     "signin": "로그인 및 설정",
-    "surfaces": "표면",
+    "surfaces": "서피스",
     "primitives": "기본 요소",
     "controlLayout": "컨트롤 레이아웃",
     "writing": "문구",
@@ -29,11 +29,11 @@
     "signin": {
       "signin": "로그인",
       "setup": "설정",
-      "handoff": "휴대폰으로 전환",
+      "handoff": "휴대폰으로 핸드오프",
       "starting": "시작 중"
     },
     "primitives": {
-      "buttons": "단추",
+      "buttons": "버튼",
       "fields": "필드",
       "marks": "표시"
     },
@@ -51,7 +51,7 @@
       "composer": "입력창",
       "blocks": "블록",
       "lengths": "길이",
-      "changes": "변경 내용",
+      "changes": "변경 사항",
       "turns": "턴",
       "states": "상태",
       "session": "세션",
@@ -60,11 +60,11 @@
     },
     "dialogs": {
       "account": "계정",
-      "providers": "공급자",
-      "devices": "장치",
-      "workspace": "작업 영역",
+      "providers": "제공업체",
+      "devices": "기기",
+      "workspace": "워크스페이스",
       "cloud": "클라우드",
-      "skills": "기술",
+      "skills": "스킬",
       "search": "검색"
     },
     "page": "페이지"

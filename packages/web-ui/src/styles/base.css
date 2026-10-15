@@ -40,6 +40,13 @@
   --font-sans: ui-sans-serif, system-ui, "Apple SD Gothic Neo", "Noto Sans CJK KR", sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
 }
 
+/* Korean separates words with spaces, so a line breaks between words, never
+   inside one; a word longer than its line still wraps. */
+:root:lang(ko) {
+  word-break: keep-all;
+  overflow-wrap: break-word;
+}
+
 /* The phone layout, below 768 px (`ui/phone.ts`, whose PHONE_QUERY is the
    same query): one pane at a time, a finger's sizes, what a hover reveals
    shown at rest. It is the one switch for touch behavior: a touch screen in

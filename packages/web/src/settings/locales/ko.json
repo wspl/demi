@@ -1,30 +1,30 @@
 {
   "corrections": {
-    "invalidCredentials": "현재 암호가 아닙니다.",
+    "invalidCredentials": "현재 비밀번호가 아닙니다.",
     "invalidCode": "코드가 잘못되었거나 만료되었습니다. 최신 코드를 사용하십시오."
   },
   "credentials": {
     "showFailed": "값을 표시할 수 없습니다"
   },
   "devices": {
-    "revokeFailed": "장치를 해지할 수 없습니다",
-    "renameFailed": "장치 이름을 바꿀 수 없습니다",
+    "revokeFailed": "기기의 페어링을 해제할 수 없습니다",
+    "renameFailed": "기기 이름을 변경할 수 없습니다",
     "routeFailed": "경로를 변경할 수 없습니다",
-    "resetNotStarted": "다시 설정을 시작하지 못했습니다. 연결을 확인하고 다시 시도하십시오."
+    "resetNotStarted": "초기화를 시작하지 못했습니다. 연결을 확인하고 다시 시도하십시오."
   },
   "plugins": {
-    "turnOnFailed": "플러그 인을 켤 수 없습니다",
-    "turnOffFailed": "플러그 인을 끌 수 없습니다"
+    "turnOnFailed": "플러그인을 켤 수 없습니다",
+    "turnOffFailed": "플러그인을 끌 수 없습니다"
   },
   "providers": {
-    "saveFailed": "공급자를 저장할 수 없습니다",
-    "testFailed": "공급자를 테스트할 수 없습니다",
+    "saveFailed": "제공업체를 저장할 수 없습니다",
+    "testFailed": "제공업체를 테스트할 수 없습니다",
     "refreshModelsFailed": "모델을 새로 고칠 수 없습니다",
-    "removeFailed": "공급자를 제거할 수 없습니다",
+    "removeFailed": "제공업체를 제거할 수 없습니다",
     "cliUpdateFailed": "명령줄 도구를 업데이트할 수 없습니다",
     "removeAccountFailed": "계정을 제거할 수 없습니다",
     "testAccountFailed": "계정을 테스트할 수 없습니다",
-    "addFailed": "공급자를 추가할 수 없습니다",
+    "addFailed": "제공업체를 추가할 수 없습니다",
     "cliReadFailed": "명령줄 도구를 읽을 수 없습니다",
     "checkUpdatesFailed": "업데이트를 확인할 수 없습니다",
     "cliInstallFailed": "명령줄 도구를 설치할 수 없습니다",
@@ -32,31 +32,31 @@
     "reorderFailed": "계정 순서를 변경할 수 없습니다",
     "switchFailed": "계정을 전환할 수 없습니다",
     "cancelLoginFailed": "로그인을 취소할 수 없습니다",
-    "loginStopped": "이 로그인은 더 이상 실행 중이 아닙니다.",
+    "loginStopped": "이 로그인은 이미 종료되었습니다.",
     "removeModelFailed": "모델을 제거할 수 없습니다"
   },
   "subagents": {
-    "turnOnFailed": "하위 에이전트를 켤 수 없습니다",
-    "turnOffFailed": "하위 에이전트를 끌 수 없습니다",
+    "turnOnFailed": "서브에이전트를 켤 수 없습니다",
+    "turnOffFailed": "서브에이전트를 끌 수 없습니다",
     "limitFailed": "한도를 변경할 수 없습니다",
-    "enableFailed": "프로필을 사용 설정할 수 없습니다",
-    "disableFailed": "프로필을 사용 중지할 수 없습니다"
+    "enableFailed": "프로필을 켤 수 없습니다",
+    "disableFailed": "프로필을 끌 수 없습니다"
   },
   "users": {
-    "newPasswordFailed": "새 암호를 만들 수 없습니다",
+    "newPasswordFailed": "새 비밀번호를 만들 수 없습니다",
     "roleFailed": "역할을 변경할 수 없습니다",
-    "disableFailed": "계정을 사용 중지할 수 없습니다",
-    "enableFailed": "계정을 사용 설정할 수 없습니다",
+    "disableFailed": "계정을 비활성화할 수 없습니다",
+    "enableFailed": "계정을 활성화할 수 없습니다",
     "signOutFailed": "계정을 로그아웃할 수 없습니다",
-    "loading": "사용자를 로드하는 중…",
-    "loadFailed": "사용자를 로드할 수 없습니다."
+    "loading": "사용자를 불러오는 중…",
+    "loadFailed": "사용자를 불러올 수 없습니다."
   },
   "about": {
-    "acknowledgementsFailed": "감사의 말을 로드할 수 없습니다."
+    "acknowledgementsFailed": "감사의 말을 불러올 수 없습니다."
   },
   "dialog": {
     "nameFailed": "이름을 변경할 수 없습니다",
     "emailFailed": "이메일을 변경할 수 없습니다",
-    "passwordFailed": "암호를 변경할 수 없습니다"
+    "passwordFailed": "비밀번호를 변경할 수 없습니다"
   }
 }
