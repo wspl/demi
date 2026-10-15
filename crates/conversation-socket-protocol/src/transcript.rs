@@ -125,8 +125,8 @@ pub const LIGHT_INPUT_BYTES: usize = 512;
 /// changed files a shell call carries, only those a page shows: the run's
 /// on the latest call of each run, and the request's on the latest call of
 /// each request (`runtime.md` § Rendering boundary).
-pub fn light(blocks: &[Block]) -> Vec<Block> {
-    let mut light: Vec<Block> = blocks.iter().map(light_block).collect();
+pub fn light<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> Vec<Block> {
+    let mut light: Vec<Block> = blocks.into_iter().map(light_block).collect();
     // From the end, the first call met with a run's or a request's list is
     // the latest that carries it.
     let mut runs_listed: Vec<BlockId> = Vec::new();
@@ -219,7 +219,7 @@ fn light_block(block: &Block) -> Block {
 
 /// The size of whole requests' `blocks` in their light form as a page
 /// sends them.
-pub fn light_bytes(blocks: &[Block]) -> usize {
+pub fn light_bytes<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> usize {
     light(blocks)
         .iter()
         .map(|block| serde_json::to_vec(block).map_or(0, |json| json.len()))

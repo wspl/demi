@@ -164,15 +164,15 @@ impl Reader {
         shard: &Shard,
         range: RangeInclusive<usize>,
     ) -> Result<(Vec<Block>, usize), RpcError> {
-        let transcript = Transcript::Agent(self.node.clone());
+        let node = self.node.clone();
         let read = shard
             .services()
             .conversations
             .read(&self.conversation, move |connection| {
-                let length = transcript.length(connection)?.unwrap_or(0);
+                let length = Transcript::Agent(node.clone()).length(connection)?.unwrap_or(0);
                 let end = (*range.end() + 1).min(length);
                 let start = (*range.start()).min(end);
-                Ok((transcript.blocks_in(connection, start..end)?, length))
+                Ok((tree::agent_blocks(connection, &node, start..end)?, length))
             })
             .await
             .map_err(failed)?;

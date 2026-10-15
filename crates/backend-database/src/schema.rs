@@ -13,7 +13,6 @@ use rusqlite::{Connection, Transaction, TransactionBehavior};
 use sha2::{Digest, Sha256};
 
 use demi_agent_store::CheckpointState;
-use demi_agent_store::media::block_blobs;
 use bytes::Bytes;
 use demi_shared_types::{BlobRef, ReportEvent, Timestamp};
 use demi_web_api_protocol::ids::ProviderId;
@@ -897,6 +896,12 @@ pub(crate) const CONVERSATION: Schema = Schema {
 /// namer did not make, or a vendor with none, fails the migration. Each
 /// snapshot is decoded and checked as format 2 before it is written back.
 fn snapshots_with_window_kinds(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    // The shares made before a share held only what was said, each of
+    // which held every block and its subagents, are removed, and their
+    // links answer as ones that never existed (`sharing.md` § Storage and
+    // routes); each conversation's database drops their lists
+    // ([`switches_with_window_names`]).
+    transaction.execute("DELETE FROM shares", [])?;
     let rows = transaction
         .prepare(
             "SELECT c.provider_id, c.id, c.quota, p.provider_type FROM provider_credentials c
@@ -943,10 +948,8 @@ fn snapshots_with_window_kinds(transaction: &Transaction<'_>, _: &dyn ReadBlob) 
 /// the viewer's language (`usage-and-quota.md` § Window names). The old
 /// name says them, read by every vendor's old namer, since the block does
 /// not name the vendor ([`old_window_name`]); a name none made fails the
-/// migration. The blocks of the shares'
-/// snapshots are migrated the same way, and each block is decoded and
-/// checked as format 10 before it is written back. Then the shares'
-/// snapshots become lists, and each block's blobs are listed
+/// migration. Each block is decoded and checked as format 10 before it is
+/// written back. Then the shares become lists of what was said
 /// ([`shares_as_lists`]). Last, each transcript becomes a tree of rows of
 /// one path ([`ONE_PATH`]).
 fn switches_with_window_names(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
@@ -958,17 +961,6 @@ fn switches_with_window_names(transaction: &Transaction<'_>, _: &dyn ReadBlob) -
     let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
     for (node, index, text) in rows {
         update.execute(rusqlite::params![node, index, named_switch(&text)?])?;
-    }
-    let rows = transaction
-        .prepare(&format!("SELECT token, agent, idx, block FROM share_blocks WHERE {switches}"))?
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?, row.get::<_, String>(3)?))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut update =
-        transaction.prepare("UPDATE share_blocks SET block = ?4 WHERE token = ?1 AND agent = ?2 AND idx = ?3")?;
-    for (token, agent, index, text) in rows {
-        update.execute(rusqlite::params![token, agent, index, named_switch(&text)?])?;
     }
     shares_as_lists(transaction)?;
     transaction.execute_batch(ONE_PATH)
@@ -1142,9 +1134,9 @@ fn codex_length(text: &str, unit: u64) -> Option<Option<u64>> {
 /// (`runtime.md` § Work groups). A stored call kept no record of it: one
 /// that returned ends the time its shell view says its command ran until
 /// then, `runningMs`, after it started, and a call of another tool where
-/// it started; a call still executing has not returned. The blocks of the
-/// shares' snapshots are migrated the same way, and each block is decoded
-/// and checked as format 9 before it is written back.
+/// it started; a call still executing has not returned. Each block is
+/// decoded and checked as format 9 before it is written back; the shares'
+/// snapshots are removed later ([`shares_as_lists`]).
 fn calls_with_their_ends(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     let calls = "json_extract(block, '$.type') = 'tool_call'";
     let rows = transaction
@@ -1157,28 +1149,16 @@ fn calls_with_their_ends(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rus
             update.execute(rusqlite::params![node, index, block])?;
         }
     }
-    let rows = transaction
-        .prepare(&format!("SELECT token, agent, idx, block FROM share_blocks WHERE {calls}"))?
-        .query_map([], |row| {
-            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?, row.get::<_, String>(3)?))
-        })?
-        .collect::<rusqlite::Result<Vec<_>>>()?;
-    let mut update =
-        transaction.prepare("UPDATE share_blocks SET block = ?4 WHERE token = ?1 AND agent = ?2 AND idx = ?3")?;
-    for (token, agent, index, text) in rows {
-        if let Some(block) = ended_call(&text)? {
-            update.execute(rusqlite::params![token, agent, index, block])?;
-        }
-    }
     Ok(())
 }
 
-/// From the shares whose snapshots copied every block they show to shares
-/// that list them (`sharing.md` § Storage and routes): a share made before
-/// keeps its copies, and its list names each of them at its index, so it
-/// reads as it did. Each blob a block names is listed in `block_blobs`, each
-/// attachment a text names in `block_attachments`, and each blob a share's
-/// copy names in `share_blobs`, each block decoded once.
+/// From the shares whose snapshots copied every block of a conversation
+/// and its subagents to shares that list what was said (`sharing.md`
+/// § Storage and routes): the shares made before are removed, as the
+/// control database removes their records
+/// ([`snapshots_with_window_kinds`]), and the tables of the lists start
+/// empty. Each blob a block names is listed in `block_blobs` and each
+/// attachment a text names in `block_attachments`, each block decoded once.
 fn shares_as_lists(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
     transaction.execute_batch(SHARES_AS_LISTS)?;
     let mut blocks = transaction.prepare("SELECT node_id, idx, block FROM blocks")?;
@@ -1187,21 +1167,15 @@ fn shares_as_lists(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
         let block: demi_shared_types::Block = serde_json::from_str(&row.get::<_, String>(2)?).map_err(corrupt)?;
         crate::tree::name_block(transaction, &row.get::<_, String>(0)?, row.get(1)?, &block)?;
     }
-    let mut insert = transaction.prepare("INSERT OR IGNORE INTO share_blobs (token, blob) VALUES (?1, ?2)")?;
-    let mut copies = transaction.prepare("SELECT token, block FROM share_blocks")?;
-    let mut rows = copies.query([])?;
-    while let Some(row) = rows.next()? {
-        let block: demi_shared_types::Block = serde_json::from_str(&row.get::<_, String>(1)?).map_err(corrupt)?;
-        for blob in block_blobs(&block) {
-            insert.execute(rusqlite::params![row.get::<_, String>(0)?, blob.as_str()])?;
-        }
-    }
     Ok(())
 }
 
-/// The tables [`shares_as_lists`] adds, with the lists of the shares made
-/// before, each of its copies at its index.
+/// The tables [`shares_as_lists`] adds and replaces, without the shares
+/// made before.
 const SHARES_AS_LISTS: &str = "
+DROP TABLE share_blocks;
+DROP TABLE share_agents;
+DELETE FROM share_attachments;
 CREATE TABLE block_blobs (
   node_id TEXT NOT NULL,
   idx     INTEGER NOT NULL,
@@ -1219,16 +1193,21 @@ CREATE TABLE block_attachments (
 ) STRICT, WITHOUT ROWID;
 CREATE TABLE share_entries (
   token    TEXT NOT NULL,
-  agent    INTEGER NOT NULL CHECK (agent >= 0),
   position INTEGER NOT NULL CHECK (position >= 0),
   node_id  TEXT,
   idx      INTEGER CHECK (idx >= 0),
+  steps    INTEGER CHECK (steps >= 1),
   CHECK ((node_id IS NULL) = (idx IS NULL)),
-  PRIMARY KEY (token, agent, position)
+  CHECK (steps IS NULL OR node_id IS NULL),
+  PRIMARY KEY (token, position)
 ) STRICT;
 CREATE INDEX share_entries_by_row ON share_entries (node_id, idx, token);
-INSERT INTO share_entries (token, agent, position, node_id, idx)
-  SELECT token, agent, idx, NULL, NULL FROM share_blocks;
+CREATE TABLE share_blocks (
+  token TEXT NOT NULL,
+  idx   INTEGER NOT NULL CHECK (idx >= 0),
+  block TEXT NOT NULL,
+  PRIMARY KEY (token, idx)
+) STRICT;
 CREATE TABLE share_blobs (
   token TEXT NOT NULL,
   blob  TEXT NOT NULL,
@@ -3206,52 +3185,41 @@ CREATE TABLE block_attachments (
   FOREIGN KEY (node_id, idx) REFERENCES blocks (node_id, idx) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
 
--- Each share's list (`sharing.md` § Storage and routes): the blocks it
--- shows, by the share's token, the number of the agent whose transcript
--- they are from, 0 for the root's, and their position in what the share
--- shows of it, from 0. Each names the transcript row that holds it, its
--- node and index, or, with neither, the share's copy in share_blocks at the
--- same token, agent and position. Every read of a share goes through its
--- list. The share's control record says the token is valid; rows of a
--- token it no longer has are never read.
+-- Each share's list (`sharing.md` § Storage and routes): what it shows, by
+-- the share's token and the position in it, from 0: a message or a text of
+-- the root's transcript, by the row that holds it, its node and index, or,
+-- with neither, by the share's copy in share_blocks at the same token and
+-- position; or, with `steps`, a run of that many steps not shared. Every
+-- read of a share goes through its list. The share's control record says
+-- the token is valid; rows of a token it no longer has are never read.
 CREATE TABLE share_entries (
   token    TEXT NOT NULL,
-  agent    INTEGER NOT NULL CHECK (agent >= 0),
   position INTEGER NOT NULL CHECK (position >= 0),
   node_id  TEXT,
   idx      INTEGER CHECK (idx >= 0),
+  steps    INTEGER CHECK (steps >= 1),
   CHECK ((node_id IS NULL) = (idx IS NULL)),
-  PRIMARY KEY (token, agent, position)
+  CHECK (steps IS NULL OR node_id IS NULL),
+  PRIMARY KEY (token, position)
 ) STRICT;
 -- The entries that name a transcript row, for a block found by its id or
 -- its type and for a write that replaces the row.
 CREATE INDEX share_entries_by_row ON share_entries (node_id, idx, token);
--- A share's copies of the blocks still changing when its list was made, as
--- they stood then, by the token, the agent and their position on the list.
+-- A share's copies of the texts still being written when its list was
+-- made, as they stood then, by the token and their position on the list.
 CREATE TABLE share_blocks (
   token TEXT NOT NULL,
-  agent INTEGER NOT NULL CHECK (agent >= 0),
   idx   INTEGER NOT NULL CHECK (idx >= 0),
   -- share_blocks.block: transcript block format 10
   block TEXT NOT NULL,
-  PRIMARY KEY (token, agent, idx)
+  PRIMARY KEY (token, idx)
 ) STRICT;
-CREATE INDEX share_blocks_by_type ON share_blocks (token, agent, json_extract(block, '$.type'), idx);
 -- Each blob a share's copies name, by the token.
 CREATE TABLE share_blobs (
   token TEXT NOT NULL,
   blob  TEXT NOT NULL,
   PRIMARY KEY (token, blob)
 ) STRICT, WITHOUT ROWID;
--- Each subagent a share holds, with the description and profile it had
--- when the list was made, for its transcript's header.
-CREATE TABLE share_agents (
-  token       TEXT NOT NULL,
-  number      INTEGER NOT NULL CHECK (number >= 1),
-  description TEXT NOT NULL,
-  profile     TEXT,
-  PRIMARY KEY (token, number)
-) STRICT;
 -- Each attachment a share's text names that existed when its list was
 -- made, copied from `attachments`; its blob stays shared with the
 -- conversation's.
@@ -4687,13 +4655,6 @@ mod tests {
                 )
                 .unwrap();
         }
-        connection
-            .execute(
-                "INSERT INTO share_blocks (token, agent, idx, block) VALUES ('s1', 0, 0, ?1)",
-                [blocks[0].to_string()],
-            )
-            .unwrap();
-
         CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
         let ends = |sql: &str| -> Vec<Option<String>> {
             connection
@@ -4711,7 +4672,6 @@ mod tests {
             ends("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx"),
             [Some("2026-10-15T05:00:02.500Z".to_owned()), Some("2026-10-15T05:00:01.000Z".to_owned()), None]
         );
-        assert_eq!(ends("SELECT block FROM share_blocks"), [Some("2026-10-15T05:00:02.500Z".to_owned())]);
     }
 
     /// The quota snapshots of 0.1.22-dev.20261015T134426Z's control schema
@@ -4798,9 +4758,8 @@ mod tests {
 
     /// An `account_switch` block of transcript block format 9 named the
     /// window that was used up in English: migrated to format 10, it holds
-    /// the kind, the period and the model that name said, in the
-    /// transcript and in a share's snapshot, and one that named none still
-    /// names none.
+    /// the kind, the period and the model that name said, and one that
+    /// named none still names none.
     // Cost: one database on disk, a few milliseconds.
     #[test]
     fn a_linear_transcript_becomes_one_path() {
@@ -4915,13 +4874,6 @@ mod tests {
                 )
                 .unwrap();
         }
-        connection
-            .execute(
-                "INSERT INTO share_blocks (token, agent, idx, block) VALUES ('s1', 0, 0, ?1)",
-                [blocks[1].to_string()],
-            )
-            .unwrap();
-
         CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
         let names = |sql: &str| -> Vec<Option<QuotaWindowName>> {
             connection
@@ -4947,58 +4899,49 @@ mod tests {
             names("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx"),
             [limit(Some(18_000), None), fable.clone(), limit(None, Some("Opus")), limit(Some(259_200), None), None]
         );
-        assert_eq!(names("SELECT block FROM share_blocks"), [fable]);
+        assert_eq!(names("SELECT block FROM share_blocks"), []);
 
         // A name of a Codex length's shape is one exactly, a fractional
-        // count of a minute included, or the migration fails, in the
-        // transcript and in a share's snapshot alike; it never becomes a
-        // model's name.
-        let migrate = |table: &str, window: &str| {
+        // count of a minute included, or the migration fails; it never
+        // becomes a model's name.
+        let migrate = |window: &str| {
             let (_directory, path, mut connection) =
                 database(include_str!("schema/conversation-0.1.22-dev.20261015T134426Z.sql"));
             let block = switch("b1", window.into()).to_string();
-            if table == "blocks" {
-                connection
-                    .execute(
-                        "INSERT INTO nodes
-                           (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
-                         VALUES ('root', 0, '', 1, 0, 1, 0, ?1, 1, 0)",
-                        [state_of_development()],
-                    )
-                    .unwrap();
-                connection
-                    .execute("INSERT INTO blocks (node_id, idx, block) VALUES ('root', 0, ?1)", [&block])
-                    .unwrap();
-            } else {
-                connection
-                    .execute("INSERT INTO share_blocks (token, agent, idx, block) VALUES ('s1', 0, 0, ?1)", [&block])
-                    .unwrap();
-            }
-            CONVERSATION.apply(&mut connection, &path, &NoBlobs)?;
-            let text: String = connection
-                .query_row(&format!("SELECT block FROM {table}"), [], |row| row.get(0))
+            connection
+                .execute(
+                    "INSERT INTO nodes
+                       (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                     VALUES ('root', 0, '', 1, 0, 1, 0, ?1, 1, 0)",
+                    [state_of_development()],
+                )
                 .unwrap();
+            connection
+                .execute("INSERT INTO blocks (node_id, idx, block) VALUES ('root', 0, ?1)", [&block])
+                .unwrap();
+            CONVERSATION.apply(&mut connection, &path, &NoBlobs)?;
+            let text: String = connection.query_row("SELECT block FROM blocks", [], |row| row.get(0)).unwrap();
             match demi_shared_types::decode::<Block>(&text).unwrap() {
                 Block::AccountSwitch(switch) => Ok::<_, StorageError>(switch.window),
                 other => panic!("{other:?}"),
             }
         };
-        for table in ["blocks", "share_blocks"] {
-            assert_eq!(migrate(table, "1.5-minute").unwrap(), limit(Some(90), None), "{table}");
-            for label in ["1.5x-minute", "1.50-minute", "-hour", ""] {
-                assert!(migrate(table, label).is_err(), "{table} {label:?}");
-            }
+        assert_eq!(migrate("1.5-minute").unwrap(), limit(Some(90), None));
+        for label in ["1.5x-minute", "1.50-minute", "-hour", ""] {
+            assert!(migrate(label).is_err(), "{label:?}");
         }
     }
 
-    /// A share made before shares were lists keeps its copied blocks and
-    /// reads them as it did, each at its index; and every blob a stored
-    /// block names is listed, so the collection of the user's namespace
-    /// keeps it, and every attachment a stored text names is listed, so a new
-    /// share keeps it. A migrated database takes a new share's list too.
+    /// The shares made before a share held only what was said, each a
+    /// snapshot of every block and its subagents, are removed by the
+    /// migration: their copies, subagents and attachments go, and their
+    /// tokens read nothing. Every blob a stored block names is listed, so
+    /// the collection of the user's namespace keeps it, and every attachment
+    /// a stored text names, so a new share of the migrated database lists
+    /// both.
     // Cost: one database on disk, a few milliseconds.
     #[test]
-    fn a_share_made_before_lists_reads_its_copies_and_each_blob_stays_named() {
+    fn a_share_made_before_is_removed_and_each_blob_stays_named() {
         use demi_shared_types::{Block, BlobRef};
         use demi_web_api_protocol::ids::ShareToken;
 
@@ -5011,8 +4954,8 @@ mod tests {
             { "type": "image", "source": { "type": "ref", "ref": blob.as_str(), "mediaType": "image/png" } }
         ]);
         let message: Block = serde_json::from_value(message).unwrap();
-        let shipped = CONVERSATION.history.last().unwrap().sql;
-        let (_directory, path, mut connection) = database(shipped);
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/conversation-0.1.22-dev.20261015T134426Z.sql"));
         connection
             .execute(
                 "INSERT INTO nodes
@@ -5021,8 +4964,7 @@ mod tests {
                 [to_json(&state())],
             )
             .unwrap();
-        // The root's message names the blob, and its answer an attachment;
-        // the old share's copies name neither.
+        // The root's message names the blob, and its answer an attachment.
         let mut named = serde_json::to_value(reply("t0")).unwrap();
         named["text"] = serde_json::json!("See ![the shot](attachment:a1).");
         let named: Block = serde_json::from_value(named).unwrap();
@@ -5040,37 +4982,79 @@ mod tests {
                 )
                 .unwrap();
         }
-        for (index, block) in [&user("u0"), &reply("t1")].into_iter().enumerate() {
+        // The old share's snapshot: the root's blocks, a subagent's and the
+        // attachment.
+        for (agent, index, block) in [(0, 0, &message), (0, 1, &named), (1, 0, &user("c0"))] {
             connection
                 .execute(
-                    "INSERT INTO share_blocks (token, agent, idx, block) VALUES ('old', 0, ?1, ?2)",
-                    rusqlite::params![i64::try_from(index).unwrap(), to_json(block)],
+                    "INSERT INTO share_blocks (token, agent, idx, block) VALUES ('old', ?1, ?2, ?3)",
+                    rusqlite::params![agent, index, to_json(block)],
                 )
                 .unwrap();
         }
+        connection
+            .execute_batch(
+                "INSERT INTO share_agents (token, number, description, profile) VALUES ('old', 1, 'Look', NULL);
+                 INSERT INTO share_attachments (token, number, name, media_type, size, blob)
+                   SELECT 'old', number, name, media_type, size, blob FROM attachments;",
+            )
+            .unwrap();
 
         CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
 
         let old = ShareToken::try_from("old").unwrap();
-        let transcript = Transcript::Shared { token: old.clone(), agent: 0 };
-        let read = tree::read_page(&connection, &transcript, PageQuery { before: None, after: None, around: None, edge: None })
-            .unwrap();
-        let PageRead::Page { start: 0, length: 2, blocks, .. } = read else { panic!("the old share's two blocks") };
-        assert_eq!(blocks, [user("u0"), reply("t1")]);
-        assert!(!crate::shares::shows_blob(&connection, &old, &blob).unwrap());
-        assert!(crate::references::conversation_blobs(&connection).unwrap().contains(&blob));
-
-        let transaction = connection.transaction().unwrap();
-        crate::shares::take_conversation(&transaction, &ShareToken::try_from("new").unwrap()).unwrap();
-        transaction.commit().unwrap();
-        assert!(crate::shares::shows_blob(&connection, &ShareToken::try_from("new").unwrap(), &blob).unwrap());
-        let shot = crate::shares::shown_attachment(
+        let read = tree::read_page(
             &connection,
-            &ShareToken::try_from("new").unwrap(),
-            crate::conversation_attachments::AttachmentNumber(1),
+            &Transcript::Shared { token: old.clone() },
+            PageQuery { before: None, after: None, around: None, edge: None },
         )
         .unwrap();
+        assert!(matches!(read, PageRead::Page { length: 0, .. }), "the old share reads nothing");
+        assert!(!crate::shares::shows_blob(&connection, &old, &blob).unwrap());
+        for table in ["share_entries", "share_blocks", "share_blobs", "share_attachments"] {
+            let rows: i64 = connection.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0)).unwrap();
+            assert_eq!(rows, 0, "{table}");
+        }
+        assert!(crate::references::conversation_blobs(&connection).unwrap().contains(&blob));
+
+        let new = ShareToken::try_from("new").unwrap();
+        let transaction = connection.transaction().unwrap();
+        crate::shares::take_conversation(&transaction, &new).unwrap();
+        transaction.commit().unwrap();
+        assert!(crate::shares::shows_blob(&connection, &new, &blob).unwrap());
+        let shot = crate::shares::shown_attachment(&connection, &new, crate::conversation_attachments::AttachmentNumber(1))
+            .unwrap();
         assert_eq!(shot.map(|row| row.name), Some("shot.png".to_owned()));
+    }
+
+    /// The control database of 0.1.22-dev.20261015T134426Z held the
+    /// records of shares made before a share held only what was said: the
+    /// migration removes them, so their links answer as ones that never
+    /// existed, and keeps the conversation.
+    // Cost: one database on disk, a few milliseconds.
+    #[test]
+    fn a_share_record_made_before_is_removed() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.22-dev.20261015T134426Z.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u1', 'a@example.test', 'Ana', 'hash', 'master', 1);
+                 INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order,
+                     read_revision, target_kind, context_version, created_at, updated_at)
+                   VALUES ('c1', 'u1', 'T', 'user', 0, 0, 0, 0, 'cloud', 0, 1, 1);
+                 INSERT INTO shares (token, user_id, conversation_id, kind, block_id, title, taken_at)
+                   VALUES ('old', 'u1', 'c1', 'conversation', NULL, 'T', 1),
+                          ('older', 'u1', 'c1', 'answer', 'b1', 'T', 1);",
+            )
+            .unwrap();
+
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+
+        let count = |table: &str| -> i64 {
+            connection.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0)).unwrap()
+        };
+        assert_eq!((count("shares"), count("conversations")), (0, 1));
     }
 
     /// A shell call stored in transcript block format 6, whose own files

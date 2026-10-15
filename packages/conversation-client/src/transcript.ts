@@ -38,10 +38,15 @@ function arrived(block: HeldBlock, at: number): HeldBlock {
   return { ...block, arrivals: [...(block.arrivals ?? []), { end: block.text.length, at }] }
 }
 
+/** What a page holds at an index of a transcript: a block, or, in a share's, a row of its own in its place. */
+export interface Held {
+  id: string
+}
+
 /** Consecutive blocks of a transcript the page holds, from the index `start`. */
-export interface TranscriptWindow {
+export interface TranscriptWindow<B extends Held = HeldBlock> {
   start: number
-  blocks: HeldBlock[]
+  blocks: B[]
 }
 
 /**
@@ -50,31 +55,31 @@ export interface TranscriptWindow {
  * meeting another, as windows that meet are joined; and how many blocks
  * the transcript holds, so a window knows whether it reaches the end.
  */
-export interface HeldTranscript {
+export interface HeldTranscript<B extends Held = HeldBlock> {
   length: number
-  windows: readonly TranscriptWindow[]
+  windows: readonly TranscriptWindow<B>[]
 }
 
 export const EMPTY_TRANSCRIPT: HeldTranscript = { length: 0, windows: [] }
 
 /** The index just past a window's last block. */
-export function windowEnd(window: TranscriptWindow): number {
+export function windowEnd<B extends Held>(window: TranscriptWindow<B>): number {
   return window.start + window.blocks.length
 }
 
 /** The window that reaches the transcript's end, which the stream keeps live. */
-export function latestWindow(held: HeldTranscript): TranscriptWindow | undefined {
+export function latestWindow<B extends Held>(held: HeldTranscript<B>): TranscriptWindow<B> | undefined {
   const last = held.windows.at(-1)
   return last && windowEnd(last) >= held.length ? last : undefined
 }
 
 /** The window that holds the block `id`. */
-export function windowOf(held: HeldTranscript, id: string): TranscriptWindow | undefined {
+export function windowOf<B extends Held>(held: HeldTranscript<B>, id: string): TranscriptWindow<B> | undefined {
   return held.windows.find((window) => window.blocks.some((block) => block.id === id))
 }
 
 /** Every block the page holds, in order, the windows' one after another. */
-export function heldBlocks(held: HeldTranscript): HeldBlock[] {
+export function heldBlocks<B extends Held>(held: HeldTranscript<B>): B[] {
   return held.windows.flatMap((window) => window.blocks)
 }
 
@@ -102,19 +107,19 @@ export function heldEdge(held: HeldTranscript): { from: number; edge: string } |
  * only for the stream, whose end the page holds even when nothing is there
  * yet.
  */
-function joined(
-  windows: readonly TranscriptWindow[],
-  incoming: TranscriptWindow,
+function joined<B extends Held>(
+  windows: readonly TranscriptWindow<B>[],
+  incoming: TranscriptWindow<B>,
   prefer: 'held' | 'incoming',
-): TranscriptWindow[] {
+): TranscriptWindow<B>[] {
   if (incoming.blocks.length === 0 && prefer === 'held') {
     return [...windows]
   }
-  const before: TranscriptWindow[] = []
-  const after: TranscriptWindow[] = []
+  const before: TranscriptWindow<B>[] = []
+  const after: TranscriptWindow<B>[] = []
   let start = incoming.start
   let end = windowEnd(incoming)
-  const meeting: TranscriptWindow[] = []
+  const meeting: TranscriptWindow<B>[] = []
   for (const window of windows) {
     if (windowEnd(window) < incoming.start) {
       before.push(window)
@@ -126,8 +131,8 @@ function joined(
       end = Math.max(end, windowEnd(window))
     }
   }
-  const blocks: HeldBlock[] = new Array(end - start)
-  const place = (window: TranscriptWindow) => {
+  const blocks: B[] = new Array(end - start)
+  const place = (window: TranscriptWindow<B>) => {
     window.blocks.forEach((block, offset) => {
       blocks[window.start - start + offset] = block
     })
@@ -174,9 +179,22 @@ export function addPage(
   live: boolean,
 ): HeldTranscript {
   const blocks = withVersions(page.blocks.map((block): HeldBlock => ({ ...block, light: true })), page.versions)
+  return addWindow(held, { start: page.start, length: page.length, blocks }, live)
+}
+
+/**
+ * The transcript with `page`'s items, as the page holds them, among its
+ * windows: an item the page already holds stays as it is, and the page's
+ * length is taken only while no stream told one.
+ */
+export function addWindow<B extends Held>(
+  held: HeldTranscript<B>,
+  page: { start: number; length: number; blocks: B[] },
+  live: boolean,
+): HeldTranscript<B> {
   return {
     length: live ? held.length : page.length,
-    windows: joined(held.windows, { start: page.start, blocks }, 'held'),
+    windows: joined(held.windows, { start: page.start, blocks: page.blocks }, 'held'),
   }
 }
 
@@ -197,7 +215,7 @@ export function withWholeBlock(held: HeldTranscript, block: Block): HeldTranscri
 }
 
 /** `windows` without the blocks from `length` on. */
-function truncated(windows: readonly TranscriptWindow[], length: number): TranscriptWindow[] {
+function truncated<B extends Held>(windows: readonly TranscriptWindow<B>[], length: number): TranscriptWindow<B>[] {
   return windows.flatMap((window) => {
     if (window.start >= length) {
       return []

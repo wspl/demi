@@ -103,6 +103,7 @@
       "document": "문서"
     },
     "shellFallback": "셸 명령 실행",
+    "stepsNotShared": "공유되지 않은 단계 {count}개",
     "turnFailed": "턴이 실패했습니다.",
     "failureResets": "{failure} {reset}됩니다.",
     "work": {
@@ -177,7 +178,7 @@
   "share": {
     "titleConversation": "대화 공유",
     "titleAnswer": "응답 공유",
-    "whoConversation": "링크가 있는 모든 사람이 이 대화를 읽을 수 있으며, 명령과 그 출력도 포함됩니다. 이후 메시지는 포함되지 않습니다.",
+    "whoConversation": "링크가 있는 모든 사람이 이 대화의 메시지를 읽을 수 있으며, 그 사이의 작업은 포함되지 않습니다. 이후 메시지는 포함되지 않습니다.",
     "whoAnswer": "링크가 있는 모든 사람이 이 응답과 그에 대한 메시지를 읽을 수 있습니다.",
     "field": "공유 링크",
     "copyLink": "링크 복사",

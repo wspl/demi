@@ -144,7 +144,7 @@ impl Writer<'_> {
                 }
             }
             Shape::Object(object) => Rendered::now(self.object(object, None, at, indent)?),
-            Shape::Union { tag, variants } => Rendered::now(self.union(tag, variants, at, indent)?),
+            Shape::Union { tag, variants, joined } => Rendered::now(self.union(tag, variants, joined, at, indent)?),
             Shape::Nullable(inner) => {
                 let inner = self.shape(inner, at, indent)?;
                 Rendered {
@@ -238,11 +238,22 @@ impl Writer<'_> {
         &mut self,
         tag: &str,
         variants: &[Variant],
+        joined: &[String],
         at: &str,
         indent: usize,
     ) -> Result<String, Unsupported> {
         let inner = indent + 1;
         let mut code = format!("z.discriminatedUnion({}, [\n", quote(tag));
+        for name in joined {
+            let union = self.reference(name);
+            if union.forward {
+                return Err(Unsupported {
+                    at: at.to_owned(),
+                    problem: "a union that joins one declared after it".into(),
+                });
+            }
+            writeln!(code, "{}{},", pad(inner), union.code).expect("writing to a string");
+        }
         for (index, variant) in variants.iter().enumerate() {
             let at = format!("{at}[{index}]");
             push_doc(&mut code, variant.description.as_deref(), inner);

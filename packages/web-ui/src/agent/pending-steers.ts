@@ -53,9 +53,21 @@ export interface SessionFailureRow {
   failure: SessionFailureNotice
 }
 
+/**
+ * A run of the agent's steps a share does not hold, in its place after the
+ * row of the block `after`, or before the first row for null (`sharing.md`
+ * § Steps not shared): one muted line that does not open.
+ */
+export interface StepsNotSharedRow {
+  type: 'steps_not_shared'
+  id: string
+  count: number
+  after: string | null
+}
+
 export type MessageListBlock =
   HeldBlock | PendingSteerRenderBlock | QueueDividerBlock | QueuedRenderBlock | CompactionProgressBlock |
-  PendingCallRenderBlock | WorkGroupBlock | ActivitySlotRow | DeliveryFailureRow | SessionFailureRow |
+  PendingCallRenderBlock | WorkGroupBlock | ActivitySlotRow | DeliveryFailureRow | SessionFailureRow | StepsNotSharedRow |
   /** A message on its way; `startsTurn` when it is a steer that starts the turn, which reads as the user's next message. */
   { type: 'pending_submission'; id: string; submission: PendingSubmissionState; startsTurn: boolean } |
   /** The edge of a window that does not reach its transcript's start or end, which shows its next page coming. */

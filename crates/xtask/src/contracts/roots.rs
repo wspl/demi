@@ -168,7 +168,7 @@ pub fn web() -> Vec<Root> {
         sends::<shares::ShareTarget>(),
         receives::<shares::ShareAnswer>(),
         receives::<shares::SharedConversation>(),
-        receives::<shares::SharedAgent>(),
+        receives::<shares::SharedTranscriptPage>(),
         receives::<attachments::AttachmentAnswer>(),
         receives::<attachments::AttachmentCheckAnswer>(),
         receives::<attachments::ConversationAttachment>(),

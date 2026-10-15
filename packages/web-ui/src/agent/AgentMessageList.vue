@@ -41,6 +41,7 @@ import { useMediaAddress } from './media-source'
 import { transcriptPictures } from './transcript-pictures'
 import { versionPlaces, type VersionChoice } from './versions'
 import type { HeldBlock } from '@demicodes/conversation-client'
+import type { StepsNotSharedRow } from './pending-steers'
 
 const props = withDefaults(defineProps<{
   conversationId: string
@@ -98,6 +99,8 @@ const props = withDefaults(defineProps<{
   latest?: boolean
   /** Each compaction marker's boundary's summary size, by the marker's id, for a boundary the window does not hold. */
   summaries?: Record<string, number>
+  /** A share's runs of steps it does not hold, each a line after the row it follows (`sharing.md` § Steps not shared). */
+  stepsNotShared?: readonly StepsNotSharedRow[]
 }>(), {
   // Vue reads an absent boolean prop as false; a list given no window is a whole transcript.
   atStart: true,

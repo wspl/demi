@@ -15,11 +15,13 @@ use demi_backend_database::shares::ShareRecord;
 use demi_backend_user_shard::conversation::shares::{ShareBlobError, ShareRefusal};
 use demi_backend_user_shard::services::Services;
 use demi_shared_types::{BlobRef, BlockId};
-use demi_web_api_protocol::conversations::{TranscriptPage, WholeBlock};
+use demi_backend_database::tree::{Entry, PageRead};
+use demi_conversation_socket_protocol::{index_u32, light};
+use demi_web_api_protocol::conversations::WholeBlock;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, ShareToken};
 use demi_web_api_protocol::shares::{
-    ShareAnswer, ShareNodeQuery, ShareTarget, ShareTranscriptQuery, SharedAgent, SharedConversation,
+    ShareAnswer, ShareTarget, ShareTranscriptQuery, SharedConversation, SharedEntry, SharedTranscriptPage,
 };
 use demi_web_api_protocol::attachments::ConversationAttachment;
 use demi_backend_database::conversation_attachments::AttachmentNumber;
@@ -30,7 +32,7 @@ use super::conversations::attachment_answer;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
-use super::history::{block_answer, page_answer};
+use super::history::block_answer;
 use super::query::QueryParams;
 
 /// `POST /conversations/:id/shares { kind, blockId? }`: the conversation's
@@ -141,26 +143,10 @@ pub(super) async fn read(
     Path(token): Path<String>,
 ) -> Result<Json<SharedConversation>, ApiError> {
     let share = found(&state.services, token).await?;
-    let (kind, title, taken_at) = (share.target.kind(), share.title.clone(), share.taken_at);
-    let owner = share.owner.clone();
-    let agents = state
-        .shards
-        .of(&owner)
-        .call(move |shard, _| async move { shard.shared_agents(&share).await })
-        .await?
-        .map_err(ApiError::conversation_unreadable)?;
     Ok(Json(SharedConversation {
-        kind,
-        title,
-        taken_at,
-        agents: agents
-            .into_iter()
-            .map(|agent| SharedAgent {
-                number: agent.number,
-                description: agent.description,
-                profile: agent.profile,
-            })
-            .collect(),
+        kind: share.target.kind(),
+        title: share.title,
+        taken_at: share.taken_at,
     }))
 }
 
@@ -190,9 +176,12 @@ pub(super) async fn attachment(
 pub(super) async fn transcript(
     State(state): State<AppState>,
     Path(token): Path<String>,
-    QueryParams(query): QueryParams<ShareTranscriptQuery>,
-) -> Result<Json<TranscriptPage>, ApiError> {
+    query: Result<QueryParams<ShareTranscriptQuery>, ApiError>,
+) -> Result<Json<SharedTranscriptPage>, ApiError> {
     let share = found(&state.services, token).await?;
+    // A query the routes do not take, such as a subagent's `node`, asks
+    // for what the list does not hold.
+    let QueryParams(query) = query.map_err(|_| not_found())?;
     let owner = share.owner.clone();
     let read = state
         .shards
@@ -205,8 +194,33 @@ pub(super) async fn transcript(
     // What the list does not hold, an anchor included, answers as a token
     // that names no share (`sharing.md` § Safety); a share's list never
     // changes under its page, so an edge not at its index is not on it.
-    let page = page_answer(Some(read), not_found, not_found, not_found, not_found)?;
-    Ok(Json(page))
+    let PageRead::Page {
+        start,
+        length,
+        blocks: entries,
+        instructions,
+        summaries,
+        // A share holds one version of each message, the one it was made with.
+        versions: _,
+    } = read
+    else {
+        return Err(not_found());
+    };
+    let mut blocks = light(entries.iter().filter_map(Entry::block)).into_iter();
+    let entries = entries
+        .iter()
+        .map(|entry| match entry {
+            Entry::Block(_) => SharedEntry::Block(blocks.next().expect("one light block for each block")),
+            Entry::StepsNotShared(count) => SharedEntry::StepsNotShared(*count),
+        })
+        .collect();
+    Ok(Json(SharedTranscriptPage {
+        start: index_u32(start),
+        length: index_u32(length),
+        blocks: entries,
+        instructions,
+        summaries,
+    }))
 }
 
 /// `GET /shares/:token/transcript/blocks/:blockId`: a block the share holds
@@ -214,17 +228,20 @@ pub(super) async fn transcript(
 pub(super) async fn block(
     State(state): State<AppState>,
     Path((token, block)): Path<(String, String)>,
-    QueryParams(query): QueryParams<ShareNodeQuery>,
+    RawQuery(query): RawQuery,
 ) -> Result<Json<WholeBlock>, ApiError> {
     let share = found(&state.services, token).await?;
+    // The route takes no query: one, such as a subagent's `node`, asks for
+    // what the list does not hold.
+    if query.is_some() {
+        return Err(not_found());
+    }
     let block = BlockId::try_from(block).map_err(|_| not_found())?;
     let owner = share.owner.clone();
     let read = state
         .shards
         .of(&owner)
-        .call(move |shard, _| async move {
-            shard.share_block(&share, query.node.unwrap_or(0), block).await
-        })
+        .call(move |shard, _| async move { shard.share_block(&share, block).await })
         .await?
         .map_err(ApiError::conversation_unreadable)?;
     Ok(Json(WholeBlock {
