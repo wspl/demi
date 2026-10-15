@@ -26,6 +26,8 @@ use crate::chunk::{ErrorCauseProtocolViolation, PROTOCOL_VIOLATION};
 use crate::packet::{CommonHeader, Packet};
 use crate::param::param_outgoing_reset_request::ParamOutgoingResetRequest;
 use crate::param::param_reconfig_response::ParamReconfigResponse;
+use crate::param::param_supported_address_types::ParamSupportedAddressTypes;
+use crate::param::param_type::ParamType;
 use assert_matches::assert_matches;
 use core::net::Ipv6Addr;
 use core::ops::RangeFrom;
@@ -2983,6 +2985,50 @@ fn test_assoc_reconfig_failure_keeps_stream_quarantined() -> Result<()> {
 }
 
 #[test]
+fn test_configured_sctp_ports_complete_handshake() -> Result<()> {
+    let mut pair = Pair::default();
+    let config = ClientConfig {
+        transport: Arc::new(
+            TransportConfig::default()
+                .with_local_port(41234)
+                .with_remote_port(9899),
+        ),
+        ..Default::default()
+    };
+
+    let (client_ch, server_ch) = pair.connect_with(config);
+    establish_session_pair(&mut pair, client_ch, server_ch, 1)
+}
+
+#[test]
+fn test_connect_rejects_zero_sctp_port() {
+    let remote: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+
+    for (local_port, remote_port) in [(0, 5000), (5000, 0)] {
+        for use_snap in [false, true] {
+            let transport = TransportConfig::default()
+                .with_local_port(local_port)
+                .with_remote_port(remote_port);
+            let mut config = ClientConfig {
+                transport: Arc::new(transport),
+                ..Default::default()
+            };
+            if use_snap {
+                let local_init = generate_snap_token(&config.transport).unwrap();
+                let remote_init = generate_snap_token(&config.transport).unwrap();
+                config = config.with_snap(local_init, remote_init);
+            }
+
+            let mut endpoint = Endpoint::new(Arc::new(EndpointConfig::default()), None);
+            assert_matches!(
+                endpoint.connect(config, remote),
+                Err(ConnectError::InvalidSctpPort)
+            );
+        }
+    }
+}
+
+#[test]
 fn test_snap_connect_established_and_transmit_uses_peer_verification_tag() {
     let now = Instant::now();
 
@@ -3032,6 +3078,55 @@ fn test_snap_connect_established_and_transmit_uses_peer_verification_tag() {
         pkt.common_header.verification_tag, remote_init.initiate_tag,
         "outbound packet should use peer initiate_tag as verification_tag"
     );
+}
+
+#[test]
+fn test_server_accepts_init_with_supported_address_types() {
+    let now = Instant::now();
+    let mut endpoint = Endpoint::new(
+        Arc::new(EndpointConfig::default()),
+        Some(Arc::new(ServerConfig::default())),
+    );
+    let remote: SocketAddr = "127.0.0.1:5000".parse().unwrap();
+    let init = ChunkInit {
+        initiate_tag: 0x1122_3344,
+        advertised_receiver_window_credit: 1500,
+        num_outbound_streams: 1,
+        num_inbound_streams: 1,
+        initial_tsn: 1,
+        params: vec![Box::new(ParamSupportedAddressTypes {
+            address_types: vec![ParamType::Ipv4Addr, ParamType::Ipv6Addr],
+        })],
+        ..Default::default()
+    };
+    let packet = Packet {
+        common_header: CommonHeader {
+            source_port: 5000,
+            destination_port: 5000,
+            verification_tag: 0,
+        },
+        chunks: vec![Box::new(init)],
+    };
+
+    let (_, DatagramEvent::NewAssociation(mut association)) = endpoint
+        .handle(now, remote, None, None, packet.marshal().unwrap())
+        .expect("INIT should create an association")
+    else {
+        panic!("expected a new association");
+    };
+
+    let transmit = association
+        .poll_transmit(now)
+        .expect("server should respond to INIT");
+    let Payload::RawEncode(datagrams) = transmit.payload else {
+        panic!("expected encoded INIT ACK");
+    };
+    let response = Packet::unmarshal(&datagrams[0]).expect("valid INIT ACK packet");
+    let init_ack = response.chunks[0]
+        .as_any()
+        .downcast_ref::<ChunkInit>()
+        .expect("server should send INIT ACK");
+    assert!(init_ack.is_ack);
 }
 
 #[test]
