@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from '../locales/text'
 import { computed, ref } from 'vue'
 import type { Component } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
@@ -95,7 +96,7 @@ const actions = computed<BubbleAction[]>(() => {
   if (!props.editable || typeof props.brief === 'string') {
     return []
   }
-  return [{ key: 'edit', hint: 'Edit', icon: Pencil, emit: () => emit('edit') }]
+  return [{ key: 'edit', hint: t('transcript.user.edit'), icon: Pencil, emit: () => emit('edit') }]
 })
 
 const textClass = computed(() => (props.pending ? 'text-fg-subtle' : 'text-fg-body'))
@@ -231,7 +232,7 @@ useResizeObserver(bodyRef, measure)
         class="-ml-2 mt-1"
         :aria-expanded="expanded"
         @click.stop="expanded = !expanded"
-      >{{ expanded ? 'Show Less' : 'Show More' }}</Button>
+      >{{ expanded ? t('transcript.user.showLess') : t('transcript.user.showMore') }}</Button>
     </div>
     <!-- A pending message says what happens to it, its controls in view rather than on hover. -->
     <div
@@ -239,9 +240,9 @@ useResizeObserver(bodyRef, measure)
       class="mt-1 flex max-w-[80%] select-none flex-wrap items-center justify-end gap-x-1 text-[12px] leading-5 text-fg-subtle"
     >
       <!-- A queued message stands under the queue's divider, which already says so. -->
-      <span v-if="pending === 'steer'" class="mr-1">Sends at the agent’s next step</span>
-      <Button size="xs" variant="ghost" @click.stop="emit('sendNow')">Send Now</Button>
-      <Button size="xs" variant="ghost" @click.stop="emit('recall')">Recall</Button>
+      <span v-if="pending === 'steer'" class="mr-1">{{ t('transcript.user.sendsNext') }}</span>
+      <Button size="xs" variant="ghost" @click.stop="emit('sendNow')">{{ t('transcript.user.sendNow') }}</Button>
+      <Button size="xs" variant="ghost" @click.stop="emit('recall')">{{ t('transcript.user.recall') }}</Button>
     </div>
   </div>
 </template>

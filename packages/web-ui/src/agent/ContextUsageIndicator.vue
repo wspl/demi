@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, ref } from 'vue'
 import { FileText, Network, RefreshCw, UserRound } from '@lucide/vue'
 import type { ContextRowKind, ContextUsage, InstructionEntry } from '@demicodes/protocol'
@@ -146,7 +147,7 @@ const hasDetails = computed(() => !props.isCompacting || rows.value.length > 0 |
 /** The ring's tip is Context and the card header's figure; without a usage or a window the ring has none. */
 const tip = computed(() => contextTip(props.usage ?? null))
 /** The ring's name for a screen reader, which the tip does not carry. */
-const label = computed(() => (percent.value == null ? 'Context window' : `Context window, ${percent.value} used`))
+const label = computed(() => (percent.value == null ? t('context.window') : t('context.windowUsed', { percent: percent.value })))
 
 const radius = 5.5
 const circumference = 2 * Math.PI * radius
@@ -207,7 +208,7 @@ const ringColor = computed(() => {
       <template #content="{ close }">
         <div class="overlay-shell rounded-md text-xs text-fg" :style="{ '--elevation': elevation }">
           <div class="context-card-head">
-            <span v-if="isCompacting" class="text-fg-body">Compacting context…</span>
+            <span v-if="isCompacting" class="text-fg-body">{{ t('context.compacting') }}</span>
             <!-- The header is the list's disclosure, as a Finder disclosure row is. -->
             <button
               v-else-if="usage"
@@ -216,13 +217,13 @@ const ringColor = computed(() => {
               class="flex w-full min-w-0 cursor-default items-baseline gap-3 whitespace-nowrap rounded-sm text-left"
               @click="listOpen = !listOpen"
             >
-              <span class="font-medium text-fg-emphasis">Context window</span>
+              <span class="font-medium text-fg-emphasis">{{ t('context.window') }}</span>
               <span class="ml-auto tabular-nums text-fg-muted">
                 {{ contextFigure(usage) }}
               </span>
               <FoldChevron :open="listOpen" :size="ICON_PX.in20" class="self-center text-fg-subtle" />
             </button>
-            <span v-else class="text-fg-muted">Context usage unavailable</span>
+            <span v-else class="text-fg-muted">{{ t('context.unavailable') }}</span>
           </div>
           <div v-if="hasDetails">
             <!-- The details scroll when the card would be taller than the room the
@@ -251,31 +252,31 @@ const ringColor = computed(() => {
                 <!-- The last line of the context section: its Compact ends where the
                      figures above it end. -->
                 <div v-if="!isCompacting" class="flex items-center gap-3 px-3 pt-2 pb-2.5">
-                  <span class="min-w-0 flex-1 truncate tabular-nums text-fg-muted">{{ room === null ? '' : `${formatTokens(room)} until compaction` }}</span>
+                  <span class="min-w-0 flex-1 truncate tabular-nums text-fg-muted">{{ room === null ? '' : t('context.untilCompaction', { tokens: formatTokens(room) }) }}</span>
                   <Button
                     size="sm"
                     :disabled="blockedReason != null"
                     :disabled-reason="blockedReason ?? undefined"
                     @click="compact(close)"
                   >
-                    Compact
+                    {{ t('context.compact') }}
                   </Button>
                 </div>
                 <div v-if="limits" class="border-t border-line pb-3">
                   <SectionRow class="text-[11px] font-medium text-fg-subtle">
-                    <span class="shrink-0">Usage limits</span>
+                    <span class="shrink-0">{{ t('context.usageLimits') }}</span>
                     <template v-if="limits.accountLabel">
                       <span class="shrink-0 px-1">·</span>
                       <TruncatedText :text="limits.accountLabel" />
                     </template>
                     <template #end>
                       <!-- The click keeps the card open: it only asks, and the answer replaces the windows. -->
-                      <Tooltip content="Refresh usage">
+                      <Tooltip :content="t('context.refreshUsage')">
                         <IconButton
                           size="xs"
                           variant="ghost"
                           :icon="RefreshCw"
-                          aria-label="Refresh usage"
+                          :aria-label="t('context.refreshUsage')"
                           :spinning="limits.refreshing === true"
                           :disabled="limits.refreshing === true"
                           @click="emit('refreshLimits', false)"
@@ -293,7 +294,7 @@ const ringColor = computed(() => {
                   </div>
                 </div>
                 <div v-if="instructionList.length" class="border-t border-line pb-1">
-                  <div class="px-3 pt-2 pb-1 text-[11px] font-medium text-fg-subtle">Instructions</div>
+                  <div class="px-3 pt-2 pb-1 text-[11px] font-medium text-fg-subtle">{{ t('context.instructions') }}</div>
                   <ul class="px-1">
                     <li v-for="row in instructionList" :key="row.path ?? 'personal'">
                       <Tooltip tag="div" :content="row.path ?? undefined">

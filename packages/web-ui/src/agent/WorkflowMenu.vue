@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed } from 'vue'
 import { Network, TriangleAlert, UserRoundX, Workflow } from '@lucide/vue'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -30,7 +31,7 @@ const shown = computed(() => workflowShown(props.choice, props.list))
 const rows = computed(() => workflowRows(props.choice, props.list))
 const fixed = computed(() => rows.value.slice(0, 2))
 const listed = computed(() => rows.value.slice(2))
-const tip = computed(() => shown.value.unavailable ?? (props.compact ? `Workflow: ${shown.value.label}` : null))
+const tip = computed(() => shown.value.unavailable ?? (props.compact ? t('workflows.labelTip', { name: shown.value.label }) : null))
 
 function choose(choice: WorkflowChoice | null, close: () => void) {
   close()
@@ -44,7 +45,7 @@ function choose(choice: WorkflowChoice | null, close: () => void) {
     :overlay-store="appOverlayStore"
     variant="ghost"
     side="top"
-    trigger-label="Workflow"
+    :trigger-label="t('workflows.label')"
   >
     <template #trigger="{ isOpen }">
       <Tooltip :content="tip ?? ''" :disabled="!tip">

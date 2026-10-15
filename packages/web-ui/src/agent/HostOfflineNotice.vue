@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { ref } from 'vue'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
@@ -50,7 +51,7 @@ function choose(host: HostChoice): void {
     role="status"
   >
     <div class="host-offline-notice-row flex items-center gap-2 pl-3">
-      <span class="min-w-0 flex-1 truncate">{{ name }} is offline.</span>
+      <span class="min-w-0 flex-1 truncate">{{ t('notices.hostOffline', { name }) }}</span>
       <span class="host-offline-notice-move">
         <Dropdown
           v-model:open="open"
@@ -59,7 +60,7 @@ function choose(host: HostChoice): void {
           :disabled-reason="locked ? MOVE_LOCK_REASON[locked] : undefined"
         >
           <template #trigger>
-            <Button size="sm" :disabled="!!locked">Move to Another Host…</Button>
+            <Button size="sm" :disabled="!!locked">{{ t('notices.moveHost') }}</Button>
           </template>
           <template #content>
             <Menu class="max-w-80">

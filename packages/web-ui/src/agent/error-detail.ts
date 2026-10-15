@@ -2,6 +2,7 @@ import type { ProviderErrorDiagnostics } from '@demicodes/protocol'
 import { z } from 'zod'
 import { formatRetryAt } from '../ui/dates'
 import type { SentenceText } from '../ui/ui-text'
+import { t } from './locales/text'
 
 /** A first line stays one line: past this the source's text goes in the body. */
 const HEADLINE_MAX_LENGTH = 160
@@ -52,7 +53,7 @@ export function errorPresentation(message: string): ErrorPresentation {
     return { label: sentence, detail: text }
   if (text.length > 0 && text.length <= HEADLINE_MAX_LENGTH && !text.includes('\n'))
     return { label: text, detail: null }
-  return { label: 'The turn failed', detail: text || null }
+  return { label: t('transcript.turnFailed'), detail: text || null }
 }
 
 /**

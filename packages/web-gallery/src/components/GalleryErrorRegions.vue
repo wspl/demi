@@ -6,6 +6,7 @@ import InlineError from '@demicodes/web-ui/ui/InlineError.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
 import { CONVERSATION_UNREADABLE } from '@demicodes/web-ui/agent/session-status'
 import SessionNoticeBar from '@demicodes/web-ui/agent/SessionNoticeBar.vue'
+import { t as agentText } from '@demicodes/web-ui/agent/locales/text'
 import GalleryComposer from './GalleryComposer.vue'
 import GallerySection from './GallerySection.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
@@ -146,15 +147,14 @@ const usageLimitPayload = JSON.stringify({
           <!-- On the reading surface, where the dock shows it. -->
           <div class="gallery-frame bg-surface p-3">
             <SessionNoticeBar
-              label="This conversation is archived."
-              action="Restore Conversation"
+              :label="agentText('session.archived')"
+              :action="agentText('session.restore')"
               @action="productWould('Restore the Conversation')"
             />
           </div>
         </GallerySpecimen>
         <GallerySpecimen wide variant="Model catalog failed · beside the chip">
           <GalleryComposer
-            placeholder="Ask anything…"
             model-load="failed"
           />
         </GallerySpecimen>

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from './locales/text'
+import { t as shared } from '../locales/text'
 import { computed } from 'vue'
 import { CircleX, TriangleAlert, Zap } from '@lucide/vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
@@ -55,9 +57,9 @@ const reasoningLabel = computed(() => {
 // Each state is an icon and a label.
 const labelText = computed(() => {
   if (props.load === 'loading')
-    return 'Loading models…'
+    return t('models.loading')
   if (props.load === 'failed')
-    return 'Couldn’t load models.'
+    return t('models.loadFailed')
   return reasoningLabel.value ? `${state.value.label} · ${reasoningLabel.value}` : state.value.label
 })
 </script>
@@ -81,13 +83,13 @@ const labelText = computed(() => {
     >
       <CircleX :size="14" class="shrink-0" />
       <span class="whitespace-nowrap pl-1.5">{{ labelText }}</span>
-      <Button size="sm" class="ml-1.5" @click="emit('retry')">Retry</Button>
+      <Button size="sm" class="ml-1.5" @click="emit('retry')">{{ shared('common.retry') }}</Button>
     </span>
     <Dropdown
       v-else-if="state.kind === 'ready' || state.kind === 'unavailable'"
       :overlay-store="appOverlayStore"
       variant="ghost"
-      trigger-label="Model"
+      :trigger-label="t('models.model')"
     >
       <template #trigger="{ isOpen }">
         <span class="relative inline-flex items-center overflow-hidden">
@@ -101,7 +103,7 @@ const labelText = computed(() => {
             >{{ reasoningLabel }}</span>
           </span>
           <Zap v-if="fast" :size="ICON_PX.in28" class="ml-1 shrink-0" />
-          <Tooltip v-if="unavailable" content="This model is unavailable. Choose another to send.">
+          <Tooltip v-if="unavailable" :content="t('models.unavailable')">
             <TriangleAlert
               :size="ICON_PX.in28"
               class="ml-1 shrink-0 text-on-warning"

@@ -6,6 +6,7 @@ import type { CommandEnd } from './command-end'
 import { storedShellView } from './block-helpers'
 import { latestBlocks } from './history'
 import { computed, toRaw, type ComputedRef } from 'vue'
+import { t } from './locales/text'
 import type { HeldTranscript } from '@demicodes/conversation-client'
 
 /** Where a command is, as its frames and stored views say: running, exited, stopped (`aborted`), or lost. */
@@ -402,7 +403,7 @@ export function terminalStatus(phase: TerminalPhase): ConversationStatus {
 }
 
 export function runningChipLabel(count: number): string {
-  return `${count} Running`
+  return t('terminals.chip', { count })
 }
 
 export function firstRunningTerminalId(

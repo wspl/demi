@@ -1,6 +1,7 @@
 import type { CommandReport, ToolMediaSource, ToolResultContentBlock } from '@demicodes/protocol'
 import { toolCallTitle } from './block-helpers'
 import { reportShown } from './command-reports'
+import { t } from './locales/text'
 import type { WorkStep } from './work-groups'
 
 /**
@@ -37,8 +38,7 @@ type GoneMedium = Extract<ToolResultContentBlock, { type: 'gone' }>
  * `Video not stored: the object store refused the write`.
  */
 export function goneLine(part: GoneMedium): string {
-  const kind = { image: 'Image', video: 'Video', document: 'Document' }[part.kind]
-  return `${kind} not stored: ${part.cause.error}`
+  return t('transcript.gone.line', { kind: t(`transcript.gone.${part.kind}`), reason: part.cause.error })
 }
 
 /**

@@ -56,7 +56,7 @@ import type { SeedSaved } from '../fixtures/saved'
 
 const props = withDefaults(
   defineProps<{
-    placeholder: PlaceholderText
+    placeholder?: PlaceholderText
     running?: boolean
     compacting?: boolean
     /** What Enter does while the agent works; the gallery's preference, which Settings › General sets, without it. */

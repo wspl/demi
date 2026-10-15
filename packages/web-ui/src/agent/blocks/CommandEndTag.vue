@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { upperFirst } from '@demicodes/utils'
 import type { CommandEndMark } from '../command-end'
 import RunEndTag from './RunEndTag.vue'
+import { t } from '../locales/text'
 
 /**
  * A row's mark of a command that went wrong, after its title: red Failed
@@ -14,7 +15,7 @@ const props = defineProps<{ mark: CommandEndMark }>()
 
 const hint = computed(() => {
   if (props.mark.kind === 'failed')
-    return `Exit code ${props.mark.exitCode}`
+    return t('transcript.runEnd.exitCode', { code: props.mark.exitCode })
   if (props.mark.kind === 'lost')
     return upperFirst(props.mark.reason)
   return undefined

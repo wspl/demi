@@ -1,5 +1,6 @@
 import { inject, provide, type InjectionKey } from 'vue'
 import type { AgentRun, SubagentPhase, SubagentRecord } from './subagents'
+import { t } from './locales/text'
 
 /**
  * An agent a message links as `agent:<number>` (`subagents.md` § Linking an
@@ -30,7 +31,7 @@ export function linkedAgent(target: string): number | null {
 /** The agents of a conversation that a message's links find: its own agent, 0, and its subagents by their numbers. */
 export function findAgent(agents: readonly SubagentRecord[], number: number): MessageAgent | null {
   if (number === 0)
-    return { number: 0, description: 'Main agent', run: null }
+    return { number: 0, description: t('subagents.mainAgent'), run: null }
   const agent = agents.find((candidate) => candidate.number === number)
   return agent ? { number, description: agent.name, run: agent } : null
 }
@@ -63,16 +64,7 @@ export function agentLinkWindow(
 
 /** The words a link's tip names its agent's state with. */
 export function agentPhaseWords(phase: SubagentPhase): string {
-  switch (phase) {
-    case 'running':
-      return 'Running'
-    case 'completed':
-      return 'Finished'
-    case 'error':
-      return 'Failed'
-    case 'aborted':
-      return 'Stopped'
-  }
+  return t(`subagents.phase.${phase}`)
 }
 
 const messageAgentsKey: InjectionKey<() => MessageAgents | undefined> = Symbol('message-agents')

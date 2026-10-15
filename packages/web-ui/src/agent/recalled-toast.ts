@@ -1,4 +1,6 @@
 import { showToast } from '../infra/toast'
+import { t } from './locales/text'
+import { t as shared } from '../locales/text'
 
 /**
  * Says that Recall took a waiting message back while the composer held a
@@ -8,8 +10,8 @@ import { showToast } from '../infra/toast'
  */
 export function showRecalled(undo: () => void): string {
   return showToast({
-    title: 'Message Recalled',
+    title: t('transcript.user.recalled'),
     tone: 'success',
-    action: { label: 'Undo', run: undo },
+    action: { label: shared('common.undo'), run: undo },
   })
 }

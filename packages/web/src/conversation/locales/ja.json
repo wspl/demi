@@ -42,7 +42,6 @@
   "savedDeleted": "保存したメッセージを削除しました",
   "newConversation": "新しい会話",
   "composer": {
-    "placeholder": "何でも質問してください…",
     "cloudResetting": "クラウドをリセットしています。"
   },
   "workflows": {

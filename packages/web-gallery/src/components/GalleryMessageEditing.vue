@@ -154,7 +154,6 @@ onBeforeUnmount(() => {
       >
         <template #composer>
           <GalleryComposer
-            placeholder="Ask anything…"
             draft="An unrelated composer draft"
             v-model:message-edit="messageEdit"
             :upload="uploads.upload"

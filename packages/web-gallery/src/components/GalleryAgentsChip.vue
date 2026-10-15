@@ -4,6 +4,7 @@ import { Play } from '@lucide/vue'
 import AgentsChip from '@demicodes/web-ui/agent/AgentsChip.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import SessionDockChip from '@demicodes/web-ui/agent/SessionDockChip.vue'
+import { t as agentText } from '@demicodes/web-ui/agent/locales/text'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import { dockWindowShare } from '../dock-window-share'
 import SubagentPanel from '@demicodes/web-ui/agent/SubagentPanel.vue'
@@ -79,7 +80,7 @@ const createdAt = new Date(Date.now() - 60_000).toISOString()
             <!-- Resume is no window's control: a press on it closes the newest window and resumes. -->
             <SessionDockChip @click="productWould('Resume the Turn')">
               <Play :size="ICON_PX.in28" />
-              Resume
+              {{ agentText('dock.resume') }}
             </SessionDockChip>
             <AgentsChip
               :agents="agents"
@@ -87,7 +88,7 @@ const createdAt = new Date(Date.now() - 60_000).toISOString()
               @open="toggleAgents"
             />
           </template>
-          <GalleryComposer placeholder="Ask anything…" />
+          <GalleryComposer />
         </SessionDock>
       </template>
       <template #overDock>

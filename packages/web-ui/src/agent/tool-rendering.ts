@@ -1,4 +1,5 @@
 import { nonEmptyString, truncate } from '@demicodes/utils'
+import { t } from './locales/text'
 
 /**
  * How a call renders (`runtime.md` § Rendering boundary): the one tool,
@@ -14,7 +15,7 @@ export function toolRenderKind(toolName: string): ToolRenderKind {
 
 /** A `shell` call's title: its description, or its script for a call that has none. */
 export function shellTitle(input: Record<string, unknown>): string {
-  return nonEmptyString(input.description) ?? nonEmptyString(input.script) ?? 'Run shell command'
+  return nonEmptyString(input.description) ?? nonEmptyString(input.script) ?? t('transcript.shellFallback')
 }
 
 /** The options of `demi shell status` that take a value as the next word. */

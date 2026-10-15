@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed } from 'vue'
 import { MessageSquareDashed, MessageSquareOff } from '@lucide/vue'
@@ -36,7 +37,7 @@ const status = computed(() => (props.kind === 'loading' || props.kind === 'faile
     :loading-label="sessionStatusCopy('loading').label"
     :detail="detail?.message"
     :request-id="detail?.requestId"
-    :action="copy.action === 'create' ? 'Start a Conversation' : undefined"
+    :action="copy.action === 'create' ? t('session.start') : undefined"
     :on-retry="copy.action === 'retry' ? () => emit('retry') : undefined"
     @action="emit('create')"
   />
