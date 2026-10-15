@@ -1,7 +1,7 @@
 # Localization
 
-Demi speaks English and Simplified Chinese. A user who picks 简体中文 in
-Settings › General sees every control, message and email in Chinese at once,
+Demi speaks English, Simplified Chinese, Traditional Chinese, Japanese and
+Korean, each complete. A user who picks 简体中文 in Settings › General sees every control, message and email in Chinese at once,
 without a reload; what a model reads and what people wrote stay as they are.
 This page says what is translated, where each text lives, how text that
 comes from the backend is worded, and how the language is chosen. How each
@@ -29,19 +29,25 @@ What is never translated:
 
 ## Choosing the language
 
-Settings › General › Language offers *System*, *English* and *简体中文*,
-each named in its own language. The choice is the `language` preference
+Settings › General › Language offers *System*, *English*, *简体中文*,
+*繁體中文*, *日本語* and *한국어*, each named in its own language. The choice is the `language` preference
 ([Web API](web-api.md)), so every page of the user and the backend's emails
 follow it; *System* is the default and takes the first of the browser's
-languages that Demi speaks, any `zh` tag counting as 简体中文, else English.
+languages that Demi speaks, else English: `zh-Hant`, `zh-TW`, `zh-HK` and
+`zh-MO` count as 繁體中文 and any other `zh` tag as 简体中文.
 A change applies at once in every open page, as other preferences do, and
-the document's `lang` follows it.
+the document's `lang` follows it, so each language's own font draws its
+characters: one Han character looks different in Chinese, Japanese and
+Korean, and the font stack names each language's system font (PingFang SC,
+PingFang TC, Hiragino Sans, Apple SD Gothic Neo, then Noto Sans CJK) under
+its `:lang()`.
 
 ## Where the text lives
 
 Each package owns its text, as it owns its components: `web-ui`, `web`,
 `web-gallery` and each plugin package keep a catalogue per language,
-`src/locales/en.json` and `src/locales/zh-Hans.json`, English the source.
+`src/locales/en.json`, `zh-Hans.json`, `zh-Hant.json`, `ja.json` and
+`ko.json`, English the source.
 Keys name the place and the meaning, `settings.general.language`, never the
 English words, so rewording English keeps the key.
 
@@ -52,12 +58,13 @@ through `@demicodes/plugin-sdk`, under its plugin's id, so a plugin brings
 its text with it and the shell knows none of it
 ([Plugin pages](../architecture/plugin-pages.md)). Each catalogue is typed by
 its English file, so a key missing from a language or misspelled at its use
-does not compile. A count uses the catalogue's plural forms; Chinese has
-one.
+does not compile, so a new text is written in every language with the
+change that adds it. A count uses the catalogue's plural forms; Chinese,
+Japanese and Korean have one.
 
 Numbers, sizes, dates, times, relative ages and lists are formatted with
 `Intl` in the chosen language by the existing formatters, never by hand in
-a component: *2h* and *2 小时*, *Oct 15* and *10月15日*.
+a component: *2h*, *2 小时* and *2 時間*, *Oct 15* and *10月15日*.
 
 ## Text from the backend
 

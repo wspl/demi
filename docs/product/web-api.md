@@ -948,8 +948,8 @@ not touch. `lastProjectHost` stores where New Project starts,
 `{ kind: "cloud" | "device", deviceId? }`: the kind and the device the user
 last chose in it ([Conversations and projects](product.md#conversations-and-projects)).
 A patch replaces it whole; a `deviceId` the user no longer has is kept and
-the dialog chooses no device for it. `language` is `system`, `en` or
-`zh-Hans`, absent meaning `system` ([Localization](localization.md#choosing-the-language)). `locale` stores the time
+the dialog chooses no device for it. `language` is `system`, `en`,
+`zh-Hans`, `zh-Hant`, `ja` or `ko`, absent meaning `system` ([Localization](localization.md#choosing-the-language)). `locale` stores the time
 zone and languages the user's browser last reported, as
 `{ timeZone, languages, colorScheme? }` with an IANA zone name, BCP 47 tags in
 preference order and the page's `light` or `dark` scheme. A page sends it
