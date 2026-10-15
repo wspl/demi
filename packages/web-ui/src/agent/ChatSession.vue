@@ -37,7 +37,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import type { ChatSessionState, PendingSubmissionState } from './types'
 import type { HostMenuHost } from '../hosts/types'
 import type { MessageForkHandler } from './message-fork'
-import { shareOperation, useShare, type ExistingShare, type ShareService } from './sharing'
+import { useShare, type ExistingShare, type ShareService } from './sharing'
 import ShareDialog from './ShareDialog.vue'
 import type { UsageLimits } from './context-usage'
 
@@ -623,7 +623,6 @@ watch(
               <MenuItem
                 :icon="Share"
                 :label="t('session.shareConversation')"
-                :operation="shareOperation(shareConversation)"
                 @select="sharing.start(shareConversation)"
               />
             </Menu>
@@ -775,12 +774,12 @@ watch(
       :is-open="sharing.isOpen.value"
       :overlay-store="appOverlayStore"
       :kind="sharing.shown.value.target.kind"
-      :url="sharing.shown.value.url"
-      :token="sharing.shown.value.token"
+      :phase="sharing.shown.value"
       :copied="sharing.copied.value"
       :on-update="sharing.update"
       :on-stop="sharing.stop"
       @copy="sharing.copy"
+      @retry="sharing.retry"
       @close="sharing.close"
     />
   </section>

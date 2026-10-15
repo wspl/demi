@@ -1493,19 +1493,19 @@ beyond current output are refused.
 
 ## Sharing
 
-A share is a read-only snapshot of a conversation or of one answer, behind a
+A share is a read-only view of a conversation or of one answer, behind a
 random link ([Sharing](sharing.md)).
 
 `POST /conversations/:id/shares { kind: "conversation" }` or `{ kind:
 "answer", blockId }` answers `{ token, url, kind, blockId?, takenAt }`: the
-existing share when there is one, a new snapshot otherwise. `blockId` must be
+existing share when there is one, a new share otherwise. `blockId` must be
 a `forkable` text block of the conversation's own agent, else 400
 `share_target_invalid`; the page offers Share only on the text that ends a
 reply, and the backend does not judge which text does. The conversation's
 header and an answer read whether a share exists from the conversation's
 `shares` in the product state, `{ token, kind, blockId? }` each, so the
 dialog opens on the existing link. `PUT /conversations/:id/shares/:token`
-takes the conversation's snapshot again under the same token and answers as
+makes the share's list anew under the same token and answers as
 `POST`; an answer's share answers 409 `share_not_updatable`. `DELETE` removes
 the share. An archived conversation can be shared and unshared.
 
@@ -1513,13 +1513,13 @@ The public routes take no session and ignore one:
 
 | Route | Answers |
 | --- | --- |
-| `GET /shares/:token` | `{ kind, title, takenAt, agents }`, `agents` each subagent the snapshot holds as `{ number, description, profile }`, for its header |
-| `GET /shares/:token/transcript?node=&before=\|after=\|around=` | A page of the snapshot, as [Pages](#pages) answers it, `instructions` always empty and `failures` absent, so an error block shows its message without the retry times and accounts the facts carry; `node` a subagent's number the snapshot holds |
+| `GET /shares/:token` | `{ kind, title, takenAt, agents }`, `agents` each subagent the share holds as `{ number, description, profile }`, for its header |
+| `GET /shares/:token/transcript?node=&before=\|after=\|around=` | A page of what the share holds, as [Pages](#pages) answers it, `instructions` always empty and `failures` absent, so an error block shows its message without the retry times and accounts the facts carry; `node` a subagent's number the share holds |
 | `GET /shares/:token/transcript/blocks/:blockId?node=` | One block whole, as the conversation's whole-block read answers it |
-| `GET /shares/:token/blobs/:sha256?type=` | A blob the snapshot shows |
-| `GET /shares/:token/attachments/:attachment` | An attachment the snapshot's text names as `attachment:a3` and that existed when it was taken, as [the conversation's attachment route](#uploads-and-media) answers it; one uploaded later stays missing until Update Link |
+| `GET /shares/:token/blobs/:sha256?type=` | A blob the share shows |
+| `GET /shares/:token/attachments/:attachment` | An attachment the share's text names as `attachment:a3` and that existed when it was taken, as [the conversation's attachment route](#uploads-and-media) answers it; one uploaded later stays missing until Update Link |
 
-A token that names no share, a node or block the snapshot lacks, and a blob
+A token that names no share, a node or block the share lacks, and a blob
 it does not show answer 404 `share_not_found`, the same for each, so the
 answer tells nothing of what exists. Every public answer carries
 `X-Robots-Tag: noindex, nofollow`, `Referrer-Policy: no-referrer` and

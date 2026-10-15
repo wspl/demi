@@ -24,7 +24,7 @@ import { COMPOSER_CLEARANCE_PX } from './composer-clearance'
 import MessageEditRegion from './MessageEditRegion.vue'
 import { messageEditSuffixIds, offeredEditId } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
-import { shareOperation, type AnswerShare } from './sharing'
+import type { AnswerShare } from './sharing'
 import { useFollowSentMessages } from './useFollowSentMessages'
 import { provideCommandRevealer, useCommandRevealer } from './command-reports'
 import { provideOriginRevealer, useOriginRevealer } from './agent-receipts'
@@ -63,7 +63,7 @@ const props = withDefaults(defineProps<{
   readOnly?: boolean
   fork?: MessageForkHandler
   /** Shares the answer the text block `blockId` ends; absent, no footer offers Share. */
-  share?: (blockId: string) => Promise<void>
+  share?: (blockId: string) => void
   /** No answer offers Fork, as on a share's page, which acts on no conversation (`sharing.md` § Safety). */
   hideFork?: boolean
   editTargetId?: string
@@ -129,7 +129,7 @@ const { states: forkStates, run: forkMessage } = useMessageForks(() => props.for
 
 /** Share on the answer the text block `blockId` ends, which its footer's button starts. */
 function answerShare(blockId: string): AnswerShare {
-  return { operation: shareOperation({ kind: 'answer', blockId }), start: () => props.share!(blockId) }
+  return { start: () => props.share!(blockId) }
 }
 
 const {

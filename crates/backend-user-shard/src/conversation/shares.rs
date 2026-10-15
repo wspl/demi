@@ -1,9 +1,9 @@
 //! Shares on the owner's shard (`sharing.md`, `web-api.md` § Sharing): the
-//! owner makes a share, takes a conversation's snapshot again and removes a
-//! share, each announced on the owner's pages through the conversation's
-//! summary, which lists its shares; and a share's reader reads its
-//! snapshot, by the share's record, which the edge found by the token. A
-//! read reaches the snapshot alone: no Host, no live session.
+//! owner makes a share, makes a conversation's share's list again and
+//! removes a share, each announced on the owner's pages through the conversation's
+//! summary, which lists its shares; and a share's reader reads what its
+//! list holds, by the share's record, which the edge found by the token. A
+//! read reaches the list alone: no Host, no live session.
 
 use base64::Engine as _;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -49,7 +49,8 @@ fn new_token() -> ShareToken {
 
 impl Shard {
     /// The conversation's share of `target`: the one it has, or a new one
-    /// with its snapshot taken now.
+    /// with its list made now. A request that races another for the same
+    /// target answers the share the first added, and drops its own list.
     pub async fn share(
         &self,
         conversation: ConversationId,
@@ -65,7 +66,7 @@ impl Shard {
             return Ok(existing);
         }
         let token = new_token();
-        self.take_snapshot(&record.id, &token, &target).await?;
+        self.make_list(&record.id, &token, &target).await?;
         let share = ShareRecord {
             token: token.clone(),
             owner: self.user().clone(),
@@ -80,19 +81,19 @@ impl Shard {
                 Ok(share)
             }
             // Another request shared it meanwhile, or the conversation went:
-            // this snapshot is no one's.
+            // this list is no one's.
             Added::Existing(existing) => {
-                self.drop_snapshot(&record.id, token).await;
+                self.drop_list(&record.id, token).await;
                 Ok(existing)
             }
             Added::NoConversation => {
-                self.drop_snapshot(&record.id, token).await;
+                self.drop_list(&record.id, token).await;
                 Err(ShareRefusal::NoConversation)
             }
         }
     }
 
-    /// Takes the conversation's snapshot again under the same token: the
+    /// Makes the share's list again under the same token: the
     /// conversation as it is now, with its title now.
     pub async fn update_share(
         &self,
@@ -108,13 +109,13 @@ impl Shard {
             .conversation(share.conversation.clone())
             .await?
             .ok_or(ShareRefusal::NoConversation)?;
-        self.take_snapshot(&record.id, &token, &share.target).await?;
+        self.make_list(&record.id, &token, &share.target).await?;
         let Some(share) = control
             .retake_share(token.clone(), record.title, self.services().clock.now())
             .await?
         else {
-            // The owner stopped sharing meanwhile: this snapshot is no one's.
-            self.drop_snapshot(&record.id, token).await;
+            // The owner stopped sharing meanwhile: this list is no one's.
+            self.drop_list(&record.id, token).await;
             return Err(ShareRefusal::NoShare);
         };
         self.mark(Part::Conversation(record.id));
@@ -122,7 +123,7 @@ impl Shard {
     }
 
     /// Removes the share: its link answers as one that never existed from
-    /// the record's removal on, and its snapshot goes after it.
+    /// the record's removal on, and its list goes after it.
     pub async fn stop_sharing(
         &self,
         conversation: ConversationId,
@@ -138,7 +139,7 @@ impl Shard {
             return Err(ShareRefusal::NoShare);
         }
         self.mark(Part::Conversation(share.conversation.clone()));
-        self.drop_snapshot(&share.conversation, token).await;
+        self.drop_list(&share.conversation, token).await;
         Ok(())
     }
 
@@ -156,7 +157,8 @@ impl Shard {
             .ok_or(ShareRefusal::NoShare)
     }
 
-    async fn take_snapshot(
+    /// Makes the list of `target` under `token`, in place of one it had.
+    async fn make_list(
         &self,
         conversation: &ConversationId,
         token: &ShareToken,
@@ -183,9 +185,9 @@ impl Shard {
         if taken { Ok(()) } else { Err(ShareRefusal::TargetInvalid) }
     }
 
-    /// Removes a snapshot no record names any more. One that stays costs
+    /// Removes a list no record names any more. One that stays costs
     /// storage only: nothing reads the rows of a token without its record.
-    async fn drop_snapshot(&self, conversation: &ConversationId, token: ShareToken) {
+    async fn drop_list(&self, conversation: &ConversationId, token: ShareToken) {
         let removed = self
             .services()
             .conversations
@@ -196,13 +198,13 @@ impl Shard {
             tracing::warn!(
                 conversation = %conversation,
                 error = &error as &dyn std::error::Error,
-                "a share's snapshot that no record names stays in the conversation's database"
+                "a share's list that no record names stays in the conversation's database"
             );
         }
     }
 
-    /// A page of the snapshot's copy of the transcript of the agent `query`
-    /// names, the root's without one; none when the conversation has no
+    /// A page of what the share's list holds of the transcript of the agent
+    /// `query` names, the root's without one; none when the conversation has no
     /// database.
     pub async fn share_page(
         &self,
@@ -227,7 +229,7 @@ impl Shard {
             .await
     }
 
-    /// A block of the snapshot whole.
+    /// A block the share's list holds, whole.
     pub async fn share_block(
         &self,
         share: &ShareRecord,
@@ -246,7 +248,7 @@ impl Shard {
             .await
     }
 
-    /// The subagents the snapshot holds.
+    /// The subagents the share holds.
     pub async fn shared_agents(&self, share: &ShareRecord) -> Result<Vec<SharedAgent>, StorageError> {
         let token = share.token.clone();
         Ok(self
@@ -257,7 +259,7 @@ impl Shard {
             .unwrap_or_default())
     }
 
-    /// The attachment `number` when the snapshot's text names it.
+    /// The attachment `number` when the share's text names it.
     pub async fn shared_attachment(
         &self,
         share: &ShareRecord,
@@ -274,7 +276,7 @@ impl Shard {
             .flatten())
     }
 
-    /// The bytes of `blob` when the snapshot shows it.
+    /// The bytes of `blob` when the share shows it.
     pub async fn share_blob(&self, share: &ShareRecord, blob: BlobRef) -> Result<Option<Bytes>, ShareBlobError> {
         let token = share.token.clone();
         let wanted = blob.clone();

@@ -12,8 +12,8 @@
 use std::collections::BTreeSet;
 
 use demi_agent_store::CheckpointState;
-use demi_agent_store::media::{block_blobs, content_references};
-use demi_shared_types::{BlobRef, Block, Timestamp};
+use demi_agent_store::media::content_references;
+use demi_shared_types::{BlobRef, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use rusqlite::{Connection, params};
 
@@ -109,17 +109,16 @@ impl ControlService {
 }
 
 /// Every blob a conversation's database names, read on `connection` in the
-/// read transaction it is given: each block's media and edit copies, every
-/// row included, the media of the messages its checkpoints keep queued, the
-/// agent's uploads, each stored command output, and the blocks of the
-/// shares' snapshots, which keep their blobs while they last.
+/// read transaction it is given: each block's media and edit copies, as
+/// `block_blobs` lists them for every row, the media of the messages its checkpoints keep queued, the
+/// agent's uploads, each stored command output, and the shares' copies,
+/// which keep their blobs while they last.
 pub fn conversation_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, StorageError> {
     let mut blobs = BTreeSet::new();
-    let mut blocks = connection.prepare("SELECT block FROM blocks")?;
-    let mut rows = blocks.query([])?;
+    let mut named = connection.prepare("SELECT DISTINCT blob FROM block_blobs")?;
+    let mut rows = named.query([])?;
     while let Some(row) = rows.next()? {
-        let block: Block = json("blocks", "block", &row.get::<_, String>(0)?)?;
-        blobs.extend(block_blobs(&block).cloned());
+        blobs.insert(decode("block_blobs", "blob", BlobRef::try_from(row.get::<_, String>(0)?))?);
     }
     let mut states = connection.prepare("SELECT state FROM nodes")?;
     let mut rows = states.query([])?;
@@ -139,6 +138,6 @@ pub fn conversation_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, 
             blobs.insert(blob);
         }
     }
-    blobs.extend(shares::snapshot_blobs(connection)?);
+    blobs.extend(shares::copied_blobs(connection)?);
     Ok(blobs)
 }

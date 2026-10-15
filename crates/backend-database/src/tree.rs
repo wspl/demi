@@ -34,6 +34,8 @@ use demi_shared_types::{
 };
 use futures_util::future::LocalBoxFuture;
 use demi_web_api_protocol::ids::ShareToken;
+use demi_agent_store::media::block_blobs;
+use crate::shares::{self, Rewritten};
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params, params_from_iter};
 
@@ -308,7 +310,10 @@ impl AgentTreeStore for SqliteTreeStore {
             // through the cascades.
             self.db
                 .call(move |connection| {
-                    connection.execute("DELETE FROM nodes WHERE id = ?1", [node.as_str()])?;
+                    let transaction = connection.transaction()?;
+                    shares::keep_rewritten(&transaction, Rewritten::Subtree(&node))?;
+                    transaction.execute("DELETE FROM nodes WHERE id = ?1", [node.as_str()])?;
+                    transaction.commit()?;
                     Ok(())
                 })
                 .await
@@ -493,8 +498,9 @@ impl SessionStore for SqliteSessionStore {
     }
 }
 
-/// Writes one save of `node` in `transaction`: the changed block rows, the
-/// rows past the new end gone, the state row, and
+/// Writes one save of `node` in `transaction`: the changed block rows with
+/// the blobs each names, the rows past the new end gone with theirs, the
+/// state row, and
 /// the child completions it carries marked delivered. Changed output
 /// advances the node's output revision; input alone does not. A refusal
 /// leaves the transaction uncommitted.
@@ -509,9 +515,13 @@ fn write_checkpoint(
          ON CONFLICT (node_id, idx) DO UPDATE SET block = excluded.block",
     )?;
     for (index, block) in &update.changed_blocks {
-        write.execute(params![node.as_str(), count(*index), to_json(block)])?;
+        let index = count(*index);
+        shares::keep_rewritten(transaction, Rewritten::Row(node, index))?;
+        write.execute(params![node.as_str(), index, to_json(block)])?;
+        name_block(transaction, node.as_str(), index, block)?;
     }
     let block_count = count(update.block_count);
+    shares::keep_rewritten(transaction, Rewritten::From(node, block_count))?;
     transaction
         .prepare_cached("DELETE FROM blocks WHERE node_id = ?1 AND idx >= ?2")?
         .execute(params![node.as_str(), block_count])?;
@@ -537,6 +547,40 @@ fn write_checkpoint(
         )?;
     }
     Ok(Ok(()))
+}
+
+/// Lists what the block at `index` of `node` names, in place of what its
+/// row named: the blobs, in `block_blobs`, and for a text the attachments,
+/// in `block_attachments`, so neither is found by reading block text.
+pub(crate) fn name_block(
+    transaction: &Transaction<'_>,
+    node: &str,
+    index: i64,
+    block: &Block,
+) -> Result<(), rusqlite::Error> {
+    transaction
+        .prepare_cached("DELETE FROM block_blobs WHERE node_id = ?1 AND idx = ?2")?
+        .execute(params![node, index])?;
+    transaction
+        .prepare_cached("DELETE FROM block_attachments WHERE node_id = ?1 AND idx = ?2")?
+        .execute(params![node, index])?;
+    let mut blob = transaction
+        .prepare_cached("INSERT OR IGNORE INTO block_blobs (node_id, idx, blob) VALUES (?1, ?2, ?3)")?;
+    for named in block_blobs(block) {
+        blob.execute(params![node, index, named.as_str()])?;
+    }
+    if let Block::Text(text) = block
+        && text.text.contains("attachment:")
+    {
+        let mut attachment = transaction.prepare_cached(
+            "INSERT OR IGNORE INTO block_attachments (node_id, idx, attachment) VALUES (?1, ?2, ?3)",
+        )?;
+        for number in shares::named_attachments(&text.text) {
+            let number = i64::try_from(number.0).expect("a parsed attachment number fits the column");
+            attachment.execute(params![node, index, number])?;
+        }
+    }
+    Ok(())
 }
 
 /// Whether a block is output, which the user has not seen until the page
@@ -1090,55 +1134,42 @@ pub fn root_blocks(connection: &Connection) -> Result<Vec<Block>, StorageError> 
 }
 
 /// A transcript a page is read from (`web-api.md` § Pages): an agent's in
-/// the tree, or the copy of one in a share's snapshot (`sharing.md`
-/// § Storage and routes). The pages, their light form and a block read whole
-/// are the same for both; only the rows they come from differ.
+/// the tree, or what a share's list shows of one (`sharing.md` § Storage and
+/// routes). The pages, their light form and a block read whole are the same
+/// for both; only the rows they come from differ.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Transcript {
     /// The transcript of the node, the blocks below its block count.
     Agent(NodeId),
-    /// The snapshot's copy of the transcript of the agent of that number, 0
-    /// for the root's, under the share's token.
+    /// The list of the share's token for the agent of that number, 0 for the
+    /// root's: each block at its position on the list, read from the row
+    /// the entry names or from the share's copy. The list is the whole of
+    /// what it reads: no read reaches a row the list does not name.
     Shared { token: ShareToken, agent: u64 },
 }
 
-impl Transcript {
-    /// The rows of the transcript, as the `FROM` and `WHERE` of a query in
-    /// which `{rows}` stands for them and `idx` and `block` name their
-    /// columns, with the parameters they take: each query adds its own after
-    /// them, from `?3` on: the tree's rows take one parameter, and `?2 IS
-    /// NULL` gives them a second that holds. The tree's rows past a node's
-    /// block count are not its transcript's, which `length` keeps out.
-    fn rows(&self) -> (&'static str, Vec<Value>) {
-        match self {
-            Self::Agent(node) => (
-                "blocks WHERE node_id = ?1 AND ?2 IS NULL",
-                vec![Value::Text(node.as_str().to_owned()), Value::Null],
-            ),
-            Self::Shared { token, agent } => (
-                "share_blocks WHERE token = ?1 AND agent = ?2",
-                // A number past the column's names no agent, as a query
-                // may: -1 matches no row.
-                vec![
-                    Value::Text(token.as_str().to_owned()),
-                    Value::Integer(i64::try_from(*agent).unwrap_or(-1)),
-                ],
-            ),
-        }
-    }
+/// The blocks of a share's list, as the `FROM` of a query that names them
+/// `entry` and `block`: each entry with the block it shows, its row's or
+/// its copy's. `?1` is the token and `?2` the agent.
+const LISTED: &str = "share_entries AS entry
+  LEFT JOIN blocks AS row ON row.node_id = entry.node_id AND row.idx = entry.idx
+  LEFT JOIN share_blocks AS copy
+    ON entry.node_id IS NULL AND copy.token = entry.token AND copy.agent = entry.agent AND copy.idx = entry.position";
 
-    fn statement<'c>(
-        &self,
-        connection: &'c Connection,
-        sql: &str,
-    ) -> Result<(rusqlite::Statement<'c>, Vec<Value>), StorageError> {
-        let (rows, parameters) = self.rows();
-        Ok((connection.prepare(&sql.replace("{rows}", rows))?, parameters))
+impl Transcript {
+    /// The token and the agent of a share's list, as `?1` and `?2`.
+    fn listed(token: &ShareToken, agent: u64) -> [Value; 2] {
+        // A number past the column's names no agent, as a query may: -1
+        // matches no entry.
+        [
+            Value::Text(token.as_str().to_owned()),
+            Value::Integer(i64::try_from(agent).unwrap_or(-1)),
+        ]
     }
 
     /// How many blocks the transcript holds; none when there is no such
-    /// transcript: a node the tree lacks, or an agent the snapshot holds no
-    /// block of, but the root's, which a snapshot always holds.
+    /// transcript: a node the tree lacks, or an agent the list holds no
+    /// block of, but the root's, which a share always holds.
     pub fn length(&self, connection: &Connection) -> Result<Option<usize>, StorageError> {
         let length: Option<i64> = match self {
             Self::Agent(node) => connection
@@ -1148,9 +1179,12 @@ impl Transcript {
                     |row| row.get(0),
                 )
                 .optional()?,
-            Self::Shared { agent, .. } => {
-                let (mut statement, parameters) = self.statement(connection, "SELECT COUNT(*) FROM {rows}")?;
-                let held: i64 = statement.query_row(params_from_iter(parameters), |row| row.get(0))?;
+            Self::Shared { token, agent } => {
+                let held: i64 = connection.query_row(
+                    "SELECT COUNT(*) FROM share_entries WHERE token = ?1 AND agent = ?2",
+                    params_from_iter(Self::listed(token, *agent)),
+                    |row| row.get(0),
+                )?;
                 (held > 0 || *agent == 0).then_some(held)
             }
         };
@@ -1160,13 +1194,36 @@ impl Transcript {
     }
 
     /// The indices of the `user` blocks among its first `length` blocks,
-    /// where its requests start.
+    /// where its requests start. A share's are found through the indices of
+    /// block types, the transcript's and the copies', without reading a
+    /// block.
     pub fn user_blocks(&self, connection: &Connection, length: usize) -> Result<Vec<usize>, StorageError> {
-        let (mut statement, mut parameters) = self.statement(
-            connection,
-            "SELECT idx FROM {rows} AND json_extract(block, '$.type') = 'user' AND idx < ?3 ORDER BY idx",
-        )?;
-        parameters.push(Value::Integer(count(length)));
+        let (sql, parameters): (&str, Vec<Value>) = match self {
+            Self::Agent(node) => (
+                "SELECT idx FROM blocks WHERE node_id = ?1 AND json_extract(block, '$.type') = 'user' AND idx < ?2
+                 ORDER BY idx",
+                vec![Value::Text(node.as_str().to_owned()), Value::Integer(count(length))],
+            ),
+            Self::Shared { token, agent } => (
+                // From the agent's user blocks in the index of block types
+                // to their entries, so no other block is visited.
+                "SELECT entry.position FROM nodes
+                   CROSS JOIN blocks AS row INDEXED BY blocks_by_type
+                     ON row.node_id = nodes.id AND json_extract(row.block, '$.type') = 'user'
+                   CROSS JOIN share_entries AS entry INDEXED BY share_entries_by_row
+                     ON entry.token = ?1 AND entry.node_id = row.node_id AND entry.idx = row.idx
+                 WHERE nodes.number = ?2 AND entry.agent = ?2 AND entry.position < ?3
+                 UNION
+                 SELECT entry.position FROM share_blocks AS copy INDEXED BY share_blocks_by_type
+                   CROSS JOIN share_entries AS entry
+                     ON entry.token = copy.token AND entry.agent = copy.agent AND entry.position = copy.idx
+                 WHERE copy.token = ?1 AND copy.agent = ?2 AND json_extract(copy.block, '$.type') = 'user'
+                   AND entry.node_id IS NULL AND entry.position < ?3
+                 ORDER BY 1",
+                [Self::listed(token, *agent).as_slice(), &[Value::Integer(count(length))]].concat(),
+            ),
+        };
+        let mut statement = connection.prepare(sql)?;
         let mut rows = statement.query(params_from_iter(parameters))?;
         let mut users = Vec::new();
         while let Some(row) = rows.next()? {
@@ -1178,19 +1235,31 @@ impl Transcript {
 
     /// Its blocks at the indices `range`, all of which it holds.
     pub fn blocks_in(&self, connection: &Connection, range: Range<usize>) -> Result<Vec<Block>, StorageError> {
-        let (mut statement, mut parameters) = self.statement(
-            connection,
-            "SELECT idx, block FROM {rows} AND idx >= ?3 AND idx < ?4 ORDER BY idx",
-        )?;
-        parameters.extend([Value::Integer(count(range.start)), Value::Integer(count(range.end))]);
+        let bounds = [Value::Integer(count(range.start)), Value::Integer(count(range.end))];
+        let (sql, parameters): (String, Vec<Value>) = match self {
+            Self::Agent(node) => (
+                "SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3 ORDER BY idx".to_owned(),
+                [&[Value::Text(node.as_str().to_owned())][..], &bounds].concat(),
+            ),
+            Self::Shared { token, agent } => (
+                format!(
+                    "SELECT entry.position, coalesce(row.block, copy.block) FROM {LISTED}
+                     WHERE entry.token = ?1 AND entry.agent = ?2 AND entry.position >= ?3 AND entry.position < ?4
+                     ORDER BY entry.position"
+                ),
+                [Self::listed(token, *agent).as_slice(), &bounds].concat(),
+            ),
+        };
+        let mut statement = connection.prepare(&sql)?;
         let mut rows = statement.query(params_from_iter(parameters))?;
         let mut blocks = Vec::with_capacity(range.len());
         while let Some(row) = rows.next()? {
             let index: i64 = row.get(0)?;
-            if index != count(range.start + blocks.len()) {
+            // A share's entry whose row or copy is gone holds no block.
+            let text: Option<String> = row.get(1)?;
+            let (true, Some(text)) = (index == count(range.start + blocks.len()), text) else {
                 return Err(self.gap(range.start + blocks.len()));
-            }
-            let text: String = row.get(1)?;
+            };
             blocks.push(json(self.table(), "block", &text)?);
         }
         if blocks.len() != range.len() {
@@ -1199,20 +1268,40 @@ impl Transcript {
         Ok(blocks)
     }
 
-    /// The index of the block `id` among its first `length` blocks.
+    /// The index of the block `id` among its first `length` blocks. A
+    /// share's is the position of the entry that names the very row the id
+    /// is found in, or the copy: a block of the same id elsewhere is not one
+    /// it holds.
     pub fn block_index(
         &self,
         connection: &Connection,
         id: &BlockId,
         length: usize,
     ) -> Result<Option<usize>, StorageError> {
-        let (mut statement, mut parameters) = self.statement(
-            connection,
-            "SELECT idx FROM {rows} AND json_extract(block, '$.id') = ?3 AND idx < ?4",
-        )?;
-        parameters.extend([Value::Text(id.as_str().to_owned()), Value::Integer(count(length))]);
-        let index: Option<i64> = statement
-            .query_row(params_from_iter(parameters), |row| row.get(0))
+        let wanted = [Value::Text(id.as_str().to_owned()), Value::Integer(count(length))];
+        let (sql, parameters): (&str, Vec<Value>) = match self {
+            Self::Agent(node) => (
+                "SELECT idx FROM blocks WHERE node_id = ?1 AND json_extract(block, '$.id') = ?2 AND idx < ?3",
+                [&[Value::Text(node.as_str().to_owned())][..], &wanted].concat(),
+            ),
+            Self::Shared { token, agent } => (
+                // From the rows of that id to the entry that names one.
+                "SELECT entry.position FROM blocks AS row INDEXED BY blocks_by_id
+                   CROSS JOIN share_entries AS entry INDEXED BY share_entries_by_row
+                     ON entry.token = ?1 AND entry.node_id = row.node_id AND entry.idx = row.idx
+                 WHERE json_extract(row.block, '$.id') = ?3 AND entry.agent = ?2 AND entry.position < ?4
+                 UNION ALL
+                 SELECT entry.position FROM share_blocks AS copy
+                   JOIN share_entries AS entry
+                     ON entry.token = copy.token AND entry.agent = copy.agent AND entry.position = copy.idx
+                 WHERE copy.token = ?1 AND copy.agent = ?2 AND json_extract(copy.block, '$.id') = ?3
+                   AND entry.node_id IS NULL AND entry.position < ?4
+                 LIMIT 1",
+                [Self::listed(token, *agent).as_slice(), &wanted].concat(),
+            ),
+        };
+        let index: Option<i64> = connection
+            .query_row(sql, params_from_iter(parameters), |row| row.get(0))
             .optional()?;
         index
             .map(|index| decode(self.table(), "idx", usize::try_from(index)))
@@ -1221,8 +1310,8 @@ impl Transcript {
 
     /// The entries of the newest instructions block among its first
     /// `length` blocks, which the context card lists; none before the first
-    /// (`instructions.md` § What the card lists), and none in a snapshot,
-    /// which holds no `context` block.
+    /// (`instructions.md` § What the card lists), and none in a share,
+    /// which shows no `context` block.
     pub fn newest_instructions(
         &self,
         connection: &Connection,
@@ -1253,7 +1342,7 @@ impl Transcript {
     fn table(&self) -> &'static str {
         match self {
             Self::Agent(_) => "blocks",
-            Self::Shared { .. } => "share_blocks",
+            Self::Shared { .. } => "share_entries",
         }
     }
 
@@ -1261,8 +1350,8 @@ impl Transcript {
         match self {
             Self::Agent(node) => gap(node, index),
             Self::Shared { token, agent } => StorageError::Corrupt {
-                table: "share_blocks",
-                column: "idx",
+                table: "share_entries",
+                column: "position",
                 reason: format!("agent {agent} of share {token} has no block {index}"),
             },
         }
@@ -1283,6 +1372,8 @@ pub enum PageRead {
     },
     NoNode,
     NoBlock,
+    /// `before` or `after` an index the transcript does not reach.
+    Outside,
     Changed,
     Invalid(&'static str),
 }
@@ -1326,7 +1417,7 @@ pub fn read_page(
         };
         let index = usize::try_from(index).unwrap_or(usize::MAX);
         if index >= length {
-            return Ok(Err(PageRead::Invalid("an index outside the transcript")));
+            return Ok(Err(PageRead::Outside));
         }
         let held = transcript.blocks_in(connection, index..index + 1)?;
         Ok(if held[0].id() == edge { Ok(index) } else { Err(PageRead::Changed) })
@@ -1473,7 +1564,7 @@ pub fn command_call(
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use std::collections::BTreeMap;
     use std::num::NonZeroUsize;
     use std::sync::Mutex;
@@ -1510,7 +1601,7 @@ mod tests {
 
     /// A tree store over a new conversation database and its owner's blob
     /// namespace, with the stores that hold it.
-    async fn store() -> (SqliteTreeStore, ConversationStores, tempfile::TempDir) {
+    pub(crate) async fn store() -> (SqliteTreeStore, ConversationStores, tempfile::TempDir) {
         let data = tempfile::tempdir().unwrap();
         let stores = ConversationStores::open(
             data.path().join("conversations"),
@@ -1527,16 +1618,16 @@ mod tests {
         (store, stores, data)
     }
 
-    fn conversation() -> ConversationId {
+    pub(crate) fn conversation() -> ConversationId {
         ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap()
     }
 
-    fn id(value: &str) -> NodeId {
+    pub(crate) fn id(value: &str) -> NodeId {
         NodeId::try_from(value).unwrap()
     }
 
     /// A node in its first round, agent `number` of the conversation.
-    fn record(node: &str, parent: Option<&str>, number: u64) -> NodeRecord {
+    pub(crate) fn record(node: &str, parent: Option<&str>, number: u64) -> NodeRecord {
         NodeRecord {
             id: id(node),
             number,
@@ -1561,7 +1652,7 @@ mod tests {
         }
     }
 
-    fn state() -> CheckpointState {
+    pub(crate) fn state() -> CheckpointState {
         CheckpointState {
             phase: SessionPhase::Idle,
             queue: Vec::new(),
@@ -1574,7 +1665,7 @@ mod tests {
         }
     }
 
-    fn update(blocks: Vec<(usize, Block)>, block_count: usize) -> CheckpointUpdate {
+    pub(crate) fn update(blocks: Vec<(usize, Block)>, block_count: usize) -> CheckpointUpdate {
         CheckpointUpdate {
             state: state(),
             changed_blocks: blocks,
@@ -1582,7 +1673,7 @@ mod tests {
         }
     }
 
-    fn user(block: &str) -> Block {
+    pub(crate) fn user(block: &str) -> Block {
         Block::User(UserBlock {
             id: block.try_into().unwrap(),
             turn_id: TurnId::try_from("t1").unwrap(),
@@ -1594,7 +1685,7 @@ mod tests {
         })
     }
 
-    fn reply(block: &str) -> Block {
+    pub(crate) fn reply(block: &str) -> Block {
         Block::Text(TextBlock {
             id: block.try_into().unwrap(),
             created_at: Timestamp::UNIX_EPOCH,
@@ -1605,7 +1696,7 @@ mod tests {
         })
     }
 
-    fn response(block: &str) -> Block {
+    pub(crate) fn response(block: &str) -> Block {
         Block::Response(ResponseBlock {
             id: block.try_into().unwrap(),
             created_at: Timestamp::UNIX_EPOCH,
@@ -1615,7 +1706,7 @@ mod tests {
     }
 
     /// A completed `shell` call that started the command `command`.
-    fn shell_call(block: &str, command: &str) -> Block {
+    pub(crate) fn shell_call(block: &str, command: &str) -> Block {
         serde_json::from_value(serde_json::json!({
             "type": "tool_call",
             "id": block,

@@ -46,5 +46,33 @@ export function useCopy(source: () => CopySource) {
     }
   }
 
-  return { copy, copied }
+  /**
+   * Puts the text `made` resolves to on the clipboard, written now, inside
+   * the click that asks for it, as an item whose content is the promise:
+   * Safari refuses a write that comes after the click's handler awaited
+   * something, and every browser takes such an item. `copied` turns true
+   * once the text is there. When `made` rejects, nothing is copied and
+   * nothing is told, since the caller tells why it has no text.
+   */
+  async function copyWhenMade(made: Promise<string>): Promise<void> {
+    try {
+      if (!clipboard.isSupported.value)
+        throw new Error(t('clipboardUnavailable'))
+      const blob = made.then((text) => {
+        copiedText.value = text
+        return new Blob([text], { type: 'text/plain' })
+      })
+      // Its rejection is `made`'s, which the caller handles; the write
+      // reports its own failure below.
+      blob.catch(() => undefined)
+      await clipboard.copy([new ClipboardItem({ 'text/plain': blob })])
+    } catch (error) {
+      copiedText.value = null
+      // The text was never made: its maker tells why.
+      if (await made.then(() => true, () => false))
+        reportCopyFailure(error)
+    }
+  }
+
+  return { copy, copyWhenMade, copied }
 }
