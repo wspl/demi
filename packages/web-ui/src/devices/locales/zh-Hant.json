@@ -97,8 +97,8 @@
     "localAccess": "區域網路存取",
     "nextAttempt": "下次嘗試",
     "none": "無",
-    "local": "本機：{list}",
-    "public": "公用：{list}",
+    "local": "區域網路：{list}",
+    "public": "公開：{list}",
     "answered": "已回應 {answered} / {tried}",
     "busy": "裝置忙碌",
     "dropped": "已連線，隨後中斷",
@@ -116,13 +116,13 @@
   "pairing": {
     "title": "新增裝置",
     "setupHint": "在裝置上啟動執行器以取得配對碼。",
-    "doneHint": "裝置已連結到你的帳戶，可以使用了。",
+    "doneHint": "裝置已連結到你的帳號，可以使用了。",
     "codeHint": "輸入執行器顯示的配對碼。",
     "system": "系統",
     "systemLabel": "裝置系統",
     "runInPowerShell": "在裝置上的 PowerShell 中執行，並保持開啟。",
     "runInTerminal": "在裝置上的終端機中執行，並保持開啟。",
-    "copyInstall": "複製安裝命令",
+    "copyInstall": "複製安裝指令",
     "code": "配對碼",
     "paste": "貼上代碼",
     "pair": "配對裝置",
@@ -141,8 +141,8 @@
     "label": "裝置名稱"
   },
   "startHint": {
-    "powershell": "如果執行器已停止，請在裝置上的 PowerShell 中執行此命令。",
-    "terminal": "如果執行器已停止，請在裝置上的終端機中執行此命令。",
-    "copy": "複製啟動命令"
+    "powershell": "如果執行器已停止，請在裝置上的 PowerShell 中執行此指令。",
+    "terminal": "如果執行器已停止，請在裝置上的終端機中執行此指令。",
+    "copy": "複製啟動指令"
   }
 }

@@ -4,19 +4,19 @@
     "signin": "登入與設定",
     "surfaces": "介面",
     "primitives": "基礎元件",
-    "controlLayout": "控制項版面配置",
+    "controlLayout": "控制項版面",
     "writing": "文案",
     "errors": "錯誤",
     "motion": "動態",
     "overlays": "浮層",
-    "dialogs": "對話方塊",
+    "dialogs": "對話框",
     "files": "檔案",
     "session": "工作階段",
     "sidebar": "側邊欄",
     "settings": "設定",
     "markdown": "Markdown",
     "phone": "手機",
-    "roadmap": "藍圖"
+    "roadmap": "路線圖"
   },
   "views": {
     "errors": {
@@ -29,7 +29,7 @@
     "signin": {
       "signin": "登入",
       "setup": "設定",
-      "handoff": "手機接續",
+      "handoff": "手機接力",
       "starting": "啟動中"
     },
     "primitives": {
@@ -38,13 +38,13 @@
       "marks": "標記"
     },
     "overlays": {
-      "menus": "功能表",
-      "dialogs": "對話方塊"
+      "menus": "選單",
+      "dialogs": "對話框"
     },
     "files": {
       "browser": "瀏覽器",
       "tree": "樹狀結構",
-      "dialogs": "對話方塊"
+      "dialogs": "對話框"
     },
     "session": {
       "tabs": "分頁列",
@@ -59,7 +59,7 @@
       "windows": "視窗"
     },
     "dialogs": {
-      "account": "帳戶",
+      "account": "帳號",
       "providers": "供應商",
       "devices": "裝置",
       "workspace": "工作區",

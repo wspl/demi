@@ -1,13 +1,13 @@
 {
   "title": "技能",
-  "description": "代理程式可以遵循的封裝工作流程。",
+  "description": "智慧體可以遵循的封裝工作流程。",
   "keywords": "技能,工作流程,git,SKILL.md",
   "sources": {
     "title": "來源",
     "add": "新增來源…",
     "none": "沒有來源",
     "adding": "正在新增",
-    "updating": "更新中",
+    "updating": "正在更新",
     "failed": "失敗",
     "updateAvailable": "有可用更新",
     "enableAll": "啟用「{name}」中的所有技能",
@@ -47,16 +47,16 @@
     "skills_manage": {
       "action": "管理技能",
       "title": "管理技能",
-      "description": "「管理技能」可讓此對話的代理程式新增、更新和移除技能來源，以及開啟或關閉技能。您的技能可用於每個對話，已開啟的技能會安裝到您的對話使用的每部主機上。"
+      "description": "「管理技能」可讓此對話的智慧體新增、更新和移除技能來源，以及開啟或關閉技能。你的技能可用於每個對話，已開啟的技能會安裝到你的對話使用的每台主機上。"
     }
   },
   "problems": {
     "fetch": {
-      "repository_too_large": "存放庫大於 {limit}。",
-      "no_commit": "存放庫沒有提交。",
-      "too_many_skills": "存放庫中的技能超過 {limit} 個。",
+      "repository_too_large": "儲存庫大於 {limit}。",
+      "no_commit": "儲存庫沒有提交。",
+      "too_many_skills": "儲存庫中的技能超過 {limit} 個。",
       "files_too_large": "技能的檔案大於 {limit}。",
-      "no_skill": "存放庫中沒有技能。"
+      "no_skill": "儲存庫中沒有技能。"
     },
     "skip": {
       "too_large": "SKILL.md 大於 {limit}。",
@@ -67,7 +67,7 @@
     }
   },
   "refusals": {
-    "invalid_origin": "請輸入「擁有者/存放庫」或 Git URL。",
+    "invalid_origin": "請輸入 owner/repository 或 Git URL。",
     "source_exists": "已新增 {origin}。"
   }
 }
