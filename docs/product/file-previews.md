@@ -308,6 +308,14 @@ right after it, `. , ; : ! ? ) ] }`, takes no space before it, as after any
 word: "the main agent;" never reads "the main agent ;". A link without an
 icon is words and is spaced as words.
 
+A link's text may be code, as `` [`runner.md`](docs/execution/runner.md) ``
+or `` [`docs`](https://example.com) `` writes it. A link is one color: its
+code takes the link's color, never code's own, so the text and its underline
+never differ. A link with an icon drops code's look altogether and reads as
+`[runner.md](docs/execution/runner.md)` does, the icon already saying what
+it is; a link without one keeps code's monospace and fill, in the link's
+color, as GitHub shows it.
+
 | Target | A link | An image |
 | --- | --- | --- |
 | Relative path | Resolved against the working directory of the agent that wrote it, where its commands ran when it wrote it, the conversation's for the main agent ([Working directory](../agent/subagents.md#working-directory)); the file opens in the File view, and a `#L42` or `#L42-L50` after the path, or `:42`, opens it at line 42, scrolled there and marked for a moment as a search result is, in the file's source even where it has a preview, as GitHub's line links show the plain text | Resolved the same way and loaded from the Host |
