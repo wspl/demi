@@ -242,6 +242,8 @@ async fn saving_the_composers_message_empties_the_draft_an_edit_exchanges_them_a
         )
         .await;
     assert_eq!(full.refusal(), (StatusCode::CONFLICT, ErrorCode::SavedFull));
+    // The page words the refusal from its code and the limit it names.
+    assert_eq!(full.error().params["limit"], json!(200));
     until_saved(&mut phone_page, FIRST, 200, 205).await;
     backend.close().await;
 }

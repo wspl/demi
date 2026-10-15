@@ -1,5 +1,5 @@
 import type { ShellViewStatus } from '@demicodes/protocol'
-import { formatSpan } from '@demicodes/utils'
+import { formatSpan } from '../ui/dates'
 
 /**
  * Where a command is, as a stored view or the command's live frames say it:

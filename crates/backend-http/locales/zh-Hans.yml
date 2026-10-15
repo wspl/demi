@@ -1,0 +1,17 @@
+_version: 1
+oauth:
+  signed_in:
+    title: "已登录 %{vendor}"
+    text: "已登录 %{vendor}。可以关闭这个标签页了。"
+  unknown_plugin:
+    title: "找不到这次登录"
+    text: "Demi 中没有从这里登录的内容。请关闭这个标签页。"
+  unknown_state:
+    title: "登录已过期"
+    text: "这次登录已过期、已被使用，或由另一个账号发起。请关闭这个标签页，然后在 Demi 中重新登录。"
+  denied:
+    title: "未登录 %{vendor}"
+    text: "%{vendor} 未让你登录（%{error}）。请关闭这个标签页，然后在 Demi 中重试。"
+  exchange_failed:
+    title: "未登录 %{vendor}"
+    text: "%{vendor} 未完成登录：%{failure}。请关闭这个标签页，然后在 Demi 中重试。"

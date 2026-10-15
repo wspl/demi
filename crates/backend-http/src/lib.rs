@@ -3,6 +3,10 @@
 //! web app build. Handlers are thin: they parse, authenticate, and call a
 //! shared service or a shard.
 
+// The text of the pages the backend renders, one catalogue per language
+// (`localization.md` § Text from the backend).
+rust_i18n::i18n!("locales", fallback = "en");
+
 mod accounts;
 mod assets;
 mod attachments;

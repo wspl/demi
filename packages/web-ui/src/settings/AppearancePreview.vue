@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import StreamedMarkdown from '@demicodes/web-ui/ui/StreamedMarkdown.vue'
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
+import { t } from '../locales/text'
 
 /**
  * What the appearance rows change, at real size: two lines of a reply and a code
@@ -17,15 +18,15 @@ defineProps<{
 
 // Short lines, so the sample stays two lines of prose and two of code at any
 // size, and fits the frame's minimum at the largest size.
-const SAMPLE = [
-  'Text at this size,\\',
-  'line after line.',
+const sample = computed(() => [
+  `${t('settings.general.preview.firstLine')}\\`,
+  t('settings.general.preview.secondLine'),
   '',
   '```ts',
   'const on = true',
   'if (on) run()',
   '```',
-].join('\n')
+].join('\n'))
 
 const on = ref(true)
 </script>
@@ -40,13 +41,13 @@ const on = ref(true)
     >
       <div
         class="text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
-      >Preview</div>
+      >{{ t('settings.general.preview.title') }}</div>
     <!-- Prose and code as the transcript renders them. The size is set directly: the
          text-conversation token resolves at the root, so overriding the variable here
          would not reach it. -->
       <div class="-mt-1 min-h-0 flex-1 overflow-hidden">
         <StreamedMarkdown
-          :content="SAMPLE"
+          :content="sample"
           class="text-fg-body"
           :style="{ fontSize: `${fontSize}px`, lineHeight: 'var(--agent-leading)' }"
         />
@@ -66,7 +67,7 @@ const on = ref(true)
       </div>
     <!-- Accent: a primary button and a switch you can flip -->
       <div class="flex items-center justify-between">
-        <Button size="sm" variant="primary">Button</Button>
+        <Button size="sm" variant="primary">{{ t('settings.general.preview.button') }}</Button>
         <Switch v-model="on" />
       </div>
     </div>

@@ -69,16 +69,23 @@ function run(id: string, countdown: Countdown): void {
 
 export function showToast(input: {
   title: HeadlineText
-  message?: SentenceText
+  /** Its words, or how to make them each time they are read, as a failure's that a language chosen meanwhile rewords. */
+  message?: SentenceText | (() => SentenceText)
   tone: ToastTone
   action?: ToastAction
   requestId?: string | null
 }): string {
   const id = createId()
+  let message = input.message
   toasts.push({
     id,
     title: input.title,
-    message: input.message,
+    get message() {
+      return typeof message === 'function' ? message() : message
+    },
+    set message(next) {
+      message = next
+    },
     tone: input.tone,
     action: input.action,
     requestId: input.requestId ?? null,

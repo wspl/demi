@@ -1,3 +1,4 @@
+import { pageLanguage } from '../i18n/text'
 import type { SentenceText } from '../ui/ui-text'
 import type { FileBrowserLink } from './types'
 
@@ -23,10 +24,13 @@ export function linkDescription(link: FileBrowserLink): SentenceText {
   }
 }
 
-/** `1.2 MB`, `840 KB`, `12 B`. */
+/**
+ * `1.2 MB`, `840 KB`, `12 B`: the figure as the page's language writes it,
+ * the unit as English writes it in every language.
+ */
 export function formatBytes(size: number): string {
   if (size < 1024)
-    return `${size} B`
+    return `${new Intl.NumberFormat(pageLanguage()).format(size)} B`
   const units = ['KB', 'MB', 'GB', 'TB']
   let value = size / 1024
   let unit = 0
@@ -34,7 +38,9 @@ export function formatBytes(size: number): string {
     value /= 1024
     unit += 1
   }
-  return `${value < 10 ? value.toFixed(1) : Math.round(value)} ${units[unit]}`
+  const digits = value < 10 ? 1 : 0
+  const figure = new Intl.NumberFormat(pageLanguage(), { minimumFractionDigits: digits, maximumFractionDigits: digits })
+  return `${figure.format(value)} ${units[unit]}`
 }
 
 /**

@@ -4,7 +4,7 @@
 
 use std::collections::BTreeMap;
 
-use demi_command_protocol::{ColorScheme, CommandLocale};
+use demi_command_protocol::{COMMAND_LOCALE_LANGUAGES, ColorScheme, CommandLocale};
 use demi_shared_types::{Nullable, is_context_limit};
 use garde::Validate;
 use schemars::JsonSchema;
@@ -224,6 +224,110 @@ pub enum SendWhileRunning {
     Queue,
 }
 
+/// A language Demi speaks (`localization.md`), by its BCP 47 tag: the
+/// page's text and the backend's are written in each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+pub enum Language {
+    #[serde(rename = "en")]
+    English,
+    #[serde(rename = "zh-Hans")]
+    SimplifiedChinese,
+    #[serde(rename = "zh-Hant")]
+    TraditionalChinese,
+    #[serde(rename = "ja")]
+    Japanese,
+    #[serde(rename = "ko")]
+    Korean,
+}
+
+impl Language {
+    /// Its BCP 47 tag, as the catalogues are named: `zh-Hans`.
+    pub fn tag(self) -> &'static str {
+        match self {
+            Self::English => "en",
+            Self::SimplifiedChinese => "zh-Hans",
+            Self::TraditionalChinese => "zh-Hant",
+            Self::Japanese => "ja",
+            Self::Korean => "ko",
+        }
+    }
+}
+
+impl std::fmt::Display for Language {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.tag())
+    }
+}
+
+/// The time zone and languages the user's browser last reported, and the
+/// language its page resolved for *System* (`web-api.md` § User
+/// preferences). A command receives the browser's facts alone, as a
+/// [`CommandLocale`], whose contract with the runners stays as it is: the
+/// page's language is the page's and the backend's mail's, not a command's.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserLocale {
+    #[garde(length(chars, min = 1, max = 64))]
+    pub time_zone: String,
+    #[garde(
+        length(min = 1, max = COMMAND_LOCALE_LANGUAGES),
+        inner(length(chars, min = 1, max = 64))
+    )]
+    pub languages: Vec<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "Language")]
+    #[garde(skip)]
+    pub language: Option<Language>,
+}
+
+impl BrowserLocale {
+    /// The browser's facts a command receives.
+    pub fn command_locale(self) -> CommandLocale {
+        CommandLocale {
+            time_zone: self.time_zone,
+            languages: self.languages,
+        }
+    }
+}
+
+/// The language the user chose in Settings › General: one Demi speaks, or
+/// the system's, which follows the browser's languages. Absent means
+/// `system`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+pub enum LanguageChoice {
+    #[serde(rename = "system")]
+    System,
+    #[serde(rename = "en")]
+    English,
+    #[serde(rename = "zh-Hans")]
+    SimplifiedChinese,
+    #[serde(rename = "zh-Hant")]
+    TraditionalChinese,
+    #[serde(rename = "ja")]
+    Japanese,
+    #[serde(rename = "ko")]
+    Korean,
+}
+
+impl LanguageChoice {
+    /// The language the choice speaks: for `system`, the one the user's
+    /// page resolved and reported, `page`, or English before any page has.
+    pub fn resolve(self, page: Option<Language>) -> Language {
+        match self {
+            Self::System => page.unwrap_or(Language::English),
+            Self::English => Language::English,
+            Self::SimplifiedChinese => Language::SimplifiedChinese,
+            Self::TraditionalChinese => Language::TraditionalChinese,
+            Self::Japanese => Language::Japanese,
+            Self::Korean => Language::Korean,
+        }
+    }
+}
+
 /// A user's saved preferences.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -251,6 +355,16 @@ pub struct Preferences {
     #[schemars(with = "ProjectHostChoice")]
     #[garde(dive)]
     pub last_project_host: Option<ProjectHostChoice>,
+    /// The language of the user's pages and of the mail the backend sends
+    /// them (`localization.md` § Choosing the language).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "LanguageChoice")]
+    #[garde(skip)]
+    pub language: Option<LanguageChoice>,
     /// The time zone and languages the user's browser last reported, which
     /// commands receive in their command context: a zone the backend knows,
     /// in its IANA spelling, and each language once as its canonical tag.
@@ -259,9 +373,9 @@ pub struct Preferences {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    #[schemars(with = "CommandLocale")]
+    #[schemars(with = "BrowserLocale")]
     #[garde(dive)]
-    pub locale: Option<CommandLocale>,
+    pub locale: Option<BrowserLocale>,
     /// The color scheme the user's page last reported showing, which the
     /// conversation browser starts with.
     #[serde(
@@ -427,6 +541,16 @@ pub struct PreferencesPatch {
     #[schemars(with = "ProjectHostChoice")]
     #[garde(dive)]
     pub last_project_host: Option<ProjectHostChoice>,
+    /// The language of the user's pages and of the mail the backend sends
+    /// them (`localization.md` § Choosing the language).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "LanguageChoice")]
+    #[garde(skip)]
+    pub language: Option<LanguageChoice>,
     /// A time zone the backend does not know or a malformed language tag is
     /// refused.
     #[serde(
@@ -434,9 +558,9 @@ pub struct PreferencesPatch {
         skip_serializing_if = "Option::is_none",
         with = "unwrap_or_skip"
     )]
-    #[schemars(with = "CommandLocale")]
+    #[schemars(with = "BrowserLocale")]
     #[garde(dive)]
-    pub locale: Option<CommandLocale>,
+    pub locale: Option<BrowserLocale>,
     /// The color scheme the user's page shows.
     #[serde(
         default,
@@ -531,9 +655,9 @@ mod tests {
             serde_json::json!(["string", "null"])
         );
         assert_eq!(
-            definitions["CommandLocale"]["properties"]["languages"]["maxItems"],
+            definitions["BrowserLocale"]["properties"]["languages"]["maxItems"],
             16
         );
-        assert_eq!(definitions["CommandLocale"]["additionalProperties"], false);
+        assert_eq!(definitions["BrowserLocale"]["additionalProperties"], false);
     }
 }

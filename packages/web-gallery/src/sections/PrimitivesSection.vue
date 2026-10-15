@@ -17,7 +17,7 @@ import SwatchPicker from '@demicodes/web-ui/ui/SwatchPicker.vue'
 import ResizeHandle from '@demicodes/web-ui/ui/ResizeHandle.vue'
 import ChoiceCards, { type ChoiceCardOption } from '@demicodes/web-ui/ui/ChoiceCards.vue'
 import { Cloud, Monitor } from '@lucide/vue'
-import { PRODUCT_ACCENTS } from '@demicodes/web-ui/theme/productAppearance'
+import { productAccentOptions } from '@demicodes/web-ui/theme/productAppearance'
 import TokenInput from '@demicodes/web-ui/ui/TokenInput.vue'
 import HighlightText from '@demicodes/web-ui/ui/HighlightText.vue'
 import ThemeToggle from '@demicodes/web-ui/ui/ThemeToggle.vue'
@@ -668,7 +668,7 @@ function pulseCompact(which: 'idle' | 'warn' | 'danger' | 'pinned'): void {
       >
         <div class="specimen-row specimen-row-wide">
           <GallerySpecimen variant="accents">
-            <SwatchPicker v-model="swatch" :options="PRODUCT_ACCENTS" />
+            <SwatchPicker v-model="swatch" :options="productAccentOptions()" />
           </GallerySpecimen>
         </div>
       </GallerySection>

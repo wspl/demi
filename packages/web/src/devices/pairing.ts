@@ -4,6 +4,9 @@ import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import { deviceAnswerSchema, type Claim, type InstallCommands } from '../api/generated/web-api'
 import { useProduct } from '../state/product'
 
+/** The refusals of a pairing code the dialog words itself. */
+const PAIRING_REFUSALS = ['invalid_code', 'rate_limited'] as const
+
 /** The install commands the product state carries; null until it has loaded. */
 export function useInstallCommands(): ComputedRef<InstallCommands | null> {
   const product = useProduct()
@@ -27,14 +30,10 @@ export async function claimDevice(
       device: { id: device.id, name: device.name },
     }
   } catch (error) {
-    if (
-      error instanceof ApiError &&
-      (error.code === 'invalid_code' || error.code === 'rate_limited')
-    ) {
-      return {
-        ok: false,
-        code: error.code,
-        requestId: error.requestId,
+    if (error instanceof ApiError) {
+      const code = PAIRING_REFUSALS.find((refusal) => refusal === error.code)
+      if (code !== undefined) {
+        return { ok: false, code, requestId: error.requestId }
       }
     }
     throw error
