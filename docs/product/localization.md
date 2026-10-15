@@ -7,6 +7,14 @@ This page says what is translated, where each text lives, how text that
 comes from the backend is worded, and how the language is chosen. How each
 language is written, its glossary included, is the gallery's Writing page.
 
+Each language says what established software says in it, never a literal
+rendering of the English: a term, a button, a menu item or an error takes
+the wording, the form and the tone that VS Code's translation in that
+language uses for the same thing, then macOS's own, then the vendor's
+style guide for the language (Microsoft's Style Guides and Terminology,
+Apple's). Where they differ, VS Code's wins, since Demi's users read it
+every day; the glossary records each choice.
+
 ## What is translated
 
 Every text Demi itself shows a person: the web app, every plugin's pages,
