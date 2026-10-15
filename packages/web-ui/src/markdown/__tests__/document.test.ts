@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { DOCUMENT_RENDER_BYTES, frontMatterAsCode, imageTarget, linkTarget, renderable, type DocumentPlace } from '../document'
+import { DOCUMENT_RENDER_BYTES, frontMatterAsCode, imageTarget, linkTarget, mediaForTheme, renderable, type DocumentPlace } from '../document'
 
 // Where a Markdown file's links and images lead (`file-previews.md`
 // § Markdown). The rendering itself runs in a web browser and is checked there.
@@ -28,6 +28,21 @@ test('an image loads from the web or from the Host, and from nowhere else', () =
   expect(imageTarget('https://img.shields.io/badge.svg', place)).toEqual({ url: 'https://img.shields.io/badge.svg' })
   for (const dropped of ['data:image/png;base64,AAAA', 'javascript:x', '#top'])
     expect(imageTarget(dropped, place)).toBeNull()
+})
+
+test('a source’s color scheme is judged by the theme Demi shows, its other conditions kept', () => {
+  const cases: [string, 'light' | 'dark', string | null][] = [
+    ['(prefers-color-scheme: dark)', 'dark', 'all'],
+    ['(prefers-color-scheme: dark)', 'light', null],
+    ['(PREFERS-COLOR-SCHEME:light)', 'light', 'all'],
+    ['(prefers-color-scheme: dark) and (min-width: 600px)', 'dark', '(min-width: 0) and (min-width: 600px)'],
+    ['(prefers-color-scheme: dark), print', 'light', 'print'],
+    ['not (prefers-color-scheme: dark)', 'light', 'all'],
+    ['not (prefers-color-scheme: dark)', 'dark', null],
+    ['(min-width: 600px)', 'dark', '(min-width: 600px)'],
+  ]
+  for (const [media, theme, expected] of cases)
+    expect({ media, theme, result: mediaForTheme(media, theme) }).toEqual({ media, theme, result: expected })
 })
 
 test('leading front matter becomes a YAML code block, fenced past its own backticks', () => {

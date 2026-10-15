@@ -102,14 +102,26 @@ test('a document’s Host image shows the new version when its file is overwritt
   expect(image?.getAttribute('src')).toBe(`/raw?path=${PATH}&version="v2"`)
 })
 
-test('a document’s Host image has no address until its file is read, and a web image has its own', async () => {
+test('a document’s Host image takes its address once its file is read, and a web image has its own', async () => {
   const { contents } = host()
   const document_ = show(`<p>${LOGIN} <img src="https://example.com/badge.svg" alt="web"></p>`, [PATH], contents)
   const [local, web] = document_.images()
-  expect(local?.hasAttribute('src')).toBe(false)
   expect(web?.getAttribute('src')).toBe('https://example.com/badge.svg')
   await settle()
+  expect(document_.images()).toEqual([local!, web!])
   expect(local?.getAttribute('src')).toBe(`/raw?path=${PATH}&version="v1"`)
+})
+
+test('a document’s Host image whose description never arrives keeps its alt text in the box', async () => {
+  const contents = keptContents({
+    url: (path) => `/raw?path=${path}`,
+    describe: () => new Promise(() => {}),
+  }, { files: new HostFiles(), watch: new WatchChannel(new HostFiles(), new SimulatedWatch().open) })
+  const document_ = show(`<p>${LOGIN}</p>`, [PATH], contents)
+  await settle()
+  expect(document_.images()).toHaveLength(0)
+  const box = document.querySelector('.image-placeholder')
+  expect([box?.getAttribute('role'), box?.textContent]).toEqual(['img', 'The login page'])
 })
 
 test('an image that failed to load tries the new version of its file', async () => {
@@ -125,6 +137,25 @@ test('an image that failed to load tries the new version of its file', async () 
   await settle()
   expect(document_.images()).toEqual([image!])
   expect(image?.getAttribute('src')).toBe(`/raw?path=${PATH}&version="v2"`)
+})
+
+test('a picture’s Host srcset follows its file at its own address, and a candidate whose file is not there drops out', async () => {
+  const { contents, overwrite } = host()
+  const candidates = JSON.stringify([
+    { path: PATH, descriptor: '1x' },
+    { path: '/w/docs/shots/gone.png', descriptor: '2x' },
+    { url: 'https://example.com/login@3x.png', descriptor: '3x' },
+  ])
+  const document_ = show(`<picture><source data-host-srcset='${candidates}'>${LOGIN}</picture>`, [PATH, '/w/docs/shots/gone.png'], contents)
+  const source = () => document.querySelector('source')
+  expect(source()?.hasAttribute('srcset')).toBe(false)
+  await settle()
+  expect(source()?.getAttribute('srcset')).toBe(`/raw?path=${PATH}&version="v1" 1x, https://example.com/login@3x.png 3x`)
+
+  overwrite('"v2"')
+  await settle()
+  expect(source()?.getAttribute('srcset')).toBe(`/raw?path=${PATH}&version="v2" 1x, https://example.com/login@3x.png 3x`)
+  expect(document_.images()[0]?.getAttribute('src')).toBe(`/raw?path=${PATH}&version="v2"`)
 })
 
 test('an image whose file is not there shows its alt text in a box', async () => {
