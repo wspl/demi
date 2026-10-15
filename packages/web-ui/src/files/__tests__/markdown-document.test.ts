@@ -158,6 +158,88 @@ test('a picture’s Host srcset follows its file at its own address, and a candi
   expect(document_.images()[0]?.getAttribute('src')).toBe(`/raw?path=${PATH}&version="v2"`)
 })
 
+test('a README’s dark logo is chosen before its light fallback gets an address, so only the dark one is fetched', async () => {
+  // The rendering in a dark theme: the dark `<source>` stays, and its
+  // `<img>` falls back to the light logo. The light file's description
+  // arrives first; had the image taken its address then, the web browser
+  // would have fetched the light logo before the source could be chosen.
+  const light = '/w/brand/lockup-light.svg'
+  const dark = '/w/brand/lockup-dark.svg'
+  const darkDescribed = Promise.withResolvers<void>()
+  const kept = new HostFiles()
+  const watched = new SimulatedWatch()
+  const contents = keptContents({
+    url: (path, options = {}) => `/raw?path=${path}&version=${options.version}`,
+    async describe(path) {
+      if (path === dark)
+        await darkDescribed.promise
+      return { value: { size: 14745, modifiedAt: null, version: '"v1"' }, readAt: watched.readAt() }
+    },
+  }, { files: kept, watch: new WatchChannel(kept, watched.open) })
+  const sources = JSON.stringify([{ path: dark, descriptor: '' }])
+  const document_ = show(
+    `<p><picture><source media="all" data-host-srcset='${sources}'><img data-host-file="${light}" alt="Demi"></picture></p>`,
+    [light, dark],
+    contents,
+  )
+  await settle()
+  expect(document_.images()).toHaveLength(0)
+  expect(document_.text()).toBe('Demi')
+
+  darkDescribed.resolve()
+  await settle()
+  const [image] = document_.images()
+  expect(document.querySelector('source')?.getAttribute('srcset')).toBe(`/raw?path=${dark}&version="v1"`)
+  expect(image?.getAttribute('src')).toBe(`/raw?path=${light}&version="v1"`)
+  expect(image?.parentElement?.localName).toBe('picture')
+})
+
+test('a picture whose source is read again shows its image once the source is read', async () => {
+  // The dark source's file cannot be read at first, so the picture shows
+  // its light fallback; the Host then reports the file changed, the image
+  // waits while it is read again, and shows once it is, at the same
+  // fallback address it had, which it never failed to load.
+  const light = '/w/brand/lockup-light.svg'
+  const dark = '/w/brand/lockup-dark.svg'
+  let darkReadable = false
+  let darkRead = Promise.withResolvers<void>()
+  const kept = new HostFiles()
+  const watched = new SimulatedWatch()
+  const contents = keptContents({
+    url: (path, options = {}) => `/raw?path=${path}&version=${options.version}`,
+    async describe(path) {
+      if (path === dark) {
+        await darkRead.promise
+        if (!darkReadable)
+          throw new Error('The Host cannot be read')
+      }
+      return { value: { size: 14745, modifiedAt: null, version: '"v1"' }, readAt: watched.readAt() }
+    },
+  }, { files: kept, watch: new WatchChannel(kept, watched.open) })
+  const sources = JSON.stringify([{ path: dark, descriptor: '' }])
+  const document_ = show(
+    `<p><picture><source media="all" data-host-srcset='${sources}'><img data-host-file="${light}" alt="Demi"></picture></p>`,
+    [light, dark],
+    contents,
+  )
+  darkRead.resolve()
+  await settle()
+  const [image] = document_.images()
+  expect(image?.getAttribute('src')).toBe(`/raw?path=${light}&version="v1"`)
+
+  darkReadable = true
+  darkRead = Promise.withResolvers()
+  watched.change(dark)
+  await settle()
+  expect(document_.text()).toBe('Demi')
+  expect(document_.images()).toHaveLength(0)
+
+  darkRead.resolve()
+  await settle()
+  expect(document_.images()).toEqual([image!])
+  expect(document.querySelector('source')?.getAttribute('srcset')).toBe(`/raw?path=${dark}&version="v1"`)
+})
+
 test('an image whose file is not there shows its alt text in a box', async () => {
   const { contents } = host()
   const document_ = show('<p><img data-host-file="/w/docs/shots/gone.png" alt="The gone page"></p>', ['/w/docs/shots/gone.png'], contents)
