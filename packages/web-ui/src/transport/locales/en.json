@@ -3,5 +3,6 @@
     "offline": "You’re offline",
     "restarting": "Demi is restarting",
     "reconnecting": "Reconnecting to Demi"
-  }
+  },
+  "socketReplaced": "Connection Replaced"
 }

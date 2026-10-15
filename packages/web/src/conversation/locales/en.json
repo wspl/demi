@@ -29,7 +29,9 @@
     "connectionLost": "Connection Lost",
     "connectionLostMessage": "Demi may not have received your request. Check the conversation once it reconnects.",
     "requestNotAccepted": "The conversation didn’t accept the request.",
-    "fieldsNotUpdated": "Some fields weren’t updated."
+    "fieldsNotUpdated": "Some fields weren’t updated.",
+    "readPermissions": "Could Not Read Permissions",
+    "readFileWatch": "Could Not Read a Message of the File Watch"
   },
   "drafts": {
     "storeFailed": "This browser couldn’t store your drafts.",

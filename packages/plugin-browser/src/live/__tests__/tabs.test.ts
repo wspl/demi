@@ -3,6 +3,7 @@ import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveModuleMessage, type Live
 import { PluginCallError, type ConversationPlugin, type UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { until } from '@vueuse/core'
 import { waitFor } from '@demicodes/utils'
+import { createPageI18n } from '@demicodes/web-ui/i18n/text'
 import { computed, effectScope, nextTick, ref, shallowRef } from 'vue'
 import {
   noBrowser,
@@ -798,4 +799,18 @@ test('a call still waiting for the backend when the panel session ends is droppe
   expect(waiting.map((signal) => signal.aborted)).toEqual([false])
   session.stop()
   await expect(reload).rejects.toMatchObject({ name: 'AbortError' })
+})
+
+// A failure keeps what it failed for and is worded as it is read, so a
+// language chosen while it shows rewords it.
+test('a tabs error words its failure in the language the page speaks when it is read', () => {
+  const refused = new BrowserTabsError({ status: '500 Internal Server Error' })
+  const offline = BrowserTabsError.of('device_offline')
+  try {
+    expect([refused.message, offline.message]).toEqual(['The server couldn’t do that (500 Internal Server Error).', 'The device is offline.'])
+    createPageI18n('ja')
+    expect([refused.message, offline.message]).toEqual(['サーバーはそれを実行できませんでした (500 Internal Server Error)。', 'デバイスはオフラインです。'])
+  } finally {
+    createPageI18n('en')
+  }
 })

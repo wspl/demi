@@ -6,6 +6,7 @@ import { errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
 import { Slot, type SlotAnswer } from '@demicodes/web-ui/infra/slot'
 import { browserOnline, openSocket, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { connectionProblem } from '@demicodes/web-ui/transport/connection'
+import { t } from './locales/text'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse, waitForBackendWith } from '../api/client'
 import {
   modelCatalogSchema,
@@ -390,7 +391,7 @@ export const useProduct = defineStore('product', () => {
       }
       // A message outside the contract changes nothing; a new connection
       // starts again from a snapshot. The console says what did not read.
-      reportError('Could not read a message of the synchronization channel.', schemaRefusal(parsed.error))
+      reportError(t('failures.readSync'), schemaRefusal(parsed.error))
       replace()
     }
     channel.onclose = (close) => {

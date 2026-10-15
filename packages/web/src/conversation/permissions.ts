@@ -125,7 +125,7 @@ export const usePermissions = defineStore('permissions', () => {
     try {
       take(state, await readPermissions(conversationId))
     } catch (error) {
-      reportError('Could Not Read Permissions', error)
+      reportError(t('failures.readPermissions'), error)
     } finally {
       reading.delete(conversationId)
     }

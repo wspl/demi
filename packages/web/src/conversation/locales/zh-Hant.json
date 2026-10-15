@@ -29,7 +29,9 @@
     "connectionLost": "連線已中斷",
     "connectionLostMessage": "Demi 可能沒有收到您的要求。重新連線後請檢查對話。",
     "requestNotAccepted": "對話未接受該要求。",
-    "fieldsNotUpdated": "部分欄位未更新。"
+    "fieldsNotUpdated": "部分欄位未更新。",
+    "readPermissions": "無法讀取權限",
+    "readFileWatch": "無法讀取檔案監看的訊息"
   },
   "drafts": {
     "storeFailed": "此瀏覽器無法儲存您的草稿。",

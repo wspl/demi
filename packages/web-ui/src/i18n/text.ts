@@ -63,6 +63,16 @@ function merge(scope: string, catalogue: Catalogue<object>): void {
   }
 }
 
+/** Every catalogue defined, in place of what the instance holds: the one way a replaced catalogue loses its old keys. */
+function rebuild(): void {
+  for (const language of LANGUAGES) {
+    instance?.global.setLocaleMessage(language, {})
+  }
+  for (const [scope, catalogue] of catalogues) {
+    merge(scope, catalogue)
+  }
+}
+
 /**
  * The page's one instance, speaking `language`, with every catalogue
  * defined; the app installs it (`app.use`) and names the language on the
@@ -98,13 +108,21 @@ export function setPageLanguage(language: Language): void {
   document.documentElement.lang = language
 }
 
-/** The text of the catalogue `catalogue` under `scope`, which no other package uses. */
+/**
+ * The text of the catalogue `catalogue` under `scope`, which no other package
+ * uses. A module that defines its scope again replaces the earlier
+ * catalogue, as a hot reload of its `text.ts` does; nothing tells such a
+ * module from another that claims the scope, so the scopes' names are the
+ * packages' to keep apart.
+ */
 export function defineText<Schema extends object>(scope: string, catalogue: Catalogue<Schema>): Text<Schema> {
-  if (catalogues.has(scope)) {
-    throw new Error(`two catalogues are defined under ${scope}`)
-  }
+  const replaced = catalogues.has(scope)
   catalogues.set(scope, catalogue)
-  merge(scope, catalogue)
+  if (replaced) {
+    rebuild()
+  } else {
+    merge(scope, catalogue)
+  }
   function t(key: TextKey<Schema>, named: NamedValue = {}, plural?: number): string {
     const { global } = page()
     return plural === undefined ? global.t(`${scope}.${key}`, named) : global.t(`${scope}.${key}`, named, plural)

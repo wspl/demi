@@ -11,6 +11,7 @@
  */
 import { schemaRefusal } from '@demicodes/protocol'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { t } from './locales/text'
 import {
   openSocket,
   waitToReconnect,
@@ -154,7 +155,7 @@ export class DeviceSignaling implements PeerSignaling {
     const parsed = directMessageSchema.safeParse(value)
     if (!parsed.success) {
       // What did not read is for a developer; the socket starts again.
-      reportError('Could not read a message of the direct channel.', schemaRefusal(parsed.error))
+      reportError(t('failures.readChannel'), schemaRefusal(parsed.error))
       socket.close()
       return
     }
