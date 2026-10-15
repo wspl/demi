@@ -1053,8 +1053,10 @@ async fn a_status_wait_that_reaches_no_one_leaves_the_end_report(stopped: bool) 
     let child = named_node(&store, &spawned);
     wait_for_execution(&server, "waiting").await;
 
-    // The look waits for the tests' end; a stopped call is driven on, as
-    // the relay awaits a cancelled call's handler to its end.
+    // The look waits for the tests' end. A stopped call is driven on, as
+    // the relay awaits a cancelled call's handler to its end, and its pipe
+    // is left readable, so that only its cancellation keeps it from
+    // showing the end; the other call's stdout broke.
     let reads = store.hold_command_ends();
     let cancel = CancellationToken::new();
     let mut look = Box::pin(shell_call(
@@ -1063,7 +1065,7 @@ async fn a_status_wait_that_reaches_no_one_leaves_the_end_report(stopped: bool) 
         "status",
         json!({ "id": ["1"], "wait": "10m" }),
         cancel.clone(),
-        !stopped,
+        stopped,
     ));
     assert!(futures_util::poll!(&mut look).is_pending());
     if stopped {
@@ -1090,6 +1092,11 @@ async fn a_status_wait_that_reaches_no_one_leaves_the_end_report(stopped: bool) 
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_stopped_status_wait_leaves_the_end_report() {
     a_status_wait_that_reaches_no_one_leaves_the_end_report(true).await;
+}
+
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_status_whose_stdout_broke_leaves_the_end_report() {
+    a_status_wait_that_reaches_no_one_leaves_the_end_report(false).await;
 }
 
 // The backend restarted while an aborted child's command, and its aborted
