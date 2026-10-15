@@ -1631,6 +1631,61 @@ export function runningRunBlocks(): Block[] {
   ]
 }
 
+/** The stages a run steps through (`steppedRunBlocks`), the last being the answer. */
+export const STEPPED_RUN_STAGES = [
+  'one step',
+  'two steps',
+  'the step ended, the model is waited for',
+  'the next step',
+  'the answer',
+] as const
+
+/** The steps of the stepped run in the order they come: its call ids, scripts and descriptions. */
+const STEPPED_RUN_CALLS = [
+  { id: 'stepped-run-ls', script: 'ls tests/', description: 'List the tests', output: 'auth.test.ts\nsession.test.ts\n', exitCode: 0 },
+  { id: 'stepped-run-test', script: 'bun test auth', description: 'Run the auth tests', output: '1 fail 3 pass\n', exitCode: 1 },
+  { id: 'stepped-run-chmod', script: 'chmod +x scripts/run.sh', description: 'Make the script executable', output: '', exitCode: 0 },
+]
+
+/** The call that runs at `stage` of the stepped run: the first, second and third call at stages 0, 1 and 3; none while the model is waited for, or after the answer. */
+export function steppedRunCall(stage: number): (typeof STEPPED_RUN_CALLS)[number] | null {
+  const running = [0, 1, null, 2, null][stage]
+  return running === null || running === undefined ? null : STEPPED_RUN_CALLS[running]!
+}
+
+/**
+ * A running turn's run at `stage` of `STEPPED_RUN_STAGES` (`runtime.md`
+ * § Work groups), as the transcript shows it while the run goes: one step;
+ * a second that joins, the first moving to the line above; the second ended
+ * wrong while the model is waited for, its face staying; a third; and the
+ * answer, which ends the run. Its newest running call is `steppedRunCall`'s.
+ */
+export function steppedRunBlocks(stage: number): Block[] {
+  const called = [1, 2, 2, 3, 3][stage]!
+  const calls = STEPPED_RUN_CALLS.slice(0, called).map((call, index) => {
+    // The newest call runs at the stage that names it; an earlier one, and one the model is waited for, has ended.
+    const running = steppedRunCall(stage)?.id === call.id
+    return toolCall({
+      id: call.id,
+      createdAt: iso(60_000 - index * 15_000),
+      toolName: 'shell',
+      status: running ? 'executing' : 'completed',
+      input: JSON.stringify({ script: call.script, description: call.description }),
+      view: running ? null : shellView({ commandId: `8${index}`, runningMs: 1_800, exitCode: call.exitCode, chunks: [{ stream: 'stdout', text: call.output }] }),
+    })
+  })
+  const blocks: Block[] = [
+    {
+      type: 'user', id: 'stepped-run-ask', turnId: 'stepped-run-turn', createdAt: iso(70_000), model: demoModel,
+      content: [{ type: 'text', text: 'Fix the failing auth tests.' }], preamble: null,
+    },
+    ...inRun(...calls),
+  ]
+  if (stage === 4)
+    blocks.push({ type: 'text', id: 'stepped-run-answer', createdAt: iso(1_000), model: demoModel, text: 'The auth tests pass now: the run script was not executable.' })
+  return blocks
+}
+
 /** The call whose command runs on after its turn ended (`leftRunningBlocks`). */
 export const LEFT_RUNNING_CALL = 'left-running-suite'
 

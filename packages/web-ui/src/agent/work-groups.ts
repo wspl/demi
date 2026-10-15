@@ -151,7 +151,10 @@ type PendingStep = Extract<WorkStep, { type: 'pending_call' }>
  * it runs, it stands as the stack of what runs; folded while it runs, it is
  * its newest step, and wears what that step's own row wears after its
  * title: a `shell` call's tag, the time its command has run or how it went
- * wrong (§ Rendering boundary).
+ * wrong (§ Rendering boundary). Over that face a second line, `earlier`,
+ * says what the steps before the newest did, as an ended run's row reads
+ * them (`workSummary`); it is empty while they say nothing, as thinking
+ * alone, and then the row is one line.
  */
 export type RunFace =
   | { kind: 'call'; call: CallBlockStep }
@@ -160,7 +163,7 @@ export type RunFace =
   | { kind: 'thinking'; thinking: ThinkingStep }
   | { kind: 'done'; running: CallBlockStep[] }
   | { kind: 'stack' }
-  | { kind: 'step'; step: WorkStep; command: CallBlockStep | null }
+  | { kind: 'step'; step: WorkStep; command: CallBlockStep | null; earlier: string }
 
 /** The face of `group`'s row, `open` or folded by the reader. */
 export function runFace(group: WorkGroupBlock, open: boolean): RunFace {
@@ -183,7 +186,7 @@ export function runFace(group: WorkGroupBlock, open: boolean): RunFace {
     return { kind: 'stack' }
   const step = group.steps.at(-1)!
   const shell = step.type === 'tool_call' && toolRenderKind(step.toolName) === 'shell'
-  return { kind: 'step', step, command: shell ? step : null }
+  return { kind: 'step', step, command: shell ? step : null, earlier: workSummary(group.steps.slice(0, -1)) }
 }
 
 /** The name of the row a run starting with `first` shows as; a step of an ended run without a call, shown alone, takes its own. */
