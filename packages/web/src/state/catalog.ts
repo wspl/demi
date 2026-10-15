@@ -200,7 +200,7 @@ export function providerView(
           return [
             {
               id: window.id,
-              label: window.label,
+              name: { kind: window.kind, periodSeconds: window.periodSeconds ?? null, scope: window.scope },
               used: window.usedPercent,
               max: 100,
               resetsAt: window.resetsAt,

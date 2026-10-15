@@ -3,8 +3,8 @@
     "accountSwitch": {
       "usage": "{from} 已达到用量限额，改用 {to} 继续。",
       "usageReset": "{from} 已达到用量限额，{reset}，改用 {to} 继续。",
-      "window": "{from} 已达到 {window} 限制，改用 {to} 继续。",
-      "windowReset": "{from} 已达到 {window} 限制，{reset}，改用 {to} 继续。"
+      "window": "{from} 已达到{window}，改用 {to} 继续。",
+      "windowReset": "{from} 已达到{window}，{reset}，改用 {to} 继续。"
     },
     "notice": {
       "titled": "{notice}："
@@ -275,7 +275,6 @@
     "windowUsed": "上下文窗口，已使用 {percent}",
     "tip": "上下文 {figure}",
     "compacting": "正在压缩上下文…",
-    "unavailable": "上下文用量暂不可用",
     "compact": "压缩",
     "untilCompaction": "距离压缩还有 {tokens}",
     "afterTurn": "轮次结束后可用",

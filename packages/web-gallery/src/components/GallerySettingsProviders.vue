@@ -27,6 +27,7 @@ import { slow } from '../fixtures/slow'
 import { operations } from '@demicodes/web-ui/ui/operations'
 import { providerOperation } from '@demicodes/web-ui/settings/provider-operations'
 import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
+import { HOUR_SECONDS, WEEK_SECONDS, windowNamed } from '../fixtures/usage-limits'
 
 /**
  * The shared providers page over the mock state. Everything the page emits is
@@ -455,14 +456,14 @@ function closeLogin() {
       quota: [
         {
           id: 'hour',
-          label: '5-hour',
+          name: windowNamed('limit', 5 * HOUR_SECONDS),
           used: 4,
           max: 100,
           resetsAt: ahead(298 * MINUTE),
         },
         {
           id: 'week',
-          label: 'Weekly',
+          name: windowNamed('limit', WEEK_SECONDS),
           used: 4,
           max: 100,
           resetsAt: ahead(3 * DAY + 4 * HOUR),

@@ -16,6 +16,7 @@ import type {
 import type { SkillsState, SourceState } from '@demicodes/plugin-skills'
 import type { WebState } from '@demicodes/plugin-web'
 import { commitOf } from './plugins'
+import { DAY_SECONDS, HOUR_SECONDS, WEEK_SECONDS, windowNamed } from './usage-limits'
 import { createCredentialState } from './credentials'
 import { createUsersState } from './users'
 import type { SettingsPasskey, SettingsSession } from '@demicodes/web-ui/settings/types'
@@ -330,9 +331,9 @@ export function mockProviders(): MockProvider[] {
           // accounts' resets show every wording a reset takes, as the clock counts them down:
           // in hours and minutes within a day, the weekday within 6 days, the day after that.
           quota: [
-            { id: 'five_hour', label: '5h session', used: 62, max: 100, resetsAt: ahead(3 * HOUR + 42 * MINUTE + 30 * SECOND) },
-            { id: 'seven_day', label: '7d all models', used: 31, max: 100, resetsAt: ahead(3 * DAY + 4 * HOUR) },
-            { id: 'limit:weekly_scoped:Fable', label: '7d Fable', used: 74, max: 100, resetsAt: ahead(12 * DAY) },
+            { id: 'five_hour', name: windowNamed('limit', 5 * HOUR_SECONDS), used: 62, max: 100, resetsAt: ahead(3 * HOUR + 42 * MINUTE + 30 * SECOND) },
+            { id: 'seven_day', name: windowNamed('limit', WEEK_SECONDS), used: 31, max: 100, resetsAt: ahead(3 * DAY + 4 * HOUR) },
+            { id: 'limit:weekly_scoped:Fable', name: windowNamed('limit', WEEK_SECONDS, 'Fable'), used: 74, max: 100, resetsAt: ahead(12 * DAY) },
           ],
         },
         {
@@ -342,8 +343,8 @@ export function mockProviders(): MockProvider[] {
           active: false,
           // The full window's reset has passed and the next snapshot has not come yet.
           quota: [
-            { id: 'five_hour', label: '5h session', used: 100, max: 100, resetsAt: ahead(-20 * SECOND) },
-            { id: 'seven_day', label: '7d all models', used: 88, max: 100, resetsAt: ahead(5 * DAY) },
+            { id: 'five_hour', name: windowNamed('limit', 5 * HOUR_SECONDS), used: 100, max: 100, resetsAt: ahead(-20 * SECOND) },
+            { id: 'seven_day', name: windowNamed('limit', WEEK_SECONDS), used: 88, max: 100, resetsAt: ahead(5 * DAY) },
           ]
         },
         // The vendor names no plan, so the row shows none.
@@ -352,16 +353,18 @@ export function mockProviders(): MockProvider[] {
           label: 'alex@family.example',
           plan: '',
           active: false,
-          // A vendor names its windows as it likes; the label column fits the longest. Its
+          // Every kind of window a vendor reports, each named by its kind and period; the name
+          // column fits the longest. Its
           // usage comes as used ÷ limit × 100 in floating point, which reads in whole percent,
           // rounded down, so a window shows full only once it is. The short windows reset within
           // the minute and then read "now"; Daily resets on the hour, so its minutes are left
           // out, and a window whose reset the vendor does not report has no reset line.
           quota: [
-            { id: 'requests', label: 'Requests (short window)', used: 7.000000000000001, max: 100, resetsAt: ahead(40 * SECOND) },
-            { id: 'tokens', label: 'Tokens (short window)', used: 0.4, max: 100, resetsAt: ahead(42 * MINUTE + 30 * SECOND) },
-            { id: 'daily', label: 'Daily', used: 98.6, max: 100, resetsAt: ahead(3 * HOUR + 30 * SECOND) },
-            { id: 'monthly', label: 'Monthly credits', used: 23, max: 100, resetsAt: null },
+            { id: 'requests', name: windowNamed('requests', null), used: 7.000000000000001, max: 100, resetsAt: ahead(40 * SECOND) },
+            { id: 'tokens', name: windowNamed('tokens', null), used: 0.4, max: 100, resetsAt: ahead(42 * MINUTE + 30 * SECOND) },
+            { id: 'daily', name: windowNamed('limit', DAY_SECONDS), used: 98.6, max: 100, resetsAt: ahead(3 * HOUR + 30 * SECOND) },
+            { id: 'monthly', name: windowNamed('credits', 31 * DAY_SECONDS), used: 23, max: 100, resetsAt: null },
+            { id: 'limit:other', name: windowNamed('limit', null), used: 5, max: 100, resetsAt: null },
           ],
         },
         // Long text everywhere: the tags move under the name, which is cut only where the line
@@ -375,16 +378,16 @@ export function mockProviders(): MockProvider[] {
           quota: [
             {
               id: 'week-all',
-              label: 'Weekly (all models, including Opus)',
+              name: windowNamed('limit', WEEK_SECONDS, 'Claude Opus 4.8 with extended thinking'),
               used: 100,
               max: 100,
               resetsAt: ahead(12 * DAY),
             },
-            { id: 'week-sonnet', label: 'Weekly (Sonnet only)', used: 47, max: 100, resetsAt: ahead(6 * DAY + 23 * HOUR) },
+            { id: 'week-sonnet', name: windowNamed('limit', WEEK_SECONDS, 'Sonnet'), used: 47, max: 100, resetsAt: ahead(6 * DAY + 23 * HOUR) },
             // Next year's, which the day names with its year.
             {
               id: 'annual',
-              label: 'Annual credits',
+              name: windowNamed('credits', 365 * DAY_SECONDS),
               used: 12,
               max: 100,
               resetsAt: new Date(new Date().getFullYear() + 1, 0, 3, 9, 0).toISOString(),
@@ -463,8 +466,8 @@ export function mockProviders(): MockProvider[] {
           plan: 'Plus',
           active: true,
           quota: [
-            { id: 'primary', label: '5h limit', used: 18, max: 100, resetsAt: ahead(2 * HOUR + 10 * MINUTE) },
-            { id: 'secondary', label: 'Weekly limit', used: 46, max: 100, resetsAt: ahead(4 * DAY) },
+            { id: 'primary', name: windowNamed('limit', 5 * HOUR_SECONDS), used: 18, max: 100, resetsAt: ahead(2 * HOUR + 10 * MINUTE) },
+            { id: 'secondary', name: windowNamed('limit', WEEK_SECONDS), used: 46, max: 100, resetsAt: ahead(4 * DAY) },
           ],
         },
         { id: 'c2', label: 'alex@work.example', plan: 'Pro', active: false, quota: [] },

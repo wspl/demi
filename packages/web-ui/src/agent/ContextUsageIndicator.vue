@@ -22,6 +22,7 @@ import {
   type ContextCardRow,
   type UsageLimits,
   compactionRefusal,
+  contextCardParts,
   contextCardRows,
   contextFigure,
   contextTip,
@@ -46,7 +47,8 @@ import { instructionRows } from './instructions'
  * open, and the room before compaction with Compact; then the usage limits
  * of the conversation's account, and last the instructions the model holds
  * (`instructions.md` § What the card lists), each of which opens where it
- * is written.
+ * is written. While the usage or the window is unknown the card holds the
+ * usage limits alone, and with no limits either there is no meter.
  */
 const props = defineProps<{
   usage?: ContextUsage | null
@@ -80,8 +82,10 @@ const emit = defineEmits<{
   refreshLimits: [automatic: boolean]
 }>()
 
-const rows = computed<ContextCardRow[]>(() => (props.usage ? contextCardRows(props.usage) : []))
-const instructionList = computed(() => instructionRows(props.instructions ?? []))
+/** Whether the card shows the context's part, the usage limits, or neither, when the meter is not there. */
+const parts = computed(() => contextCardParts(props.usage ?? null, props.limits ?? null, props.isCompacting === true))
+const rows = computed<ContextCardRow[]>(() => (parts.value.context && props.usage ? contextCardRows(props.usage) : []))
+const instructionList = computed(() => (parts.value.context ? instructionRows(props.instructions ?? []) : []))
 const filled = computed(() => (props.usage ? contextFilled(props.usage) : 0))
 /** What the bar and the shares count against: the window, or what fills a context that has none. */
 const whole = computed(() => props.usage?.window ?? filled.value)
@@ -142,7 +146,7 @@ const percent = computed(() => contextPercent(props.usage ?? null))
 const ratio = computed(() => contextRatio(props.usage ?? null) ?? 0)
 const blockedReason = computed(() => props.unavailableReason ?? compactionRefusal(props.usage ?? null, props.sizeRefused))
 /** While compacting the card holds no Compact; it has details while anything else is left to show. */
-const hasDetails = computed(() => !props.isCompacting || rows.value.length > 0 || props.limits != null || instructionList.value.length > 0)
+const hasDetails = computed(() => (parts.value.context && !props.isCompacting) || rows.value.length > 0 || parts.value.limits || instructionList.value.length > 0)
 
 /** The ring's tip is Context and the card header's figure; without a usage or a window the ring has none. */
 const tip = computed(() => contextTip(props.usage ?? null))
@@ -165,7 +169,7 @@ const ringColor = computed(() => {
 </script>
 
 <template>
-  <Tooltip :content="tip" tag="div" class="flex">
+  <Tooltip v-if="parts.context || parts.limits" :content="tip" tag="div" class="flex">
     <Dropdown v-model:open="open" :overlay-store="appOverlayStore" side="top" :offset="8">
       <template #trigger="{ isOpen }">
         <button
@@ -207,7 +211,7 @@ const ringColor = computed(() => {
       </template>
       <template #content="{ close }">
         <div class="overlay-shell rounded-md text-xs text-fg" :style="{ '--elevation': elevation }">
-          <div class="context-card-head">
+          <div v-if="parts.context" class="context-card-head">
             <span v-if="isCompacting" class="text-fg-body">{{ t('context.compacting') }}</span>
             <!-- The header is the list's disclosure, as a Finder disclosure row is. -->
             <button
@@ -223,7 +227,6 @@ const ringColor = computed(() => {
               </span>
               <FoldChevron :open="listOpen" :size="ICON_PX.in20" class="self-center text-fg-subtle" />
             </button>
-            <span v-else class="text-fg-muted">{{ t('context.unavailable') }}</span>
           </div>
           <div v-if="hasDetails">
             <!-- The details scroll when the card would be taller than the room the
@@ -251,7 +254,7 @@ const ringColor = computed(() => {
                 </div>
                 <!-- The last line of the context section: its Compact ends where the
                      figures above it end. -->
-                <div v-if="!isCompacting" class="flex items-center gap-3 px-3 pt-2 pb-2.5">
+                <div v-if="parts.context && !isCompacting" class="flex items-center gap-3 px-3 pt-2 pb-2.5">
                   <span class="min-w-0 flex-1 truncate tabular-nums text-fg-muted">{{ room === null ? '' : t('context.untilCompaction', { tokens: formatTokens(room) }) }}</span>
                   <Button
                     size="sm"
@@ -262,7 +265,7 @@ const ringColor = computed(() => {
                     {{ t('context.compact') }}
                   </Button>
                 </div>
-                <div v-if="limits" class="border-t border-line pb-3">
+                <div v-if="limits" class="pb-3" :class="parts.context ? 'border-t border-line' : 'pt-1'">
                   <SectionRow class="text-[11px] font-medium text-fg-subtle">
                     <span class="shrink-0">{{ t('context.usageLimits') }}</span>
                     <template v-if="limits.accountLabel">

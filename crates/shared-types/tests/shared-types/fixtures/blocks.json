@@ -1881,7 +1881,7 @@
     },
     "from": "alex@example.com",
     "to": "sam@example.com",
-    "window": "5h session",
+    "window": { "kind": "limit", "periodSeconds": 18000, "scope": null },
     "resetsAt": "2026-09-21T21:00:00.000Z"
   }
 ]
