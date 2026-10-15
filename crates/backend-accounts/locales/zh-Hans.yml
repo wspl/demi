@@ -1,0 +1,4 @@
+_version: 1
+verification:
+  subject: "你的 Demi 验证码"
+  body: "在 Demi 中输入 %{code}，即可把账号的邮箱改为 %{email}。验证码 %{minutes} 分钟内有效。\n\n如果你没有要求更改，请忽略这封邮件。"

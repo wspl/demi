@@ -1,0 +1,17 @@
+_version: 1
+oauth:
+  signed_in:
+    title: "已登入 %{vendor}"
+    text: "已登入 %{vendor}。可以關閉這個分頁了。"
+  unknown_plugin:
+    title: "找不到這次登入"
+    text: "Demi 中沒有從這裡登入的項目。請關閉這個分頁。"
+  unknown_state:
+    title: "登入已過期"
+    text: "這次登入已過期、已被使用，或由另一個帳號發起。請關閉這個分頁，然後在 Demi 中重新登入。"
+  denied:
+    title: "未登入 %{vendor}"
+    text: "%{vendor} 未讓你登入（%{error}）。請關閉這個分頁，然後在 Demi 中再試一次。"
+  exchange_failed:
+    title: "未登入 %{vendor}"
+    text: "%{vendor} 未完成登入：%{failure}。請關閉這個分頁，然後在 Demi 中再試一次。"

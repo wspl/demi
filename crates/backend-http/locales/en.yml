@@ -1,0 +1,17 @@
+_version: 1
+oauth:
+  signed_in:
+    title: "Signed in to %{vendor}"
+    text: "Signed in to %{vendor}. You can close this tab."
+  unknown_plugin:
+    title: "Sign-in not found"
+    text: "Nothing in Demi signs in here. Close this tab."
+  unknown_state:
+    title: "Sign-in expired"
+    text: "This sign-in expired, was already used, or was started by another account. Close this tab and sign in again in Demi."
+  denied:
+    title: "Not signed in to %{vendor}"
+    text: "%{vendor} didn't sign you in (%{error}). Close this tab and try again in Demi."
+  exchange_failed:
+    title: "Not signed in to %{vendor}"
+    text: "%{vendor} didn't complete the sign-in: %{failure}. Close this tab and try again in Demi."

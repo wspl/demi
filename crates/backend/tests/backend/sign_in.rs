@@ -98,3 +98,25 @@ async fn the_callback_signs_in_only_the_user_who_started_and_no_secret_reaches_a
     assert_eq!(unknown.status, StatusCode::NOT_FOUND);
     backend.close().await;
 }
+
+// About 0.3 s: one request to a local backend.
+#[tokio::test]
+async fn a_callback_page_speaks_the_first_accepted_language_demi_speaks() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let callback = "/api/plugins/nothing/oauth/callback?state=x&code=y";
+    for (accepted, lang, words) in [
+        ("fr-CH, fr;q=0.9, ko;q=0.8, zh-CN;q=0.7", "ko", "이 탭을 닫으십시오."),
+        ("de, ja;q=0, zh-TW;q=0.5", "zh-Hant", "請關閉這個分頁。"),
+        ("fr", "en", "Close this tab."),
+    ] {
+        let page = backend
+            .get_with(callback, &master, &[("accept-language", accepted)])
+            .await;
+        assert_eq!(page.status, StatusCode::NOT_FOUND);
+        let text = page_text(&page);
+        assert!(text.contains(&format!("<html lang=\"{lang}\">")), "{accepted}: {text}");
+        assert!(text.contains(words), "{accepted}: {text}");
+    }
+    backend.close().await;
+}

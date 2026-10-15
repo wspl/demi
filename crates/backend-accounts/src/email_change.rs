@@ -12,6 +12,7 @@ use demi_backend_database::control::ControlService;
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::auth::{EmailChallengeDto, Password};
 use demi_web_api_protocol::ids::UserId;
+use demi_web_api_protocol::settings::{Language, LanguageChoice};
 use demi_web_api_protocol::text::EmailAddress;
 use futures_util::future::BoxFuture;
 use jiff::SignedDuration;
@@ -28,12 +29,40 @@ pub trait AccountMail: Send + Sync + 'static {
     ) -> BoxFuture<'static, Result<(), MailError>>;
 }
 
-/// A verification code on its way to the address it proves.
+/// A verification code on its way to the address it proves, worded in the
+/// recipient's language (`localization.md` § Text from the backend).
 #[derive(Debug, Clone)]
 pub struct VerificationMail {
     pub email: EmailAddress,
     pub code: String,
     pub expires_at: Timestamp,
+    pub language: Language,
+    pub subject: String,
+    /// The mail's plain text.
+    pub body: String,
+}
+
+impl VerificationMail {
+    fn new(email: EmailAddress, code: String, expires_at: Timestamp, language: Language) -> Self {
+        let locale = language.to_string();
+        let subject = rust_i18n::t!("verification.subject", locale = &locale).into_owned();
+        let body = rust_i18n::t!(
+            "verification.body",
+            locale = &locale,
+            code = &code,
+            email = email.as_str(),
+            minutes = CHALLENGE_POLICY.lifetime.as_mins()
+        )
+        .into_owned();
+        Self {
+            email,
+            code,
+            expires_at,
+            language,
+            subject,
+            body,
+        }
+    }
 }
 
 /// Why a verification mail was not delivered.
@@ -151,11 +180,16 @@ impl EmailChanges {
         else {
             return Ok(StartOutcome::Refused(StartRefusal::CoolingDown));
         };
-        let verification = VerificationMail {
-            email: email.clone(),
-            code,
-            expires_at,
-        };
+        // The recipient's chosen language, or with System the first of the
+        // languages their browser last reported that Demi speaks.
+        let preferences = self.control.preferences(user.clone()).await?;
+        let language = preferences.language.unwrap_or(LanguageChoice::System).resolve(
+            preferences
+                .locale
+                .iter()
+                .flat_map(|locale| locale.languages.iter().map(String::as_str)),
+        );
+        let verification = VerificationMail::new(email.clone(), code, expires_at, language);
         if let Err(error) = mail.send_verification(verification).await {
             tracing::warn!(
                 error = &error as &dyn std::error::Error,

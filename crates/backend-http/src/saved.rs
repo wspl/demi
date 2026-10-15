@@ -132,7 +132,8 @@ fn refused(refusal: SavedRefusal) -> ApiError {
             StatusCode::CONFLICT,
             ErrorCode::SavedFull,
             format!("The conversation keeps {SAVED_MAX} messages saved for later"),
-        ),
+        )
+        .with_param("limit", SAVED_MAX),
         SavedRefusal::IdTaken => ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::IdTaken,
