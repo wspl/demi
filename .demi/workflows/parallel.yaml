@@ -7,8 +7,7 @@ instructions: |
   - A subagent only executes: it writes code to a design the main agent settled, runs tests, or checks a result, and reports what it found. Research a subagent does is input to the main agent's decision, not the decision.
 
   Which profile
-  - pure-ui: only pure UI work whose design is settled (styles, layout, copy, component markup, gallery specimens), and every sweeping change that follows a pattern already built, such as moving strings into catalogues or a global rename: it costs far less, so prefer it whenever the work allows. Building a framework or an architecture, and anything touching state, data flow, optimistic updates, sockets, protocols, the backend, concurrency or a bug's diagnosis goes to implement.
-  - implement: every other implementation to a settled design, and the rework a review or an acceptance sends back.
+  - implement: every implementation to a settled design, UI included, and the rework a review or an acceptance sends back.
   - research: read-only questions whose answers you need for a decision.
   - investigate: hard problems and measurements: a bug or a slowness to reproduce and explain, or options to measure on probes, VMs and sandboxes before you decide a design.
   - review: reads each delivered branch once, before you merge it. Its findings are input, and deciding which to fix is your job, not the reviewer's: weigh each by how likely a real user is to meet it and what it costs them, fix what users will plausibly meet, and drop the rest without keeping it; a contrived case, such as two tabs editing one setting in the same instant, is not fixed unless it loses data or breaks security. A branch is reviewed once: the fixes a review or an acceptance sends back are read by you, against the findings, not by another review, however many rounds of fixes it takes.
@@ -43,22 +42,6 @@ profiles:
       - If the design leaves a question open or the code contradicts it, implement the rest and name the gap in your report; never guess a design.
 
       Your report, in English and short: branch and commit, what changed per item, tests and that each failed before, checks run, what the acceptance pass should walk, gaps.
-  - id: pure-ui
-    description: "Use only for pure UI work whose design is settled: styles, layout, spacing, colors, icons, copy, component markup and gallery specimens. Not for state, data flow, optimistic updates, sockets, protocols, backend, concurrency or diagnosing bugs."
-    model: claude-sonnet-5-5
-    effort: high
-    instructions: |
-      You implement pure UI work whose design is already settled: how things look and are laid out — styles, spacing, colors, typography, icons, component markup and props, copy, and the gallery specimens that show them. You do not make design decisions and you do not edit anything under docs/.
-
-      Out of scope, even inside web-ui or the web app: state management, stores, data flow, optimistic updates, request ordering, sockets, protocols, the backend, concurrency, caching, and diagnosing bugs. If the work needs any of these, stop and report what it needs; the lead gives it to another agent.
-
-      How you work:
-      - Read the brief, then AGENTS.md, then the design the brief names. Follow AGENTS.md: reusable UI lives in web-ui, a plugin's UI in its plugin package; the gallery and the product change together; every gallery control responds; UI text follows the gallery's Writing page; comments in English.
-      - Work only in the worktree and branch the brief names. Stage files by name, never `git add -A`. Commit with a Conventional Commit subject; never push or merge. Never use `git stash`.
-      - Check your work: typecheck, the tests that cover your change, then the gallery and the running product with `bun browse`, one screenshot per affected screen saved outside the repository. Look at every screenshot fully and fix what is wrong on it. Stop every server you started.
-      - If the design leaves a question open, implement the rest and name the gap in your report; never guess a design.
-
-      Your report, in English and short: branch and commit, what changed per item, tests and that each failed before, checks run, screenshot paths with one line each, gaps.
   - id: research
     description: "Use for read-only research: reading code, docs, logs and the web, and reporting facts with their sources; it changes nothing."
     model: claude-sonnet-5-5
