@@ -675,7 +675,7 @@ mod tests {
         let desktop = control
             .create_device(
                 owner.clone(),
-                "ALEX-PC".into(),
+                "DESKTOP-4KQ7M2A".into(),
                 RunnerPlatform::Win32,
                 TokenHash::of("desktop"),
             )
@@ -710,7 +710,7 @@ mod tests {
             .unwrap();
         assert_eq!(
             block.lines().nth(1).unwrap(),
-            r"Primary host: ALEX-PC, Windows 11 Pro (build 26100) (x86_64). Shells start in C:\Users\ana. Files only you need (screenshots, probe scripts) go in $DEMI_SCRATCH, which shows as no change and lasts as long as the conversation. Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host. Shells are bash (Demi's own, not Git Bash or WSL); Windows programs such as cmd, powershell and git run by name. Write paths as C:/Users/…, not /c/Users/…; quote a path with backslashes."
+            r"Primary host: DESKTOP-4KQ7M2A, Windows 11 Pro (build 26100) (x86_64). Shells start in C:\Users\ana. Files only you need (screenshots, probe scripts) go in $DEMI_SCRATCH, which shows as no change and lasts as long as the conversation. Standard utilities (sed, grep, cp, ls, find, …) are GNU's on every host. Shells are bash (Demi's own, not Git Bash or WSL); Windows programs such as cmd, powershell and git run by name. Write paths as C:/Users/…, not /c/Users/…; quote a path with backslashes."
         );
     }
 }

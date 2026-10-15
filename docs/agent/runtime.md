@@ -1767,7 +1767,7 @@ commands*, and a click opens it to every step.
   turn resumes, and the agent runs four more commands: one row, *Ran 5
   commands*. After Continue, the *Stopped* row rolls into *Requesting*, and
   when the first step arrives it joins the run above and the Requesting row
-  gives way to it, a change the user asked for. What ends a run is what the reader reads:
+  gives way to it. What ends a run is what the reader reads:
   the agent's text, never folded, and the user's own words and decisions,
   never folded either: a message, a steer, and the receipts of the user's
   permission decision or move. For example, the agent runs three commands,

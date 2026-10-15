@@ -47,7 +47,7 @@ export function hostRequest(): PermissionRequestView {
     id: 'pr-host',
     categories: [],
     host: { kind: 'device', deviceId: 'device-build-box', name: 'build-box' },
-    command: 'demi host move build-box /srv/shop',
+    command: 'demi host move build-box /srv/website',
     subagent: null,
   }
 }

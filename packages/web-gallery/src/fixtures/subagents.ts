@@ -169,11 +169,11 @@ export const mainAgentMessage: AgentMessage = {
 }
 
 /** Links whose names take more than a line in a narrow column, in the prose and in a table's cell. */
-export const agentLinksWrapMarkdown = `I asked [同名文件能重复粘贴；Agents chip 只在运行时显示；任务说明渲染 Markdown](agent:4) to check the three fixes together, and [Make the fixture server pick a free port before it starts listening](agent:6) to try again.
+export const agentLinksWrapMarkdown = `I asked [同名商品能重复加入购物车；优惠券只在结账时显示；订单备注渲染 Markdown](agent:4) to check the three fixes together, and [Make the fixture server pick a free port before it starts listening](agent:6) to try again.
 
 | Agent | Task |
 | --- | --- |
-| 4 | [同名文件能重复粘贴；Agents chip 只在运行时显示；任务说明渲染 Markdown](agent:4) |
+| 4 | [同名商品能重复加入购物车；优惠券只在结账时显示；订单备注渲染 Markdown](agent:4) |
 | 6 | Retried by [Make the fixture server pick a free port before it starts listening](agent:6) |`
 
 /** A reply that links the agents of `gallerySubagents` by their numbers, and one the conversation does not have. */

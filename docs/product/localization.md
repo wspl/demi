@@ -10,9 +10,7 @@ language is written, its glossary included, is the gallery's Writing page.
 English is decided first, and the other languages follow it: each says
 what the English says, in the words its users would find most natural for
 the thing in front of them, never a literal rendering, and no word chosen
-for another language changes the English. For example, the Workflow menu's
-*No Subagents* is 不使用子智能体, not an English reworded to match a
-Chinese 关闭子智能体. No single source decides a text. Each term and each phrasing is chosen by comparing many
+for another language changes the English. No single source decides a text. Each term and each phrasing is chosen by comparing many
 products that speak the language well and say the same thing: AI apps of
 the same kind (Codex, ChatGPT, Claude, Cursor), the system's own apps
 (macOS and iOS: Mail, Finder, System Settings), and for developer
