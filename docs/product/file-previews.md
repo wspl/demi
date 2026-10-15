@@ -286,7 +286,12 @@ follows its Host images the same way. A `srcset`, of an `<img>` or of a
 target is resolved, and each follows its file under its own versioned
 address, so a README's dark logo, a `<source>` for
 `(prefers-color-scheme: dark)`, shows in a dark theme as on GitHub; a
-candidate whose file is missing drops out of the set. A click on `plot.py` opens it in
+candidate whose file is missing drops out of the set. A `<source>`'s
+`media` that asks `prefers-color-scheme` is judged by the theme Demi shows,
+not the system's, since a user may pick Dark on a light system: the source
+that matches it stays, and the other goes. An image whose address ends in
+`#gh-dark-mode-only` or `#gh-light-mode-only`, GitHub's older way to say the
+same, shows only in that theme. A click on `plot.py` opens it in
 the File view. A link to a Host file shows the file's
 icon before its name, the icon the file tree shows for it, so a file reads as
 a file and not as a page on the web, and a commit link shows the commit
