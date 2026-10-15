@@ -279,3 +279,70 @@ async fn a_page_socket_message_over_the_limit_fails_the_socket() {
     assert_eq!(socket.closed().await, None);
     backend.close().await;
 }
+
+#[tokio::test]
+async fn a_shared_link_answers_its_own_entry_under_a_policy_that_reaches_only_its_share() {
+    // Cost: one backend start on a temporary directory; under a second.
+    let harness = Harness::new().with_web(&[
+        ("index.html", "<html>product page</html>"),
+        ("share.html", "<html>shared page</html>"),
+        ("build.json", r#"{ "build": "b7f3" }"#),
+    ]);
+    let (backend, _master) = harness.start_set_up().await;
+    let host = backend.url.trim_start_matches("http://").to_owned();
+    let shared = async |path: &str| {
+        let response = reqwest::Client::builder()
+            .no_proxy()
+            .build()
+            .unwrap()
+            .get(format!("{}{path}", backend.url))
+            .header("accept", "text/html")
+            .send()
+            .await
+            .unwrap();
+        answer(response).await
+    };
+    let header = |answer: &Answer, name: &str| {
+        answer
+            .headers
+            .get(name)
+            .map(|value| value.to_str().unwrap().to_owned())
+            .unwrap_or_default()
+    };
+
+    // Any token gets the page, which asks the share's routes whether it exists.
+    let page = shared("/s/Qm9iZXhhbXBsZTEyMzQ").await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert!(String::from_utf8_lossy(&page.body).contains("shared page"));
+    let policy = header(&page, "content-security-policy");
+    let routes = format!("{host}/api/shares/Qm9iZXhhbXBsZTEyMzQ {host}/api/shares/Qm9iZXhhbXBsZTEyMzQ/");
+    for directive in [
+        "default-src 'none'".to_owned(),
+        "script-src 'self'".to_owned(),
+        format!("connect-src {routes}"),
+        format!("img-src {routes} blob: data:"),
+        "frame-ancestors 'none'".to_owned(),
+    ] {
+        assert!(
+            policy.split("; ").any(|part| part == directive),
+            "{directive:?} in {policy:?}"
+        );
+    }
+    assert_eq!(header(&page, "referrer-policy"), "no-referrer");
+    assert_eq!(header(&page, "x-robots-tag"), "noindex, nofollow");
+
+    // An address cannot write the policy: what the token holds stays in its path.
+    let forged = shared("/s/x%3B%20connect-src%20*").await;
+    let policy = header(&forged, "content-security-policy");
+    assert!(
+        policy.contains(&format!("connect-src {host}/api/shares/x%3B%20connect%2Dsrc%20%2A ")),
+        "{policy:?}"
+    );
+    assert!(!policy.contains("connect-src *"), "{policy:?}");
+
+    // The product's pages stay the product's entry.
+    let product = shared("/chat/c-1").await;
+    assert!(String::from_utf8_lossy(&product.body).contains("product page"));
+    assert!(product.headers.get("content-security-policy").is_none());
+    backend.close().await;
+}

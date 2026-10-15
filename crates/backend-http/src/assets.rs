@@ -6,16 +6,20 @@
 //! content, never by their modification time, since a new build's files
 //! may be older than the old build's, as after a rollback; the hashed files
 //! under `assets/` never change.
+//!
+//! A share's page at `/s/:token` is the build's `share.html`, an entry of its
+//! own, under the policy and headers of `sharing.md` § Safety.
 
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use axum::Router;
 use axum::body::Body;
-use axum::extract::Request;
+use axum::extract::{Path as UrlPath, Request};
 use axum::handler::HandlerWithoutStateExt as _;
 use axum::http::{Method, StatusCode};
-use axum::http::header::{ACCEPT, CONTENT_TYPE};
+use axum::http::header::{ACCEPT, CONTENT_SECURITY_POLICY, CONTENT_TYPE, HOST, REFERRER_POLICY};
+use axum::http::{HeaderName, HeaderValue};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::get;
@@ -68,6 +72,7 @@ pub(super) fn serve<S: Clone + Send + Sync + 'static>(
 ) -> Router<S> {
     let index = directory.join("index.html");
     let build = directory.join("build.json");
+    let shared = directory.join("share.html");
     let page = {
         let index = index.clone();
         move |request: Request| page(index.clone(), request)
@@ -88,7 +93,74 @@ pub(super) fn serve<S: Clone + Send + Sync + 'static>(
         "/build.json",
         get(move |request: Request| revalidated(build.clone(), "application/json", request)),
     )
+    .route(
+        "/s/{token}",
+        get(move |UrlPath(token): UrlPath<String>, request: Request| {
+            shared_page(shared.clone(), token, request)
+        }),
+    )
     .fallback_service(files)
+}
+
+/// The page of the share `token` names: the build's own entry for it, which
+/// reads whether the share exists from the share's routes, as every page of
+/// a share does, so this answer tells nothing of what exists. It may load
+/// only the build's scripts, styles and fonts, connect only to the share's
+/// routes and show only the images and videos they serve; it sends no
+/// referrer that would carry the link, and is not indexed.
+async fn shared_page(path: PathBuf, token: String, request: Request) -> Response {
+    let host = request
+        .headers()
+        .get(HOST)
+        .and_then(|host| host.to_str().ok())
+        .map(str::to_owned);
+    let mut response = revalidated(path, "text/html", request).await;
+    let headers = response.headers_mut();
+    let policy = shared_page_policy(&token, host.as_deref());
+    headers.insert(
+        CONTENT_SECURITY_POLICY,
+        HeaderValue::from_str(&policy).expect("the policy holds only visible ASCII"),
+    );
+    headers.insert(REFERRER_POLICY, HeaderValue::from_static("no-referrer"));
+    headers.insert(
+        HeaderName::from_static("x-robots-tag"),
+        HeaderValue::from_static("noindex, nofollow"),
+    );
+    response
+}
+
+/// The Content Security Policy of share `token`'s page, reached at `host`.
+/// A source names the share's routes as `<host>/api/shares/<token>` and
+/// what lies under it, without a scheme, so it matches the page's own; a
+/// path is all CSP narrows below an origin, and `'self'` takes none. The
+/// token is percent-encoded, as the page's requests encode it, so nothing
+/// in the address reaches the policy as a separator. A host that is not a
+/// plain name, an address and a port leaves the routes at `'self'`.
+///
+/// Styles may be inline: the transcript's Markdown renders KaTeX and sized
+/// media with `style` attributes, and a style cannot run code.
+fn shared_page_policy(token: &str, host: Option<&str>) -> String {
+    let plain = |host: &&str| {
+        !host.is_empty()
+            && host
+                .bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || b".-:[]".contains(&byte))
+    };
+    let routes = match host.filter(plain) {
+        Some(host) => {
+            let route = format!(
+                "{host}/api/shares/{}",
+                percent_encoding::utf8_percent_encode(token, percent_encoding::NON_ALPHANUMERIC)
+            );
+            format!("{route} {route}/")
+        }
+        None => "'self'".to_owned(),
+    };
+    format!(
+        "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; \
+         img-src {routes} blob: data:; media-src {routes} blob:; connect-src {routes}; \
+         base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+    )
 }
 
 async fn page(index: PathBuf, request: Request) -> Response {
