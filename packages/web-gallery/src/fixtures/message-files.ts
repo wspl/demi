@@ -35,11 +35,14 @@ export function galleryConversationFiles(
 }
 
 /**
- * A reply that names the workspace's files: links, one at a line, and
- * paths written as code, of which the workspace has some and not others.
+ * A reply that names the workspace's files: links, one at a line, links
+ * whose text is code beside plain code, and paths written as code, of which
+ * the workspace has some and not others.
  */
 export const namedFilesMarkdown = `The cookie is renamed in [cookie.ts](src/auth/cookie.ts), and [session.ts](src/auth/session.ts#L5) reads it under the new name. The setup steps the [README](README.md#L42) lists still hold; from the home it is [~/Projects/shop/README.md](~/Projects/shop/README.md). The fix went in as [Fix the cart total when a coupon empties it](commit:${LINKED_COMMIT}).
 
 在中文句子里，字符与图标之间同样留出间距：已经提交了[修正优惠券清空后的购物车合计](commit:${LINKED_COMMIT})，请查看。
+
+A link's text written as code reads as the link's words: the page after the fix is [\`page-full.png\`](assets/page-full.png), the change [\`${LINKED_COMMIT}\`](commit:${LINKED_COMMIT}), the spec [\`RFC 6265\`](https://httpwg.org/specs/rfc6265.html), beside the plain code \`readSessionCookie\`.
 
 Written as code, \`src/auth/cookie.ts\` and \`tests/login/auth.test.ts\` open, and \`README.md:42\` opens at its line; \`src/auth/token.ts\` is not in the workspace and stays code, and a bare name such as \`cookie\` is never asked about.`
