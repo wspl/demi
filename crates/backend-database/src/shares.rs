@@ -16,6 +16,7 @@ use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 use super::StorageError;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
+use super::conversation_attachments::{self, AttachmentNumber, AttachmentRow};
 use super::tree;
 
 /// A share's record.
@@ -240,10 +241,11 @@ pub fn take_conversation(transaction: &Transaction<'_>, token: &ShareToken) -> R
     Ok(())
 }
 
-/// Takes the snapshot of the root's answer that `block` ends under `token`:
-/// the user's message that starts the request and the text that ends the
-/// agent's reply to it. False, and nothing taken, when `block` is not such
-/// a text.
+/// Takes the snapshot of the root's answer `block` under `token`: the
+/// user's message that starts its request and the text. False, and nothing
+/// taken, when `block` is not a complete text of the root's: the page offers
+/// Share only on the text that ends a reply, and which text does is the
+/// page's to judge (`web-api.md` § Sharing).
 pub fn take_answer(
     transaction: &Transaction<'_>,
     token: &ShareToken,
@@ -253,7 +255,7 @@ pub fn take_answer(
     let Some(index) = blocks.iter().position(|held| held.id() == block) else {
         return Ok(false);
     };
-    if !matches!(&blocks[index], Block::Text(text) if text.forkable) || !ends_reply(&blocks[index + 1..]) {
+    if !matches!(&blocks[index], Block::Text(text) if text.forkable) {
         return Ok(false);
     }
     let Some(message) = blocks[..index].iter().rev().find(|held| matches!(held, Block::User(_))) else {
@@ -262,24 +264,6 @@ pub fn take_answer(
     remove(transaction, token)?;
     insert(transaction, token, 0, [message, &blocks[index]])?;
     Ok(true)
-}
-
-/// Whether the blocks after a text leave it the end of the agent's reply
-/// (`product.md` § Following the agent's work): the user's next message or
-/// Stop follows it, or nothing does. Hidden input and a request's usage say
-/// nothing of the reply, and a compaction after it leaves it the end.
-fn ends_reply(after: &[Block]) -> bool {
-    let next = after.iter().find(|block| {
-        !matches!(
-            block,
-            Block::Context(_) | Block::Response(_) | Block::CompactionMarker(_) | Block::CompactionBoundary(_)
-        )
-    });
-    match next {
-        None | Some(Block::User(_)) => true,
-        Some(Block::Abort(abort)) => !abort.is_resumed,
-        Some(_) => false,
-    }
 }
 
 fn insert<'a>(
@@ -313,8 +297,9 @@ pub fn remove(connection: &Connection, token: &ShareToken) -> Result<(), Storage
     Ok(())
 }
 
-/// Whether the snapshot of `token` shows `blob`: one of its blocks names it,
-/// as a medium or a side of an edit (`sharing.md` § Safety).
+/// Whether the snapshot of `token` shows `blob` (`sharing.md` § Safety): one
+/// of its blocks names it, as a medium or a side of an edit, or it is the
+/// blob of an attachment the snapshot's text names.
 pub fn shows_blob(connection: &Connection, token: &ShareToken, blob: &BlobRef) -> Result<bool, StorageError> {
     // A block that names the blob holds its name; the rows that do not are
     // left unread.
@@ -328,7 +313,84 @@ pub fn shows_blob(connection: &Connection, token: &ShareToken, blob: &BlobRef) -
             return Ok(true);
         }
     }
+    for number in named_attachments(connection, token)? {
+        if conversation_attachments::read(connection, number)?.is_some_and(|row| row.blob == *blob) {
+            return Ok(true);
+        }
+    }
     Ok(false)
+}
+
+/// The attachment `number` when the snapshot of `token` names it.
+pub fn shown_attachment(
+    connection: &Connection,
+    token: &ShareToken,
+    number: AttachmentNumber,
+) -> Result<Option<AttachmentRow>, StorageError> {
+    if !named_attachments(connection, token)?.contains(&number) {
+        return Ok(None);
+    }
+    conversation_attachments::read(connection, number)
+}
+
+/// The attachments the texts of the snapshot of `token` name by a link
+/// such as `attachment:a3` (`commands.md` § Attachment commands).
+fn named_attachments(
+    connection: &Connection,
+    token: &ShareToken,
+) -> Result<BTreeSet<AttachmentNumber>, StorageError> {
+    let mut statement = connection.prepare(
+        "SELECT block FROM share_blocks
+         WHERE token = ?1 AND json_extract(block, '$.type') = 'text' AND instr(block, 'attachment:a') > 0",
+    )?;
+    let mut rows = statement.query([token.as_str()])?;
+    let mut named = BTreeSet::new();
+    while let Some(row) = rows.next()? {
+        let Block::Text(text) = json("share_blocks", "block", &row.get::<_, String>(0)?)? else {
+            continue;
+        };
+        for (at, _) in text.text.match_indices("attachment:") {
+            let rest = &text.text[at + "attachment:".len()..];
+            let end = rest
+                .char_indices()
+                .skip(1)
+                .find(|(_, character)| !character.is_ascii_digit())
+                .map_or(rest.len(), |(index, _)| index);
+            if let Ok(number) = rest[..end].parse() {
+                named.insert(number);
+            }
+        }
+    }
+    Ok(named)
+}
+
+/// A subagent the snapshot of `token` holds: its number, its spawn's
+/// description and its profile.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SharedAgent {
+    pub number: u64,
+    pub description: String,
+    pub profile: Option<String>,
+}
+
+/// The subagents the snapshot of `token` holds, in the order they started,
+/// as the tree records them.
+pub fn shared_agents(connection: &Connection, token: &ShareToken) -> Result<Vec<SharedAgent>, StorageError> {
+    let mut statement = connection.prepare(
+        "SELECT number, description, profile FROM nodes
+         WHERE number IN (SELECT DISTINCT agent FROM share_blocks WHERE token = ?1 AND agent > 0)
+         ORDER BY number",
+    )?;
+    let mut rows = statement.query([token.as_str()])?;
+    let mut agents = Vec::new();
+    while let Some(row) = rows.next()? {
+        agents.push(SharedAgent {
+            number: decode("nodes", "number", u64::try_from(row.get::<_, i64>(0)?))?,
+            description: row.get(1)?,
+            profile: row.get(2)?,
+        });
+    }
+    Ok(agents)
 }
 
 /// Every blob the snapshots in a conversation's database name, which keeps

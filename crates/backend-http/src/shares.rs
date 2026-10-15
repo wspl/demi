@@ -19,11 +19,14 @@ use demi_web_api_protocol::conversations::{TranscriptPage, WholeBlock};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, ShareToken};
 use demi_web_api_protocol::shares::{
-    ShareAnswer, ShareNodeQuery, ShareTarget, ShareTranscriptQuery, SharedConversation,
+    ShareAnswer, ShareNodeQuery, ShareTarget, ShareTranscriptQuery, SharedAgent, SharedConversation,
 };
+use demi_web_api_protocol::attachments::ConversationAttachment;
+use demi_backend_database::conversation_attachments::AttachmentNumber;
 
 use super::AppState;
 use super::blobs::blob_answer;
+use super::conversations::attachment_answer;
 use super::body::JsonBody;
 use super::error::ApiError;
 use super::gate::AuthUser;
@@ -138,11 +141,47 @@ pub(super) async fn read(
     Path(token): Path<String>,
 ) -> Result<Json<SharedConversation>, ApiError> {
     let share = found(&state.services, token).await?;
+    let (kind, title, taken_at) = (share.target.kind(), share.title.clone(), share.taken_at);
+    let owner = share.owner.clone();
+    let agents = state
+        .shards
+        .of(&owner)
+        .call(move |shard, _| async move { shard.shared_agents(&share).await })
+        .await?
+        .map_err(ApiError::conversation_unreadable)?;
     Ok(Json(SharedConversation {
-        kind: share.target.kind(),
-        title: share.title,
-        taken_at: share.taken_at,
+        kind,
+        title,
+        taken_at,
+        agents: agents
+            .into_iter()
+            .map(|agent| SharedAgent {
+                number: agent.number,
+                description: agent.description,
+                profile: agent.profile,
+            })
+            .collect(),
     }))
+}
+
+/// `GET /shares/:token/attachments/:attachment`: an attachment the
+/// snapshot's text names, as the conversation's attachment route answers
+/// it.
+pub(super) async fn attachment(
+    State(state): State<AppState>,
+    Path((token, attachment)): Path<(String, String)>,
+) -> Result<Json<ConversationAttachment>, ApiError> {
+    let share = found(&state.services, token).await?;
+    let number: AttachmentNumber = attachment.parse().map_err(|_| not_found())?;
+    let owner = share.owner.clone();
+    let row = state
+        .shards
+        .of(&owner)
+        .call(move |shard, _| async move { shard.shared_attachment(&share, number).await })
+        .await?
+        .map_err(ApiError::conversation_unreadable)?
+        .ok_or_else(not_found)?;
+    Ok(Json(attachment_answer(row)))
 }
 
 /// `GET /shares/:token/transcript`: a page of the snapshot, as a

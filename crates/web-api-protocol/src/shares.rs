@@ -2,7 +2,7 @@
 //! conversation or of one answer of it, behind a random link. The owner
 //! makes, takes again and removes one; anyone with its link reads it.
 
-use demi_shared_types::{BlockId, Nullable, Timestamp};
+use demi_shared_types::{BlockId, MAX_SAFE_INTEGER, Nullable, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -108,6 +108,26 @@ pub struct SharedConversation {
     #[schemars(with = "Nullable<String>")]
     pub title: Option<String>,
     pub taken_at: Timestamp,
+    /// Each subagent the snapshot holds, in the order they started, for
+    /// the header of its transcript.
+    pub agents: Vec<SharedAgent>,
+}
+
+/// A subagent a share's snapshot holds.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct SharedAgent {
+    /// Its number, as an `agent:` link and the transcript's `node` name it.
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub number: u64,
+    /// The spawn's `--description`, or empty.
+    #[garde(skip)]
+    pub description: String,
+    /// The profile's name, or null for the inherit profile.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    #[garde(skip)]
+    pub profile: Option<String>,
 }
 
 /// `?node=&before=|after=|around=&edge=` of `GET /shares/:token/transcript`,

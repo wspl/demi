@@ -146,12 +146,20 @@ async fn an_answers_share_holds_its_message_and_answer_alone_until_the_owner_sto
     let as_stranger = public(&backend, &token, "/transcript", Some(&stranger)).await;
     assert_eq!(as_stranger.json::<TranscriptPage>(), read);
 
-    // Only the text that ends a reply is an answer, and an answer is never
-    // taken again.
-    for refused in [&looking.id, &question.id] {
-        let refusal = share(&backend, &master, json!({ "kind": "answer", "blockId": refused })).await;
-        assert_eq!(refusal.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::ShareTargetInvalid));
-    }
+    // Any complete text of the conversation's agent is an answer, with the
+    // message that starts its request; a message is none. An answer is
+    // never taken again.
+    let ShareAnswer::Answer { token: earlier, .. } =
+        shared(&share(&backend, &master, json!({ "kind": "answer", "blockId": looking.id })).await)
+    else {
+        panic!("an answer's share")
+    };
+    assert_ne!(earlier.as_str(), token);
+    let earlier = page(&backend, earlier.as_str(), "").await;
+    assert_eq!(texts(&earlier.blocks), ["Looking it up."]);
+    assert_eq!(earlier.blocks[0].id(), read.blocks[0].id());
+    let refusal = share(&backend, &master, json!({ "kind": "answer", "blockId": question.id })).await;
+    assert_eq!(refusal.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::ShareTargetInvalid));
     let retaken = backend
         .put(&format!("/api/conversations/{FIRST}/shares/{token}"), &master, json!({}))
         .await;
@@ -173,7 +181,9 @@ async fn an_answers_share_holds_its_message_and_answer_alone_until_the_owner_sto
         missed(&public(&backend, &token, path, None).await, path);
         missed(&public(&backend, "AAAAAAAAAAAAAAAAAAAAAA", path, None).await, path);
     }
-    assert!(summary(&backend, &master, FIRST).await.shares.is_empty());
+    let left = summary(&backend, &master, FIRST).await.shares;
+    assert!(left.iter().all(|share| share.token().as_str() != token), "{left:?}");
+    assert_eq!(left.len(), 1, "the earlier answer's share stays");
     backend.close().await;
 }
 
@@ -182,7 +192,9 @@ async fn an_answers_share_holds_its_message_and_answer_alone_until_the_owner_sto
 #[tokio::test]
 async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_were_until_taken_again() {
     let scripts = Arc::new(Scripts::default());
-    let (_harness, backend, master, _paired, _root, _provider) = tree_on(&scripts, Harness::new()).await;
+    let (_harness, backend, master, _paired, root, _provider) = tree_on(&scripts, Harness::new()).await;
+    std::fs::write(format!("{root}/shown.png"), &*PNG).unwrap();
+    std::fs::write(format!("{root}/kept.md"), "# Not shown\n").unwrap();
     let stranger = backend.make_user(&master, "stranger@example.test", "user").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
@@ -193,16 +205,18 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
     scripts.root(
         FIRST,
         vec![
-            shell("t1", "printf 'hello from the command\\n'"),
+            shell("t1", "printf 'hello from the command\\n' && demi attachment upload shown.png kept.md"),
             shell("t2", "demi agent spawn --description helper <<< 'Say hi'"),
             say("asked the helper"),
             // The child's completion wakes the idle parent.
-            say("the helper said hi"),
+            say("the helper said hi: ![The shot](attachment:a1)"),
         ],
     );
     socket.send(&with_upload("m1", "Look at this", &[(&shot, "shot.png")])).await;
     eventually("the parent hears its child", || async {
-        texts(&transcript(&backend, &master, FIRST).await.blocks).contains(&"the helper said hi".to_owned())
+        texts(&transcript(&backend, &master, FIRST).await.blocks)
+            .iter()
+            .any(|text| text.starts_with("the helper said hi"))
     })
     .await;
     socket.until_idle().await;
@@ -217,6 +231,8 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
     let token = token.as_str().to_owned();
     let about: SharedConversation = public(&backend, &token, "", Some(&stranger)).await.json();
     assert_eq!(about.kind, ShareKind::Conversation);
+    assert_eq!(about.agents.len(), 1);
+    assert_eq!((about.agents[0].number, about.agents[0].description.as_str()), (child, "helper"));
 
     // The root's transcript, without the hidden inputs and the requests'
     // usage the conversation holds, and without its instructions.
@@ -260,6 +276,30 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
         &public(&backend, &token, &format!("/blobs/{}", unsent.sha256), None).await,
         "a blob it does not show",
     );
+
+    // An answer's share reads the attachment its text names, and its
+    // bytes, and no other of the conversation's.
+    let said = own
+        .blocks
+        .iter()
+        .find(|block| matches!(block, Block::Text(text) if text.text.starts_with("the helper said hi")))
+        .unwrap();
+    let ShareAnswer::Answer { token: answer, .. } =
+        shared(&share(&backend, &master, json!({ "kind": "answer", "blockId": said.id() })).await)
+    else {
+        panic!("an answer's share")
+    };
+    let answer = answer.as_str().to_owned();
+    let named = public(&backend, &answer, "/attachments/a1", None).await;
+    assert_eq!(named.status, StatusCode::OK, "{}", String::from_utf8_lossy(&named.body));
+    let named: demi_web_api_protocol::attachments::ConversationAttachment = named.json();
+    assert_eq!(named.name, "shown.png");
+    let bytes = public(&backend, &answer, &format!("/blobs/{}", named.blob), None).await;
+    assert_eq!(bytes.body, *PNG);
+    missed(&public(&backend, &answer, "/attachments/a2", None).await, "an attachment it does not name");
+    let a2 = public(&backend, &token, "/attachments/a2", None).await;
+    missed(&a2, "an attachment the conversation's share names in no text");
+    assert!(public(&backend, &answer, "", None).await.json::<SharedConversation>().agents.is_empty());
 
     // A later message is not shared until the owner takes the snapshot again.
     scripts.root(FIRST, vec![say("later answer")]);
