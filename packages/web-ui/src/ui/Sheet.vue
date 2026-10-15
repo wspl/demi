@@ -95,13 +95,13 @@ let drag: { startY: number; fromHandle: boolean; samples: { at: number; t: numbe
 /** A move this far settles whether a press on the content scrolls it or drags the sheet. */
 const SLOP_PX = 6
 
-function startDrag(y: number, target: EventTarget | null): void {
+function startDrag(y: number, t: number, target: EventTarget | null): void {
   const fromHandle = target instanceof Element && target.closest('[data-sheet-handle]') !== null
-  drag = { startY: y, fromHandle, samples: [{ at: y, t: performance.now() }] }
+  drag = { startY: y, fromHandle, samples: [{ at: y, t }] }
 }
 
 /** Follows the finger; answers whether the sheet holds the move, which then scrolls nothing. */
-function moveDrag(y: number): boolean {
+function moveDrag(y: number, t: number): boolean {
   if (!drag)
     return false
   const dy = y - drag.startY
@@ -115,16 +115,17 @@ function moveDrag(y: number): boolean {
       return false
     }
     holding.value = true
-    drag.startY = y
   }
-  drag.samples = [...drag.samples.filter((sample) => performance.now() - sample.t < 120), { at: y, t: performance.now() }]
+  drag.samples = [...drag.samples.filter((sample) => t - sample.t < 120), { at: y, t }]
+  // The sheet follows the finger from where it first touched, the slop included.
   const pulled = y - drag.startY
   // Pulled up past its resting place, the sheet gives a little, as a phone's does.
   offset.value = pulled >= 0 ? pulled : -Math.sqrt(-pulled) * 2
   return true
 }
 
-function endDrag(): void {
+/** The finger lifts: a long or flicked pull closes the sheet from where it stands, a short or still one springs back. */
+function endDrag(liftAt: number): void {
   const ended = drag
   const held = holding.value
   drag = null
@@ -132,7 +133,7 @@ function endDrag(): void {
   if (!ended || !held)
     return
   const height = panel.value?.offsetHeight ?? 0
-  if (dragCloses(offset.value ?? 0, height, dragVelocity(ended.samples))) {
+  if (dragCloses(offset.value ?? 0, height, dragVelocity(ended.samples, liftAt))) {
     // The sheet leaves from where the finger left it.
     emit('close')
   } else {
@@ -140,34 +141,60 @@ function endDrag(): void {
   }
 }
 
+/** A second finger, or the system taking the touch: the sheet goes back to its place, since only a lift closes it. */
+function cancelDrag(): void {
+  // A sheet already leaving keeps the place it leaves from.
+  if (holding.value)
+    offset.value = null
+  drag = null
+  holding.value = false
+}
+
 // A finger drags through touch events, whose moves can be kept from scrolling the content; a mouse or a pen through pointer events.
 function onTouchStart(event: TouchEvent): void {
   const touch = event.touches[0]
   if (event.touches.length === 1 && touch)
-    startDrag(touch.clientY, event.target)
+    startDrag(touch.clientY, event.timeStamp, event.target)
   else
-    drag = null
+    cancelDrag()
 }
+// `touches` lists every finger on the screen: one put down anywhere else, such as on the scrim, takes the gesture too.
 function onTouchMove(event: TouchEvent): void {
   const touch = event.touches[0]
-  if (touch && moveDrag(touch.clientY) && event.cancelable)
+  if (event.touches.length > 1)
+    cancelDrag()
+  else if (touch && moveDrag(touch.clientY, event.timeStamp) && event.cancelable)
     event.preventDefault()
+}
+function onTouchEnd(event: TouchEvent): void {
+  // A finger still on the screen means the lift was not the gesture's end.
+  if (event.touches.length > 0)
+    cancelDrag()
+  else
+    endDrag(event.timeStamp)
+}
+/**
+ * The sheet starts to leave: it drops the drag's styles, which a leaving node
+ * is no longer patched to drop, so it eases down from where it stands.
+ */
+function onLeaving(element: Element): void {
+  element.classList.remove('sheet-dragging')
 }
 function onPointerDown(event: PointerEvent): void {
   if (event.pointerType === 'touch' || event.button !== 0)
     return
   if (!(event.target instanceof Element) || event.target.closest('[data-sheet-handle]') === null)
     return
-  startDrag(event.clientY, event.target)
+  startDrag(event.clientY, event.timeStamp, event.target)
   event.target.setPointerCapture(event.pointerId)
 }
 function onPointerMove(event: PointerEvent): void {
   if (event.pointerType !== 'touch')
-    moveDrag(event.clientY)
+    moveDrag(event.clientY, event.timeStamp)
 }
 function onPointerUp(event: PointerEvent): void {
   if (event.pointerType !== 'touch')
-    endDrag()
+    endDrag(event.timeStamp)
 }
 
 // Touch moves are listened to without `passive`, so that a pull the sheet takes scrolls nothing behind it.
@@ -191,7 +218,7 @@ const panelStyle = computed(() => ({
     <Transition name="sheet-scrim">
       <div v-if="open" class="sheet-scrim fixed inset-0 bg-black/40" :style="{ zIndex: z() }" aria-hidden="true" @click="close" />
     </Transition>
-    <Transition name="sheet">
+    <Transition name="sheet" @before-leave="onLeaving">
       <div
         v-if="open"
         ref="panel"
@@ -203,12 +230,12 @@ const panelStyle = computed(() => ({
         :class="{ 'sheet-dragging': holding }"
         :style="panelStyle"
         @touchstart.passive="onTouchStart"
-        @touchend="endDrag"
-        @touchcancel="endDrag"
+        @touchend="onTouchEnd"
+        @touchcancel="cancelDrag"
         @pointerdown="onPointerDown"
         @pointermove="onPointerMove"
         @pointerup="onPointerUp"
-        @pointercancel="onPointerUp"
+        @pointercancel="cancelDrag"
       >
         <div data-sheet-handle class="sheet-handle flex h-5 shrink-0 items-center justify-center">
           <span class="h-1 w-9 rounded-full bg-fg-faint opacity-60" />

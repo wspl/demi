@@ -121,8 +121,10 @@ export function useSidebarDrag(
     cancel()
   }
 
+  /** A mouse or a pen presses a row; a finger never reorders, its long press opens the row's menu (`web-application.md` § phone). */
   function start(event: PointerEvent, entry: Entry) {
     if (
+      event.pointerType === 'touch' ||
       event.button !== 0 ||
       !(event.target instanceof Element) ||
       event.target.closest('input, [aria-label], [data-no-drag]')

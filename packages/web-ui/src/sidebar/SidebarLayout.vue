@@ -100,23 +100,51 @@ useEscapeClose(() => open.value && phone.value && !appOverlayStore.hasExclusive(
 /** The drawer's width on a phone: 85% of the screen, at most 320 px. */
 const DRAWER_WIDTH = 'min(85vw, 320px)'
 
-/** How far a swipe has pulled the drawer left of its place, in px; null at rest. */
+/**
+ * How far a swipe has pulled the drawer left of its place, in px; null at
+ * rest. A swipe that closes it leaves it here, so the drawer and the scrim
+ * go on closing from where they stand, until the drawer has left.
+ */
 const drawerPull = ref<number | null>(null)
+/** Whether a finger holds the drawer now, which then follows it without easing. */
+const pulling = ref(false)
+/** How dark the scrim is, from 1 with the drawer in place to 0 with it pulled its whole width away. */
+const scrimShade = computed(() => drawerPull.value === null || sidebarWidth.value <= 0
+  ? 1
+  : Math.max(0, 1 - drawerPull.value / sidebarWidth.value))
 let swipe: { startX: number; startY: number; holding: boolean; samples: { at: number; t: number }[] } | null = null
 /** A finger that moves this far settles whether it swipes the drawer or scrolls its list. */
 const SWIPE_SLOP_PX = 8
 
+/** A swipe that leaves the drawer open: it springs back, and the scrim darkens with it. */
+function springBack(): void {
+  swipe = null
+  pulling.value = false
+  drawerPull.value = null
+}
+
 function swipeStart(event: TouchEvent): void {
   const finger = event.touches[0]
-  swipe = event.touches.length === 1 && finger
-    ? { startX: finger.clientX, startY: finger.clientY, holding: false, samples: [] }
-    : null
+  // A second finger takes the gesture from the first: the drawer goes back to its place.
+  if (event.touches.length !== 1 || !finger) {
+    if (swipe?.holding)
+      springBack()
+    swipe = null
+    return
+  }
+  // The first touch is the pull's first sample, so a flick of a single move has a speed.
+  swipe = { startX: finger.clientX, startY: finger.clientY, holding: false, samples: [{ at: 0, t: event.timeStamp }] }
 }
 
 function swipeMove(event: TouchEvent): void {
   const finger = event.touches[0]
   if (!swipe || !finger)
     return
+  // `touches` lists every finger on the screen: one put down anywhere else, such as on the scrim, takes the gesture too.
+  if (event.touches.length > 1) {
+    swipeCancel()
+    return
+  }
   const dx = finger.clientX - swipe.startX
   const dy = finger.clientY - swipe.startY
   if (!swipe.holding) {
@@ -128,24 +156,55 @@ function swipeMove(event: TouchEvent): void {
       return
     }
     swipe.holding = true
-    swipe.startX = finger.clientX
+    pulling.value = true
   }
   if (event.cancelable)
     event.preventDefault()
+  // The drawer follows the finger from where it first touched, the slop included.
   const pulled = Math.max(0, swipe.startX - finger.clientX)
-  const now = performance.now()
-  swipe.samples = [...swipe.samples.filter((sample) => now - sample.t < 120), { at: pulled, t: now }]
+  swipe.samples = [...swipe.samples.filter((sample) => event.timeStamp - sample.t < 120), { at: pulled, t: event.timeStamp }]
   drawerPull.value = pulled
 }
 
-function swipeEnd(): void {
+/** The finger lifts: a long or flicked pull closes the drawer from where it stands, a short or still one springs back. */
+function swipeEnd(event: TouchEvent): void {
   const ended = swipe
-  swipe = null
-  if (!ended?.holding)
+  if (!ended?.holding) {
+    swipe = null
     return
+  }
+  // A finger still on the screen, wherever it went down, means the lift was not the gesture's end.
+  if (event.touches.length > 0) {
+    springBack()
+    return
+  }
   const width = sidebar.value?.offsetWidth ?? 0
-  if (dragCloses(drawerPull.value ?? 0, width, dragVelocity(ended.samples)))
+  if (dragCloses(drawerPull.value ?? 0, width, dragVelocity(ended.samples, event.timeStamp))) {
+    swipe = null
+    pulling.value = false
     open.value = false
+  } else {
+    springBack()
+  }
+}
+
+/** The system took the touch, as for a call or a gesture of its own: only a lift closes the drawer. */
+function swipeCancel(): void {
+  if (swipe?.holding)
+    springBack()
+  swipe = null
+}
+
+/**
+ * The scrim starts to leave: it drops its following of the finger, which a
+ * leaving node is no longer patched to drop, so it fades from where it stands.
+ */
+function scrimLeaving(element: Element): void {
+  element.removeAttribute('data-pulled')
+}
+
+/** The drawer has left, or came back before it had: the next one opens in place. */
+function drawerSettled(): void {
   drawerPull.value = null
 }
 
@@ -155,15 +214,17 @@ useEventListener(sidebar, 'touchmove', swipeMove, { passive: false })
 
 <template>
   <div ref="frame" class="flex h-full bg-surface-base text-fg">
-    <Transition name="frame-scrim">
+    <Transition name="frame-scrim" @before-leave="scrimLeaving">
       <div
         v-if="open && phone"
         class="frame-scrim fixed inset-0 z-30 bg-black/50"
+        :style="{ '--scrim-shade': scrimShade }"
+        :data-pulled="pulling ? '' : undefined"
         @click="open = false"
       />
     </Transition>
     <!-- On a phone the sidebar is a drawer, which slides in over the scrim. -->
-    <Transition name="frame-drawer" :css="phone">
+    <Transition name="frame-drawer" :css="phone" @after-leave="drawerSettled" @leave-cancelled="drawerSettled">
       <div
         v-show="open || !phone"
         ref="sidebar"
@@ -174,10 +235,10 @@ useEventListener(sidebar, 'touchmove', swipeMove, { passive: false })
           '--sidebar-width': phone ? DRAWER_WIDTH : `${shownWidth}px`,
           '--drawer-pull': drawerPull === null ? undefined : `${-drawerPull}px`,
         }"
-        :data-pulled="drawerPull === null ? undefined : ''"
+        :data-pulled="pulling ? '' : undefined"
         @touchstart.passive="swipeStart"
         @touchend="swipeEnd"
-        @touchcancel="swipeEnd"
+        @touchcancel="swipeCancel"
       >
         <slot name="sidebar" />
       </div>
@@ -259,9 +320,14 @@ useEventListener(sidebar, 'touchmove', swipeMove, { passive: false })
   translate: 100% 0;
 }
 
-.frame-scrim-enter-active,
-.frame-scrim-leave-active {
+/* The scrim lightens as the drawer is pulled, and eases back with it when it springs back. */
+.frame-scrim {
+  opacity: var(--scrim-shade, 1);
   transition: opacity 300ms cubic-bezier(0.32, 0.72, 0, 1);
+}
+
+.frame-scrim[data-pulled] {
+  transition: none;
 }
 
 .frame-scrim-enter-from,
@@ -273,8 +339,7 @@ useEventListener(sidebar, 'touchmove', swipeMove, { passive: false })
   .frame-drawer,
   .frame-aside-enter-active,
   .frame-aside-leave-active,
-  .frame-scrim-enter-active,
-  .frame-scrim-leave-active {
+  .frame-scrim {
     transition: none;
   }
 }
