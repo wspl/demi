@@ -1,6 +1,6 @@
 import { DEMO_BUN_TEST, DEMO_GIT_DIFF, DEMO_RG } from './terminal-output'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
-import { BASH_SCRIPT, LEFT_RUNNING_CALL, RUNNING_RUN_CALL, RUNNING_SHELL_DESCRIPTION, RUNNING_SHELL_SCRIPT, returnedShellTool, runningShellTool } from './blocks'
+import { BASH_SCRIPT, steppedRunCall, LEFT_RUNNING_CALL, RUNNING_RUN_CALL, RUNNING_SHELL_DESCRIPTION, RUNNING_SHELL_SCRIPT, returnedShellTool, runningShellTool } from './blocks'
 import { ago } from './time'
 
 /**
@@ -21,6 +21,14 @@ export function runningRunCommand(): TerminalRecord {
     output: 'Merge made by the \'ort\' strategy.\nbun test v1.3.14\n',
     toolUseId: `${RUNNING_RUN_CALL}-use`,
   }
+}
+
+/** The command the stepped run's running call started, 14 seconds ago, so its time shows; none when no call runs (`steppedRunBlocks`). */
+export function steppedRunCommands(stage: number): TerminalRecord[] {
+  const call = steppedRunCall(stage)
+  return call
+    ? [{ id: `term-${call.id}`, title: call.description, script: call.script, phase: 'running', startedAt: ago(14_000), output: '', toolUseId: `${call.id}-use` }]
+    : []
 }
 
 /** The command the ended turn left running, started 2m 16s ago (`leftRunningBlocks`). */

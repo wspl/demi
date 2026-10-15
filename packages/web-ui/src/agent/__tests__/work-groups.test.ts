@@ -266,6 +266,24 @@ describe('the face that wears a running command’s tag', () => {
   })
 })
 
+// `runtime.md` § Work groups: a running run, folded, shows over its newest
+// step what the steps before it did, worded as an ended run is; steps that
+// say nothing, thinking alone, leave it one line.
+describe('the line over a running run’s newest step', () => {
+  /** What the folded running run's first line says over its newest step. */
+  const earlier = (...blocks: (Block | MessageListBlock)[]) => {
+    const row = groupWork([text('r'), ...blocks], true).findLast((each) => each.type === 'work_group') as WorkGroupBlock
+    const shown = runFace(row, false)
+    return shown.kind === 'step' ? shown.earlier : null
+  }
+
+  test('thinking and a call are one line; two calls read what the first did', () => {
+    expect(earlier(...run('t', thinking('t', 'Look first.'), call('a')))).toBe('')
+    expect(earlier(...run('a', call('a'), call('b')))).toBe('Ran 1 command')
+    expect(earlier(...run('a', call('a'), check('s', 17), call('b')))).toBe('Ran 1 command, checked 1 command')
+  })
+})
+
 // The run at the end of a running turn is one row from its first step: a
 // step that joins never adds a row that then merges into it, and the row
 // keeps its name as a call being written becomes its block and as the run

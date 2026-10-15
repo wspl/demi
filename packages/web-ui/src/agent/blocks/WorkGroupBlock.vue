@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch, type Component } from 'vue'
+import { computed, onBeforeUnmount, ref, useId, watch, type Component } from 'vue'
 import { Layers } from '@lucide/vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import Fold from '@demicodes/web-ui/ui/Fold.vue'
@@ -43,6 +43,9 @@ import { provideBlockScope } from '../whole-blocks'
  * the steps changed under it; open, each with its own row. Open while it
  * runs, its title says for how long once that is past 3 seconds; folded,
  * the newest step's face wears that step's tag, as a running command's time.
+ * Folded while it runs, a line over that face says what the steps before the
+ * newest did, as an ended run reads them, once they say something; only the
+ * face under it shimmers, and a click on either line opens the run.
  */
 const props = defineProps<{ group: WorkGroupBlock }>()
 const isOpen = defineModel<boolean>('open', { default: false })
@@ -111,6 +114,19 @@ const face = computed<Face>(() => {
   // the block keeps the face the call showed, so it does not roll again.
   return { icon, iconKey: key, label: '', step: shown.step, rollKey: stepKey(shown.step) }
 })
+
+/** What the steps before the newest did, while the folded run holds a step that says it; empty otherwise. */
+const earlier = computed(() => (shape.value.kind === 'step' ? shape.value.earlier : ''))
+// The line folds away as the run ends or opens; its words stay while it does.
+const earlierShown = ref(earlier.value)
+watch(earlier, (now) => {
+  if (now !== '')
+    earlierShown.value = now
+})
+const earlierId = useId()
+function toggle(): void {
+  isOpen.value = !isOpen.value
+}
 const calls = computed(() => props.group.steps.filter((step) => step.type === 'tool_call'))
 const select = useEditSelection()
 const transcript = useTranscript()
@@ -194,6 +210,27 @@ function pickRest(paths: readonly string[]): void {
     <AgentReceiptBlock v-else :message="loneNotice.message" :working="group.live" />
   </div>
   <template v-else>
+    <!-- The steps before the newest, done: no shimmer. Like the face under it, the line is a button's face, so the keyboard opens the run from either. -->
+    <Fold :open="earlier !== ''">
+      <div
+        class="group relative flex h-7 cursor-default select-none items-center gap-2 text-row text-fg-row transition-colors duration-200 ease-out hover:text-fg-muted"
+        data-run-earlier
+        @click="toggle"
+      >
+        <button
+          type="button"
+          class="absolute inset-0 cursor-default rounded-sm focus-visible:pointer-events-none focus-visible:z-10"
+          :aria-expanded="isOpen"
+          :aria-labelledby="earlierId"
+        ></button>
+        <div class="relative flex min-w-0 items-center gap-2">
+          <div class="flex shrink-0 items-center justify-center" :style="{ width: `${ICON_PX.in28}px`, height: `${ICON_PX.in28}px` }">
+            <Layers :size="ICON_PX.in28" />
+          </div>
+          <span :id="earlierId" class="min-w-0 truncate">{{ earlierShown }}</span>
+        </div>
+      </div>
+    </Fold>
     <FunctionalBlock
       v-model:open="isOpen"
       :expandable="!lone || loneText !== ''"
