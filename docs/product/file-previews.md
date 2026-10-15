@@ -308,13 +308,20 @@ right after it, `. , ; : ! ? ) ] }`, takes no space before it, as after any
 word: "the main agent;" never reads "the main agent ;". A link without an
 icon is words and is spaced as words.
 
+In a message every link wears an icon, so each reads as the kind of thing it
+opens: a Host file its file's icon, a commit the commit icon, an agent its
+mark, an attachment its file's icon, and a web page Lucide's `link` icon. A
+link whose text is an image, as a badge is, wears none, and a Markdown
+document's links wear none either, since a document renders as its author
+laid it out, as on GitHub.
+
 A link's text may be code, as `` [`runner.md`](docs/execution/runner.md) ``
 or `` [`docs`](https://example.com) `` writes it. A link is one color: its
 code takes the link's color, never code's own, so the text and its underline
-never differ. A link with an icon drops code's look altogether and reads as
-`[runner.md](docs/execution/runner.md)` does, the icon already saying what
-it is; a link without one keeps code's monospace and fill, in the link's
-color, as GitHub shows it.
+never differ. In a message, where the icon already says what the link is,
+the code's look goes and the text reads as `[runner.md](docs/execution/runner.md)`
+does; in a document, code in a link keeps its monospace and fill, in the
+link's color, as GitHub shows it.
 
 | Target | A link | An image |
 | --- | --- | --- |
