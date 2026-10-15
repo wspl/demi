@@ -321,7 +321,7 @@ rejects archived rows or cross-partition targets.
 [Web API](../product/web-api.md#sidebar-mutations-and-read-state)
 owns the request contract.
 - **Shares:** `shares` holds each share's token, user, conversation,
-  kind, the answer's block and when it was taken; the snapshot itself is in
+  kind, the answer's block, the title it shows and when it was taken; the snapshot itself is in
   the conversation's database ([Sharing](../product/sharing.md#storage-and-routes)).
 - **Turns a shutdown interrupted:** `interrupted_turns` holds one row per
   root whose running turn a graceful shutdown began to interrupt, by its
