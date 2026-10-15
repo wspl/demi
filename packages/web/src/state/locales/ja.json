@@ -1,18 +1,18 @@
 {
   "notifications": {
     "turnStopped": "ターンがエラーで停止しました。",
-    "allowTo": "この会話に「{action}」を許可しますか？",
+    "allowTo": "このチャットに「{action}」を許可しますか？",
     "saveCredential": "認証情報「{name}」を保存しますか？",
-    "allowUse": "この会話に「{name}」の使用を許可しますか？"
+    "allowUse": "このチャットに「{name}」の使用を許可しますか？"
   },
   "hosts": {
     "unavailableDevice": "利用できないデバイス"
   },
   "failures": {
     "updateSettings": "設定を更新できませんでした",
-    "changeContextLimit": "コンテキストの制限を変更できませんでした",
-    "readPermissionRequests": "通知のアクセス許可リクエストを読み取れませんでした",
-    "updateTimeZoneLanguage": "タイム ゾーンと言語を更新できませんでした",
+    "changeContextLimit": "コンテキストの上限を変更できませんでした",
+    "readPermissionRequests": "通知の権限リクエストを読み取れませんでした",
+    "updateTimeZoneLanguage": "タイムゾーンと言語を更新できませんでした",
     "readSync": "同期チャネルのメッセージを読み取れませんでした"
   }
 }
