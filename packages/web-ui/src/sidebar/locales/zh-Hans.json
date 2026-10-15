@@ -2,13 +2,13 @@
   "nav": {
     "new": "新建",
     "search": "搜索",
-    "archived": "已存档"
+    "archived": "已归档"
   },
   "groups": {
     "conversations": "对话",
     "projects": "项目",
     "addProject": "添加项目",
-    "newConversation": "新建对话"
+    "newConversation": "新对话"
   },
   "list": {
     "loading": "正在加载对话…",
@@ -19,20 +19,20 @@
     "settings": "设置"
   },
   "account": {
-    "label": "帐户",
+    "label": "账户",
     "settings": "设置",
-    "signOut": "注销"
+    "signOut": "退出登录"
   },
   "row": {
-    "unpin": "取消固定",
-    "archive": "存档"
+    "unpin": "取消置顶",
+    "archive": "归档"
   },
   "project": {
-    "newConversation": "新建对话"
+    "newConversation": "新对话"
   },
   "device": {
     "removed": "已移除的设备",
-    "cloud": "云"
+    "cloud": "云端"
   },
   "dot": {
     "needsYou": "需要你决定"
@@ -41,12 +41,12 @@
     "open": "打开",
     "rename": "重命名",
     "copyId": "复制对话 ID",
-    "pin": "固定",
-    "pinMany": "固定 {count} 个对话",
-    "unpin": "取消固定",
-    "unpinMany": "取消固定 {count} 个对话",
-    "archive": "存档",
-    "archiveMany": "存档 {count} 个对话",
+    "pin": "置顶",
+    "pinMany": "置顶 {count} 个对话",
+    "unpin": "取消置顶",
+    "unpinMany": "取消置顶 {count} 个对话",
+    "archive": "归档",
+    "archiveMany": "归档 {count} 个对话",
     "delete": "删除…",
     "deleteMany": "删除 {count} 个对话…"
   },
@@ -55,38 +55,38 @@
     "fold": "折叠",
     "unfold": "展开",
     "select": "选择对话",
-    "remove": "删除项目"
+    "remove": "移除项目"
   },
   "delete": {
     "title": "删除“{title}”？",
     "titleMany": "删除 {count} 个对话？",
-    "one": "它的消息和文件将被删除。此操作无法撤消。",
-    "many": "它们的消息和文件将被删除。此操作无法撤消。",
+    "one": "它的消息和文件将被删除。此操作无法撤销。",
+    "many": "它们的消息和文件将被删除。此操作无法撤销。",
     "filesOne": "它更改过的文件会保留在项目中。",
     "filesMany": "它们更改过的文件会保留在各自的项目中。"
   },
   "archivedToast": {
-    "title": "已存档 {count} 个对话",
-    "undo": "撤消"
+    "title": "已归档 {count} 个对话",
+    "undo": "撤销"
   },
   "refused": {
     "quote": "“{name}”",
     "line": "{name}：{reasons}",
     "archive": {
-      "one": "无法存档{name}",
-      "many": "无法存档 {count} 个对话"
+      "one": "无法归档{name}",
+      "many": "无法归档 {count} 个对话"
     },
     "restore": {
       "one": "无法恢复{name}",
       "many": "无法恢复 {count} 个对话"
     },
     "pin": {
-      "one": "无法固定{name}",
-      "many": "无法固定 {count} 个对话"
+      "one": "无法置顶{name}",
+      "many": "无法置顶 {count} 个对话"
     },
     "unpin": {
-      "one": "无法取消固定{name}",
-      "many": "无法取消固定 {count} 个对话"
+      "one": "无法取消置顶{name}",
+      "many": "无法取消置顶 {count} 个对话"
     },
     "delete": {
       "one": "无法删除{name}",

@@ -8,7 +8,7 @@ oauth:
     text: "Demi 中没有从这里登录的内容。请关闭这个标签页。"
   unknown_state:
     title: "登录已过期"
-    text: "这次登录已过期、已被使用，或由另一个账号发起。请关闭这个标签页，然后在 Demi 中重新登录。"
+    text: "这次登录已过期、已被使用，或由另一个账户发起。请关闭这个标签页，然后在 Demi 中重新登录。"
   denied:
     title: "未登录 %{vendor}"
     text: "%{vendor} 未让你登录（%{error}）。请关闭这个标签页，然后在 Demi 中重试。"

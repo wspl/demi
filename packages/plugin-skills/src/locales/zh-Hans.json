@@ -12,7 +12,7 @@
     "updateAvailable": "有可用更新",
     "enableAll": "启用“{name}”中的所有技能",
     "update": "更新",
-    "remove": "删除"
+    "remove": "移除"
   },
   "skill": {
     "warning": "警告",
@@ -23,8 +23,8 @@
     "notASkill": "不是技能：{reason}"
   },
   "removeSource": {
-    "title": "删除“{name}”？",
-    "withSkills": "其技能也会一并删除。你之后可以重新添加该存储库。",
+    "title": "移除“{name}”？",
+    "withSkills": "其技能也会一并移除。你之后可以重新添加该存储库。",
     "empty": "该来源会从你的技能中移除。你之后可以重新添加该存储库。",
     "more": "以及另外 {count} 项"
   },
@@ -39,7 +39,7 @@
   "failures": {
     "add": "无法添加来源",
     "update": "无法更新来源",
-    "remove": "无法删除来源",
+    "remove": "无法移除来源",
     "switchSkill": "无法切换技能",
     "switchSkills": "无法切换技能"
   },
@@ -47,7 +47,7 @@
     "skills_manage": {
       "action": "管理技能",
       "title": "管理技能",
-      "description": "“管理技能”允许此对话的智能体添加、更新和删除技能源，以及打开或关闭技能。你的技能可用于每个对话，已打开的技能会安装到你的对话使用的每台主机上。"
+      "description": "“管理技能”允许此对话的智能体添加、更新和移除技能源，以及打开或关闭技能。你的技能可用于每个对话，已打开的技能会安装到你的对话使用的每台主机上。"
     }
   },
   "problems": {

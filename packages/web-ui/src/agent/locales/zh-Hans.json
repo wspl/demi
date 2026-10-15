@@ -1,8 +1,8 @@
 {
   "transcript": {
     "accountSwitch": {
-      "usage": "{from} 已达到使用限制，改用 {to} 继续。",
-      "usageReset": "{from} 已达到使用限制，{reset}，改用 {to} 继续。",
+      "usage": "{from} 已达到用量限额，改用 {to} 继续。",
+      "usageReset": "{from} 已达到用量限额，{reset}，改用 {to} 继续。",
       "window": "{from} 已达到 {window} 限制，改用 {to} 继续。",
       "windowReset": "{from} 已达到 {window} 限制，{reset}，改用 {to} 继续。"
     },
@@ -53,8 +53,8 @@
       "briefly": "稍作思考",
       "nowFor": "正在思考 {span}",
       "doneFor": "已思考 {span}",
-      "requesting": "请求中",
-      "requestingFor": "请求中 {span}"
+      "requesting": "正在请求",
+      "requestingFor": "正在请求 {span}"
     },
     "compaction": {
       "running": "正在压缩上下文…",
@@ -66,7 +66,7 @@
     "user": {
       "edit": "编辑",
       "showMore": "显示更多",
-      "showLess": "显示更少",
+      "showLess": "收起",
       "sendsNext": "将在智能体的下一步发送",
       "sendNow": "立即发送",
       "recall": "撤回",
@@ -74,10 +74,10 @@
       "notDelivered": "此消息未能送达。"
     },
     "assistant": {
-      "fork": "派生",
-      "forkWait": "此消息完成后可派生。",
+      "fork": "分叉",
+      "forkWait": "此消息完成后可分叉。",
       "regenerate": "重新生成",
-      "forkFailed": "无法从此消息派生"
+      "forkFailed": "无法从此消息分叉"
     },
     "edit": {
       "rejected": "编辑未被接受。",
@@ -86,7 +86,7 @@
     "connecting": "正在连接",
     "newFile": "新建文件",
     "picture": {
-      "open": "放大打开 {name}",
+      "open": "放大查看 {name}",
       "play": "播放 {name}"
     },
     "gone": {
@@ -106,7 +106,7 @@
       "checking": "正在检查 {count} 条命令",
       "using": "正在使用 {tool}",
       "joined": "{first}，{next}",
-      "runningFor": "{what}，已 {time}",
+      "runningFor": "{what}，已持续 {time}",
       "command": {
         "finished": "{count} 条命令已完成",
         "failed": "{count} 条命令失败",
@@ -131,7 +131,7 @@
       "error": "失败",
       "aborted": "已停止"
     },
-    "forkedFrom": "派生自 {agent}",
+    "forkedFrom": "分叉自 {agent}",
     "inherited": "继承自此对话",
     "fast": "快速",
     "chip": "{count} 个智能体",
@@ -146,7 +146,7 @@
     "thinkingOff": "思考已关闭"
   },
   "terminals": {
-    "endCommand": "终止命令",
+    "endCommand": "停止命令",
     "closeTab": "关闭标签页",
     "chip": "{count} 个正在运行"
   },
@@ -166,23 +166,23 @@
     "titleLabel": "对话标题",
     "runsOn": "运行于",
     "backToConversation": "对话",
-    "archived": "此对话已存档。",
+    "archived": "此对话已归档。",
     "restore": "恢复对话"
   },
   "dock": {
     "scrollToBottom": "滚动到底部",
     "resume": "恢复",
     "continue": "继续",
-    "stillOffline": "{name} 仍处于离线状态",
+    "stillOffline": "{name} 仍然离线",
     "continueWith": "改用 {label} 继续"
   },
   "notices": {
-    "hostOffline": "{name} 处于离线状态。",
+    "hostOffline": "{name} 已离线。",
     "moveHost": "移到其他主机…",
     "pluginsChanged": "插件已更改",
     "replacedDraft": "较新的保存替换了{draft}",
     "quoted": "“{text}”",
-    "restore": "还原",
+    "restore": "恢复",
     "dismiss": "关闭",
     "dismissDraft": "关闭被替换的草稿"
   },
@@ -225,20 +225,20 @@
     "couldntCopyPicture": "无法复制图片"
   },
   "models": {
-    "parent": "父级的模型",
+    "parent": "上级的模型",
     "fast": "快速模式",
     "reasoning": "推理",
     "context": "上下文",
     "model": "模型",
-    "off": "关",
+    "off": "关闭",
     "default": "默认（{window}）",
     "effort": {
-      "minimal": "最少",
+      "minimal": "极低",
       "low": "低",
-      "medium": "中等",
+      "medium": "中",
       "high": "高",
-      "xhigh": "超高",
-      "max": "最大值"
+      "xhigh": "极高",
+      "max": "最大"
     },
     "loading": "正在加载模型…",
     "loadFailed": "无法加载模型。",
@@ -259,13 +259,13 @@
     "windowUsed": "上下文窗口，已使用 {percent}",
     "tip": "上下文 {figure}",
     "compacting": "正在压缩上下文…",
-    "unavailable": "无法获取上下文使用情况",
+    "unavailable": "上下文用量暂不可用",
     "compact": "压缩",
     "untilCompaction": "距离压缩还有 {tokens}",
     "afterTurn": "轮次结束后可用",
     "availableFrom": "上下文达到 {from} 后可用（当前 {now}）",
-    "usageLimits": "使用限制",
-    "refreshUsage": "刷新使用情况",
+    "usageLimits": "用量限额",
+    "refreshUsage": "刷新用量",
     "instructions": "指令",
     "personalInstructions": "个人指令",
     "workflowInstructions": "工作流：{name}",

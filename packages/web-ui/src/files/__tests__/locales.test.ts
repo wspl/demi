@@ -26,7 +26,7 @@ test.each<{ language: Language; lines: string; kind: string; marked: string; lin
     language: 'zh-Hans',
     lines: 'TypeScript · 1 行 · 4 B',
     kind: 'TS 文件',
-    marked: '冲突: 已由他们删除',
+    marked: '冲突：对方已删除',
     link: '指向 /tmp/gone.log 的符号链接，目标不存在',
     uploads: '1 个文件',
   },
