@@ -266,7 +266,7 @@
   "workflows": {
     "label": "워크플로",
     "labelTip": "워크플로: {name}",
-    "default": "기본값",
+    "default": "전역 워크플로",
     "none": "서브에이전트 없음",
     "reading": "워크플로를 읽는 중…",
     "failed": "워크플로를 읽을 수 없음",

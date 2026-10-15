@@ -138,14 +138,14 @@ async fn no_subagents_and_an_unavailable_workflow_refuse_every_spawn_with_their_
     *fixture.product.workflow.borrow_mut() = ConversationProfiles::Off;
     let _client = fixture.opened().await;
 
-    let off = "demi agent spawn: subagents are turned off for this conversation; do this work in this session, or ask the user to choose Default or a workflow in the composer's Workflow menu.\n";
+    let off = "demi agent spawn: subagents are turned off for this conversation; do this work in this session, or ask the user to choose Global Workflow or a workflow in the composer's Workflow menu.\n";
     for args in [json!({ "prompt": "task x" }), json!({ "prompt": "task x", "profile": "explore" })] {
         assert_eq!(refused_spawn(&fixture, args).await, off);
     }
     let (text, listing) = both(&fixture, "profiles list", json!({})).await;
     assert_eq!(
         text,
-        "Subagents are turned off for this conversation; demi agent spawn fails until the user chooses Default or a workflow in the composer's Workflow menu.\n"
+        "Subagents are turned off for this conversation; demi agent spawn fails until the user chooses Global Workflow or a workflow in the composer's Workflow menu.\n"
     );
     assert_eq!(listing["enabled"], json!(false));
     assert_eq!(listing["choice"], json!({ "type": "none" }));
