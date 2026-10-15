@@ -176,7 +176,9 @@ machine nothing; for example, the root's process and three subagents'
 processes starting on a laptop ask its runner once in all. What is kept is
 dropped, and asked again at the next start, when the runner connection ends
 (a runner that restarts, a Cloud that stops or is reset), when the runner
-says the package was lost, or when an install fails. The kept list is in
+says the package was lost, when an install fails, or when a start finds the
+executable it was given gone. A first ask that every start waiting for it
+has given up on is dropped with them, so the next start asks again. The kept list is in
 memory only; nothing stores it. A machine that is offline or asleep has no
 answer, and showing a version is never a reason to wake one.
 

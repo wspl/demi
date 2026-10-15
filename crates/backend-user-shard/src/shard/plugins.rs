@@ -268,6 +268,7 @@ impl Shard {
     /// conversation that reaches the device hears it, for that conversation
     /// (`native-runtime.md` § Messages to the plugin).
     pub(crate) async fn package_lost(&self, device: &DeviceId, lost: Lost<'_>) {
+        self.cli_package_lost(device, &lost);
         let panelled = match self
             .services()
             .control
