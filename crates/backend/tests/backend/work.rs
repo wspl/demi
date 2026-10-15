@@ -892,13 +892,25 @@ EOF"#;
     );
     let empty = work
         .turn(vec![
-            shell("t2c", "demi host shell --host alpha </dev/null; echo exit=$?", 10_000),
+            shell(
+                "t2c",
+                "demi host shell --host alpha </dev/null; echo exit=$?; yes | demi host shell --host alpha; echo exit=$?",
+                10_000,
+            ),
             say("no script"),
         ])
         .await;
     assert!(
         empty.received[0].contains(
             "demi host shell: no script: give it as an argument or on stdin, as a quoted heredoc\nexit=1"
+        ),
+        "{}",
+        empty.received[0]
+    );
+    // An endless producer is refused at the limit, not drained.
+    assert!(
+        empty.received[0].contains(
+            "demi host shell: the script on stdin exceeds 1 MiB: copy a long one to the host as a file and run that\nexit=1"
         ),
         "{}",
         empty.received[0]
