@@ -170,6 +170,20 @@ async fn a_start_that_arrives_twice_runs_the_job_once() {
             }
         };
         assert_eq!(again, ended, "a start after the end answers the job's exit");
+
+        // Released, whatever the backend had of it, the job still never
+        // runs again.
+        host.send(Inbound::JobRelease {
+            job_id: "once".into(),
+        })
+        .await;
+        start_job(&mut host, "once", script).await;
+        let released = loop {
+            if let Some(released) = exit(host.frame().await) {
+                break released;
+            }
+        };
+        assert_eq!(released.0, "once");
         assert_eq!(std::fs::read_to_string(host.home().join("runs")).unwrap(), "x");
         host.close().await;
     })
