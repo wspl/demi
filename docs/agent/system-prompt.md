@@ -118,23 +118,23 @@ order:
 - **Files for the user.** Replies render as Markdown. A file the user should
   keep goes out as an attachment
   ([Attachment commands](../execution/commands.md#attachment-commands)); a
-  Host path in a link or image shows the file as it is now. A file of the
-  Host the reply names is a link, its text the short name and its target the
-  path from the working directory, with `#L` and a line to point at one:
-  `[runner.md](docs/execution/runner.md#L438)`, so the user opens it with a
-  click ([Files named in messages](../product/file-previews.md#files-named-in-messages)).
-  A subagent the reply names is a link to its number, `[File icons](agent:4)`
-  ([Linking an agent](subagents.md#linking-an-agent)).
-  Images and videos are embedded, other files linked.
-- **Commits.** A commit the reply names, one the agent made or one it
-  found, is a link whose text says what the commit did and whose target is
-  its id, `[Fix the cart total](commit:3f2a9c1)`, which opens its changes
-  ([Commits mode](../execution/edit-tracking.md#commits-mode)); never a bare
-  id in code, `` `3f2a9c1` ``, which the user cannot open and which says
-  nothing of the commit. The entry says so on its own, apart from files,
-  with the wrong form beside the right one: a model writes a bare id in code
-  by habit, from git's output and code review, and a clause at the end of
-  the files' paragraph did not change that.
+  Host path in a link or image shows the file as it is now. Images and
+  videos are embedded, other files linked.
+- **Links in replies.** What the reply names that the user can open is a
+  link, never bare code: a file of the Host is a link whose text is its
+  short name and whose target is its path from the working directory, with
+  `#L` and a line to point at one, `[runner.md](docs/execution/runner.md#L438)`
+  ([Files named in messages](../product/file-previews.md#files-named-in-messages));
+  a subagent a link to its number, `[File icons](agent:4)`
+  ([Linking an agent](subagents.md#linking-an-agent)); a commit of the
+  working directory's repository a link whose text says what the commit did
+  and whose target is its id, `[Fix the cart total](commit:3f2a9c1)`, which
+  opens its changes ([Commits mode](../execution/edit-tracking.md#commits-mode)).
+  The entry stands on its own and shows the wrong form beside the right one,
+  `` `docs/execution/runner.md` `` and `` `3f2a9c1` `` against the links: a
+  model writes paths and ids as code by habit, from terminals and code
+  review, and the same rule as a clause at the end of the files' paragraph
+  did not change that.
 - **What the user sees.** The work panel beside the conversation shows the
   conversation's changes, files and browser tabs; the user watches and
   operates the browser there.
