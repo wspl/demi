@@ -1132,9 +1132,18 @@ impl SessionCore {
     /// Delivers the pending steer `id` now (`runtime.md` § Send now): the
     /// turn's round is cut short, and the turn goes on with the steer. A
     /// steer that is no longer pending changes nothing.
+    ///
+    /// A wait for the model that runs starts again from now: the request it
+    /// waited for is stopped, and the next one carries the steer
+    /// (`runtime.md` § Waiting for the model). A wait that does not run, as
+    /// while a call runs, starts before that next request.
     pub(super) fn steer_now(&mut self, id: &BlockId) {
-        if self.inputs.has_steer(id) {
-            self.cut_round(SendNow::Steer);
+        if !self.inputs.has_steer(id) {
+            return;
+        }
+        self.cut_round(SendNow::Steer);
+        if self.send_now_pending() && self.waiting_since.is_some() {
+            self.waiting_since = Some(self.clock.now());
         }
     }
 
