@@ -146,6 +146,7 @@ struct Stored {
     number_hold: Option<Rc<Hold>>,
     /// The holds on reads of a node's children, by the node.
     children_holds: BTreeMap<NodeId, Rc<Hold>>,
+    end_hold: Option<Rc<Hold>>,
     /// What the product's keeper stored of each ended command's output.
     outputs: BTreeMap<CommandId, StoredCommand>,
     /// The commands each node ran that are recorded running.
@@ -297,6 +298,14 @@ impl MemoryTreeStore {
             .borrow_mut()
             .children_holds
             .insert(parent.clone(), hold.clone());
+        StoreGate(hold)
+    }
+
+    /// Holds every read of how a command ended from now on until the gate
+    /// is released.
+    pub fn hold_command_ends(&self) -> StoreGate {
+        let hold = Rc::new(Hold::default());
+        self.stored.borrow_mut().end_hold = Some(hold.clone());
         StoreGate(hold)
     }
 }
@@ -572,8 +581,13 @@ impl AgentTreeStore for MemoryTreeStore {
         &'a self,
         command: &'a CommandId,
     ) -> LocalBoxFuture<'a, Result<Option<CommandEnd>, StoreError>> {
-        let end = self.stored.borrow().outputs.get(command).map(|stored| stored.end.clone());
-        Box::pin(async move { Ok(end) })
+        Box::pin(async move {
+            let hold = self.stored.borrow().end_hold.clone();
+            if let Some(hold) = hold {
+                hold.pass().await;
+            }
+            Ok(self.stored.borrow().outputs.get(command).map(|stored| stored.end.clone()))
+        })
     }
 
     fn running_commands<'a>(
