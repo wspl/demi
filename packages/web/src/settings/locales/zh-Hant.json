@@ -17,14 +17,14 @@
     "turnOffFailed": "無法關閉外掛程式"
   },
   "providers": {
-    "saveFailed": "無法儲存提供者",
-    "testFailed": "無法測試提供者",
+    "saveFailed": "無法儲存供應商",
+    "testFailed": "無法測試供應商",
     "refreshModelsFailed": "無法重新整理模型",
-    "removeFailed": "無法移除提供者",
+    "removeFailed": "無法移除供應商",
     "cliUpdateFailed": "無法更新命令列工具",
     "removeAccountFailed": "無法移除帳戶",
     "testAccountFailed": "無法測試帳戶",
-    "addFailed": "無法新增提供者",
+    "addFailed": "無法新增供應商",
     "cliReadFailed": "無法讀取命令列工具",
     "checkUpdatesFailed": "無法檢查更新",
     "cliInstallFailed": "無法安裝命令列工具",

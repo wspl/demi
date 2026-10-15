@@ -7,13 +7,21 @@ This page says what is translated, where each text lives, how text that
 comes from the backend is worded, and how the language is chosen. How each
 language is written, its glossary included, is the gallery's Writing page.
 
-Each language says what established software says in it, never a literal
-rendering of the English: a term, a button, a menu item or an error takes
-the wording, the form and the tone that VS Code's translation in that
-language uses for the same thing, then macOS's own, then the vendor's
-style guide for the language (Microsoft's Style Guides and Terminology,
-Apple's). Where they differ, VS Code's wins, since Demi's users read it
-every day; the glossary records each choice.
+Each language says what its users would find most natural for the thing
+in front of them, never a literal rendering of the English, and no single
+source decides it. Each term and each phrasing is chosen by comparing many
+products that speak the language well and say the same thing: AI apps of
+the same kind (Codex, ChatGPT, Claude, Cursor), the system's own apps
+(macOS and iOS: Mail, Finder, System Settings), and for developer
+concepts, such as commit, branch, terminal or diff, the tools developers
+read every day (VS Code, Git clients). Where they agree, take theirs; where
+they differ, take the one a user of that region reads without stopping,
+and prefer everyday words over a vendor's house terminology, such as
+归档 over 存档 and 账户 over 帐户. A word a product uses for a different
+thing that shares an English name does not count: a model vendor is
+供应商, not an editor's 提供程序. The glossary records each choice with
+the products it was weighed against, and a better choice found later
+replaces it everywhere.
 
 ## What is translated
 

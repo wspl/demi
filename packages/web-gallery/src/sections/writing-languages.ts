@@ -86,7 +86,7 @@ const SIMPLIFIED: LanguageWriting = {
   glossary: [
     ['Agent', '智能体'], ['Subagent', '子智能体'], ['Conversation', '对话'], ['Project', '项目'],
     ['Host', '主机'], ['Cloud', '云'], ['Device', '设备'], ['Runner', '运行器'], ['Relay', '中继'],
-    ['Provider', '提供程序'], ['Model', '模型'], ['Account', '帐户'], ['Subscription', '订阅'],
+    ['Provider', '供应商'], ['Model', '模型'], ['Account', '帐户'], ['Subscription', '订阅'],
     ['Profile', '配置文件'], ['Workflow', '工作流'], ['Skill', '技能'], ['Plugin', '插件'],
     ['Credential', '凭据'], ['Instructions', '指令'], ['Context', '上下文'], ['Compaction', '压缩'],
     ['Reasoning', '推理'], ['Turn', '轮次'], ['Transcript', '对话记录'], ['Attachment', '附件'],
@@ -142,7 +142,7 @@ const TRADITIONAL: LanguageWriting = {
   glossary: [
     ['Agent', '代理程式'], ['Subagent', '子代理程式'], ['Conversation', '對話'], ['Project', '專案'],
     ['Host', '主機'], ['Cloud', '雲端'], ['Device', '裝置'], ['Runner', '執行器'], ['Relay', '中繼'],
-    ['Provider', '提供者'], ['Model', '模型'], ['Account', '帳戶'], ['Subscription', '訂閱'],
+    ['Provider', '供應商'], ['Model', '模型'], ['Account', '帳戶'], ['Subscription', '訂閱'],
     ['Profile', '設定檔'], ['Workflow', '工作流程'], ['Skill', '技能'], ['Plugin', '外掛程式'],
     ['Credential', '憑證'], ['Instructions', '指示'], ['Context', '上下文', 'Not VS Code’s 內容, which is also Content'], ['Compaction', '壓縮'],
     ['Reasoning', '推理'], ['Turn', '輪次'], ['Transcript', '對話紀錄'], ['Attachment', '附件'],
