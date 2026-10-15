@@ -1,16 +1,16 @@
 {
   "handoff": {
     "wrongPassword": "这不是你的密码。",
-    "signOutFailed": "无法注销该浏览器"
+    "signOutFailed": "无法让该浏览器退出登录"
   },
   "passkeys": {
-    "held": "此密码管理器中已有你帐户的通行密钥。",
+    "held": "此密码管理器中已有你账户的通行密钥。",
     "renameFailed": "无法重命名通行密钥",
-    "removeFailed": "无法删除通行密钥"
+    "removeFailed": "无法移除通行密钥"
   },
   "login": {
     "invalidCredentials": "电子邮件或密码不正确。",
-    "accountDisabled": "此帐户已禁用。请联系管理员启用。",
-    "signOutFailed": "无法注销"
+    "accountDisabled": "此账户已禁用。请联系管理员启用。",
+    "signOutFailed": "无法退出登录"
   }
 }

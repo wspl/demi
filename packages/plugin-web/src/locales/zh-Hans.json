@@ -4,7 +4,7 @@
     "keywords": "网络, 网页, 搜索, Exa, API 密钥, 登录"
   },
   "account": {
-    "label": "Exa 帐户",
+    "label": "Exa 账户",
     "signedIn": "已登录",
     "notConnected": "未连接",
     "signOut": "退出登录",
@@ -21,7 +21,7 @@
   "inUse": {
     "label": "当前使用",
     "key": "你的 API 密钥",
-    "account": "你的 Exa 帐户",
+    "account": "你的 Exa 账户",
     "anonymous": "匿名，有限制"
   },
   "refusals": {
