@@ -24,7 +24,7 @@ pub struct ErrorBody {
     /// The values the page's text for `code` needs, such as `{ limit: 50 }`,
     /// each a number or a string, and the same for every answer of the code.
     /// A name says how the page writes its value: one ending in `Bytes` is a
-    /// size, `limitBytes`, and one ending in `At` a moment, as RFC 3339.
+    /// size, `limitBytes`, and `count` chooses a plural form.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
     /// With `plugin_refused`, the plugin's snake_case word for the refusal,
