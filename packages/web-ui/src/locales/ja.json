@@ -49,10 +49,10 @@
     "inFewSeconds": "数秒後",
     "age": {
       "now": "今",
-      "minutes": "{count} 分",
-      "hours": "{count} 時間",
-      "days": "{count} 日",
-      "weeks": "{count} 週間"
+      "minutes": "{count}分前",
+      "hours": "{count}時間前",
+      "days": "{count}日前",
+      "weeks": "{count}週間前"
     },
     "span": {
       "seconds": "{seconds} 秒",
