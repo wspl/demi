@@ -1,5 +1,5 @@
 import { expect, test } from 'bun:test'
-import { SETTINGS_SECTIONS, withUsersSection } from '../sections'
+import { settingsSections, withUsersSection } from '../sections'
 import type { SettingsUser, UserRole } from '../types'
 import { assignableRoles, userActions } from '../users'
 
@@ -41,7 +41,7 @@ test('each role may give only the roles below its own', () => {
 
 test('the rail lists Users after Devices for the master and admins, not for a user', () => {
   const ids = (role: UserRole) =>
-    withUsersSection(SETTINGS_SECTIONS, role).flatMap((group) => group.items.map((item) => item.id))
+    withUsersSection(settingsSections(), role).flatMap((group) => group.items.map((item) => item.id))
   expect(ids('master')).toContain('users')
   expect(ids('admin')).toContain('users')
   expect(ids('user')).not.toContain('users')

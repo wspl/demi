@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, watch } from 'vue'
 import { Check } from '@lucide/vue'
@@ -11,10 +13,10 @@ import { hiddenUsername } from '@demicodes/web-ui/ui/field-autofill'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import SettingsRow from './SettingsRow.vue'
 import {
-  PASSWORD_HINT,
   PASSWORD_MIN_LENGTH,
-  PASSWORD_TOO_SHORT,
-  PASSWORDS_DIFFER,
+  passwordHint,
+  passwordTooShort,
+  passwordsDiffer,
   differs,
   isTooShort,
 } from '../auth/password'
@@ -109,19 +111,16 @@ function submit() {
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Change Password"
+    :label="t('changePassword.title')"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">
-          Change Password
+          {{ t('changePassword.title') }}
         </h3>
-        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          <template v-if="phase.kind === 'form'"
-            >Enter your current password and choose a new one.</template
-          >
-          <template v-else>Password changed.</template>
+        <p v-if="phase.kind === 'form'" class="mt-0.5 text-[13px] leading-5 text-fg-muted">
+          {{ t('changePassword.hint') }}
         </p>
       </header>
 
@@ -129,10 +128,10 @@ function submit() {
         <div
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
-          <SettingsRow label="Current password">
+          <SettingsRow :label="t('changePassword.current')">
             <TextInput
               v-model="current"
-              aria-label="Current password"
+              :aria-label="t('changePassword.current')"
               masked="password"
               autocomplete="current-password"
               focused
@@ -140,21 +139,21 @@ function submit() {
             />
           </SettingsRow>
           <SettingsRow
-            label="New password"
-            :description="PASSWORD_HINT"
+            :label="t('changePassword.new')"
+            :description="passwordHint()"
           >
             <TextInput
               v-model="next"
-              aria-label="New password"
+              :aria-label="t('changePassword.new')"
               masked="password"
               autocomplete="new-password"
               class="w-48 max-w-full"
             />
           </SettingsRow>
-          <SettingsRow label="Confirm new password">
+          <SettingsRow :label="t('changePassword.confirm')">
             <TextInput
               v-model="confirm"
-              aria-label="Confirm new password"
+              :aria-label="t('changePassword.confirm')"
               masked="password"
               autocomplete="new-password"
               class="w-48 max-w-full"
@@ -166,18 +165,18 @@ function submit() {
         <InlineError v-if="phase.error" :message="phase.error.message" :request-id="phase.error.requestId" />
         <InlineError
           v-else-if="tooShort"
-          :message="PASSWORD_TOO_SHORT"
+          :message="passwordTooShort()"
         />
         <InlineError
           v-else-if="unchanged"
-          message="That is your current password."
+          :message="t('changePassword.unchanged')"
         />
-        <InlineError v-else-if="mismatch" :message="PASSWORDS_DIFFER" />
+        <InlineError v-else-if="mismatch" :message="passwordsDiffer()" />
       </template>
 
       <div v-else class="flex items-center gap-2 py-2 text-chrome text-fg">
         <Check :size="ICON_PX.in28" class="text-on-success" />
-        Password changed
+        {{ t('changePassword.done') }}
       </div>
     </div>
     <template #footer>
@@ -185,16 +184,16 @@ function submit() {
         v-if="phase.kind === 'done'"
         variant="primary"
         @click="emit('close')"
-        >Done</Button
+        >{{ uiText('common.done') }}</Button
       >
       <template v-else>
-        <Button @click="emit('close')">Cancel</Button>
+        <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
         <Button
           variant="primary"
           :disabled="!canSubmit && !phase.busy"
           :loading="phase.busy"
           @click="submit"
-          >Change Password</Button
+          >{{ t('changePassword.title') }}</Button
         >
       </template>
     </template>

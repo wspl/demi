@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import { inject, type InjectionKey } from 'vue'
 import type { SentenceText } from '../ui/ui-text'
 
@@ -38,17 +39,10 @@ export function deviceSystem({ userAgent, maxTouchPoints }: DeviceReport): Devic
   return 'other'
 }
 
-const UNLOCKS: Record<DeviceSystem, string> = {
-  ios: 'Face ID or Touch ID',
-  mac: 'Touch ID',
-  windows: 'Windows Hello',
-  android: 'your fingerprint, face or screen lock',
-  other: 'your device’s screen lock',
-}
 
 /** What the passkey offer says a passkey does on this system. */
 export function unlockSentence(system: DeviceSystem): SentenceText {
-  return `Sign in with ${UNLOCKS[system]} instead of your password.`
+  return t(`unlock.${system}`)
 }
 
 /**

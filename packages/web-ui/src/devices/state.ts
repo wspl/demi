@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import type { StatusDotTone } from '../ui/StatusDot.vue'
 import type { TitleText } from '../ui/ui-text'
 
@@ -10,9 +11,15 @@ export type DeviceState = 'online' | 'updating' | 'offline'
 
 /** How a device's state reads beside it. */
 export const DEVICE_STATE_LABEL: Record<DeviceState, TitleText> = {
-  online: 'Online',
-  updating: 'Updating',
-  offline: 'Offline',
+  get online() {
+    return t('state.online')
+  },
+  get updating() {
+    return t('state.updating')
+  },
+  get offline() {
+    return t('state.offline')
+  },
 }
 
 /** The tone of a device's state dot. */

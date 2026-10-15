@@ -13,7 +13,7 @@ export * from './generated/plugin'
 export const webPage = definePage({
   plugin: PLUGIN,
   settings: {
-    group: 'Agent',
+    group: 'agent',
     // The label and keywords are read where the settings list them, so a language chosen later words them too.
     item: {
       id: 'web-search',

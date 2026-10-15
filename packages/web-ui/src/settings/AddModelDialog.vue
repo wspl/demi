@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -86,36 +88,36 @@ function choose(choice: Choice): void {
 </script>
 
 <template>
-  <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="lg" label="Add Model" @close="emit('close')">
+  <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="lg" :label="t('addModel.title')" @close="emit('close')">
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Add Model</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('addModel.title') }}</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          Search models.dev or choose Custom.
+          {{ t('addModel.hint') }}
         </p>
       </header>
       <div class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float">
-        <SettingsRow label="Model">
+        <SettingsRow :label="t('addModel.model')">
           <template v-if="failed" #detail>
-            <InlineError message="Could not search models.dev." />
+            <InlineError :message="t('addModel.searchFailed')" />
           </template>
           <span v-if="adding" class="flex items-center gap-1.5 text-[12px] text-fg-subtle" role="status"
-            ><IndeterminateSpinner :size="12" /> Adding…</span
+            ><IndeterminateSpinner :size="12" /> {{ t('addModel.adding') }}</span
           >
           <Autocomplete
             v-model="text"
             :items="choices"
             :item-key="choiceKey"
-            list-label="Models"
+            :list-label="t('addModel.list')"
             focused
-            placeholder="Search"
+            :placeholder="t('addModel.search')"
             :disabled="adding"
             class="w-80 max-w-full"
             @choose="choose"
           >
             <template #item="{ item }">
               <span v-if="item.kind === 'custom'" class="flex min-w-0 flex-1 items-center gap-2">
-                <span class="shrink-0">Custom</span>
+                <span class="shrink-0">{{ t('addModel.custom') }}</span>
                 <span class="min-w-0 flex-1 truncate text-fg-subtle">{{ text.trim() }}</span>
               </span>
               <span v-else class="flex min-w-0 flex-1 items-center gap-2">
@@ -132,7 +134,7 @@ function choose(choice: Choice): void {
       <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
     </div>
     <template #footer>
-      <Button @click="emit('close')">Cancel</Button>
+      <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
     </template>
   </Dialog>
 </template>

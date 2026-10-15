@@ -1,0 +1,16 @@
+{
+  "handoff": {
+    "wrongPassword": "パスワードが違います。",
+    "signOutFailed": "ブラウザーをサインアウトできませんでした"
+  },
+  "passkeys": {
+    "held": "このパスワードマネージャーには、アカウントのパスキーがすでにあります。",
+    "renameFailed": "パスキーの名前を変更できませんでした",
+    "removeFailed": "パスキーを削除できませんでした"
+  },
+  "login": {
+    "invalidCredentials": "メールアドレスまたはパスワードが正しくありません。",
+    "accountDisabled": "このアカウントは無効です。管理者に有効化を依頼してください。",
+    "signOutFailed": "サインアウトできませんでした"
+  }
+}

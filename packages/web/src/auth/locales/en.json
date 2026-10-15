@@ -1,0 +1,16 @@
+{
+  "handoff": {
+    "wrongPassword": "That is not your password.",
+    "signOutFailed": "Could Not Sign Out the Browser"
+  },
+  "passkeys": {
+    "held": "This password manager has a passkey for your account already.",
+    "renameFailed": "Could Not Rename the Passkey",
+    "removeFailed": "Could Not Remove the Passkey"
+  },
+  "login": {
+    "invalidCredentials": "The email or password is incorrect.",
+    "accountDisabled": "This account is disabled. Ask your administrator to enable it.",
+    "signOutFailed": "Could Not Sign Out"
+  }
+}

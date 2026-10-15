@@ -1,0 +1,46 @@
+{
+  "title": "기술",
+  "description": "에이전트가 따를 수 있는 패키지된 워크플로입니다.",
+  "keywords": "기술,워크플로,git,SKILL.md",
+  "sources": {
+    "title": "소스",
+    "add": "소스 추가…",
+    "none": "소스 없음",
+    "adding": "추가 중",
+    "updating": "업데이트 중",
+    "failed": "실패",
+    "updateAvailable": "업데이트 사용 가능",
+    "enableAll": "“{name}”의 모든 기술 사용 설정",
+    "update": "업데이트",
+    "remove": "제거"
+  },
+  "skill": {
+    "warning": "경고",
+    "nameTaken": "이름이 사용 중",
+    "nameTakenDetail": "{origin}의 기술 “{name}”이(가) 켜져 있습니다. 이 기술을 사용하려면 그 기술을 끄십시오.",
+    "neverOffered": "제공되지 않음",
+    "neverOfferedDetail": "disable-model-invocation이 설정되어 있습니다.",
+    "notASkill": "기술이 아님: {reason}"
+  },
+  "removeSource": {
+    "title": "“{name}”을(를) 제거하시겠습니까?",
+    "withSkills": "기술도 함께 제거됩니다. 나중에 리포지토리를 다시 추가할 수 있습니다.",
+    "empty": "이 소스가 기술 목록에서 제거됩니다. 나중에 리포지토리를 다시 추가할 수 있습니다.",
+    "more": "외 {count}개"
+  },
+  "addSource": {
+    "title": "소스 추가",
+    "hint": "Git 리포지토리입니다. 그 안의 각 SKILL.md가 하나의 기술이 됩니다.",
+    "repository": "리포지토리",
+    "repositoryHint": "owner/repository 또는 Git URL입니다.",
+    "browse": "skills.sh 둘러보기",
+    "cancel": "취소"
+  },
+  "failures": {
+    "add": "소스를 추가할 수 없습니다",
+    "update": "소스를 업데이트할 수 없습니다",
+    "remove": "소스를 제거할 수 없습니다",
+    "switchSkill": "기술을 전환할 수 없습니다",
+    "switchSkills": "기술을 전환할 수 없습니다"
+  }
+}

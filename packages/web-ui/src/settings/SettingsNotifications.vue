@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import Switch from '../ui/Switch.vue'
+import { t } from './locales/text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -33,9 +34,9 @@ const asking = ref(false)
 const on = computed(() => asking.value || (enabled.value && props.permission === 'granted'))
 const description = computed(() => {
   if (props.permission === 'denied') {
-    return 'Blocked in this browser’s site settings.'
+    return t('notifications.browser.blocked')
   }
-  return 'On this browser only.'
+  return t('notifications.browser.thisBrowser')
 })
 
 async function turn(value: boolean): Promise<void> {
@@ -58,45 +59,42 @@ async function turn(value: boolean): Promise<void> {
 
 <template>
   <SettingsPage
-    title="Notifications"
-    description="When the agent needs you, or is done."
+    :title="t('notifications.title')"
+    :description="t('notifications.description')"
   >
-    <SettingsGroup title="Browser">
+    <SettingsGroup :title="t('notifications.browser.title')">
       <SettingsRow
-        label="Browser notifications"
+        :label="t('notifications.browser.label')"
         :description="description"
       >
         <Switch
           :model-value="on"
           :disabled="permission === 'unsupported' || asking"
-          :disabled-reason="permission === 'unsupported' ? 'This browser cannot show notifications.' : undefined"
+          :disabled-reason="permission === 'unsupported' ? t('notifications.browser.unsupported') : undefined"
           @update:model-value="turn"
         />
       </SettingsRow>
     </SettingsGroup>
-    <SettingsGroup
-      title="Notify Me When"
-      description="Only while the conversation is not in front."
-    >
-      <SettingsRow label="A turn finishes">
+    <SettingsGroup :title="t('notifications.when.title')">
+      <SettingsRow :label="t('notifications.when.turnFinishes')">
         <Switch
           v-model="turnFinishes"
           :disabled="!on"
-          disabled-reason="Turn on browser notifications first."
+          :disabled-reason="t('notifications.when.turnOnFirst')"
         />
       </SettingsRow>
-      <SettingsRow label="A turn fails">
+      <SettingsRow :label="t('notifications.when.turnFails')">
         <Switch
           v-model="turnFails"
           :disabled="!on"
-          disabled-reason="Turn on browser notifications first."
+          :disabled-reason="t('notifications.when.turnOnFirst')"
         />
       </SettingsRow>
-      <SettingsRow label="Demi needs permission">
+      <SettingsRow :label="t('notifications.when.needsPermission')">
         <Switch
           v-model="needsPermission"
           :disabled="!on"
-          disabled-reason="Turn on browser notifications first."
+          :disabled-reason="t('notifications.when.turnOnFirst')"
         />
       </SettingsRow>
     </SettingsGroup>

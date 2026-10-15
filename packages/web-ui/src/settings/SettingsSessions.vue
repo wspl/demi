@@ -6,6 +6,7 @@ import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import RelativeTime from '../ui/RelativeTime.vue'
 import Tag from '../ui/Tag.vue'
 import { formatDay } from '../ui/dates'
+import { t } from './locales/text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { SettingsSession, SettingsSessionHost } from './types'
@@ -53,20 +54,20 @@ async function signOut(): Promise<void> {
 </script>
 
 <template>
-  <SettingsGroup title="Signed-In Browsers">
+  <SettingsGroup :title="t('sessions.title')">
     <SettingsRow v-for="session in host.sessions" :key="session.id" :label="session.name">
       <template v-if="session.current" #tags>
-        <Tag>This Browser</Tag>
+        <Tag>{{ t('sessions.thisBrowser') }}</Tag>
       </template>
       <template #detail>
         <div class="flex flex-wrap gap-x-4 gap-y-0.5 text-[12px] leading-4 text-fg-subtle">
           <span>
-            Signed in
+            {{ t('sessions.signedIn') }}
             <span class="text-fg-muted">{{ formatDay(session.createdAt) }}</span>
           </span>
-          <span v-if="session.issuedBy">Signed in with a code from {{ session.issuedBy }}</span>
+          <span v-if="session.issuedBy">{{ t('sessions.signedInWithCode', { name: session.issuedBy }) }}</span>
           <span v-if="!session.current">
-            Last active
+            {{ t('sessions.lastActive') }}
             <span class="text-fg-muted"><RelativeTime :timestamp="session.lastActiveAt" /></span>
           </span>
         </div>
@@ -74,21 +75,21 @@ async function signOut(): Promise<void> {
       <Button
         v-if="!session.current"
         size="sm"
-        :aria-label="`Sign out ${session.name}`"
+        :aria-label="t('sessions.signOutLabel', { name: session.name })"
         :operation="signOutOf(session)"
         @click="askSignOut(session)"
-      >Sign Out…</Button>
+      >{{ t('sessions.signOut') }}</Button>
     </SettingsRow>
   </SettingsGroup>
   <ConfirmDialog
     :is-open="confirmOpen"
     :overlay-store="overlayStore"
-    :title="`Sign out ${ending?.name ?? ''}?`"
-    action="Sign Out"
+    :title="t('sessions.signOutTitle', { name: ending?.name ?? '' })"
+    :action="t('sessions.signOutAction')"
     :operation="signOutOf(ending)"
     @close="confirmOpen = false"
     @confirm="signOut"
   >
-    <p>Its open pages return to the sign-in page. Conversations stay on the server.</p>
+    <p>{{ t('sessions.signOutBody') }}</p>
   </ConfirmDialog>
 </template>

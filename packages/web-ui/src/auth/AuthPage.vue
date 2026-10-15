@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import ScrollArea from '../ui/ScrollArea.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
 
@@ -40,12 +41,12 @@ defineProps<{
         <h2
           class="max-w-lg select-none text-[32px] font-medium leading-10 text-fg-emphasis"
         >
-          A Place to Think and Build
+          {{ t('page.tagline') }}
         </h2>
         <p
           class="mt-4 max-w-md select-none text-[15px] leading-6 text-fg-muted"
         >
-          Everything starts with a conversation.
+          {{ t('page.taglineBody') }}
         </p>
       </div>
     </aside>

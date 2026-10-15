@@ -1,0 +1,46 @@
+{
+  "title": "Skills",
+  "description": "Packaged workflows the agent can follow.",
+  "keywords": "skill,workflow,git,SKILL.md",
+  "sources": {
+    "title": "Sources",
+    "add": "Add Source…",
+    "none": "No sources",
+    "adding": "Adding",
+    "updating": "Updating",
+    "failed": "Failed",
+    "updateAvailable": "Update available",
+    "enableAll": "Enable every skill in {name}",
+    "update": "Update",
+    "remove": "Remove"
+  },
+  "skill": {
+    "warning": "Warning",
+    "nameTaken": "Name taken",
+    "nameTakenDetail": "A skill named “{name}” from {origin} is on. Turn it off to use this one.",
+    "neverOffered": "Never offered",
+    "neverOfferedDetail": "It sets disable-model-invocation.",
+    "notASkill": "Not a skill: {reason}"
+  },
+  "removeSource": {
+    "title": "Remove “{name}”?",
+    "withSkills": "Its skills go with it. You can add the repository again later.",
+    "empty": "The source leaves your skills. You can add the repository again later.",
+    "more": "and {count} more"
+  },
+  "addSource": {
+    "title": "Add Source",
+    "hint": "A Git repository. Each SKILL.md in it is a skill.",
+    "repository": "Repository",
+    "repositoryHint": "owner/repository or a Git URL.",
+    "browse": "Browse skills.sh",
+    "cancel": "Cancel"
+  },
+  "failures": {
+    "add": "Could Not Add the Source",
+    "update": "Could Not Update the Source",
+    "remove": "Could Not Remove the Source",
+    "switchSkill": "Could Not Switch the Skill",
+    "switchSkills": "Could Not Switch the Skills"
+  }
+}

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import Switch from '@demicodes/web-ui/ui/Switch.vue'
+import { t } from './locales/text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -23,8 +24,8 @@ const emit = defineEmits<{
 
 <template>
   <SettingsPage
-    title="Plugins"
-    description="What the agent and this app can do."
+    :title="t('plugins.title')"
+    :description="t('plugins.description')"
   >
     <SettingsGroup>
       <SettingsRow
@@ -37,7 +38,7 @@ const emit = defineEmits<{
           :model-value="plugin.enabled"
           size="sm"
           class="ml-1"
-          :aria-label="`${plugin.name} ${plugin.enabled ? 'on' : 'off'}`"
+          :aria-label="plugin.name"
           @update:model-value="emit('switch', plugin.id, $event)"
         />
       </SettingsRow>
@@ -45,7 +46,7 @@ const emit = defineEmits<{
         v-if="!plugins.length"
         class="select-none px-4 py-6 text-center text-[13px] text-fg-subtle"
       >
-        No plugins
+        {{ t('plugins.none') }}
       </div>
     </SettingsGroup>
   </SettingsPage>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { pluralize } from '@demicodes/utils'
+import { t } from './locales/text'
 import type { OverlayStore } from '../overlay/overlayStore'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import type { Action, Operation } from '../ui/operations'
@@ -33,8 +33,8 @@ const emit = defineEmits<{
   <ConfirmDialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    title="Revoke this device?"
-    action="Revoke"
+    :title="t('revoke.title')"
+    :action="t('revoke.action')"
     :operation="operation"
     :goes="projects"
     @close="emit('close')"
@@ -44,13 +44,10 @@ const emit = defineEmits<{
       <DirectoryLabel :path="entry" :home="home" />
     </template>
     <p>
-      “{{ device }}” leaves your devices. If its runner is connected, it
-      removes itself from the device.
+      {{ t('revoke.body', { device }) }}
     </p>
     <p v-if="projects.length">
-      {{ pluralize(projects.length, 'This project goes', 'These projects go') }}
-      with it. Their files stay on the device, and their conversations stay
-      in the sidebar.
+      {{ t('revoke.projects', {}, projects.length) }}
     </p>
   </ConfirmDialog>
 </template>

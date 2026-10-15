@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t as uiText } from '../locales/text'
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, watch } from 'vue'
 import { Check } from '@lucide/vue'
@@ -136,21 +138,16 @@ function resend() {
   <Dialog
     :is-open="isOpen"
     :overlay-store="overlayStore"
-    label="Change Email"
+    :label="t('changeEmail.title')"
     @close="emit('close')"
   >
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">Change Email</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('changeEmail.title') }}</h3>
         <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
-          <template v-if="phase.kind === 'form'"
-            >You sign in with the new address from now on.</template
-          >
-          <template v-else-if="phase.kind === 'verify'"
-            >A {{ CODE_LENGTH }}-digit code went to {{ phase.email }}. Enter it
-            to finish.</template
-          >
-          <template v-else>Your email is now {{ phase.email }}.</template>
+          <template v-if="phase.kind === 'form'">{{ t('changeEmail.formHint') }}</template>
+          <template v-else-if="phase.kind === 'verify'">{{ t('changeEmail.verifyHint', { count: CODE_LENGTH, email: phase.email }) }}</template>
+          <template v-else>{{ t('changeEmail.doneHint', { email: phase.email }) }}</template>
         </p>
       </header>
 
@@ -158,20 +155,20 @@ function resend() {
         <div
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
-          <SettingsRow label="New email">
+          <SettingsRow :label="t('changeEmail.newEmail')">
             <TextInput
               v-model="email"
-              aria-label="New email"
+              :aria-label="t('changeEmail.newEmail')"
               autocomplete="off"
               focused
               :placeholder="phase.currentEmail"
               class="w-48 max-w-full"
             />
           </SettingsRow>
-          <SettingsRow label="Current password">
+          <SettingsRow :label="t('changeEmail.currentPassword')">
             <TextInput
               v-model="password"
-              aria-label="Current password"
+              :aria-label="t('changeEmail.currentPassword')"
               masked="password"
               autocomplete="current-password"
               class="w-48 max-w-full"
@@ -183,7 +180,7 @@ function resend() {
         <InlineError v-if="phase.error" :message="phase.error.message" :request-id="phase.error.requestId" />
         <InlineError
           v-else-if="sameAsCurrent"
-          message="That is already your email."
+          :message="t('changeEmail.sameAsCurrent')"
         />
       </template>
 
@@ -191,10 +188,10 @@ function resend() {
         <div
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
-          <SettingsRow label="Code">
+          <SettingsRow :label="t('changeEmail.code')">
             <TextInput
               v-model="code"
-              aria-label="Verification code"
+              :aria-label="t('changeEmail.codeLabel')"
               focused
               placeholder="000000"
               class="w-32 font-mono"
@@ -203,18 +200,16 @@ function resend() {
         </div>
         <InlineError v-if="phase.error" :message="phase.error.message" :request-id="phase.error.requestId" />
         <p class="select-none text-[12px] text-fg-subtle">
-          <template v-if="phase.resent"
-            >A new code went to {{ phase.email }}.</template
-          >
+          <template v-if="phase.resent">{{ t('changeEmail.resent', { email: phase.email }) }}</template>
           <template v-else>
-            Nothing arrived?
+            {{ t('changeEmail.nothingArrived') }}
             <button
               type="button"
               class="text-on-accent hover:underline"
               :disabled="phase.busy"
               @click="resend"
             >
-              Send It Again
+              {{ t('changeEmail.sendAgain') }}
             </button>
           </template>
         </p>
@@ -230,17 +225,17 @@ function resend() {
         v-if="phase.kind === 'done'"
         variant="primary"
         @click="emit('close')"
-        >Done</Button
+        >{{ uiText('common.done') }}</Button
       >
       <template v-else>
-        <Button @click="emit('close')">Cancel</Button>
+        <Button @click="emit('close')">{{ uiText('common.cancel') }}</Button>
         <Button
           v-if="phase.kind === 'form'"
           variant="primary"
           :disabled="!canSubmit && !phase.busy"
           :loading="phase.busy"
           @click="submit"
-          >Continue</Button
+          >{{ uiText('common.continue') }}</Button
         >
         <Button
           v-else
@@ -248,7 +243,7 @@ function resend() {
           :disabled="!canVerify && !phase.busy"
           :loading="phase.busy"
           @click="verify"
-          >Verify</Button
+          >{{ t('changeEmail.verify') }}</Button
         >
       </template>
     </template>

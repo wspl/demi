@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import Button from '../ui/Button.vue'
 import Switch from '../ui/Switch.vue'
+import { t } from './locales/text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
@@ -15,27 +16,27 @@ const emit = defineEmits<{
 
 <template>
   <SettingsPage
-    title="Data & Privacy"
-    description="What is kept and who can see it."
+    :title="t('data.title')"
+    :description="t('data.description')"
   >
-    <SettingsGroup title="Diagnostics">
+    <SettingsGroup :title="t('data.diagnostics.title')">
       <SettingsRow
-        label="Send usage data"
-        description="Crashes and feature usage. Never prompts, transcripts or file contents."
+        :label="t('data.diagnostics.send')"
+        :description="t('data.diagnostics.sendDescription')"
       >
         <Switch v-model="telemetry" />
       </SettingsRow>
     </SettingsGroup>
-    <SettingsGroup title="Danger Zone">
+    <SettingsGroup :title="t('data.danger.title')">
       <SettingsRow
-        label="Delete all conversations"
-        description="Projects and settings stay."
+        :label="t('data.danger.deleteAll')"
+        :description="t('data.danger.deleteAllDescription')"
       >
         <Button
           size="sm"
           variant="danger"
           @click="emit('deleteAll')"
-        >Delete All</Button>
+        >{{ t('data.danger.deleteAllButton') }}</Button>
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

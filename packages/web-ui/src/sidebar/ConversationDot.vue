@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed } from 'vue'
 import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
 import { statusTone } from '@demicodes/web-ui/agent/conversation-status'
@@ -21,7 +22,7 @@ const tone = computed(() => statusTone(props.conversation.status, { read: !props
 
 <template>
   <span class="flex size-3.5 shrink-0 items-center justify-center phone:size-4 phone:[&>*]:scale-[1.35]">
-    <StatusDot v-if="conversation.needsYou" tone="attention" label="Needs your decision" />
+    <StatusDot v-if="conversation.needsYou" tone="attention" :label="t('dot.needsYou')" />
     <StatusDot v-else-if="tone" :tone="tone" :breathing="conversation.status === 'active'" />
     <StatusDot v-else tone="muted" ring />
   </span>

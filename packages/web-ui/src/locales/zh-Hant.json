@@ -103,7 +103,8 @@
     "no_model_available": "此對話沒有可用的模型。",
     "models_not_loaded": "無法載入模型。{failure}",
     "source_conversation_unavailable": "來源對話無法使用。",
-    "file_not_owned": "它不在此帳戶的檔案中。"
+    "file_not_owned": "它不在此帳戶的檔案中。",
+    "no_passkey": "瀏覽器未提供通行密鑰。"
   },
   "common": {
     "ok": "確定",
@@ -122,6 +123,12 @@
     "loading": "正在載入…",
     "undo": "復原",
     "cloud": "雲端",
-    "workspace": "工作區"
+    "workspace": "工作區",
+    "add": "新增",
+    "back": "返回",
+    "continue": "繼續",
+    "delete": "刪除",
+    "remove": "移除",
+    "save": "儲存"
   }
 }

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import Button from '../ui/Button.vue'
@@ -99,7 +100,7 @@ const countdown = computed(() => {
 /** The line under the fields: the countdown while locked, else the host's error. */
 const message = computed(() => {
   if (lockedSeconds.value > 0) {
-    return `Too many failed sign-ins. Try again in ${countdown.value}.`
+    return t('signIn.locked', { time: countdown.value })
   }
   if (props.phase.lockedUntil !== undefined) {
     return undefined
@@ -144,16 +145,12 @@ watch(
 
 <template>
   <AuthPage
-    title="Sign In"
-    :message="
-      phase.reason === 'expired'
-        ? 'Your session ended. Sign in again.'
-        : 'Sign in with your email.'
-    "
+    :title="t('signIn.title')"
+    :message="phase.reason === 'expired' ? t('signIn.expired') : t('signIn.message')"
   >
     <form class="flex flex-col gap-4" @submit.prevent="submit">
       <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-        Email
+        {{ t('signIn.email') }}
         <TextInput
           v-model="email"
           size="lg"
@@ -166,7 +163,7 @@ watch(
         />
       </label>
       <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
-        Password
+        {{ t('signIn.password') }}
         <TextInput
           ref="passwordField"
           v-model="password"
@@ -190,7 +187,7 @@ watch(
         :loading="phase.busy"
         @click="submit"
       >
-        Sign In
+        {{ t('signIn.title') }}
       </Button>
       <Button
         v-if="passkeys"
@@ -200,10 +197,10 @@ watch(
         :loading="phase.passkeyBusy"
         @click="emit('passkey')"
       >
-        Sign In with Passkey
+        {{ t('signIn.passkey') }}
       </Button>
       <p class="select-none text-center text-[12px] leading-4 text-fg-subtle">
-        Forgot your password? Ask your administrator to reset it.
+        {{ t('signIn.forgot') }}
       </p>
     </form>
   </AuthPage>

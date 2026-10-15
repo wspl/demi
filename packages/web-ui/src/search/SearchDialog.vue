@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { t } from './locales/text'
 import { computed, ref, useId, watch } from 'vue'
 import { Search, SearchX } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -97,7 +98,7 @@ function keydown(event: KeyboardEvent): void {
 }
 
 const emptyLabel = computed(() =>
-  view.value.kind === 'recent' ? 'No conversations' : 'No matches',
+  view.value.kind === 'recent' ? t('noConversations') : t('noResults'),
 )
 </script>
 
@@ -107,7 +108,7 @@ const emptyLabel = computed(() =>
     :overlay-store="overlayStore"
     size="wide"
     anchor="top"
-    label="Search"
+    :label="t('title')"
     :scroll-content="false"
     @close="emit('close')"
   >
@@ -119,8 +120,8 @@ const emptyLabel = computed(() =>
         <TextInput
           v-model="query"
           search
-          placeholder="Search conversations"
-          aria-label="Search conversations"
+          :placeholder="t('placeholder')"
+          :aria-label="t('placeholder')"
           role="combobox"
           aria-autocomplete="list"
           :aria-controls="listId"
@@ -137,14 +138,14 @@ const emptyLabel = computed(() =>
         <RegionStatus
           v-if="view.kind === 'failed'"
           status="failed"
-          label="Could not search."
+          :label="t('failed')"
           :detail="view.detail"
           :on-retry="retry"
         />
         <RegionStatus
           v-else-if="view.kind === 'searching' && !rows.length"
           status="loading"
-          label="Searching…"
+          :label="t('searching')"
         />
         <RegionStatus
           v-else-if="!rows.length"
@@ -157,7 +158,7 @@ const emptyLabel = computed(() =>
           :id="listId"
           ref="list"
           role="listbox"
-          aria-label="Conversations"
+          :aria-label="t('list')"
           class="flex flex-col gap-px"
         >
           <div
@@ -173,7 +174,7 @@ const emptyLabel = computed(() =>
           >
             <div class="flex min-w-0 items-center gap-2">
               <span class="min-w-0 flex-1 truncate text-chrome text-fg-emphasis"><HighlightText :text="row.title" :ranges="row.titleRanges" /></span>
-              <Tag v-if="row.archived">Archived</Tag>
+              <Tag v-if="row.archived">{{ t('archived') }}</Tag>
               <RelativeTime class="shrink-0 text-[12px] text-fg-subtle" :timestamp="row.lastActiveAt" />
             </div>
             <!-- Two lines hold the backend's 160 characters, so the marked words stay in sight. -->

@@ -1,0 +1,27 @@
+{
+  "keep": {
+    "1h": "1 Hour",
+    "1d": "1 Day",
+    "30d": "30 Days",
+    "always": "Always"
+  },
+  "request": {
+    "allowTitle": "Allow this conversation to {action}?",
+    "agentRan": "The agent ran",
+    "subagentRan": "Subagent {number}, “{description}”, ran",
+    "deny": "Deny",
+    "allowConversation": "Allow for This Conversation",
+    "allow": "Allow",
+    "dontAllow": "Don’t Allow",
+    "decline": "Decline",
+    "save": "Save",
+    "updateCredential": "Update the Credential",
+    "saveCredential": "Save a Credential",
+    "keepUntil": "Keep until",
+    "needsValues": "Every field needs a value of up to 64 KiB.",
+    "allowCredentialTitle": "Allow this conversation to use the credential “{name}”?",
+    "removed": "Removed",
+    "youRemoved": "You removed this credential.",
+    "progress": "{position} / {count}"
+  }
+}

@@ -1,3 +1,5 @@
+import { pageLanguage } from '../i18n/text'
+import { t } from './locales/text'
 import { titleCase } from '@demicodes/utils'
 
 /**
@@ -78,10 +80,30 @@ export interface CredentialAnswer {
 
 /** The options of *Keep until*, in the order the card and Settings offer them. */
 export const KEEP_OPTIONS: readonly { value: CredentialKeep; label: string }[] = [
-  { value: '1h', label: '1 Hour' },
-  { value: '1d', label: '1 Day' },
-  { value: '30d', label: '30 Days' },
-  { value: 'always', label: 'Always' },
+  {
+    value: '1h',
+    get label() {
+      return t('keep.1h')
+    },
+  },
+  {
+    value: '1d',
+    get label() {
+      return t('keep.1d')
+    },
+  },
+  {
+    value: '30d',
+    get label() {
+      return t('keep.30d')
+    },
+  },
+  {
+    value: 'always',
+    get label() {
+      return t('keep.always')
+    },
+  },
 ]
 
 /** What the category lets the conversation do: its action, or its id when it is no longer declared. */
@@ -95,7 +117,7 @@ export function categoryAction(category: PermissionCategoryView): string {
  * (`permissions.md` § Several categories).
  */
 export function requestAction(request: Pick<PermissionRequestView, 'categories'>): string {
-  return request.categories.map(categoryAction).join(' and ')
+  return new Intl.ListFormat(pageLanguage(), { type: 'conjunction' }).format(request.categories.map(categoryAction))
 }
 
 /** The category's title: its action in title case, such as "Manage Skills", as its description names it; its id as it is when it is no longer declared. */

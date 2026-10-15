@@ -103,7 +103,8 @@
     "no_model_available": "이 대화에 사용할 수 있는 모델이 없습니다.",
     "models_not_loaded": "모델을 로드할 수 없습니다. {failure}",
     "source_conversation_unavailable": "원본 대화를 사용할 수 없습니다.",
-    "file_not_owned": "이 계정의 파일에 없습니다."
+    "file_not_owned": "이 계정의 파일에 없습니다.",
+    "no_passkey": "브라우저가 패스키를 제공하지 않았습니다."
   },
   "common": {
     "ok": "확인",
@@ -122,6 +123,12 @@
     "loading": "로드 중…",
     "undo": "실행 취소",
     "cloud": "클라우드",
-    "workspace": "작업 영역"
+    "workspace": "작업 영역",
+    "add": "추가",
+    "back": "뒤로",
+    "continue": "계속",
+    "delete": "삭제",
+    "remove": "제거",
+    "save": "저장"
   }
 }
