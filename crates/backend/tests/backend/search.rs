@@ -5,8 +5,11 @@
 //! the newest message that holds every word, steers among them, with the
 //! line around it and the words' places in UTF-16, and the words are marked
 //! in a matching title too. Thinking is not searched. An edit that
-//! removes a message removes it from the results, and an index of another
-//! schema is built again at start. No test calls a real model.
+//! removes a message removes it from the results; the index applies each
+//! save on top of the one before, reading a conversation whole only when it
+//! missed one; an index of another schema is built again at start, and one
+//! that no longer opens is filled again at once, past a conversation that
+//! cannot be read. No test calls a real model.
 
 use std::time::Duration;
 
@@ -212,6 +215,153 @@ async fn a_search_lists_title_matches_then_the_newest_messages_and_follows_edits
     let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     eventually("the index is built again", || async {
         search(&backend, &master, "ts2307").await == edited
+    })
+    .await;
+    backend.close().await;
+}
+
+/// The index file of `session`'s user, which tests open beside the backend.
+fn index_of(harness: &Harness, session: &Session) -> rusqlite::Connection {
+    let path = harness
+        .data_dir()
+        .join("search")
+        .join(format!("{}.sqlite", session.user.id.as_str()));
+    rusqlite::Connection::open(path).unwrap()
+}
+
+// About a second: four turns and an edit; the index follows each change
+// within the 20 ms interval the test sets.
+#[tokio::test]
+async fn the_index_applies_each_save_on_top_of_the_one_before_and_reads_a_conversation_whole_when_it_missed_one() {
+    let vendor = demi_provider_common::testing::MockVendor::start().await;
+    let mut harness = Harness::new();
+    harness.conversations.search_interval = Duration::from_millis(20);
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut first = Socket::connect(&backend, &master, FIRST).await;
+    first.open().await;
+    vendor.respond(answer(&["First answer"], 1, 1));
+    first.chat("m1", "Where is alphaword kept?").await;
+    let alpha = vec![(FIRST.to_owned(), false, marks(&["alphaword"]), found("Where is alphaword kept?", &["alphaword"]))];
+    let first_answer = vec![(FIRST.to_owned(), false, marks(&[]), found("First answer", &["First"]))];
+    eventually("the first turn is indexed", || async {
+        search(&backend, &master, "first").await == first_answer
+    })
+    .await;
+
+    // A turn writes its two rows from the saves alone: nothing is read
+    // whole, and no row of the turn before is touched.
+    let start = backend.search_work();
+    vendor.respond(answer(&["Second answer bravoword"], 1, 1));
+    first.chat("m2", "And betaword?").await;
+    let bravo = vec![(FIRST.to_owned(), false, marks(&[]), found("Second answer bravoword", &["bravoword"]))];
+    eventually("the second turn is indexed", || async {
+        search(&backend, &master, "bravoword").await == bravo
+    })
+    .await;
+    let work = backend.search_work();
+    assert_eq!((work.whole - start.whole, work.rows - start.rows), (0, 2));
+
+    // The index misses the last save, as after a crash between its commit
+    // and its apply: the next save does not apply on top of it, and the
+    // conversation is read whole, which brings the missed row back.
+    let index = index_of(&harness, &master);
+    index
+        .execute("DELETE FROM texts WHERE text = 'Second answer bravoword'", [])
+        .unwrap();
+    index
+        .execute("UPDATE conversations SET revision = revision - 1", [])
+        .unwrap();
+    drop(index);
+    assert_eq!(search(&backend, &master, "bravoword").await, vec![]);
+    let start = backend.search_work();
+    vendor.respond(answer(&["Third answer charlieword"], 1, 1));
+    first.chat("m3", "What about gammaword?").await;
+    let charlie = vec![(FIRST.to_owned(), false, marks(&[]), found("Third answer charlieword", &["charlieword"]))];
+    eventually("the third turn is indexed", || async {
+        search(&backend, &master, "charlieword").await == charlie
+    })
+    .await;
+    eventually("the missed save is read back", || async {
+        search(&backend, &master, "bravoword").await == bravo
+    })
+    .await;
+    assert_eq!(backend.search_work().whole - start.whole, 1);
+
+    // An edit of the second message cuts it and everything after it: their
+    // rows go, from the save alone, and the rows before the cut stay.
+    let start = backend.search_work();
+    let request = edit_request(&mut first, "And betaword?", "edit-1", "And deltaword?").await;
+    vendor.respond(answer(&["Edited answer echoword"], 1, 1));
+    edit(&mut first, &ClientFrame::EditAndSend { request }).await;
+    first.until(idle).await;
+    drop(first);
+    let echo = vec![(FIRST.to_owned(), false, marks(&[]), found("Edited answer echoword", &["echoword"]))];
+    eventually("the edit is indexed", || async {
+        search(&backend, &master, "echoword").await == echo
+    })
+    .await;
+    for cut in ["betaword", "bravoword", "gammaword", "charlieword"] {
+        assert_eq!(search(&backend, &master, cut).await, vec![], "{cut}");
+    }
+    assert_eq!(search(&backend, &master, "alphaword").await, alpha);
+    assert_eq!(backend.search_work().whole - start.whole, 0);
+    backend.close().await;
+}
+
+// About a second: two turns and a reset of the index.
+#[tokio::test]
+async fn a_reset_index_is_filled_again_at_once_past_a_conversation_that_cannot_be_read() {
+    let vendor = demi_provider_common::testing::MockVendor::start().await;
+    let mut harness = Harness::new();
+    harness.conversations.search_interval = Duration::from_millis(20);
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    for id in [FIRST, SECOND] {
+        create(&backend, &master, id).await;
+        choose(&backend, &master, id, &provider, "claude-opus-4-8").await;
+    }
+    let mut second = Socket::connect(&backend, &master, SECOND).await;
+    second.open().await;
+    vendor.respond(answer(&["Kept in the foxtrot folder"], 1, 1));
+    second.chat("m1", "Where is it?").await;
+    drop(second);
+    // The first conversation is the most recently active, so it is read
+    // first.
+    harness.clock.advance(SignedDuration::from_mins(1));
+    let mut first = Socket::connect(&backend, &master, FIRST).await;
+    first.open().await;
+    vendor.respond(answer(&["Nothing here"], 1, 1));
+    first.chat("m1", "Anything?").await;
+    drop(first);
+    let foxtrot = vec![(SECOND.to_owned(), false, marks(&[]), found("Kept in the foxtrot folder", &["foxtrot"]))];
+    eventually("both conversations are indexed", || async {
+        search(&backend, &master, "foxtrot").await == foxtrot
+            && search(&backend, &master, "nothing here").await.len() == 1
+    })
+    .await;
+
+    // The first conversation's root no longer reads, and the index no
+    // longer opens: it is built again empty, and filled again at once, the
+    // idle second conversation too, past the first.
+    let database = harness.data_dir().join("conversations").join(format!("{FIRST}.sqlite"));
+    rusqlite::Connection::open(database)
+        .unwrap()
+        .execute(
+            r#"UPDATE blocks SET block = '{"type":"not a block"}'
+               WHERE idx = 0 AND node_id = (SELECT id FROM nodes WHERE parent_id IS NULL)"#,
+            [],
+        )
+        .unwrap();
+    let index = harness
+        .data_dir()
+        .join("search")
+        .join(format!("{}.sqlite", master.user.id.as_str()));
+    std::fs::write(&index, b"not a database at all, and long enough to be read as a header").unwrap();
+    eventually("the reset index is filled again", || async {
+        search(&backend, &master, "foxtrot").await == foxtrot
     })
     .await;
     backend.close().await;
