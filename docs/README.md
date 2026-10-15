@@ -19,7 +19,7 @@ layout and interaction; these documents do not repeat it.
 - [Product](product/product.md): users, roles and instance mode; conversations and projects; writing a message; attachments; provider management; Cloud settings.
 - [Web application](product/web-application.md): the web app's packages, work panel, backend communication, [page synchronization](product/web-application.md#page-synchronization), authentication, persistence, [drafts](product/web-application.md#drafts) and development loop.
 - [Web API](product/web-api.md): every HTTP and WebSocket route with its request, response, status and error codes.
-- [Localization](product/localization.md): English and Simplified Chinese: what is translated, choosing the language, each package's catalogue, and text from the backend as codes and values.
+- [Localization](product/localization.md): English, Simplified and Traditional Chinese, Japanese and Korean: what is translated, choosing the language, each package's catalogue, and text from the backend as codes and values.
 - [File previews](product/file-previews.md): preview kinds and viewer choice, the byte path, ending transfers, inert content, [files named in messages](product/file-previews.md#files-named-in-messages), and [media a tool returned](product/file-previews.md#media-a-tool-returned).
 
 ## How does the backend serve requests and keep data?
