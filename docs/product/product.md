@@ -209,13 +209,12 @@ workspace. It groups conversations without creating a separate execution machine
 The sidebar's Conversations list holds every conversation outside a project,
 on the Cloud and on a device alike. One that runs on a paired device shows
 that device at its row's very end, after the pin of a pinned row, so the
-devices line up down the list, a computer with a dot for the device's state,
-as a project's row shows its device, so a row without the mark runs on the
-Cloud. For a device since removed, the mark has no dot. A row in a project
-shows no mark: its project's row already shows where it runs.
+devices line up down the list, the device's mark (below), as a project's row
+shows its device, so a row without the mark runs on the Cloud. A row in a
+project shows no mark: its project's row already shows where it runs.
 
-A project's row ends in the same mark, the computer with its state dot, one
-component for both rows, so the devices line up down both groups. The mark
+A project's row ends in the same mark, one component for both rows, so the
+devices line up down both groups. The mark
 stays when the pointer is over the row: the row's buttons, such as a
 project's New Conversation and a conversation's Archive, appear to its left,
 and the mark's tip names the device and its state, *MacBook Pro · Online*, or
@@ -227,6 +226,42 @@ and the name gives its place to the buttons while the pointer is over the
 row. For example, *demi* on the MacBook and *demi* on the Mac mini read
 *demi  MacBook Pro 🖥* and *demi  Mac mini 🖥*, while *chromium*, on the
 MacBook alone, reads *chromium 🖥*.
+
+**A device's mark** is the same wherever a device is drawn: the sidebar, the
+host menu, Settings' devices and the file browser. It is the logo of the
+device's system, so the user tells the computers apart at a glance without
+reading a name:
+
+```text
+ ●   the state dot, top right (none for a removed device)
+ ▉   the system's logo: Apple for macOS, the Windows logo, for Linux the
+ 2   distribution's logo (Ubuntu, Debian, Fedora, Arch Linux, CentOS,
+     Red Hat, Linux Mint) or Tux for any other; the number, bottom right
+```
+
+- **The number** tells apart devices whose logos are the same: with two Macs
+  they read Apple 1 and Apple 2, while the user's only Windows PC and an
+  Ubuntu server show no number. A device's number is given once, when its
+  runner first reports its system, as one more than the highest number among
+  the user's devices with the same logo, and it never changes while the
+  device stays, so a number the user learned keeps meaning the same
+  computer; if a reinstall changes its system, it takes a new number for its
+  new logo. The number shows only while another of the user's devices has
+  the same logo, so pairing a second Mac adds a *1* to the first.
+- **How it is drawn:** the logo in the subtle icon color, about the size of
+  the computer glyph it replaces; the state dot a size smaller than the one
+  the computer glyph wore, at the logo's top right edge; the
+  number is a small bold digit cut out of the logo by an outline in the
+  color behind it, as a new file's plus is (`CornerPlus`), with no round
+  background, its center in line with the dot's above it. A two-digit number
+  is drawn the same way and may reach further left.
+- **Before its runner first connects** a device's system is known only by its
+  platform: a Mac shows the Apple logo and a Windows PC the Windows logo,
+  while a Linux device shows Tux until its runner names its distribution.
+- **The Cloud** keeps the cloud glyph and never shows a number, and a device
+  since removed shows the plain computer glyph, without a dot.
+- The tip and the accessible label are unchanged, *MacBook Pro · Online*:
+  the logo and the number only help the eye.
 
 A row's status dot says what the conversation's work is doing, in the colors
 an agent's tab and link wear, so one state has one look everywhere:
