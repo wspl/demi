@@ -405,7 +405,9 @@ onBeforeUnmount(() => pending?.abort())
 <template>
   <div class="@container flex min-h-0 flex-1 select-none flex-col">
     <!-- One row at width: device, nav, path, icons. Narrow: the path takes a row of its own
-         under the toolbar, whose left holds the device and nav and whose right the icons. -->
+         under the toolbar, whose left holds the device and nav and whose right the icons.
+         At width the path's basis is 0, so a long path shrinks to the room left and never
+         wraps the icons onto a second row. -->
     <div class="flex shrink-0 flex-wrap items-center gap-2 py-2 pl-2 pr-3">
       <!-- The device sits in the rail's column with the rail's own inset; the path beside it
            starts at that device's root. The column sets the width; the dropdown fills it. -->
@@ -486,7 +488,7 @@ onBeforeUnmount(() => pending?.abort())
       <span class="flex-1 @md:hidden" />
       <FileBrowserAddressBar
         :source="source"
-        class="order-1 min-w-0 basis-full @md:order-none @md:flex-1 @md:basis-auto"
+        class="order-1 min-w-0 basis-full @md:order-none @md:flex-1 @md:basis-0"
         :path="path"
         @navigate="goTo"
       />
