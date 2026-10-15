@@ -327,7 +327,7 @@ async fn a_conversation_database_that_cannot_be_opened_fails_only_that_conversat
     // A change of the broken one reaches the page as its summary, and the
     // channel stays open.
     rename(&backend, &master, SECOND, "Broken").await;
-    page.until(|event| matches!(event, SyncEvent::Conversation { conversation } if conversation.title == "Broken"))
+    page.until(|event| matches!(event, SyncEvent::Conversation { conversation } if conversation.title.as_deref() == Some("Broken")))
         .await;
     backend.close().await;
 }
@@ -362,10 +362,10 @@ async fn a_change_in_one_session_reaches_the_other_sessions_page_as_one_message(
     let state = page.snapshot().await;
     assert_eq!(
         (
-            state.conversations[0].title.as_str(),
+            state.conversations[0].title.as_deref(),
             state.conversations[0].draft_revision
         ),
-        ("New conversation", 0)
+        (None, 0)
     );
 
     // Each change the laptop makes is one message on the phone's page: the
@@ -373,7 +373,7 @@ async fn a_change_in_one_session_reaches_the_other_sessions_page_as_one_message(
     rename(&backend, &laptop, FIRST, "Fix the login").await;
     let renamed = page.next().await;
     assert_eq!(
-        summary(&renamed, FIRST).map(|conversation| conversation.title.as_str()),
+        summary(&renamed, FIRST).and_then(|conversation| conversation.title.as_deref()),
         Some("Fix the login")
     );
     let draft = json!({ "base": 0, "text": "The login fails", "files": [] });
@@ -427,8 +427,8 @@ async fn a_page_that_reconnects_catches_up_on_what_changed_while_it_was_away_and
     let state = page.snapshot().await;
     let read = &state.conversations[0];
     assert_eq!(
-        (read.title.as_str(), read.pinned),
-        ("Renamed while away", false)
+        (read.title.as_deref(), read.pinned),
+        (Some("Renamed while away"), false)
     );
     // The pin, made after that read, comes after it: the summary, then the
     // order.
@@ -464,7 +464,7 @@ async fn a_page_that_falls_behind_receives_each_changed_part_once_as_it_is_when_
     // It receives the conversation once, as it is now, then the preference.
     let latest = page.next().await;
     assert_eq!(
-        summary(&latest, FIRST).map(|conversation| conversation.title.as_str()),
+        summary(&latest, FIRST).and_then(|conversation| conversation.title.as_deref()),
         Some("Title 50")
     );
     assert!(themed(&page.next().await, Theme::Dark));
@@ -472,7 +472,7 @@ async fn a_page_that_falls_behind_receives_each_changed_part_once_as_it_is_when_
     rename(&backend, &laptop, FIRST, "Caught up").await;
     let renamed = page.next().await;
     assert_eq!(
-        summary(&renamed, FIRST).map(|conversation| conversation.title.as_str()),
+        summary(&renamed, FIRST).and_then(|conversation| conversation.title.as_deref()),
         Some("Caught up")
     );
     backend.close().await;

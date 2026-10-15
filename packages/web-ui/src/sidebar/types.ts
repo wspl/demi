@@ -23,7 +23,8 @@ export type SidebarProjectHost =
 
 export interface SidebarConversation {
   id: string
-  title: string
+  /** Null for the placeholder, which shows as New conversation in the reader's language. */
+  title: string | null
   /** Last activity metadata; display order follows the supplied array. */
   updatedAt: string
   status: ConversationStatus

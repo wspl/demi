@@ -42,6 +42,7 @@ import type { UsageLimits } from './context-usage'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { isTextCut } from '@demicodes/web-ui/ui/truncation'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
+import { conversationTitle } from './conversation-title'
 import Sheet from '../ui/Sheet.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
 import RenameDialog from '../ui/RenameDialog.vue'
@@ -272,13 +273,15 @@ const title = ref<HTMLElement | null>(null)
  * would hide the labels beside it and bring them back within its first
  * measurement, resizing itself inside its own ResizeObserver callback.
  */
+/** The title the session shows, the placeholder's in the reader's language. */
+const shownTitle = computed(() => conversationTitle(props.conversation.title))
 const titleCellWidth = ref<number>()
 useResizeObserver(titleCell, ([entry]) => {
   titleCellWidth.value = entry?.contentRect.width
 })
 const titleRoom = ref<number>()
 watch(
-  [titleCellWidth, () => props.conversation.title, title, renaming],
+  [titleCellWidth, shownTitle, title, renaming],
   () => {
     if (titleCellWidth.value === undefined) {
       return
@@ -467,7 +470,7 @@ watch(
       <button
         type="button"
         class="flex h-full min-w-0 flex-1 items-center justify-center gap-1.5 px-1 text-fg"
-        :aria-label="t('session.options', { title: conversation.title })"
+        :aria-label="t('session.options', { title: shownTitle })"
         :aria-expanded="titleSheetOpen"
         @click="titleSheetOpen = true"
       >
@@ -476,7 +479,7 @@ watch(
           :tone="DEVICE_STATE_TONE[hostNotReady.state]"
           :label="t('session.hostState', { name: hostNotReady.name, state: DEVICE_STATE_LABEL[hostNotReady.state].toLowerCase() })"
         />
-        <h1 class="min-w-0 truncate text-[15px] font-medium">{{ conversation.title }}</h1>
+        <h1 class="min-w-0 truncate text-[15px] font-medium">{{ shownTitle }}</h1>
         <ChevronDown :size="ICON_PX.in20" class="shrink-0 text-fg-subtle" />
       </button>
       <IconButton
@@ -489,7 +492,7 @@ watch(
       <span v-else class="size-hit shrink-0" />
       <Sheet :open="titleSheetOpen" :overlay-store="appOverlayStore" @close="titleSheetOpen = false">
         <template #header>
-          <p class="break-words text-[15px] font-medium text-fg-emphasis">{{ conversation.title }}</p>
+          <p class="break-words text-[15px] font-medium text-fg-emphasis">{{ shownTitle }}</p>
         </template>
         <Menu v-if="listed">
           <SidebarSelectionMenu
@@ -520,7 +523,7 @@ watch(
         :overlay-store="appOverlayStore"
         :title="t('session.renameTitle')"
         :label="t('session.titleLabel')"
-        :name="conversation.title"
+        :name="shownTitle"
         :max-length="null"
         @close="renaming = false"
         @rename="renaming = false; emit('rename', $event)"
@@ -528,7 +531,7 @@ watch(
       <ConversationDeleteDialog
         :is-open="deleteAsked"
         :overlay-store="appOverlayStore"
-        :titles="[conversation.title]"
+        :titles="[shownTitle]"
         @close="deleteAsked = false"
         @delete="deleteAsked = false; emit('delete')"
       />
@@ -541,7 +544,7 @@ watch(
         <TitleInput
           v-if="renaming"
           :style="{ width: `${TITLE_MAX_PX}px` }"
-          :title="conversation.title"
+          :title="shownTitle"
           @submit="renaming = false; emit('rename', $event)"
           @cancel="renaming = false"
         />
@@ -552,10 +555,10 @@ watch(
             :style="{ maxWidth: `${TITLE_MAX_PX}px` }"
             @dblclick="beginRename"
           >
-            {{ conversation.title }}
+            {{ shownTitle }}
           </h1>
           <!-- A cut title shows whole in its tip, as a sidebar row's does. -->
-          <Tooltip :trigger="title" :content="conversation.title" :show-if="isTextCut" placement="bottom-start" />
+          <Tooltip :trigger="title" :content="shownTitle" :show-if="isTextCut" placement="bottom-start" />
           <Tooltip :content="shared('common.rename')" class="shrink-0">
             <IconButton
               :icon="TextCursorInput"

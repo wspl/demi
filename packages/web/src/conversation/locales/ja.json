@@ -40,7 +40,6 @@
     "deliveryInterrupted": "送信が中断されました。再試行して確認してください。"
   },
   "savedDeleted": "保存したメッセージを削除しました",
-  "newConversation": "新しいチャット",
   "composer": {
     "cloudResetting": "クラウドをリセットしています。"
   },

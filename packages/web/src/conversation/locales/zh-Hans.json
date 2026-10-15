@@ -40,7 +40,6 @@
     "deliveryInterrupted": "发送已中断。重试以确认。"
   },
   "savedDeleted": "已删除保存的消息",
-  "newConversation": "新对话",
   "composer": {
     "cloudResetting": "云端正在重置。"
   },

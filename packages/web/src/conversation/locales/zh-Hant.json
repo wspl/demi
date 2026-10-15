@@ -40,7 +40,6 @@
     "deliveryInterrupted": "傳送已中斷。請重試以確認。"
   },
   "savedDeleted": "已刪除暫存的訊息",
-  "newConversation": "新對話",
   "composer": {
     "cloudResetting": "雲端正在重設。"
   },

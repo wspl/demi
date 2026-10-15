@@ -71,7 +71,11 @@ pub struct SearchResults {
 #[serde(rename_all = "camelCase")]
 pub struct SearchResult {
     pub conversation_id: ConversationId,
-    pub title: String,
+    /// Its title; null while it is the placeholder, as the conversation's
+    /// summary has it.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub title: Option<String>,
     /// The places of the query's words in the title, as `SearchMatch`'s
     /// ranges give them; empty when the title does not match.
     pub title_ranges: Vec<[u32; 2]>,

@@ -700,14 +700,14 @@ async fn a_conversation_is_created_once_under_the_id_the_web_app_chose_and_liste
     assert_eq!(
         (
             created.id.as_str(),
-            created.title.as_str(),
+            created.title.as_deref(),
             created.status,
             created.revision,
             created.unread
         ),
         (
             FIRST,
-            "New conversation",
+            None,
             ConversationStatus::Idle,
             0,
             false
@@ -831,8 +831,8 @@ async fn a_conversation_starts_with_its_settings_from_one_request_and_a_refused_
     let created = created.json::<CreatedConversation>();
     let conversation = &created.conversation;
     assert_eq!(
-        (conversation.title.as_str(), conversation.pinned),
-        ("Plans", true)
+        (conversation.title.as_deref(), conversation.pinned),
+        (Some("Plans"), true)
     );
     assert_eq!(serde_json::to_value(&conversation.target).unwrap(), on_laptop);
     assert_eq!(
@@ -2323,7 +2323,7 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
     assert_eq!(renamed.status, StatusCode::OK);
     let update = renamed.json::<ConversationUpdate>();
     assert_eq!(update.results, [applied(PatchField::Title)]);
-    assert_eq!(update.conversation.title, "Build failure");
+    assert_eq!(update.conversation.title.as_deref(), Some("Build failure"));
     // The target the conversation has already is no switch.
     let body = json!({
         "pinned": true, "model": { "providerId": provider, "modelId": "claude-opus-4-8" }, "target": { "kind": "cloud" }
@@ -2396,9 +2396,9 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
     assert_eq!(
         (
             update.conversation.archived,
-            update.conversation.title.as_str()
+            update.conversation.title.as_deref()
         ),
-        (true, "Build failure")
+        (true, Some("Build failure"))
     );
     assert_eq!(listed().await, [SECOND]);
     let archived = backend
@@ -2458,7 +2458,7 @@ async fn each_field_of_a_patch_applies_on_its_own_and_an_archived_conversation_t
             "{path}"
         );
     }
-    assert_eq!(summaries(&backend, &master).await[0].title, "Build failure");
+    assert_eq!(summaries(&backend, &master).await[0].title.as_deref(), Some("Build failure"));
     backend.close().await;
 }
 

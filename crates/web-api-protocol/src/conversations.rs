@@ -146,7 +146,12 @@ pub struct CreatedConversation {
 #[serde(rename_all = "camelCase")]
 pub struct ConversationSummary {
     pub id: ConversationId,
-    pub title: String,
+    /// Its title; null while it is the placeholder, which holds no words
+    /// and which the page shows as New conversation in the reader's
+    /// language (`product.md` § Conversation titles).
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub title: Option<String>,
     pub archived: bool,
     pub pinned: bool,
     /// The output revision the user last acknowledged.

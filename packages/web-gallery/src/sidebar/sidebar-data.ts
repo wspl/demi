@@ -105,6 +105,17 @@ export function demoConversations(): SidebarConversation[] {
       unread: false,
     },
     {
+      // Not sent yet, its draft holds text: the placeholder title, which
+      // holds no words and reads New conversation in the page's language.
+      id: 'c-untitled',
+      title: null,
+      updatedAt: ago(2 * 60 * 1000),
+      status: 'idle',
+      projectId: null,
+      pinned: false,
+      unread: false,
+    },
+    {
       id: 'c-shift',
       title: 'How does floating-ui limitShift differ from shift?',
       updatedAt: ago(25 * 60 * 1000),

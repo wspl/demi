@@ -7,7 +7,8 @@ import { computed, onScopeDispose, ref, watch } from 'vue'
  */
 export interface SearchRow {
   conversationId: string
-  title: string
+  /** Null for the placeholder, which shows as New conversation in the reader's language. */
+  title: string | null
   /** The matched pieces of the title as `[start, end]` UTF-16 offsets; empty when the title did not match. */
   titleRanges: readonly (readonly number[])[]
   archived: boolean
