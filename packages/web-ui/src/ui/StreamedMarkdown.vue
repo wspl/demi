@@ -14,6 +14,7 @@ import { useTranscript } from '@demicodes/web-ui/agent/edit-selection'
 import AgentLinkMark from '@demicodes/web-ui/agent/AgentLinkMark.vue'
 import { attachmentDrag } from '@demicodes/web-ui/agent/message-input/copied-message'
 import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
+import { GitCommitHorizontal } from '@lucide/vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
@@ -105,18 +106,18 @@ function renderBlock(source: () => string): () => string {
 
 /**
  * The places of a render that components fill: each code block gets its
- * Copy, each file link its file's icon, and each agent link its agent's mark
+ * Copy, each file link its file's icon, each commit link its icon, and each agent link its agent's mark
  * and tip. A render replaces them; the component of each place moves into
  * the new one and keeps its state, as a code block's Copied.
  */
 interface Places {
   codeBlocks: HTMLElement[]
-  fileIcons: HTMLElement[]
+  linkIcons: HTMLElement[]
   agentLinks: HTMLElement[]
   media: (HTMLImageElement | HTMLVideoElement)[]
 }
 const codeBlocks = shallowRef<HTMLElement[]>([])
-const fileIcons = shallowRef<HTMLElement[]>([])
+const linkIcons = shallowRef<HTMLElement[]>([])
 const agentLinks = shallowRef<HTMLElement[]>([])
 /** The message's pictures, each a tile with its preview on hover. */
 const pictures = shallowRef<MessagePicture[]>([])
@@ -136,7 +137,7 @@ function placesIn(nodes: readonly ChildNode[], fresh: readonly ChildNode[]): Pla
   ])
   return {
     codeBlocks: within('.code-block'),
-    fileIcons: within('[data-file-icon]'),
+    linkIcons: within('[data-file-icon], [data-commit-icon]'),
     agentLinks: within('[data-agent-link]'),
     media: elements.flatMap((element) => messagePictures(element).map((picture) => picture.element)),
   }
@@ -151,7 +152,7 @@ useMarkdownBlocks({
   describe: placesIn,
   rendered(found) {
     codeBlocks.value = found.flatMap((places) => places.codeBlocks)
-    fileIcons.value = found.flatMap((places) => places.fileIcons)
+    linkIcons.value = found.flatMap((places) => places.linkIcons)
     agentLinks.value = found.flatMap((places) => places.agentLinks)
     pictures.value = found.flatMap((places) => places.media).map((medium) => {
       const picture = pictureOf.get(medium) ?? messagePicture(medium)
@@ -200,8 +201,9 @@ function onMediumLoad(event: Event): void {
   <Teleport v-for="(block, index) in codeBlocks" :key="index" :to="block">
     <CodeBlockCopy :block="block" />
   </Teleport>
-  <Teleport v-for="(place, index) in fileIcons" :key="index" :to="place">
-    <FileIcon :name="place.dataset.fileIcon ?? ''" :is-directory="false" :size="ICON_PX.in28" />
+  <Teleport v-for="(place, index) in linkIcons" :key="index" :to="place">
+    <FileIcon v-if="place.dataset.fileIcon !== undefined" :name="place.dataset.fileIcon" :is-directory="false" :size="ICON_PX.in28" />
+    <GitCommitHorizontal v-else :size="ICON_PX.in28" aria-hidden="true" />
   </Teleport>
   <PicturePreview
     v-for="(picture, index) in pictures"

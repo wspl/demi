@@ -31,15 +31,28 @@ function webLink(url: string): string {
  * it names one. A link of text names the file with its icon first, the one
  * the file tree shows for it, which the page puts in its place
  * (`StreamedMarkdown`), so it reads as a file and not as a web page; a link
- * that starts with an icon is spaced from the words around it
- * (`icon-link`).
+ * that starts with an icon, a commit's too (`commitLink`), is spaced from the
+ * words around it (`icon-link`).
  */
 function fileLink({ path, line }: MessageFileTarget, named: boolean, tight = false): string {
   const at = line === null ? '' : ` data-line="${line}"`
   if (!named)
     return `<a href="${escapeHtml(path)}" data-file-link${at}>`
-  const icon = `<span class="message-file-icon" data-file-icon="${escapeHtml(baseName(path))}" aria-hidden="true"></span>`
+  const icon = `<span class="message-link-icon" data-file-icon="${escapeHtml(baseName(path))}" aria-hidden="true"></span>`
   return `<a href="${escapeHtml(path)}" class="${iconLinkClass(tight)}" data-file-link${at}>${icon}`
+}
+
+/**
+ * A link that opens a commit's changes, with the commit's icon first, which
+ * the page puts in its place (`StreamedMarkdown`) as it does a file's, and
+ * spaced as a file's link is (`icon-link`).
+ */
+function commitLink(commit: string, href: string, body: string, tight: boolean): string {
+  const icon = '<span class="message-link-icon" data-commit-icon aria-hidden="true"></span>'
+  // The icon stays with the first word of the text on its line, as an agent's mark does.
+  const lead = firstWord(body.slice(0, body.search(/<|$/)))
+  return `<a href="${escapeHtml(href)}" class="${iconLinkClass(tight)}" data-commit-link="${escapeHtml(commit)}">`
+    + `<span class="icon-lead">${icon}${lead}</span>${body.slice(lead.length)}</a>`
 }
 
 /** The classes of a link that starts with an icon, `tight` when ASCII punctuation follows it, which keeps no space after its name. */
@@ -98,7 +111,7 @@ function agentLink(number: number, body: string, tight: boolean): string {
   // to a line of its own: the link is inline text that acts as a button.
   const lead = firstWord(body.slice(0, body.search(/<|$/)))
   return `<span role="button" tabindex="0" class="agent-link ${iconLinkClass(tight)}" data-agent-link="${number}" ${KEEPS_WINDOWS}>`
-    + `<span class="agent-link-lead"><span class="agent-link-mark" data-agent-mark="${number}"></span>${lead}</span>`
+    + `<span class="icon-lead"><span class="agent-link-mark" data-agent-mark="${number}"></span>${lead}</span>`
     + `${body.slice(lead.length)}</span>`
 }
 
@@ -276,7 +289,7 @@ const messageRenderer: RendererObject = {
     // A commit opens its changes; nobody to open it, its text alone.
     const commit = linkedCommit(token.href)
     if (commit !== null)
-      return activeOptions?.files?.openCommit ? `<a href="${escapeHtml(token.href)}" data-commit-link="${escapeHtml(commit)}">${body}</a>` : body
+      return activeOptions?.files?.openCommit ? `${commitLink(commit, token.href, body, tightLinks.has(token))}` : body
     // A file nobody opens is named as text.
     const files = activeOptions?.files
     const target = files?.open ? messageFileTarget(token.href, files) : null

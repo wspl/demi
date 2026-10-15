@@ -1356,6 +1356,8 @@ html[data-theme="light"] .file-pill {
 
 .markdown-body a {
   color: var(--on-accent);
+  /* Said outright: a commit link (`commit:`) showed the text cursor without it. */
+  cursor: pointer;
   text-decoration: underline;
   text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
   text-underline-offset: 3px;
@@ -1480,13 +1482,13 @@ html[data-theme="light"] .file-pill {
   border-radius: calc(var(--radius-xl) - var(--status-bar-inset));
 }
 
-/* The mark and the link's first word, which a line never parts. */
-.agent-link-lead {
+/* The icon or mark and the link's first word, which a line never parts. */
+.icon-lead {
   white-space: nowrap;
 }
 
-/* The icon before a Host file's name and the mark before an agent's, which the page fills (`StreamedMarkdown`). */
-.markdown-body .message-file-icon,
+/* The icon before a Host file's name or a commit's text and the mark before an agent's, which the page fills (`StreamedMarkdown`). */
+.markdown-body .message-link-icon,
 .agent-link-mark {
   display: inline-flex;
   width: 14px;
