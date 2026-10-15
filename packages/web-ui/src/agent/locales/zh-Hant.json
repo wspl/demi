@@ -59,7 +59,7 @@
     "compaction": {
       "running": "正在壓縮上下文…",
       "done": "上下文已壓縮",
-      "doneTo": "上下文已壓縮至約 {tokens} 個權杖"
+      "doneTo": "上下文已壓縮至約 {tokens} 個 token"
     },
     "stopped": "已停止",
     "queued": "{count} 則佇列中",
