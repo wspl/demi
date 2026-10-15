@@ -358,9 +358,9 @@ async fn without_rotation_a_usage_limit_offers_to_continue_with_the_other_accoun
     setup.backend.close().await;
 }
 
-// A backend, two turns: about half a second.
+// A backend, three turns: about half a second.
 #[tokio::test]
-async fn a_limit_after_only_the_vendors_record_mirrored_moves_the_agent_to_another_account() {
+async fn a_limit_after_only_the_vendors_record_mirrored_moves_the_agent_and_leaves_nothing_of_the_attempt() {
     let setup = two_accounts(true).await;
     let (first, second) = (setup.first.clone(), setup.second.clone());
     // Two accounts of equal room: the agent takes the first.
@@ -374,7 +374,7 @@ async fn a_limit_after_only_the_vendors_record_mirrored_moves_the_agent_to_anoth
     // Its account runs out after Claude Code mirrored the last tool's
     // result, before the model wrote anything: the same request goes on
     // with the other account, and no error is recorded.
-    setup.runs.mirrors_first.store(true, std::sync::atomic::Ordering::SeqCst);
+    setup.runs.mirrors.store(true, std::sync::atomic::Ordering::SeqCst);
     used_up(&setup.runs, &[&first]);
     let turn = socket.chat("m2", "two").await;
     assert_eq!(usage_account(&turn), Some(second.to_string()));
@@ -383,6 +383,22 @@ async fn a_limit_after_only_the_vendors_record_mirrored_moves_the_agent_to_anoth
     let tail = kinds(&blocks);
     assert_eq!(tail[tail.len() - 4..], ["user", "account_switch", "text", "response"]);
     assert!(!blocks.iter().any(|block| matches!(block, Block::Error(_))), "{tail:?}");
+
+    // The attempt given up left nothing: the next request's blocks, which
+    // a new process's session file is written from, hold the entry the
+    // attempt mirrored once, as the second account's run mirrored it, and
+    // not the CLI's record of the failure.
+    socket.chat("m3", "three").await;
+    let entries = setup.runs.entries.lock().unwrap().last().cloned().unwrap();
+    let uuids: Vec<&str> = entries
+        .iter()
+        .flatten()
+        .filter_map(|entry| entry["uuid"].as_str())
+        .collect();
+    assert!(
+        matches!(uuids.as_slice(), [one] if one.starts_with("item-")),
+        "{uuids:?}"
+    );
     setup.backend.close().await;
 }
 
