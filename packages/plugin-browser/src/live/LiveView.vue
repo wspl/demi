@@ -6,6 +6,7 @@ import LiveControls from './LiveControls.vue'
 import LiveDialog from './LiveDialog.vue'
 import { Menu, MenuDivider, MenuItem, Popover, RegionStatus, usePage } from '@demicodes/plugin-sdk'
 import { reasonSentence } from './tabs'
+import { t } from '../locales/text'
 import { CanvasPictures } from './pictures'
 import type { LiveSession, LiveStream } from './session'
 import { viewerClipboard } from './clipboard'
@@ -282,7 +283,7 @@ function openLink(link: string): void {
 
 function copyLink(link: string): void {
   closeMenu()
-  navigator.clipboard.writeText(link).catch((error: unknown) => errors.report('Could Not Copy the Link', error))
+  navigator.clipboard.writeText(link).catch((error: unknown) => errors.report(t('failures.copyLink'), error))
 }
 
 /** Copy and Cut run in the page, with the platform's keys, so the page's own handlers decide what is taken. */
@@ -301,7 +302,7 @@ async function paste(): Promise<void> {
   try {
     text = await navigator.clipboard.readText()
   } catch (error) {
-    errors.report('Could Not Paste', error)
+    errors.report(t('failures.paste'), error)
     return
   }
   if (text) {
@@ -399,14 +400,14 @@ onBeforeUnmount(() => {
       v-if="state?.pictureless"
       class="absolute inset-0 bg-surface"
       status="failed"
-      label="Couldn’t show this page."
+      :label="t('region.couldntShow')"
       :detail="reasonSentence(state.pictureless)"
       :on-retry="state.pictureless === LIVE_CAPTURE_STOPPED ? () => session?.recapture() : undefined"
     />
     <input
       ref="bridge"
       class="pointer-events-none absolute h-[2px] w-[2px] border-0 bg-transparent p-0 text-transparent caret-transparent outline-none"
-      aria-label="Browser input"
+      :aria-label="t('browserInput')"
       autocomplete="off"
       autocorrect="off"
       spellcheck="false"
@@ -430,7 +431,7 @@ onBeforeUnmount(() => {
       class="pointer-events-none absolute inset-x-0 top-0 flex justify-center p-2"
     >
       <span class="rounded-md bg-surface px-2 py-1 text-[12px] text-fg-subtle shadow">
-        Waiting for the host…
+        {{ t('region.waiting') }}
       </span>
     </div>
     <LiveDialog
@@ -450,23 +451,23 @@ onBeforeUnmount(() => {
     >
       <Menu v-if="menu">
         <template v-if="menu.link">
-          <MenuItem :icon="ExternalLink" label="Open Link in New Tab" @select="openLink(menu.link)" />
-          <MenuItem :icon="Link" label="Copy Link Address" @select="copyLink(menu.link)" />
+          <MenuItem :icon="ExternalLink" :label="t('menu.openLink')" @select="openLink(menu.link)" />
+          <MenuItem :icon="Link" :label="t('menu.copyLink')" @select="copyLink(menu.link)" />
         </template>
         <template v-if="menu.editable">
           <MenuDivider v-if="menu.link" />
-          <MenuItem :icon="Scissors" label="Cut" :disabled="!menu.selection" @select="edit('x')" />
-          <MenuItem :icon="Copy" label="Copy" :disabled="!menu.selection" @select="edit('c')" />
-          <MenuItem :icon="ClipboardPaste" label="Paste" @select="paste" />
+          <MenuItem :icon="Scissors" :label="t('menu.cut')" :disabled="!menu.selection" @select="edit('x')" />
+          <MenuItem :icon="Copy" :label="t('menu.copy')" :disabled="!menu.selection" @select="edit('c')" />
+          <MenuItem :icon="ClipboardPaste" :label="t('menu.paste')" @select="paste" />
         </template>
         <template v-else-if="menu.selection">
           <MenuDivider v-if="menu.link" />
-          <MenuItem :icon="Copy" label="Copy" @select="edit('c')" />
+          <MenuItem :icon="Copy" :label="t('menu.copy')" @select="edit('c')" />
         </template>
         <template v-if="!menu.link && !menu.editable && !menu.selection">
-          <MenuItem :icon="ArrowLeft" label="Back" :disabled="!tab.canGoBack" @select="chooseHistory('back')" />
-          <MenuItem :icon="ArrowRight" label="Forward" :disabled="!tab.canGoForward" @select="chooseHistory('forward')" />
-          <MenuItem :icon="RotateCw" label="Reload" @select="chooseHistory('reload')" />
+          <MenuItem :icon="ArrowLeft" :label="t('menu.back')" :disabled="!tab.canGoBack" @select="chooseHistory('back')" />
+          <MenuItem :icon="ArrowRight" :label="t('menu.forward')" :disabled="!tab.canGoForward" @select="chooseHistory('forward')" />
+          <MenuItem :icon="RotateCw" :label="t('menu.reload')" @select="chooseHistory('reload')" />
         </template>
       </Menu>
     </Popover>

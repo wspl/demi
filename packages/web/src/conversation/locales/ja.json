@@ -1,0 +1,49 @@
+{
+  "failures": {
+    "uploadAttachment": "添付ファイルをアップロードできませんでした",
+    "answerRequest": "リクエストに応答できませんでした",
+    "changeWorkPanel": "作業パネルを変更できませんでした",
+    "saveDraft": "下書きを保存できませんでした",
+    "saveMessage": "メッセージを保存できませんでした",
+    "editMessage": "メッセージを編集できませんでした",
+    "deleteMessage": "メッセージを削除できませんでした",
+    "saveDrafts": "下書きを保存できませんでした",
+    "restoreDrafts": "下書きを復元できませんでした",
+    "restoreStoredDraft": "下書きを復元できませんでした",
+    "readDraft": "下書きを読み取れませんでした",
+    "readSaved": "保存したメッセージを読み取れませんでした",
+    "readHosts": "ホストを読み取れませんでした",
+    "updateConversations": "会話を更新できませんでした",
+    "deleteConversations": "会話を削除できませんでした",
+    "renameConversation": "会話の名前を変更できませんでした",
+    "reorderConversations": "会話を並べ替えられませんでした",
+    "updateReadStatus": "既読の状態を更新できませんでした",
+    "reloadConversation": "会話を再読み込みできませんでした",
+    "detachDevice": "デバイスをデタッチできませんでした",
+    "changeModel": "モデルを変更できませんでした",
+    "changeWorkflow": "ワークフローを変更できませんでした",
+    "clearDraft": "下書きをクリアできませんでした",
+    "recallMessage": "メッセージを取り消せませんでした",
+    "restoreDraft": "下書きを復元できませんでした",
+    "dismissDraft": "下書きを破棄できませんでした",
+    "connectionLost": "接続が切断されました",
+    "connectionLostMessage": "Demi がリクエストを受信できていない可能性があります。再接続後に会話を確認してください。",
+    "requestNotAccepted": "会話がリクエストを受け付けませんでした。",
+    "fieldsNotUpdated": "一部の項目は更新されませんでした。"
+  },
+  "drafts": {
+    "storeFailed": "このブラウザーは下書きを保存できませんでした。",
+    "readFailed": "このブラウザーは保存済みの下書きを読み取れませんでした。",
+    "unreadable": "保存済みの下書きを 1 件読み取れなかったため、別に保管しました。",
+    "deliveryInterrupted": "送信が中断されました。再試行して確認してください。"
+  },
+  "savedDeleted": "保存したメッセージを削除しました",
+  "newConversation": "新しい会話",
+  "composer": {
+    "placeholder": "何でも質問してください…",
+    "cloudResetting": "クラウドをリセットしています。"
+  },
+  "workflows": {
+    "hostSilent": "ホストが応答しませんでした。"
+  }
+}

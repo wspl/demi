@@ -1,3 +1,5 @@
+import { t } from './locales/text'
+
 /**
  * The capitalization style of UI text, as macOS writes it. The gallery's
  * Writing page holds the rule, its sources and its examples. A prop or field
@@ -22,7 +24,9 @@ export type SentenceText = string
 export type HeadlineText = string
 
 /** What a search or a filter that matches nothing says, as macOS's search fields do. */
-export const NO_RESULTS: SentenceText = 'No results'
+export function noResults(): SentenceText {
+  return t('noResults')
+}
 
 /**
  * A field's hint: sentence style without ending punctuation ("Search

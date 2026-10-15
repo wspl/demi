@@ -13,6 +13,7 @@ import { intentKind } from '@demicodes/web-ui/plugins/page'
 import type { IntentName, IntentRequest } from '@demicodes/web-ui/plugins/intents'
 import { panelBackend } from '../api/panel'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { t } from './locales/text'
 import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { PLUGIN_PAGES } from '../plugins/generated/pages'
@@ -56,7 +57,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
     let tabs = panels.get(conversationId)
     if (!tabs) {
       const created = new PanelTabs(panelBackend(conversationId), (error) => {
-        reportError('Could Not Change the Work Panel', error, { userVisible: true })
+        reportError(t('failures.changeWorkPanel'), error, { userVisible: true })
       })
       panels.set(conversationId, created)
       // A tab whose kind asks that the user see it opens the panel, open or closed (`web-application.md` § Work panel).

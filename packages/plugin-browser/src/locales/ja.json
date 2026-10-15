@@ -1,0 +1,122 @@
+{
+  "reasons": {
+    "invalid_input": "ブラウザーで開けるのは、Web ページ、ファイル、空白のページだけです。",
+    "tab_not_found": "このページはデバイスで開かれなくなりました。",
+    "tab_busy": "タブは別のリクエストを処理中です。しばらくしてからもう一度お試しください。",
+    "stale_ref": "ブラウザーが操作する前にページが変更されました。",
+    "stale_cursor": "ブラウザーの記録が読み取る前に変更されました。",
+    "stale_inventory": "ページのファイルが読み取る前に変更されました。",
+    "stale_tools": "ページのツールが使用する前に変更されました。",
+    "target_not_found": "ブラウザーはページ上でそれを見つけられませんでした。",
+    "ambiguous_target": "ページ上の複数の箇所が一致します。",
+    "not_actionable": "ページのその部分は現在使用できません。",
+    "timeout": "ブラウザーが時間内に応答しませんでした。",
+    "dialog_blocked": "ページ上のダイアログが応答を待っています。",
+    "dialog_not_found": "ページに応答を待っているダイアログはありません。",
+    "invalid_dialog_action": "ダイアログにその方法では応答できません。",
+    "history_boundary": "タブにその方向へ移動できるページはありません。",
+    "navigation_failed": "ブラウザーはページを読み込めませんでした。",
+    "protected_value": "ページはその値を公開していません。",
+    "side_effect_rejected": "ブラウザーはその操作によるページの変更を許可しませんでした。",
+    "unsupported_result": "ブラウザーはページが返した内容を渡せません。",
+    "unsupported_capability": "デバイス上のブラウザーではそれを実行できません。",
+    "cdp_method_denied": "ブラウザーではそれを許可していません。",
+    "output_exists": "同じ名前のファイルがデバイスにすでにあります。",
+    "io_error": "デバイスがブラウザーに必要なファイルを読み書きできませんでした。",
+    "result_too_large": "ページが返した内容がブラウザーで渡せる量を超えています。",
+    "partial_failure": "ブラウザーはその一部しか実行しませんでした。",
+    "driver_error": "デバイス上のブラウザーで問題が発生しました。",
+    "browser_unavailable": "ブラウザーをデバイスで起動できませんでした。",
+    "browser_lost": "デバイス上のブラウザーが停止しました。",
+    "cancelled": "リクエストがキャンセルされました。",
+    "outcome_unknown": "ブラウザーとの接続が切断されました。結果は不明です。",
+    "capture_unavailable": "このデバイスではブラウザーのページをキャプチャできません。",
+    "capture_failed": "デバイスがページをキャプチャできませんでした。再試行しています。",
+    "capture_stopped": "デバイスがページをキャプチャできませんでした。",
+    "conversation_not_found": "この会話は存在しなくなりました。",
+    "conversation_archived": "この会話はアーカイブされています。",
+    "conversation_busy": "会話は処理中です。しばらくしてからもう一度お試しください。",
+    "host_stopped": "クラウドは停止しています。",
+    "device_offline": "デバイスはオフラインです。",
+    "device_not_found": "デバイスはアカウントから削除されました。",
+    "cloud_unavailable": "クラウドは現在利用できません。",
+    "cloud_resetting": "クラウドをリセットしています。",
+    "cloud_capacity": "サーバーにクラウドを起動する余裕がありません。",
+    "cloud_crash_loop": "クラウドの起動に何度も失敗したため、停止しました。",
+    "host_operation_failed": "デバイスとの接続が切断されました。",
+    "unknown_plugin_method": "このサーバーではブラウザーを実行できません。",
+    "plugin_disabled": "ブラウザー プラグインはオフです。"
+  },
+  "answers": {
+    "none": "サーバーが応答しませんでした。",
+    "unreadable": "サーバーの応答を読み取れませんでした。",
+    "refused": "サーバーはそれを実行できませんでした ({status})。"
+  },
+  "noBrowser": "このホストにブラウザーがありません。エージェントにインストールを依頼してください。",
+  "starting": {
+    "connecting": "接続中…",
+    "cloud": "クラウドを起動中…",
+    "browser": "ブラウザーを起動中…",
+    "page": "ページを開いています…"
+  },
+  "failures": {
+    "operate": "ブラウザーを操作できませんでした",
+    "reloadPage": "ページを再読み込みできませんでした",
+    "copyLink": "リンクをコピーできませんでした",
+    "paste": "貼り付けできませんでした",
+    "openAddress": "アドレスを開けませんでした",
+    "goBack": "戻れませんでした",
+    "goForward": "進めませんでした",
+    "stopLoading": "読み込みを停止できませんでした",
+    "openPage": "ページを開けませんでした",
+    "saveDownload": "ダウンロードを保存できませんでした",
+    "hostFilesUnreachable": "ホストのファイルにアクセスできません。"
+  },
+  "region": {
+    "couldntOpen": "このページを開けませんでした。",
+    "couldntShow": "このページを表示できませんでした。",
+    "noH264": "このブラウザーは H.264 ビデオをデコードできません。",
+    "waiting": "ホストを待っています…"
+  },
+  "menu": {
+    "openLink": "リンクを新しいタブで開く",
+    "copyLink": "リンクアドレスをコピー",
+    "cut": "切り取り",
+    "copy": "コピー",
+    "paste": "貼り付け",
+    "back": "戻る",
+    "forward": "進む",
+    "reload": "再読み込み"
+  },
+  "address": {
+    "noBack": "戻れるページがありません",
+    "noForward": "進めるページがありません"
+  },
+  "downloads": {
+    "title": "ダウンロード",
+    "save": "保存",
+    "showInFiles": "ファイルで表示",
+    "canceled": "キャンセルしました"
+  },
+  "viewport": {
+    "title": "ビューポート",
+    "web": "Web",
+    "mobile": "モバイル",
+    "custom": "カスタム {width} × {height} {scale}"
+  },
+  "dialog": {
+    "leavePage": "このページから移動しますか？",
+    "says": "{host} の内容",
+    "thisPageSays": "このページの内容",
+    "answer": "回答",
+    "stay": "このページに留まる",
+    "leave": "移動",
+    "cancel": "キャンセル",
+    "ok": "OK"
+  },
+  "browserInput": "ブラウザー入力",
+  "tab": {
+    "new": "新しいタブ",
+    "createInBrowser": "会話のブラウザーで新しいタブ"
+  }
+}

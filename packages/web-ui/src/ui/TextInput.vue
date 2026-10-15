@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, useAttrs, useSlots } from 'vue'
 import { Eye, EyeOff } from '@lucide/vue'
 import { keepComposition } from '@demicodes/utils'
+import { t as shared } from '../locales/text'
 import { disabledTooltip } from './disabled'
 import { autofillAttrs, drawnAsDots, inputType as typeOf, type Masked } from './field-autofill'
 import IconButton from './IconButton.vue'
@@ -203,7 +204,7 @@ defineExpose({
           variant="ghost"
           :size="size === 'lg' ? 'sm' : 'xs'"
           :disabled="disabled"
-          :aria-label="revealed ? 'Hide' : 'Show'"
+          :aria-label="revealed ? shared('common.hide') : shared('common.show')"
           @click.stop="revealed = !revealed"
         />
       </div>

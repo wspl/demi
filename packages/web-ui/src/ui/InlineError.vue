@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { CircleX, X } from '@lucide/vue'
 import IconButton from './IconButton.vue'
+import { t as shared } from '../locales/text'
 import RequestIdLine from './RequestIdLine.vue'
 import type { SentenceText } from './ui-text'
 
@@ -50,7 +51,7 @@ defineEmits<{
       size="xs"
       variant="ghost"
       class="-my-0.5 shrink-0"
-      aria-label="Close"
+      :aria-label="shared('common.close')"
       @click="$emit('dismiss')"
     />
   </div>

@@ -1,5 +1,9 @@
+import { t } from './locales/text'
+
 /** Why a deferred product entry is disabled. */
-export const IN_DEVELOPMENT = 'In development'
+export function inDevelopment(): string {
+  return t('inDevelopment')
+}
 
 /** Tooltip text for a disabled control. Enabled or empty reasons yield nothing. */
 export function disabledTooltip(

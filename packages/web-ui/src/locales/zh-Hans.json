@@ -89,6 +89,39 @@
   "errors": {
     "conversation_archived": "此对话已存档。请先恢复它。",
     "email_taken": "另一个帐户已使用此电子邮件地址。",
-    "saved_full": "一个对话最多保留 {limit} 条稍后发送的消息。"
+    "saved_full": "一个对话最多保留 {limit} 条稍后发送的消息。",
+    "host_stopped": "云已停止。",
+    "cloud_resetting": "云正在重置。",
+    "cloud_capacity": "服务器没有足够的空间启动云。",
+    "cloud_crash_loop": "云多次启动失败，已停止尝试。",
+    "cloud_unavailable": "云目前不可用。",
+    "request_failed": "请求失败（{status}）。",
+    "unreadable_response": "无法读取服务器的响应。",
+    "upload_connection_failed": "上传连接已断开。",
+    "upload_cancelled": "上传已取消。",
+    "restore_before_sending": "发送前请先还原此对话。",
+    "no_model_available": "此对话没有可用的模型。",
+    "models_not_loaded": "无法加载模型。{failure}",
+    "source_conversation_unavailable": "源对话不可用。",
+    "file_not_owned": "它不在此帐户的文件中。"
+  },
+  "common": {
+    "ok": "确定",
+    "cancel": "取消",
+    "close": "关闭",
+    "copy": "复制",
+    "copied": "已复制",
+    "done": "完成",
+    "retry": "重试",
+    "search": "搜索",
+    "show": "显示",
+    "hide": "隐藏",
+    "rename": "重命名",
+    "change": "更改",
+    "reload": "重新加载",
+    "loading": "正在加载…",
+    "undo": "撤消",
+    "cloud": "云",
+    "workspace": "工作区"
   }
 }

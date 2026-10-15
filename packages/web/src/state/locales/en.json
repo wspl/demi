@@ -1,0 +1,15 @@
+{
+  "notifications": {
+    "turnStopped": "The turn stopped with an error.",
+    "allowTo": "Allow this conversation to {action}?",
+    "saveCredential": "Save the credential “{name}”?",
+    "allowUse": "Allow this conversation to use “{name}”?"
+  },
+  "hosts": {
+    "unavailableDevice": "Unavailable device"
+  },
+  "failures": {
+    "updateSettings": "Could Not Update Settings",
+    "changeContextLimit": "Could Not Change the Context Limit"
+  }
+}

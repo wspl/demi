@@ -7,6 +7,7 @@ import FoldChevron from './FoldChevron.vue'
 import CopyButton from './CopyButton.vue'
 import RequestIdLine from './RequestIdLine.vue'
 import ScrollArea from './ScrollArea.vue'
+import { t } from './locales/text'
 import { ICON_PX } from './icon-metrics'
 import type { SentenceText, TitleText } from './ui-text'
 
@@ -89,7 +90,7 @@ const rawOpen = ref(false)
             @click="rawOpen = !rawOpen"
           >
             <!-- The label, then its chevron, as the transcript's foldable rows read ("Thought briefly ›"). -->
-            Provider Response
+            {{ t('errorNotice.providerResponse') }}
             <FoldChevron :open="rawOpen" :size="ICON_PX.in12" />
           </button>
           <!-- Mounted while closed so the height can animate both ways. -->

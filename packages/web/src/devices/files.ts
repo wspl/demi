@@ -6,6 +6,7 @@ import {
 import { fileSource } from '../api/files'
 import { deviceWatch } from '../conversation/file-watch'
 import type { Device, Project } from '../state/types'
+import { t } from './locales/text'
 
 /**
  * A device's folders for its folder dialog, through device access: the
@@ -33,10 +34,10 @@ export function placesFor(
     }))
   const groups: FileBrowserPlaceGroup[] = []
   if (device?.home) {
-    groups.push({ label: 'Quick Access', places: [{ path: device.home, label: 'Home' }] })
+    groups.push({ label: t('places.quickAccess'), places: [{ path: device.home, label: t('places.home') }] })
   }
   if (places.length) {
-    groups.push({ label: 'Workspaces', places })
+    groups.push({ label: t('places.workspaces'), places })
   }
   return groups
 }

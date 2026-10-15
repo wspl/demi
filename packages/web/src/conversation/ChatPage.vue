@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, useTemplateRef, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { coded } from '@demicodes/web-ui/infra/errors'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
@@ -229,7 +230,7 @@ const card = useContextCard(() => files.value?.open)
 async function fork(request: MessageForkRequest): Promise<void> {
   const sourceId = conversation.value?.id
   if (!sourceId) {
-    throw new Error('The source conversation is unavailable.')
+    throw coded(new Error('The source conversation is unavailable.'), 'source_conversation_unavailable')
   }
   const id = await store.fork(sourceId, request)
   if (props.id === sourceId) {

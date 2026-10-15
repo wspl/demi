@@ -1,0 +1,76 @@
+{
+  "nav": {
+    "overview": "概览",
+    "signin": "登录与设置",
+    "surfaces": "界面",
+    "primitives": "基础组件",
+    "controlLayout": "控件布局",
+    "writing": "文案",
+    "errors": "错误",
+    "motion": "动效",
+    "overlays": "浮层",
+    "dialogs": "对话框",
+    "files": "文件",
+    "session": "会话",
+    "sidebar": "侧边栏",
+    "settings": "设置",
+    "markdown": "Markdown",
+    "phone": "手机",
+    "roadmap": "路线图"
+  },
+  "views": {
+    "errors": {
+      "primitives": "基础组件",
+      "conversation": "对话",
+      "messages": "消息与上传",
+      "forms": "表单与设置",
+      "files": "文件"
+    },
+    "signin": {
+      "signin": "登录",
+      "setup": "设置",
+      "handoff": "手机交接",
+      "starting": "启动中"
+    },
+    "primitives": {
+      "buttons": "按钮",
+      "fields": "字段",
+      "marks": "标记"
+    },
+    "overlays": {
+      "menus": "菜单",
+      "dialogs": "对话框"
+    },
+    "files": {
+      "browser": "浏览器",
+      "tree": "树",
+      "dialogs": "对话框"
+    },
+    "session": {
+      "tabs": "标签栏",
+      "composer": "输入框",
+      "blocks": "块",
+      "lengths": "长度",
+      "changes": "更改",
+      "turns": "轮次",
+      "states": "状态",
+      "session": "会话",
+      "panel": "面板",
+      "windows": "窗口"
+    },
+    "dialogs": {
+      "account": "帐户",
+      "providers": "提供程序",
+      "devices": "设备",
+      "workspace": "工作区",
+      "cloud": "云",
+      "skills": "技能",
+      "search": "搜索"
+    },
+    "page": "页面"
+  },
+  "chrome": {
+    "mode": "模式",
+    "font": "字体"
+  }
+}

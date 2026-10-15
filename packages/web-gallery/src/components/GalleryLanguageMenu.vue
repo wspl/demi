@@ -7,6 +7,7 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuDivider from '@demicodes/web-ui/ui/MenuDivider.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
+import { t as ui } from '@demicodes/web-ui/locales/text'
 import { galleryState } from '../gallery-state'
 
 /**
@@ -27,13 +28,13 @@ function choose(choice: LanguageChoice, close: () => void): void {
         :icon="Languages"
         variant="ghost"
         :pressed="isOpen"
-        aria-label="Language"
+        :aria-label="ui('settings.general.language')"
       />
     </template>
     <template #content="{ close }">
       <Menu>
         <MenuItem
-          label="System"
+          :label="ui('settings.general.system')"
           choice
           :is-selected="galleryState.language === 'system'"
           @select="choose('system', close)"

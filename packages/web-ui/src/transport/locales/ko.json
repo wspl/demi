@@ -1,0 +1,7 @@
+{
+  "connection": {
+    "offline": "오프라인입니다",
+    "restarting": "Demi를 다시 시작하는 중입니다",
+    "reconnecting": "Demi에 다시 연결하는 중입니다"
+  }
+}

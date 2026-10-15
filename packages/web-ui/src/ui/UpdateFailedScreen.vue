@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { CircleX } from '@lucide/vue'
 import Button from './Button.vue'
+import { t as shared } from '../locales/text'
+import { t } from './locales/text'
 
 /**
  * The screen over the whole app once the page loaded itself for the build
@@ -18,10 +20,10 @@ defineEmits<{ reload: [] }>()
     aria-live="assertive"
   >
     <CircleX :size="20" class="text-fg-faint" aria-hidden="true" />
-    <h1 class="text-[15px] font-medium leading-5 text-fg-emphasis">This Page Could Not Be Updated</h1>
+    <h1 class="text-[15px] font-medium leading-5 text-fg-emphasis">{{ t('updateFailed.title') }}</h1>
     <p class="max-w-sm text-chrome text-fg-muted">
-      Demi has a newer version, but reloading still shows the old page.
+      {{ t('updateFailed.body') }}
     </p>
-    <Button size="sm" class="mt-1" @click="$emit('reload')">Reload</Button>
+    <Button size="sm" class="mt-1" @click="$emit('reload')">{{ shared('common.reload') }}</Button>
   </div>
 </template>

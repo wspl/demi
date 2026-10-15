@@ -1,0 +1,42 @@
+{
+  "noResults": "沒有結果",
+  "inDevelopment": "開發中",
+  "asyncRegion": {
+    "error": "無法載入此內容。"
+  },
+  "menu": {
+    "empty": "沒有項目"
+  },
+  "limitField": {
+    "limited": "有限制",
+    "unlimited": "無限制",
+    "problem": "請輸入 1 以上的整數。"
+  },
+  "shortcutRecorder": {
+    "recording": "正在錄製快速鍵",
+    "prompt": "按下按鍵…"
+  },
+  "requestId": "要求 ID：{id}",
+  "errorNotice": {
+    "providerResponse": "提供者回應"
+  },
+  "updateFailed": {
+    "title": "無法更新此頁面",
+    "body": "Demi 有新版本。重新載入後仍顯示舊頁面。"
+  },
+  "startingScreen": {
+    "connecting": "正在連線到 Demi…",
+    "loading": "正在載入 Demi…",
+    "failed": "無法檢查您的工作階段。"
+  },
+  "themeToggle": {
+    "light": "淺色主題",
+    "dark": "深色主題"
+  },
+  "titleInput": {
+    "title": "標題"
+  },
+  "rowSpinner": {
+    "working": "正在處理"
+  }
+}

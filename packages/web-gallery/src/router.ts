@@ -18,32 +18,33 @@ import MarkdownSection from './sections/MarkdownSection.vue'
 import RoadmapSection from './sections/RoadmapSection.vue'
 import PhoneSection from './sections/PhoneSection.vue'
 import PhoneFrameView from './phone/PhoneFrameView.vue'
+import { t } from './locales/text'
 
 /** `frame`: a page alone, with no gallery around it, as a phone frame shows it. */
 export type GalleryLayout = 'catalog' | 'session' | 'preview' | 'frame'
 
-export const NAV: {
-  path: string;
-  label: TitleText
-}[] = [
-  { path: '/overview', label: 'Overview' },
-  { path: '/signin', label: 'Sign In & Setup' },
-  { path: '/surfaces', label: 'Surfaces' },
-  { path: '/primitives', label: 'Primitives' },
-  { path: '/control-layout', label: 'Control Layout' },
-  { path: '/writing', label: 'Writing' },
-  { path: '/errors', label: 'Errors' },
-  { path: '/motion', label: 'Motion' },
-  { path: '/overlays', label: 'Overlays' },
-  { path: '/dialogs', label: 'Dialogs' },
-  { path: '/files', label: 'Files' },
-  { path: '/session', label: 'Session' },
-  { path: '/sidebar', label: 'Sidebar' },
-  { path: '/settings', label: 'Settings' },
-  { path: '/markdown', label: 'Markdown' },
-  { path: '/phone', label: 'Phone' },
-  { path: '/roadmap', label: 'Roadmap' },
-]
+/** The navigation's pages, named in the page's language each time they are read. */
+export function galleryNav(): { path: string; label: TitleText }[] {
+  return [
+    { path: '/overview', label: t('nav.overview') },
+    { path: '/signin', label: t('nav.signin') },
+    { path: '/surfaces', label: t('nav.surfaces') },
+    { path: '/primitives', label: t('nav.primitives') },
+    { path: '/control-layout', label: t('nav.controlLayout') },
+    { path: '/writing', label: t('nav.writing') },
+    { path: '/errors', label: t('nav.errors') },
+    { path: '/motion', label: t('nav.motion') },
+    { path: '/overlays', label: t('nav.overlays') },
+    { path: '/dialogs', label: t('nav.dialogs') },
+    { path: '/files', label: t('nav.files') },
+    { path: '/session', label: t('nav.session') },
+    { path: '/sidebar', label: t('nav.sidebar') },
+    { path: '/settings', label: t('nav.settings') },
+    { path: '/markdown', label: t('nav.markdown') },
+    { path: '/phone', label: t('nav.phone') },
+    { path: '/roadmap', label: t('nav.roadmap') },
+  ]
+}
 
 export const router = createRouter({
   history: createWebHistory(),

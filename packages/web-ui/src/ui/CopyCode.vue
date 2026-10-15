@@ -2,13 +2,10 @@
 import CodeText from './CodeText.vue'
 import CopyButton from './CopyButton.vue'
 
-withDefaults(
-  defineProps<{
-    code: string;
-    copyLabel?: string
-  }>(),
-  { copyLabel: 'Copy' }
-)
+defineProps<{
+  code: string
+  copyLabel?: string
+}>()
 </script>
 
 <template>

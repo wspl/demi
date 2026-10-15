@@ -1,0 +1,7 @@
+{
+  "connection": {
+    "offline": "你已离线",
+    "restarting": "Demi 正在重新启动",
+    "reconnecting": "正在重新连接到 Demi"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "noResults": "결과 없음",
+  "inDevelopment": "개발 중",
+  "asyncRegion": {
+    "error": "이 콘텐츠를 로드할 수 없습니다."
+  },
+  "menu": {
+    "empty": "항목 없음"
+  },
+  "limitField": {
+    "limited": "한도 있음",
+    "unlimited": "한도 없음",
+    "problem": "1 이상의 정수를 입력하십시오."
+  },
+  "shortcutRecorder": {
+    "recording": "바로 가기 키 기록 중",
+    "prompt": "키를 누르십시오…"
+  },
+  "requestId": "요청 ID: {id}",
+  "errorNotice": {
+    "providerResponse": "공급자 응답"
+  },
+  "updateFailed": {
+    "title": "이 페이지를 업데이트할 수 없습니다",
+    "body": "Demi의 새 버전이 있습니다. 다시 로드해도 이전 페이지가 표시됩니다."
+  },
+  "startingScreen": {
+    "connecting": "Demi에 연결하는 중…",
+    "loading": "Demi 로드 중…",
+    "failed": "세션을 확인할 수 없습니다."
+  },
+  "themeToggle": {
+    "light": "밝은 테마",
+    "dark": "어두운 테마"
+  },
+  "titleInput": {
+    "title": "제목"
+  },
+  "rowSpinner": {
+    "working": "작업 중"
+  }
+}

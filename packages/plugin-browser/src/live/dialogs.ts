@@ -4,13 +4,14 @@
  * Enter and Escape.
  */
 import type { LiveDialog } from '../generated/plugin'
+import { t } from '../locales/text'
 
 /** The dialog's title: who asks, or, for leaving the page, the browser's own question. */
 export function dialogTitle(type: LiveDialog['type'], host: string): string {
   if (type === 'beforeunload') {
-    return 'Leave the page?'
+    return t('dialog.leavePage')
   }
-  return host ? `${host} says` : 'This page says'
+  return host ? t('dialog.says', { host }) : t('dialog.thisPageSays')
 }
 
 /**

@@ -1,4 +1,5 @@
 import { errorMessage } from './errors'
+import { t } from './locales/text'
 import { showToast } from './toast'
 
 /**
@@ -7,7 +8,7 @@ import { showToast } from './toast'
  */
 export function reportCopyFailure(error: unknown): void {
   showToast({
-    title: 'Could Not Copy',
+    title: t('copyFailed'),
     message: () => errorMessage(error),
     tone: 'danger',
   })

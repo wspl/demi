@@ -1,0 +1,13 @@
+{
+  "files": {
+    "offline": "The device is offline.",
+    "notFound": "It’s no longer there.",
+    "permission": "The Host doesn’t allow access to it.",
+    "exists": "Something with that name already exists.",
+    "binary": "It isn’t text.",
+    "tooLarge": "It’s too large.",
+    "other": "The Host didn’t answer.",
+    "conversationBusy": "The conversation is changing its Host.",
+    "selectDevice": "Select a connected device."
+  }
+}

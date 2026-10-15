@@ -2,6 +2,7 @@ import { computed, onScopeDispose, shallowRef, watch, type ComputedRef } from 'v
 import type { Showing } from '@demicodes/web-ui/files/file-cache'
 import type { WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 import { followOnScreen } from '@demicodes/web-ui/files/on-screen'
+import { t } from './locales/text'
 import { apiRequest, readResponse } from '../api/client'
 import { fileBrowserError, hostFiles, readAtOf } from '../api/files'
 import { conversationWorkflowsSchema, type ConversationWorkflows } from '../api/generated/web-api'
@@ -106,6 +107,6 @@ export function useConversationWorkflows(conversation: () => Conversation): Comp
       const { workflows, unavailable } = state.value
       return unavailable === null ? { state: 'read', workflows } : { state: 'unavailable', reason: unavailable }
     }
-    return { state: 'failed', reason: state.failure?.message ?? 'The Host did not answer.' }
+    return { state: 'failed', reason: state.failure?.message ?? t('workflows.hostSilent') }
   })
 }
