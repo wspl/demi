@@ -25,12 +25,16 @@
     "progress": "{position} / {count}"
   },
   "useCredential": "使用憑證「{name}」",
+  "host": {
+    "reach": "存取 {host}",
+    "pair": "配對一台電腦並存取它",
+    "allowTitle": "允許此對話存取 {host}？",
+    "allowPairingTitle": "允許此對話配對一台電腦並存取它？",
+    "description": "此對話的智慧體會以你的身分在 {host} 上執行指令，並可讓此對話改在 {host} 上執行。",
+    "pairingDescription": "此對話的智慧體會將這台電腦與你的帳號配對、以你的身分在上面執行指令，並可讓此對話改在這台電腦上執行。",
+    "pairingTitle": "新電腦"
+  },
   "categories": {
-    "host_devices": {
-      "action": "管理裝置",
-      "title": "管理裝置",
-      "description": "「管理裝置」可讓此對話的智慧體列出你的裝置、將裝置附加至此對話或從中中斷連結，以及將可執行指令的電腦與你的帳號配對。智慧體會以你的身分在已附加的裝置上執行指令。"
-    },
     "credentials_manage": {
       "action": "管理憑證",
       "title": "管理憑證",

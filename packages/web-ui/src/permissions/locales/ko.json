@@ -25,12 +25,16 @@
     "progress": "{position} / {count}"
   },
   "useCredential": "“{name}” 자격 증명 사용",
+  "host": {
+    "reach": "{host} 접근",
+    "pair": "컴퓨터 페어링 및 접근",
+    "allowTitle": "이 대화에서 {host} 호스트에 접근하도록 허용하시겠습니까?",
+    "allowPairingTitle": "이 대화에서 컴퓨터를 페어링하고 접근하도록 허용하시겠습니까?",
+    "description": "이 대화의 에이전트가 {host} 호스트에서 사용자 권한으로 명령을 실행하고, 이 대화가 실행되는 위치를 이 호스트로 옮길 수 있습니다.",
+    "pairingDescription": "이 대화의 에이전트가 컴퓨터를 내 계정과 페어링하고, 그 컴퓨터에서 사용자 권한으로 명령을 실행하며, 이 대화가 실행되는 위치를 그 컴퓨터로 옮길 수 있습니다.",
+    "pairingTitle": "새 컴퓨터"
+  },
   "categories": {
-    "host_devices": {
-      "action": "기기 관리",
-      "title": "기기 관리",
-      "description": "“기기 관리”를 허용하면 이 대화의 에이전트가 내 기기 목록을 확인하고, 기기를 이 대화에 연결하거나 연결 해제하고, 명령을 실행할 수 있는 컴퓨터를 내 계정과 페어링할 수 있습니다. 에이전트는 연결된 기기에서 사용자 권한으로 명령을 실행합니다."
-    },
     "credentials_manage": {
       "action": "자격 증명 관리",
       "title": "자격 증명 관리",
