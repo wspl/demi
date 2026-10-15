@@ -1490,7 +1490,7 @@ The public routes take no session and ignore one:
 | `GET /shares/:token/transcript?node=&before=\|after=\|around=` | A page of the snapshot, as [Pages](#pages) answers it, `instructions` always empty and `failures` absent, so an error block shows its message without the retry times and accounts the facts carry; `node` a subagent's number the snapshot holds |
 | `GET /shares/:token/transcript/blocks/:blockId?node=` | One block whole, as the conversation's whole-block read answers it |
 | `GET /shares/:token/blobs/:sha256?type=` | A blob the snapshot shows |
-| `GET /shares/:token/attachments/:attachment` | An attachment the snapshot's text names as `attachment:a3`, as [the conversation's attachment route](#uploads-and-media) answers it |
+| `GET /shares/:token/attachments/:attachment` | An attachment the snapshot's text names as `attachment:a3` and that existed when it was taken, as [the conversation's attachment route](#uploads-and-media) answers it; one uploaded later stays missing until Update Link |
 
 A token that names no share, a node or block the snapshot lacks, and a blob
 it does not show answer 404 `share_not_found`, the same for each, so the
