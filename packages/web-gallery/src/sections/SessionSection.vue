@@ -225,6 +225,7 @@ import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import GalleryTabStripDrive from '../components/GalleryTabStripDrive.vue'
 import { useGalleryView } from '../gallery-views'
+import GallerySharedPage from '../components/GallerySharedPage.vue'
 
 const { view } = useGalleryView()
 const historyModelBlocks = transcriptDemoBlocks()
@@ -3081,6 +3082,9 @@ onBeforeUnmount(() => {
       </GallerySection>
     </template>
 
+    <template v-if="view === 'shared'">
+      <GallerySharedPage />
+    </template>
     <template v-if="view === 'windows'">
       <GallerySection
         title="Agents"
