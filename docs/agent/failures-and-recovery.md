@@ -291,6 +291,23 @@ limit failed the main agent once for each of its children that reported,
 four red rows in a row, each one a whole history sent for nothing. A child's
 turn is not held, since its parent decides for it.
 
+A turn that a graceful shutdown interrupted, for a deployment, an upgrade
+or a restart, goes on by itself once the backend is back, unless the user
+turned that off (`resumeAfterRestart`, on unless turned off,
+[User preferences](../product/web-api.md#user-preferences)). The restart
+was Demi's doing, not the turn's, so nothing about the turn suggests it
+would fail again. As it starts, the backend opens each conversation whose
+root's last turn ended with the `interrupted` record its own shutdown
+wrote and resumes it, as the user's Resume would, with the reason "Demi
+resumed this turn after the backend restarted."; the subagents that turn
+was waiting on are resumed with their tree, as a restored tree resumes
+them. A turn is resumed so once for each shutdown that interrupted it: if
+it fails again, that failure is held as any other. A crash's interruption,
+whose record the conversation writes only when next opened, never resumes
+by itself, so a turn that brought the backend down cannot bring it down
+again and again; it waits for the user's Resume. With the preference off,
+every interrupted turn waits for the user's Resume.
+
 Continuing by itself is the user's choice, off unless they turn it on
 (`resumeAtRetry`, [User preferences](../product/web-api.md#user-preferences)):
 with it on, a root's turn whose failure names its `retryAt` is resumed at that
@@ -408,6 +425,8 @@ injected clock; no test calls a real model.
 | A Claude Code usage limit | `retryAt` is the reset its `rate_limit_info` names; the failure is terminal on its first attempt |
 | A root's turn fails, then two children report and a command ends | Two receipts and a notice are written into the failed turn; no turn starts, Resume stays offered and answers them |
 | The same, with a `retryAt` | With `resumeAtRetry` off, nothing starts at that moment; with it on, the turn resumes then, once |
+| A graceful shutdown interrupts a running root turn and its running child; the backend starts again | With `resumeAfterRestart` on or absent, the root resumes without a page open, its child with it, each once, the model told the backend restarted; with it off, both wait for Resume |
+| A crash interrupts a running turn; the backend starts again | Nothing resumes by itself; opening the conversation shows the interrupted record and Resume |
 | A failure after a completed tool call, then `resume` | The tool does not run again; the model continues after its result |
 | `resume` after a failure before any output | The turn reruns from its input, with no `resume` block |
 | The user's Compact after a finished answer, stopped during its summary | The transcript is as it was, with no `abort` block; the dock offers no Continue |

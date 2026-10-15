@@ -20,8 +20,9 @@ interruption lasts as long as a restart, plus the copy. Afterwards:
 - Open pages show the banner "Demi is restarting" over what they show while the backend is away, then load
   the new web app by themselves
   ([A page of another build](../product/web-application.md#a-page-of-another-build)).
-- A turn that was running ends with the shutdown's error record, and its
-  conversation offers **Resume**
+- A turn that was running ends with the shutdown's error record and goes
+  on by itself once the new backend runs, unless the user turned that off,
+  when its conversation offers **Resume**
   ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
 - Commands running on Hosts end: a paired device's runner replaces itself
   and a Cloud restarts, and the shell work of a command runs in its runner.

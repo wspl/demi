@@ -911,7 +911,7 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, multiAccountWarned?, hiddenProviders?, hiddenModels? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, multiAccountWarned?, hiddenProviders?, hiddenModels? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
@@ -921,10 +921,14 @@ the web app's defaults. `PATCH` accepts any subset of appearance fields
 patch sets it. `resumeAtRetry` is whether a turn that failed with a known
 time to try again, such as a usage limit that resets at 09:00, resumes by
 itself at that time ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
-absent means `false`. `multiAccountWarned` is true once the user went on
+absent means `false`. `resumeAfterRestart` is whether a turn a
+deployment, an upgrade or a restart interrupted goes on by itself once the
+backend is back ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
+absent means `true`. `multiAccountWarned` is true once the user went on
 past the dialog about using several subscription accounts
 ([Account rotation](../providers/providers.md#account-rotation)), which
-then never shows again. Settings › General shows `resumeAtRetry` as *Resume after a usage
+then never shows again. Settings › General shows `resumeAfterRestart` as *Resume after Demi
+restarts* and `resumeAtRetry` as *Resume after a usage
 limit resets*, and so does the error record of such a failure, as *Resume at
 09:00* ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
 `{ providerId, modelId }` pairs, are the switches of Settings › Providers that
