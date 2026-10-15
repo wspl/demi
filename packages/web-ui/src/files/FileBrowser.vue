@@ -19,6 +19,8 @@ import {
   MapPin,
 } from '@lucide/vue'
 import { CLOUD_HOST_ID, hostIcon } from '../hosts/icons'
+import DeviceIcon from '../devices/DeviceIcon.vue'
+import { deviceGlyph } from '../devices/device-glyphs'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Button from '../ui/Button.vue'
@@ -146,6 +148,10 @@ const selectedEntry = computed(
 const currentHost = computed(() =>
   props.hosts.find((host) => host.id === props.hostId),
 )
+/** A host's glyph in the device menu: a device's mark with its state's dot, or the host's glyph. */
+function hostGlyph(host: FileBrowserHost) {
+  return host.mark ? deviceGlyph(host.state, host.mark) : hostIcon(host)
+}
 const hasRail = computed(() => props.places.length > 0)
 /** A place's name: the label its caller gave it, or its directory's own. */
 function placeName(place: FileBrowserPlace): string {
@@ -419,8 +425,14 @@ onBeforeUnmount(() => pending?.abort())
           :trigger-label="t('browser.device')"
         >
           <template #trigger>
+            <DeviceIcon
+              v-if="currentHost?.mark"
+              :state="currentHost.state"
+              :mark="currentHost.mark"
+            />
             <component
               :is="currentHost ? hostIcon(currentHost) : hostIcon({ kind: 'device' })"
+              v-else
               :size="ICON_PX.in28"
               class="shrink-0 text-fg-muted"
             />
@@ -433,9 +445,9 @@ onBeforeUnmount(() => pending?.abort())
               <MenuItem
                 v-for="host in hosts"
                 :key="host.id"
-                :icon="hostIcon(host)"
+                :icon="hostGlyph(host)"
                 :indicator="
-                  host.id === CLOUD_HOST_ID || host.canWake
+                  host.mark || host.id === CLOUD_HOST_ID || host.canWake
                     ? undefined
                     : DEVICE_STATE_TONE[host.state]
                 "

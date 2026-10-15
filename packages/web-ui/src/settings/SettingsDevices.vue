@@ -144,7 +144,7 @@ const pageProjects = computed(() =>
             <template v-if="device.os">{{ device.os.name }} · </template>{{ reachedAs(device) }}<template v-if="device.state === 'offline' && device.seen"> · {{ t('devices.lastSeen') }} <RelativeTime :timestamp="device.seen" /></template>
           </template>
           <template #leading>
-            <DeviceIcon :state="device.state" />
+            <DeviceIcon :state="device.state" :mark="device.mark" />
           </template>
         </SettingsRow>
         <div

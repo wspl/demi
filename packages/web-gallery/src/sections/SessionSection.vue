@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { correction, requestFailure } from '../fixtures/request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
@@ -973,19 +974,19 @@ const commandOf = useCallTerminals(() =>
   [...terminals, ...turnFlow.state.terminals, ...workFlow.state.terminals, returnedFailingCommand, runningRun.command, leftRunning.command, ...steppedRunCommands(steppedStage.value)])
 provideLiveCalls((toolUseId) => commandOf(undefined, toolUseId))
 /** The devices an offline primary Host's card offers, as Run On lists them: it shows the online ones. */
-const offlineMenuDevices: HostDeviceOption[] = [
-  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer' },
-  { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork' },
-  { id: 'old', name: 'Old Laptop', state: 'offline' },
-  { id: 'build', name: 'build-box', state: 'offline' },
-]
+const offlineMenuDevices: HostDeviceOption[] = shownAmong([
+  { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer', mark: GALLERY_MARKS.mac },
+  { id: 'studio', name: 'Studio PC', state: 'online', path: 'localNetwork', mark: GALLERY_MARKS.windows },
+  { id: 'old', name: 'Old Laptop', state: 'offline', mark: GALLERY_MARKS.debian },
+  { id: 'build', name: 'build-box', state: 'offline', mark: GALLERY_MARKS.ubuntu },
+])
 /** A dock specimen's primary Host while it is offline: the card names it, and offers the others. */
 function dockOfflineHost(name: string): OfflineHost {
   const id = offlineMenuDevices.find((device) => device.name === name)?.id ?? 'old'
   return {
     name,
     start: demoDeviceStart('macos'),
-    primaryHost: { id, name, kind: 'device', state: 'offline' },
+    primaryHost: { id, name, kind: 'device', state: 'offline', mark: offlineMenuDevices.find((device) => device.id === id)?.mark ?? null },
     devices: offlineMenuDevices.map((device) => device.id === id ? { ...device, state: 'offline' } : device),
   }
 }
@@ -1445,7 +1446,7 @@ onBeforeUnmount(() => {
               :offline-host="{
                 name: 'Old Laptop',
                 start: demoDeviceStart('macos'),
-                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
+                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline', mark: GALLERY_MARKS.debian },
                 devices: offlineMenuDevices,
               }"
             />
@@ -1458,7 +1459,7 @@ onBeforeUnmount(() => {
               :offline-host="{
                 name: 'Old Laptop',
                 start: demoDeviceStart('macos'),
-                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
+                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline', mark: GALLERY_MARKS.debian },
                 devices: offlineMenuDevices,
               }"
               :working="{ agent: true, subagents: 0, commands: 1 }"
@@ -1472,7 +1473,7 @@ onBeforeUnmount(() => {
               :offline-host="{
                 name: 'Old Laptop',
                 start: demoDeviceStart('windows'),
-                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline' },
+                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline', mark: GALLERY_MARKS.debian },
                 devices: offlineMenuDevices,
                 chooseDirectory: true,
               }"

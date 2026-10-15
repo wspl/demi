@@ -16,7 +16,9 @@ use demi_runner_protocol::wire::{
     self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo,
     RunnerPlatform, StreamArtifactOwner,
 };
-use demi_web_api_protocol::devices::{DeviceAnswer, DeviceKind, DeviceLog, DeviceRoute, DeviceState};
+use demi_web_api_protocol::devices::{
+    DeviceAnswer, DeviceKind, DeviceLog, DeviceLogo, DeviceMark, DeviceRoute, DeviceState,
+};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::files::Directory;
 use futures_util::{SinkExt as _, StreamExt as _};
@@ -226,6 +228,7 @@ pub(crate) fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -
             platform: RunnerPlatform::Linux,
             os: wire::OperatingSystem {
                 name: "Ubuntu 26.04".into(),
+                distribution: Some("ubuntu".into()),
                 arch: "x86_64".into(),
             },
             version: "0".into(),
@@ -948,6 +951,7 @@ async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_n
         .find(|device| device.kind == DeviceKind::Managed)
         .expect("the Cloud booted");
     assert!(cloud.os.is_some(), "{cloud:?}");
+    assert_eq!(cloud.mark, None, "the Cloud keeps its own glyph");
     assert_eq!(cloud.runner_version.as_deref(), Some(demi_shared_artifacts::WORKSPACE_VERSION));
 
     let rename = async |id: &str, session: &Session, name: &str| {
@@ -1015,6 +1019,172 @@ async fn a_device_shows_its_system_and_runner_release_and_a_paired_one_takes_a_n
             .refusal(),
         (StatusCode::CONFLICT, ErrorCode::DeviceManaged)
     );
+    backend.close().await;
+}
+
+/// A raw runner of a new device whose hello names `name`, `platform` and
+/// `os`, claimed by `session`: the connection, which stays the device's, and
+/// the device's id and token.
+async fn raw_paired(
+    backend: &TestBackend,
+    session: &Session,
+    name: &str,
+    platform: RunnerPlatform,
+    os: wire::OperatingSystem,
+) -> (RawRunner, String, String) {
+    let mut runner = RawRunner::connect(backend).await;
+    runner.send(&hello_as(None, name, platform, os)).await;
+    let Some(Inbound::ClaimPending { claim_token }) = runner.next().await else {
+        panic!("the runner was not offered a code");
+    };
+    let claimed = backend
+        .post("/api/devices/claim", Some(session), json!({ "code": claim_token }))
+        .await;
+    assert_eq!(claimed.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&claimed.body));
+    let id = claimed.json::<DeviceAnswer>().device.id.to_string();
+    loop {
+        match runner.next().await {
+            Some(Inbound::Claimed { device_token, .. }) => {
+                return (runner, id, device_token.expose().to_owned());
+            }
+            Some(_) => {}
+            None => panic!("the connection closed before the runner was claimed"),
+        }
+    }
+}
+
+/// A hello with `token`, as a runner named `name` on `platform` whose
+/// system is `os`.
+fn hello_as(
+    token: Option<&str>,
+    name: &str,
+    platform: RunnerPlatform,
+    os: wire::OperatingSystem,
+) -> Outbound {
+    let mut message = hello(wire::VERSION, token, None);
+    let Outbound::Hello { runner, .. } = &mut message else {
+        unreachable!("hello makes a hello")
+    };
+    runner.name = name.into();
+    runner.platform = platform;
+    runner.os = os;
+    message
+}
+
+fn system(name: &str, distribution: Option<&str>) -> wire::OperatingSystem {
+    wire::OperatingSystem {
+        name: name.into(),
+        distribution: distribution.map(Into::into),
+        arch: "x86_64".into(),
+    }
+}
+
+/// A device's mark is its system's logo, a Linux device's from the
+/// distribution its hello names, with a number among the user's devices of
+/// that logo: given at the first hello as one more than the highest, kept
+/// while the device stays and when another goes, and given anew when a
+/// reinstall changes the logo (`product.md` § Conversations and projects).
+// About 0.2 s: six raw runners pair and two say hello again.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_devices_mark_numbers_it_among_the_users_devices_of_its_systems_logo() {
+    use std::collections::BTreeMap;
+
+    use demi_web_api_protocol::state::SyncEvent;
+
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut page = backend.sync(&master).await;
+    page.snapshot().await;
+    let mut until_marks = async |expected: Vec<(&str, DeviceLogo, u32)>| {
+        // The devices pair at one instant of the test's clock, so the list's
+        // order is the ids'.
+        let expected: BTreeMap<String, Option<DeviceMark>> = expected
+            .into_iter()
+            .map(|(id, logo, number)| {
+                (id.to_owned(), Some(DeviceMark { logo, number: Some(number) }))
+            })
+            .collect();
+        page.until(|event| {
+            matches!(event, SyncEvent::Devices { devices }
+                if devices.iter().map(|device| (device.id.to_string(), device.mark)).collect::<BTreeMap<_, _>>() == expected)
+        })
+        .await;
+    };
+    let mac = || system("macOS 26.5", None);
+    let darwin = RunnerPlatform::Darwin;
+
+    // The first Mac is Apple 1 and the second Apple 2; an Ubuntu server is
+    // Ubuntu 1 and a Fedora one Fedora 1, by the distribution its hello
+    // names.
+    let (first, first_id, _) = raw_paired(&backend, &master, "first", darwin, mac()).await;
+    let (second, second_id, second_token) = raw_paired(&backend, &master, "second", darwin, mac()).await;
+    let (server, server_id, server_token) = raw_paired(
+        &backend,
+        &master,
+        "server",
+        RunnerPlatform::Linux,
+        system("Ubuntu 26.04", Some("ubuntu")),
+    )
+    .await;
+    let (_fedora, fedora_id, _) = raw_paired(
+        &backend,
+        &master,
+        "fedora",
+        RunnerPlatform::Linux,
+        system("Fedora Linux 44", Some("fedora")),
+    )
+    .await;
+    until_marks(vec![
+        (&first_id, DeviceLogo::Apple, 1),
+        (&second_id, DeviceLogo::Apple, 2),
+        (&server_id, DeviceLogo::Ubuntu, 1),
+        (&fedora_id, DeviceLogo::Fedora, 1),
+    ])
+    .await;
+
+    // Removing the first Mac leaves the second Apple 2, and a third Mac
+    // follows the highest number: Apple 3.
+    drop(first);
+    let removed = backend.delete(&format!("/api/devices/{first_id}"), &master).await;
+    assert_eq!(removed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&removed.body));
+    let (_third, third_id, _) = raw_paired(&backend, &master, "third", darwin, mac()).await;
+    until_marks(vec![
+        (&second_id, DeviceLogo::Apple, 2),
+        (&server_id, DeviceLogo::Ubuntu, 1),
+        (&fedora_id, DeviceLogo::Fedora, 1),
+        (&third_id, DeviceLogo::Apple, 3),
+    ])
+    .await;
+
+    // A reinstall that changes the server's distribution to Fedora gives
+    // it the next number of its new logo; a Mac's new release keeps its
+    // number.
+    let mut welcomed = Vec::new();
+    for (runner, token, name, platform, os) in [
+        (server, &server_token, "server", RunnerPlatform::Linux, system("Fedora Linux 44", Some("fedora"))),
+        (second, &second_token, "second", darwin, system("macOS 27.0", None)),
+    ] {
+        let mut runner = runner;
+        runner.0.close(None).await.unwrap();
+        runner.closed().await;
+        let mut again = RawRunner::connect(&backend).await;
+        again.send(&hello_as(Some(token), name, platform, os)).await;
+        loop {
+            match again.next().await {
+                Some(Inbound::HelloOk { .. }) => break,
+                Some(_) => {}
+                None => panic!("the device's runner was not welcomed back"),
+            }
+        }
+        welcomed.push(again);
+    }
+    until_marks(vec![
+        (&second_id, DeviceLogo::Apple, 2),
+        (&server_id, DeviceLogo::Fedora, 2),
+        (&fedora_id, DeviceLogo::Fedora, 1),
+        (&third_id, DeviceLogo::Apple, 3),
+    ])
+    .await;
     backend.close().await;
 }
 

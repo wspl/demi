@@ -38,6 +38,7 @@ import {
 import { RUNNER_STATE_LABEL, runnerState, systemName, type DeviceReport } from '../devices/report'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { hostIcon } from '../hosts/icons'
+import DeviceIcon from '../devices/DeviceIcon.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { SentenceText } from '../ui/ui-text'
 import SettingsGroup from './SettingsGroup.vue'
@@ -221,7 +222,8 @@ async function revoke(): Promise<void> {
     @back="emit('back')"
   >
     <template #icon>
-      <component :is="hostIcon({ kind: device ? 'device' : 'cloud' })" :size="24" aria-hidden="true" />
+      <DeviceIcon v-if="device" :state="device.state" :mark="device.mark" :size="24" />
+      <component :is="hostIcon({ kind: 'cloud' })" v-else :size="24" aria-hidden="true" />
     </template>
     <template #status>
       {{ status.words }}<span v-if="device?.state === 'offline' && device.seen" class="text-fg-subtle"> · {{ t('page.lastSeen') }} <RelativeTime :timestamp="device.seen" /></span>

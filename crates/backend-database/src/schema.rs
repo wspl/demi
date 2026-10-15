@@ -80,7 +80,8 @@ impl ReadBlob for NoBlobs {
 /// account rotation before a placeholder title held no words, the one with
 /// placeholder titles before interrupted turns were kept, and the one with
 /// interrupted turns before a conversation kept the hosts it may reach,
-/// and the one with them before shares.
+/// the one with them before shares, and the one with shares before a
+/// device's mark had a number.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -200,8 +201,20 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.reachable-hosts.sql"),
             migration: Migration::Sql(CONTROL_FROM_REACHABLE_HOSTS),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.shares.sql"),
+            migration: Migration::Sql(CONTROL_FROM_SHARES),
+        },
     ],
 };
+
+/// From the control schema that keeps each share's record to the one in
+/// which a paired device keeps the number of its mark (`product.md`
+/// § Conversations and projects). A device of the earlier schema takes its
+/// number at its runner's next hello.
+const CONTROL_FROM_SHARES: &str = "
+ALTER TABLE devices ADD COLUMN mark_number INTEGER CHECK (mark_number > 0);
+";
 
 /// From the control schema in which a conversation keeps the hosts it may
 /// reach to the one that keeps each share's record (`sharing.md` § Storage
@@ -2040,7 +2053,12 @@ CREATE TABLE devices (
   -- When a Cloud's latest boot completed, as its runner connected; the
   -- lifetime cap counts from it. None for a paired device and a Cloud that
   -- never booted.
-  cloud_started_at INTEGER
+  cloud_started_at INTEGER,
+  -- A paired device's number among its user's devices of the same logo
+  -- (product.md § Conversations and projects), given when its runner first
+  -- reports its system and again when its logo changes; none before, and
+  -- for a Cloud.
+  mark_number INTEGER CHECK (mark_number > 0)
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_managed ON devices (user_id) WHERE kind = 'managed';
 

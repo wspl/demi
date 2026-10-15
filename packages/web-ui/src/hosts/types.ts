@@ -1,10 +1,13 @@
 import type { DevicePath } from '../devices/direct'
+import type { DeviceMark } from '../devices/mark'
 import type { DeviceState } from '../devices/state'
 
 export interface HostDeviceOption {
   id: string
   name: string
   state: DeviceState
+  /** Its mark, with the number it shows (`shownMark`); null draws the plain computer. */
+  mark: DeviceMark | null
   /** The path this page last found to the device; none before it connected this session. */
   path?: DevicePath | null
 }
@@ -20,4 +23,6 @@ export interface HostMenuHost {
   name: string
   kind: HostKind
   state: DeviceState
+  /** A device's mark, with the number it shows (`shownMark`); null for the Cloud and a device the account no longer lists. */
+  mark: DeviceMark | null
 }

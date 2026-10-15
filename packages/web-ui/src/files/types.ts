@@ -9,6 +9,7 @@
 import type { Showing } from './file-cache'
 import type { ReadAt } from './watch-channel'
 import type { SentenceText, TitleText } from '../ui/ui-text'
+import type { DeviceMark } from '../devices/mark'
 import type { DeviceState } from '../devices/state'
 import type { HostKind } from '../hosts/types'
 
@@ -200,6 +201,8 @@ export interface FileBrowserHost {
   canWake?: boolean
   /** Which kind of host it is, for its glyph; a device when omitted. */
   kind?: HostKind
+  /** A device's mark, with the number it shows (`shownMark`); none for the Cloud. */
+  mark?: DeviceMark | null
 }
 
 /** What the file browser is for: the confirm button and what a click on a row does follow from it. */

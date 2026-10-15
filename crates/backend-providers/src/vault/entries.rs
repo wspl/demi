@@ -758,9 +758,10 @@ mod tests {
             // The schema before format 2, which the one before account
             // rotation, the one before a placeholder title held no words, the
             // one before interrupted turns were marked, the one before a
-            // conversation kept the hosts it may reach and the one before
-            // shares follow in the history.
-            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 5);
+            // conversation kept the hosts it may reach, the one before
+            // shares and the one before a device's mark had a number follow
+            // in the history.
+            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 6);
             (data, path, own.id, proxy.id)
         };
         let clock = Arc::new(demi_shared_types::SystemClock);

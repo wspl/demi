@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { correction, requestFailure } from '../fixtures/request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import { ref } from 'vue'
@@ -298,10 +299,10 @@ const pairingPhases: { variant: string; phase: PairingPhase; installCommands?: D
 /** Each pairing specimen's phase: Next and Back move it, as the product's do; Open puts it back. */
 const pairingShown = ref(pairingPhases.map((item) => item.phase))
 const hosts = createGalleryFileHosts()
-const devices: WorkspaceDevice[] = [
-  { id: hosts[0]!.id, name: hosts[0]!.label, state: 'online' },
-  { id: 'build-01', name: 'build-01', state: 'offline' },
-]
+const devices: WorkspaceDevice[] = shownAmong([
+  { id: hosts[0]!.id, name: hosts[0]!.label, state: 'online', mark: hosts[0]!.mark ?? null },
+  { id: 'build-01', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu },
+])
 function sourceFor(deviceId: string) {
   return (hosts.find((host) => host.id === deviceId) ?? hosts[0]!).source
 }

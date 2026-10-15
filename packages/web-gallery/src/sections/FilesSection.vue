@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { shownAmong } from '../fixtures/device-marks'
 import { correction } from '../fixtures/request-failures'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, shallowRef, watch } from 'vue'
@@ -11,7 +12,7 @@ import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.v
 import { useDevicePairing, type PairingResult } from '@demicodes/web-ui/devices/pairing'
 import { baseName, delay } from '@demicodes/utils'
 import { demoInstallCommands } from '../fixtures/device-installation'
-import type { WorkspaceDraft, WorkspaceHostChoice, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
+import type { WorkspaceDevice, WorkspaceDraft, WorkspaceHostChoice, WorkspaceProject } from '@demicodes/web-ui/hosts/workspace'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import FileTree from '@demicodes/web-ui/files/FileTree.vue'
 import FileView from '@demicodes/web-ui/files/FileView.vue'
@@ -26,7 +27,7 @@ import GalleryDialogFrame from '../components/GalleryDialogFrame.vue'
 import { productWould } from '../product-would'
 import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
-import { createGalleryRemoteFileHosts, laptopTree } from '../fixtures/files'
+import { createGalleryRemoteFileHosts, GALLERY_FILE_HOST_MARKS, laptopTree } from '../fixtures/files'
 import { createGalleryWorkspace } from '../fixtures/workspace'
 import { useGalleryView } from '../gallery-views'
 
@@ -84,7 +85,16 @@ const pairedHosts = hosts.filter((host) => !host.canWake)
 const { view } = useGalleryView()
 
 // New project: the working-environment dialog over the same hosts; a created project joins the list.
-const workspaceDevices = ref(pairedHosts.map(({ id, label, state }) => ({ id, name: label, state })))
+const workspaceDevices = ref<WorkspaceDevice[]>(
+  pairedHosts.map(({ id, label, state }) => ({
+    id,
+    name: label,
+    state,
+    mark: GALLERY_FILE_HOST_MARKS[id] ?? null,
+  })),
+)
+/** The list as the dialog shows it: a Mac paired beside alex-mbp gives both their numbers. */
+const shownWorkspaceDevices = computed(() => shownAmong(workspaceDevices.value))
 /**
  * Add Device pairs as the product does, with any code: the claim answers with a
  * new online device, and the list shows it a moment later, as the page's
@@ -97,10 +107,13 @@ onBeforeUnmount(() => workspaceSync.abort())
 async function claimWorkspaceDevice(_code: string, signal?: AbortSignal): Promise<PairingResult> {
   await delay(900, signal)
   signal?.throwIfAborted()
-  const device = {
+  // A Mac, which takes the next Apple number, as the backend gives it.
+  const apple = workspaceDevices.value.filter((device) => device.mark?.logo === 'apple')
+  const device: WorkspaceDevice = {
     id: `device-${Date.now()}`,
     name: `host-${workspaceDevices.value.length + 1}`,
-    state: 'online' as const,
+    state: 'online',
+    mark: { logo: 'apple', number: Math.max(0, ...apple.map((device) => device.mark?.number ?? 0)) + 1 },
   }
   void delay(600, workspaceSync.signal).then(() => {
     if (!workspaceSync.signal.aborted)
@@ -797,7 +810,7 @@ onMounted(() => {
             :key="workspaceKey"
             :is-open="open"
             :overlay-store="appOverlayStore"
-            :devices="workspaceDevices"
+            :devices="shownWorkspaceDevices"
             :last-host="workspaceLastHost"
             :message="workspaceMessage"
             :source-for="sourceFor"

@@ -2,6 +2,7 @@ import { computed, ref, watch, type ComputedRef } from 'vue'
 import { useDirectoryExistence } from '../files/path-completion'
 import type { FileBrowserSource } from '../files/types'
 import type { PairingDevice } from '../devices/pairing'
+import type { DeviceMark } from '../devices/mark'
 import type { DeviceState } from '../devices/state'
 
 /** What the working-environment dialog shows and asks for. Hosts map their own projects and devices onto these. */
@@ -17,6 +18,8 @@ export interface WorkspaceDevice {
   id: string
   name: string
   state: DeviceState
+  /** Its mark, with the number it shows (`shownMark`); null draws the plain computer. */
+  mark: DeviceMark | null
 }
 
 /**

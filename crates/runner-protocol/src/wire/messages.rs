@@ -1402,8 +1402,8 @@ pub enum RunnerPlatform {
 }
 
 /// A Host's operating system as its runner reports it in its hello and a
-/// device keeps it: its name with its release and the machine's
-/// architecture.
+/// device keeps it: its name with its release, on Linux its distribution,
+/// and the machine's architecture.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OperatingSystem {
@@ -1411,6 +1411,12 @@ pub struct OperatingSystem {
     /// 26100)`.
     #[garde(length(chars, min = 1, max = 256))]
     pub name: String,
+    /// On Linux, the distribution's os-release `ID`, such as `ubuntu` or
+    /// `fedora`, which picks the logo of the device's mark (`product.md`
+    /// § Conversations and projects); none on other systems.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(inner(length(chars, min = 1, max = 64)))]
+    pub distribution: Option<String>,
     /// The processor architecture as Rust names it, such as `x86_64` or
     /// `aarch64`.
     #[garde(length(chars, min = 1, max = 64))]
