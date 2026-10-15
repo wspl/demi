@@ -118,6 +118,43 @@ describe('the steps the transcript shows as one row', () => {
   })
 })
 
+// `runtime.md` § Work groups: thinking blocks next to each other show as one
+// step. Production conversation ca9f8a0a, blocks 446 and 447: one Claude
+// response thought twice in a row, 4 s then 1 s, and ran a shell call; the
+// opened run showed Thought for 4s and Thought for 1s over the call.
+describe('thinking blocks next to each other', () => {
+  const at = (seconds: number) => new Date(Date.parse(createdAt) + seconds * 1000).toISOString()
+  const thought = (id: string, text: string, second: number): Block => ({ ...thinking(id, text), createdAt: at(second) })
+  const opened = (blocks: (Block | MessageListBlock)[], running: boolean) =>
+    groupWork([text('q'), ...blocks], running).find((row) => row.type === 'work_group') as WorkGroupBlock
+
+  test('join into one step whose time and text are theirs together', () => {
+    const shell = { ...call('c'), createdAt: at(5) } as Block
+    const group = opened([...run('k1', thought('k1', 'Read the test.', 0), thought('k2', 'Then run it.', 4), shell), { ...text('r'), createdAt: at(9) }], false)
+    expect(group.steps.map((step) => step.type)).toEqual(['thinking', 'tool_call'])
+    const [joined, next] = group.steps
+    // Its time runs from the first block's start to the call's: 4 s and 1 s.
+    expect(joined).toMatchObject({ id: 'k1', createdAt: at(0), text: 'Read the test.\n\nThen run it.' })
+    expect(next!.type === 'tool_call' && next.createdAt).toBe(at(5))
+    expect(workSummary(group.steps)).toBe('Ran 1 command')
+  })
+
+  test('around a call stay two steps', () => {
+    const group = opened([...run('k1', thought('k1', 'Read the test.', 0), call('c'), thought('k2', 'It passes.', 4), call('d')), text('r')], false)
+    expect(group.steps.map((step) => step.id)).toEqual(['k1', 'c', 'k2', 'd'])
+  })
+
+  test('alone, are one row, and a second one streaming keeps the row the first was', () => {
+    expect(rows(groupWork([...run('k1', thought('k1', 'Read the test.', 0), thought('k2', 'Then run it.', 4)), text('r')], false)))
+      .toEqual([['k1'], 'r'])
+    const first = opened(run('k1', thought('k1', 'Read the test.', 0)), true)
+    const both = opened(run('k1', thought('k1', 'Read the test.', 0), thought('k2', '', 4)), true)
+    expect(both.id).toBe(first.id)
+    expect(runFace(both, false)).toMatchObject({ kind: 'thinking', thinking: { id: 'k1', text: 'Read the test.' } })
+    expect(workRunning(both.steps)).toBe('Thinking')
+  })
+})
+
 // A command's notice and an agent's receipt between two calls are steps of
 // the work, as the backend stores them (`runtime.md` § Work groups).
 describe('the notices and receipts between the steps', () => {

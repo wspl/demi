@@ -10,8 +10,15 @@ import { useTranscript } from './edit-selection'
  */
 export type BlockReader = (node: string | null, id: string) => Promise<void>
 
+/**
+ * The block a row shows: one block, or several the page shows as one, as
+ * thinking blocks next to each other (`runtime.md` § Work groups), whose
+ * `parts` are the blocks it joins, light while any of them is.
+ */
+export type ShownBlock = HeldBlock & { parts?: readonly HeldBlock[] }
+
 const readerKey: InjectionKey<() => BlockReader | undefined> = Symbol('block-reader')
-const scopeKey: InjectionKey<() => HeldBlock | undefined> = Symbol('block-scope')
+const scopeKey: InjectionKey<() => ShownBlock | undefined> = Symbol('block-scope')
 
 /** Gives the rows below the host's way to read a block whole. */
 export function provideBlockReader(reader: () => BlockReader | undefined): void {
@@ -19,7 +26,7 @@ export function provideBlockReader(reader: () => BlockReader | undefined): void 
 }
 
 /** Names the block the rows below show, for a row that opens to read it whole. */
-export function provideBlockScope(block: () => HeldBlock | undefined): void {
+export function provideBlockScope(block: () => ShownBlock | undefined): void {
   provide(scopeKey, block)
 }
 
@@ -33,7 +40,8 @@ export function useTextArrivals(): () => readonly TextArrival[] | undefined {
  * The block of the row this is in, light or whole, and the way to open it
  * whole (`web-application.md` § Transcript windows): `light` while the page
  * holds it light, which makes its row open even before its body is there;
- * `open()` reads it whole once, with `loading` while it is on its way. A
+ * `open()` reads it whole once, each of its light parts for a row that
+ * shows several blocks as one, with `loading` while it is on its way. A
  * row outside a transcript, or with no host to read through, is never light.
  */
 export function useWholeBlock(): { light: Readonly<Ref<boolean>>; loading: Readonly<Ref<boolean>>; open: () => void } {
@@ -49,8 +57,9 @@ export function useWholeBlock(): { light: Readonly<Ref<boolean>>; loading: Reado
       return
     }
     loading.value = true
+    const node = transcript?.node ?? null
     // A read that fails leaves the row open on what it has; opening it again tries again.
-    read(transcript?.node ?? null, block.id)
+    Promise.all((block.parts ?? [block]).filter((part) => part.light).map((part) => read(node, part.id)))
       .catch(() => {})
       .finally(() => {
         loading.value = false
