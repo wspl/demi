@@ -627,3 +627,340 @@ async fn each_entry_the_cli_mirrors_goes_to_its_block_and_one_of_no_block_to_the
     );
     runtime.close().await;
 }
+
+/// Claude Code retries a call whose stream failed without streaming, keeps
+/// only the answer it got then, and writes it as one entry of all its
+/// blocks. Each block keeps the part of that entry that stands for it, and
+/// none keeps an entry of the abandoned stream, so a new process resumes
+/// the answer once, as the CLI kept it.
+// Three runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_complete_answer_after_a_failed_stream_is_kept_once_on_its_blocks_and_the_stream_nowhere()
+ {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let thinking = json!({ "type": "thinking", "thinking": "Plan the check.", "signature": "sig" });
+    let text = json!({ "type": "text", "text": "Let me check the runtime." });
+    let call = json!({ "type": "tool_use", "id": "toolu_1", "name": "mcp__main__shell_exec", "input": { "script": "rg demi" } });
+    let streamed = assistant_entry("e-streamed", "msg_a", thinking.clone());
+    let mut answer = assistant_entry("e-answer", "msg_b", thinking.clone());
+    answer["message"]["content"] = json!([thinking.clone(), text.clone(), call.clone()]);
+    let (_, mut cli) = tokio::join!(
+        all_events(runtime.run(session_request(vec![user("work")], vec![(1, vec![])]))),
+        async {
+            let mut cli = starts.next().await;
+            cli.initialized().await;
+            cli.handshake().await;
+            cli.say(json!({ "type": "stream_event", "event": { "type": "message_start", "message": { "id": "msg_a" } } }));
+            cli.say(json!({ "type": "stream_event", "event": {
+                "type": "content_block_start", "index": 0, "content_block": { "type": "thinking", "thinking": "" },
+            } }));
+            cli.say(json!({ "type": "stream_event", "event": {
+                "type": "content_block_delta", "index": 0, "delta": { "type": "thinking_delta", "thinking": "Plan the check." },
+            } }));
+            cli.say(json!({ "type": "stream_event", "event": {
+                "type": "content_block_delta", "index": 0, "delta": { "type": "signature_delta", "signature": "sig" },
+            } }));
+            cli.say(json!({ "type": "assistant", "message": { "id": "msg_a", "content": [thinking.clone()] } }));
+            cli.mirror(vec![streamed.clone()]);
+            cli.text("Let me");
+            // The stream stalls, and the CLI asks again without streaming.
+            cli.say(json!({ "type": "assistant", "message": {
+                "id": "msg_b",
+                "content": [thinking.clone(), text.clone(), call.clone()],
+                "usage": { "input_tokens": 300, "output_tokens": 20 },
+            } }));
+            cli.mirror(vec![answer.clone()]);
+            cli.call("call-1", 1, "toolu_1", "rg demi");
+            cli
+        }
+    );
+
+    let mut items = vec![
+        user("work"),
+        InferenceItem::AssistantThinking {
+            model_id: "claude-test".into(),
+            text: "Plan the check.".into(),
+            signature: Some("sig".into()),
+            kept_past_summary: false,
+        },
+        InferenceItem::AssistantText {
+            model_id: "claude-test".into(),
+            text: "Let me check the runtime.".into(),
+        },
+        tool_use("toolu_1", "rg demi"),
+        tool_result("toolu_1", "found"),
+    ];
+    let blocks = vec![(1, vec![]), (1, vec![]), (1, vec![]), (2, vec![])];
+    let (events, ()) = tokio::join!(
+        all_events(runtime.run(session_request(items.clone(), blocks))),
+        async {
+            cli.mcp_reply("call-1").await;
+            cli.result(310, 5);
+        }
+    );
+    let kept: Vec<(EntriesOf, Vec<Value>)> = events
+        .into_iter()
+        .filter_map(|event| match event {
+            ProviderEvent::Entries { of, entries } => Some((of, entries)),
+            _ => None,
+        })
+        .collect();
+    let part = |content: &Value| {
+        let mut part = answer.clone();
+        part["message"]["content"] = json!([content]);
+        unchained(&part)
+    };
+    let unchained_kept: Vec<(EntriesOf, Vec<Value>)> = kept
+        .iter()
+        .map(|(of, entries)| (*of, entries.iter().map(unchained).collect()))
+        .collect();
+    assert_eq!(
+        unchained_kept,
+        [
+            (EntriesOf::Item(1), vec![part(&thinking)]),
+            (EntriesOf::Item(2), vec![part(&text)]),
+            (EntriesOf::Item(3), vec![part(&call)]),
+        ]
+    );
+
+    // A new process resumes those blocks: the answer once, the stream not
+    // at all, nothing written over again from the blocks' items.
+    items.push(user("next"));
+    let entries_of = |index: usize| kept[index].1.clone();
+    let blocks = vec![
+        (1, vec![]),
+        (1, entries_of(0)),
+        (1, entries_of(1)),
+        (2, entries_of(2)),
+        (1, vec![]),
+    ];
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let (_, cli) = tokio::join!(
+        all_events(runtime.run(session_request(items, blocks))),
+        async {
+            let mut cli = starts.next().await;
+            cli.initialized().await;
+            cli.result(1, 1);
+            cli
+        }
+    );
+    let session = cli.session();
+    chained(&session, SESSION);
+    let answered: Vec<(&Value, &Value)> = session
+        .iter()
+        .filter(|entry| entry["type"] == "assistant")
+        .map(|entry| (&entry["message"]["id"], &entry["message"]["content"]))
+        .collect();
+    let msg_b = json!("msg_b");
+    assert_eq!(
+        answered,
+        [
+            (&msg_b, &json!([thinking])),
+            (&msg_b, &json!([text])),
+            (&msg_b, &json!([call])),
+        ]
+    );
+}
+
+/// The assistant entries a new process resumes after a stream of the
+/// stream events `stream` stalled and the complete answer `answer`
+/// replaced it, ending in the call `toolu_1`. `shown` are the items the
+/// agent's blocks of that run hold, each a block of its own but the call,
+/// which holds its result too.
+async fn resumed_after(stream: Vec<Value>, answer: Value, shown: Vec<InferenceItem>) -> Vec<Value> {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let mut entry = assistant_entry("e-answer", "msg_b", json!({}));
+    entry["message"]["content"] = answer.clone();
+    let (first, mut cli) = tokio::join!(
+        all_events(runtime.run(session_request(vec![user("work")], vec![(1, vec![])]))),
+        async {
+            let mut cli = starts.next().await;
+            cli.initialized().await;
+            cli.handshake().await;
+            cli.say(json!({ "type": "stream_event", "event": { "type": "message_start", "message": { "id": "msg_a" } } }));
+            for event in stream {
+                cli.say(json!({ "type": "stream_event", "event": event }));
+            }
+            // The stream stalls, and the CLI asks again without streaming.
+            cli.say(json!({ "type": "assistant", "message": {
+                "id": "msg_b", "content": answer, "usage": { "input_tokens": 3, "output_tokens": 2 },
+            } }));
+            cli.mirror(vec![entry]);
+            cli.call("call-1", 1, "toolu_1", "rg demi");
+            cli
+        }
+    );
+
+    let mut items = vec![user("work")];
+    items.extend(shown);
+    items.push(tool_result("toolu_1", "found"));
+    let mut layout: Vec<usize> = vec![1; items.len() - 2];
+    layout.push(2);
+    let request = |items: &[InferenceItem], layout: &[usize], entries: &[Vec<Value>]| {
+        let blocks = layout.iter().copied().zip(entries.iter().cloned()).collect();
+        session_request(items.to_vec(), blocks)
+    };
+    let mut entries = vec![Vec::new(); layout.len()];
+    let (second, ()) = tokio::join!(
+        all_events(runtime.run(request(&items, &layout, &entries))),
+        async {
+            cli.mcp_reply("call-1").await;
+            cli.result(4, 1);
+        }
+    );
+    // Run 1 named its blocks after the user's; run 2 names them by item.
+    for (run, event) in first.into_iter().map(|e| (1, e)).chain(second.into_iter().map(|e| (2, e))) {
+        let ProviderEvent::Entries { of, entries: kept } = event else { continue };
+        let block = match (run, of) {
+            (1, EntriesOf::Output(index)) => index + 1,
+            (2, EntriesOf::Item(item)) => item.min(layout.len() - 1),
+            other => panic!("unexpected {other:?}"),
+        };
+        entries[block].extend(kept);
+    }
+
+    items.push(user("next"));
+    layout.push(1);
+    entries.push(Vec::new());
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let (_, cli) = tokio::join!(all_events(runtime.run(request(&items, &layout, &entries))), async {
+        let mut cli = starts.next().await;
+        cli.initialized().await;
+        cli.result(1, 1);
+        cli
+    });
+    let session = cli.session();
+    chained(&session, SESSION);
+    session
+        .into_iter()
+        .filter(|entry| entry["type"] == "assistant")
+        .map(|entry| entry["message"]["content"].clone())
+        .collect()
+}
+
+fn text_delta(text: &str) -> Value {
+    json!({ "type": "content_block_delta", "delta": { "type": "text_delta", "text": text } })
+}
+
+fn text_item(text: &str) -> InferenceItem {
+    InferenceItem::AssistantText { model_id: "claude-test".into(), text: text.into() }
+}
+
+fn rg_call() -> Value {
+    json!({ "type": "tool_use", "id": "toolu_1", "name": "mcp__main__shell_exec", "input": { "script": "rg demi" } })
+}
+
+/// What an abandoned stream showed that its complete answer does not
+/// repeat stays on the page, and a new process resumes only the answer,
+/// as the CLI kept it: here the answer begins with reasoning of its own.
+// Three runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn text_an_abandoned_stream_showed_is_not_resumed_when_the_answer_begins_otherwise() {
+    let thinking = json!({ "type": "thinking", "thinking": "Plan anew.", "signature": "sig" });
+    let text = json!({ "type": "text", "text": "new answer" });
+    let resumed = resumed_after(
+        vec![text_delta("old answer")],
+        json!([thinking, text, rg_call()]),
+        vec![
+            InferenceItem::AssistantText { model_id: "claude-test".into(), text: "old answer".into() },
+            InferenceItem::AssistantThinking {
+                model_id: "claude-test".into(),
+                text: "Plan anew.".into(),
+                signature: Some("sig".into()),
+                kept_past_summary: false,
+            },
+            InferenceItem::AssistantText { model_id: "claude-test".into(), text: "new answer".into() },
+            tool_use("toolu_1", "rg demi"),
+        ],
+    )
+    .await;
+    assert_eq!(resumed, [json!([thinking]), json!([text]), json!([rg_call()])]);
+}
+
+/// The same when the answer is a call alone.
+// Three runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn text_an_abandoned_stream_showed_is_not_resumed_when_the_answer_is_a_call_alone() {
+    let resumed = resumed_after(
+        vec![text_delta("old answer")],
+        json!([rg_call()]),
+        vec![
+            InferenceItem::AssistantText { model_id: "claude-test".into(), text: "old answer".into() },
+            tool_use("toolu_1", "rg demi"),
+        ],
+    )
+    .await;
+    assert_eq!(resumed, [json!([rg_call()])]);
+}
+
+/// An answer that repeats what streamed keeps each block's entry on the
+/// block it repeats, the first text's on the first text, not on the latest
+/// block of its kind.
+// Three runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn each_block_a_complete_answer_repeats_keeps_its_entry_and_is_resumed_once() {
+    let thinking = json!({ "type": "thinking", "thinking": "Weigh.", "signature": "sig" });
+    let resumed = resumed_after(
+        vec![
+            text_delta("Intro."),
+            json!({ "type": "content_block_start", "index": 1, "content_block": { "type": "thinking", "thinking": "" } }),
+            json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "thinking_delta", "thinking": "Weigh." } }),
+            json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "signature_delta", "signature": "sig" } }),
+            text_delta("Then I"),
+        ],
+        json!([
+            { "type": "text", "text": "Intro." },
+            thinking,
+            { "type": "text", "text": "Then I run it." },
+            rg_call(),
+        ]),
+        vec![
+            text_item("Intro."),
+            InferenceItem::AssistantThinking {
+                model_id: "claude-test".into(),
+                text: "Weigh.".into(),
+                signature: Some("sig".into()),
+                kept_past_summary: false,
+            },
+            text_item("Then I run it."),
+            tool_use("toolu_1", "rg demi"),
+        ],
+    )
+    .await;
+    assert_eq!(
+        resumed,
+        [
+            json!([{ "type": "text", "text": "Intro." }]),
+            json!([thinking]),
+            json!([{ "type": "text", "text": "Then I run it." }]),
+            json!([rg_call()]),
+        ]
+    );
+}
+
+/// Text a call being written separates is two blocks, and both stay out
+/// of the session when the answer repeats neither.
+// Three runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn texts_an_abandoned_stream_showed_around_a_call_being_written_are_both_left_out() {
+    let resumed = resumed_after(
+        vec![
+            text_delta("First."),
+            json!({ "type": "content_block_start", "index": 1, "content_block": {
+                "type": "tool_use", "id": "toolu_x", "name": "mcp__main__shell_exec", "input": {},
+            } }),
+            json!({ "type": "content_block_delta", "index": 1, "delta": { "type": "input_json_delta", "partial_json": "{}" } }),
+            text_delta("Second."),
+        ],
+        json!([rg_call()]),
+        vec![text_item("First."), text_item("Second."), tool_use("toolu_1", "rg demi")],
+    )
+    .await;
+    assert_eq!(resumed, [json!([rg_call()])]);
+}

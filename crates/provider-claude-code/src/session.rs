@@ -152,6 +152,18 @@ fn snapshot(system: &CliSystem) -> Value {
     })
 }
 
+/// The type of the entry the provider keeps on a block the CLI left out of
+/// its history: what an abandoned stream showed that the complete answer
+/// replacing it did not repeat (`claude-code.md` § Tool-call batches). It
+/// stands for every item of its block no entry of the CLI's stands for, so
+/// those give nothing, and it is never written to a session.
+const LEFT_OUT: &str = "demi_left_out";
+
+/// The entry that keeps a block out of the session.
+pub(crate) fn left_out() -> Value {
+    json!({ "type": LEFT_OUT })
+}
+
 /// The session's entries, unchained: each block's, with the calls of a run
 /// of tool-call blocks before their results, as the CLI writes a batch;
 /// then each entry of another session, as a fork's blocks hold, under an
@@ -229,7 +241,12 @@ fn block_entries(
     written: &[Value],
 ) -> (Vec<Value>, Vec<Value>) {
     let block_items = &items[block.items.clone()];
-    let mut kept = restored(&block.entries, &media(block_items)).unwrap_or_default();
+    let (marks, entries): (Vec<Value>, Vec<Value>) = block
+        .entries
+        .iter()
+        .cloned()
+        .partition(|entry| entry["type"] == LEFT_OUT);
+    let mut kept = restored(&entries, &media(block_items)).unwrap_or_default();
     let past_summary = block_items.iter().any(|item| {
         matches!(
             item,
@@ -263,7 +280,7 @@ fn block_entries(
         ) {
             users_before += 1;
         }
-        if covered {
+        if covered || !marks.is_empty() {
             continue;
         }
         if matches!(item, InferenceItem::ToolResult { .. }) {
