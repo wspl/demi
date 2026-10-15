@@ -19,7 +19,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 
 use crate::conversations::{
-    FIRST, Socket, anthropic, answer, choose, create, kinds, message, summary, text_block, tool_use_block,
+    FIRST, Socket, anthropic, answer, choose, create, kinds, message, send, summary, text_block, tool_use_block,
     transcript,
 };
 use crate::subagents::{Scripts, say, shell, tree_on};
@@ -192,6 +192,9 @@ async fn an_answers_share_holds_its_message_and_answer_alone_until_the_owner_sto
 const SAID: &str =
     "the helper said hi: ![The shot](attachment:a1), [the notes](attachment:a2), [a preview](attachment:a3-preview)";
 
+/// The root's answer once its later child reports.
+const AFTER_LATER: &str = "after the later child";
+
 // A few seconds: the root runs three shell jobs on a real device, one of them
 // the spawn of a child.
 #[tokio::test]
@@ -322,20 +325,64 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
         .await;
     assert_eq!(own_past.refusal(), (StatusCode::NOT_FOUND, ErrorCode::NotFound));
 
-    // A later message, and the attachments it uploads, are not shared until
-    // the owner takes the snapshot again.
+    // A later message, the attachments it uploads and the subagent it
+    // starts are not shared until the owner makes the list again: each, and
+    // an index past the list, answers as a token that names no share.
+    let length = page(&backend, &token, "").await.length;
+    scripts.child(vec![say("hi from the later child")]);
     scripts.root(
         FIRST,
-        vec![shell("t3", "demi attachment upload notes.md preview.md"), say("later answer")],
+        vec![
+            shell("t3", "demi attachment upload notes.md preview.md"),
+            shell("t4", "demi agent spawn --description later <<< 'Say hi'"),
+            say("later answer"),
+            // The later child's completion wakes the idle parent.
+            say(AFTER_LATER),
+        ],
     );
-    socket.chat("m2", "One more").await;
+    socket.send(&send("m2", "One more")).await;
+    socket
+        .until(|frame| {
+            matches!(frame, ServerFrame::TranscriptPatch { patches, .. } if patches.iter().any(|patch| match patch {
+                TranscriptPatch::Add { value: Block::Text(text), .. }
+                | TranscriptPatch::ReplaceBlock { value: Block::Text(text), .. } => text.text == AFTER_LATER,
+                TranscriptPatch::AppendText { delta, .. } => delta.contains("after the later child"),
+                _ => false,
+            }))
+        })
+        .await;
+    socket
+        .until(|frame| matches!(frame, ServerFrame::Phase { subagent_id: None, phase: SessionPhase::Idle }))
+        .await;
+    let later = transcript(&backend, &master, FIRST).await;
+    let later_child = later.subagents[1].child.number;
+    let later_answer = later
+        .blocks
+        .iter()
+        .find(|block| matches!(block, Block::Text(text) if text.text == "later answer"))
+        .unwrap();
+    let edge = root.blocks[0].id();
     assert!(!texts(&page(&backend, &token, "").await.blocks).contains(&"later answer".to_owned()));
-    missed(&public(&backend, &token, "/attachments/a2", None).await, "an attachment uploaded since");
+    for (path, what) in [
+        ("/attachments/a2".to_owned(), "an attachment uploaded since"),
+        (format!("/transcript/blocks/{}", later_answer.id()), "a block written since"),
+        (format!("/transcript?around={}", later_answer.id()), "a page around a block written since"),
+        (format!("/transcript?before={length}&edge={edge}"), "an index past the list"),
+        (format!("/transcript?before=1&edge={}", later_answer.id()), "a `before` anchor not on the list"),
+        (format!("/transcript?after=0&edge={}", later_answer.id()), "an `after` anchor not on the list"),
+        (format!("/transcript?node={later_child}"), "a subagent started since"),
+    ] {
+        missed(&public(&backend, &token, &path, None).await, what);
+    }
+    let about: SharedConversation = public(&backend, &token, "", None).await.json();
+    assert_eq!(about.agents.len(), 1);
     let retaken = backend
         .put(&format!("/api/conversations/{FIRST}/shares/{token}"), &master, json!({}))
         .await;
     assert!(matches!(shared(&retaken), ShareAnswer::Conversation { token: same, .. } if same.as_str() == token));
     assert!(texts(&page(&backend, &token, "").await.blocks).contains(&"later answer".to_owned()));
+    let helper = page(&backend, &token, &format!("?node={later_child}")).await;
+    assert!(texts(&helper.blocks).contains(&"hi from the later child".to_owned()), "{:?}", helper.blocks);
     let notes = public(&backend, &token, "/attachments/a2", None).await;
     assert_eq!(notes.status, StatusCode::OK, "{}", String::from_utf8_lossy(&notes.body));
     assert_eq!(notes.json::<demi_web_api_protocol::attachments::ConversationAttachment>().name, "notes.md");
@@ -353,5 +400,41 @@ async fn a_conversations_share_shows_every_agent_its_media_and_commands_as_they_
     for path in ["", "/transcript", &format!("/blobs/{}", shot.sha256)] {
         missed(&public(&backend, &token, path, None).await, path);
     }
+    backend.close().await;
+}
+
+// Two Share requests at once, as the page's retry of a slow first one: both
+// answer the one share, and only its list stays.
+#[tokio::test]
+async fn shares_asked_at_once_answer_one_link() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(answer(&["Answer one."], 10, 2));
+    socket.chat("m1", "Question one").await;
+
+    let target = json!({ "kind": "conversation" });
+    let (first, second) =
+        tokio::join!(share(&backend, &master, target.clone()), share(&backend, &master, target));
+    let token = |answer: &Answer| match shared(answer) {
+        ShareAnswer::Conversation { token, .. } => token.as_str().to_owned(),
+        ShareAnswer::Answer { .. } => panic!("a conversation's share"),
+    };
+    assert_eq!(token(&first), token(&second));
+    let file = harness.data_dir().join("conversations").join(format!("{FIRST}.sqlite"));
+    let connection = rusqlite::Connection::open(file).unwrap();
+    let lists: Vec<String> = connection
+        .prepare("SELECT DISTINCT token FROM share_entries")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect();
+    assert_eq!(lists, [token(&first)]);
     backend.close().await;
 }

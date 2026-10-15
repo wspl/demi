@@ -53,7 +53,6 @@ defineProps<{
         :aria-label="t('transcript.assistant.share')"
         :disabled="shareWait"
         :disabled-reason="t('transcript.assistant.shareWait')"
-        :operation="share.operation"
         @click="share.start()"
       />
     </Tooltip>

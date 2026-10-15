@@ -11,7 +11,10 @@ import { overlayContainerKey, overlayInlineKey } from '@demicodes/web-ui/overlay
  * The frame holds whether its dialog is open, as the product's page does: the
  * dialog's own Cancel, Close and Done close it, and Open shows it again on its
  * pinned state. `reopen` lets a specimen whose state moved put it back.
+ * `startsClosed` shows Open first, for a dialog that only a click opens,
+ * such as one that writes the clipboard.
  */
+const props = defineProps<{ startsClosed?: boolean }>()
 const emit = defineEmits<{ reopen: [] }>()
 defineSlots<{ default(props: { open: boolean; close: () => void }): unknown }>()
 
@@ -19,7 +22,7 @@ const frame = ref<HTMLElement>()
 provide(overlayContainerKey, frame)
 provide(overlayInlineKey, true)
 
-const open = ref(true)
+const open = ref(!props.startsClosed)
 
 function close(): void {
   open.value = false
