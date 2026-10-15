@@ -229,13 +229,13 @@ impl Shard {
             .await
             .map_err(SubagentsError::Unreadable)?
             .unwrap_or_default();
-        let selections: Vec<_> = nodes.iter().map(|(_, model)| model.clone()).collect();
+        let selections: Vec<_> = nodes.iter().map(|node| node.model.clone()).collect();
         let models = runs_on(self.services(), self.user(), &selections).await;
         Ok(live().unwrap_or_else(|| {
             nodes
                 .iter()
                 .zip(models)
-                .filter_map(|((node, _), model)| node.job(model, Some(&placement)))
+                .filter_map(|(node, model)| node.record.job(model, Some(&placement), node.on_path))
                 .collect()
         }))
     }

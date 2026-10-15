@@ -22,7 +22,7 @@ use demi_agent_session::{Continuation, ModelSwitch, SessionEvent, Settle, Status
 use demi_agent_store::{Placement, AgentTreeStore, NodeRecord, StoreError};
 use demi_agent_tools::{HostResolver, shell_output};
 use demi_agent_transcript::IdSource;
-use demi_conversation_socket_protocol::{AgentCode, ServerFrame, index_u32, reset_start};
+use demi_conversation_socket_protocol::{AgentCode, BlockVersions, ServerFrame, TranscriptPatch, index_u32, reset_start};
 use demi_host_interface::{PageState, PageView, RegisterError, ShellEnvironment};
 use demi_shared_gates::{ActivityGate, GateState, KeyedSerialGate, Reservation};
 use demi_shared_types::{BlockId, Clock, CommandId, NodeId};
@@ -87,6 +87,12 @@ pub struct Tree<H: HostResolver> {
     next_stopping: Cell<u64>,
     /// The root session's events as frames, until the tree is dropped.
     _frames: Subscription,
+    /// Changes when a path of the tree is cut, by an edit, a Regenerate, a
+    /// switch of versions, a retry or any other rewrite.
+    pub(super) paths: watch::Sender<u64>,
+    /// Tells the pages which children a cut path moved on or off the
+    /// current path (`message-editing.md` § Versions).
+    _paths: AbortOnDropHandle<()>,
     /// Disposes the tree once it has stayed detached and quiescent.
     _eviction: AbortOnDropHandle<()>,
     /// Tells the product when the tree starts or stops working.
@@ -272,14 +278,16 @@ impl<H: HostResolver> Tree<H> {
             .await
             .map_err(AssembleError::from)?;
         let mut summaries = BTreeMap::new();
-        for (record, model) in store.subagents().await.map_err(AssembleError::from)? {
-            let runs_on = deps.subagents.runs_on(&model).await;
+        for stored in store.subagents().await.map_err(AssembleError::from)? {
+            let runs_on = deps.subagents.runs_on(&stored.model).await;
             summaries.insert(
-                record.number,
+                stored.record.number,
                 Summary {
-                    record,
+                    record: stored.record,
                     runs_on,
                     revision: 0,
+                    started_on_path: stored.started_on_path,
+                    shown_on_path: None,
                 },
             );
         }
@@ -328,11 +336,14 @@ impl<H: HostResolver> Tree<H> {
                 runtime: None,
             });
         }
+        let paths = watch::Sender::new(0);
         let frames = session.subscribe({
             let sink = sink.clone();
             let status_changed = deps.status_changed.clone();
             let root = root.clone();
+            let paths = paths.clone();
             move |event| {
+                cut_path(&paths, event);
                 if let Some(frame) = frame_of(&root, event) {
                     sink.emit(frame);
                 }
@@ -359,6 +370,7 @@ impl<H: HostResolver> Tree<H> {
                 deps.status_changed.clone(),
             ));
             let sending = tokio::task::spawn_local(live::send_changes(live.clone()));
+            let following = tokio::task::spawn_local(follow_paths(tree.clone(), paths.subscribe()));
             Self {
                 server: Rc::downgrade(server),
                 root: Rc::new(assembled.node),
@@ -384,6 +396,8 @@ impl<H: HostResolver> Tree<H> {
                 _eviction: AbortOnDropHandle::new(eviction),
                 _working: AbortOnDropHandle::new(working),
                 _live: AbortOnDropHandle::new(sending),
+                paths,
+                _paths: AbortOnDropHandle::new(following),
             }
         });
         server.trees.borrow_mut().insert(root.clone(), tree.clone());
@@ -696,6 +710,7 @@ impl<H: HostResolver> Tree<H> {
             start: index_u32(start),
             length: index_u32(snapshot.blocks.len()),
             blocks: snapshot.blocks[start..].to_vec(),
+            versions: BlockVersions::of(&snapshot.blocks, &snapshot.versions, start),
             version: snapshot.version,
             failures: None,
         }
@@ -889,6 +904,27 @@ impl QuiescenceWatch {
 /// Whether a root in this status does nothing by itself.
 fn quiescent(status: &Status) -> bool {
     status.settle == Settle::Settled
+}
+
+/// Marks a cut of a node's path in `paths` when `event` tells one: a
+/// rewrite starts with a truncate.
+pub(super) fn cut_path(paths: &watch::Sender<u64>, event: &SessionEvent) {
+    if let SessionEvent::TranscriptChanged { patches, .. } = event
+        && patches.iter().any(|patch| matches!(patch, TranscriptPatch::Truncate { .. }))
+    {
+        paths.send_modify(|cuts| *cuts = cuts.wrapping_add(1));
+    }
+}
+
+/// Tells the pages, after each cut of a path, which children it moved on
+/// or off the current path.
+async fn follow_paths<H: HostResolver>(tree: Weak<Tree<H>>, mut paths: watch::Receiver<u64>) {
+    while paths.changed().await.is_ok() {
+        let Some(live) = tree.upgrade() else {
+            return;
+        };
+        live.paths_changed().await;
+    }
 }
 
 /// Tells the product, through `status_changed`, that the tree opened, and

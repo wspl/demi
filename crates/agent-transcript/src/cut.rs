@@ -126,6 +126,8 @@ fn turn_of(block: &Block) -> Option<&TurnId> {
 /// Why a history cannot be cut where a request asked.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CutError {
+    #[error("The conversation holds no such block")]
+    NotFound,
     #[error("The edit target must be a user message")]
     NotUserMessage,
     #[error("The Fork target must be a completed assistant message")]

@@ -198,6 +198,8 @@ const emit = defineEmits<{
    * which the host sends at once through `regenerateMessage`.
    */
   regenerate: [request: MessageEditRequest]
+  /** Show the `to`th version at the place of the block `blockId` (`message-editing.md` § Versions). */
+  switchVersion: [blockId: string, to: number]
   saveScroll: [id: string, state: PersistedScrollState | null]
   decidePermission: [id: string, decision: PermissionDecision, credential?: CredentialAnswer]
   /** The block `reveal` names is in view. */
@@ -420,9 +422,15 @@ function scrollToBottom(): void {
   }
   list.value?.scrollToBottom()
 }
+/**
+ * The children the Agents window and `agent:` links show: those started on
+ * the current path; a child of another version of a message stays stored
+ * and comes back with its version (`message-editing.md` § Versions).
+ */
+const shownAgents = computed(() => props.conversation.subagents.filter((agent) => agent.onPath))
 const { agentsOpen, activeSubagentId, activeTerminalId, toggleAgents, toggleTerminals, close } =
   useSessionPanels(
-    () => props.conversation.subagents,
+    () => shownAgents.value,
     () => terminals.value,
     () => (props.conversation.load === 'loading' ? null : props.conversation.id),
   )
@@ -446,11 +454,11 @@ provideOriginRevealer(({ node, blockId }) => {
 // leaves it as it is when it shows that tab already; agent 0's brings this
 // transcript into view (`subagents.md` § Linking an agent).
 provideMessageAgents(() => ({
-  find: (number) => findAgent(props.conversation.subagents, number),
+  find: (number) => findAgent(shownAgents.value, number),
   open: (number) => {
     const next = agentLinkWindow(
       { open: agentsOpen.value, activeId: activeSubagentId.value },
-      props.conversation.subagents,
+      shownAgents.value,
       number,
     )
     if (!next) {
@@ -689,6 +697,7 @@ watch(
             @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"
             @edit-user="editUser"
             @regenerate="regenerate"
+            @switch-version="(id, to) => emit('switchVersion', id, to)"
             @retry-load="emit('retryLoad')"
             @read-before="emit('readBefore')"
             @read-after="emit('readAfter')"
@@ -733,7 +742,7 @@ watch(
                 @open="toggleTerminals"
               />
               <AgentsChip
-                :agents="conversation.subagents"
+                :agents="shownAgents"
                 :open="agentsOpen"
                 @open="toggleAgents"
               />
@@ -749,7 +758,7 @@ watch(
           <SubagentPanel
             v-model:open="agentsOpen"
             v-model:active-id="activeSubagentId"
-            :agents="conversation.subagents"
+            :agents="shownAgents"
             :terminals="conversation.terminals"
             @abort="emit('abortSubagents')"
             @abort-agent="(id) => emit('abortSubagent', id)"

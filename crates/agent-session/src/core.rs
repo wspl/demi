@@ -19,7 +19,7 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{
     DirtyRows, INTERRUPTED_CODE, INTERRUPTED_TURN_MESSAGE, IdSource, REPLAY_CHARS, RequestView,
-    TranscriptLog, labelled_output, last_turn,
+    TranscriptLog, kept, labelled_output, last_turn,
     estimate::{anchor_tokens, blocks_tokens, context_anchor},
     replay, replay_start, turn_record,
 };
@@ -274,6 +274,12 @@ pub(super) enum ActionKind {
     Compact,
     /// An admitted edit, whose submission waits in the session's edit state.
     Edit,
+    /// A switch to the `to`th version at the block `target`'s place
+    /// (`message-editing.md` § Versions).
+    Switch {
+        target: BlockId,
+        to: u32,
+    },
 }
 
 /// What one `abort` found to stop.
@@ -498,6 +504,14 @@ impl SessionCore {
             }
             return Ok(EditCheck::InFlight(edit.acceptance()));
         }
+        self.check_settled(version)?;
+        Ok(EditCheck::Proceed)
+    }
+
+    /// Whether the session admits a rewrite of its path made against the
+    /// transcript `version`: settled, with nothing waiting, and nothing
+    /// changed since (`message-editing.md` § Admission).
+    fn check_settled(&self, version: &demi_conversation_socket_protocol::TranscriptVersion) -> Result<(), EditError> {
         if self.disposing {
             return Err(EditError::Closed);
         }
@@ -510,7 +524,47 @@ impl SessionCore {
         if version != &self.transcript.version() {
             return Err(EditError::Stale);
         }
-        Ok(EditCheck::Proceed)
+        Ok(())
+    }
+
+    /// Admits a switch to the `to`th version at the block `target`'s place,
+    /// as an edit is admitted; the answer ends with the switch.
+    pub(super) fn admit_switch(
+        &mut self,
+        target: BlockId,
+        to: u32,
+        version: &demi_conversation_socket_protocol::TranscriptVersion,
+    ) -> Result<ActionHandle, EditError> {
+        self.check_settled(version)?;
+        if self.transcript.position(&target).is_none() {
+            return Err(EditError::Target(demi_agent_transcript::CutError::NotFound));
+        }
+        let turn = self.new_turn();
+        Ok(self.push_action(ActionKind::Switch { target, to }, turn))
+    }
+
+    /// Adopts the path a switch made current from where it changed on, on
+    /// fresh runtimes; returns the runtimes it discarded, for closing.
+    pub(super) fn adopt_switch(&mut self, switched: demi_agent_store::Switched) -> Vec<Box<dyn ProviderRuntime>> {
+        let from = switched.from;
+        let mut blocks = self.transcript.blocks()[..from].to_vec();
+        blocks.extend(switched.blocks);
+        let batch = self.transcript.switch(from, blocks, switched.versions);
+        self.persist.rows = Default::default();
+        self.outbox.push(SessionEvent::TranscriptChanged {
+            patches: batch.patches,
+            revision: batch.revision,
+        });
+        let mut discarded = Vec::new();
+        if let Some(fresh) = self.provider.held().map(|runtime| runtime.fresh()) {
+            discarded.extend(self.place_runtime(fresh));
+        }
+        if let Some(switch) = &mut self.switch
+            && let Some(runtime) = switch.runtime.as_mut()
+        {
+            discarded.push(mem::replace(runtime, runtime.fresh()));
+        }
+        discarded
     }
 
     /// Admits an edit whose check proceeds; the answer is its acceptance, or
@@ -546,7 +600,7 @@ impl SessionCore {
         model: ModelSelection,
         receipt: EditReceipt,
     ) -> Vec<Box<dyn ProviderRuntime>> {
-        self.adopt_rewrite(blocks);
+        self.adopt_rewrite(blocks, true);
         self.edits.push(receipt.clone());
         // The replacement was prepared with the recorded switch; the one
         // that waited for the edit is recorded now, and lands after the
@@ -1968,21 +2022,36 @@ impl SessionCore {
 
     // History rewrites.
 
-    /// The whole checkpoint of a rewritten history: every row of `blocks`
-    /// and the state row.
-    pub(super) fn rewrite_update(&self, blocks: &[Block]) -> CheckpointUpdate {
+    /// The save of a rewritten history (`message-editing.md` § Versions):
+    /// the path from the first block that differs, or from a block added
+    /// before it and not saved yet, is new rows, which `version` makes a
+    /// version the user sees; the rows changed in place before it, and the
+    /// state row.
+    pub(super) fn rewrite_update(&self, blocks: &[Block], version: bool) -> CheckpointUpdate {
+        let kept = kept(self.transcript.blocks(), blocks);
+        let from = self.persist.rows.floor().map_or(kept, |floor| floor.min(kept));
+        let changed_blocks = self
+            .persist
+            .rows
+            .indices(from)
+            .into_iter()
+            .chain(from..blocks.len())
+            .map(|index| (index, blocks[index].clone()))
+            .collect();
         CheckpointUpdate {
             state: self.checkpoint_state(),
-            changed_blocks: blocks.iter().cloned().enumerate().collect(),
+            changed_blocks,
             block_count: blocks.len(),
+            moved_from: Some(from),
+            version,
         }
     }
 
     /// Adopts a rewritten history its save made durable: the transcript is
     /// replaced and published as one `replace` patch, and the rows the save
     /// wrote are current.
-    pub(super) fn adopt_rewrite(&mut self, blocks: Vec<Block>) {
-        let batch = self.transcript.replace_all(blocks);
+    pub(super) fn adopt_rewrite(&mut self, blocks: Vec<Block>, version: bool) {
+        let batch = self.transcript.replace_all(blocks, version);
         self.persist.rows = Default::default();
         self.outbox.push(SessionEvent::TranscriptChanged {
             patches: batch.patches,
@@ -2011,6 +2080,8 @@ impl SessionCore {
             state: self.checkpoint_state(),
             changed_blocks,
             block_count: blocks.len(),
+            moved_from: rows.floor(),
+            version: false,
         };
         Some((update, rows))
     }

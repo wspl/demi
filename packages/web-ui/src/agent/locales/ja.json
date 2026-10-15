@@ -85,6 +85,11 @@
       "rejected": "編集が受け付けられませんでした。",
       "unconfirmed": "編集を確認できませんでした"
     },
+    "versions": {
+      "previous": "前のバージョン",
+      "next": "次のバージョン",
+      "position": "バージョン {index}/{count}"
+    },
     "connecting": "接続中",
     "newFile": "新しいファイル",
     "picture": {

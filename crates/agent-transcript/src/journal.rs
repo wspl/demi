@@ -7,7 +7,7 @@
 
 use std::collections::BTreeSet;
 
-use demi_conversation_socket_protocol::TranscriptPatch;
+use demi_conversation_socket_protocol::{TranscriptPatch, Versions};
 use demi_shared_types::Block;
 
 /// The patches of one commit, which advances the revision by one.
@@ -54,6 +54,12 @@ impl DirtyRows {
             .collect()
     }
 
+    /// The lowest position a block was added at: a stored row at or past
+    /// it leaves the path when the save writes these rows.
+    pub fn floor(&self) -> Option<usize> {
+        self.floor
+    }
+
     /// Adds `other`'s rows: a later commit's, or those a failed save did not
     /// write.
     pub fn merge(&mut self, other: DirtyRows) {
@@ -73,11 +79,12 @@ pub(super) struct Journal {
 }
 
 impl Journal {
-    pub(super) fn add(&mut self, index: usize, block: &Block) {
+    pub(super) fn add(&mut self, index: usize, block: &Block, versions: Option<Versions>) {
         self.rows.move_from(index);
         self.patches.push(TranscriptPatch::Add {
             index: patch_index(index),
             value: block.clone(),
+            versions,
         });
     }
 

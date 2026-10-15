@@ -20,13 +20,13 @@ use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use demi_agent_store::{AgentTreeStore, RunningCommand, SessionStore, StoredCommand, StoredOutput};
+use demi_agent_store::{AgentTreeStore, RunningCommand, SessionStore, StoredCommand, StoredOutput, StoredSubagent, Switched};
 use demi_agent_store::{
     Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement, StoreError,
     media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
-use demi_conversation_socket_protocol::{PageAt, light_bytes, page, requests};
+use demi_conversation_socket_protocol::{BlockVersions, PageAt, light_bytes, page, requests};
 use demi_web_api_protocol::conversations::{CompactionSummary, TranscriptQuery};
 use demi_shared_types::{
     Block, BlockId, CommandEnd, CommandId, CompletionId, INSTRUCTIONS_SOURCE, InstructionEntry,
@@ -35,7 +35,8 @@ use demi_shared_types::{
 use futures_util::future::LocalBoxFuture;
 use demi_web_api_protocol::ids::ShareToken;
 use demi_agent_store::media::block_blobs;
-use crate::shares::{self, Rewritten};
+use crate::path::{self, PATH_LENGTH, PATH_ROWS, POSITION, Path};
+use crate::shares;
 use rusqlite::types::Value;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params, params_from_iter};
 
@@ -115,8 +116,18 @@ impl AgentTreeStore for SqliteTreeStore {
         })
     }
 
-    fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<(NodeRecord, ModelSelection)>, StoreError>> {
-        Box::pin(async move { self.db.call(|connection| subagents(connection)).await.map_err(store_error) })
+    fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<StoredSubagent>, StoreError>> {
+        Box::pin(async move {
+            let subagents = self.db.call(|connection| subagents(connection)).await.map_err(store_error)?;
+            Ok(subagents
+                .into_iter()
+                .map(|subagent| StoredSubagent {
+                    record: subagent.record,
+                    model: subagent.model,
+                    started_on_path: subagent.started_on_path,
+                })
+                .collect())
+        })
     }
 
     fn create_node(
@@ -137,9 +148,9 @@ impl AgentTreeStore for SqliteTreeStore {
                     let (phase, closed_at, result, failure) = close_columns(record.closed.as_ref());
                     transaction.execute(
                         "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
-                           can_spawn, closed_phase, closed_at, result, failure, delivered, state, block_count,
-                           output_revision, forked_from, cwd, cwd_device, cwd_under, context_limit)
-                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, 0, ?16, ?17, ?18, ?19, ?20)",
+                           can_spawn, closed_phase, closed_at, result, failure, delivered, state,
+                           output_revision, forked_from, cwd, cwd_device, cwd_under, context_limit, started_by)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, ?16, ?17, ?18, ?19, ?20, ?21)",
                         params![
                             record.id.as_str(),
                             integer(record.number),
@@ -161,6 +172,7 @@ impl AgentTreeStore for SqliteTreeStore {
                             record.cwd.as_ref().and_then(|own| own.under.device.as_ref()),
                             record.cwd.as_ref().map(|own| &own.under.directory),
                             record.context_limit,
+                            record.started_by.as_ref().map(BlockId::as_str),
                         ],
                     )?;
                     if let Err(refused) = write_checkpoint(&transaction, &record.id, &initial, &completions)? {
@@ -308,26 +320,6 @@ impl AgentTreeStore for SqliteTreeStore {
             if !found {
                 return Err(missing(id));
             }
-            Ok(())
-        })
-    }
-
-    fn delete_node<'a>(&'a self, id: &'a NodeId) -> LocalBoxFuture<'a, Result<(), StoreError>> {
-        let node = id.clone();
-        Box::pin(async move {
-            // The node's descendants and every row of theirs go with it
-            // through the cascades.
-            self.db
-                .call(move |connection| {
-                    let transaction = connection.transaction()?;
-                    shares::keep_rewritten(&transaction, Rewritten::Subtree(&node))?;
-                    transaction.execute("DELETE FROM nodes WHERE id = ?1", [node.as_str()])?;
-                    transaction.commit()?;
-                    Ok(())
-                })
-                .await
-                .map_err(store_error)?;
-            (self.saved)(id, None);
             Ok(())
         })
     }
@@ -510,53 +502,163 @@ impl SessionStore for SqliteSessionStore {
         })
     }
 
+    fn switch(&self, position: usize, version: u32) -> LocalBoxFuture<'_, Result<Switched, StoreError>> {
+        let node = self.node.clone();
+        Box::pin(async move {
+            let commit = self.db.commit_point();
+            let switched = self
+                .db
+                .call(move |connection| {
+                    let transaction = connection.transaction()?;
+                    let before = node_version_of(&transaction, &node)?;
+                    let mut path = Path::read(&transaction, node.as_str())?;
+                    let Some(at) = path.switch(&transaction, count(position), version)? else {
+                        return Ok(Err(StoreError::Failed(format!(
+                            "position {position} of node {node} holds no version {version}"
+                        ))));
+                    };
+                    let from = decode("path_runs", "start", usize::try_from(at))?;
+                    path.write(&transaction)?;
+                    // A change of the path is output.
+                    transaction.execute(
+                        "UPDATE nodes SET cut = NULL, output_revision = output_revision + 1 WHERE id = ?1",
+                        [node.as_str()],
+                    )?;
+                    let blocks = path_blocks(&transaction, &node, &path, at..path.len())?;
+                    let versions = path
+                        .versions(&transaction, at..path.len())?
+                        .into_iter()
+                        .map(|(position, versions)| {
+                            Ok((decode("path_runs", "start", usize::try_from(position))?, versions))
+                        })
+                        .collect::<Result<_, StorageError>>()?;
+                    // The search index holds the agent's path: the blocks
+                    // from the switched position replace its rows from there.
+                    let change = match (before, node_version_of(&transaction, &node)?) {
+                        (Some((agent, before)), Some((_, version))) => {
+                            let written: Vec<(usize, Block)> = (from..).zip(blocks.iter().cloned()).collect();
+                            Some(TranscriptChange::new(agent, before, version, &written))
+                        }
+                        _ => None,
+                    };
+                    commit.commit(transaction)?;
+                    Ok(Ok((Switched { from, blocks, versions }, change)))
+                })
+                .await
+                .map_err(store_error)??;
+            let (switched, change) = switched;
+            (self.saved)(&self.node, change);
+            Ok(switched)
+        })
+    }
+
     fn blobs(&self) -> &dyn BlobStore {
         &*self.blobs
     }
 }
 
-/// Writes one save of `node` in `transaction`: the changed block rows with
-/// the blobs each names, the rows past the new end gone with theirs, the
-/// state row, and
-/// the child completions it carries marked delivered. Changed output
-/// advances the node's output revision; input alone does not. A refusal
-/// leaves the transaction uncommitted.
+/// Writes one save of `node` in `transaction` (`message-editing.md`
+/// § Versions): from the cut, the rows the path held leave it and stay as
+/// they are, and each block from there is a new row following the one
+/// before it; below the cut, a changed block updates its row. The rows
+/// carry the blobs and attachments each names, and the state row and the
+/// path's runs go with them; the child completions it carries are marked
+/// delivered. Changed output, or a path cut, advances the node's output
+/// revision; input alone does not. A refusal leaves the transaction
+/// uncommitted.
 fn write_checkpoint(
     transaction: &Transaction<'_>,
     node: &NodeId,
     update: &CheckpointUpdate,
     completions: &[CompletionId],
 ) -> Result<Result<(), StoreError>, StorageError> {
-    let mut write = transaction.prepare_cached(
-        "INSERT INTO blocks (node_id, idx, block) VALUES (?1, ?2, ?3)
-         ON CONFLICT (node_id, idx) DO UPDATE SET block = excluded.block",
-    )?;
-    for (index, block) in &update.changed_blocks {
-        let index = count(*index);
-        shares::keep_rewritten(transaction, Rewritten::Row(node, index))?;
-        write.execute(params![node.as_str(), index, to_json(block)])?;
-        name_block(transaction, node.as_str(), index, block)?;
-    }
-    let block_count = count(update.block_count);
-    shares::keep_rewritten(transaction, Rewritten::From(node, block_count))?;
-    transaction
-        .prepare_cached("DELETE FROM blocks WHERE node_id = ?1 AND idx >= ?2")?
-        .execute(params![node.as_str(), block_count])?;
-    let output = update
-        .changed_blocks
-        .iter()
-        .any(|(_, block)| is_output(block));
-    // The old block count is the column's value before the update: rows
-    // gone are a rewrite of the output.
-    let changed = transaction.execute(
-        "UPDATE nodes SET state = ?2, block_count = ?3,
-           output_revision = output_revision + (CASE WHEN block_count > ?3 OR ?4 THEN 1 ELSE 0 END)
-         WHERE id = ?1",
-        params![node.as_str(), to_json(&update.state), block_count, output],
-    )?;
-    if changed == 0 {
+    let stored_cut: Option<Option<i64>> = transaction
+        .query_row("SELECT cut FROM nodes WHERE id = ?1", [node.as_str()], |row| row.get(0))
+        .optional()?;
+    let Some(mut replaced) = stored_cut else {
         return Ok(Err(missing(node)));
+    };
+    let mut path = Path::read(transaction, node.as_str())?;
+    let stored = path.len();
+    let cut = update
+        .moved_from
+        .map_or(i64::MAX, count)
+        .min(count(update.block_count))
+        .min(stored);
+    // A block the save carries to the new branch under its id, as a
+    // compaction inside a turn does, replaces its row there, whose
+    // versions it keeps (`message-editing.md` § Versions).
+    let mut moved = HashMap::new();
+    if cut < stored {
+        replaced = path.row_at(cut);
+        let mut ids = transaction.prepare_cached(
+            "SELECT idx, json_extract(block, '$.id') FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3",
+        )?;
+        for (_, rows) in path.segments(cut..stored) {
+            let found = ids
+                .query_map(params![node.as_str(), rows.start, rows.end], |row| {
+                    Ok((row.get::<_, String>(1)?, row.get::<_, i64>(0)?))
+                })?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            moved.extend(found);
+        }
+        path.truncate(cut);
     }
+    // An edit's or a Regenerate's next row is a version of its own.
+    if update.version {
+        replaced = None;
+    }
+    let mut next = path::next_row(transaction, node.as_str())?;
+    for (position, block) in &update.changed_blocks {
+        let position = count(*position);
+        if position < cut {
+            let row = path.row_at(position).expect("the path holds every position below the cut");
+            shares::keep_rewritten(transaction, node, row)?;
+            transaction
+                .prepare_cached("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?
+                .execute(params![node.as_str(), row, to_json(block)])?;
+            name_block(transaction, node.as_str(), row, block)?;
+            continue;
+        }
+        if position != path.len() {
+            return Ok(Err(StoreError::Failed(format!(
+                "a save of node {node} skips position {}",
+                path.len()
+            ))));
+        }
+        let replaces = match moved.remove(block.id().as_str()) {
+            Some(row) => {
+                replaced = None;
+                Some(row)
+            }
+            None => replaced.take(),
+        };
+        transaction
+            .prepare_cached(
+                "INSERT INTO blocks (node_id, idx, block, follows, replaces) VALUES (?1, ?2, ?3, ?4, ?5)",
+            )?
+            .execute(params![node.as_str(), next, to_json(block), path.leaf(), replaces])?;
+        name_block(transaction, node.as_str(), next, block)?;
+        path.push(next);
+        next += 1;
+    }
+    if path.len() != count(update.block_count) {
+        return Ok(Err(StoreError::Failed(format!(
+            "a save of node {node} leaves {} of its {} blocks on its path",
+            path.len(),
+            update.block_count
+        ))));
+    }
+    path.write(transaction)?;
+    let output = cut < stored
+        || update
+            .changed_blocks
+            .iter()
+            .any(|(_, block)| is_output(block));
+    transaction.execute(
+        "UPDATE nodes SET state = ?2, cut = ?3, output_revision = output_revision + ?4 WHERE id = ?1",
+        params![node.as_str(), to_json(&update.state), replaced, i64::from(output)],
+    )?;
     for round in completions {
         transaction.execute(
             "UPDATE nodes SET delivered = 1 WHERE id = ?1 AND parent_id = ?2 AND round = ?3",
@@ -616,68 +718,87 @@ fn is_output(block: &Block) -> bool {
 }
 
 
-/// A node's checkpoint: its state row and every block row below its block
-/// count; none when the node does not exist.
+/// A node's checkpoint: its state row, the blocks of its current path and
+/// the versions on it; none when the node does not exist.
 fn checkpoint(connection: &Connection, node: &NodeId) -> Result<Option<Checkpoint>, StorageError> {
-    let row: Option<(String, i64)> = connection
-        .query_row(
-            "SELECT state, block_count FROM nodes WHERE id = ?1",
-            [node.as_str()],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
+    let row: Option<String> = connection
+        .query_row("SELECT state FROM nodes WHERE id = ?1", [node.as_str()], |row| row.get(0))
         .optional()?;
-    let Some((state, block_count)) = row else {
+    let Some(state) = row else {
         return Ok(None);
     };
+    let path = Path::read(connection, node.as_str())?;
+    let versions = path
+        .versions(connection, 0..path.len())?
+        .into_iter()
+        .map(|(position, versions)| Ok((decode("path_runs", "start", usize::try_from(position))?, versions)))
+        .collect::<Result<_, StorageError>>()?;
     Ok(Some(Checkpoint {
         state: json("nodes", "state", &state)?,
-        transcript: blocks_of(connection, node, block_count)?,
+        transcript: path_blocks(connection, node, &path, 0..path.len())?,
+        versions,
     }))
 }
 
-/// A node's blocks: exactly one row for each index below its block count.
-pub(crate) fn blocks_of(
+/// The blocks at the positions `range` of `node`'s path, which it holds.
+pub(crate) fn path_blocks(
     connection: &Connection,
     node: &NodeId,
-    block_count: i64,
+    path: &Path,
+    range: Range<i64>,
 ) -> Result<Vec<Block>, StorageError> {
     let mut blocks = Vec::new();
-    each_block(connection, node, block_count, |_, block| blocks.push(block))?;
+    each_block(connection, node, path, range, |_, block| blocks.push(block))?;
     Ok(blocks)
 }
 
-/// Hands each of a node's blocks to `take` in order, with its index, decoded
-/// one at a time: exactly one row for each index below its block count.
+/// Hands each block at the positions `range` of `node`'s path to `take` in
+/// order, with its position, decoded one at a time: exactly one row for each
+/// position of the range.
 fn each_block(
     connection: &Connection,
     node: &NodeId,
-    block_count: i64,
+    path: &Path,
+    range: Range<i64>,
     mut take: impl FnMut(usize, Block),
 ) -> Result<(), StorageError> {
     let mut statement = connection
-        .prepare("SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx < ?2 ORDER BY idx")?;
-    let mut rows = statement.query(params![node.as_str(), block_count])?;
-    let mut taken = 0;
-    while let Some(row) = rows.next()? {
-        let index: i64 = row.get(0)?;
-        if index != count(taken) {
-            return Err(gap(node, taken));
+        .prepare_cached("SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3 ORDER BY idx")?;
+    let first = decode("path_runs", "start", usize::try_from(range.start))?;
+    let mut position = first;
+    for (_, rows) in path.segments(range.clone()) {
+        let mut found = statement.query(params![node.as_str(), rows.start, rows.end])?;
+        let mut expected = rows.start;
+        while let Some(row) = found.next()? {
+            if row.get::<_, i64>(0)? != expected {
+                return Err(gap(node, position));
+            }
+            let text: String = row.get(1)?;
+            take(position, json("blocks", "block", &text)?);
+            position += 1;
+            expected += 1;
         }
-        let text: String = row.get(1)?;
-        take(taken, json("blocks", "block", &text)?);
-        taken += 1;
+        if expected != rows.end {
+            return Err(gap(node, position));
+        }
     }
-    if count(taken) != block_count {
-        return Err(gap(node, taken));
+    if count(position - first) != range.end - range.start {
+        return Err(gap(node, position));
     }
     Ok(())
+}
+
+/// A node's whole current path.
+fn whole_path(connection: &Connection, node: &NodeId) -> Result<Vec<Block>, StorageError> {
+    let path = Path::read(connection, node.as_str())?;
+    path_blocks(connection, node, &path, 0..path.len())
 }
 
 fn gap(node: &NodeId, index: usize) -> StorageError {
     StorageError::Corrupt {
         table: "blocks",
         column: "idx",
-        reason: format!("node {node} has no block row {index}"),
+        reason: format!("node {node} has no block row at position {index} of its path"),
     }
 }
 
@@ -701,7 +822,7 @@ fn node_state(
 const NODE_COLUMNS: &str =
     "id, number, parent_id, description, profile, instructions, round, started_at, can_spawn,
      closed_phase, closed_at, result, failure, delivered, forked_from, cwd, cwd_device, cwd_under,
-     context_limit";
+     context_limit, started_by";
 
 fn node_by_id(connection: &Connection, id: &NodeId) -> Result<Option<NodeRecord>, StorageError> {
     let mut statement =
@@ -804,6 +925,10 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
         forked_from: row
             .get::<_, Option<i64>>("forked_from")?
             .map(|number| decode(TABLE, "forked_from", u64::try_from(number)))
+            .transpose()?,
+        started_by: row
+            .get::<_, Option<String>>("started_by")?
+            .map(|block| decode(TABLE, "started_by", BlockId::try_from(block)))
             .transpose()?,
         cwd,
     })
@@ -963,15 +1088,15 @@ impl EndSearch {
 /// The summary facts of the tree `connection` holds; the empty facts when it
 /// has no root yet.
 pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
-    let root: Option<(String, String, i64, i64)> = connection
+    let root: Option<(String, String, i64)> = connection
         .query_row(
-            "SELECT id, state, block_count, output_revision FROM nodes WHERE parent_id IS NULL",
+            "SELECT id, state, output_revision FROM nodes WHERE parent_id IS NULL",
             [],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .optional()?;
     let last_attachment = conversation_attachments::last(connection)?;
-    let Some((id, state, block_count, revision)) = root else {
+    let Some((id, state, revision)) = root else {
         return Ok(SummaryFacts {
             last_attachment,
             ..SummaryFacts::EMPTY
@@ -980,15 +1105,15 @@ pub fn summary(connection: &Connection) -> Result<SummaryFacts, StorageError> {
     let state: CheckpointState = json("nodes", "state", &state)?;
     // A failed `compact` ends no turn, and a stop that a Resume continued
     // ended the turn only until the Resume.
-    let mut rows = connection.prepare_cached(
-        "SELECT idx, json_extract(block, '$.type'), json_extract(block, '$.turnId'),
+    let mut rows = connection.prepare_cached(&format!(
+        "SELECT blocks.idx, json_extract(block, '$.type'), json_extract(block, '$.turnId'),
                 json_extract(block, '$.type') IN ('response', 'error', 'abort')
                   AND coalesce(json_extract(block, '$.outsideTurn'), 0) = 0
                   AND coalesce(json_extract(block, '$.isResumed'), 0) = 0,
                 CASE json_extract(block, '$.type') WHEN 'text' THEN json_extract(block, '$.text') END
-           FROM blocks WHERE node_id = ?1 AND idx < ?2 ORDER BY idx DESC",
-    )?;
-    let rows = rows.query_map(params![id, block_count], |row| {
+           FROM {PATH_ROWS} WHERE run.node_id = ?1 ORDER BY run.start DESC, blocks.idx DESC"
+    ))?;
+    let rows = rows.query_map(params![id], |row| {
         Ok(WalkRow {
             index: row.get(0)?,
             kind: row.get(1)?,
@@ -1103,10 +1228,11 @@ pub struct SavedVersion {
 }
 
 /// The node's number, 0 for the root, and the saved version of its
-/// transcript; none when the tree has no such node.
+/// transcript, its current path's length as its block count; none when the
+/// tree has no such node.
 fn node_version_of(transaction: &Transaction<'_>, node: &NodeId) -> Result<Option<(u64, SavedVersion)>, StorageError> {
     let row: Option<(i64, i64, i64)> = transaction
-        .prepare_cached("SELECT number, output_revision, block_count FROM nodes WHERE id = ?1")?
+        .prepare_cached(&format!("SELECT number, output_revision, {PATH_LENGTH} FROM nodes WHERE id = ?1"))?
         .query_row([node.as_str()], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
         .optional()?;
     row.map(|(number, revision, blocks)| {
@@ -1114,7 +1240,7 @@ fn node_version_of(transaction: &Transaction<'_>, node: &NodeId) -> Result<Optio
             decode("nodes", "number", u64::try_from(number))?,
             SavedVersion {
                 revision: decode("nodes", "output_revision", u64::try_from(revision))?,
-                blocks: decode("nodes", "block_count", u64::try_from(blocks))?,
+                blocks: decode("path_runs", "length", u64::try_from(blocks))?,
             },
         ))
     })
@@ -1141,7 +1267,7 @@ pub fn search_versions(connection: &Connection) -> Result<BTreeMap<u64, SavedVer
 
 /// Each node's id, number and the saved version of its transcript.
 fn saved_nodes(connection: &Connection) -> Result<Vec<(NodeId, u64, SavedVersion)>, StorageError> {
-    let mut statement = connection.prepare("SELECT id, number, output_revision, block_count FROM nodes")?;
+    let mut statement = connection.prepare(&format!("SELECT id, number, output_revision, {PATH_LENGTH} FROM nodes"))?;
     let mut rows = statement.query([])?;
     let mut nodes = Vec::new();
     while let Some(row) = rows.next()? {
@@ -1150,7 +1276,7 @@ fn saved_nodes(connection: &Connection) -> Result<Vec<(NodeId, u64, SavedVersion
             decode("nodes", "number", u64::try_from(row.get::<_, i64>(1)?))?,
             SavedVersion {
                 revision: decode("nodes", "output_revision", u64::try_from(row.get::<_, i64>(2)?))?,
-                blocks: decode("nodes", "block_count", u64::try_from(row.get::<_, i64>(3)?))?,
+                blocks: decode("path_runs", "length", u64::try_from(row.get::<_, i64>(3)?))?,
             },
         ));
     }
@@ -1163,14 +1289,15 @@ pub fn root_version(connection: &Connection) -> Result<SavedVersion, StorageErro
     Ok(saved_root(connection)?.map_or_else(SavedVersion::default, |(_, version)| version))
 }
 
-/// The searchable text of every agent's blocks with the saved version they
-/// make, read together; each block is decoded and dropped in turn, so no
-/// transcript is held whole.
+/// The searchable text of every agent's current path with the saved
+/// version it makes, read together; each block is decoded and dropped in
+/// turn, so no transcript is held whole.
 pub fn search_texts(connection: &Connection) -> Result<Vec<IndexedAgent>, StorageError> {
     let mut agents = Vec::new();
     for (node, agent, version) in saved_nodes(connection)? {
+        let path = Path::read(connection, node.as_str())?;
         let mut messages = Vec::new();
-        each_block(connection, &node, integer(version.blocks), |position, block| {
+        each_block(connection, &node, &path, 0..path.len(), |position, block| {
             if let Some(text) = searchable_text(&block) {
                 messages.push(IndexedMessage {
                     block: block.id().clone(),
@@ -1188,7 +1315,7 @@ pub fn search_texts(connection: &Connection) -> Result<Vec<IndexedAgent>, Storag
 fn saved_root(connection: &Connection) -> Result<Option<(NodeId, SavedVersion)>, StorageError> {
     let root: Option<(String, i64, i64)> = connection
         .query_row(
-            "SELECT id, output_revision, block_count FROM nodes WHERE parent_id IS NULL",
+            &format!("SELECT id, output_revision, {PATH_LENGTH} FROM nodes WHERE parent_id IS NULL"),
             [],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
@@ -1198,7 +1325,7 @@ fn saved_root(connection: &Connection) -> Result<Option<(NodeId, SavedVersion)>,
     };
     let version = SavedVersion {
         revision: decode("nodes", "output_revision", u64::try_from(revision))?,
-        blocks: decode("nodes", "block_count", u64::try_from(blocks))?,
+        blocks: decode("path_runs", "length", u64::try_from(blocks))?,
     };
     Ok(Some((decode("nodes", "id", NodeId::try_from(root))?, version)))
 }
@@ -1217,17 +1344,13 @@ pub fn has_root(connection: &Connection) -> Result<bool, StorageError> {
 /// The root's blocks as the database holds them; none when the tree has
 /// no root yet.
 pub fn root_blocks(connection: &Connection) -> Result<Vec<Block>, StorageError> {
-    let root: Option<(String, i64)> = connection
-        .query_row(
-            "SELECT id, block_count FROM nodes WHERE parent_id IS NULL",
-            [],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
+    let root: Option<String> = connection
+        .query_row("SELECT id FROM nodes WHERE parent_id IS NULL", [], |row| row.get(0))
         .optional()?;
-    let Some((root, block_count)) = root else {
+    let Some(root) = root else {
         return Ok(Vec::new());
     };
-    blocks_of(connection, &decode("nodes", "id", NodeId::try_from(root))?, block_count)
+    whole_path(connection, &decode("nodes", "id", NodeId::try_from(root))?)
 }
 
 /// A transcript a page is read from (`web-api.md` § Pages): an agent's in
@@ -1271,7 +1394,7 @@ impl Transcript {
         let length: Option<i64> = match self {
             Self::Agent(node) => connection
                 .query_row(
-                    "SELECT block_count FROM nodes WHERE id = ?1",
+                    &format!("SELECT {PATH_LENGTH} FROM nodes WHERE id = ?1"),
                     [node.as_str()],
                     |row| row.get(0),
                 )
@@ -1286,7 +1409,7 @@ impl Transcript {
             }
         };
         length
-            .map(|length| decode("nodes", "block_count", usize::try_from(length)))
+            .map(|length| decode("path_runs", "length", usize::try_from(length)))
             .transpose()
     }
 
@@ -1295,10 +1418,16 @@ impl Transcript {
     /// block types, the transcript's and the copies', without reading a
     /// block.
     pub fn user_blocks(&self, connection: &Connection, length: usize) -> Result<Vec<usize>, StorageError> {
+        let agent_sql = format!(
+            "SELECT {POSITION} FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
+               ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'user'
+                 AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+             WHERE run.node_id = ?1 AND {POSITION} < ?2
+             ORDER BY 1"
+        );
         let (sql, parameters): (&str, Vec<Value>) = match self {
             Self::Agent(node) => (
-                "SELECT idx FROM blocks WHERE node_id = ?1 AND json_extract(block, '$.type') = 'user' AND idx < ?2
-                 ORDER BY idx",
+                &agent_sql,
                 vec![Value::Text(node.as_str().to_owned()), Value::Integer(count(length))],
             ),
             Self::Shared { token, agent } => (
@@ -1334,10 +1463,10 @@ impl Transcript {
     pub fn blocks_in(&self, connection: &Connection, range: Range<usize>) -> Result<Vec<Block>, StorageError> {
         let bounds = [Value::Integer(count(range.start)), Value::Integer(count(range.end))];
         let (sql, parameters): (String, Vec<Value>) = match self {
-            Self::Agent(node) => (
-                "SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx >= ?2 AND idx < ?3 ORDER BY idx".to_owned(),
-                [&[Value::Text(node.as_str().to_owned())][..], &bounds].concat(),
-            ),
+            Self::Agent(node) => {
+                let path = Path::read(connection, node.as_str())?;
+                return path_blocks(connection, node, &path, count(range.start)..count(range.end));
+            }
             Self::Shared { token, agent } => (
                 format!(
                     "SELECT entry.position, coalesce(row.block, copy.block) FROM {LISTED}
@@ -1376,9 +1505,16 @@ impl Transcript {
         length: usize,
     ) -> Result<Option<usize>, StorageError> {
         let wanted = [Value::Text(id.as_str().to_owned()), Value::Integer(count(length))];
+        let agent_sql = format!(
+            "SELECT {POSITION} FROM blocks INDEXED BY blocks_by_id CROSS JOIN path_runs AS run
+               ON run.node_id = blocks.node_id AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+             WHERE json_extract(blocks.block, '$.id') = ?2 AND blocks.node_id = ?1 AND {POSITION} < ?3"
+        );
         let (sql, parameters): (&str, Vec<Value>) = match self {
             Self::Agent(node) => (
-                "SELECT idx FROM blocks WHERE node_id = ?1 AND json_extract(block, '$.id') = ?2 AND idx < ?3",
+                // The id of a block that a rewrite moved is on its old
+                // branch too; the path holds it once.
+                &agent_sql,
                 [&[Value::Text(node.as_str().to_owned())][..], &wanted].concat(),
             ),
             Self::Shared { token, agent } => (
@@ -1419,10 +1555,13 @@ impl Transcript {
         };
         let text: Option<String> = connection
             .query_row(
-                "SELECT block FROM blocks
-                 WHERE node_id = ?1 AND json_extract(block, '$.type') = 'context' AND idx < ?2
-                   AND json_extract(block, '$.source') = ?3
-                 ORDER BY idx DESC LIMIT 1",
+                &format!(
+                    "SELECT blocks.block FROM path_runs AS run CROSS JOIN blocks INDEXED BY blocks_by_type
+                       ON blocks.node_id = run.node_id AND json_extract(blocks.block, '$.type') = 'context'
+                         AND blocks.idx >= run.first AND blocks.idx < run.first + run.length
+                     WHERE run.node_id = ?1 AND {POSITION} < ?2 AND json_extract(blocks.block, '$.source') = ?3
+                     ORDER BY {POSITION} DESC LIMIT 1"
+                ),
                 params![node.as_str(), count(length), INSTRUCTIONS_SOURCE],
                 |row| row.get(0),
             )
@@ -1466,6 +1605,9 @@ pub enum PageRead {
         blocks: Vec<Block>,
         instructions: Vec<InstructionEntry>,
         summaries: Vec<CompactionSummary>,
+        /// The versions of the page's blocks that have others; none in a
+        /// share, which shows one path.
+        versions: Vec<BlockVersions>,
     },
     NoNode,
     NoBlock,
@@ -1578,12 +1720,26 @@ pub fn read_page(
             });
         }
     }
+    let versions = match transcript {
+        Transcript::Agent(node) => {
+            let path = Path::read(connection, node.as_str())?;
+            let held = path.versions(connection, count(range.start)..count(range.start + blocks.len()))?;
+            held.into_iter()
+                .map(|(position, versions)| {
+                    let at = decode("path_runs", "start", usize::try_from(position))?;
+                    Ok(BlockVersions::new(blocks[at - range.start].id().clone(), versions))
+                })
+                .collect::<Result<_, StorageError>>()?
+        }
+        Transcript::Shared { .. } => Vec::new(),
+    };
     Ok(PageRead::Page {
         start: range.start,
         length,
         blocks,
         instructions: transcript.newest_instructions(connection, length)?,
         summaries,
+        versions,
     })
 }
 
@@ -1610,26 +1766,57 @@ pub fn read_block(
     Ok(BlockRead::Block(blocks.remove(0)))
 }
 
-/// The subagents of the tree, in the order they started, each with the
-/// model selection its checkpoint saved.
-pub fn subagents(
-    connection: &Connection,
-) -> Result<Vec<(NodeRecord, ModelSelection)>, StorageError> {
+/// A subagent as [`subagents`] reads it: its record, the model selection
+/// its checkpoint saved, whether the call that started it is on its
+/// parent's current path, and whether its every ancestor's start is too,
+/// which makes it a child of the conversation's current path
+/// (`message-editing.md` § Versions). A child no call started is on every
+/// path.
+#[derive(Debug, Clone)]
+pub struct Subagent {
+    pub record: NodeRecord,
+    pub model: ModelSelection,
+    pub started_on_path: bool,
+    pub on_path: bool,
+}
+
+/// Whether the call that started the node `nodes` names is on its parent's
+/// current path.
+const STARTED_ON_PATH: &str = "(nodes.started_by IS NULL OR EXISTS (
+     SELECT 1 FROM blocks AS start INDEXED BY blocks_by_id CROSS JOIN path_runs AS run
+       ON run.node_id = start.node_id AND start.idx >= run.first AND start.idx < run.first + run.length
+     WHERE json_extract(start.block, '$.id') = nodes.started_by AND start.node_id = nodes.parent_id
+   ))";
+
+/// The subagents of the tree, in the order they started.
+pub fn subagents(connection: &Connection) -> Result<Vec<Subagent>, StorageError> {
     let mut statement = connection.prepare(&format!(
-        "SELECT {NODE_COLUMNS}, json_extract(state, '$.model') AS model FROM nodes
-         WHERE parent_id IS NOT NULL ORDER BY number"
+        "WITH RECURSIVE on_path (id) AS (
+           SELECT id FROM nodes WHERE parent_id IS NULL
+           UNION ALL
+           SELECT nodes.id FROM nodes JOIN on_path ON nodes.parent_id = on_path.id WHERE {STARTED_ON_PATH}
+         )
+         SELECT {NODE_COLUMNS}, json_extract(state, '$.model') AS model,
+           {STARTED_ON_PATH} AS started_on_path, id IN (SELECT id FROM on_path) AS on_path
+         FROM nodes WHERE parent_id IS NOT NULL ORDER BY number"
     ))?;
     let mut rows = statement.query([])?;
     let mut nodes = Vec::new();
     while let Some(row) = rows.next()? {
         let model: String = row.get("model")?;
-        nodes.push((node_row(row)?, json("nodes", "state", &model)?));
+        nodes.push(Subagent {
+            record: node_row(row)?,
+            model: json("nodes", "state", &model)?,
+            started_on_path: row.get("started_on_path")?,
+            on_path: row.get("on_path")?,
+        });
     }
     Ok(nodes)
 }
 
 /// The call that started the command `command`, with the node that ran
-/// it: of the calls whose view names the command, the first, since a stored
+/// it, on whatever branch it is, since the command ran (`message-editing.md`
+/// § Versions): of the calls whose view names the command, the first, since a stored
 /// look at a command, from before such looks were removed, came after it;
 /// of calls equally early, the oldest agent's, since a fork's copy of its
 /// source's call keeps the call's time (`subagents.md` § Fork).
@@ -1641,7 +1828,6 @@ pub fn command_call(
         .query_row(
             "SELECT blocks.node_id, blocks.block FROM blocks JOIN nodes ON nodes.id = blocks.node_id
              WHERE json_extract(blocks.block, '$.view.commandId') = ?1
-               AND blocks.idx < nodes.block_count
              ORDER BY json_extract(blocks.block, '$.createdAt'), nodes.number LIMIT 1",
             [command.as_str()],
             |row| Ok((row.get(0)?, row.get(1)?)),
@@ -1739,6 +1925,7 @@ pub(crate) mod tests {
             closed: None,
             delivered: false,
             forked_from: None,
+            started_by: None,
             cwd: parent.map(|_| ChildDirectory {
                 cwd: "/w".to_owned(),
                 under: Placement {
@@ -1767,6 +1954,8 @@ pub(crate) mod tests {
             state: state(),
             changed_blocks: blocks,
             block_count,
+            moved_from: None,
+            version: false,
         }
     }
 
@@ -1895,8 +2084,31 @@ pub(crate) mod tests {
         assert_eq!((rewritten.revision, rewritten.last), (2, None));
     }
 
+    // A child off the current path takes its own children off it, whose
+    // starts are on its path (`message-editing.md` § Versions).
+    #[tokio::test(flavor = "local")]
+    async fn a_child_off_the_current_path_takes_its_subtree_with_it() {
+        let (tree, stores, _data) = store().await;
+        store_contract::a_subagent_tells_whether_its_start_is_on_its_parents_path(&tree).await;
+        let on_path: Vec<(u64, bool)> = stores
+            .db(&conversation())
+            .call(|connection| subagents(connection))
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|subagent| (subagent.record.number, subagent.on_path))
+            .collect();
+        assert_eq!(on_path, [(1, true), (2, false), (3, false), (4, true)]);
+    }
+
     #[tokio::test(flavor = "local")]
     async fn the_database_keeps_the_tree_store_contract() {
+        let (tree, _stores, _data) = store().await;
+        store_contract::a_rewrite_keeps_its_rows_and_a_switch_brings_them_back(&tree).await;
+        let (tree, _stores, _data) = store().await;
+        store_contract::a_compaction_keeps_the_versions_of_what_it_carries(&tree).await;
+        let (tree, _stores, _data) = store().await;
+        store_contract::a_subagent_tells_whether_its_start_is_on_its_parents_path(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::create_queues_the_first_message_with_the_node_and_a_save_replaces_it(&tree)
             .await;
@@ -1906,7 +2118,7 @@ pub(crate) mod tests {
         )
         .await;
         let (tree, _stores, _data) = store().await;
-        store_contract::reopen_makes_a_closed_node_live_with_its_message_and_delete_takes_the_subtree(&tree).await;
+        store_contract::reopen_makes_a_closed_node_live_with_its_message(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::a_completion_of_an_earlier_round_marks_the_current_one_undelivered(&tree)
             .await;

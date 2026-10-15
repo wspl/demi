@@ -10,6 +10,8 @@ import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import type { CopySource } from '../../composables/useCopy'
 import type { MessageEditContent } from '../message-editing'
+import type { VersionChoice } from '../versions'
+import VersionSwitcher from './VersionSwitcher.vue'
 import { composerCapsule, composerTransfer, contentMessage, provideTransfers } from '../message-editor/capsules'
 import MessageEditor from '../message-editor/MessageEditor.vue'
 import StreamedMarkdown from '../../ui/StreamedMarkdown.vue'
@@ -35,6 +37,8 @@ const props = defineProps<{
   actionsPinned?: boolean
   /** Allows editing an explicitly submitted user message. */
   editable?: boolean
+  /** The message's versions, shown under it; absent with none. */
+  versions?: VersionChoice
   /**
    * A child's task brief (`childBrief`): rendered as an answer is, in full
    * Markdown, inside the same bubble, and copied as its Markdown; never
@@ -234,6 +238,8 @@ useResizeObserver(bodyRef, measure)
         @click.stop="expanded = !expanded"
       >{{ expanded ? t('transcript.user.showLess') : t('transcript.user.showMore') }}</Button>
     </div>
+    <!-- An edited message's versions, under it at its end, always in view. -->
+    <VersionSwitcher v-if="versions && !pending" :choice="versions" class="-mr-1 mt-0.5" />
     <!-- A pending message says what happens to it, its controls in view rather than on hover. -->
     <div
       v-if="pending"

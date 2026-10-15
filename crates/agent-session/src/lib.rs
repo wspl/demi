@@ -63,7 +63,7 @@ use tokio_util::task::AbortOnDropHandle;
 pub use compaction::{CompactionConfig, compaction_refusal, token_threshold};
 pub use editing::ForkError;
 pub use editing::{
-    EditCheck, EditContent, EditError, EditSubmission, accepted, edit_digest, fork_seed,
+    EditCheck, EditContent, EditError, EditSubmission, accepted, edit_digest, fork_seed, regenerate_digest,
 };
 pub use retry::RetryPolicy;
 pub use worker::left_by_offline_host;
@@ -160,6 +160,9 @@ impl ModelSwitch {
 pub struct TranscriptSnapshot {
     pub blocks: Vec<Block>,
     pub version: TranscriptVersion,
+    /// The versions at each place that holds more than one
+    /// (`message-editing.md` § Versions).
+    pub versions: std::collections::BTreeMap<usize, demi_conversation_socket_protocol::Versions>,
 }
 
 /// How an action ended when it did not fail.
@@ -589,7 +592,11 @@ impl AgentSession {
         deps: SessionDeps,
         running: &[RunningCommand],
     ) -> Result<(Self, Continuation), RestoreError> {
-        let Checkpoint { state, transcript } = checkpoint;
+        let Checkpoint {
+            state,
+            transcript,
+            versions,
+        } = checkpoint;
         check_restored_input(&id, &transcript, &state.agent_inputs)?;
         let mut operations = HashSet::new();
         if let Some(receipt) = state
@@ -599,7 +606,8 @@ impl AgentSession {
         {
             return Err(RestoreError::Edits(receipt.operation_id.to_string()));
         }
-        let mut transcript = TranscriptLog::new(transcript, deps.ids.clone(), deps.clock.clone());
+        let mut transcript =
+            TranscriptLog::new(transcript, deps.ids.clone(), deps.clock.clone()).with_versions(versions);
         let mut watched = Watched::default();
         for interval in &state.intervals {
             watched.add(interval.command_id.clone(), interval.interval_ms);
@@ -714,6 +722,8 @@ impl AgentSession {
             state: core.checkpoint_state(),
             changed_blocks: Vec::new(),
             block_count: 0,
+            moved_from: None,
+            version: false,
         })
     }
 
@@ -759,6 +769,7 @@ impl AgentSession {
         self.shared.read(|core| TranscriptSnapshot {
             blocks: core.transcript.blocks().to_vec(),
             version: core.transcript.version(),
+            versions: core.transcript.versions().clone(),
         })
     }
 
@@ -969,6 +980,49 @@ impl AgentSession {
             EditCheck::InFlight(acceptance) => accepted(acceptance).await,
             EditCheck::Proceed => unreachable!("an admitted edit is in flight"),
         }
+    }
+
+    /// Makes the `to`th version at the block `target`'s place current
+    /// (`message-editing.md` § Versions), admitted as an edit is against the
+    /// transcript `version` the page showed; returns once the switch is
+    /// published, or why nothing changed.
+    pub async fn switch_version(
+        &self,
+        target: BlockId,
+        to: u32,
+        version: &TranscriptVersion,
+    ) -> Result<(), Refusal> {
+        let handle = self
+            .shared
+            .update(|core| core.admit_switch(target, to, version))
+            .map_err(|error| error.refusal())?;
+        match handle.await {
+            Ok(_) => Ok(()),
+            Err(report) => Err(Refusal {
+                code: report.code.clone().unwrap_or_else(|| AgentCode::FrameFailed.to_string()),
+                params: Default::default(),
+                reason: report.message.clone(),
+            }),
+        }
+    }
+
+    /// Whether the block `id` is on the transcript's current path.
+    pub fn holds_block(&self, id: &BlockId) -> bool {
+        self.shared.read(|core| core.transcript.position(id).is_some())
+    }
+
+    /// The latest call still executing: the one a command it runs, such as
+    /// `demi agent`, acts for, so a child it starts belongs to that call's
+    /// branch (`message-editing.md` § Versions).
+    pub fn executing_call(&self) -> Option<BlockId> {
+        self.shared.read(|core| {
+            core.transcript.blocks().iter().rev().find_map(|block| match block {
+                Block::ToolCall(call) if call.status == demi_shared_types::ToolCallStatus::Executing => {
+                    Some(call.id.clone())
+                }
+                _ => None,
+            })
+        })
     }
 
     /// A Fork's seed from this live session, through the completed text

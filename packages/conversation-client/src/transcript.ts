@@ -1,4 +1,4 @@
-import type { Block, TranscriptPatch } from '@demicodes/protocol'
+import type { Block, BlockVersions, TranscriptPatch, Versions } from '@demicodes/protocol'
 
 /** A text or thinking block's text up to `end` reached the page at `at`, its `performance.now()`. */
 export interface TextArrival {
@@ -12,9 +12,23 @@ export interface TextArrival {
  * its open row shows (`web-api.md` § Light form). A text or thinking block
  * the stream brings keeps when each piece of its text arrived, `arrivals`,
  * so a row that shows it fades each piece from then, even a row that mounts
- * later; a block read whole has none, and a replaced block loses them.
+ * later; a block read whole has none, and a replaced block loses them. A
+ * block whose place on the path holds other versions keeps where it stands
+ * among them, `versions` (`message-editing.md` § Versions).
  */
-export type HeldBlock = Block & { light?: true; arrivals?: readonly TextArrival[] }
+export type HeldBlock = Block & { light?: true; arrivals?: readonly TextArrival[]; versions?: Versions }
+
+/** `blocks`, each with its versions that `versions` lists by block id. */
+function withVersions(blocks: readonly HeldBlock[], versions: readonly BlockVersions[] | undefined): HeldBlock[] {
+  if (!versions || versions.length === 0) {
+    return [...blocks]
+  }
+  const byId = new Map(versions.map(({ blockId, index, count }) => [blockId, { index, count }]))
+  return blocks.map((block) => {
+    const held = byId.get(block.id)
+    return held ? { ...block, versions: held } : block
+  })
+}
 
 /** `block` with its text, as it is now, marked as arrived at `at`. */
 function arrived(block: HeldBlock, at: number): HeldBlock {
@@ -137,14 +151,14 @@ function joined(
  */
 export function resetTranscript(
   held: HeldTranscript,
-  reset: { start: number; length: number; blocks: Block[] },
+  reset: { start: number; length: number; blocks: Block[]; versions?: readonly BlockVersions[] },
   asked?: number,
 ): HeldTranscript {
   const rewritten = asked !== undefined && reset.start !== asked
   const kept = rewritten ? [] : truncated(held.windows, reset.start)
   return {
     length: reset.length,
-    windows: joined(kept, { start: reset.start, blocks: [...reset.blocks] }, 'incoming'),
+    windows: joined(kept, { start: reset.start, blocks: withVersions(reset.blocks, reset.versions) }, 'incoming'),
   }
 }
 
@@ -156,10 +170,10 @@ export function resetTranscript(
  */
 export function addPage(
   held: HeldTranscript,
-  page: { start: number; length: number; blocks: Block[] },
+  page: { start: number; length: number; blocks: Block[]; versions?: readonly BlockVersions[] },
   live: boolean,
 ): HeldTranscript {
-  const blocks = page.blocks.map((block): HeldBlock => ({ ...block, light: true }))
+  const blocks = withVersions(page.blocks.map((block): HeldBlock => ({ ...block, light: true })), page.versions)
   return {
     length: live ? held.length : page.length,
     windows: joined(held.windows, { start: page.start, blocks }, 'held'),
@@ -234,7 +248,8 @@ export function applyTranscriptPatches(
             return window
           }
           const blocks = [...window.blocks]
-          blocks.splice(patch.index - window.start, 0, arrived(patch.value, receivedAt))
+          const added: HeldBlock = patch.versions ? { ...patch.value, versions: patch.versions } : patch.value
+          blocks.splice(patch.index - window.start, 0, arrived(added, receivedAt))
           return { start: window.start, blocks }
         })
         // A block added in a gap that the page does not hold joins no window.
@@ -247,8 +262,9 @@ export function applyTranscriptPatches(
             return window
           }
           const block = window.blocks[offset]!
+          // A block replaced in place keeps its place, so its versions.
           const next = patch.op === 'replace_block'
-            ? patch.value
+            ? (block.versions ? { ...patch.value, versions: block.versions } : patch.value)
             : (block.type === 'text' || block.type === 'thinking')
               ? arrived({ ...block, text: block.text + patch.delta }, receivedAt)
               : block

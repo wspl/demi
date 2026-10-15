@@ -947,7 +947,8 @@ fn snapshots_with_window_kinds(transaction: &Transaction<'_>, _: &dyn ReadBlob) 
 /// snapshots are migrated the same way, and each block is decoded and
 /// checked as format 10 before it is written back. Then the shares'
 /// snapshots become lists, and each block's blobs are listed
-/// ([`shares_as_lists`]).
+/// ([`shares_as_lists`]). Last, each transcript becomes a tree of rows of
+/// one path ([`ONE_PATH`]).
 fn switches_with_window_names(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
     let switches = "json_extract(block, '$.type') = 'account_switch'";
     let rows = transaction
@@ -969,8 +970,36 @@ fn switches_with_window_names(transaction: &Transaction<'_>, _: &dyn ReadBlob) -
     for (token, agent, index, text) in rows {
         update.execute(rusqlite::params![token, agent, index, named_switch(&text)?])?;
     }
-    shares_as_lists(transaction)
+    shares_as_lists(transaction)?;
+    transaction.execute_batch(ONE_PATH)
 }
+
+/// From a transcript whose rows were its blocks' positions to a tree of
+/// rows (`message-editing.md` § Versions): a node's rows below its block
+/// count, which are all it kept, are one path, each row following the one
+/// before it and its last row the leaf; its runs are that one run.
+const ONE_PATH: &str = "
+ALTER TABLE blocks ADD COLUMN follows INTEGER CHECK (follows < idx);
+ALTER TABLE blocks ADD COLUMN replaces INTEGER CHECK (replaces < idx);
+UPDATE blocks SET follows = idx - 1 WHERE idx > 0;
+CREATE INDEX blocks_by_follows ON blocks (node_id, follows);
+CREATE INDEX blocks_branching ON blocks (node_id, follows) WHERE follows IS NOT idx - 1;
+CREATE INDEX blocks_carrying ON blocks (node_id, replaces) WHERE replaces IS NOT NULL;
+CREATE TABLE path_runs (
+  node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
+  start   INTEGER NOT NULL CHECK (start >= 0),
+  first   INTEGER NOT NULL CHECK (first >= 0),
+  length  INTEGER NOT NULL CHECK (length >= 1),
+  PRIMARY KEY (node_id, start)
+) STRICT, WITHOUT ROWID;
+INSERT INTO path_runs (node_id, start, first, length)
+  SELECT id, 0, 0, block_count FROM nodes WHERE block_count > 0;
+ALTER TABLE nodes ADD COLUMN leaf INTEGER CHECK (leaf >= 0);
+ALTER TABLE nodes ADD COLUMN cut INTEGER CHECK (cut >= 0);
+ALTER TABLE nodes ADD COLUMN started_by TEXT;
+UPDATE nodes SET leaf = block_count - 1 WHERE block_count > 0;
+ALTER TABLE nodes DROP COLUMN block_count;
+";
 
 /// The stored `account_switch` block `text` of format 9 as format 10 holds
 /// it: its window's name, a string or null, as what names it. A window of
@@ -2154,6 +2183,27 @@ pub mod testing {
         version_of(shipped.sql)
     }
 
+    /// The columns a shipped schema has that this build's dropped, each with
+    /// the value of a row of this build's that it holds: a node's block
+    /// count is the length of its current path.
+    const DROPPED: &[(&str, &str, &str)] = &[(
+        "nodes",
+        "block_count",
+        "(SELECT coalesce(max(own.start + own.length), 0) FROM current.path_runs AS own WHERE own.node_id = id)",
+    )];
+
+    /// Whether the shipped schema's `table` has `column`.
+    fn shipped_has(connection: &rusqlite::Connection, table: &str, column: &str) -> bool {
+        connection
+            .query_row(
+                "SELECT count(*) FROM pragma_table_info(?1, 'main') WHERE name = ?2",
+                [table, column],
+                |row| row.get::<_, i64>(0),
+            )
+            .expect("the columns are listed")
+            > 0
+    }
+
     /// Turns the closed database of `kind` at `path`, of this build's
     /// schema, into one of the newest schema a published release shipped
     /// before it, as an upgrade finds it: the tables, columns and indexes of
@@ -2205,10 +2255,27 @@ pub mod testing {
             if columns.is_empty() {
                 continue;
             }
-            let columns = columns.join(", ");
+            // A column this build dropped holds what it was derived into.
+            let derived: Vec<(&str, &str)> = DROPPED
+                .iter()
+                .filter(|(owner, column, _)| *owner == table && shipped_has(&connection, &table, column))
+                .map(|(_, column, value)| (*column, *value))
+                .collect();
+            let names = columns
+                .iter()
+                .map(String::as_str)
+                .chain(derived.iter().map(|(column, _)| *column))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let values = columns
+                .iter()
+                .map(String::as_str)
+                .chain(derived.iter().map(|(_, value)| *value))
+                .collect::<Vec<_>>()
+                .join(", ");
             connection
                 .execute_batch(&format!(
-                    "INSERT INTO main.{table} ({columns}) SELECT {columns} FROM current.{table}"
+                    "INSERT INTO main.{table} ({names}) SELECT {values} FROM current.{table}"
                 ))
                 .expect("the rows are copied");
         }
@@ -3030,7 +3097,6 @@ CREATE TABLE nodes (
   -- waiting input until the user's next action.
   -- nodes.state: checkpoint state format 4
   state            TEXT NOT NULL,
-  block_count      INTEGER NOT NULL CHECK (block_count >= 0),
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
   -- The number of the agent the node was forked from; null for one that
   -- was not forked.
@@ -3048,6 +3114,18 @@ CREATE TABLE nodes (
   -- The Context its profile chose, in tokens, which its sessions use in
   -- place of the user's limit; null for the user's limit.
   context_limit    INTEGER CHECK (context_limit >= 1),
+  -- The row number of the current path's last block, the current leaf;
+  -- null while the path is empty (message-editing.md § Versions).
+  leaf             INTEGER CHECK (leaf >= 0),
+  -- The row a cut of the path left off its end that no row has replaced
+  -- yet: the next row written at the path's end replaces it. Null when the
+  -- path's end is no cut, or an edit or Regenerate cut it, whose next row
+  -- is a version of its own.
+  cut              INTEGER CHECK (cut >= 0),
+  -- The id of the parent's call block that started this child, so the
+  -- child belongs to the branch that call is on; null for the root and for
+  -- a child stored before versions existed, which is on every path.
+  started_by       TEXT,
   CHECK ((closed_phase IS NULL) = (closed_at IS NULL)),
   CHECK (result IS NULL OR closed_phase = 'completed'),
   CHECK (failure IS NULL OR closed_phase = 'error')
@@ -3065,11 +3143,20 @@ CREATE TABLE sequences (
 ) STRICT;
 
 -- blocks.block: transcript block format 10.
+-- A node's transcript is a tree of rows (message-editing.md § Versions):
+-- `idx` is a row's number, its place in the order the node's rows were
+-- written, which no other row is ever given. A row is never deleted.
 CREATE TABLE blocks (
-  node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
-  idx     INTEGER NOT NULL CHECK (idx >= 0),
+  node_id  TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
+  idx      INTEGER NOT NULL CHECK (idx >= 0),
   -- blocks.block: transcript block format 10
-  block   TEXT NOT NULL,
+  block    TEXT NOT NULL,
+  -- The row before it on its path; null for a path's first row.
+  follows  INTEGER CHECK (follows < idx),
+  -- The row it was written in place of, when the session's own rewrite (a
+  -- retry, an unwind, a compaction inside a turn) began a branch with it;
+  -- it is then of that row's version. Null for every other row.
+  replaces INTEGER CHECK (replaces < idx),
   PRIMARY KEY (node_id, idx)
 ) STRICT;
 -- A page of a transcript is read by its requests, which start at its user
@@ -3078,6 +3165,23 @@ CREATE TABLE blocks (
 CREATE INDEX blocks_by_type ON blocks (node_id, json_extract(block, '$.type'), idx);
 CREATE INDEX blocks_by_id ON blocks (json_extract(block, '$.id'));
 CREATE INDEX blocks_by_command ON blocks (json_extract(block, '$.view.commandId'));
+-- The rows that follow a row: its versions and the branches the session's
+-- rewrites left; and the rows that do not follow the row written before
+-- them, where a place may hold versions.
+CREATE INDEX blocks_by_follows ON blocks (node_id, follows);
+CREATE INDEX blocks_branching ON blocks (node_id, follows) WHERE follows IS NOT idx - 1;
+CREATE INDEX blocks_carrying ON blocks (node_id, replaces) WHERE replaces IS NOT NULL;
+-- Each node's current path as runs of consecutive row numbers: the run at
+-- path position `start` holds the rows `first` to `first + length - 1`.
+-- Derived from the rows and the node's leaf, and written with the leaf in
+-- the same transaction, so a page of the path reads an index range.
+CREATE TABLE path_runs (
+  node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
+  start   INTEGER NOT NULL CHECK (start >= 0),
+  first   INTEGER NOT NULL CHECK (first >= 0),
+  length  INTEGER NOT NULL CHECK (length >= 1),
+  PRIMARY KEY (node_id, start)
+) STRICT, WITHOUT ROWID;
 -- Each blob a block names, as a medium or a side of an edit, by the block's
 -- node and index; written with the block in the same checkpoint and gone
 -- with it, so what names a blob is found without reading a block. A
@@ -4698,6 +4802,66 @@ mod tests {
     /// transcript and in a share's snapshot, and one that named none still
     /// names none.
     // Cost: one database on disk, a few milliseconds.
+    #[test]
+    fn a_linear_transcript_becomes_one_path() {
+        use demi_shared_types::{Block, TextBlock};
+
+        let said = |text: &str| {
+            Block::Text(TextBlock {
+                id: text.try_into().unwrap(),
+                created_at: demi_shared_types::Timestamp::UNIX_EPOCH,
+                model: demi_agent_store::testing::test_model(),
+                text: text.to_owned(),
+                forkable: true,
+                entries: Vec::new(),
+            })
+        };
+        let blocks = [said("first"), said("second"), said("third")];
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/conversation-0.1.22-dev.20261015T134426Z.sql"));
+        for (id, number, parent, count) in [("root", 0, None, 3), ("child", 1, Some("root"), 0)] {
+            connection
+                .execute(
+                    "INSERT INTO nodes
+                       (id, number, parent_id, description, round, started_at, can_spawn, delivered, state, block_count,
+                        output_revision, cwd, cwd_under)
+                     VALUES (?1, ?2, ?3, '', 1, 0, 1, 0, ?4, ?5, 0, ?6, ?6)",
+                    rusqlite::params![id, number, parent, state_of_development(), count, parent.map(|_| "/work")],
+                )
+                .unwrap();
+        }
+        for (index, block) in blocks.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                    rusqlite::params![i64::try_from(index).unwrap(), to_json(block)],
+                )
+                .unwrap();
+        }
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+
+        // Each row follows the one before it, the last is the leaf, and the
+        // path reads as the transcript did.
+        let rows: Vec<(i64, Option<i64>, Option<i64>)> = connection
+            .prepare("SELECT idx, follows, replaces FROM blocks WHERE node_id = 'root' ORDER BY idx")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(rows, [(0, None, None), (1, Some(0), None), (2, Some(1), None)]);
+        let leaves: Vec<(String, Option<i64>, Option<i64>)> = connection
+            .prepare("SELECT id, leaf, cut FROM nodes ORDER BY number")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(leaves, [("root".to_owned(), Some(2), None), ("child".to_owned(), None, None)]);
+        assert_eq!(crate::tree::root_blocks(&connection).unwrap(), blocks);
+    }
+
     #[test]
     fn a_stored_account_switch_gets_its_windows_name() {
         use demi_shared_types::{Block, QuotaKind, QuotaScope, QuotaWindowName};

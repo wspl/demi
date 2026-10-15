@@ -1626,8 +1626,11 @@ naming the index of the block it touches:
 | `append_text` | `index`, `delta` | Append text to the block at the index |
 | `truncate` | `length` | Remove every block from the index `length` on |
 
-Consecutive appends to one block merge into one `append_text`. A rewrite of
-history, such as a retry, a resume's unwind or an accepted edit, is one batch:
+Indices in patches are positions on the current path
+([Versions](message-editing.md#versions)). Consecutive appends to one block
+merge into one `append_text`. A rewrite of the path, such as a retry, a
+resume's unwind, an accepted edit, Regenerate or a switch of versions, is
+one batch; the rows it leaves stay stored on their branch:
 a `truncate` at the first block it changes, then an `add` for each block
 from there. It never sends the blocks before the cut, which may be most of
 a long transcript, and which a page may not hold

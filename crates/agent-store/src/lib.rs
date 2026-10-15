@@ -20,13 +20,14 @@ pub mod media;
 pub mod pixels;
 #[cfg(feature = "testing")]
 pub mod testing;
+pub mod versions;
 
-use std::rc::Rc;
+use std::{collections::BTreeMap, rc::Rc};
 
-use demi_conversation_socket_protocol::{JobModel, JobPhase, SubagentChild, SubagentJob};
+use demi_conversation_socket_protocol::{JobModel, JobPhase, SubagentChild, SubagentJob, Versions};
 use demi_host_interface::{Seen, WholeOutput};
 use demi_shared_types::{
-    AgentAccount, AgentMessage, AgentMessageEvent, Block, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
+    AgentAccount, AgentMessage, AgentMessageEvent, Block, BlockId, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
     OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId,
 };
 use futures_util::future::LocalBoxFuture;
@@ -42,6 +43,14 @@ pub trait SessionStore {
     /// The node's checkpoint, decoded and checked, its media by reference as
     /// saved; none when the node has none. Corrupt data stops the load.
     fn load(&self) -> LocalBoxFuture<'_, Result<Option<Checkpoint>, StoreError>>;
+
+    /// Makes the latest leaf of the `version`th version (from 1) at the
+    /// path's position `position` the current leaf, in one commit, and
+    /// answers the path from that position on (`message-editing.md`
+    /// § Versions). Nothing else of the checkpoint changes. A position the
+    /// path does not reach, or a version its place does not hold, is
+    /// refused without a change.
+    fn switch(&self, position: usize, version: u32) -> LocalBoxFuture<'_, Result<Switched, StoreError>>;
 
     /// The conversation owner's blob namespace (`runtime.md` § Media), where
     /// the session stores the media that enter its transcript and reads back
@@ -67,7 +76,7 @@ pub trait AgentTreeStore {
     /// order of their numbers, each with the model selection its checkpoint
     /// saved: what a tree that opens keeps of its children
     /// (`subagents.md` § Protocol).
-    fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<(NodeRecord, ModelSelection)>, StoreError>>;
+    fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<StoredSubagent>, StoreError>>;
 
     /// The node's record and its first checkpoint in one commit, so that a
     /// node the process loses before its first turn still has the message
@@ -118,9 +127,6 @@ pub trait AgentTreeStore {
         id: &'a NodeId,
         round: u64,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
-
-    /// Deletes the node and every descendant with all their rows.
-    fn delete_node<'a>(&'a self, id: &'a NodeId) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
     /// The conversation's next number of `sequence` (`runtime.md`
     /// § Identifiers the model sees). The store records the number after it
@@ -255,6 +261,11 @@ pub struct NodeRecord {
     pub delivered: bool,
     /// The number of the agent it was forked from; none for one not forked.
     pub forked_from: Option<u64>,
+    /// The parent's call block that started it, so the child belongs to the
+    /// branch that call is on (`message-editing.md` § Versions); none for the
+    /// root, for a child started by no call, and for a child stored before
+    /// versions existed, which is on every path.
+    pub started_by: Option<BlockId>,
     /// A child's own working directory and where the conversation worked
     /// when it was set (`subagents.md` § Working directory); none for the
     /// root, whose directory is always the conversation's.
@@ -298,7 +309,7 @@ impl NodeRecord {
     /// working where the conversation's placement `now` puts it; with `now`
     /// unknown, in its own directory. The root, which no node spawned, has
     /// none.
-    pub fn child(&self, model: JobModel, now: Option<&Placement>) -> Option<SubagentChild> {
+    pub fn child(&self, model: JobModel, now: Option<&Placement>, on_path: bool) -> Option<SubagentChild> {
         let parent = self.parent.clone()?;
         Some(SubagentChild {
             subagent_id: self.id.clone(),
@@ -319,18 +330,19 @@ impl NodeRecord {
                 let own = self.cwd.as_ref().expect("a child's record names its directory");
                 now.map_or(own.cwd.as_str(), |now| own.effective(now)).to_owned()
             },
+            on_path,
         })
     }
 
     /// The child as [`child`](Self::child) describes it, with the result of
     /// a completed round.
-    pub fn job(&self, model: JobModel, now: Option<&Placement>) -> Option<SubagentJob> {
+    pub fn job(&self, model: JobModel, now: Option<&Placement>, on_path: bool) -> Option<SubagentJob> {
         let result = match self.closed.as_ref().map(|close| &close.phase) {
             Some(ClosePhase::Completed { result }) => Some(result.clone()),
             _ => None,
         };
         Some(SubagentJob {
-            child: self.child(model, now)?,
+            child: self.child(model, now, on_path)?,
             result,
         })
     }
@@ -352,6 +364,7 @@ impl NodeRecord {
             closed: None,
             delivered: false,
             forked_from: None,
+            started_by: None,
             cwd: None,
         }
     }
@@ -471,21 +484,59 @@ pub struct EditReceipt {
     pub turn_id: TurnId,
 }
 
-/// A node's checkpoint as the store gives it back.
+/// A node's checkpoint as the store gives it back: its state and its
+/// current path, with the versions at each place of the path that has
+/// more than one.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Checkpoint {
     pub state: CheckpointState,
     pub transcript: Vec<Block>,
+    pub versions: BTreeMap<usize, Versions>,
 }
 
-/// One save: only what changed since the last one.
+/// One save: only what changed since the last one. Positions are places on
+/// the current path (`message-editing.md` § Versions). A stored row is never
+/// deleted: from the cut, the lowest of `moved_from` and `block_count`,
+/// the rows the path held leave it, and each block from there is a new row
+/// on a new branch; below the cut, a changed block updates its row.
 #[derive(Debug, Clone, PartialEq)]
 pub struct CheckpointUpdate {
     pub state: CheckpointState,
-    /// The changed block rows by index, ascending.
+    /// The changed blocks by position, ascending.
     pub changed_blocks: Vec<(usize, Block)>,
-    /// How many blocks the transcript has: rows at or beyond it are deleted.
+    /// How many blocks the path has.
     pub block_count: usize,
+    /// The lowest position a block was added or inserted at, or a rewrite
+    /// began at, since the last save: a stored row at or past it leaves the
+    /// path. None when blocks only changed in place.
+    pub moved_from: Option<usize>,
+    /// Whether the branch the cut begins is a version the user sees, as an
+    /// edit or Regenerate makes; otherwise it stands in for what it
+    /// replaces.
+    pub version: bool,
+}
+
+/// A subagent as the store holds it (`subagents.md` § Protocol): its
+/// record, the model selection its checkpoint saved, and whether the call
+/// that started it is on its parent's current path, which a child no call
+/// started is (`message-editing.md` § Versions).
+#[derive(Debug, Clone, PartialEq)]
+pub struct StoredSubagent {
+    pub record: NodeRecord,
+    pub model: ModelSelection,
+    pub started_on_path: bool,
+}
+
+/// What a switch of versions made current: the path from `from`, the
+/// place whose version changed, with the versions there and after. A block
+/// a compaction carried past its boundary shows the versions of the place
+/// it was carried from, which is before it (`message-editing.md`
+/// § Versions).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Switched {
+    pub from: usize,
+    pub blocks: Vec<Block>,
+    pub versions: BTreeMap<usize, Versions>,
 }
 
 impl CheckpointUpdate {

@@ -174,7 +174,7 @@ test('a late result cannot clear a different editor or conversation draft', asyn
   expect(state).toBe(other)
 })
 
-test('Regenerate sends the message unchanged without the editor; a lost answer leaves it for Retry', async () => {
+test('Regenerate sends the message unchanged without the editor; a lost answer leaves it for Retry, which regenerates again', async () => {
   const block = {
     ...userBlock('user-B', 'turn-B', 'unused'),
     content: [{ type: 'image' as const, source: { type: 'ref' as const, ref: SHA('a'), mediaType: 'image/png' } }],
@@ -182,12 +182,14 @@ test('Regenerate sends the message unchanged without the editor; a lost answer l
   let state: MessageEditState | null = null
   const phases: (string | undefined)[] = []
   const requests: MessageEditRequest[] = []
+  const regenerates: boolean[] = []
   const host = {
     get: () => state,
     set: (next: MessageEditState | null) => { state = next },
-    send: async (request: MessageEditRequest) => {
+    send: async (request: MessageEditRequest, regenerate: boolean) => {
       phases.push(state?.phase)
       requests.push(request)
+      regenerates.push(regenerate)
       if (requests.length === 1) throw new Error('connection lost')
     },
   }
@@ -196,11 +198,14 @@ test('Regenerate sends the message unchanged without the editor; a lost answer l
   // Sent as it is, an image alone without a line of text added, and never shown in the editor.
   expect(requests[0]!.content).toEqual(block.content)
   expect(phases).toEqual(['regenerating'])
-  expect(host.get()).toEqual({ phase: 'uncertain', request })
-  // While an edit is in progress, Regenerate sends nothing; Retry sends the same operation.
+  expect(host.get()).toEqual({ phase: 'uncertain', request, regenerate: true })
+  // While an edit is in progress, Regenerate sends nothing; Retry sends the
+  // same operation, a Regenerate again, which the session recognizes.
   await regenerateMessage(host, unchangedEditRequest(block, { epoch: 'epoch', revision: 4 }))
   expect(requests).toHaveLength(1)
   await submitMessageEdit(host)
   expect(requests).toEqual([request, request])
+  expect(regenerates).toEqual([true, true])
+  expect(phases).toEqual(['regenerating', 'regenerating'])
   expect(host.get()).toBeNull()
 })

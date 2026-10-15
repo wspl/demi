@@ -3,7 +3,7 @@ import type { ShownError } from '../infra/errors'
 import type { ProviderFailureFacts } from '@demicodes/protocol'
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useElementSize, useResizeObserver } from '@vueuse/core'
-import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { useBlockVirtualizer, type PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import { compactionSummaryTokens } from './visible-blocks'
 import { isTextBlockStreaming, isThinkingBlockStreaming } from './block-streaming'
@@ -39,6 +39,8 @@ import { blockDirectories, blockMessageFiles } from './working-directory'
 import { useMessageFiles } from '../markdown/message-files'
 import { useMediaAddress } from './media-source'
 import { transcriptPictures } from './transcript-pictures'
+import { versionPlaces, type VersionChoice } from './versions'
+import type { HeldBlock } from '@demicodes/conversation-client'
 
 const props = withDefaults(defineProps<{
   conversationId: string
@@ -46,7 +48,7 @@ const props = withDefaults(defineProps<{
   node?: string | null
   /** A subagent's working directory now, which its relative paths read against; absent for the conversation's own agent. */
   cwd?: string
-  blocks: Block[]
+  blocks: HeldBlock[]
   /** The calls the model is writing, shown after the transcript. */
   pendingCalls?: PendingCall[]
   /**
@@ -115,6 +117,8 @@ const emit = defineEmits<{
   editUser: [blockId: string]
   /** Regenerate on the last answer: a new answer to the message `blockId`. */
   regenerate: [blockId: string]
+  /** Show the `to`th version at the place of the block `blockId` (`message-editing.md` § Versions). */
+  switchVersion: [blockId: string, to: number]
   retryLoad: []
   /** Retry on the message `id`, whose delivery failed. */
   retrySubmission: [id: string]
@@ -160,6 +164,31 @@ function regenerate(): void {
     emit('regenerate', editableUserId.value)
   }
 }
+
+/**
+ * The versions each row shows, by its id: an edited message's under it, a
+ * regenerated answer's in its footer. A subagent's transcript shows none,
+ * since only the conversation's own path switches; switching waits, as an
+ * edit does, while the agent works, anything waits to be sent or the page
+ * offers no edit (`readOnly`) (`message-editing.md` § Versions).
+ */
+const versionChoices = computed(() => {
+  const choices = new Map<string, VersionChoice>()
+  if (props.node) {
+    return choices
+  }
+  const busy = props.readOnly || props.phase !== 'idle' || props.queue.length > 0 ||
+    props.pendingSteers.length > 0 || props.editTargetId !== undefined
+  for (const [rowId, place] of versionPlaces(props.blocks, footerIds.value)) {
+    choices.set(rowId, {
+      index: place.index,
+      count: place.count,
+      disabled: busy,
+      choose: (to) => emit('switchVersion', place.blockId, to),
+    })
+  }
+  return choices
+})
 // The summary size each compaction divider tells, by the id of the block that shows it.
 const summaryTokens = computed(() => new Map([
   ...Object.entries(props.summaries ?? {}),
@@ -434,6 +463,7 @@ defineExpose({
                 :entering="isEntering(String(item.key))"
                 :editable="renderBlocks[item.index]!.id === editableUserId"
                 :regenerate="renderBlocks[item.index]!.id === regenerateId ? regenerate : undefined"
+                :versions="versionChoices.get(renderBlocks[item.index]!.id)"
                 @update:open="(open) => runs.setOpen(keyOf(renderBlocks[item.index]!), open)"
                 @recall-steer="(id) => emit('recallSteer', id)"
                 @interrupt-pending-steer="(id) => emit('interruptPendingSteer', id)"

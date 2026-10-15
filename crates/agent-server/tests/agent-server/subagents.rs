@@ -1321,6 +1321,8 @@ pub(crate) fn checkpoint(queue: Vec<QueuedMessage>, blocks: Vec<Block>) -> Check
             account: None,
         },
         block_count: blocks.len(),
+        moved_from: None,
+        version: false,
         changed_blocks: blocks.into_iter().enumerate().collect(),
     }
 }
@@ -1346,6 +1348,7 @@ pub(crate) fn child_record(
         closed: None,
         delivered: false,
         forked_from: None,
+        started_by: None,
         cwd: Some(ChildDirectory {
             cwd: "/workspace".into(),
             under: Placement {
@@ -1489,6 +1492,105 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     );
     let frames = client.received();
     assert!(frames.iter().any(is_pending_steers));
+}
+
+// A restore of two closed children and one edit; well under a second.
+#[tokio::test(flavor = "local")]
+async fn an_edit_that_leaves_a_childs_start_takes_its_whole_subtree_off_the_current_path() {
+    let store = MemoryTreeStore::new();
+    store
+        .create_node(
+            NodeRecord::root(root(), Timestamp::UNIX_EPOCH),
+            checkpoint(Vec::new(), vec![user("r1", "start"), answer("r2", "started")]),
+        )
+        .await
+        .unwrap();
+    let completed = NodeClose {
+        phase: ClosePhase::Completed { result: "done".into() },
+        at: Timestamp::UNIX_EPOCH,
+    };
+    // The child was started by the root's answer, the grandchild by the
+    // child's own: both are on the current path until the edit.
+    for (id, number, parent, start, blocks) in [
+        ("child", 1, "conversation", "r2", vec![user("c1", "task"), answer("c2", "spawning")]),
+        ("grandchild", 2, "child", "c2", vec![user("g1", "subtask"), answer("g2", "done")]),
+    ] {
+        let record = NodeRecord {
+            started_by: Some(BlockId::try_from(start).unwrap()),
+            closed: Some(completed.clone()),
+            delivered: true,
+            ..child_record(id, number, parent, None)
+        };
+        store.create_node(record, checkpoint(Vec::new(), blocks)).await.unwrap();
+    }
+    let model = Model::default();
+    model.root([said("edited answer")]);
+    let fixture = Fixture::with_model(&model, TestProduct::default(), store.clone(), ServerConfig::default());
+    let mut client = fixture.opened().await;
+    let tree = fixture.server.tree(&root()).unwrap();
+    let on_path = || -> Vec<(u64, bool)> {
+        tree.subagent_jobs(None).into_iter().map(|job| (job.child.number, job.child.on_path)).collect()
+    };
+    assert_eq!(on_path(), [(1, true), (2, true)]);
+
+    let before = crate::support::session_of(&fixture).transcript();
+    client
+        .send(crate::editing::edit(
+            "op1",
+            &BlockId::try_from("r1").unwrap(),
+            &before.version,
+            demi_agent_server::testing::client_text("start over"),
+        ))
+        .await;
+    let frames = client.next_until(is_idle).await;
+
+    // The pages hear of both: the grandchild's start is still on its
+    // parent's path, but its parent is off the conversation's.
+    let changed: Vec<(u64, bool)> = frames
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::Subagent {
+                event: SubagentEvent::Changed,
+                job,
+            } => Some((job.child.number, job.child.on_path)),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(changed, [(1, false), (2, false)]);
+    assert_eq!(on_path(), [(1, false), (2, false)]);
+}
+
+// A restore of one stored child; well under a second.
+#[tokio::test(flavor = "local")]
+async fn a_child_whose_stored_state_does_not_rebuild_closes_as_failed_with_its_rows_kept() {
+    let store = MemoryTreeStore::new();
+    store
+        .create_node(NodeRecord::root(root(), Timestamp::UNIX_EPOCH), checkpoint(Vec::new(), Vec::new()))
+        .await
+        .unwrap();
+    let written = vec![user("b1", "task broken"), answer("b2", "half done")];
+    store
+        .create_node(
+            child_record("broken", 1, "conversation", None),
+            checkpoint(Vec::new(), written.clone()),
+        )
+        .await
+        .unwrap();
+    let broken = NodeId::try_from("broken").unwrap();
+    store.corrupt(&broken);
+    let model = Model::default();
+    model.root([said("noted")]);
+    let fixture = Fixture::with_model(&model, TestProduct::default(), store.clone(), ServerConfig::default());
+    let _client = fixture.opened().await;
+
+    until(|| root_receipts(&fixture).len() == 1).await;
+    // Closed as failed, never deleted: its record and its rows stay.
+    assert!(
+        matches!(closed_phase(&fixture, &broken), Some(ClosePhase::Error { .. })),
+        "{:?}",
+        store.record(&broken)
+    );
+    assert_eq!(store.rows(&broken), written);
 }
 
 #[tokio::test(flavor = "local")]
