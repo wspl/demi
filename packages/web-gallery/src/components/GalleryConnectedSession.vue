@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { shownAmong } from '../fixtures/device-marks'
 import { computed, ref } from 'vue'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -41,12 +40,14 @@ useLiveGalleryCommand(session.terminals)
 // The session's messages find the files the gallery provides its transcripts.
 const messageFiles = useMessageFiles()
 const hosts = createGalleryFileHosts()
-const devices: HostDeviceOption[] = shownAmong(hosts.map((host) => ({
+// The hosts' marks are the ones the account's devices show, so the host menu and the folder
+// browser draw each device alike.
+const devices: HostDeviceOption[] = hosts.map((host) => ({
   id: host.id,
   name: host.label,
   state: host.state,
   mark: host.mark ?? null,
-})))
+}))
 const folder = ref({
   deviceId: hosts[0]!.id,
   path: hosts[0]!.source.home,
