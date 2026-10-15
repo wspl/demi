@@ -2077,6 +2077,44 @@ html[data-theme="light"] .file-pill {
   max-width: none;
 }
 
+/* GitHub's alerts (`markdown/document.ts`): a quote marked as a note, a tip,
+   something important, a warning or a caution, its bar and title in the
+   kind's color. */
+.markdown-document .markdown-alert {
+  margin: var(--markdown-block-gap) 0 0;
+  padding-inline-start: 1em;
+  border-inline-start: 4px solid var(--alert-color);
+}
+
+.markdown-document .markdown-alert > :first-child {
+  margin-top: 0;
+}
+
+.markdown-document .markdown-alert-title {
+  font-weight: 500;
+  color: var(--alert-color);
+}
+
+.markdown-alert-note {
+  --alert-color: var(--on-info);
+}
+
+.markdown-alert-tip {
+  --alert-color: var(--on-success);
+}
+
+.markdown-alert-important {
+  --alert-color: var(--series-2);
+}
+
+.markdown-alert-warning {
+  --alert-color: var(--on-warning);
+}
+
+.markdown-alert-caution {
+  --alert-color: var(--on-danger);
+}
+
 /* Interface controls are not document text; editable fields keep native selection. */
 @layer base {
   :where(button, [role="button"], [role="tab"], [role="menu"], nav, label, legend) {

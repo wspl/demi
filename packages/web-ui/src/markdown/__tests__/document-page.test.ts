@@ -123,6 +123,30 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     await opened.close()
   })
 
+  test('GitHub’s alerts show their kind as a title, and a marker not alone on its line stays a quote', async () => {
+    const opened = await page()
+    const text = await opened.evaluate(async (markdown) => {
+      await window.show(markdown)
+      return document.querySelector('article')!.innerText
+    }, [
+      '> [!NOTE]',
+      '> Demi is in **early** development.',
+      '',
+      '> [!warning]',
+      '> Mind the gap.',
+      '',
+      '> [!NOTE] Not alone on its line.',
+    ].join('\n'))
+    expect(text.split('\n').filter(Boolean)).toEqual([
+      'Note',
+      'Demi is in early development.',
+      'Warning',
+      'Mind the gap.',
+      '[!NOTE] Not alone on its line.',
+    ])
+    await opened.close()
+  })
+
   test('a wide table fits the document, its cells wrapping, and a small one is as wide as its content', async () => {
     const opened = await page()
     const row = (cell: string) => `| ${Array.from({ length: 5 }, () => cell).join(' | ')} |`
