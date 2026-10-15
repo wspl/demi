@@ -35,7 +35,7 @@ const listed = (path: string): ChangedFile => ({ path, kind: 'modified', lines: 
 function shellCall(id: string, run: string, path: string, runPaths: string[]): Block {
   return {
     type: 'tool_call', id, run, createdAt, model, toolUseId: `use-${id}`, toolName: 'shell',
-    input: JSON.stringify({ script: 'true', description: `Write ${path}` }), status: 'completed', output: [],
+    input: JSON.stringify({ script: 'true', description: `Write ${path}` }), status: 'completed', endedAt: createdAt, output: [],
     view: {
       kind: 'shell', status: 'exited', commandId: id, exitCode: 0, runningMs: 10, idleMs: 0, chunks: [],
       viewTruncated: false, files: [own(path)], runFiles: runPaths.map(listed),

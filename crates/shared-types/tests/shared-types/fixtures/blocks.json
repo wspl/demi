@@ -1052,7 +1052,8 @@
     "input": "{\"script\":\"npm test\"",
     "status": "executing",
     "output": [],
-    "view": null
+    "view": null,
+    "endedAt": null
   },
   {
     "type": "tool_call",
@@ -1282,7 +1283,8 @@
           "edits": []
         }
       ]
-    }
+    },
+    "endedAt": "2026-09-21T14:13:20.000Z"
   },
   {
     "type": "tool_call",
@@ -1355,7 +1357,8 @@
       "kind": "repeated_shell",
       "script": "make",
       "count": 7
-    }
+    },
+    "endedAt": "2026-09-21T14:13:20.000Z"
   },
   {
     "type": "tool_call",
@@ -1432,7 +1435,8 @@
       "idleMs": 2000,
       "chunks": [],
       "viewTruncated": true
-    }
+    },
+    "endedAt": "2026-09-21T14:13:20.000Z"
   },
   {
     "type": "response",

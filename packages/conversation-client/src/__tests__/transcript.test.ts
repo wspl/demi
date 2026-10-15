@@ -127,7 +127,7 @@ test('the page names its first executing call, or else its last block', () => {
     toolName: 'shell',
     input: '{}',
     status,
-    output: [],
+    endedAt: status === 'executing' ? null : '2026-09-24T12:00:00.000Z', output: [],
     view: null,
   })
   expect(heldEdge(twoWindows())).toEqual({ from: 9, edge: 'b9' })

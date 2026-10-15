@@ -71,9 +71,10 @@ interface Recovery {
  * sent and the message confirmed, a run from its first step to its end.
  * Whatever replaces a row of another name takes its key (`keyOf`): the step
  * that ends a wait, the Requesting row of a Continue, the answer that
- * follows thinking without text. The run at the end of a running turn is
- * one row whose `live` says the turn has not moved past it, and its face
- * shimmers for as long; no Requesting row shows under it. The messages that
+ * follows thinking without text. A run's row holds the steps that ended; a
+ * step that still runs is a row of its own under it, in the tail row's
+ * place, and once it ended the turn waits for the model in a Requesting row
+ * under the run. The messages that
  * wait, the steers and the queue, stay below the turn: the tail row stands
  * above them, and its kind is read from the transcript alone.
  *
@@ -117,7 +118,7 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
       removing: input.removing,
     })
   })
-  // The calls the model is writing are the newest steps of the work: they join its group.
+  // The calls the model is writing are the newest steps of the work: each is a row of its own after its run.
   const pendingCallRows = computed(() => tail.value.turn.filter((block) => block.type === 'pending_call'))
   const otherTurnBlocks = computed(() => tail.value.turn.filter((block) => block.type !== 'pending_call'))
   // Until the turn shows something it did not show at the press, the

@@ -220,6 +220,7 @@
               "status": "executing",
               "output": [],
               "view": null,
+              "endedAt": null,
               "run": "id-6"
             }
           }
@@ -294,6 +295,7 @@
                 }
               ],
               "view": null,
+              "endedAt": "2026-09-24T12:00:00.000Z",
               "run": "id-6"
             }
           }
@@ -490,6 +492,7 @@
           }
         ],
         "view": null,
+        "endedAt": "2026-09-24T12:00:00.000Z",
         "run": "id-6"
       },
       {

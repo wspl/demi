@@ -36,7 +36,7 @@ test("the calls being written follow the transcript from their description, befo
   // The block arrived before the list without it: the call shows once.
   const held: Block = {
     type: 'tool_call', id: 'b1', toolUseId: 'call-1', toolName: 'shell', input: '{}', status: 'executing',
-    output: [], view: null, createdAt, model,
+    endedAt: null, output: [], view: null, createdAt, model,
   }
   const titled = writing.map((call) => ({ ...call, description: call.description ?? 'Run the categorizer' }))
   const after = listTailBlocks({ phase: 'running', blocks: [held], pendingCalls: titled, pendingSteers: [], queue: [] })

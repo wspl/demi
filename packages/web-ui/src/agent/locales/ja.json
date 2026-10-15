@@ -104,11 +104,8 @@
       "ran": "{count} 件のコマンドを実行",
       "checked": "{count} 件のコマンドを確認",
       "used": "{tool} を使用",
-      "running": "{count} 件のコマンドを実行中",
-      "checking": "{count} 件のコマンドを確認中",
-      "using": "{tool} を使用中",
       "joined": "{first}、{next}",
-      "runningFor": "{what}（{time}）",
+      "took": "{what}、所要時間 {span}",
       "command": {
         "finished": "{count} 件のコマンドが完了",
         "failed": "{count} 件のコマンドが失敗",

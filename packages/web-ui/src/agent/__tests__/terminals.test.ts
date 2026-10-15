@@ -132,7 +132,7 @@ function call(toolUseId: string, status: 'executing' | 'completed'): Block {
     toolName: 'shell',
     input: '{}',
     status,
-    output: [],
+    endedAt: status === 'executing' ? null : createdAt, output: [],
     view: null,
   }
 }
@@ -347,7 +347,7 @@ test('a shell row runs while its call runs, and after it returned until its comm
 test('a returned call marks its command\'s end once the end arrives, and not from its own running view', () => {
   const returned: ToolCallBlock = {
     type: 'tool_call', id: 'call', createdAt, model, toolUseId: 'call-1', toolName: 'shell',
-    input: '{"script":"make watch"}', status: 'completed', output: [],
+    input: '{"script":"make watch"}', status: 'completed', endedAt: createdAt, output: [],
     view: {
       kind: 'shell', status: 'running', commandId: 'cmd', runningMs: 10, idleMs: 0,
       chunks: [], viewTruncated: false,
@@ -379,7 +379,7 @@ test('a returned call marks its command\'s end once the end arrives, and not fro
 test('a reloaded page times a running command from the start the server reported, and its tag goes at the end', () => {
   const call: ToolCallBlock = {
     type: 'tool_call', id: 'call', createdAt, model, toolUseId: 'call-1', toolName: 'shell',
-    input: '{"script":"sleep 600","description":"Wait"}', status: 'executing', output: [], view: null,
+    input: '{"script":"sleep 600","description":"Wait"}', status: 'executing', endedAt: null, output: [], view: null,
   }
   const loadedAt = Date.parse('2026-09-24T12:05:00.000Z')
   const frame = { status: 'running', commandId: '17', toolUseId: 'call-1', tail: '', chars: 0, runningMs: 92_000 } as const

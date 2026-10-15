@@ -69,7 +69,7 @@ function tool(id: string, toolName: string): Extract<Block, {
     toolName,
     input: '{}',
     status: 'completed',
-    output: [],
+    endedAt: createdAt, output: [],
     view: null,
   }
 }

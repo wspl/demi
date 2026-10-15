@@ -336,6 +336,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       toolUseId: `${id}-use`,
       toolName: 'shell',
       status,
+      // It returns as the replay replaces it.
+      endedAt: status === 'executing' ? null : now(),
       input: JSON.stringify({
         script: TOOL_SCRIPT,
         description: TOOL_DESCRIPTION,
@@ -501,8 +503,8 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     thinkThenReply(run, toolDone + WAIT_MS, THINK_2)
   }
 
-  /** A call of the `work` turn; a background one returned while its command still ran. */
-  function workCall(id: string, createdAt: string, step: Extract<WorkStep, { kind: 'call' }>, status: ToolCallBlock['status']): ToolCallBlock {
+  /** A call of the `work` turn, which returned at `endedAt`, the moment it is built unless said; a background one returned while its command still ran. */
+  function workCall(id: string, createdAt: string, step: Extract<WorkStep, { kind: 'call' }>, status: ToolCallBlock['status'], endedAt = now()): ToolCallBlock {
     const text = `${step.lines.join('\n')}\n`
     return {
       type: 'tool_call',
@@ -512,6 +514,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       toolUseId: `${id}-use`,
       toolName: 'shell',
       status,
+      endedAt: status === 'executing' ? null : endedAt,
       input: JSON.stringify({ script: step.script, description: step.description }),
       output: status === 'completed' ? [{ type: 'text', text }] : [],
       view: status === 'executing'
@@ -649,7 +652,13 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     forgetSubmissions()
     state.pendingCalls = []
     state.phase = 'idle'
-    const at = now()
+    // Each step starts where the one before ended and the model answered, as in the replay.
+    let clock = Date.now() - WORK_STEPS.length * (TOOL_RUN_MS + STEP_ANSWER_MS)
+    const next = (ms: number) => {
+      const at = new Date(clock).toISOString()
+      clock += ms
+      return at
+    }
     const calls = new Map<string, string>()
     let listed: ChangedFile[] = []
     state.blocks = [
@@ -657,21 +666,23 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       ...inRun(...WORK_STEPS.map((step): Block => {
         switch (step.kind) {
           case 'think':
-            return thinkingBlock(nextId('think'), at, step.text)
+            return thinkingBlock(nextId('think'), next(STEP_ANSWER_MS), step.text)
           case 'notice':
-            return workNotice(nextId('notice'), at, calls.get(step.of) ?? '', step.of)
+            return workNotice(nextId('notice'), next(0), calls.get(step.of) ?? '', step.of)
           case 'receipt':
-            return workReceipt(at, step.message)
+            return workReceipt(next(0), step.message)
           case 'call': {
             const id = nextId('tool')
             calls.set(step.description, `cmd-${id}`)
-            const done = workCall(id, at, step, 'completed')
+            const startedAt = next(TOOL_RUN_MS)
+            const done = workCall(id, startedAt, step, 'completed', new Date(clock).toISOString())
+            clock += STEP_ANSWER_MS
             listed = [...listed, ...listedFiles(done)]
             return withLists(done, listed)
           }
         }
       })),
-      textBlock(nextId('text'), at, WORK_REPLY),
+      textBlock(nextId('text'), next(0), WORK_REPLY),
     ]
   }
 

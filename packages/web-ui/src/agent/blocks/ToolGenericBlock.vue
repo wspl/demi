@@ -10,8 +10,6 @@ import { splitMedia, toolMedia } from '../tool-media'
 
 const props = defineProps<{
   block: ToolCallBlock
-  /** The row is a run's that the running turn has not moved past: it shimmers also after the call returned. */
-  working?: boolean
 }>()
 const isOpen = defineModel<boolean>('open', { default: false })
 
@@ -23,7 +21,7 @@ const media = computed(() => splitMedia(toolMedia(props.block.output, props.bloc
 <template>
   <FunctionalBlock
     v-model:open="isOpen"
-    :loading="block.status === 'executing' || working"
+    :loading="block.status === 'executing'"
     :pictures="media.pictures"
   >
     <ToolCallFace :block="block" />

@@ -1,7 +1,9 @@
 import { describe, expect, test } from 'bun:test'
 import type { Block } from '@demicodes/protocol'
 import type { MessageListBlock } from '../pending-steers'
-import { groupWork, runFace, workRunning, workSummary, type WorkGroupBlock } from '../work-groups'
+import { followedBlockId, groupWork, runLabel, runningOn, workSummary, type WorkGroupBlock } from '../work-groups'
+import { isThinkingBlockStreaming } from '../block-streaming'
+import { rowKey } from '../row-key'
 import { createdAt, model } from './agent-harness'
 
 // Cost: pure, a few milliseconds for the file.
@@ -22,6 +24,7 @@ const call = (
   toolName,
   status,
   input: JSON.stringify(input),
+  endedAt: status === 'executing' ? null : createdAt,
   output: [],
   view: null,
 })
@@ -89,7 +92,7 @@ describe('the steps the transcript shows as one row', () => {
     expect(rows(groupWork([...run('a', call('a'), call('b'), thinking('t3')), text('r')], false)))
       .toEqual([['a', 'b'], 'r'])
     expect(rows(groupWork([...run('t1', thinking('t1')), text('r')], false))).toEqual(['r'])
-    expect(rows(groupWork([text('r'), ...run('a', call('a'), thinking('t2'))], true))).toEqual(['r', ['a', 't2']])
+    expect(rows(groupWork([text('r'), ...run('a', call('a'), thinking('t2'))], true))).toEqual(['r', ['a'], 't2'])
   })
 
   test('each run the backend stored is a row of its own, even with nothing shown between', () => {
@@ -104,17 +107,48 @@ describe('the steps the transcript shows as one row', () => {
     expect(rows(groupWork([...run('t', thinking('t', 'Plan the fix.'), call('a')), text('r')], false))).toEqual([['t', 'a'], 'r'])
   })
 
-  test('the end of a running turn is always a group, from its first step, the call being written included', () => {
-    const live = groupWork([text('r'), ...run('t1', thinking('t1'))], true)
-    expect(rows(live)).toEqual(['r', ['t1']])
-    expect((live[1] as WorkGroupBlock).live).toBe(true)
-    // The empty thinking that opened the run gives the group its id, so the
-    // row stays the same row as the calls roll over it.
-    const later = groupWork([text('r'), ...run('t1', thinking('t1'), call('a')), writing('b')], true)
-    expect(rows(later)).toEqual(['r', ['a', 'pending-call:b-use']])
-    expect(later[1]!.id).toBe(live[1]!.id)
+})
+
+// `runtime.md` § Work groups: only a step that has ended joins its run, a
+// call once it returned and thinking once it is written. At a running
+// turn's end, what still runs is a row of its own under the run, so the run
+// is what has happened. Before, the newest step was the run's own face, and
+// the run opened it with the rest as one stack (the user's report: Ran 2
+// commands over the newest command opened together).
+describe('the end of a running turn', () => {
+  const executing = (id: string) => call(id, 'shell', { script: 'bun test', description: `Run ${id}` }, 'executing')
+
+  test('what runs is a row of its own under the steps that ended', () => {
+    // Thinking being written, a call waiting for its result, and a call being written each stand alone.
+    expect(rows(groupWork([text('r'), ...run('t1', thinking('t1'))], true))).toEqual(['r', 't1'])
+    expect(rows(groupWork([text('r'), ...run('a', call('a'), executing('b'))], true))).toEqual(['r', ['a'], 'b'])
+    expect(rows(groupWork([text('r'), ...run('a', call('a'), call('b')), writing('c')], true))).toEqual(['r', ['a', 'b'], 'pending-call:c-use'])
+    // A call that ended joins the run even when one before it, started with it, still runs.
+    expect(rows(groupWork([text('r'), ...run('a', executing('a'), call('b'))], true))).toEqual(['r', ['b'], 'a'])
     // A call being written after what ends a run starts one.
-    expect(rows(groupWork([...run('a', call('a')), text('r'), writing('b')], true))).toEqual([['a'], 'r', ['pending-call:b-use']])
+    expect(rows(groupWork([...run('a', call('a')), text('r'), writing('b')], true))).toEqual([['a'], 'r', 'pending-call:b-use'])
+    // Once the turn ended, nothing runs: every step is the run's.
+    expect(rows(groupWork([text('r'), ...run('a', call('a'), thinking('t', 'Done.'))], false))).toEqual(['r', ['a', 't']])
+  })
+
+  test('a call whose command goes on in the background has ended, and wears the time of that command', () => {
+    /** A call that returned while its command ran on, as its stored view says. */
+    const runsOn = (id: string): Block => ({
+      ...call(id, 'shell', { script: 'sleep 600', description: `Run ${id}` }),
+      view: { kind: 'shell', status: 'running', commandId: '7', runningMs: 15_000, idleMs: 0, viewTruncated: false, chunks: [] },
+    } as Block)
+    const live = groupWork([text('r'), ...run('a', call('a'), runsOn('s'))], true)
+    expect(rows(live)).toEqual(['r', ['a', 's']])
+    expect(runningOn((live[1] as WorkGroupBlock).steps).map((step) => step.id)).toEqual(['s'])
+    expect(runningOn(steps(call('a'), runsOn('s'), call('b'), runsOn('w'), call('g', 'browse', { description: 'Open' }))).map((step) => step.id))
+      .toEqual(['s', 'w'])
+  })
+
+  test('a run that holds only thinking shows once a step that says something joins it', () => {
+    expect(rows(groupWork([text('r'), ...run('t', thinking('t', 'Plan the fix.'), executing('a'))], true))).toEqual(['r', 'a'])
+    expect(rows(groupWork([text('r'), ...run('t', thinking('t', 'Plan the fix.'), call('a'))], true))).toEqual(['r', ['t', 'a']])
+    // Ended, a lone thinking stays its own row.
+    expect(rows(groupWork([text('r'), ...run('t', thinking('t', 'Plan the fix.')), text('d')], true))).toEqual(['r', ['t'], 'd'])
   })
 })
 
@@ -147,11 +181,12 @@ describe('thinking blocks next to each other', () => {
   test('alone, are one row, and a second one streaming keeps the row the first was', () => {
     expect(rows(groupWork([...run('k1', thought('k1', 'Read the test.', 0), thought('k2', 'Then run it.', 4)), text('r')], false)))
       .toEqual([['k1'], 'r'])
-    const first = opened(run('k1', thought('k1', 'Read the test.', 0)), true)
-    const both = opened(run('k1', thought('k1', 'Read the test.', 0), thought('k2', '', 4)), true)
-    expect(both.id).toBe(first.id)
-    expect(runFace(both, false)).toMatchObject({ kind: 'thinking', thinking: { id: 'k1', text: 'Read the test.' } })
-    expect(workRunning(both.steps)).toBe('Thinking')
+    // Being written, it is the row of its own of what runs, named as the first.
+    const tail = (blocks: Block[]) => groupWork([text('q'), ...blocks], true).at(-1)!
+    const first = tail(run('k1', thought('k1', 'Read the test.', 0)))
+    const both = tail(run('k1', thought('k1', 'Read the test.', 0), thought('k2', '', 4)))
+    expect(rowKey(both)).toBe(rowKey(first))
+    expect(both).toMatchObject({ type: 'thinking', id: 'k1', text: 'Read the test.' })
   })
 })
 
@@ -187,7 +222,6 @@ describe('the notices and receipts between the steps', () => {
     ))).toBe('2 commands finished, 1 agent failed, heard from 1 agent')
     // A call says what the run did; its notices add nothing.
     expect(workSummary(steps(notice('n', '17'), check('s', 18)))).toBe('Checked 1 command')
-    expect(workRunning(steps(notice('n', '17'), receipt('m', 'ag-2')))).toBe('1 command finished, heard from 1 agent')
   })
 
   test('a run without a call counts its commands and agents by how each ended', () => {
@@ -222,122 +256,95 @@ describe('what a group says it did', () => {
       .toBe('Ran 1 command, used read_file')
     expect(workSummary(steps(plan, call('s', 'shell_status', { commandId: 17 })))).toBe('Used shell_status')
   })
-
-  test('a running group counts the calls being written, and names what it does when it runs no command', () => {
-    expect(workRunning(steps(call('a'), check('s', 17), call('c'), writing('d')))).toBe('Running 3 commands')
-    expect(workRunning(steps(plan, check('s', 17)))).toBe('Checking 1 command')
-    expect(workRunning(steps(plan, check('s', 17), writing('r', 'read_file')))).toBe('Checking 1 command, using read_file')
-    expect(workRunning(steps(plan))).toBe('Thinking')
-  })
-
-  // `runtime.md` § Work groups: an open running run says for how long once
-  // past 3 seconds, counting up as Thinking for 9s does.
-  test('a running group says for how long it has run once past 3 seconds', () => {
-    const run = steps(call('a'), call('b'), call('c'), call('d'))
-    expect(workRunning(run, 2_000)).toBe('Running 4 commands')
-    expect(workRunning(run, 92_000)).toBe('Running 4 commands for 1m 32s')
-    expect(workRunning(steps(plan, check('s', 17)), 9_000)).toBe('Checking 1 command for 9s')
-  })
 })
 
-// A shell row wears the time its command has run, or how it went wrong, on
-// whatever face shows it (`runtime.md` § Rendering boundary, § Work groups):
-// a lone call is its own row, which wears its tag; a folded running run is
-// its newest step and wears that step's tag too. Before, the folded face
-// showed the step's title bare, so the lead's merge, a thinking and then a
-// call running for minutes, showed no time until the row was opened.
-describe('the face that wears a running command’s tag', () => {
-  const merge = call('m', 'shell', { script: 'git merge && bun run test', description: 'Review and merge' }, 'executing')
-  /** The face of the last run in the transcript `blocks`, `open` or folded. */
-  const face = (blocks: (Block | MessageListBlock)[], running: boolean, open = false) => {
-    const row = groupWork([text('r'), ...blocks], running).findLast((each) => each.type === 'work_group') as WorkGroupBlock
-    const shown = runFace(row, open)
-    if (shown.kind === 'step')
-      return { kind: 'step', step: shown.step.id, command: shown.command?.id ?? null }
-    return shown.kind === 'done' ? { kind: 'done', running: shown.running.map((step) => step.id) } : { kind: shown.kind }
-  }
-  /** A call that returned while its command ran on, as its stored view says. */
-  const runsOn = (id: string): Block => ({
-    ...call(id, 'shell', { script: 'sleep 600', description: `Run ${id}` }),
-    view: { kind: 'shell', status: 'running', commandId: '7', runningMs: 15_000, idleMs: 0, viewTruncated: false, chunks: [] },
-  } as Block)
-
-  test('a running call alone, or after thinking that goes, is its own row', () => {
-    expect(face(run('m', merge), true)).toEqual({ kind: 'call' })
-    // A call being written alone is its own row too, as the call it becomes:
-    // before, it was a run's face, with a chevron that opened a stack of one
-    // step, which the same call shows nowhere else.
-    expect(face([writing('m')], true)).toEqual({ kind: 'writing' })
-    expect(face([...run('t', thinking('t')), writing('m')], true)).toEqual({ kind: 'writing' })
-    expect(face(run('t', thinking('t'), merge), true)).toEqual({ kind: 'call' })
-    // After the turn, a command that runs on keeps its own row.
-    expect(face([...run('m', { ...merge, status: 'completed' } as Block)], false)).toEqual({ kind: 'call' })
-  })
-
-  test('a folded running run whose newest step is a shell call wears that call’s tag', () => {
-    expect(face(run('t', thinking('t', 'Merge it.'), merge), true)).toEqual({ kind: 'step', step: 'm', command: 'm' })
-    expect(face(run('a', call('a'), call('b'), call('c'), merge), true)).toEqual({ kind: 'step', step: 'm', command: 'm' })
-    // A check is a shell row too, with its own tag.
-    expect(face(run('a', call('a'), check('s', 17)), true)).toEqual({ kind: 'step', step: 's', command: 's' })
-  })
-
-  test('a face that is no shell call, an open run and an ended run wear none', () => {
-    // Nothing runs while the call is written; its block takes over the face once whole.
-    expect(face([...run('a', call('a')), writing('m')], true)).toEqual({ kind: 'step', step: 'pending-call:m-use', command: null })
-    expect(face(run('a', call('a'), call('g', 'browse', { description: 'Open the page' }, 'executing')), true))
-      .toEqual({ kind: 'step', step: 'g', command: null })
-    // Open, the run says for how long it has run, and each step's row inside wears its own tag.
-    expect(face(run('a', call('a'), merge), true, true)).toEqual({ kind: 'stack' })
-    expect(face(run('a', call('a'), call('b')), false)).toEqual({ kind: 'done', running: [] })
-  })
-
-  // `runtime.md` § Work groups: the agent thought, left a command running and
-  // ended its turn; the ended run's row wears that command's time until it
-  // ends, so the folded row never hides that something still runs. Whether
-  // it still runs is the live frames' to say, which the row's tag reads.
-  test('an ended run names the calls whose command ran on after they returned', () => {
-    expect(face([...run('t', thinking('t', 'Start the suite.'), runsOn('s')), text('d')], false))
-      .toEqual({ kind: 'done', running: ['s'] })
-    expect(face(run('a', call('a'), runsOn('s'), call('b'), runsOn('w'), call('g', 'browse', { description: 'Open' })), false))
-      .toEqual({ kind: 'done', running: ['s', 'w'] })
-  })
-})
-
-// `runtime.md` § Work groups: a running run, folded, shows over its newest
-// step what the steps before it did, worded as an ended run is; steps that
-// say nothing, thinking alone, leave it one line.
-describe('the line over a running run’s newest step', () => {
-  /** What the folded running run's first line says over its newest step. */
-  const earlier = (...blocks: (Block | MessageListBlock)[]) => {
-    const row = groupWork([text('r'), ...blocks], true).findLast((each) => each.type === 'work_group') as WorkGroupBlock
-    const shown = runFace(row, false)
-    return shown.kind === 'step' ? shown.earlier : null
-  }
-
-  test('thinking and a call are one line; two calls read what the first did', () => {
-    expect(earlier(...run('t', thinking('t', 'Look first.'), call('a')))).toBe('')
-    expect(earlier(...run('a', call('a'), call('b')))).toBe('Ran 1 command')
-    expect(earlier(...run('a', call('a'), check('s', 17), call('b')))).toBe('Ran 1 command, checked 1 command')
-  })
-})
-
-// The run at the end of a running turn is one row from its first step: a
-// step that joins never adds a row that then merges into it, and the row
-// keeps its name as a call being written becomes its block and as the run
-// ends, so the list keeps the row it measured (`runtime.md` § Work groups).
+// A run's row is named after the run the backend stored, so it stays one
+// row whichever of its steps ends first; a step that runs is named after
+// itself (`runtime.md` § Work groups).
 test('a run is one row under one name from its first step to its end', () => {
-  const ids = (list: readonly MessageListBlock[]) => list.map((row) => (row.type === 'work_group' ? `${row.id}:${row.steps.length}` : row.id))
-  expect(ids(groupWork([text('t'), writing('c1')], true))).toEqual(['t', 'work:c1-use:1'])
-  expect(ids(groupWork([text('t'), ...run('c1', call('c1'))], true))).toEqual(['t', 'work:c1-use:1'])
-  expect(ids(groupWork([text('t'), ...run('c1', call('c1'), thinking('k', 'Next'))], true))).toEqual(['t', 'work:c1-use:2'])
-  expect(ids(groupWork([text('t'), ...run('c1', call('c1')), writing('c2')], true))).toEqual(['t', 'work:c1-use:2'])
-  expect(ids(groupWork([text('t'), ...run('c1', call('c1')), text('r')], false))).toEqual(['t', 'work:c1-use:1', 'r'])
-  // A thinking first names the row, also once it has nothing to show and goes.
-  expect(ids(groupWork([text('t'), ...run('k', thinking('k'))], true))).toEqual(['t', 'work:k:1'])
-  expect(ids(groupWork([text('t'), ...run('k', thinking('k'), call('c1'))], true))).toEqual(['t', 'work:k:1'])
-  expect(ids(groupWork([text('t'), ...run('k', thinking('k'), call('c1')), text('r')], true))).toEqual(['t', 'work:k:1', 'r'])
+  const keys = (list: readonly MessageListBlock[]) => list.map((row) => (row.type === 'work_group' ? `${row.id}:${row.steps.length}` : rowKey(row)))
+  const executing = (id: string) => call(id, 'shell', { script: 'bun test', description: `Run ${id}` }, 'executing')
+  expect(keys(groupWork([text('t'), writing('c1')], true))).toEqual(['t', 'work:c1-use'])
+  expect(keys(groupWork([text('t'), ...run('c1', executing('c1'))], true))).toEqual(['t', 'work:c1-use'])
+  expect(keys(groupWork([text('t'), ...run('c1', call('c1'))], true))).toEqual(['t', 'run:c1:1'])
+  expect(keys(groupWork([text('t'), ...run('c1', call('c1'), thinking('k', 'Next'))], true))).toEqual(['t', 'run:c1:1', 'work:k'])
+  expect(keys(groupWork([text('t'), ...run('c1', call('c1')), writing('c2')], true))).toEqual(['t', 'run:c1:1', 'work:c2-use'])
+  expect(keys(groupWork([text('t'), ...run('c1', call('c1'), call('c2'))], true))).toEqual(['t', 'run:c1:2'])
+  expect(keys(groupWork([text('t'), ...run('c1', call('c1')), text('r')], false))).toEqual(['t', 'run:c1:1', 'r'])
+  // A run that a thinking without text opened keeps that thinking's name once it has gone.
+  expect(keys(groupWork([text('t'), ...run('k', thinking('k'))], true))).toEqual(['t', 'work:k'])
+  expect(keys(groupWork([text('t'), ...run('k', thinking('k'), call('c1'))], true))).toEqual(['t', 'run:k:1'])
   // A notice or a receipt that joins keeps the run's name, and one that starts the run names it.
-  expect(ids(groupWork([text('t'), ...run('c1', call('c1'), notice('n', '17'), receipt('m', 'ag-2'))], true))).toEqual(['t', 'work:c1-use:3'])
-  expect(ids(groupWork([text('t'), ...run('n', notice('n', '17'))], true))).toEqual(['t', 'work:n:1'])
-  expect(ids(groupWork([text('t'), ...run('n', notice('n', '17'), thinking('k'), call('c1'))], true))).toEqual(['t', 'work:n:2'])
+  expect(keys(groupWork([text('t'), ...run('c1', call('c1'), notice('n', '17'), receipt('m', 'ag-2'))], true))).toEqual(['t', 'run:c1:3'])
+  expect(keys(groupWork([text('t'), ...run('n', notice('n', '17'))], true))).toEqual(['t', 'run:n:1'])
+  expect(keys(groupWork([text('t'), ...run('n', notice('n', '17'), thinking('k'), call('c1'))], true))).toEqual(['t', 'run:n:2'])
+})
+
+// Review: parallel calls return in any order. Before, the run was named
+// after its first ended step, so B returning before A named it after B and
+// A's return renamed it after A: another row, closed again.
+test('calls that return out of order keep their run one row under one name', () => {
+  const executing = (id: string) => call(id, 'shell', { script: 'bun test', description: `Run ${id}` }, 'executing')
+  const runRow = (blocks: Block[]) => groupWork([text('t'), ...blocks], true).find((row) => row.type === 'work_group') as WorkGroupBlock
+  const before = runRow(run('a', executing('a'), call('b')))
+  const after = runRow(run('a', call('a'), call('b')))
+  expect(before.steps.map((step) => step.id)).toEqual(['b'])
+  expect(after.steps.map((step) => step.id)).toEqual(['a', 'b'])
+  expect(after.id).toBe(before.id)
+})
+
+// Review: a call waiting for its result is a row of its own wherever its run
+// stands, not only in the run at the turn's end. Before, a call left
+// executing in a run the agent's text ended folded into that run as if done.
+test('a call that still runs in an earlier run is a row of its own', () => {
+  const executing = (id: string) => call(id, 'shell', { script: 'bun test', description: `Run ${id}` }, 'executing')
+  const list = groupWork([text('q'), ...run('k', thinking('k', 'Start both.'), executing('a')), text('r'), ...run('b', call('b'))], true)
+  expect(rows(list)).toEqual(['q', 'a', 'r', ['b']])
+})
+
+// Review: two thinking blocks next to each other are one step, whose row
+// follows its last part. Before, the row followed the first, which a second
+// block had followed, so a second block streaming showed it ended.
+test('a joined thinking step streams and ends with its last part', () => {
+  const blocks = [text('q'), ...run('k1', thinking('k1', 'Read the test.'), thinking('k2', ''))]
+  const row = groupWork(blocks, true).at(-1)!
+  expect(row.id).toBe('k1')
+  expect(isThinkingBlockStreaming(blocks as Block[], 'running', blocks.findIndex((block) => block.id === followedBlockId(row)))).toBe(true)
+})
+// `runtime.md` § Work groups: a run says its total time in its sentence,
+// running or ended, its steps' times added up: a call from its start until
+// it returned, a command left in the background only until then, a thinking
+// until the next block started, and never the model's wait between steps.
+describe('the time a run took', () => {
+  const at = (seconds: number) => new Date(Date.parse(createdAt) + seconds * 1000).toISOString()
+  const timed = (block: Block, start: number, end?: number): Block =>
+    ({ ...block, createdAt: at(start), ...(end === undefined ? {} : { endedAt: at(end) }) }) as Block
+  const label = (blocks: (Block | MessageListBlock)[], running: boolean) =>
+    runLabel(groupWork([text('q'), ...blocks], running).find((row) => row.type === 'work_group') as WorkGroupBlock)
+
+  test('adds its steps’ times and leaves out the waits between them', () => {
+    // Thinks 4 s, runs a command 10 s, the model is waited for 3 s, starts a
+    // command that goes on in the background and returns after 2 s, which
+    // later reports its end; the answer comes 30 s later.
+    const steps = run('k',
+      timed(thinking('k', 'Run the suite.'), 0),
+      timed(call('a'), 4, 14),
+      timed(call('b', 'shell', { script: 'bun dev', description: 'Start the server' }), 17, 19),
+      timed(notice('n', '7'), 40))
+    expect(label([...steps, timed(text('r'), 49)], false)).toBe('Ran 2 commands for 16s')
+    // While the turn runs, the same steps say the same.
+    expect(label(steps, true)).toBe('Ran 2 commands for 16s')
+    // Thinking that ended before a call that still runs ends where that call starts.
+    expect(label(run('k', timed(thinking('k', 'Check.'), 0), timed(call('a'), 6, 8), timed(thinking('t', 'Then run it.'), 8), timed(call('c', 'shell', undefined, 'executing'), 70)), true))
+      .toBe('Ran 1 command for 1m 10s')
+    // Review: a thinking ends where the next block starts in the transcript,
+    // a call that still runs included. Thinking 0–6 s, call A runs from 6 s,
+    // call B 7–10 s returned first: 6 s and 3 s, never the thinking until B.
+    expect(label(run('k', timed(thinking('k', 'Run both.'), 0), timed(call('a', 'shell', undefined, 'executing'), 6), timed(call('b'), 7, 10)), true))
+      .toBe('Ran 1 command for 9s')
+  })
+
+  test('a run under a second says no time', () => {
+    expect(label(run('a', timed(call('a'), 0, 0.3), timed(call('b'), 1, 1.2)), false)).toBe('Ran 2 commands')
+  })
 })

@@ -14,7 +14,7 @@ use sha2::{Digest, Sha256};
 
 use demi_agent_store::CheckpointState;
 use bytes::Bytes;
-use demi_shared_types::{BlobRef, ReportEvent};
+use demi_shared_types::{BlobRef, ReportEvent, Timestamp};
 use demi_web_api_protocol::ids::ProviderId;
 
 use super::StorageError;
@@ -809,7 +809,8 @@ CREATE TABLE plugin_oauth_clients (
 /// directories before a node kept its profile's Context, and through the
 /// one of format 6 before a shell call marked the paths outside its
 /// agent's directory, and the one of format 7 before account rotation, and the one of format 8
-/// before the shares' snapshots.
+/// before the shares' snapshots. The last of those a server keeps is the
+/// one `0.1.22-dev.20261015T105826Z` deployed, of format 8.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -869,8 +870,92 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.block-format-8.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_BLOCK_FORMAT_8),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.20261015T105826Z.sql"),
+            migration: Migration::Code(calls_with_their_ends),
+        },
     ],
 };
+
+/// From the conversation schema that `0.1.22-dev.20261015T105826Z`
+/// deployed, of transcript block format 8, to format 9, in which a call's
+/// block records when it returned, `endedAt`, which a run's time adds up
+/// (`runtime.md` § Work groups). A stored call kept no record of it: one
+/// that returned ends the time its shell view says its command ran until
+/// then, `runningMs`, after it started, and a call of another tool where
+/// it started; a call still executing has not returned. The blocks of the
+/// shares' snapshots are migrated the same way, and each block is decoded
+/// and checked as format 9 before it is written back.
+fn calls_with_their_ends(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    let calls = "json_extract(block, '$.type') = 'tool_call'";
+    let rows = transaction
+        .prepare(&format!("SELECT node_id, idx, block FROM blocks WHERE {calls}"))?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, String>(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update = transaction.prepare("UPDATE blocks SET block = ?3 WHERE node_id = ?1 AND idx = ?2")?;
+    for (node, index, text) in rows {
+        if let Some(block) = ended_call(&text)? {
+            update.execute(rusqlite::params![node, index, block])?;
+        }
+    }
+    let rows = transaction
+        .prepare(&format!("SELECT token, agent, idx, block FROM share_blocks WHERE {calls}"))?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?, row.get::<_, i64>(2)?, row.get::<_, String>(3)?))
+        })?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut update =
+        transaction.prepare("UPDATE share_blocks SET block = ?4 WHERE token = ?1 AND agent = ?2 AND idx = ?3")?;
+    for (token, agent, index, text) in rows {
+        if let Some(block) = ended_call(&text)? {
+            update.execute(rusqlite::params![token, agent, index, block])?;
+        }
+    }
+    Ok(())
+}
+
+/// The stored call `text` as format 9 holds it, decoded and encoded again;
+/// none when it holds its end already, as one an earlier migration wrote.
+fn ended_call(text: &str) -> rusqlite::Result<Option<String>> {
+    let mut block: serde_json::Value = serde_json::from_str(text).map_err(corrupt)?;
+    if !with_its_end(&mut block)? {
+        return Ok(None);
+    }
+    let block: demi_shared_types::Block = demi_shared_types::decode_value(block).map_err(corrupt)?;
+    Ok(Some(to_json(&block)))
+}
+
+/// A stored call of transcript block format 8 or before as format 9 holds
+/// it, with when it returned (`calls_with_their_ends`); true when it
+/// changed. A start or a time that is not what its format says is corrupt
+/// data, which fails the migration. The migrations before that format's
+/// decode the blocks they relist as the current format, so they read a
+/// call through this too.
+fn with_its_end(block: &mut serde_json::Value) -> rusqlite::Result<bool> {
+    let Some(fields) = block.as_object_mut() else {
+        return Ok(false);
+    };
+    if fields.get("type").and_then(serde_json::Value::as_str) != Some("tool_call") || fields.contains_key("endedAt") {
+        return Ok(false);
+    }
+    let ended_at = if fields.get("status").and_then(serde_json::Value::as_str) == Some("executing") {
+        serde_json::Value::Null
+    } else {
+        let field = |value: Option<&serde_json::Value>| value.cloned().unwrap_or_default();
+        let started: Timestamp = serde_json::from_value(field(fields.get("createdAt"))).map_err(corrupt)?;
+        let shell = fields
+            .get("view")
+            .filter(|view| view.get("kind").and_then(serde_json::Value::as_str) == Some("shell"));
+        let ran = match shell {
+            Some(view) => serde_json::from_value::<i64>(field(view.get("runningMs"))).map_err(corrupt)?,
+            None => 0,
+        };
+        let ended = Timestamp::from_millisecond(started.as_millisecond() + ran).map_err(corrupt)?;
+        serde_json::to_value(ended).map_err(corrupt)?
+    };
+    fields.insert("endedAt".to_owned(), ended_at);
+    Ok(true)
+}
 
 /// From the conversation schema of transcript block format 8 to the one
 /// that keeps the shares' snapshots (`sharing.md` § Storage and routes). A
@@ -930,6 +1015,7 @@ fn views_with_outside_paths(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> 
     for (node, index, text) in rows {
         let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
         if with_outside_paths(&mut block).map_err(corrupt)? {
+            with_its_end(&mut block)?;
             let block: demi_shared_types::Block = demi_shared_types::decode_value(block).map_err(corrupt)?;
             update.execute(rusqlite::params![node, index, super::columns::to_json(&block)])?;
         }
@@ -1505,6 +1591,7 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
             let text: String = row.get(2)?;
             let mut block: serde_json::Value = serde_json::from_str(&text).map_err(corrupt)?;
             if migrate_block(&mut block, &titles) {
+                with_its_end(&mut block)?;
                 let block: demi_shared_types::Block =
                     demi_shared_types::decode_value(block).map_err(corrupt)?;
                 let node: String = row.get(0)?;
@@ -1560,6 +1647,7 @@ fn relist_blocks(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlit
                 let mut value = serde_json::from_str::<serde_json::Value>(text).map_err(corrupt)?;
                 with_no_kept_messages(&mut value);
                 with_outside_paths(&mut value).map_err(corrupt)?;
+                with_its_end(&mut value)?;
                 demi_shared_types::decode_value::<demi_shared_types::Block>(value).map_err(corrupt)
             })
             .collect::<rusqlite::Result<Vec<_>>>()?;
@@ -2676,11 +2764,11 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 8.
+-- blocks.block: transcript block format 9.
 CREATE TABLE blocks (
   node_id TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx     INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 8
+  -- blocks.block: transcript block format 9
   block   TEXT NOT NULL,
   PRIMARY KEY (node_id, idx)
 ) STRICT;
@@ -2702,7 +2790,7 @@ CREATE TABLE share_blocks (
   token TEXT NOT NULL,
   agent INTEGER NOT NULL CHECK (agent >= 0),
   idx   INTEGER NOT NULL CHECK (idx >= 0),
-  -- share_blocks.block: transcript block format 8
+  -- share_blocks.block: transcript block format 9
   block TEXT NOT NULL,
   PRIMARY KEY (token, agent, idx)
 ) STRICT;
@@ -3949,8 +4037,11 @@ mod tests {
             )
             .unwrap();
         for (index, block) in blocks.iter().enumerate() {
-            // Each is a block of format 3 as the build wrote it.
-            demi_shared_types::decode::<Block>(&block.to_string()).unwrap();
+            // Each is a block of format 3 as the build wrote it, which reads
+            // as today's once the later formats' fields are added.
+            let mut current = block.clone();
+            with_its_end(&mut current).unwrap();
+            demi_shared_types::decode_value::<Block>(current).unwrap();
             connection
                 .execute(
                     "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
@@ -4072,6 +4163,106 @@ mod tests {
             assert_eq!(boundary.summary, "The user asked for notes.");
             assert!(boundary.kept.is_empty());
         }
+    }
+
+    /// Calls stored in transcript block format 8, by the schema that
+    /// `0.1.22-dev.20261015T105826Z` deployed, kept no record of when they
+    /// returned: migrated to format 9, a shell call ends the time its view
+    /// says its command ran after it started, a call of another tool where
+    /// it started, and a call still executing has not returned; a share's
+    /// snapshot of a call is migrated the same way (`runtime.md` § Work
+    /// groups, a run's time).
+    // Cost: one database on disk, a few milliseconds.
+    #[test]
+    fn a_stored_call_gets_when_it_returned() {
+        use demi_shared_types::Block;
+
+        let model = serde_json::json!({
+            "providerId": "anthropic",
+            "model": {
+                "id": "claude-opus-4-8",
+                "name": "Claude Opus 4.8",
+                "contextWindow": 200000,
+                "outputLimit": 64000,
+                "thinking": [{"type": "disabled"}],
+                "acceptedExtensions": ["png"]
+            },
+            "thinking": {"type": "disabled"},
+            "serviceTierId": null
+        });
+        let call = |id: &str, tool: &str, status: &str, view: serde_json::Value| {
+            serde_json::json!({
+                "type": "tool_call",
+                "id": id,
+                "run": "c1",
+                "createdAt": "2026-10-15T05:00:01.000Z",
+                "model": model,
+                "toolUseId": format!("toolu_{id}"),
+                "toolName": tool,
+                "input": "{}",
+                "status": status,
+                "output": [],
+                "view": view
+            })
+        };
+        let shell = serde_json::json!({
+            "kind": "shell",
+            "status": "exited",
+            "commandId": "1",
+            "exitCode": 0,
+            "runningMs": 1500,
+            "idleMs": 0,
+            "chunks": [],
+            "viewTruncated": false
+        });
+        let blocks = [
+            call("c1", "shell", "completed", shell.clone()),
+            call("c2", "browse", "error", serde_json::Value::Null),
+            call("c3", "shell", "executing", serde_json::Value::Null),
+        ];
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/conversation-0.1.22-dev.20261015T105826Z.sql"));
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, description, round, started_at, can_spawn, delivered, state, block_count, output_revision)
+                 VALUES ('root', 0, '', 1, 0, 1, 0, ?1, ?2, 0)",
+                rusqlite::params![state_of_development(), i64::try_from(blocks.len()).unwrap()],
+            )
+            .unwrap();
+        for (index, block) in blocks.iter().enumerate() {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block) VALUES ('root', ?1, ?2)",
+                    rusqlite::params![i64::try_from(index).unwrap(), block.to_string()],
+                )
+                .unwrap();
+        }
+        connection
+            .execute(
+                "INSERT INTO share_blocks (token, agent, idx, block) VALUES ('s1', 0, 0, ?1)",
+                [blocks[0].to_string()],
+            )
+            .unwrap();
+
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let ends = |sql: &str| -> Vec<Option<String>> {
+            connection
+                .prepare(sql)
+                .unwrap()
+                .query_map([], |row| row.get::<_, String>(0))
+                .unwrap()
+                .map(|text| match demi_shared_types::decode::<Block>(&text.unwrap()).unwrap() {
+                    Block::ToolCall(call) => call.ended_at.map(|at| at.to_string()),
+                    other => panic!("{other:?}"),
+                })
+                .collect()
+        };
+        assert_eq!(
+            ends("SELECT block FROM blocks WHERE node_id = 'root' ORDER BY idx"),
+            [Some("2026-10-15T05:00:02.500Z".to_owned()), Some("2026-10-15T05:00:01.000Z".to_owned()), None]
+        );
+        assert_eq!(ends("SELECT block FROM share_blocks"), [Some("2026-10-15T05:00:02.500Z".to_owned())]);
     }
 
     /// A shell call stored in transcript block format 6, whose own files

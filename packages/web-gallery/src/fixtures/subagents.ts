@@ -1,6 +1,6 @@
 import type { AgentMessage, Block, JobModel } from '@demicodes/protocol'
 import type { AgentRun, SubagentRecord } from '@demicodes/web-ui/agent/subagents'
-import { demoModel, inRun, screenshotTool, shellView, thinkingText } from './blocks'
+import { demoModel, inRun, screenshotTool, shellView, thinkingText, withEnd } from './blocks'
 import { wholeHistory } from '@demicodes/web-ui/agent/history'
 import { usageAt } from './catalog'
 import { ago } from './time'
@@ -53,7 +53,7 @@ function shell(
   status: 'executing' | 'completed',
   script = `echo ${description}`,
 ): Block {
-  return {
+  return withEnd({
     type: 'tool_call',
     id,
     createdAt,
@@ -75,7 +75,7 @@ function shell(
         },
       ],
     }),
-  }
+  })
 }
 
 const OPUS: JobModel = { providerId: 'anthropic', provider: 'Anthropic', model: 'Claude Opus 5.5', effort: 'high', fast: false }

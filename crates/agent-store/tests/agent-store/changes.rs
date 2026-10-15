@@ -129,6 +129,7 @@ fn shell(command: &str, files: Vec<EditedFile>, changes: Vec<PathChange>) -> Blo
     Block::ToolCall(ToolCallBlock {
         run: None,
         entries: Vec::new(),
+        ended_at: None,
         id: id(command),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),

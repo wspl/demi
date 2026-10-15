@@ -670,7 +670,7 @@ test('a live child\'s phase frames set its own phase, not the root\'s', () => {
 function execCall(toolUseId: string, script: string, status: 'executing' | 'completed', description?: string) {
   return {
     type: 'tool_call' as const, id: `block-${toolUseId}`, createdAt: '2026-09-13T00:00:00.000Z', model,
-    toolUseId, toolName: 'shell', input: JSON.stringify({ script, description }), status, output: [], view: null,
+    toolUseId, toolName: 'shell', input: JSON.stringify({ script, description }), status, endedAt: status === 'executing' ? null : '2026-09-13T00:00:00.000Z', output: [], view: null,
   }
 }
 
