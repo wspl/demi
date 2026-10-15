@@ -653,6 +653,11 @@ impl ProviderRuntime for ConversationRuntime {
     /// usage limit before anything of the run reached the agent moves the
     /// agent to another account and sends the same request again at once,
     /// which is no retry of the agent's (`providers.md` § Account rotation).
+    /// Such an attempt leaves nothing: the vendor's record it mirrored, such
+    /// as the previous call's result, is held until the model's first output
+    /// and dropped when the attempt is given up, so the session the next
+    /// account resumes holds nothing of it twice (`claude-code.md` § The
+    /// session a process resumes).
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
         Box::pin(async_stream::stream! {
             let cancel = request.cancel.clone();
@@ -677,6 +682,7 @@ impl ProviderRuntime for ConversationRuntime {
             loop {
                 let mut used_up = None;
                 let mut shown = false;
+                let mut held = Vec::new();
                 {
                     let Some(current) = self.current.as_mut() else {
                         unreachable!("an admitted request has its runtime");
@@ -693,16 +699,29 @@ impl ProviderRuntime for ConversationRuntime {
                             // Only the answer's own output counts: the
                             // vendor's record mirrored, such as the last
                             // tool's result, writes nothing of it.
+                            event @ ProviderEvent::Entries { .. } if admitted.rotates && !shown => {
+                                held.push(event);
+                            }
                             event => {
-                                shown |= event.is_output();
+                                if event.is_output() && !shown {
+                                    shown = true;
+                                    for entries in held.drain(..) {
+                                        yield entries;
+                                    }
+                                }
                                 yield event;
                             }
                         }
                     }
                 }
                 let Some(failure) = used_up else {
+                    // The attempt stands, and so does its record.
+                    for entries in held {
+                        yield entries;
+                    }
                     return;
                 };
+                // Once output showed, nothing is held any more.
                 if shown {
                     // Part of the answer reached the agent, so the request
                     // is not sent again, but no agent takes the account
@@ -718,11 +737,17 @@ impl ProviderRuntime for ConversationRuntime {
                     () = cancel.cancelled() => return,
                 };
                 match switched {
+                    // The attempt is given up, with its record.
                     Ok((switch, account)) => {
                         yield ProviderEvent::AccountSwitch(switch);
                         yield ProviderEvent::Account(Some(account));
                     }
+                    // No account takes the request: the attempt ends the
+                    // turn as it would without rotation, its record kept.
                     Err(()) => {
+                        for entries in held {
+                            yield entries;
+                        }
                         yield ProviderEvent::Error(failure);
                         return;
                     }

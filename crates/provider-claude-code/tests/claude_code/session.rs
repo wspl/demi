@@ -201,15 +201,15 @@ async fn a_new_process_resumes_the_blocks_with_the_clis_entries_as_they_were_and
     };
     let reference = json!({ "demiBlob": BlobRef::of(b"shot").as_str() });
     let first_result = result_entry("e-result-1", image_content(reference));
-    let second_result = result_entry(
-        "e-result-2",
-        json!({ "type": "tool_result", "tool_use_id": "toolu_2", "content": [{ "type": "text", "text": "a.txt" }] }),
-    );
+    // The second call's block holds its call's entry but not its result's,
+    // as after an attempt given up for another account, which keeps none
+    // of the entries it mirrored: the file still holds the result, written
+    // from the block's item.
     let blocks = vec![
         (1, vec![]),
         (1, vec![date.clone(), thinking.clone()]),
         (2, vec![first_call.clone(), first_result.clone()]),
-        (2, vec![second_call.clone(), second_result.clone()]),
+        (2, vec![second_call.clone()]),
         (1, vec![]),
         (1, vec![]),
         (2, vec![]),
@@ -282,7 +282,13 @@ async fn a_new_process_resumes_the_blocks_with_the_clis_entries_as_they_were_and
         unchained(&first_call),
         unchained(&second_call),
         unchained(&restored),
-        unchained(&second_result),
+        written(
+            "user",
+            json!({ "role": "user", "content": [{
+                "type": "tool_result", "tool_use_id": "toolu_2",
+                "content": [{ "type": "text", "text": "a.txt" }],
+            }] }),
+        ),
         // Another vendor's reasoning is left out.
         written("assistant", gpt(json!({ "type": "text", "text": "Listing." }))),
         written(
@@ -314,11 +320,8 @@ async fn a_new_process_resumes_the_blocks_with_the_clis_entries_as_they_were_and
         assert!(every_vendor_accepts(id), "{id}");
     }
     // The CLI's entries keep their ids.
-    let ids: Vec<&Value> = session[2..8].iter().map(|entry| &entry["uuid"]).collect();
-    assert_eq!(
-        ids,
-        ["e-date", "e-thinking", "e-call-1", "e-call-2", "e-result-1", "e-result-2"]
-    );
+    let ids: Vec<&Value> = session[2..7].iter().map(|entry| &entry["uuid"]).collect();
+    assert_eq!(ids, ["e-date", "e-thinking", "e-call-1", "e-call-2", "e-result-1"]);
 }
 
 // 0.01 s.
