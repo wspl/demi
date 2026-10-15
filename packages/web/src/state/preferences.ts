@@ -2,6 +2,7 @@ import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { t } from './locales/text'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   userPreferencesSchema,
@@ -248,7 +249,7 @@ export const usePreferences = defineStore('preferences', () => {
         change.drop()
       }
       if (!current.signal.aborted) {
-        reportError('Could Not Update Settings', error, { userVisible: true })
+        reportError(t('failures.updateSettings'), error, { userVisible: true })
       }
     }
   }
@@ -324,7 +325,7 @@ export const usePreferences = defineStore('preferences', () => {
       } catch (error) {
         shown.drop()
         if (!current.signal.aborted) {
-          reportError('Could Not Change the Context Limit', error, { userVisible: true })
+          reportError(t('failures.changeContextLimit'), error, { userVisible: true })
         }
       }
     })

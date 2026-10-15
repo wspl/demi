@@ -1,5 +1,7 @@
 import type { DeviceKind } from '../api/generated/web-api'
 import type { HostKind } from '@demicodes/web-ui/hosts/types'
+import { t as shared } from '@demicodes/web-ui/locales/text'
+import { t } from './locales/text'
 
 /**
  * Whether a device is the Cloud, the one managed device of an account, or a
@@ -18,5 +20,5 @@ export function cloudDeviceIn<T extends { kind: DeviceKind }>(devices: readonly 
 
 /** What a Host is called: the Cloud, a paired device by its name, or a device the account no longer lists. */
 export function hostLabel(kind: HostKind, device: { name: string } | null | undefined): string {
-  return kind === 'cloud' ? 'Cloud' : (device?.name ?? 'Unavailable device')
+  return kind === 'cloud' ? shared('common.cloud') : (device?.name ?? t('hosts.unavailableDevice'))
 }

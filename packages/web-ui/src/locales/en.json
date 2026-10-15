@@ -89,6 +89,39 @@
   "errors": {
     "conversation_archived": "This conversation is archived. Restore it first.",
     "email_taken": "Another account uses this email address.",
-    "saved_full": "A conversation keeps up to {limit} messages saved for later."
+    "saved_full": "A conversation keeps up to {limit} messages saved for later.",
+    "host_stopped": "The Cloud is stopped.",
+    "cloud_resetting": "The Cloud is resetting.",
+    "cloud_capacity": "The server has no room to start the Cloud.",
+    "cloud_crash_loop": "The Cloud stopped starting after repeated failures.",
+    "cloud_unavailable": "The Cloud isn’t available right now.",
+    "request_failed": "The request failed ({status}).",
+    "unreadable_response": "The server’s answer couldn’t be read.",
+    "upload_connection_failed": "The upload lost its connection.",
+    "upload_cancelled": "The upload was canceled.",
+    "restore_before_sending": "Restore this conversation before sending.",
+    "no_model_available": "No available model for this conversation.",
+    "models_not_loaded": "Couldn’t load the models. {failure}",
+    "source_conversation_unavailable": "The source conversation is unavailable.",
+    "file_not_owned": "It isn’t among this account’s files."
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "close": "Close",
+    "copy": "Copy",
+    "copied": "Copied",
+    "done": "Done",
+    "retry": "Retry",
+    "search": "Search",
+    "show": "Show",
+    "hide": "Hide",
+    "rename": "Rename",
+    "change": "Change",
+    "reload": "Reload",
+    "loading": "Loading…",
+    "undo": "Undo",
+    "cloud": "Cloud",
+    "workspace": "Workspace"
   }
 }

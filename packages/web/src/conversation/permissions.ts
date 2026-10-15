@@ -1,6 +1,7 @@
 import { reactive, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { formError, reportError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { t } from './locales/text'
 import {
   afterDecision,
   type CredentialAnswer,
@@ -187,7 +188,7 @@ export const usePermissions = defineStore('permissions', () => {
           return
         }
       }
-      reportError('Could Not Answer the Request', error, { userVisible: true })
+      reportError(t('failures.answerRequest'), error, { userVisible: true })
       // The request is as it was, unless a newer read came meanwhile.
       if (state.held === before.held) {
         state.requests = before.requests

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ShownError } from '../infra/errors'
 import AsyncRegion from './AsyncRegion.vue'
+import { t } from './locales/text'
 
 /**
  * What the page shows where the app will be until it knows who is signed
@@ -26,8 +27,8 @@ withDefaults(
   <div class="flex items-center justify-center">
     <AsyncRegion
       :state="failure === null ? 'loading' : 'failed'"
-      :label="connecting ? 'Connecting to Demi…' : 'Loading Demi…'"
-      error="Couldn’t check your session."
+      :label="connecting ? t('startingScreen.connecting') : t('startingScreen.loading')"
+      :error="t('startingScreen.failed')"
       :detail="failure?.message"
       :request-id="failure?.requestId"
       :on-retry="onRetry"

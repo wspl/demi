@@ -1,6 +1,7 @@
 import { computed, ref } from 'vue'
 import { useClipboardItems } from '@vueuse/core'
 import { reportCopyFailure } from '../infra/clipboard'
+import { t } from '../infra/locales/text'
 
 /** How long a control shows Copied after a copy. */
 export const COPIED_MS = 1500
@@ -33,7 +34,7 @@ export function useCopy(source: () => CopySource) {
       if (value === undefined)
         return
       if (!clipboard.isSupported.value)
-        throw new Error('The clipboard is not available here.')
+        throw new Error(t('clipboardUnavailable'))
       copiedText.value = typeof value === 'string' ? value : null
       const item = typeof value === 'string'
         ? new ClipboardItem({ 'text/plain': new Blob([value], { type: 'text/plain' }) })

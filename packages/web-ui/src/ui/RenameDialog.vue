@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from './Button.vue'
 import Dialog from './Dialog.vue'
+import { t as shared } from '../locales/text'
 import TextInput from './TextInput.vue'
 import { useAutofocus } from './autofocus'
 import type { HeadlineText, SentenceText } from './ui-text'
@@ -92,8 +93,8 @@ function submit() {
       />
     </div>
     <template #footer>
-      <Button @click="emit('close')">Cancel</Button>
-      <Button variant="primary" :disabled="!trimmed" @click="submit">Rename</Button>
+      <Button @click="emit('close')">{{ shared('common.cancel') }}</Button>
+      <Button variant="primary" :disabled="!trimmed" @click="submit">{{ shared('common.rename') }}</Button>
     </template>
   </Dialog>
 </template>

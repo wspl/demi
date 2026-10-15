@@ -2,6 +2,7 @@
 import { computed, inject, provide, ref, watch } from 'vue'
 import { X } from '@lucide/vue'
 import IconButton from './IconButton.vue'
+import { t as shared } from '../locales/text'
 import ScrollArea from './ScrollArea.vue'
 import { useEscapeClose } from '../composables/useEscapeClose'
 import { provideRowTarget } from './operations'
@@ -216,7 +217,7 @@ useEscapeClose(() => props.isOpen && !pinned.value && props.overlayStore.isTop(i
             <IconButton
               :icon="X"
               :variant="closeOverContent ? 'solid' : 'ghost'"
-              aria-label="Close"
+              :aria-label="shared('common.close')"
               @click="emit('close')"
             />
           </div>

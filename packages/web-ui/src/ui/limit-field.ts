@@ -1,3 +1,4 @@
+import { t } from './locales/text'
 import type { SentenceText } from './ui-text'
 
 /**
@@ -44,7 +45,9 @@ export function limitStep(value: LimitValue, phase: LimitPhase, event: LimitEven
 }
 
 /** What a limit field says of text that is not a limit. */
-export const LIMIT_PROBLEM: SentenceText = 'Enter a whole number from 1.'
+export function limitProblem(): SentenceText {
+  return t('limitField.problem')
+}
 
 /** The most a limit may be: the backend stores it as a 32-bit count. */
 const LIMIT_MAX = 4_294_967_295

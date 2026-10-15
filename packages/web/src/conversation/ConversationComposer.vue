@@ -30,6 +30,7 @@ import { cliPackageOf } from '../state/catalog'
 import { useSettingsAddress } from '../settings/address'
 import { useContextCard } from './context-card'
 import { useConversationWorkflows } from './workflows'
+import { t } from './locales/text'
 
 const props = defineProps<{
   conversation: Conversation
@@ -149,7 +150,7 @@ const usesCloud = computed(() =>
 )
 const hold = computed(() =>
   usesCloud.value && product.snapshot?.cloud.state === 'resetting'
-    ? 'Cloud is resetting.'
+    ? t('composer.cloudResetting')
     : null,
 )
 /**
@@ -235,7 +236,7 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       :claim="claimStoredFile"
       :paste="paste"
       @submit-edit="store.submitEdit(conversation)"
-      placeholder="Ask anything…"
+      :placeholder="t('composer.placeholder')"
       focus-on-show
       :running="conversation.phase === 'running' || startingTurn"
       :compacting="conversation.phase === 'compacting'"

@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { Check, Copy } from '@lucide/vue'
 import { useCopy, type CopySource } from '../composables/useCopy'
 import IconButton from './IconButton.vue'
+import { t as shared } from '../locales/text'
 import Tooltip from './Tooltip.vue'
 import type { SentenceText } from './ui-text'
 
@@ -25,17 +26,17 @@ const props = withDefaults(defineProps<{
   size?: 'xs' | 'sm' | 'md' | 'lg'
   variant?: 'default' | 'ghost'
 }>(), {
-  label: 'Copy',
   size: 'sm',
   variant: 'ghost',
 })
 
 const { copy, copied } = useCopy(() => (typeof props.source === 'function' ? props.source() : props.source))
-const name = computed(() => (copied.value ? 'Copied' : props.label))
+const tip = computed(() => props.label ?? shared('common.copy'))
+const name = computed(() => (copied.value ? shared('common.copied') : tip.value))
 </script>
 
 <template>
-  <Tooltip :content="copied ? 'Copied' : (hint ?? label)">
+  <Tooltip :content="copied ? shared('common.copied') : (hint ?? tip)">
     <IconButton
       :icon="copied ? Check : Copy"
       :size="size"

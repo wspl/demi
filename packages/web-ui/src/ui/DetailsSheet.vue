@@ -2,6 +2,7 @@
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from './Button.vue'
 import Dialog from './Dialog.vue'
+import { t as shared } from '../locales/text'
 import type { HeadlineText, SentenceText } from './ui-text'
 
 /**
@@ -37,7 +38,7 @@ const emit = defineEmits<{
       </dl>
     </div>
     <template #footer>
-      <Button variant="primary" @click="emit('close')">Done</Button>
+      <Button variant="primary" @click="emit('close')">{{ shared('common.done') }}</Button>
     </template>
   </Dialog>
 </template>

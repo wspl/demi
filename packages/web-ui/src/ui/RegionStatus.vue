@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import RequestIdLine from './RequestIdLine.vue'
+import { t as shared } from '../locales/text'
 import { computed, type Component } from 'vue'
 import { CircleX } from '@lucide/vue'
 import Button from './Button.vue'
@@ -47,7 +48,6 @@ const props = withDefaults(
   {
     detail: null,
     requestId: null,
-    loadingLabel: 'Loading…',
   },
 )
 defineEmits<{ action: [] }>()
@@ -75,7 +75,7 @@ function retry(): void {
       class="text-fg-faint"
       aria-hidden="true"
     />
-    <p class="text-chrome text-fg-muted">{{ retrying ? loadingLabel : label }}</p>
+    <p class="text-chrome text-fg-muted">{{ retrying ? (loadingLabel ?? shared('common.loading')) : label }}</p>
     <p
       v-if="detail && shown === 'failed'"
       class="max-w-sm whitespace-pre-line text-[12px] leading-4 text-fg-subtle"
@@ -83,7 +83,7 @@ function retry(): void {
       {{ detail }}
     </p>
     <RequestIdLine v-if="requestId && shown === 'failed'" class="text-fg-subtle" :request-id="requestId" />
-    <Button v-if="shown === 'failed' && onRetry" size="sm" class="mt-1" @click="retry">Retry</Button>
+    <Button v-if="shown === 'failed' && onRetry" size="sm" class="mt-1" @click="retry">{{ shared('common.retry') }}</Button>
     <Button v-else-if="shown === 'note' && action" size="sm" class="mt-1" @click="$emit('action')">{{
       action
     }}</Button>

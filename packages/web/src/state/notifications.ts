@@ -5,6 +5,7 @@ import { truncate } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { markdownPlainText } from '@demicodes/web-ui/markdown/plain-text'
 import { requestAction } from '@demicodes/web-ui/permissions/types'
+import { t } from './locales/text'
 import { readPermissions } from '../api/permissions'
 import type { ConversationSummary, LastTurn, PermissionRequest } from '../api/generated/web-api'
 import { useProduct } from './product'
@@ -146,12 +147,12 @@ function requestQuestion(request: PermissionRequest): string {
           description: null,
         })),
       })
-      return `Allow this conversation to ${action}?`
+      return t('notifications.allowTo', { action })
     }
     case 'credential':
-      return `Save the credential \u201c${request.name}\u201d?`
+      return t('notifications.saveCredential', { name: request.name })
     case 'allowance':
-      return `Allow this conversation to use \u201c${request.name}\u201d?`
+      return t('notifications.allowUse', { name: request.name })
   }
 }
 
@@ -235,7 +236,7 @@ export const useNotifications = defineStore('notifications', () => {
         show(summary.id, summary.title, answerStart(cause.turn), turnTag(summary.id, cause.turn), open)
         return
       case 'turnFailed':
-        show(summary.id, summary.title, 'The turn stopped with an error.', turnTag(summary.id, cause.turn), open)
+        show(summary.id, summary.title, t('notifications.turnStopped'), turnTag(summary.id, cause.turn), open)
         return
       case 'permission': {
         let requests

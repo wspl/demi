@@ -1,0 +1,49 @@
+{
+  "failures": {
+    "uploadAttachment": "Could Not Upload the Attachment",
+    "answerRequest": "Could Not Answer the Request",
+    "changeWorkPanel": "Could Not Change the Work Panel",
+    "saveDraft": "Could Not Save the Draft",
+    "saveMessage": "Could Not Save the Message",
+    "editMessage": "Could Not Edit the Message",
+    "deleteMessage": "Could Not Delete the Message",
+    "saveDrafts": "Could Not Save Drafts",
+    "restoreDrafts": "Could Not Restore Drafts",
+    "restoreStoredDraft": "Could Not Restore a Draft",
+    "readDraft": "Could Not Read the Draft",
+    "readSaved": "Could Not Read the Saved Messages",
+    "readHosts": "Could Not Read the Hosts",
+    "updateConversations": "Could Not Update Conversations",
+    "deleteConversations": "Could Not Delete Conversations",
+    "renameConversation": "Could Not Rename the Conversation",
+    "reorderConversations": "Could Not Reorder Conversations",
+    "updateReadStatus": "Could Not Update Read Status",
+    "reloadConversation": "Could Not Reload the Conversation",
+    "detachDevice": "Could Not Detach the Device",
+    "changeModel": "Could Not Change the Model",
+    "changeWorkflow": "Could Not Change the Workflow",
+    "clearDraft": "Could Not Clear the Draft",
+    "recallMessage": "Could Not Recall the Message",
+    "restoreDraft": "Could Not Restore the Draft",
+    "dismissDraft": "Could Not Dismiss the Draft",
+    "connectionLost": "Connection Lost",
+    "connectionLostMessage": "Demi may not have received your request. Check the conversation once it reconnects.",
+    "requestNotAccepted": "The conversation didn’t accept the request.",
+    "fieldsNotUpdated": "Some fields weren’t updated."
+  },
+  "drafts": {
+    "storeFailed": "This browser couldn’t store your drafts.",
+    "readFailed": "This browser couldn’t read the stored drafts.",
+    "unreadable": "A stored draft couldn’t be read and was set aside.",
+    "deliveryInterrupted": "Delivery was interrupted. Retry to confirm."
+  },
+  "savedDeleted": "Saved Message Deleted",
+  "newConversation": "New conversation",
+  "composer": {
+    "placeholder": "Ask anything…",
+    "cloudResetting": "The Cloud is resetting."
+  },
+  "workflows": {
+    "hostSilent": "The Host didn’t answer."
+  }
+}

@@ -4,6 +4,7 @@ import { X } from '@lucide/vue'
 import { useWindowSize } from '@vueuse/core'
 import { useEscapeClose } from '../composables/useEscapeClose'
 import IconButton from './IconButton.vue'
+import { t as shared } from '../locales/text'
 import { focusByPage } from './focus-by-page'
 import { startPointerDrag } from './pointer-drag'
 import {
@@ -217,7 +218,7 @@ defineExpose({ activate })
             <div v-if="slots.trailing" class="shrink-0 text-[12px] tabular-nums text-fg-muted">
               <slot name="trailing" />
             </div>
-            <IconButton :icon="X" size="sm" variant="ghost" aria-label="Close" @click="emit('close')" />
+            <IconButton :icon="X" size="sm" variant="ghost" :aria-label="shared('common.close')" @click="emit('close')" />
           </div>
           <div class="relative min-h-0 flex-1">
             <slot />

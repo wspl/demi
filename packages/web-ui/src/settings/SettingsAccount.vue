@@ -14,7 +14,7 @@ import ChangePasswordDialog, {
   type ChangePasswordDialogDraft,
   type ChangePasswordPhase,
 } from './ChangePasswordDialog.vue'
-import { IN_DEVELOPMENT } from '../ui/disabled'
+import { inDevelopment } from '../ui/disabled'
 import type { SentenceText } from '../ui/ui-text'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
@@ -170,7 +170,7 @@ function checkName(value: string): string | null {
         label="Delete account"
         description="Removes your account, devices and every conversation. This cannot be undone."
         disabled
-        :disabled-reason="IN_DEVELOPMENT"
+        :disabled-reason="inDevelopment()"
       >
         <Button size="sm" variant="danger" disabled>Delete Account</Button>
       </SettingsRow>

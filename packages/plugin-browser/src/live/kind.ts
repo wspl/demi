@@ -2,6 +2,7 @@ import { defineComponent, h } from 'vue'
 import { Globe, RotateCw } from '@lucide/vue'
 import { GlobePlus, ICON_PX, type PanelKind } from '@demicodes/plugin-sdk'
 import BrowserTabContent from './BrowserTabContent.vue'
+import { t } from '../locales/text'
 import {
   NEW_TAB_URL,
   browserTabDataSchema,
@@ -24,7 +25,7 @@ const BrowserTabMark = defineComponent({
  */
 function browserTabTitle(data: BrowserTabData, session: BrowserTabsController): string {
   if (data.url === NEW_TAB_URL) {
-    return 'New Tab'
+    return t('tab.new')
   }
   const title = session.title(data) ?? data.title
   if (title) {
@@ -56,7 +57,7 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = 
   // A web browser's tab menu: Reload the page, or open the address again in a tab of its own.
   commands: (data, tab) => [
     {
-      label: 'Reload',
+      label: t('menu.reload'),
       icon: RotateCw,
       disabled: data.tab === undefined || data.closed === true,
       run: () => tab.session.reload(data),
@@ -64,7 +65,10 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = 
   ],
   duplicate: (data) => (data.title ? { url: data.url, title: data.title } : { url: data.url }),
   create: {
-    label: 'New Tab in the Conversation’s Browser',
+    // Read when it shows, so a language chosen later words it.
+    get label() {
+      return t('tab.createInBrowser')
+    },
     icon: GlobePlus,
     data: () => ({ url: NEW_TAB_URL }),
     unavailable: (tab) => tab.session.unavailable.value,

@@ -1,0 +1,15 @@
+{
+  "notifications": {
+    "turnStopped": "ターンがエラーで停止しました。",
+    "allowTo": "この会話に {action} を許可しますか？",
+    "saveCredential": "認証情報「{name}」を保存しますか？",
+    "allowUse": "この会話に「{name}」の使用を許可しますか？"
+  },
+  "hosts": {
+    "unavailableDevice": "利用できないデバイス"
+  },
+  "failures": {
+    "updateSettings": "設定を更新できませんでした",
+    "changeContextLimit": "コンテキストの制限を変更できませんでした"
+  }
+}

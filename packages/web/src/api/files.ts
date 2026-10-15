@@ -1,4 +1,5 @@
 import { HostFiles } from '@demicodes/web-ui/files/file-cache'
+import { errorMessage } from '@demicodes/web-ui/infra/errors'
 import { keptSource, type ContentReads, type FileReads } from '@demicodes/web-ui/files/kept-source'
 import type { ReadAt, WatchChannel } from '@demicodes/web-ui/files/watch-channel'
 import {
@@ -13,6 +14,7 @@ import { z } from 'zod'
 import { ApiError, apiRequest, apiUrl, invalidResponse, jsonBody, readResponse } from './client'
 import { directorySchema, fileTextSchema, type CreateDirectory, type DirectoryEntry, type LinkTarget } from './generated/web-api'
 import { uploadBytes } from './uploads'
+import { t } from './locales/text'
 import type { Device } from '../state/types'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 
@@ -82,35 +84,30 @@ function failureKind(error: ApiError): FileBrowserFailure['kind'] {
 function failureSentence(error: ApiError, kind: FileBrowserFailure['kind']): SentenceText {
   switch (error.code) {
     case 'host_stopped':
-      return 'The Cloud is stopped.'
     case 'cloud_resetting':
-      return 'The Cloud is resetting.'
     case 'cloud_capacity':
-      return 'The server has no room to start the Cloud.'
     case 'cloud_crash_loop':
-      return 'The Cloud stopped starting after repeated failures.'
     case 'cloud_unavailable':
-      return 'The Cloud is not available right now.'
     case 'conversation_archived':
-      return 'This conversation is archived.'
+      return errorMessage(error)
     case 'conversation_busy':
-      return 'The conversation is changing its Host.'
+      return t('files.conversationBusy')
   }
   switch (kind) {
     case 'offline':
-      return 'The device is offline.'
+      return t('files.offline')
     case 'not-found':
-      return 'It is no longer there.'
+      return t('files.notFound')
     case 'permission':
-      return 'The Host does not allow access to it.'
+      return t('files.permission')
     case 'exists':
-      return 'Something of that name is there already.'
+      return t('files.exists')
     case 'binary':
-      return 'It is not text.'
+      return t('files.binary')
     case 'too-large':
-      return 'It is too large.'
+      return t('files.tooLarge')
     case 'other':
-      return 'The Host did not answer.'
+      return t('files.other')
   }
 }
 
@@ -263,7 +260,7 @@ export function fileReads(
     home: device?.home ?? '/',
     async list(path) {
       if (!endpoint) {
-        throw new FileBrowserError('offline', 'Select a connected device.')
+        throw new FileBrowserError('offline', t('files.selectDevice'))
       }
       try {
         const response = await apiRequest(`${endpoint}?${new URLSearchParams({ path })}`)

@@ -975,7 +975,7 @@ test('a first send waiting for the model list ends undelivered with the list’s
     answerCreate.resolve()
     lists[1]!.resolve(Response.json({ requestId: 'req_test000000000001', code: 'internal_error', message: 'Catalog offline' }, { status: 500 }))
     await sending
-    expect(conversation.pendingSends.map((pending) => pending.error)).toEqual(['Couldn’t load the models: Catalog offline'])
+    expect(conversation.pendingSends.map((pending) => pending.error)).toEqual(['Couldn’t load the models. Catalog offline'])
     expect(submit).not.toHaveBeenCalled()
   } finally {
     submit.mockRestore()

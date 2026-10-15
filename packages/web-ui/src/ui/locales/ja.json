@@ -1,0 +1,42 @@
+{
+  "noResults": "結果がありません",
+  "inDevelopment": "開発中",
+  "asyncRegion": {
+    "error": "このコンテンツを読み込めませんでした。"
+  },
+  "menu": {
+    "empty": "項目がありません"
+  },
+  "limitField": {
+    "limited": "制限あり",
+    "unlimited": "制限なし",
+    "problem": "1 以上の整数を入力してください。"
+  },
+  "shortcutRecorder": {
+    "recording": "ショートカットを記録中",
+    "prompt": "キーを押してください…"
+  },
+  "requestId": "リクエスト ID: {id}",
+  "errorNotice": {
+    "providerResponse": "プロバイダーの応答"
+  },
+  "updateFailed": {
+    "title": "このページを更新できませんでした",
+    "body": "Demi の新しいバージョンがあります。再読み込みしても古いページが表示されます。"
+  },
+  "startingScreen": {
+    "connecting": "Demi に接続中…",
+    "loading": "Demi を読み込み中…",
+    "failed": "セッションを確認できませんでした。"
+  },
+  "themeToggle": {
+    "light": "ライト テーマ",
+    "dark": "ダーク テーマ"
+  },
+  "titleInput": {
+    "title": "タイトル"
+  },
+  "rowSpinner": {
+    "working": "処理中"
+  }
+}

@@ -5,6 +5,7 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import Dialog from './Dialog.vue'
 import ScrollArea from './ScrollArea.vue'
 import TextInput from './TextInput.vue'
+import { t as shared } from '../locales/text'
 import { ICON_PX } from './icon-metrics'
 import type { HeadlineText } from './ui-text'
 
@@ -42,8 +43,8 @@ watch(
         <TextInput
           v-model="query"
           search
-          placeholder="Search"
-          aria-label="Search"
+          :placeholder="shared('common.search')"
+          :aria-label="shared('common.search')"
           focused
         >
           <template #prefix><Search :size="ICON_PX.in24" /></template>
