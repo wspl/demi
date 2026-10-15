@@ -5,9 +5,10 @@
 // allowlist removes.
 import DOMPurify, { type DOMPurify as Purifier } from 'dompurify'
 import katex from 'katex'
-import type { MarkedExtension, Tokens } from 'marked'
+import type { MarkedExtension, Token, Tokens } from 'marked'
 import { gfmHeadingId } from 'marked-gfm-heading-id'
 import { utf8Bytes } from '@demicodes/utils'
+import { t } from '../files/locales/text'
 import { joinPath, parentPath } from '../files/paths'
 import { decodedTarget } from './filePath'
 import { codeBlockHtml } from './highlight'
@@ -75,7 +76,55 @@ const ALLOWED_ATTR = [
   'valign', 'width',
 ]
 /** The classes the renderer gives; any other class a document names is dropped. */
-const RENDERER_CLASS = /^(math|math-inline|math-display|table-scroll|language-[\w+#.-]+)$/
+const RENDERER_CLASS = /^(math|math-inline|math-display|table-scroll|markdown-alert(-title|-note|-tip|-important|-warning|-caution)?|language-[\w+#.-]+)$/
+
+/** The kinds of GitHub's alerts, in the words of their marker. */
+const ALERT_KINDS = ['note', 'tip', 'important', 'warning', 'caution'] as const
+type AlertKind = (typeof ALERT_KINDS)[number]
+
+/** An alert's marker, alone on the first line of a quote. */
+const ALERT_MARKER = /^\[!(note|tip|important|warning|caution)\][ \t]*(?:\n|$)/i
+
+/** The quotes that are alerts, by their kind, as the lexer finds them. */
+const alertKinds = new WeakMap<Token, AlertKind>()
+
+/**
+ * GitHub's alerts: a quote whose first line is `[!NOTE]`, `[!TIP]`,
+ * `[!IMPORTANT]`, `[!WARNING]` or `[!CAUTION]` shows as a callout titled
+ * with its kind, the marker gone.
+ */
+const githubAlerts: MarkedExtension = {
+  walkTokens(token) {
+    // `type` does not narrow marked's tokens, whose union holds an open `Generic`.
+    if (token.type !== 'blockquote' || !('tokens' in token) || !token.tokens)
+      return
+    const paragraph = token.tokens[0]
+    if (paragraph?.type !== 'paragraph' || !('tokens' in paragraph) || !paragraph.tokens)
+      return
+    const first = paragraph.tokens[0]
+    if (first?.type !== 'text' || !('text' in first))
+      return
+    const match = ALERT_MARKER.exec(first.raw)
+    const kind = ALERT_KINDS.find((name) => name === match?.[1]?.toLowerCase())
+    if (!match || !kind)
+      return
+    alertKinds.set(token, kind)
+    first.raw = first.raw.slice(match[0].length)
+    first.text = first.text.replace(ALERT_MARKER, '')
+    if (first.raw === '')
+      paragraph.tokens.shift()
+    if (paragraph.tokens.length === 0)
+      token.tokens.shift()
+  },
+  renderer: {
+    blockquote(token) {
+      const kind = alertKinds.get(token)
+      if (!kind)
+        return false
+      return `<div class="markdown-alert markdown-alert-${kind}"><p class="markdown-alert-title">${escapeHtml(t(`document.alert.${kind}`))}</p>\n${this.parser.parse(token.tokens)}</div>\n`
+    },
+  },
+}
 
 // Math placeholders keep the messages' math syntax and hold the TeX as text
 // until sanitizing is done.
@@ -91,7 +140,7 @@ const mathPlaceholders: MarkedExtension = {
   })),
 }
 
-const documentMarked = markdownReader({ breaks: false }, gfmHeadingId(), mathPlaceholders, scrollingTable)
+const documentMarked = markdownReader({ breaks: false }, gfmHeadingId(), mathPlaceholders, scrollingTable, githubAlerts)
 
 // Hooks belong to a DOMPurify instance, and sanitizing is synchronous, so the
 // hooks read the place of the render in progress.
