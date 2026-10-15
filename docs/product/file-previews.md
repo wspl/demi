@@ -281,9 +281,12 @@ stands for a newer file. While the description is first read, and when the
 file is missing, the image shows its alt text. An image follows its file
 while it is on screen; one scrolled away reads its description again when it
 is shown. A Markdown document in the File view and the Change view
-follows its Host images the same way. A Host image a `srcset` names is
-left out of the set, since a set cannot name a version per candidate, and
-the `<img>` it stands beside shows instead. A click on `plot.py` opens it in
+follows its Host images the same way. A `srcset`, of an `<img>` or of a
+`<picture>`'s `<source>`, resolves each Host candidate as an image's
+target is resolved, and each follows its file under its own versioned
+address, so a README's dark logo, a `<source>` for
+`(prefers-color-scheme: dark)`, shows in a dark theme as on GitHub; a
+candidate whose file is missing drops out of the set. A click on `plot.py` opens it in
 the File view. A link to a Host file shows the file's
 icon before its name, the icon the file tree shows for it, so a file reads as
 a file and not as a page on the web, and a commit link shows the commit
