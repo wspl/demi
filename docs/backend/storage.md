@@ -323,7 +323,7 @@ rejects archived rows or cross-partition targets.
 [Web API](../product/web-api.md#sidebar-mutations-and-read-state)
 owns the request contract.
 - **Shares:** `shares` holds each share's token, user, conversation,
-  kind, the answer's block, the title it shows and when it was taken; the snapshot itself is in
+  kind, the answer's block, the title it shows and when it was taken; its list and copies are in
   the conversation's database ([Sharing](../product/sharing.md#storage-and-routes)).
 - **Turns a shutdown interrupted:** `interrupted_turns` holds one row per
   root whose running turn a graceful shutdown began to interrupt, by its
@@ -346,9 +346,11 @@ Host. The node lifecycle and its commits are defined in
 | `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description, its profile's name and the instructions the profile added ([Persistence](../agent/subagents.md#persistence)), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision |
 | `sequences` | The next number of each sequence the model sees in the conversation: commands, agents, conversation browser tabs and attachments. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
 | `blocks` | One transcript block per node and block index, found also by the block's id and by the command a `shell` call's view names, for a page read around a block, a block read whole and the call that started a command ([Conversation history](../product/web-api.md#conversation-history)) |
+| `block_attachments` | Each attachment a block's text names, by node and block index, written with the block like `block_blobs`, so a share lists a conversation's attachments without reading its text |
+| `block_blobs` | Each blob a block names, by node and block index and by blob, written with the block in the same checkpoint, so what names a blob is found without reading a block: a share's check of a blob and the collection of the user's namespace read it |
 | `command_outputs` | The record of each ended command's whole output, by command id ([Command outputs](#command-outputs)) |
 | `attachments` | Each attachment the agent uploaded, by its number: the file's name, its media type, its size and its blob ([Attachment commands](../execution/commands.md#attachment-commands)); a Fork's seed copies the rows, and the blobs stay shared |
-| `share_blocks`, `share_agents`, `share_attachments` | Each share's snapshot: its blocks, by share, agent and index; each subagent it holds with the description and profile it had then; and each attachment its text names that existed then, by number ([Sharing](../product/sharing.md#storage-and-routes)) |
+| `share_entries`, `share_blocks`, `share_blobs`, `share_agents`, `share_attachments` | Each share's list: the blocks it shows, by share and position, each the transcript row it reads or a copy; the copies of blocks still changing when it was made, and in `share_blobs` the blobs those copies name; a blob is the share's when a block on its list names it in `block_blobs` or in its copies; each subagent it holds with the description and profile it had then; and each attachment its text names that existed then, by number ([Sharing](../product/sharing.md#storage-and-routes)) |
 
 For example, saving a streamed assistant block updates that block's row and
 the node checkpoint together. It does not serialize the whole transcript into

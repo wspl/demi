@@ -41,19 +41,37 @@ pub(super) async fn transcript(
         })
         .await
         .map_err(ApiError::conversation_unreadable)?;
-    let mut page = page_answer(read, no_node, no_block)?;
+    let mut page = page_answer(read, no_node, no_block, outside, changed)?;
     // Error blocks come whole, so their facts read as the stream's.
     page.failures = failure_facts(&services.assembly, &page.blocks).await;
     Ok(Json(page))
 }
 
+/// A conversation's answer to an index outside its transcript.
+fn outside() -> ApiError {
+    ApiError::new(StatusCode::BAD_REQUEST, ErrorCode::InvalidQuery, "an index outside the transcript")
+}
+
+/// A conversation's answer to an edge that is no longer at its index.
+fn changed() -> ApiError {
+    ApiError::new(
+        StatusCode::CONFLICT,
+        ErrorCode::TranscriptChanged,
+        "The transcript changed since the page read it",
+    )
+}
+
 /// A page read as its route answers it, without failure facts: a
 /// conversation without a database yet has an empty transcript, and a node
-/// or a block the transcript lacks answers `no_node` or `no_block`.
+/// or a block the transcript lacks, an index it does not reach, or an edge
+/// no longer at its index, answers `no_node`, `no_block`, `outside` or
+/// `changed`.
 pub(super) fn page_answer(
     read: Option<PageRead>,
     no_node: fn() -> ApiError,
     no_block: fn() -> ApiError,
+    outside: fn() -> ApiError,
+    changed: fn() -> ApiError,
 ) -> Result<TranscriptPage, ApiError> {
     match read {
         None => Ok(TranscriptPage {
@@ -80,11 +98,8 @@ pub(super) fn page_answer(
         }),
         Some(PageRead::NoNode) => Err(no_node()),
         Some(PageRead::NoBlock) => Err(no_block()),
-        Some(PageRead::Changed) => Err(ApiError::new(
-            StatusCode::CONFLICT,
-            ErrorCode::TranscriptChanged,
-            "The transcript changed since the page read it",
-        )),
+        Some(PageRead::Outside) => Err(outside()),
+        Some(PageRead::Changed) => Err(changed()),
         Some(PageRead::Invalid(message)) => Err(ApiError::new(
             StatusCode::BAD_REQUEST,
             ErrorCode::InvalidQuery,

@@ -1,9 +1,9 @@
-//! Sharing (`web-api.md` § Sharing): the owner's routes, which make, take
+//! Sharing (`web-api.md` § Sharing): the owner's routes, which make, make
 //! again and remove a conversation's share, and the public routes under
 //! `/api/shares/:token`, which take no session and ignore one: the token is
 //! the only key, and every miss answers the same 404 `share_not_found`, so
 //! an answer tells nothing of what exists. A public route finds the share's
-//! record, then reads its snapshot on the owner's shard, the conversation's
+//! record, then reads through its list on the owner's shard, the conversation's
 //! history reads (`history.rs`) answering it.
 
 use axum::Json;
@@ -34,7 +34,7 @@ use super::history::{block_answer, page_answer};
 use super::query::QueryParams;
 
 /// `POST /conversations/:id/shares { kind, blockId? }`: the conversation's
-/// share of that target, the one it has or a new snapshot.
+/// share of that target, the one it has or a new one.
 pub(super) async fn create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -51,8 +51,8 @@ pub(super) async fn create(
     Ok(Json(answer(&state.services, share)))
 }
 
-/// `PUT /conversations/:id/shares/:token`: the conversation's snapshot taken
-/// again under the same token.
+/// `PUT /conversations/:id/shares/:token`: the share's list made again
+/// under the same token.
 pub(super) async fn update(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -135,7 +135,7 @@ async fn found(services: &Services, token: String) -> Result<ShareRecord, ApiErr
     services.control.share(token).await?.ok_or_else(not_found)
 }
 
-/// `GET /shares/:token`: what the shared page shows above the snapshot.
+/// `GET /shares/:token`: what the shared page shows above the transcript.
 pub(super) async fn read(
     State(state): State<AppState>,
     Path(token): Path<String>,
@@ -165,7 +165,7 @@ pub(super) async fn read(
 }
 
 /// `GET /shares/:token/attachments/:attachment`: an attachment the
-/// snapshot's text names, as the conversation's attachment route answers
+/// share's text names, as the conversation's attachment route answers
 /// it.
 pub(super) async fn attachment(
     State(state): State<AppState>,
@@ -184,9 +184,9 @@ pub(super) async fn attachment(
     Ok(Json(attachment_answer(row)))
 }
 
-/// `GET /shares/:token/transcript`: a page of the snapshot, as a
+/// `GET /shares/:token/transcript`: a page of what the share holds, as a
 /// conversation's page is answered, without failure facts, which are read
-/// live, and with no instructions, which a snapshot does not hold.
+/// live, and with no instructions, which a share does not hold.
 pub(super) async fn transcript(
     State(state): State<AppState>,
     Path(token): Path<String>,
@@ -200,13 +200,16 @@ pub(super) async fn transcript(
         .call(move |shard, _| async move { shard.share_page(&share, query).await })
         .await?
         .map_err(ApiError::conversation_unreadable)?;
-    // A conversation without a database holds no snapshot.
+    // A conversation without a database holds no share's list.
     let read = read.ok_or_else(not_found)?;
-    let page = page_answer(Some(read), not_found, not_found)?;
+    // What the list does not hold, an anchor included, answers as a token
+    // that names no share (`sharing.md` § Safety); a share's list never
+    // changes under its page, so an edge not at its index is not on it.
+    let page = page_answer(Some(read), not_found, not_found, not_found, not_found)?;
     Ok(Json(page))
 }
 
-/// `GET /shares/:token/transcript/blocks/:blockId`: a block of the snapshot
+/// `GET /shares/:token/transcript/blocks/:blockId`: a block the share holds
 /// whole, as the conversation's whole-block read answers it.
 pub(super) async fn block(
     State(state): State<AppState>,
@@ -230,7 +233,7 @@ pub(super) async fn block(
     }))
 }
 
-/// `GET /shares/:token/blobs/:sha256?type=`: a blob the snapshot shows.
+/// `GET /shares/:token/blobs/:sha256?type=`: a blob the share shows.
 pub(super) async fn blob(
     State(state): State<AppState>,
     Path((token, name)): Path<(String, String)>,

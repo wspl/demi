@@ -2070,7 +2070,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'blocks'">
       <GallerySection
         title="Assistant Message"
-        note="Intermediate updates have no copy, fork or timestamp toolbar. Final replies keep their toolbar, including while a later user request runs. Preview fork success, pending creation, and a retry after failure. Share, beside Fork, makes the answer’s share at once and copies its link, then opens the share dialog (Dialogs); it waits, like Fork, until the message completes, and on an answer that has a share it opens the dialog on that link. The conversation header’s ⋯ menu holds Share Conversation… in the same way."
+        note="Intermediate updates have no copy, fork or timestamp toolbar. Final replies keep their toolbar, including while a later user request runs. Preview fork success, pending creation, and a retry after failure. Share, beside Fork, opens the share dialog at once and makes the answer’s link in it, copied once it stands (Dialogs); it waits, like Fork, until the message completes, and on an answer that has a share it opens the dialog on that link. The conversation header’s ⋯ menu holds Share Conversation… in the same way."
       >
         <GallerySpecimen variant="message footer" wide>
           <GalleryAssistantMessages />
