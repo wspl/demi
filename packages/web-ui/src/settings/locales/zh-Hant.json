@@ -418,7 +418,7 @@
     "delete": "刪除",
     "create": "建立設定檔",
     "parentModel": "上層模型",
-    "providerGone": "其提供者已不存在。請選擇其他模型。",
+    "providerGone": "其供應商已不存在。請選擇其他模型。",
     "modelGone": "模型 {model} 已不存在。請選擇其他模型。",
     "effortGone": "{model} 不再提供推理強度 {effort}。請選擇其他強度。",
     "tierGone": "{model} 不再提供層級 {tier}。請選擇其他層級。",
@@ -428,11 +428,11 @@
     "nameDefault": "「default」是繼承設定檔的名稱。請選擇其他名稱。"
   },
   "providers": {
-    "title": "提供者",
-    "loading": "正在載入提供者…",
+    "title": "供應商",
+    "loading": "正在載入供應商…",
     "subscriptions": "訂閱",
     "apiKeys": "API 金鑰",
-    "name": "提供者名稱",
+    "name": "供應商名稱",
     "rename": "重新命名",
     "saving": "正在儲存…",
     "addAccount": "新增帳戶",
@@ -537,10 +537,10 @@
     "testFailed": "「{account}」測試失敗",
     "addModelFailed": "無法新增模型",
     "saveModelFailed": "無法儲存模型",
-    "duplicateModel": "此提供者的另一個模型已使用此 ID"
+    "duplicateModel": "此供應商的另一個模型已使用此 ID"
   },
   "addProvider": {
-    "title": "新增提供者",
+    "title": "新增供應商",
     "compatible": "相容 API",
     "compatibleHint": "代理或你自己的伺服器",
     "proxy": "代理",
@@ -578,7 +578,7 @@
     "accept": "接受{label}",
     "removeExtension": "移除 {ext}",
     "delete": "刪除模型",
-    "duplicateId": "此提供者的另一個模型已使用此 ID"
+    "duplicateId": "此供應商的另一個模型已使用此 ID"
   },
   "presets": {
     "images": "圖片",

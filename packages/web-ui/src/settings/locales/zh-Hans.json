@@ -418,7 +418,7 @@
     "delete": "删除",
     "create": "创建配置文件",
     "parentModel": "父级模型",
-    "providerGone": "其提供程序已不存在。请选择其他模型。",
+    "providerGone": "其供应商已不存在。请选择其他模型。",
     "modelGone": "模型 {model} 已不存在。请选择其他模型。",
     "effortGone": "{model} 不再提供推理强度 {effort}。请选择其他强度。",
     "tierGone": "{model} 不再提供层级 {tier}。请选择其他层级。",
@@ -428,11 +428,11 @@
     "nameDefault": "“default”是继承配置文件的名称。请选择其他名称。"
   },
   "providers": {
-    "title": "提供程序",
-    "loading": "正在加载提供程序…",
+    "title": "供应商",
+    "loading": "正在加载供应商…",
     "subscriptions": "订阅",
     "apiKeys": "API 密钥",
-    "name": "提供程序名称",
+    "name": "供应商名称",
     "rename": "重命名",
     "saving": "正在保存…",
     "addAccount": "添加帐户",
@@ -537,10 +537,10 @@
     "testFailed": "“{account}”测试失败",
     "addModelFailed": "无法添加模型",
     "saveModelFailed": "无法保存模型",
-    "duplicateModel": "此提供程序的另一个模型已使用此 ID"
+    "duplicateModel": "此供应商的另一个模型已使用此 ID"
   },
   "addProvider": {
-    "title": "添加提供程序",
+    "title": "添加供应商",
     "compatible": "兼容 API",
     "compatibleHint": "代理或你自己的服务器",
     "proxy": "代理",
@@ -578,7 +578,7 @@
     "accept": "接受{label}",
     "removeExtension": "删除 {ext}",
     "delete": "删除模型",
-    "duplicateId": "此提供程序的另一个模型已使用此 ID"
+    "duplicateId": "此供应商的另一个模型已使用此 ID"
   },
   "presets": {
     "images": "图像",

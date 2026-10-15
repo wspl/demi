@@ -18,7 +18,7 @@
   },
   "requestId": "要求 ID：{id}",
   "errorNotice": {
-    "providerResponse": "提供者回應"
+    "providerResponse": "供應商回應"
   },
   "updateFailed": {
     "title": "無法更新此頁面",

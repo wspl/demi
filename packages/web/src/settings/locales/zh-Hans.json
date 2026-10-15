@@ -17,14 +17,14 @@
     "turnOffFailed": "无法关闭插件"
   },
   "providers": {
-    "saveFailed": "无法保存提供程序",
-    "testFailed": "无法测试提供程序",
+    "saveFailed": "无法保存供应商",
+    "testFailed": "无法测试供应商",
     "refreshModelsFailed": "无法刷新模型",
-    "removeFailed": "无法删除提供程序",
+    "removeFailed": "无法删除供应商",
     "cliUpdateFailed": "无法更新命令行工具",
     "removeAccountFailed": "无法删除帐户",
     "testAccountFailed": "无法测试帐户",
-    "addFailed": "无法添加提供程序",
+    "addFailed": "无法添加供应商",
     "cliReadFailed": "无法读取命令行工具",
     "checkUpdatesFailed": "无法检查更新",
     "cliInstallFailed": "无法安装命令行工具",
