@@ -55,6 +55,9 @@ struct AssistantMessage {
     id: Option<String>,
     #[serde(default)]
     content: Option<Vec<Printed>>,
+    /// The API call's counts, whole only on a message that never streamed.
+    #[serde(default)]
+    usage: Option<MessagesUsage>,
 }
 
 /// A content block as the CLI printed it, and as Demi reads it: `None` for
@@ -83,6 +86,11 @@ impl AssistantLine {
     /// The id of the message the line is part of.
     pub(crate) fn message_id(&self) -> Option<String> {
         self.message.as_ref().and_then(|message| message.id.clone())
+    }
+
+    /// The counts of the API call that wrote the message.
+    pub(crate) fn usage(&self) -> Option<MessagesUsage> {
+        self.message.as_ref().and_then(|message| message.usage)
     }
 
     pub(crate) fn content(self) -> impl Iterator<Item = Printed> {
@@ -203,7 +211,17 @@ pub(crate) struct MessageStart {
 #[derive(Deserialize)]
 struct StartedMessage {
     #[serde(default)]
+    id: Option<String>,
+    #[serde(default)]
     usage: Option<MessagesUsage>,
+}
+
+impl MessageStart {
+    /// The id of the message, which the whole assistant lines that repeat
+    /// it carry.
+    pub(crate) fn message_id(&self) -> Option<String> {
+        self.message.as_ref().and_then(|message| message.id.clone())
+    }
 }
 
 /// The end of an API call's message, with the call's final token counts.
@@ -327,6 +345,15 @@ impl LastCall {
         }
     }
 
+    /// A call whose message came whole, without streaming, with the counts
+    /// it stated.
+    pub(crate) fn answered(&mut self, counts: Option<MessagesUsage>) {
+        self.0.start(None);
+        if let Some(counts) = counts {
+            self.0.delta(counts);
+        }
+    }
+
     /// The latest call's usage, which the run's end takes, at the turn's
     /// `result` or at a batch of tool calls, so a later run never reports it
     /// again; none when no call since ended with its counts.
@@ -370,6 +397,193 @@ impl ContentBlock {
             Self::RedactedThinking(block) => vec![ProviderEvent::RedactedThinking(block.data)],
             Self::ToolUse(_) => Vec::new(),
         }
+    }
+}
+
+/// A block of a streamed response as its events showed it, at its
+/// position among the blocks the run's events wrote.
+struct Shown {
+    at: usize,
+    kind: ShownKind,
+}
+
+enum ShownKind {
+    Thinking { text: String, signed: bool },
+    Text(String),
+    Redacted,
+}
+
+/// The assistant response the CLI is streaming (`claude-code.md` §
+/// Tool-call batches): the id its `message_start` names, which every whole
+/// assistant line that repeats a block of it carries, and what its events
+/// showed, block by block. A whole line of another message is a complete
+/// answer: the CLI's retry without streaming after the stream failed, which
+/// replaces this response.
+#[derive(Default)]
+pub(crate) struct Streaming {
+    id: Option<String>,
+    shown: Vec<Shown>,
+}
+
+impl Streaming {
+    pub(crate) fn new(id: Option<String>) -> Self {
+        Self {
+            id,
+            shown: Vec::new(),
+        }
+    }
+
+    /// Whether a whole assistant line of message `id` repeats a block that
+    /// streamed here.
+    pub(crate) fn repeats(&self, id: &Option<String>) -> bool {
+        self.id == *id
+    }
+
+    /// The id of the message being streamed, when its start named one.
+    pub(crate) fn id(&self) -> Option<&str> {
+        self.id.as_deref()
+    }
+
+    /// Notes an event the run yielded of this response, which went to the
+    /// block at `at` ([`crate::mirror::Mirror::last_block`]). A tool use
+    /// being written is no block, and a thinking start opens none until
+    /// the next event.
+    pub(crate) fn observe(&mut self, event: &ProviderEvent, at: Option<usize>) {
+        let Some(at) = at else {
+            return;
+        };
+        let last = self.shown.last_mut().filter(|shown| shown.at == at);
+        let kind = match (event, last) {
+            (ProviderEvent::ThinkingDelta(piece), Some(Shown { kind: ShownKind::Thinking { text, .. }, .. })) => {
+                text.push_str(piece);
+                return;
+            }
+            (ProviderEvent::ThinkingSignature(_), Some(Shown { kind: ShownKind::Thinking { signed, .. }, .. })) => {
+                *signed = true;
+                return;
+            }
+            (ProviderEvent::TextDelta(piece), Some(Shown { kind: ShownKind::Text(text), .. })) => {
+                text.push_str(piece);
+                return;
+            }
+            (ProviderEvent::ThinkingDelta(piece), None) => ShownKind::Thinking {
+                text: piece.clone(),
+                signed: false,
+            },
+            (ProviderEvent::ThinkingSignature(_), None) => ShownKind::Thinking {
+                text: String::new(),
+                signed: true,
+            },
+            (ProviderEvent::TextDelta(piece), None) => ShownKind::Text(piece.clone()),
+            (ProviderEvent::RedactedThinking(_), _) => ShownKind::Redacted,
+            _ => return,
+        };
+        self.shown.push(Shown { at, kind });
+    }
+
+    /// What the response showed, which a complete answer that replaces it
+    /// is shown against.
+    pub(crate) fn replaced(self) -> Replaced {
+        Replaced {
+            shown: self.shown.into_iter(),
+            unrepeated: Vec::new(),
+            departed: false,
+        }
+    }
+}
+
+/// Where a block of a complete answer went.
+pub(crate) enum Answered {
+    /// It repeats, or goes on with, the shown block at this position.
+    Repeats(usize),
+    /// It is new, and whether its events wrote a block.
+    New(bool),
+}
+
+/// What an abandoned stream showed, which the complete answer that
+/// replaces it is shown against. An answer that resumes what streamed
+/// repeats the blocks that showed whole, then continues the one the stream
+/// broke off in: as long as it does, only the rest is shown, so the agent's
+/// blocks go on as the answer's. From the first block that departs from
+/// what showed, the answer is shown whole, after what showed, since the
+/// agent's blocks are only ever added to; the shown blocks it did not
+/// repeat stay on the page, and the CLI left them out of its history.
+pub(crate) struct Replaced {
+    shown: std::vec::IntoIter<Shown>,
+    unrepeated: Vec<usize>,
+    departed: bool,
+}
+
+impl Replaced {
+    /// The positions of the shown blocks the answer did not repeat, once
+    /// the whole answer was read.
+    pub(crate) fn unrepeated(mut self) -> Vec<usize> {
+        self.unrepeated.extend(self.shown.map(|shown| shown.at));
+        self.unrepeated
+    }
+
+    /// The events of the answer's next block, without what of it already
+    /// showed, and where the block went.
+    pub(crate) fn events(&mut self, block: ContentBlock) -> (Vec<ProviderEvent>, Answered) {
+        if self.departed {
+            return Self::whole(block);
+        }
+        let Some(Shown { at, kind }) = self.shown.next() else {
+            self.departed = true;
+            return Self::whole(block);
+        };
+        // Only the block the stream broke off in goes on; an earlier one
+        // showed whole.
+        let last = self.shown.len() == 0;
+        let continues = |shown: &str, whole: &str| {
+            if last {
+                whole.starts_with(shown)
+            } else {
+                whole == shown
+            }
+        };
+        match (kind, block) {
+            (ShownKind::Text(shown), ContentBlock::Text(block)) if continues(&shown, &block.text) => {
+                let rest = &block.text[shown.len()..];
+                let events = if rest.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![ProviderEvent::TextDelta(rest.to_owned())]
+                };
+                (events, Answered::Repeats(at))
+            }
+            (ShownKind::Thinking { text: shown, signed }, ContentBlock::Thinking(block))
+                if continues(
+                    &shown,
+                    block
+                        .thinking
+                        .as_deref()
+                        .or(block.text.as_deref())
+                        .unwrap_or_default(),
+                ) =>
+            {
+                let text = block.thinking.or(block.text).unwrap_or_default();
+                let mut events = Vec::new();
+                if text.len() > shown.len() {
+                    events.push(ProviderEvent::ThinkingDelta(text[shown.len()..].to_owned()));
+                }
+                if let Some(signature) = block.signature.filter(|_| !signed) {
+                    events.push(ProviderEvent::ThinkingSignature(signature));
+                }
+                (events, Answered::Repeats(at))
+            }
+            (_, block) => {
+                self.unrepeated.push(at);
+                self.departed = true;
+                Self::whole(block)
+            }
+        }
+    }
+
+    fn whole(block: ContentBlock) -> (Vec<ProviderEvent>, Answered) {
+        let events = block.events();
+        let wrote = !events.is_empty();
+        (events, Answered::New(wrote))
     }
 }
 

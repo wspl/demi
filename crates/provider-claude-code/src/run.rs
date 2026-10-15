@@ -26,7 +26,7 @@ use futures_util::stream::{self, Stream};
 use crate::Shared;
 use crate::failure::read_failure;
 use crate::live::{LiveCli, Next};
-use crate::output::{ContentBlock, Line, Printed, StreamEvent, TurnEnd};
+use crate::output::{Answered, ContentBlock, Line, Printed, StreamEvent, Streaming, TurnEnd};
 use crate::placement::Placement;
 use crate::prepared::Prepared;
 use crate::timing::{self, RunTiming, Took};
@@ -305,28 +305,19 @@ fn run(
                         yield ProviderEvent::Error(failure);
                         return;
                     }
-                    // A call that opens before the model's message streamed is
-                    // a batch of one; once the process streams, calls come with
-                    // the batch its message_stop ends. A run that stops at a
-                    // batch ends, as every run does, with the response of the
-                    // call that wrote it, so the agent checks each call's
-                    // usage (`compaction.md` § When compaction runs).
+                    // A call that opens while no response streams, before
+                    // the model's message was read, is a batch of one; a
+                    // call of a streaming response comes with the batch its
+                    // message_stop ends.
                     Next::Opened(call) => {
-                        if live.streamed {
+                        if live.streaming.is_some() {
                             continue;
                         }
-                        live.collecting.clear();
-                        live.held = vec![call.clone()];
-                        let call = ProviderEvent::ToolCall(call);
-                        live.mirror.observe(&call);
-                        let entries = live.mirror.place(&request, false);
-                        let usage = live.last_call.take();
+                        let events = live.hand_over(vec![call], &request);
                         runtime.live = Some(live);
-                        yield call;
-                        for event in entries {
+                        for event in events {
                             yield event;
                         }
-                        yield ProviderEvent::response(usage, crate::FAMILY, &request.model_id);
                         return;
                     }
                     Next::Line(text, line) => (text, line),
@@ -343,10 +334,22 @@ fn run(
                         }
                     }
                     Some(Line::Assistant(message)) => {
-                        // Once the process streams, a whole message repeats what
-                        // streamed, but its tool uses are whole only here.
-                        let streamed = live.streamed;
+                        // A whole line of the response being streamed repeats
+                        // a block that streamed, but its tool uses are whole
+                        // only here. Any other line is a complete answer, as
+                        // the CLI's retry without streaming after a stream
+                        // failed: it replaces the abandoned response, whose
+                        // calls never run, shows without what of it already
+                        // showed, and hands its batch on at once, since no
+                        // message_stop follows it.
                         let id = message.message_id();
+                        // What a complete answer replaces; none for a line
+                        // that repeats what streamed.
+                        let mut complete = None;
+                        if !live.streaming.as_ref().is_some_and(|streaming| streaming.repeats(&id)) {
+                            complete = Some(live.abandon_streaming());
+                            live.last_call.answered(message.usage());
+                        }
                         for Printed { raw, block } in message.content() {
                             match block {
                                 Some(ContentBlock::ToolUse(tool_use)) => match tool_use.call() {
@@ -363,63 +366,94 @@ fn run(
                                         return;
                                     }
                                 },
-                                Some(block) if !streamed => {
-                                    let events = block.events();
-                                    let wrote = !events.is_empty();
-                                    for event in events {
-                                        live.mirror.observe(&event);
-                                        yielded = true;
-                                        timing.delta();
-                                        yield event;
+                                Some(block) => match &mut complete {
+                                    Some(replaced) => {
+                                        let (events, answered) = replaced.events(block);
+                                        for event in events {
+                                            live.mirror.observe(&event);
+                                            yielded = true;
+                                            timing.delta();
+                                            yield event;
+                                        }
+                                        match answered {
+                                            Answered::Repeats(index) => live.mirror.printed_at(id.clone(), raw, index),
+                                            Answered::New(wrote) => live.mirror.printed(id.clone(), raw, wrote),
+                                        }
                                     }
-                                    live.mirror.printed(id.clone(), raw, wrote);
-                                }
-                                // What streamed wrote the block: reasoning
-                                // opens one at its start, and text with its
-                                // first piece; redacted reasoning streams no
-                                // event.
-                                Some(block) => {
-                                    let wrote = match &block {
-                                        ContentBlock::Thinking(_) => true,
-                                        ContentBlock::Text(text) => !text.is_empty(),
-                                        ContentBlock::RedactedThinking(_) | ContentBlock::ToolUse(_) => false,
-                                    };
-                                    live.mirror.printed(id.clone(), raw, wrote);
-                                }
+                                    // What streamed wrote the block: reasoning
+                                    // opens one at its start, and text with its
+                                    // first piece; redacted reasoning streams no
+                                    // event.
+                                    None => {
+                                        let wrote = match &block {
+                                            ContentBlock::Thinking(_) => true,
+                                            ContentBlock::Text(text) => !text.is_empty(),
+                                            ContentBlock::RedactedThinking(_) | ContentBlock::ToolUse(_) => false,
+                                        };
+                                        live.mirror.printed(id.clone(), raw, wrote);
+                                    }
+                                },
                                 None => live.mirror.printed(id.clone(), raw, false),
+                            }
+                        }
+                        if let Some(replaced) = complete.take() {
+                            for event in live.mirror.left_out(replaced.unrepeated()) {
+                                yield event;
+                            }
+                            if !live.collecting.is_empty() {
+                                let batch = std::mem::take(&mut live.collecting);
+                                let events = live.hand_over(batch, &request);
+                                runtime.live = Some(live);
+                                for event in events {
+                                    yield event;
+                                }
+                                return;
                             }
                         }
                     }
                     Some(Line::TranscriptMirror(line)) => {
-                        for event in live.mirror.mirrored(line.entries, &request) {
+                        let streaming = live.streaming.as_ref().and_then(Streaming::id).map(str::to_owned);
+                        for event in live.mirror.mirrored(line.entries, &request, streaming.as_deref()) {
                             yield event;
                         }
                     }
                     Some(Line::StreamEvent(line)) => {
-                        live.streamed = true;
                         let Some(event) = line.event() else {
                             continue;
                         };
                         live.last_call.observe(&event);
-                        if let StreamEvent::MessageStop(_) = event {
-                            live.writing.clear();
-                            if live.collecting.is_empty() {
-                                continue;
+                        match &event {
+                            // A new message abandons one whose stream never
+                            // stopped, and the calls it collected.
+                            StreamEvent::MessageStart(start) => {
+                                let abandoned = live.abandon_streaming();
+                                for event in live.mirror.left_out(abandoned.unrepeated()) {
+                                    yield event;
+                                }
+                                live.streaming = Some(Streaming::new(start.message_id()));
                             }
-                            live.held = std::mem::take(&mut live.collecting);
-                            let batch: Vec<ProviderEvent> =
-                                live.held.iter().cloned().map(ProviderEvent::ToolCall).collect();
-                            for call in &batch {
-                                live.mirror.observe(call);
+                            // The message's entries, held while it streamed,
+                            // now have their blocks.
+                            StreamEvent::MessageStop(_) => {
+                                if live.collecting.is_empty() {
+                                    live.streaming = None;
+                                    live.writing.clear();
+                                    for event in live.mirror.place(&request, false, None) {
+                                        yield event;
+                                    }
+                                    continue;
+                                }
+                                let batch = std::mem::take(&mut live.collecting);
+                                let events = live.hand_over(batch, &request);
+                                runtime.live = Some(live);
+                                for event in events {
+                                    yield event;
+                                }
+                                return;
                             }
-                            let entries = live.mirror.place(&request, false);
-                            let usage = live.last_call.take();
-                            runtime.live = Some(live);
-                            for event in batch.into_iter().chain(entries) {
-                                yield event;
+                            _ => {
+                                live.streaming.get_or_insert_default();
                             }
-                            yield ProviderEvent::response(usage, crate::FAMILY, &request.model_id);
-                            return;
                         }
                         for event in event.events(&mut live.writing) {
                             // Nor is such a call shown as being written.
@@ -430,6 +464,9 @@ fn run(
                                 continue;
                             }
                             live.mirror.observe(&event);
+                            if let Some(streaming) = &mut live.streaming {
+                                streaming.observe(&event, live.mirror.last_block());
+                            }
                             yielded = true;
                             timing.delta();
                             yield event;
@@ -444,6 +481,8 @@ fn run(
                     }
                     Some(Line::Result(line)) => {
                         live.collecting.clear();
+                        live.writing.clear();
+                        live.streaming = None;
                         let usage = live.last_call.take();
                         let end = line.end();
                         // The vendor refused the process's token, before
