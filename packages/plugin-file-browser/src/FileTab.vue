@@ -10,6 +10,7 @@ const mode = ref<'preview' | 'source'>('preview')
 import { computed } from 'vue'
 import { FileView, joinPath, treeLayout, usePage } from '@demicodes/plugin-sdk'
 import { goBack, goForward, showFile, type FileData } from './data'
+import { t } from './locales/text'
 
 /**
  * The File view of one conversation (`file-previews.md`): one file of its
@@ -62,7 +63,7 @@ function open(path: string): void {
     v-else
     class="flex flex-1 select-none flex-col items-center justify-center gap-1 text-[13px] text-fg-faint"
   >
-    <span>File</span>
+    <span>{{ t('kind.title') }}</span>
     <span class="max-w-full truncate px-4 font-mono text-[11px]">{{ data.path }}</span>
   </div>
 </template>

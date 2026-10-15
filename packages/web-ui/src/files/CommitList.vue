@@ -5,8 +5,12 @@ import { formatAge, formatMoment } from '../ui/dates'
 import ScrollArea from '../ui/ScrollArea.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import TruncatedText from '../ui/TruncatedText.vue'
 import Button from '../ui/Button.vue'
 import { commitSummary, shortCommit, type LoggedCommit } from './history'
+import { t as shared } from '../locales/text'
+import { t } from './locales/text'
+import { formatCount } from '../ui/numbers'
 
 /**
  * One branch's commits under the Change view's files, newest first, as VS
@@ -75,7 +79,7 @@ function onKeydown(event: KeyboardEvent): void {
 }
 
 function files(count: number): string {
-  return count === 1 ? '1 file' : `${count} files`
+  return t('changes.files', { count: formatCount(count) }, count)
 }
 </script>
 
@@ -83,7 +87,7 @@ function files(count: number): string {
   <ScrollArea class="h-full min-h-0 bg-surface-editor" viewport-class="p-1">
     <div
       role="listbox"
-      aria-label="Commits"
+      :aria-label="t('changes.commitList')"
       tabindex="0"
       class="flex min-h-full flex-col gap-px outline-none"
       @keydown="onKeydown"
@@ -97,7 +101,7 @@ function files(count: number): string {
         @click="emit('select', null)"
       >
         <span class="size-1.5 shrink-0 rounded-full bg-on-warning" aria-hidden="true" />
-        <span class="min-w-0 flex-1 truncate">Uncommitted Changes</span>
+        <TruncatedText class="min-w-0 flex-1" :text="t('changes.uncommitted')" />
         <span class="shrink-0 text-fg-subtle" :aria-label="files(uncommitted)">{{ uncommitted }}</span>
       </div>
       <Tooltip
@@ -131,7 +135,7 @@ function files(count: number): string {
       </Tooltip>
       <div v-if="failure" class="flex select-none items-center gap-2 px-2 py-1.5 text-[12px] text-fg-subtle">
         <span class="min-w-0 flex-1">{{ failure }}</span>
-        <Button size="xs" variant="ghost" @click="emit('more')">Retry</Button>
+        <Button size="xs" variant="ghost" @click="emit('more')">{{ shared('common.retry') }}</Button>
       </div>
       <div ref="end" class="flex h-6 shrink-0 items-center justify-center" aria-hidden="true">
         <IndeterminateSpinner v-if="loading" :size="14" class="text-fg-muted" />

@@ -19,6 +19,7 @@ import FileUploadList from './FileUploadList.vue'
 import LinkMark from './LinkMark.vue'
 import { readLinkAgain } from './link-activation'
 import { failureShown } from './file-cache'
+import { t } from './locales/text'
 import { followOnScreen } from './on-screen'
 import Tree from './Tree.vue'
 import UploadConflictDialog from './UploadConflictDialog.vue'
@@ -264,8 +265,10 @@ function failureText(row: TreeRow): string {
     return ''
   }
   const listed = listings.get(row.path)?.showing?.entry.value !== undefined
-  const heading = listed ? 'Could not refresh' : failure.kind === 'permission' ? 'No access' : 'Unavailable'
-  return failure.message ? `${heading}: ${failure.message}` : heading
+  const heading = listed
+    ? t('tree.couldNotRefresh')
+    : failure.kind === 'permission' ? t('tree.noAccess') : t('tree.unavailable')
+  return failure.message ? t('tree.withReason', { heading, reason: failure.message }) : heading
 }
 
 function activate(row: TreeRow): void {
@@ -493,7 +496,7 @@ async function receive(directory: string, entries: readonly (DroppedEntry | File
     items = await droppedItems(entries)
   } catch (error) {
     showToast({
-      title: 'Could Not Read What Was Dropped',
+      title: t('tree.couldNotReadDrop'),
       message: () => errorMessage(error),
       tone: 'danger',
     })
@@ -537,12 +540,12 @@ defineExpose({
       @menu="openMenu"
     >
       <template #captionTrailing>
-        <Tooltip content="Refresh" class="ml-2 shrink-0">
+        <Tooltip :content="t('actions.refresh')" class="ml-2 shrink-0">
           <IconButton
             :icon="RefreshCw"
             size="xs"
             variant="ghost"
-            aria-label="Refresh"
+            :aria-label="t('actions.refresh')"
             spin-on-click
             :spinning="refreshing"
             @click="refresh"
@@ -576,7 +579,7 @@ defineExpose({
           v-else-if="rootFailure"
           class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-4 py-10 text-center text-[13px] text-fg-subtle"
         >
-          <span>Could not list the workspace.</span>
+          <span>{{ t('tree.couldNotList') }}</span>
           <span class="text-[11px] text-fg-faint">{{ rootFailure.message }}</span>
           <RequestIdLine
             v-if="rootFailure.requestId"
@@ -593,7 +596,7 @@ defineExpose({
         side="end"
         :min="UPLOADS_MIN_PX"
         :max="uploadsRoom"
-        label="Uploads"
+        :label="t('tree.resizeUploads')"
       />
       <FileUploadList
         ref="uploadsList"
@@ -605,8 +608,8 @@ defineExpose({
   </div>
   <ContextMenu :overlay-store="appOverlayStore" :owner="menu">
     <template #menu>
-      <MenuItem v-if="menuTarget?.kind === 'file'" :icon="Download" label="Download" @select="download(menuTarget.path)" />
-      <MenuItem v-else-if="menuTarget" :icon="Upload" label="Upload Files…" @select="chooseFiles(menuTarget.path)" />
+      <MenuItem v-if="menuTarget?.kind === 'file'" :icon="Download" :label="t('actions.download')" @select="download(menuTarget.path)" />
+      <MenuItem v-else-if="menuTarget" :icon="Upload" :label="t('tree.uploadFiles')" @select="chooseFiles(menuTarget.path)" />
     </template>
   </ContextMenu>
   <input ref="picker" type="file" multiple class="hidden" @change="onPicked">

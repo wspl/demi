@@ -12,6 +12,7 @@
 import { reactive } from 'vue'
 import type { Answered, HostFiles, KeptSpec, Read, Showing } from './file-cache'
 import { baseName } from '@demicodes/utils'
+import { t } from './locales/text'
 import { parentPath } from './paths'
 import type { ChangeSetSource, ChangeSides, WorkingTreeChange } from './changes'
 import type { BranchList, CommitDetails, CommitHistorySource, CommitLogPage } from './history'
@@ -253,7 +254,7 @@ export function keptChangeSet(
     },
     get failure() {
       const failure = entry().failure
-      return failure ? failure.message ?? 'The changes could not be listed.' : null
+      return failure ? failure.message ?? t('changes.listFailed') : null
     },
     refresh() {
       files.retry(listSpec)

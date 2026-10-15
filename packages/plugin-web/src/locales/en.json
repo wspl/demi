@@ -1,0 +1,37 @@
+{
+  "settings": {
+    "title": "Web Search",
+    "keywords": "web, search, Exa, API key, sign in"
+  },
+  "account": {
+    "label": "Exa account",
+    "signedIn": "Signed in",
+    "notConnected": "Not connected",
+    "signOut": "Sign Out",
+    "signIn": "Sign In"
+  },
+  "key": {
+    "label": "API key",
+    "description": "Offers every filter, such as domains and dates.",
+    "unchecked": "Not checked: {reason}",
+    "remove": "Remove",
+    "placeholder": "Exa API key",
+    "save": "Save"
+  },
+  "inUse": {
+    "label": "In use",
+    "key": "Your API key",
+    "account": "Your Exa account",
+    "anonymous": "Anonymous, limited"
+  },
+  "refusals": {
+    "keyRefused": "Exa refused this key. Check that it was copied whole.",
+    "exaUnavailable": "Exa didn’t answer the search that checks the key. Try again."
+  },
+  "errors": {
+    "signIn": "Could Not Start the Exa Sign-In",
+    "signOut": "Could Not Sign Out of Exa",
+    "saveKey": "Could Not Save the Key",
+    "removeKey": "Could Not Remove the Key"
+  }
+}

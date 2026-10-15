@@ -13,6 +13,7 @@ import {
   type SignOut,
   type WebReason,
 } from './generated/plugin'
+import { t } from './locales/text'
 
 /**
  * The web plugin's settings section (`web.md` § Settings › Web Search) over
@@ -30,9 +31,9 @@ const keyDraft = ref('')
 const keyProblem = ref<string>()
 
 /** The refusals about the key typed, in the page's own words. */
-const KEY_REFUSALS: Record<WebReason, string> = {
-  key_refused: 'Exa refused this key. Check that it was copied whole.',
-  exa_unavailable: 'Exa did not answer the search that checks the key. Try again.',
+const KEY_REFUSALS: Record<WebReason, () => string> = {
+  key_refused: () => t('refusals.keyRefused'),
+  exa_unavailable: () => t('refusals.exaUnavailable'),
 }
 
 /** `call`, whose failure a toast reports as `couldNot`. */
@@ -46,11 +47,11 @@ function reported(call: Promise<unknown>, couldNot: HeadlineText): Promise<void>
 function signIn(): Promise<void> {
   // The tab opens in this click and goes to Exa once the plugin answers.
   const url = plugin.call('sign_in', {} satisfies SignIn, signInStartedSchema).then((started) => started.url)
-  return reported(page.links.open(url), 'Could Not Start the Exa Sign-In')
+  return reported(page.links.open(url), t('errors.signIn'))
 }
 
 function signOut(): Promise<void> {
-  return reported(plugin.call('sign_out', {} satisfies SignOut, z.null()), 'Could Not Sign Out of Exa')
+  return reported(plugin.call('sign_out', {} satisfies SignOut, z.null()), t('errors.signOut'))
 }
 
 async function saveKey(key: string): Promise<void> {
@@ -61,15 +62,15 @@ async function saveKey(key: string): Promise<void> {
   } catch (error) {
     const reason = error instanceof PluginCallError ? webReasonSchema.safeParse(error.reason) : null
     if (reason?.success) {
-      keyProblem.value = KEY_REFUSALS[reason.data]
+      keyProblem.value = KEY_REFUSALS[reason.data]()
       return
     }
-    page.errors.report('Could Not Save the Key', error)
+    page.errors.report(t('errors.saveKey'), error)
   }
 }
 
 function removeKey(): Promise<void> {
-  return reported(plugin.call('remove_key', {} satisfies RemoveKey, z.null()), 'Could Not Remove the Key')
+  return reported(plugin.call('remove_key', {} satisfies RemoveKey, z.null()), t('errors.removeKey'))
 }
 </script>
 

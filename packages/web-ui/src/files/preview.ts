@@ -1,5 +1,6 @@
 import { FileX } from '@lucide/vue'
 import { previewMediaType } from '@demicodes/protocol'
+import { t } from './locales/text'
 
 /** What a view shows a file as (`file-previews.md` § What the user sees). */
 export type PreviewKind = 'image' | 'video' | 'audio' | 'pdf' | 'markdown' | 'text'
@@ -24,7 +25,9 @@ export function hasSourceView(path: string): boolean {
 }
 
 /** What a card says of a file too large for its source to serve or read, unless its view says more. */
-export const TOO_LARGE_NOTE = 'Too large to show.'
+export function tooLargeNote(): string {
+  return t('view.tooLargeToShow')
+}
 
 /**
  * What the File view shows of a file that is not there, whatever its kind,
@@ -32,7 +35,9 @@ export const TOO_LARGE_NOTE = 'Too large to show.'
  * as itself, not a read that failed (`plugin-pages.md` § What the service
  * keeps).
  */
-export const MISSING_FILE = { icon: FileX, label: 'This file does not exist.' } as const
+export function missingFile(): { icon: typeof FileX; label: string } {
+  return { icon: FileX, label: t('view.missing') }
+}
 
 /** An SVG's text as an image the page can show: a `data:` URL runs no script in the page, even opened on its own. */
 export function svgImageUrl(text: string): string {
