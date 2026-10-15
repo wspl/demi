@@ -690,8 +690,11 @@ impl ProviderRuntime for ConversationRuntime {
                             {
                                 used_up = Some(failure);
                             }
+                            // Only the answer's own output counts: the
+                            // vendor's record mirrored, such as the last
+                            // tool's result, writes nothing of it.
                             event => {
-                                shown = true;
+                                shown |= event.is_output();
                                 yield event;
                             }
                         }

@@ -551,6 +551,30 @@ impl ProviderEvent {
         }
         Self::Response(usage)
     }
+
+    /// Whether the event is output the model wrote in this run: reasoning,
+    /// text or a tool call, whole or in pieces. The run's usage and failure,
+    /// the agent's account and the vendor's record of the session are
+    /// bookkeeping, which writes nothing of the answer: a usage limit after
+    /// only those still sends the request again on another account
+    /// (`providers.md` § Account rotation).
+    pub fn is_output(&self) -> bool {
+        match self {
+            Self::ThinkingStart
+            | Self::ThinkingDelta(_)
+            | Self::ThinkingSignature(_)
+            | Self::RedactedThinking(_)
+            | Self::TextDelta(_)
+            | Self::ToolCallStart { .. }
+            | Self::ToolCallInput { .. }
+            | Self::ToolCall(_) => true,
+            Self::Response(_)
+            | Self::Error(_)
+            | Self::Account(_)
+            | Self::AccountSwitch(_)
+            | Self::Entries { .. } => false,
+        }
+    }
 }
 
 /// An agent's move from a used-up account to another: the accounts by

@@ -25,7 +25,7 @@ use demi_conversation_socket_protocol::{
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_provider_common::{
-    Capabilities, CatalogError, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
+    Capabilities, CatalogError, EntriesOf, InferenceRequest, Provider, ProviderEvent, ProviderFailure, ProviderRun,
     ProviderRuntime, RequestLimits, RuntimeEnv, RuntimeError,
 };
 use demi_shared_types::{
@@ -1402,6 +1402,10 @@ pub(crate) struct Runs {
     /// Whether a used-up key's runs fail only after some text, as a limit
     /// reached while the answer streams does.
     pub(crate) fails_late: std::sync::atomic::AtomicBool,
+    /// Whether a used-up key's runs first give back entries of the vendor's
+    /// record for the request's first item, as Claude Code mirrors the last
+    /// tool's result before the model writes anything.
+    pub(crate) mirrors_first: std::sync::atomic::AtomicBool,
     /// The input tokens each response reports, 1 unless the test makes the
     /// context large.
     pub(crate) input_tokens: std::sync::atomic::AtomicU64,
@@ -1418,6 +1422,7 @@ impl Runs {
             used_up: Mutex::new(Vec::new()),
             closed: Mutex::new(Vec::new()),
             fails_late: std::sync::atomic::AtomicBool::new(false),
+            mirrors_first: std::sync::atomic::AtomicBool::new(false),
             input_tokens: std::sync::atomic::AtomicU64::new(1),
         })
     }
@@ -1531,6 +1536,12 @@ impl ProviderRuntime for KeyedRuntime {
                     retry_after: None,
                 };
                 let mut events = Vec::new();
+                if runs.mirrors_first.load(Ordering::SeqCst) {
+                    events.push(ProviderEvent::Entries {
+                        of: EntriesOf::Item(0),
+                        entries: vec![json!({ "type": "user", "uuid": "mirrored" })],
+                    });
+                }
                 if runs.fails_late.load(Ordering::SeqCst) {
                     events.push(ProviderEvent::TextDelta("partial".into()));
                 }
