@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use gix::bstr::ByteSlice;
 use gix::progress::{Count, Id, MessageLevel, NestedProgress, Progress, Step, StepShared, Unit};
 
-use crate::skill::{self, Parsed};
+use crate::skill::{self, Parsed, SkipProblem};
 
 /// The most bytes a fetch receives.
 const FETCH_MAX_BYTES: usize = 64 * 1024 * 1024;
@@ -59,7 +59,31 @@ pub(crate) struct FetchedFile {
 pub struct Skipped {
     /// Its path in the repository.
     pub path: String,
+    /// Why, in English.
     pub reason: String,
+    /// Why, as the page words it; none in a value a fetch before codes
+    /// recorded.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub problem: Option<SkipProblem>,
+}
+
+/// Why a fetch gave no skills, as the page words it (`localization.md`
+/// § Text from the backend): one of Demi's limits or finds, or a failure in
+/// git's or the system's words, which the failure's message keeps.
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(tag = "code", rename_all = "snake_case", rename_all_fields = "camelCase")]
+pub enum FetchProblem {
+    /// The repository is larger than `limit_bytes`.
+    RepositoryTooLarge { limit_bytes: u32 },
+    NoCommit,
+    /// It has more than `limit` skills.
+    TooManySkills { limit: u32 },
+    /// Its skills' files hold more than `limit_bytes`.
+    FilesTooLarge { limit_bytes: u32 },
+    NoSkill,
+    Failed,
 }
 
 /// Why a fetch gave no skills.
@@ -69,8 +93,25 @@ pub(crate) enum FetchError {
     /// recorded.
     #[error("the fetch was stopped")]
     Stopped,
-    #[error("{0}")]
-    Failed(String),
+    #[error("{message}")]
+    Failed {
+        message: String,
+        problem: FetchProblem,
+    },
+}
+
+impl FetchError {
+    /// A failure in git's or the system's words.
+    fn failed(error: impl std::fmt::Display) -> Self {
+        Self::problem(FetchProblem::Failed, error.to_string())
+    }
+
+    fn problem(problem: FetchProblem, message: impl Into<String>) -> Self {
+        Self::Failed {
+            message: message.into(),
+            problem,
+        }
+    }
 }
 
 /// Fetches `url` and reads the skills of its default branch's newest
@@ -82,16 +123,21 @@ pub(crate) fn fetch(
     stop: &Arc<AtomicBool>,
 ) -> Result<Fetched, FetchError> {
     let directory = tempfile::tempdir()
-        .map_err(|error| FetchError::Failed(format!("no temporary directory: {error}")))?;
+        .map_err(|error| FetchError::failed(format!("no temporary directory: {error}")))?;
     let progress = Bounded::new(stop.clone());
     let exceeded = progress.exceeded.clone();
     let failed = |error: &dyn std::fmt::Display| {
         if exceeded.load(Ordering::Relaxed) {
-            FetchError::Failed("the repository is larger than 64 MiB".into())
+            FetchError::problem(
+                FetchProblem::RepositoryTooLarge {
+                    limit_bytes: FETCH_MAX_BYTES as u32,
+                },
+                "the repository is larger than 64 MiB",
+            )
         } else if stop.load(Ordering::Relaxed) {
             FetchError::Stopped
         } else {
-            FetchError::Failed(error.to_string())
+            FetchError::failed(error)
         }
     };
     // Isolated: no configuration of the machine's, so no credential either.
@@ -111,7 +157,7 @@ pub(crate) fn fetch(
         .map_err(|error| failed(&error))?;
     let commit = repository_on_disk
         .head_commit()
-        .map_err(|_| FetchError::Failed("the repository holds no commit".into()))?;
+        .map_err(|_| FetchError::problem(FetchProblem::NoCommit, "the repository holds no commit"))?;
     let tree = commit.tree().map_err(|error| failed(&error))?;
     let mut recorder = gix::traverse::tree::Recorder::default();
     tree.traverse()
@@ -200,17 +246,21 @@ fn skills_of(
         let text = read_blob(repository, entries, &manifest)?;
         let parsed = match skill::parse(name.unwrap_or(root_name), &text) {
             Ok(parsed) => parsed,
-            Err(reason) => {
+            Err(not) => {
                 skipped.push(Skipped {
                     path: manifest,
-                    reason,
+                    reason: not.reason,
+                    problem: Some(not.problem),
                 });
                 continue;
             }
         };
         if skills.len() == SOURCE_MAX_SKILLS {
-            return Err(FetchError::Failed(
-                "the repository has more than 100 skills".into(),
+            return Err(FetchError::problem(
+                FetchProblem::TooManySkills {
+                    limit: SOURCE_MAX_SKILLS as u32,
+                },
+                "the repository has more than 100 skills",
             ));
         }
         let mut files = Vec::new();
@@ -230,13 +280,16 @@ fn skills_of(
             }
             let content = repository
                 .find_object(entry.oid)
-                .map_err(|error| FetchError::Failed(error.to_string()))?
+                .map_err(FetchError::failed)?
                 .detach()
                 .data;
             bytes += content.len();
             if bytes > FILES_MAX_BYTES {
-                return Err(FetchError::Failed(
-                    "the skills' files hold more than 16 MiB".into(),
+                return Err(FetchError::problem(
+                    FetchProblem::FilesTooLarge {
+                        limit_bytes: FILES_MAX_BYTES as u32,
+                    },
+                    "the skills' files hold more than 16 MiB",
                 ));
             }
             files.push(FetchedFile {
@@ -252,7 +305,7 @@ fn skills_of(
         });
     }
     if skills.is_empty() {
-        return Err(FetchError::Failed("the repository holds no skill".into()));
+        return Err(FetchError::problem(FetchProblem::NoSkill, "the repository holds no skill"));
     }
     Ok((skills, skipped))
 }
@@ -278,7 +331,7 @@ fn read_blob(
         .expect("the path was listed");
     Ok(repository
         .find_object(entry.oid)
-        .map_err(|error| FetchError::Failed(error.to_string()))?
+        .map_err(FetchError::failed)?
         .detach()
         .data)
 }

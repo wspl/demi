@@ -11,7 +11,7 @@ use axum::http::StatusCode;
 use demi_backend_plugins::PanelError;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, UserId};
-use demi_web_api_protocol::panel::{PanelAnswer, PanelChanges, WorkPanel};
+use demi_web_api_protocol::panel::{PANEL_BYTES_MAX, PanelAnswer, PanelChanges, WorkPanel};
 
 use super::AppState;
 use super::body::JsonBody;
@@ -81,6 +81,7 @@ fn refused(error: PanelError) -> ApiError {
         PanelError::Full => ApiError::new(StatusCode::CONFLICT, ErrorCode::PanelFull, message),
         PanelError::TooLarge => {
             ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::TooLarge, message)
+                .with_param("limitBytes", PANEL_BYTES_MAX)
         }
         PanelError::Archived => archived(),
         PanelError::Missing => ApiError::new(

@@ -15,13 +15,19 @@
     "operationId": "edit-2",
     "outcome": {
       "status": "rejected",
+      "code": "edit_stale",
       "reason": "The transcript changed since the edit began"
     }
   },
   {
     "type": "rejected",
-    "command": "retry",
-    "reason": "Session is busy (running)"
+    "command": "compact",
+    "code": "compaction_unavailable",
+    "params": {
+      "thresholdPercent": 80,
+      "usedPercent": 41
+    },
+    "reason": "Available from 80% context (now 41%)"
   },
   {
     "type": "transcript_reset",
@@ -270,6 +276,7 @@
     "steerId": "steer-2",
     "outcome": {
       "status": "rejected",
+      "code": "nothing_to_steer",
       "reason": "Queued message not found"
     }
   },

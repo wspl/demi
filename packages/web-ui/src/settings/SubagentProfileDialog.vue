@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { t as uiText } from '../locales/text'
 import { t } from './locales/text'
+import { t as agentText } from '../agent/locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
 import { TriangleAlert, Zap } from '@lucide/vue'
@@ -98,7 +99,7 @@ watch(
 const modelLabel = computed(() => {
   const settings = draft.value.model
   if (!settings) {
-    return { name: 'Parent’s Model', effort: '', fast: false }
+    return { name: agentText('models.parent'), effort: '', fast: false }
   }
   const listed = (props.catalogModels[settings.providerId] ?? []).find((model) => model.id === settings.modelId)
   const effort = settings.thinkingEffort

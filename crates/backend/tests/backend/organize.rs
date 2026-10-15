@@ -282,9 +282,15 @@ async fn a_move_that_fails_leaves_the_conversation_in_place_and_wakes_the_root_w
         })
         .expect("the notice is in the transcript");
     assert!(notice.id.as_str().starts_with("move-failed:"), "{notice:?}");
-    // The receipt row says why after Move failed, from the event's reason.
+    // The receipt row says why after Move failed, worded by the page from
+    // the refusal's code; the model reads the reason in the message.
     assert!(
-        matches!(&notice.event, AgentMessageEvent::MoveFailed { reason } if notice.content.contains(reason.as_str()) && !reason.is_empty()),
+        matches!(
+            &notice.event,
+            AgentMessageEvent::MoveFailed { reason, code }
+                if notice.content.contains(reason.as_str())
+                    && code.as_deref() == Some("workspace_not_found")
+        ),
         "{notice:?}"
     );
     assert_eq!(notice.sender, None);

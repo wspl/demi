@@ -85,10 +85,22 @@ pub enum AgentMessageEvent {
     Permission {
         #[garde(skip)]
         outcome: PermissionOutcome,
-        /// The actions of the request's categories joined with "and",
-        /// such as `manage skills`, which the receipt row names.
+        /// The actions of the request's categories joined with "and", such
+        /// as `manage skills`, in English: what the receipt row says of a
+        /// category the page has no words for.
         #[garde(length(min = 1))]
         action: String,
+        /// The ids of the request's categories, such as `skills.manage`,
+        /// which the page words the receipt row from (`localization.md`
+        /// § Text from the backend); empty for a credential's use.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[garde(skip)]
+        categories: Vec<String>,
+        /// The saved credential whose use the request asked for; none for
+        /// a request of categories.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        credential: Option<String>,
     },
     /// The user's move of the conversation, which the user told the root
     /// of; the receipt row names where it now runs.
@@ -112,6 +124,12 @@ pub enum AgentMessageEvent {
         /// Why, as the message's text says it: `the project no longer exists`.
         #[garde(length(min = 1))]
         reason: String,
+        /// Why, as the code of the refusal the page words it from, such as
+        /// `workspace_not_found` (`localization.md` § Text from the
+        /// backend); none for a failure no refusal names.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        code: Option<String>,
     },
 }
 

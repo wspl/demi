@@ -1,4 +1,5 @@
 import { find } from '../locales/text'
+import { formatBytes } from '../files/format'
 import { showToast, showToastRequestId } from './toast'
 import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
@@ -77,12 +78,27 @@ export function coded<E extends Error>(error: E, code: string, params: Readonly<
 }
 
 /**
+ * The catalogue's text for the code `code`, `errors.<code>`, filled with
+ * `params` as the page writes each: a value whose name ends in `Bytes` as
+ * a size, `{ limitBytes: 1048576 }` as *1.0 MB*, and a `count` choosing the
+ * plural form; null for a code the catalogue has no text for, as a newer
+ * backend may send.
+ */
+export function codeText(code: string, params: Readonly<Record<string, unknown>> = {}): SentenceText | null {
+  const named = Object.fromEntries(Object.entries(params).map(([name, value]) => [
+    name,
+    name.endsWith('Bytes') && typeof value === 'number' ? formatBytes(value) : value,
+  ]))
+  return find(`errors.${code}`, named)
+}
+
+/**
  * What the page says of `error`, the one place a failure becomes words
  * (`localization.md` § Text from the backend): a refusal's catalogue text
- * for its `code`, filled with its `params`, such as `{ limit: 200 }`; for
- * an answer that carries no code, as a proxy's, the text of its HTTP
- * status; its own `message` for a code the catalogue has no text for, as a
- * newer backend may send, and for any other failure.
+ * for its `code`, filled with its `params` ([`codeText`]); for an answer
+ * that carries no code, as a proxy's, the text of its HTTP status; its own
+ * `message` for a code the catalogue has no text for, as a newer backend
+ * may send, and for any other failure.
  */
 export function errorMessage(error: unknown): SentenceText {
   if (!(error instanceof Error)) {
@@ -92,7 +108,7 @@ export function errorMessage(error: unknown): SentenceText {
     const params = 'params' in error && typeof error.params === 'object' && error.params !== null
       ? Object.fromEntries(Object.entries(error.params))
       : {}
-    const worded = find(`errors.${error.code}`, params)
+    const worded = codeText(error.code, params)
     if (worded !== null) {
       return worded
     }

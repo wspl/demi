@@ -23,7 +23,7 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::{CredentialSeal, StoredCredential};
 use demi_backend_database::permissions::{
-    Answered, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead, PermissionRefusal,
+    AnswerProblem, Answered, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead, PermissionRefusal,
     StoredAsk, StoredRequest, Undecided,
 };
 use demi_backend_page_sync::{Part, UserMarks};
@@ -182,7 +182,7 @@ pub enum PermissionError {
     #[error("The conversation has no undecided permission request of that id")]
     NotFound,
     #[error("{0}")]
-    InvalidAnswer(String),
+    InvalidAnswer(AnswerProblem),
     #[error("{0}")]
     FieldsDiffer(String),
     #[error("\u{201c}{0}\u{201d} was removed, so this conversation can\u{2019}t use it.")]
@@ -513,7 +513,7 @@ pub async fn decide(
             Ok(())
         }
         (PermissionDecision::Deny, Some(_)) => Err(PermissionError::InvalidAnswer(
-            "A declined request takes no values.".into(),
+            AnswerProblem::DeclinedWithValues,
         )),
         (decision, None) => {
             let outcome = match decision {
@@ -577,6 +577,14 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
         event: AgentMessageEvent::Permission {
             outcome: decision.outcome,
             action: action.clone(),
+            categories: match &request.ask {
+                StoredAsk::Permission { categories } => categories.clone(),
+                StoredAsk::Allowance { .. } | StoredAsk::Credential { .. } => Vec::new(),
+            },
+            credential: match &request.ask {
+                StoredAsk::Allowance { name, .. } => Some(name.clone()),
+                StoredAsk::Permission { .. } | StoredAsk::Credential { .. } => None,
+            },
         },
         origin: None,
     };

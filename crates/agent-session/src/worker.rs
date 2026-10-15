@@ -11,6 +11,8 @@ use demi_provider_common::Ahead;
 use demi_shared_types::{Block, ErrorDevice, HOST_OFFLINE, TurnId};
 use tokio::sync::Notify;
 
+use demi_conversation_socket_protocol::AgentCode;
+
 use super::{
     ActionEnd, ErrorReport, SessionEvent, SessionShared, Settle, TurnError, ahead,
     cancel::{CancelReason, TurnCancel},
@@ -103,7 +105,7 @@ async fn run_action(s: &Rc<SessionShared>, started: StartedAction) {
         // A rejected edit changed nothing: it leaves no stop marker and no
         // failure record, and answers through its acceptance.
         let error = match body {
-            Err(TurnError::Failed(report)) => EditError::Failed(report.message),
+            Err(TurnError::Failed(report)) => EditError::Failed(report),
             Err(TurnError::Cancelled) | Ok(()) => EditError::Stopped,
         };
         s.update(|core| core.reject_edit(error));
@@ -243,7 +245,7 @@ async fn execute(
 async fn retry(s: &Rc<SessionShared>, cancel: &TurnCancel) -> Result<(), TurnError> {
     let rewind = s
         .read(|core| rewind(core.transcript.blocks()))
-        .ok_or_else(|| TurnError::refused("There is no input turn to retry"))?;
+        .ok_or_else(|| TurnError::refused(AgentCode::NothingToRetry, "There is no input turn to retry"))?;
     persist::commit_rewrite(s, rewind.retained).await?;
     rerun(s, cancel, rewind.turn).await
 }

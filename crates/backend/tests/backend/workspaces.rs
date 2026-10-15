@@ -182,6 +182,9 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
         in_use.refusal(),
         (StatusCode::CONFLICT, ErrorCode::WorkspaceInUse)
     );
+    // The page words the refusal from its values (`localization.md` § Text
+    // from the backend): how many conversations still target it.
+    assert_eq!(in_use.error().params.get("count"), Some(&json!(1)));
 
     // Once nothing targets it, it goes, and its files stay.
     let away = json!({ "target": { "kind": "cloud" } });

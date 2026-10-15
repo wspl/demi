@@ -5,7 +5,7 @@ import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agen
 import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
 import { rowKey } from '@demicodes/web-ui/agent/row-key'
 import { toasts } from '@demicodes/web-ui/infra/toast'
-import { CONVERSATION_UNREADABLE } from '@demicodes/web-ui/agent/session-status'
+import { codeText } from '@demicodes/web-ui/infra/errors'
 import { pageReturned, reconnectNow } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick, toRaw, watch } from 'vue'
@@ -821,7 +821,7 @@ test('a choice made while the first message makes the record applies before that
   open()
   await sending
   // It failed: the retry carries the choice made meanwhile.
-  expect(conversation.pendingSends[0]?.error).toBe('Not saved')
+  expect(conversation.pendingSends[0]?.error).toBe('Something went wrong on the server.')
   const messageId = conversation.pendingSends[0]!.id
   rejectCreate = false
   holdCreate = new Promise((resolve) => { open = resolve })
@@ -849,7 +849,7 @@ test('first send failure preserves the conversation and retries its UUID and mes
   rejectCreate = true
   await store.send(conversation)
   expect(conversation.persistence).toBe('pending')
-  expect(conversation.pendingSends.map(({ text, error }) => ({ text, error }))).toEqual([{ text: 'First message', error: 'Not saved' }])
+  expect(conversation.pendingSends.map(({ text, error }) => ({ text, error }))).toEqual([{ text: 'First message', error: 'Something went wrong on the server.' }])
   expect(conversation.draft).toBe('')
   const messageId = conversation.pendingSends[0]!.id
   await reconnected()
@@ -975,7 +975,7 @@ test('a first send waiting for the model list ends undelivered with the list’s
     answerCreate.resolve()
     lists[1]!.resolve(Response.json({ requestId: 'req_test000000000001', code: 'internal_error', message: 'Catalog offline' }, { status: 500 }))
     await sending
-    expect(conversation.pendingSends.map((pending) => pending.error)).toEqual(['Couldn’t load the models. Catalog offline'])
+    expect(conversation.pendingSends.map((pending) => pending.error)).toEqual(['Couldn’t load the models. Something went wrong on the server.'])
     expect(submit).not.toHaveBeenCalled()
   } finally {
     submit.mockRestore()
@@ -2849,7 +2849,7 @@ test('deleted rows leave at once, and a deletion that fails brings its row back 
   expect(await removed).toBe(false)
   expect(listed()).not.toContain(FIRST)
   expect(listed()).toContain(SECOND)
-  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Delete “second”', message: 'Storage unavailable.' })
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Delete “second”', message: 'Something went wrong on the server.' })
 })
 
 test('read acknowledgements use the observed revision and wait for history', async () => {
@@ -3063,7 +3063,7 @@ test('a conversation the backend does not have fails to open at once', async () 
   try {
     await store.activate(FIRST)
     expect(first.load).toBe('failed')
-    expect(first.lastError).toEqual({ message: 'Conversation not found', requestId: 'req_test000000000001' })
+    expect({ ...first.lastError }).toEqual({ message: 'The conversation wasn’t found.', requestId: 'req_test000000000001' })
   } finally {
     restoreFetch()
   }
@@ -3088,7 +3088,7 @@ test('a conversation the server cannot read fails to open in the page’s words'
     await store.activate(FIRST)
     expect(first.load).toBe('failed')
     // The page's words, and the request whose answer it read.
-    expect(first.lastError).toEqual({ message: CONVERSATION_UNREADABLE, requestId: 'req_test000000000001' })
+    expect(first.lastError).toEqual({ message: codeText('conversation_unreadable')!, requestId: 'req_test000000000001' })
     expect(logged.mock.calls.some((call) => call.some((value) => value instanceof Error && value.message === message))).toBe(true)
   } finally {
     logged.mockRestore()

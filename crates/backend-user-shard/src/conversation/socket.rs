@@ -29,7 +29,7 @@ use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
 use demi_conversation_socket_protocol::{
     SteerOutcome,
-    ClientContent, ClientFrame, ClientFrameKind, EditOutcome, FrameError, RemoveOutcome,
+    ClientContent, ClientFrame, ClientFrameKind, EditOutcome, FrameError, Refusal, RemoveOutcome,
     SavedDelivery, ServerFrame, TranscriptPatch, decode_client_frame,
 };
 use demi_shared_gates::{GateLease, Purpose};
@@ -675,7 +675,9 @@ fn refused_frame(frame: ClientFrame, code: ErrorCode, message: String) -> Server
     match frame {
         ClientFrame::EditAndSend { request } => ServerFrame::EditResult {
             operation_id: request.operation_id,
-            outcome: EditOutcome::Rejected { reason: message },
+            outcome: EditOutcome::Rejected {
+                refusal: Refusal::new(code, message),
+            },
         },
         ClientFrame::CancelPendingSteer { steer_id } => ServerFrame::RemoveResult {
             id: steer_id.into_string(),
@@ -693,7 +695,7 @@ fn refused_frame(frame: ClientFrame, code: ErrorCode, message: String) -> Server
 fn saved_gone() -> ServerFrame {
     ServerFrame::Rejected {
         command: ClientFrameKind::SendSaved,
-        reason: ErrorCode::SavedNotFound.to_string(),
+        refusal: Refusal::new(ErrorCode::SavedNotFound, "No such message saved for later"),
     }
 }
 

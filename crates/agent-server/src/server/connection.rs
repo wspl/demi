@@ -14,7 +14,8 @@ use demi_agent_session::{
 };
 use demi_agent_tools::HostResolver;
 use demi_conversation_socket_protocol::{
-    ClientFrame, ClientFrameKind, EditOutcome, EditRequest, RemoveOutcome, ServerFrame, SteerOutcome,
+    AgentCode, ClientFrame, ClientFrameKind, EditOutcome, EditRequest, Refusal, RemoveOutcome, ServerFrame,
+    SteerOutcome,
 };
 use demi_provider_common::Ahead;
 use demi_shared_types::{BlockId, NodeId, SessionPhase, TurnId};
@@ -26,12 +27,16 @@ use super::{
     tree::Tree,
 };
 
-/// What a refusal says when the connection has no session.
-const NO_SESSION: &str = "No session is open";
-/// What a steer's refusal says then.
-const NO_SESSION_HERE: &str = "No session is open on this connection";
+/// The refusal of a frame that needs a session when the connection has
+/// none.
+fn no_session() -> Refusal {
+    Refusal::new(AgentCode::NoSession, "No session is open on this connection")
+}
+
 /// The refusal of a `compact` that names a node the tree no longer runs.
-const AGENT_ENDED: &str = "The agent has ended";
+fn agent_ended() -> Refusal {
+    Refusal::new(AgentCode::AgentEnded, "The agent has ended")
+}
 
 /// A connection's bounded outbox. When it is full, the client lags: the
 /// outbox closes, and the backend closes the socket with a code that says so;
@@ -214,17 +219,15 @@ impl<H: HostResolver> Connection<H> {
         let _ = self.outbox.push(frame);
     }
 
-    fn reject(&self, command: ClientFrameKind, reason: impl Into<String>) {
-        self.send(ServerFrame::Rejected {
-            command,
-            reason: reason.into(),
-        });
+    fn reject(&self, command: ClientFrameKind, refusal: Refusal) {
+        self.send(ServerFrame::Rejected { command, refusal });
     }
 
-    fn error(&self, error: impl std::fmt::Display) {
+    /// An `error` frame of the agent's own failure `code`.
+    fn error(&self, code: AgentCode, error: impl std::fmt::Display) {
         self.send(ServerFrame::Error {
             message: error.to_string(),
-            code: None,
+            code: Some(code.to_string()),
             diagnostics: None,
             request_id: None,
         });
@@ -239,10 +242,10 @@ impl<H: HostResolver> Connection<H> {
         });
     }
 
-    fn steer_result(&self, steer_id: BlockId, outcome: Result<(), String>) {
+    fn steer_result(&self, steer_id: BlockId, outcome: Result<(), Refusal>) {
         let outcome = match outcome {
             Ok(()) => SteerOutcome::Accepted,
-            Err(reason) => SteerOutcome::Rejected { reason },
+            Err(refusal) => SteerOutcome::Rejected { refusal },
         };
         self.send(ServerFrame::SteerResult { steer_id, outcome });
     }
@@ -264,7 +267,10 @@ impl<H: HostResolver> Connection<H> {
         if self.attached().is_some() {
             self.reject(
                 ClientFrameKind::Open,
-                "A session is already open on this connection",
+                Refusal::new(
+                    AgentCode::SessionAlreadyOpen,
+                    "A session is already open on this connection",
+                ),
             );
             return;
         }
@@ -272,7 +278,7 @@ impl<H: HostResolver> Connection<H> {
         let (tree, continuation) = match self.server.live_or_open(&self.root).await {
             Ok(opened) => opened,
             Err(error) => {
-                self.error(error);
+                self.error(AgentCode::OpenFailed, error);
                 return;
             }
         };
@@ -294,7 +300,7 @@ impl<H: HostResolver> Connection<H> {
         if let Some(continuation) = continuation
             && let Err(error) = tree.continue_restored(continuation).await
         {
-            self.error(error);
+            self.error(AgentCode::OpenFailed, error);
         }
     }
 
@@ -322,7 +328,7 @@ impl<H: HostResolver> Connection<H> {
                 self.send(ServerFrame::SteerResult {
                     steer_id,
                     outcome: SteerOutcome::Rejected {
-                        reason: NO_SESSION_HERE.to_owned(),
+                        refusal: no_session(),
                     },
                 });
             }
@@ -335,7 +341,7 @@ impl<H: HostResolver> Connection<H> {
             ClientFrame::SteerNow { .. }
             | ClientFrame::AbortSubagents {}
             | ClientFrame::AbortSubagent { .. } => {}
-            frame => self.reject(frame.kind(), NO_SESSION),
+            frame => self.reject(frame.kind(), no_session()),
         }
     }
 
@@ -360,7 +366,7 @@ impl<H: HostResolver> Connection<H> {
                 // The session reports the action's course as events; the
                 // handle is not needed.
                 if let Err(error) = session.send(content, message_id) {
-                    self.reject(kind, error.to_string());
+                    self.reject(kind, error.refusal());
                     return false;
                 }
                 return true;
@@ -371,9 +377,9 @@ impl<H: HostResolver> Connection<H> {
                         session.hold_media(media);
                         session
                             .steer(content, steer_id.clone())
-                            .map_err(|error| error.to_string())
+                            .map_err(|error| error.refusal())
                     }
-                    Err(error) => Err(error.message),
+                    Err(error) => Err(error.refusal()),
                 };
                 let accepted = outcome.is_ok();
                 self.steer_result(steer_id, outcome);
@@ -389,7 +395,13 @@ impl<H: HostResolver> Connection<H> {
             // The backend keeps the saved messages and hands the session
             // the `send` or `steer` a saved message becomes.
             ClientFrame::SendSaved { .. } => {
-                self.reject(kind, "Only the backend sends a message saved for later");
+                self.reject(
+                    kind,
+                    Refusal::new(
+                        AgentCode::SentByBackend,
+                        "Only the backend sends a message saved for later",
+                    ),
+                );
             }
             ClientFrame::DequeueMessage { message_id } => {
                 let removed = session.dequeue_message(&message_id);
@@ -426,14 +438,14 @@ impl<H: HostResolver> Connection<H> {
                 None => self.recover(session, kind, None).await,
                 Some(id) => match tree.node(&id) {
                     Some(node) => self.recover(node.session(), kind, None).await,
-                    None => self.reject(kind, AGENT_ENDED),
+                    None => self.reject(kind, agent_ended()),
                 },
             },
             ClientFrame::EditAndSend { request } => {
                 let operation_id = request.operation_id.clone();
                 let outcome = match self.edit(session, request).await {
                     Ok(turn_id) => EditOutcome::Accepted { turn_id },
-                    Err(reason) => EditOutcome::Rejected { reason },
+                    Err(refusal) => EditOutcome::Rejected { refusal },
                 };
                 self.send(ServerFrame::EditResult {
                     operation_id,
@@ -446,12 +458,12 @@ impl<H: HostResolver> Connection<H> {
             ClientFrame::ShellWrite { command_id, stdin } => {
                 match tree.shell_write(&command_id, stdin).await {
                     Ok(()) => self.send(ServerFrame::ShellWriteResult { command_id }),
-                    Err(error) => self.error(error),
+                    Err(error) => self.error(AgentCode::ShellInputFailed, error),
                 }
             }
             ClientFrame::ShellAbort { command_id } => {
                 if let Err(error) = tree.shell_abort(&command_id).await {
-                    self.error(error);
+                    self.error(AgentCode::ShellStopFailed, error);
                 }
             }
             ClientFrame::Open { .. } | ClientFrame::Close {} => {
@@ -490,7 +502,7 @@ impl<H: HostResolver> Connection<H> {
             _ => session.compact(),
         };
         if let Err(error) = admitted {
-            self.reject(kind, error.to_string());
+            self.reject(kind, error.refusal());
         }
     }
 
@@ -498,20 +510,20 @@ impl<H: HostResolver> Connection<H> {
     /// a repeated request is answered from its receipt, or shares the
     /// acceptance in flight, before any of its files is resolved; a new one
     /// resolves its content and returns once the replacement is durable.
-    async fn edit(&self, session: &AgentSession, request: EditRequest) -> Result<TurnId, String> {
+    async fn edit(&self, session: &AgentSession, request: EditRequest) -> Result<TurnId, Refusal> {
         let digest = edit_digest(&request);
         let check = session
             .check_edit(&request.operation_id, &digest, &request.version)
-            .map_err(|error| error.to_string())?;
+            .map_err(|error| error.refusal())?;
         let receipt = match check {
             EditCheck::Accepted(receipt) => receipt,
             EditCheck::InFlight(acceptance) => accepted(acceptance)
                 .await
-                .map_err(|error| error.to_string())?,
+                .map_err(|error| error.refusal())?,
             EditCheck::Proceed => {
                 let (content, media) = resolve_edit(&*self.resolver, request.content)
                     .await
-                    .map_err(|error| error.message)?;
+                    .map_err(|error| error.refusal())?;
                 let submission = EditSubmission {
                     operation_id: request.operation_id,
                     target: request.target_block_id,
@@ -523,7 +535,7 @@ impl<H: HostResolver> Connection<H> {
                 session
                     .edit_and_send(submission)
                     .await
-                    .map_err(|error| error.to_string())?
+                    .map_err(|error| error.refusal())?
             }
         };
         Ok(receipt.turn_id)
@@ -538,7 +550,8 @@ impl<H: HostResolver> Drop for Connection<H> {
 
 /// Why a session refuses an action that needs it idle, or none when it is
 /// idle (`runtime.md` § Actions).
-fn busy(session: &AgentSession) -> Option<String> {
+fn busy(session: &AgentSession) -> Option<Refusal> {
     let phase = session.phase();
-    (phase != SessionPhase::Idle).then(|| format!("Session is busy ({phase})"))
+    (phase != SessionPhase::Idle)
+        .then(|| Refusal::new(AgentCode::SessionBusy, format!("Session is busy ({phase})")))
 }

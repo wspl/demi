@@ -130,7 +130,8 @@ fn refused(refusal: DraftRefusal) -> ApiError {
             StatusCode::PAYLOAD_TOO_LARGE,
             ErrorCode::TooLarge,
             format!("The draft is over its {DRAFT_BYTES_MAX}-byte limit"),
-        ),
+        )
+        .with_param("limitBytes", DRAFT_BYTES_MAX),
         DraftRefusal::Changed => ApiError::new(
             StatusCode::CONFLICT,
             ErrorCode::DraftChanged,

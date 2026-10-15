@@ -42,5 +42,32 @@
     "remove": "Could Not Remove the Source",
     "switchSkill": "Could Not Switch the Skill",
     "switchSkills": "Could Not Switch the Skills"
+  },
+  "permissions": {
+    "skills_manage": {
+      "action": "manage skills",
+      "title": "Manage Skills",
+      "description": "Manage Skills lets the agents of this conversation add, update and remove skill sources and turn skills on or off. Your skills reach every conversation, and the skills that are on are installed on every Host your conversations use."
+    }
+  },
+  "problems": {
+    "fetch": {
+      "repository_too_large": "The repository is larger than {limit}.",
+      "no_commit": "The repository has no commits.",
+      "too_many_skills": "The repository has more than {limit} skills.",
+      "files_too_large": "The skills’ files are larger than {limit}.",
+      "no_skill": "The repository has no skills."
+    },
+    "skip": {
+      "too_large": "SKILL.md is larger than {limit}.",
+      "not_utf8": "SKILL.md isn’t UTF-8.",
+      "no_front_matter": "SKILL.md has no front matter.",
+      "front_matter_invalid": "The front matter isn’t valid YAML.",
+      "no_description": "The front matter has no description."
+    }
+  },
+  "refusals": {
+    "invalid_origin": "Enter owner/repository or a Git URL.",
+    "source_exists": "{origin} is added already."
   }
 }

@@ -1,8 +1,9 @@
 import { shallowRef, triggerRef } from 'vue'
-import { shownError } from '../infra/errors'
+import { coded, shownError } from '../infra/errors'
 import {
   ActionOutlivedError,
   SavedGoneError,
+  RefusedError,
   SessionError,
   SteerRejectedError,
   applyTranscriptPatches,
@@ -16,6 +17,7 @@ import { asError, createId, deferred } from '@demicodes/utils'
 import type { ClientContent, EditRequest, SavedDelivery, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
 import { pendingReturnCheck, waitToReconnect } from '../transport/liveness'
+import { failureHeadline } from './error-detail'
 import { hasAcceptedSubmission, isWritten } from './submission'
 import type { ConversationState } from './types'
 
@@ -54,9 +56,9 @@ export class RemovalRefusedError extends Error {}
 
 /** The refusal of a removal whose message went on: a steer the agent read, or a queued message whose turn began. */
 function refusedRemoval(steer: boolean): RemovalRefusedError {
-  return new RemovalRefusedError(steer
-    ? 'The agent had already read it.'
-    : 'Its turn had already begun.')
+  return steer
+    ? coded(new RemovalRefusedError('The agent had already read it.'), 'steer_already_read')
+    : coded(new RemovalRefusedError('Its turn had already begun.'), 'turn_already_begun')
 }
 
 export type RuntimeState = Pick<
@@ -636,13 +638,22 @@ export class ConversationRuntime {
           state.waitingSince = event.since
         }
         break
-      case 'error':
-        state.lastError = { message: event.message, requestId: event.requestId ?? null }
+      case 'error': {
+        // Worded from its code as the transcript's record of a failed turn
+        // is (`localization.md` § Text from the backend).
+        const code = event.code
+        state.lastError = {
+          get message() {
+            return failureHeadline(code, null, new Date())
+          },
+          requestId: event.requestId ?? null,
+        }
         break
+      }
       case 'rejected':
         // A saved message another page sent first is the caller's to tell.
         if (event.command !== 'send_saved') {
-          state.lastError = { message: event.reason, requestId: null }
+          state.lastError = shownError(new RefusedError(event))
         }
         this.settlePendingAction()
         break
