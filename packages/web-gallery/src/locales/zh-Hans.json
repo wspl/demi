@@ -56,7 +56,8 @@
       "states": "状态",
       "session": "会话",
       "panel": "面板",
-      "windows": "窗口"
+      "windows": "窗口",
+      "shared": "分享页面"
     },
     "dialogs": {
       "account": "账户",
