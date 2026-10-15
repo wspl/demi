@@ -215,7 +215,9 @@ A leaf whose argument names a host, a device or a project declares that
 argument as `bringsHost`; the check resolves it, a project to its host, and
 needs that host when the conversation may not reach it. `demi host pair`
 always brings a host the conversation may not reach, since the computer is
-not yet paired, and names it by its pairing code. The request holds the host
+not yet paired, and names it by its pairing code: Allow lets the
+conversation pair that code, so the agent's next `demi host pair` with it is
+dispatched, and the device it pairs joins the list. Another code asks again. The request holds the host
 as `host`, beside the categories, and one command that needs both, such as
 `demi conversation move ledable-app` into a project on a host the
 conversation lacks without Organize Conversations, is one request:
@@ -341,8 +343,8 @@ calls a real model.
 | The same command in another conversation | It raises a request |
 | The user denies it | The agent receives the denied message; no grant is stored; the next attempt raises a new request |
 | `demi conversation move` into a project on a host the conversation may not reach, without Organize Conversations | One request of the category and the host; Allow grants both and the command then runs; with Organize Conversations granted before, the request holds the host alone |
-| `demi host move build-box /srv/app` to a host the conversation may not reach; later `demi host move Cloud` back, `demi host attach build-box` | The first asks *reach build-box?*; once allowed, the later ones ask nothing |
-| `demi host pair <code>` twice | Each asks *pair a computer and reach it?* |
+| `demi host move build-box /srv/app` to a host the conversation may not reach; later `demi host move Cloud /home/demi/app` back, `demi host attach build-box` | The first asks *reach build-box?*; once allowed, the later ones ask nothing |
+| `demi host pair <code>` | Asks *pair a computer and reach it?*; once allowed, the same command pairs the computer and the device joins the list; a second computer's code asks again |
 | `demi host devices` | Lists without asking |
 | The agent runs the command twice before a decision | One request, with the newer command line; a subagent's request of the same category stays beside it |
 | Two subagents' requests of Manage Skills and one of another category; the user allows the first | Both subagents receive the allowed message; the other request stays |

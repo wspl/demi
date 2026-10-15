@@ -293,8 +293,8 @@ as `build-box` and keeps a project there. In a conversation on the Cloud the
 agent runs `demi host move build-box /srv/ledable`; the card asks *Allow this
 conversation to reach build-box?*, the user allows it, and when the
 conversation's work ends it runs on build-box in `/srv/ledable`, the Cloud
-attached. A later `demi host move Cloud` asks nothing, since the Cloud was
-the conversation's own.
+attached. A later `demi host move Cloud /home/demi/ledable` asks nothing,
+since the Cloud was the conversation's own.
 
 ## What the agent can change
 
@@ -308,7 +308,7 @@ hosts it reaches:
 | `demi conversation move <project>` | Moves this conversation into a project, by name or id | `conversation.organize`, and the project's host when the conversation may not reach it |
 | `demi conversation move --out` | Moves it out of its project, to the same directory on the same Host | `conversation.organize` |
 | `demi conversation create-project <name> [<directory>]` | Makes a project of a directory on the primary Host, its shell's directory by default, and moves this conversation into it | `conversation.organize` |
-| `demi host move <host> [<directory>]` | Makes `<host>` where this conversation runs, in `<directory>`, by default the conversation's directory there, else the device's home; the primary Host it leaves is attached | The host, when the conversation may not reach it |
+| `demi host move <host> <directory>` | Makes `<host>` where this conversation runs, in `<directory>`, an absolute path there; the primary Host it leaves is attached. A directory that does not exist when the move applies fails the move, and the agent is told why | The host, when the conversation may not reach it |
 | `demi host devices` | Lists the user's paired devices and the Cloud, with their states | none |
 | `demi host install-command [--system linux\|macos\|windows]` | Prints the command that installs the runner on a computer, as Add Device shows it; it holds no credential | none |
 | `demi host pair <code>` | Pairs the computer whose installer shows `<code>` with the user's account and attaches it to this conversation ([Installation, pairing and removal](runner.md#installation-pairing-and-removal)) | The new host, every time |
