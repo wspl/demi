@@ -543,3 +543,210 @@ async fn output_a_run_left_behind_belongs_to_no_request() {
         [ProviderEvent::TextDelta("next answer".into()), usage(3, 3)]
     );
 }
+
+fn stream_event(cli: &Cli, event: serde_json::Value) {
+    cli.say(json!({ "type": "stream_event", "event": event }));
+}
+
+/// A whole assistant line of the message `id`, as the CLI prints each block
+/// of a streamed message, or a complete answer whole.
+fn whole(cli: &Cli, id: &str, content: serde_json::Value, usage: serde_json::Value) {
+    cli.say(json!({
+        "type": "assistant",
+        "message": { "id": id, "content": content, "usage": usage },
+    }));
+}
+
+fn shell_use(id: &str, script: &str) -> serde_json::Value {
+    json!({ "type": "tool_use", "id": id, "name": "mcp__main__shell_exec", "input": { "script": script } })
+}
+
+/// A whole line of the message being streamed repeats a block that
+/// streamed: its text shows once, and its tool uses wait for the batch that
+/// `message_stop` ends.
+// One run against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn the_whole_lines_of_a_streamed_message_repeat_it_and_its_batch_waits_for_message_stop() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let (events, mut cli) = tokio::join!(all_events(runtime.run(request(vec![user("run both")]))), async {
+        let mut cli = starts.next().await;
+        cli.initialized().await;
+        cli.handshake().await;
+        stream_event(&cli, json!({ "type": "message_start", "message": { "id": "msg_1" } }));
+        stream_event(&cli, json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "text", "text": "" } }));
+        cli.text("running both");
+        whole(&cli, "msg_1", json!([{ "type": "text", "text": "running both" }]), json!({}));
+        cli.streamed_tool_use(1, "toolu_alpha", &["{\"script\": \"printf alpha\"}"]);
+        whole(&cli, "msg_1", json!([shell_use("toolu_alpha", "printf alpha")]), json!({}));
+        cli.call("call-alpha", 2, "toolu_alpha", "printf alpha");
+        cli.streamed_tool_use(2, "toolu_beta", &["{\"script\": \"printf beta\"}"]);
+        whole(&cli, "msg_1", json!([shell_use("toolu_beta", "printf beta")]), json!({}));
+        cli.message_delta(7, 9);
+        cli.message_stop();
+        cli
+    });
+    let start = |id: &str| ProviderEvent::ToolCallStart {
+        tool_use_id: id.into(),
+        tool_name: "shell_exec".into(),
+    };
+    let input = |id: &str, piece: &str| ProviderEvent::ToolCallInput {
+        tool_use_id: id.into(),
+        partial_json: piece.into(),
+    };
+    assert_eq!(
+        events,
+        [
+            ProviderEvent::TextDelta("running both".into()),
+            start("toolu_alpha"),
+            input("toolu_alpha", "{\"script\": \"printf alpha\"}"),
+            start("toolu_beta"),
+            input("toolu_beta", "{\"script\": \"printf beta\"}"),
+            call("toolu_alpha", "printf alpha"),
+            call("toolu_beta", "printf beta"),
+            usage(7, 9),
+        ]
+    );
+    assert!(cli.unread().is_empty());
+}
+
+/// Claude Code retries a call whose stream failed without streaming, and
+/// prints its answer as one whole line that no `message_start` or
+/// `message_stop` frames. That answer shows, and its batch reaches the agent
+/// at once, in a process that streamed before: the CLI runs the call and
+/// waits for its result (a conversation stalled for good when the answer
+/// was taken for a repeat of what streamed).
+// Three runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_complete_answer_shows_and_hands_its_tool_call_on_at_once_after_streamed_ones() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let mut items = vec![user("work")];
+    let (events, mut cli) = tokio::join!(all_events(runtime.run(request(items.clone()))), async {
+        let mut cli = starts.next().await;
+        cli.initialized().await;
+        cli.handshake().await;
+        stream_event(&cli, json!({ "type": "message_start", "message": { "id": "msg_1" } }));
+        cli.streamed_tool_use(0, "toolu_1", &["{\"script\": \"pwd\"}"]);
+        whole(&cli, "msg_1", json!([shell_use("toolu_1", "pwd")]), json!({}));
+        cli.call("call-1", 1, "toolu_1", "pwd");
+        cli.message_delta(100, 10);
+        cli.message_stop();
+        cli
+    });
+    assert_eq!(events.last(), Some(&usage(100, 10)), "{events:?}");
+
+    items.push(tool_use("toolu_1", "pwd"));
+    items.push(tool_result("toolu_1", "/tmp"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(items.clone()))), async {
+        cli.mcp_reply("call-1").await;
+        whole(
+            &cli,
+            "msg_2",
+            json!([
+                { "type": "text", "text": "Checking the runtime." },
+                shell_use("toolu_2", "rg demi"),
+            ]),
+            json!({ "input_tokens": 300, "output_tokens": 20 }),
+        );
+        cli.call("call-2", 2, "toolu_2", "rg demi");
+    });
+    assert_eq!(
+        events,
+        [
+            ProviderEvent::TextDelta("Checking the runtime.".into()),
+            call("toolu_2", "rg demi"),
+            usage(300, 20),
+        ]
+    );
+
+    items.push(InferenceItem::AssistantText {
+        model_id: "claude-test".into(),
+        text: "Checking the runtime.".into(),
+    });
+    items.push(tool_use("toolu_2", "rg demi"));
+    items.push(tool_result("toolu_2", "found"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(items))), async {
+        let reply = cli.mcp_reply("call-2").await;
+        assert_eq!(
+            reply["result"]["content"],
+            json!([{ "type": "text", "text": "found" }])
+        );
+        cli.text("done");
+        cli.result(310, 5);
+    });
+    assert_eq!(
+        events,
+        [ProviderEvent::TextDelta("done".into()), usage(310, 5)]
+    );
+    assert_eq!(placement.starts(), 1);
+}
+
+/// A stream that fails midway leaves what it showed on the page; the
+/// complete answer that replaces it repeats that and goes on, and only the
+/// rest shows, so the text reads once and the call runs once.
+// Two runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_complete_answer_after_a_failed_stream_shows_only_what_had_not_streamed_and_its_call_once()
+ {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let mut items = vec![user("work")];
+    let (events, mut cli) = tokio::join!(all_events(runtime.run(request(items.clone()))), async {
+        let mut cli = starts.next().await;
+        cli.initialized().await;
+        cli.handshake().await;
+        stream_event(&cli, json!({ "type": "message_start", "message": { "id": "msg_a" } }));
+        stream_event(&cli, json!({ "type": "content_block_start", "index": 0, "content_block": { "type": "thinking", "thinking": "" } }));
+        stream_event(&cli, json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "thinking_delta", "thinking": "Plan the check." } }));
+        stream_event(&cli, json!({ "type": "content_block_delta", "index": 0, "delta": { "type": "signature_delta", "signature": "sig" } }));
+        whole(&cli, "msg_a", json!([{ "type": "thinking", "thinking": "Plan the check.", "signature": "sig" }]), json!({}));
+        stream_event(&cli, json!({ "type": "content_block_start", "index": 1, "content_block": { "type": "text", "text": "" } }));
+        cli.text("Let me");
+        // The stream stalls, and the CLI asks again without streaming.
+        whole(
+            &cli,
+            "msg_b",
+            json!([
+                { "type": "thinking", "thinking": "Plan the check.", "signature": "sig" },
+                { "type": "text", "text": "Let me check the runtime." },
+                shell_use("toolu_1", "rg demi"),
+            ]),
+            json!({ "input_tokens": 300, "output_tokens": 20 }),
+        );
+        cli.call("call-1", 1, "toolu_1", "rg demi");
+        cli
+    });
+    assert_eq!(
+        events,
+        [
+            ProviderEvent::ThinkingStart,
+            ProviderEvent::ThinkingDelta("Plan the check.".into()),
+            ProviderEvent::ThinkingSignature("sig".into()),
+            ProviderEvent::TextDelta("Let me".into()),
+            ProviderEvent::TextDelta(" check the runtime.".into()),
+            call("toolu_1", "rg demi"),
+            usage(300, 20),
+        ]
+    );
+
+    items.push(InferenceItem::AssistantText {
+        model_id: "claude-test".into(),
+        text: "Let me check the runtime.".into(),
+    });
+    items.push(tool_use("toolu_1", "rg demi"));
+    items.push(tool_result("toolu_1", "found"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(items))), async {
+        cli.mcp_reply("call-1").await;
+        cli.text("done");
+        cli.result(310, 5);
+    });
+    assert_eq!(
+        events,
+        [ProviderEvent::TextDelta("done".into()), usage(310, 5)]
+    );
+    assert!(cli.unread().is_empty(), "the call is answered once");
+}
