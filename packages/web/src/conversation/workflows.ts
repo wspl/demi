@@ -10,7 +10,7 @@ import { deviceWatch } from './file-watch'
 import { conversationWatch } from './files'
 import { executionFor } from '../targets/execution'
 import { useProduct } from '../state/product'
-import { useResources } from '../state/resources'
+import { useConversations } from './store'
 import type { Conversation } from '../state/types'
 
 /** Where a conversation's workflows are: the device and directory it works in. */
@@ -26,7 +26,7 @@ interface WorkflowPlace {
 }
 
 /** A place with no workflows to read, as a new conversation on the Cloud before its directory exists. */
-const NONE: WorkflowList = { state: 'read', workflows: [] }
+const NONE: WorkflowList = { state: 'nowhere' }
 
 /**
  * The workflows of `place`, as the Workflow menu lists them: read from the
@@ -36,11 +36,13 @@ const NONE: WorkflowList = { state: 'read', workflows: [] }
  * answer names, so a workflow added, changed or removed reads the list
  * again, with no polling. A conversation that moves to another directory of
  * the same Host reads that directory's, and lets go of the last. Shown while
- * the calling component lives, and followed while it is on screen.
+ * the calling component lives, and followed while it is on screen. A new
+ * conversation's remembered workflow that the list lacks settles to No
+ * Subagents.
  */
 export function useConversationWorkflows(conversation: () => Conversation): ComputedRef<WorkflowList> {
   const product = useProduct()
-  const resources = useResources()
+  const store = useConversations()
   const place = (): WorkflowPlace | null => {
     const shown = conversation()
     const { deviceId, path, directory } = executionFor(shown)
@@ -51,10 +53,10 @@ export function useConversationWorkflows(conversation: () => Conversation): Comp
     if (recorded) {
       return { deviceId, directory: path, conversationId: shown.id }
     }
-    // Before its first message, a conversation reads them through its paired
-    // device, in the directory it chose; one on the Cloud has none yet.
-    const device = resources.deviceById(deviceId)
-    return device?.kind === 'user' && directory !== null ? { deviceId, directory, conversationId: null } : null
+    // Before its first message, a conversation reads them through its
+    // device, the Cloud included, in the directory it chose or its
+    // project's; one outside projects on the Cloud has none yet.
+    return directory !== null ? { deviceId, directory, conversationId: null } : null
   }
   const showing = shallowRef<Showing<ConversationWorkflows> | null>(null)
   const shown = computed(() => {
@@ -97,7 +99,7 @@ export function useConversationWorkflows(conversation: () => Conversation): Comp
   onScopeDispose(stop)
   // The list follows the Host only while the composer is on screen.
   followOnScreen(() => [showing.value])
-  return computed<WorkflowList>(() => {
+  const list = computed<WorkflowList>(() => {
     if (shown.value === null)
       return NONE
     const state = showing.value?.entry
@@ -109,4 +111,13 @@ export function useConversationWorkflows(conversation: () => Conversation): Comp
     }
     return { state: 'failed', reason: state.failure?.message ?? t('workflows.hostSilent') }
   })
+  // A new conversation that started with a workflow its directory does not
+  // have goes on with No Subagents once the workflows are read.
+  const stopSettling = watch(
+    () => [conversation().id, conversation().workflow, list.value] as const,
+    ([id, , read]) => store.settleStartingWorkflow(id, read),
+    { immediate: true },
+  )
+  onScopeDispose(stopSettling)
+  return list
 }

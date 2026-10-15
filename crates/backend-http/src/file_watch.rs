@@ -15,7 +15,6 @@ use axum::http::StatusCode;
 use axum::response::Response;
 use demi_backend_host_access::file_watch::{FileWatchChannel, OpenedWatch};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::files::{ConversationWatchRequest, FileWatchMessage, FileWatchRequest};
 use futures_util::StreamExt as _;
 use garde::Validate;
@@ -76,7 +75,9 @@ pub(super) async fn open_device(
     client: PageClient,
     upgrade: Result<WebSocketUpgrade, WebSocketUpgradeRejection>,
 ) -> Result<Response, ApiError> {
-    let device = owned_device(&state, &user.id, &id, Some(DeviceKind::User)).await?;
+    // The Cloud's too, for the workflows of a new conversation in a Cloud
+    // project; a stopped Cloud is answered `offline`, never woken.
+    let device = owned_device(&state, &user.id, &id, None).await?;
     let upgrade = upgrade.map_err(|_| {
         ApiError::new(
             StatusCode::UPGRADE_REQUIRED,

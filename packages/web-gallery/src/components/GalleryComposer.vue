@@ -74,6 +74,8 @@ const props = withDefaults(
     selectedProviderId?: string
     selectedModelId?: string
     serviceTierId?: string | null
+    /** Its thinking effort; Medium without one. */
+    thinkingEffort?: string | null
     /** How full the context is; past half by default, so Compact is offered. */
     usage?: ContextUsage
     providers?: ProviderInfo[]
@@ -132,6 +134,9 @@ const emit = defineEmits<{
   retryModels: []
   'update:messageEdit': [state: MessageEditState | null]
   submitEdit: []
+  /** The user chose model settings or a workflow, as the product remembers them where the conversation belongs. */
+  choseModel: [settings: ModelSettings]
+  choseWorkflow: [choice: WorkflowChoice]
   /** The offline primary Host's card moved the conversation to `host`, named `name`. */
   moved: [host: HostChoice, name: string]
 }>()
@@ -247,7 +252,7 @@ const pastedClaims = new Map<string, { file: CopiedStoredFile; picture: File | n
 const settings = ref<ModelSettings>({
   providerId: props.selectedProviderId,
   modelId: props.selectedModelId,
-  thinkingEffort: 'medium',
+  thinkingEffort: props.thinkingEffort === undefined ? 'medium' : props.thinkingEffort,
   serviceTierId: props.serviceTierId ?? null,
 })
 /** What the composer takes of the specimen's props: the model it starts with is the settings'. */
@@ -256,6 +261,7 @@ const composerProps = computed(() => {
     selectedProviderId: _provider,
     selectedModelId: _model,
     serviceTierId: _tier,
+    thinkingEffort: _effort,
     onCompact: _compact,
     onSteer: _steer,
     onQueue: _queue,
@@ -660,6 +666,11 @@ function restoreReplaced() {
 
 function changeModel(change: ModelSettingsChange) {
   settings.value = applyModelChange(settings.value, change)
+  emit('choseModel', { ...settings.value })
+}
+function chooseWorkflow(choice: WorkflowChoice) {
+  workflowChoice.value = choice
+  emit('choseWorkflow', choice)
 }
 onBeforeUnmount(() => {
   detach?.()
@@ -699,7 +710,7 @@ onBeforeUnmount(() => {
     :draft-shown="shown"
     :saved="savedRows"
     :workflow="workflow"
-    @change-workflow="workflowChoice = $event"
+    @change-workflow="chooseWorkflow"
     v-model:saved-open="savedOpen"
     @save-for-later="saveForLater"
     @edit-saved="editSaved"

@@ -171,7 +171,9 @@ pub(super) async fn workflows(
     Path(id): Path<String>,
     query: Result<QueryParams<WorkflowsQuery>, ApiError>,
 ) -> Result<axum::response::Response, ApiError> {
-    let device = owned_device(&state, &user.id, &id, Some(DeviceKind::User)).await?;
+    // A Cloud project's are read as a paired device's, through device
+    // access, which wakes no stopped Cloud.
+    let device = owned_device(&state, &user.id, &id, None).await?;
     // A directory that is not an absolute path is the request's fault, as a
     // body's would be (`web-api.md` § Workflows of a directory).
     let QueryParams(query) = query.map_err(|error| ApiError::invalid_body(error.message().to_owned()))?;

@@ -403,7 +403,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         )
         .route(
             "/workspaces/{id}",
-            patch(workspaces::rename).delete(workspaces::delete),
+            patch(workspaces::change).delete(workspaces::delete),
         )
         .route("/cloud", get(cloud::status))
         .route("/cloud/reset", post(cloud::reset))

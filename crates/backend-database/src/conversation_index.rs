@@ -16,7 +16,7 @@ use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
 
 use super::StorageError;
-use super::columns::{decode, instant, json, to_json};
+use super::columns::{decode, instant, json, to_json, workflow_choice, workflow_columns};
 use super::control::ControlService;
 use super::devices::CLOUD_NAME;
 
@@ -679,33 +679,10 @@ pub fn conversation_by_id(
     rows.next()?.map(conversation_row).transpose()
 }
 
-/// A Workflow menu choice as its typed columns: the kind, and the
-/// workflow's id for a workflow.
-fn workflow_columns(choice: &WorkflowChoice) -> (&'static str, Option<&str>) {
-    match choice {
-        WorkflowChoice::Default => ("default", None),
-        WorkflowChoice::None => ("none", None),
-        WorkflowChoice::Workflow { id } => ("workflow", Some(id)),
-    }
-}
-
 /// The choice a `conversations` row's workflow columns hold.
 fn workflow_row(row: &Row<'_>) -> Result<WorkflowChoice, StorageError> {
     let kind: String = row.get("workflow_kind")?;
-    let id: Option<String> = row.get("workflow_id")?;
-    let choice = match (kind.as_str(), id) {
-        ("default", None) => WorkflowChoice::Default,
-        ("none", None) => WorkflowChoice::None,
-        ("workflow", Some(id)) => WorkflowChoice::Workflow { id },
-        _ => {
-            return Err(StorageError::Corrupt {
-                table: "conversations",
-                column: "workflow_kind",
-                reason: format!("the kind {kind} does not fit its id"),
-            });
-        }
-    };
-    Ok(choice)
+    workflow_choice("conversations", "workflow_kind", &kind, row.get("workflow_id")?)
 }
 
 /// A `conversations` row, read from its columns in `CONVERSATION_COLUMNS`.

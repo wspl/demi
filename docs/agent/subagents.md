@@ -637,11 +637,13 @@ next spawn on its agents can start `explore` and `reviewer`.
 - **The menu** is the conversation's choice, kept with the conversation as
   its model is, a new conversation's included before its first message,
   which keeps the choice it was given and sends it with the conversation's
-  creation. A fork starts with Default, as it starts with no draft. A new conversation whose target names a device and a
+  creation. A fork keeps the conversation's choice, as it keeps its model. A new conversation whose target names a device and a
   directory reads that directory's workflows through the device, as the
   folder dialog reads its folders, and follows them on the device's file
   watch; one with no directory yet, or whose device is offline, offers
-  Default and No Subagents. **Default**, which a new conversation starts with, applies
+  Default and No Subagents. A new conversation starts with the choice last
+  made in its project, or outside projects, No Subagents until one is made
+  ([User preferences](../product/web-api.md#user-preferences)). **Default** applies
   the user's Subagents settings. **No Subagents** turns subagents off for this
   conversation, as the settings' switch does for all of them. **A workflow**
   applies its profiles in place of the user's, for this conversation only,

@@ -8,12 +8,13 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::workspaces::{WorkspaceDeletion, new_workspace_id};
+use demi_backend_database::workspaces::{WorkspaceChange, WorkspaceDeletion, new_workspace_id};
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::WorkspaceId;
+use demi_web_api_protocol::text::Trimmed;
 use demi_web_api_protocol::workspaces::{
-    CreateWorkspace, RenameWorkspace, WorkspaceAnswer, Workspaces,
+    ChangeWorkspace, CreateWorkspace, WorkspaceAnswer, Workspaces,
 };
 
 use super::AppState;
@@ -83,16 +84,22 @@ pub(super) async fn create(
     ))
 }
 
-pub(super) async fn rename(
+/// A new name, or what the project's next conversation starts with.
+pub(super) async fn change(
     State(services): State<Arc<Services>>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-    JsonBody(RenameWorkspace { name }): JsonBody<RenameWorkspace>,
+    JsonBody(change): JsonBody<ChangeWorkspace>,
 ) -> Result<Json<WorkspaceAnswer>, ApiError> {
     let id = workspace_id(id)?;
+    let change = WorkspaceChange {
+        name: change.name.map(Trimmed::into_string),
+        last_model: change.last_model,
+        last_workflow: change.last_workflow,
+    };
     let workspace = services
         .control
-        .rename_workspace(user.id.clone(), id, name.into_string())
+        .change_workspace(user.id.clone(), id, change)
         .await?
         .ok_or_else(not_found)?;
     services.sync.mark(&user.id, Part::Workspaces);
