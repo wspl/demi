@@ -1,6 +1,6 @@
 {
   "title": "スキル",
-  "description": "エージェントが従えるパッケージ化されたワークフロー。",
+  "description": "エージェントが従うワークフローをパッケージにしたもの。",
   "keywords": "スキル,ワークフロー,git,SKILL.md",
   "sources": {
     "title": "ソース",
@@ -16,7 +16,7 @@
   },
   "skill": {
     "warning": "警告",
-    "nameTaken": "名前は使用済みです",
+    "nameTaken": "名前が重複しています",
     "nameTakenDetail": "{origin} のスキル「{name}」がオンになっています。このスキルを使うには、そちらをオフにしてください。",
     "neverOffered": "提供されません",
     "neverOfferedDetail": "disable-model-invocation が設定されています。",
@@ -47,7 +47,7 @@
     "skills_manage": {
       "action": "スキルの管理",
       "title": "スキルの管理",
-      "description": "「スキルの管理」を許可すると、この会話のエージェントはスキルのソースの追加、更新、削除と、スキルのオンとオフの切り替えを行えます。スキルはすべての会話で使われ、オンのスキルは会話が使用するすべてのホストにインストールされます。"
+      "description": "「スキルの管理」を許可すると、このチャットのエージェントはスキルのソースの追加、更新、削除と、スキルのオンとオフの切り替えを行えます。スキルはすべてのチャットで使われ、オンのスキルはチャットが使用するすべてのホストにインストールされます。"
     }
   },
   "problems": {
@@ -67,7 +67,7 @@
     }
   },
   "refusals": {
-    "invalid_origin": "「所有者/リポジトリ」または Git URL を入力してください。",
-    "source_exists": "{origin} は既に追加されています。"
+    "invalid_origin": "owner/repository または Git URL を入力してください。",
+    "source_exists": "{origin} はすでに追加されています。"
   }
 }

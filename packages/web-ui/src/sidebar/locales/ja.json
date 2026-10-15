@@ -1,18 +1,18 @@
 {
   "nav": {
-    "new": "新規",
+    "new": "新しいチャット",
     "search": "検索",
     "archived": "アーカイブ済み"
   },
   "groups": {
-    "conversations": "会話",
+    "conversations": "チャット",
     "projects": "プロジェクト",
     "addProject": "プロジェクトを追加",
-    "newConversation": "新しい会話"
+    "newConversation": "新しいチャット"
   },
   "list": {
-    "loading": "会話を読み込んでいます…",
-    "failed": "会話を読み込めませんでした。"
+    "loading": "チャットを読み込んでいます…",
+    "failed": "チャットを読み込めませんでした。"
   },
   "foot": {
     "handOff": "スマートフォンにハンドオフ",
@@ -24,11 +24,11 @@
     "signOut": "サインアウト"
   },
   "row": {
-    "unpin": "ピン留めを解除",
+    "unpin": "ピン留めを外す",
     "archive": "アーカイブ"
   },
   "project": {
-    "newConversation": "新しい会話"
+    "newConversation": "新しいチャット"
   },
   "device": {
     "removed": "削除されたデバイス",
@@ -40,61 +40,61 @@
   "selection": {
     "open": "開く",
     "rename": "名前を変更",
-    "copyId": "会話 ID をコピー",
+    "copyId": "チャット ID をコピー",
     "pin": "ピン留め",
-    "pinMany": "{count} 件の会話をピン留め",
-    "unpin": "ピン留めを解除",
-    "unpinMany": "{count} 件の会話のピン留めを解除",
+    "pinMany": "{count} 件のチャットをピン留め",
+    "unpin": "ピン留めを外す",
+    "unpinMany": "{count} 件のチャットのピン留めを外す",
     "archive": "アーカイブ",
-    "archiveMany": "{count} 件の会話をアーカイブ",
+    "archiveMany": "{count} 件のチャットをアーカイブ",
     "delete": "削除…",
-    "deleteMany": "{count} 件の会話を削除…"
+    "deleteMany": "{count} 件のチャットを削除…"
   },
   "projectMenu": {
-    "newHere": "ここに新しい会話",
+    "newHere": "ここで新しいチャット",
     "fold": "折りたたむ",
     "unfold": "展開",
-    "select": "会話を選択",
+    "select": "チャットを選択",
     "remove": "プロジェクトを削除"
   },
   "delete": {
     "title": "「{title}」を削除しますか？",
-    "titleMany": "{count} 件の会話を削除しますか？",
+    "titleMany": "{count} 件のチャットを削除しますか？",
     "one": "メッセージとファイルが削除されます。この操作は取り消せません。",
     "many": "メッセージとファイルが削除されます。この操作は取り消せません。",
     "filesOne": "変更されたファイルはプロジェクトに残ります。",
     "filesMany": "変更されたファイルはそれぞれのプロジェクトに残ります。"
   },
   "archivedToast": {
-    "title": "{count} 件の会話をアーカイブしました",
-    "undo": "取り消す"
+    "title": "{count} 件のチャットをアーカイブしました",
+    "undo": "元に戻す"
   },
   "refused": {
     "quote": "「{name}」",
     "line": "{name}: {reasons}",
     "archive": {
       "one": "{name}をアーカイブできませんでした",
-      "many": "{count} 件の会話をアーカイブできませんでした"
+      "many": "{count} 件のチャットをアーカイブできませんでした"
     },
     "restore": {
       "one": "{name}を復元できませんでした",
-      "many": "{count} 件の会話を復元できませんでした"
+      "many": "{count} 件のチャットを復元できませんでした"
     },
     "pin": {
       "one": "{name}をピン留めできませんでした",
-      "many": "{count} 件の会話をピン留めできませんでした"
+      "many": "{count} 件のチャットをピン留めできませんでした"
     },
     "unpin": {
-      "one": "{name}をピン留めを解除できませんでした",
-      "many": "{count} 件の会話をピン留めを解除できませんでした"
+      "one": "{name}のピン留めを外せませんでした",
+      "many": "{count} 件のチャットのピン留めを外せませんでした"
     },
     "delete": {
       "one": "{name}を削除できませんでした",
-      "many": "{count} 件の会話を削除できませんでした"
+      "many": "{count} 件のチャットを削除できませんでした"
     },
     "move": {
       "one": "{name}を移動できませんでした",
-      "many": "{count} 件の会話を移動できませんでした"
+      "many": "{count} 件のチャットを移動できませんでした"
     }
   },
   "layout": {
