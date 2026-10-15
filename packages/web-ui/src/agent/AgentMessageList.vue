@@ -24,6 +24,7 @@ import { COMPOSER_CLEARANCE_PX } from './composer-clearance'
 import MessageEditRegion from './MessageEditRegion.vue'
 import { messageEditSuffixIds, offeredEditId } from './message-editing'
 import { useMessageForks, type MessageForkHandler } from './message-fork'
+import { shareOperation, type AnswerShare } from './sharing'
 import { useFollowSentMessages } from './useFollowSentMessages'
 import { provideCommandRevealer, useCommandRevealer } from './command-reports'
 import { provideOriginRevealer, useOriginRevealer } from './agent-receipts'
@@ -60,6 +61,8 @@ const props = withDefaults(defineProps<{
   /** Hide editing actions on user bubbles. */
   readOnly?: boolean
   fork?: MessageForkHandler
+  /** Shares the answer the text block `blockId` ends; absent, no footer offers Share. */
+  share?: (blockId: string) => Promise<void>
   editTargetId?: string
   /** History restore. `loading` never reads as an empty conversation. */
   load?: SessionLoad
@@ -120,6 +123,11 @@ const emit = defineEmits<{
 }>()
 
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
+
+/** Share on the answer the text block `blockId` ends, which its footer's button starts. */
+function answerShare(blockId: string): AnswerShare {
+  return { operation: shareOperation({ kind: 'answer', blockId }), start: () => props.share!(blockId) }
+}
 
 const {
   visibleBlocks,
@@ -415,6 +423,7 @@ defineExpose({
                 :thinking-ended-at="thinkingEndedAt(item.index)"
                 :fork="fork ? () => forkMessage(renderBlocks[item.index]!.id) : undefined"
                 :fork-state="forkStates.get(renderBlocks[item.index]!.id)"
+                :share="share ? answerShare(renderBlocks[item.index]!.id) : undefined"
                 :failure="failures?.[renderBlocks[item.index]!.id]"
                 :summary-tokens="summaryTokens.get(renderBlocks[item.index]!.id)"
                 :entering="isEntering(String(item.key))"

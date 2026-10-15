@@ -76,6 +76,8 @@
     "assistant": {
       "fork": "分岐",
       "forkWait": "このメッセージの完了後に分岐できます。",
+      "share": "共有",
+      "shareWait": "このメッセージの完了後に共有できます。",
       "regenerate": "再生成",
       "forkFailed": "このメッセージから分岐できませんでした"
     },
@@ -167,7 +169,24 @@
     "runsOn": "実行先",
     "backToConversation": "チャット",
     "archived": "このチャットはアーカイブされています。",
-    "restore": "チャットを復元"
+    "restore": "チャットを復元",
+    "shareConversation": "チャットを共有…"
+  },
+  "share": {
+    "titleConversation": "チャットを共有",
+    "titleAnswer": "応答を共有",
+    "whoConversation": "リンクを知っている全員が、このチャットを読むことができます。コマンドとその出力も含まれます。以降のメッセージは含まれません。",
+    "whoAnswer": "リンクを知っている全員が、この応答と、それに対するメッセージを読むことができます。",
+    "field": "共有リンク",
+    "copyLink": "リンクをコピー",
+    "updateLink": "リンクを更新",
+    "stopSharing": "共有を停止",
+    "updated": "リンクを更新しました",
+    "updatedMessage": "リンクには現在のチャットの内容が表示されます。",
+    "failedConversation": "チャットを共有できませんでした",
+    "failedAnswer": "応答を共有できませんでした",
+    "failedUpdate": "リンクを更新できませんでした",
+    "failedStop": "共有を停止できませんでした"
   },
   "dock": {
     "scrollToBottom": "一番下までスクロール",
