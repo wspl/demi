@@ -566,9 +566,12 @@ async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
         let looked: Rc<RefCell<String>> = Rc::default();
         let (server_in_turn, workspace_in_turn, looked_in_turn) = (server.clone(), workspace.clone(), looked.clone());
         let turns = [
+            // It prints only once it is let go: on a loaded machine, a line
+            // printed before could miss the call's window, and the look
+            // would show it again.
             Turn::Events(vec![exec(
                 "serve",
-                "echo ready; until [ -e done ]; do sleep 0.05; done; echo finished",
+                "until [ -e done ]; do sleep 0.05; done; echo finished",
                 500,
             )]),
             // While this request streams, the command ends and its end
@@ -593,7 +596,7 @@ async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
         let looked = looked.borrow().clone();
         assert!(looked.contains("status: exited\nexitCode: 0"), "{looked}");
         // The waiting report read nothing of the output, so the look shows
-        // the command's last lines.
+        // it.
         assert!(looked.contains("\noutput:\nfinished\n"), "{looked}");
         // The end the look showed tells nothing more: no request after the
         // look's answer, and no report in any.
@@ -653,31 +656,42 @@ async fn a_look_that_shows_the_end_leaves_the_end_report_its_media_alone() {
         // The look showed the end and the medium's line.
         let looked = looked.borrow().clone();
         assert!(looked.contains(&format!("\noutput:\n{line}\n")), "{looked}");
-        // The end report still came, with the image and no output.
-        let reported = script.requests().iter().find_map(crate::file::user_parts);
+        // The end report still came, with the image and no output. A slow
+        // run's progress reports, made while the command ran, may lead the
+        // same block.
+        let reported = script
+            .requests()
+            .iter()
+            .find_map(crate::file::user_parts)
+            .expect("a request carries the end report's image");
+        let [text, image] = &reported[..] else {
+            panic!("the reports' text and the image: {reported:?}")
+        };
         assert_eq!(
-            reported,
-            Some(vec![
-                format!("Command {view} (Run the test script) ended with exit code 0.\noutput: (empty)"),
-                "<image image/png>".to_owned(),
-            ])
+            text.rsplit("\n\n").next(),
+            Some(format!("Command {view} (Run the test script) ended with exit code 0.\noutput: (empty)").as_str()),
+            "{text}"
         );
+        assert_eq!(image, "<image image/png>");
         fixture.stop().await;
     })
     .await;
 }
 
-// About a second: three shell jobs and a look through the status command.
-// A look at two commands waits for both; the first one's end report arrives
-// meanwhile and ends no window, since the look shows that end itself
-// (`runtime.md` § Command reports).
+// About three seconds: three shell jobs, two of whose calls return after two
+// seconds of quiet, and a look through the status command. A look at two
+// commands waits for both; the first one's end report arrives meanwhile and
+// ends no window, since the look shows that end itself (`runtime.md`
+// § Command reports).
 #[tokio::test(flavor = "local")]
 async fn the_end_report_of_a_command_a_look_waits_for_ends_no_window() {
     within(async {
         let turns = [
+            // They report only their ends: a progress report would end the
+            // window of the call below, which this scenario keeps open.
             Turn::Events(vec![
-                exec("serve", "until [ -e done ]; do sleep 0.05; done; echo finished", 500),
-                exec("other", "until [ -e other-done ]; do sleep 0.05; done", 500),
+                resident("serve", "until [ -e done ]; do sleep 0.05; done; echo finished"),
+                resident("other", "until [ -e other-done ]; do sleep 0.05; done"),
             ]),
             // A call whose window far outlasts the test, which ends when the
             // test lets it.
@@ -699,26 +713,27 @@ async fn the_end_report_of_a_command_a_look_waits_for_ends_no_window() {
             panic!("the two commands")
         };
         let root = fixture.server.node(&conversation(), &conversation()).unwrap();
-        // The model looks at both commands and waits for their ends.
-        let look = tokio::task::spawn_local({
-            let root = root.clone();
-            let workspace = fixture.workspace.clone();
-            let ids = json!({ "id": [serve, other], "wait": "30s" });
-            async move { node_call(&root, &workspace, &["shell", "status"], ids).await }
-        });
-        while !root.looks_at(serve) {
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
+        // The model looks at both commands and waits for their ends: its
+        // first step takes them.
+        let ids = json!({ "id": [serve, other], "wait": "30s" });
+        let mut look = Box::pin(node_call(&root, &fixture.workspace, &["shell", "status"], ids));
+        assert!(futures_util::poll!(&mut look).is_pending());
+        assert!(root.looks_at(serve));
         // The first command ends while the look waits: its end report waits
-        // for the turn's boundary.
+        // for the turn's boundary. A report that ended the running call's
+        // window would be taken at once and end the turn instead.
         std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
-        while !root.session().status().input {
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        let mut status = root.session().status_watch();
+        tokio::select! {
+            waits = status.wait_for(|status| status.input) => {
+                waits.expect("the session lives while its call runs");
+            }
+            _ = client.next_until(is_idle) => panic!("the end report ended the running call's window"),
         }
         // The other command ends, and the look shows both ends; the running
         // call was not cut short meanwhile, and ends once it is let go.
         std::fs::write(format!("{}/other-done", fixture.workspace), "").unwrap();
-        let (code, looked, stderr) = look.await.unwrap();
+        let (code, looked, stderr) = look.await;
         assert_eq!(code, 0, "{stderr}");
         assert!(looked.contains("\noutput:\nfinished\n"), "{looked}");
         std::fs::write(format!("{}/let-go", fixture.workspace), "").unwrap();
@@ -750,9 +765,14 @@ fn look_once_its_report_waits(
         let node = server.get().expect("the fixture started").node(&root, &root).unwrap();
         let workspace = workspace.get().unwrap();
         std::fs::write(format!("{workspace}/done"), "").unwrap();
-        while !node.session().status().input {
-            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-        }
+        // The end report waits once the session watches the command no
+        // more: its watch hands the report over before it lets go. A
+        // progress report that waits says nothing of the end.
+        node.session()
+            .status_watch()
+            .wait_for(|status| status.input && !status.commands)
+            .await
+            .expect("the session lives while its turn streams");
         let serve = node
             .session()
             .transcript()
