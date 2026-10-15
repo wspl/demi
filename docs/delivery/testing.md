@@ -104,7 +104,6 @@ backend's scenario suites in [Scenarios](scenarios.md).
   test that needs more states why in a comment: which contract it proves that
   no cheaper test can.
 - Soaks, benchmarks and long waits stay out of the regular suite.
-- A commit that adds or changes tests states their measured time.
 
 ## Resources and placement
 
