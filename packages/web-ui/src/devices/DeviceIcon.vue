@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from 'vue'
 import CornerDot from '../ui/CornerDot.vue'
 import { ICON_PX } from '../ui/icon-metrics'
 import { DEVICE_ICON } from '../hosts/icons'
@@ -17,35 +18,49 @@ import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE, type DeviceState } from './state
  * named, as a mark that stands for the device does ("MacBook Pro · Online"); the logo and the
  * number only help the eye.
  */
-defineProps<{
+const props = withDefaults(defineProps<{
   state: DeviceState | null
   mark: DeviceMark | null
   label?: string
-}>()
+  /**
+   * The mark's box in pixels, 16 in a row, a menu or a list. A larger one, such as a device
+   * page's header, scales the whole mark: the logo, the dot, the number and their outlines.
+   */
+  size?: number
+}>(), { label: undefined, size: ICON_PX.markIn28 })
+
+/** How much the mark, drawn at a row's 16 px, is scaled to `size`. */
+const scale = computed(() => props.size / ICON_PX.markIn28)
 </script>
 
 <template>
   <span
-    class="relative flex size-4 shrink-0 items-center justify-center text-fg-subtle"
+    class="flex shrink-0 text-fg-subtle"
+    :style="{ width: `${size}px`, height: `${size}px` }"
     :role="label ? 'img' : undefined"
     :aria-label="label"
   >
-    <DeviceLogo v-if="mark" :logo="mark.logo" :size="ICON_PX.markIn28" />
-    <component :is="DEVICE_ICON" v-else :size="ICON_PX.in28" aria-hidden="true" />
-    <!-- The device's state is a fact about where the work runs, not the work's own state:
-      it is the small dot, so a row's status dot beside it is never mistaken for it. -->
-    <CornerDot
-      v-if="state && mark"
-      size="xs"
-      :tone="DEVICE_STATE_TONE[state]"
-      :label="label ? undefined : DEVICE_STATE_LABEL[state]"
-    />
-    <!-- Its box centered under the dot; a second digit reaches further left. -->
     <span
-      v-if="mark?.number != null"
-      class="device-mark-number pointer-events-none absolute -bottom-0.5 -right-0.5 min-w-1.5 text-center text-[8px] font-bold leading-none"
-      aria-hidden="true"
-    >{{ mark.number }}</span>
+      class="relative flex size-4 shrink-0 origin-top-left items-center justify-center"
+      :style="scale === 1 ? undefined : { transform: `scale(${scale})` }"
+    >
+      <DeviceLogo v-if="mark" :logo="mark.logo" :size="ICON_PX.markIn28" />
+      <component :is="DEVICE_ICON" v-else :size="ICON_PX.in28" aria-hidden="true" />
+      <!-- The device's state is a fact about where the work runs, not the work's own state:
+        it is the small dot, so a row's status dot beside it is never mistaken for it. -->
+      <CornerDot
+        v-if="state && mark"
+        size="xs"
+        :tone="DEVICE_STATE_TONE[state]"
+        :label="label ? undefined : DEVICE_STATE_LABEL[state]"
+      />
+      <!-- Its box centered under the dot; a second digit reaches further left. -->
+      <span
+        v-if="mark?.number != null"
+        class="device-mark-number pointer-events-none absolute -bottom-0.5 -right-0.5 min-w-1.5 text-center text-[8px] font-bold leading-none"
+        aria-hidden="true"
+      >{{ mark.number }}</span>
+    </span>
   </span>
 </template>
 
