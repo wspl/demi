@@ -48,14 +48,15 @@ test.skipIf(!existsSync(chromium.executablePath()))(
     const lines: string[] = []
     // A key press waits for the browser with no timeout of Playwright's.
     const script = 'keep.freeze()\nawait page.keyboard.press("Escape")'
-    const started = Date.now()
     const outcome = await runCall(
       { slot, browser, network: () => network, keep },
       { script, file: null, headed: false, env: {}, limitMs: 15_000 },
       (line) => lines.push(line),
       1_000,
     )
-    expect(Date.now() - started).toBeLessThan(10_000)
+    // The first line names the watch that ended the call: the browser's
+    // second of silence, not the call's 15 s limit, which says so instead.
+    // A wall-clock bound would also count the browser's start.
     expect(lines).toEqual([
       'Failed: the browser did not answer for 1 s, so the call stopped waiting for the script',
       'Page      the browser did not answer, so the tool closed it; the next call starts a new one',
