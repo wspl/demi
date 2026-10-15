@@ -6,6 +6,7 @@ import type { Component } from 'vue'
 import type { ModelSettings } from '../agent/model-selection'
 import type { TagTone } from '../ui/Tag.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
+import type { DeviceMark } from '../devices/mark'
 import type { DeviceState } from '../devices/state'
 import type { DirectStatus } from '../devices/direct'
 import type { DeviceReport } from '../devices/report'
@@ -97,6 +98,8 @@ export interface SettingsDevice extends DeviceReport {
   pairedAt: string
   /** How this page reaches it (`direct-channel.md` § What the user sees). */
   direct: DirectStatus
+  /** Its mark, with the number it shows (`shownMark`); null draws the plain computer. */
+  mark: DeviceMark | null
 }
 
 /** A plugin as the Plugins page lists it. */

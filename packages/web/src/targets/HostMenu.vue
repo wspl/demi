@@ -34,6 +34,7 @@ const attachedHosts = computed<HostMenuHost[]>(() =>
       name: host.name,
       kind: hostKindOf(device),
       state: device?.state ?? 'offline',
+      mark: device?.mark ?? null,
     }
   }),
 )

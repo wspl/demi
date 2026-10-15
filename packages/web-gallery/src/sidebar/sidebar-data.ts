@@ -1,3 +1,4 @@
+import { GALLERY_MARKS } from '../fixtures/device-marks'
 import type { SidebarAccount, SidebarConversation, SidebarProject } from '@demicodes/web-ui/sidebar/types'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 import { ago } from '../fixtures/time'
@@ -32,14 +33,14 @@ export function demoProjects(): SidebarProject[] {
       // The same name runs on another device below: both rows name their device before the mark.
       name: 'demi',
       hostKind: 'device',
-      device: { kind: 'paired', name: 'alex-mbp', state: 'online' },
+      device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
       path: '/Users/alex/Projects/shop'
     },
     {
       id: 'p-demi-mini',
       name: 'demi',
       hostKind: 'device',
-      device: { kind: 'paired', name: 'mac-mini', state: 'online' },
+      device: { kind: 'paired', name: 'mac-mini', state: 'online', mark: GALLERY_MARKS.macMini },
       path: '/Users/alex/Projects/shop'
     },
     {
@@ -47,7 +48,7 @@ export function demoProjects(): SidebarProject[] {
       // The only project of its name: the mark alone shows its device, whose name shows in its tip.
       name: 'photo-album',
       hostKind: 'device',
-      device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'online' },
+      device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'online', mark: GALLERY_MARKS.macPro },
       path: '/Users/alex/Projects/photo-album'
     },
     {
@@ -55,7 +56,7 @@ export function demoProjects(): SidebarProject[] {
       // A long name, cut at its end; the device is offline.
       name: 'renderfarm-render-pipeline',
       hostKind: 'device',
-      device: { kind: 'paired', name: 'build-01', state: 'offline' },
+      device: { kind: 'paired', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu },
       path: '/srv/renderfarm-render-pipeline'
     },
     {
@@ -65,14 +66,14 @@ export function demoProjects(): SidebarProject[] {
       name: 'dotfiles-and-machine-setup-scripts',
       hostKind: 'device',
       // Its runner replaces itself with the server's release.
-      device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating' },
+      device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating', mark: GALLERY_MARKS.macPro },
       path: '/Users/alex/dotfiles-and-machine-setup-scripts'
     },
     {
       id: 'p-dotfiles-build',
       name: 'dotfiles-and-machine-setup-scripts',
       hostKind: 'device',
-      device: { kind: 'paired', name: 'build-01', state: 'offline' },
+      device: { kind: 'paired', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu },
       path: '/home/build/dotfiles-and-machine-setup-scripts'
     },
     {
@@ -124,7 +125,7 @@ export function demoConversations(): SidebarConversation[] {
       pinned: false,
       unread: true,
       // Runs on a paired device that is online: the row's end shows it.
-      device: { kind: 'paired', name: 'alex-mbp', state: 'online' },
+      device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
     },
     {
       id: 'c-skills',
@@ -146,7 +147,7 @@ export function demoConversations(): SidebarConversation[] {
       // Pinned on an offline device: the device's mark stands left of the pin.
       pinned: true,
       unread: false,
-      device: { kind: 'paired', name: 'build-01', state: 'offline' },
+      device: { kind: 'paired', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu },
     },
     {
       id: 'c-regex',

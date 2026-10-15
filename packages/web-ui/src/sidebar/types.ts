@@ -1,5 +1,6 @@
 import type { Component } from 'vue'
 import type { ConversationStatus } from '@demicodes/web-ui/agent/conversation-status'
+import type { DeviceMark } from '@demicodes/web-ui/devices/mark'
 import type { DeviceState } from '@demicodes/web-ui/devices/state'
 import type { ListLoad } from '@demicodes/web-ui/agent/session-status'
 
@@ -46,9 +47,9 @@ export interface SidebarConversation {
   device?: SidebarDevice
 }
 
-/** A device as a row's mark shows it: by name and state, or as one since removed. */
+/** A device as a row's mark shows it: by name, state and mark (`shownMark`), or as one since removed. */
 export type SidebarDevice =
-  | { kind: 'paired'; name: string; state: DeviceState }
+  | { kind: 'paired'; name: string; state: DeviceState; mark: DeviceMark | null }
   | { kind: 'removed' }
 
 /** The signed-in account the sidebar's foot shows. */

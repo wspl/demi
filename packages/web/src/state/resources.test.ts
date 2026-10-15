@@ -45,9 +45,10 @@ test("a device project's row follows its device online, updating, offline and go
     startCommand: null,
     os: null,
     runnerVersion: null,
+    mark: { logo: 'apple' as const, number: 1 },
     route: 'automatic' as const,
   }
-  const cloud = { ...device, id: 'cloud', name: 'Cloud', kind: 'managed' as const }
+  const cloud = { ...device, id: 'cloud', name: 'Cloud', kind: 'managed' as const, mark: null }
   const workspace = (id: string, deviceId: string) => ({
     id,
     deviceId,
@@ -59,7 +60,7 @@ test("a device project's row follows its device online, updating, offline and go
 
   product.read = productState({ devices: [device, cloud], workspaces })
   expect(resources.projects).toEqual([
-    { id: 'ledger', name: 'ledger', path: '/ledger', deviceId: 'laptop', hostKind: 'device', device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'online' } },
+    { id: 'ledger', name: 'ledger', path: '/ledger', deviceId: 'laptop', hostKind: 'device', device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'online', mark: { logo: 'apple', number: null } } },
     { id: 'notes', name: 'notes', path: '/notes', deviceId: 'cloud', hostKind: 'cloud' },
   ])
 
@@ -90,15 +91,59 @@ test("a conversation outside a project shows its paired device with its state, o
     startCommand: null,
     os: null,
     runnerVersion: null,
+    mark: { logo: 'apple' as const, number: 1 },
     route: 'automatic' as const,
   }
   const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/alex' }
 
   product.read = productState({ devices: [device] })
-  expect(resources.conversationDevice(onLaptop)).toEqual({ kind: 'paired', name: 'MacBook Pro', state: 'offline' })
+  expect(resources.conversationDevice(onLaptop)).toEqual({ kind: 'paired', name: 'MacBook Pro', state: 'offline', mark: { logo: 'apple', number: null } })
   expect(resources.conversationDevice({ kind: 'cloud' })).toBeUndefined()
   expect(resources.conversationDevice({ kind: 'workspace', workspaceId: 'ledger' })).toBeUndefined()
 
   product.read = productState({ devices: [] })
   expect(resources.conversationDevice(onLaptop)).toEqual({ kind: 'removed' })
+})
+
+test("a device's mark shows its number only while another of the user's devices has the same logo", () => {
+  const product = useProduct()
+  const resources = useResources()
+  const paired = (id: string, logo: 'apple' | 'windows', number: number) => ({
+    id,
+    name: id,
+    kind: 'user' as const,
+    platform: logo === 'apple' ? ('darwin' as const) : ('win32' as const),
+    claimedAt: '2026-09-10T00:00:00.000Z',
+    lastSeenAt: null,
+    state: 'online' as const,
+    home: null,
+    installed: [],
+    startCommand: null,
+    os: null,
+    runnerVersion: null,
+    mark: { logo, number },
+    route: 'automatic' as const,
+  })
+  const marks = () =>
+    resources.devices.map((device) => [device.id, device.mark?.logo, device.mark?.number])
+
+  // Two Macs read Apple 1 and Apple 2; the only Windows PC shows no number.
+  product.read = productState({
+    devices: [paired('studio', 'apple', 1), paired('laptop', 'apple', 2), paired('desktop', 'windows', 1)],
+  })
+  expect(marks()).toEqual([
+    ['studio', 'apple', 1],
+    ['laptop', 'apple', 2],
+    ['desktop', 'windows', null],
+  ])
+  expect(resources.conversationDevice({ kind: 'device', deviceId: 'laptop', path: '/' })).toMatchObject({
+    mark: { logo: 'apple', number: 2 },
+  })
+
+  // With the first Mac removed, the second is the only one: its 2 goes until another Mac comes.
+  product.read = productState({ devices: [paired('laptop', 'apple', 2), paired('desktop', 'windows', 1)] })
+  expect(marks()).toEqual([
+    ['laptop', 'apple', null],
+    ['desktop', 'windows', null],
+  ])
 })

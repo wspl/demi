@@ -123,17 +123,17 @@ test('Resume after a turn its offline Host left unfinished waits for the current
     code: 'host_offline',
     device: { id: 'mac', name: 'MacBook Pro' },
   }
-  const mac = { id: 'mac', name: 'MacBook Pro', kind: 'device' as const }
+  const mac = { id: 'mac', name: 'MacBook Pro', kind: 'device' as const, mark: null }
   const blocks = [{ type: 'user' }, { type: 'text' }, offline]
   expect(turnRecovery('idle', blocks)).toBe('resume')
   expect(resumeWaitsFor(blocks, { ...mac, state: 'offline' })).toBe('MacBook Pro')
   expect(resumeWaitsFor(blocks, { ...mac, state: 'online' })).toBeNull()
   // Moved to another Host while the device is still away: Resume goes there.
-  expect(resumeWaitsFor(blocks, { id: 'studio', name: 'Studio PC', kind: 'device', state: 'online' })).toBeNull()
+  expect(resumeWaitsFor(blocks, { id: 'studio', name: 'Studio PC', kind: 'device', state: 'online', mark: null })).toBeNull()
   // Moved to a device that has since gone offline: Resume waits for it and names it.
-  expect(resumeWaitsFor(blocks, { id: 'studio', name: 'Studio PC', kind: 'device', state: 'offline' })).toBe('Studio PC')
+  expect(resumeWaitsFor(blocks, { id: 'studio', name: 'Studio PC', kind: 'device', state: 'offline', mark: null })).toBe('Studio PC')
   // A stopped Cloud wakes for the resume.
-  expect(resumeWaitsFor(blocks, { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'offline' })).toBeNull()
+  expect(resumeWaitsFor(blocks, { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'offline', mark: null })).toBeNull()
   // Another failure's Resume waits for nothing.
   expect(resumeWaitsFor([{ type: 'user' }, { type: 'error', code: 'overloaded' }], { ...mac, state: 'offline' })).toBeNull()
   // Behind a compaction the record still holds Resume back.

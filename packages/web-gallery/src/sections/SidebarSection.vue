@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { GALLERY_MARKS } from '../fixtures/device-marks'
 import { simulatedRequestId } from '../fixtures/request-failures'
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
@@ -91,11 +92,11 @@ const anatomy: [string, string][] = [
   ],
   [
     'Conversations',
-    'Plain conversations that run in no checkout. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device ends in that device’s mark (Device Marks): the device’s icon with a dot for its state, or without a dot once the device is removed, right of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive appears to the left of the mark, over the pin’s place on a pinned row, and a pinned row shows Unpin before it; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
+    'Plain conversations that run in no checkout. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device ends in that device’s mark (Device Marks): its system’s logo with a dot for its state, or the plain computer without a dot once the device is removed, right of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive appears to the left of the mark, over the pin’s place on a pinned row, and a pinned row shows Unpin before it; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
   ],
   [
     'Projects',
-    'Every checkout the agent works in, in manual order; the whole group folds under its label (Folded Groups), each ending in the host it lives on as the same mark a conversation’s row ends in (Device Marks): the Cloud icon, or the device’s icon with a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. A project shows its device’s name in words only beside another project of the same name on another device: the name stands before the mark, takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover the device’s name gives way and New conversation appears to the left of the mark; on a phone, where that button always shows, the name does not show. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
+    'Every checkout the agent works in, in manual order; the whole group folds under its label (Folded Groups), each ending in the host it lives on as the same mark a conversation’s row ends in (Device Marks): the Cloud icon, or the device’s mark, its system’s logo with a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. A project shows its device’s name in words only beside another project of the same name on another device: the name stands before the mark, takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover the device’s name gives way and New conversation appears to the left of the mark; on a phone, where that button always shows, the name does not show. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
   ],
   [
     'Row',
@@ -151,7 +152,7 @@ function addProject(): void {
       id,
       name: `project-${nextId}`,
       hostKind: 'device',
-      device: { kind: 'paired', name: 'alex-mbp', state: 'online' },
+      device: { kind: 'paired', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
       path: `/Users/alex/Projects/project-${nextId}`
     }
   ]
@@ -259,7 +260,7 @@ function hoverRows(): SidebarConversation[] {
   const row = (id: string, title: string, pinned: boolean, device?: SidebarConversation['device']): SidebarConversation => ({
     id, title, pinned, device, updatedAt: '2026-10-10T09:00:00Z', status: 'done', projectId: null, unread: false,
   })
-  const laptop = { kind: 'paired', name: 'MacBook Pro', state: 'online' } as const
+  const laptop = { kind: 'paired', name: 'MacBook Pro', state: 'online', mark: GALLERY_MARKS.mac } as const
   return [
     row('h-pinned', 'Release checklist', true),
     row('h-pinned-device', 'Profile the indexer', true, laptop),
@@ -276,16 +277,16 @@ const hoverActive = ref<string | null>(null)
  * conversations on devices in each state.
  */
 function markProjects(): SidebarProject[] {
-  const mac = { kind: 'paired', name: 'MacBook Pro', state: 'online' } as const
+  const mac = { kind: 'paired', name: 'MacBook Pro', state: 'online', mark: GALLERY_MARKS.mac } as const
   const project = (id: string, name: string, host: SidebarProjectHost): SidebarProject => ({
     id, name, path: `/Users/alex/${name}`, ...host,
   })
   return [
     project('m-chromium', 'chromium', { hostKind: 'device', device: mac }),
     project('m-demi-mac', 'demi', { hostKind: 'device', device: mac }),
-    project('m-demi-mini', 'demi', { hostKind: 'device', device: { kind: 'paired', name: 'Mac mini', state: 'online' } }),
-    project('m-dotfiles-mac', 'dotfiles-and-machine-setup-scripts', { hostKind: 'device', device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating' } }),
-    project('m-dotfiles-build', 'dotfiles-and-machine-setup-scripts', { hostKind: 'device', device: { kind: 'paired', name: 'build-01', state: 'offline' } }),
+    project('m-demi-mini', 'demi', { hostKind: 'device', device: { kind: 'paired', name: 'Mac mini', state: 'online', mark: GALLERY_MARKS.macMini } }),
+    project('m-dotfiles-mac', 'dotfiles-and-machine-setup-scripts', { hostKind: 'device', device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating', mark: GALLERY_MARKS.macPro } }),
+    project('m-dotfiles-build', 'dotfiles-and-machine-setup-scripts', { hostKind: 'device', device: { kind: 'paired', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu } }),
     project('m-old', 'old-experiments', { hostKind: 'device', device: { kind: 'removed' } }),
     project('m-notebooks', 'notebooks', { hostKind: 'cloud' }),
   ]
@@ -295,8 +296,8 @@ function markRows(): SidebarConversation[] {
     id, title, projectId, pinned, device, updatedAt: '2026-10-10T09:00:00Z', status: 'done', unread: false,
   })
   return [
-    row('m-online', 'Profile the indexer', null, false, { kind: 'paired', name: 'MacBook Pro', state: 'online' }),
-    row('m-pinned-offline', 'Release checklist', null, true, { kind: 'paired', name: 'build-01', state: 'offline' }),
+    row('m-online', 'Profile the indexer', null, false, { kind: 'paired', name: 'MacBook Pro', state: 'online', mark: GALLERY_MARKS.mac }),
+    row('m-pinned-offline', 'Release checklist', null, true, { kind: 'paired', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu }),
     row('m-removed', 'Regex for fenced code lines', null, false, { kind: 'removed' }),
     row('m-cloud', 'How does limitShift differ from shift?', null, false),
     row('m-chromium-1', 'Takeover handoff', 'm-chromium', false),
@@ -653,7 +654,7 @@ onBeforeUnmount(() => {
 
     <GallerySection
       title="Device Marks"
-      note="A conversation’s row and a project’s row end in the same mark, in the same column down both groups: the device’s icon with a dot for its state, green online, amber while its runner updates itself, faint offline, and no dot once the device is removed. Its tip, and its accessible label, name the device and its state, MacBook Pro · Online, or say Removed device. A project’s row names its device in words only beside a project of the same name on another device (demi on MacBook Pro and Mac mini; the two dotfiles projects, whose long names are cut at their ends); chromium alone shows the mark. A project on the Cloud shows the Cloud’s icon in the same place; a conversation on the Cloud shows none. The mark stays on hover: New conversation and Archive appear to its left, and on a project the device’s name, when it shows, disappears while the pointer is over the row, giving New conversation its place; on a phone, where the button always shows, the name does not show at all. Both frames share their rows: Reset gives them back."
+      note="A conversation’s row and a project’s row end in the same mark, in the same column down both groups: the device’s system’s logo with a dot for its state, green online, amber while its runner updates itself, faint offline, and a number while another of the user’s devices has the same logo (the three Macs read 1, 2 and 3); a device since removed is the plain computer without a dot. Its tip, and its accessible label, name the device and its state, MacBook Pro · Online, or say Removed device. A project’s row names its device in words only beside a project of the same name on another device (demi on MacBook Pro and Mac mini; the two dotfiles projects, whose long names are cut at their ends); chromium alone shows the mark. A project on the Cloud shows the Cloud’s icon in the same place; a conversation on the Cloud shows none. The mark stays on hover: New conversation and Archive appear to its left, and on a project the device’s name, when it shows, disappears while the pointer is over the row, giving New conversation its place; on a phone, where the button always shows, the name does not show at all. Both frames share their rows: Reset gives them back."
     >
       <div class="flex flex-col gap-2">
         <div>

@@ -24,7 +24,9 @@ import FileBrowser from '../files/FileBrowser.vue'
 import PathInput from '../files/PathInput.vue'
 import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
 import type { PairingDevice } from '../devices/pairing'
-import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
+import DeviceIcon from '../devices/DeviceIcon.vue'
+import { deviceGlyph } from '../devices/device-glyphs'
+import { DEVICE_STATE_LABEL } from '../devices/state'
 import {
   openingChoice,
   useDeviceProjectAction,
@@ -116,6 +118,7 @@ const browserHosts = computed(() =>
     id: entry.id,
     label: entry.name,
     state: entry.state,
+    mark: entry.mark,
   })),
 )
 const browserSource = computed(() => props.sourceFor(deviceId.value))
@@ -295,8 +298,14 @@ function selectDevice(id: string, close: () => void): void {
                   class="flex-1"
                 >
                   <template #trigger>
+                    <DeviceIcon
+                      v-if="device"
+                      :state="device.state"
+                      :mark="device.mark"
+                    />
                     <component
-                      :is="hostIcon({ id: deviceId })"
+                      :is="hostIcon({ kind: 'device' })"
+                      v-else
                       :size="ICON_PX.in28"
                       class="shrink-0 text-fg-muted"
                     />
@@ -307,10 +316,8 @@ function selectDevice(id: string, close: () => void): void {
                       <MenuItem
                         v-for="entry in devices"
                         :key="entry.id"
-                        :icon="hostIcon(entry)"
+                        :icon="deviceGlyph(entry.state, entry.mark)"
                         :label="entry.name"
-                        :indicator="DEVICE_STATE_TONE[entry.state]"
-                        :indicator-label="DEVICE_STATE_LABEL[entry.state]"
                         :value="entry.state === 'online' ? undefined : DEVICE_STATE_LABEL[entry.state]"
                         :disabled="entry.state !== 'online'"
                         :disabled-reason="t('choices.offline')"
