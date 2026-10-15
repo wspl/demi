@@ -43,12 +43,16 @@ use super::StorageError;
 use super::columns::{count, decode, instant, json, to_json};
 use super::command_outputs::{self, OutputRow};
 use super::conversations::ConversationDb;
+use super::search::{IndexedMessage, TranscriptChange, searchable_text};
 use super::{conversation_attachments, running, sequences};
 
 /// What a tree store tells after each commit that writes a node's
 /// checkpoint, closes, reopens or deletes a node, with that node: a
-/// conversation's summary reads its root's checkpoint.
-pub type Saved = Rc<dyn Fn(&NodeId)>;
+/// conversation's summary reads its root's checkpoint. A commit that writes
+/// the root's checkpoint also tells what it changed for the search index
+/// (`storage.md` § Search index), extracted on the database's thread, where
+/// the decoded blocks stay; the others tell none.
+pub type Saved = Rc<dyn Fn(&NodeId, Option<TranscriptChange>)>;
 
 /// One conversation's agent tree in its database, with its owner's blobs.
 pub struct SqliteTreeStore {
@@ -123,7 +127,8 @@ impl AgentTreeStore for SqliteTreeStore {
         Box::pin(async move {
             let completions = initial.carried_completions()?;
             let node = record.id.clone();
-            self.db
+            let change = self
+                .db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
                     if node_by_id(&transaction, &record.id)?.is_some() {
@@ -161,12 +166,16 @@ impl AgentTreeStore for SqliteTreeStore {
                     if let Err(refused) = write_checkpoint(&transaction, &record.id, &initial, &completions)? {
                         return Ok(Err(refused));
                     }
+                    // A new root follows the empty transcript.
+                    let change = root_version_of(&transaction, &record.id)?.map(|version| {
+                        TranscriptChange::new(SavedVersion::default(), version, &initial.changed_blocks)
+                    });
                     transaction.commit()?;
-                    Ok(Ok(()))
+                    Ok(Ok(change))
                 })
                 .await
                 .map_err(store_error)??;
-            (self.saved)(&node);
+            (self.saved)(&node, change);
             Ok(())
         })
     }
@@ -203,7 +212,7 @@ impl AgentTreeStore for SqliteTreeStore {
             if changed == 0 {
                 return Err(missing(id));
             }
-            (self.saved)(id);
+            (self.saved)(id, None);
             Ok(())
         })
     }
@@ -242,7 +251,7 @@ impl AgentTreeStore for SqliteTreeStore {
             if !found {
                 return Err(missing(id));
             }
-            (self.saved)(id);
+            (self.saved)(id, None);
             Ok(())
         })
     }
@@ -268,7 +277,7 @@ impl AgentTreeStore for SqliteTreeStore {
             if changed == 0 {
                 return Err(missing(id));
             }
-            (self.saved)(id);
+            (self.saved)(id, None);
             Ok(())
         })
     }
@@ -318,7 +327,7 @@ impl AgentTreeStore for SqliteTreeStore {
                 })
                 .await
                 .map_err(store_error)?;
-            (self.saved)(id);
+            (self.saved)(id, None);
             Ok(())
         })
     }
@@ -462,20 +471,28 @@ impl SessionStore for SqliteSessionStore {
         Box::pin(async move {
             let completions = update.carried_completions()?;
             let commit = self.db.commit_point();
-            self.db
+            let change = self
+                .db
                 .call(move |connection| {
                     let transaction = connection.transaction()?;
+                    let before = root_version_of(&transaction, &node)?;
                     if let Err(refused) =
                         write_checkpoint(&transaction, &node, &update, &completions)?
                     {
                         return Ok(Err(refused));
                     }
+                    let change = match (before, root_version_of(&transaction, &node)?) {
+                        (Some(before), Some(version)) => {
+                            Some(TranscriptChange::new(before, version, &update.changed_blocks))
+                        }
+                        _ => None,
+                    };
                     commit.commit(transaction)?;
-                    Ok(Ok(()))
+                    Ok(Ok(change))
                 })
                 .await
                 .map_err(store_error)??;
-            (self.saved)(&self.node);
+            (self.saved)(&self.node, change);
             Ok(())
         })
     }
@@ -624,22 +641,36 @@ pub(crate) fn blocks_of(
     node: &NodeId,
     block_count: i64,
 ) -> Result<Vec<Block>, StorageError> {
+    let mut blocks = Vec::new();
+    each_block(connection, node, block_count, |_, block| blocks.push(block))?;
+    Ok(blocks)
+}
+
+/// Hands each of a node's blocks to `take` in order, with its index, decoded
+/// one at a time: exactly one row for each index below its block count.
+fn each_block(
+    connection: &Connection,
+    node: &NodeId,
+    block_count: i64,
+    mut take: impl FnMut(usize, Block),
+) -> Result<(), StorageError> {
     let mut statement = connection
         .prepare("SELECT idx, block FROM blocks WHERE node_id = ?1 AND idx < ?2 ORDER BY idx")?;
     let mut rows = statement.query(params![node.as_str(), block_count])?;
-    let mut blocks = Vec::new();
+    let mut taken = 0;
     while let Some(row) = rows.next()? {
         let index: i64 = row.get(0)?;
-        if index != count(blocks.len()) {
-            return Err(gap(node, blocks.len()));
+        if index != count(taken) {
+            return Err(gap(node, taken));
         }
         let text: String = row.get(1)?;
-        blocks.push(json("blocks", "block", &text)?);
+        take(taken, json("blocks", "block", &text)?);
+        taken += 1;
     }
-    if count(blocks.len()) != block_count {
-        return Err(gap(node, blocks.len()));
+    if count(taken) != block_count {
+        return Err(gap(node, taken));
     }
-    Ok(blocks)
+    Ok(())
 }
 
 fn gap(node: &NodeId, index: usize) -> StorageError {
@@ -1071,20 +1102,49 @@ pub struct SavedVersion {
     pub blocks: u64,
 }
 
+/// The saved version of `node`'s transcript as `transaction` sees it, when
+/// the node is the root; none for any other node.
+fn root_version_of(transaction: &Transaction<'_>, node: &NodeId) -> Result<Option<SavedVersion>, StorageError> {
+    let row: Option<(i64, i64)> = transaction
+        .prepare_cached(
+            "SELECT output_revision, block_count FROM nodes WHERE id = ?1 AND parent_id IS NULL",
+        )?
+        .query_row([node.as_str()], |row| Ok((row.get(0)?, row.get(1)?)))
+        .optional()?;
+    row.map(|(revision, blocks)| {
+        Ok(SavedVersion {
+            revision: decode("nodes", "output_revision", u64::try_from(revision))?,
+            blocks: decode("nodes", "block_count", u64::try_from(blocks))?,
+        })
+    })
+    .transpose()
+}
+
 /// The saved version of the root's transcript; the empty one, revision 0
 /// with no block, when the tree has no root yet.
 pub fn root_version(connection: &Connection) -> Result<SavedVersion, StorageError> {
     Ok(saved_root(connection)?.map_or_else(SavedVersion::default, |(_, version)| version))
 }
 
-/// The root's blocks with the saved version they make, read together; none
-/// and the empty version when the tree has no root yet.
-pub fn root_transcript(connection: &Connection) -> Result<(SavedVersion, Vec<Block>), StorageError> {
+/// The searchable text of the root's blocks with the saved version they
+/// make, read together; each block is decoded and dropped in turn, so the
+/// transcript is never held whole. None and the empty version when the tree
+/// has no root yet.
+pub fn root_search_texts(connection: &Connection) -> Result<(SavedVersion, Vec<IndexedMessage>), StorageError> {
     let Some((root, version)) = saved_root(connection)? else {
         return Ok((SavedVersion::default(), Vec::new()));
     };
-    let blocks = blocks_of(connection, &root, integer(version.blocks))?;
-    Ok((version, blocks))
+    let mut messages = Vec::new();
+    each_block(connection, &root, integer(version.blocks), |position, block| {
+        if let Some(text) = searchable_text(&block) {
+            messages.push(IndexedMessage {
+                block: block.id().clone(),
+                position,
+                text,
+            });
+        }
+    })?;
+    Ok((version, messages))
 }
 
 /// The root's id and the saved version of its transcript.
@@ -1613,7 +1673,7 @@ pub(crate) mod tests {
         let store = SqliteTreeStore::new(
             stores.db(&conversation()),
             Arc::new(Blobs::default()),
-            Rc::new(|_: &NodeId| {}),
+            Rc::new(|_: &NodeId, _: Option<TranscriptChange>| {}),
         );
         (store, stores, data)
     }

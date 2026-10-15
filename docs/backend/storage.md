@@ -617,22 +617,43 @@ user follows the users' shards
 The index is derived: everything in it is read from the conversations, so it
 is never migrated, backed up or replicated, and it is the one stored copy of
 data that this document allows to be derived, for speed. Its version is the
-digest of its schema, as for the databases; an index of another version, or
-one that fails to open, is deleted and built again. For each conversation it
-records what it indexed: the root's persisted output revision and its number
-of blocks, which a save that changes the transcript changes, and the title.
-The transcript's epoch would not do, since it lives only in a running
-session and a restart starts a new one. The backend indexes a conversation again, in one transaction
-that replaces its rows, so a search sees it either as it was or as it is:
+digest of its schema, as for the databases. A row is keyed by its
+conversation and block ids, never by a number SQLite may give to another row.
 
-- after a checkpoint changes the root's transcript, at most once every two
-  seconds per conversation, and once more when its turn ends;
-- after a title change;
-- at start, for each conversation whose recorded version or title differs,
-  newest first, in the background, so a new index fills while the backend
-  serves.
+**It follows the transcript's changes, not the transcript.** For example, a
+turn adds three blocks to a root of 11,000: the index replaces three rows,
+about a millisecond, and reads nothing else. The checkpoint that writes
+blocks already knows which of the root's blocks it wrote and from which
+index it cut the rest ([Conversation tree](#conversation-tree)); it hands
+the searchable text of exactly those, extracted from the blocks it holds
+decoded, to the user's index, which applies them in the order the
+checkpoints committed, in one transaction each: the written blocks' rows
+replaced, the cut blocks' rows removed. A block whose searchable text did
+not change, such as a call whose output grew, changes no row. A title
+change replaces the title's row alone.
 
-A deletion removes the conversation's rows.
+For each conversation the index records the root's persisted output
+revision and number of blocks it has applied, since a save of input alone,
+such as a message, adds blocks without advancing the revision. A conversation is read whole only when the index
+does not hold it at that version: at start, for each conversation whose
+recorded revision or title differs, newest first, in the background, so the
+index fills while the backend serves; and whenever the index is reset, an
+index of another version or one that fails to open deleted and built again,
+which schedules every conversation the same way, at start or not. A change
+that arrives while its conversation is being read whole waits for that read
+and applies after it. A save's changes apply only on top of the version they
+follow: each carries the version before it and the version it makes, and
+when the index does not hold the version before it, after a crash between a
+commit and its apply, a failed apply or saves arriving out of order, the
+index marks the conversation to be read whole instead of applying it. A
+failed whole read leaves that mark, logged, for the next save or start to
+try again; one conversation that cannot be read never stops the others
+from filling.
+
+A query reads the rows it answers with, their identities and the text of
+their lines, in one read of the index, so a result never pairs one block's
+identity with another block's text. A deletion removes the conversation's
+rows.
 
 ## Encodings and digests
 
