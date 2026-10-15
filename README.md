@@ -81,11 +81,13 @@ for moving to a new release.
   files. Watch it in the side panel and take over at any time.
 - **Files and data**: Work with documents, spreadsheets and images, and get the
   results back as attachments.
+- **Share**: Share a conversation, or a single answer, as a read-only link.
 
 ### Anywhere, on any machine
 
 - **Works in any browser**: Desktop, tablet or phone, with nothing to install.
-- **Always on**: Tasks keep running on the server after you close the tab.
+- **Always on**: Tasks keep running on the server after you close the tab,
+  and pick up again after the server restarts.
 - **One place for every conversation**: Conversations are stored on the
   server, not scattered across the machines the agent worked on. Start on your
   laptop and continue on your phone, live.
@@ -112,20 +114,21 @@ for moving to a new release.
 - **Workflows**: Bundle a set of agent profiles with instructions for one kind
   of work. Keep workflows in a project's `.demi/workflows/`, pick one in the
   message box, and share them with your team through the repository.
-- **Skills**: Install skills to teach Demi new tasks.
+- **Skills and instructions**: Install skills to teach Demi new tasks. A
+  project's `AGENTS.md`, `CLAUDE.md` and skills work as they are.
 - **Secure credentials**: API keys and passwords are requested through a secure
   form and never appear in the conversation.
 
 ### Models and teams
 
 - **Use your subscriptions**: Sign in with Claude, ChatGPT or Grok Build
-  accounts. Add several accounts per subscription and switch between them,
-  with each account's usage limits in view.
+  accounts. Add several accounts per subscription, and Demi rotates between
+  them as their usage limits run out.
 - **Any API**: Anthropic, OpenAI, Gemini, or any compatible endpoint.
 - **Switch models any time**: Change the model or reasoning effort, even in the
   middle of a task.
-- **Multi-user**: Each user has their own sandbox, models, devices and
-  conversations.
+- **Multi-user**: Each user has their own sandbox, devices and
+  conversations, on the admin's subscriptions or their own.
 - **Admin tools**: Add users, manage roles, reset passwords and send phone
   sign-in codes.
 - **One-line install and upgrades**: Set up a server with one command and
