@@ -13,12 +13,14 @@ use std::rc::{Rc, Weak};
 
 use demi_backend_database::conversation_index::RecordChange;
 use demi_backend_database::workspaces::{WorkspaceRecord, new_workspace_id};
-use demi_backend_host_access::host_commands::{conversation_of, devices_named, pend_move};
+use demi_backend_host_access::host_commands::{brought, conversation_of, pend_move, resolve_host};
 use demi_backend_page_sync::Part;
-use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
+use demi_host_interface::{
+    BroughtHost, BroughtKind, Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc,
+};
 use demi_web_api_protocol::conversations::{ConversationTarget, TITLE_MAX};
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use demi_web_api_protocol::ids::{ConversationId, WorkspaceId};
 use demi_web_api_protocol::text::Trimmed;
 use demi_web_api_protocol::workspaces::WORKSPACE_NAME_MAX;
 use futures_util::future::LocalBoxFuture;
@@ -107,7 +109,7 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<MoveArgs>()
                 .positionals(["project"])
                 .permission(ORGANIZE)
-                .brings_host("project")
+                .brings_project("project")
                 .bind(TypedRpc::new(verb(shard.clone(), move_to))),
         )
         .leaf(
@@ -243,20 +245,20 @@ async fn move_to(shard: Rc<Shard>, call: Call<MoveArgs>, port: RpcPort) -> Resul
         .map_err(failed)?;
     let MoveArgs { project, out } = call.args;
     let (target, said) = match (project, out.unwrap_or(false)) {
-        (Some(wanted), false) => {
-            let workspace = match named_project(&shard, &wanted).await? {
-                Named::One(workspace) => workspace,
-                Named::None => {
-                    return Err(failed(format!(
-                        "{wanted}: no such project (see `demi conversation projects`)"
-                    )));
-                }
-                Named::Several => {
-                    return Err(failed(format!(
-                        "{wanted}: several projects have this name; name one by its id (see `demi conversation projects`)"
-                    )));
-                }
-            };
+        (Some(_), false) => {
+            // The dispatch resolved the project once, and checked its host.
+            let project = brought(&call.invocation)?
+                .project
+                .clone()
+                .ok_or_else(|| failed("the dispatch resolved no project"))?;
+            let workspace_id = WorkspaceId::try_from(project).map_err(|_| failed("the resolved project has no id"))?;
+            let workspace = shard
+                .services()
+                .control
+                .workspace(workspace_id)
+                .await
+                .map_err(failed)?
+                .ok_or_else(|| failed("the project no longer exists"))?;
             let host = shard.host_name(&workspace.device).await;
             let said = format!(
                 "The move into {} ({host}, {}) applies when this conversation's work ends; until then commands run where they do now.\n",
@@ -357,31 +359,57 @@ async fn create_project(
 }
 
 impl Shard {
-    /// The host the project or host `named`, as a `bringsHost` argument
-    /// names it, brings into the conversation when the conversation may not
-    /// reach it (`permissions.md` § Hosts): a project by id or name stands
-    /// for its host, and a host by any name or id it goes by. Of the hosts
-    /// a name may stand for, the first the conversation may not reach;
-    /// none when it may reach them all, or the name names nothing, which
-    /// the handler refuses.
-    pub(crate) async fn brought_host(
+    /// The one host a `bringsHost` argument `named` stands for, resolved by
+    /// the dispatch before the check, which asks for it when the
+    /// conversation may not reach it, and handed to the handler
+    /// (`permissions.md` § Hosts): for an argument that names a project, the
+    /// project by its id or name, and its host; for one that names a host,
+    /// the host [`resolve_host`] finds. A name that names nothing, or several
+    /// projects, fails the call before the check.
+    pub(crate) async fn resolve_brought(
         &self,
         conversation: &ConversationId,
+        kind: BroughtKind,
         named: &str,
-    ) -> Result<Option<DeviceId>, RpcError> {
-        let mut devices = Vec::new();
-        if let Named::One(workspace) = named_project(self, named).await? {
-            devices.push(workspace.device);
-        }
-        for host in devices_named(self.host_shard(), conversation, named).await? {
-            devices.push(host.device);
-        }
-        let control = &self.services().control;
-        for device in devices {
-            if !control.may_reach(conversation.clone(), device.clone()).await.map_err(failed)? {
-                return Ok(Some(device));
+    ) -> Result<BroughtHost, RpcError> {
+        match kind {
+            BroughtKind::Project => {
+                let workspace = match named_project(self, named).await? {
+                    Named::One(workspace) => workspace,
+                    Named::None => {
+                        return Err(failed(format!(
+                            "{named}: no such project (see `demi conversation projects`)"
+                        )));
+                    }
+                    Named::Several => {
+                        return Err(failed(format!(
+                            "{named}: several projects have this name; name one by its id (see `demi conversation projects`)"
+                        )));
+                    }
+                };
+                let cloud = self
+                    .services()
+                    .control
+                    .device(workspace.device.clone())
+                    .await
+                    .map_err(failed)?
+                    .is_some_and(|device| device.kind == DeviceKind::Managed);
+                Ok(BroughtHost {
+                    name: self.host_name(&workspace.device).await,
+                    device: workspace.device.to_string(),
+                    cloud,
+                    project: Some(workspace.id.to_string()),
+                })
+            }
+            BroughtKind::Host => {
+                let host = resolve_host(self.host_shard(), conversation, named).await?;
+                Ok(BroughtHost {
+                    device: host.device.to_string(),
+                    name: host.name,
+                    cloud: host.cloud,
+                    project: None,
+                })
             }
         }
-        Ok(None)
     }
 }

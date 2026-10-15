@@ -198,7 +198,7 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
 #[tokio::test]
 async fn an_agent_pairs_a_computer_from_its_installers_code_once_the_user_allows_that_code() {
     let scripts = Arc::new(Scripts::default());
-    let (harness, backend, master, _laptop, _, _) = tree_on(&scripts, Harness::new()).await;
+    let (harness, backend, master, laptop, _, provider) = tree_on(&scripts, Harness::new()).await;
     let state = backend.sync(&master).await.snapshot().await;
     // The computer the agent installed the runner on, which waits to be
     // paired under the code it shows.
@@ -238,7 +238,8 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_once_the_user_allows
     assert_eq!(host_of(request), Some(&PermissionHost::Pairing {}));
 
     // The allow lets that code pair once: the computer is paired, attached
-    // under its device's name and reached; another code asks again.
+    // under its device's name and reached; the same code again, and another
+    // code, ask again.
     scripts.root(
         FIRST,
         vec![
@@ -246,13 +247,14 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_once_the_user_allows
             shell("t4", &format!("demi host pair {code}")),
             shell("t5", "demi host shell --host buildbox 'echo reached'"),
             shell("t6", "demi host pair 0000-0000-0000-0000-0000-0000-00; echo exit=$?"),
+            shell("t7", &format!("demi host pair {code}; echo exit=$?")),
             say("done"),
         ],
     );
     let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
     eventually("the woken turn ends", || async {
-        scripts.asked(|session| session == FIRST).len() == 8
+        scripts.asked(|session| session == FIRST).len() == 9
     })
     .await;
     let asked = scripts.asked(|session| session == FIRST);
@@ -269,10 +271,36 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_once_the_user_allows
         asked[5]
     );
     assert!(asked[6].contains("reached"), "{}", asked[6]);
+    // Each asks again: the result of its own call says so.
+    for (asked, step) in [(&asked[7], "t6"), (&asked[8], "t7")] {
+        let (_, result) = asked
+            .rsplit_once(&format!("ToolResult {{ tool_use_id: \"{step}\""))
+            .expect("the step's result");
+        assert!(
+            result.contains("permission to pair a computer and reach it; the request") && result.contains("exit=1"),
+            "{result}"
+        );
+    }
+
+    // A code allowed in one conversation pairs nothing in another.
+    harness
+        .control_database()
+        .execute(
+            "INSERT INTO pairing_passes (conversation_id, code, allowed_at) VALUES (?1, 'K7QM-2XWD', 1)",
+            [FIRST],
+        )
+        .unwrap();
+    create(&backend, &master, SECOND).await;
+    choose(&backend, &master, SECOND, &provider, "m").await;
+    working_on(&harness, &laptop, SECOND);
+    let mut second = Socket::connect(&backend, &master, SECOND).await;
+    second.open().await;
+    scripts.root(SECOND, vec![shell("s1", "demi host pair K7QM-2XWD; echo exit=$?"), say("asked")]);
+    second.chat("n1", "Pair it here").await;
     assert!(
-        asked[7].contains("permission to pair a computer and reach it; the request"),
+        last_asked(&scripts, SECOND).contains("permission to pair a computer and reach it; the request"),
         "{}",
-        asked[7]
+        last_asked(&scripts, SECOND)
     );
     // It is the user's device, its runner holds its token, and the
     // conversation reaches it.
@@ -363,15 +391,19 @@ async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_director
     let studio = backend.pair(&master, "studio").await;
     let app = format!("{}/app", studio.runner.home());
     std::fs::create_dir_all(&app).unwrap();
+    // A project on the studio named as the host the conversation runs on.
+    project(&backend, &master, &studio, "laptop").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    // Listing the devices asks nothing; moving to one the conversation may
-    // not reach asks to reach it.
+    // Listing the devices asks nothing; a move names a host, never a
+    // project, so `laptop` is the conversation's own; moving to a host the
+    // conversation may not reach asks to reach it.
     scripts.root(
         FIRST,
         vec![
             shell("t1", "demi host devices"),
+            shell("t1b", &format!("demi host move laptop {root}")),
             shell("t2", &format!("demi host move studio {app}; echo exit=$?")),
             say("I asked the user"),
         ],
@@ -379,10 +411,11 @@ async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_director
     socket.chat("m1", "Work on the studio").await;
     let asked = scripts.asked(|session| session == FIRST);
     assert!(asked[1].contains(&format!("studio  {}  online", studio.id())), "{}", asked[1]);
+    assert!(asked[2].contains("This conversation runs there already."), "{}", asked[2]);
     assert!(
-        asked[2].contains("demi host move: this conversation needs the user's permission to reach studio; the request was sent to the user"),
+        asked[3].contains("demi host move: this conversation needs the user's permission to reach studio; the request was sent to the user"),
         "{}",
-        asked[2]
+        asked[3]
     );
     let requests = permissions(&backend, &master, FIRST).await;
     assert_eq!(requests.requests.len(), 1, "{requests:?}");
@@ -413,14 +446,14 @@ async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_director
     .await;
     let asked = scripts.asked(|session| session == FIRST);
     assert!(
-        asked[4].contains(&format!("{app}/missing is not a directory on studio")) && asked[4].contains("exit=1"),
-        "{}",
-        asked[4]
-    );
-    assert!(
-        asked[5].contains(&format!("The move to studio ({app}) applies when this conversation's work ends")),
+        asked[5].contains(&format!("{app}/missing is not a directory on studio")) && asked[5].contains("exit=1"),
         "{}",
         asked[5]
+    );
+    assert!(
+        asked[6].contains(&format!("The move to studio ({app}) applies when this conversation's work ends")),
+        "{}",
+        asked[6]
     );
     assert_eq!(attached(&harness, FIRST), ["laptop"]);
     assert!(!pending(&harness, FIRST));

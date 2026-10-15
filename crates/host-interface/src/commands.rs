@@ -6,7 +6,7 @@
 use std::{collections::HashMap, rc::Rc};
 
 use demi_command_declarations::{
-    CapabilityIndex, Category, Group, Leaf, LeafKind, NativeOperation, Node, check_input_subset,
+    BroughtKind, CapabilityIndex, Category, Group, Leaf, LeafKind, NativeOperation, Node, check_input_subset,
     render_index,
 };
 
@@ -49,7 +49,7 @@ impl Declared {
 /// it gives one, and the handler that runs it.
 pub struct Checked<'a> {
     pub category: Option<&'a Category>,
-    pub brings_host: Option<String>,
+    pub brings_host: Option<(BroughtKind, String)>,
     pub handler: &'a Rc<dyn RpcHandler>,
 }
 
@@ -251,12 +251,10 @@ impl CommandSet {
             self.category(id)
                 .expect("registration checked that a group declares the leaf's category")
         });
-        let brings_host = leaf
-            .brings_host
-            .as_deref()
-            .and_then(|field| invocation.args.get(field))
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned);
+        let brings_host = leaf.brings_host.as_ref().and_then(|brings| {
+            let named = invocation.args.get(&brings.field)?.as_str()?;
+            Some((brings.names, named.to_owned()))
+        });
         Ok(Checked {
             category,
             brings_host,

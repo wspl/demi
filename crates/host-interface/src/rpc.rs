@@ -57,6 +57,35 @@ pub struct RpcInvocation {
         with = "unwrap_or_skip"
     )]
     pub pipes: Option<RelayedPipes>,
+    /// The host the leaf's `bringsHost` argument names, as the dispatch
+    /// resolved it once and checked it (`permissions.md` § Hosts); the
+    /// handler acts on it and never resolves the name again.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    pub brought: Option<BroughtHost>,
+}
+
+/// A host a call brings into its conversation, as the dispatch resolved it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BroughtHost {
+    /// The device's id.
+    pub device: String,
+    /// The name the user knows it by: Cloud for the user's Cloud.
+    pub name: String,
+    /// Whether it is the user's Cloud.
+    pub cloud: bool,
+    /// The project the argument named, whose host it is; none for a host
+    /// named as itself.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    pub project: Option<String>,
 }
 
 /// The ids of a call's relayed pipes.

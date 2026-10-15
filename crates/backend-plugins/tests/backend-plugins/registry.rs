@@ -129,6 +129,7 @@ async fn run(commands: &CommandSet, path: &[&str]) -> Result<String, RpcError> {
         caller: None,
         stdin: false,
         pipes: None,
+        brought: None,
     };
     let port = RpcPort::new(memory.clone(), Default::default());
     commands.dispatch(invocation, port).await?;

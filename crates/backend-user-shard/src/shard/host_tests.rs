@@ -46,6 +46,7 @@ mod host_commands {
             }),
             stdin: false,
             pipes: None,
+            brought: None,
         }
     }
 

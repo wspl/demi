@@ -80,22 +80,31 @@ impl LinkPolicy for ShardPolicy {
             let checked = commands.check(&invocation)?;
             let handler = checked.handler.clone();
             let needed: Vec<_> = checked.category.into_iter().collect();
-            let host = match (pairing_code(&invocation), &checked.brings_host) {
-                (Some(code), _) => Some(AskedHost::Pairing(code)),
-                (None, Some(named)) => {
+            // The host is resolved here once: the check asks for that very
+            // device, and the handler acts on it without reading the name
+            // again, so a rename meanwhile cannot make them differ.
+            let brought = match &checked.brings_host {
+                Some((kind, named)) => {
                     let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
                         .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
-                    shard
-                        .brought_host(&conversation, named)
-                        .await?
-                        .map(AskedHost::Device)
+                    Some(shard.resolve_brought(&conversation, *kind, named).await?)
                 }
+                None => None,
+            };
+            let host = match (pairing_code(&invocation), &brought) {
+                (Some(code), _) => Some(AskedHost::Pairing(code)),
+                (None, Some(brought)) => Some(AskedHost::Device(
+                    DeviceId::try_from(brought.device.clone())
+                        .map_err(|_| RpcError::Failed("the resolved host has no id".into()))?,
+                )),
                 (None, None) => None,
             };
             if !needed.is_empty() || host.is_some() {
                 demi_backend_permissions::check(shard.permission_shard(), &invocation, &needed, host)
                     .await?;
             }
+            let mut invocation = invocation;
+            invocation.brought = brought;
             handler.call(invocation, port).await
         })
     }

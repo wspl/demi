@@ -52,6 +52,7 @@ impl Plugged {
             caller: None,
             stdin: false,
             pipes: None,
+            brought: None,
         };
         let request = Request::Command {
             user: user(),

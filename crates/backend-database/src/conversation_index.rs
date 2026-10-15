@@ -897,14 +897,6 @@ impl ControlService {
     }
 }
 
-impl ControlService {
-    /// Whether the conversation may reach `device` ([`may_reach`]).
-    pub async fn may_reach(&self, id: ConversationId, device: DeviceId) -> Result<bool, StorageError> {
-        self.call(move |connection, _| may_reach(connection, &id, &device))
-            .await
-    }
-}
-
 /// The two ends of a target switch.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SwitchEnds {
