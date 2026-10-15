@@ -15,8 +15,6 @@ import { provideBlockScope } from '../whole-blocks'
  */
 defineProps<{
   message: AgentMessage
-  /** The receipt is a lone step of the running turn, its activity, and shimmers. */
-  working?: boolean
 }>()
 // What the row shows, the light form keeps: it never opens to read the block whole.
 provideBlockScope(() => undefined)
@@ -24,7 +22,7 @@ provideBlockScope(() => undefined)
 
 <template>
   <div class="px-[var(--agent-pad-x,2rem)]">
-    <NoticeRow :loading="working">
+    <NoticeRow>
       <template #icon>
         <component :is="receiptIcon(message)" :size="ICON_PX.in28" />
       </template>

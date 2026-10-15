@@ -76,7 +76,7 @@ fn call(id: &str, run: &str) -> Value {
     json!({
         "type": "tool_call", "id": id, "run": run, "createdAt": "2026-10-01T00:00:00.000Z",
         "model": model(), "toolUseId": id, "toolName": "shell", "input": "{}",
-        "status": "completed", "output": [],
+        "status": "completed", "output": [], "endedAt": "2026-10-01T00:00:00.001Z",
         "view": {
             "kind": "shell", "status": "exited", "commandId": id, "exitCode": 0,
             "runningMs": 1, "idleMs": 0, "chunks": [], "viewTruncated": false,

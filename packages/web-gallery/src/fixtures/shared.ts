@@ -1,6 +1,6 @@
 import type { Block } from '@demicodes/protocol'
 import type { SharedAgent } from '@demicodes/web-ui/share/shared-agents'
-import { demoModel, inRun, shellView } from './blocks'
+import { demoModel, inRun, shellView, withEnd } from './blocks'
 import { ago } from './time'
 
 /**
@@ -16,11 +16,11 @@ export const sharedAgents: SharedAgent[] = [
 ]
 
 function shell(id: string, createdAt: string, description: string, script: string, stdout: string): Block {
-  return {
+  return withEnd({
     type: 'tool_call', id, createdAt, model: demoModel, toolUseId: `${id}-use`, toolName: 'shell',
     input: JSON.stringify({ script, description }), status: 'completed', output: [],
     view: shellView({ commandId: `cmd-${id}`, chunks: [{ stream: 'stdout', text: stdout }] }),
-  }
+  })
 }
 
 export function sharedRootBlocks(): Block[] {

@@ -47,15 +47,29 @@ test('a running turn requests after a completed tool while waiting for the model
   expect(kind('running', [toolCallBlock('error')])).toBe('requesting')
 })
 
-test('a running group is its own activity: the next steps roll over its face, not into the tail row', () => {
+// `runtime.md` § Work groups: a run's row holds only the steps that ended,
+// so at a running turn's end it is what has happened, and the turn waits for
+// the model under it; a step that still runs is a row of its own after the
+// run, the turn's activity, and no Requesting row shows while it runs.
+// Before, the run's row stood for the wait, and no Requesting showed under it.
+test('a run whose steps ended waits for the model under it; a step that runs is the activity', () => {
   const transcript = [userBlock(), thinkingBlock(), toolCallBlock('completed')]
-  expect(kind('running', transcript, groupWork(transcript, true))).toBeNull()
-  // Without the grouping the same tail waits for the model.
-  expect(kind('running', transcript)).toBe('requesting')
-  // A lone call is the run's row too: once it ended, the turn waits for the
-  // model in it, and no Requesting row shows under it.
+  expect(kind('running', transcript, groupWork(transcript, true))).toBe('requesting')
   const lone = [userBlock(), toolCallBlock('completed')]
-  expect(kind('running', lone, groupWork(lone, true))).toBeNull()
+  expect(kind('running', lone, groupWork(lone, true))).toBe('requesting')
+  const runs = [userBlock(), toolCallBlock('executing')]
+  expect(kind('running', runs, groupWork(runs, true))).toBeNull()
+})
+
+// Review: a call still waiting for its result keeps the turn waiting for it,
+// wherever it stands: the agent started A, wrote a line, and B in a new run
+// returned. Before, the run of B at the tail read as the model's turn.
+test('no Requesting shows while a call in an earlier run still executes', () => {
+  const started = { ...toolCallBlock('executing'), run: 'thinking-1' } as MessageListBlock
+  const said = { ...textBlock(), forkable: true } as MessageListBlock
+  const returned = { ...toolCallBlock('completed'), id: 'tool-b', toolUseId: 'tool-use-b', run: 'tool-b' } as MessageListBlock
+  const transcript = [userBlock(), { ...thinkingBlock(), run: 'thinking-1' } as MessageListBlock, started, said, returned]
+  expect(kind('running', transcript, groupWork(transcript, true))).toBeNull()
 })
 
 test('the slot stays hidden while the tool row itself is executing', () => {
@@ -376,7 +390,7 @@ function toolCallBlock(status: ToolCallStatus): MessageListBlock {
     toolName: 'shell',
     input: '{"script":"ls"}',
     status,
-    output: [],
+    endedAt: status === 'executing' ? null : createdAt, output: [],
     view: null,
   }
 }

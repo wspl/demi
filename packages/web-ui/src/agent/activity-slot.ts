@@ -97,20 +97,25 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
   if (last.type === 'text') {
     return last.forkable === true
   }
-  // The run's row is the turn's activity: it shimmers while the model is
-  // waited for, and the steps after it roll over its face, not into the tail
-  // row (`runtime.md` § Work groups).
+  // A run's row holds only steps that ended; a step that still runs is a
+  // row of its own after it (`runtime.md` § Work groups). So a run at the
+  // tail is what has happened, and the turn waits for the model under it.
   if (last.type === 'work_group') {
-    return !last.live
+    return true
   }
   return WAITING_TAIL_TYPES.has(last.type)
 }
 
+/**
+ * Whether the turn's newest output still streams, or a call still waits for
+ * its result, wherever it stands: the turn waits for that call, not for the
+ * model, as parallel calls return in any order (`runtime.md` § Work groups).
+ */
 function hasActiveOutput(blocks: readonly MessageListBlock[]): boolean {
   const last = blocks[blocks.length - 1]
   return (
     last?.type === 'thinking'
     || (last?.type === 'text' && !last.forkable)
-    || (last?.type === 'tool_call' && last.status === 'executing')
+    || blocks.some((block) => block.type === 'tool_call' && block.status === 'executing')
   )
 }

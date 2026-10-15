@@ -104,11 +104,8 @@
       "ran": "명령 {count}개 실행",
       "checked": "명령 {count}개 확인",
       "used": "{tool} 사용",
-      "running": "명령 {count}개 실행 중",
-      "checking": "명령 {count}개 확인 중",
-      "using": "{tool} 사용 중",
       "joined": "{first}, {next}",
-      "runningFor": "{what}, {time} 동안",
+      "took": "{what}, {span} 소요",
       "command": {
         "finished": "명령 {count}개 완료됨",
         "failed": "명령 {count}개 실패함",

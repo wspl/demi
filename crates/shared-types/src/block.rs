@@ -843,6 +843,13 @@ pub struct ToolCallBlock {
     #[schemars(with = "Nullable<ToolView>")]
     #[garde(dive)]
     pub view: Option<ToolView>,
+    /// When the call returned, set as its result is stored; null while it
+    /// executes. A run's time adds up its calls' times from `created_at` to
+    /// this (`runtime.md` § Work groups).
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<Timestamp>")]
+    #[garde(skip)]
+    pub ended_at: Option<Timestamp>,
     /// The run of steps the block belongs to (`runtime.md` § Work groups):
     /// the id of the run's first block, which the backend sets as it stores
     /// the block and never changes.

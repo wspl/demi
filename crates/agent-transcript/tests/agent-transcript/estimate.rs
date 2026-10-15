@@ -163,6 +163,7 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
     let call = Block::ToolCall(ToolCallBlock {
         run: None,
         entries: Vec::new(),
+        ended_at: None,
         id: "c".try_into().unwrap(),
         created_at: Timestamp::UNIX_EPOCH,
         model: test_model(),

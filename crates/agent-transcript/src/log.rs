@@ -476,6 +476,7 @@ impl TranscriptLog {
             status: ToolCallStatus::Executing,
             output: Vec::new(),
             view: None,
+            ended_at: None,
             entries: Vec::new(),
         }));
     }
@@ -534,6 +535,7 @@ impl TranscriptLog {
         let Some(index) = self.executing_call(tool_use_id) else {
             return;
         };
+        let ended_at = self.clock.now();
         if let Block::ToolCall(call) = &mut self.blocks[index] {
             call.status = if is_error {
                 ToolCallStatus::Error
@@ -542,6 +544,7 @@ impl TranscriptLog {
             };
             call.output = output;
             call.view = view;
+            call.ended_at = Some(ended_at);
         }
         self.record_replace(index);
     }
