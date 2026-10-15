@@ -412,6 +412,14 @@ shell_exec with input: …]`, under names unlike its tools'.
   a `date` attachment, belongs to the next block. A medium in an entry is
   kept as a reference to the medium the block already holds, and its bytes
   return when the file is written.
+- **An attempt given up leaves nothing.** A request that fails with
+  `usage_limit` and is sent again on another account
+  ([Account rotation](providers.md#account-rotation)) leaves the blocks as
+  they were before it: the entries it mirrored, such as the previous call's
+  result written as the request began and the CLI's own record of the
+  failure, are not kept, so the new process's file is the one the request
+  would have had without the attempt, with no entry twice and no failure the
+  model reads as its own words.
 - **The file is written from the blocks** the replay would send
   ([Replay](../agent/runtime.md#replay)), in their order, into the process's
   configuration directory, before the process starts. A block with entries
