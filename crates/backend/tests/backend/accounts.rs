@@ -11,7 +11,7 @@ use std::sync::atomic::Ordering;
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_provider_common::quota::{ProbeCost, QuotaError};
 use demi_provider_common::testing::{MockResponse, MockVendor};
-use demi_shared_types::{LoginStage, QuotaWindow, SnapshotSource};
+use demi_shared_types::{LoginStage, QuotaKind, QuotaWindow, SnapshotSource};
 use demi_backend_user_shard::sync::SyncStep;
 use demi_web_api_protocol::state::SyncEvent;
 use demi_web_api_protocol::auth::Role;
@@ -41,7 +41,7 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
     let login = Arc::new(LoginScript::default());
     let window = QuotaWindow {
         id: "weekly".into(),
-        label: "Weekly".into(),
+        kind: QuotaKind::Limit,
         used_percent: Some(40.0),
         used: None,
         limit: None,

@@ -61,9 +61,10 @@ pub struct QuotaWindow {
     /// A stable id, such as `primary`, `five_hour` or `monthly`.
     #[garde(length(chars, min = 1))]
     pub id: String,
-    /// The name the user knows the window by, such as `5-hour`.
+    /// What the window meters; the page names the window from it, its
+    /// period and its scope (`usage-and-quota.md` § Window names).
     #[garde(skip)]
-    pub label: String,
+    pub kind: QuotaKind,
     /// The share used, from 0 to 100; null when unknown.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<f64>")]
@@ -103,6 +104,50 @@ pub struct QuotaWindow {
     #[schemars(with = "Nullable<QuotaScope>")]
     #[garde(skip)]
     pub scope: Option<QuotaScope>,
+}
+
+/// What a window meters, which with its period and its scope names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum QuotaKind {
+    /// A share of use over a period, such as a five-hour limit.
+    Limit,
+    /// Credits of a period.
+    Credits,
+    /// A rate of requests.
+    Requests,
+    /// A rate of tokens.
+    Tokens,
+    /// A ceiling with no period, such as an on-demand cap.
+    Cap,
+}
+
+/// What names a window (`usage-and-quota.md` § Window names): the parts of a
+/// [`QuotaWindow`] the page words its name from, in the user's language.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct QuotaWindowName {
+    #[garde(skip)]
+    pub kind: QuotaKind,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u64>")]
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub period_seconds: Option<u64>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<QuotaScope>")]
+    #[garde(skip)]
+    pub scope: Option<QuotaScope>,
+}
+
+impl QuotaWindow {
+    /// The parts that name this window.
+    pub fn name(&self) -> QuotaWindowName {
+        QuotaWindowName {
+            kind: self.kind,
+            period_seconds: self.period_seconds,
+            scope: self.scope.clone(),
+        }
+    }
 }
 
 /// The unit of a window's amounts.

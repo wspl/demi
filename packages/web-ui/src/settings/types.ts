@@ -1,7 +1,7 @@
 import { t } from './locales/text'
 /** Presentation models for the settings surfaces. Hosts map their own state onto these. */
 import type { ShownError } from '../infra/errors'
-import { VIDEO_FILE_EXTENSIONS } from '@demicodes/protocol'
+import { VIDEO_FILE_EXTENSIONS, type QuotaWindowName } from '@demicodes/protocol'
 import type { Component } from 'vue'
 import type { ModelSettings } from '../agent/model-selection'
 import type { TagTone } from '../ui/Tag.vue'
@@ -238,7 +238,8 @@ export interface SettingsProviderModel extends SettingsModelDraft {
 
 export interface SettingsQuotaWindow {
   id: string
-  label: SentenceText
+  /** What names the window, which the page words in its language (`windowName`). */
+  name: QuotaWindowName
   used: number
   max: number
   /** When the window resets, as the vendor reported it; null when unknown. */

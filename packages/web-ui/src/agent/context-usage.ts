@@ -137,6 +137,24 @@ export function formatShare(tokens: number, window: number): string {
   return share > 0 && share < 0.0005 ? `<${format.format(0.001)}` : format.format(share)
 }
 
+/** The parts of the context card there is something to show in. */
+export interface ContextCardParts {
+  /** The context's header, bar, rows and Compact line, and the instructions under the limits. */
+  context: boolean
+  /** The usage limits of the conversation's account. */
+  limits: boolean
+}
+
+/**
+ * What the context card shows (`compaction.md` § What fills the context):
+ * the context part while its usage and its window are known, or while it
+ * compacts, and the usage limits when the account has them. With neither
+ * there is no indicator, as for a new conversation on an API key.
+ */
+export function contextCardParts(usage: ContextUsage | null, limits: UsageLimits | null, compacting: boolean): ContextCardParts {
+  return { context: compacting || usage?.window != null, limits: limits != null }
+}
+
 /**
  * The usage limits the context card shows under its rows: the label Settings
  * shows for the account the conversation's model runs on (empty when it has

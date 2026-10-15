@@ -166,7 +166,32 @@
   },
   "quota": {
     "unavailable": "Usage not available yet",
-    "used": "{share} used"
+    "used": "{share} used",
+    "window": {
+      "period": {
+        "day": "Daily",
+        "week": "Weekly",
+        "month": "Monthly",
+        "seconds": "{count}-second",
+        "minutes": "{count}-minute",
+        "hours": "{count}-hour",
+        "days": "{count}-day",
+        "weeks": "{count}-week"
+      },
+      "limit": {
+        "period": "{period} limit",
+        "periodScope": "{period} {scope} limit",
+        "scope": "{scope} limit",
+        "unknown": "Usage limit"
+      },
+      "credits": {
+        "period": "{period} credits",
+        "unknown": "Credits"
+      },
+      "requests": "Request rate",
+      "tokens": "Token rate",
+      "cap": "On-demand cap"
+    }
   },
   "sections": {
     "agent": "Agent",

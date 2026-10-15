@@ -11,7 +11,7 @@ use demi_provider_common::{
     },
     wire::{Reported, ReportedString},
 };
-use demi_shared_types::{QuotaPlan, QuotaUnit, QuotaWindow, Timestamp};
+use demi_shared_types::{QuotaKind, QuotaPlan, QuotaUnit, QuotaWindow, Timestamp};
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, HeaderValue, header::ACCEPT};
 use reqwest::Url;
@@ -122,6 +122,7 @@ struct BillingConfig {
 struct Period {
     #[serde(rename = "type")]
     kind: ReportedString,
+    start: ReportedString,
     end: ReportedString,
 }
 
@@ -151,11 +152,22 @@ fn reading(user: &str, billing: &str, email: Option<String>) -> ProbeReading {
     let config = billing.config.into_inner().unwrap_or_default();
     let period = config.current_period.into_inner().unwrap_or_default();
     let weekly = period.kind.as_deref() == Some(WEEKLY_PERIOD);
-    let resets_at: Option<Timestamp> = period
-        .end
-        .into_inner()
-        .or(config.billing_period_end.into_inner())
-        .and_then(|text| rfc3339(&text));
+    let start = period.start.into_inner().and_then(|text| rfc3339(&text));
+    let end = period.end.into_inner().and_then(|text| rfc3339(&text));
+    // The period is the one the billing states, from its start to its end,
+    // else a week for a weekly plan; a monthly one's is otherwise unknown,
+    // never a month made up.
+    let period_seconds = start
+        .zip(end)
+        .and_then(|(start, end)| u64::try_from((end.as_millisecond() - start.as_millisecond()) / 1000).ok())
+        .filter(|seconds| *seconds > 0)
+        .or(weekly.then_some(WEEK_SECONDS));
+    let resets_at: Option<Timestamp> = end.or_else(|| {
+        config
+            .billing_period_end
+            .into_inner()
+            .and_then(|text| rfc3339(&text))
+    });
     let limit = config.monthly_limit.into_inner().map(|amount| amount.0);
     let used = config.used.into_inner().map(|amount| amount.0);
     let used_percent = config
@@ -167,21 +179,16 @@ fn reading(user: &str, billing: &str, email: Option<String>) -> ProbeReading {
     // A plan that meters no credits names none of these, and a window with
     // nothing to show is not one.
     if used_percent.is_some() || used.is_some() || limit.is_some() {
-        let (id, label) = if weekly {
-            ("weekly", "Weekly credits")
-        } else {
-            ("monthly", "Monthly credits")
-        };
+        let id = if weekly { "weekly" } else { "monthly" };
         windows.push(QuotaWindow {
             id: id.into(),
-            label: label.into(),
+            kind: QuotaKind::Credits,
             used_percent,
             used,
             limit,
             unit: Some(QuotaUnit::Credits),
             resets_at,
-            // A monthly billing period's length is not stated.
-            period_seconds: weekly.then_some(WEEK_SECONDS),
+            period_seconds,
             severity: severity(used_percent),
             scope: None,
         });
@@ -189,13 +196,13 @@ fn reading(user: &str, billing: &str, email: Option<String>) -> ProbeReading {
     if let Some(cap) = config.on_demand_cap.into_inner().filter(|cap| cap.0 > 0.0) {
         windows.push(QuotaWindow {
             id: "on_demand_cap".into(),
-            label: "On-demand cap".into(),
+            kind: QuotaKind::Cap,
             used_percent: None,
             used: None,
             limit: Some(cap.0),
             unit: Some(QuotaUnit::Credits),
             resets_at,
-            period_seconds: weekly.then_some(WEEK_SECONDS),
+            period_seconds,
             severity: None,
             scope: None,
         });
@@ -228,22 +235,17 @@ fn rate_limit_windows(headers: &HeaderMap) -> Option<Vec<QuotaWindow>> {
         read("x-ratelimit-remaining-tokens"),
     );
     let windows: Vec<QuotaWindow> = [
-        (
-            "rpm",
-            "Requests (short window)",
-            QuotaUnit::Requests,
-            requests,
-        ),
-        ("tpm", "Tokens (short window)", QuotaUnit::Tokens, tokens),
+        ("rpm", QuotaKind::Requests, QuotaUnit::Requests, requests),
+        ("tpm", QuotaKind::Tokens, QuotaUnit::Tokens, tokens),
     ]
     .into_iter()
-    .filter_map(|(id, label, unit, (limit, remaining))| {
+    .filter_map(|(id, kind, unit, (limit, remaining))| {
         let limit = limit?;
         let used = remaining.map(|remaining| limit - remaining);
         let used_percent = used.and_then(|used| used_percent_from_ratio(used, limit));
         Some(QuotaWindow {
             id: id.into(),
-            label: label.into(),
+            kind,
             used_percent,
             used,
             limit: Some(limit),
