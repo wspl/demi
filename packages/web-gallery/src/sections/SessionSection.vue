@@ -72,7 +72,7 @@ import { COMMITS_HEIGHT } from '@demicodes/web-ui/files/file-view'
 import type { CommitHistorySource } from '@demicodes/web-ui/files/history'
 import { selectedTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
-import { BrowserTabsError, NEW_TAB_URL, browserTabDataSchema, serverRefused, startingLabel, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
+import { BrowserTabsError, NEW_TAB_URL, browserTabDataSchema, startingLabel, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
 import { SERVER_FAILED } from '../fixtures/plugins'
 import type { ChangeMode, ChangeSetSource, ChangeSources } from '@demicodes/web-ui/files/changes'
 import { storedRequests, type RequestChangeSource, type RequestEditRef, type RequestEditSelection } from '@demicodes/web-ui/files/request-changes'
@@ -851,7 +851,7 @@ function failNextStart() {
 }
 /** The server fails the next tab without a reason of the browser's, as a defect of the plugin would. */
 function failNextOnServer() {
-  browserWork.browser.failNextOpen(new BrowserTabsError(null, serverRefused(SERVER_FAILED)))
+  browserWork.browser.failNextOpen(new BrowserTabsError({ status: SERVER_FAILED }))
   productWould('The Server Fails the Next Tab')
 }
 // The same conversation browser, viewed in a web browser that cannot decode H.264, such as a Chromium without

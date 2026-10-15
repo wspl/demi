@@ -10,6 +10,7 @@ import {
   type UploadedFile,
 } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { CopiedStoredFile } from '@demicodes/web-ui/agent/message-input/copied-message'
+import { t } from './locales/text'
 import { coded, errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
 import { blobUrl, claimStoredFile, uploadAttachment } from '../api/uploads'
 import type { Conversation, ProductAttachment } from '../state/types'
@@ -86,7 +87,7 @@ export function createConversationUploads(
    */
   function uploadInComposer(item: ComposerFile): Promise<boolean> {
     return uploadFile(item).then(() => true, (error: unknown) => {
-      reportError('Could Not Upload the Attachment', error)
+      reportError(t('failures.uploadAttachment'), error)
       return false
     })
   }

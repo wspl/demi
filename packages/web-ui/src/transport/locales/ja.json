@@ -3,5 +3,6 @@
     "offline": "オフラインです",
     "restarting": "Demi を再起動しています",
     "reconnecting": "Demi に再接続しています"
-  }
+  },
+  "socketReplaced": "接続が置き換えられました"
 }

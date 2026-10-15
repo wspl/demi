@@ -1,6 +1,6 @@
 import { computed, onScopeDispose } from 'vue'
 import { z } from 'zod'
-import { BrowserTabsError, asTabsError, noAnswer, serverRefused, unreadableAnswer, type BrowserTabsApi } from './live/tabs'
+import { BrowserTabsError, asTabsError, type BrowserTabsApi } from './live/tabs'
 import { PluginCallError, type ConversationPlugin } from '@demicodes/plugin-sdk'
 import {
   browserTabsSchema,
@@ -34,11 +34,11 @@ function tabsError(error: PluginCallError): BrowserTabsError {
   }
   switch (error.answer.type) {
     case 'status':
-      return new BrowserTabsError(null, serverRefused(error.answer.status))
+      return new BrowserTabsError({ status: error.answer.status })
     case 'none':
-      return new BrowserTabsError(null, noAnswer())
+      return new BrowserTabsError({ answer: 'none' })
     case 'unreadable':
-      return new BrowserTabsError(null, unreadableAnswer())
+      return new BrowserTabsError({ answer: 'unreadable' })
   }
 }
 

@@ -10,6 +10,9 @@
   },
   "failures": {
     "updateSettings": "設定を更新できませんでした",
-    "changeContextLimit": "コンテキストの制限を変更できませんでした"
+    "changeContextLimit": "コンテキストの制限を変更できませんでした",
+    "readPermissionRequests": "通知のアクセス許可リクエストを読み取れませんでした",
+    "updateTimeZoneLanguage": "タイム ゾーンと言語を更新できませんでした",
+    "readSync": "同期チャネルのメッセージを読み取れませんでした"
   }
 }

@@ -11,6 +11,7 @@ import { schemaRefusal } from '@demicodes/protocol'
 import type { HostFiles } from '@demicodes/web-ui/files/file-cache'
 import { WatchChannel, type WatchLink, type WatchLinkHandlers, type WatchRequest } from '@demicodes/web-ui/files/watch-channel'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { t } from './locales/text'
 import { openSocket } from '@demicodes/web-ui/transport/liveness'
 import { apiUrl } from '../api/client'
 import {
@@ -43,7 +44,7 @@ export function watchReceiver(handlers: WatchLinkHandlers, close: () => void): (
     }
     const parsed = fileWatchMessageSchema.safeParse(value)
     if (!parsed.success) {
-      reportError('Could not read a message of the file watch.', schemaRefusal(parsed.error))
+      reportError(t('failures.readFileWatch'), schemaRefusal(parsed.error))
       ended = true
       close()
       handlers.closed()
