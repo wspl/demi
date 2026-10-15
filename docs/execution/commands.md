@@ -290,7 +290,7 @@ arguments. The agent substitutes actual values and quotes shell arguments.
 | `agent send`, `resume` | id | JSON output | message |
 | `agent abort`, `show` | id, repeated | JSON output | unused |
 | `agent list`, `profiles` | none | JSON output | unused |
-| `host shell` | one quoted script | host | streamed to the remote program |
+| `host shell` | one quoted script, optional | host | streamed to the remote program; the script when no script argument is given |
 | `host list`, `current` | none | none | unused |
 | `skills list` | none | JSON output | unused |
 | `skills add`, `enable`, `disable` | repository | skill, repeated | unused |
@@ -301,9 +301,21 @@ stdin, or `--old` and `--new` for a one-line change, with `--occurrence` or
 `--context`, not both, to choose among several matches. With `--old` it
 reads no stdin, so `… | while read f; do demi file edit "$f" --old a --new b;
 done` leaves the loop's input to the loop, as `git apply` reads stdin only
-when it names no file. `host shell` takes the script as one quoted argument so its stdin
-remains available for the remote program's data. These commands do not claim
-that stdin supplies their script or edit operands.
+when it names no file. `host shell` reads stdin as ssh does: with a script
+argument, stdin is the remote program's data, so `tar c . | demi host shell
+--host ci 'tar x -C /work'` streams an archive; without one, stdin is the
+script, as `ssh host bash -s <<'EOF'` takes it, so a script with quotes of
+its own needs no escaping:
+
+```sh
+demi host shell --host ci <<'EOF'
+cd /work
+grep -rn "it's" . | head
+EOF
+```
+
+The other commands do not claim that stdin supplies their script or edit
+operands.
 
 ## Dispatch the same declaration on each surface
 
