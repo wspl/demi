@@ -6,6 +6,7 @@ mod connection;
 mod dispatch;
 mod load;
 mod local;
+mod manifests;
 mod tasks;
 
 // Each test's whole-body timeout is a hang guard of 60 s, not a latency

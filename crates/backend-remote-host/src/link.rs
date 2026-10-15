@@ -27,7 +27,7 @@ use demi_runner_protocol::wire::{
     self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, Inbound, LogLine, Outbound,
     ReadAt, VolumeName,
 };
-use demi_shared_gates::{GateLease, SerialGate};
+use demi_shared_gates::GateLease;
 use demi_shared_types::{BlobRef, StreamKind};
 use futures_util::{Sink, SinkExt, Stream, StreamExt, future::LocalBoxFuture};
 use tokio::sync::{mpsc, oneshot, watch};
@@ -278,9 +278,6 @@ pub(crate) struct Inner {
     /// Cancelled once the connection's end gave `tasks` their grace: what
     /// still runs is aborted.
     overdue: CancellationToken,
-    /// Job starts take turns: a job's manifest and its start travel
-    /// together.
-    jobs: SerialGate,
     /// The package events waiting to be handed to the policy, in order.
     package_events: mpsc::Sender<PackageEvent>,
     /// Cancelled when the connection ends.
@@ -627,7 +624,6 @@ impl Link {
             state: RefCell::default(),
             tasks: TaskTracker::new(),
             overdue: CancellationToken::new(),
-            jobs: SerialGate::new(),
             package_events,
             closed: CancellationToken::new(),
             end: RefCell::new(None),
@@ -962,24 +958,27 @@ impl Link {
     }
 
     /// Sends a job's `start`, after the manifest of its `commands` when the
-    /// connection did not carry that one last. Starts take turns: the
-    /// runner holds one manifest at a time, so a job's manifest and its
-    /// start travel together.
+    /// connection did not carry that one last. The runner keeps every
+    /// manifest the connection carried and the start names the one it pins,
+    /// so jobs starting at once need not take turns. A manifest counts as
+    /// carried only once it is in the connection's queue: a job that finds
+    /// it carried queues its start behind it, and one that starts while
+    /// another's manifest still waits for room sends it again, which the
+    /// runner takes as the same manifest.
     pub(crate) async fn send_job_start(
         &self,
         commands: Option<&CommandSelection>,
         start: &Inbound,
     ) -> Result<(), HostError> {
-        let _turn = self.0.jobs.acquire().await;
         let sent = async {
             if let Some(commands) = commands
                 && self.sent_manifest().as_deref() != Some(commands.hash())
             {
-                self.set_sent_manifest(Some(commands.hash().to_owned()));
                 self.send(&Inbound::Manifest {
                     manifest: commands.wire().clone(),
                 })
                 .await?;
+                self.set_sent_manifest(Some(commands.hash().to_owned()));
             }
             self.send(start).await
         };
@@ -1314,6 +1313,24 @@ impl Link {
                 path_changes,
                 files_truncated,
             } => {
+                // A start that failed before its script ran may have named a
+                // manifest the runner does not hold: the next job sends it
+                // again. Any failed start counts, at the cost of one
+                // manifest sent again.
+                if spawn_error.is_some() {
+                    let pinned = self
+                        .0
+                        .device_jobs
+                        .with(&job_id, |job| {
+                            job.commands
+                                .as_ref()
+                                .map(|commands| commands.hash().to_owned())
+                        })
+                        .flatten();
+                    if pinned.is_some() && self.sent_manifest() == pinned {
+                        self.set_sent_manifest(None);
+                    }
+                }
                 let calls: Vec<_> = self
                     .0
                     .state

@@ -22,7 +22,7 @@ use demi_runner_host::{
 };
 use demi_runner_jobs::{
     commands::{
-        contexts::{self, ContextIndex, ContextPaths, Installation, Installed},
+        contexts::{ContextIndex, ContextPaths, Installed, Manifests},
         dispatch::Dispatcher,
         streams::ServiceStreams,
     },
@@ -147,6 +147,8 @@ struct Owner<'r> {
     /// The pages' peers the backend introduced on this connection
     /// (`direct-channel.md`), which end with it.
     direct: Direct,
+    /// The manifests installed on this connection, which end with it.
+    manifests: Manifests,
 }
 
 /// Serves one connection until it ends, then ends everything it owns; the
@@ -200,6 +202,7 @@ pub async fn serve(
         cached: registered.cached.clone(),
         revoke_asked: false,
         direct,
+        manifests: Manifests::default(),
     };
     let result = owner.run(&mut transport).await;
     owner.close().await;
@@ -312,19 +315,7 @@ impl Owner<'_> {
             Work::Installed {
                 installation,
                 result,
-            } => {
-                let kept = &mut *self.kept;
-                // A later manifest replaced this one before it was kept.
-                if installation != kept.installs {
-                    return Ok(());
-                }
-                let installed = result?;
-                kept.installation
-                    .send_replace(Installation::Ready(installed.manifest.clone()));
-                // The new manifest's leases count before the old one's end, so
-                // a service both name stays resident.
-                kept.installed = Some(installed);
-            }
+            } => self.manifests.installed(installation, result)?,
             Work::Stored(result) => result?,
             Work::Paired { result, name } => {
                 result?;
@@ -468,14 +459,14 @@ impl Owner<'_> {
                 });
             }
             Inbound::Manifest { manifest } => {
-                self.kept.installs += 1;
-                let installation = self.kept.installs;
-                self.kept.installation.send_replace(Installation::Installing);
-                let paths = self.registered.paths.clone();
-                let services = self.registered.services.clone();
-                let reserved = self.registered.reserved.clone();
+                let installing = self.manifests.install(
+                    manifest,
+                    self.registered.paths.clone(),
+                    self.registered.services.clone(),
+                    self.registered.reserved.clone(),
+                );
                 self.work.spawn(async move {
-                    let result = contexts::install(manifest, &paths, &services, &reserved).await;
+                    let (installation, result) = installing.await;
                     Work::Installed {
                         installation,
                         result,
@@ -763,9 +754,11 @@ impl Owner<'_> {
                         conversation: context.conversation.clone(),
                         stdin: stdin.clone(),
                         stdout: stdout.clone(),
-                        commands: manifest_hash
-                            .clone()
-                            .map(|hash| (hash, context.clone(), viewable.clone())),
+                        // The job pins the manifest its start names as the
+                        // connection has it now; later ones leave it be.
+                        commands: manifest_hash.clone().map(|hash| {
+                            (self.manifests.pin(hash), context.clone(), viewable.clone())
+                        }),
                     },
                 })
             }

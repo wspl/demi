@@ -11,6 +11,7 @@ use demi_runner_process::{
     private_files::{chmod, write_private},
 };
 use demi_runner_protocol::manifest::Manifest;
+use futures_util::{StreamExt, stream::FuturesUnordered};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     io,
@@ -161,7 +162,7 @@ impl Contexts {
 /// change as a new snapshot; a context's service leases end when it leaves.
 pub struct ContextTable {
     index: watch::Sender<Arc<ContextIndex>>,
-    leases: HashMap<String, Vec<ServiceLease>>,
+    leases: HashMap<String, PackageLeases>,
 }
 
 impl ContextTable {
@@ -177,7 +178,7 @@ impl ContextTable {
     pub fn insert(
         &mut self,
         context: Arc<ExecutionContext>,
-        leases: Vec<ServiceLease>,
+        leases: PackageLeases,
     ) -> io::Result<()> {
         let mut entries = ContextIndex::clone(&self.index.borrow());
         if entries.values().any(|entry| entry.job_id == context.job_id) {
@@ -226,21 +227,135 @@ impl Drop for ContextTable {
     }
 }
 
-/// The connection's manifest as the jobs that name one see it.
-#[derive(Clone)]
-pub enum Installation {
-    /// None installed yet.
-    Absent,
-    /// The latest manifest is being checked and kept.
-    Installing,
-    Ready(Arc<Manifest>),
+/// The service leases of a manifest's packages for this host, by package
+/// id.
+pub type PackageLeases = BTreeMap<String, ServiceLease>;
+
+/// The manifests one connection installed, by hash, and those it is still
+/// installing; they end with the connection (`commands.md` § Dispatch the
+/// same declaration on each surface).
+#[derive(Default)]
+pub struct Manifests {
+    installed: HashMap<String, Arc<Manifest>>,
+    /// The installs under way, by number; each announces its manifest once
+    /// kept, and one that fails ends without announcing.
+    installing: BTreeMap<u64, watch::Receiver<Option<Arc<Manifest>>>>,
+    installs: u64,
+    /// For each package, the lease on the release that the latest manifest
+    /// naming the package names, with that manifest's install number
+    /// (`native-runtime.md` § Keep a service resident): an older release's
+    /// service ends with the last job pinned to it.
+    leases: HashMap<String, (u64, ServiceLease)>,
+}
+
+impl Manifests {
+    /// Starts installing `value`: the install counts for the starts that
+    /// arrive from now on, and the future it returns, with its number,
+    /// goes to [`Manifests::installed`].
+    pub fn install(
+        &mut self,
+        value: serde_json::Value,
+        paths: ContextPaths,
+        services: ServiceHandle,
+        reserved: BTreeSet<String>,
+    ) -> impl Future<Output = (u64, io::Result<Installed>)> + Send + use<> {
+        self.installs += 1;
+        let number = self.installs;
+        let (announce, installing) = watch::channel(None);
+        self.installing.insert(number, installing);
+        async move {
+            let result = install(value, &paths, &services, &reserved).await;
+            if let Ok(installed) = &result {
+                announce.send_replace(Some(installed.manifest.clone()));
+            }
+            (number, result)
+        }
+    }
+
+    /// Keeps what the install `number` made, for the connection's life.
+    /// Each package's lease moves to its release when no later install
+    /// named the package; the lease it replaces ends after the new one
+    /// counts, so a release both name stays resident.
+    pub fn installed(&mut self, number: u64, result: io::Result<Installed>) -> io::Result<()> {
+        self.installing.remove(&number);
+        let Installed { manifest, leases } = result?;
+        for (package, lease) in leases {
+            let later = self
+                .leases
+                .get(&package)
+                .is_some_and(|(latest, _)| *latest > number);
+            if !later {
+                self.leases.insert(package, (number, lease));
+            }
+        }
+        self.installed.insert(manifest.hash.clone(), manifest);
+        Ok(())
+    }
+
+    /// The manifest of `hash` for a job whose start arrives now: one
+    /// installed, or one of the installs under way, which arrived first.
+    pub fn pin(&self, hash: String) -> PinnedManifest {
+        match self.installed.get(&hash) {
+            Some(manifest) => PinnedManifest {
+                hash,
+                installed: Some(manifest.clone()),
+                installing: Vec::new(),
+            },
+            None => PinnedManifest {
+                hash,
+                installed: None,
+                installing: self.installing.values().cloned().collect(),
+            },
+        }
+    }
+}
+
+/// The manifest a job's start names, as the connection had it when the
+/// start arrived; later manifests leave it as it is.
+pub struct PinnedManifest {
+    hash: String,
+    installed: Option<Arc<Manifest>>,
+    installing: Vec<watch::Receiver<Option<Arc<Manifest>>>>,
+}
+
+impl PinnedManifest {
+    /// The manifest, once installed; an error when the connection
+    /// installed none of its hash before the start. It waits for the
+    /// installs under way together, so one that stalls holds up only the
+    /// jobs pinned to it.
+    pub async fn manifest(self) -> io::Result<Arc<Manifest>> {
+        let Self {
+            hash,
+            installed,
+            installing,
+        } = self;
+        if let Some(manifest) = installed {
+            return Ok(manifest);
+        }
+        let hash = &hash;
+        let mut announced: FuturesUnordered<_> = installing
+            .into_iter()
+            .map(|mut installing| async move {
+                // An install that failed ended without a manifest.
+                let manifest = installing.wait_for(Option::is_some).await.ok()?.clone();
+                manifest.filter(|manifest| manifest.hash == *hash)
+            })
+            .collect();
+        while let Some(manifest) = announced.next().await {
+            if let Some(manifest) = manifest {
+                return Ok(manifest);
+            }
+        }
+        Err(io::Error::other("job manifest is not installed"))
+    }
 }
 
 /// A manifest the connection installed, with the leases that keep its
-/// services resident (`native-runtime.md` § Keep a service resident).
+/// packages' services resident (`native-runtime.md` § Keep a service
+/// resident).
 pub struct Installed {
     pub manifest: Arc<Manifest>,
-    pub leases: Vec<ServiceLease>,
+    pub leases: PackageLeases,
 }
 
 /// Parses, checks and keeps `value` as the connection's manifest; a root
@@ -288,11 +403,12 @@ pub async fn install(
 }
 
 /// Leases on the services of `manifest`'s packages for this host.
-pub async fn leases(manifest: &Manifest, services: &ServiceHandle) -> Vec<ServiceLease> {
-    let mut leases = Vec::new();
+pub async fn leases(manifest: &Manifest, services: &ServiceHandle) -> PackageLeases {
+    let mut leases = PackageLeases::new();
     for package in manifest.packages.values() {
         if let Some(artifact) = package.targets.get(host_target()) {
-            leases.push(services.lease(artifact.sha256.clone()).await);
+            let lease = services.lease(artifact.sha256.clone()).await;
+            leases.insert(package.id.clone(), lease);
         }
     }
     leases
