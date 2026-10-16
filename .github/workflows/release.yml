@@ -2,7 +2,10 @@
 # (docs/delivery/builds-and-releases.md § Release workflow). A manual start
 # on a branch publishes the branch's workspace version and creates its tag
 # v<version>; a run started by a tag could not read the previous release's
-# caches. Each platform's targets build natively on
+# caches. With `prerelease`, as `bun xtask deploy` starts it after committing
+# the next version (docs/delivery/upgrades.md § A development build on a
+# server), it publishes a pre-release, which no installer takes as the
+# newest. Each platform's targets build natively on
 # the newest free standard runner of that platform, and every step is a
 # command of the repository: the workflow only orders them and carries files
 # between jobs.
@@ -10,13 +13,22 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      prerelease:
+        description: Publish a pre-release, never marked latest, as a deploy does.
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
+# One run of a branch at a time, the others waiting in order: a release or a
+# deploy is never cancelled by the next one, as the default single pending
+# place would cancel the waiting one.
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
+  queue: max
 
 env:
   CARGO_TERM_COLOR: always
@@ -290,6 +302,7 @@ jobs:
       contents: write
     env:
       VERSION: ${{ needs.version.outputs.version }}
+      PRERELEASE: ${{ inputs.prerelease }}
       GH_TOKEN: ${{ github.token }}
     steps:
       # For install.sh.
@@ -330,5 +343,11 @@ jobs:
           sed "s/@VERSION@/$VERSION/" crates/server/install.sh > dist/install.sh
           cd dist
           sha256sum demi-* > SHA256SUMS
+          # A pre-release is never the latest release, which the installer
+          # and `demi-server upgrade` without a version take.
+          kind=()
+          if [ "$PRERELEASE" = true ]; then
+            kind=(--prerelease --latest=false)
+          fi
           gh release create "v$VERSION" --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" --title "Demi $VERSION" --generate-notes ./*
+            --target "$GITHUB_SHA" --title "Demi $VERSION" --generate-notes "${kind[@]}" ./*

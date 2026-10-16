@@ -88,10 +88,6 @@ pub struct Options {
     pub(crate) artifacts: Option<PathBuf>,
     #[command(flatten)]
     pub(crate) caches: Caches,
-    /// The workspace version the build carries, which `xtask deploy` names
-    /// for a development build [default: the workspace version].
-    #[arg(skip)]
-    pub(crate) version: Option<String>,
 }
 
 /// Why assembling stopped.
@@ -187,10 +183,7 @@ pub(crate) async fn assemble(options: &Options, cancel: &CancellationToken) -> R
             output: &release,
             caches: &options.caches,
             versioning,
-            version: options
-                .version
-                .as_deref()
-                .unwrap_or(demi_shared_artifacts::WORKSPACE_VERSION),
+            version: demi_shared_artifacts::WORKSPACE_VERSION,
         };
         println!("{}", native::package(&spec, cancel).await?);
         native::split(&release, executable, stage.path(), &files, cancel).await?;
@@ -321,7 +314,6 @@ mod tests {
             caches: Caches {
                 compressed: Some(artifacts.join("compressed")),
             },
-            version: None,
         };
         let cancel = CancellationToken::new();
         // Without the server's build, no root is assembled and no stage is
