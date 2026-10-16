@@ -4,6 +4,12 @@ Thanks for your interest in Demi. This guide covers local setup, the checks a
 change must pass, the architecture rules those checks enforce, and how to
 extend Demi.
 
+## Issues and pull requests
+
+Demi doesn't accept public pull requests. To report a bug or ask for a
+feature, open an [issue](https://github.com/wspl/demi/issues/new/choose). To
+become a contributor, email [join@demi.sh](mailto:join@demi.sh).
+
 ## Prerequisites
 
 - Rust through [rustup](https://rustup.rs). `rust-toolchain.toml` pins the
