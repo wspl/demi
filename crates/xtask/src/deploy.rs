@@ -300,7 +300,6 @@ struct Jobs {
 pub struct Job {
     name: String,
     html_url: String,
-    status: String,
     conclusion: Option<String>,
 }
 
