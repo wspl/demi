@@ -56,7 +56,7 @@ const runsIn = computed(() => t('move.runsIn', { directory: DIRECTORY_MARK }).sp
       <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">
         {{ title }}
       </h3>
-      <div class="flex flex-col gap-3 text-[13px] leading-5 text-fg-muted">
+      <div class="flex flex-col gap-3 text-explanation leading-5 text-fg-muted">
         <p v-if="question?.stops">{{ stopSentence(question.stops) }}</p>
         <p>
           <template v-if="question?.directory === '~'">{{ t('move.runsHome') }}</template>

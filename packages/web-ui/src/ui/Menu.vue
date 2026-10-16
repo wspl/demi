@@ -16,10 +16,10 @@ import {
   menuSlotKeyboardKey,
   menuSubmenuKey,
   menuSubmenuKeysKey,
-  type MenuSlotRow
+  type MenuSlotRow,
+  useMenuRowHeight,
 } from './menu-context'
 import { provideLayerElevation } from '../overlay/layerElevation'
-import { inSheetKey } from './sheet-context'
 import { useAutofocus } from './autofocus'
 import { focusByPage } from './focus-by-page'
 import { ICON_PX } from './icon-metrics'
@@ -187,9 +187,8 @@ onBeforeUnmount(submenus.dispose)
 const isVirtual = computed(
   () => props.items != null && props.itemHeight != null && props.itemHeight > 0
 )
-// In a phone's sheet a row is a finger's height (`base.css`), and the virtual list places it so.
-const inSheet = inject(inSheetKey, false)
-const rowHeight = computed(() => (inSheet ? 44 : props.itemHeight ?? 28))
+// On a phone a row is a finger's height (`base.css`), in a sheet or not, and the virtual list places it so.
+const rowHeight = useMenuRowHeight(() => props.itemHeight)
 
 const virtualizer = useVirtualizer(computed(() => ({
   count: filteredItems.value.length,

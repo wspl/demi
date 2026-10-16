@@ -149,8 +149,13 @@
   /* A small control's text: a small button, a segment, a pill. */
   --text-control-xs: 11px;
   --text-control-sm: 12px;
-  /* A footnote beside controls: an answer's time, a version's count. */
+  /* A footnote beside controls: an answer's time, a version's count, a tag. */
   --text-caption: 11px;
+  /* A fact or a hint beside controls: a file bar's, a field's hint, a row's
+     time, an error's details. */
+  --text-detail: 12px;
+  /* What a dialog, a card or a sign-in page explains under its title. */
+  --text-explanation: 13px;
   /* A Settings row's label, and its description or an inset row's label. */
   --text-setting: var(--agent-chrome);
   --text-setting-small: 12px;
@@ -180,6 +185,8 @@
     --text-control-xs: 15px;
     --text-control-sm: 15px;
     --text-caption: 13px;
+    --text-detail: 13px;
+    --text-explanation: 15px;
     --text-setting: 17px;
     --text-setting-small: 15px;
   }
@@ -882,21 +889,6 @@ html[data-theme="light"] .file-pill {
   padding: 0 0.5rem 0.5rem;
 }
 
-.sheet [data-menu-item] {
-  --menu-row-h: 2.75rem;
-  --menu-row-px: 0.75rem;
-}
-
-.sheet .menu-row {
-  font-size: 16px;
-}
-
-/* Its icons grow with its text, as the sidebar's rows' do (the phone's ICON_PX.row). */
-.sheet .menu-row svg.lucide {
-  width: 18px;
-  height: 18px;
-}
-
 /* The list's ScrollArea viewport. */
 .overlay-menu-scroll {
   overscroll-behavior: contain;
@@ -939,6 +931,26 @@ html[data-theme="light"] .file-pill {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   padding-inline: var(--menu-row-px);
+}
+
+/* On a phone every menu's row is a finger's height, a sheet's and one that
+   floats beside its field alike, such as a path's completions: 44 px with
+   16 px text, its icons grown with it as the sidebar's rows' are (the
+   phone's ICON_PX.row). */
+@media (max-width: 767px) {
+  [data-menu-item] {
+    --menu-row-h: 2.75rem;
+    --menu-row-px: 0.75rem;
+  }
+
+  .menu-row {
+    font-size: 16px;
+  }
+
+  .menu-row svg.lucide {
+    width: 18px;
+    height: 18px;
+  }
 }
 
 .menu-group,
@@ -1426,6 +1438,16 @@ html[data-theme="light"] .file-pill {
   text-decoration-color: currentColor;
 }
 
+/* On a phone a link in running text, a file's or a page's alike, is a
+   finger's target as tall as its line, not its letters': padding on an inline
+   box moves no line, so the text lays out as it did. A link around a picture
+   is a tile, already its own size. */
+@media (max-width: 767px) {
+  .markdown-body a:not(:has(img, video)) {
+    padding-block: max(0px, calc((1lh - 1.2em) / 2));
+  }
+}
+
 /* A link in running text draws no ring: a ring would box a word in a sentence.
    Focused from the keyboard, it takes its pointed-at look instead (the rules
    above and below), as a link does in a browser's reading view
@@ -1533,6 +1555,14 @@ html[data-theme="light"] .file-pill {
 .status-bar {
   --status-bar-inset: var(--spacing);
   padding: var(--status-bar-inset);
+}
+
+/* On a phone the bar is a row's height and each segment its whole height,
+   a finger's target of its own beside the next. */
+@media (max-width: 767px) {
+  .status-bar {
+    --status-bar-inset: 0px;
+  }
 }
 
 .status-bar-segment {
@@ -1872,6 +1902,17 @@ html[data-theme="light"] .file-pill {
   background-origin: border-box;
   background-size: 14px 14px;
   transition: background-color 0.2s ease-out, border-color 0.2s ease-out;
+}
+
+/* On a phone a checkbox's square is 20 px, its tick scaled with it, in a
+   44 px row (`Checkbox`). */
+@media (max-width: 767px) {
+  .checkbox-mark {
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
+    background-size: 20px 20px;
+  }
 }
 
 .markdown-body li > input[type="checkbox"] {

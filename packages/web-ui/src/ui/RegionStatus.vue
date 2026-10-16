@@ -78,7 +78,7 @@ function retry(): void {
     <p class="text-chrome text-fg-muted">{{ retrying ? (loadingLabel ?? shared('common.loading')) : label }}</p>
     <p
       v-if="detail && shown === 'failed'"
-      class="max-w-sm whitespace-pre-line text-[12px] leading-4 text-fg-subtle"
+      class="max-w-sm whitespace-pre-line text-detail leading-4 text-fg-subtle"
     >
       {{ detail }}
     </p>

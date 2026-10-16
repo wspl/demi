@@ -9,7 +9,7 @@ import StatusBarSegment from '../ui/StatusBarSegment.vue'
 import StatusDot from '../ui/StatusDot.vue'
 import Tag from '../ui/Tag.vue'
 import Tooltip from '../ui/Tooltip.vue'
-import { ICON_PX } from '../ui/icon-metrics'
+import { useIconPx } from '../ui/icon-metrics'
 import AgentMark from './AgentMark.vue'
 import ContextUsageIndicator from './ContextUsageIndicator.vue'
 import { agentPhaseWords, useMessageAgents } from './agent-links'
@@ -59,6 +59,8 @@ const emit = defineEmits<{
   refreshLimits: [automatic: boolean]
 }>()
 
+const icons = useIconPx()
+
 // The time since the round began, following the page's clock while it runs.
 const elapsedMs = useElapsedTime(
   () => Date.parse(props.run.startedAt),
@@ -86,7 +88,7 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
 </script>
 
 <template>
-  <div data-window-bar class="status-bar @container flex h-8 phone:h-9 shrink-0 items-stretch border-t border-line text-chrome phone:text-[15px] text-fg-muted">
+  <div data-window-bar class="status-bar @container flex h-8 phone:h-row shrink-0 items-stretch border-t border-line text-chrome text-fg-muted">
     <div class="flex shrink-0 items-stretch">
       <StatusBarSegment>
         <StatusDot v-if="tone" :tone="tone" :breathing="run.phase === 'running'" />
@@ -97,7 +99,7 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
       <!-- Where it works: the directory's own name, its whole path in the tip (`subagents.md` § What an agent runs on). -->
       <Tooltip tag="span" class="flex min-w-0" wide>
         <StatusBarSegment :acting="openFolder !== null" class="min-w-0" @click="openFolder?.()">
-          <Folder :size="ICON_PX.in28" class="shrink-0" aria-hidden="true" />
+          <Folder :size="icons.chip" class="shrink-0" aria-hidden="true" />
           <span class="hidden max-w-40 truncate @min-[28rem]:inline">{{ baseName(run.cwd) }}</span>
         </StatusBarSegment>
         <template #overlay>
@@ -108,7 +110,7 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
       <template v-if="run.forkedFrom !== null">
         <StatusBarSegment v-if="forked" acting class="hidden @min-[40rem]:flex" @click="openForked">
           <span v-if="forkedSentence[0].trim()">{{ forkedSentence[0].trim() }}</span>
-          <span class="inline-flex size-3.5 shrink-0"><AgentMark :phase="forked.run?.phase ?? null" :size="ICON_PX.in28" /></span>
+          <span class="inline-flex shrink-0"><AgentMark :phase="forked.run?.phase ?? null" :size="icons.chip" /></span>
           {{ t('subagents.agentNumber', { number: run.forkedFrom }) }}
           <span v-if="forkedSentence[1].trim()">{{ forkedSentence[1].trim() }}</span>
         </StatusBarSegment>

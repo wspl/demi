@@ -164,7 +164,7 @@ function onLoaded(event: Event): void {
             @loadedmetadata="onLoaded"
           />
         </div>
-        <div class="flex min-w-0 items-baseline gap-2 px-1 pt-1.5 text-xs leading-4">
+        <div class="flex min-w-0 items-baseline gap-2 px-1 pt-1.5 text-detail leading-4">
           <span class="min-w-0 truncate">{{ caption }}</span>
           <span v-if="known" class="shrink-0 tabular-nums text-fg-faint">{{ known.width }} × {{ known.height }}</span>
         </div>

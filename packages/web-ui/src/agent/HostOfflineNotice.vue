@@ -76,7 +76,7 @@ function choose(host: HostChoice): void {
         </Dropdown>
       </span>
     </div>
-    <DeviceStartHint class="px-3 pb-3 text-[12px] leading-4 text-fg-subtle" :start="start" />
+    <DeviceStartHint class="px-3 pb-3 text-detail leading-4 text-fg-subtle" :start="start" />
   </div>
 </template>
 

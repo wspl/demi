@@ -14,6 +14,7 @@ import TruncatedText from '../ui/TruncatedText.vue'
 import InlineError from '../ui/InlineError.vue'
 import SettingsRow from '../settings/SettingsRow.vue'
 import Segmented from '../ui/Segmented.vue'
+import { usePhone } from '../ui/phone'
 import {
   deviceSystemOf,
   deviceSystems,
@@ -47,6 +48,14 @@ function submit() {
   if (props.phase.kind === 'code' && code.value.trim())
     emit('submit', code.value.trim())
 }
+
+/**
+ * The systems to choose from. On a phone the picker takes the row's width
+ * under its label, and Linux, macOS and Windows fit it only as words, so
+ * their marks are left out there.
+ */
+const phone = usePhone()
+const systemOptions = computed(() => (phone.value ? deviceSystems.map(({ value, label }) => ({ value, label })) : deviceSystems))
 </script>
 
 <template>
@@ -62,7 +71,7 @@ function submit() {
     <div class="flex flex-col gap-4 px-5 pt-5" data-device-pairing>
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('pairing.title') }}</h3>
-        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
+        <p class="mt-0.5 text-explanation leading-5 text-fg-muted">
           {{
             phase.kind === 'setup'
               ? t('pairing.setupHint')
@@ -80,12 +89,12 @@ function submit() {
           <Segmented
             v-model="system"
             size="sm"
-            :options="deviceSystems"
+            :options="systemOptions"
             :aria-label="t('pairing.systemLabel')"
           />
         </SettingsRow>
         <div class="flex flex-col gap-2 p-4">
-          <p class="text-[12px] leading-4 text-fg-subtle">
+          <p class="text-detail leading-4 text-fg-subtle">
             {{
               system === 'windows'
                 ? t('pairing.runInPowerShell')

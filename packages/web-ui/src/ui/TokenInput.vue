@@ -72,7 +72,8 @@ const otherUnit = computed(() => (unit.value === 'K' ? 'M' : 'K'))
     <template #suffix>
       <button
         type="button"
-        class="h-5 min-w-5 cursor-default select-none rounded px-1 text-[11px] font-medium tabular-nums text-fg-muted transition-colors duration-200 ease-out hover:bg-hover hover:text-fg"
+        class="h-5 min-w-5 cursor-default select-none rounded px-1 text-caption font-medium tabular-nums text-fg-muted transition-colors duration-200 ease-out hover:bg-hover hover:text-fg phone:h-hit-sm phone:min-w-hit-sm"
+        data-drawn-target
         :aria-label="`Unit: ${unit === 'K' ? 'thousand' : 'million'} tokens. Switch to ${otherUnit === 'K' ? 'thousand' : 'million'}`"
         @click="toggleUnit"
       >

@@ -46,7 +46,7 @@ const model = defineModel<T>({ required: true })
         />
         <span class="choice-card-title truncate">{{ option.label }}</span>
       </span>
-      <span class="choice-card-description text-[12px] leading-4 text-fg-muted">{{ option.description }}</span>
+      <span class="choice-card-description text-detail leading-4 text-fg-muted">{{ option.description }}</span>
     </button>
   </div>
 </template>

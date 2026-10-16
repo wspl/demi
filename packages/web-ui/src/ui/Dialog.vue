@@ -233,9 +233,11 @@ useEscapeClose(() => props.isOpen && !pinned.value && props.overlayStore.isTop(i
           <footer
             v-if="slots.footer || slots['footer-leading']"
             ref="footer"
-            class="flex shrink-0 items-center gap-2 px-5 pb-5 pt-4"
+            class="flex shrink-0 items-center gap-2 px-5 pb-5 pt-4 phone:flex-wrap"
           >
-            <div v-if="slots['footer-leading']" class="flex min-w-0 items-center gap-2">
+            <!-- On a phone the buttons are a finger's size and never cut short: where the
+                 leading ones and the rest do not fit one row, the rest take the next, at its end. -->
+            <div v-if="slots['footer-leading']" class="flex min-w-0 items-center gap-2 phone:min-w-max">
               <slot name="footer-leading" />
             </div>
             <!-- The default button stands last, whichever it is (`Button` marks it). -->
