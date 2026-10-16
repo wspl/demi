@@ -193,6 +193,14 @@ pub(crate) struct LiveCli {
     stderr: Rc<RefCell<Tail>>,
     _drain: AbortOnDropHandle<()>,
     sent: Sent,
+    /// The user messages written to the process that it has not printed
+    /// back yet: a `result` ends a run only once there are none
+    /// (`claude-code.md` § Which `result` ends a run).
+    pub(crate) unreplayed: usize,
+    /// Whether the CLI printed a message back or started a model call
+    /// since its last `result`: a turn that did neither was one it answered
+    /// itself, such as a `/cost` it does not offer.
+    pub(crate) turn_began: bool,
     /// The response being streamed, from its first stream event until its
     /// `message_stop`: its tool calls come in the batch that ends it. A
     /// response that comes whole hands its batch on at once.
@@ -304,6 +312,8 @@ impl LiveCli {
             stderr,
             _drain: AbortOnDropHandle::new(drain),
             sent: Sent::default(),
+            unreplayed: 0,
+            turn_began: false,
             streaming: None,
             collecting: Vec::new(),
             writing: HashMap::new(),
@@ -505,46 +515,29 @@ impl LiveCli {
         }
     }
 
-    /// Reads what the CLI printed after the run before this one ended: that
-    /// output belongs to no request, as when the CLI answered a steer in a
-    /// turn of its own. Its control requests are answered, the entries it
-    /// mirrored give their events for `request`, and every other line is
-    /// skipped, a `result` included; what such a line printed wrote no
-    /// block.
-    pub(crate) async fn skip_leftovers(
-        &mut self,
-        request: &InferenceRequest,
-    ) -> Result<Vec<ProviderEvent>, ProviderFailure> {
-        let mut events = Vec::new();
+    /// Whether the process printed nothing since the `result` that ended
+    /// the last run, as a process in step with its requests never does: it
+    /// prints only what answers the input it is given. Its control requests
+    /// are answered, since they are no turn's output; any other output
+    /// waiting, or an end, means the process went on without a request, and
+    /// the run starts a new one from the transcript instead.
+    pub(crate) async fn quiet(&mut self) -> bool {
         loop {
-            let (text, line) = match self.pending.pop_front() {
-                Some(pending) => pending,
-                None => {
-                    let Some(line) = self.lines.next().now_or_never() else {
-                        return Ok(events);
-                    };
-                    match self.read(line) {
-                        Read::Line(text, line) => (text, line),
-                        Read::Blank => continue,
-                        // The end is the run's to meet.
-                        Read::End => return Ok(events),
-                        Read::Broken(failure) => return Err(failure),
-                    }
-                }
+            let Some(line) = self.lines.next().now_or_never() else {
+                return true;
             };
-            match line {
-                Some(Line::ControlRequest(line)) => self.control_request(line).await?,
-                Some(Line::TranscriptMirror(line)) => {
-                    events.extend(self.mirror.mirrored(line.entries, request, None));
-                }
-                Some(Line::Assistant(line)) => {
-                    let id = line.message_id();
-                    for printed in line.content() {
-                        self.mirror.printed(id.clone(), printed.raw, false);
+            match self.read(line) {
+                Read::Blank => {}
+                Read::Line(_, Some(Line::ControlRequest(line))) => {
+                    if self.control_request(line).await.is_err() {
+                        return false;
                     }
-                    tracing::debug!(line = %text, "skipped a line that belongs to no request");
                 }
-                _ => tracing::debug!(line = %text, "skipped a line that belongs to no request"),
+                Read::Line(text, _) => {
+                    tracing::warn!(line = %text, "a kept Claude Code process printed output that answers no request");
+                    return false;
+                }
+                Read::End | Read::Broken(_) => return false,
             }
         }
     }
@@ -712,6 +705,7 @@ impl LiveCli {
             .skip(sent)
             .map(|(index, _)| index);
         self.mirror.gave(given);
+        self.unreplayed += count - sent;
         self.sent.count = count;
         if self.sent.first.is_none() {
             self.sent.first = first_user_message(&request.items).cloned();

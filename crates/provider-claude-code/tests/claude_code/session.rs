@@ -518,7 +518,7 @@ async fn each_entry_the_cli_mirrors_goes_to_its_block_and_one_of_no_block_to_the
     let (events, ()) = tokio::join!(
         all_events(runtime.run(session_request(second.clone(), blocks))),
         async {
-            cli.read().await;
+            cli.take().await;
             cli.mirror(vec![message.clone(), reminder.clone()]);
             cli.handshake().await;
             call_tool(&cli, "toolu_1", "pwd");
@@ -587,7 +587,7 @@ async fn each_entry_the_cli_mirrors_goes_to_its_block_and_one_of_no_block_to_the
     let (events, ()) = tokio::join!(
         all_events(runtime.run(session_request(third, blocks))),
         async {
-            assert_eq!(cli.read().await["type"], "user");
+            assert_eq!(cli.take().await["type"], "user");
             cli.mcp_reply("call-1").await;
             cli.mirror(vec![result(json!("c2hvdA==")), folded.clone()]);
             cli.text("Done");
