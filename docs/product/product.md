@@ -410,9 +410,12 @@ Attached
   The Cloud's row shows nothing, since it is always reached the same way,
   and an offline device's reads *Offline*. The page knows the path of a
   device it has connected to, as it does while it shows a conversation on
-  it or its page, and keeps the last it found until the page closes; a
-  device it has not tried this time shows no path, since opening a menu
-  connects to nothing.
+  it or its page. A device it has not connected to yet shows the path this
+  browser found last time, in a fainter color than a current one, since
+  opening a menu connects to nothing and the network may have changed
+  since; the browser keeps each device's last path, and a device it never
+  reached shows none. For example, the Windows PC reached by relay
+  yesterday reads *Relay*, faint, until the page next connects to it.
 - **Choosing a Host.** In a conversation outside a project, a click moves it
   there at once: to the device's home directory, or the Cloud's directory of
   the conversation. In a project, the Cloud moves it the same way, out of

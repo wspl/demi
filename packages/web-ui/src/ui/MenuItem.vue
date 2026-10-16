@@ -39,6 +39,8 @@ const props = withDefaults(defineProps<{
    * setting's value (`Medium`), a state (`Offline`) or a path (`LAN`).
    */
   value?: string
+  /** The value drawn fainter, its color at 60% opacity, as one remembered from before that may be out of date: a device's last path. */
+  valueFaint?: boolean
   /** A status dot: alone in the gutter, or on the icon's corner when there is one. */
   indicator?: MenuIndicator
   indicatorLabel?: SentenceText
@@ -297,7 +299,7 @@ const toneClass = computed(() => {
           <span class="min-w-0 truncate"><HighlightText :text="label ?? ''" :indexes="typedPrefix" /></span>
         </slot>
       </span>
-      <TruncatedText v-if="value" class="menu-cell-value text-right text-fg-subtle" :text="value" />
+      <TruncatedText v-if="value" class="menu-cell-value text-right text-fg-subtle" :class="{ 'opacity-60': valueFaint }" :text="value" />
       <span
         v-if="hasSuffix"
         class="menu-cell-suffix flex items-center justify-end"
