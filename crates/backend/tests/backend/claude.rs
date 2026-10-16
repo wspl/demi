@@ -191,9 +191,11 @@ async fn install_by_hand(cache: &std::path::Path, version: &str) -> String {
     let source = tempfile::NamedTempFile::new().unwrap();
     let bytes = scripted(version);
     std::fs::write(source.path(), &bytes).unwrap();
-    let cache = ArtifactCache::new(cache.to_owned(), None, None)
-        .await
-        .unwrap();
+    let cache = std::sync::Arc::new(
+        ArtifactCache::new(cache.to_owned(), None, None)
+            .await
+            .unwrap(),
+    );
     let wanted = Wanted {
         package: demi_command_package_claude_code_protocol::PACKAGE,
         name: "Claude Code",
@@ -204,9 +206,9 @@ async fn install_by_hand(cache: &std::path::Path, version: &str) -> String {
         },
         form: &ArtifactForm::File,
     };
-    let resolver = Local(source.path().to_owned());
+    let resolver = std::sync::Arc::new(Local(source.path().to_owned()));
     let path = cache
-        .install(&wanted, &resolver, SILENT, &CancellationToken::new())
+        .install(&wanted, resolver, SILENT, &CancellationToken::new())
         .await
         .unwrap();
     path.to_string_lossy().into_owned()
