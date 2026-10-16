@@ -11,7 +11,7 @@ domain rules remain in the linked topic documents.
 The `web-api-protocol` crate defines every JSON body of this reference, request and
 response, every message of the synchronization channel, and every error code;
 the conversation stream carries the agent protocol's frames
-([Frame protocol](../agent/runtime.md#frame-protocol)). The backend decodes
+([Frame protocol](../agent/rendering.md#frame-protocol)). The backend decodes
 each request into its type and serializes each response from its type, and
 the web app's REST types and schemas are generated from the same types
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
@@ -49,7 +49,7 @@ Partial conversation mutations use the explicit outcomes described below.
 | Conversations | `GET /conversations?archived=true\|false`, `POST /conversations { id, ... }`, `PATCH /conversations/:id`, `DELETE /conversations/:id`, `POST /conversations/batch`, `POST /conversations/:id/fork { id, blockId }`, `POST /conversations/:id/read { revision }` |
 | Search | `GET /search?q=<query>` finds the caller's conversations ([Search](#search)) |
 | Sharing | `POST /conversations/:id/shares { kind, blockId? }`, `PUT /conversations/:id/shares/:token`, `DELETE /conversations/:id/shares/:token`; public `GET /shares/:token`, `GET /shares/:token/transcript?before=\|after=\|around=`, `GET /shares/:token/transcript/blocks/:blockId`, `GET /shares/:token/blobs/:sha256` ([Sharing](#sharing)) |
-| Conversation history | `GET /conversations/:id/transcript?node=&before=\|after=\|around=` reads one page of an agent's transcript, `GET /conversations/:id/transcript/blocks/:blockId?node=` one block whole, `GET /conversations/:id/subagents` the conversation's subagents and `GET /conversations/:id/commands/:commandId` where the call that started a command lies ([Conversation history](#conversation-history)); `WS /conversations/:id/stream` carries the [agent frames](../agent/runtime.md#frame-protocol) of that one conversation |
+| Conversation history | `GET /conversations/:id/transcript?node=&before=\|after=\|around=` reads one page of an agent's transcript, `GET /conversations/:id/transcript/blocks/:blockId?node=` one block whole, `GET /conversations/:id/subagents` the conversation's subagents and `GET /conversations/:id/commands/:commandId` where the call that started a command lies ([Conversation history](#conversation-history)); `WS /conversations/:id/stream` carries the [agent frames](../agent/rendering.md#frame-protocol) of that one conversation |
 | Conversation files | `GET/POST /conversations/:id/fs`, `DELETE /conversations/:id/fs?path=...`, `GET /conversations/:id/fs/file?path=...`, `POST /conversations/:id/fs/exists`, `WS /conversations/:id/fs/watch`, `GET /conversations/:id/fs/raw?path=...&version=...&download=true\|false`, `PUT /conversations/:id/fs/raw?path=...&replace=true\|false` with raw bytes, `GET/POST /conversations/:id/hosts/:deviceId/fs` |
 | Working tree | `GET /conversations/:id/changes`, `GET /conversations/:id/changes/file?path=...`, `GET /conversations/:id/changes/raw?path=...&download=true\|false` |
 | User streams | `WS /conversations/:id/streams/:name` opens a declared [user stream](#user-streams) |
@@ -201,7 +201,7 @@ request, and before it as many whole requests as keep the page within
 same way, and `around` takes the block's request and then adds requests
 after and before it in turn. A page holds at least one request whatever its
 size, so a request is never cut: what the page derives from a request, such
-as its work groups ([Work groups](../agent/runtime.md#work-groups)) and the
+as its work groups ([Work groups](../agent/rendering.md#work-groups)) and the
 files it changed ([Edit tracking](../execution/edit-tracking.md#what-the-conversation-shows)),
 is whole wherever it is shown.
 
@@ -231,11 +231,11 @@ A page's blocks leave out what only an open row shows, which is nearly all
 of a long conversation's bytes; the rows a folded transcript shows need
 nothing more. Every block of a page is in its light form: a field left out
 is empty, and every other field means what it means in the block whole
-([Block types](../agent/runtime.md#block-types)):
+([Block types](../agent/transcript.md#block-types)):
 
 | Block | Left out | Carried instead |
 | --- | --- | --- |
-| `tool_call` | An `input` past 512 bytes, but its `description`; the text of `output`; the output text of `view` (its chunks) | Such an `input` as JSON holding only the `description`, a shorter one whole, as a script that only looks at a command must be to name the look on its row ([Work groups](../agent/runtime.md#work-groups)); the media of `output`; the rest of `view`: the command, its status, exit code and times, the files it changed and their renames |
+| `tool_call` | An `input` past 512 bytes, but its `description`; the text of `output`; the output text of `view` (its chunks) | Such an `input` as JSON holding only the `description`, a shorter one whole, as a script that only looks at a command must be to name the look on its row ([Work groups](../agent/rendering.md#work-groups)); the media of `output`; the rest of `view`: the command, its status, exit code and times, the files it changed and their renames |
 | `thinking` | The text and its signature | `textLength`, the length in characters of its text without the white space around it: the row tells how long the agent thought, and a thinking whose length is 0, such as the signed one Gemini writes before each call or an OpenAI reasoning item with no summary, has no row, as it has none live |
 | `redacted_thinking` | The data | Nothing |
 | `agent_message` | The message | Its sender and what it reports |
@@ -245,7 +245,7 @@ is empty, and every other field means what it means in the block whole
 
 `user`, `steer`, `text`, `error`, `abort`, `resume`, `response` and
 `compaction_marker` blocks come whole. Live frames send blocks whole
-([Frame protocol](../agent/runtime.md#frame-protocol)), so the page holds a
+([Frame protocol](../agent/rendering.md#frame-protocol)), so the page holds a
 block in light form only when it read it from a page, and it marks such a
 block as light until the block arrives whole. A running command's tab in the
 Running window needs its call's script: when the page holds that call light,
@@ -266,7 +266,7 @@ page reads a subagent's transcript, by its pages, when it shows it.
 
 `GET /api/conversations/:id/commands/:commandId` answers where the `shell`
 call that started a command of the tree lies, which a report's title brings
-into view ([Command reports](../agent/runtime.md#command-reports)): `{
+into view ([Command reports](../agent/shell-tool.md#command-reports)): `{
 commandId, subagentId, blockId }`, `subagentId` null for the root's. The
 page then reads the page around `blockId` in that agent's transcript. A
 command the conversation does not hold answers 404 `not_found`.
@@ -672,7 +672,7 @@ draft's are ([Conversation drafts](#conversation-drafts)).
   the composer would, and the message leaves the list when the session has
   accepted it, in the same step, so it is never both sent and kept, nor sent
   twice, and a send the session refuses leaves it on the list
-  ([Client frames](../agent/runtime.md#client-frames)).
+  ([Client frames](../agent/rendering.md#client-frames)).
 - Undo after Delete saves the message again with its own id, at the top of the
   list. Saving in a conversation that has no record yet creates the record,
   as its first send does.
@@ -1366,7 +1366,7 @@ connection broke before the answer shows the outcome from its synchronization
 channel, whichever it was. Opening the conversation's socket names no model,
 and the backend opens a tree only with the record's selection, so an open
 never changes the settings, whatever the opening page last saw
-([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
+([Connections and the live tree](../agent/rendering.md#connections-and-the-live-tree)).
 
 Every page shows the record's value. The page that made a change shows it from
 the patch's answer at once, and every other page, in another tab or on another
@@ -1491,7 +1491,7 @@ resumes by itself and its close wakes its parent
 turn does not count: until it reports, nothing works, and a resident one such
 as a dev server may never end; its report starts the agent again, as a
 message would, and the conversation runs again then
-([Command reports](../agent/runtime.md#command-reports)). For example, the root answers "two children are looking into it" and
+([Command reports](../agent/shell-tool.md#command-reports)). For example, the root answers "two children are looking into it" and
 ends its turn: the conversation stays running until both children close and the
 root has answered their results. The root answers "the build has started" while
 `npm run build` still runs: the conversation is completed, and the command shows
@@ -1569,7 +1569,7 @@ new summary on the channel of every page the user has open: the laptop's
 other tabs and the phone show the new title a few milliseconds later, and none
 of them asked for anything. The channel carries what a page shows around its
 conversations; an open conversation's transcript, phase and commands stay on
-that conversation's own [stream](../agent/runtime.md#frame-protocol).
+that conversation's own [stream](../agent/rendering.md#frame-protocol).
 
 The upgrade requires the session cookie. The channel shows the user's state
 to whatever reads it, so an upgrade from a page that is not the product's
@@ -1734,7 +1734,7 @@ browser's own navigation carries the cookie. It answers an HTML page:
 conversation's tree and opens it again with the user's current plugins, and
 answers 204. A conversation socket that was attached to the tree receives
 `closed` and connects again, as when another page's socket disposed the tree
-([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)). A
+([Connections and the live tree](../agent/rendering.md#connections-and-the-live-tree)). A
 conversation whose tree is not open answers 204 and changes nothing: it opens
 with the current plugins anyway. A tree that works answers 409
 `turn_in_flight`, and an archived conversation 409 `conversation_archived`.
@@ -1883,7 +1883,7 @@ A file over 8 MiB answers 413 `file_too_large`, the same limit a retained edit
 snapshot has ([Edit tracking](../execution/edit-tracking.md#scope)), and the
 page then reads its first 8 MiB from the raw route with a byte range
 ([File previews](file-previews.md#getting-the-bytes)); one that
-is binary, by the one rule ([What `demi file view` shows](../agent/runtime.md#what-demi-file-view-shows)), answers 415 `not_text`,
+is binary, by the one rule ([What `demi file view` shows](../agent/shell-tool.md#what-demi-file-view-shows)), answers 415 `not_text`,
 and any other file is text, a byte that is no UTF-8 shown as U+FFFD.
 
 `POST /api/conversations/:id/fs/exists` takes `{ paths }`, 1 to 200 absolute

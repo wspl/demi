@@ -1,4 +1,4 @@
-//! A tree's live output (`runtime.md` § Live output): the commands whose
+//! A tree's live output (`shell-tool.md` § Live output): the commands whose
 //! pages' view changed and was not sent yet, the task that sends them to
 //! every attached connection at most every [`INTERVAL`] and an end at once,
 //! the commands that run, which keep the tree from being idle, and the feed

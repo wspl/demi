@@ -1,4 +1,4 @@
-//! One conversation socket's frame handling (`runtime.md` § Frame protocol):
+//! One conversation socket's frame handling (`rendering.md` § Frame protocol):
 //! the backend decodes each client frame, resolves its content, and hands it
 //! to [`Connection::handle`], one frame at a time in arrival order. Every
 //! frame for the connection, a reply or an event, goes through its one
@@ -471,7 +471,7 @@ impl<H: HostResolver> Connection<H> {
                 }
             }
             // What the command prints and its end reach every attached
-            // connection as its `shell_output` (`runtime.md` § Live output);
+            // connection as its `shell_output` (`shell-tool.md` § Live output);
             // only the write's acknowledgement is a reply.
             ClientFrame::ShellWrite { command_id, stdin } => {
                 match tree.shell_write(&command_id, stdin).await {

@@ -1,4 +1,4 @@
-//! A frame's content as the session receives it (`runtime.md` § Client
+//! A frame's content as the session receives it (`rendering.md` § Client
 //! frames): text and references as they are, uploads and remote files as
 //! the backend resolved them, with the bytes of the media the backend read,
 //! and, in an edit, the references to the files the edited message holds,
@@ -43,7 +43,7 @@ pub trait ContentResolver {
 
 /// A frame's files as the backend resolved them: the blocks each reference
 /// stands for, in order, with their media by reference, and the bytes of
-/// those media the backend read, which the session holds (`runtime.md`
+/// those media the backend read, which the session holds (`transcript.md`
 /// § Media).
 #[derive(Debug, Default)]
 pub struct ResolvedFiles {

@@ -43,7 +43,7 @@ export interface SubagentRecord extends AgentRun {
   /**
    * What its session does while it is live, as its `phase` frames say: a
    * child idle beside a command it left running shows no Requesting row
-   * (`runtime.md` § Frame protocol).
+   * (`rendering.md` § Frame protocol).
    */
   sessionPhase: SessionPhase
   startedAt: string
@@ -56,11 +56,11 @@ export interface SubagentRecord extends AgentRun {
    * current (`subagents.md` § Protocol); absent before a snapshot listed it.
    */
   revision?: number
-  /** The calls this agent's model is writing (`runtime.md` § Calls being written). */
+  /** The calls this agent's model is writing (`rendering.md` § Calls being written). */
   pendingCalls: PendingCall[]
   /**
    * When this agent began to wait for the model's answer, as `Date.now()`;
-   * null when it waits for none (`runtime.md` § Waiting for the model).
+   * null when it waits for none (`rendering.md` § Waiting for the model).
    */
   waitingSince: number | null
   /** The failure facts of this agent's error blocks, by block id. */

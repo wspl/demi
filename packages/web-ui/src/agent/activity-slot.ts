@@ -98,7 +98,7 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
     return last.forkable === true
   }
   // A run's row holds only steps that ended; a step that still runs is a
-  // row of its own after it (`runtime.md` § Work groups). So a run at the
+  // row of its own after it (`rendering.md` § Work groups). So a run at the
   // tail is what has happened, and the turn waits for the model under it.
   if (last.type === 'work_group') {
     return true
@@ -109,7 +109,7 @@ function isWaitingForProvider(input: ActivitySlotInput): boolean {
 /**
  * Whether the turn's newest output still streams, or a call still waits for
  * its result, wherever it stands: the turn waits for that call, not for the
- * model, as parallel calls return in any order (`runtime.md` § Work groups).
+ * model, as parallel calls return in any order (`rendering.md` § Work groups).
  */
 function hasActiveOutput(blocks: readonly MessageListBlock[]): boolean {
   const last = blocks[blocks.length - 1]

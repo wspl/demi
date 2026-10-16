@@ -4,7 +4,7 @@ import WorkGroupBlock from '@demicodes/web-ui/agent/blocks/WorkGroupBlock.vue'
 import type { WorkGroupBlock as Group, WorkStep } from '@demicodes/web-ui/agent/work-groups'
 
 /**
- * One step in each place the transcript shows it (`runtime.md` § Work
+ * One step in each place the transcript shows it (`rendering.md` § Work
  * groups): alone, as the row of a run of that step only, which is also the
  * row a step that runs has under its run; and inside a run the reader
  * opened, after the step `before`. Each row opens and folds as the

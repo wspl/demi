@@ -3,7 +3,7 @@ import { followLiveOutput, type TerminalRecord } from '@demicodes/web-ui/agent/t
 import { DEMO_WATCH_BURST, DEMO_WATCH_LINES } from './fixtures/terminal-output'
 import { LIVE_TERMINAL_ID } from './fixtures/terminals'
 
-/** How often the product's backend sends a command's new output, at most (`runtime.md` § Live output). */
+/** How often the product's backend sends a command's new output, at most (`shell-tool.md` § Live output). */
 const FRAME_MS = 250
 /** The characters of the pages' view a frame carries. */
 const TAIL_CHARS = 4096

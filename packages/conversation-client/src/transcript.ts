@@ -85,7 +85,7 @@ export function heldBlocks<B extends Held>(held: HeldTranscript<B>): B[] {
 
 /**
  * The blocks the page names when it opens or syncs the stream
- * (`runtime.md` § Where a reset starts): the first block of its latest
+ * (`rendering.md` § Where a reset starts): the first block of its latest
  * window that may have changed since it read it, its first call that was
  * executing, or else its last block; none without a latest window.
  */
@@ -148,7 +148,7 @@ function joined<B extends Held>(
 }
 
 /**
- * The transcript with the stream's reset in it (`runtime.md` § Where a
+ * The transcript with the stream's reset in it (`rendering.md` § Where a
  * reset starts): its blocks replace every held block from `start` on.
  * A reset that starts elsewhere than at `asked`, the index the page named,
  * means the transcript was rewritten under the page: the page then keeps
@@ -232,7 +232,7 @@ function truncated<B extends Held>(windows: readonly TranscriptWindow<B>[], leng
  * `held` with `patches` applied in order. A patch changes the blocks the
  * page holds; one at a block it does not hold changes nothing it shows,
  * and an `add` or a `truncate` moves the indices after it either way
- * (`runtime.md` § Where a reset starts). A block a patch touches is
+ * (`rendering.md` § Where a reset starts). A block a patch touches is
  * replaced, never changed in place, so snapshots can share blocks. Text an
  * `add` or an `append_text` brings is marked as arrived at `receivedAt`.
  */

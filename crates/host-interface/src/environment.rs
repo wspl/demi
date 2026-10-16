@@ -1,8 +1,8 @@
 //! The shell-environment contract behind the `shell` tool: a node's commands
 //! on one Host, each a job of its own that starts in the node's working
-//! directory there (`runtime.md` § Running shell tools), the
-//! model's status view of each (`runtime.md` § Tools), and the pages' view
-//! of each, which the environment reports to the node's feed (`runtime.md`
+//! directory there (`shell-tool.md` § Running shell tools), the
+//! model's status view of each (`shell-tool.md` § Tools), and the pages' view
+//! of each, which the environment reports to the node's feed (`shell-tool.md`
 //! § Live output).
 
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
@@ -51,12 +51,12 @@ pub trait ShellEnvironment {
     fn status(&self, command: &CommandId) -> Result<CommandStatus, ShellError>;
 
     /// The title of the call that started the command, which its record
-    /// keeps from its start and its reports name (`runtime.md` § Command
+    /// keeps from its start and its reports name (`shell-tool.md` § Command
     /// reports); none for a command the environment does not hold.
     fn title(&self, command: &CommandId) -> Option<String>;
 
     /// The media the command's job viewed, once it exited, which moves no
-    /// place in its output (`runtime.md` § What a result attaches).
+    /// place in its output (`shell-tool.md` § What a result attaches).
     fn media(&self, command: &CommandId) -> Result<Vec<CommandMedium>, ShellError>;
 
     /// How long the command has printed nothing, which moves no place in
@@ -65,20 +65,20 @@ pub trait ShellEnvironment {
 
     /// The command lines of the background tasks that keep `command`
     /// running once its script has ended, which moves no place in its
-    /// output (`runtime.md` § Results and previews); empty while its script
+    /// output (`shell-tool.md` § Results and previews); empty while its script
     /// runs, and for a command that ended or that the environment does not
     /// hold.
     fn outliving(&self, command: &CommandId) -> Vec<String>;
 
     /// How long the Host of `command`, which runs, has been unreachable as
     /// far as the environment knows, and how long its runner keeps it so
-    /// (`runtime.md` § Command reports); none while its connection serves
+    /// (`shell-tool.md` § Command reports); none while its connection serves
     /// it, and for a command that ended or that the environment does not
     /// hold.
     fn unreachable(&self, command: &CommandId) -> Option<Unreachable>;
 
     /// The kept output of a command that runs, as its Host holds it now
-    /// (`runtime.md` § The whole output).
+    /// (`shell-tool.md` § The whole output).
     fn read_output<'a>(
         &'a self,
         command: &'a CommandId,
@@ -129,7 +129,7 @@ pub trait Numbers {
 }
 
 /// Where a node's shell environments tell the pages of their commands
-/// (`runtime.md` § Live output), and learn whether a page watches.
+/// (`shell-tool.md` § Live output), and learn whether a page watches.
 pub trait PageFeed {
     /// The pages' view of the command `record` holds changed: the command
     /// started, its output grew, or it ended. An environment reports nothing
@@ -155,14 +155,14 @@ pub struct ExecRequest {
     /// that runs the script, which the pages' view of the command names.
     pub caller: JobCaller,
     /// The title of that call, its `description`, which the command's
-    /// record keeps and its reports name (`runtime.md` § Command reports).
+    /// record keeps and its reports name (`shell-tool.md` § Command reports).
     pub title: String,
     /// How often the command reports while it runs, or only its end when
-    /// none, which its record keeps from its start (`runtime.md` § Command
+    /// none, which its record keeps from its start (`shell-tool.md` § Command
     /// reports).
     pub interval_ms: Option<u32>,
     /// The media types the call's model reads in a tool result, which the
-    /// job may show it (`runtime.md` § What `demi file view` shows).
+    /// job may show it (`shell-tool.md` § What `demi file view` shows).
     pub viewable: Viewable,
 }
 
@@ -210,7 +210,7 @@ pub struct CommandStatus {
     pub stderr: StreamView,
     pub output: OutputView,
     /// While the command runs, the bytes its Host holds beyond what the
-    /// views hold (`runtime.md` § Results and previews).
+    /// views hold (`shell-tool.md` § Results and previews).
     pub unreceived: u64,
     /// While the command runs, the newest bytes of each stream that grew
     /// beyond its start, as the runner last sent them.
@@ -257,7 +257,7 @@ pub enum CommandState {
     },
     /// It was stopped.
     Aborted,
-    /// Its Host lost it, for `reason` (`runtime.md` § Lost commands), with
+    /// Its Host lost it, for `reason` (`shell-tool.md` § Lost commands), with
     /// the media its declared commands returned to the job, which went with
     /// it.
     Lost {

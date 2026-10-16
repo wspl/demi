@@ -240,18 +240,18 @@ A Cloud target may need to wake before this write.
 The agent message contains one `attachment` record with name, path, media type,
 size, and blob hash; a text file's record also carries its opening lines, which
 the capsule shows when pointed at. The model receives the record as a tag
-that names the file ([Replay](../agent/runtime.md#replay)), so it can read the
+that names the file ([Replay](../agent/transcript.md#replay)), so it can read the
 file with tools. The complete text
 file is not duplicated into the message.
 
 Native media adds the corresponding image, video, audio, or document input beside
 the attachment record. An image enters fitted to what every provider accepts,
 while the attachment keeps the original
-([Images in the transcript](../agent/runtime.md#images-in-the-transcript)). The
+([Images in the transcript](../agent/transcript.md#images-in-the-transcript)). The
 attachment remains one capsule. The accepted extensions of each request's model
 govern what the request carries: a medium the model does not accept, or one
 too large for its requests, travels as a text that names it and says why
-([Replay](../agent/runtime.md#replay)), and an adapter must not replace
+([Replay](../agent/transcript.md#replay)), and an adapter must not replace
 supported media with a placeholder. Other files remain
 accessible by path. Attachment presence and model capability are separate facts.
 

@@ -49,7 +49,7 @@ export function useActivitySlot(sources: ActivitySlotSources): {
   )
 
   // The clock counts from when the wait began, which is the session's fact,
-  // not this view's (`runtime.md` § Waiting for the model): the server tells
+  // not this view's (`rendering.md` § Waiting for the model): the server tells
   // a start for as long as the row says Requesting, from the turn's start
   // or a step's end until something of the answer shows, so a view shown
   // during a wait counts from it, and runs on across the confirmation of a

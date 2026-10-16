@@ -9,7 +9,7 @@ import { useElapsedTime } from '../../composables/useElapsedTime'
 
 /**
  * The grey tag of how long a command has run, once past 3 seconds,
- * counting up (`runtime.md` § Rendering boundary, § Work groups): of the
+ * counting up (`rendering.md` § Rendering boundary, § Work groups): of the
  * command of `calls` that still runs, the one that has run longest when
  * several do; nothing once none runs. A shell row wears it for its own
  * command, and an ended run's row for a command still running in it.

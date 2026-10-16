@@ -47,7 +47,7 @@ test('a running turn requests after a completed tool while waiting for the model
   expect(kind('running', [toolCallBlock('error')])).toBe('requesting')
 })
 
-// `runtime.md` § Work groups: a run's row holds only the steps that ended,
+// `rendering.md` § Work groups: a run's row holds only the steps that ended,
 // so at a running turn's end it is what has happened, and the turn waits for
 // the model under it; a step that still runs is a row of its own after the
 // run, the turn's activity, and no Requesting row shows while it runs.
@@ -241,7 +241,7 @@ test('a message this page sent counts from its send, also once the server tells 
 
 // The request has shown nothing for 74 s when the user sends a steer now:
 // the server starts the wait again, and the sending page counts from there
-// as every other page does (`runtime.md` § Waiting for the model).
+// as every other page does (`rendering.md` § Waiting for the model).
 test('a message this page sent counts from its send only for its own wait, not for one a steer sent now starts', async () => {
   using session = slotOver('idle', [textBlock()])
   const { conversation, slot, at } = session

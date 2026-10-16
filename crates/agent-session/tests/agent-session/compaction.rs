@@ -257,7 +257,7 @@ async fn a_history_over_the_threshold_is_compacted_before_the_turn_by_a_copy_tha
     );
     // The turn waits for the model from its start; the page shows the pass
     // instead of the wait, which starts again at the pass's end
-    // (`runtime.md` § Waiting for the model).
+    // (`rendering.md` § Waiting for the model).
     assert_eq!(
         *changes.borrow(),
         ["Running", "waits", "Compacting", "waits no more", "Running", "waits", "waits no more", "Idle"]

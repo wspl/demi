@@ -1,5 +1,5 @@
 //! The record of what changed in a transcript since it was last committed
-//! (`runtime.md` § Patches and versions): each change as the patch a client
+//! (`transcript.md` § Patches and versions): each change as the patch a client
 //! applies, with the block's value as it was when the change was made, and
 //! the rows it changed, which the next save writes (§ Saving). A history
 //! rewrite is not recorded here: it is saved before it is published, and the

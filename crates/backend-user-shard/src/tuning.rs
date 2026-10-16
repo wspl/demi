@@ -23,7 +23,7 @@ impl Default for LifecycleTuning {
     }
 }
 
-/// How the backend serves conversations (`runtime.md` § Order and delivery,
+/// How the backend serves conversations (`rendering.md` § Order and delivery,
 /// `usage-and-quota.md` § Rate limit). Tests lower the bounds.
 #[derive(Debug, Clone, Copy)]
 pub struct ConversationTuning {
@@ -42,7 +42,7 @@ pub struct ConversationTuning {
     /// has passed.
     pub search_interval: Duration,
     /// The least interval a command reports at, in milliseconds
-    /// (`runtime.md` § Tool input): the product's, which a test shortens to
+    /// (`shell-tool.md` § Tool input): the product's, which a test shortens to
     /// see reports within its time.
     pub interval_floor_ms: u32,
 }

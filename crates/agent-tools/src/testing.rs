@@ -52,7 +52,7 @@ impl ShellEnvironmentFactory<NoHost> for NoShells {
 }
 
 /// The value of a shell tool result's `name: value` line, such as its
-/// `commandId` (`runtime.md` § Results and previews).
+/// `commandId` (`shell-tool.md` § Results and previews).
 pub fn field<'a>(result: &'a str, name: &str) -> &'a str {
     result
         .lines()

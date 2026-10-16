@@ -5,7 +5,7 @@ files reach every node's model as one `context` block, the instructions block.
 The composer's context card lists what the block holds, and each entry leads
 to where it is written. This document owns which files are read, what the
 model receives, and what the card lists. The context blocks themselves are the
-[agent runtime](runtime.md#context)'s; the Instructions settings section is
+[agent runtime](transcript.md#context)'s; the Instructions settings section is
 [the product's](../product/web-application.md#web-app-scope).
 
 ## What the model receives
@@ -88,7 +88,7 @@ conversations included, as a new instructions block.
 
 The instructions source is the product's, asked before each provider request
 after the execution context and before the plugins
-([Context](runtime.md#context)). Every node asks it with its own working
+([Context](transcript.md#context)). Every node asks it with its own working
 directory, a subagent too, a profile's included.
 
 - The project files are kept current by the runner, and a request hardly

@@ -963,7 +963,7 @@ pub enum Outbound {
     },
     /// The background tasks that keep a job running once its script has
     /// ended, each by its command line, cut to `JOB_TASK_LINE_BYTES`
-    /// (`runtime.md` § Results and previews): sent when the script ends
+    /// (`shell-tool.md` § Results and previews): sent when the script ends
     /// while tasks still run, and again each time one of them ends while
     /// others run on. The job's exit follows the last.
     JobOutliving {

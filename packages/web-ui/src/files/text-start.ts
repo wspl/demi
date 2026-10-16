@@ -8,7 +8,7 @@ import type { FileContents } from './types'
  * a character the cut splits is left out, as an editor that opens part of a
  * large file shows whole characters, and any other byte that is not UTF-8
  * shows as U+FFFD. Null when the bytes are binary by the rule the text route
- * refuses a file by (`runtime.md` § What `demi file view` shows): a NUL byte
+ * refuses a file by (`shell-tool.md` § What `demi file view` shows): a NUL byte
  * in their first 8 KiB. The media types that rule also names have their own
  * viewers, chosen by the file's name before its text is read.
  */

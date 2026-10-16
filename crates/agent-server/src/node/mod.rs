@@ -161,13 +161,13 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// `stopper` stops `command`, which one of the node's environments
-    /// holds; its end's report says who (`runtime.md` § Command reports).
+    /// holds; its end's report says who (`shell-tool.md` § Command reports).
     pub(crate) fn stopped_by(&self, command: &CommandId, stopper: Stopper) {
         self.runtime.environments.stopped_by(command, stopper);
     }
 
     /// The node's place in the whole output of `command`, which it looks at
-    /// without holding it (`runtime.md` § The `demi shell` commands): as
+    /// without holding it (`shell-tool.md` § The `demi shell` commands): as
     /// the node keeps it, or, for a running command it has not looked at
     /// since the backend started, as the command's record keeps it.
     pub(crate) async fn place(&self, command: &CommandId) -> Seen {
@@ -210,7 +210,7 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// The node looks at `commands` until the returned look is dropped: their
-    /// end reports end no window meanwhile (`runtime.md` § Command reports).
+    /// end reports end no window meanwhile (`shell-tool.md` § Command reports).
     pub(crate) fn look_at(&self, commands: Vec<CommandId>) -> Looking<'_> {
         self.runtime.environments.look_at(commands)
     }
@@ -230,7 +230,7 @@ impl<H: HostResolver> Node<H> {
         self.runtime.environments.owning(command)
     }
 
-    /// The pages' view of each live command of the node (`runtime.md`
+    /// The pages' view of each live command of the node (`shell-tool.md`
     /// § Live output): each one its shells run, and each one the transcript
     /// last saw running that they still hold, oldest first.
     pub(crate) fn live_views(&self) -> Vec<PageView> {
@@ -250,7 +250,7 @@ impl<H: HostResolver> Node<H> {
     }
 
     /// Takes up the node's command whose job is `job`, as its job's `rpc`
-    /// call asks (`runtime.md` § Command reports): none when the node ran
+    /// call asks (`shell-tool.md` § Command reports): none when the node ran
     /// no command the conversation records running with that job, else
     /// why it could not be taken up.
     pub(crate) async fn take_up_job(&self, job: &str) -> Option<Result<(), String>> {
@@ -848,7 +848,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             {
                 // A resident command reports only its end, and one whose
                 // Host's connection is away nothing until it is back: the
-                // silence is the connection's (`runtime.md` § Command
+                // silence is the connection's (`shell-tool.md` § Command
                 // reports).
                 let interval = interval_ms?;
                 if environment.unreachable(command).is_some() {
@@ -870,7 +870,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             }
             let end = self.end_of(command).await;
             // Its record names it by the title of the call that started it,
-            // whatever became of that call (`runtime.md` § Command reports).
+            // whatever became of that call (`shell-tool.md` § Command reports).
             let (title, status) = match self.environments.owning(command) {
                 Some(environment) => (environment.title(command).unwrap_or_default(), None),
                 None => match self.stored(command).await {
@@ -883,7 +883,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 let parts = report_media(&media, &model.model, limits).await;
                 let session = self.store.session_store(&self.node);
                 // The held bytes are read again before a request needs them
-                // (`runtime.md` § Media).
+                // (`transcript.md` § Media).
                 let (stored, _held) = store_result(parts, session.blobs()).await;
                 report.media = stored;
             }
@@ -1127,7 +1127,7 @@ pub(crate) async fn assemble<H: HostResolver>(
             // A report that waited in the checkpoint for a command whose
             // shells were let go carries what the command's stored output
             // holds since the node's place, as a report of a command no
-            // shells hold does (`runtime.md` § Command reports).
+            // shells hold does (`shell-tool.md` § Command reports).
             let state = &mut checkpoint.state;
             for report in state.reports.iter_mut().chain(&mut state.next_turn_reports) {
                 let ended = !matches!(report.event, ReportEvent::Running { .. });

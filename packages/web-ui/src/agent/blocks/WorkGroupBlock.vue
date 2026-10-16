@@ -15,7 +15,7 @@ import { changeFile, pillSelection, requestFileSelection, runFiles } from '../..
 import { foldedMedia, splitMedia } from '../tool-media'
 
 /**
- * The steps of a run that have ended, as one row (`runtime.md` § Work
+ * The steps of a run that have ended, as one row (`rendering.md` § Work
  * groups); a step that still runs is a row of its own under it. A lone step
  * is that step's own row, which opens to the step; more read what they did,
  * done, no shimmer, and open to every step, each as its own row. A step that

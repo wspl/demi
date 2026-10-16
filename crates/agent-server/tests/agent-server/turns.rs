@@ -1094,7 +1094,7 @@ async fn messages_sent_during_a_turn_wait_in_the_queue_which_the_client_empties_
 /// A report that waited in the checkpoint for a command whose shells were
 /// let go, as a backend shutdown lets them go, carries the command's stored
 /// output when it is written: its node no longer holds the command
-/// (`runtime.md` § Command reports). A few milliseconds.
+/// (`shell-tool.md` § Command reports). A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output() {
     use demi_agent_store::{
@@ -1167,7 +1167,7 @@ async fn a_restored_report_of_a_command_no_shells_hold_carries_its_stored_output
 /// A job's `rpc` call asks its node to take its command up; when the
 /// command cannot be taken up, as when its Host cannot be reached, the call
 /// hears why instead of waiting for a take-up that never comes
-/// (`runtime.md` § Command reports). A job no live node ran is unknown. A
+/// (`shell-tool.md` § Command reports). A job no live node ran is unknown. A
 /// few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_job_whose_command_cannot_be_taken_up_answers_why() {

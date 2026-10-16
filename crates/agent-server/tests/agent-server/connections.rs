@@ -124,7 +124,7 @@ async fn the_open_handshake_is_one_step_and_each_patch_is_one_revision_past_the_
 // written: the page says Requesting under the text, from the text's end. A
 // page that opens eleven seconds later receives, after the transcript, how
 // long the root has waited, so a reload goes on counting from 11s
-// (`runtime.md` § Waiting for the model). Cost: one held run.
+// (`rendering.md` § Waiting for the model). Cost: one held run.
 #[tokio::test(flavor = "local")]
 async fn a_page_that_opens_after_the_answers_text_ended_receives_how_long_the_root_has_waited() {
     let gate = Gate::new();
@@ -183,7 +183,7 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
     second.send(open()).await;
     let received = second.received();
     // The root waits for the held request's answer: the handshake says so
-    // (`runtime.md` § Waiting for the model).
+    // (`rendering.md` § Waiting for the model).
     assert!(
         received.iter().any(|frame| matches!(
             frame,
@@ -218,7 +218,7 @@ async fn a_page_that_opens_while_a_request_streams_receives_the_handshake_and_th
 
 // A call the model is writing reaches every page as the complete list,
 // which a page that opens meanwhile receives in its handshake, and leaves
-// the list once the request has ended (`runtime.md` § Calls being written).
+// the list once the request has ended (`rendering.md` § Calls being written).
 #[tokio::test(flavor = "local")]
 async fn a_call_being_written_reaches_the_pages_as_a_list_and_an_opening_page_in_its_handshake() {
     let gate = Gate::new();

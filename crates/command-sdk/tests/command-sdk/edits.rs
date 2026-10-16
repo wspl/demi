@@ -99,7 +99,7 @@ fn a_failed_write_below_a_file_is_not_an_edit() {
     assert!(recorder.report().unwrap().files.is_empty());
 }
 
-/// Binary is what git calls binary (`runtime.md` § What `demi file view`
+/// Binary is what git calls binary (`shell-tool.md` § What `demi file view`
 /// shows): a NUL in the first 8 KiB leaves an edit without contents, while a
 /// Latin-1 file is text whose copy is kept as written, for the change view to
 /// show its odd bytes as U+FFFD.

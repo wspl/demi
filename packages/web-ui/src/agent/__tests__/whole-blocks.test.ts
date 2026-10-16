@@ -33,7 +33,7 @@ const { createApp } = createRenderer<Node, Node>({
 const lightThinking = (id: string): HeldBlock => ({ type: 'thinking', id, createdAt, model, text: '', signature: null, textLength: 12, light: true })
 const joined = (...parts: HeldBlock[]): ShownBlock => ({ ...parts[0]!, parts })
 
-// `runtime.md` § Work groups: thinking blocks next to each other are one
+// `rendering.md` § Work groups: thinking blocks next to each other are one
 // step, which opens to read each of its light blocks whole. The next page of
 // history may bring another such block into the step while it is open;
 // before, only the blocks there when it opened were read, so the step showed

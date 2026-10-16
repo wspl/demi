@@ -1,4 +1,4 @@
-//! A session's transcript (`runtime.md` § Transcript): its blocks, the
+//! A session's transcript (`transcript.md` § Transcript): its blocks, the
 //! patches that record every change to them, the identities it gives blocks
 //! and turns, the points it is cut at, the model's replay of them, the token
 //! estimates compaction decides by.
@@ -30,7 +30,7 @@ pub use reports::{duration, labelled_output, report_text, reports_text};
 
 use demi_shared_types::{Block, GoneCause, ModelMediaKind, WakeupPlacement};
 
-/// What the model receives for a tool's medium that is gone (`runtime.md`
+/// What the model receives for a tool's medium that is gone (`transcript.md`
 /// § Media): `[<kind> not stored: <reason>]`.
 pub(crate) fn gone_text(kind: ModelMediaKind, cause: &GoneCause) -> String {
     let kind = kind.name();
@@ -52,7 +52,7 @@ pub fn is_interruption(block: &Block) -> bool {
     matches!(block, Block::Error(error) if error.code.as_deref() == Some(INTERRUPTED_CODE))
 }
 
-/// Where replay starts in `blocks` (`runtime.md` § Replay): at the last
+/// Where replay starts in `blocks` (`transcript.md` § Replay): at the last
 /// `compaction_boundary`, or at the first block when there is none.
 pub fn replay_start(blocks: &[Block]) -> usize {
     blocks
@@ -62,7 +62,7 @@ pub fn replay_start(blocks: &[Block]) -> usize {
 }
 
 /// Where the answer to the session's latest answered request begins
-/// (`runtime.md` § Replay): that request's `response` block comes last,
+/// (`transcript.md` § Replay): that request's `response` block comes last,
 /// after the last `compaction_marker`, and its answer is the run of
 /// thinking, text and tool-call blocks directly before that `response`
 /// block. What the blocks before the answer replay is what the request
@@ -88,7 +88,7 @@ pub(crate) fn is_answer(block: &Block) -> bool {
     )
 }
 
-/// Whether a block opens an input turn (`runtime.md` § Block types): recovery
+/// Whether a block opens an input turn (`transcript.md` § Block types): recovery
 /// treats it as the start of its turn.
 pub fn opens_input_turn(block: &Block) -> bool {
     match block {

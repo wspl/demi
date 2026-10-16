@@ -52,7 +52,7 @@ pub trait SessionStore {
     /// refused without a change.
     fn switch(&self, position: usize, version: u32) -> LocalBoxFuture<'_, Result<Switched, StoreError>>;
 
-    /// The conversation owner's blob namespace (`runtime.md` § Media), where
+    /// The conversation owner's blob namespace (`transcript.md` § Media), where
     /// the session stores the media that enter its transcript and reads back
     /// those its requests send.
     fn blobs(&self) -> &dyn media::BlobStore;
@@ -187,11 +187,11 @@ pub struct RunningCommand {
     pub command: CommandId,
     pub job: String,
     pub tool_use_id: String,
-    /// The title its reports name (`runtime.md` § Command reports); empty
+    /// The title its reports name (`shell-tool.md` § Command reports); empty
     /// for a command recorded before records kept it.
     pub title: String,
     /// How often its call asked it to report, or only its end when none
-    /// (`runtime.md` § Command reports): an interrupted call's command
+    /// (`shell-tool.md` § Command reports): an interrupted call's command
     /// keeps it.
     pub interval_ms: Option<u32>,
     pub started: Timestamp,
@@ -424,17 +424,17 @@ pub struct CheckpointState {
     #[garde(dive)]
     pub agent_inputs: Vec<PendingAgentInput>,
     /// The command reports that arrived and are not yet written into the
-    /// transcript, in arrival order (`runtime.md` § Command reports).
+    /// transcript, in arrival order (`shell-tool.md` § Command reports).
     #[garde(dive)]
     pub reports: Vec<CommandReport>,
     /// The reports of lost resident commands, which open no turn and wait,
-    /// in arrival order, for the node's next one (`runtime.md` § Lost
+    /// in arrival order, for the node's next one (`shell-tool.md` § Lost
     /// commands).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub next_turn_reports: Vec<CommandReport>,
     /// The commands the session's `shell` calls left running, each with
-    /// how often it reports (`runtime.md` § Command reports).
+    /// how often it reports (`shell-tool.md` § Command reports).
     #[garde(dive)]
     pub intervals: Vec<CommandInterval>,
     #[garde(dive)]
@@ -452,7 +452,7 @@ pub struct CheckpointState {
 
 /// A command a `shell` call left running, and how often it reports while
 /// it runs: every `interval_ms`, or, for a resident command, never; its end
-/// is reported either way (`runtime.md` § Command reports).
+/// is reported either way (`shell-tool.md` § Command reports).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandInterval {

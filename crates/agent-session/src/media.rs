@@ -1,4 +1,4 @@
-//! What the model reads of a session's media (`runtime.md` § Media): the
+//! What the model reads of a session's media (`transcript.md` § Media): the
 //! replayed blocks with what the session holds for their media, once the
 //! session read the blobs of those it holds nothing for.
 

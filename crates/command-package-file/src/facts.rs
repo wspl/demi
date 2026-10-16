@@ -1,4 +1,4 @@
-//! What a medium's header says of it (`runtime.md` § What `demi file view`
+//! What a medium's header says of it (`shell-tool.md` § What `demi file view`
 //! shows): an image's size in pixels as a web browser shows it, and a
 //! video's size and length where its container's header gives them. The
 //! handler reads them once, and they travel with the medium record.

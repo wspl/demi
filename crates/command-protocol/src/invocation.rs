@@ -145,7 +145,7 @@ pub struct Invocation {
     pub viewable: Option<Viewable>,
 }
 
-/// The media types a job may show the model (`runtime.md` § What `demi file
+/// The media types a job may show the model (`shell-tool.md` § What `demi file
 /// view` shows): those the node's model reads in a tool result, as the
 /// backend gave them when the job started, or null when which types the
 /// model reads is unknown; with the model's id, which a refusal names.

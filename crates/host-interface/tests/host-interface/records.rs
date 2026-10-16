@@ -160,7 +160,7 @@ fn a_stop_shows_the_command_stopping_until_its_end_which_is_the_stop() {
 
 /// The pages' view keeps the last characters of the output in the order it
 /// came and how many there were, whatever the model read, and ends with the
-/// command (`runtime.md` § Live output).
+/// command (`shell-tool.md` § Live output).
 #[tokio::test(flavor = "current_thread", start_paused = true)]
 async fn the_pages_view_keeps_the_newest_characters_and_their_count_until_the_end() {
     let mut record = new_record();

@@ -49,7 +49,7 @@ use super::{
 
 pub(crate) struct SessionCore {
     /// The calls of the running request that the model is writing, live
-    /// only (`runtime.md` § Calls being written).
+    /// only (`rendering.md` § Calls being written).
     pub(super) writing: Vec<WritingCall>,
     /// The blocks the running request's entries name (`EntriesOf`), live
     /// only.
@@ -71,7 +71,7 @@ pub(crate) struct SessionCore {
     pub(super) retired: Vec<Box<dyn ProviderRuntime>>,
     pub(super) transcript: TranscriptLog,
     /// What the session holds for the media its replayed blocks and its
-    /// waiting input reference (`runtime.md` § Media).
+    /// waiting input reference (`transcript.md` § Media).
     pub(super) media: HeldMedia,
     /// The tools its requests declare, which replay reads.
     pub(super) tools: Arc<[ToolDefinition]>,
@@ -82,7 +82,7 @@ pub(crate) struct SessionCore {
     pub(super) watched: Watched,
     /// The command each running call started, by the call's id, which the
     /// call's result names when something other than its tool ends it
-    /// (`runtime.md` § Interrupted calls).
+    /// (`shell-tool.md` § Interrupted calls).
     pub(super) calls: HashMap<String, CallCommand>,
     /// The Host a call of the running turn found offline, while no later
     /// call of the turn ran there: a turn that ends so is unfinished
@@ -121,7 +121,7 @@ pub(crate) struct SessionCore {
     pub(super) outbox: Vec<SessionEvent>,
     /// When the node began to wait for the model's answer, while it waits:
     /// from when its turn needs the next answer until that answer shows
-    /// (`runtime.md` § Waiting for the model).
+    /// (`rendering.md` § Waiting for the model).
     waiting_since: Option<Timestamp>,
     ids: Rc<dyn IdSource>,
     clock: Arc<dyn Clock>,
@@ -157,7 +157,7 @@ pub(super) struct ActionRun {
     started_at: u64,
     /// The blobs a send's message references until its `user` block is
     /// written: waiting input meanwhile, whose held bytes stay
-    /// (`runtime.md` § Media).
+    /// (`transcript.md` § Media).
     unwritten_media: Vec<BlobRef>,
     /// What the user sent now, which the turn takes at its next boundary.
     send_now: Option<SendNow>,
@@ -216,7 +216,7 @@ impl PendingAction {
     }
 }
 
-/// What ended a running call other than its tool (`runtime.md`
+/// What ended a running call other than its tool (`shell-tool.md`
 /// § Interrupted calls).
 pub(crate) enum CallEnd<'a> {
     /// The user's Stop.
@@ -233,7 +233,7 @@ pub(crate) enum CallEnd<'a> {
 }
 
 /// The result of a call `end` ended, which watched `command`, when it
-/// started one (`runtime.md` § Interrupted calls).
+/// started one (`shell-tool.md` § Interrupted calls).
 pub(crate) fn interrupted_text(end: &CallEnd<'_>, command: Option<&CommandId>) -> String {
     let reason = match end {
         CallEnd::Stopped => "Tool call aborted: the user stopped the turn".to_owned(),
@@ -1004,7 +1004,7 @@ impl SessionCore {
     }
 
     /// Completes each running call as an error that says what ended it and
-    /// what became of its command (`runtime.md` § Interrupted calls),
+    /// what became of its command (`shell-tool.md` § Interrupted calls),
     /// keeping in its view the command it started, so that the command's
     /// later report and notice find their call (`runtime.md` § Stop); a
     /// command the backend's shutdown leaves running reports to the node
@@ -1204,7 +1204,7 @@ impl SessionCore {
     ///
     /// A wait for the model that runs starts again from now: the request it
     /// waited for is stopped, and the next one carries the steer
-    /// (`runtime.md` § Waiting for the model). A wait that does not run, as
+    /// (`rendering.md` § Waiting for the model). A wait that does not run, as
     /// while a call runs, starts before that next request.
     pub(super) fn steer_now(&mut self, id: &BlockId) {
         if !self.inputs.has_steer(id) {
@@ -1237,7 +1237,7 @@ impl SessionCore {
     }
 
     /// What the windows of the running calls watch for
-    /// (`runtime.md` § The window).
+    /// (`shell-tool.md` § The window).
     pub(super) fn window_arrivals(&self) -> Arrivals {
         Arrivals {
             joining: self.inputs.joining(),
@@ -1395,14 +1395,14 @@ impl SessionCore {
 
     /// Admits a command's report for the next boundary: it joins the running
     /// turn, or opens a continuation unless it `opens` nothing, when it
-    /// waits for the node's next turn (`runtime.md` § Lost commands). A
+    /// waits for the node's next turn (`shell-tool.md` § Lost commands). A
     /// session that is closing keeps no more input.
     pub(super) fn admit_report(&mut self, report: CommandReport, opens: Opens) {
         if self.disposing || end_seen(self.runtime.as_ref(), &report) {
             return;
         }
         // The end report of a command a running call looks at ends no
-        // window: the call shows the end itself (`runtime.md` § Command
+        // window: the call shows the end itself (`shell-tool.md` § Command
         // reports).
         if is_end(&report) && self.runtime.looks_at(&report.command_id) {
             self.inputs.add_quiet(report, opens);
@@ -1541,7 +1541,7 @@ impl SessionCore {
             self.keep_entries(of, entries);
             return;
         }
-        // The wait for the model ends with its first output (`runtime.md` §
+        // The wait for the model ends with its first output (`rendering.md` §
         // Waiting for the model): reasoning as soon as its block starts,
         // with text or without, redacted reasoning too, text, a whole call,
         // or a call being written once its title is. The response's usage
@@ -1676,7 +1676,7 @@ impl SessionCore {
 
     /// The node's turn needs the model's next answer: it waits from now,
     /// unless a wait runs already, whose clock runs on, as across a retry
-    /// (`runtime.md` § Waiting for the model).
+    /// (`rendering.md` § Waiting for the model).
     pub(super) fn start_waiting(&mut self) {
         if self.waiting_since.is_none() {
             self.waiting_since = Some(self.clock.now());
@@ -2003,7 +2003,7 @@ impl SessionCore {
         referenced
     }
 
-    /// Lets go of the media nothing references any more (`runtime.md`
+    /// Lets go of the media nothing references any more (`transcript.md`
     /// § Media).
     pub(super) fn release_media(&mut self) {
         let referenced = self.referenced_media();
@@ -2340,7 +2340,7 @@ fn replace_switch(
 
 /// Whether `report` tells an end a look showed the node since the report was
 /// made: a `demi shell status`, with or without `--wait`, or a `shell`
-/// result. Such an end tells nothing more (`runtime.md` § Command reports).
+/// result. Such an end tells nothing more (`shell-tool.md` § Command reports).
 /// A report never marks its own end seen, so a mark is always a look's;
 /// admission and delivery both ask here, since a look that runs while the
 /// report is made shows the end after it. An end whose job viewed media is

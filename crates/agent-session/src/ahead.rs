@@ -6,7 +6,7 @@
 //! starts goes on by itself. Building the request reads the blobs of the
 //! media its history replays that the session holds nothing for, as after a
 //! restore; it runs after a page's open was answered, so the open itself
-//! reads none (`runtime.md` § Media). A runtime that readies nothing gets
+//! reads none (`transcript.md` § Media). A runtime that readies nothing gets
 //! no request, and no blob is read for it. A request that cannot be built
 //! now readies nothing, and the request says why when it is sent.
 

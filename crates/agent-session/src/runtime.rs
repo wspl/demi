@@ -90,7 +90,7 @@ pub trait SessionRuntime {
     fn preamble(&self) -> LocalBoxFuture<'_, Option<String>>;
 
     /// What the context sources tell the node before a request
-    /// (`runtime.md` § Context), in the sources' order: `seen` is each
+    /// (`transcript.md` § Context), in the sources' order: `seen` is each
     /// context block the model receives, from the last compaction boundary
     /// on, oldest first, and `turn` the input turn the request belongs to.
     fn context<'a>(
@@ -135,7 +135,7 @@ pub trait SessionRuntime {
     }
 
     /// Whether consecutive calls of `tool` in one round run together as one
-    /// step (`runtime.md` § Dispatch and failures); a call of any other tool
+    /// step (`shell-tool.md` § Dispatch and failures); a call of any other tool
     /// is a step of its own.
     fn runs_together(&self, tool: &str) -> bool {
         let _ = tool;
@@ -152,7 +152,7 @@ pub trait SessionRuntime {
     /// running, has ended, and at once when it has ended already or the
     /// node's shells do not hold it and the conversation does not record it
     /// running; one it records running is taken up first
-    /// (`runtime.md` § Command reports). It holds nothing of the session. A
+    /// (`shell-tool.md` § Command reports). It holds nothing of the session. A
     /// node without shells has no commands, so by default it never
     /// resolves.
     fn command_ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, ()> {
@@ -161,7 +161,7 @@ pub trait SessionRuntime {
     }
 
     /// What `command`, which a `shell` call left running and which reports
-    /// every `interval_ms` while it runs, tells the node now (`runtime.md`
+    /// every `interval_ms` while it runs, tells the node now (`shell-tool.md`
     /// § Command reports), named by the title its record keeps: its
     /// progress while it runs, which moves the node's place in its output
     /// as a look does, or its end, with the media its job viewed as a
@@ -181,7 +181,7 @@ pub trait SessionRuntime {
     }
 
     /// Whether a look showed the node `command`'s end: a `demi shell status`
-    /// or a `shell` result that reported it (`runtime.md` § Command
+    /// or a `shell` result that reported it (`shell-tool.md` § Command
     /// reports). None by default.
     fn end_seen(&self, command: &CommandId) -> bool {
         let _ = command;
@@ -189,7 +189,7 @@ pub trait SessionRuntime {
     }
 
     /// A look at `command` as the call that watched it shows it when
-    /// something other than its tool ended the call (`runtime.md`
+    /// something other than its tool ended the call (`shell-tool.md`
     /// § Interrupted calls): its output since the node's last look, as a
     /// result shows it within `budget` characters, which moves the node's
     /// place in it, and the user's view of the call. None when the node's
@@ -202,7 +202,7 @@ pub trait SessionRuntime {
     /// Whether a look of the node at `command` runs now, such as a `demi
     /// shell status --wait` that waits for its end: the command's end report
     /// then ends no window, since the look shows the end itself
-    /// (`runtime.md` § Command reports). None by default.
+    /// (`shell-tool.md` § Command reports). None by default.
     fn looks_at(&self, command: &CommandId) -> bool {
         let _ = command;
         false
@@ -211,7 +211,7 @@ pub trait SessionRuntime {
     /// Readies `report` as it is written into the transcript: it reads the
     /// output the report carries, or marks the place what it read, so that a
     /// report dropped before then moves no place in its command's output
-    /// (`runtime.md` § Command reports). Nothing by default.
+    /// (`shell-tool.md` § Command reports). Nothing by default.
     fn write_report(&self, report: &mut CommandReport) {
         let _ = report;
     }
@@ -275,18 +275,18 @@ pub struct ToolInvocation {
     /// a result may attach.
     pub request_limits: RequestLimits,
     /// What ends the window a shell tool watches its command in before its
-    /// time passes (`runtime.md` § The window).
+    /// time passes (`shell-tool.md` § The window).
     pub arrival: InputArrival,
     /// Where the call tells its session the command it started, and learns
     /// whether something other than its tool that ends it leaves the
-    /// command running (`runtime.md` § Interrupted calls).
+    /// command running (`shell-tool.md` § Interrupted calls).
     pub command: CallCommand,
 }
 
 /// The command a running call started, as its session knows it: what the
 /// session names when something other than the tool ends the call, and
 /// whether that end leaves the command running, as the backend's shutdown
-/// does (`runtime.md` § Interrupted calls).
+/// does (`shell-tool.md` § Interrupted calls).
 #[derive(Debug, Clone, Default)]
 pub struct CallCommand(Rc<CallCommandState>);
 
@@ -305,7 +305,7 @@ pub struct StartedCommand {
 }
 
 /// What a call that something other than its tool ended shows of the
-/// command it watched (`runtime.md` § Interrupted calls).
+/// command it watched (`shell-tool.md` § Interrupted calls).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CommandLook {
     /// Its output since the node's last look, as a result shows it.
@@ -358,7 +358,7 @@ pub enum WindowEnd {
     SentNow,
 }
 
-/// The arrival of what ends a window (`runtime.md` § The window): an agent
+/// The arrival of what ends a window (`shell-tool.md` § The window): an agent
 /// message or a command report, which joins the running turn at its next
 /// boundary, or the user's send now.
 #[derive(Debug, Clone)]
@@ -402,7 +402,7 @@ impl InputArrival {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ToolOutcome {
     /// The result, with its media's bytes, which the session stores before
-    /// the result enters the transcript (`runtime.md` § Media).
+    /// the result enters the transcript (`transcript.md` § Media).
     pub output: Vec<ResultPart>,
     pub is_error: bool,
     pub view: Option<ToolView>,
@@ -428,14 +428,14 @@ impl ToolOutcome {
     }
 }
 
-/// What a tool asks of its session beside its result (`runtime.md`
+/// What a tool asks of its session beside its result (`shell-tool.md`
 /// § Dispatch and failures): a tool never reaches into its session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolEffect {
     /// The call returned while its command still runs, which had run for
     /// `ran`: the session watches it, and the command reports every
     /// `interval_ms` from its start until it ends, or only its end when none
-    /// (`runtime.md` § Command reports).
+    /// (`shell-tool.md` § Command reports).
     Background {
         command: CommandId,
         interval_ms: Option<u32>,

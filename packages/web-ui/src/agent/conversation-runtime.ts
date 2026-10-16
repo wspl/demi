@@ -683,7 +683,7 @@ export class ConversationRuntime {
         break
       // A view never sends `close`, so a `closed` means another client
       // disposed the tree: the view opens it again, as after a lost
-      // connection, and the backend restores it (`runtime.md` § Connections
+      // connection, and the backend restores it (`rendering.md` § Connections
       // and the live tree).
       case 'closed':
       case 'disconnected':

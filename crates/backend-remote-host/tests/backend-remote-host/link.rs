@@ -1170,7 +1170,7 @@ async fn a_status_shows_the_latest_first_registered_hint_and_none_once_the_job_e
 /// holds its output in the order it came: each stream's first bytes, the
 /// newest bytes beyond them with a note where the runner left some out, and
 /// at the end the rest of each stream from its tail; the model's view holds
-/// only the first bytes (`runtime.md` § Live output).
+/// only the first bytes (`shell-tool.md` § Live output).
 #[tokio::test(flavor = "local")]
 async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_sent() {
     let device = device();
@@ -1298,7 +1298,7 @@ async fn a_watched_command_is_followed_and_its_pages_view_holds_what_the_runner_
 }
 
 /// A character the runner's messages split shows once, whole, in both
-/// views, and a byte that is not text shows as U+FFFD (`runtime.md` § Live
+/// views, and a byte that is not text shows as U+FFFD (`shell-tool.md` § Live
 /// output).
 #[tokio::test(flavor = "local")]
 async fn a_character_split_across_messages_shows_once_whole() {
@@ -1348,7 +1348,7 @@ async fn a_character_split_across_messages_shows_once_whole() {
 
 /// The model's idle time counts from the latest growth of a command's
 /// output, also beyond the runner's view of a stream, which the model's view
-/// does not hold (`runtime.md` § Results and previews).
+/// does not hold (`shell-tool.md` § Results and previews).
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_stream_that_grows_beyond_its_view_keeps_its_command_from_idling() {
     let device = device();
@@ -2703,7 +2703,7 @@ async fn a_command_whose_output_the_backend_missed_ends_with_it_read_from_its_ho
 
 /// A command stopped with the call that watches it, as a Stop of the action
 /// stops it, ends as stopped, not as the exit its signal makes
-/// (`runtime.md` § Live output). A few milliseconds.
+/// (`shell-tool.md` § Live output). A few milliseconds.
 #[tokio::test(flavor = "local")]
 async fn a_command_stopped_with_its_call_ends_as_stopped() {
     let device = device();

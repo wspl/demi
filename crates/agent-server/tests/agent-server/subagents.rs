@@ -134,7 +134,7 @@ pub(crate) fn closed_phase(fixture: &Fixture, child: &NodeId) -> Option<ClosePha
 
 // A page that opens while a child waits for its model's answer is told how
 // long the child has waited, which its view of the child counts from instead
-// of a clock of its own (`runtime.md` § Waiting for the model).
+// of a clock of its own (`rendering.md` § Waiting for the model).
 #[tokio::test(flavor = "local")]
 async fn a_page_that_opens_while_a_child_waits_for_its_model_is_told_the_wait() {
     let gate = Gate::new();
@@ -946,7 +946,7 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     wait_for_execution(&server, "waiting").await;
 
     // The pages see the child idle beside its command, and a page that
-    // opens now is told so in its handshake (`runtime.md` § Frame protocol).
+    // opens now is told so in its handshake (`rendering.md` § Frame protocol).
     let frames = page.received();
     assert!(frames.iter().any(is_child_phase(&child, SessionPhase::Running)), "{frames:?}");
     assert!(frames.iter().any(is_child_phase(&child, SessionPhase::Idle)), "{frames:?}");
@@ -1021,7 +1021,7 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
 // tests end, the child is woken with their end report and answers anew,
 // rather than being closed with its old "waiting" answer as its result:
 // an end counts as seen only once a look showed it to the model
-// (`runtime.md` § Command reports). Once a stopped wait survived its call,
+// (`shell-tool.md` § Command reports). Once a stopped wait survived its call,
 // showed the end to no one and marked it seen before the end report, which
 // reads the stored end, was made, and the supervisor closed the idle child;
 // the work silently stopped. The store holds that read here until the look
@@ -1102,7 +1102,7 @@ async fn a_status_whose_stdout_broke_leaves_the_end_report() {
 // A child that ended its turn to wait for its tests looks at them with
 // `demi shell status 1 --wait 10m`, which shows their end: the end report
 // that follows tells it nothing more, so it wakes no turn and costs no
-// request, and the child closes with its answer (`runtime.md` § Command
+// request, and the child closes with its answer (`shell-tool.md` § Command
 // reports). The store holds the report's read of the stored end until the
 // look is over, so the report is made after the look in every run. Under a
 // second on the paused clock.

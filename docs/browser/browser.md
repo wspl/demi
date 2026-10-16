@@ -821,7 +821,7 @@ booleans such as `clicked`, `submitted`, and `actionCompleted`.
 what it captured to stderr, as a program that makes an image does. The model
 looks at it by piping it into `demi file view`, the one command that shows
 the model a file
-([Media the model views](../agent/runtime.md#media-the-model-views)); a
+([Media the model views](../agent/shell-tool.md#media-the-model-views)); a
 redirection saves it, and a pipe into another program processes it. If the
 model cannot read the image, `demi file view` says so; do not claim that the
 agent saw it.
@@ -846,7 +846,7 @@ demi browser screenshot t1 --output /tmp/login.png && demi file view /tmp/login.
 A full-page screenshot can be large, and two bounds apply to it:
 
 - A medium the model views is at most 16 MiB
-  ([Bounds and cut output](../agent/runtime.md#bounds-and-cut-output)), so
+  ([Bounds and cut output](../agent/shell-tool.md#bounds-and-cut-output)), so
   `demi file view` refuses a larger PNG and names its size; the capture
   itself is whole, in the file or the pipe.
 - Chrome sends the PNG in one CDP message, in base64, a third larger than the
@@ -2231,7 +2231,7 @@ part of every acceptance that touches the browser, not an optional run.
    without closing unrelated tabs or claiming rollback of completed effects.
 9. Text preserves hierarchy; JSON validates independently. Truncation preserves
    valid JSON. Page text cannot forge terminal controls or tool metadata.
-10. A screenshot follows [Media the model views](../agent/runtime.md#media-the-model-views):
+10. A screenshot follows [Media the model views](../agent/shell-tool.md#media-the-model-views):
     a loop of `screenshot | demi file view` over three tabs attaches three
     images in order, `> shot.png` saves the PNG and attaches nothing, and
     `| convert - png:- | demi file view` attaches only `convert`'s image. A

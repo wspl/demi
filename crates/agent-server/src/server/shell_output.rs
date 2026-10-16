@@ -1,4 +1,4 @@
-//! The `demi shell` command group (`runtime.md` § The `demi shell`
+//! The `demi shell` command group (`shell-tool.md` § The `demi shell`
 //! commands, § The whole output): `demi shell status` looks at commands of
 //! the conversation as a result shows them, waits for their end and changes
 //! how often they report; `demi shell input` writes to a command's input;
@@ -195,7 +195,7 @@ async fn status<H: HostResolver>(
         };
         // A stopped call stops waiting, and lets go of its look with it:
         // nobody reads what it would show, and a handler left waiting would
-        // show the end to no one (`runtime.md` § Command reports). A call
+        // show the end to no one (`shell-tool.md` § Command reports). A call
         // stopped as the commands end is stopped all the same.
         tokio::select! {
             biased;
@@ -222,7 +222,7 @@ async fn status<H: HostResolver>(
     port.stdout(format!("{}\n", printed.join("\n")).into_bytes()).await?;
     // Only what reached the caller was seen: a look its call could not
     // print moves nothing, so an end it showed no one is reported as any
-    // end is (`runtime.md` § Command reports).
+    // end is (`shell-tool.md` § Command reports).
     if let Some(looking) = &looking {
         for (command, moved) in moves {
             match moved {
@@ -289,7 +289,7 @@ async fn wait_for_ends<H: HostResolver>(tree: &Tree<H>, ids: &[String], wait: Du
 /// from its place in the command's record; any other node, and a node
 /// whose command no shells hold any more, from its own place in the
 /// command's whole output: each look shows the output since the node's own
-/// last look and moves only its place (`runtime.md` § The `demi shell`
+/// last look and moves only its place (`shell-tool.md` § The `demi shell`
 /// commands), once the caller printed it.
 async fn status_one<H: HostResolver>(
     tree: &Tree<H>,
@@ -380,7 +380,7 @@ async fn status_one<H: HostResolver>(
             (text, Some(seen))
         }
         // An end a look showed tells the node nothing more, however the
-        // command ended (`runtime.md` § Command reports).
+        // command ended (`shell-tool.md` § Command reports).
         None => match tree.store().command_output(&command).await {
             Ok(Some(StoredCommand {
                 end,

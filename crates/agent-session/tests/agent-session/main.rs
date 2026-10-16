@@ -996,7 +996,7 @@ async fn a_failing_tool_and_an_unknown_tool_complete_their_calls_as_errors_and_t
 }
 
 /// The call's result says the user stopped the turn and the command the
-/// call watched was stopped (`runtime.md` § Interrupted calls).
+/// call watched was stopped (`shell-tool.md` § Interrupted calls).
 #[tokio::test(flavor = "local")]
 async fn stop_during_a_tool_drops_the_call_and_records_the_stop_before_it_answers() {
     let provider = ScriptedRuntime::new([
@@ -1103,7 +1103,7 @@ async fn a_stop_during_a_step_keeps_the_result_of_a_call_that_returned() {
 }
 
 /// A hold of the conversation stops the running call as a Stop does, and
-/// its result names the hold (`runtime.md` § Interrupted calls).
+/// its result names the hold (`shell-tool.md` § Interrupted calls).
 #[tokio::test(flavor = "local")]
 async fn a_hold_stops_the_running_call_and_its_result_names_the_hold() {
     let provider = ScriptedRuntime::new([Turn::Events(vec![
@@ -1129,7 +1129,7 @@ async fn a_hold_stops_the_running_call_and_its_result_names_the_hold() {
 
 /// An action that fails before its calls ran completes them with the
 /// failure, so the next request replays no call without a result
-/// (`runtime.md` § Interrupted calls).
+/// (`shell-tool.md` § Interrupted calls).
 #[tokio::test(flavor = "local")]
 async fn a_save_that_fails_before_dispatch_completes_the_calls_with_the_failure() {
     let provider = ScriptedRuntime::new([Turn::Events(vec![
@@ -1253,7 +1253,7 @@ fn paced(events: Vec<(u64, ProviderEvent)>) -> Turn {
 // The row says Requesting from the turn's start, so the wait the server
 // tells a page that opens meanwhile starts there too, not once the request
 // is built: here a preamble hook, which a Host answers, holds it back
-// (`runtime.md` § Waiting for the model). A paused clock.
+// (`rendering.md` § Waiting for the model). A paused clock.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_wait_for_the_model_starts_with_the_turn_before_its_request_is_built() {
     let provider = ScriptedRuntime::new(Vec::new());
@@ -1277,7 +1277,7 @@ async fn a_wait_for_the_model_starts_with_the_turn_before_its_request_is_built()
     assert!(provider.requests().is_empty());
 }
 
-// The wait ends with the model's first output (`runtime.md` § Waiting for
+// The wait ends with the model's first output (`rendering.md` § Waiting for
 // the model): a call being written only once its title is, and reasoning
 // as soon as its block starts, redacted reasoning and reasoning whose text
 // never comes included, so a model that thinks never reads as one that has
@@ -1907,7 +1907,7 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
     assert_eq!(appends, ["private ", "notes", "world"]);
 }
 
-/// A call the model is writing (`runtime.md` § Calls being written): it is
+/// A call the model is writing (`rendering.md` § Calls being written): it is
 /// listed from its start, which completes the text before it, gains its
 /// description once that string is whole, and leaves the list in the step
 /// that adds its block; a stopped request empties the list. Nothing of it

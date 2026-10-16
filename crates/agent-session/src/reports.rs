@@ -1,4 +1,4 @@
-//! Command reports (`runtime.md` § Command reports): the commands the
+//! Command reports (`shell-tool.md` § Command reports): the commands the
 //! session's `shell` calls left running, each with how often it reports and
 //! the task that watches it. The task reports the command's progress every
 //! interval while it runs, and its end once it ends; what each report says
@@ -119,7 +119,7 @@ impl Watched {
 
 /// Starts the task that watches `command`, which the session watches, and
 /// gives it to the session. Its reports count from its start, which was
-/// `ran` ago when its call watched it that long (`runtime.md` § Command
+/// `ran` ago when its call watched it that long (`shell-tool.md` § Command
 /// reports): the first comes at the next whole interval since then.
 pub(super) fn start_watch(s: &Rc<SessionShared>, command: &CommandId, ran: Duration) {
     let Some(interval_ms) = s.read(|core| core.watched.get(command)) else {
@@ -189,7 +189,7 @@ async fn report(session: &Weak<SessionShared>, command: &CommandId) {
         return;
     };
     // The loss of a resident command opens no turn: nothing waits for it
-    // (`runtime.md` § Lost commands).
+    // (`shell-tool.md` § Lost commands).
     let opens = match (&report.event, interval_ms) {
         (ReportEvent::Lost { .. }, None) => Opens::Nothing,
         _ => Opens::Turn,

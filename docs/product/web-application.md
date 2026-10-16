@@ -458,7 +458,7 @@ operation, and what a page reads when it needs it, such as a transcript or a
 draft. The synchronization channel pushes the state a page shows around its
 conversations, as it changes ([Page synchronization](#page-synchronization)).
 The conversation WebSocket carries the
-[agent frames](../agent/runtime.md#frame-protocol) of one conversation: live
+[agent frames](../agent/rendering.md#frame-protocol) of one conversation: live
 transcript, queue, child-agent, and shell-job events. A live browser view uses
 its own [user stream](web-api.md#user-streams) WebSocket, so its pictures never
 delay those events.
@@ -522,7 +522,7 @@ usable in each.
 For example, the user sends a message in one tab: a second tab shows the
 message, the reply as it streams and each tool call, and its Stop stops the
 turn. Every tab shows the same messages, output of running commands as it comes
-([Live output](../agent/runtime.md#live-output)), phase,
+([Live output](../agent/shell-tool.md#live-output)), phase,
 queue, pending steers and subagents; every tab can send, steer, queue, stop, edit,
 retry, switch the model and write to a running command; and what one tab does
 shows in all of them. Opening the conversation in another tab takes nothing
@@ -532,7 +532,7 @@ save that fails shows its failure in every tab until the
 conversation starts its next action, whichever tab starts it; a refusal of one
 tab's own request shows in that tab alone. Each tab has its own socket,
 attached to the conversation's one live tree
-([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
+([Connections and the live tree](../agent/rendering.md#connections-and-the-live-tree)).
 The conversation's model settings, its model, thinking effort and service
 tier, are one value its record holds: every tab and every device shows it, and
 a change made in any of them reaches all
@@ -554,7 +554,7 @@ work allows, and never one per item:
   attached hosts, its draft, its permission requests and its panel at once,
   and connects its socket beside them; the transcript does not wait for the
   hosts. The socket's `open` names the blocks the page read
-  ([Where a reset starts](../agent/runtime.md#where-a-reset-starts)), so it
+  ([Where a reset starts](../agent/rendering.md#where-a-reset-starts)), so it
   goes once both the page and the connection are there; the socket connects
   meanwhile. The first load starts the
   synchronization channel beside the session check, and opens the
@@ -598,7 +598,7 @@ on showing its stream as stalled. The far end of each socket sends a
 heartbeat once it has sent nothing else for a while: the backend on the
 channel, on each conversation socket, on the file watch and on a direct
 channel's signaling socket after 30 seconds
-([Order and delivery](../agent/runtime.md#order-and-delivery),
+([Order and delivery](../agent/rendering.md#order-and-delivery),
 [Page synchronization](web-api.md#page-synchronization)), and a live view's
 module on its stream after a quarter of a second
 ([Delivery](../browser/live-view.md#delivery)). So a socket that brings
@@ -660,7 +660,7 @@ so, reading its last page because its window is open.
 | Socket | The snapshot | Read by version |
 | --- | --- | --- |
 | The synchronization channel | The product state | The conversation-scoped parts whose revisions the summaries carry ([Page synchronization](web-api.md#page-synchronization)) |
-| A conversation | The root's state, every subagent's summary, every running command, every node's context use ([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)) | The root's transcript from the blocks the page holds, `from` and `edge`; a subagent's transcript, by the revision its summary carries, when the page shows it |
+| A conversation | The root's state, every subagent's summary, every running command, every node's context use ([Connections and the live tree](../agent/rendering.md#connections-and-the-live-tree)) | The root's transcript from the blocks the page holds, `from` and `edge`; a subagent's transcript, by the revision its summary carries, when the page shows it |
 | The file watch | Each subscription live again | A shown file, by its version: the Host answers unchanged or the new contents ([File watch](web-api.md#file-watch)) |
 | A live view | Its `state`, tabs and the watched tab's controls and downloads | The picture: a new key frame |
 | A device's signaling socket | Nothing: the backend closes the device's end of the direct channel when the socket drops, so the page leaves the direct path at the drop and uses the relay until a new channel is made | Nothing |
@@ -867,7 +867,7 @@ held:   [790 ──── 860]                    [2,880 ─────── 2
   each ends. The latest window, the one that reaches the end, is always held:
   the stream's reset and patches apply to it as they come, and to any other
   window that holds the block they name
-  ([Where a reset starts](../agent/runtime.md#where-a-reset-starts)). A
+  ([Where a reset starts](../agent/rendering.md#where-a-reset-starts)). A
   window stays held while the conversation stays in the page's cache, and
   switching back to the conversation shows it as the reader left it.
 - **One window shown.** The transcript shows the window the reader is in:
@@ -913,11 +913,11 @@ A retry, an accepted edit or a compaction rewrites the transcript, and
 indices then name other blocks. The stream tells the page as patches: a
 `truncate` drops every held block from its index on, in every window, and an
 `add` before a window's end moves the indices after it
-([Patches and versions](../agent/runtime.md#patches-and-versions)). A rewrite
+([Patches and versions](../agent/transcript.md#patches-and-versions)). A rewrite
 can also land between a read and the stream, or between two reads. A page
 read whose `edge` no longer matches answers `transcript_changed`, and a reset
 whose `from` no longer matches starts at the latest page
-([Where a reset starts](../agent/runtime.md#where-a-reset-starts)). Either
+([Where a reset starts](../agent/rendering.md#where-a-reset-starts)). Either
 way the page drops the windows it can no longer join, keeps the latest the
 stream gave it, and reads the page around the block in view again, so the
 reader stays where they were; when the rewrite removed that block, the page

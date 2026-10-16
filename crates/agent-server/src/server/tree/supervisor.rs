@@ -1869,7 +1869,7 @@ fn child_frames<H: HostResolver>(child: &Child<H>, placement: Option<&Placement>
         },
         {
             // The page holds none of a child's blocks until it shows it
-            // (`runtime.md` § Where a reset starts).
+            // (`rendering.md` § Where a reset starts).
             let start = latest_page_start(&transcript.blocks);
             ServerFrame::SubagentTranscriptReset {
                 subagent_id: child.id().clone(),

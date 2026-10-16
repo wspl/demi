@@ -604,7 +604,7 @@ they fill a large context window. Each runtime states its vendor's limits for
 a model. Compaction never runs on them
 ([When compaction runs](../agent/compaction.md#when-compaction-runs)); images
 are kept light where they enter
-([Images in the transcript](../agent/runtime.md#images-in-the-transcript)):
+([Images in the transcript](../agent/transcript.md#images-in-the-transcript)):
 
 | Family | Body, as sent | Images per request |
 |---|---|---|
@@ -619,9 +619,9 @@ may set lower limits, and a limit that is not documented is none: a request
 refused for its size fails its turn with `request_too_large`
 ([Retries](../agent/failures-and-recovery.md#retries)). Every image has
 already been fitted to what each vendor accepts of one image
-([Images in the transcript](../agent/runtime.md#images-in-the-transcript)),
+([Images in the transcript](../agent/transcript.md#images-in-the-transcript)),
 and a medium whose base64 takes more than half of the body limit is sent as
-text ([Replay](../agent/runtime.md#replay)).
+text ([Replay](../agent/transcript.md#replay)).
 
 ### Accepted attachment types
 
@@ -663,8 +663,8 @@ natively. Unknown and unsupported stay distinct, so a surface can say which one
 applies when it explains why a file was not sent. For example,
 `demi file view shot.png` shows the image to the model only when the model
 accepts `png` and its provider carries an image in a tool result
-([Media the model views](../agent/runtime.md#what-demi-file-view-shows)). Native media beside a
+([Media the model views](../agent/shell-tool.md#what-demi-file-view-shows)). Native media beside a
 message's attachment follows [Attachments](../product/composer.md#attachments).
 After a model switch, the history can hold media the new model does not
 accept; each request replays those as text
-([Replay](../agent/runtime.md#replay)).
+([Replay](../agent/transcript.md#replay)).

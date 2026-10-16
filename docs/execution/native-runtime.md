@@ -846,7 +846,7 @@ the caller asked for `json`, `cwd`, `env`, the
 stdin is the job's own input, `liveInput`
 ([A job's own input](runner.md#a-jobs-own-input)), and the media types the
 job may show the model, `viewable`
-([Media the model views](../agent/runtime.md#what-demi-file-view-shows)). Each subsequent stdin chunk has a four-byte big-endian length
+([Media the model views](../agent/shell-tool.md#what-demi-file-view-shows)). Each subsequent stdin chunk has a four-byte big-endian length
 and at most 64 KiB of binary payload.
 
 The service sends response headers before waiting for input. Input then follows

@@ -58,7 +58,7 @@ test('live intervals tick, freeze to their persisted end, reset and release cloc
   }
 })
 
-// Every running row reads one clock (`runtime.md` § Rendering boundary: a
+// Every running row reads one clock (`rendering.md` § Rendering boundary: a
 // page of running commands ticks together): the second row adds no timer,
 // and the timer goes only when the last row stops running or unmounts.
 test('running rows share one clock, released by the last of them', () => {

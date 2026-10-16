@@ -7,7 +7,7 @@ import { useElapsedTime } from '../composables/useElapsedTime'
 
 /**
  * Where the command a `shell` call started is, as its row shows it
- * (`runtime.md` § Rendering boundary), wherever the row stands: its own row,
+ * (`rendering.md` § Rendering boundary), wherever the row stands: its own row,
  * a run's step, or the face of a folded run that is that step. From the
  * command's live frames, also after the call returned, or the view the call
  * stored.

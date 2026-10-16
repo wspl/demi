@@ -165,7 +165,7 @@ viewer the page chose; and the user's browser must not guess a type on its
 own (`nosniff`).
 
 The table also names every type a model reads natively
-([Media the model views](../agent/runtime.md#media-the-model-views)), and shows
+([Media the model views](../agent/shell-tool.md#media-the-model-views)), and shows
 each in place: a tool's images and videos, and a message's, are served from
 their blobs by the same table
 ([Media a tool returned](#media-a-tool-returned)), and one it did not show in
@@ -407,7 +407,7 @@ so it wakes a stopped Cloud like any other
 
 For example, the agent runs `demi browser screenshot t1 | demi file view`.
 The call's result attaches the PNG as an image the model reads
-([Media the model views](../agent/runtime.md#media-the-model-views)). The page
+([Media the model views](../agent/shell-tool.md#media-the-model-views)). The page
 shows the same picture small in the call's row, after its title, whether
 the call is folded or open, and a click opens it in the
 [media viewer](#the-media-viewer):
@@ -464,7 +464,7 @@ the call is folded or open, and a click opens it in the
   control closes it. A video opened from its thumbnail plays in the player of
   the user's browser, which an iPhone shows full screen.
 - **A medium that is gone.** A result can hold, in a medium's place, a part
-  that says its bytes could not be stored ([Media](../agent/runtime.md#media)).
+  that says its bytes could not be stored ([Media](../agent/transcript.md#media)).
   The page shows one line under the row, with the store's reason, such
   as *Video not stored: the object store refused the write*. The model reads
   the same fact in a text of its own. A medium that was stored stays.
@@ -472,17 +472,17 @@ the call is folded or open, and a click opens it in the
   because its blob is missing, the request failed or the user's browser cannot
   decode it, *Could not show this image.* (or *video*) shows in its place, at
   the same height, and a reload of the page tries again. A blob that a block
-  references is never deleted ([Media](../agent/runtime.md#media)), so a
+  references is never deleted ([Media](../agent/transcript.md#media)), so a
   missing one is a fault; a request that replays the medium then carries
   `[missing image blob <ref>]` in its place.
 - **The model's picture.** The page loads the blob the result references,
   the same bytes the model receives, so it shows exactly the picture the
   model saw: the image as it was fitted when it entered the transcript
-  ([Images in the transcript](../agent/runtime.md#images-in-the-transcript)),
+  ([Images in the transcript](../agent/transcript.md#images-in-the-transcript)),
   and a blob is named by the hash of its bytes, and nothing changes them. The
   original bytes stay in the command's whole output, which the model reads
   with `demi shell output`
-  ([The whole output](../agent/runtime.md#the-whole-output)).
+  ([The whole output](../agent/shell-tool.md#the-whole-output)).
 
 ### A picture's preview on hover
 
@@ -653,7 +653,7 @@ file as it is now.
 
 Text, including Markdown and SVG source, comes from the text route: at most
 8 MiB of text, a byte that is no UTF-8 shown as U+FFFD, and a file that is
-binary by the one rule ([What `demi file view` shows](../agent/runtime.md#what-demi-file-view-shows))
+binary by the one rule ([What `demi file view` shows](../agent/shell-tool.md#what-demi-file-view-shows))
 shows its card instead. A larger text file shows its first 8 MiB, read from the raw route with a
 byte range and cut before a character the range splits, with a line above
 saying how much of how much it shows and Download, as VS Code opens a large

@@ -29,7 +29,7 @@ pub enum OperationError {
 }
 
 /// `file.view`: shows the model each file, or stdin, as a medium, in order
-/// (`runtime.md` § What `demi file view` shows).
+/// (`shell-tool.md` § What `demi file view` shows).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct ViewArgs {

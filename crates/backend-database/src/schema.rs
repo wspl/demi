@@ -1179,7 +1179,7 @@ const INTERVAL_BOUNDS_MS: (i64, i64) = (15_000, 600_000);
 /// From the conversation schema that `0.1.22-dev.20261016T043704Z`
 /// deployed to the one in which each running command's record keeps the
 /// interval its call asked it to report at, read from the call's input in the transcript as that build
-/// bounded it, or none for a call that asked for none (`runtime.md`
+/// bounded it, or none for a call that asked for none (`shell-tool.md`
 /// § Command reports): a command whose call a restart interrupted reports
 /// as its call asked. A record whose call the transcript lacks, or whose
 /// call's input names no interval, fails the migration.
@@ -1390,7 +1390,7 @@ fn codex_length(text: &str, unit: u64) -> Option<Option<u64>> {
 /// From the conversation schema that `0.1.22-dev.20261015T105826Z`
 /// deployed, of transcript block format 8, to format 9, in which a call's
 /// block records when it returned, `endedAt`, which a run's time adds up
-/// (`runtime.md` § Work groups). A stored call kept no record of it: one
+/// (`rendering.md` § Work groups). A stored call kept no record of it: one
 /// that returned ends the time its shell view says its command ran until
 /// then, `runningMs`, after it started, and a call of another tool where
 /// it started; a call still executing has not returned. Each block is
@@ -1720,7 +1720,7 @@ fn with_no_kept_messages(block: &mut serde_json::Value) -> bool {
 /// 0.1.22-dev.20261011T123543Z, which a server keeps data of
 /// (`upgrades.md` § A development build on a server): a command's records
 /// keep the title of the call that started it, which its reports name
-/// (`runtime.md` § Command reports), and the blocks move from transcript
+/// (`shell-tool.md` § Command reports), and the blocks move from transcript
 /// block format 3 to format 4 ([`relist_blocks`]). No record that build
 /// wrote kept a title, and none is guessed: theirs stay empty, and their
 /// reports name the command by its number.
@@ -2036,8 +2036,8 @@ fn without_attachment_flags(value: &mut serde_json::Value) -> bool {
 
 /// From 0.1.21's conversation schema: commands no longer run in shells, the
 /// model has one tool, `shell`, and command reports replace yield wakeups
-/// (`runtime.md` § Command reports). A command's output keeps no media: the
-/// model views a file again when it needs it (`runtime.md` § Where media are
+/// (`shell-tool.md` § Command reports). A command's output keeps no media: the
+/// model views a file again when it needs it (`shell-tool.md` § Where media are
 /// kept), so the media column goes, which a CHECK names, and the table is
 /// made anew, as for 0.1.11. Block format 2 also lets a block keep
 /// the entries of a vendor's own record of the session (`claude-code.md`
@@ -2146,10 +2146,10 @@ fn states_without_wakeups(transaction: &Transaction<'_>) -> rusqlite::Result<()>
 /// From 0.1.21's transcript blocks (transcript block format 2): a stored
 /// call of `shell_exec` is the `shell` call it became, with its input, and
 /// its repeat guard's view is `repeated_shell`; a call of `yield` keeps its
-/// name, which replays as text (`runtime.md` § Replay), and loses its
+/// name, which replays as text (`transcript.md` § Replay), and loses its
 /// `yield_wakeup` view, which no tool has any more; a stored shell view no
 /// longer names a shell; and a fired wakeup becomes what it stood for
-/// (`runtime.md` § Rendering boundary): one a command's end fired, that
+/// (`rendering.md` § Rendering boundary): one a command's end fired, that
 /// command's report, titled by the `description` of the call that started
 /// the command; one its time fired, a `resume` block. Each block changed is
 /// decoded and written again through the block's own encoding; a block that
@@ -2189,7 +2189,7 @@ fn blocks_of_one_tool(transaction: &Transaction<'_>) -> rusqlite::Result<()> {
 /// run's and its request's (`edit-tracking.md` § What the conversation
 /// shows); from 0.1.22-dev.20261011T123543Z's, format 3, whose runs end at
 /// a `resume` block and at a Stop the user continued, to format 4, where
-/// the steps after them join the run before (`runtime.md` § Work groups),
+/// the steps after them join the run before (`rendering.md` § Work groups),
 /// with the run's files to match; from format 5's in which a node says
 /// which agent it was forked from, which the server keeps data of, to
 /// format 6, where redacted reasoning is a step of its run, and a run it
@@ -4896,7 +4896,7 @@ mod tests {
     /// returned: migrated to format 9, a shell call ends the time its view
     /// says its command ran after it started, a call of another tool where
     /// it started, and a call still executing has not returned; a share's
-    /// snapshot of a call is migrated the same way (`runtime.md` § Work
+    /// snapshot of a call is migrated the same way (`rendering.md` § Work
     /// groups, a run's time).
     // Cost: one database on disk, a few milliseconds.
     #[test]

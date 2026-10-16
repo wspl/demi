@@ -1,4 +1,4 @@
-//! What the backend sends (`runtime.md` § Server frames, `subagents.md`
+//! What the backend sends (`rendering.md` § Server frames, `subagents.md`
 //! § Protocol). A page accepts fields it does not know, so these types are
 //! tolerant.
 
@@ -47,7 +47,7 @@ pub enum ServerFrame {
         refusal: Refusal,
     },
     /// The blocks from `start` to the end, whole, with the transcript's
-    /// length and version (`runtime.md` § Where a reset starts).
+    /// length and version (`rendering.md` § Where a reset starts).
     TranscriptReset {
         #[garde(skip)]
         start: u32,
@@ -130,7 +130,7 @@ pub enum ServerFrame {
         pending_steers: Vec<PendingSteer>,
     },
     /// The complete list of the calls the model is writing
-    /// (`runtime.md` § Calls being written).
+    /// (`rendering.md` § Calls being written).
     PendingCalls {
         /// The subagent whose calls they are; absent for the root's.
         #[serde(
@@ -145,7 +145,7 @@ pub enum ServerFrame {
         pending_calls: Vec<PendingCall>,
     },
     /// How long a node had waited for the model's answer when the frame
-    /// left, or null when it waits for none (`runtime.md` § Waiting for the
+    /// left, or null when it waits for none (`rendering.md` § Waiting for the
     /// model).
     Waiting {
         /// The subagent that waits; absent for the root.
@@ -184,7 +184,7 @@ pub enum ServerFrame {
         #[garde(dive)]
         result: AbortResult,
     },
-    /// A command's live view (`runtime.md` § Live output): the same for
+    /// A command's live view (`shell-tool.md` § Live output): the same for
     /// every page, whatever any page or the model read.
     ShellOutput {
         /// The subagent whose command it is; absent for the root's.
@@ -314,7 +314,7 @@ pub enum ServerFrame {
     Closed,
     /// Nothing: the connection sent no other frame for 30 seconds. The
     /// backend's socket sends it, not the tree, so that a page can tell a
-    /// quiet connection from a dead one (`runtime.md` § Order and delivery).
+    /// quiet connection from a dead one (`rendering.md` § Order and delivery).
     Heartbeat,
 }
 
@@ -670,7 +670,7 @@ pub enum ShellStatus {
         #[garde(dive)]
         command: CommandView,
     },
-    /// Its runner lost it (`runtime.md` § Lost commands).
+    /// Its runner lost it (`shell-tool.md` § Lost commands).
     Lost {
         #[serde(flatten)]
         #[garde(dive)]
@@ -692,7 +692,7 @@ impl ShellStatus {
     }
 }
 
-/// A command as the pages see it, whatever its status (`runtime.md`
+/// A command as the pages see it, whatever its status (`shell-tool.md`
 /// § Live output).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]

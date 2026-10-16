@@ -291,7 +291,7 @@ Every command on an attached host starts in that host's starting directory:
 the conversation's directory there for a departed primary target, and the
 device's home for a device `demi host attach` attached. It is fixed when the
 host is attached, never moved by a command's `cd`, as on the primary Host
-([Running shell tools](../agent/runtime.md#running-shell-tools)), and it is not
+([Running shell tools](../agent/shell-tool.md#running-shell-tools)), and it is not
 a permission boundary. Files can be transferred explicitly with ordinary
 shell pipelines:
 
@@ -696,7 +696,7 @@ those records:
 
 A lost command is recorded as ended for that reason, and the node that ran
 it is told by its report
-([Lost commands](../agent/runtime.md#lost-commands)).
+([Lost commands](../agent/shell-tool.md#lost-commands)).
 
 Two kinds of interruption follow ([Upgrades](../delivery/upgrades.md)):
 

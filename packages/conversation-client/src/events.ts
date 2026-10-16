@@ -38,7 +38,7 @@ export type ClientSessionEvent =
   | ServerFrameOf<'subagent'>
   | ServerFrameOf<'subagents'>
   | {
-      /** The blocks from `start` on (`runtime.md` § Where a reset starts). */
+      /** The blocks from `start` on (`rendering.md` § Where a reset starts). */
       type: 'transcript_reset'
       start: number
       length: number
@@ -65,7 +65,7 @@ export type ClientSessionEvent =
       type: 'pending_calls'
       /** The subagent whose calls they are; absent for the root's. */
       subagentId?: string
-      /** The calls the model is writing (`runtime.md` § Calls being written). */
+      /** The calls the model is writing (`rendering.md` § Calls being written). */
       pendingCalls: PendingCall[]
     }
   | {
@@ -76,7 +76,7 @@ export type ClientSessionEvent =
        * When the node began to wait for the model's answer, as `Date.now()`:
        * the frame's arrival less how long it had waited, so no time of the
        * server's is compared with the page's clock; null when it waits for
-       * none (`runtime.md` § Waiting for the model).
+       * none (`rendering.md` § Waiting for the model).
        */
       since: number | null
     }

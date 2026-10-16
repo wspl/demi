@@ -12,7 +12,7 @@ use crate::{CallOutcome, VendorCall};
 /// A stored tool call id as the Messages API takes a tool use's and its
 /// result's, which allows letters, digits, `_` and `-`: each other
 /// character becomes `_`, so Codex's `call_7Qm…|fc_68e…` goes as
-/// `call_7Qm…_fc_68e…` (`runtime.md` § Replay). It follows from the stored
+/// `call_7Qm…_fc_68e…` (`transcript.md` § Replay). It follows from the stored
 /// id alone, so every request sends the same bytes; an id the API allows
 /// goes as it is.
 pub fn tool_use_id(id: &str) -> Cow<'_, str> {

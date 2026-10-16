@@ -48,7 +48,7 @@ five layers in this order, and holds no time, Host or other state
 
 Everything that changes, or that differs by Host, user or project, reaches
 the model as a `context` block appended to the transcript, never as a change
-to these layers ([Context](runtime.md#context)): the date, the current Host's
+to these layers ([Context](transcript.md#context)): the date, the current Host's
 system and working directory, the skills catalog, the user's and the
 project's [instructions](instructions.md). Details reach it when it
 asks for them: a command's `--help` is a command result.

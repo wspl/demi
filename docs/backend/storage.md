@@ -413,14 +413,14 @@ blob.
 Root and subagent blocks hold their media and edit copies by reference in
 every row and every frame, so the conversation database holds none of their
 bytes. Each is stored once, when it enters: an upload by the upload route, an uploaded image that
-fitting changed ([Images in the transcript](../agent/runtime.md#images-in-the-transcript))
+fitting changed ([Images in the transcript](../agent/transcript.md#images-in-the-transcript))
 by the conversation socket as it resolves the message, a tool's medium by
 the session, through its tree store, before the tool's result enters the
 transcript, and an edit copy by the backend when its command ends
 ([Edit copies](../execution/edit-tracking.md#edit-copies)). A session reads back, through the same store, only the media its
 provider requests send, and cold history for the web app reads none. The agent
 defines these rules, including what a missing blob becomes
-([Media](../agent/runtime.md#media)); the backend decides where the bytes go.
+([Media](../agent/transcript.md#media)); the backend decides where the bytes go.
 Delivery to the web app and uploaded attachment resolution are defined in
 [Backend media handling](backend.md#media-by-reference).
 
@@ -437,11 +437,11 @@ unreferenced blob stays ([Retention](#retention)).
 
 When a command ends, the backend stores its whole output, as its Host kept it
 within 16 MiB, as a blob in the conversation owner's namespace
-([The whole output](../agent/runtime.md#the-whole-output)), and records it in
+([The whole output](../agent/shell-tool.md#the-whole-output)), and records it in
 the conversation's `command_outputs` table, one row per command, keyed by the
 command's id. The row holds when the command ended and how: its exit code,
 or that it was stopped or lost with its reason, which its report names
-([Command reports](../agent/runtime.md#command-reports)); and one of two
+([Command reports](../agent/shell-tool.md#command-reports)); and one of two
 states:
 
 | State | Holds | `demi shell output` prints |
@@ -462,7 +462,7 @@ its job starts and deleted in the transaction that writes its
 `command_outputs` row: its number, the node that ran it, its device, its
 job's id on that device, the tool call that started it, when it started,
 the interval it reports at (null for a resident one), and the place in its output each node has looked to, which a look or a
-report moves ([Command reports](../agent/runtime.md#command-reports)).
+report moves ([Command reports](../agent/shell-tool.md#command-reports)).
 The control database's `running_jobs` table indexes them by device: each
 running job's id with its device and conversation, written before the job
 starts and deleted with the command's end. A runner's hello names its jobs,

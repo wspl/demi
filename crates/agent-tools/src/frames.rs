@@ -1,4 +1,4 @@
-//! The live view of a tree's commands as the pages receive it (`runtime.md`
+//! The live view of a tree's commands as the pages receive it (`shell-tool.md`
 //! § Live output): each command's `shell_output`, and the commands a node's
 //! transcript last saw running, which a page that attaches or asks for a
 //! fresh transcript receives with the ones that run.

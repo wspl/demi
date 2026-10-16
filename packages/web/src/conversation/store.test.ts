@@ -645,7 +645,7 @@ test('a resumed child\'s record takes its new round\'s start, end and model', ()
   })
 })
 
-// A child's tail row reads its own phase (`runtime.md` § Frame protocol): a
+// A child's tail row reads its own phase (`rendering.md` § Frame protocol): a
 // child idle beside a command it left running shows no Requesting row, and
 // its phase never becomes the root's.
 test('a live child\'s phase frames set its own phase, not the root\'s', () => {
@@ -675,7 +675,7 @@ function execCall(toolUseId: string, script: string, status: 'executing' | 'comp
   }
 }
 
-// `runtime.md` § Live output and § Rendering boundary: every page keeps one
+// `shell-tool.md` § Live output and § Rendering boundary: every page keeps one
 // record of a command from its live frames, titled by its call's description
 // and opening with its script, and adds only the characters beyond those it
 // has shown.
@@ -2801,7 +2801,7 @@ test('a Stop pressed as the page returns goes on the new socket, never on the on
 // page shows the conversation once, as the session has it, the transcript
 // with the steer and the Requesting clock counting on from the wait the
 // session tells, never a moment without the steer, with nothing running or
-// with a clock at 0s (`runtime.md` § Connections and the live tree,
+// with a clock at 0s (`rendering.md` § Connections and the live tree,
 // § Waiting for the model). Before, the transcript showed as soon as it was
 // read, a round trip before the handshake. Cost: one opening.
 test('a conversation opened during a turn shows its transcript with its steer and its wait together', async () => {

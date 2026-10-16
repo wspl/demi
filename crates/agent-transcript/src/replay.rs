@@ -1,4 +1,4 @@
-//! What the model receives of a transcript (`runtime.md` § Replay): the
+//! What the model receives of a transcript (`transcript.md` § Replay): the
 //! blocks from the last compaction boundary on, each as its inference item,
 //! with long texts cut in the middle (`compaction.md` § Text bounds), each
 //! medium with the bytes the session holds for it, and each medium the
@@ -223,7 +223,7 @@ fn kept_past_summary(blocks: &[Block], start: usize) -> std::ops::Range<usize> {
     start + 1..marker
 }
 
-/// A request of one model over the model's view (`runtime.md` § Replay,
+/// A request of one model over the model's view (`transcript.md` § Replay,
 /// § Media): the one owner of what each medium becomes in that request.
 /// Each medium goes with the bytes the session holds for it, within the
 /// types the model reads natively, each within half of its vendor's
@@ -267,7 +267,7 @@ impl<'a> RequestView<'a> {
     }
 
     /// A call of a tool the request does not declare, such as one removed
-    /// since, with its result, as the model's text (`runtime.md` § Replay):
+    /// since, with its result, as the model's text (`transcript.md` § Replay):
     /// `[called yield {"durationMs":600000}: yield scheduled]`.
     fn undeclared_call(&self, call: &ToolCallBlock) -> String {
         let input = tool_input(&call.input);
@@ -378,7 +378,7 @@ impl<'a> RequestView<'a> {
     /// Reports that arrived together as the model receives them: their text,
     /// one paragraph each, and after a report whose job viewed media, those
     /// media, each as a tool result's medium is replayed, with the lines
-    /// about them (`runtime.md` § What a result attaches).
+    /// about them (`shell-tool.md` § What a result attaches).
     fn reports(&self, reports: &[CommandReport]) -> Vec<UserPart> {
         let mut parts = Vec::new();
         let mut text: Vec<String> = Vec::new();

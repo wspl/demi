@@ -320,7 +320,7 @@ impl Mapper {
 impl ToolBlock {
     /// The call, with the input its deltas streamed, else the input its start
     /// carried, else an empty object. Streamed text that is not valid JSON is
-    /// kept as the string the vendor sent (`runtime.md` § Replay).
+    /// kept as the string the vendor sent (`transcript.md` § Replay).
     fn call(self) -> ToolCall {
         let input = if self.input_json.is_empty() {
             self.initial_input

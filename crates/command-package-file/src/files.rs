@@ -190,7 +190,7 @@ pub fn failure(error: &FileError) -> Completion {
 }
 
 /// Shows the model each path, or stdin for `-` and when it names none, in
-/// order (`runtime.md` § What `demi file view` shows). One that fails writes
+/// order (`shell-tool.md` § What `demi file view` shows). One that fails writes
 /// `<command>: <path>: <reason>` to stderr, and the next one is viewed; the
 /// command prints nothing to stdout and exits 1 when any failed.
 async fn view(mut context: InvocationContext, args: &ViewArgs) -> Result<Completion, ServiceError> {

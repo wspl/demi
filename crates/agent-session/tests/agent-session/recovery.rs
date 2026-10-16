@@ -32,7 +32,7 @@ fn retries(session: &AgentSession) -> (Subscription, Rc<RefCell<Vec<SessionEvent
 
 // A steer sent now stops a request that showed nothing and sends another
 // with it: Requesting reads 0s from that moment, while a retry of the same
-// request before it ran the clock on (`runtime.md` § Waiting for the
+// request before it ran the clock on (`rendering.md` § Waiting for the
 // model). A paused clock.
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn a_steer_sent_now_starts_the_wait_again_where_a_retry_runs_it_on() {

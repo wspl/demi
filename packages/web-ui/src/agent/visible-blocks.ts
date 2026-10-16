@@ -4,10 +4,10 @@ import { reportShown } from './command-reports'
 /**
  * The blocks the transcript shows. The hidden input, `context`, reaches the
  * model but never the reader; a `wakeup` shows as the rows of the ends it
- * reports, and not at all for progress alone (`runtime.md` § Block types).
+ * reports, and not at all for progress alone (`transcript.md` § Block types).
  * Where a turn went on after it was cut, a `resume` block and a Stop the
  * user continued, shows nothing and ends no run: the steps after it join
- * the run before (`runtime.md` § Work groups).
+ * the run before (`rendering.md` § Work groups).
  *
  * A compaction shows where it was triggered: at its marker, appended at the
  * end when the pass finished. Its boundary, which the pass inserted earlier,
@@ -15,7 +15,7 @@ import { reportShown } from './command-reports'
  *
  * Redacted reasoning shows as thinking without text, which it is to the
  * reader: one rule then shows both while they are the newest block of a
- * running turn, and neither once anything follows (`runtime.md` § Work
+ * running turn, and neither once anything follows (`rendering.md` § Work
  * groups).
  */
 export function getVisibleBlocks(blocks: readonly Block[]): Block[] {

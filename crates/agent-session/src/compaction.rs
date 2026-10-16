@@ -311,7 +311,7 @@ async fn over_threshold_of(
 /// Runs `work` in the compacting stage, which clients see as the phase
 /// `compacting`, and returns to the stage before it. A wait for the model
 /// pauses meanwhile, since the page shows the pass instead, and starts
-/// again at its end (`runtime.md` § Waiting for the model).
+/// again at its end (`rendering.md` § Waiting for the model).
 pub(super) async fn compacting<T>(
     s: &SessionShared,
     work: impl Future<Output = Result<T, TurnError>>,
@@ -356,7 +356,7 @@ pub(super) async fn context_usage(
 }
 
 /// The usage as [`context_usage`] says it, without reading a blob, as
-/// opening a conversation reads none (`runtime.md` § Media): none while a
+/// opening a conversation reads none (`transcript.md` § Media): none while a
 /// block the estimate weighs references a medium the session holds nothing
 /// for (`compaction.md` § Context estimate).
 pub(super) async fn held_context_usage(s: &SessionShared) -> Option<ContextUsage> {
@@ -390,7 +390,7 @@ fn usage_at(
 }
 
 /// Tells the clients the usage after a response, a pass or an action
-/// (`runtime.md` § Server frames). A media read that fails here leaves the
+/// (`rendering.md` § Server frames). A media read that fails here leaves the
 /// clients with the usage they had: the next request reads the same media
 /// and reports its failure where the turn can act on it.
 pub(super) async fn report_context_usage(s: &SessionShared, cancel: &TurnCancel) {

@@ -1,4 +1,4 @@
-//! The text the model reads of command reports (`runtime.md` § Command
+//! The text the model reads of command reports (`shell-tool.md` § Command
 //! reports), rendered from a `wakeup` block's reports wherever they are
 //! replayed or estimated: each names the command by its number and its
 //! call's title, says what happened, and carries its output as a `shell`

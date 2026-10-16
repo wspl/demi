@@ -8,7 +8,7 @@ use crate::ProviderFailure;
 
 /// Runs `encode`, which builds a request body and serializes it, such as
 /// with [`json_body`], on the blocking pool. Building a body cannot fail: a
-/// request carries its media's bytes, never a reference (`runtime.md`
+/// request carries its media's bytes, never a reference (`transcript.md`
 /// § Media). A body whose work panicked fails the run without a code, as a
 /// request Demi could not build. Dropping the future while it runs leaves
 /// the work to finish there; it has no effect beyond its result, which is

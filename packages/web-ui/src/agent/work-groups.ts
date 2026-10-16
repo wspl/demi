@@ -10,7 +10,7 @@ import { receiptRow } from './agent-receipts'
 import { shellStatusLooks, toolRenderKind } from './tool-rendering'
 
 /**
- * A step of the agent's work (`runtime.md` § Work groups): a thinking block,
+ * A step of the agent's work (`rendering.md` § Work groups): a thinking block,
  * a tool call, a call the model is still writing, a command's notice (a
  * `wakeup` that shows), or an agent's receipt: an update or a child's end.
  * The receipts of the user's own decisions are not steps: like the user's
@@ -26,7 +26,7 @@ type CallStep = Extract<WorkStep, { type: 'tool_call' | 'pending_call' }>
 
 /**
  * The steps of a run that have ended, which the transcript shows as one row
- * (`runtime.md` § Work groups): a lone step as its own row, more as what
+ * (`rendering.md` § Work groups): a lone step as its own row, more as what
  * they did, which opens to every step. A step that still runs is a row of
  * its own under it.
  */
@@ -44,7 +44,7 @@ export interface WorkGroupBlock {
 
 /**
  * Whether a block the transcript shows is a step of the work: one the
- * backend stored in a run (`runtime.md` § Work groups), or a call the model
+ * backend stored in a run (`rendering.md` § Work groups), or a call the model
  * is still writing, which joins the run at the transcript's end.
  */
 export function isWorkStep(block: MessageListBlock): block is WorkStep {
@@ -89,7 +89,7 @@ function isEmptyThinking(block: MessageListBlock): boolean {
 }
 
 /**
- * The list's rows with the work grouped (`runtime.md` § Work groups): the
+ * The list's rows with the work grouped (`rendering.md` § Work groups): the
  * steps of one run, as the backend stored each step's run, and the calls
  * being written after them. A thinking block without text shows only while
  * it is the newest block of a running turn, as what the agent is doing;
@@ -187,7 +187,7 @@ type HeldThinking = Extract<HeldBlock, { type: 'thinking' }>
 
 /**
  * Thinking blocks next to each other, with no other step between them, as
- * the one step the page shows them as (`runtime.md` § Work groups): named
+ * the one step the page shows them as (`rendering.md` § Work groups): named
  * and started as the first, so its row stays the row it was when the next
  * one streams in and it ends where the last ends, which makes its time
  * theirs together; its text theirs in order, a paragraph apart; light while
@@ -249,7 +249,7 @@ type CallBlockStep = Extract<WorkStep, { type: 'tool_call' }>
 /**
  * The `shell` calls of a run that returned while their command ran on, as
  * their stored view says, whose live frames say whether it still does: the
- * run's row wears their time until they end (`runtime.md` § Work groups).
+ * run's row wears their time until they end (`rendering.md` § Work groups).
  */
 export function runningOn(steps: readonly WorkStep[]): CallBlockStep[] {
   return steps.filter((step): step is CallBlockStep =>
@@ -259,7 +259,7 @@ export function runningOn(steps: readonly WorkStep[]): CallBlockStep[] {
 
 /**
  * The time `group`'s steps took, each from its start to its end, added up
- * (`runtime.md` § Work groups): a call until it returned, so a command left
+ * (`rendering.md` § Work groups): a call until it returned, so a command left
  * running in the background counts only until then, and a thinking until
  * the next block started. The time the turn waited for the model between
  * steps is no step's. A notice or a receipt takes none.
@@ -275,7 +275,7 @@ export function runTime(group: WorkGroupBlock): number {
 }
 
 /**
- * What a run of more than one step says (`runtime.md` § Work groups): what
+ * What a run of more than one step says (`rendering.md` § Work groups): what
  * it did, then its total time in the same sentence, Ran 3 commands for
  * 1m 32s, as Thought for 5s says it; a run under a second says no time, as
  * Thought briefly names none.
@@ -395,7 +395,7 @@ function toldWords(told: Told): string {
  * What the run's notices and receipts told, each kind once, by how its
  * command or agent ended, in the order the run first had it, counting the
  * commands and the agents they named, each once: a run without a call reads
- * them, as nothing else says what happened (`runtime.md` § Work groups).
+ * them, as nothing else says what happened (`rendering.md` § Work groups).
  */
 function describeNotices(steps: readonly WorkStep[]): string {
   const told = new Map<string, Told>()
@@ -423,7 +423,7 @@ function describeNotices(steps: readonly WorkStep[]): string {
 }
 
 /**
- * What an ended group says it did (`runtime.md` § Work groups): each kind of
+ * What an ended group says it did (`rendering.md` § Work groups): each kind of
  * call once, in the order the run first made it; a run without a call, what
  * its notices and receipts told.
  */

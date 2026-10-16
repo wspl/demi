@@ -1,4 +1,4 @@
-//! A command's whole output (`runtime.md` § Results and previews, § The
+//! A command's whole output (`shell-tool.md` § Results and previews, § The
 //! whole output): the backend stores it when the command ends, and its Host
 //! then keeps nothing of it; the result that reports the end shows its first
 //! and last lines and names the rest; `demi shell output` prints what the

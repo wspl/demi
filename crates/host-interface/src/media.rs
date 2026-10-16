@@ -1,4 +1,4 @@
-//! A command's media (`runtime.md` § Media the model views): the images,
+//! A command's media (`shell-tool.md` § Media the model views): the images,
 //! videos and PDF documents its job viewed, as the backend holds them once
 //! the command ended.
 

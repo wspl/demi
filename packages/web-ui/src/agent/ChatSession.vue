@@ -234,7 +234,7 @@ provideResumeAtRetry(() => props.resumeAtRetry === undefined
   : { on: props.resumeAtRetry, set: (on) => emit('update:resumeAtRetry', on) })
 provideBlockReader(() => props.readBlock)
 // A running call shows its command's output under it; once the call
-// returned, a command that still runs is the dock's (`runtime.md`
+// returned, a command that still runs is the dock's (`rendering.md`
 // § Rendering boundary).
 const commandOf = useCallTerminals(() => props.conversation.terminals)
 provideLiveCalls((toolUseId) => commandOf(undefined, toolUseId))
