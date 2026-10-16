@@ -1,7 +1,6 @@
 import { expect, test } from 'bun:test'
 import {
   afterDecision,
-  categoryTitle,
   requestAction,
   requestTitle,
   type PermissionCategoryView,
@@ -17,12 +16,12 @@ const organize: PermissionCategoryView = { id: 'conversation.organize', action: 
 const buildBox: PermissionHostView = { kind: 'device', deviceId: 'd1', name: 'build-box' }
 const studio: PermissionHostView = { kind: 'device', deviceId: 'd2', name: 'studio' }
 
-function request(id: string, ...categories: PermissionCategoryView[]): PermissionRequestView {
-  return { kind: 'permission', id, categories: categories.length ? categories : [skills], host: null, command: `demi ${id}`, subagent: null }
+function request(id: string, category: PermissionCategoryView = skills): PermissionRequestView {
+  return { kind: 'permission', id, categories: [category], host: null, command: `demi ${id}`, subagent: null }
 }
 
-function reaching(id: string, host: PermissionHostView, ...categories: PermissionCategoryView[]): PermissionRequestView {
-  return { kind: 'permission', id, categories, host, command: `demi ${id}`, subagent: null }
+function reaching(id: string, host: PermissionHostView): PermissionRequestView {
+  return { kind: 'permission', id, categories: [], host, command: `demi ${id}`, subagent: null }
 }
 
 test('the card shows at once what a decision leaves: an allow takes every request it completes, a deny one request', () => {
@@ -31,21 +30,20 @@ test('the card shows at once what a decision leaves: an allow takes every reques
   expect(afterDecision(queue, 'a', 'deny').map((each) => each.id)).toEqual(['b', 'c'])
   // Another page decided it first: nothing changes here.
   expect(afterDecision(queue, 'gone', 'allow').map((each) => each.id)).toEqual(['a', 'b', 'c'])
-  // Allowing a category and a host completes a request of either; one of
-  // the category alone completes no request that also needs the host, and
-  // a host completes no request of another host or of a pairing, whose code
-  // the page does not know.
+  // A host completes the requests of that host, never one of another host
+  // or of a pairing, whose code the page does not know; a category never
+  // completes a host's.
   const moves = [
-    reaching('move', buildBox, organize),
-    request('rename', organize),
     reaching('attach', buildBox),
+    request('rename', organize),
+    reaching('again', buildBox),
     reaching('studio', studio),
     reaching('pair', { kind: 'pairing' }),
     request('skills'),
   ]
-  expect(afterDecision(moves, 'move', 'allow').map((each) => each.id)).toEqual(['studio', 'pair', 'skills'])
-  expect(afterDecision(moves, 'rename', 'allow').map((each) => each.id)).toEqual(['move', 'attach', 'studio', 'pair', 'skills'])
-  expect(afterDecision(moves, 'pair', 'allow').map((each) => each.id)).toEqual(['move', 'rename', 'attach', 'studio', 'skills'])
+  expect(afterDecision(moves, 'attach', 'allow').map((each) => each.id)).toEqual(['rename', 'studio', 'pair', 'skills'])
+  expect(afterDecision(moves, 'rename', 'allow').map((each) => each.id)).toEqual(['attach', 'again', 'studio', 'pair', 'skills'])
+  expect(afterDecision(moves, 'pair', 'allow').map((each) => each.id)).toEqual(['attach', 'rename', 'again', 'studio', 'skills'])
 })
 
 test('a credential or an allowance is decided alone, whatever the permission requests around it', () => {
@@ -61,16 +59,10 @@ test('a credential or an allowance is decided alone, whatever the permission req
   expect(afterDecision(queue, 'w', 'deny').map((each) => each.id)).toEqual(['a', 'c', 'b'])
 })
 
-test('a request of several parts asks for their actions joined with "and"; a host alone asks to reach it', () => {
-  expect(requestAction(request('two', organize, skills))).toBe('organize conversations and manage skills')
+test('a request of a category asks for its action, and a host’s to reach it', () => {
+  expect(requestAction(request('rename', organize))).toBe('organize conversations')
   expect(requestAction(request('gone', retired))).toBe('conversations.read')
-  expect(requestTitle(reaching('move', buildBox, organize))).toBe('Allow this conversation to organize conversations and reach build-box?')
+  expect(requestTitle(request('rename', organize))).toBe('Allow this conversation to organize conversations?')
   expect(requestTitle(reaching('host', buildBox))).toBe('Allow this conversation to reach build-box?')
   expect(requestTitle(reaching('pair', { kind: 'pairing' }))).toBe('Allow this conversation to pair a computer and reach it?')
-})
-
-test('a category is titled by its action, and by its id once the command set no longer declares it', () => {
-  expect(categoryTitle(skills)).toBe('Manage Skills')
-  expect(categoryTitle(organize)).toBe('Organize Conversations')
-  expect(categoryTitle(retired)).toBe('conversations.read')
 })

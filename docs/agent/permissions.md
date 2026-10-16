@@ -211,45 +211,23 @@ names the subagent that asked.
 A host is allowed on its own: the list of hosts a conversation may reach
 grows one host at a time, by the user's answer to the agent that asked
 ([Hosts a conversation may reach](../execution/sessions-and-targets.md#hosts-a-conversation-may-reach)).
-A leaf whose argument names a host, a device or a project declares that
-argument as `bringsHost`, saying which it names; the check resolves it
-once, a project by its id or name to its host, a host by the name it has in
+A leaf whose argument names a host or a device declares that
+argument as `bringsHost`; the check resolves it
+once, by the name it has in
 the conversation, a device's id, a paired device's name, then `Cloud`, and
 needs that host when the conversation may not reach it. `demi host pair`
 always brings a host the conversation may not reach, since the computer is
 not yet paired, and names it by its pairing code: Allow lets the
 conversation pair that code, so the agent's next `demi host pair` with it is
-dispatched, and the device it pairs joins the list. Another code asks again. The request holds the host
-as `host`, beside the categories, and one command that needs both, such as
-`demi conversation move website` into a project on a host the
-conversation lacks without Organize Conversations, is one request:
+dispatched, and the device it pairs joins the list. Another code asks again. The request holds the host as `host`; no command
+needs a category and a host at once.
 
-```text
-+---------------------------------------------------------------+
-| Allow this conversation to organize conversations and reach   |
-| build-box?                                                    |
-|                                                               |
-| The agent ran                                                 |
-|   demi conversation move website                          |
-|                                                               |
-| ▸ Organize Conversations                                      |
-|   Organize Conversations lets the agents of this ...          |
-| ▸ build-box                                                   |
-|   The agents of this conversation run commands as you on      |
-|   build-box, and can make it where this conversation runs.    |
-|                                                               |
-|                                         [ Deny ]  [ Allow ]   |
-+---------------------------------------------------------------+
-```
-
-The request holds only what the conversation lacks. Allow grants all of it
-and Deny none: a part would not let the command run. A request for a host
-alone says *Allow this conversation to reach build-box?*, and for a pairing
-*Allow this conversation to pair a computer and reach it?*; its button reads
-**Allow**, since a host is allowed for this conversation by nature, while a
-request of categories alone keeps **Allow for This Conversation**. The
-decision's message joins the actions with "and" as the title does: `reach
-build-box`, `pair a computer and reach it`.
+A request for a host says *Allow this conversation to reach build-box?*, and
+for a pairing *Allow this conversation to pair a computer and reach it?*;
+its button reads **Allow**, since a host is allowed for this conversation by
+nature, while a request of a category keeps **Allow for This
+Conversation**. The decision's message names the action as the title does:
+`reach build-box`, `pair a computer and reach it`.
 
 ## Grants
 
@@ -347,7 +325,6 @@ calls a real model.
 | A second `demi skills` change in the same conversation, by a subagent | It runs without a request |
 | The same command in another conversation | It raises a request |
 | The user denies it | The agent receives the denied message; no grant is stored; the next attempt raises a new request |
-| `demi conversation move` into a project on a host the conversation may not reach, without Organize Conversations | One request of the category and the host; Allow grants both and the command then runs; with Organize Conversations granted before, the request holds the host alone |
 | `demi host move build-box /srv/app` to a host the conversation may not reach; later `demi host move Cloud /home/demi/app` back, `demi host attach build-box` | The first asks *reach build-box?*; once allowed, the later ones ask nothing |
 | `demi host pair <code>` | Asks *pair a computer and reach it?*; once allowed, the same command pairs the computer and the device joins the list; a second computer's code asks again |
 | `demi host devices` | Lists without asking |

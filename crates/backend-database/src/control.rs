@@ -614,6 +614,12 @@ pub mod testing {
             .unwrap()
     }
 
+    /// Records `home` as the one `device`'s runner last reported, as a
+    /// hello would, for a test of a device whose runner it does not play.
+    pub async fn report_home(control: &ControlService, device: &demi_web_api_protocol::ids::DeviceId, home: &str) {
+        execute(control, "UPDATE devices SET home = ?1 WHERE id = ?2", vec![home.to_owned(), device.to_string()]).await;
+    }
+
     /// Runs `sql` on the control database with text parameters, for a test
     /// that changes a row behind the service's back.
     pub async fn execute(control: &ControlService, sql: &'static str, parameters: Vec<String>) {

@@ -10,6 +10,7 @@
 //! destination, and startup publishes a destination whose root committed
 //! before its publication.
 
+use demi_backend_database::Selection;
 use demi_agent_session::ForkError;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
@@ -99,8 +100,8 @@ impl Shard {
                 .read(&destination, tree::has_root)
                 .await?;
             if committed == Some(true) {
-                let record = control.publish_fork(destination).await?;
-                self.published(&record);
+                let (record, made) = control.publish_fork(destination).await?;
+                self.published(&record, made.is_some());
                 return Ok(Forked {
                     record,
                     created: false,
@@ -115,18 +116,14 @@ impl Shard {
         let operation = match reserved {
             Some(operation) => operation,
             None => {
-                // A Cloud target keeps the source's resolved directory.
+                // The destination keeps the source's directory: on the
+                // Cloud, the source's own.
+                let resolved = self.host_shard().resolve_target(&source).await?;
                 let target = match &source.target {
-                    ConversationTarget::Cloud { path: None } => ConversationTarget::Cloud {
-                        path: Some(
-                            self.host_shard()
-                                .resolve_target(&source)
-                                .await?
-                                .path()
-                                .to_owned(),
-                        ),
+                    Selection::Cloud { path: None } => ConversationTarget::Cloud {
+                        path: Some(resolved.path().to_owned()),
                     },
-                    target => target.clone(),
+                    selection => selection.shown(&resolved),
                 };
                 let operation = ForkOperation {
                     id: destination.clone(),
@@ -219,16 +216,20 @@ impl Shard {
             .initialize_fork(&root_of(&destination), seed)
             .await
             .map_err(refused)?;
-        let record = control.publish_fork(destination).await?;
-        self.published(&record);
+        let (record, made) = control.publish_fork(destination).await?;
+        self.published(&record, made.is_some());
         Ok(Forked {
             record,
             created: true,
         })
     }
 
-    /// Shows a Fork's destination, just published, on the user's pages.
-    fn published(&self, record: &ConversationRecord) {
+    /// Shows a Fork's destination, just published, on the user's pages,
+    /// with the project its directory made, if it `made` one.
+    fn published(&self, record: &ConversationRecord, made: bool) {
+        if made {
+            self.mark(Part::Workspaces);
+        }
         self.mark(Part::Conversation(record.id.clone()));
         self.mark(Part::ConversationOrder);
     }
@@ -435,7 +436,9 @@ mod tests {
             ),
             (
                 Some("Notes (Fork)"),
-                &operation(&committed).metadata.target,
+                &Selection::Cloud {
+                    path: Some(format!("/home/demi/sessions/{source}"))
+                },
                 false,
                 false
             )

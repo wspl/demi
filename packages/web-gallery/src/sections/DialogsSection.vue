@@ -33,7 +33,7 @@ import ConversationDeleteDialog from '@demicodes/web-ui/sidebar/ConversationDele
 import type { PairingPhase } from '@demicodes/web-ui/devices/pairing'
 import type { DeviceInstallCommands } from '@demicodes/web-ui/devices/installation'
 import WorkspaceDialog from '@demicodes/web-ui/hosts/WorkspaceDialog.vue'
-import type { WorkspaceDevice, WorkspaceHostChoice } from '@demicodes/web-ui/hosts/workspace'
+import type { WorkspaceDevice, WorkspaceDraft, WorkspaceHostChoice } from '@demicodes/web-ui/hosts/workspace'
 import FileBrowserDialog from '@demicodes/web-ui/files/FileBrowserDialog.vue'
 import CloudResetDialog from '@demicodes/web-ui/cloud/CloudResetDialog.vue'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
@@ -303,6 +303,22 @@ const devices: WorkspaceDevice[] = shownAmong([
   { id: hosts[0]!.id, name: hosts[0]!.label, state: 'online', mark: hosts[0]!.mark ?? null },
   { id: 'build-01', name: 'build-01', state: 'offline', mark: GALLERY_MARKS.ubuntu },
 ])
+/**
+ * What New Project does with `draft`, as the gallery says it: a device's
+ * Recent folders stand for its projects, and a folder that is one already
+ * opens that project rather than making a second.
+ */
+function newProjectTitle(draft: WorkspaceDraft): HeadlineText {
+  if (draft.kind === 'cloud') {
+    return `Create the Cloud Project ${draft.name} and Open a New Conversation in It`
+  }
+  const projects = hosts.find((host) => host.id === draft.deviceId)?.places.find((group) => group.label === 'Recent')?.places ?? []
+  const existing = projects.find((place) => place.path === draft.path.replace(/\/+$/, ''))
+  return existing
+    ? `Open the Project at ${existing.path} and a New Conversation in It`
+    : `Set Up the Project at ${draft.path} and Open a New Conversation in It`
+}
+
 function sourceFor(deviceId: string) {
   return (hosts.find((host) => host.id === deviceId) ?? hosts[0]!).source
 }
@@ -703,7 +719,7 @@ const resetPhases: {
           </GallerySpecimen>
         </div>
       </GallerySection>
-      <GallerySection title="New Project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product’s preference does. Moving a conversation between existing projects is the header’s menus, not a dialog. The directory completes from the device’s folders as it is typed: the folder before the caret lists under the field, filtered fuzzily by what follows its last slash; the menu opens with its first row selected, and again whenever its rows change; ↓ and ↑ and the moving pointer move the selection, which is the one lit row, Tab completes it and the menu goes on into it, and Return creates the project with what the field holds; Escape or a click anywhere outside it puts the menu away and leaves the focus where the click put it, and with no menu Tab moves the focus as anywhere. The button says Add Project for a directory that exists and Create Project for one Demi will make, as the device’s folders tell; Projects/demi exists, Projects/weather-app does not.">
+      <GallerySection title="New Project" note="A project on the Cloud or a device. The first time it opens on the Cloud; after that on the kind and the device chosen last, which each specimen remembers across Close and Open as the product’s preference does. Moving a conversation between existing projects is the header’s menus, not a dialog. The directory completes from the device’s folders as it is typed: the folder before the caret lists under the field, filtered fuzzily by what follows its last slash; the menu opens with its first row selected, and again whenever its rows change; ↓ and ↑ and the moving pointer move the selection, which is the one lit row, Tab completes it and the menu goes on into it, and Return creates the project with what the field holds; Escape or a click anywhere outside it puts the menu away and leaves the focus where the click put it, and with no menu Tab moves the focus as anywhere. The button says Add Project for a directory that exists and Create Project for one Demi will make, as the device’s folders tell; Projects/demi exists, Projects/weather-app does not. A folder that is a project already, Projects/shop here, opens that project rather than making a second.">
         <div class="grid items-start gap-6 lg:grid-cols-2">
           <GallerySpecimen v-for="(form, index) in projectForms" :key="form.variant" wide :variant="form.variant">
             <GalleryDialogFrame v-slot="{ open, close }">
@@ -716,7 +732,7 @@ const resetPhases: {
                 :source-for="sourceFor"
                 :places-for="placesFor"
                 @close="close"
-                @create="(draft) => finishSlowly(close, draft.kind === 'cloud' ? `Create the Cloud Project ${draft.name} and Open a New Conversation in It` : `Set Up the Project at ${draft.path} and Open a New Conversation in It`)"
+                @create="(draft) => finishSlowly(close, newProjectTitle(draft))"
                 @choose="(choice) => (projectLastHosts[index] = choice)"
                 @connect-device="productWould('Add Device')"
                 @retry="productWould('Load the Devices Again')"

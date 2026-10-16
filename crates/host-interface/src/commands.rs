@@ -6,7 +6,7 @@
 use std::{collections::HashMap, rc::Rc};
 
 use demi_command_declarations::{
-    BroughtKind, CapabilityIndex, Category, Group, Leaf, LeafKind, NativeOperation, Node, check_input_subset,
+    CapabilityIndex, Category, Group, Leaf, LeafKind, NativeOperation, Node, check_input_subset,
     render_index,
 };
 
@@ -45,11 +45,11 @@ impl Declared {
 }
 
 /// An `rpc` call the command set accepts: the permission category its leaf
-/// needs, if any, the device or project its `bringsHost` argument names, if
-/// it gives one, and the handler that runs it.
+/// needs, if any, the host its `bringsHost` argument names, if it gives
+/// one, and the handler that runs it.
 pub struct Checked<'a> {
     pub category: Option<&'a Category>,
-    pub brings_host: Option<(BroughtKind, String)>,
+    pub brings_host: Option<String>,
     pub handler: &'a Rc<dyn RpcHandler>,
 }
 
@@ -253,7 +253,7 @@ impl CommandSet {
         });
         let brings_host = leaf.brings_host.as_ref().and_then(|brings| {
             let named = invocation.args.get(&brings.field)?.as_str()?;
-            Some((brings.names, named.to_owned()))
+            Some(named.to_owned())
         });
         Ok(Checked {
             category,

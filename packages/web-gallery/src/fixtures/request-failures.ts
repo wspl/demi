@@ -33,7 +33,12 @@ export function requestFailure(message: string): ShownError {
  * and the request it answered.
  */
 export function refusalFailure(code: string, params: Readonly<Record<string, string | number>> = {}): ShownError {
-  return shownError(Object.assign(coded(new Error(code), code, params), { requestId: simulatedRequestId(code) }))
+  return shownError(refusal(code, params))
+}
+
+/** A refusal of the backend's as an error, for a specimen that reports it as the product does (`reportError`). */
+export function refusal(code: string, params: Readonly<Record<string, string | number>> = {}): Error {
+  return Object.assign(coded(new Error(code), code, params), { requestId: simulatedRequestId(code) })
 }
 
 /**

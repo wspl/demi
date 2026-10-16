@@ -1,6 +1,5 @@
 import { findText, pageLanguage } from '../i18n/text'
 import { find, t } from './locales/text'
-import { titleCase } from '@demicodes/utils'
 
 /**
  * Conversation requests as the page shows them (`permissions.md` § What the
@@ -22,13 +21,13 @@ export interface PermissionCategoryView {
 /** A host a request asks the conversation to reach: a device by the name the user knows it by, or the computer a pairing pairs. */
 export type PermissionHostView = { kind: 'device'; deviceId: string; name: string } | { kind: 'pairing' }
 
-/** One undecided request: the command an agent ran without the grants of its categories or the host it brings, at least one of the two. */
+/** One undecided request: the command an agent ran without the grant of its category or the host it brings, never both. */
 export interface PermissionRequestView {
   kind: 'permission'
   id: string
-  /** The categories the conversation lacked, in the backend's order. */
+  /** The category the conversation lacked; none when the request asks for a host. */
   categories: PermissionCategoryView[]
-  /** The host the command asks to reach; null for a request of categories alone. */
+  /** The host the command asks to reach; null for a request of a category. */
   host: PermissionHostView | null
   /** The command line as the agent ran it. */
   command: string
@@ -119,7 +118,7 @@ export const KEEP_OPTIONS: readonly { value: CredentialKeep; label: string }[] =
  * the id's dots are underscores there. Null for a category no catalogue
  * words, which shows the command set's English.
  */
-function categoryText(id: string, field: 'action' | 'title' | 'description'): string | null {
+function categoryText(id: string, field: 'action' | 'description'): string | null {
   const key = id.replaceAll('.', '_')
   const plugin = id.split('.')[0]
   return find(`categories.${key}.${field}`) ?? findText(`plugins.${plugin}.permissions.${key}.${field}`)
@@ -162,14 +161,9 @@ export function hostDescription(host: PermissionHostView): string {
   return host.kind === 'device' ? t('host.description', { host: host.name }) : t('host.pairingDescription')
 }
 
-/** The host's title among a request's parts: its name, or *New Computer* for a pairing. */
-export function hostTitle(host: PermissionHostView): string {
-  return host.kind === 'device' ? host.name : t('host.pairingTitle')
-}
-
-/** The card's title: a host alone asks to reach it, anything else to do its parts' actions. */
+/** The card's title: a host's asks to reach it, a category's to do its action. */
 export function requestTitle(request: Pick<PermissionRequestView, 'categories' | 'host'>): string {
-  if (request.categories.length === 0 && request.host) {
+  if (request.host) {
     return request.host.kind === 'device'
       ? t('host.allowTitle', { host: request.host.name })
       : t('host.allowPairingTitle')
@@ -183,32 +177,25 @@ export function useCredentialAction(name: string): string {
 }
 
 /**
- * What the request lets the conversation do: its categories' actions and
- * its host's joined with "and", as the card's title and the agent's message
- * join them (`permissions.md` § Hosts).
+ * What the request lets the conversation do: its host's action or its
+ * category's, as the card's title and the agent's message say it
+ * (`permissions.md` § Hosts).
  */
 export function requestAction(request: Pick<PermissionRequestView, 'categories' | 'host'>): string {
-  const actions = request.categories.map(categoryAction)
   if (request.host) {
-    actions.push(hostAction(request.host))
+    return hostAction(request.host)
   }
-  return new Intl.ListFormat(pageLanguage(), { type: 'conjunction' }).format(actions)
-}
-
-/** The category's title, such as “Manage Skills”, as its description names it: its words, else its English action in title case, or its id as it is when it is no longer declared. */
-export function categoryTitle(category: PermissionCategoryView): string {
-  return categoryText(category.id, 'title') ?? (category.action === null ? category.id : titleCase(category.action))
+  // A request asks for its host or, without one, for its one category.
+  return categoryAction(request.categories[0]!)
 }
 
 /**
  * The requests left once the user decided `id` (`permissions.md`
- * § Requests): an allow of a permission request grants its categories and
- * its host and decides every permission request they complete, a deny
+ * § Requests): an allow of a permission request grants its category or
+ * its host and decides every permission request of the same, a deny
  * decides that one alone, and a credential or an allowance is decided alone
- * either way. A request that also needs a category granted before, or
- * another host, is left for the backend's answer to decide, since the page
- * knows neither the grants nor the hosts the conversation reaches; so is
- * another pairing, whose code the page does not know.
+ * either way. Another pairing is left for the backend's answer to decide,
+ * since the page does not know its code.
  */
 export function afterDecision(
   requests: readonly RequestView[],
@@ -222,15 +209,9 @@ export function afterDecision(
   if (decision === 'deny' || decided.kind !== 'permission') {
     return requests.filter((request) => request.id !== id)
   }
-  const granted = new Set(decided.categories.map((category) => category.id))
-  const reached = (host: PermissionHostView | null) =>
-    host === null ||
-    (host.kind === 'device' && decided.host?.kind === 'device' && host.deviceId === decided.host.deviceId)
-  return requests.filter(
-    (request) =>
-      request.id !== id &&
-      (request.kind !== 'permission' ||
-        !request.categories.every((category) => granted.has(category.id)) ||
-        !reached(request.host)),
-  )
+  const same = (request: PermissionRequestView) =>
+    request.host
+      ? request.host.kind === 'device' && decided.host?.kind === 'device' && request.host.deviceId === decided.host.deviceId
+      : decided.host === null && request.categories[0]?.id === decided.categories[0]?.id
+  return requests.filter((request) => request.id !== id && (request.kind !== 'permission' || !same(request)))
 }

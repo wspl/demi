@@ -34,12 +34,13 @@ import SidebarAccountRow from './SidebarAccount.vue'
 import SidebarGroupLabel from './SidebarGroupLabel.vue'
 import SidebarNavItem from './SidebarNavItem.vue'
 import SidebarProjectHeader from './SidebarProjectHeader.vue'
-import { projectsNamingTheirHost } from './project-hosts'
+import { projectHostName, projectsNamingTheirHost } from './project-hosts'
 import SidebarProjectMenu from './SidebarProjectMenu.vue'
 import SidebarRow from './SidebarRow.vue'
 import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
 import { useRevealOpen } from './reveal-open'
 import ConversationDeleteDialog from './ConversationDeleteDialog.vue'
+import ProjectDeleteDialog from './ProjectDeleteDialog.vue'
 
 /**
  * Top: the app and its entries: New, Search, then the entries the host gives, such as a
@@ -61,7 +62,10 @@ const props = defineProps<{
   newShortcut?: string
   /** The keys Search conversations has in the keyboard settings, which Search shows; none when it has none. */
   searchShortcut?: string
-  /** Removes a project; its row works until it settles. */
+  /**
+   * Deletes a project once the user confirmed it, which archives its
+   * conversations; its row works until it settles.
+   */
   onRemoveProject?: Action<[id: string]>
   /** Signs this browser out; the account's row works until the page goes. */
   onSignOut?: Action
@@ -443,6 +447,35 @@ function confirmDelete(): void {
   emit('delete', deleteTargets.value.map((target) => target.id))
 }
 
+/** The project Delete Project… asks about, and whether it asks. */
+const deletingProject = ref<SidebarProject | null>(null)
+const projectDeleteOpen = ref(false)
+
+function askDeleteProject(project: SidebarProject): void {
+  deletingProject.value = project
+  projectDeleteOpen.value = true
+}
+
+/** Delete confirmed: once it is done, the question closes, if it still asks about this project. */
+async function confirmProjectDelete(): Promise<void> {
+  const project = deletingProject.value
+  if (!project) {
+    return
+  }
+  try {
+    await props.onRemoveProject?.(project.id)
+  } finally {
+    if (deletingProject.value?.id === project.id) {
+      projectDeleteOpen.value = false
+    }
+  }
+}
+
+/** How many of the project's conversations the sidebar lists, which its deletion archives. */
+function projectCount(project: SidebarProject): number {
+  return groups.value.find((group) => group.project.id === project.id)?.items.length ?? 0
+}
+
 function rowMenuOpenFor(id: string): boolean {
   return rowMenu.isOpen.value && menuTargets.value.some((target) => target.id === id)
 }
@@ -722,14 +755,25 @@ function selectProjectConversations(project: SidebarProject): void {
           v-if="menuProject"
           :project="menuProject"
           :folded="isFolded(menuProject.id)"
-          :count="groups.find((group) => group.project.id === menuProject?.id)?.items.length ?? 0"
+          :count="projectCount(menuProject)"
           @create="emit('create', menuProject.id)"
           @toggle-fold="setFolded(menuProject.id, !isFolded(menuProject.id))"
           @select-all="selectProjectConversations(menuProject)"
-          @remove="onRemoveProject?.(menuProject.id)"
+          @delete="askDeleteProject(menuProject)"
         />
       </template>
     </ContextMenu>
+    <ProjectDeleteDialog
+      v-if="deletingProject"
+      :is-open="projectDeleteOpen"
+      :overlay-store="appOverlayStore"
+      :id="deletingProject.id"
+      :name="deletingProject.name"
+      :count="projectCount(deletingProject)"
+      :host="projectHostName(deletingProject)"
+      @close="projectDeleteOpen = false"
+      @delete="confirmProjectDelete"
+    />
   </aside>
 </template>
 

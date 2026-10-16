@@ -31,28 +31,23 @@
     "allowTitle": "允許此對話存取 {host}？",
     "allowPairingTitle": "允許此對話配對一台電腦並存取它？",
     "description": "此對話的智慧體會以你的身分在 {host} 上執行指令，並可讓此對話改在 {host} 上執行。",
-    "pairingDescription": "此對話的智慧體會將這台電腦與你的帳號配對、以你的身分在上面執行指令，並可讓此對話改在這台電腦上執行。",
-    "pairingTitle": "新電腦"
+    "pairingDescription": "此對話的智慧體會將這台電腦與你的帳號配對、以你的身分在上面執行指令，並可讓此對話改在這台電腦上執行。"
   },
   "categories": {
     "credentials_manage": {
       "action": "管理憑證",
-      "title": "管理憑證",
       "description": "「管理憑證」可讓此對話的智慧體移除你已儲存的憑證。你的憑證可用於你允許使用它們的每個對話。"
     },
     "providers_manage": {
       "action": "管理供應商",
-      "title": "管理供應商",
       "description": "新增、變更和移除你的供應商及其模型，你的每個對話都可以使用它們。"
     },
     "conversation_organize": {
       "action": "整理對話",
-      "title": "整理對話",
       "description": "「整理對話」可讓此對話的智慧體重新命名此對話、列出你的專案、將目錄設為專案，以及將此對話移入或移出專案。專案會顯示在你每台裝置的側邊欄中。"
     },
     "agent_profiles": {
       "action": "變更子智慧體設定檔",
-      "title": "變更子智慧體設定檔",
       "description": "建立、編輯和刪除你的每個對話都可以使用的子智慧體設定檔。"
     }
   }

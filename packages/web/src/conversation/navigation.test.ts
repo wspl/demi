@@ -22,6 +22,14 @@ const PROJECT: WorkspaceDto = {
   createdAt: '2026-10-06T00:00:00.000Z',
 }
 
+const EXISTING: WorkspaceDto = {
+  id: 'project-2',
+  deviceId: 'laptop',
+  path: '/srv/notes',
+  name: 'notes',
+  createdAt: '2026-10-05T00:00:00.000Z',
+}
+
 let pinia: ReturnType<typeof createPinia>
 let channels: ReturnType<typeof playChannels>
 let requests: { method: string; path: string; body: unknown }[]
@@ -35,6 +43,13 @@ beforeEach(async () => {
     const method = init?.method ?? 'GET'
     const body = typeof init?.body === 'string' ? JSON.parse(init.body) : null
     requests.push({ method, path, body })
+    if (path === '/api/workspaces' && method === 'POST' && (body as { path?: string }).path === '/srv/notes/') {
+      // The directory, in another spelling, is the project already there.
+      return Response.json(
+        { requestId: 'req_test000000000002', code: 'workspace_exists', message: 'The project Notes has this directory', workspace: EXISTING },
+        { status: 409 },
+      )
+    }
     if (path === '/api/workspaces' && method === 'POST') {
       // The backend answers, and its channel brings the new project.
       queueMicrotask(() => channels.last().send({ type: 'snapshot', state: productState({ workspaces: [PROJECT] }) }))
@@ -51,7 +66,7 @@ beforeEach(async () => {
   channels = playChannels()
   useConversations()
   useProduct().start()
-  channels.last().connect(productState())
+  channels.last().connect(productState({ workspaces: [EXISTING] }))
   await nextTick()
 })
 
@@ -98,6 +113,25 @@ test('creating a project opens a new conversation draft in it, which only the fi
       },
     },
   ])
+})
+
+// A directory that is already a project opens that project instead of
+// making a second (`product.md` § Conversations and projects).
+test('New Project on a folder that is already a project opens a new conversation draft in that project', async () => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/chat/:id?', component: defineComponent({ render: () => null }) }],
+  })
+  const app = createApp({})
+  app.use(pinia)
+  app.use(router)
+  const navigation = app.runWithContext(() => useConversationNavigation())
+
+  await navigation.createProject({ kind: 'device', deviceId: 'laptop', path: '/srv/notes/', name: 'notes' })
+  await waitFor(() => router.currentRoute.value.path.startsWith('/chat/'), () => router.currentRoute.value.fullPath)
+  const conversation = useConversations().items.find((item) => item.id === router.currentRoute.value.params.id)!
+  expect(conversation.target).toEqual({ kind: 'workspace', workspaceId: EXISTING.id })
+  expect(conversation.persistence).toBe('draft')
 })
 
 test('New on the empty draft already shown gives it back with the focus asked for its composer', async () => {

@@ -24,7 +24,7 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::{CredentialSeal, StoredCredential};
 use demi_backend_database::permissions::{
     AnswerProblem, Answered, AskedHost, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead,
-    PermissionRefusal, StoredAsk, StoredRequest, Undecided,
+    Needed, PermissionRefusal, StoredAsk, StoredRequest, Undecided,
 };
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::Category;
@@ -207,44 +207,42 @@ impl From<PermissionRefusal> for PermissionError {
     }
 }
 
-/// The check of one `rpc` call that needs `categories` and brings `host`
-/// into its conversation, at least one of the two (`permissions.md` § The
+/// What one `rpc` call needs of its conversation: its leaf's category, or
+/// the host it brings in; no command needs both (`permissions.md` § Hosts).
+pub enum Need<'a> {
+    Category(&'a Category),
+    Host(AskedHost),
+}
+
+/// The check of one `rpc` call that needs `need` (`permissions.md` § The
 /// check, § Hosts): it passes when the call's conversation has the grant of
-/// each category and may reach the host, whichever agent of its tree runs
-/// it. Otherwise it records one request of what the conversation lacks and
-/// fails the call with the message the agent reads, and no handler runs.
-pub async fn check(
-    shard: &dyn PermissionShard,
-    invocation: &RpcInvocation,
-    categories: &[&Category],
-    host: Option<AskedHost>,
-) -> Result<(), RpcError> {
+/// the category or may reach the host, whichever agent of its tree runs it.
+/// Otherwise it records the request and fails the call with the message the
+/// agent reads, and no handler runs.
+pub async fn check(shard: &dyn PermissionShard, invocation: &RpcInvocation, need: Need<'_>) -> Result<(), RpcError> {
     let Asking {
         conversation,
         agent,
         command,
     } = asking(shard, invocation)?;
-    let ids = categories.iter().map(|category| category.id.clone()).collect();
+    let (needed, action) = match need {
+        Need::Category(category) => (Needed::Category(category.id.clone()), category.action.clone()),
+        Need::Host(host) => {
+            let action = host_action(shard, &host).await;
+            (Needed::Host(host), action)
+        }
+    };
     let checked = shard
         .control()
-        .check_permission(conversation.clone(), ids, host, command, agent)
+        .check_permission(conversation.clone(), needed, command, agent)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     match checked {
         Checked::Granted => Ok(()),
-        Checked::Raised { lacking, host, .. } => {
+        Checked::Raised { .. } => {
             changed(shard, &conversation);
-            let mut actions: Vec<String> = lacking
-                .iter()
-                .filter_map(|id| categories.iter().find(|category| category.id == *id))
-                .map(|category| category.action.clone())
-                .collect();
-            if let Some(host) = &host {
-                actions.push(host_action(shard, host).await);
-            }
             Err(RpcError::Failed(format!(
-                "this conversation needs the user's permission to {}; the request was sent to the user, and you will be told when the user decides",
-                joined(actions.iter().map(String::as_str))
+                "this conversation needs the user's permission to {action}; the request was sent to the user, and you will be told when the user decides"
             )))
         }
     }
@@ -416,13 +414,6 @@ fn use_action(name: &str) -> String {
     format!("use the credential \u{201c}{name}\u{201d}")
 }
 
-/// The actions of several categories and a host as one phrase: joined with
-/// "and", as the card's title and the decision's message join them
-/// (`permissions.md` § Hosts).
-fn joined<'a>(actions: impl Iterator<Item = &'a str>) -> String {
-    actions.collect::<Vec<_>>().join(" and ")
-}
-
 /// The command line as the agent ran it: the call's argv, which starts with
 /// the root's name, quoted for a POSIX shell.
 fn command_line(invocation: &RpcInvocation) -> Result<String, RpcError> {
@@ -457,16 +448,19 @@ pub async fn read(
             request.created_at,
         );
         listed.push(match request.ask {
-            StoredAsk::Permission { categories, host } => PermissionRequest::Permission {
+            StoredAsk::Permission(needed) => PermissionRequest::Permission {
                 id,
-                categories: categories.iter().map(|id| category(id)).collect(),
-                host: match host {
-                    Some(AskedHost::Device(device)) => Some(PermissionHost::Device {
+                categories: match &needed {
+                    Needed::Category(id) => vec![category(id)],
+                    Needed::Host(_) => Vec::new(),
+                },
+                host: match needed {
+                    Needed::Host(AskedHost::Device(device)) => Some(PermissionHost::Device {
                         name: shard.host_name(&device).await,
                         device_id: device,
                     }),
-                    Some(AskedHost::Pairing(_)) => Some(PermissionHost::Pairing {}),
-                    None => None,
+                    Needed::Host(AskedHost::Pairing(_)) => Some(PermissionHost::Pairing {}),
+                    Needed::Category(_) => None,
                 },
                 command,
                 agent,
@@ -581,24 +575,16 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
     };
     let mut host_name = None;
     let action = match &request.ask {
-        StoredAsk::Permission { categories: ids, host } => {
-            let categories = declared(&*shard).await;
-            let mut actions: Vec<String> = ids
-                .iter()
-                .map(|id| {
-                    categories
-                        .iter()
-                        .find(|category| category.id == *id)
-                        .map_or_else(|| id.clone(), |category| category.action.clone())
-                })
-                .collect();
-            if let Some(host) = host {
-                if let AskedHost::Device(device) = host {
-                    host_name = Some(shard.host_name(device).await);
-                }
-                actions.push(host_action(&*shard, host).await);
+        StoredAsk::Permission(Needed::Category(id)) => declared(&*shard)
+            .await
+            .into_iter()
+            .find(|category| category.id == *id)
+            .map_or_else(|| id.clone(), |category| category.action),
+        StoredAsk::Permission(Needed::Host(host)) => {
+            if let AskedHost::Device(device) = host {
+                host_name = Some(shard.host_name(device).await);
             }
-            joined(actions.iter().map(String::as_str))
+            host_action(&*shard, host).await
         }
         StoredAsk::Allowance { name, .. } => use_action(name),
         // A credential request's command returns its answer.
@@ -615,8 +601,10 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
             outcome: decision.outcome,
             action: action.clone(),
             categories: match &request.ask {
-                StoredAsk::Permission { categories, .. } => categories.clone(),
-                StoredAsk::Allowance { .. } | StoredAsk::Credential { .. } => Vec::new(),
+                StoredAsk::Permission(Needed::Category(id)) => vec![id.clone()],
+                StoredAsk::Permission(Needed::Host(_)) | StoredAsk::Allowance { .. } | StoredAsk::Credential { .. } => {
+                    Vec::new()
+                }
             },
             credential: match &request.ask {
                 StoredAsk::Allowance { name, .. } => Some(name.clone()),
@@ -625,7 +613,7 @@ pub async fn deliver(shard: Rc<dyn PermissionShard>, request: StoredRequest) {
             host: host_name.clone(),
             pairing: matches!(
                 request.ask,
-                StoredAsk::Permission { host: Some(AskedHost::Pairing(_)), .. }
+                StoredAsk::Permission(Needed::Host(AskedHost::Pairing(_)))
             ),
         },
         origin: None,

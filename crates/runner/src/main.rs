@@ -392,7 +392,11 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     let removal = (boot.is_none() && !removing)
         .then(|| removal::command(&directory, installed.is_some(), &executable));
     let scratch_root = Scratch::new(&directory).root().to_string_lossy().into_owned();
-    let identity = identity(home.to_string_lossy().into_owned(), scratch_root)?;
+    // The home as its Host names it, so the backend tells a directory that
+    // is the home from another (`sessions-and-targets.md` § Resolve a
+    // target); one that cannot be resolved is reported as it is set.
+    let canonical_home = dunce::canonicalize(&home).unwrap_or_else(|_| home.clone());
+    let identity = identity(canonical_home.to_string_lossy().into_owned(), scratch_root)?;
     let login_shell = env.get("SHELL").filter(|path| !path.is_empty()).cloned();
     let runner = wire::RunnerInfo {
         native_target: Some(host_target().into()),
@@ -416,8 +420,11 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             .map(|_| true)
             .or_else(|| managed.map(|value| !value.is_empty())),
         // A managed guest's state is temporary; nobody starts its runner.
+        // Named as the home is, so the backend tells the installation's place
+        // under the home.
         installation: boot.is_none().then(|| {
-            std::path::absolute(&directory)
+            dunce::canonicalize(&directory)
+                .or_else(|_| std::path::absolute(&directory))
                 .unwrap_or_else(|_| directory.clone())
                 .to_string_lossy()
                 .into_owned()

@@ -5,10 +5,14 @@
 //! and attaches it; `demi host attach` attaches a device at once, which the
 //! next context block announces; `demi host move` asks once for a host the
 //! conversation may not reach, checks its directory and waits, as `demi
-//! host detach` and `demi conversation move` do, until the conversation's
-//! work ends, when they are made in one transition; a move that fails then
+//! host detach` does, until the conversation's work ends, when they are
+//! made in one transition, and the directory decides the project it lands
+//! in (`product.md` § Conversations and projects); a move that fails then
 //! leaves the conversation where it was and wakes the root with Demi's
-//! notice of the reason. The model is the scripted family of the subagent
+//! notice of the reason. Deleting a project archives its conversations,
+//! unless one works; a device's first home report after the upgrade puts
+//! the conversations the earlier release left in its directories where
+//! those directories say. The model is the scripted family of the subagent
 //! scenarios, the devices real runners, and the conversation holds Organize
 //! Conversations and the hosts it reaches, as storage keeps them, unless a
 //! test asks. No test calls a real model.
@@ -21,21 +25,22 @@ use serde_json::json;
 
 use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions};
 
-use crate::conversations::{FIRST, SECOND, Socket, choose, create, transcript, working_on};
+use crate::conversations::{FIRST, SECOND, THIRD, Socket, choose, create, transcript, working_on};
+use rusqlite::OptionalExtension;
 use crate::permissions::{decide, host_of, permissions};
 use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
 use crate::support::{Harness, Paired, Session, TestBackend, eventually, stored_token};
 use demi_web_api_protocol::permissions::PermissionHost;
 
 /// Makes a project of a new directory of `device`'s home, named `name`, and
-/// answers its id.
+/// answers its id; the directory is `project_path(device, name)`.
 pub(crate) async fn project(
     backend: &TestBackend,
     session: &Session,
     device: &Paired,
     name: &str,
 ) -> String {
-    let path = format!("{}/{name}", device.runner.home());
+    let path = project_path(device, name);
     std::fs::create_dir_all(&path).unwrap();
     let created = backend
         .post(
@@ -52,6 +57,11 @@ pub(crate) async fn project(
     );
     let answer: serde_json::Value = created.json();
     answer["workspace"]["id"].as_str().unwrap().to_owned()
+}
+
+/// The directory of the project [`project`] makes on `device`.
+pub(crate) fn project_path(device: &Paired, name: &str) -> String {
+    format!("{}/{name}", device.runner.home())
 }
 
 /// The conversation's target as storage holds it: its kind, and the
@@ -153,7 +163,7 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
         FIRST,
         vec![
             shell("t1", "demi host attach studio"),
-            shell("t2", "demi host detach studio && demi conversation move notes"),
+            shell("t2", &format!("demi host detach studio && demi host move laptop {}", project_path(&laptop, "notes"))),
             shell("t3", "demi host list && demi host current"),
             say("done"),
         ],
@@ -173,7 +183,7 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
         "{after_waits}"
     );
     assert!(
-        after_waits.contains("The move into notes (laptop, "),
+        after_waits.contains(&format!("The move to laptop ({}) applies", project_path(&laptop, "notes"))),
         "{after_waits}"
     );
     assert!(after_waits.contains("(attached)"), "{after_waits}");
@@ -181,7 +191,7 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
     // is the last it holds.
     assert!(after_waits.contains("[Execution context 1]"), "{after_waits}");
     assert!(!after_waits.contains("[Execution context 2]"), "{after_waits}");
-    assert!(after_waits.contains("host: machine \\\"laptop\\\""), "{after_waits}");
+    assert!(after_waits.contains("host: workspace \\\"work\\\""), "{after_waits}");
 
     // Once the turn ended both were made, in one transition.
     eventually("the move and the detach are made", || async {
@@ -314,33 +324,36 @@ async fn an_agent_pairs_a_computer_from_its_installers_code_once_the_user_allows
     backend.close().await;
 }
 
-// Several seconds: a real device runs the shell jobs of two turns.
+// Several seconds: two real devices, and one runs the shell jobs of two
+// turns.
 #[tokio::test]
 async fn a_move_that_fails_leaves_the_conversation_in_place_and_wakes_the_root_with_the_reason() {
     let scripts = Arc::new(Scripts::default());
-    let (harness, backend, master, laptop, root, _) = tree_on(&scripts, Harness::new()).await;
-    let website = project(&backend, &master, &laptop, "website").await;
-    grant_organize(&harness, FIRST);
+    let (harness, backend, master, _laptop, root, _) = tree_on(&scripts, Harness::new()).await;
+    let studio = backend.pair(&master, "studio").await;
+    let site = format!("{}/site", studio.runner.home());
+    std::fs::create_dir_all(&site).unwrap();
+    reach(&harness, FIRST, &studio);
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
     socket.open().await;
 
-    // The project is deleted while the turn that asked for the move runs.
+    // The device is revoked while the turn that asked for the move runs.
     scripts.root(
         FIRST,
         vec![
-            shell("t1", &format!("demi conversation move website; {WAIT}")),
+            shell("t1", &format!("demi host move studio {site}; {WAIT}")),
             say("asked"),
         ],
     );
     scripts.root(FIRST, vec![say("noted")]);
     socket
-        .send(&crate::conversations::send("m1", "Move into website"))
+        .send(&crate::conversations::send("m1", "Move to the studio"))
         .await;
     eventually("the move waits", || async { pending(&harness, FIRST) }).await;
-    let deleted = backend
-        .delete(&format!("/api/workspaces/{website}"), &master)
+    let revoked = backend
+        .delete(&format!("/api/devices/{}", studio.id()), &master)
         .await;
-    assert_eq!(deleted.status, StatusCode::NO_CONTENT);
+    assert_eq!(revoked.status, StatusCode::OK);
     std::fs::write(format!("{root}/go"), "").unwrap();
     eventually("the root is told", || async {
         last_asked(&scripts, FIRST).contains("Demi could not make the move")
@@ -349,13 +362,13 @@ async fn a_move_that_fails_leaves_the_conversation_in_place_and_wakes_the_root_w
     let told = last_asked(&scripts, FIRST);
     assert!(
         told.contains(&format!(
-            "Demi could not make the move this conversation's agent asked for: the project no longer exists. The conversation still runs on laptop ({root})."
+            "Demi could not make the move this conversation's agent asked for: the device is no longer paired. The conversation still runs on laptop ({root})."
         )),
         "{told}"
     );
     assert!(told.contains("\\\"sender\\\":\\\"demi\\\""), "{told}");
     socket.until_idle().await;
-    assert_eq!(target_of(&harness, FIRST).0, "device");
+    assert_eq!(target_of(&harness, FIRST).0, "workspace");
     assert!(!pending(&harness, FIRST));
     let history = transcript(&backend, &master, FIRST).await;
     let notice = history
@@ -374,11 +387,231 @@ async fn a_move_that_fails_leaves_the_conversation_in_place_and_wakes_the_root_w
             &notice.event,
             AgentMessageEvent::MoveFailed { reason, code }
                 if notice.content.contains(reason.as_str())
-                    && code.as_deref() == Some("workspace_not_found")
+                    && code.as_deref() == Some("device_not_found")
         ),
         "{notice:?}"
     );
     assert_eq!(notice.sender, None);
+    backend.close().await;
+}
+
+/// The workspace selection of `id` as storage holds it: the project's
+/// name and directory; none outside a project.
+fn project_of(harness: &Harness, id: &str) -> Option<(String, String)> {
+    harness
+        .control_database()
+        .query_row(
+            "SELECT workspace.name, workspace.path FROM conversations conversation
+               JOIN workspaces workspace ON workspace.id = conversation.target_workspace_id
+             WHERE conversation.id = ?1",
+            [id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()
+        .unwrap()
+}
+
+/// Where a conversation runs decides its project (`product.md`
+/// § Conversations and projects): `demi host move` to a directory puts the
+/// conversation in a new project named after it, which a second
+/// conversation moved there joins; a project's subdirectory is a project of
+/// its own; a second directory of the same name takes *(2)*; the Host's
+/// home puts it among Conversations.
+/// Planted defect this catches: a move that keeps the conversation outside
+/// projects in a directory that is none's home, or that makes a second
+/// project of a directory that has one.
+// Several seconds: a real device runs the shell jobs of six turns of two
+// conversations.
+#[tokio::test]
+async fn a_host_move_puts_the_conversation_in_its_directorys_project_and_the_home_among_conversations() {
+    let scripts = Arc::new(Scripts::default());
+    let (harness, backend, master, laptop, _, provider) = tree_on(&scripts, Harness::new()).await;
+    let home = laptop.runner.home().to_owned();
+    for directory in ["site/packages", "other/site"] {
+        std::fs::create_dir_all(format!("{home}/{directory}")).unwrap();
+    }
+    create(&backend, &master, SECOND).await;
+    choose(&backend, &master, SECOND, &provider, "m").await;
+    working_on(&harness, &laptop, SECOND);
+    let mut first = Socket::connect(&backend, &master, FIRST).await;
+    first.open().await;
+    let mut second = Socket::connect(&backend, &master, SECOND).await;
+    second.open().await;
+    let moves = [
+        (FIRST, "site", Some(("site", "site"))),
+        (SECOND, "site", Some(("site", "site"))),
+        (SECOND, "other/site", Some(("site (2)", "other/site"))),
+        (FIRST, "site/packages", Some(("packages", "site/packages"))),
+        (FIRST, "", None),
+    ];
+    let mut site = None;
+    for (turn, (id, directory, landed)) in moves.into_iter().enumerate() {
+        let socket = if id == FIRST { &mut first } else { &mut second };
+        let path = if directory.is_empty() { home.clone() } else { format!("{home}/{directory}") };
+        scripts.root(id, vec![shell("t", &format!("demi host move laptop {path}")), say("moved")]);
+        socket.chat(&format!("m{turn}"), "Move").await;
+        let expected = landed.map(|(name, directory)| (name.to_owned(), format!("{home}/{directory}")));
+        eventually("the move is made", || async { project_of(&harness, id) == expected && !pending(&harness, id) }).await;
+        // The second conversation moved to `site` joins the first's project.
+        let workspace = target_of(&harness, id).1;
+        if directory == "site" {
+            assert_eq!(*site.get_or_insert(workspace.clone()), workspace, "{id}");
+        }
+    }
+    assert_eq!(target_of(&harness, FIRST), ("home".to_owned(), None));
+    let summary = crate::conversations::summary(&backend, &master, FIRST).await;
+    assert_eq!(
+        (serde_json::to_value(&summary.target).unwrap(), summary.cwd.as_str()),
+        (json!({ "kind": "device", "deviceId": laptop.id(), "path": home }), home.as_str())
+    );
+    backend.close().await;
+}
+
+/// Deleting a project whose conversation works is refused as its archive
+/// is, and nothing changes; once the work ends the deletion archives it.
+/// Planted defect this catches: a deletion that archives a conversation
+/// under the agent that runs in it.
+// Several seconds: a real device runs a turn's shell job, which waits.
+#[tokio::test]
+async fn a_project_whose_conversation_works_is_not_deleted() {
+    let scripts = Arc::new(Scripts::default());
+    let (harness, backend, master, _laptop, root, _) = tree_on(&scripts, Harness::new()).await;
+    let (_, project) = target_of(&harness, FIRST);
+    let project = project.expect("the conversation works in its directory's project");
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    scripts.root(FIRST, vec![shell("t1", WAIT), say("done")]);
+    socket
+        .send(&crate::conversations::send("m1", "Wait"))
+        .await;
+    eventually("the command runs", || async { !scripts.asked(|session| session == FIRST).is_empty() }).await;
+    let refused = backend
+        .delete(&format!("/api/workspaces/{project}"), &master)
+        .await;
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::CONFLICT, demi_web_api_protocol::error::ErrorCode::TurnInFlight)
+    );
+    assert_eq!(target_of(&harness, FIRST), ("workspace".to_owned(), Some(project.clone())));
+    std::fs::write(format!("{root}/go"), "").unwrap();
+    socket.until_idle().await;
+    let deleted = backend
+        .delete(&format!("/api/workspaces/{project}"), &master)
+        .await;
+    assert_eq!(deleted.status, StatusCode::NO_CONTENT);
+    let archived: bool = harness
+        .control_database()
+        .query_row("SELECT archived FROM conversations WHERE id = ?1", [FIRST], |row| row.get(0))
+        .unwrap();
+    assert!(archived);
+    backend.close().await;
+}
+
+/// What a release before projects by directory left on a paired device
+/// settles when the device's runner first reports its home after the
+/// upgrade, by the directories its runner resolves (`upgrades.md` § What
+/// crosses releases): two workspaces of one directory, `site/` and a link
+/// to it, become the older, with the newer's conversation; a workspace at
+/// the home, reached through a link, goes and its conversation runs in the
+/// home; and each conversation outside a project moves to the home or its
+/// directory's project, a directory gone as it was spelled. A device
+/// revoked before its first report keeps its conversations outside
+/// projects, in their directories.
+/// Planted defect this catches: projects compared by spelling, so one
+/// directory stays two projects or the home a project; and conversations
+/// resolved before the runner names their directories.
+// About three seconds: one paired runner connects twice, another once.
+#[tokio::test]
+async fn a_devices_first_home_report_settles_what_an_upgrade_left_by_the_directories_its_runner_names() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let mut desk = backend.pair(&master, "desk").await;
+    let home = laptop.runner.home().to_owned();
+    std::fs::create_dir(format!("{home}/site")).unwrap();
+    std::os::unix::fs::symlink(format!("{home}/site"), format!("{home}/link-to-site")).unwrap();
+    std::os::unix::fs::symlink(&home, format!("{home}/me")).unwrap();
+    const FOURTH: &str = "3c2b1a0f-4e9d-4c1e-9d2b-7a1c2e3f4a5b";
+    const FIFTH: &str = "2b1a0f3c-4e9d-4c1e-9d2b-7a1c2e3f4a5b";
+    const SIXTH: &str = "1a0f3c2b-4e9d-4c1e-9d2b-7a1c2e3f4a5b";
+    for id in [FIRST, SECOND, THIRD, FOURTH, FIFTH, SIXTH] {
+        create(&backend, &master, id).await;
+    }
+    laptop.runner.stop().await;
+    desk.runner.stop().await;
+    backend.until_online(&master, laptop.id(), false).await;
+    backend.until_online(&master, desk.id(), false).await;
+    // As the migration leaves them: each home unknown, the workspaces as
+    // an earlier release named them, each conversation in a directory of
+    // its device or one of those workspaces.
+    let database = harness.control_database();
+    database.execute("UPDATE devices SET home = NULL", []).unwrap();
+    let user: String = database.query_row("SELECT user_id FROM devices WHERE id = ?1", [laptop.id()], |row| row.get(0)).unwrap();
+    for (id, path, created) in [("w-site", format!("{home}/site/"), 1), ("w-link", format!("{home}/link-to-site"), 2), ("w-me", format!("{home}/me"), 3)] {
+        database
+            .execute(
+                "INSERT INTO workspaces (id, user_id, device_id, path, name, sort_order, created_at) VALUES (?1, ?2, ?3, ?4, ?1, ?5, ?5)",
+                rusqlite::params![id, user, laptop.id(), path, created],
+            )
+            .unwrap();
+    }
+    let left = [
+        (FIRST, laptop.id(), "device", format!("{home}/me/")),
+        (SECOND, laptop.id(), "device", format!("{home}/link-to-site")),
+        (THIRD, laptop.id(), "device", format!("{home}/gone/")),
+        (FOURTH, laptop.id(), "w-link", String::new()),
+        (FIFTH, laptop.id(), "w-me", String::new()),
+        (SIXTH, desk.id(), "device", "/srv/app".to_owned()),
+    ];
+    for (id, device, kind, path) in &left {
+        let (kind, path, workspace) = match *kind {
+            "device" => ("device", Some(path.clone()), None),
+            workspace => ("workspace", database.query_row("SELECT path FROM workspaces WHERE id = ?1", [workspace], |row| row.get(0)).ok(), Some(workspace)),
+        };
+        database
+            .execute(
+                "UPDATE conversations SET target_kind = ?2, target_device_id = ?3, target_path = ?4,
+                   target_workspace_id = ?5 WHERE id = ?1",
+                rusqlite::params![id, kind, device, path, workspace],
+            )
+            .unwrap();
+    }
+    // The desk is revoked before its runner ever reports a home.
+    let revoked = backend.delete(&format!("/api/devices/{}", desk.id()), &master).await;
+    assert!(revoked.status.is_success(), "{}", revoked.status);
+    // Until its runner reports, nothing moves.
+    assert_eq!(target_of(&harness, FIRST).0, "device");
+    laptop.runner.start_again();
+    eventually("the device's first home is settled", || async {
+        target_of(&harness, FIRST).0 == "home"
+    })
+    .await;
+    let site = Some(("w-site".to_owned(), format!("{home}/site")));
+    assert_eq!(project_of(&harness, SECOND), site);
+    assert_eq!(project_of(&harness, FOURTH), site);
+    assert_eq!(target_of(&harness, FIFTH), ("home".to_owned(), None));
+    assert_eq!(project_of(&harness, THIRD), Some(("gone".to_owned(), format!("{home}/gone"))));
+    let workspaces: Vec<String> = database
+        .prepare("SELECT id FROM workspaces WHERE id LIKE 'w-%' ORDER BY id")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(workspaces, ["w-site"]);
+    // Each conversation of the project names its directory as the runner does.
+    let paths: Vec<String> = database
+        .prepare("SELECT DISTINCT target_path FROM conversations WHERE target_workspace_id = 'w-site'")
+        .unwrap()
+        .query_map([], |row| row.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert_eq!(paths, [format!("{home}/site")]);
+    let sixth: (String, Option<String>) = database
+        .query_row("SELECT target_kind, target_path FROM conversations WHERE id = ?1", [SIXTH], |row| Ok((row.get(0)?, row.get(1)?)))
+        .unwrap();
+    assert_eq!(sixth, ("device".to_owned(), Some("/srv/app".to_owned())));
     backend.close().await;
 }
 

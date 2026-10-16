@@ -1131,7 +1131,7 @@ checkout's file, not the root's.
 
 - **The root's is the conversation's.** It is the directory the conversation
   targets, which places it in a project, and only moving the conversation
-  changes it (`demi conversation move`,
+  changes it (`demi host move`,
   [Conversation commands](../execution/sessions-and-targets.md#attached-hosts)).
 - **A child's starts as its parent's,** the parent's at the spawn or fork,
   or the directory `--cwd` names, read against the parent's, which must
@@ -1146,7 +1146,7 @@ checkout's file, not the root's.
   request carries, so a compaction keeps it. Without an argument it prints
   the node's directory. Called by the root, a change is refused with
   *The main agent works in the conversation's directory; move the
-  conversation with `demi conversation move` to work elsewhere.*
+  conversation with `demi host move` to work elsewhere.*
 - **A move puts the children back.** When the conversation moves or its
   primary Host changes, every child's directory becomes the conversation's
   new one, and a `context` block tells each so: an absolute path of the old

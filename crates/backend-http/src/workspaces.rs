@@ -1,14 +1,14 @@
 //! Workspaces (`web-api.md` § Workspaces, devices, and attached hosts): the
 //! user's named directories on their devices, created, renamed and deleted
-//! as pointers that never touch a file. A workspace stays while
-//! conversations target it.
+//! as pointers that never touch a file. Deleting one archives its
+//! conversations (`product.md` § Conversations and projects).
 
 use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
-use demi_backend_database::workspaces::{WorkspaceChange, WorkspaceDeletion, new_workspace_id};
+use demi_backend_database::workspaces::{WorkspaceChange, WorkspaceCreation, new_workspace_id};
 use demi_backend_page_sync::Part;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::WorkspaceId;
@@ -48,24 +48,50 @@ pub(super) async fn create(
             device_id,
             path,
             name,
-        } => state
+        } => {
+            // The directory as its Host names it, so two spellings of one
+            // directory are one project (`sessions-and-targets.md` § Resolve
+            // a target).
+            let resolving = device_id.clone();
+            let path = state
+                .shards
+                .of(&user.id)
+                .call(move |shard, _| async move {
+                    shard.host_shard().device_directory(&resolving, path.as_str()).await
+                })
+                .await?
+                .map_err(super::hosts::refused)?;
+            match state
             .services
             .control
-            .create_workspace(
-                new_workspace_id(),
-                user.id.clone(),
-                device_id,
-                path.as_str().to_owned(),
-                name.into_string(),
-            )
+            .create_workspace(new_workspace_id(), user.id.clone(), device_id, path, name.into_string())
             .await?
-            .ok_or_else(|| {
-                ApiError::new(
+        {
+            WorkspaceCreation::Created(workspace) => workspace,
+            WorkspaceCreation::Exists(workspace) => {
+                return Err(ApiError::new(
+                    StatusCode::CONFLICT,
+                    ErrorCode::WorkspaceExists,
+                    format!("The project {} has this directory", workspace.name),
+                )
+                .with_workspace(workspace.dto()));
+            }
+            WorkspaceCreation::Home => {
+                return Err(ApiError::new(
+                    StatusCode::CONFLICT,
+                    ErrorCode::WorkspaceIsHome,
+                    "Your home folder holds the conversations outside projects. Choose a folder in it.",
+                ));
+            }
+            WorkspaceCreation::DeviceNotFound => {
+                return Err(ApiError::new(
                     StatusCode::NOT_FOUND,
                     ErrorCode::DeviceNotFound,
                     "No such device",
-                )
-            })?,
+                ));
+            }
+        }
+        }
         CreateWorkspace::Cloud { name } => {
             let name = name.into_string();
             state
@@ -108,29 +134,21 @@ pub(super) async fn change(
     }))
 }
 
+/// Archives the project's conversations and deletes it, as one transition
+/// the user's shard makes.
 pub(super) async fn delete(
-    State(services): State<Arc<Services>>,
+    State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<StatusCode, ApiError> {
     let id = workspace_id(id)?;
-    match services
-        .control
-        .delete_workspace(user.id.clone(), id)
+    state
+        .shards
+        .of(&user.id)
+        .call(move |shard, _| async move { shard.delete_project(&id).await })
         .await?
-    {
-        WorkspaceDeletion::Deleted => {
-            services.sync.mark(&user.id, Part::Workspaces);
-            Ok(StatusCode::NO_CONTENT)
-        }
-        WorkspaceDeletion::Missing => Err(not_found()),
-        WorkspaceDeletion::InUse(conversations) => Err(ApiError::new(
-            StatusCode::CONFLICT,
-            ErrorCode::WorkspaceInUse,
-            format!("{conversations} conversation(s) still target this workspace"),
-        )
-        .with_param("count", conversations)),
-    }
+        .map_err(super::hosts::refused)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 fn workspace_id(id: String) -> Result<WorkspaceId, ApiError> {

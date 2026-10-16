@@ -52,18 +52,37 @@ const folder = ref({
   deviceId: hosts[0]!.id,
   path: hosts[0]!.source.home,
 })
-// Recent directories are the current host's Recent places, the way the product lists its projects there.
-const recentDirectories = computed(() => {
+/**
+ * The account's projects, by host and directory: each host's Recent places
+ * to begin with, and every directory but a home the session moves to, which
+ * the move makes a project as the product's does.
+ */
+const projectDirectories = ref(hosts.flatMap((host) =>
+  (host.places.find((group) => group.label === 'Recent')?.places ?? []).map((place) => ({ deviceId: host.id, path: place.path })),
+))
+/** The projects on the session's host, which the directory menu lists. */
+const hostProjects = computed(() => {
   const host = hosts.find((candidate) => candidate.id === folder.value.deviceId)
-  const recent = host?.places.find((group) => group.label === 'Recent')?.places ?? []
-  return recent.map((place) => ({
-    id: `${host!.id}:${place.path}`,
-    path: place.path,
-    disabled: host!.state !== 'online',
-  }))
+  return projectDirectories.value
+    .filter((project) => project.deviceId === host?.id)
+    .map((project) => ({
+      id: `${project.deviceId}:${project.path}`,
+      path: project.path,
+      disabled: host!.state !== 'online',
+    }))
 })
-/** The recent directory the session runs in, which the menu checks. */
-const selectedRecent = computed(() => recentDirectories.value.find((entry) => entry.path === folder.value.path)?.id)
+/** The project the session runs in, which the menu checks; none in a home. */
+const selectedProject = computed(() => hostProjects.value.find((entry) => entry.path === folder.value.path)?.id)
+
+/** Puts the session in `path` on `deviceId`, which makes the directory a project unless it is the host's home. */
+function settle(deviceId: string, path: string): void {
+  folder.value = { deviceId, path }
+  const home = hosts.find((candidate) => candidate.id === deviceId)?.source.home
+  const known = projectDirectories.value.some((project) => project.deviceId === deviceId && project.path === path)
+  if (path !== home && !known) {
+    projectDirectories.value = [...projectDirectories.value, { deviceId, path }]
+  }
+}
 const workspaceName = computed(() => folder.value.path.split('/').filter(Boolean).at(-1) ?? null)
 const primaryHost = computed<HostMenuHost>(() => {
   const device = devices.find((candidate) => candidate.id === folder.value.deviceId)
@@ -90,11 +109,11 @@ async function moveTo(deviceId: string, path: string): Promise<boolean> {
       flow.abortTerminal(terminal.id)
     }
     flow.stop()
-    folder.value = { deviceId, path }
+    settle(deviceId, path)
     return true
   }
   if (!stops || !host) {
-    folder.value = { deviceId, path }
+    settle(deviceId, path)
     return true
   }
   return moveQuestion.ask(
@@ -111,10 +130,10 @@ async function moveTo(deviceId: string, path: string): Promise<boolean> {
 async function selectFolder(deviceId: string, path: string): Promise<boolean> {
   return moveTo(deviceId, path)
 }
-function selectRecent(id: string): void {
-  const recent = recentDirectories.value.find((entry) => entry.id === id)
-  if (recent) {
-    void moveTo(folder.value.deviceId, recent.path)
+function selectProject(id: string): void {
+  const project = hostProjects.value.find((entry) => entry.id === id)
+  if (project) {
+    void moveTo(folder.value.deviceId, project.path)
   }
 }
 /** A Host chosen in the host menu: a device moves the session to its home; the gallery has no Cloud to move to. */
@@ -171,11 +190,11 @@ function detach(id: string): void {
             :device-id="folder.deviceId"
             :locked="locked !== undefined"
             browse-enabled
-            :recent-directories="recentDirectories"
-            :selected-project-id="selectedRecent"
+            :projects="hostProjects"
+            :selected-project-id="selectedProject"
             :hosts="hosts"
             :select-folder="selectFolder"
-            @select-recent="selectRecent"
+            @select-project="selectProject"
           >
             <HostMenu
               :primary-host="primaryHost"

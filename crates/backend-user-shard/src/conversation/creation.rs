@@ -1,7 +1,10 @@
 //! A conversation's creation (`web-api.md` § Conversation creation and
 //! Fork): one request makes it with what it starts with, its target and its
 //! settings, each checked as its own change would check it before anything
-//! is created, so a refused one creates nothing.
+//! is created, so a refused one creates nothing. Its directory is selected
+//! as a move's is, in the transaction that creates it, which makes the
+//! directory's project when there is none, by the directory's name on its
+//! Host (`sessions-and-targets.md` § Resolve a target).
 
 use demi_backend_database::conversation_index::{ConversationStart, Creation};
 use demi_backend_host_access::transition::ChangeRefusal;
@@ -27,15 +30,24 @@ impl Shard {
             });
         }
         let id = request.id.clone();
-        let start = self.conversation_start(request).await?;
-        let created = control
-            .create_conversation(self.user().clone(), id, start)
+        let mut start = self.conversation_start(request).await?;
+        // Its directory is the one its Host names (§ Resolve a target).
+        start.target = self.host_shard().resolved_destination(start.target).await?;
+        let (created, made) = control
+            .create_conversation_selecting(self.user().clone(), id, start)
             .await?;
-        if let Creation::Created(record) = &created {
-            self.mark(Part::Conversation(record.id.clone()));
-            self.mark(Part::ConversationOrder);
+        if made.is_some() {
+            self.mark(Part::Workspaces);
         }
-        Ok(created)
+        match created {
+            Creation::Created(record) => {
+                self.mark(Part::Conversation(record.id.clone()));
+                self.mark(Part::ConversationOrder);
+                Ok(Creation::Created(record))
+            }
+            Creation::Unselectable(reason) => Err(reason.into()),
+            created => Ok(created),
+        }
     }
 
     /// What the conversation starts with, each part checked as a patch
@@ -44,12 +56,9 @@ impl Shard {
         &self,
         request: CreateConversation,
     ) -> Result<ConversationStart, ChangeRefusal> {
-        let owner = self.user();
-        let host = self.host_shard();
         let target = request
             .target
             .unwrap_or(ConversationTarget::Cloud { path: None });
-        host.check_destination(owner, &target).await?;
         let model = match request.model {
             Some(choice) => Some(
                 self.chosen_selection(&ModelSettings {

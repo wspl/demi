@@ -13,14 +13,15 @@ use std::rc::{Rc, Weak};
 
 use bytes::Bytes;
 use demi_backend_database::sequences;
-use demi_backend_host_access::host_commands::{pairing_code, reachable};
+use demi_backend_host_access::host_commands::{pairing_code, reachable, resolve_host};
 use demi_backend_host_access::root_of;
 use demi_backend_plugins::Lost;
 use demi_backend_remote_host::{DirectAdmission, JobOrigin, LinkPolicy, PackageEvent};
 use demi_backend_runners::host_key::conversation_of;
 use demi_backend_database::permissions::AskedHost;
+use demi_backend_permissions::Need;
 use demi_command_protocol::ServiceSequence;
-use demi_host_interface::{RpcError, RpcInvocation, RpcPort};
+use demi_host_interface::{BroughtHost, RpcError, RpcInvocation, RpcPort};
 use demi_runner_protocol::wire::VolumeName;
 use demi_shared_gates::Purpose;
 use demi_shared_types::{BlobRef, Sequence};
@@ -62,7 +63,7 @@ impl LinkPolicy for ShardPolicy {
     }
 
     /// Runs the call in its node's commands: once the command set checked
-    /// the call, what it needs, its leaf's category and the host its
+    /// the call, what it needs, its leaf's category or the host its
     /// `bringsHost` argument brings into the conversation, or the computer
     /// `demi host pair` pairs, is checked against the conversation's grants
     /// and the hosts it may reach before the handler runs (`permissions.md`
@@ -79,29 +80,35 @@ impl LinkPolicy for ShardPolicy {
             let commands = shard.commands().commands_of(&job).map_err(RpcError::Failed)?;
             let checked = commands.check(&invocation)?;
             let handler = checked.handler.clone();
-            let needed: Vec<_> = checked.category.into_iter().collect();
             // The host is resolved here once: the check asks for that very
             // device, and the handler acts on it without reading the name
             // again, so a rename meanwhile cannot make them differ.
             let brought = match &checked.brings_host {
-                Some((kind, named)) => {
+                Some(named) => {
                     let conversation = ConversationId::try_from(invocation.context.conversation.as_str())
                         .map_err(|_| RpcError::Failed("the call names no conversation".into()))?;
-                    Some(shard.resolve_brought(&conversation, *kind, named).await?)
+                    let host = resolve_host(shard.host_shard(), &conversation, named).await?;
+                    Some(BroughtHost {
+                        device: host.device.to_string(),
+                        name: host.name,
+                        cloud: host.cloud,
+                    })
                 }
                 None => None,
             };
-            let host = match (pairing_code(&invocation), &brought) {
-                (Some(code), _) => Some(AskedHost::Pairing(code)),
-                (None, Some(brought)) => Some(AskedHost::Device(
+            // A leaf declares a category or brings a host, never both
+            // (`command-declarations`).
+            let need = match (pairing_code(&invocation), &brought, checked.category) {
+                (Some(code), _, _) => Some(Need::Host(AskedHost::Pairing(code))),
+                (None, Some(brought), _) => Some(Need::Host(AskedHost::Device(
                     DeviceId::try_from(brought.device.clone())
                         .map_err(|_| RpcError::Failed("the resolved host has no id".into()))?,
-                )),
-                (None, None) => None,
+                ))),
+                (None, None, Some(category)) => Some(Need::Category(category)),
+                (None, None, None) => None,
             };
-            if !needed.is_empty() || host.is_some() {
-                demi_backend_permissions::check(shard.permission_shard(), &invocation, &needed, host)
-                    .await?;
+            if let Some(need) = need {
+                demi_backend_permissions::check(shard.permission_shard(), &invocation, need).await?;
             }
             let mut invocation = invocation;
             invocation.brought = brought;

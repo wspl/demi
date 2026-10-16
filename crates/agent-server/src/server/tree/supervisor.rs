@@ -52,7 +52,7 @@ const SHOW_RECENT_TOOLS: usize = 8;
 const INHERIT_LABEL: &str = "(inherit)";
 /// Why the root's directory does not change (`subagents.md` § Working
 /// directory).
-const ROOT_CWD: &str = "The main agent works in the conversation's directory; move the conversation with `demi conversation move` to work elsewhere.";
+const ROOT_CWD: &str = "The main agent works in the conversation's directory; move the conversation with `demi host move` to work elsewhere.";
 const OWNER_CLOSING: &str = "owner session is closing";
 
 /// A child of the tree, live or closed, as an open's snapshot lists it

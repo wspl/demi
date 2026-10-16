@@ -4,15 +4,16 @@
 //! the revocation that ends a device's connection for good; and a device's
 //! new name.
 
+use std::collections::HashMap;
 use std::rc::Rc;
 
 use axum::extract::ws::{Message, WebSocket};
 use demi_backend_database::StorageError;
-use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval};
-use demi_backend_host_access::target::cloud_home;
+use demi_backend_database::devices::{DeviceChange, DeviceRecord, DeviceRemoval, FirstHome};
 use demi_backend_page_sync::Part;
 use demi_backend_plugins::Lost;
-use demi_backend_remote_host::{Hello, Link, LinkOptions, host_identity};
+use demi_backend_remote_host::{Hello, Link, LinkOptions, RemoteHost, host_identity};
+use demi_host_interface::{HostErrorKind, HostFs as _};
 use demi_backend_runners::devices::{DeviceRecorder, Serving, Updating, send};
 use demi_backend_runners::native::system_targets;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, RunnerInfo};
@@ -157,7 +158,9 @@ impl Shard {
         // connection queued runs after it, so no answer of that work reaches
         // an agent whose next context block still names what the runner no
         // longer reports.
-        reported.await;
+        if let Some(settle) = reported.await {
+            self.tasks().spawn_local(settle);
+        }
         // A runner that went away before its welcome ends its connection at
         // once, as the connection reads its socket. What the connection
         // queued meanwhile leaves after the welcome.
@@ -190,7 +193,10 @@ impl Shard {
         let Some((serving, reported)) = self.bind(&device.id, runner, hello) else {
             return;
         };
-        reported.await;
+        // A device just paired has nothing an earlier release left.
+        if let Some(settle) = reported.await {
+            self.tasks().spawn_local(settle);
+        }
         // The claim that waits for this answer may have gone; the runner is
         // paired all the same.
         let _ = bound.send(
@@ -203,27 +209,23 @@ impl Shard {
     /// Publishes a new connection of the device under the shard's policy,
     /// with what records its runner's hello: its system and release, and
     /// the advance of each execution context the report changes
-    /// (`sessions-and-targets.md` § Resolve a target). None once the shard
-    /// is closing, whose close ends every connection it published before.
+    /// (`sessions-and-targets.md` § Resolve a target). The record answers
+    /// what settles a paired device's first home, which its caller runs
+    /// while the connection serves, since the runner resolves its
+    /// directories (`upgrades.md` § What crosses releases). None once the
+    /// shard is closing, whose close ends every connection it published
+    /// before.
     fn bind(
         self: &Rc<Self>,
         device: &DeviceId,
         runner: RunnerInfo,
         hello: Hello,
-    ) -> Option<(Serving, impl Future<Output = ()> + 'static)> {
+    ) -> Option<(Serving, impl Future<Output = Option<impl Future<Output = ()> + 'static>> + 'static)> {
         if self.is_closing() {
             return None;
         }
         let hello_instance = hello.instance;
-        // The home the device's execution contexts named until this report:
-        // the Cloud's is `/home/demi` before its runner reported one.
-        let before = self.devices().home(device);
-        let named = if hello.managed {
-            Some(cloud_home(before.as_deref()).to_owned())
-        } else {
-            before
-        };
-        let home_changed = named.as_deref() != Some(runner.identity.home_dir.as_str());
+        let home = runner.identity.home_dir.clone();
         // A Host of a target not stored for yet has its package executables
         // stored ahead of its first command (`native-runtime.md` § Publish
         // packages, then source artifacts on demand).
@@ -253,10 +255,13 @@ impl Shard {
         // What its conversations keep of its files is searched again on the
         // new connection.
         self.project_files().online(device);
+        let access = self.devices().device_access(device);
         let device = device.clone();
         let reported = async move {
-            seen.hello(device, runner.os, runner.version, hello_instance, home_changed)
-                .await;
+            let first = seen
+                .hello(device.clone(), runner.os, runner.version, hello_instance, home)
+                .await?;
+            Some(settle_first_home(access, seen, device, first))
         };
         Some((serving, reported))
     }
@@ -404,20 +409,52 @@ impl Shard {
     }
 }
 
+/// Has the runner of `access` resolve each directory `first` names, then
+/// records the device's first home (`upgrades.md` § What crosses releases).
+/// A directory gone is kept as it is; a runner that went away leaves the
+/// home unrecorded, which its next hello settles again.
+async fn settle_first_home(access: Option<RemoteHost>, seen: DeviceRecorder, device: DeviceId, first: FirstHome) {
+    let Some(access) = access else {
+        return;
+    };
+    let mut resolved = HashMap::new();
+    for directory in &first.directories {
+        match access.realpath(directory).await {
+            Ok(real) => {
+                resolved.insert(directory.clone(), real);
+            }
+            Err(error) if matches!(error.kind, HostErrorKind::Failed { .. }) => {}
+            Err(_) => return,
+        }
+    }
+    seen.settle_first_home(device, first, resolved).await;
+}
+
 #[cfg(test)]
 impl Shard {
     /// Connects `device` through a link nothing serves, whose runner works
     /// in `home`, for a test that needs the device online; the device stays
     /// online while the answer is held.
-    pub(crate) fn connect_for_tests(
+    pub(crate) async fn connect_for_tests(
         self: &Rc<Self>,
         device: &DeviceId,
         home: &str,
     ) -> demi_backend_remote_host::LinkDriver {
-        use demi_runner_protocol::wire::{HostIdentity, OperatingSystem, RunnerPlatform};
+        self.connect_on_for_tests(device, demi_runner_protocol::wire::RunnerPlatform::Darwin, home)
+            .await
+    }
+
+    /// [`Shard::connect_for_tests`] for a runner on `platform`.
+    async fn connect_on_for_tests(
+        self: &Rc<Self>,
+        device: &DeviceId,
+        platform: demi_runner_protocol::wire::RunnerPlatform,
+        home: &str,
+    ) -> demi_backend_remote_host::LinkDriver {
+        use demi_runner_protocol::wire::{HostIdentity, OperatingSystem};
         let runner = RunnerInfo {
             name: "test".into(),
-            platform: RunnerPlatform::Darwin,
+            platform,
             os: OperatingSystem {
                 name: "macOS 26.5".into(),
                 distribution: None,
@@ -447,7 +484,13 @@ impl Shard {
             recorded: Default::default(),
         };
         let (serving, reported) = self.bind(device, runner, hello).expect("an open shard binds");
-        self.tasks().spawn_local(reported);
+        // Recorded before the test goes on, as a real hello is before its
+        // welcome: the device's home is known from then on, unless an
+        // earlier release left directories on it, which the runner the test
+        // plays resolves.
+        if let Some(settle) = reported.await {
+            self.tasks().spawn_local(settle);
+        }
         serving.into_driver()
     }
 
@@ -456,7 +499,7 @@ impl Shard {
     /// `on_release` ran for the released conversation, so what that reads
     /// is the state before the release was answered. The answer says what
     /// the runner says of its own accord.
-    pub(crate) fn play_runner_for_tests(
+    pub(crate) async fn play_runner_for_tests(
         self: &Rc<Self>,
         device: &DeviceId,
         home: &str,
@@ -465,8 +508,29 @@ impl Shard {
         ) -> futures_util::future::LocalBoxFuture<'static, ()>
         + 'static,
     ) -> PlayedRunner {
-        use demi_runner_protocol::wire::{self, Outbound};
-        let driver = self.connect_for_tests(device, home);
+        // Every path is a directory there, named as it is given.
+        let host = PlayedHost {
+            platform: demi_runner_protocol::wire::RunnerPlatform::Darwin,
+            home: home.to_owned(),
+            resolve: Box::new(|path| Some(path.to_owned())),
+        };
+        self.play_host_for_tests(device, host, on_release).await
+    }
+
+    /// [`Shard::play_runner_for_tests`] for the Host `host`, which also
+    /// answers what a path resolves to, as `host` resolves it, and that
+    /// what a path resolves to is a directory; any other path is not there.
+    pub(crate) async fn play_host_for_tests(
+        self: &Rc<Self>,
+        device: &DeviceId,
+        host: PlayedHost,
+        on_release: impl Fn(
+            demi_web_api_protocol::ids::ConversationId,
+        ) -> futures_util::future::LocalBoxFuture<'static, ()>
+        + 'static,
+    ) -> PlayedRunner {
+        use demi_runner_protocol::wire::{self, FsOk, FsResult, Outbound};
+        let driver = self.connect_on_for_tests(device, host.platform, &host.home).await;
         let (answers, answered) = tokio::sync::mpsc::channel::<Result<Vec<u8>, demi_backend_remote_host::SocketEnd>>(8);
         let (frames, mut sent) = tokio::sync::mpsc::channel::<Vec<u8>>(64);
         let incoming = futures_util::stream::unfold(answered, |mut answered| async move {
@@ -495,6 +559,41 @@ impl Shard {
                         on_release(conversation).await;
                         Outbound::ConversationReleased { id, error: None }
                     }
+                    Ok(Inbound::FsRealpath { id, path, .. }) => {
+                        match (host.resolve)(&path) {
+                            Some(real) => Outbound::FsOk(FsOk {
+                                id,
+                                read_at: played_read_at(),
+                                result: FsResult::Realpath(real),
+                            }),
+                            None => played_missing(id, &path),
+                        }
+                    }
+                    Ok(Inbound::FsStat { id, path, .. }) => {
+                        if (host.resolve)(&path).as_deref() == Some(path.as_str()) {
+                            Outbound::FsOk(FsOk {
+                                id,
+                                read_at: played_read_at(),
+                                result: FsResult::Stat(wire::FileStat {
+                                    is_file: false,
+                                    is_directory: true,
+                                    is_symbolic_link: false,
+                                    mode: 0o755,
+                                    size: 0,
+                                    mtime: wire::Timestamp(0),
+                                    uid: None,
+                                    gid: None,
+                                    ino: None,
+                                    dev: None,
+                                    nlink: None,
+                                    is_character_device: None,
+                                    is_fifo: None,
+                                }),
+                            })
+                        } else {
+                            played_missing(id, &path)
+                        }
+                    }
                     _ => continue,
                 };
                 let answer = wire::encode(&answer).expect("the test runner's answers encode");
@@ -503,6 +602,34 @@ impl Shard {
             }
         });
         played
+    }
+}
+
+/// The Host a played runner stands for: its system, its home, and the
+/// directory each path names there, none when nothing is there.
+#[cfg(test)]
+pub(crate) struct PlayedHost {
+    pub platform: demi_runner_protocol::wire::RunnerPlatform,
+    pub home: String,
+    pub resolve: Box<dyn Fn(&str) -> Option<String>>,
+}
+
+#[cfg(test)]
+fn played_read_at() -> demi_shared_types::ReadAt {
+    demi_shared_types::ReadAt {
+        epoch: "played".into(),
+        number: 1,
+    }
+}
+
+/// A played runner's answer that nothing is at `path`.
+#[cfg(test)]
+fn played_missing(id: String, path: &str) -> demi_runner_protocol::wire::Outbound {
+    demi_runner_protocol::wire::Outbound::FsError {
+        id,
+        read_at: played_read_at(),
+        code: Some("ENOENT".into()),
+        message: format!("{path}: no such file or directory"),
     }
 }
 

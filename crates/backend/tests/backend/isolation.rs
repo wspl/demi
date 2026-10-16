@@ -86,7 +86,9 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
     // device attached, and two uploads.
     let mut laptop = backend.pair(&alice, "alice-laptop").await;
     let device = laptop.id().to_owned();
-    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    // A project's folder, which the home never is.
+    let home = format!("{}/proj", laptop.runner.home());
+    std::fs::create_dir(&home).unwrap();
     let workspace = created(
         &backend,
         &alice,

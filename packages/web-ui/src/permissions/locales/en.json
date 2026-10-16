@@ -31,28 +31,23 @@
     "allowTitle": "Allow this conversation to reach {host}?",
     "allowPairingTitle": "Allow this conversation to pair a computer and reach it?",
     "description": "The agents of this conversation run commands as you on {host}, and can make it where this conversation runs.",
-    "pairingDescription": "The agents of this conversation pair the computer with your account, run commands as you on it, and can make it where this conversation runs.",
-    "pairingTitle": "New Computer"
+    "pairingDescription": "The agents of this conversation pair the computer with your account, run commands as you on it, and can make it where this conversation runs."
   },
   "categories": {
     "credentials_manage": {
       "action": "manage credentials",
-      "title": "Manage Credentials",
       "description": "Manage Credentials lets the agents of this conversation remove your saved credentials. Your credentials serve every conversation you allow them in."
     },
     "providers_manage": {
       "action": "manage providers",
-      "title": "Manage Providers",
       "description": "Add, change and remove your provider entries and their models, which every conversation of yours can use."
     },
     "conversation_organize": {
       "action": "organize conversations",
-      "title": "Organize Conversations",
       "description": "Organize Conversations lets the agents of this conversation rename it, list your projects, make a project of a directory, and move this conversation into or out of one. Projects show in your sidebar on every device."
     },
     "agent_profiles": {
       "action": "change subagent profiles",
-      "title": "Change Subagent Profiles",
       "description": "Create, edit and delete the subagent profiles every conversation of yours can use."
     }
   }

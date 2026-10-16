@@ -14,6 +14,8 @@ use serde::{Deserialize, Serialize};
 use super::StorageError;
 use super::columns::{decode, json, to_json};
 use super::control::ControlService;
+use super::selection::{Selected, Selection, select};
+use super::workspaces::WorkspaceRecord;
 use super::conversation_index::{
     AttachedHostRecord, ConversationRecord, NewConversation, conversation_by_id,
     insert_attached_host, insert_conversation,
@@ -143,12 +145,17 @@ impl ControlService {
     /// the owner's sidebar, with the title, target, model, workflow and attached hosts
     /// of the attempt, the title the user's. A destination published already
     /// is answered as it is. An attached host whose device is gone since is
-    /// left out, as its revocation left the source.
+    /// left out, as its revocation left the source. Its directory is
+    /// selected as a move's is (`sessions-and-targets.md` § Resolve a
+    /// target), and the workspace that makes, if any, is answered with it;
+    /// a directory that selects nothing any more, its device revoked or its
+    /// project deleted since the Fork began, starts it on the Cloud in its
+    /// own directory.
     pub async fn publish_fork(
         &self,
         id: ConversationId,
-    ) -> Result<ConversationRecord, StorageError> {
-        self.call(move |connection, _| {
+    ) -> Result<(ConversationRecord, Option<WorkspaceRecord>), StorageError> {
+        self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             let operation =
                 operation_by_id(&transaction, &id)?.ok_or_else(|| StorageError::Corrupt {
@@ -157,6 +164,13 @@ impl ControlService {
                     reason: format!("no Fork reserved {id}"),
                 })?;
             let metadata = &operation.metadata;
+            let published = conversation_by_id(&transaction, &operation.id)?.is_some();
+            let Selected { selection, made } = if published {
+                Selected { selection: Selection::Cloud { path: None }, made: None }
+            } else {
+                select(&transaction, &operation.owner, &operation.id, &metadata.target, now)?
+                    .unwrap_or(Selected { selection: Selection::Cloud { path: None }, made: None })
+            };
             let inserted = insert_conversation(
                 &transaction,
                 &NewConversation {
@@ -164,7 +178,7 @@ impl ControlService {
                     owner: &operation.owner,
                     title: metadata.title.as_deref(),
                     pinned: false,
-                    target: &metadata.target,
+                    target: &selection,
                     model: metadata.model.as_ref(),
                     workflow: &metadata.workflow,
                     context_version: metadata.context_version,
@@ -196,7 +210,7 @@ impl ControlService {
                     reason: format!("the Fork destination {id} belongs to another user"),
                 })?;
             transaction.commit()?;
-            Ok(record)
+            Ok((record, made))
         })
         .await
     }

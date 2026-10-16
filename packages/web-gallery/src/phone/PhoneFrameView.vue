@@ -113,6 +113,12 @@ const passwordChoiceOpen = ref(scene === 'password')
 const sidebarOpen = ref(false)
 const projects = ref(demoProjects())
 const conversations = ref(demoConversations())
+
+/** Deleting a project archives its conversations, as the backend does. */
+function deleteProject(id: string): void {
+  projects.value = projects.value.filter((project) => project.id !== id)
+  conversations.value = conversations.value.filter((conversation) => conversation.projectId !== id)
+}
 const activeId = ref<string | null>('c-login')
 /** The session shown is the sidebar's open row: its title sheet offers that row's menu. */
 const shownListed = computed(() => conversations.value.find((conversation) => conversation.id === activeId.value))
@@ -254,7 +260,7 @@ onMounted(async () => {
           @pin="(ids, pinned) => (conversations = conversations.map((conversation) => ids.includes(conversation.id) ? { ...conversation, pinned } : conversation))"
           @rename="(id, title) => (conversations = conversations.map((conversation) => conversation.id === id ? { ...conversation, title } : conversation))"
           @add-project="productWould('Add a Project')"
-          @remove-project="(id) => (projects = projects.filter((project) => project.id !== id))"
+          @remove-project="deleteProject"
           @open-settings="settingsOpen = true"
           @hand-off-to-phone="productWould('Open Hand Off to Your Phone')"
           @sign-out="productWould('Sign Out')"
