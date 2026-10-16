@@ -8,6 +8,7 @@
     "next": "다음 검색 결과"
   },
   "syntaxColorsUnavailable": "구문 강조를 사용할 수 없습니다",
+  "unavailable": "코드 편집기를 불러올 수 없습니다.",
   "diff": {
     "unchanged": "변경되지 않은 줄 {count}개",
     "noNewline": "파일 끝에 줄 바꿈이 없습니다"
