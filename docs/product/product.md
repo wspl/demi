@@ -1334,7 +1334,10 @@ Models & providers is available to users permitted to configure their provider
 scope. The model picker groups models by entry. For a model whose window is
 over 500,000 tokens, the model menu also offers a Context row: a smaller
 window that every conversation of the user with that model then uses
-([Context limit](../providers/models.md#context-limit)). Adding an entry has three paths:
+([Context limit](../providers/models.md#context-limit)). Choosing a model
+closes its submenu only, and the model menu stays open on the new model, so
+the user can set its effort or context next, as macOS menus with
+submenus close one level per choice. Adding an entry has three paths:
 
 | Path | User input and result |
 |---|---|
