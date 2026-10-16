@@ -64,8 +64,8 @@ const hostStatusItems = hostDevices.map((device) => ({
 }))
 /**
  * The devices the host menu specimens list: one for each path this page
- * can reach a device by, one it has not reached this session, and one
- * offline.
+ * can reach a device by, one it has not reached this session with the path
+ * this browser found last time, one it never reached, and one offline.
  */
 const menuDevices: HostDeviceOption[] = shownAmong([
   { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer', mark: GALLERY_MARKS.mac },
@@ -73,6 +73,8 @@ const menuDevices: HostDeviceOption[] = shownAmong([
   { id: 'studio', name: 'DESKTOP-4KQ7M2A', state: 'online', path: 'localNetwork', mark: GALLERY_MARKS.windows },
   { id: 'build', name: 'build-box', state: 'online', path: 'internet', mark: GALLERY_MARKS.ubuntu },
   { id: 'office', name: 'Office Mac mini', state: 'online', path: 'relay', mark: GALLERY_MARKS.macMini },
+  // Reached by relay yesterday, not yet this session: the path is faint.
+  { id: 'pc', name: 'Gaming PC', state: 'online', path: null, lastPath: 'relay', mark: GALLERY_MARKS.windows },
   { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'online', mark: GALLERY_MARKS.fedora },
   { id: 'old', name: 'Old Laptop', state: 'offline', mark: GALLERY_MARKS.debian },
 ])

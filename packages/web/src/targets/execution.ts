@@ -2,7 +2,7 @@ import type { MoveLock } from '@demicodes/web-ui/hosts/move-question'
 import type { HostDeviceOption, HostMenuHost } from '@demicodes/web-ui/hosts/types'
 import type { Conversation, Device } from '../state/types'
 import { useProduct } from '../state/product'
-import { directPath } from '../direct'
+import { directPath, lastDirectPath } from '../direct'
 import { cloudDeviceIn, deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
 
 /** Resolve display metadata from the canonical target and account snapshot. */
@@ -64,7 +64,11 @@ export function primaryHostOf(execution: ReturnType<typeof executionFor>): HostM
   }
 }
 
-/** The user's paired devices as Run On lists them, each with the path this page last reached it by; none for one it has not used this session. */
+/**
+ * The user's paired devices as Run On lists them, each with the path this
+ * page reaches it by, none for one it has not used this session, and the
+ * path this browser found last time.
+ */
 export function hostDeviceOptions(devices: readonly Device[]): HostDeviceOption[] {
   return devices.map((device) => ({
     id: device.id,
@@ -72,5 +76,6 @@ export function hostDeviceOptions(devices: readonly Device[]): HostDeviceOption[
     state: device.state,
     mark: device.mark,
     path: directPath(device.id),
+    lastPath: lastDirectPath(device.id),
   }))
 }

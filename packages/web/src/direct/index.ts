@@ -6,12 +6,13 @@
  * names, so they stop going to a device once the conversation moved.
  */
 import { effectScope, reactive, ref, watch } from 'vue'
+import { z } from 'zod'
 import { defaultWindow } from '@vueuse/core'
 import { browserOnline } from '@demicodes/web-ui/transport/liveness'
 import { useConversations } from '../conversation/store'
 import { useProduct } from '../state/product'
 import { executionFor } from '../targets/execution'
-import { statusPath, type DevicePath, type DeviceRoute, type DirectStatus } from '@demicodes/web-ui/devices/direct'
+import { DEVICE_PATHS, statusPath, type DevicePath, type PathStatus, type DeviceRoute, type DirectStatus } from '@demicodes/web-ui/devices/direct'
 import { DeviceDirect, directState, type DirectState, type Permission } from './device'
 import { DeviceMeter, meterState, type MeterState } from './meter'
 import { connectPeer } from './peer'
@@ -78,10 +79,8 @@ export function directStatus(deviceId: string): DirectStatus {
     route: device?.route ?? 'automatic',
     crossing: (product.snapshot?.stunUrls.length ?? 0) > 0,
     permission: permission.value,
-    peer: state.peer,
-    chosen: state.choice === 'direct',
+    ...pathStatus(state),
     trying: state.trying,
-    attempt: state.attempt,
     nextAt: state.nextAt === null ? null : new Date(state.nextAt).toISOString(),
     figures: measured.figures,
     measuring: measured.measuring,
@@ -91,10 +90,49 @@ export function directStatus(deviceId: string): DirectStatus {
 /**
  * The path this page uses for paired device `deviceId`, as the host menu
  * names it (`DEVICE_PATH_LABEL`): "LAN". The last path found stays while
- * the page lives; none for a device this page never used.
+ * the page lives; none for a device this page never used, whose menu row
+ * shows the one this browser found last time (`lastDirectPath`).
  */
 export function directPath(deviceId: string): DevicePath | null {
-  return states.has(deviceId) ? statusPath(directStatus(deviceId)) : null
+  const state = states.get(deviceId)
+  return state ? statusPath(pathStatus(state)) : null
+}
+
+/** What of a device's state decides the path the page uses. */
+function pathStatus(state: DirectState): PathStatus {
+  return { peer: state.peer, chosen: state.choice === 'direct', attempt: state.attempt }
+}
+
+/** Where this browser keeps the path it found to paired device `deviceId`. */
+const lastPathKey = (deviceId: string) => `demi.devicePath.${deviceId}`
+const lastPathSchema = z.enum(DEVICE_PATHS)
+
+/**
+ * The path this browser found to paired device `deviceId` last time, in
+ * this page or an earlier one, which the host menu shows fainter until the
+ * page finds a current one (`product.md` § Where a conversation runs);
+ * none for a device it never reached.
+ */
+export function lastDirectPath(deviceId: string): DevicePath | null {
+  try {
+    const kept = localStorage.getItem(lastPathKey(deviceId))
+    return kept === null ? null : lastPathSchema.parse(kept)
+  } catch (error) {
+    // The browser's storage is optional, and an entry that is not a path
+    // is shown as none rather than repaired.
+    console.warn('Could not read the last path to a device', error)
+    return null
+  }
+}
+
+/** Keeps `path` as the one this browser found to device `deviceId` last. */
+function keepLastPath(deviceId: string, path: DevicePath): void {
+  try {
+    localStorage.setItem(lastPathKey(deviceId), path)
+  } catch (error) {
+    // Private browsing and storage quotas only cost the faint path next time.
+    console.warn('Could not keep the last path to a device', error)
+  }
 }
 
 /**
@@ -214,6 +252,18 @@ export function followDirect(): void {
       (deviceId) => {
         if (deviceId)
           watchDirect(deviceId)
+      },
+      { immediate: true },
+    )
+    // Each path the page finds to a device is kept as the one found last;
+    // one taken while an attempt is still being made is not found yet.
+    watch(
+      () => [...states].filter(([, state]) => !state.trying).map(([deviceId]) => [deviceId, directPath(deviceId)] as const),
+      (found) => {
+        for (const [deviceId, path] of found) {
+          if (path && path !== lastDirectPath(deviceId))
+            keepLastPath(deviceId, path)
+        }
       },
       { immediate: true },
     )
