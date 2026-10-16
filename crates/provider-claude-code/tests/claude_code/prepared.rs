@@ -3,17 +3,13 @@
 //! prepared process as a kept one; any other request closes it and starts
 //! its own; a prepared process goes after ten minutes unused, its machine
 //! holds two at most, and a preparation that fails or has no answered
-//! history to resume leaves the request as it would have been; a turn that
-//! ends with its kept process's token about to expire prepares the
-//! replacement. Each test costs a few milliseconds; the one that waits ten
-//! minutes does so on a paused clock.
+//! history to resume leaves the request as it would have been. Each test
+//! costs a few milliseconds; the one that waits ten minutes does so on a
+//! paused clock.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use demi_host_interface::ProcessEnd;
-use demi_provider_common::credentials::MemoryCredentialPool;
-use demi_provider_common::testing::{ManualClock, MockResponse, MockVendor};
 use demi_provider_common::{Ahead, InferenceItem, InferenceRequest, ProviderEvent};
 use demi_shared_types::{ThinkingConfig, TokenUsage};
 use serde_json::{Value, json};
@@ -229,65 +225,4 @@ async fn a_history_that_ends_in_input_not_yet_answered_prepares_nothing() {
     });
     assert_eq!(events, [usage(1, 1)]);
     assert_eq!(placement.starts(), 1);
-}
-
-#[tokio::test(flavor = "local")]
-async fn a_turn_that_ends_with_its_kept_token_about_to_expire_refreshes_it_and_prepares_the_replacement()
- {
-    let vendor = MockVendor::start().await;
-    vendor.respond_at(
-        "/v1/oauth/token",
-        MockResponse::status(200)
-            .header("content-type", "application/json")
-            .chunk(
-                json!({
-                    "access_token": "sk-ant-oat01-fresh",
-                    "refresh_token": "sk-ant-ort01-next-refresh",
-                    "expires_in": 28_800,
-                    "scope": "user:inference user:profile",
-                })
-                .to_string(),
-            ),
-    );
-    let pool = MemoryCredentialPool::new();
-    let account = seed(&pool, sign_in(TOKEN, REFRESH, "2026-09-24T09:00:00Z")).await;
-    let token = vendor.url("/v1/oauth/token");
-    let urls = Urls {
-        token: &token,
-        ..NOWHERE
-    };
-    let now = Arc::new(ManualClock::new(NOW.parse().unwrap()));
-    let provider = provider_at(&pool, &account, &urls, now.clone());
-    let (placement, mut starts) = ScriptedPlacement::new();
-    let mut runtime = runtime_of(&provider, &placement);
-    let (_, kept) = tokio::join!(all_events(runtime.run(request(vec![user("do work")]))), async {
-        let mut kept = starts.next().await;
-        kept.initialized().await;
-        kept.result(1, 1);
-        kept
-    });
-    // With an hour left, the turn's end changes nothing.
-    runtime.prepare(request(answered()), Ahead::Ended).await;
-    assert_eq!(kept.end(), None);
-    assert_eq!(placement.prepared_count(), 0);
-
-    // With twenty minutes left, it refreshes the token and prepares the
-    // replacement, and the kept process goes.
-    now.set("2026-09-24T08:40:00Z".parse().unwrap());
-    runtime.prepare(request(answered()), Ahead::Ended).await;
-    let mut replacement = starts.next().await;
-    assert_eq!(
-        replacement.spawn.descriptors[0].bytes.as_ref(),
-        b"sk-ant-oat01-fresh"
-    );
-    assert!(matches!(kept.ended().await, ProcessEnd::Signalled(_)));
-    replacement.initialized().await;
-
-    let (events, ()) = tokio::join!(all_events(runtime.run(request(next()))), async {
-        assert_eq!(replacement.read().await, user_line("next question"));
-        replacement.result(1, 1);
-    });
-    assert_eq!(events, [usage(1, 1)]);
-    assert_eq!(placement.starts(), 2);
-    assert_eq!(vendor.requests().len(), 1);
 }

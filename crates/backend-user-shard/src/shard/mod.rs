@@ -54,7 +54,7 @@ use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 use tracing::Instrument as _;
 
-use crate::conversation::claude_cli::ClaudeCli;
+use crate::conversation::claude_cli::{ClaudeCli, ClaudeMachine};
 use crate::conversation::pending::PendingWatches;
 use crate::conversation::project_files::ProjectFiles;
 use crate::conversation::retry_resume::RetryResumes;
@@ -125,7 +125,8 @@ pub struct Shard {
     idle_watches: ConversationWatches,
     /// The collections of the user's blob namespace.
     blob_collection: BlobCollection,
-    /// The Claude Code CLI work on the user's Cloud.
+    /// The user's Claude Code CLI work, which runs on the Claude Code
+    /// machine.
     claude_cli: ClaudeCli,
     /// An instance of every plugin for the user.
     plugins: UserPlugins,
@@ -287,6 +288,12 @@ impl Shard {
 
     pub fn tasks(&self) -> &TaskTracker {
         &self.tasks
+    }
+
+    /// The Claude Code machine, through the master's shard; none in a
+    /// backend whose shards never started.
+    pub(crate) fn claude_machine(&self) -> Option<ClaudeMachine> {
+        self.services().claude_machine.get().cloned()
     }
 
     /// Whether the shard is closing and starts no new work.
@@ -579,6 +586,7 @@ enum Worker {
 
 impl ShardPool {
     pub async fn start(placement: ShardPlacement, services: Arc<Services>) -> io::Result<Self> {
+        let shared = services.clone();
         let mut queues = Vec::new();
         let mut workers = Vec::new();
         match placement {
@@ -607,12 +615,18 @@ impl ShardPool {
                 }
             }
         }
-        Ok(Self {
-            shards: Shards {
-                queues: queues.into(),
-            },
-            workers,
-        })
+        let shards = Shards {
+            queues: queues.into(),
+        };
+        // The master's shard holds the Claude Code machine, which every
+        // shard and the providers' sign-ins and probes reach through it
+        // (`managed-hosts.md` § The Claude Code machine).
+        let machine = ClaudeMachine::new(shards.clone(), shared.control.clone());
+        if shared.claude_machine.set(machine.clone()).is_err() {
+            tracing::error!("the Claude Code machine was set twice; the first is kept");
+        }
+        shared.assembly.set_machine(Arc::new(machine));
+        Ok(Self { shards, workers })
     }
 
     pub fn shards(&self) -> Shards {

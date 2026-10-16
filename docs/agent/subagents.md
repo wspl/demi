@@ -1101,7 +1101,7 @@ The role is a node option, not a depth. Every child has its parent's commands.
   passes inference admission as any session's does
   ([Inference admission and runtime ownership](../providers/providers.md#inference-admission-and-runtime-ownership)).
   A child on a provider that runs a process makes the conversation use the
-  user's Cloud as `provider` while it infers
+  Claude Code machine as `provider` while it infers
   ([How a conversation uses a device](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)).
   A model switch changes the root's selection only; a child keeps its own.
 - The transcript starts empty.

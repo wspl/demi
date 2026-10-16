@@ -218,6 +218,10 @@ owned data in both directions, `Send` pipe ends, leases and marks:
   ends. The edge copies bytes while it holds the lease; dropping the lease
   releases the admission in the shard, and the shard can end the lease itself,
   for example when the conversation is archived.
+- A process on the [Claude Code machine](../cloud/managed-hosts.md#the-claude-code-machine),
+  which the master's shard holds, crosses once per start to the user whose
+  request it serves: its standard streams as `Send` pipe ends and its end as
+  a `Send` future, relayed by a task on the master's shard.
 - A change that a page shows crosses as a mark: whoever commits it, the
   shard itself, a shared service such as the vault, or another user's request
   on a shared provider entry, marks the changed part in the registry of open

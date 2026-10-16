@@ -19,13 +19,13 @@ use demi_web_api_protocol::providers::TestResult;
 use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
-use super::claude_cli::{CloudPlacement, ProcessWork};
+use super::claude_cli::{CrossPlacement, ProcessWork};
 use crate::shard::Shard;
 
 impl Shard {
     /// Tests `provider`, the entry's provider for `account` or for its
     /// active account without one, with the entry's model `model_id`. A
-    /// provider that runs a process runs it on the user's Cloud. `cancel`
+    /// provider that runs a process runs it on the Claude Code machine. `cancel`
     /// ends the test when the requester leaves.
     pub async fn test_provider(
         &self,
@@ -63,7 +63,7 @@ impl Shard {
             };
         let runtime = if provider.capabilities().process_host {
             let work = ProcessWork::Account(entry.id.clone());
-            let placement = CloudPlacement::placement(Rc::downgrade(&self.this()), work);
+            let placement = CrossPlacement::placement(Rc::downgrade(&self.this()), work);
             let account = account.as_ref().or(entry.active());
             let env = RuntimeEnv {
                 http: self.http().clone(),

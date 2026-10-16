@@ -7,12 +7,13 @@
 //! a running one finishes with its own.
 
 use demi_backend_database::StorageError;
+use demi_provider_common::credentials::AccountsError;
 use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::providers::Accounts;
 
 use super::entries::{EntryCredential, ProviderEntry};
 use super::pool::meta;
-use crate::llm::assembly::{AssemblyError, ProviderAssembly};
+use crate::llm::assembly::{AssemblyError, LoginAccounts, ProviderAssembly};
 
 /// What an entry without an account says, in its status and when a request
 /// is refused before inference: the user adds an account to use it.
@@ -31,6 +32,10 @@ pub enum AccountRefusal {
     Order,
     #[error(transparent)]
     Assembly(#[from] AssemblyError),
+    /// What the family keeps of the account outside its record could not
+    /// be deleted, so the account stays.
+    #[error("The account could not be removed: {0}")]
+    Forget(AccountsError),
 }
 
 impl From<StorageError> for AccountRefusal {
@@ -116,6 +121,14 @@ pub async fn remove(
         .await?;
     if stored.is_none() {
         return Err(AccountRefusal::NotFound);
+    }
+    // The family's own keeping of the account goes first, so a failure
+    // leaves the account whole (`claude-code.md` § Accounts and sign-in).
+    if let LoginAccounts::Machine(accounts) = assembly.login_accounts(entry).await? {
+        accounts
+            .forget(account.as_str())
+            .await
+            .map_err(AccountRefusal::Forget)?;
     }
     let active = assembly
         .vault()

@@ -1,240 +1,172 @@
-//! A Claude Code account (`providers.md` § Subscription secrets, § Token
-//! refresh; `claude-code.md` § Accounts and sign-in): its secret document,
-//! what the CLI's own sign-in wrote; how the account names itself; and the
-//! refresh of its tokens by the one protocol every family follows, which
-//! only the backend runs.
+//! A Claude Code account (`claude-code.md` § Accounts and sign-in,
+//! `providers.md` § Subscription secrets): its record holds only its public
+//! metadata, since the CLI keeps its sign-in in the account's directory on
+//! the Claude Code machine and renews it there. The provider names the
+//! account a process uses, marks it signed out when the vendor refused its
+//! sign-in, and hands over, once, the sign-in an earlier release kept
+//! sealed in its record.
 
 use std::sync::Arc;
-use std::time::Duration;
 
-use demi_provider_common::{Secret, json_body};
+use demi_provider_common::Secret;
 use demi_provider_common::credentials::{
-    AccountDocument, AccountError, AccountLabel, AuthFailure, AuthReason, CredentialPool,
-    RenewError, SecretDocument, read_secret, renew,
+    AccountError, AccountLabel, AccountMeta, AuthFailure, AuthReason, CredentialPool,
+    SecretDocument, read_secret,
 };
-use demi_provider_common::oauth::{Lifetime, decode_json_response};
-use demi_shared_types::{Clock, Timestamp};
-use http::header::{ACCEPT, CONTENT_TYPE};
-use reqwest::Url;
+use demi_shared_types::Timestamp;
 use serde::{Deserialize, Serialize};
 
 use crate::FAMILY;
+use crate::files::SignIn;
+use crate::placement::{CliWork, Handover};
 
-/// The CLI's own OAuth client, whose tokens the CLI's sign-in issues
-/// (Claude Code 2.1.294).
-pub(crate) const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-
-/// How long before its expiry a token is refreshed, and a process holding
-/// it replaced: a request may run for long, and the CLI cannot be given a
-/// fresh token while it runs (`claude-code.md` § Accounts and sign-in).
-const EXPIRY_SKEW: Duration = Duration::from_secs(30 * 60);
-
-/// The `claude-code` family's secret document: what the CLI's sign-in wrote,
-/// its tokens and their expiry, the scopes granted and the subscription
-/// type, with the account's ID and email. Demi defines it; it is not the
-/// CLI's own credentials file.
+/// The sign-in an earlier release kept sealed in an account's record: what
+/// the CLI's login wrote, its tokens and their expiry, the scopes granted and
+/// the subscription type, with the account's ID and email. It is read only to
+/// hand it over to the account's directory.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub(crate) struct ClaudeSecret {
-    pub(crate) access_token: Secret,
-    pub(crate) refresh_token: Secret,
-    /// When the access token expires.
-    pub(crate) expires_at: Timestamp,
-    pub(crate) scopes: Vec<String>,
-    /// Such as `max`; none when the sign-in did not say.
+struct EarlierSignIn {
+    access_token: Secret,
+    refresh_token: Secret,
+    expires_at: Timestamp,
+    scopes: Vec<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) subscription_type: Option<String>,
-    /// The account's ID, which tells it apart from the entry's others.
-    pub(crate) account_id: String,
+    subscription_type: Option<String>,
+    account_id: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) email: Option<String>,
+    email: Option<String>,
 }
 
-impl SecretDocument for ClaudeSecret {}
+impl SecretDocument for EarlierSignIn {}
 
-impl ClaudeSecret {
-    /// How the account names itself: its email, else its ID, with its
-    /// subscription type; its ID tells it apart.
-    pub(crate) fn label(&self) -> AccountLabel {
-        AccountLabel {
-            label: self
-                .email
-                .clone()
-                .unwrap_or_else(|| self.account_id.clone()),
-            detail: self.subscription_type.clone(),
-            identity_key: Some(format!("account:{}", self.account_id)),
-        }
-    }
-
-    fn expiring(&self, now: Timestamp) -> bool {
-        expiring(self.expires_at, now)
+/// How an account the CLI signed in names itself: its email, else its ID;
+/// its ID tells it apart.
+pub(crate) fn label(account_id: &str, email: Option<&str>) -> AccountLabel {
+    AccountLabel {
+        label: email.unwrap_or(account_id).to_owned(),
+        detail: None,
+        identity_key: Some(identity_key(account_id)),
     }
 }
 
-/// Whether a token that expires at `expires_at` expires within thirty
-/// minutes of `now`.
-pub(crate) fn expiring(expires_at: Timestamp, now: Timestamp) -> bool {
-    let skew = i64::try_from(EXPIRY_SKEW.as_millis()).unwrap_or(i64::MAX);
-    expires_at.as_millisecond() - now.as_millisecond() <= skew
+/// What tells the account of `account_id` apart from an entry's others.
+pub(crate) fn identity_key(account_id: &str) -> String {
+    format!("account:{account_id}")
 }
 
-/// The account a provider stands for, and how its tokens are refreshed.
+/// The account a provider stands for.
 pub(crate) struct ClaudeAuth {
     pool: Arc<dyn CredentialPool>,
     account: Option<String>,
-    /// The CLI's token endpoint, `https://platform.claude.com/v1/oauth/token`
-    /// in the product.
-    token_url: Url,
-    clock: Arc<dyn Clock>,
+}
+
+/// The work of a process of the account, and the version of the record's
+/// secret to clear once its handover is written.
+pub(crate) struct AccountWork {
+    pub(crate) work: CliWork,
+    pub(crate) handed_over: Option<u64>,
 }
 
 impl ClaudeAuth {
-    pub(crate) fn new(
-        pool: Arc<dyn CredentialPool>,
-        account: Option<String>,
-        token_url: Url,
-        clock: Arc<dyn Clock>,
-    ) -> Self {
-        Self {
-            pool,
-            account,
-            token_url,
-            clock,
-        }
+    pub(crate) fn new(pool: Arc<dyn CredentialPool>, account: Option<String>) -> Self {
+        Self { pool, account }
     }
 
-    fn document(&self) -> Result<Box<dyn AccountDocument>, AuthFailure> {
-        let account = self
-            .account
+    fn account(&self) -> Result<&str, AuthFailure> {
+        self.account
             .as_deref()
+            .ok_or(AuthFailure::new(FAMILY, AuthReason::Missing))
+    }
+
+    /// The account as its record holds it: a usable one, else why it is
+    /// not, such as a sign-in its vendor refused.
+    pub(crate) async fn status(&self) -> Result<AccountMeta, AuthFailure> {
+        let account = self.account()?;
+        let meta = self
+            .pool
+            .meta(account)
+            .await
+            .map_err(|error| AuthFailure::new(FAMILY, AuthReason::Store(error.to_string())))?
             .ok_or(AuthFailure::new(FAMILY, AuthReason::Missing))?;
-        Ok(self.pool.document(account))
-    }
-
-    /// The account's stored sign-in, as it is.
-    pub(crate) async fn stored(&self) -> Result<ClaudeSecret, AuthFailure> {
-        let doc = self.document()?;
-        read_secret::<ClaudeSecret>(&*doc)
-            .await
-            .map(|stored| stored.secret)
-            .map_err(failure)
-    }
-
-    /// The account's sign-in, refreshed first when its access token expires
-    /// within thirty minutes, or when it is still the one the vendor
-    /// `refused`. A refresh that waited behind another uses the other's
-    /// tokens unless they expire as soon.
-    pub(crate) async fn credentials(
-        &self,
-        http: &reqwest::Client,
-        refused: Option<&Secret>,
-    ) -> Result<ClaudeSecret, AuthFailure> {
-        let doc = self.document()?;
-        let due = |secret: &ClaudeSecret| {
-            refused.is_some_and(|token| secret.access_token == *token)
-                || secret.expiring(self.clock.now())
-        };
-        renew(&*doc, due, |secret| self.refresh(http, secret))
-            .await
-            .map_err(|error| match error {
-                RenewError::Account(error) => failure(error),
-                RenewError::Refresh(message) => {
-                    AuthFailure::new(FAMILY, AuthReason::Refresh(message))
-                }
-            })
-    }
-
-    /// Asks the CLI's token endpoint for new tokens with a `refresh_token`
-    /// grant, the CLI's client and the scopes the sign-in has, as the CLI
-    /// does. A refreshed sign-in keeps the refresh token and the scopes the
-    /// answer does not replace.
-    async fn refresh(
-        &self,
-        http: &reqwest::Client,
-        secret: ClaudeSecret,
-    ) -> Result<ClaudeSecret, String> {
-        let grant = RefreshGrant {
-            grant_type: "refresh_token",
-            refresh_token: secret.refresh_token.expose(),
-            client_id: CLIENT_ID,
-            scope: secret.scopes.join(" "),
-        };
-        let response = http
-            .post(self.token_url.clone())
-            .header(ACCEPT, "application/json")
-            .header(CONTENT_TYPE, "application/json")
-            .body(json_body(&grant))
-            .send()
-            .await
-            .map_err(|error| format!("Claude token refresh failed: {}", error.without_url()))?;
-        if !response.status().is_success() {
-            return Err(format!(
-                "Claude token refresh failed with HTTP {}; sign in to the account again",
-                response.status().as_u16()
-            ));
+        if meta.signed_out {
+            return Err(AuthFailure::new(FAMILY, AuthReason::SignedOut));
         }
-        let tokens: RefreshedTokens = decode_json_response(response)
-            .await
-            .map_err(|error| format!("Claude token refresh failed: {error}"))?;
-        let lifetime = tokens
-            .expires_in
-            .0
-            .ok_or("Claude token refresh failed: the answer names no expiry")?;
-        let lifetime = i64::try_from(lifetime.as_millis()).unwrap_or(i64::MAX);
-        let expires_at = Timestamp::from_millisecond(
-            self.clock
-                .now()
-                .as_millisecond()
-                .saturating_add(lifetime),
-        )
-        .map_err(|_| "Claude token refresh failed: the expiry is out of range".to_owned())?;
-        let scopes = match tokens.scope {
-            Some(scope) => scope.split_whitespace().map(str::to_owned).collect(),
-            None => secret.scopes,
+        Ok(meta)
+    }
+
+    /// What a process of the account starts with: the account's directory,
+    /// and the sign-in its record still holds from an earlier release, as
+    /// the CLI's files, when it holds one. A signed-out account starts
+    /// nothing: the CLI emptied its sign-in.
+    pub(crate) async fn work(&self) -> Result<AccountWork, AuthFailure> {
+        self.status().await?;
+        let account = self.account()?;
+        let document = self.pool.document(account);
+        let (handover, handed_over) = match read_secret::<EarlierSignIn>(&*document).await {
+            Err(AccountError::Missing) => (None, None),
+            Err(AccountError::Invalid(error)) => {
+                return Err(AuthFailure::new(
+                    FAMILY,
+                    AuthReason::Invalid(format!(
+                        "its secret document is {error}. Remove the account and sign in again"
+                    )),
+                ));
+            }
+            Err(error) => return Err(AuthFailure::of_account(FAMILY, error)),
+            Ok(stored) => {
+                let earlier = stored.secret;
+                let files = SignIn {
+                    access_token: &earlier.access_token,
+                    refresh_token: &earlier.refresh_token,
+                    expires_at: earlier.expires_at,
+                    scopes: &earlier.scopes,
+                    subscription_type: earlier.subscription_type.as_deref(),
+                    account_id: &earlier.account_id,
+                    email: earlier.email.as_deref(),
+                }
+                .files();
+                (Some(Handover { files }), Some(stored.version))
+            }
         };
-        Ok(ClaudeSecret {
-            access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token.unwrap_or(secret.refresh_token),
-            expires_at,
-            scopes,
-            ..secret
+        Ok(AccountWork {
+            work: CliWork::Account {
+                account: account.to_owned(),
+                handover,
+            },
+            handed_over,
         })
     }
-}
 
-/// The failure of an account whose sign-in cannot be read. A document that
-/// does not decode, such as a setup token that releases before the CLI's
-/// sign-in stored, asks the user to sign in again.
-fn failure(error: AccountError) -> AuthFailure {
-    match error {
-        AccountError::Invalid(error) => AuthFailure::new(
-            FAMILY,
-            AuthReason::Invalid(format!(
-                "its secret document is {error}. Remove the account and sign in again"
-            )),
-        ),
-        error => AuthFailure::of_account(FAMILY, error),
+    /// Clears the record's secret, read at `version`, once its sign-in is in
+    /// the account's directory: the tokens move, they are not copied. A
+    /// record that changed meanwhile was written by a new sign-in, which
+    /// holds no secret.
+    pub(crate) async fn handed_over(&self, version: u64) {
+        let Ok(account) = self.account() else {
+            return;
+        };
+        let document = self.pool.document(account);
+        match document.replace(None, version).await {
+            Ok(_) => tracing::info!(account, "a Claude Code sign-in of an earlier release was handed over to its directory"),
+            Err(error) => {
+                // The next start finds the directory's sign-in and clears it
+                // then, writing nothing.
+                tracing::warn!(account, "a handed-over Claude Code sign-in was not cleared from its record: {error}");
+            }
+        }
     }
-}
 
-/// The CLI's refresh request, in JSON.
-#[derive(Serialize)]
-struct RefreshGrant<'a> {
-    grant_type: &'static str,
-    refresh_token: &'a str,
-    client_id: &'static str,
-    scope: String,
-}
-
-/// The token endpoint's answer to a refresh. One without an access token is
-/// a failed refresh however it is spelled.
-#[derive(Deserialize)]
-struct RefreshedTokens {
-    access_token: Secret,
-    #[serde(default)]
-    refresh_token: Option<Secret>,
-    #[serde(default)]
-    expires_in: Lifetime,
-    #[serde(default)]
-    scope: Option<String>,
+    /// Marks the account signed out: its vendor refused its sign-in. A pool
+    /// that fails keeps the account as it was, and its next request fails
+    /// the same way.
+    pub(crate) async fn signed_out(&self) {
+        let Ok(account) = self.account() else {
+            return;
+        };
+        tracing::info!(account, "Claude signed a Claude Code account out");
+        if let Err(error) = self.pool.sign_out(account).await {
+            tracing::warn!(account, "a signed-out Claude Code account was not marked: {error}");
+        }
+    }
 }

@@ -101,6 +101,24 @@ pub struct ProviderFailureFacts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub continue_with: Option<ContinueWith>,
+    /// For a request whose sign-in the vendor refused, the account it
+    /// signed out while it still is, which the conversation names with
+    /// Open Providers (`claude-code.md` § Accounts and sign-in); omitted
+    /// otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub signed_out: Option<SignedOutAccount>,
+}
+
+/// An account its vendor signed out: the provider entry's name and the
+/// account's label, as Settings show them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct SignedOutAccount {
+    #[garde(skip)]
+    pub provider: String,
+    #[garde(skip)]
+    pub account: String,
 }
 
 /// An account a failed turn can continue with: its id and the label

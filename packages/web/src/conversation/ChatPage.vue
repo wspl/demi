@@ -14,6 +14,7 @@ import { useConversations } from './store'
 import { useConversationNavigation } from './navigation'
 import { useResources } from '../state/resources'
 import { useProviderSettings } from '../settings/providers'
+import { useSettingsAddress } from '../settings/address'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useWorkPanel } from './work'
@@ -28,6 +29,7 @@ import type { Conversation } from '../state/types'
 import { conversationShareService } from './sharing'
 
 const store = useConversations()
+const settingsAddress = useSettingsAddress()
 const providerSettings = useProviderSettings()
 
 /**
@@ -283,6 +285,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @retry-submission="store.retrySend(conversation, $event)"
     @retry="store.start(conversation)"
     @continue-with="(providerId, credentialId) => conversation && continueWith(conversation, providerId, credentialId)"
+    @open-providers="void settingsAddress.open('models')"
     @rename="store.rename(conversation.id, $event)"
     :listed="conversation.persistence === 'synced' && !conversation.archived ? { pinned: conversation.pinned } : undefined"
     @pin="void store.pin([conversation.id], $event)"

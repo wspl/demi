@@ -14,7 +14,9 @@ use std::sync::Arc;
 use demi_conversation_socket_protocol::Failures;
 use demi_provider_common::Provider;
 use demi_provider_common::ErrorCode;
-use demi_shared_types::{Block, ContinueWith, ErrorBlock, ProviderFailureFacts, Rotation, Timestamp};
+use demi_shared_types::{
+    Block, ContinueWith, ErrorBlock, ProviderFailureFacts, Rotation, SignedOutAccount, Timestamp,
+};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 
 use demi_backend_providers::llm::assembly::ProviderAssembly;
@@ -35,7 +37,8 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
             .as_ref()
             .filter(|diagnostics| diagnostics.upstream.is_some());
         let used_up = error.code.as_deref() == Some(ErrorCode::UsageLimit.as_str());
-        if upstream.is_none() && !used_up {
+        let refused = error.code.as_deref() == Some(ErrorCode::AuthExpired.as_str());
+        if upstream.is_none() && !used_up && !refused {
             continue;
         }
         let provider = &error.model.provider_id;
@@ -51,6 +54,7 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
             None => ProviderFailureFacts {
                 retry_at: None,
                 continue_with: None,
+                signed_out: None,
             },
         };
         if used_up {
@@ -59,7 +63,10 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
             }
             account_facts(assembly, &reader.entry, error, &mut facts).await;
         }
-        if facts.retry_at.is_some() || facts.continue_with.is_some() {
+        if refused {
+            facts.signed_out = signed_out(assembly, &reader.entry, error).await;
+        }
+        if facts.retry_at.is_some() || facts.continue_with.is_some() || facts.signed_out.is_some() {
             failures.insert(error.id.clone(), facts);
         }
     }
@@ -140,6 +147,34 @@ async fn account_facts(
             }
         }
     }
+}
+
+/// For a refused sign-in, the account the request used, the one the error
+/// block names, else the entry's active one, while its vendor has it
+/// signed out (`claude-code.md` § Accounts and sign-in): an account signed
+/// in again since shows the failure as it was. A read that fails adds
+/// nothing.
+async fn signed_out(
+    assembly: &ProviderAssembly,
+    entry: &ProviderEntry,
+    error: &ErrorBlock,
+) -> Option<SignedOutAccount> {
+    let named = error
+        .account
+        .as_deref()
+        .and_then(|account| CredentialId::try_from(account).ok());
+    let account = named.or_else(|| entry.active().cloned())?;
+    let record = match assembly.vault().account(entry.id.clone(), account).await {
+        Ok(record) => record?,
+        Err(failure) => {
+            tracing::warn!(provider = %entry.id, error = &failure as &dyn std::error::Error, "a refused sign-in's account was not read");
+            return None;
+        }
+    };
+    record.signed_out.then(|| SignedOutAccount {
+        provider: entry.label.clone(),
+        account: record.label,
+    })
 }
 
 /// The entry `provider` and its provider. Facts only add to what the web

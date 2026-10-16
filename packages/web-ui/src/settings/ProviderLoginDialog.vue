@@ -123,7 +123,7 @@ function submitCode(): void {
         class="flex items-center gap-2 py-4 text-chrome text-fg-muted"
       >
         <IndeterminateSpinner :size="ICON_PX.in24" />
-        <template v-if="phase.stage === 'waiting_for_cloud'">{{ t('login.waitingCloud') }}</template>
+        <template v-if="phase.stage === 'waiting_for_machine'">{{ t('login.waitingMachine') }}</template>
         <template v-else-if="phase.stage === 'installing'">{{ t('login.installing') }}</template>
         <template v-else-if="phase.stage === 'starting'">{{ t('login.startingTool') }}</template>
         <template v-else>{{ t('login.contacting', { vendor: vendorName }) }}</template>

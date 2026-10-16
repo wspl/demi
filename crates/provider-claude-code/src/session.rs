@@ -1,6 +1,6 @@
 //! The session a new CLI process resumes (`claude-code.md` § The session a
 //! process resumes): written from the request's replayed blocks, in their
-//! order, into the process's configuration directory before it starts. A
+//! order, into the process's own directory before it starts. A
 //! block gives the entries the CLI wrote for it, as they were; what no entry
 //! of a block stands for, such as another provider's turn or input Demi
 //! wrote, is written in the CLI's format. The file opens with the CLI's
@@ -27,10 +27,6 @@ use uuid::Uuid;
 use crate::input::{MCP_SERVER, Message};
 use crate::mcp;
 use crate::placement::CliSystem;
-
-/// The directory of the process's sessions in its configuration directory,
-/// which `CLAUDE_CODE_PROJECT_DIR_NAME` names.
-pub(crate) const PROJECT_DIR: &str = "demi";
 
 /// The key of a reference to a block's medium in an entry kept on the
 /// block, in place of the medium's base64.
@@ -91,9 +87,10 @@ impl SessionFile {
         }
     }
 
-    /// The file's path in the configuration directory.
+    /// The file's path in the process's own directory, the directory of
+    /// its sessions that `CLAUDE_CODE_PROJECT_DIR_NAME` names.
     pub(crate) fn path(&self) -> String {
-        format!("projects/{PROJECT_DIR}/{}.jsonl", self.id)
+        format!("{}.jsonl", self.id)
     }
 
     /// The file's bytes for a process on a machine of `system`.

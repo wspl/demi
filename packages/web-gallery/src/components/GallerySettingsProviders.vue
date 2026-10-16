@@ -240,7 +240,7 @@ const CLI_INSTALL_MS = 3000
 /** The specimen's CLI installs under way, which end when the page goes. */
 const cliInstalls = new Set<number>()
 
-/** Installing on Cloud while the Cloud wakes and downloads, then installed; Install works until the request is taken. */
+/** Installing while Claude Code’s machine wakes and downloads, then installed; Install works until the request is taken. */
 async function installCli(p: SettingsProviderEntry) {
   const cli = p.cli
   if (!cli || cli.install?.state === 'installing') {
@@ -251,9 +251,6 @@ async function installCli(p: SettingsProviderEntry) {
   const timer = window.setTimeout(() => {
     cliInstalls.delete(timer)
     cli.install = { state: 'installed' }
-    if ('version' in cli.newest) {
-      cli.machines[0]!.versions = [cli.newest.version]
-    }
   }, CLI_INSTALL_MS)
   cliInstalls.add(timer)
 }
@@ -342,8 +339,8 @@ function beginLogin(p: SettingsProviderEntry) {
     provider: p,
     phase: { kind: 'starting', stage: 'preparing' },
   }
-  // As the product's: a Claude sign-in waits for the Cloud and the command-line tool's start first.
-  const stages: ProviderLoginStage[] = mock.family === 'claude-code' ? ['waiting_for_cloud', 'starting'] : []
+  // As the product's: a Claude sign-in waits for Claude Code's machine and the command-line tool's start first.
+  const stages: ProviderLoginStage[] = mock.family === 'claude-code' ? ['waiting_for_machine', 'starting'] : []
   const next = () => {
     if (!login.value) {
       return
@@ -415,7 +412,10 @@ function submitCode(code: string) {
       }
       return
     }
-    finishLogin('alex@example.com · max')
+    // The user signs in to the account the vendor signed out, when there is one, as after
+    // Sign In Again.
+    const signedOut = login.value.provider.accounts.find((a) => a.signedOut)
+    finishLogin(signedOut ? `${signedOut.label} · ${signedOut.plan}` : 'alex@example.com · max')
   }, 1500)
 }
 
@@ -448,7 +448,12 @@ function closeLogin() {
       }
     }
     const [label = phase.account, plan = ''] = phase.account.split(' · ')
-    p.accounts.push({
+    // As the product's: a sign-in to an account already there replaces its sign-in.
+    const again = p.accounts.find((a) => a.label === label)
+    if (again) {
+      again.signedOut = false
+    } else {
+      p.accounts.push({
       id: `a-${Date.now()}`,
       label,
       plan,
@@ -469,7 +474,8 @@ function closeLogin() {
           resetsAt: ahead(3 * DAY + 4 * HOUR),
         },
       ],
-    })
+      })
+    }
     p.state = 'ready'
     settle(p)
   }

@@ -107,6 +107,19 @@ pub struct WakeParams {
     /// Checked as it is read: an unknown key refuses the message.
     #[garde(skip)]
     pub boot: ManagedBoot,
+    /// Which machine the device is, whose memory limit the sandbox gets.
+    #[garde(skip)]
+    pub machine: SandboxMachine,
+}
+
+/// Which managed machine a sandbox runs (`managed-hosts.md` § The Claude
+/// Code machine): a user's Cloud, or the Claude Code machine, which has a
+/// memory limit of its own.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxMachine {
+    Cloud,
+    ClaudeCode,
 }
 
 /// Stop execution, save storage and release runtime resources.

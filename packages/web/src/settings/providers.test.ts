@@ -696,14 +696,14 @@ test('a page loaded while a sign-in runs shows it again, follows it, and Cancel 
   disposePinia(pinia)
   pinia = createPinia()
   setActivePinia(pinia)
-  state.logins = [runningLogin('running', 'waiting_for_cloud')]
+  state.logins = [runningLogin('running', 'waiting_for_machine')]
   useProduct().start()
   channels.last().connect(state)
   await useProduct().loadVendors()
   const settings = useProviderSettings()
   await waitFor(() => settings.login !== null)
   expect(settings.login?.provider.id).toBe('codex')
-  expect(settings.login?.phase).toEqual({ kind: 'starting', stage: 'waiting_for_cloud' })
+  expect(settings.login?.phase).toEqual({ kind: 'starting', stage: 'waiting_for_machine' })
 
   // The dialog follows what the vault announces.
   state.logins = [runningLogin('running', 'waiting_for_user')]
@@ -753,13 +753,13 @@ test('a start the entry’s running sign-in holds opens that sign-in, whose fail
 
   state.logins = [{
     ...state.logins[0]!,
-    login: { status: 'failed', message: 'Your Cloud did not reconnect within 60 seconds', requestId: 'req_started' },
+    login: { status: 'failed', message: 'Claude Code’s machine didn’t start. Its runner didn’t connect in 60 seconds.', requestId: 'req_started' },
   }]
   channels.last().send({ type: 'logins', logins: state.logins })
   await waitFor(() => settings.login?.phase.kind === 'failed')
   expect(settings.login?.phase).toEqual({
     kind: 'failed',
-    message: 'Your Cloud did not reconnect within 60 seconds',
+    message: 'Claude Code’s machine didn’t start. Its runner didn’t connect in 60 seconds.',
     requestId: 'req_started',
   })
   // Nothing to cancel: it ended.
@@ -824,6 +824,41 @@ test('of two tabs that paste a code each, each shows only its own code’s refus
   channels.last().send({ type: 'logins', logins: [listed(2, 'Invalid code 2')] })
   await waitFor(() => phase()[1] !== null)
   expect(phase()).toEqual([false, 'Invalid code 2'])
+})
+
+test('an account whose sign-in the vendor refused reads as signed out, and Sign In Again starts the account login', async () => {
+  const account = (id: string, signedOut?: boolean) => ({ id, label: `${id}@example.com`, detail: null, updatedAt: null, quota: null, signedOut })
+  state.providers.push({
+    ...state.providers[0]!,
+    id: 'claude',
+    kind: 'subscription' as const,
+    providerType: 'claude-code',
+    label: 'Claude',
+    hasApiKey: false,
+    rotation: 'manual' as const,
+    details: {
+      type: 'read' as const,
+      auth: { status: 'authenticated' as const },
+      runtime: { status: 'ready' as const },
+      accounts: [account('first'), account('second', true)],
+      active: 'first',
+      quota: null,
+      quotaCapability: { type: 'none' as const },
+      cliPackage: null,
+    },
+  })
+  channels.last().send({ type: 'providers', providers: state.providers })
+  const settings = useProviderSettings()
+  await waitFor(() => settings.providers.some((provider) => provider.id === 'claude'))
+  const claude = settings.providers.find((provider) => provider.id === 'claude')!
+  expect(claude.accounts.map((row) => [row.id, row.signedOut])).toEqual([['first', false], ['second', true]])
+  const starts: string[] = []
+  startLogin = async (path) => {
+    starts.push(path)
+    return Response.json({ code: 'provider_busy', message: 'Another provider operation is still running', requestId: 'req_refused' }, { status: 409 })
+  }
+  await settings.beginLogin(claude)
+  expect(starts).toEqual(['/api/providers/claude/accounts/login'])
 })
 
 test('a completed sign-in says done the moment the page learns it, and an account removed later leaves it done', async () => {

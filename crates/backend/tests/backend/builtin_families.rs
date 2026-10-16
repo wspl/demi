@@ -48,6 +48,7 @@ fn args(family: &str, pool: &MemoryCredentialPool, account: Option<AccountBindin
             account,
         }),
         http: reqwest::Client::new(),
+        machine: None,
         clock: clock.clone(),
         models_dev: ModelsDevClient::new(reqwest::Client::new(), url, clock),
     }
@@ -86,8 +87,9 @@ async fn account(pool: &MemoryCredentialPool, secret: serde_json::Value) -> Acco
         updated_at: NOW.parse().unwrap(),
         source: "login:device".into(),
         identity_key: None,
+        signed_out: false,
     };
-    pool.write(meta, secret.to_string()).await.unwrap();
+    pool.write(meta, Some(secret.to_string())).await.unwrap();
     let quota = Arc::new(MemorySnapshots::new());
     quota.update(&mut |_| QuotaSnapshot {
         observed_at: NOW.parse().unwrap(),

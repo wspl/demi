@@ -1,32 +1,49 @@
 //! The quota of a Claude Code account (`usage-and-quota.md` § Claude Code):
-//! a free probe of the OAuth usage endpoint, and the `rate_limit_event`
-//! lines the CLI prints when the vendor's rate-limit headers change.
+//! a probe that asks the CLI, in a process of the account's directory that
+//! sends no message, for its usage (`get_usage`), and the
+//! `rate_limit_event` lines the CLI prints when the vendor's rate-limit
+//! headers change.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
+use std::time::Duration;
 
+use demi_host_interface::{Process, ProcessOutput};
 use demi_provider_common::quota::{
-    Observation, ProbeCost, ProbeReading, QuotaError, QuotaSource, clamp_used_percent, rfc3339,
-    severity,
+    Observation, ProbeCost, ProbeReading, QuotaError, QuotaSource, clamp_used_percent, plan_label,
+    rfc3339, severity,
 };
-use demi_provider_common::wire::{NonEmpty, Reported};
-use demi_shared_types::{QuotaKind, QuotaScope, QuotaSeverity, QuotaUnit, QuotaWindow, Timestamp};
+use demi_provider_common::wire::{NonEmpty, Reported, Tagged};
+use demi_shared_types::{QuotaKind, QuotaPlan, QuotaScope, QuotaSeverity, QuotaUnit, QuotaWindow, StreamKind, Timestamp};
 use futures_util::future::BoxFuture;
-use http::HeaderValue;
-use http::header::{ACCEPT, AUTHORIZATION};
-use reqwest::Url;
+use futures_util::stream::LocalBoxStream;
+use futures_util::{FutureExt as _, StreamExt as _};
 use serde::Deserialize;
+use tokio::sync::oneshot;
+use tokio_util::sync::CancellationToken;
 
 use crate::account::ClaudeAuth;
+use crate::cli;
+use crate::input::{self, ControlRequest, Input};
+use crate::live::{Handle, Tail, exit_message};
+use crate::output::{ControlResponseBody, Line};
+use crate::placement::{AccountMachine, AccountWork, CliWork, Placed, Placement};
 
-/// The beta the OAuth usage endpoint answers under.
-const OAUTH_BETA: &str = "oauth-2025-04-20";
+/// How long a probe waits for the CLI's answer, such as one held behind a
+/// lock a killed process left (`claude-code.md` § Accounts and sign-in).
+const PROBE_LIMIT: Duration = Duration::from_secs(30);
+
+/// The id of the probe's `get_usage` request.
+const USAGE_REQUEST: &str = "usage";
 
 /// The quota source of one Claude Code account.
 pub(crate) struct ClaudeQuota {
     pub(crate) auth: Arc<ClaudeAuth>,
-    pub(crate) http: reqwest::Client,
-    pub(crate) usage_url: Url,
+    /// The machine the probe's process runs on; none for a provider built
+    /// without one, which cannot probe.
+    pub(crate) machine: Option<Arc<dyn AccountMachine>>,
+    /// The provider entry the probe is work of.
+    pub(crate) entry: String,
 }
 
 impl QuotaSource for ClaudeQuota {
@@ -34,48 +51,57 @@ impl QuotaSource for ClaudeQuota {
         Some(ProbeCost::Free)
     }
 
-    /// `GET /api/oauth/usage` with the account's access token, refreshed
-    /// first when it expires within five minutes. The endpoint does not say
-    /// the plan, so the reading names none.
+    /// The CLI's `get_usage` answer, in a process of the account's
+    /// directory on the Claude Code machine: its `rate_limits`, the vendor's
+    /// usage object, and its `subscription_type`, the plan. A sign-in an
+    /// earlier release kept in the account's record is handed over first.
     fn probe(&self) -> BoxFuture<'_, Result<ProbeReading, QuotaError>> {
         Box::pin(async move {
-            let secret = self
+            let machine = self.machine.clone().ok_or_else(|| {
+                QuotaError::Unavailable("Claude Code's machine is not available".into())
+            })?;
+            let account = self
                 .auth
-                .credentials(&self.http, None)
+                .work()
                 .await
                 .map_err(|failure| failure.quota_error())?;
-            let failed = |error: reqwest::Error| {
-                QuotaError::Unavailable(format!(
-                    "Claude usage request failed: {}",
-                    error.without_url()
-                ))
-            };
-            let response = self
-                .http
-                .get(self.usage_url.clone())
-                .header(AUTHORIZATION, secret.access_token.bearer())
-                .header("anthropic-beta", HeaderValue::from_static(OAUTH_BETA))
-                .header(ACCEPT, HeaderValue::from_static("application/json"))
-                .send()
+            let (answer, answered) = oneshot::channel();
+            let work = account.work;
+            let probe: AccountWork = Box::new(move |placement, abandoned| {
+                Box::pin(async move {
+                    let probed = ask_usage(&*placement, work, abandoned).await;
+                    // A probe nobody waits for any more reports to nobody.
+                    let _ = answer.send(probed);
+                })
+            });
+            machine
+                .run(self.entry.clone(), probe)
                 .await
-                .map_err(failed)?;
-            let status = response.status();
-            let body = response.text().await.map_err(failed)?;
-            if !status.is_success() {
-                let body: String = body.chars().take(200).collect();
-                return Err(QuotaError::Unavailable(format!(
-                    "Claude usage request failed ({}): {body}",
-                    status.as_u16()
-                )));
+                .map_err(|error| QuotaError::Unavailable(error.0))?;
+            let usage = answered.await.unwrap_or_else(|_| {
+                Err(QuotaError::Unavailable(
+                    "Claude Code's usage probe ended without an answer".into(),
+                ))
+            })?;
+            if let Some(version) = account.handed_over {
+                self.auth.handed_over(version).await;
             }
-            let invalid = |reason: String| {
-                QuotaError::Invalid(format!("Claude usage answer cannot be read: {reason}"))
+            let invalid = |reason: &str| {
+                QuotaError::Invalid(format!("Claude Code's usage answer cannot be read: {reason}"))
             };
-            let answer: serde_json::Value =
-                serde_json::from_str(&body).map_err(|error| invalid(error.to_string()))?;
-            let usage = usage(&answer).ok_or_else(|| invalid("it is not an object".into()))?;
+            let answer = UsageAnswer::deserialize(&usage).map_err(|error| invalid(&error.to_string()))?;
+            let rate_limits = answer
+                .rate_limits
+                .ok_or_else(|| invalid("it holds no rate limits"))?;
+            let usage = usage_of(&rate_limits).ok_or_else(|| invalid("its rate limits are not an object"))?;
             Ok(ProbeReading {
-                plan: None,
+                plan: answer
+                    .subscription_type
+                    .filter(|plan| !plan.is_empty())
+                    .map(|plan| QuotaPlan {
+                        label: plan_label(&plan),
+                        id: plan,
+                    }),
                 account_label: None,
                 windows: usage.windows(),
             })
@@ -98,6 +124,138 @@ impl QuotaSource for ClaudeQuota {
         let windows = info.windows();
         (!windows.is_empty()).then_some(windows)
     }
+}
+
+/// What Demi reads of the CLI's `get_usage` answer (Claude Code 2.1.301).
+#[derive(Deserialize)]
+struct UsageAnswer {
+    /// The vendor's usage object, null when the CLI did not read it.
+    #[serde(default)]
+    rate_limits: Option<serde_json::Value>,
+    /// Such as `max`.
+    #[serde(default)]
+    subscription_type: Option<String>,
+}
+
+/// Starts the probe's process for `work` through `placement`, asks it for
+/// its usage and closes it, within thirty seconds: the answer of its
+/// `get_usage` request. It gives up when nobody waits for it any more
+/// (`abandoned`). Its process is held outside what gives up, and closed,
+/// SIGTERM first, however the probe ends: on its answer, its timeout or
+/// its abandonment alike (`claude-code.md` § Process lifetime).
+async fn ask_usage(
+    placement: &dyn Placement,
+    work: CliWork,
+    abandoned: CancellationToken,
+) -> Result<serde_json::Value, QuotaError> {
+    let unavailable = QuotaError::Unavailable;
+    let timed_out = || {
+        unavailable(format!(
+            "Claude Code did not answer its usage request within {} seconds",
+            PROBE_LIMIT.as_secs()
+        ))
+    };
+    let given_up = || unavailable("The usage probe was given up".into());
+    let _work = placement.work();
+    let deadline = tokio::time::Instant::now() + PROBE_LIMIT;
+    // A start given up removes what it made.
+    let started = tokio::select! {
+        started = tokio::time::timeout_at(deadline, placement.start(work, Arc::new(cli::probe), &|_| {})) => started,
+        () = abandoned.cancelled() => return Err(given_up()),
+    };
+    let Placed {
+        process, config, ..
+    } = started
+        .map_err(|_| timed_out())?
+        .map_err(|error| unavailable(error.0))?;
+    let Process {
+        output,
+        control,
+        exit,
+    } = process;
+    let exit = exit.shared();
+    let mut handle = Handle::of(control, exit.clone(), Some(config));
+    let asked = async {
+        let lines = [
+            input::line(&Input::ControlRequest {
+                request_id: "initialize",
+                request: ControlRequest::InitializeBare {},
+            }),
+            input::line(&Input::ControlRequest {
+                request_id: USAGE_REQUEST,
+                request: ControlRequest::GetUsage {
+                    skip_behaviors: true,
+                },
+            }),
+        ]
+        .concat();
+        match handle.control().write_stdin(lines.into()).await {
+            Ok(()) => answer(output).await,
+            Err(error) => Answer::Failed(format!(
+                "Claude Code's usage request could not be written: {error}"
+            )),
+        }
+    };
+    let answered = tokio::select! {
+        answered = tokio::time::timeout_at(deadline, asked) => answered.map_err(|_| timed_out()),
+        () = abandoned.cancelled() => Err(given_up()),
+    };
+    handle.close().await;
+    match answered? {
+        Answer::Usage(usage) => Ok(usage),
+        Answer::Failed(message) => Err(unavailable(message)),
+        Answer::Ended(stderr) if !stderr.is_empty() => Err(unavailable(stderr)),
+        Answer::Ended(_) => Err(unavailable(exit_message(&exit.await))),
+    }
+}
+
+/// What the probe's process answered.
+enum Answer {
+    /// What its `get_usage` request answered.
+    Usage(serde_json::Value),
+    /// It refused the request, or could not be asked.
+    Failed(String),
+    /// Its output ended first, with the tail of its standard error.
+    Ended(String),
+}
+
+/// Reads the CLI's output until the answer to its `get_usage` request.
+async fn answer(mut output: LocalBoxStream<'static, ProcessOutput>) -> Answer {
+    let mut stdout = Vec::new();
+    let mut stderr = Tail::default();
+    while let Some(chunk) = output.next().await {
+        if chunk.stream == StreamKind::Stderr {
+            stderr.push(&chunk.bytes);
+            continue;
+        }
+        stdout.extend_from_slice(&chunk.bytes);
+        while let Some(end) = stdout.iter().position(|byte| *byte == b'\n') {
+            let line: Vec<u8> = stdout.drain(..=end).collect();
+            // Any other line, the `system` line among them, says nothing of
+            // the usage.
+            let Ok(Tagged(Some(Line::ControlResponse(line)))) = serde_json::from_slice(&line) else {
+                continue;
+            };
+            let Some(ControlResponseBody {
+                subtype,
+                request_id,
+                error,
+                response,
+            }) = line.response
+            else {
+                continue;
+            };
+            if request_id.as_deref() != Some(USAGE_REQUEST) {
+                continue;
+            }
+            if subtype.as_deref() != Some("success") {
+                let reason = error.into_inner().unwrap_or_else(|| "no reason given".into());
+                return Answer::Failed(format!("Claude Code refused its usage request: {reason}"));
+            }
+            return Answer::Usage(response.unwrap_or_default());
+        }
+    }
+    Answer::Ended(stderr.text())
 }
 
 /// The windows Demi names, by the vendor's id, with their length and the
@@ -220,7 +378,7 @@ struct Usage {
 
 /// The usage `value` reports, when it is an object: serde's derive would
 /// read an array's items as the fields in order.
-fn usage(value: &serde_json::Value) -> Option<Usage> {
+fn usage_of(value: &serde_json::Value) -> Option<Usage> {
     if !value.is_object() {
         return None;
     }

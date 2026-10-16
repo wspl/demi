@@ -9,9 +9,9 @@ machine manager are Rust programs; the web app is Vue and TypeScript.
 Users configure model providers and choose where tools execute. A conversation
 starts with Cloud selected, but selecting Cloud does not start a machine. File
 operations and processes acquire the execution host when needed, and a
-provider that runs a process, such as Claude Code, acquires the user's Cloud.
-Reading history and using an HTTP provider do not require a running Cloud
-machine.
+provider that runs a process, such as Claude Code, acquires the Claude Code
+machine. Reading history and using an HTTP provider do not require a running
+Cloud machine.
 
 ## System boundaries
 

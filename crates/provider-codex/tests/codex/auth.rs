@@ -119,7 +119,7 @@ async fn a_refused_token_that_another_refresher_replaced_meanwhile_is_not_refres
         vendor.received(1).await;
         let version = doc.read().await.unwrap().unwrap().version;
         assert!(
-            doc.replace(secret("rotated-access", "refresh-2", NOW), version)
+            doc.replace(Some(secret("rotated-access", "refresh-2", NOW)), version)
                 .await
                 .unwrap()
         );
@@ -271,8 +271,9 @@ async fn the_status_names_the_account_and_an_unreadable_or_absent_one_is_reporte
         updated_at: NOW.parse().unwrap(),
         source: "test".into(),
         identity_key: None,
+        signed_out: false,
     };
-    pool.write(other, "{}".into()).await.unwrap();
+    pool.write(other, Some("{}".into())).await.unwrap();
     pool.set_active("cred-b").await.unwrap();
     assert_eq!(
         signed_in.auth_status().await,

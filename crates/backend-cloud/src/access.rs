@@ -5,7 +5,7 @@
 //! reset, and no conversation's file gate.
 
 use demi_backend_database::StorageError;
-use demi_backend_database::devices::DeviceRecord;
+use demi_backend_database::devices::{DeviceRecord, ManagedMachine};
 use demi_backend_page_sync::Part;
 use demi_backend_remote_host::RemoteHost;
 
@@ -42,9 +42,25 @@ impl dyn CloudShard {
     /// The user's Cloud, made on its first use and woken when it is stopped.
     pub async fn machine_access(&self) -> Result<MachineAccess, CloudError> {
         let device = self.cloud_device().await?;
+        self.access(device).await
+    }
+
+    /// The Claude Code machine, made on its first use and woken when it is
+    /// stopped, for the shard of the instance's master, whose record it is
+    /// (`managed-hosts.md` § The Claude Code machine).
+    pub async fn claude_code_access(&self) -> Result<MachineAccess, CloudError> {
+        let device = self
+            .control()
+            .managed_machine_or_create(self.user().clone(), ManagedMachine::ClaudeCode)
+            .await?;
+        self.access(device).await
+    }
+
+    /// The managed machine `device`, woken when it is stopped.
+    async fn access(&self, device: DeviceRecord) -> Result<MachineAccess, CloudError> {
         let admission = self.admit_cloud(&device).await?;
         let home = self.devices().home(&device.id).ok_or_else(|| {
-            CloudError::Failed("The Cloud did not report its home directory".into())
+            CloudError::Failed("The machine did not report its home directory".into())
         })?;
         let host =
             self.devices()

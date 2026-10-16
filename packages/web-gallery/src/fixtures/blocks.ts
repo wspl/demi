@@ -1378,6 +1378,41 @@ export function usageLimitErrorBlock(id: string, resetsAt: string): Block {
 }
 
 /**
+ * The record of a turn whose sign-in Claude refused, as Claude Code 2.1.301
+ * prints it: its made-up assistant line saying `authentication_failed`,
+ * then a failed result that names no status (`claude-code.md` § Accounts
+ * and sign-in).
+ */
+export function signedOutErrorBlock(id: string): Block {
+  const words = 'Failed to authenticate: OAuth session expired and could not be refreshed'
+  const notice = JSON.stringify({
+    type: 'assistant',
+    error: 'authentication_failed',
+    is_api_error_message: true,
+    message: { model: '<synthetic>', role: 'assistant', content: [{ type: 'text', text: words }] },
+  })
+  const result = JSON.stringify({
+    type: 'result',
+    subtype: 'success',
+    is_error: true,
+    api_error_status: null,
+    result: words,
+  })
+  return {
+    type: 'error',
+    id,
+    createdAt: iso(30_000),
+    model: demoModel,
+    message: 'Claude Code signed the account out. Sign in to it again',
+    code: 'auth_expired',
+    diagnostics: {
+      source: 'stream',
+      upstream: `${notice}\n${result}`,
+    },
+  }
+}
+
+/**
  * The line an agent's move to another account leaves when its account
  * reached its 5-hour limit, which resets at `resetsAt`, and the
  * answer the same request then got from the next account

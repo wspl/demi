@@ -75,6 +75,52 @@ pub struct DeviceRecord {
     /// (`product.md` § Conversations and projects); none before its runner
     /// first reported its system, and for a Cloud.
     pub mark_number: Option<u32>,
+    /// Which managed machine a managed device is; none for a paired device.
+    pub machine: Option<ManagedMachine>,
+}
+
+impl DeviceRecord {
+    /// Whether the device is one of `user`'s Hosts: theirs, and not the
+    /// Claude Code machine, which is in no user's Hosts though its record
+    /// is the master's (`managed-hosts.md` § The Claude Code machine).
+    pub fn is_host_of(&self, user: &UserId) -> bool {
+        self.user == *user && self.machine != Some(ManagedMachine::ClaudeCode)
+    }
+}
+
+/// A managed device's machine (`managed-hosts.md` § The Claude Code
+/// machine): each user's Cloud, or the Claude Code machine, whose record
+/// belongs to the instance's master and which is in no user's Hosts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ManagedMachine {
+    Cloud,
+    ClaudeCode,
+}
+
+impl ManagedMachine {
+    /// Its name in the `devices.machine` column.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Cloud => "cloud",
+            Self::ClaudeCode => "claude_code",
+        }
+    }
+
+    fn parse(text: &str) -> Result<Self, String> {
+        match text {
+            "cloud" => Ok(Self::Cloud),
+            "claude_code" => Ok(Self::ClaudeCode),
+            other => Err(format!("unknown managed machine {other}")),
+        }
+    }
+
+    /// The name its device record carries.
+    fn name(self) -> &'static str {
+        match self {
+            Self::Cloud => CLOUD_NAME,
+            Self::ClaudeCode => CLAUDE_CODE_NAME,
+        }
+    }
 }
 
 /// A paired device's system: its platform, and the operating system its
@@ -93,10 +139,12 @@ pub struct DeviceChange {
 }
 
 const DEVICE_COLUMNS: &str =
-    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, runner_instance, cloud_started_at, route, mark_number";
+    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, runner_instance, cloud_started_at, route, mark_number, machine";
 
 /// The name and platform of the one device a user's Cloud is.
 pub const CLOUD_NAME: &str = "Cloud";
+/// The name of the Claude Code machine's record, which no page shows.
+const CLAUDE_CODE_NAME: &str = "Claude Code";
 const CLOUD_PLATFORM: RunnerPlatform = RunnerPlatform::Linux;
 
 impl ControlService {
@@ -139,6 +187,7 @@ impl ControlService {
                 cloud_started_at: None,
                 route: DeviceRoute::Automatic,
                 mark_number: None,
+                machine: None,
             })
         })
         .await
@@ -160,38 +209,68 @@ impl ControlService {
 
     /// The user's Cloud device, when its first use made it.
     pub async fn managed_device(&self, user: UserId) -> Result<Option<DeviceRecord>, StorageError> {
+        self.managed_machine(user, ManagedMachine::Cloud).await
+    }
+
+    /// The user's Cloud device, made on its first use.
+    pub async fn managed_device_or_create(
+        &self,
+        user: UserId,
+    ) -> Result<DeviceRecord, StorageError> {
+        self.managed_machine_or_create(user, ManagedMachine::Cloud).await
+    }
+
+    /// The user's managed device of `machine`, when its first use made it.
+    pub async fn managed_machine(
+        &self,
+        user: UserId,
+        machine: ManagedMachine,
+    ) -> Result<Option<DeviceRecord>, StorageError> {
         self.call(move |connection, _| {
-            one(
+            one_of(
                 connection,
-                "kind = 'managed' AND user_id = ?1",
-                user.as_str(),
+                "kind = 'managed' AND user_id = ?1 AND machine = ?2",
+                [user.as_str(), machine.as_str()],
             )
         })
         .await
     }
 
-    /// The user's Cloud device, made on its first use. The partial unique
-    /// index admits one per user, so concurrent first uses find the same
-    /// one. Its token is issued when it boots.
-    pub async fn managed_device_or_create(
+    /// The user's managed device of `machine`, made on its first use: the
+    /// Cloud of any user, the Claude Code machine of the master. The partial
+    /// unique index admits one of each per user, so concurrent first uses
+    /// find the same one. Its token is issued when it boots.
+    pub async fn managed_machine_or_create(
         &self,
         user: UserId,
+        machine: ManagedMachine,
     ) -> Result<DeviceRecord, StorageError> {
         let id = DeviceId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             transaction.execute(
-                "INSERT INTO devices (id, user_id, kind, name, platform, token_hash, claimed_at, last_seen_at)
-                 VALUES (?1, ?2, 'managed', ?3, ?4, NULL, ?5, NULL)
+                "INSERT INTO devices (id, user_id, kind, name, platform, token_hash, claimed_at, last_seen_at, machine)
+                 VALUES (?1, ?2, 'managed', ?3, ?4, NULL, ?5, NULL, ?6)
                  ON CONFLICT DO NOTHING",
-                params![id.as_str(), user.as_str(), CLOUD_NAME, CLOUD_PLATFORM.to_string(), now.as_millisecond()],
+                params![
+                    id.as_str(),
+                    user.as_str(),
+                    machine.name(),
+                    CLOUD_PLATFORM.to_string(),
+                    now.as_millisecond(),
+                    machine.as_str()
+                ],
             )?;
-            let device = one(&transaction, "kind = 'managed' AND user_id = ?1", user.as_str())?;
+            let device = one_of(
+                &transaction,
+                "kind = 'managed' AND user_id = ?1 AND machine = ?2",
+                [user.as_str(), machine.as_str()],
+            )?;
             transaction.commit()?;
             device.ok_or(StorageError::Corrupt {
                 table: "devices",
-                column: "kind",
-                reason: "the user's Cloud device was neither found nor made".into(),
+                column: "machine",
+                reason: "the user's managed device was neither found nor made".into(),
             })
         })
         .await
@@ -396,10 +475,11 @@ impl ControlService {
                            OR conversation.target_workspace_id IN
                              (SELECT id FROM workspaces WHERE device_id = device.id)
                            OR (conversation.target_kind = 'cloud' AND device.kind = 'managed'
-                             AND conversation.user_id = device.user_id)))
+                             AND device.machine = 'cloud' AND conversation.user_id = device.user_id)))
                          OR (?3 AND (
                            (conversation.target_kind = 'cloud' AND conversation.target_path IS NULL
-                             AND device.kind = 'managed' AND conversation.user_id = device.user_id)
+                             AND device.kind = 'managed' AND device.machine = 'cloud'
+                             AND conversation.user_id = device.user_id)
                            OR EXISTS (SELECT 1 FROM conversation_hosts host
                              WHERE host.conversation_id = conversation.id
                                AND host.device_id = device.id AND host.cwd IS NULL))))",
@@ -553,11 +633,20 @@ fn one(
     condition: &str,
     value: &str,
 ) -> Result<Option<DeviceRecord>, StorageError> {
+    one_of(connection, condition, [value])
+}
+
+/// The device `condition` finds with the values `values`.
+fn one_of(
+    connection: &Connection,
+    condition: &str,
+    values: impl rusqlite::Params,
+) -> Result<Option<DeviceRecord>, StorageError> {
     let mut statement = connection.prepare_cached(&format!(
         "SELECT {DEVICE_COLUMNS} FROM devices WHERE {condition}"
     ))?;
     statement
-        .query_row([value], |row| Ok(device_row(row)))
+        .query_row(values, |row| Ok(device_row(row)))
         .optional()?
         .transpose()
 }
@@ -620,6 +709,10 @@ fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
         )?,
         mark_number: match row.get::<_, Option<i64>>("mark_number")? {
             Some(number) => Some(decode("devices", "mark_number", u32::try_from(number))?),
+            None => None,
+        },
+        machine: match row.get::<_, Option<String>>("machine")? {
+            Some(text) => Some(decode("devices", "machine", ManagedMachine::parse(&text))?),
             None => None,
         },
     })

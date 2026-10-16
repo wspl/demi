@@ -81,7 +81,7 @@ impl CodexKit {
         };
         Ok(NewAccount {
             label: secret.label(),
-            secret: secret.encode(),
+            secret: Some(secret.encode()),
         })
     }
 
