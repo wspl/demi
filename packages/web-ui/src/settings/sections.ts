@@ -3,6 +3,7 @@ import {
   Bell,
   Blocks,
   Bot,
+  BrainCircuit,
   CircleUser,
   Database,
   Info,
@@ -80,6 +81,19 @@ export function settingsSections(): SettingsNavGroup[] {
     {
       id: 'agent',
       items: [
+        {
+          id: 'agent',
+          label: uiText('settings.agent.title'),
+          icon: BrainCircuit,
+          keywords: words(t('sections.agentPage.keywords')),
+          settings: [
+            { label: uiText('settings.agent.model'), keywords: words(t('sections.agentPage.modelKeywords')) },
+            { label: uiText('settings.agent.sameProvider'), keywords: words(t('sections.agentPage.sameProviderKeywords')) },
+            { label: uiText('settings.agent.sendWhileRunning'), keywords: words(t('sections.agentPage.sendKeywords')) },
+            { label: uiText('settings.agent.resumeAfterRestart'), keywords: words(t('sections.agentPage.restartKeywords')) },
+            { label: uiText('settings.agent.resumeAtRetry'), keywords: words(t('sections.agentPage.retryKeywords')) },
+          ],
+        },
         {
           id: 'models',
           label: t('providers.title'),

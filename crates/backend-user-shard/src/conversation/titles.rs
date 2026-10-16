@@ -1,15 +1,14 @@
 //! Generated conversation titles (`conversations.md` § Conversation titles): one
-//! model request beside the first turn, through the same metered runtime a
-//! turn uses, which writes the title only while it is still the one the
-//! request began from. An archive or the shard's close aborts it.
+//! small request beside the first turn, on the user's small model, which
+//! writes the title only while it is still the one the request began from.
+//! An archive or the shard's close aborts it.
 
 use tracing::Instrument as _;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 
-use demi_agent_server::ProviderResolver as _;
-use demi_agent_server::title::{request_title, title_from_message};
+use demi_agent_server::title::{title_from_message, title_from_response, title_request};
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationRecord;
@@ -20,9 +19,8 @@ use demi_web_api_protocol::ids::ConversationId;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
-use super::providers::ConversationProviders;
+use super::small_requests::{SmallRequestFailure, SmallRequests};
 use crate::shard::Shard;
-use demi_backend_host_access::root_of;
 
 /// What one request reads, and the state it began from.
 pub(crate) struct TitleRequest {
@@ -34,7 +32,7 @@ pub(crate) struct TitleRequest {
 
 /// The title requests of a shard's conversations.
 pub(crate) struct Titles {
-    providers: Rc<ConversationProviders>,
+    small_requests: Rc<SmallRequests>,
     control: ControlService,
     /// The user's pages, which learn the title a request wrote.
     marks: UserMarks,
@@ -47,13 +45,13 @@ pub(crate) struct Titles {
 
 impl Titles {
     pub(super) fn new(
-        providers: Rc<ConversationProviders>,
+        small_requests: Rc<SmallRequests>,
         control: ControlService,
         marks: UserMarks,
         enabled: bool,
     ) -> Self {
         Self {
-            providers,
+            small_requests,
             control,
             marks,
             enabled,
@@ -77,14 +75,14 @@ impl Titles {
         }
         let cancel = CancellationToken::new();
         self.in_flight.borrow_mut().insert(id.clone(), cancel.clone());
-        let providers = self.providers.clone();
+        let small_requests = self.small_requests.clone();
         let control = self.control.clone();
         let marks = self.marks.clone();
         let in_flight = self.in_flight.clone();
         // The title logs under what asked for it, such as a socket's send.
         tasks.spawn_local(async move {
             if let Err(failure) =
-                generate(&providers, &control, &id, &selection, request, &cancel).await
+                generate(&small_requests, &control, &id, &selection, request, &cancel).await
             {
                 tracing::warn!(conversation = %id, %failure, "a title request wrote nothing");
             }
@@ -113,36 +111,29 @@ impl Titles {
 #[derive(Debug, thiserror::Error)]
 enum TitleFailure {
     #[error(transparent)]
-    Provider(#[from] demi_agent_server::ResolveError),
-    #[error(transparent)]
-    Request(#[from] demi_agent_server::title::TitleError),
+    Request(#[from] SmallRequestFailure),
     #[error(transparent)]
     Storage(#[from] StorageError),
 }
 
-/// Asks `selection`'s model for a title of the conversation `id` and writes
-/// it, unless the request is stopped first.
+/// Asks the small model for a title of the conversation `id`, which infers
+/// with `selection`, and writes it, unless the request is stopped first.
 async fn generate(
-    providers: &ConversationProviders,
+    small_requests: &SmallRequests,
     control: &ControlService,
     id: &ConversationId,
     selection: &ModelSelection,
     request: TitleRequest,
     cancel: &CancellationToken,
 ) -> Result<(), TitleFailure> {
-    let mut runtime = providers.runtime(&root_of(id), selection).await?;
-    let request_id = uuid::Uuid::new_v4().to_string();
-    let answer = request_title(
-        &mut *runtime,
-        id.as_str(),
-        request_id,
-        selection,
-        &request.message,
-        cancel.clone(),
-    )
-    .await;
-    runtime.close().await;
-    let Some(title) = answer? else {
+    // A message without text leaves nothing to title.
+    let Some(small) = title_request(&request.message) else {
+        return Ok(());
+    };
+    let answer = small_requests
+        .run(id, selection, small, cancel.clone())
+        .await?;
+    let Some(title) = answer.as_deref().and_then(title_from_response) else {
         return Ok(());
     };
     if cancel.is_cancelled() {
@@ -157,7 +148,7 @@ async fn generate(
 impl Shard {
     /// Titles the user's conversation `record` after its first message, when
     /// its title is still the placeholder: the message's start at once, and
-    /// a request beside the first turn to the conversation's model.
+    /// a request beside the first turn to the user's small model.
     pub(crate) async fn title_first_message(
         &self,
         record: &ConversationRecord,

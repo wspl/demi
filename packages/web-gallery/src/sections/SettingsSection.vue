@@ -28,6 +28,8 @@ import GalleryCredentials from '../components/GalleryCredentials.vue'
 import GalleryUsers from '../components/GalleryUsers.vue'
 import { createUsersState } from '../fixtures/users'
 import GallerySubagents from '../components/GallerySubagents.vue'
+import GalleryAgent from '../components/GalleryAgent.vue'
+import { createSmallModelState } from '../fixtures/small-model'
 import CredentialDialog from '@demicodes/web-ui/settings/CredentialDialog.vue'
 import type { SettingsCredentialDraft } from '@demicodes/web-ui/settings/types'
 import { createCredentialState, demoCredentials } from '../fixtures/credentials'
@@ -208,6 +210,9 @@ const fullNarrowOpen = ref(true)
 
 // The Subagents section with subagents turned off: the profiles stay, muted.
 const subagentsOff = createSubagentState(false)
+/** Agent: a chosen model the entry no longer lists, and small requests kept on the conversation's provider. */
+const smallModelGone = createSmallModelState({ providerId: 'anthropic', modelId: 'claude-haiku-3', thinkingEffort: null })
+const smallModelSameProvider = createSmallModelState(null, true)
 
 /** A profile pinned in its editor, which closes from its buttons and opens again from Open. */
 function pinnedEditor(id: string | null) {
@@ -460,6 +465,24 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
             @sign-out="productWould('Sign Out')"
             @delete-account="productWould('Delete the Account')"
           />
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Agent · Chosen Model Gone"
+        note="The small model the user chose is no longer listed: the warning says so, and the backend resolves Automatic until it is back. Choosing another model or Automatic clears it."
+      >
+        <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
+          <GalleryAgent :state="smallModelGone" />
+        </div>
+      </GallerySection>
+
+      <GallerySection
+        title="Agent · Only the Conversation’s Provider"
+        note="With small requests kept on the conversation’s provider, the page cannot know which model Automatic resolves to, so it reads Automatic alone. Turning the switch off names it again."
+      >
+        <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
+          <GalleryAgent :state="smallModelSameProvider" />
         </div>
       </GallerySection>
 

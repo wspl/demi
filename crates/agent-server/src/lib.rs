@@ -20,6 +20,7 @@ mod node;
 mod server;
 #[cfg(feature = "testing")]
 pub mod testing;
+pub mod small_request;
 pub mod title;
 
 pub use node::Node;

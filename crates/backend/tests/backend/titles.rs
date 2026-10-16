@@ -18,7 +18,7 @@ use demi_provider_common::{
 };
 use demi_shared_types::{
     AuthState, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModelList, RuntimeState,
-    Timestamp, TokenUsage,
+    ThinkingConfig, Timestamp, TokenUsage,
 };
 use demi_web_api_protocol::conversations::{ConversationStatus, ConversationSummary};
 use demi_web_api_protocol::state::SyncEvent;
@@ -29,7 +29,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 use tokio::sync::Semaphore;
 
-use crate::conversations::{FIRST, SECOND, Socket, choose, configured, create, summaries};
+use crate::conversations::{FIRST, SECOND, Socket, THIRD, choose, configured, create, summaries};
 use crate::support::{Harness, Session, SyncChannel, TestBackend, eventually};
 
 /// The title the scripted model writes.
@@ -388,5 +388,107 @@ async fn an_answer_without_a_title_leaves_the_messages_title() {
     let ended = pushed(&mut page, FIRST, |_| true).await;
     assert_eq!(ended.title.as_deref(), Some("hello there"));
     assert_eq!(script.asked(), 1);
+    backend.close().await;
+}
+
+/// A configured model `id` that levels its thinking at low and high, and
+/// so can turn it off.
+fn thinking_model(id: &str) -> serde_json::Value {
+    json!({
+        "id": id, "displayName": id, "contextWindow": 100000, "outputLimit": 8000,
+        "thinkingEfforts": ["low", "high"], "acceptedExtensions": null, "fastTier": null
+    })
+}
+
+/// The model and thinking of the title request the scripted model was
+/// asked last, once it is asked, which the test then answers.
+async fn titled_with(script: &Script, asked: usize) -> (String, Option<ThinkingConfig>) {
+    eventually("the title request is asked", || async { script.asked() == asked }).await;
+    script.answers.add_permits(1);
+    let asked = script.asked.lock().unwrap();
+    let last = asked.last().unwrap();
+    (last.model_id.clone(), last.thinking.clone())
+}
+
+/// Starts the conversation `id` on the model `m` of `provider` with its
+/// first message, which asks for a title.
+async fn first_message(backend: &TestBackend, master: &Session, id: &str, provider: &str) {
+    create(backend, master, id).await;
+    choose(backend, master, id, provider, "m").await;
+    let mut socket = Socket::connect(backend, master, id).await;
+    socket.open().await;
+    socket.chat("m1", "why does pnpm build fail").await;
+}
+
+/// The small model (`models.md` § Small model): a conversation on one entry
+/// is titled by Haiku of another, at its highest version with thinking off;
+/// a chosen model is kept in the preferences and writes the titles while
+/// its entry lists it, Automatic again once it is gone; with Only the
+/// Conversation's Provider on, the conversation's own model writes them.
+/// Settings › Agent reads what Automatic resolves to from the catalog.
+#[tokio::test]
+async fn titles_are_written_by_the_small_model() {
+    const FOURTH: &str = "9c8b7a6d-5e4f-4a3b-8c1d-2e3f4a5b6c7d";
+    let script = Script::new(GENERATED);
+    let (_harness, backend, master, own) = titling(&script).await;
+    let other = json!({
+        "source": "family", "providerType": "titling", "label": "U", "apiKey": "k",
+        "models": [thinking_model("claude-haiku-4-5"), thinking_model("claude-haiku-5-5"), thinking_model("sonnet")]
+    });
+    let created = backend.post("/api/providers", Some(&master), other).await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let other = created.json::<ProviderAnswer>().provider.id.as_str().to_owned();
+    let small_model = |catalog: serde_json::Value| catalog["smallModel"].clone();
+
+    let catalog = backend.get("/api/models", Some(&master)).await.json::<serde_json::Value>();
+    let shown = small_model(catalog);
+    assert_eq!((shown["providerId"].as_str(), shown["model"]["id"].as_str()), (Some(other.as_str()), Some("claude-haiku-5-5")));
+    first_message(&backend, &master, FIRST, &own).await;
+    assert_eq!(
+        titled_with(&script, 1).await,
+        ("claude-haiku-5-5".into(), Some(ThinkingConfig::Disabled {}))
+    );
+
+    // A chosen model, kept as the user's preference.
+    let chosen = json!({ "providerId": other, "modelId": "sonnet", "thinkingEffort": "high" });
+    let patched = backend
+        .patch("/api/settings/preferences", &master, json!({ "smallModel": chosen }))
+        .await;
+    assert_eq!(patched.status, StatusCode::OK);
+    let saved = backend
+        .get("/api/settings/preferences", Some(&master))
+        .await
+        .json::<serde_json::Value>();
+    assert_eq!(saved["preferences"]["smallModel"], chosen);
+    first_message(&backend, &master, SECOND, &own).await;
+    let (model, thinking) = titled_with(&script, 2).await;
+    assert_eq!(model, "sonnet");
+    assert!(matches!(thinking, Some(ThinkingConfig::Effort { ref effort, .. }) if effort == "high"), "{thinking:?}");
+
+    // Once its entry no longer lists it, Automatic writes the titles; the
+    // choice stays for when it is back.
+    let listed = json!({ "models": [thinking_model("claude-haiku-4-5"), thinking_model("claude-haiku-5-5")] });
+    let edited = backend.patch(&format!("/api/providers/{other}"), &master, listed).await;
+    assert_eq!(edited.status, StatusCode::OK, "{}", String::from_utf8_lossy(&edited.body));
+    first_message(&backend, &master, THIRD, &own).await;
+    assert_eq!(titled_with(&script, 3).await.0, "claude-haiku-5-5");
+
+    // Only the conversation's provider: its own model, and the page shows
+    // Automatic alone.
+    let patched = backend
+        .patch(
+            "/api/settings/preferences",
+            &master,
+            json!({ "smallModel": null, "smallModelSameProvider": true }),
+        )
+        .await;
+    assert_eq!(patched.status, StatusCode::OK);
+    let saved = patched.json::<serde_json::Value>();
+    assert!(saved["preferences"].get("smallModel").is_none(), "{saved}");
+    assert_eq!(saved["preferences"]["smallModelSameProvider"], true);
+    let catalog = backend.get("/api/models", Some(&master)).await.json::<serde_json::Value>();
+    assert_eq!(small_model(catalog), serde_json::Value::Null);
+    first_message(&backend, &master, FOURTH, &own).await;
+    assert_eq!(titled_with(&script, 4).await, ("m".into(), None));
     backend.close().await;
 }

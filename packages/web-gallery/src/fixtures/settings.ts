@@ -1,3 +1,4 @@
+import { createSmallModelState } from './small-model'
 import { DEMO_PERSONAL_INSTRUCTIONS } from './instructions'
 import { reactive } from 'vue'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
@@ -859,6 +860,7 @@ export function createSettingsState() {
       { id: 'file-browser', name: 'File Browser', description: 'Opens the conversation’s files in the work panel to read them, with a tree of the working directory.', enabled: true },
     ] as SettingsPlugin[],
     subagents: createSubagentState(),
+    smallModel: createSmallModelState(),
     credentials: createCredentialState(),
     instructions: DEMO_PERSONAL_INSTRUCTIONS,
     skills: {

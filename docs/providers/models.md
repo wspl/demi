@@ -668,3 +668,65 @@ message's attachment follows [Attachments](../product/composer.md#attachments).
 After a model switch, the history can hold media the new model does not
 accept; each request replays those as text
 ([Replay](../agent/transcript.md#replay)).
+
+## Small model
+
+Small jobs that serve the conversation rather than answer it, the
+[conversation title](../product/conversations.md#conversation-titles) today,
+run on the user's **small model**: a fast, cheap model with thinking off. For
+example, Alex chats with Claude Opus through his Claude subscription and also
+has a DeepSeek key: his titles are written by Claude Haiku 5.5, not by Opus at
+its lowest effort, and a conversation he holds with DeepSeek V4 gets its title
+from Haiku as well.
+
+Settings › Agent › Small Model chooses it. **Automatic**, the default, shows
+the model it resolves to beside it, *Automatic (Claude Haiku 5.5)*; the menu
+under it lists every model of the user's entries, grouped by entry as the
+model menu groups them, with the model's efforts, as the profile editor's
+menu does. A chosen model is kept as model settings
+(`smallModel`, [User preferences](../product/web-api-settings.md#user-preferences));
+one whose entry or model is gone, unusable or hidden resolves as Automatic
+until it is back. **Only the Conversation's Provider**, off by default, keeps
+every small request on the provider the conversation itself uses, so its
+messages go nowhere the user did not send them; with it off, a small request
+may go to another of the user's entries.
+
+**Automatic** looks for the first of these tiers that any model offers, in
+order, and stops there:
+
+| Tier | A model whose ID or name has | Such as |
+| --- | --- | --- |
+| 1 | the word `haiku` | `claude-haiku-5-5`, `claude-3-5-haiku-20241022` |
+| 2 | the words `gpt` and `sol` | `gpt-6.1-sol`, *GPT-5.6-Sol* |
+| 3 | the word `flash` | `deepseek-v4.1-flash`, `glm-4.7-flash`, `gemini-3.6-flash` |
+| — | none of them | The conversation's own model |
+
+- **Words.** An ID and a display name are lowercased and split into words at
+  `-`, `_`, `.`, `/` and spaces, and a tier matches whole words, so `solar`
+  is not `sol`. Only the models an entry lists take part, which are the
+  text models a turn could use ([Catalog sources](#catalog-sources)); hidden
+  entries and models do not.
+- **Which entry.** Within a tier, the conversation's own entry is looked at
+  first, then the others in the order of Settings › Providers; the first
+  entry with a match is the one. Versions are compared within that entry
+  only: a DeepSeek 4.1 and a GLM 4.7 are not one sequence. With Only the
+  Conversation's Provider on, only the conversation's entry is looked at.
+- **Highest version.** The numbers in the ID, read left to right, are its
+  version, a run of eight digits or a `YYYY-MM-DD` date left out:
+  `claude-haiku-5-5` is 5.5, `claude-3-5-haiku-20241022` is 3.5,
+  `deepseek-v4.1-flash` is 4.1. The highest wins; between equal versions a
+  model without the word `preview`, `beta` or `exp` wins, then the one the
+  entry lists first.
+- **Thinking.** Off when the model offers off, otherwise its lowest effort;
+  the default service tier.
+- **Where the settings page cannot know the conversation**, it resolves as
+  for a conversation on the first entry, and with Only the Conversation's
+  Provider on it shows *Automatic* alone.
+
+**A small request** is one request with a fixed instruction as its system
+prompt and one user message, made through the same metered runtime a turn
+uses, so it counts in the usage ledger under its own purpose and obeys the
+same limits, and never becomes part of a transcript. The caller gives the
+instruction, the message and its output limit; the small model and its
+thinking come from here. A new kind of small job uses this request and this
+setting, never a setting of its own.

@@ -92,7 +92,7 @@ beforeEach(async () => {
     }
     if (path.startsWith('/api/models')) {
       catalogReads.push(path)
-      return Response.json({ providers: catalogProviders })
+      return Response.json({ providers: catalogProviders, smallModel: null })
     }
     if (path === '/api/providers' && init?.method === 'POST') {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>

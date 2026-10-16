@@ -142,7 +142,7 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastWorkflow?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, multiAccountWarned?, hiddenProviders?, hiddenModels? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastWorkflow?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, multiAccountWarned?, hiddenProviders?, hiddenModels?, smallModel?, smallModelSameProvider? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
@@ -158,10 +158,10 @@ backend is back ([The unfinished turn](../agent/failures-and-recovery.md#the-unf
 absent means `true`. `multiAccountWarned` is true once the user went on
 past the dialog about using several subscription accounts
 ([Account rotation](../providers/providers.md#account-rotation)), which
-then never shows again. Settings › General shows `resumeAfterRestart` as *Resume after Demi
+then never shows again. Settings › Agent shows `sendWhileRunning`, `resumeAfterRestart` as *Resume after Demi
 restarts* and `resumeAtRetry` as *Resume after a usage
 limit resets*, and so does the error record of such a failure, as *Resume at
-09:00* ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
+09:00* ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)). `smallModel` is the model settings Settings › Agent chose for small jobs, `{ providerId, modelId, thinkingEffort }`, absent for Automatic, and `smallModelSameProvider` whether small requests stay on the conversation's provider, absent means `false` ([Small model](../providers/models.md#small-model)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
 `{ providerId, modelId }` pairs, are the switches of Settings › Providers that
 take an entry or a model out of the model menu without deleting it; a patch
 replaces the list it names. They are the user's, not a browser's: every
@@ -390,7 +390,11 @@ Cloud or execute a model. The web app combines each provider's health with the
 state of the conversation's target and, for a provider whose transport is a
 process, of the user's Cloud. Inference admission checks the actual target.
 Unknown auth/runtime status stays explicit; catalog availability is not a
-successful inference test.
+successful inference test. Beside the providers, `smallModel` is the selection Automatic resolves
+to for the [small model](../providers/models.md#small-model), as for a
+conversation on the first entry with the user's hidden entries and models
+left out, or null when Only the Conversation's Provider is on or no tier
+matches; Settings › Agent shows it beside *Automatic*.
 
 `GET /api/models/search?q=<query>&entry=<id>` answers `{ results }`, the
 models.dev models the query matches, filled from `entry`'s vendor where it

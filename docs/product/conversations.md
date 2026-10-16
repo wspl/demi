@@ -232,7 +232,7 @@ its link can read ([Sharing](sharing.md)).
 A user opens a conversation with "why does `pnpm build` fail with TS2307 after
 I moved auth into its own package". At once the sidebar shows the start of
 that message; a few seconds later it shows "pnpm build TS2307 after auth
-package move", written by the model the user picked for the conversation.
+package move", written by the user's small model.
 
 ```text
 first send ──► title = start of the message (80 characters)      origin: message
@@ -271,10 +271,10 @@ The request:
 | Aspect | Rule |
 | --- | --- |
 | When | At the first send, concurrently with the first turn: it neither waits for the turn nor delays it. A first message without text starts none, and the title stays the placeholder until renamed. There is no other request. |
-| Model | The provider and model selected for the conversation at that moment. No separate title model is configured. The messages therefore go only where the user already chose to send them. |
-| Effort | The lowest thinking effort the model offers, the default service tier, and an output limit of 4,096 tokens, room for that effort's thinking and one line, or the model's own [output limit](../providers/models.md#output-limit) when it is lower. At 1,024 the baseline model's lowest effort left about one title in ten empty, its thinking spending the whole limit. |
+| Model | The user's [small model](../providers/models.md#small-model), resolved for the conversation at that moment: a fast model with thinking off, chosen in Settings › Agent; the conversation's own model when the user has no small model. |
+| Effort | The small model's thinking, the default service tier, and an output limit of 4,096 tokens, room for the lowest effort's thinking and one line, or the model's own [output limit](../providers/models.md#output-limit) when it is lower. At 1,024 the baseline model's lowest effort left about one title in ten empty, its thinking spending the whole limit. |
 | Input | A fixed title instruction as the system prompt, which says among its rules that a question's title names what it asks, never its answer, and one user message that hands over the user's first message as material to title: *Write the title of the conversation that begins with this message:*, then the message's text as the user reads it, cut to its first 4,000 characters, between `<message>` tags. Given bare, the message is a question the model sometimes answers: *What is 5 times 8?* was titled *40* about once in a hundred. |
-| Path | The same metered provider runtime a turn uses, so the request counts in the user's usage ledger and obeys the same limits. It is not a session turn: nothing is added to the transcript and no session event is emitted. |
+| Path | A [small request](../providers/models.md#small-model), purpose `title`. It is not a session turn: nothing is added to the transcript and no session event is emitted. |
 | Output | The first non-empty line of the text response, without surrounding quotes, cut to 80 characters. Thinking output is ignored. An empty result writes nothing. |
 | Failure | A refused, failed or empty request is logged and ends there; the title in place stays, and is already usable. Nothing retries it. |
 | Release | The request is aborted when the conversation is archived or the backend closes. |
