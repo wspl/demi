@@ -339,63 +339,60 @@ own server before anything is published. The developer runs:
 bun xtask deploy
 ```
 
-and the server moves to the build of the checkout, as an upgrade moves it to
-a published release, without a release, a tag or a version change in the
-repository. Pages reload into the new web app, the user's paired devices
-replace their runners, and Clouds wake with the new programs, exactly as
-after an upgrade.
+and the server moves to the next version, built on GitHub from the checkout,
+as an upgrade moves it to a published release. Pages reload into the new web
+app, the user's paired devices replace their runners, and Clouds wake with
+the new programs, exactly as after an upgrade. Nothing is compiled on the
+developer's machine.
 
 - **Which server.** The SSH host `DEMI_DEPLOY_HOST` names in the developer's
   `.env`, or `--host`. The server must already run Demi
   ([Installation](installation.md)); the SSH user may use `sudo`.
-- **The version.** The next patch version after the workspace's, as a
-  pre-release named by the build's time:
-  `0.1.22-dev.20261008T0930Z` after `0.1.21`. It sorts after every published
-  release before it and before the next one, so the next published release
-  upgrades the server as usual, and each deploy is newer than the last. The
-  build carries it as its workspace version, set for that build only:
-  `DEMI_WORKSPACE_VERSION`, which the workspace's one owner of the version
-  reads ([`shared-artifacts`](../architecture/crates-and-packages.md#shared-artifacts)),
-  so every program, the command packages, the web build and its preview
-  runtime name the same version. A device's runner then matches its
-  server's, and its page says *Up to date*.
-- **What it builds.** On the developer's machine, with its own toolchain and
-  cross tools ([Cross builds](builds-and-releases.md#cross-builds)): the
-  server's Linux target, its backend, machine manager, `demi-server`,
-  runner and command programs; the runner and command programs of each
-  `--target`, by default the developer's own machine's target; and the web
-  app. A paired device of a target not built cannot take the new runner and
-  stays disconnected until a deploy with its target or a published release.
-- **The release.** `xtask server-release` assembles the root and the files
-  for those targets ([Server release](builds-and-releases.md#server-release)),
-  the files in the root's own `files/`, which its `release.json` names, and
-  the deploy copies the server archive to the server with `rsync` over SSH,
-  having first checked in one call that the server has what the image build
-  needs; it installs nothing and names what is missing. The Cloud
-  image is built on the server itself, from that root, with the same script
-  the release workflow runs, since it needs Linux and root, which the server
-  has. The archives and their `SHA256SUMS` then lie in one directory there.
-- **The move.** `sudo demi-server upgrade <version> --from <directory>`
+- **The version.** Every deploy is a version of its own, the next patch
+  version after the workspace's: `0.1.22` after `0.1.21`. The deploy writes
+  it into `Cargo.toml`, commits it as `chore: release 0.1.22` on the
+  checkout's branch and pushes it, so the repository always says which
+  version a server runs. The checkout must be clean and its branch even
+  with GitHub's before it starts.
+- **The pre-release.** The deploy starts the release workflow on that branch
+  with `prerelease`, and checks that the run builds the commit it pushed.
+  The workflow builds every target, the server releases, the Cloud images
+  and the web app, as for any release
+  ([Release workflow](builds-and-releases.md#release-workflow)), and
+  publishes them as a GitHub pre-release, `v0.1.22`. A pre-release is never
+  the latest release, which `releases/latest` and so the installer and
+  `demi-server upgrade` without a version never return: only a deploy
+  installs one, until it is published.
+- **The move.** Once the run succeeds, the deploy runs
+  `sudo demi-server upgrade <version>` on the server over SSH, which
+  downloads the pre-release from GitHub as it downloads a published one and
   carries it out ([The upgrade](#the-upgrade)): the checks, the database
   copies, the switch and the return on failure are an upgrade's.
   `demi-server rollback` returns to the release before it.
+- **Publishing it.** A deployed version the user is content with is
+  published by turning its pre-release into the latest release on GitHub,
+  `gh release edit v0.1.22 --prerelease=false --latest`: the files users
+  install are the ones the server ran, built once. Every version is kept,
+  published or not.
 - **Data.** A deploy that changes a schema migrates the server's databases
   as an upgrade does. A schema changed again after a deploy shipped it, in
   the same unpublished batch, leaves the server's databases at a version the
   next build does not know: the Data check of [Prepare](#prepare) then stops
   the deploy before anything is interrupted, and names the databases. The
   developer resolves it before deploying again; nothing is migrated by
-  guesswork. When a server keeps data of a development build, its schema
-  enters the history as a published release's does, named by that build's
-  version, with a tested migration, so the next deploy and the next release
+  guesswork. When a server keeps data of a deployed version, its schema
+  enters the history as any release's does, named by its version, with a
+  tested migration, so the next deploy and the next release
   carry the data on. It enters once per deploy, not once per change: the
   first change to a schema after a deploy adds the deployed schema with its
   migration, and every later change before the next deploy extends that
   migration, so two deploys apart there is one step whatever was changed
   between them.
 
-A deploy prints what it built, the server's release afterwards
-(`demi-server status`) and how long each stage took.
+A deploy prints the workflow run's address as it starts, the server's
+release afterwards (`demi-server status`) and how long each stage took. A
+workflow run that fails ends the deploy with the failing job's name and
+address, before the server is touched.
 
 ## Rollback
 

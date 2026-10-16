@@ -449,9 +449,8 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   manager's image store, the edit recorder's snapshots and journal in
   `command-sdk`, and `xtask` release packaging.
 - **Also owns:** the workspace version every program and package reports,
-  `WORKSPACE_VERSION`: the version in `Cargo.toml`, or `DEMI_WORKSPACE_VERSION`
-  when a build sets it, as a development deploy does
-  ([A development build on a server](../delivery/upgrades.md#a-development-build-on-a-server)).
+  `WORKSPACE_VERSION`: the version in `Cargo.toml`, which every build,
+  a deploy's included, reads as it is committed.
 - **Public boundary:** the functions and types above. Its `testing` feature
   adds a fixture HTTP server on `127.0.0.1` that downloads can reach, the count
   of waits for install locks, and `install_unpacked`, which installs a release

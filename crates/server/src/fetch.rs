@@ -51,7 +51,10 @@ fn image_asset(version: &Version, architecture: &str) -> String {
     format!("demi-{version}-image-linux-{architecture}.tar")
 }
 
-/// The newest release `source` offers.
+/// The newest release `source` offers. On GitHub that is the latest
+/// release, which is never a pre-release: a deploy's pre-release is
+/// installed only by its version (`upgrades.md` § A development build on a
+/// server), which [`fetch`] downloads by its tag as any release's.
 pub async fn newest(source: &Source) -> io::Result<Version> {
     match source {
         Source::GitHub => {

@@ -46,8 +46,8 @@ enum Command {
     ServerRelease(server_release::Options),
     /// Writes the third-party notices of a release into the built web app.
     Notices(notices::Options),
-    /// Moves the server DEMI_DEPLOY_HOST names to a build of the checkout,
-    /// without a release.
+    /// Moves the server DEMI_DEPLOY_HOST names to a build of the checkout's
+    /// commit, which the release workflow publishes as a pre-release.
     Deploy(deploy::Options),
     /// Pins a Chrome for Testing version: writes its release record.
     BrowserRelease(browser::Options),

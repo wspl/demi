@@ -30,15 +30,11 @@ function webBuild(): Plugin {
 }
 
 /**
- * The Demi version the page shows at Settings › About: the one the build
- * names in `DEMI_WORKSPACE_VERSION`, as `xtask deploy` names a development
- * build's, else the workspace version in `Cargo.toml`, which every program
- * of the same checkout carries (`demi_shared_artifacts::WORKSPACE_VERSION`).
+ * The Demi version the page shows at Settings › About: the workspace version
+ * in `Cargo.toml`, which every program of the same checkout carries
+ * (`demi_shared_artifacts::WORKSPACE_VERSION`).
  */
 function workspaceVersion(): string {
-  const named = process.env.DEMI_WORKSPACE_VERSION
-  if (named)
-    return named
   const manifest = readFileSync(resolve(import.meta.dirname, '../../Cargo.toml'), 'utf8')
   // The `version` line of the `[workspace.package]` table, as the release
   // workflow reads it.
