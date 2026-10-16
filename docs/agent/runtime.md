@@ -317,6 +317,18 @@ into the transcript:
 - after each step of a round's tool calls ([Dispatch and failures](#dispatch-and-failures)),
   unless the turn is about to compact.
 
+A human steer is written only at the first of these, just before the request
+that carries it, never after a stream or a tool step: until the model is
+about to read it, it stays pending, so the page keeps showing it above the
+composer with *Will be sent to the agent at its next step*, Send Now and
+Recall ([Steer or queue](../product/product.md#steer-or-queue)). For example,
+a steer sent the moment the model asked for a five-minute build used to be
+written at once, below the build's call, as a plain message with nothing
+running after it, and the model read it only when the build's window ended;
+now it stays pending above the composer, where Send Now ends the window if
+the user does not want to wait. Agent messages and command reports keep all
+three boundaries.
+
 No provider receives input while it streams: a steer always waits for the next
 boundary. When input arrived during a round, the turn asks the provider once
 more, even when the model had finished or a tool had asked to end the turn.

@@ -138,10 +138,13 @@ async fn input_that_arrives_during_the_last_stream_asks_the_provider_once_more()
     );
 }
 
+/// The fixed bug: a steer that arrived as the stream that asked for a long
+/// call ended was written below the call at once, so the page dropped its
+/// pending entry, with Send Now, while the call ran on for its window.
 #[tokio::test(flavor = "local")]
-async fn a_steer_during_a_stream_that_calls_a_tool_is_written_before_the_tool_runs() {
+async fn a_steer_from_a_stream_that_calls_a_tool_stays_pending_while_the_call_runs() {
     let (call, release) = gated_turn(vec![
-        event::tool_call("call-1", "hold", json!({})),
+        event::tool_call("call-1", "watch", json!({})),
         event::response(1, 1),
     ]);
     let provider = ScriptedRuntime::new([
@@ -149,32 +152,42 @@ async fn a_steer_during_a_stream_that_calls_a_tool_is_written_before_the_tool_ru
         Turn::Events(vec![event::text("continued"), event::response(1, 1)]),
     ]);
     let store = MemoryTreeStore::new();
-    let (hold, releases, started) = gated_tool("hold");
-    let session = start(&provider, vec![hold], &store, SessionConfig::default()).await;
-    let running = session.send(text("use the tool"), turn("t1")).unwrap();
+    let (watch, watched, started) = watching_tool();
+    let session = start(&provider, vec![watch], &store, SessionConfig::default()).await;
+    let running = session.send(text("run the build"), turn("t1")).unwrap();
     until(|| provider.requests().len() == 1).await;
 
     session
-        .steer(text("arrived during the stream"), steer_id("s1"))
+        .steer(text("arrived with the stream's end"), steer_id("s1"))
         .unwrap();
     let _ = release.send(());
     started.await.unwrap();
 
-    // The end of the stream is a boundary: the steer is history, and no
-    // longer pending, while the tool runs.
+    // Neither the stream's end nor the running call writes it: it stays
+    // pending, and the call's window goes on.
     assert_eq!(
         kinds(&session.transcript().blocks),
-        ["user", "tool_call:executing", "response", "steer"]
+        ["user", "tool_call:executing", "response"]
+    );
+    assert_eq!(session.pending_steers().len(), 1);
+    assert_eq!(*watched.borrow(), None);
+
+    // Send Now on it ends the call's window, and the steer is written right
+    // before the request that carries it.
+    session.steer_now(&steer_id("s1"));
+    assert_eq!(running.await, Ok(ActionEnd::Completed));
+    assert_eq!(*watched.borrow(), Some(WindowEnd::SentNow));
+    assert_eq!(
+        kinds(&session.transcript().blocks),
+        ["user", "tool_call:completed", "response", "steer", "text", "response"]
     );
     assert!(session.pending_steers().is_empty());
-    let _ = releases.borrow_mut().remove(0).send(());
-    running.await.unwrap();
     let request = &provider.requests()[1];
     assert_eq!(
         item_kinds(&request.items),
         ["user_message", "tool_use", "tool_result", "user_steer"]
     );
-    assert_eq!(steers(&request.items), ["arrived during the stream"]);
+    assert_eq!(steers(&request.items), ["arrived with the stream's end"]);
 }
 
 #[tokio::test(flavor = "local")]
