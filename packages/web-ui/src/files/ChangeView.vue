@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Diff, Eye, FileOutput, Files, History, Pencil, RefreshCw } from '@lucide/vue'
-import DiffEditor from '../editor/components/DiffEditor.vue'
+import { DiffEditor, useEditor } from '../editor/load'
+import { t as editorText } from '../editor/locales/text'
 import type { DocumentPlace } from '../markdown/document'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Dropdown from '../ui/Dropdown.vue'
@@ -484,6 +485,32 @@ const callSides = useRequestSides(
 )
 
 const state = computed<State>(() => mode.value === 'conversation' ? callSides.state.value : workingState.value)
+
+// The view shows its loading state until the editor is there, whose load starts now.
+const { load: editorLoad, retry: retryEditor } = useEditor()
+
+/** What the view's content shows: its state once the editor is there, until then the editor's load. */
+const content = computed<State | { phase: 'editorFailed'; message: string }>(() => {
+  const editor = editorLoad.value
+  if (editor.phase === 'ready')
+    return state.value
+  return editor.phase === 'failed' ? { phase: 'editorFailed', message: editor.message } : { phase: 'loading' }
+})
+
+/** What the region says while the content shows no file: the editor's load or failure, a read on its way or failed, or a note. */
+const region = computed(() => {
+  const current = content.value
+  switch (current.phase) {
+    case 'loading':
+      return { status: 'loading' as const, label: t('reading'), detail: null, requestId: null, retry }
+    case 'editorFailed':
+      return { status: 'failed' as const, label: editorText('unavailable'), detail: current.message, requestId: null, retry: retryEditor }
+    case 'failed':
+      return { status: 'failed' as const, label: t('changes.readFailed'), detail: current.message, requestId: current.requestId, retry }
+    default:
+      return { status: 'note' as const, label: current.phase === 'unavailable' ? unkeptText.value : idleText.value, detail: null, requestId: null, retry }
+  }
+})
 /**
  * The header's line counts: a working-tree file's as git counts them, and in
  * Conversation those the request's latest call stored: All Changes', or the
@@ -620,7 +647,7 @@ function pick(path: string): void {
       />
       <div class="min-h-0 flex-1">
       <PreviewPair
-        v-if="state.phase === 'media' && mediaPair && sideContents?.after"
+        v-if="content.phase === 'media' && mediaPair && sideContents?.after"
         :key="`${shownKey}:${committedPath}`"
         v-bind="labels"
       >
@@ -636,7 +663,7 @@ function pick(path: string): void {
           <FilePreview :path="afterPath" :kind="mediaPair" :contents="sideContents.after" :too-large="showsCommit ? committedTooLarge : undefined" />
         </template>
       </PreviewPair>
-      <PreviewPair v-else-if="state.phase === 'binary'" :key="`${shownKey}:${committedPath}`" v-bind="labels">
+      <PreviewPair v-else-if="content.phase === 'binary'" :key="`${shownKey}:${committedPath}`" v-bind="labels">
         <template v-if="hasBefore" #before>
           <FileSummary :path="committedPath" :contents="sideContents?.before" :too-large="committedTooLarge" />
         </template>
@@ -645,37 +672,37 @@ function pick(path: string): void {
         </template>
       </PreviewPair>
       <PreviewPair
-        v-else-if="state.phase === 'ready' && sourceView && presentation === 'preview'"
+        v-else-if="content.phase === 'ready' && sourceView && presentation === 'preview'"
         :key="shownKey ?? ''"
         v-bind="labels"
       >
         <template v-if="hasBefore" #before>
-          <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.original" :place="place" :contents="contents" @open="opens !== false && emit('open', $event)" />
-          <ImagePreview v-else :src="svgImageUrl(state.sides.original)" :name="baseName(committedPath)" />
+          <MarkdownDocument v-if="kind === 'markdown'" :text="content.sides.original" :place="place" :contents="contents" @open="opens !== false && emit('open', $event)" />
+          <ImagePreview v-else :src="svgImageUrl(content.sides.original)" :name="baseName(committedPath)" />
         </template>
         <template v-if="hasAfter" #after>
-          <MarkdownDocument v-if="kind === 'markdown'" :text="state.sides.modified" :place="place" :contents="contents" @open="opens !== false && emit('open', $event)" />
-          <ImagePreview v-else :src="svgImageUrl(state.sides.modified)" :name="baseName(absolutePath)" />
+          <MarkdownDocument v-if="kind === 'markdown'" :text="content.sides.modified" :place="place" :contents="contents" @open="opens !== false && emit('open', $event)" />
+          <ImagePreview v-else :src="svgImageUrl(content.sides.modified)" :name="baseName(absolutePath)" />
         </template>
       </PreviewPair>
       <!-- Another file, or another edit of it, is a new editor; new texts of the one shown replace the old in place. -->
       <DiffEditor
-        v-else-if="state.phase === 'ready' && selectedChange"
+        v-else-if="content.phase === 'ready' && selectedChange"
         :key="shownKey ?? ''"
-        :original="state.sides.original"
-        :modified="state.sides.modified"
+        :original="content.sides.original"
+        :modified="content.sides.modified"
         :path="selectedChange.path"
       />
       <!-- It centres in the space beside a tree shown over the view. -->
       <div v-else class="h-full" :style="{ paddingInlineEnd: `${overlap}px` }">
         <RegionStatus
           class="h-full"
-          :status="state.phase === 'loading' || state.phase === 'failed' ? state.phase : 'note'"
-          :label="state.phase === 'loading' ? t('reading') : state.phase === 'failed' ? t('changes.readFailed') : state.phase === 'unavailable' ? unkeptText : idleText"
+          :status="region.status"
+          :label="region.label"
           :loading-label="t('reading')"
-          :detail="state.phase === 'failed' ? state.message : null"
-          :request-id="state.phase === 'failed' ? state.requestId : null"
-          :on-retry="retry"
+          :detail="region.detail"
+          :request-id="region.requestId"
+          :on-retry="region.retry"
         />
       </div>
       </div>

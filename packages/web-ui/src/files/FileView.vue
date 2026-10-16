@@ -2,7 +2,8 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, FileText, History, RefreshCw } from '@lucide/vue'
 import type { StateEffect } from '@codemirror/state'
-import CodeEditor from '../editor/components/CodeEditor.vue'
+import { CodeEditor, useEditor } from '../editor/load'
+import { t as editorText } from '../editor/locales/text'
 import { showToast } from '../infra/toast'
 import { renderable, type DocumentPlace } from '../markdown/document'
 import IconButton from '../ui/IconButton.vue'
@@ -87,6 +88,10 @@ const emit = defineEmits<{
 }>()
 
 const tree = defineModel<boolean>('tree', { default: true })
+
+// The view shows its loading state until the editor is there, whose load starts now.
+const { load: editorLoad, retry: retryEditor } = useEditor()
+const editorReady = computed(() => editorLoad.value.phase === 'ready')
 
 const treeWidth = defineModel<number>('treeWidth', { default: TREE_WIDTH.default })
 
@@ -213,14 +218,20 @@ async function retryLink(): Promise<void> {
 }
 
 /**
- * What the region says while it shows no file: none chosen, a read on its
- * way, a link whose target is gone or cannot be read, that nothing is at
- * the path, or why the read failed. Retry stands under the failures and
- * reads again what said so, the link's folder for a link, and the region
- * loads until its read ends.
+ * What the region says while it shows no file: the editor on its way or
+ * failed, none chosen, a read on its way, a link whose target is gone or
+ * cannot be read, that nothing is at the path, or why the read failed.
+ * Retry stands under the failures and loads again what said so, the
+ * editor, the link's folder for a link, and the region loads until that
+ * ends.
  */
 const placeholder = computed(() => {
   const current = state.value
+  const editor = editorLoad.value
+  if (editor.phase === 'failed')
+    return { status: 'failed' as const, icon: undefined, label: editorText('unavailable'), detail: editor.message, requestId: null, retry: retryEditor }
+  if (editor.phase === 'loading')
+    return { status: 'loading' as const, icon: undefined, label: t('reading'), detail: null, requestId: null }
   if (brokenLink.value)
     return { status: 'failed' as const, icon: missingFile().icon, label: linkSentence(brokenLink.value), detail: null, requestId: null, retry: retryLink }
   if (current.phase === 'missing') {
@@ -267,9 +278,10 @@ const shownFile = computed<ShownFile>(() => {
 })
 /** The file's bar; Download only where the source serves files' bytes. */
 const bar = computed(() => {
-  if (props.path === null)
+  const editor = editorLoad.value
+  if (props.path === null || editor.phase !== 'ready')
     return null
-  const shown = fileBar(props.path, shownFile.value)
+  const shown = fileBar(props.path, shownFile.value, editor.editor.languageName)
   return { ...shown, download: shown.download && props.source.contents !== undefined }
 })
 
@@ -448,7 +460,7 @@ onBeforeUnmount(() => {
       <div class="min-h-0 flex-1">
         <!-- Kept while a broken link's sentence shows, its read Retry's to repeat. -->
         <FilePreview
-          v-if="media && path && source.contents && !leadsToFolder"
+          v-if="editorReady && media && path && source.contents && !leadsToFolder"
           v-show="!brokenLink"
           ref="preview"
           :key="path"
@@ -458,9 +470,9 @@ onBeforeUnmount(() => {
           :caption="false"
           @shown="mediaShown = { path, shown: $event }"
         />
-        <template v-if="!(media && path && source.contents && !leadsToFolder) || brokenLink">
+        <template v-if="!(editorReady && media && path && source.contents && !leadsToFolder) || brokenLink">
         <MarkdownDocument
-          v-if="markdown && state.phase === 'ready' && place"
+          v-if="editorReady && markdown && state.phase === 'ready' && place"
           :text="state.text"
           :place="place"
           :contents="source.contents"
@@ -469,7 +481,7 @@ onBeforeUnmount(() => {
         />
         <!-- One editor per file: a new text of it replaces the old in place. -->
         <CodeEditor
-          v-else-if="(state.phase === 'ready' || start?.phase === 'ready') && path"
+          v-else-if="editorReady && (state.phase === 'ready' || start?.phase === 'ready') && path"
           :key="path"
           class="h-full"
           :path="path"
@@ -479,7 +491,7 @@ onBeforeUnmount(() => {
           @left="(left, snapshot) => scrolls.set(left, snapshot)"
         />
         <FileSummary
-          v-else-if="state.phase === 'card' && start?.phase !== 'loading' && path"
+          v-else-if="editorReady && state.phase === 'card' && start?.phase !== 'loading' && path"
           :path="path"
           :contents="source.contents"
           :note="state.tooLarge ? tooLargeNote() : null"

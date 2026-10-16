@@ -8,6 +8,7 @@
     "next": "下一個相符項目"
   },
   "syntaxColorsUnavailable": "語法著色無法使用",
+  "unavailable": "無法載入程式碼編輯器。",
   "diff": {
     "unchanged": "{count} 行未變更",
     "noNewline": "檔案結尾沒有換行字元"
