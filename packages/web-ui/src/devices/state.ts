@@ -22,6 +22,32 @@ export const DEVICE_STATE_LABEL: Record<DeviceState, TitleText> = {
   },
 }
 
+/**
+ * A device's state, with how much of the runner release it moves to its
+ * runner has downloaded while that download moves (`runner.md` § Runner
+ * updates): ahead while it is online, or after its server switched while it
+ * updates; null or absent while none moves.
+ */
+export interface DeviceStatus {
+  state: DeviceState
+  downloadPercent?: number | null
+}
+
+/**
+ * How a device's state reads beside it, with its download: *Downloading
+ * update · 40%* while it is online, *Updating · 26%* while it updates, and
+ * its state alone while no download moves.
+ */
+export function deviceStatusLabel(status: DeviceStatus): TitleText {
+  const percent = status.downloadPercent
+  if (percent == null || status.state === 'offline') {
+    return DEVICE_STATE_LABEL[status.state]
+  }
+  return status.state === 'online'
+    ? t('state.downloading', { percent })
+    : t('state.updatingPercent', { percent })
+}
+
 /** The tone of a device's state dot. */
 export const DEVICE_STATE_TONE: Record<DeviceState, StatusDotTone & ('success' | 'warning' | 'muted')> = {
   online: 'success',

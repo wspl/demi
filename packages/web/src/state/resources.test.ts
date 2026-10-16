@@ -44,7 +44,7 @@ test("a device project's row follows its device online, updating, offline and go
     installed: [],
     startCommand: null,
     os: null,
-    runnerVersion: null,
+    runnerVersion: null, downloadPercent: null,
     mark: { logo: 'apple' as const, number: 1 },
     route: 'automatic' as const,
   }
@@ -60,7 +60,7 @@ test("a device project's row follows its device online, updating, offline and go
 
   product.read = productState({ devices: [device, cloud], workspaces })
   expect(resources.projects).toEqual([
-    { id: 'ledger', name: 'ledger', path: '/ledger', deviceId: 'laptop', hostKind: 'device', device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'online', mark: { logo: 'apple', number: null } } },
+    { id: 'ledger', name: 'ledger', path: '/ledger', deviceId: 'laptop', hostKind: 'device', device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'online', downloadPercent: null, mark: { logo: 'apple', number: null } } },
     { id: 'notes', name: 'notes', path: '/notes', deviceId: 'cloud', hostKind: 'cloud' },
   ])
 
@@ -90,14 +90,14 @@ test("a conversation outside a project shows its paired device with its state, o
     installed: [],
     startCommand: null,
     os: null,
-    runnerVersion: null,
+    runnerVersion: null, downloadPercent: null,
     mark: { logo: 'apple' as const, number: 1 },
     route: 'automatic' as const,
   }
   const onLaptop = { kind: 'device' as const, deviceId: 'laptop', path: '/Users/alex' }
 
   product.read = productState({ devices: [device] })
-  expect(resources.conversationDevice(onLaptop)).toEqual({ kind: 'paired', name: 'MacBook Pro', state: 'offline', mark: { logo: 'apple', number: null } })
+  expect(resources.conversationDevice(onLaptop)).toEqual({ kind: 'paired', name: 'MacBook Pro', state: 'offline', downloadPercent: null, mark: { logo: 'apple', number: null } })
   expect(resources.conversationDevice({ kind: 'cloud' })).toBeUndefined()
   expect(resources.conversationDevice({ kind: 'workspace', workspaceId: 'ledger' })).toBeUndefined()
 
@@ -120,7 +120,7 @@ test("a device's mark shows its number only while another of the user's devices 
     installed: [],
     startCommand: null,
     os: null,
-    runnerVersion: null,
+    runnerVersion: null, downloadPercent: null,
     mark: { logo, number },
     route: 'automatic' as const,
   })

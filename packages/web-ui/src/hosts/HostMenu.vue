@@ -15,6 +15,7 @@ import { COMPACT_LABEL_CLASS, useRoomLabel } from '../ui/label-room'
 import Tooltip from '../ui/Tooltip.vue'
 import { isTextCut } from '../ui/truncation'
 import { hostGlyph } from '../devices/device-glyphs'
+import { deviceStatusLabel } from '../devices/state'
 import HostChoices from './HostChoices.vue'
 import { MOVE_LOCK_REASON, type MoveLock } from './move-question'
 import type { HostChoice, HostDeviceOption, HostMenuHost } from './types'
@@ -53,6 +54,13 @@ const emit = defineEmits<{
 // The menu closes as Detach is pressed, so the header's button, the row of the conversation's Hosts, shows the work.
 const hostsTarget = computed(() => `hosts:${props.conversationId}`)
 const detaching = computed(() => operations.onTarget(hostsTarget.value))
+
+/** The download of the primary Host's next runner while one moves, which the button says beside its name. */
+const downloading = computed(() =>
+  props.primaryHost.kind === 'device' && props.primaryHost.downloadPercent != null
+    ? deviceStatusLabel(props.primaryHost)
+    : null,
+)
 
 const open = ref(false)
 // Where the header's title needs the width, the host is its icon and its name a tooltip.
@@ -118,6 +126,9 @@ function connect() {
             class="max-w-36 truncate"
             :class="hostCompact ? COMPACT_LABEL_CLASS : ''"
           >{{ primaryHost.name }}</span>
+          <span v-if="downloading" class="text-caption text-fg-faint whitespace-nowrap">
+            {{ downloading }}
+          </span>
           <span v-if="attachedHosts.length" class="text-caption text-fg-faint">
             +{{ attachedHosts.length }}
           </span>
@@ -125,7 +136,8 @@ function connect() {
       </Tooltip>
     </template>
     <template #content>
-      <Menu class="max-w-80">
+      <!-- Room for a device's whole name beside a download's note, Downloading update · 40%. -->
+      <Menu class="max-w-104">
         <MenuGroup :label="t('menu.runOn')">
           <HostChoices
             :primary-host="primaryHost"

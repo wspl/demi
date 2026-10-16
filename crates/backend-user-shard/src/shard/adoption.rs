@@ -14,14 +14,18 @@ use demi_backend_page_sync::Part;
 use demi_backend_plugins::Lost;
 use demi_backend_remote_host::{Hello, Link, LinkOptions, RemoteHost, host_identity};
 use demi_host_interface::{HostErrorKind, HostFs as _};
-use demi_backend_runners::devices::{DeviceRecorder, Serving, Updating, send};
+use demi_backend_runners::devices::{DeviceRecorder, Download, Serving, Updating, send};
 use demi_backend_runners::native::system_targets;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::ids::ConversationId;
 use demi_web_api_protocol::devices::DeviceDto;
 use demi_web_api_protocol::ids::DeviceId;
-use tokio::sync::oneshot;
+use std::sync::Arc;
+
+use demi_backend_runners::prefetch::NextRelease;
+use demi_runner_protocol::release::PrefetchState;
+use tokio::sync::{oneshot, watch};
 use tokio_util::task::AbortOnDropHandle;
 
 use super::Shard;
@@ -30,6 +34,10 @@ use super::policy::ShardPolicy;
 /// Why a connection that did not answer its ping ended when a new one of
 /// its device arrived.
 const REPLACED: &str = "replaced by a new connection of the device's runner";
+
+/// How often a device's pages hear of its download's progress, at most
+/// (`runner.md` § Runner updates).
+const DOWNLOAD_ANNOUNCED_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// What a runner's hello says of the jobs it keeps (`runner.md` § Command
 /// lifetime).
@@ -251,7 +259,14 @@ impl Shard {
         );
         let serving = self
             .devices()
-            .bind(device, link, driver, seen.clone(), runner.installation);
+            .bind(
+                device,
+                link,
+                driver,
+                seen.clone(),
+                runner.installation,
+                runner.native_target.clone(),
+            );
         // What its conversations keep of its files is searched again on the
         // new connection.
         self.project_files().online(device);
@@ -313,24 +328,128 @@ impl Shard {
 
     /// Shows `device` as updating: its runner was just sent to the
     /// backend's runner release (`runner.md` § Runner updates), from the
-    /// first such 409 until its next hello or the window of the runners'
-    /// tuning ends; a retry's 409 changes nothing.
+    /// first such 409 until its next hello, or until the window of the
+    /// runners' tuning passes without a byte of its download served; a
+    /// retry's 409 changes nothing.
     pub fn runner_updating(self: &Rc<Self>, device: &DeviceId) {
         let until = tokio::time::Instant::now() + self.services().runners.updating;
-        let shard = Rc::downgrade(self);
-        let began = self.devices().begin_update(device, || {
-            // The device's pages see the window end; the slot's drop of the
-            // window stops this first, as the next hello does.
-            let expiry = tokio::task::spawn_local(async move {
-                tokio::time::sleep_until(until).await;
-                if let Some(shard) = shard.upgrade() {
-                    shard.mark(Part::Devices);
-                }
-            });
-            Updating::new(until, AbortOnDropHandle::new(expiry))
-        });
+        let began = self
+            .devices()
+            .begin_update(device, || Updating::new(until, self.update_expiry(device)));
         if began {
             self.mark(Part::Devices);
+        }
+    }
+
+    /// Announces the end of `device`'s update to its pages once its window
+    /// passed, which each byte its download is served moves on; the slot's
+    /// drop of the update stops it, as the next hello does.
+    fn update_expiry(self: &Rc<Self>, device: &DeviceId) -> AbortOnDropHandle<()> {
+        let shard = Rc::downgrade(self);
+        let device = device.clone();
+        AbortOnDropHandle::new(tokio::task::spawn_local(async move {
+            loop {
+                let Some(until) = shard
+                    .upgrade()
+                    .and_then(|shard| shard.devices().update_until(&device))
+                else {
+                    return;
+                };
+                if tokio::time::Instant::now() >= until {
+                    if let Some(shard) = shard.upgrade() {
+                        shard.mark(Part::Devices);
+                    }
+                    return;
+                }
+                tokio::time::sleep_until(until).await;
+            }
+        }))
+    }
+
+    /// Counts what a download of a runner executable has served `device`,
+    /// as `served` announces it until the download ends (`runner.md`
+    /// § Runner updates): the device's state carries the progress, its
+    /// pages hear of it at most once a second, and while it moves an
+    /// update the device was sent to shows on.
+    pub fn runner_downloading(self: &Rc<Self>, device: DeviceId, mut served: watch::Receiver<Download>) {
+        let request = self.devices().download_request();
+        let shard = Rc::downgrade(self);
+        // A closing shard waits for its tasks, and the download may outlast it.
+        let closing = self.closing.clone();
+        self.tasks().spawn_local(async move {
+            loop {
+                let changed = tokio::select! {
+                    () = closing.cancelled() => return,
+                    changed = served.changed() => changed,
+                };
+                let Some(shard) = shard.upgrade() else {
+                    return;
+                };
+                if changed.is_err() {
+                    shard.devices().download_ended(&device, request);
+                    shard.mark(Part::Devices);
+                    return;
+                }
+                let download = *served.borrow_and_update();
+                let until = tokio::time::Instant::now() + shard.services().runners.updating;
+                shard
+                    .devices()
+                    .download_moved(&device, request, download, until, || shard.update_expiry(&device));
+                shard.mark(Part::Devices);
+                drop(shard);
+                // What is served meanwhile waits for the next announcement.
+                tokio::select! {
+                    () = closing.cancelled() => return,
+                    () = tokio::time::sleep(DOWNLOAD_ANNOUNCED_EVERY) => {}
+                }
+            }
+        });
+    }
+
+    /// Has the runner of each of the user's paired devices that is
+    /// connected download `next` ahead while it serves (`runner.md`
+    /// § Runner updates): each is counted at once, and `next` hears how its
+    /// download went, a connection that ends failing it.
+    pub async fn prefetch(self: &Rc<Self>, next: Arc<NextRelease>) {
+        let devices = match self.services().control.paired_devices(self.user().clone()).await {
+            Ok(devices) => devices,
+            Err(error) => {
+                // Their runners download after the switch.
+                tracing::warn!(error = &error as &dyn std::error::Error, "the devices to download the next runner cannot be listed");
+                return;
+            }
+        };
+        for device in devices {
+            let Some(link) = self.devices().link(&device.id) else {
+                continue;
+            };
+            next.begin(&device.id, &device.name);
+            let target = self.devices().target(&device.id);
+            let artifact = target
+                .as_deref()
+                .and_then(|target| next.release.targets.get(target))
+                .cloned();
+            let next = next.clone();
+            self.tasks().spawn_local(async move {
+                let state = match artifact {
+                    None => PrefetchState::Failed {
+                        reason: format!(
+                            "the release has no runner for {}",
+                            target.as_deref().unwrap_or("the device's system")
+                        ),
+                    },
+                    Some(artifact) => match link
+                        .prefetch(&next.release.release, &artifact.sha256, artifact.size)
+                        .await
+                    {
+                        Ok(()) => PrefetchState::Done,
+                        Err(error) => PrefetchState::Failed {
+                            reason: error.to_string(),
+                        },
+                    },
+                };
+                next.end(&device.id, &device.name, state);
+            });
         }
     }
 

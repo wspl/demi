@@ -262,6 +262,21 @@ current release serves:
    A release that changes the format is marked as one a rollback cannot
    cross ([Rollback](#rollback)), and `demi-server` says so before it goes
    on.
+6. **Runners.** `demi-server` tells the running backend the next runner
+   release and the new release's directory that holds its executables,
+   over the backend's management socket, `/run/demi-backend-manage/manage.sock`,
+   which only the backend's user and root may open. Its directory is the
+   backend unit's second runtime directory, apart from
+   `/run/demi-backend/`, which every Cloud mounts
+   ([Backend socket](../cloud/managed-hosts.md#backend-socket)): a Cloud's
+   root must never reach it, since the socket takes requests without
+   credentials and acts on every user's devices. The backend has its connected paired runners
+   download it ahead ([Runner updates](../execution/runner.md#runner-updates))
+   and answers as they finish; `demi-server` prints how many have, *3 of 4
+   devices have the new runner*, and goes on once all have, or after 2
+   minutes, naming those that have not: they download after the switch. A
+   backend of a release without the socket is told nothing, and its runners
+   update after the switch as before.
 
 ### Switch
 

@@ -20,7 +20,7 @@ use demi_backend_cloud::client::MachinesClient;
 use demi_backend_cloud::reset::recover_clouds;
 use demi_backend_database::StorageError;
 use demi_backend_database::server_log::ServerLog;
-use demi_backend_http::{AppState, Edge, Site, WebBuildError, runner_socket, web_build};
+use demi_backend_http::{AppState, Edge, Site, WebBuildError, manage_socket, runner_socket, web_build};
 use demi_backend_user_shard::conversation::search::{follow_resets, index_at_start};
 use demi_backend_user_shard::conversation::{
     finish_deletions, recover_forks, resume_after_restart, settle_pending,
@@ -81,6 +81,11 @@ pub enum StartError {
     },
     #[error("the backend cannot listen on its runner socket {}: {source}", path.display())]
     RunnerSocket {
+        path: std::path::PathBuf,
+        source: io::Error,
+    },
+    #[error("the backend cannot listen on its management socket {}: {source}", path.display())]
+    ManageSocket {
         path: std::path::PathBuf,
         source: io::Error,
     },
@@ -428,7 +433,26 @@ impl Backend {
                 });
             }
         };
-        let edge = match Edge::start(config.address, runner_socket, state, config.web_directory).await {
+        let manage_socket = match config.manage_socket.as_deref().map(manage_socket).transpose() {
+            Ok(socket) => socket.flatten(),
+            Err(source) => {
+                shards.close().await;
+                services.close_providers().await;
+                return Err(StartError::ManageSocket {
+                    path: config.manage_socket.unwrap_or_default(),
+                    source,
+                });
+            }
+        };
+        let edge = match Edge::start(
+            config.address,
+            runner_socket,
+            manage_socket,
+            state,
+            config.web_directory,
+        )
+        .await
+        {
             Ok(edge) => edge,
             Err(source) => {
                 shards.close().await;

@@ -42,7 +42,10 @@ mod provider_cli;
 mod providers;
 mod query;
 mod request_id;
+mod manage;
 mod runner_socket;
+
+pub use manage::manage_socket;
 mod runners;
 mod saved;
 mod search;
@@ -101,6 +104,8 @@ pub struct Edge {
     serving: JoinHandle<()>,
     /// The runner socket's server, when the backend has the socket.
     serving_runners: Option<JoinHandle<()>>,
+    /// The management socket's server, when the backend has the socket.
+    serving_management: Option<JoinHandle<()>>,
 }
 
 /// Opens the backend's runner socket at `path` (`managed-hosts.md` § Backend
@@ -127,11 +132,14 @@ pub fn runner_socket(path: &Path) -> io::Result<Option<UnixListener>> {
 }
 
 impl Edge {
-    /// Serves the network at `address`, and the runner routes on
-    /// `runner_socket` when there is one ([`runner_socket`]).
+    /// Serves the network at `address`, the runner routes on
+    /// `runner_socket` when there is one ([`runner_socket`]), and the
+    /// management socket's requests on `manage_socket` when there is one
+    /// ([`manage_socket`]).
     pub async fn start(
         address: SocketAddr,
         runner_socket: Option<UnixListener>,
+        manage_socket: Option<UnixListener>,
         state: AppState,
         web_directory: Option<PathBuf>,
     ) -> io::Result<Self> {
@@ -154,6 +162,8 @@ impl Edge {
                 respond(app.clone(), peer, request)
             }))
         });
+        let serving_management = manage_socket
+            .map(|socket| tokio::spawn(manage::serve(socket, state.clone(), stop.clone())));
         let listener = EdgeListener::new(tcp, closing.clone(), connections.clone());
         let app = router(state.clone(), closing.clone(), web_directory);
         let serving = tokio::spawn(listener::serve(
@@ -168,6 +178,7 @@ impl Edge {
             stop,
             serving,
             serving_runners,
+            serving_management,
         })
     }
 
@@ -188,6 +199,9 @@ impl Edge {
         self.connections.cancel();
         self.stop.cancel();
         if let Some(serving) = self.serving_runners {
+            serving.await.map_err(io::Error::other)?;
+        }
+        if let Some(serving) = self.serving_management {
             serving.await.map_err(io::Error::other)?;
         }
         self.serving.await.map_err(io::Error::other)

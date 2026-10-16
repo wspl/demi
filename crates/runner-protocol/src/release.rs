@@ -6,7 +6,9 @@
 //! `release.json`, which says where the release's files are, and the name
 //! of each file (`builds-and-releases.md` § Server release). And the
 //! release check before a runner's socket opens (`runner.md` § Runner
-//! updates), the one part of the connection every release keeps.
+//! updates), the one part of the connection every release keeps, and the
+//! backend's management socket, which an upgrade's next release asks
+//! (`upgrades.md` § Prepare).
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
@@ -24,9 +26,11 @@ pub struct RunnerRelease {
     /// The release's identity: the SHA-256 of its versions and targets.
     #[garde(custom(digest))]
     pub release: String,
-    #[garde(range(equal = wire::VERSION))]
+    /// The wire and command protocol versions it speaks, which only a
+    /// runtime that runs it must speak too ([`RunnerRelease::decode`]).
+    #[garde(skip)]
     pub wire: u32,
-    #[garde(range(equal = demi_command_protocol::VERSION))]
+    #[garde(skip)]
     pub command_protocol: u64,
     #[garde(custom(target_artifacts))]
     pub targets: BTreeMap<String, PackageArtifact>,
@@ -39,20 +43,49 @@ pub enum ReleaseError {
     Shape(#[from] serde_json::Error),
     #[error("invalid runner release: {0}")]
     Invalid(String),
+    #[error(
+        "the runner release speaks wire {wire} and command protocol {command_protocol}, this build wire {} and command protocol {}",
+        wire::VERSION,
+        demi_command_protocol::VERSION
+    )]
+    Incompatible { wire: u32, command_protocol: u64 },
 }
 
 impl RunnerRelease {
-    /// Decodes a release record's JSON and checks its values.
+    /// Decodes a release record's JSON for this build to run: intact, and
+    /// speaking this build's wire and command protocol versions.
     pub fn decode(bytes: &[u8]) -> Result<Self, ReleaseError> {
+        let release = Self::decode_intact(bytes)?;
+        release.compatible()?;
+        Ok(release)
+    }
+
+    /// Decodes a release record's JSON and checks its integrity alone, its
+    /// digests and targets, whatever versions it speaks: the record of a
+    /// release this build serves but does not run, such as the next one an
+    /// upgrade names (`upgrades.md` § Prepare).
+    pub fn decode_intact(bytes: &[u8]) -> Result<Self, ReleaseError> {
         let release: Self = serde_json::from_slice(bytes)?;
         release.validate()?;
         Ok(release)
     }
 
-    /// Checks the record's values: its digests, versions and targets.
+    /// Checks the record's integrity: its digests and targets.
     pub fn validate(&self) -> Result<(), ReleaseError> {
         garde::Validate::validate(self)
             .map_err(|report| ReleaseError::Invalid(report.to_string().trim_end().to_owned()))
+    }
+
+    /// Checks that the release speaks this build's wire and command
+    /// protocol versions.
+    pub fn compatible(&self) -> Result<(), ReleaseError> {
+        if self.wire == wire::VERSION && self.command_protocol == demi_command_protocol::VERSION {
+            return Ok(());
+        }
+        Err(ReleaseError::Incompatible {
+            wire: self.wire,
+            command_protocol: self.command_protocol,
+        })
     }
 }
 
@@ -196,5 +229,88 @@ impl RunnerUpdate {
         garde::Validate::validate(&update)
             .map_err(|report| ReleaseError::Invalid(report.to_string().trim_end().to_owned()))?;
         Ok(update)
+    }
+}
+
+/// The variable that names the backend's management socket, and its
+/// default (`upgrades.md` § Prepare): only root may open it.
+pub const MANAGE_SOCKET_ENV: &str = "DEMI_BACKEND_MANAGE_SOCKET";
+pub const MANAGE_SOCKET: &str = "/run/demi-backend-manage/manage.sock";
+
+/// The management socket's one request, a line of JSON: the runner release
+/// the next server release installs, and that release's root, whose
+/// `runners/` holds its record and whose `release.json` says where its
+/// executables are. The backend has its connected paired devices' runners
+/// download it ahead and answers a [`PrefetchProgress`] line each time
+/// one of them moves on, until none is downloading. The request is written
+/// by the next release's `demi-server` and read by the running release's
+/// backend, so fields may be added but never changed or removed, and a
+/// reader ignores the fields it does not know.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
+pub struct PrefetchRequest {
+    #[garde(custom(digest))]
+    pub release: String,
+    #[garde(custom(absolute))]
+    pub root: PathBuf,
+}
+
+impl PrefetchRequest {
+    /// Decodes a request line and checks its values.
+    pub fn decode(bytes: &[u8]) -> Result<Self, ReleaseError> {
+        let request: Self = serde_json::from_slice(bytes)?;
+        garde::Validate::validate(&request)
+            .map_err(|report| ReleaseError::Invalid(report.to_string().trim_end().to_owned()))?;
+        Ok(request)
+    }
+}
+
+/// A garde rule: an absolute path.
+fn absolute(value: &std::path::Path, _: &()) -> garde::Result {
+    if value.is_absolute() {
+        Ok(())
+    } else {
+        Err(garde::Error::new("the release's root is an absolute directory"))
+    }
+}
+
+/// A line the management socket answers a [`PrefetchRequest`] with: how far
+/// the devices are, or why the backend asks none of them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PrefetchAnswer {
+    Progress(PrefetchProgress),
+    Refused { error: String },
+}
+
+/// Where each device the backend asked to download ahead is, by the name
+/// its user gave it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrefetchProgress {
+    pub devices: Vec<DevicePrefetch>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DevicePrefetch {
+    pub name: String,
+    #[serde(flatten)]
+    pub state: PrefetchState,
+}
+
+/// A device's download ahead: running, its executable in place, or failed
+/// for a reason, after which the device downloads after the switch.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum PrefetchState {
+    Downloading,
+    Done,
+    Failed { reason: String },
+}
+
+impl PrefetchProgress {
+    /// Whether no device is downloading any more.
+    pub fn finished(&self) -> bool {
+        self.devices
+            .iter()
+            .all(|device| device.state != PrefetchState::Downloading)
     }
 }

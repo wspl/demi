@@ -90,34 +90,39 @@ async fn runner_update(
     }))
 }
 
-/// Shows the device the request's token names as updating, since the 409
-/// sends its runner to an update (`runner.md` § Runner updates). A request
-/// without a token, from a runner of a release before 0.1.14, or with one
-/// no paired device holds, shows nothing.
-async fn updating(state: &AppState, headers: &HeaderMap) {
-    let Some(token) = headers
+/// The paired device whose token a runner's request carries in
+/// `Demi-Runner-Token`: none for a request without one, from a runner of a
+/// release before 0.1.14, or with one no paired device holds.
+pub(super) async fn paired_device(state: &AppState, headers: &HeaderMap) -> Option<DeviceRecord> {
+    let token = headers
         .get(TOKEN_HEADER)
         .and_then(|value| value.to_str().ok())
-        .and_then(|value| DeviceToken::try_from(value.to_owned()).ok())
-    else {
-        return;
-    };
-    let device = match state
+        .and_then(|value| DeviceToken::try_from(value.to_owned()).ok())?;
+    match state
         .services
         .control
         .device_by_token(TokenHash::of(token.expose()))
         .await
     {
-        Ok(Some(device)) if device.kind == DeviceKind::User => device,
-        Ok(_) => return,
+        Ok(Some(device)) if device.kind == DeviceKind::User => Some(device),
+        Ok(_) => None,
         Err(error) => {
-            // The update goes ahead; its device shows as offline meanwhile.
+            // What the device's runner asked for goes ahead; its device shows
+            // nothing of it.
             tracing::warn!(
                 error = &error as &dyn std::error::Error,
-                "the device of a runner sent to an update could not be read"
+                "the device of a runner's request could not be read"
             );
-            return;
+            None
         }
+    }
+}
+
+/// Shows the device the request's token names as updating, since the 409
+/// sends its runner to an update (`runner.md` § Runner updates).
+async fn updating(state: &AppState, headers: &HeaderMap) {
+    let Some(device) = paired_device(state, headers).await else {
+        return;
     };
     let id = device.id;
     let shown = state

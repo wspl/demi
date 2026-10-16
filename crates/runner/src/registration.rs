@@ -161,8 +161,8 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
             },
         )
         .await?;
-    let installed = options.installed;
     let registered = Registered {
+        installed: options.installed.map(Arc::new),
         scratch: Scratch::new(&state.root),
         backend: options.backend,
         runner: options.runner,
@@ -188,7 +188,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     };
     let mut kept = Kept::open(&registered, options.unreached_grace).await;
     let outcome = tokio::select! {
-        outcome = reconnect(&registered, &mut kept, installed.as_ref()) => outcome,
+        outcome = reconnect(&registered, &mut kept) => outcome,
         never = revocation_window(&registered) => match never {},
     };
     // A runner that ends loses its jobs (`runner.md` § Command lifetime).
@@ -218,11 +218,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     Ok(ending)
 }
 
-async fn reconnect(
-    registered: &Registered,
-    kept: &mut Kept,
-    installed: Option<&Installed>,
-) -> io::Result<Ending> {
+async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Ending> {
     let management = &registered.management;
     let mut delay = Duration::from_millis(250);
     // A backend that stays away fails the same way every few seconds. The
@@ -249,15 +245,16 @@ async fn reconnect(
         }
         let result = match result {
             Ok(Attempt::Update(update)) => {
-                let Some(installed) = installed else {
+                let Some(installed) = &registered.installed else {
                     return Err(io::Error::other(format!(
                         "this runner is release {}, and its backend runs release {}: install the backend's runner",
                         registered.runner.version, update.release
                     )));
                 };
                 tracing::info!("updating to runner release {}", update.release);
+                let token = registered.token.borrow().clone();
                 match installed
-                    .update(registered.backend.url(), &update, &management.stop)
+                    .update(registered.backend.url(), token.as_ref(), &update, &management.stop)
                     .await
                 {
                     // The new runner cannot take the jobs over: they are

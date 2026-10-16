@@ -45,6 +45,7 @@ function productDevice(device: DeviceDto, devices: readonly DeviceDto[]): Device
     kind: device.kind,
     name: device.name,
     state: device.state,
+    downloadPercent: device.downloadPercent,
     home: device.home,
     seen: device.lastSeenAt ?? undefined,
     platform,
@@ -142,7 +143,7 @@ export const useResources = defineStore('resources', () => {
     const devices = product.snapshot?.devices ?? []
     const device = devices.find((candidate) => candidate.id === deviceId)
     return device
-      ? { kind: 'paired', name: device.name, state: device.state, mark: deviceMarkOf(device, devices) }
+      ? { kind: 'paired', name: device.name, state: device.state, downloadPercent: device.downloadPercent, mark: deviceMarkOf(device, devices) }
       : { kind: 'removed' }
   }
   /**

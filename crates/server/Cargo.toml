@@ -16,6 +16,9 @@ bzip2 = "0.6"
 clap = { version = "4", features = ["derive"] }
 demi-backend-database = { path = "../backend-database" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }
+# The next runner release's record and the backend's management socket
+# (`upgrades.md` § Prepare).
+demi-runner-protocol = { path = "../runner-protocol" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-shared-cli = { path = "../shared-cli" }
 dotenvy = "0.15"
@@ -35,6 +38,8 @@ which = "8"
 zstd = { version = "0.13", default-features = false }
 
 [dev-dependencies]
+# A runner release's record, for the runners step.
+demi-command-protocol = { path = "../command-protocol" }
 # The schema versions a database of each kind records, for the data check.
 demi-backend-database = { path = "../backend-database", features = ["testing"] }
 rusqlite = { version = "0.40", default-features = false, features = ["bundled"] }

@@ -2,7 +2,9 @@
   "state": {
     "online": "Online",
     "updating": "Updating",
-    "offline": "Offline"
+    "offline": "Offline",
+    "downloading": "Downloading update · {percent}%",
+    "updatingPercent": "Updating · {percent}%"
   },
   "route": {
     "automatic": "Automatic",
