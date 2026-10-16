@@ -35,6 +35,8 @@ describe('normalizeErrorCode', () => {
     expect(normalizeErrorCode('invalid_request_error', 'Invalid prompt_cache_key')).toBe('invalid_request_error')
     expect(normalizeErrorCode(null, 'service unavailable')).toBe('overloaded')
     expect(normalizeErrorCode('server_error', 'backend failed')).toBe('overloaded')
+    expect(normalizeErrorCode(null, 'unknown certificate verification error')).toBe('overloaded')
+    expect(normalizeErrorCode(null, 'Codex response stream ended before the response completed')).toBe('overloaded')
     expect(normalizeErrorCode('internal-error', 'backend failed')).toBe('overloaded')
     expect(normalizeErrorCode('custom', 'something else')).toBe('custom')
   })

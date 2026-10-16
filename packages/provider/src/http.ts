@@ -50,9 +50,10 @@ export function normalizeErrorCode(code: string | null, message: string): string
     return 'auth_expired'
   }
   // Transport-level transient failures (header/connect/idle timeouts, dropped
-  // sockets, DNS/connect errors) classify as overloaded so the turn retry
-  // policy treats them like a 503 instead of surfacing a terminal error.
-  if (/overload|unavailable|(?:server|internal|api)[_\s-]*error|timed?\s?out|fetch failed|network|socket|econn/.test(value)) {
+  // sockets, streams cut off before completion, TLS handshake and certificate
+  // verification failures, DNS/connect errors) classify as overloaded so the
+  // turn retry policy treats them like a 503 instead of surfacing a terminal error.
+  if (/overload|unavailable|(?:server|internal|api)[_\s-]*error|timed?\s?out|fetch failed|network|socket|econn|ended before|certificate|\btls\b|\bssl\b/.test(value)) {
     return 'overloaded'
   }
   return code
