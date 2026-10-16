@@ -31,6 +31,10 @@ pub enum RuntimeError {
     Location(String),
     #[error("native runtime was cancelled")]
     Cancelled,
+    /// Why the download this install shared with others failed, which each
+    /// of them reports (`native-runtime.md` § Install artifacts).
+    #[error(transparent)]
+    Shared(std::sync::Arc<RuntimeError>),
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
