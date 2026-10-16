@@ -835,6 +835,40 @@ test('failure facts arrive beside the transcript and accumulate across patches a
   runtime.dispose()
 })
 
+// A Resume another page started first is no failure: the session refuses
+// this one as busy running the turn, which runs on (`web-application.md`
+// § Responding to the user). Busy with another page's Compact, which may
+// end without running the turn, the refusal is a failure, as is a refusal
+// of another kind.
+test.each([
+  { busy: 'running', failed: false },
+  { busy: 'compacting', failed: true },
+] as const)('a Resume the session refuses as busy $busy fails: $failed', async ({ busy, failed }) => {
+  const h = clientHarness()
+  const s = state()
+  const runtime = new ConversationRuntime({ state: s, connect: async () => h.client })
+  await runtime.connect()
+  const resumed = runtime.resume().then(() => null, (error: unknown) => error)
+  await waitFor(() => h.sent.at(-1)?.type === 'resume')
+  h.receive({ type: 'phase', phase: busy })
+  h.receive({ type: 'rejected', command: 'resume', code: 'session_busy', params: {}, reason: `Session is busy (${busy})` })
+  expect(await resumed).toEqual(failed ? expect.objectContaining({ code: 'session_busy' }) : null)
+  expect(s.pendingAction).toBeNull()
+  runtime.dispose()
+})
+
+test('a Resume the session refuses as closed fails', async () => {
+  const h = clientHarness()
+  const s = state()
+  const runtime = new ConversationRuntime({ state: s, connect: async () => h.client })
+  await runtime.connect()
+  const refused = runtime.resume().then(() => null, (error: unknown) => error)
+  await waitFor(() => h.sent.at(-1)?.type === 'resume')
+  h.receive({ type: 'rejected', command: 'resume', code: 'session_closed', params: {}, reason: 'The agent session is closed' })
+  expect(await refused).toMatchObject({ code: 'session_closed' })
+  runtime.dispose()
+})
+
 test('a closed connection ends a pending resume', async () => {
   const h = clientHarness()
   const s = state()

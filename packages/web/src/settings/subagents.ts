@@ -2,7 +2,7 @@ import { t } from './locales/text'
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue } from '@demicodes/utils'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import { errorCode, reportError } from '@demicodes/web-ui/infra/errors'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import type { SettingsSubagentDraft } from '@demicodes/web-ui/settings/types'
 import { apiRequest, jsonBody, readResponse } from '../api/client'
@@ -63,7 +63,11 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
       })
       .catch((error) => {
         change.drop()
-        reportError(failed, error, { userVisible: true })
+        // A profile another page deleted meanwhile has nothing to switch,
+        // and the channel takes it off the list.
+        if (errorCode(error) !== 'profile_not_found') {
+          reportError(failed, error, { userVisible: true })
+        }
       })
   }
 
@@ -134,7 +138,14 @@ export const useSubagentSettings = defineStore('subagent-settings', () => {
 
   async function deleteProfile(id: string): Promise<void> {
     const at = product.sent()
-    await apiRequest(`/subagents/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    try {
+      await apiRequest(`/subagents/profiles/${encodeURIComponent(id)}`, { method: 'DELETE' })
+    } catch (error) {
+      // A profile another page deleted meanwhile is deleted: that is done.
+      if (errorCode(error) !== 'profile_not_found') {
+        throw error
+      }
+    }
     product.answered(at, settingsAnswer((current) => ({
       ...current,
       profiles: current.profiles.filter((profile) => profile.id !== id),

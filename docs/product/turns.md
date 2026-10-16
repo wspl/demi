@@ -26,9 +26,10 @@ the message goes back into it, its text and its files, the caret at its
 end, ready to change and send again; when the composer holds a draft, the
 draft is kept as it is and the message is not put back, and a toast,
 *Message Recalled*, offers Undo, which sends it again the way it was sent. A
-refusal, as when the agent read the steer meanwhile, brings the row back
-where it was with a toast, and takes back out of the composer what it had put
-there, unless the user changed it since. A message taken back before it was
+recall the agent beat, as when it read the steer meanwhile, is no failure:
+the message shows where the agent took it, in the transcript or as the turn
+it started, with no toast, and what Recall had put in the composer is taken
+back out, unless the user changed it since. A message taken back before it was
 delivered, as one whose files are still uploading, goes back into an empty
 composer with its files as they were; beside a draft it stays as an
 undelivered message with Retry, since files that never finished uploading

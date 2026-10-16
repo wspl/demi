@@ -262,8 +262,6 @@
     "auth_refresh_failed": "제공업체 로그인을 갱신할 수 없습니다.",
     "interrupted": "턴이 완료되기 전에 중단되었습니다.",
     "host_offline": "호스트가 오프라인 상태가 되어 이 턴을 완료할 수 없습니다.",
-    "steer_already_read": "에이전트가 이미 읽었습니다.",
-    "turn_already_begun": "해당 턴이 이미 시작되었습니다.",
     "edit_media_not_stored": "이 메시지의 파일이 대화와 함께 저장되지 않아 편집할 때 유지할 수 없습니다."
   },
   "common": {

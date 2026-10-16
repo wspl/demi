@@ -9,7 +9,7 @@
 // line of its own, and every Markdown render runs again on its arrival.
 import type { KatexOptions } from 'katex'
 import type { TokenizerAndRendererExtension, Tokens } from 'marked'
-import { reportError } from '../infra/errors'
+import { chunkLoadFailure, reportError } from '../infra/errors'
 import { t } from '../locales/text'
 import { escapeHtml } from './html'
 import { renderAgain } from './render-version'
@@ -31,7 +31,7 @@ export function loadKatex(): Promise<void> {
       katex = chunk.default
       renderAgain()
     },
-    (error: unknown) => reportError(t('markdown.mathUnavailable'), error),
+    (error: unknown) => reportError(t('markdown.mathUnavailable'), chunkLoadFailure(error)),
   )
   return loading
 }

@@ -3,7 +3,9 @@ import { computed, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import StartingScreen from '@demicodes/web-ui/ui/StartingScreen.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import { errorCode, reportError } from '@demicodes/web-ui/infra/errors'
+import { t as sidebarText } from '@demicodes/web-ui/sidebar/locales/text'
+import { t as authText } from './auth/locales/text'
 import { reloadFor, reloadPage } from '@demicodes/web-ui/infra/build-reload'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
@@ -203,7 +205,11 @@ function reorder(request: SidebarReorder) {
     void resources
       .reorderProject(request.id, request.beforeId)
       .catch((error) => {
-        reportError('Could Not Reorder Projects', error, { userVisible: true })
+        // A move naming a project another page deleted meanwhile has
+        // nothing to say; the channel brings the order there is.
+        if (errorCode(error) !== 'workspace_not_found') {
+          reportError(sidebarText('refused.reorderProjects'), error, { userVisible: true })
+        }
       })
   } else {
     conversations.reorder(request.id, request.beforeId)
@@ -216,7 +222,10 @@ async function removeProject(id: string) {
   try {
     await resources.removeProject(id)
   } catch (error) {
-    reportError('Could Not Delete the Project', error, { userVisible: true })
+    // A project another page deleted meanwhile is deleted: that is done.
+    if (errorCode(error) !== 'workspace_not_found') {
+      reportError(sidebarText('refused.deleteProject'), error, { userVisible: true })
+    }
   }
 }
 async function signOut(): Promise<void> {
@@ -225,7 +234,7 @@ async function signOut(): Promise<void> {
     // A new document releases account-scoped stores, sockets and draft data.
     window.location.replace('/login')
   } catch (error) {
-    reportError('Could Not Sign Out', error, { userVisible: true })
+    reportError(authText('login.signOutFailed'), error, { userVisible: true })
   }
 }
 /** The bindings from the keyboard settings, by the action each one names. */
