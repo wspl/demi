@@ -1,5 +1,5 @@
 //! The product state and the messages of the page's synchronization channel
-//! (`web-api.md` § Page synchronization).
+//! (`web-api-sync.md` § Page synchronization).
 
 use std::collections::BTreeMap;
 
@@ -88,13 +88,13 @@ pub struct ProductState {
     /// build).
     pub web_build: Option<String>,
     /// Whether the backend can send account mail, which an email change
-    /// needs for its code (`web-api.md` § Account API); without it the page
+    /// needs for its code (`web-api-settings.md` § Account API); without it the page
     /// offers no email change.
     pub mail: bool,
     /// This run of the backend, an id it chooses when it starts. The
     /// revisions it counts in memory, such as a summary's
     /// `permissionsRevision`, compare only within one run: a page holding
-    /// one of another run reads again (`web-api.md` § Revisions counted in
+    /// one of another run reads again (`web-api-sync.md` § Revisions counted in
     /// memory).
     pub run: String,
 }

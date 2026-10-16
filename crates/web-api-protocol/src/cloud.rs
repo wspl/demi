@@ -1,4 +1,4 @@
-//! The user's Cloud: its status and its reset (`web-api.md` § Cloud).
+//! The user's Cloud: its status and its reset (`web-api-hosts.md` § Cloud).
 
 use demi_shared_types::{MAX_SAFE_INTEGER, Nullable};
 use schemars::JsonSchema;

@@ -73,7 +73,7 @@ pub enum CloudError {
 
 impl CloudError {
     /// The code and HTTP status an operation refused this way answers with
-    /// (`web-api.md` § Cloud).
+    /// (`web-api-hosts.md` § Cloud).
     pub fn code(&self) -> (ErrorCode, u16) {
         match self {
             Self::Closed => (ErrorCode::BackendClosing, 503),

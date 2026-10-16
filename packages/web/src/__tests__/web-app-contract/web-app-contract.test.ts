@@ -246,7 +246,7 @@ function pageShows(page: ReturnType<typeof openPage>, id: string, check: (summar
 /**
  * The transcript the backend serves cold, from the conversation's database:
  * its pages back from the latest, each block then read whole
- * (`web-api.md` § Conversation history).
+ * (`web-api-conversations.md` § Conversation history).
  */
 async function coldTranscript(id: string) {
   const path = `/conversations/${id}/transcript`

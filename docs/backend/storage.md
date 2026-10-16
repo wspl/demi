@@ -150,7 +150,7 @@ input, which the multi-worker control service also relies on
   issue, expiry, send time, and failed-attempt count. Confirming the challenge
   updates the email and consumes the challenge in one transaction. Account
   behavior belongs to [Product](../product/users.md#user-system), its HTTP
-  contract to [Web API](../product/web-api.md#account-api), and sessions and
+  contract to [Web API](../product/web-api-settings.md#account-api), and sessions and
   lockout to [Backend](backend.md#authentication-and-ownership).
 - **Preferences:** `user_preferences` stores validated appearance and shortcut
   overrides, whether a message sent while the agent works steers or queues,
@@ -216,13 +216,13 @@ input, which the multi-worker control service also relies on
   start in, and
   whether an agent's `demi host detach` waits for the tree to be idle.
   `conversation_panels` stores each conversation's
-  [work panel tabs](../product/web-api.md#work-panel-state): the revision,
+  [work panel tabs](../product/web-api-conversations.md#work-panel-state): the revision,
   the tabs as one JSON document, and the ids the panel ever had. Each change
   reads the row and writes it in one transaction, so the changes of one
   conversation apply one at a time, and the row is deleted with its
   conversation.
   `conversation_drafts` stores each conversation's
-  [draft](../product/web-api.md#conversation-drafts): its revision, its text
+  [draft](../product/web-api-conversations.md#conversation-drafts): its revision, its text
   and files as one JSON document with the revision they were written at, and
   the replaced version as another, or null. A save reads the row and writes it
   in one transaction, so two saves never build on the same revision. The row
@@ -230,7 +230,7 @@ input, which the multi-worker control service also relies on
   is deleted with its conversation; the conversation index reads the revision
   into each conversation's summary.
   `saved_messages` stores each conversation's
-  [messages saved for later](../product/web-api.md#messages-saved-for-later):
+  [messages saved for later](../product/web-api-conversations.md#messages-saved-for-later):
   id, conversation, when saved, and the text and files as one JSON document,
   as a draft holds them; `conversation_drafts` gains the revision of the
   list, which every save, edit, send and removal raises in the transaction
@@ -324,7 +324,7 @@ project and pin partition. New projects append and new conversations enter at
 the front. Rename, archive/restore, and target changes retain sort positions,
 with ID as the stable tie-breaker. Reorder writes one partition atomically and
 rejects archived rows or cross-partition targets.
-[Web API](../product/web-api.md#sidebar-mutations-and-read-state)
+[Web API](../product/web-api-conversations.md#sidebar-mutations-and-read-state)
 owns the request contract.
 - **Shares:** `shares` holds each share's token, user, conversation,
   kind, the answer's block, the title it shows and when it was taken; its list and copies are in
@@ -349,7 +349,7 @@ Host. The node lifecycle and its commits are defined in
 |---|---|
 | `nodes` | Parent relationship, the agent's number and its current round ([Identifiers the model sees](../agent/runtime.md#identifiers-the-model-sees)) with the round's start time, description, its profile's name and the instructions the profile added ([Persistence](../agent/subagents.md#persistence)), whether the node may spawn children, close result or failure, completion-delivery state, checkpoint state, block count, output revision |
 | `sequences` | The next number of each sequence the model sees in the conversation: commands, agents, conversation browser tabs and attachments. The backend advances a sequence in its own transaction before it gives the number out, by the count a native service asks for when it reserves several ([Conversation numbers](../execution/native-runtime.md#conversation-numbers)), so a crash leaves a gap and never gives a number twice |
-| `blocks` | One transcript block per node and block index, found also by the block's id and by the command a `shell` call's view names, for a page read around a block, a block read whole and the call that started a command ([Conversation history](../product/web-api.md#conversation-history)) |
+| `blocks` | One transcript block per node and block index, found also by the block's id and by the command a `shell` call's view names, for a page read around a block, a block read whole and the call that started a command ([Conversation history](../product/web-api-conversations.md#conversation-history)) |
 | `block_attachments` | Each attachment a block's text names, by node and block index, written with the block like `block_blobs`, so a share lists a conversation's attachments without reading its text |
 | `block_blobs` | Each blob a block names, by node and block index and by blob, written with the block in the same checkpoint, so what names a blob is found without reading a block: a share's check of a blob and the collection of the user's namespace read it |
 | `command_outputs` | The record of each ended command's whole output, by command id ([Command outputs](#command-outputs)) |
@@ -603,7 +603,7 @@ one starts another after it.
 ### Account deletion
 
 There is no account deletion
-([Account API](../product/web-api.md#account-api)). When it comes, it must
+([Account API](../product/web-api-settings.md#account-api)). When it comes, it must
 remove, besides the account's records and conversation databases, the objects
 nothing else removes: the account's blob namespace, `blobs/<userId>/`. Its
 Cloud's disks belong to the machine manager
@@ -612,7 +612,7 @@ Cloud's disks belong to the machine manager
 ## Search index
 
 Each user has a search index, `search/<userId>.sqlite`, that
-[Search](../product/web-api.md#search) reads: an SQLite FTS5 table with one
+[Search](../product/web-api-conversations.md#search) reads: an SQLite FTS5 table with one
 row per searchable text, a conversation's title, or the text of a `user` or
 `steer` block, an agent's text or a command's description, of any agent of
 it, each with its conversation's id, its agent, its block's index, id and
@@ -637,7 +637,7 @@ by a number SQLite may give to another row.
 turn adds three blocks to a root of 11,000: the index replaces three rows,
 about a millisecond, and reads nothing else. The checkpoint that writes an
 agent's blocks already knows which of them it wrote and from which
-index it cut the rest ([Conversation tree](#conversation-tree)); it hands
+index it cut the rest ([Conversation state and transactions](#conversation-state-and-transactions)); it hands
 the searchable text of exactly those, extracted from the blocks it holds
 decoded, to the user's index, which applies them in the order the
 checkpoints committed, in one transaction each: the written blocks' rows

@@ -1,6 +1,6 @@
 //! Where a conversation's work runs, changed through the API
 //! (`sessions-and-targets.md` § Switch the primary target, § Attached hosts;
-//! `web-api.md` § Workspaces, devices, and attached hosts): a target switch
+//! `web-api-hosts.md` § Workspaces, devices, and attached hosts): a target switch
 //! moves the work and attaches the device it leaves, a switch ends the
 //! conversation's open transfers instead of waiting for them, attached
 //! hosts are detached, each change of them raises the revision a page

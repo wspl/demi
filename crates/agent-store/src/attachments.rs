@@ -1,5 +1,5 @@
 //! What an uploaded file becomes (`backend.md` § Media by reference,
-//! `web-api.md` § Uploads and media): the media type and, for a text file,
+//! `web-api-hosts.md` § Uploads and media): the media type and, for a text file,
 //! the opening the upload is recorded with, and the blocks it becomes in a
 //! message once the backend has written it to the conversation's Host. The
 //! backend's upload route and its content resolution both use these rules;

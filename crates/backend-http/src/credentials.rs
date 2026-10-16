@@ -1,4 +1,4 @@
-//! The caller's credentials (`web-api.md` § Credentials), which only their
+//! The caller's credentials (`web-api-conversations.md` § Credentials), which only their
 //! owner reads and changes: each route acts in the caller's shard, and a
 //! change reaches the caller's pages as the `credentials` part, which
 //! carries a visible field's value and never a secret one's. Only the

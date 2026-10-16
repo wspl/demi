@@ -1,4 +1,4 @@
-//! `POST /api/attachments?name=&sha256=` (`web-api.md` § Uploads and
+//! `POST /api/attachments?name=&sha256=` (`web-api-hosts.md` § Uploads and
 //! media): a file's bytes, at most 25 MiB, into the caller's blobs with one
 //! attachment record; with a SHA-256 and no body, the blob the caller holds
 //! already gains the record, and no bytes travel, and a blob it does not
@@ -137,7 +137,7 @@ async fn record(
 ) -> Result<AttachmentDto, ApiError> {
     let media_type = upload_media_type(sent, opening);
     // The record keeps the snippet, so a draft that names the upload shows
-    // it on every page (`web-api.md` § Conversation drafts).
+    // it on every page (`web-api-conversations.md` § Conversation drafts).
     let snippet = is_text(name, &media_type).then(|| snippet(opening));
     let record = services
         .control

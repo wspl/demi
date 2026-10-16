@@ -19,7 +19,7 @@ import type { Device } from '../state/types'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
 
 /**
- * A raw file answer's headers as a file description (`web-api.md` § File
+ * A raw file answer's headers as a file description (`web-api-hosts.md` § File
  * text and working tree changes): its size, its modification time when the
  * route knows it, and the version a preview pins.
  */
@@ -40,7 +40,7 @@ const fileHeadersSchema = z.object({
 
 /**
  * `X-Demi-Read-At: <epoch>.<number>`, the Host's number before it read
- * (`web-api.md` § File text and working tree changes).
+ * (`web-api-hosts.md` § File text and working tree changes).
  */
 const readAtSchema = z.string().regex(/^.+\.\d+$/).transform((value): ReadAt => {
   const dot = value.lastIndexOf('.')
@@ -132,7 +132,7 @@ function browserError(error: unknown): never {
 }
 
 /**
- * The bytes behind a raw file route (`web-api.md` § File text and working
+ * The bytes behind a raw file route (`web-api-hosts.md` § File text and working
  * tree changes): `endpoint` serves `?path=`, with `version` and `download`,
  * and answers `HEAD` with a file's size, modification time and version.
  */
@@ -192,7 +192,7 @@ export interface FileRoutes {
 }
 
 /**
- * A conversation's Host file routes (`web-api.md` § File text and working
+ * A conversation's Host file routes (`web-api-hosts.md` § File text and working
  * tree changes): its directory listing, file text and raw bytes, uploads
  * and deletes.
  */

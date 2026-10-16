@@ -1,5 +1,5 @@
 //! What the product reads from a Host's files for the web app: directory
-//! listings and file text (`web-api.md` § Device files and remote
+//! listings and file text (`web-api-hosts.md` § Device files and remote
 //! references, § File text and working tree changes). Text is what edit
 //! tracking and line counts read as text, UTF-8 without a NUL byte, up to
 //! the size an edit snapshot keeps, so a file the runner counted lines for

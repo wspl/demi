@@ -1,4 +1,4 @@
-//! Passkeys (`web-api.md` § Account API): signing in with one, and the
+//! Passkeys (`web-api-settings.md` § Account API): signing in with one, and the
 //! account's list of them, which Settings › Account adds to, renames and
 //! removes from.
 //!

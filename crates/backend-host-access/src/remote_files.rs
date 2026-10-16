@@ -1,4 +1,4 @@
-//! Files on the user's devices that a message refers to (`web-api.md`
+//! Files on the user's devices that a message refers to (`web-api-hosts.md`
 //! § Device files and remote references): every referenced device must be
 //! the user's and connected before any is granted; a device that is not the
 //! conversation's primary Host is attached, which the conversation's nodes hear

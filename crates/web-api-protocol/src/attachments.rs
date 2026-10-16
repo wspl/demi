@@ -1,4 +1,4 @@
-//! Uploads (`web-api.md` § Uploads and media): a file's bytes go to the
+//! Uploads (`web-api-hosts.md` § Uploads and media): a file's bytes go to the
 //! caller's blobs with one attachment record, and a send, steer or edit
 //! frame names the upload by its id.
 

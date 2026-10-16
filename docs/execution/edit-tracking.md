@@ -230,7 +230,7 @@ or not, and is collected once nothing does. A Fork copies no bytes: its blocks
 reference the same blobs of the same namespace.
 
 The web app reads one segment's two sides from the blob route
-([Uploads and media](../product/web-api.md#uploads-and-media)) by the hashes in
+([Uploads and media](../product/web-api-hosts.md#uploads-and-media)) by the hashes in
 the view, without involving the Host; an added segment's original is empty.
 
 ## Delivery to the conversation

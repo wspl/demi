@@ -1,4 +1,4 @@
-//! User streams end to end (`web-api.md` § User streams): the page's
+//! User streams end to end (`web-api-hosts.md` § User streams): the page's
 //! socket, the backend's admission and relay, the runner's service stream
 //! and a resident native service, and an open stream as the conversation's
 //! activity (`resource-lifecycle.md` § Activity). The streams bind the

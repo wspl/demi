@@ -7,7 +7,7 @@ import { t } from './locales/text'
 /** What a share holds: the conversation, or the answer that the text block `blockId` ends (`sharing.md`). */
 export type ShareTarget = { kind: 'conversation' } | { kind: 'answer'; blockId: string }
 
-/** A share the conversation has, as its state lists it (`web-api.md` § Sharing). */
+/** A share the conversation has, as its state lists it (`web-api-conversations.md` § Sharing). */
 export type ExistingShare = { kind: 'conversation'; token: string } | { kind: 'answer'; token: string; blockId: string }
 
 /** A share's link. */

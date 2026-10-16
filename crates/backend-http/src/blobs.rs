@@ -3,7 +3,7 @@
 //! content hash, so the answer never changes and the user's browser keeps
 //! it for a year; the cache is private and varies by cookie, since the bytes
 //! are the caller's. A byte range is answered as `fs/raw` answers one
-//! (`web-api.md` § Uploads and media): Safari plays a video only from a
+//! (`web-api-hosts.md` § Uploads and media): Safari plays a video only from a
 //! server that does.
 
 use std::sync::Arc;

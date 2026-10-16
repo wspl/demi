@@ -78,7 +78,7 @@ pub const STDIN_CHUNK_BYTES: usize = 64 * 1024;
 pub const WATCH_GATHER: Duration = Duration::from_millis(100);
 /// How long a subscription's lease runs from the `fs_subscribe` or the
 /// `fs_renew` that started it, as each end counts it (`runner.md`
-/// § Watching files, `web-api.md` § File watch).
+/// § Watching files, `web-api-hosts.md` § File watch).
 pub const SUBSCRIPTION_LEASE: Duration = Duration::from_secs(10 * 60);
 /// The most subscriptions one `fs_changed` names; more changed at once go
 /// in as many messages as they take, within the frame limit.

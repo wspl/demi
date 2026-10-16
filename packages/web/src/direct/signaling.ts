@@ -1,5 +1,5 @@
 /**
- * A device's signaling socket (`web-api.md` § Direct channel): the page's
+ * A device's signaling socket (`web-api-hosts.md` § Direct channel): the page's
  * introduction to the device's runner. It carries one offer at a time and
  * its answer, each side's candidates found after them, and the page's
  * probes of the relay path with their answers; a socket that brings nothing, not even a heartbeat, for as

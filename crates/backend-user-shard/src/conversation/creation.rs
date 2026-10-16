@@ -1,4 +1,4 @@
-//! A conversation's creation (`web-api.md` § Conversation creation and
+//! A conversation's creation (`web-api-conversations.md` § Conversation creation and
 //! Fork): one request makes it with what it starts with, its target and its
 //! settings, each checked as its own change would check it before anything
 //! is created, so a refused one creates nothing. Its directory is selected

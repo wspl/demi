@@ -1,4 +1,4 @@
-//! The runner installers (`builds-and-releases.md` § Packaging, `web-api.md`
+//! The runner installers (`builds-and-releases.md` § Packaging, `web-api-hosts.md`
 //! § Workspaces, devices, and attached hosts): a shell script for macOS and
 //! Linux and a PowerShell script for Windows, each naming the backend and
 //! one runner release. A script downloads its platform's runner from the

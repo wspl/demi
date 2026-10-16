@@ -15,7 +15,7 @@ import {
 } from '../api/generated/web-api'
 import type { Block, InstructionEntry, ProviderFailureFacts } from '@demicodes/protocol'
 
-/** Where a page is read from (`web-api.md` § Pages). */
+/** Where a page is read from (`web-api-conversations.md` § Pages). */
 type PageAt =
   | { kind: 'latest' }
   | { kind: 'before' | 'after'; index: number; edge: string }
@@ -44,7 +44,7 @@ export interface HistoryHolder {
 }
 
 /**
- * The reads of a transcript's history (`web-api.md` § Pages), each held
+ * The reads of a transcript's history (`web-api-conversations.md` § Pages), each held
  * where the page shows it (`web-application.md` § Transcript windows), from
  * the routes under `path`, a conversation's or a share's `…/transcript`. A
  * page that one read is already fetching is not fetched twice: a second
@@ -194,7 +194,7 @@ export function createHistoryReads<T extends HistoryHolder>(
     readAround,
     /**
      * Reads a block whole, for a row the page holds light or a command's call
-     * (`web-api.md` § Light form): a block the page holds is replaced by it,
+     * (`web-api-conversations.md` § Light form): a block the page holds is replaced by it,
      * and the block is the answer.
      */
     async readWhole(holder: T, node: string | null, id: string): Promise<Block> {

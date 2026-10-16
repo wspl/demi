@@ -20,10 +20,10 @@ interface Held {
 
 /**
  * The plugins' conversation states, as a page reads them by revision
- * (`web-api.md` § Conversation state of plugins): while anything follows a
+ * (`web-api-sync.md` § Conversation state of plugins): while anything follows a
  * plugin's state of a conversation, the page reads it whenever the
  * conversation's summary carries a newer revision than the one it holds, a
- * count of another run of the backend included (`web-api.md` § Revisions
+ * count of another run of the backend included (`web-api-sync.md` § Revisions
  * counted in memory). A read that cannot reach the backend waits for it in
  * the HTTP client and shows no failure (`plugin-pages.md` § The page
  * context).

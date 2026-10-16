@@ -45,7 +45,7 @@ independently.
 | Agent session | Captures an independent seed from a live source without scheduling an action on it. |
 | Agent server | Prepares a seed from a live or a stored source, and initializes a new root from it through the tree store. The destination's live runtime comes later from the ordinary node assembly. |
 | Backend conversation module | Authenticates ownership; coordinates destination creation, title and target selection, retries, and durable publication. |
-| Backend HTTP route | Validates the Fork request and returns the resulting conversation with the ordinary HTTP error contract ([Conversation creation and Fork](../product/web-api.md#conversation-creation-and-fork)). |
+| Backend HTTP route | Validates the Fork request and returns the resulting conversation with the ordinary HTTP error contract ([Conversation creation and Fork](../product/web-api-conversations.md#conversation-creation-and-fork)). |
 | Control database | Records the operation and publishes the destination, independently of the source's conversation database. |
 | `web-ui` | Owns the footer action, the pending, error, and retry interaction, and the presentation of completed-message eligibility. |
 | `web` | Calls the HTTP route, updates product state, and navigates to the created conversation. |

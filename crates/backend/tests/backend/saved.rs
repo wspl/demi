@@ -1,4 +1,4 @@
-//! Messages saved for later (`web-api.md` § Messages saved for later,
+//! Messages saved for later (`web-api-conversations.md` § Messages saved for later,
 //! `rendering.md` § Client frames): a save of the composer's message empties
 //! the conversation's draft, keeping one its page never showed to restore,
 //! an edit exchanges a saved message with the draft in one go, Undo's save

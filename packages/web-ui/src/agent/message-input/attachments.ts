@@ -55,7 +55,7 @@ export interface AttachmentUploadUpdate {
 }
 
 /**
- * What the backend answered for an upload (`web-api.md` § Uploads and
+ * What the backend answered for an upload (`web-api-hosts.md` § Uploads and
  * media): the id a message names the file by, the media type it read from
  * the bytes, where the bytes are in the user's blobs, and a text file's
  * opening, which the capsule shows.

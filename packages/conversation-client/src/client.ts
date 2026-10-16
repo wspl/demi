@@ -221,7 +221,7 @@ export class ConversationClient {
 
   /**
    * Sends the message saved for later `id` the way the composer chose
-   * (`web-api.md` § Messages saved for later), as the message `turnId`, the
+   * (`web-api-conversations.md` § Messages saved for later), as the message `turnId`, the
    * page's id for this send; resolves once the session holds it: in the
    * transcript or the queue, or accepted as a steer, at once when it does
    * already. A steer the session refuses rejects with `SteerRejectedError`,

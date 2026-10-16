@@ -26,7 +26,7 @@ function credentialsAnswer(next: (current: CredentialDto[]) => CredentialDto[]):
 
 /**
  * The user's credentials as Settings › Credentials changes them
- * (`web-api.md` § Credentials): a saved or deleted credential shows its
+ * (`web-api-conversations.md` § Credentials): a saved or deleted credential shows its
  * answer, and the synchronization channel's `credentials` part brings the
  * same to every other page, each visible field with its value and never a
  * secret one's. A secret value comes only from the reveal, which the page

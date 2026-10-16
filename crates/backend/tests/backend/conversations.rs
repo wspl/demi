@@ -1,4 +1,4 @@
-//! Conversations (`web-api.md` § Conversation creation and Fork, § Sidebar
+//! Conversations (`web-api-conversations.md` § Conversation creation and Fork, § Sidebar
 //! mutations, read state and page synchronization; `rendering.md` § Frame
 //! protocol): creation under the web app's id, the list and the product
 //! state, a chat over the socket with an Anthropic endpoint the test
@@ -594,7 +594,7 @@ pub(crate) async fn summary(
 }
 
 /// A conversation's history as the backend serves it cold
-/// (`web-api.md` § Conversation history): the root's blocks, each page read
+/// (`web-api-conversations.md` § Conversation history): the root's blocks, each page read
 /// back to the start and each block then read whole, with their failure
 /// facts, and the conversation's subagents.
 #[derive(Debug, Clone, PartialEq)]
@@ -1823,7 +1823,7 @@ async fn an_edit_of_the_entry_reaches_the_next_request_and_a_deleted_entry_refus
 
 /// The summary's latest ended turn and status after each way a turn ends,
 /// each named by the block that ended it, so a page can tell a turn it has
-/// not seen end (`web-api.md` § Sidebar mutations and read state). One
+/// not seen end (`web-api-conversations.md` § Sidebar mutations and read state). One
 /// backend and four turns against the mock vendor, about a second.
 #[tokio::test]
 async fn the_summary_names_the_roots_latest_ended_turn_as_its_status_says_it_ended() {

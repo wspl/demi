@@ -1,4 +1,4 @@
-//! The pages' synchronization channel end to end (`web-api.md` § Page
+//! The pages' synchronization channel end to end (`web-api-sync.md` § Page
 //! synchronization, `backend.md` § Page synchronization): the product
 //! state a page receives first, and the run that tells one start of the
 //! backend from the next; what it receives when another session

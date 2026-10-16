@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { shareToken } from './address'
 
-// The shared page's address (`web-api.md` § Sharing). Pure, under a millisecond.
+// The shared page's address (`web-api-conversations.md` § Sharing). Pure, under a millisecond.
 
 test('a shared page reads its token from /s/<token> and nothing else', () => {
   expect(shareToken('/s/Qm9iAbc')).toBe('Qm9iAbc')

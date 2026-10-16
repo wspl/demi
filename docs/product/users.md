@@ -188,6 +188,6 @@ code photographed off the screen and used by someone else is undone there.
 The web app's HTTP requests, the synchronization channel and conversation
 WebSockets use the same session cookie.
 [Backend authentication](../backend/backend.md#authentication-and-ownership)
-owns session and lockout behavior; [Web API](web-api.md#account-api) owns
+owns session and lockout behavior; [Web API](web-api-settings.md#account-api) owns
 account request shapes and verification limits. There are no organizations or
 team roles.

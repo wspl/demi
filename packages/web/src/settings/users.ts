@@ -38,7 +38,7 @@ function row(user: ListedUser): SettingsUser {
 }
 
 /**
- * The accounts as Settings › Users shows and changes them (`web-api.md` §
+ * The accounts as Settings › Users shows and changes them (`web-api-settings.md` §
  * Account API): the list is the product state's `users` part, which the
  * synchronization channel sends to the master and admins and changes with
  * each add, change, reset, disable, enable, sign-in and password choice, so

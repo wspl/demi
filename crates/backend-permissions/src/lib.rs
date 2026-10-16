@@ -162,7 +162,7 @@ impl Drop for Wait {
 
 /// How many times each conversation's requests changed since the shard
 /// started; a conversation without an entry has changed none
-/// (`web-api.md` § Conversation permissions).
+/// (`web-api-conversations.md` § Conversation permissions).
 #[derive(Default)]
 pub struct Revisions(RefCell<HashMap<ConversationId, u64>>);
 
@@ -177,7 +177,7 @@ impl Revisions {
 }
 
 /// Why a page's read or decision failed. A credential's refusals are in
-/// words for the user, who reads them as they are (`web-api.md`
+/// words for the user, who reads them as they are (`web-api-conversations.md`
 /// § Credentials).
 #[derive(Debug, thiserror::Error)]
 pub enum PermissionError {

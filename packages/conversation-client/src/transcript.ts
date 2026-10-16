@@ -9,7 +9,7 @@ export interface TextArrival {
 /**
  * A block as the page holds it: whole, as the stream and a whole read send
  * it, or `light`, as a page of the transcript sends it, without what only
- * its open row shows (`web-api.md` § Light form). A text or thinking block
+ * its open row shows (`web-api-conversations.md` § Light form). A text or thinking block
  * the stream brings keeps when each piece of its text arrived, `arrivals`,
  * so a row that shows it fades each piece from then, even a row that mounts
  * later; a block read whole has none, and a replaced block loses them. A
@@ -168,7 +168,7 @@ export function resetTranscript(
 }
 
 /**
- * The transcript with a page of it the page read (`web-api.md` § Pages),
+ * The transcript with a page of it the page read (`web-api-conversations.md` § Pages),
  * its blocks light. A block the page already holds stays as it is. A page
  * tells the transcript's length as the database holds it, which the page
  * takes only while no stream told it one.

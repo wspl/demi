@@ -161,7 +161,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   (`light`), its requests and the page budget that selects a page of them
   (`requests`, `page`), and where a reset starts (`reset_start`), which the
   history routes and the stream share
-  ([Conversation history](../product/web-api.md#conversation-history)).
+  ([Conversation history](../product/web-api-conversations.md#conversation-history)).
 - **Public boundary:** the types above. The agent resolves the files a
   frame's content refers to through the backend (`agent-server`'s
   `ContentResolver`) before the session sees the content. The protocol's
@@ -1037,8 +1037,8 @@ demi-backend (executable: configuration, composition)
   email-change delivery, and each user's preferences and subagent settings,
   the Subagent switch and the profile records with their name and text rules
   ([Authentication and ownership](../backend/backend.md#authentication-and-ownership),
-  [User preferences](../product/web-api.md#user-preferences),
-  [Subagents](../product/web-api.md#subagents)).
+  [User preferences](../product/web-api-settings.md#user-preferences),
+  [Subagents](../product/web-api-settings.md#subagents)).
 - **Public boundary:** the account, session, preference and subagent settings services. The key
   that email codes are derived from is given to it; it does not derive keys.
 - **Must not:** know conversations, devices or providers.

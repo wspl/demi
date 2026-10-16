@@ -1,4 +1,4 @@
-//! Plugin calls at the edge (`web-api.md` § Plugin calls): a page's call of
+//! Plugin calls at the edge (`web-api-sync.md` § Plugin calls): a page's call of
 //! a plugin's method, for the user or for one of the user's conversations,
 //! and the read of a plugin's state for one conversation (§ Conversation
 //! state of plugins). The user's shard checks the parameters against the
@@ -23,7 +23,7 @@ use super::error::{ApiError, status_of};
 use super::gate::AuthUser;
 
 /// `PUT /plugins/:plugin { enabled }`: turns the plugin on or off for the
-/// caller (`web-api.md` § A user's plugins).
+/// caller (`web-api-sync.md` § A user's plugins).
 pub(super) async fn switch(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -145,7 +145,7 @@ async fn page_call(
     Ok(Json(result))
 }
 
-/// What a call or a state read that did not answer answers (`web-api.md`
+/// What a call or a state read that did not answer answers (`web-api-sync.md`
 /// § Plugin calls).
 fn refused(error: PageCallError) -> ApiError {
     let message = error.to_string();

@@ -93,7 +93,7 @@ impl ProjectWorkflows {
         }
     }
 
-    /// The Workflow menu's list, by id (`web-api.md` § Workflows of a
+    /// The Workflow menu's list, by id (`web-api-conversations.md` § Workflows of a
     /// directory).
     fn menu(&self) -> (ConversationWorkflows, ReadAt) {
         let workflows = self

@@ -1,4 +1,4 @@
-//! Setup, sign-in and the caller's own account (`web-api.md` § Account API).
+//! Setup, sign-in and the caller's own account (`web-api-settings.md` § Account API).
 
 use std::borrow::Cow;
 use std::fmt;

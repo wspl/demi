@@ -110,7 +110,7 @@ pub struct Services {
     pub stun: Vec<StunUrl>,
     /// This run of the backend, chosen when the services start: the
     /// revisions counted in memory compare only within one run
-    /// (`web-api.md` § Revisions counted in memory).
+    /// (`web-api-sync.md` § Revisions counted in memory).
     pub run: String,
     /// When a conversation's Host resources are reclaimed.
     pub lifecycle: LifecycleTuning,

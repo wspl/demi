@@ -1,4 +1,4 @@
-//! A user's personal instructions (`web-api.md` § Instructions): the rule a
+//! A user's personal instructions (`web-api-settings.md` § Instructions): the rule a
 //! text follows before it is written.
 
 use demi_shared_types::is_blank;

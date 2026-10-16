@@ -6,7 +6,7 @@ import { conversationAttachmentSchema } from './generated/web-api'
 
 /**
  * Where a page asks about attachments: the routes under `path`, a
- * conversation's or a share's (`web-api.md` § Sharing), whose
+ * conversation's or a share's (`web-api-conversations.md` § Sharing), whose
  * `…/attachments/:id` answers one, and where its blobs load from.
  */
 export interface AttachmentSource {
@@ -73,7 +73,7 @@ async function ask(source: AttachmentSource, id: string, key: string): Promise<v
       },
     })
   } catch (error) {
-    // A share answers every miss with its own code (`web-api.md` § Sharing).
+    // A share answers every miss with its own code (`web-api-conversations.md` § Sharing).
     const missing = error instanceof ApiError && (error.code === 'not_found' || error.code === 'share_not_found')
     answers.set(key, missing ? { state: 'missing' } : { state: 'failed' })
   }

@@ -2302,7 +2302,7 @@ async fn input_written_while_a_command_acquires_its_host_reaches_it_once_it_star
 /// Pages that hold one subject share one subscription on the runner: the
 /// first subscribes, a later one hears `live` at once, a page's renew
 /// renews it, a batch reaches each page that holds what changed, with what
-/// it holds, and the last to let go ends it (`web-api.md` § File watch).
+/// it holds, and the last to let go ends it (`web-api-hosts.md` § File watch).
 /// The connection's end ends every holder.
 #[tokio::test(flavor = "local")]
 async fn pages_that_hold_one_subject_share_its_subscription_which_the_last_one_ends() {

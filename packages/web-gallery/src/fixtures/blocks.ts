@@ -1585,7 +1585,7 @@ export function transcriptDemoBlocks(): Block[] {
 /**
  * A question the agent thought about, then answered: its thinking is a row
  * of its own, which a page read after a reload holds without its text
- * (`web-api.md` § Light form).
+ * (`web-api-conversations.md` § Light form).
  */
 export function thoughtAnswerBlocks(): Block[] {
   return [

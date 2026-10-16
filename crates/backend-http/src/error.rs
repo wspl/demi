@@ -31,7 +31,7 @@ use demi_backend_host_access::stream::StreamError;
 use demi_backend_user_shard::shard::ShardUnavailable;
 
 /// The header that carries the Host's number a read answer was read at
-/// (`web-api.md` § File text and working tree changes).
+/// (`web-api-hosts.md` § File text and working tree changes).
 pub(crate) const READ_AT: HeaderName = HeaderName::from_static("x-demi-read-at");
 
 /// `<epoch>.<number>`, as [`READ_AT`] carries it; none for an epoch a
@@ -59,7 +59,7 @@ pub(crate) struct ApiError {
     /// The `Retry-After` the answer carries, in whole seconds.
     retry_after: Option<u64>,
     /// The ETag of the file a refused read is an answer of, such as one
-    /// that is binary (`web-api.md` § File text and working tree changes).
+    /// that is binary (`web-api-hosts.md` § File text and working tree changes).
     etag: Option<String>,
     /// The Host's number before the read the failure answers, which the
     /// answer carries as `X-Demi-Read-At`.
@@ -244,7 +244,7 @@ impl ApiError {
         }
     }
 
-    /// A Host's failure of a history read (`web-api.md` § File text and
+    /// A Host's failure of a history read (`web-api-hosts.md` § File text and
     /// working tree changes): a commit or a branch the repository does not
     /// have is 404 `not_found`, and otherwise as a working-tree operation's.
     pub(crate) fn history(error: HostError) -> Self {

@@ -49,7 +49,7 @@ plugins' services over HTTP         plugins' fixture services
   the plugin's feature UI and the slots it fills, written only against
   `plugin-sdk`. `web` and the gallery show the packages of the generated
   registry; `web` supplies the page context over the
-  [page call route](web-api.md#plugin-calls) and the backend's other routes,
+  [page call route](web-api-sync.md#plugin-calls) and the backend's other routes,
   the gallery over each specimen's fixture state.
 
 The product and gallery do not import each other. The web app knows the HTTP
@@ -275,7 +275,7 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
 - **Tabs.** A tab is a fact the backend keeps for the conversation: a tab of
   this kind stands here, with this `data`. The user, from any page, and the
   plugin that owns the kind change the tabs, and the backend orders every
-  change ([Work panel state](web-api.md#work-panel-state)), so every page
+  change ([Work panel state](web-api-conversations.md#work-panel-state)), so every page
   shows the same tabs. A tab's `data` is what its kind needs to show it
   again; whether its content is loading or disconnected right now is the
   content's own runtime state and is not written to the tab.
@@ -460,7 +460,7 @@ conversations, as it changes ([Page synchronization](#page-synchronization)).
 The conversation WebSocket carries the
 [agent frames](../agent/rendering.md#frame-protocol) of one conversation: live
 transcript, queue, child-agent, and shell-job events. A live browser view uses
-its own [user stream](web-api.md#user-streams) WebSocket, so its pictures never
+its own [user stream](web-api-hosts.md#user-streams) WebSocket, so its pictures never
 delay those events.
 
 Every REST answer, synchronization message and conversation frame is checked
@@ -536,7 +536,7 @@ attached to the conversation's one live tree
 The conversation's model settings, its model, thinking effort and service
 tier, are one value its record holds: every tab and every device shows it, and
 a change made in any of them reaches all
-([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)).
+([Sidebar mutations and read state](web-api-conversations.md#sidebar-mutations-and-read-state)).
 A tab whose socket is lost or taken as broken
 ([Liveness and reconnection](#liveness-and-reconnection)), or whose tree
 another client disposed with `close`, opens the conversation again the same
@@ -564,10 +564,10 @@ work allows, and never one per item:
   entry's mark and opens its saved draft instead.
 - **An action that changes several things is one request.** Creating a
   conversation carries its settings and its hosts in its own request
-  ([Conversation creation and Fork](web-api.md#conversation-creation-and-fork)),
+  ([Conversation creation and Fork](web-api-conversations.md#conversation-creation-and-fork)),
   and the page shows the conversation it created without reading it back;
   Close Others is one change of the panel
-  ([Work panel state](web-api.md#work-panel-state)).
+  ([Work panel state](web-api-conversations.md#work-panel-state)).
 - **An answer that says what happened is not followed by a read.** A change
   of the panel answers the revision it made; the page reads the panel only
   when the revision shows that another change came in between. A decision on
@@ -586,7 +586,7 @@ work allows, and never one per item:
 A page holds WebSockets of four kinds to the backend: the synchronization
 channel, a socket for each open conversation, the stream of each
 [live browser view](../browser/live-view.md), and the
-[file watch](web-api.md#file-watch) of the conversation whose files it shows,
+[file watch](web-api-hosts.md#file-watch) of the conversation whose files it shows,
 and the signaling socket of each device it has a
 [direct channel](../execution/direct-channel.md) to, whose long-lived
 operations keep the same heartbeats over the channel. All of them tell a quiet socket
@@ -599,7 +599,7 @@ heartbeat once it has sent nothing else for a while: the backend on the
 channel, on each conversation socket, on the file watch and on a direct
 channel's signaling socket after 30 seconds
 ([Order and delivery](../agent/rendering.md#order-and-delivery),
-[Page synchronization](web-api.md#page-synchronization)), and a live view's
+[Page synchronization](web-api-sync.md#page-synchronization)), and a live view's
 module on its stream after a quarter of a second
 ([Delivery](../browser/live-view.md#delivery)). So a socket that brings
 nothing for 75 seconds, two and a half of the longest heartbeat, is broken:
@@ -659,9 +659,9 @@ so, reading its last page because its window is open.
 
 | Socket | The snapshot | Read by version |
 | --- | --- | --- |
-| The synchronization channel | The product state | The conversation-scoped parts whose revisions the summaries carry ([Page synchronization](web-api.md#page-synchronization)) |
+| The synchronization channel | The product state | The conversation-scoped parts whose revisions the summaries carry ([Page synchronization](web-api-sync.md#page-synchronization)) |
 | A conversation | The root's state, every subagent's summary, every running command, every node's context use ([Connections and the live tree](../agent/rendering.md#connections-and-the-live-tree)) | The root's transcript from the blocks the page holds, `from` and `edge`; a subagent's transcript, by the revision its summary carries, when the page shows it |
-| The file watch | Each subscription live again | A shown file, by its version: the Host answers unchanged or the new contents ([File watch](web-api.md#file-watch)) |
+| The file watch | Each subscription live again | A shown file, by its version: the Host answers unchanged or the new contents ([File watch](web-api-hosts.md#file-watch)) |
 | A live view | Its `state`, tabs and the watched tab's controls and downloads | The picture: a new key frame |
 | A device's signaling socket | Nothing: the backend closes the device's end of the direct channel when the socket drops, so the page leaves the direct path at the drop and uses the relay until a new channel is made | Nothing |
 
@@ -714,7 +714,7 @@ silence, a close code, the browser going offline, or its return.
 
 One module of `web`, the product state, holds the page's copy of the user's
 state and is the one place that follows it. It opens the
-[synchronization channel](web-api.md#page-synchronization) once the page is
+[synchronization channel](web-api-sync.md#page-synchronization) once the page is
 signed in, takes the channel's `snapshot` as its whole copy, and replaces one
 part of the copy with each later message. Nothing on the page asks for this
 state on a timer, or asks again after a write. For example, a user pins a
@@ -728,9 +728,9 @@ Each synced state follows the copy with its own rule:
 | --- | --- | --- |
 | The sidebar: titles, pins, archive, projects and order | Each summary, and `conversation_order` | A title the user typed shows from the moment it is typed until its write is answered |
 | Read state | Each summary's `readRevision` and `unread` | An acknowledgement only moves forward |
-| Model settings | Each summary's `model` | A change names only the part its user changed ([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)) |
+| Model settings | Each summary's `model` | A change names only the part its user changed ([Sidebar mutations and read state](web-api-conversations.md#sidebar-mutations-and-read-state)) |
 | Drafts | Each summary's `draftRevision` | A page that shows the conversation reads the draft when the revision is higher than its own ([Drafts](#drafts)) |
-| Permission requests | Each summary's `permissionRequests` and `permissionsRevision` | The sidebar's needs-you mark follows the count; a page that shows the conversation reads its requests when the revision is newer than its own ([Conversation permissions](web-api.md#conversation-permissions), [Revisions counted in memory](web-api.md#revisions-counted-in-memory)) |
+| Permission requests | Each summary's `permissionRequests` and `permissionsRevision` | The sidebar's needs-you mark follows the count; a page that shows the conversation reads its requests when the revision is newer than its own ([Conversation permissions](web-api-conversations.md#conversation-permissions), [Revisions counted in memory](web-api-sync.md#revisions-counted-in-memory)) |
 | Work panel tabs | Each summary's `panelRevision` | A page that shows the conversation reads the tabs when the revision is higher than its own, with its panel open or closed, since a tab a kind asks to show opens the panel, and shows its own changes over them ([Work panel](#work-panel)) |
 | Preferences | `preferences` | A change shows at once, and the part it changed stays as the user set it until its write is answered |
 | The account, workspaces, devices, providers, subagent settings, the Cloud and each plugin's state | Their parts | The page shows what the backend holds |
@@ -850,7 +850,7 @@ so no control and no region shows a failure about the connection. A control that
 A page holds the parts of a transcript the reader has been to, not the whole
 of it. For example, the user opens a conversation of 3,000 blocks: the page
 reads the latest page, blocks 2,940 to 2,999, and shows it at its end
-([Pages](web-api.md#pages)). The user scrolls up; near the top the page reads
+([Pages](web-api-conversations.md#pages)). The user scrolls up; near the top the page reads
 the page before, and its rows appear above without moving the rows the user
 reads. Later the user opens a search result in block 812: the page reads the
 page around it, blocks 790 to 860, and shows it with the block in the middle,
@@ -889,7 +889,7 @@ held:   [790 ──── 860]                    [2,880 ─────── 2
   latest window and the shown one stays still; sending a message shows the
   latest, as it always scrolls to the message sent.
 - **Opening a row.** A folded row whose block the page read in its light
-  form ([Light form](web-api.md#light-form)) reads the block whole when the
+  form ([Light form](web-api-conversations.md#light-form)) reads the block whole when the
   user opens it and shows it in place, with the row's loading state until it
   arrives; the page keeps it whole after.
 
@@ -905,7 +905,7 @@ or else the page's `summaries`; the call that started a command a report
 names, from the command's record; the subagents, from their list and the
 `subagent` frames, each subagent's transcript in windows
 of its own when the panel shows it
-([Conversation history](web-api.md#conversation-history)).
+([Conversation history](web-api-conversations.md#conversation-history)).
 
 ### Rewrites
 
@@ -947,7 +947,7 @@ macOS's System Settings opens its detail
 On an instance without accounts, the first visitor creates the master account
 on the setup page: a name, which becomes the account's nickname, the email,
 and a password with its confirmation, each as the
-[Account API](web-api.md#account-api) bounds it.
+[Account API](web-api-settings.md#account-api) bounds it.
 `POST /api/setup` creates it and signs it in, and the page opens the chat.
 Another visitor who set the instance up first makes the request answer 404
 `already_set_up`; the page then says the instance is set up and offers only
@@ -981,7 +981,7 @@ already ended, before the page reloads to release account-scoped stores and
 drafts. A logout that fails leaves the account signed in and shows an error.
 
 Nickname, email and password changes use the
-[account API](web-api.md#account-api). Closing the email or password dialog
+[account API](web-api-settings.md#account-api). Closing the email or password dialog
 leaves a submitted request running; reopening it restores the current phase
 and inputs, and a failure while it is closed also shows a toast. Completion
 clears the temporary credentials. Signing out or leaving the signed-in page
@@ -1006,7 +1006,7 @@ still does not read is reported once, in words and without its raw contents,
 and set aside; every other record is restored, so one bad record never costs
 the user their other drafts. A conversation with a
 record keeps its model settings only there
-([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)).
+([Sidebar mutations and read state](web-api-conversations.md#sidebar-mutations-and-read-state)).
 The tabs open in one of the user's browsers share this storage, and a page
 writes a conversation's record only for a change its own user made, so a tab
 never replaces what another tab wrote for a conversation it left alone.
@@ -1063,7 +1063,7 @@ the backend accepts the message, from whichever page sent it, the composer is
 empty everywhere.
 
 The backend keeps the draft, its revision, and the version a save replaced
-([Conversation drafts](web-api.md#conversation-drafts)). A page:
+([Conversation drafts](web-api-conversations.md#conversation-drafts)). A page:
 
 - **Saves** half a second after typing pauses, and when it is hidden or
   closed. A save carries the revision the page's text was built on. A page
@@ -1103,7 +1103,7 @@ The backend keeps the draft, its revision, and the version a save replaced
 Two places that edit the draft at once, two tabs typing together or a device
 that edited offline, follow one rule: the save that reaches the backend last
 wins, and the version it replaced is offered for restore
-([Conversation drafts](web-api.md#conversation-drafts) has an example).
+([Conversation drafts](web-api-conversations.md#conversation-drafts) has an example).
 
 **Offline.** Every change is written to IndexedDB as the user makes it, with
 the revision it was based on and the bytes of files not yet uploaded, and it

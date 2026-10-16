@@ -22,7 +22,7 @@ function changeBody(change: PanelChange) {
   }
 }
 
-/** The conversation's work panel over its routes (`web-api.md` § Work panel state). */
+/** The conversation's work panel over its routes (`web-api-conversations.md` § Work panel state). */
 export function panelBackend(conversationId: string): PanelBackend {
   const panel = `/conversations/${encodeURIComponent(conversationId)}/panel`
   return {

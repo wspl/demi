@@ -1,5 +1,5 @@
 //! Conversations as the web app creates, lists and follows them
-//! (`web-api.md` § Conversation creation and Fork, § Sidebar mutations, read
+//! (`web-api-conversations.md` § Conversation creation and Fork, § Sidebar mutations, read
 //! state and page synchronization).
 
 use demi_conversation_socket_protocol::{BlockVersions, Failures, SubagentJob};
@@ -193,12 +193,12 @@ pub struct ConversationSummary {
     /// (`plugins.md` § A user's plugins).
     pub plugins_changed: bool,
     /// The revision of the conversation's draft, 0 before its first save
-    /// (`web-api.md` § Conversation drafts): a page reads the draft only when
+    /// (`web-api-conversations.md` § Conversation drafts): a page reads the draft only when
     /// this is higher than the revision it holds.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub draft_revision: u64,
     /// How many messages the conversation keeps saved for later
-    /// (`web-api.md` § Messages saved for later).
+    /// (`web-api-conversations.md` § Messages saved for later).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub saved: u64,
     /// The revision of that list, 0 before its first change: a page that
@@ -207,11 +207,11 @@ pub struct ConversationSummary {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub saved_revision: u64,
     /// The revision of the conversation's work panel, 0 before its first
-    /// change (`web-api.md` § Work panel state), read the same way.
+    /// change (`web-api-conversations.md` § Work panel state), read the same way.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub panel_revision: u64,
     /// The revision of the conversation's attached hosts, raised by an
-    /// attach, a detach or a rename (`web-api.md` § Sidebar mutations and
+    /// attach, a detach or a rename (`web-api-conversations.md` § Sidebar mutations and
     /// read state), read the same way.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub hosts_revision: u64,
@@ -222,13 +222,13 @@ pub struct ConversationSummary {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub last_attachment: u64,
     /// The revision of each plugin's conversation state, in registration
-    /// order (`web-api.md` § Conversation state of plugins): a page reads a
+    /// order (`web-api-sync.md` § Conversation state of plugins): a page reads a
     /// state only when its revision is newer than the one it holds, counted
-    /// in memory (`web-api.md` § Revisions counted in memory).
+    /// in memory (`web-api-sync.md` § Revisions counted in memory).
     #[garde(dive)]
     pub plugin_revisions: Vec<PluginRevision>,
     /// How many permission requests of the conversation wait for the user,
-    /// which the sidebar shows as the needs-you mark (`web-api.md`
+    /// which the sidebar shows as the needs-you mark (`web-api-conversations.md`
     /// § Conversation permissions).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub permission_requests: u64,
@@ -240,18 +240,18 @@ pub struct ConversationSummary {
     pub unread_permission_requests: u64,
     /// Rises with each change of the conversation's permission requests in
     /// this run of the backend: a page reads them only when this is newer
-    /// than the revision it holds (`web-api.md` § Revisions counted in
+    /// than the revision it holds (`web-api-sync.md` § Revisions counted in
     /// memory).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub permissions_revision: u64,
     /// The conversation's shares, its own and its answers', so the header
     /// and an answer open the share dialog on the existing link
-    /// (`web-api.md` § Sharing).
+    /// (`web-api-conversations.md` § Sharing).
     #[garde(skip)]
     pub shares: Vec<ConversationShare>,
 }
 
-/// The latest ended turn of a conversation's root (`web-api.md` § Sidebar
+/// The latest ended turn of a conversation's root (`web-api-conversations.md` § Sidebar
 /// mutations and read state).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -354,7 +354,7 @@ pub struct ReadRequest {
 }
 
 /// `?node=&before=|after=|around=&edge=` of `GET /conversations/:id/transcript`
-/// (`web-api.md` § Pages). Queries are the backend's alone and are not
+/// (`web-api-conversations.md` § Pages). Queries are the backend's alone and are not
 /// emitted.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -381,7 +381,7 @@ pub struct NodeQuery {
     pub node: Option<NodeId>,
 }
 
-/// One page of an agent's transcript (`web-api.md` § Pages): whole
+/// One page of an agent's transcript (`web-api-conversations.md` § Pages): whole
 /// requests, its blocks in their light form, with the failure facts of its
 /// error blocks (`backend.md` § Failure facts).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
@@ -451,7 +451,7 @@ pub struct Subagents {
 
 /// `GET /conversations/:id/commands/:commandId`: where the `shell` call that
 /// started a command lies, which a report's title brings into view
-/// (`web-api.md` § Subagents and commands).
+/// (`web-api-conversations.md` § Subagents and commands).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CommandCall {

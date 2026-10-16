@@ -18,7 +18,7 @@ export interface PanelTab {
 /**
  * What the work panel shows (`web-application.md` § Work panel): what the
  * page selected, and the tabs in their order, which the backend keeps
- * (`web-api.md` § Work panel state).
+ * (`web-api-conversations.md` § Work panel state).
  */
 export interface PanelState {
   /** The tabs' and pinned kinds' ids the page selected, the newest last (`selectTab`). */

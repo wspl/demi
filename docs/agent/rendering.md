@@ -38,7 +38,7 @@ only the latest call of each run carries `runFiles`, and only the latest of
 each request `requestFiles`, since a page uses no other.
 
 A block the page read from a page of the transcript is in its light form,
-without what only its open row shows ([Light form](../product/web-api.md#light-form)).
+without what only its open row shows ([Light form](../product/web-api-conversations.md#light-form)).
 Its folded row renders from what it carries, the same as the block whole;
 opening the row reads the block whole and shows it in place, with the
 row's loading state until it arrives
@@ -355,7 +355,7 @@ protocol.
 
 For example, a page opens a conversation whose root is running. It has read
 the latest page of the transcript, blocks 2,940 to 2,999
-([Pages](../product/web-api.md#pages)), and asks the stream for the blocks
+([Pages](../product/web-api-conversations.md#pages)), and asks the stream for the blocks
 from its last one on:
 
 ```text
@@ -379,7 +379,7 @@ open { from: 2999, edge: b_2999 } -> attach to the live tree
 | `send { messageId, content }` | Submit a message ([Input](runtime.md#input)) | Transcript, phase and queue frames |
 | `edit_and_send { request }` | Replace a user message and its suffix ([Message editing](message-editing.md)) | `edit_result` at durable acceptance |
 | `steer { steerId, content }` | Add input to the running turn | `steer_result` |
-| `send_saved { id, turnId, delivery }` | Send a message saved for later as the composer would, `delivery` `message`, `steer` or `queue`, as the message `turnId`, and remove it from the list in the same step ([Messages saved for later](../product/web-api.md#messages-saved-for-later)). The page keeps it as a message on its way that remembers it came from `id`, across a reload, so Retry sends `send_saved` again with the same `turnId`; a `turnId` the session already took answers as the first did, and the saved message is gone either way | The frames of that delivery; `rejected` with `saved_not_found` when the message is gone and `turnId` was never taken |
+| `send_saved { id, turnId, delivery }` | Send a message saved for later as the composer would, `delivery` `message`, `steer` or `queue`, as the message `turnId`, and remove it from the list in the same step ([Messages saved for later](../product/web-api-conversations.md#messages-saved-for-later)). The page keeps it as a message on its way that remembers it came from `id`, across a reload, so Retry sends `send_saved` again with the same `turnId`; a `turnId` the session already took answers as the first did, and the saved message is gone either way | The frames of that delivery; `rejected` with `saved_not_found` when the message is gone and `turnId` was never taken |
 | `cancel_pending_steer { steerId }` | Withdraw a pending steer | `remove_result`, after the `pending_steers` list |
 | `steer_now { steerId }` | Deliver a pending steer now ([Send now](runtime.md#send-now)) | None; the transcript and the `pending_steers` list |
 | `dequeue_message { messageId }` | Remove a queued message | `remove_result`, after `queue` |
@@ -406,7 +406,7 @@ or `steer` that holds `media` or `attachment` is an invalid frame. No frame
 carries file bytes. The backend
 resolves uploads and remote files before the session sees the content
 ([Media by reference](../backend/backend.md#media-by-reference),
-[Device files and remote references](../product/web-api.md#device-files-and-remote-references)),
+[Device files and remote references](../product/web-api-hosts.md#device-files-and-remote-references)),
 and the session resolves an edit's kept files from the edited message
 ([Files the edit keeps](message-editing.md#files-the-edit-keeps)).
 
@@ -503,7 +503,7 @@ whether the page holds them or not.
 - The backend handles one connection's frames one at a time, in arrival order.
   A frame waits for the conversation's admission and is refused while the
   conversation is archived
-  ([Sidebar mutations and read state](../product/web-api.md#sidebar-mutations-and-read-state)).
+  ([Sidebar mutations and read state](../product/web-api-conversations.md#sidebar-mutations-and-read-state)).
   A frame whose handling waits, such as a send whose uploads are being written
   to the Host or an edit waiting for its durable acceptance, delays the frames
   behind it.
@@ -582,7 +582,7 @@ connection B --+                    +--> B's outbox: events, and B's replies
 - `open` names no model. The backend opens the tree with the model selection
   the conversation's record holds, and a live tree already follows that
   record, so an open changes no model
-  ([the conversation's model settings](../product/web-api.md#sidebar-mutations-and-read-state)).
+  ([the conversation's model settings](../product/web-api-conversations.md#sidebar-mutations-and-read-state)).
   An open of a conversation whose record has no model yet is answered with an
   `error` whose code is `model_not_selected`, and one whose provider entry the
   user may no longer use with `provider_not_found`. A runtime the tree needs
@@ -616,4 +616,4 @@ decides a lone client's frame decides each:
   `abort_result` says what it stopped.
 - No frame changes the model selection: the conversation's model settings
   change by a conversation patch, which the backend applies one at a time
-  ([the conversation's model settings](../product/web-api.md#sidebar-mutations-and-read-state)).
+  ([the conversation's model settings](../product/web-api-conversations.md#sidebar-mutations-and-read-state)).

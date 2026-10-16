@@ -1,6 +1,6 @@
 //! The conversation browser's tab list and tab methods (`live-view.md` § The
 //! tab methods), read through the conversation state route and called
-//! through the plugin call route (`web-api.md` § Conversation state of
+//! through the plugin call route (`web-api-sync.md` § Conversation state of
 //! plugins, § Plugin calls) against the `demi.browser` package the workspace
 //! built,
 //! on a paired device's real runner, on a Cloud that never started, and on
@@ -264,7 +264,7 @@ async fn a_browser_whose_service_does_not_start_is_unavailable_to_the_list_the_m
 
 /// A tab call whose connection to the Host breaks partway says so, 409
 /// `host_operation_failed`, which the page words as a broken connection to
-/// the device (`web-api.md` § Plugin calls), not 500 `plugin_failed`, the
+/// the device (`web-api-sync.md` § Plugin calls), not 500 `plugin_failed`, the
 /// plugin's own defect. The runner reaches the backend through an edge that
 /// drops every pipe WebSocket once cut, while the runner's own connection
 /// stays. A paired device's real runner, about a second.

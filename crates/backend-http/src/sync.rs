@@ -1,4 +1,4 @@
-//! `WS /api/sync` (`web-api.md` § Page synchronization): the page's
+//! `WS /api/sync` (`web-api-sync.md` § Page synchronization): the page's
 //! synchronization channel. It requires the session cookie, which it checks
 //! without renewing the session, since only requests renew it; once
 //! upgraded, the socket moves into the user's shard, which serves it until

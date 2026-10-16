@@ -402,7 +402,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   /**
    * The models.dev models `query` matches, filled from the entry's own vendor
-   * where it lists them (`web-api.md` § Model configuration and provider
+   * where it lists them (`web-api-settings.md` § Model configuration and provider
    * inspection); the backend reads its kept copy, so every keystroke may ask.
    */
   async function searchModels(
@@ -739,7 +739,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }, { immediate: true })
   /**
    * The account a completed sign-in added. The page has it by the time it
-   * learns the sign-in completed (`web-api.md` § Subscription accounts);
+   * learns the sign-in completed (`web-api-settings.md` § Subscription accounts);
    * its id stands for it only when it was removed before then.
    */
   function addedBy(state: Extract<LoginState, { status: 'completed' }>): { account: string; active: boolean } {

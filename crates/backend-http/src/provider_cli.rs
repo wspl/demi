@@ -1,4 +1,4 @@
-//! A process provider's command-line tool (`web-api.md` § Model
+//! A process provider's command-line tool (`web-api-settings.md` § Model
 //! configuration and provider inspection, `claude-code.md` § What the user
 //! sees): the vendor's newest version and the caller's last install on the
 //! Claude Code machine, read without waking it; and the install again. A

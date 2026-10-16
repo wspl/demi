@@ -1,4 +1,4 @@
-//! The signaling socket of a direct channel (`web-api.md` § Direct
+//! The signaling socket of a direct channel (`web-api-hosts.md` § Direct
 //! channel, `direct-channel.md` § Making the channel): the backend
 //! introduces the page to its paired device's runner, through device
 //! access, and is the only check. It relays each offer to the runner and

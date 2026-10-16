@@ -1,6 +1,6 @@
 /**
  * A file watch that carries the subscriptions of what a page keeps of one
- * Host's files (`web-api.md` § File watch, `plugin-pages.md` § What the
+ * Host's files (`web-api-hosts.md` § File watch, `plugin-pages.md` § What the
  * service keeps): a conversation's watch, on the relay or its direct
  * channel, or a device's folder dialog's. The kept files (`HostFiles`)
  * hand each subscription to the watch of the view that brought it; the
@@ -22,7 +22,7 @@ export const LEASE_MS = 10 * 60 * 1000
 /** How often the page renews every subscription it holds, in one message. */
 export const RENEW_MS = 3 * 60 * 1000
 
-/** The most subscriptions or keys one message names (`web-api.md` § File watch). */
+/** The most subscriptions or keys one message names (`web-api-hosts.md` § File watch). */
 const MESSAGE_KEYS = 4096
 
 /** What a subscription watches, and so when it changes (`runner.md` § Watching files). */

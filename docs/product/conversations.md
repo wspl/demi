@@ -139,7 +139,7 @@ next time; if the laptop has been removed since, Device with no device
 chosen. The dialog never goes back to Cloud on its own. Every explicit
 choice of a kind or a device saves it, whether or not a project is then
 created, as a backend user preference
-([User preferences](web-api.md#user-preferences)), so every browser of the
+([User preferences](web-api-settings.md#user-preferences)), so every browser of the
 user starts the same way. The directory and the name are not remembered. For
 a device, the dialog's button says what it will do with the directory typed:
 *Add Project* when it exists, *Create Project* when Demi will create it, as
@@ -316,7 +316,7 @@ Conversations whose title matches come first, then those whose messages do,
 each group newest first, at most 50 in all. Archived conversations are listed
 too, marked Archived, and open read-only as from the Archived list. The
 backend answers from an index of each user's conversations
-([Search](web-api.md#search), [Search index](../backend/storage.md#search-index)).
+([Search](web-api-conversations.md#search), [Search index](../backend/storage.md#search-index)).
 
 ## Reading a long conversation
 

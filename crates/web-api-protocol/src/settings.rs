@@ -1,4 +1,4 @@
-//! Instance settings and each user's preferences (`web-api.md` § User
+//! Instance settings and each user's preferences (`web-api-settings.md` § User
 //! preferences). Preferences hold saved overrides only: whatever is absent
 //! uses the web app's defaults.
 
@@ -260,7 +260,7 @@ impl std::fmt::Display for Language {
 }
 
 /// The time zone and languages the user's browser last reported, and the
-/// language its page resolved for *System* (`web-api.md` § User
+/// language its page resolved for *System* (`web-api-settings.md` § User
 /// preferences). A command receives the browser's facts alone, as a
 /// [`CommandLocale`], whose contract with the runners stays as it is: the
 /// page's language is the page's and the backend's mail's, not a command's.

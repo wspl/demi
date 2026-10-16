@@ -20,7 +20,7 @@ import { browserHasPasskeys, signWithPasskey } from './webauthn'
 
 /**
  * A code that opens `to`, the page the user is on, on a phone
- * (`web-api.md` § Account API); `verify` when the backend wants the session
+ * (`web-api-settings.md` § Account API); `verify` when the backend wants the session
  * confirmed first, which its 403 decides.
  */
 export function makeHandoffCode(to: string): Promise<HandoffStart> {
@@ -30,7 +30,7 @@ export function makeHandoffCode(to: string): Promise<HandoffStart> {
 }
 
 /**
- * An administrator's sign-in code for the account `id` (`web-api.md` § Account
+ * An administrator's sign-in code for the account `id` (`web-api-settings.md` § Account
  * API): as a handoff code is made, for a session verified in the last five
  * minutes, and opening the product's home.
  */
@@ -96,7 +96,7 @@ export type HandoffSpent =
   | { kind: 'expired' }
   | ({ kind: 'failed' } & ShownError)
 
-/** Spends the code a phone's page read from its address (`web-api.md` § Account API). */
+/** Spends the code a phone's page read from its address (`web-api-settings.md` § Account API). */
 export async function spendHandoffCode(code: string): Promise<HandoffSpent> {
   try {
     const response = await apiRequest('/auth/handoff', {

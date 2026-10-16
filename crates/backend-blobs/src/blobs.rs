@@ -24,7 +24,7 @@ use crate::ObjectError;
 
 /// The most bytes of a blob read for what its opening tells: the media type
 /// its bytes show and a text file's snippet both come from a file's first
-/// bytes (`web-api.md` § Uploads and media).
+/// bytes (`web-api-hosts.md` § Uploads and media).
 pub const OPENING_BYTES: u64 = 64 * 1024;
 
 /// A blob's first [`OPENING_BYTES`], or all of a smaller one, and its size.

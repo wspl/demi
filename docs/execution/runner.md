@@ -352,7 +352,7 @@ expires.
 The backend composes the install commands from its public URL, as it
 composes a device's `startCommand`; the Add Device dialog and `demi host
 install-command` show the same text
-([Web API](../product/web-api.md#workspaces-devices-and-attached-hosts)).
+([Web API](../product/web-api-hosts.md#workspaces-devices-and-attached-hosts)).
 
 Revoking a device in Settings removes its runner too. The backend sends the
 connected runner `revoked` before it closes the connection, and the runner
@@ -671,7 +671,7 @@ library answers `internal` for that request and affects nothing else.
 The backend subscribes, for the pages it serves, to what they keep of a
 Host's files, and the runner says when a subscription's subject changed, by
 its id alone; it never sends a path or content
-([File watch](../product/web-api.md#file-watch)). For example, a page keeps
+([File watch](../product/web-api-hosts.md#file-watch)). For example, a page keeps
 `src/app.ts`'s text and the working tree's changes list. The agent edits
 `src/app.ts` and runs `cargo check`, which writes 20,000 files under the
 ignored `target/`: the runner reports two subscriptions changed, the file and
@@ -754,7 +754,7 @@ reports failure rather than silently missing new folders. Failure to start
 the thread is a watch failure too.
 
 The backend renews a subscription while a page still renews it
-([File watch](../product/web-api.md#file-watch)).
+([File watch](../product/web-api-hosts.md#file-watch)).
 
 **How the platforms watch.** One subscription costs nothing of its own when
 the file system watch behind it already runs:
@@ -862,7 +862,7 @@ service's standard error enters the same way, one event per line as it arrives.
   the oldest line still kept. The writer thread answers the request between
   two lines it writes, so the answer holds every line queued before the
   request and a read never races a write. The backend serves it as the
-  [device log route](../product/web-api.md#device-log).
+  [device log route](../product/web-api-hosts.md#device-log).
 - What a source writes is diagnostics: what it tried and why it failed. Page
   content, typed text, cookies, tokens and file contents never go to the log.
 - A failure the user's page is waiting on is also told to the page, by the

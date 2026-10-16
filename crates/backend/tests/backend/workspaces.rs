@@ -1,4 +1,4 @@
-//! Workspaces and the sidebar's order (`web-api.md` § Workspaces, devices,
+//! Workspaces and the sidebar's order (`web-api-hosts.md` § Workspaces, devices,
 //! and attached hosts, § Sidebar mutations, read state and page
 //! synchronization): a workspace is a named pointer at a directory of one
 //! of the user's devices, one per directory and never its home, and
@@ -307,7 +307,7 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_its_deletion_
 /// Revoking a device, which nothing refuses, removes its projects with it
 /// but never their files: a project's conversation stays with its history,
 /// outside any project, targeting the project's directory on the device
-/// directly (`web-api.md` § Workspaces, devices, and attached hosts).
+/// directly (`web-api-hosts.md` § Workspaces, devices, and attached hosts).
 // About a second: a scripted model answers one turn on the paired runner.
 #[tokio::test]
 async fn revoking_a_device_removes_its_projects_but_not_their_conversations_or_files() {

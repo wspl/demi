@@ -264,7 +264,7 @@ once.
 A switch changes the root's model selection. The backend switches the root
 when the conversation's model settings change, and opens a tree with the
 selection the conversation's record holds
-([the conversation's model settings](../product/web-api.md#sidebar-mutations-and-read-state)).
+([the conversation's model settings](../product/web-api-conversations.md#sidebar-mutations-and-read-state)).
 No client frame names a model.
 
 - A switch lands at the root's next provider request: at the start of the

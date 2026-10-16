@@ -98,7 +98,7 @@ list of a user's shares yet: a share is found from what it shares.
 
 Secrets a command printed are the user's to judge, which the dialog's words
 say; `demi credentials` keeps the secrets it handles out of the transcript
-([Credentials](web-api.md#credentials)).
+([Credentials](web-api-conversations.md#credentials)).
 
 ## Storage and routes
 
@@ -147,6 +147,6 @@ the blobs a share shows stay referenced while it does
 ([Retention](../backend/storage.md#retention)).
 
 The shared page reads what its share holds a page at a time through the routes of
-[Sharing](web-api.md#sharing), with the same pages, light form and
+[Sharing](web-api-conversations.md#sharing), with the same pages, light form and
 whole-block reads as a conversation's history, so a long conversation opens
 as fast as in the product.

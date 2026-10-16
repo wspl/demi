@@ -11,7 +11,7 @@ import GalleryComposer from './GalleryComposer.vue'
 
 /**
  * A new conversation in each of two projects and outside projects, which
- * starts with the model and workflow last chosen there (`web-api.md` § User
+ * starts with the model and workflow last chosen there (`web-api-settings.md` § User
  * preferences), as the product's does: App remembers Opus and Review Team,
  * Website nothing yet, so it starts as a conversation outside projects
  * does. A choice in the composer is remembered where its conversation

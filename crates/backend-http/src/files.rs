@@ -1,4 +1,4 @@
-//! A conversation's files (`web-api.md` § Device files and remote
+//! A conversation's files (`web-api-hosts.md` § Device files and remote
 //! references, § File text and working tree changes): listings, directories,
 //! deletes and file text, a file's bytes in both directions, and the working
 //! tree's changes. Each reaches the conversation's Host through its host
@@ -88,7 +88,7 @@ async fn list_on(
 }
 
 /// `answer` with the Host's number before it was read, as every answer of
-/// what a subscription covers carries it (`web-api.md` § File text and
+/// what a subscription covers carries it (`web-api-hosts.md` § File text and
 /// working tree changes).
 pub(super) fn read_answer(read_at: &ReadAt, answer: impl IntoResponse) -> Response {
     let mut response = answer.into_response();
@@ -408,7 +408,7 @@ pub(super) async fn upload(
 }
 
 /// The working tree's root a request names, or the conversation's execution
-/// directory (`web-api.md` § File text and working tree changes).
+/// directory (`web-api-hosts.md` § File text and working tree changes).
 fn tree_root(host: &ConversationHost, directory: Option<AbsolutePath>) -> String {
     directory.map_or_else(|| host.root.clone(), |directory| directory.as_str().to_owned())
 }
@@ -437,7 +437,7 @@ pub(super) async fn changes(
 }
 
 /// The local branches of the working tree's repository and the one checked
-/// out (`web-api.md` § File text and working tree changes).
+/// out (`web-api-hosts.md` § File text and working tree changes).
 pub(super) async fn branches(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
@@ -617,7 +617,7 @@ async fn read_working_side(
 
 /// `value` as JSON with an ETag of its content, or 304 when the request's
 /// `If-None-Match` names that ETag: the page then keeps what it holds and
-/// receives nothing (`web-api.md` § File text and working tree changes).
+/// receives nothing (`web-api-hosts.md` § File text and working tree changes).
 fn unless_held(headers: &HeaderMap, value: &impl serde::Serialize) -> Response {
     use sha2::{Digest as _, Sha256};
     let body = serde_json::to_vec(value).expect("an answer of the API serializes");

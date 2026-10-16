@@ -1,4 +1,4 @@
-//! The file watch (`web-api.md` § File watch, `sessions-and-targets.md`
+//! The file watch (`web-api-hosts.md` § File watch, `sessions-and-targets.md`
 //! § Every way to a Host): a page's subscriptions to what it keeps of a
 //! Host's files, and the Host's word that one of them changed. A
 //! conversation's watch carries its primary Host's subscriptions and, under

@@ -1,4 +1,4 @@
-//! Sharing (`web-api.md` § Sharing): the owner's routes, which make, make
+//! Sharing (`web-api-conversations.md` § Sharing): the owner's routes, which make, make
 //! again and remove a conversation's share, and the public routes under
 //! `/api/shares/:token`, which take no session and ignore one: the token is
 //! the only key, and every miss answers the same 404 `share_not_found`, so
@@ -273,7 +273,7 @@ pub(super) async fn blob(
     Ok(blob_answer(&bytes, query.as_deref(), &request))
 }
 
-/// What every answer of the public routes carries (`web-api.md` § Sharing):
+/// What every answer of the public routes carries (`web-api-conversations.md` § Sharing):
 /// not indexed, no referrer that would carry the token, and kept by no
 /// cache, so a removed share is not served from one.
 pub(super) async fn public_headers(mut response: Response) -> Response {

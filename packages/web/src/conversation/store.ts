@@ -209,7 +209,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Gives a command without its script its call's title and script
-   * (`web-api.md` § Light form): a call the page holds light, with its input
+   * (`web-api-conversations.md` § Light form): a call the page holds light, with its input
    * cut, is read whole by its id; a call the page does not hold is found by
    * the command's id first. A call the page holds whole names the command
    * from its frames already.
@@ -375,7 +375,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * A conversation shows the model settings its record holds, whichever page
-   * or device changed them last (`web-api.md` § Sidebar mutations and read
+   * or device changed them last (`web-api-conversations.md` § Sidebar mutations and read
    * state). A record without a model leaves the page's own settings, which a
    * send writes to it.
    */
@@ -1327,7 +1327,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Reads the hosts of an open conversation again, after a summary raised
-   * their revision (`web-api.md` § Sidebar mutations and read state); an
+   * their revision (`web-api-conversations.md` § Sidebar mutations and read state); an
    * answer that a later read overtook is dropped.
    */
   async function readHosts(conversation: Conversation): Promise<void> {
@@ -1684,7 +1684,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Opens a new conversation in the project `projectId`, or outside
-   * projects, with the choices last made there (`web-api.md` § User
+   * projects, with the choices last made there (`web-api-settings.md` § User
    * preferences); an empty one already open there takes them again.
    */
   function create(projectId: string | null = null): string {
@@ -1753,7 +1753,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Creates the conversation's record with one request that carries its
-   * target and its settings (`web-api.md` § Conversation creation and Fork):
+   * target and its settings (`web-api-conversations.md` § Conversation creation and Fork):
    * for a part its model no longer offers, the model's first effort and the
    * vendor's default tier. The page shows what the answer says; a record
    * this request made is opened without reading it back.
@@ -1928,7 +1928,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Opens the conversation's tree again with the plugins the user has on
-   * (`web-api.md` § A user's plugins); its socket is closed and reconnects,
+   * (`web-api-sync.md` § A user's plugins); its socket is closed and reconnects,
    * and the summary stops offering the reload.
    */
   async function reloadPlugins(conversation: Conversation): Promise<void> {
@@ -1973,7 +1973,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Makes one change of the conversation's model settings, which names only
-   * the parts the user changed (`web-api.md` § Sidebar mutations and read
+   * the parts the user changed (`web-api-conversations.md` § Sidebar mutations and read
    * state): a conversation with a record changes its record and shows the
    * answer, and every other page shows it from the summary its channel
    * brings; a conversation without one keeps the change in its draft. The
@@ -2041,7 +2041,7 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * A new conversation that started with a workflow its directory no longer
    * has goes on with No Subagents once the directory's workflows are read
-   * (`web-api.md` § User preferences); nothing is remembered.
+   * (`web-api-settings.md` § User preferences); nothing is remembered.
    */
   function settleStartingWorkflow(id: string, list: WorkflowList): void {
     const conversation = items.value.find((item) => item.id === id)
@@ -2100,7 +2100,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Saves an explicit choice made in `conversation` where it belongs
-   * (`web-api.md` § User preferences): on its project's workspace, which its
+   * (`web-api-settings.md` § User preferences): on its project's workspace, which its
    * project's next conversation starts with, or in the preferences for one
    * outside projects.
    */

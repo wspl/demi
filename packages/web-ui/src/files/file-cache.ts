@@ -33,7 +33,7 @@ import {
 /** The most text a page keeps of the Hosts' files, counted in characters. */
 export const KEPT_TEXT = 64 * 1024 * 1024
 
-/** The most entries a page keeps of one Host's files, as many as the subscriptions it may hold (`web-api.md` § File watch). */
+/** The most entries a page keeps of one Host's files, as many as the subscriptions it may hold (`web-api-hosts.md` § File watch). */
 export const MAX_ENTRIES = 4096
 
 /**

@@ -1,4 +1,4 @@
-//! Finding a conversation (`web-api.md` § Search): `GET /search?q=` and the
+//! Finding a conversation (`web-api-conversations.md` § Search): `GET /search?q=` and the
 //! conversations it answers.
 
 use demi_shared_types::{BlockId, Nullable, Timestamp, trim};

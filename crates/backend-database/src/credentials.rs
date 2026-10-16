@@ -125,7 +125,7 @@ pub struct CredentialChange {
 }
 
 /// Why a credential was not saved or changed, in words for the user, who
-/// reads them as they are (`web-api.md` § Credentials).
+/// reads them as they are (`web-api-conversations.md` § Credentials).
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum CredentialRefusal {
     #[error("This credential no longer exists.")]
@@ -435,7 +435,7 @@ pub fn keep_until(now: Timestamp, keep: Keep) -> Result<Option<Timestamp>, Stora
 }
 
 /// The user's conversations with a credential request waiting for one of
-/// `names`, whatever its case (`web-api.md` § Credentials).
+/// `names`, whatever its case (`web-api-conversations.md` § Credentials).
 pub(crate) fn waiting_for(
     connection: &Connection,
     user: &UserId,
@@ -578,7 +578,7 @@ pub(crate) fn by_id(
 }
 
 /// The user's credential named `name` whatever its case: *GitHub token*
-/// and *github token* are one name (`web-api.md` § Credentials). SQLite's
+/// and *github token* are one name (`web-api-conversations.md` § Credentials). SQLite's
 /// own `NOCASE` folds ASCII alone, so the names are compared here, among
 /// the user's few credentials.
 pub(crate) fn named(

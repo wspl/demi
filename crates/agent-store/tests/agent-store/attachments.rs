@@ -1,4 +1,4 @@
-//! What an uploaded file becomes (`web-api.md` § Uploads and media).
+//! What an uploaded file becomes (`web-api-hosts.md` § Uploads and media).
 
 use demi_agent_store::{
     attachments::{Upload, is_text, snippet, unavailable, upload_blocks, upload_media_type},

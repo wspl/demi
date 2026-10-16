@@ -1,4 +1,4 @@
-//! Conversation drafts (`web-api.md` § Conversation drafts): the backend
+//! Conversation drafts (`web-api-conversations.md` § Conversation drafts): the backend
 //! keeps one draft per conversation, which every session of its user
 //! follows through the draft revision its channel brings. A save always
 //! takes effect; one built on an older revision keeps the version it

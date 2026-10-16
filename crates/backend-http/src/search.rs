@@ -1,4 +1,4 @@
-//! `GET /api/search?q=` (`web-api.md` § Search): the caller's conversations
+//! `GET /api/search?q=` (`web-api-conversations.md` § Search): the caller's conversations
 //! that match, read from the caller's search index alone. A query outside
 //! its bounds answers 400 `invalid_query`.
 

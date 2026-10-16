@@ -1,4 +1,4 @@
-//! Per-user preferences (`web-api.md` § User preferences): the check a
+//! Per-user preferences (`web-api-settings.md` § User preferences): the check a
 //! reported locale passes before it is saved, and how a patch merges into
 //! what is saved.
 

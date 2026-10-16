@@ -3,7 +3,7 @@
 //! (`direct-channel.md` § Operations on the channel): a listing's entries,
 //! the paths a delete keeps, how a failed file operation reads to the page,
 //! and the page's file watch: its messages, its limits and the
-//! subscriptions it holds on the Host for them (`web-api.md` § File watch).
+//! subscriptions it holds on the Host for them (`web-api-hosts.md` § File watch).
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::time::Instant;
@@ -47,7 +47,7 @@ impl DirectoryEntry {
 
 /// Whether deleting `path` would take with it a directory the Host needs:
 /// a filesystem root, or one of `kept` or a directory holding it
-/// (`web-api.md` § File text and working tree changes). Compared without
+/// (`web-api-hosts.md` § File text and working tree changes). Compared without
 /// case, since a Host's filesystem may ignore it.
 pub fn protected_path<'a>(path: &str, kept: impl IntoIterator<Item = &'a str>) -> bool {
     let top = Utf8TypedPath::derive(&path.to_lowercase()).normalize();
@@ -63,7 +63,7 @@ pub fn protected_path<'a>(path: &str, kept: impl IntoIterator<Item = &'a str>) -
 
 /// What a file operation's failure is to the page, by the errno-style code
 /// the Host gave: nothing at the path, no permission, or anything else
-/// (`web-api.md` § File text and working tree changes).
+/// (`web-api-hosts.md` § File text and working tree changes).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FsFailure {
     NotFound,
@@ -114,7 +114,7 @@ pub struct Subject {
 }
 
 /// The most subscriptions one page's file watch holds, and the most of them
-/// outside the conversation's working tree (`web-api.md` § File watch).
+/// outside the conversation's working tree (`web-api-hosts.md` § File watch).
 pub const MAX_PAGE_SUBSCRIPTIONS: usize = 4096;
 pub const MAX_OUTSIDE_SUBSCRIPTIONS: usize = 64;
 
@@ -131,7 +131,7 @@ pub struct PageSubscription {
 }
 
 /// A message the page sends on its file watch, `WS .../fs/watch` or a
-/// direct `watch` channel (`web-api.md` § File watch).
+/// direct `watch` channel (`web-api-hosts.md` § File watch).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum FileWatchRequest {
@@ -177,7 +177,7 @@ impl JsonSchema for HostNumber {
     }
 }
 
-/// A message a page's file watch carries to the page (`web-api.md` § File
+/// A message a page's file watch carries to the page (`web-api-hosts.md` § File
 /// watch).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -270,7 +270,7 @@ struct Key {
 }
 
 /// The subscriptions of one page's file watch, as the backend's relay and a
-/// runner's direct `watch` both keep them (`web-api.md` § File watch): the
+/// runner's direct `watch` both keep them (`web-api-hosts.md` § File watch): the
 /// page's keys and their leases, the limits, and the subjects they hold on
 /// the Host, each once however many keys hold it. A subject inside the
 /// conversation's working tree also holds the working tree's own

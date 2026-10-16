@@ -1012,7 +1012,7 @@ pub enum Terminal {
     Abort,
 }
 
-/// The root's latest ended turn (`web-api.md` § Sidebar mutations and read
+/// The root's latest ended turn (`web-api-conversations.md` § Sidebar mutations and read
 /// state).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EndedTurn {
@@ -1361,7 +1361,7 @@ pub fn root_blocks(connection: &Connection) -> Result<Vec<Block>, StorageError> 
     whole_path(connection, &decode("nodes", "id", NodeId::try_from(root))?)
 }
 
-/// A transcript a page is read from (`web-api.md` § Pages): an agent's in
+/// A transcript a page is read from (`web-api-conversations.md` § Pages): an agent's in
 /// the tree, or what a share's list shows of one (`sharing.md` § Storage and
 /// routes). The pages, their light form and a block read whole are the same
 /// for both; only the rows they come from differ.
@@ -1376,7 +1376,7 @@ pub enum Transcript {
     Shared { token: ShareToken },
 }
 
-/// What a transcript holds at an index (`web-api.md` § Sharing): a block,
+/// What a transcript holds at an index (`web-api-conversations.md` § Sharing): a block,
 /// or, on a share's list only, the number of steps not shared in a run.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Entry {
@@ -1614,7 +1614,7 @@ impl Transcript {
     }
 }
 
-/// What a page read found (`web-api.md` § Pages).
+/// What a page read found (`web-api-conversations.md` § Pages).
 pub enum PageRead {
     /// The page: its first block's index, the transcript's length, its
     /// blocks whole, the entries of the newest instructions block, and the
@@ -1637,7 +1637,7 @@ pub enum PageRead {
     Invalid(&'static str),
 }
 
-/// Where a page is read from, as its query asks (`web-api.md` § Pages):
+/// Where a page is read from, as its query asks (`web-api-conversations.md` § Pages):
 /// none, `before` or `after` with its `edge`, or `around`.
 #[derive(Debug, Clone, Copy)]
 pub struct PageQuery<'a> {
@@ -1659,7 +1659,7 @@ impl<'a> From<&'a TranscriptQuery> for PageQuery<'a> {
 }
 
 /// The page `query` asks of `transcript`, its blocks whole: whole requests
-/// within the page budget (`web-api.md` § Pages).
+/// within the page budget (`web-api-conversations.md` § Pages).
 pub fn read_page(
     connection: &Connection,
     transcript: &Transcript,
@@ -1765,7 +1765,7 @@ pub fn read_page(
     })
 }
 
-/// What a read of one block whole found (`web-api.md` § Light form).
+/// What a read of one block whole found (`web-api-conversations.md` § Light form).
 pub enum BlockRead {
     Block(Block),
     NoNode,

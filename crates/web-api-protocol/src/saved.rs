@@ -1,4 +1,4 @@
-//! A conversation's messages saved for later (`web-api.md` § Messages saved
+//! A conversation's messages saved for later (`web-api-conversations.md` § Messages saved
 //! for later): messages the user keeps to send later, which nothing sends
 //! but the user. Each holds its text and files as a draft holds them.
 

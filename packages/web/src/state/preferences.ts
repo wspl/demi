@@ -21,7 +21,7 @@ import { DEFAULT_ACCENT, DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/
 
 /**
  * `preferences` with what `patch` changes, as the backend applies it
- * (`web-api.md` § User preferences): appearance keys merge, a shortcut set
+ * (`web-api-settings.md` § User preferences): appearance keys merge, a shortcut set
  * to null goes back to its default, a context limit of null leaves the
  * model's full window, and every other field replaces the stored one.
  */
@@ -95,12 +95,12 @@ export const usePreferences = defineStore('preferences', () => {
   )
   /**
    * Whether a turn that failed with a known time to try again resumes by
-   * itself at that time (`web-api.md` § User preferences); absent means no.
+   * itself at that time (`web-api-settings.md` § User preferences); absent means no.
    */
   const resumeAtRetry = computed(() => product.snapshot?.preferences.resumeAtRetry ?? false)
   /**
    * Whether a turn a deployment, an upgrade or a restart of the backend
-   * interrupted goes on by itself once the backend is back (`web-api.md`
+   * interrupted goes on by itself once the backend is back (`web-api-settings.md`
    * § User preferences); absent means yes.
    */
   const resumeAfterRestart = computed(() => product.snapshot?.preferences.resumeAfterRestart ?? true)
@@ -114,7 +114,7 @@ export const usePreferences = defineStore('preferences', () => {
   /**
    * Whether the user turned the provider entry `providerId` off in
    * Settings › Providers, which takes it out of every model menu
-   * (`web-api.md` § User preferences).
+   * (`web-api-settings.md` § User preferences).
    */
   function hidesProvider(providerId: string): boolean {
     return product.snapshot?.preferences.hiddenProviders?.includes(providerId) ?? false
@@ -192,7 +192,7 @@ export const usePreferences = defineStore('preferences', () => {
 
   /**
    * Changes the preferences as `patch` says, at once, and writes the change
-   * after the writes before it (`web-api.md` § User preferences): at once,
+   * after the writes before it (`web-api-settings.md` § User preferences): at once,
    * as for a switch, or once the user pauses when the control is `bursty`,
    * as a slider is.
    */
@@ -273,7 +273,7 @@ export const usePreferences = defineStore('preferences', () => {
    * Sends the web browser's time zone and languages with the language the
    * page resolves from them, and the color scheme the
    * page shows, whichever differ from the stored ones; commands receive them,
-   * and the conversation browser starts with them (`web-api.md` § User
+   * and the conversation browser starts with them (`web-api-settings.md` § User
    * preferences). The caller calls it when the page's own facts may have
    * changed, never because the stored ones did.
    */

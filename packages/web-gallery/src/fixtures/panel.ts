@@ -1,6 +1,6 @@
 /**
  * A conversation's work panel as the backend keeps it, and the browser
- * plugin's part in its tabs, in memory (`web-api.md` § Work panel state,
+ * plugin's part in its tabs, in memory (`web-api-conversations.md` § Work panel state,
  * `live-view.md` § A browser tab in the panel): the gallery's panels change
  * the way the product's do, a beat late, over the gallery's own browser.
  */

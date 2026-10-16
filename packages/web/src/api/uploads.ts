@@ -6,7 +6,7 @@ import { type AttachmentDto, attachmentAnswerSchema, attachmentCheckAnswerSchema
 
 /**
  * Where the page loads a blob of the user's own, seen as `mediaType`
- * (`web-api.md` § Uploads and media): a message's upload or a tool's medium.
+ * (`web-api-hosts.md` § Uploads and media): a message's upload or a tool's medium.
  */
 export const blobUrl: BlobUrl = (ref, mediaType) =>
   apiUrl(`/blobs/${encodeURIComponent(ref)}?${new URLSearchParams({ type: mediaType })}`)
@@ -150,7 +150,7 @@ function uploadedFile(attachment: AttachmentDto): UploadedFile {
 
 /**
  * Makes an upload of a file a pasted message names by its blob, which sends
- * no bytes (`web-api.md` § Uploads and media); null when the user's blobs do
+ * no bytes (`web-api-hosts.md` § Uploads and media); null when the user's blobs do
  * not hold it, as one of another account or one since deleted.
  */
 export const claimStoredFile: ClaimFile = async (file, signal) => {
@@ -159,7 +159,7 @@ export const claimStoredFile: ClaimFile = async (file, signal) => {
 }
 
 /**
- * Uploads a file a message will carry (`web-api.md` § Uploads and media):
+ * Uploads a file a message will carry (`web-api-hosts.md` § Uploads and media):
  * its bytes become a blob of the user's, and the answer names the upload a
  * frame refers to, with the media type and the opening the backend read.
  * A file whose blob the user holds already sends no bytes: the page names

@@ -1,5 +1,5 @@
 //! Files on a Host: directory listings, file text, and a conversation's
-//! working tree (`web-api.md` § Device files and remote references, § File
+//! working tree (`web-api-hosts.md` § Device files and remote references, § File
 //! text and working tree changes).
 
 pub use demi_runner_protocol::files::{
@@ -20,7 +20,7 @@ use crate::query::StrictBool;
 
 /// One subscription a page asks of a conversation's file watch, under a
 /// key of its own: a [`PageSubscription`], on the attached host `host`
-/// names, or on the conversation's primary Host without one (`web-api.md`
+/// names, or on the conversation's primary Host without one (`web-api-hosts.md`
 /// § File watch).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
@@ -276,7 +276,7 @@ pub struct UploadQuery {
 
 /// `?directory=` of the working tree's changes list: the working tree's
 /// root on the primary Host, the conversation's execution directory when
-/// omitted (`web-api.md` § File text and working tree changes).
+/// omitted (`web-api-hosts.md` § File text and working tree changes).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 pub struct ChangesQuery {
     #[serde(default)]
@@ -313,7 +313,7 @@ pub struct CommittedFileQuery {
 }
 
 /// `?directory=&branch=&after=` of a page of a branch's history: HEAD's
-/// without `branch`, from the newest without `after` (`web-api.md` § File
+/// without `branch`, from the newest without `after` (`web-api-hosts.md` § File
 /// text and working tree changes).
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 pub struct LogQuery {

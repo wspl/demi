@@ -179,7 +179,7 @@ A capsule carries what it shows and what the message sends: the file's name
 and kind, its picture when it has one, the device and path of a file that
 lives on another device, and the opening lines of a text file. An uploaded
 file's media type and opening lines come from the backend, in the answer to
-its upload ([Uploads and media](web-api.md#uploads-and-media)), so the capsule
+its upload ([Uploads and media](web-api-hosts.md#uploads-and-media)), so the capsule
 shows the file as the backend will send it. Bytes on their way to the Host
 cannot be in a document, so they wait beside it under the capsule's id: the
 file itself, how far its upload has come, whether it failed. That is a
@@ -259,7 +259,7 @@ The upload cap is 25 MiB. Upload IDs and transcript media references travel in
 conversation frames; bulk bytes use HTTP. Exact wire forms, ownership checks,
 missing-upload behavior, and blob delivery to the web app are defined in
 [Backend media handling](../backend/backend.md#media-by-reference) and
-[Web API uploads](web-api.md#uploads-and-media).
+[Web API uploads](web-api-hosts.md#uploads-and-media).
 
 A remote-file selection is different from an upload: it names an existing file
 on a connected device, and its capsule names the device. Its bytes are read

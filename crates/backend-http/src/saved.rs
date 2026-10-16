@@ -1,6 +1,6 @@
 //! `GET/POST /conversations/:id/saved`, `POST .../saved/from-draft`,
 //! `POST .../saved/:messageId/edit` and `DELETE .../saved/:messageId`
-//! (`web-api.md` § Messages saved for later): the conversation's messages
+//! (`web-api-conversations.md` § Messages saved for later): the conversation's messages
 //! saved for later. A save of the composer's message empties the
 //! conversation's draft and an edit exchanges a message with the draft, each
 //! in one transaction, while a plain save, Undo's, leaves the draft alone; an archived conversation reads its list and refuses

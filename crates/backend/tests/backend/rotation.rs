@@ -1,4 +1,4 @@
-//! Account rotation (`providers.md` § Account rotation, `web-api.md`
+//! Account rotation (`providers.md` § Account rotation, `web-api-settings.md`
 //! § Subscription accounts): an entry's rotation and account order over the
 //! API, each agent's own account kept across requests and a restart and
 //! taken again after a compaction, a used-up account's request sent again

@@ -1,4 +1,4 @@
-//! The file watch at the edge (`web-api.md` § File watch): the upgrades of
+//! The file watch at the edge (`web-api-hosts.md` § File watch): the upgrades of
 //! a conversation's watch and of a device's folder dialog's, and the relay
 //! of the Hosts' reports to the page and of the page's `subscribe`,
 //! `unsubscribe` and `renew` messages to the shard, which holds the Hosts'

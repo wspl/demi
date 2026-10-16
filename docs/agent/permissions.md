@@ -285,7 +285,7 @@ all there is.
 `web-ui` owns the card, the mark and the receipt row as components over a
 request's and a message's data; the gallery shows each state. `web` supplies
 the requests and the decisions over the
-[Web API](../product/web-api.md#conversation-permissions).
+[Web API](../product/web-api-conversations.md#conversation-permissions).
 
 ## Responsibilities
 

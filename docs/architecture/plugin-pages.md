@@ -241,7 +241,7 @@ it changed; no page polls, and no page guesses when to read again.
 
 - **User state.** A plugin's state for its user reaches every page on the
   sync channel, as part of the product state, whenever the plugin marks it
-  changed ([Page synchronization](../product/web-api.md#page-synchronization)).
+  changed ([Page synchronization](../product/web-api-sync.md#page-synchronization)).
   The Skills settings show it.
 - **Conversation state.** A plugin's state for one conversation, such as the
   conversation browser's tab list, can be large, and only the pages that show
@@ -249,7 +249,7 @@ it changed; no page polls, and no page guesses when to read again.
   the conversation's summary carries the revision of each plugin's
   conversation state, and a page that shows the conversation reads that state
   when the revision is higher than the one it holds
-  ([Conversation state of plugins](../product/web-api.md#conversation-state-of-plugins)).
+  ([Conversation state of plugins](../product/web-api-sync.md#conversation-state-of-plugins)).
 - **When a plugin's state changes.** A plugin marks a scope of its state
   changed through its port, after a call of its own changed it, or when its
   command package tells it the state on a Host changed: the browser's tabs,
@@ -390,7 +390,7 @@ nothing and read nothing.
   its answer has the Host's present epoch, and each of its subscriptions is
   live, started at or before the answer's number, changed last at or before
   it, and within its lease as the page counts it
-  ([File watch](../product/web-api.md#file-watch)). For example, an answer read
+  ([File watch](../product/web-api-hosts.md#file-watch)). For example, an answer read
   at 40 and a change at 41 make the entry out of date, whichever reached the
   page first; an answer read at 41 already holds a change at 41, and nothing
   is read again. Showing a current entry asks nothing.
@@ -460,7 +460,7 @@ A page's types are generated from its manifest into its package's
 state, of its methods' parameters and results, and of its streams' messages,
 such as the live view's frames; the closed set of reasons its calls and
 streams can fail with, which the page words in full
-([Plugin calls](../product/web-api.md#plugin-calls)); and the constants a
+([Plugin calls](../product/web-api-sync.md#plugin-calls)); and the constants a
 stream's two ends share.
 `xtask contracts` reads them from the manifest and keeps no list of its own. A
 page never declares a schema by hand for a shape its manifest declares

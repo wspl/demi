@@ -1,5 +1,5 @@
 //! Handing the account to a phone by a code, and the account's signed-in
-//! browsers, at the edge (`web-api.md` § Account API, `backend.md`
+//! browsers, at the edge (`web-api-settings.md` § Account API, `backend.md`
 //! § Authentication and ownership): a code needs a session verified in the
 //! last five minutes, opens a page of the product once within ten minutes,
 //! in the phone's own session of the account when it has one and else in a

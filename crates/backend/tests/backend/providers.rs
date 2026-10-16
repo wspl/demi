@@ -1,4 +1,4 @@
-//! Provider entries (`web-api.md` § Model configuration and provider
+//! Provider entries (`web-api-settings.md` § Model configuration and provider
 //! inspection, `providers.md` § Credential vault, `models.md`): API-key
 //! entries sealed at rest and answered without their key, the master's
 //! entries serving every user's conversations on a shared instance and

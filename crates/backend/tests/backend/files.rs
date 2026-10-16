@@ -1,4 +1,4 @@
-//! A conversation's files through its host access (`web-api.md` § Device
+//! A conversation's files through its host access (`web-api-hosts.md` § Device
 //! files and remote references, § File text and working tree changes;
 //! `sessions-and-targets.md` § Host operations): listings, directories,
 //! deletes and text; a file's bytes by range under the headers that keep
@@ -1217,7 +1217,7 @@ fn read_at(answer: &Answer) -> (String, u64) {
 /// on the Host, and changed; every read answers the Host's number, a 304
 /// and a binary file's 415 as much as a text, so a change after a read is
 /// numbered above it and a read after the change not below it
-/// (`web-api.md` § File watch, § File text and working tree changes). A
+/// (`web-api-hosts.md` § File watch, § File text and working tree changes). A
 /// second or two: a paired device's real runner starts its watch.
 #[tokio::test]
 async fn pages_hear_a_file_live_and_changed_at_numbers_that_order_its_reads() {
@@ -1275,7 +1275,7 @@ async fn pages_hear_a_file_live_and_changed_at_numbers_that_order_its_reads() {
 
 /// A file watch that has sent nothing else for the heartbeat interval sends
 /// a `heartbeat`, so the page tells a quiet watch from a dead one
-/// (`web-api.md` § File watch); 0.2 s here.
+/// (`web-api-hosts.md` § File watch); 0.2 s here.
 #[tokio::test]
 async fn a_quiet_file_watch_sends_a_heartbeat_after_the_interval() {
     let mut harness = Harness::new();
@@ -1325,7 +1325,7 @@ async fn a_devices_folder_dialog_hears_its_folders_change_through_device_access(
 }
 
 /// A conversation's watch carries a subscription that names an attached
-/// host to that host's runner (`web-api.md` § File watch): it is live and
+/// host to that host's runner (`web-api-hosts.md` § File watch): it is live and
 /// changes at that runner's numbers, which its listings answer, not at the
 /// primary Host's. A second or two: two paired devices' real runners start
 /// their watches.

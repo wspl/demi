@@ -420,7 +420,7 @@ DELETE FROM permission_requests WHERE kind = 'permission'
 
 /// From 0.1.22-dev.20261015T105826Z's control schema, which a server keeps
 /// data of, to the one in which a workspace keeps what its project's next
-/// conversation starts with (`web-api.md` § User preferences), none before
+/// conversation starts with (`web-api-settings.md` § User preferences), none before
 /// the first choice, and a Fork's metadata holds the workflow its
 /// destination keeps (format 3). A Fork reserved before was reserved to
 /// start with Global Workflow, which its record keeps.
@@ -3446,7 +3446,7 @@ CREATE TABLE blocks (
 ) STRICT;
 -- A page of a transcript is read by its requests, which start at its user
 -- blocks; a block is found by its id, and the call that started a command
--- by the command its view names (web-api.md § Conversation history).
+-- by the command its view names (web-api-conversations.md § Conversation history).
 CREATE INDEX blocks_by_type ON blocks (node_id, json_extract(block, '$.type'), idx);
 CREATE INDEX blocks_by_id ON blocks (json_extract(block, '$.id'));
 CREATE INDEX blocks_by_command ON blocks (json_extract(block, '$.view.commandId'));

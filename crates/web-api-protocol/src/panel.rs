@@ -1,4 +1,4 @@
-//! A conversation's work panel (`web-api.md` § Work panel state): its tabs,
+//! A conversation's work panel (`web-api-conversations.md` § Work panel state): its tabs,
 //! which the backend keeps and changes a request of changes at a time, each
 //! request counted by the panel's revision. The backend checks their shape and
 //! bounds and never interprets a tab's `kind` or `data`.

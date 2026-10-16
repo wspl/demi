@@ -842,7 +842,7 @@ pub enum AnswerProblem {
 }
 
 /// Whether `values` holds a value of at most 64 KiB for each of `fields`
-/// and nothing else (`web-api.md` § Conversation permissions).
+/// and nothing else (`web-api-conversations.md` § Conversation permissions).
 fn fitting(
     fields: &[CredentialField],
     values: &BTreeMap<String, String>,

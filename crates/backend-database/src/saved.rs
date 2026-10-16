@@ -1,4 +1,4 @@
-//! Messages saved for later (`storage.md` § Control records, `web-api.md`
+//! Messages saved for later (`storage.md` § Control records, `web-api-conversations.md`
 //! § Messages saved for later): each conversation's list, newest first, and
 //! its revision, which the conversation's draft row keeps. Every change of
 //! the list raises the revision in the transaction that makes it; a save and

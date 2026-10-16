@@ -1,5 +1,5 @@
 //! Runners and their devices (`runner.md` § Connection and identity,
-//! `web-api.md` § Workspaces, devices, and attached hosts, § Device log):
+//! `web-api-hosts.md` § Workspaces, devices, and attached hosts, § Device log):
 //! pairing, the runner socket's protocol, one live connection per device,
 //! revocation, the pipe routes' authentication, the device routes, and a
 //! backend restart, with real runners.
@@ -919,7 +919,7 @@ async fn after_a_backend_restart_the_devices_are_kept_and_their_runners_come_bac
 /// hello named, the Cloud's too; a paired device takes a new name, trimmed,
 /// which the user's pages see at once, or a route,
 /// while the Cloud keeps its name and its path and another user's device is
-/// not the caller's to change (`web-api.md` § Workspaces, devices, and
+/// not the caller's to change (`web-api-hosts.md` § Workspaces, devices, and
 /// attached hosts).
 // About half a second: a runner pairs and the Cloud boots.
 #[tokio::test(flavor = "multi_thread")]

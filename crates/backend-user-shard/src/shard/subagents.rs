@@ -1,4 +1,4 @@
-//! The user's subagent settings (`web-api.md` § Subagents): the Subagents
+//! The user's subagent settings (`web-api-settings.md` § Subagents): the Subagents
 //! switch, the limits and the profiles, written here for the settings page
 //! and for `demi agent profiles` alike, after the same checks: a profile's
 //! name and texts by the accounts service's rules, and its model against

@@ -294,7 +294,7 @@ turn is not held, since its parent decides for it.
 A turn that a graceful shutdown interrupted, for a deployment, an upgrade
 or a restart, goes on by itself once the backend is back, unless the user
 turned that off (`resumeAfterRestart`, on unless turned off,
-[User preferences](../product/web-api.md#user-preferences)). The restart
+[User preferences](../product/web-api-settings.md#user-preferences)). The restart
 was Demi's doing, not the turn's, so nothing about the turn suggests it
 would fail again. As it starts, the backend opens each conversation whose
 root's last turn ended with the `interrupted` record its own shutdown
@@ -323,7 +323,7 @@ background, removing each mark before it acts on it; the start waits for
 none of them.
 
 Continuing by itself is the user's choice, off unless they turn it on
-(`resumeAtRetry`, [User preferences](../product/web-api.md#user-preferences)):
+(`resumeAtRetry`, [User preferences](../product/web-api-settings.md#user-preferences)):
 with it on, a root's turn whose failure names its `retryAt` is resumed at that
 moment, as the user's Resume would, so a usage limit that resets at 09:00
 continues then; with it off, the hold lasts until the user acts. The

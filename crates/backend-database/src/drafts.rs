@@ -1,4 +1,4 @@
-//! Conversation drafts (`storage.md` § Control records, `web-api.md`
+//! Conversation drafts (`storage.md` § Control records, `web-api-conversations.md`
 //! § Conversation drafts): each conversation's draft with its revision, the
 //! revision its text and files were written at, and the version a save
 //! replaced. Every change reads the row and writes it in one transaction, so

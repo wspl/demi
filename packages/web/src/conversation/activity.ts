@@ -140,7 +140,7 @@ export function applyConversationEvent(
     // page has the call. Until the record has the call's script, each frame
     // looks for the call again: the transcript may not have held it yet, or
     // held it light, without a long script, which the store then reads whole
-    // (`web-api.md` § Light form). A record with its script keeps its call,
+    // (`web-api-conversations.md` § Light form). A record with its script keeps its call,
     // which a later call that reuses the id does not rename.
     const call = current?.script !== undefined
       ? current

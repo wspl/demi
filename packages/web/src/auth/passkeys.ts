@@ -27,7 +27,7 @@ function passkeysAnswer(next: (current: PasskeyDto[]) => PasskeyDto[]): Answer {
 }
 
 /**
- * Adds a passkey to the signed-in account (`web-api.md` § Account API): the
+ * Adds a passkey to the signed-in account (`web-api-settings.md` § Account API): the
  * session verified first, with the password when one is given, which the
  * backend checks, else as the last five minutes' sign-in left it; then the
  * browser's prompt, then the new credential, which the backend checks and

@@ -743,7 +743,7 @@ download starts, while the machine wakes and the release is read, the entry
 says **Installing**. Updates are automatic;
 **Check for updates** refreshes the release information, and **Install** retries
 a failed installation. The routes are listed in
-[Web API](../product/web-api.md#model-configuration-and-provider-inspection).
+[Web API](../product/web-api-settings.md#model-configuration-and-provider-inspection).
 
 ## Acceptance
 

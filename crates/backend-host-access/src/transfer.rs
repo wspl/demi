@@ -5,7 +5,7 @@
 //! target change or a detach ends the conversation's open transfers instead
 //! of waiting for them. This module also decides what a download answers
 //! from the file's metadata: its version, a conditional request, and the
-//! part a `Range` asks for (`web-api.md` § File text and working tree
+//! part a `Range` asks for (`web-api-hosts.md` § File text and working tree
 //! changes).
 
 use tracing::Instrument as _;
@@ -119,7 +119,7 @@ impl dyn HostShard + '_ {
             Err(error) => return Err(error.into()),
         };
         // A description of the file is read at the first read's number
-        // (`web-api.md` § File text and working tree changes).
+        // (`web-api-hosts.md` § File text and working tree changes).
         let OpenedRead {
             stat,
             version,

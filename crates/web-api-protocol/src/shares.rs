@@ -1,4 +1,4 @@
-//! Shares (`web-api.md` § Sharing, `sharing.md`): what was said in a
+//! Shares (`web-api-conversations.md` § Sharing, `sharing.md`): what was said in a
 //! conversation or in one answer of it, read-only behind a random link. The owner
 //! makes, takes again and removes one; anyone with its link reads it.
 
@@ -116,7 +116,7 @@ pub struct SharedConversation {
 }
 
 /// `GET /shares/:token/transcript`: a page of what the share holds, as a
-/// conversation's page is answered (`web-api.md` § Pages), with no failure
+/// conversation's page is answered (`web-api-conversations.md` § Pages), with no failure
 /// facts and its `instructions` always empty.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -204,7 +204,7 @@ impl JsonSchema for SharedEntry {
 
 /// `?before=|after=|around=&edge=` of `GET /shares/:token/transcript`,
 /// which reads the share's list as a conversation's page reads the
-/// transcript (`web-api.md` § Pages). Queries are the backend's alone and
+/// transcript (`web-api-conversations.md` § Pages). Queries are the backend's alone and
 /// are not emitted.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
 #[serde(deny_unknown_fields)]

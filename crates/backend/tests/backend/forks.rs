@@ -1,5 +1,5 @@
 //! Conversation Fork (`conversation-fork.md` § Backend creation and retries;
-//! `web-api.md` § Conversation creation and Fork): a new conversation with the
+//! `web-api-conversations.md` § Conversation creation and Fork): a new conversation with the
 //! source's history through one of its completed assistant texts, and the
 //! edits and command outputs of that history, created once
 //! per destination id, while the source runs on and after the backend no
