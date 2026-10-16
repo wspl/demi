@@ -8,8 +8,9 @@ two places:
 
 - **On a developer's machine.** The cross tools installed there compile the
   targets of the Hosts in use, whatever the machine's own platform.
-- **In the release workflow.** A published release is built on GitHub's
-  hosted runners, each platform's targets on a runner of that platform
+- **In the release workflow.** Every release, a deploy's pre-release
+  included, is built on GitHub's hosted runners,
+  each platform's targets on a runner of that platform
   ([Release workflow](#release-workflow)).
 
 [Crates and packages](../architecture/crates-and-packages.md#crates) lists the
@@ -507,8 +508,9 @@ never ships without its notice.
 
 `.github/workflows/release.yml` builds a release and publishes it as a GitHub
 release. It runs on GitHub's standard hosted runners, which cost nothing for a
-public repository, and on no machine of a developer's. One event starts it,
-and nothing else does; an ordinary push builds no release:
+public repository, and on no machine of a developer's. A manual start runs
+it, in one of two ways, and nothing else does; an ordinary push builds no
+release:
 
 - **A manual start on a branch**, `gh workflow run release.yml --ref
   <branch>`, releases the workspace version in `Cargo.toml` of that branch's
@@ -517,6 +519,11 @@ and nothing else does; an ordinary push builds no release:
   commit it built; the npm packages' tags name their package
   ([Version selection](package-versioning.md#version-selection)), so the two
   never collide.
+- **A deploy**, `bun xtask deploy`, starts it the same way with the input
+  `prerelease`, after committing the next version
+  ([A development build on a server](upgrades.md#a-development-build-on-a-server)):
+  the run publishes a pre-release, never marked latest, which a later
+  `gh release edit` publishes.
 
 A release starts on a branch, never by pushing its tag, because a run reads
 only the caches of its own branch and the default branch: a run started by a
