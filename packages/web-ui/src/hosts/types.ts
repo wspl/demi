@@ -8,8 +8,10 @@ export interface HostDeviceOption {
   state: DeviceState
   /** Its mark, with the number it shows (`shownMark`); null draws the plain computer. */
   mark: DeviceMark | null
-  /** The path this page last found to the device; none before it connected this session. */
+  /** The path this page found to the device; none before it connected this session. */
   path?: DevicePath | null
+  /** The path this browser found last time, shown fainter while `path` is none; none for a device it never reached. */
+  lastPath?: DevicePath | null
 }
 
 /** A Host chosen to run on: the Cloud, or a device by its id. */
