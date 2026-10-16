@@ -580,7 +580,7 @@ defineExpose({
           class="flex flex-1 select-none flex-col items-center justify-center gap-1 px-4 py-10 text-center text-[13px] text-fg-subtle"
         >
           <span>{{ t('tree.couldNotList') }}</span>
-          <span class="text-[11px] text-fg-faint">{{ rootFailure.message }}</span>
+          <span class="text-caption text-fg-faint">{{ rootFailure.message }}</span>
           <RequestIdLine
             v-if="rootFailure.requestId"
             class="text-fg-faint"

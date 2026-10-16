@@ -578,7 +578,7 @@ onBeforeUnmount(() => pending?.abort())
         >
           <div
             v-if="group.label"
-            class="px-2 pb-1 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
+            class="px-2 pb-1 text-caption font-medium uppercase tracking-[0.04em] text-fg-subtle"
           >
             {{ group.label }}
           </div>

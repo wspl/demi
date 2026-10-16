@@ -11,7 +11,7 @@ withDefaults(defineProps<{
 
 <template>
   <span
-    class="inline-flex h-[18px] select-none items-center whitespace-nowrap rounded-full px-1.5 text-[11px] font-medium leading-4"
+    class="inline-flex h-[18px] select-none items-center whitespace-nowrap rounded-full px-1.5 text-caption font-medium leading-4 phone:h-[22px] phone:px-2"
     :class="{
       'bg-hover text-fg-muted': tone === 'neutral',
       'bg-tint-accent text-on-accent': tone === 'accent',

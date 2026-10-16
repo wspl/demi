@@ -56,7 +56,7 @@ const ready = computed(() => props.submitted && !failed.value && props.phase ===
       <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">
         {{ t('reset.title') }}
       </h3>
-      <p class="text-[13px] leading-5 text-fg-muted">
+      <p class="text-explanation leading-5 text-fg-muted">
         {{ t('reset.body') }}
       </p>
       <p

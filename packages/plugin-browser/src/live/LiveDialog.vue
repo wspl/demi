@@ -71,9 +71,9 @@ function key(event: KeyboardEvent): void {
       class="overlay-shell pointer-events-auto w-full max-w-md rounded-lg p-3 outline-none"
       @keydown="key"
     >
-      <p class="text-[12px] text-fg-subtle">{{ dialogTitle(dialog.type, host) }}</p>
+      <p class="text-detail text-fg-subtle">{{ dialogTitle(dialog.type, host) }}</p>
       <ScrollArea class="mt-1 max-h-40">
-        <p class="whitespace-pre-wrap break-words text-[13px] text-fg">
+        <p class="whitespace-pre-wrap break-words text-explanation text-fg">
           {{ dialog.message }}
         </p>
       </ScrollArea>

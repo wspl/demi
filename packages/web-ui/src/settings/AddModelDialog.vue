@@ -92,7 +92,7 @@ function choose(choice: Choice): void {
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('addModel.title') }}</h3>
-        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
+        <p class="mt-0.5 text-explanation leading-5 text-fg-muted">
           {{ t('addModel.hint') }}
         </p>
       </header>
@@ -101,7 +101,7 @@ function choose(choice: Choice): void {
           <template v-if="failed" #detail>
             <InlineError :message="t('addModel.searchFailed')" />
           </template>
-          <span v-if="adding" class="flex items-center gap-1.5 text-[12px] text-fg-subtle" role="status"
+          <span v-if="adding" class="flex items-center gap-1.5 text-detail text-fg-subtle" role="status"
             ><IndeterminateSpinner :size="12" /> {{ t('addModel.adding') }}</span
           >
           <Autocomplete

@@ -1,4 +1,5 @@
-import { readonly, ref } from 'vue'
+import { computed, readonly, ref } from 'vue'
+import { usePhone } from './phone'
 import type { Component, ComputedRef, InjectionKey, Ref } from 'vue'
 import type { MenuIndicator } from './MenuItem.vue'
 import type { SentenceText } from './ui-text'
@@ -156,4 +157,15 @@ export function shouldDismissMenuTree(item: {
   hasSuffix: boolean
 }): boolean {
   return !item.isChoice && !item.hasSubmenu && !item.hasSuffix
+}
+
+/**
+ * A menu row's height in the layout the page is in now, live: 28 px, or the
+ * menu's own `desktop` height, and on a phone a finger's 44 (`base.css`), in
+ * a sheet or beside a field alike. Rows stand 1 px apart, so a list's pitch
+ * is one more.
+ */
+export function useMenuRowHeight(desktop: () => number | undefined = () => undefined): ComputedRef<number> {
+  const phone = usePhone()
+  return computed(() => (phone.value ? 44 : desktop() ?? 28))
 }

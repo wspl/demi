@@ -19,7 +19,7 @@ defineProps<{
     :href="href"
     target="_blank"
     rel="noopener noreferrer"
-    class="inline-flex select-none items-center gap-1 text-[12px] text-fg-muted underline-offset-2 transition-colors duration-200 ease-out hover:text-fg-body hover:underline focus-visible:text-fg-body focus-visible:underline focus-visible:outline-none"
+    class="inline-flex select-none items-center gap-1 phone:min-h-hit-sm text-detail text-fg-muted underline-offset-2 transition-colors duration-200 ease-out hover:text-fg-body hover:underline focus-visible:text-fg-body focus-visible:underline focus-visible:outline-none"
   >
     <slot />
     <ExternalLinkIcon :size="ICON_PX.in20" class="shrink-0" aria-hidden="true" />

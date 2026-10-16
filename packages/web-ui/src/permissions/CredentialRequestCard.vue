@@ -73,7 +73,7 @@ function save(): void {
       </div>
       <div class="flex flex-col gap-2">
         <div v-for="(field, index) in request.fields" :key="field.name" class="flex flex-col gap-1">
-          <label :for="`${formId}-${index}`" class="text-[12px] leading-4 text-fg-muted">{{ field.label }}</label>
+          <label :for="`${formId}-${index}`" class="text-detail leading-4 text-fg-muted">{{ field.label }}</label>
           <TextInput
             :id="`${formId}-${index}`"
             v-model="values[field.name]"
@@ -86,7 +86,7 @@ function save(): void {
         </div>
       </div>
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span class="text-[12px] leading-4 text-fg-muted">{{ t('request.keepUntil') }}</span>
+        <span class="text-detail leading-4 text-fg-muted">{{ t('request.keepUntil') }}</span>
         <Segmented v-model="keep" :options="KEEP_OPTIONS" size="sm" :disabled="deciding" />
       </div>
       <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />

@@ -18,13 +18,13 @@ defineSlots<{
 <template>
   <div class="grid h-full min-h-0 auto-rows-[minmax(0,1fr)] grid-cols-[repeat(auto-fit,minmax(260px,1fr))] gap-px bg-line">
     <section v-if="$slots.before" class="flex min-h-0 flex-col bg-surface">
-      <div class="flex h-7 shrink-0 items-center px-3 text-[11px] text-fg-muted">{{ before }}</div>
+      <div class="flex h-7 shrink-0 items-center px-3 text-caption text-fg-muted">{{ before }}</div>
       <div class="min-h-0 flex-1">
         <slot name="before" />
       </div>
     </section>
     <section v-if="$slots.after" class="flex min-h-0 flex-col bg-surface">
-      <div class="flex h-7 shrink-0 items-center px-3 text-[11px] text-fg-muted">{{ after }}</div>
+      <div class="flex h-7 shrink-0 items-center px-3 text-caption text-fg-muted">{{ after }}</div>
       <div class="min-h-0 flex-1">
         <slot name="after" />
       </div>

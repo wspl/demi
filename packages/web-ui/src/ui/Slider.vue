@@ -124,7 +124,7 @@ function onKeydown(event: KeyboardEvent) {
       :class="disabled ? 'pointer-events-none cursor-not-allowed opacity-40' : ''"
     >
       <span
-        class="slider inline-flex h-7 min-w-0 flex-1 cursor-default items-center px-1.5 select-none"
+        class="slider inline-flex h-7 min-w-0 flex-1 cursor-default items-center px-1.5 select-none phone:h-11 phone:px-3.5"
         role="slider"
         :aria-valuemin="min"
         :aria-valuemax="max"
@@ -136,14 +136,15 @@ function onKeydown(event: KeyboardEvent) {
         @pointermove="onPointerMove"
         @keydown="onKeydown"
       >
-        <span ref="trackRef" class="relative h-0.5 w-full">
+        <!-- On a phone the thumb is 28 px on a 4 px track, as iOS draws a slider. -->
+        <span ref="trackRef" class="relative h-0.5 w-full phone:h-1">
           <span class="absolute inset-0 rounded-full bg-track" />
           <span
             class="absolute inset-y-0 left-0 rounded-full"
             :style="{ width: `${progress * 100}%`, background: 'var(--accent-fill)' }"
           />
           <span
-            class="slider-thumb absolute top-1/2 size-3 rounded-full bg-white shadow-sm ring-1 ring-line"
+            class="slider-thumb absolute top-1/2 size-3 rounded-full bg-white shadow-sm ring-1 ring-line phone:size-7"
             :style="{ left: `${progress * 100}%` }"
           />
         </span>
@@ -151,7 +152,7 @@ function onKeydown(event: KeyboardEvent) {
   <!-- Fixed width so the track does not shift as digits change. -->
       <span
         v-if="valueLabel !== undefined"
-        class="min-w-9 select-none text-right text-[12px] tabular-nums text-fg-muted"
+        class="min-w-9 select-none text-right text-detail tabular-nums text-fg-muted"
       >
     {{ valueLabel }}
       </span>

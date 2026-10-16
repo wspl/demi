@@ -8,6 +8,7 @@ import Menu from '../ui/Menu.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import Popover from '../ui/Popover.vue'
 import TextInput from '../ui/TextInput.vue'
+import { useMenuRowHeight } from '../ui/menu-context'
 import FileIcon from './FileIcon.vue'
 import { usePathCompletion, type PathCompletionKind } from './path-completion'
 import type { FileBrowserEntry, FileBrowserSource } from './types'
@@ -45,8 +46,8 @@ const model = defineModel<string>({ default: '' })
 
 /** Rows the menu shows before it scrolls. */
 const VISIBLE_ROWS = 10
-/** A menu row's pitch: its height and the gap above it. */
-const ROW_PITCH_PX = 29
+/** A menu row's height; rows stand 1 px apart. */
+const rowHeight = useMenuRowHeight()
 /** The menu's padding, above and below its rows. */
 const MENU_PADDING_PX = 8
 
@@ -157,7 +158,7 @@ function iconFor(entry: FileBrowserEntry) {
 const menuStyle = computed(() => ({
   width: `${frameWidth.value}px`,
   maxWidth: 'none',
-  maxHeight: `min(${VISIBLE_ROWS * ROW_PITCH_PX + MENU_PADDING_PX}px, var(--overlay-available-height, 50vh))`,
+  maxHeight: `min(${VISIBLE_ROWS * (rowHeight.value + 1) + MENU_PADDING_PX}px, var(--overlay-available-height, 50vh))`,
 }))
 
 defineExpose({

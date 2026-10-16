@@ -119,7 +119,7 @@ function submit() {
         <h3 class="text-[15px] font-medium text-fg-emphasis">
           {{ t('changePassword.title') }}
         </h3>
-        <p v-if="phase.kind === 'form'" class="mt-0.5 text-[13px] leading-5 text-fg-muted">
+        <p v-if="phase.kind === 'form'" class="mt-0.5 text-explanation leading-5 text-fg-muted">
           {{ t('changePassword.hint') }}
         </p>
       </header>

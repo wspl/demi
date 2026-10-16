@@ -6,6 +6,7 @@ import IconButton from '../ui/IconButton.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import Tooltip from '../ui/Tooltip.vue'
+import { usePhone } from '../ui/phone'
 import type { FileBar } from './file-bar'
 import { t } from './locales/text'
 
@@ -32,14 +33,19 @@ const modeOptions = computed<readonly SegmentedOption<'preview' | 'source'>[]>((
   { value: 'source', label: t('view.source'), icon: Code },
 ])
 
-/** The bar's height less a control's, halved: each control at the end keeps that distance to every edge. */
-const END_INSET = (36 - 24) / 2
+/**
+ * The bar's height less a control's, halved: each control at the end keeps
+ * that distance to every edge. A phone's bar is a row's 44 px around 36 px
+ * controls.
+ */
+const phone = usePhone()
+const endInset = computed(() => (phone.value ? (44 - 36) / 2 : (36 - 24) / 2))
 </script>
 
 <template>
   <div
-    class="flex h-9 shrink-0 select-none items-center gap-2 border-b border-line pl-3 text-[12px] text-fg-muted"
-    :style="{ paddingInlineEnd: `${props.overlap + END_INSET}px` }"
+    class="flex h-9 shrink-0 select-none items-center gap-2 border-b border-line pl-3 text-detail text-fg-muted phone:h-row"
+    :style="{ paddingInlineEnd: `${props.overlap + endInset}px` }"
   >
     <TruncatedText class="flex-1 tabular-nums" :text="bar.label" />
     <div class="flex shrink-0 items-center gap-1">

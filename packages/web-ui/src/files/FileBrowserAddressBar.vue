@@ -10,7 +10,7 @@ import { menuRootKey } from '../ui/menu-context'
 import DirectoryMenu from './DirectoryMenu.vue'
 import FileIcon from './FileIcon.vue'
 import PathInput from './PathInput.vue'
-import { ICON_PX } from '../ui/icon-metrics'
+import { useIconPx } from '../ui/icon-metrics'
 import { fitCrumbs, pathCrumbs, type CrumbFit } from './crumb-fit'
 import { parentPath, typedPath } from './paths'
 import { t } from './locales/text'
@@ -114,8 +114,13 @@ const bar = ref<HTMLElement>()
 const ruler = ref<HTMLElement>()
 
 const crumbs = computed(() => pathCrumbs(props.path, props.source))
-/** What a crumb is laid out as, shown or measured: the classes that decide its width. */
-const CRUMB_LAYOUT = 'flex h-5 shrink-0 items-center gap-1 rounded px-1 text-chrome'
+/**
+ * What a crumb is laid out as, shown or measured: the classes that decide its
+ * width. On a phone a crumb is a small button's size, 36 px tall and at least
+ * as wide, the chevrons between keeping its neighbours apart.
+ */
+const CRUMB_LAYOUT = 'flex h-5 shrink-0 items-center gap-1 rounded px-1 text-chrome phone:justify-center phone:h-hit-sm phone:min-w-hit-sm phone:px-1.5'
+const icons = useIconPx()
 
 const fit = ref<CrumbFit>({ collapsed: 0, clipped: false, truncated: null })
 
@@ -201,7 +206,7 @@ watch(() => props.path, () => {
   <div
     v-else
     ref="bar"
-    class="relative flex h-7 min-w-0 cursor-default select-none items-center overflow-hidden rounded-md bg-surface-raised px-1 ring-1 ring-inset ring-line"
+    class="relative flex h-7 min-w-0 cursor-default select-none items-center overflow-hidden rounded-md bg-surface-raised px-1 ring-1 ring-inset ring-line phone:h-hit phone:px-0.5"
     role="navigation"
     :aria-label="t('browser.currentPath')"
     @click="startEdit"
@@ -211,7 +216,7 @@ watch(() => props.path, () => {
       <template v-for="(crumb, index) in crumbs" :key="crumb.path">
         <ChevronRight
           v-if="index > 0"
-          :size="ICON_PX.in24"
+          :size="icons.chip"
           class="shrink-0 text-fg-faint"
         />
         <Tooltip
@@ -254,7 +259,7 @@ watch(() => props.path, () => {
     </div>
     <!-- Every crumb both ways and a separator, out of sight, so the bar knows what fits. -->
     <div ref="ruler" class="pointer-events-none invisible absolute left-0 top-0 flex w-max items-center" aria-hidden="true">
-      <span data-separator class="flex shrink-0"><ChevronRight :size="ICON_PX.in24" /></span>
+      <span data-separator class="flex shrink-0"><ChevronRight :size="icons.chip" /></span>
       <span v-for="(crumb, index) in crumbs" :key="crumb.path" data-crumb class="flex">
         <span :class="CRUMB_LAYOUT">
           <FileIcon :name="crumb.name" :is-directory="!(leaf === 'file' && index === crumbs.length - 1)" />

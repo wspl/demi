@@ -36,7 +36,7 @@ defineEmits<{
 <template>
   <div
     role="alert"
-    class="flex items-start gap-1.5 text-[12px] leading-4 text-on-danger"
+    class="flex items-start gap-1.5 text-detail leading-4 text-on-danger"
   >
     <span class="flex h-4 shrink-0 items-center" aria-hidden="true">
       <CircleX :size="12" />

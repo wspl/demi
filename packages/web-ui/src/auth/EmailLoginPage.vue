@@ -199,7 +199,7 @@ watch(
       >
         {{ t('signIn.passkey') }}
       </Button>
-      <p class="select-none text-center text-[12px] leading-4 text-fg-subtle">
+      <p class="select-none text-center text-detail leading-4 text-fg-subtle">
         {{ t('signIn.forgot') }}
       </p>
     </form>

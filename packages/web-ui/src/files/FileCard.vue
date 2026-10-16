@@ -35,8 +35,8 @@ const facts = computed(() => [
   <div class="flex h-full min-h-0 flex-col items-center justify-center gap-2 px-6 py-8 text-center">
     <FileIcon :name="name" :is-directory="false" :size="40" />
     <TruncatedText class="mt-1 max-w-full text-chrome text-fg" :text="name" />
-    <div class="text-[12px] text-fg-muted">{{ facts }}</div>
-    <div v-if="note" class="text-[12px] text-fg-muted">{{ note }}</div>
+    <div class="text-detail text-fg-muted">{{ facts }}</div>
+    <div v-if="note" class="text-detail text-fg-muted">{{ note }}</div>
     <Button v-if="download" class="mt-2" size="sm" @click="downloadUrl(download)">
       <Download :size="ICON_PX.in24" />
       {{ t('actions.download') }}

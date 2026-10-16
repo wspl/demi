@@ -6,6 +6,7 @@ import { t as shared } from '../locales/text'
 import { disabledTooltip } from './disabled'
 import { autofillAttrs, drawnAsDots, inputType as typeOf, type Masked } from './field-autofill'
 import IconButton from './IconButton.vue'
+import { usePhone } from './phone'
 import Tooltip from './Tooltip.vue'
 import { useAutofocus } from './autofocus'
 import type { PlaceholderText, SentenceText } from './ui-text'
@@ -117,14 +118,19 @@ const frameHeightClass = computed(() => {
       return 'min-h-9 self-stretch'
     return 'min-h-7 self-stretch'
   }
-  // A phone draws a small field at a field's height too (`base.css`); the
-  // large one, a search field such as Settings' filter, stays 36 as iOS's.
+  // A phone draws a small field at a field's height too (`base.css`), and a
+  // large one, such as the sign-in page's; a large search field, such as
+  // Settings' filter, stays 36 as iOS's.
   if (props.size === 'sm')
     return 'h-6 phone:h-field'
   if (props.size === 'lg')
-    return 'h-9'
+    return props.search ? 'h-9' : 'h-9 phone:h-field'
   return 'h-field'
 })
+
+/** The eye of a masked field: the small icon button, a phone's 36 px one in a field 44 tall. */
+const phone = usePhone()
+const revealSize = computed(() => (props.size === 'lg' || phone.value ? 'sm' : 'xs'))
 
 // Keep complete class names visible to Tailwind's source scanner.
 const insetPadding = {
@@ -204,7 +210,7 @@ defineExpose({
         <IconButton
           :icon="revealed ? EyeOff : Eye"
           variant="ghost"
-          :size="size === 'lg' ? 'sm' : 'xs'"
+          :size="revealSize"
           :disabled="disabled"
           :aria-label="revealed ? shared('common.hide') : shared('common.show')"
           @click.stop="revealed = !revealed"

@@ -7,6 +7,7 @@ import Menu from './Menu.vue'
 import MenuItem from './MenuItem.vue'
 import Popover from './Popover.vue'
 import TextInput from './TextInput.vue'
+import { useMenuRowHeight } from './menu-context'
 
 /**
  * A text field that offers rows to choose from under it, as a browser's
@@ -40,8 +41,8 @@ const emit = defineEmits<{
 
 const model = defineModel<string>({ default: '' })
 
-/** A menu row's pitch (its height and the gap above it), and the list's padding. */
-const ROW_PITCH_PX = 29
+/** A menu row's height, and the list's padding. */
+const rowHeight = useMenuRowHeight()
 const MENU_PADDING_PX = 8
 
 const field = ref<InstanceType<typeof TextInput>>()
@@ -146,7 +147,7 @@ function onKeydown(event: KeyboardEvent): void {
 const menuStyle = computed(() => ({
   width: `${frameWidth.value}px`,
   maxWidth: 'none',
-  maxHeight: `min(${(props.visibleRows ?? 8) * ROW_PITCH_PX + MENU_PADDING_PX}px, var(--overlay-available-height, 50vh))`,
+  maxHeight: `min(${(props.visibleRows ?? 8) * (rowHeight.value + 1) + MENU_PADDING_PX}px, var(--overlay-available-height, 50vh))`,
 }))
 
 defineExpose({

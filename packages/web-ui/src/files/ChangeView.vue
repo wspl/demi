@@ -12,6 +12,7 @@ import RegionStatus from '../ui/RegionStatus.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
+import { useIconPx } from '../ui/icon-metrics'
 import BranchMenu from './BranchMenu.vue'
 import ChangeTree from './ChangeTree.vue'
 import CommitList from './CommitList.vue'
@@ -506,6 +507,7 @@ function retry(): Promise<void> {
 }
 
 const frame = ref<InstanceType<typeof TreeFrame> | null>(null)
+const icons = useIconPx()
 
 function pick(path: string): void {
   frame.value?.dismiss()
@@ -527,13 +529,15 @@ function pick(path: string): void {
       </div>
       <!-- It gives way before the controls at the right, scrolling in its own box, as on a phone. -->
       <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 min-w-0" />
+      <!-- On a phone the file's controls take a second row, the branch at its start, rather than crowd the first. -->
+      <div class="hidden h-0 basis-full phone:block" aria-hidden="true" />
       <!-- The file's controls keep to the right, whether or not a file is shown. -->
-      <div class="ml-auto flex min-w-0 items-center gap-1">
+      <div class="ml-auto flex min-w-0 items-center gap-1 phone:h-11 phone:flex-1">
         <!-- The branch the list shows, left of the toolbar's buttons. -->
         <BranchMenu
           v-if="history && treeAvailable"
           v-model:shown="branch"
-          class="min-w-0"
+          class="min-w-0 phone:mr-auto"
           :branches="branchList"
         />
         <!-- All Changes, then each edit of the request in turn, as GitHub picks a pull request's commits. -->
@@ -543,7 +547,7 @@ function pick(path: string): void {
           </Tooltip>
           <Dropdown :overlay-store="appOverlayStore" variant="ghost" size="sm">
             <template #trigger>
-              <span class="whitespace-nowrap text-xs">{{ editLabel }}</span>
+              <span class="whitespace-nowrap">{{ editLabel }}</span>
             </template>
             <template #content="{ close }">
               <Menu
@@ -582,9 +586,9 @@ function pick(path: string): void {
     <div class="flex h-full min-h-0 flex-col">
       <div
         v-if="heading && selectedChange"
-        class="flex h-8 shrink-0 select-none items-center gap-1.5 border-b border-line px-3 text-[12px]"
+        class="flex h-8 shrink-0 select-none items-center gap-1.5 border-b border-line px-3 text-[12px] phone:h-row phone:gap-2 phone:text-[15px]"
       >
-        <FileIcon :name="heading.name" :is-directory="false" :size="14" class="shrink-0" />
+        <FileIcon :name="heading.name" :is-directory="false" :size="icons.chip" class="shrink-0" />
         <span v-if="heading.from" class="min-w-0 truncate text-fg-muted">{{ heading.from }} →</span>
         <!-- Path and counts use different fonts and sizes: they align on the baseline, as the file pills do. -->
         <span class="flex min-w-0 items-baseline gap-2.5">

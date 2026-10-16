@@ -243,7 +243,7 @@ useResizeObserver(bodyRef, measure)
     <!-- A pending message says what happens to it, its controls in view rather than on hover. -->
     <div
       v-if="pending"
-      class="mt-1 flex max-w-[80%] select-none flex-wrap items-center justify-end gap-x-1 text-[12px] leading-5 text-fg-subtle"
+      class="mt-1 flex max-w-[80%] select-none flex-wrap items-center justify-end gap-x-1 text-detail leading-5 text-fg-subtle"
     >
       <!-- A queued message stands under the queue's divider, which already says so. -->
       <span v-if="pending === 'steer'" class="mr-1">{{ t('transcript.user.sendsNext') }}</span>
