@@ -103,6 +103,19 @@ impl HostPaths {
         path.rsplit(|c| self.separates(c)).next().unwrap_or(path)
     }
 
+    /// `path` without the separators after its last component, so
+    /// `/srv/app/` is `/srv/app`; a root keeps its own: `/`, `C:\`.
+    pub fn trimmed(self, path: &str) -> &str {
+        let trimmed = path.trim_end_matches(|c| self.separates(c));
+        let root = self.root(path).len();
+        if trimmed.len() < root { &path[..root] } else { trimmed }
+    }
+
+    /// The directory `path` is in; none for a root.
+    pub fn parent(self, path: &str) -> Option<String> {
+        self.ancestors(path).into_iter().nth(1)
+    }
+
     /// `path` and every directory above it, nearest first, up to its root:
     /// `/` on a Posix Host, the drive, `C:\`, or the share on Windows. A
     /// relative path walks up to its first component.

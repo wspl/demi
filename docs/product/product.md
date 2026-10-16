@@ -206,6 +206,23 @@ A conversation owns one agent tree, including its root and subagents, plus
 product metadata such as title, target, model selection, archive state, pin and
 read state. A project is a named directory on a device; the API calls it a
 workspace. It groups conversations without creating a separate execution machine.
+
+**Where a conversation runs decides its project, and nothing else does.** A
+conversation that runs in its Host's home directory, or on the Cloud in a
+conversation's directory (`/home/demi/sessions/<id>`), its own or, after a
+Fork, its source's, is outside any project; one that runs in any other
+directory is in that directory's project. A home is never a project: New
+Project refuses a device's home, *Your home folder holds the conversations
+outside projects. Choose a folder in it.* When no project
+has that directory yet, moving the conversation there makes one, named after
+the directory's last component, with *(2)*, *(3)* after it when the device
+already has a project of that name. For example, an agent that runs `demi host
+move work-mac /Users/alex/projects` puts its conversation in a new project
+*projects* on work-mac, and moving it to `/Users/alex` puts it back among
+Conversations. A directory is its own project: `~/code/demi/packages` is not
+the project of `~/code/demi`, but a project of its own once a conversation
+runs there.
+
 The sidebar's Conversations list holds every conversation outside a project,
 on the Cloud and on a device alike. One that runs on a paired device shows
 that device at its row's very end, after the pin of a pinned row, so the
@@ -365,10 +382,21 @@ selection, Tab completes the field with the selected entry, and Return
 creates the project, as a shell's completion takes Tab and leaves Return to
 run. The list closes when the user clicks anywhere outside it, and a click
 elsewhere in the dialog never moves the focus back into the field.
-Creating the project opens a new conversation in it, as the project's own New
+A directory that is already a project opens that project instead of
+making a second, as choosing an existing folder in Finder's sidebar opens
+it. Creating the project opens a new conversation in it, as the project's own New
 Conversation does: an immediately typeable draft, which the first send makes a
 conversation, so a project the user only wanted to set up leaves no empty
 conversation behind.
+
+**Deleting a project** archives its conversations, so a project never comes
+back by itself from a conversation still running in its directory. Delete
+Project… in the project's menu first asks, naming what goes: *Delete
+“website”? Its 3 conversations will be archived. Files on MacBook Pro are not
+deleted.*, with Cancel and Delete. A project with no conversation asks too,
+without the second sentence. Restoring one of those conversations later
+makes the project again, as a move there would. A conversation of the
+project that is running refuses the deletion, as it refuses its archive.
 
 ### A conversation's workflow
 
@@ -421,8 +449,9 @@ Attached
   the conversation. In a project, the Cloud moves it the same way, out of
   its project, and each device but the checked one reads *Studio PC…*:
   choosing it opens that device's directory picker,
-  and choosing a directory moves the conversation there, into the project
-  whose directory it is, or out of its project otherwise. The header's
+  and choosing a directory moves the conversation there, into that
+  directory's project, which the move makes when there is none, or out of
+  its project when the directory is the device's home. The header's
   directory menu chooses another directory on the same Host the same way.
 - **Attached** lists the devices the conversation's agents attached, by name
   and state. An attached device has no directory or project of its own to

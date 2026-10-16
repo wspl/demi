@@ -96,15 +96,15 @@ async fn a_skill_on_reaches_the_catalog_and_the_jobs_that_need_it_find_it_instal
     let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
     create(&backend, &master, FIRST).await;
     let home = alpha.runner.home_dir().to_owned();
-    // The repository's own skill, in the working directory.
-    let release = home.join(".agents/skills/release");
+    // The repository's own skill, in the project's directory.
+    let release = home.join("app/.agents/skills/release");
     std::fs::create_dir_all(&release).unwrap();
     std::fs::write(
         release.join("SKILL.md"),
         skill_md("name: release\ndescription: Cut a release."),
     )
     .unwrap();
-    into_project(&backend, &master, FIRST, &alpha, &home).await;
+    into_project(&backend, &master, FIRST, &alpha, &home.join("app")).await;
 
     let source = add_tools(&backend, &master).await;
     assert_eq!(
@@ -250,33 +250,40 @@ fn any_under(paths: &[String], directory: &std::path::Path) -> bool {
 // Fixed bug: a conversation working in the home folder outside a project
 // searched and watched `~/.claude/skills`, Claude Code's own skills.
 #[tokio::test]
-async fn a_conversation_outside_a_project_has_no_project_skills_until_it_moves_into_one() {
+async fn a_conversation_in_its_home_has_no_project_skills_until_it_moves_into_a_project() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let alpha = backend.pair(&master, "alpha").await;
     let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
     create(&backend, &master, FIRST).await;
-    let home = alpha.runner.home_dir().to_owned();
+    // The home the runner reports, as the backend compares it.
+    let home = std::path::PathBuf::from(alpha.runner.home());
+    let app = home.join("app");
+    for directory in [&home, &app] {
+        let skills = directory.join(".claude/skills");
+        std::fs::create_dir_all(skills.join("release")).unwrap();
+        std::fs::write(
+            skills.join("release/SKILL.md"),
+            skill_md("name: release\ndescription: Cut a release."),
+        )
+        .unwrap();
+    }
     let skills = home.join(".claude/skills");
-    std::fs::create_dir_all(skills.join("release")).unwrap();
-    std::fs::write(
-        skills.join("release/SKILL.md"),
-        skill_md("name: release\ndescription: Cut a release."),
-    )
-    .unwrap();
     switch(&backend, &master, FIRST, &alpha, &home).await;
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/alpha").await;
     let outside = work.turn(vec![say("hello")]).await.first_request();
     assert!(!outside.contains("<name>release</name>"), "{outside}");
     assert!(!any_under(&backend.subscribed(&master, alpha.id()).await, &skills));
 
-    // Moved into a project of the same directory: its skills are offered
-    // and watched.
-    into_project(&backend, &master, FIRST, &alpha, &home).await;
+    // Moved to a directory in it, which is a project: its skills are
+    // offered and watched, and the home's still are not.
+    switch(&backend, &master, FIRST, &alpha, &app).await;
     let inside = work.turn(vec![say("moved")]).await.first_request();
     assert!(inside.contains("<name>release</name>"), "{inside}");
-    assert!(any_under(&backend.subscribed(&master, alpha.id()).await, &skills));
+    let subscribed = backend.subscribed(&master, alpha.id()).await;
+    assert!(any_under(&subscribed, &app.join(".claude/skills")));
+    assert!(!any_under(&subscribed, &skills));
     backend.close().await;
 }
 

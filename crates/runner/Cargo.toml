@@ -30,6 +30,8 @@ demi-runner-shell = { path = "../runner-shell" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-shared-cli = { path = "../shared-cli", features = ["host-allocator"] }
 clap = { version = "4", features = ["derive", "env"] }
+# The home reported canonically, without Windows' verbatim prefix.
+dunce = "1"
 futures-util.workspace = true
 hostname = "0.4"
 serde.workspace = true

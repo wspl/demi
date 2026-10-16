@@ -183,14 +183,19 @@ pub async fn call(
                 .to_string_lossy()
                 .into_owned(),
         ),
+        // The directory's canonical name (`sessions-and-targets.md`
+        // § Resolve a target): links followed, no trailing separator, the
+        // file system's spelling, and on Windows a drive path rather than
+        // the verbatim `\\?\` form the system answers with.
         FsRealpath {
             path: value, cwd, ..
-        } => FsResult::Realpath(
-            fs::canonicalize(path(value, cwd)?)
-                .await?
-                .to_string_lossy()
-                .into_owned(),
-        ),
+        } => {
+            let path = path(value, cwd)?;
+            let real = tokio::task::spawn_blocking(move || dunce::canonicalize(path))
+                .await
+                .map_err(std::io::Error::other)??;
+            FsResult::Realpath(real.to_string_lossy().into_owned())
+        }
         FsUtimes {
             path: value,
             cwd,

@@ -538,14 +538,26 @@ pub(crate) async fn on_device(
 }
 
 /// Makes the master's conversation `id` work in a new `work` directory of
-/// `paired`, as a target switch would leave it; answers that directory.
+/// `paired`, in that directory's project, as a move there leaves it;
+/// answers that directory.
 pub(crate) fn working_on(harness: &Harness, paired: &Paired, id: &str) -> String {
     let root = format!("{}/work", paired.runner.home());
     std::fs::create_dir_all(&root).unwrap();
-    harness
-        .control_database()
+    // The directory's project, as a move there makes it.
+    let database = harness.control_database();
+    database
         .execute(
-            "UPDATE conversations SET target_kind = 'device', target_device_id = ?1, target_path = ?2 WHERE id = ?3",
+            "INSERT INTO workspaces (id, user_id, device_id, path, name, sort_order, created_at)
+             SELECT ?1, user_id, id, ?2, 'work', 0, 1 FROM devices WHERE id = ?3
+             ON CONFLICT DO NOTHING",
+            rusqlite::params![uuid::Uuid::new_v4().to_string(), root, paired.id()],
+        )
+        .unwrap();
+    database
+        .execute(
+            "UPDATE conversations SET target_kind = 'workspace', target_device_id = ?1, target_path = ?2,
+               target_workspace_id = (SELECT id FROM workspaces WHERE device_id = ?1 AND path = ?2)
+             WHERE id = ?3",
             rusqlite::params![paired.id(), root, id],
         )
         .unwrap();
@@ -812,7 +824,9 @@ async fn a_conversation_starts_with_its_settings_from_one_request_and_a_refused_
     });
     let provider = entry(&backend, &master, body).await;
     let laptop = backend.pair(&master, "laptop").await;
-    let on_laptop = json!({ "kind": "device", "deviceId": laptop.id(), "path": "/work" });
+    let work = format!("{}/work", laptop.runner.home());
+    std::fs::create_dir(&work).unwrap();
+    let on_laptop = json!({ "kind": "device", "deviceId": laptop.id(), "path": work });
     let model = json!({ "providerId": provider, "modelId": "m" });
     let start = json!({
         "id": FIRST, "title": "Plans", "pinned": true, "target": on_laptop, "model": model,
@@ -834,7 +848,16 @@ async fn a_conversation_starts_with_its_settings_from_one_request_and_a_refused_
         (conversation.title.as_deref(), conversation.pinned),
         (Some("Plans"), true)
     );
-    assert_eq!(serde_json::to_value(&conversation.target).unwrap(), on_laptop);
+    // Its directory is a project, which the creation made.
+    let projects: serde_json::Value = backend.get("/api/workspaces", Some(&master)).await.json();
+    assert_eq!(
+        (&projects["workspaces"][0]["name"], &projects["workspaces"][0]["path"]),
+        (&json!("work"), &json!(work))
+    );
+    assert_eq!(
+        serde_json::to_value(&conversation.target).unwrap(),
+        json!({ "kind": "workspace", "workspaceId": projects["workspaces"][0]["id"] })
+    );
     assert_eq!(
         conversation.model,
         Some(ModelSettings {

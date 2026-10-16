@@ -31,28 +31,23 @@
     "allowTitle": "允许此对话访问 {host}？",
     "allowPairingTitle": "允许此对话配对一台电脑并访问它？",
     "description": "此对话的智能体会以你的身份在 {host} 上运行命令，并可让此对话改在 {host} 上运行。",
-    "pairingDescription": "此对话的智能体会将这台电脑与你的账户配对，以你的身份在上面运行命令，并可让此对话改在这台电脑上运行。",
-    "pairingTitle": "新电脑"
+    "pairingDescription": "此对话的智能体会将这台电脑与你的账户配对，以你的身份在上面运行命令，并可让此对话改在这台电脑上运行。"
   },
   "categories": {
     "credentials_manage": {
       "action": "管理凭据",
-      "title": "管理凭据",
       "description": "“管理凭据”允许此对话的智能体删除你已保存的凭据。你的凭据可用于你允许使用它们的每个对话。"
     },
     "providers_manage": {
       "action": "管理供应商",
-      "title": "管理供应商",
       "description": "添加、更改和移除你的供应商及其模型，你的每个对话都可以使用它们。"
     },
     "conversation_organize": {
       "action": "整理对话",
-      "title": "整理对话",
       "description": "“整理对话”允许此对话的智能体重命名此对话、列出你的项目、将目录设为项目，以及将此对话移入或移出项目。项目会显示在你每台设备的侧边栏中。"
     },
     "agent_profiles": {
       "action": "更改子智能体配置",
-      "title": "更改子智能体配置",
       "description": "创建、编辑和删除你的每个对话都可以使用的子智能体配置。"
     }
   }

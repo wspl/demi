@@ -104,6 +104,7 @@ pub(super) async fn create(
                 "Conversation id is unavailable",
             ));
         }
+        Creation::Unselectable(reason) => return Err(hosts::refused(reason.into())),
     };
     let conversation = state
         .shards

@@ -20,26 +20,6 @@ export const retiredCategory: PermissionCategoryView = {
   description: null,
 }
 
-/** Organize Conversations, as the product's `demi conversation` declares it. */
-export const organizeConversations: PermissionCategoryView = {
-  id: 'conversation.organize',
-  action: 'organize conversations',
-  description:
-    'Organize Conversations lets the agents of this conversation rename it, list your projects, make a project of a directory, and move this conversation into or out of one. Projects show in your sidebar on every device.',
-}
-
-/** A move into a project on a host the conversation may not reach, without Organize Conversations: one request of the category and the host. */
-export function moveRequest(): PermissionRequestView {
-  return {
-    kind: 'permission',
-    id: 'pr-move',
-    categories: [organizeConversations],
-    host: { kind: 'device', deviceId: 'device-build-box', name: 'build-box' },
-    command: 'demi conversation move photo-album',
-    subagent: null,
-  }
-}
-
 /** A move to a host the conversation may not reach: a request of the host alone. */
 export function hostRequest(): PermissionRequestView {
   return {

@@ -123,7 +123,15 @@ impl RunnerProcess {
         &self.home_path
     }
 
+    /// The runner's home as a path, named as the runner names it: links
+    /// followed, as macOS's temporary folders are under `/private`.
     pub fn home_dir(&self) -> &Path {
+        Path::new(&self.home_path)
+    }
+
+    /// The runner's home as the system's temporary folder spells it, which
+    /// on macOS is a link to [`RunnerProcess::home_dir`].
+    pub fn linked_home(&self) -> &Path {
         self.home.path()
     }
 

@@ -20,8 +20,7 @@ use demi_web_api_protocol::permissions::{
 use reqwest::StatusCode;
 use serde_json::json;
 
-use crate::conversations::{FIRST, SECOND, Socket, choose, create, summary, working_on};
-use crate::organize::{project, target_of};
+use crate::conversations::{FIRST, SECOND, Socket, choose, create, summary};
 use crate::subagents::{Scripts, WAIT, say, shell, tree_on};
 use crate::support::{Harness, Session, TestBackend, eventually};
 
@@ -672,112 +671,5 @@ async fn a_decision_whose_message_a_restart_cut_off_reaches_the_agent_once_at_th
         .filter(|block| matches!(block, Block::AgentMessage(_)))
         .count();
     assert_eq!(messages, 1);
-    backend.close().await;
-}
-
-// Several seconds: a second real device holds the project, and a real
-// device runs the shell jobs of five turns in two conversations.
-#[tokio::test]
-async fn a_move_into_a_project_on_a_host_out_of_reach_asks_for_the_category_and_the_host_in_one_request() {
-    let scripts = Arc::new(Scripts::default());
-    let World {
-        harness,
-        backend,
-        master,
-        mut socket,
-        _device,
-        provider,
-    } = opened(&scripts).await;
-    let studio = backend.pair(&master, "studio").await;
-    let website = project(&backend, &master, &studio, "website").await;
-
-    // Neither the category nor the host: one request of both, and the
-    // refusal names both actions.
-    scripts.root(
-        FIRST,
-        vec![
-            shell("t1", "demi conversation move website; echo exit=$?"),
-            say("I asked the user"),
-        ],
-    );
-    socket.chat("m1", "Move into website").await;
-    let refused = last_asked(&scripts, FIRST);
-    assert!(
-        refused.contains("demi conversation move: this conversation needs the user's permission to organize conversations and reach studio; the request was sent to the user"),
-        "{refused}"
-    );
-    assert!(refused.contains("exit=1"), "{refused}");
-    let asked = permissions(&backend, &master, FIRST).await;
-    assert_eq!(asked.requests.len(), 1, "{asked:?}");
-    let request = &asked.requests[0];
-    let ids: Vec<&str> = categories(request).iter().map(|category| category.id.as_str()).collect();
-    assert_eq!(ids, ["conversation.organize"]);
-    assert_eq!(
-        host_of(request),
-        Some(&PermissionHost::Device {
-            device_id: studio.id().try_into().unwrap(),
-            name: "studio".into()
-        })
-    );
-
-    // Allow grants both: the root is told with both actions, its command
-    // runs, and the move applies once its turn has ended.
-    scripts.root(
-        FIRST,
-        vec![
-            shell("t2", "demi conversation move website"),
-            say("moving"),
-        ],
-    );
-    let allowed = decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
-    assert_eq!(allowed.status, StatusCode::NO_CONTENT);
-    socket.until_idle().await;
-    let woken = scripts.asked(|session| session == FIRST);
-    assert!(
-        woken[woken.len() - 2].contains(
-            "The user allowed this conversation to organize conversations and reach studio; the command `demi conversation move website` can now run."
-        ),
-        "{}",
-        woken[woken.len() - 2]
-    );
-    assert!(
-        woken.last().unwrap().contains("applies when this conversation's work ends"),
-        "{}",
-        woken.last().unwrap()
-    );
-    assert_eq!(granted(&harness, FIRST), ["conversation.organize"]);
-    eventually("the move is made", || async {
-        target_of(&harness, FIRST) == ("workspace".to_owned(), Some(website.clone()))
-    })
-    .await;
-
-    // With Organize Conversations granted before, the request holds the
-    // host alone.
-    create(&backend, &master, SECOND).await;
-    choose(&backend, &master, SECOND, &provider, "m").await;
-    working_on(&harness, &_device, SECOND);
-    harness
-        .control_database()
-        .execute(
-            "INSERT INTO permission_grants (conversation_id, category, granted_at) VALUES (?1, 'conversation.organize', 1)",
-            [SECOND],
-        )
-        .unwrap();
-    let mut second = Socket::connect(&backend, &master, SECOND).await;
-    second.open().await;
-    scripts.root(
-        SECOND,
-        vec![shell("s1", "demi conversation move website"), say("asked")],
-    );
-    second.chat("n1", "Move into website").await;
-    assert!(
-        last_asked(&scripts, SECOND).contains("permission to reach studio; the request"),
-        "{}",
-        last_asked(&scripts, SECOND)
-    );
-    let other = permissions(&backend, &master, SECOND).await;
-    assert_eq!(other.requests.len(), 1, "{other:?}");
-    assert!(categories(&other.requests[0]).is_empty(), "{other:?}");
-    assert!(host_of(&other.requests[0]).is_some(), "{other:?}");
     backend.close().await;
 }

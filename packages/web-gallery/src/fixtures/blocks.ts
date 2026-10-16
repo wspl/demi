@@ -135,19 +135,19 @@ export const movedReceiptMessage: AgentMessage = {
   content: 'The user moved this conversation from Cloud (/home/demi/sessions/0f4e2a1c) to MacBook Pro (/Users/alex/code/photo-album). Files did not move. Check what this means for the work so far, and tell the user.',
   event: { type: 'moved', host: 'MacBook Pro', path: '/Users/alex/code/photo-album', home: '/Users/alex' },
 }
-/** A decision on a request of a category and a host, and Demi's notice that a move the agent asked for failed. */
+/** A decision on a request to reach a host, and Demi's notice that a move the agent asked for failed. */
 export const organizeReceiptMessages: AgentMessage[] = [
   {
     id: 'permission:pr-move',
     recipientId: 'gallery-parent',
     timestamp: '2026-09-12T12:06:00.000Z',
     content:
-      'The user allowed this conversation to organize conversations and reach build-box; the command `demi conversation move photo-album` can now run.',
+      'The user allowed this conversation to reach build-box; the command `demi host move build-box /srv/photo-album` can now run.',
     event: {
       type: 'permission' as const,
       outcome: 'allowed' as const,
-      action: 'organize conversations and reach build-box',
-      categories: ['conversation.organize'],
+      action: 'reach build-box',
+      categories: [],
       host: 'build-box',
     },
   },

@@ -485,7 +485,9 @@ async fn a_runner_asks_for_its_devices_revocation_and_hears_which_projects_went(
     let (backend, master) = harness.start_set_up().await;
     let mut laptop = backend.pair(&master, "laptop").await;
     let token = laptop.token().await;
-    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    // A project's folder, which the home never is.
+    let home = format!("{}/proj", laptop.runner.home());
+    std::fs::create_dir(&home).unwrap();
     let workspace = backend
         .post(
             "/api/workspaces",

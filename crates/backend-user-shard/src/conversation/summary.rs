@@ -76,12 +76,9 @@ impl Shard {
             }
         };
         let status = status(live, &facts);
-        let cwd = self
-            .host_shard()
-            .resolve_target(&record)
-            .await?
-            .path()
-            .to_owned();
+        let resolved = self.host_shard().resolve_target(&record).await?;
+        let cwd = resolved.path().to_owned();
+        let target = record.target.shown(&resolved);
         let model = record.model.as_ref().map(settings).transpose()?;
         let plugins_changed = match self.agent().tree(&root_of(&record.id)) {
             Some(tree) => tree.toolset() != self.plugins().revision().await?,
@@ -105,7 +102,7 @@ impl Shard {
             archived: record.archived,
             pinned: record.pinned,
             read_revision: record.read_revision,
-            target: record.target,
+            target,
             context_version: record.context_version,
             model,
             workflow: record.workflow,

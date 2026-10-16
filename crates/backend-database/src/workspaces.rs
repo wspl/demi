@@ -1,19 +1,25 @@
 //! Workspace records (`storage.md` § Control records): a named directory on
 //! one of the user's devices, which conversations can target. A workspace is
-//! a pointer: it owns no files. A new workspace joins the user's others at
-//! the end of their order. It keeps the model settings and the workflow
+//! a pointer: it owns no files, and the user has one per device and
+//! directory. A new workspace joins the user's others at the end of their
+//! order. It keeps the model settings and the workflow
 //! the project's next conversation starts with (`web-api.md` § User
 //! preferences).
 
 use demi_shared_types::{Timestamp, WorkflowChoice};
 use demi_web_api_protocol::conversations::ModelSettings;
-use demi_web_api_protocol::ids::{DeviceId, UserId, WorkspaceId};
+use demi_backend_remote_host::host_paths;
+use demi_web_api_protocol::devices::DeviceKind;
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
 use demi_web_api_protocol::workspaces::WorkspaceDto;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
 use super::columns::{decode, instant, json, to_json, workflow_choice, workflow_columns};
 use super::control::ControlService;
+use super::conversation_index::archive_in;
+use super::devices::device_in;
+use super::selection::{CLOUD_HOME, directory};
 
 const WORKSPACE_COLUMNS: &str =
     "id, user_id, device_id, path, name, created_at, last_model, last_workflow_kind, last_workflow_id";
@@ -63,14 +69,28 @@ impl WorkspaceRecord {
     }
 }
 
-/// What a workspace's deletion found.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// What a workspace's deletion did.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum WorkspaceDeletion {
     Deleted,
     /// The user has no workspace of the id.
     Missing,
-    /// That many conversations still target it, so it stays.
-    InUse(u64),
+    /// The conversations in it are not the ones the deletion held: one
+    /// moved in or was created meanwhile. Nothing changed.
+    Changed,
+}
+
+/// What a workspace's creation did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WorkspaceCreation {
+    Created(WorkspaceRecord),
+    /// The user has a workspace of the device and directory already.
+    Exists(WorkspaceRecord),
+    /// The device is not the user's.
+    DeviceNotFound,
+    /// The directory is the device's home, which holds the conversations
+    /// outside projects (`product.md` § Conversations and projects).
+    Home,
 }
 
 impl ControlService {
@@ -99,9 +119,10 @@ impl ControlService {
     }
 
     /// The new workspace `id` at `path` on the user's `device`, after the
-    /// user's others; `None`, writing nothing, when the device is not the
-    /// user's. The device is looked up in the same statement, so a
-    /// revocation cannot slip between the check and the write.
+    /// user's others, unless the device is not the user's, the directory is
+    /// its home, or the user has a workspace of it already, which it
+    /// answers. The checks and the write are one transaction, so a
+    /// revocation cannot slip between them.
     pub async fn create_workspace(
         &self,
         id: WorkspaceId,
@@ -109,32 +130,27 @@ impl ControlService {
         device: DeviceId,
         path: String,
         name: String,
-    ) -> Result<Option<WorkspaceRecord>, StorageError> {
+    ) -> Result<WorkspaceCreation, StorageError> {
         self.call(move |connection, now| {
-            let created = connection.execute(
-                "INSERT INTO workspaces (id, user_id, device_id, path, name, sort_order, created_at)
-                 SELECT ?1, ?2, ?3, ?4, ?5,
-                   (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM workspaces WHERE user_id = ?2), ?6
-                 WHERE EXISTS (SELECT 1 FROM devices WHERE id = ?3 AND user_id = ?2)",
-                params![
-                    id.as_str(),
-                    user.as_str(),
-                    device.as_str(),
-                    path,
-                    name,
-                    now.as_millisecond()
-                ],
-            )?;
-            Ok((created > 0).then_some(WorkspaceRecord {
-                id,
-                user,
-                device,
-                path,
-                name,
-                created_at: now,
-                last_model: None,
-                last_workflow: None,
-            }))
+            let transaction = connection.transaction()?;
+            let Some(record) = device_in(&transaction, &device)?.filter(|record| record.user == user) else {
+                return Ok(WorkspaceCreation::DeviceNotFound);
+            };
+            let paths = host_paths(record.platform);
+            let path = directory(paths, &path);
+            let home = match record.kind {
+                DeviceKind::Managed => Some(record.home.as_deref().unwrap_or(CLOUD_HOME)),
+                DeviceKind::User => record.home.as_deref(),
+            };
+            if home.is_some_and(|home| directory(paths, home) == path) {
+                return Ok(WorkspaceCreation::Home);
+            }
+            if let Some(existing) = workspace_at(&transaction, &user, &device, &path)? {
+                return Ok(WorkspaceCreation::Exists(existing));
+            }
+            let workspace = insert_workspace(&transaction, id, &user, &device, &path, &name, now)?;
+            transaction.commit()?;
+            Ok(WorkspaceCreation::Created(workspace))
         })
         .await
     }
@@ -176,12 +192,26 @@ impl ControlService {
         .await
     }
 
-    /// Deletes the user's workspace `id` unless conversations still target
-    /// it; the count and the delete are one transaction.
+    /// The user's conversations in workspace `id` that are not archived.
+    pub async fn workspace_conversations(
+        &self,
+        user: UserId,
+        id: WorkspaceId,
+    ) -> Result<Vec<ConversationId>, StorageError> {
+        self.call(move |connection, _| workspace_conversations(connection, &user, &id))
+            .await
+    }
+
+    /// Deletes the user's workspace `id` and archives `conversations`, the
+    /// ones in it, as one transaction (`product.md` § Conversations and
+    /// projects); when they are no longer all the unarchived ones in it,
+    /// nothing changes. An archived conversation in it keeps its
+    /// directory, which its restore selects again.
     pub async fn delete_workspace(
         &self,
         user: UserId,
         id: WorkspaceId,
+        conversations: Vec<ConversationId>,
     ) -> Result<WorkspaceDeletion, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
@@ -195,18 +225,15 @@ impl ControlService {
             if found.is_none() {
                 return Ok(WorkspaceDeletion::Missing);
             }
-            let targeting: i64 = transaction.query_row(
-                "SELECT COUNT(*) FROM conversations WHERE target_workspace_id = ?1",
-                [id.as_str()],
-                |row| row.get(0),
-            )?;
-            let targeting = decode(
-                "conversations",
-                "target_workspace_id",
-                u64::try_from(targeting),
-            )?;
-            if targeting > 0 {
-                return Ok(WorkspaceDeletion::InUse(targeting));
+            let mut inside = workspace_conversations(&transaction, &user, &id)?;
+            let mut held = conversations;
+            inside.sort();
+            held.sort();
+            if inside != held {
+                return Ok(WorkspaceDeletion::Changed);
+            }
+            for conversation in &held {
+                archive_in(&transaction, conversation)?;
             }
             transaction.execute("DELETE FROM workspaces WHERE id = ?1", [id.as_str()])?;
             transaction.commit()?;
@@ -214,6 +241,72 @@ impl ControlService {
         })
         .await
     }
+}
+
+fn workspace_conversations(
+    connection: &Connection,
+    user: &UserId,
+    id: &WorkspaceId,
+) -> Result<Vec<ConversationId>, StorageError> {
+    connection
+        .prepare_cached(
+            "SELECT id FROM conversations WHERE user_id = ?1 AND target_workspace_id = ?2 AND archived = 0",
+        )?
+        .query_map(params![user.as_str(), id.as_str()], |row| row.get::<_, String>(0))?
+        .map(|id| decode("conversations", "id", ConversationId::try_from(id?.as_str())))
+        .collect()
+}
+
+/// The workspace of `id`, in the caller's transaction.
+pub(crate) fn workspace_in(
+    connection: &Connection,
+    id: &WorkspaceId,
+) -> Result<Option<WorkspaceRecord>, StorageError> {
+    workspace_by_id(connection, id)
+}
+
+/// The user's workspace of `path` on `device`, of which there is one at
+/// most.
+pub(crate) fn workspace_at(
+    connection: &Connection,
+    user: &UserId,
+    device: &DeviceId,
+    path: &str,
+) -> Result<Option<WorkspaceRecord>, StorageError> {
+    let mut statement = connection.prepare_cached(&format!(
+        "SELECT {WORKSPACE_COLUMNS} FROM workspaces WHERE user_id = ?1 AND device_id = ?2 AND path = ?3"
+    ))?;
+    let mut rows = statement.query(params![user.as_str(), device.as_str(), path])?;
+    rows.next()?.map(workspace_row).transpose()
+}
+
+/// Inserts the workspace `id` at `path` on `device`, after the user's
+/// others.
+pub(crate) fn insert_workspace(
+    connection: &Connection,
+    id: WorkspaceId,
+    user: &UserId,
+    device: &DeviceId,
+    path: &str,
+    name: &str,
+    now: Timestamp,
+) -> Result<WorkspaceRecord, StorageError> {
+    connection.execute(
+        "INSERT INTO workspaces (id, user_id, device_id, path, name, sort_order, created_at)
+         VALUES (?1, ?2, ?3, ?4, ?5,
+           (SELECT COALESCE(MAX(sort_order), -1) + 1 FROM workspaces WHERE user_id = ?2), ?6)",
+        params![id.as_str(), user.as_str(), device.as_str(), path, name, now.as_millisecond()],
+    )?;
+    Ok(WorkspaceRecord {
+        id,
+        user: user.clone(),
+        device: device.clone(),
+        path: path.to_owned(),
+        name: name.to_owned(),
+        created_at: now,
+        last_model: None,
+        last_workflow: None,
+    })
 }
 
 fn workspace_by_id(

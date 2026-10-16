@@ -527,7 +527,7 @@ async fn a_child_works_in_its_own_directory_which_it_changes_and_keeps_and_the_r
     // with the reason, and its shells still start there.
     let refused = last_asked(&scripts, |session| session == FIRST);
     assert!(
-        refused.contains("The main agent works in the conversation's directory; move the conversation with `demi conversation move` to work elsewhere.")
+        refused.contains("The main agent works in the conversation's directory; move the conversation with `demi host move` to work elsewhere.")
             && refused.contains(&format!("root=1\\n{root}")),
         "{refused}"
     );

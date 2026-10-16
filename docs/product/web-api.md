@@ -284,9 +284,17 @@ last two what its next conversation starts with
 ([User preferences](#user-preferences)), and `GET /workspaces` returns
 `{ workspaces }` in the user's order, which the product state carries too. A
 workspace is a pointer; renaming or deleting it does not rename or delete
-files. Deletion answers 204, and 409 `workspace_in_use` while conversations
-still target it; an id the caller does not have answers 404
-`workspace_not_found`.
+files. Deletion archives the conversations in it, then deletes it, as one
+transition, and answers 204 with nothing; a running conversation in it
+refuses it with 409 `turn_in_flight`, as its archive would, and nothing
+changes. An id the caller does not have answers 404 `workspace_not_found`.
+Creating a workspace for a device and directory that already has one answers
+409 `workspace_exists` with `{ workspace }`, the existing one. A conversation
+target names a directory, `{ kind: "device", deviceId, path }` or `{ kind:
+"cloud", path? }`, or a project, `{ kind: "workspace", workspaceId }`; the
+backend resolves a directory to the Host's home, the Cloud's own directory or
+that directory's workspace, making it when there is none
+([Resolve a target](../execution/sessions-and-targets.md#resolve-a-target)).
 
 Device revocation applies to user-paired devices, not the managed Cloud device,
 and nothing refuses it. It removes the device's projects with it, the
@@ -701,7 +709,7 @@ POST /api/conversations/c_81/permissions/requests/pr_3k9
 
 | Route | Body | Does |
 | --- | --- | --- |
-| `GET /api/conversations/:id/permissions` | None | Returns `{ revision, requests }`: the undecided requests, oldest first, each with its categories, none or more, and `host`, the host it asks to reach as `{ kind: "device", deviceId, name }` or `{ kind: "pairing" }` for a pairing, or null ([Hosts](../agent/permissions.md#hosts)), and its agent as null for the root or `{ number, description }`; a category no longer in the user's command set has its `id` alone |
+| `GET /api/conversations/:id/permissions` | None | Returns `{ revision, requests }`: the undecided requests, oldest first, each with its categories, one or none, and `host`, the host it asks to reach (a request holds one or the other) as `{ kind: "device", deviceId, name }` or `{ kind: "pairing" }` for a pairing, or null ([Hosts](../agent/permissions.md#hosts)), and its agent as null for the root or `{ number, description }`; a category no longer in the user's command set has its `id` alone |
 | `POST /api/conversations/:id/permissions/requests/:request` | `{ decision: "allow" \| "deny" }`, and for a credential request `credential: { values, keep }` with an allow | Decides the request ([Requests](../agent/permissions.md#requests)), sends its message to the agent, and answers 204 |
 
 Each request carries its `kind`: `permission`, with its categories as above;

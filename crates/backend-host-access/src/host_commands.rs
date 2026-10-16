@@ -29,10 +29,9 @@ use demi_backend_database::conversation_index::{
 use demi_backend_remote_host::{JobEnd, JobStart, Pipe, RemoteJob, host_paths};
 use demi_command_declarations::MAX_STDIN_BODY;
 use demi_host_interface::{
-    Call, DEMI_ROOT, FileKind, GroupBuilder, HostErrorKind, HostFs, LeafBuilder, ProcessEnd, RpcError,
+    Call, DEMI_ROOT, GroupBuilder, LeafBuilder, ProcessEnd, RpcError,
     BroughtHost, RpcInvocation, RpcPort, TypedRpc,
 };
-use demi_runner_protocol::files::FsFailure;
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_shared_types::StreamKind;
 use demi_backend_runners::claims::ClaimRefusal;
@@ -45,6 +44,7 @@ use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::HostShard;
+use crate::directories::DirectoryRefusal;
 use crate::access::{HostRole, ReachableHost};
 use crate::transition::ChangeRefusal;
 
@@ -649,11 +649,18 @@ async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) 
         )));
     }
     // A command stopped while the Host wakes or answers releases its access
-    // and records no move.
-    tokio::select! {
-        checked = check_directory(&*shard, &host, &record, &directory) => checked?,
+    // and records no move. The move keeps the directory as the Host names
+    // it (`sessions-and-targets.md` § Resolve a target).
+    let directory = tokio::select! {
+        resolved = shard.canonical_directory(&record, &directory) => resolved.map_err(|refusal| match refusal {
+            DirectoryRefusal::Offline(reason) => RpcError::Failed(reason),
+            DirectoryRefusal::NotADirectory => {
+                RpcError::Failed(format!("{directory} is not a directory on {}", host.name))
+            }
+            DirectoryRefusal::Failed(reason) => RpcError::Failed(format!("{directory} on {}: {reason}", host.name)),
+        })?,
         () = port.cancelled() => return Err(RpcError::Failed("the call was cancelled".into())),
-    }
+    };
     let target = if host.cloud {
         ConversationTarget::Cloud {
             path: Some(directory.clone()),
@@ -669,8 +676,13 @@ async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) 
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     // A move to where it runs replaces a move that waits, and is made as
-    // nothing.
-    let there = conversation_record.target == target;
+    // nothing. A directory that selects nothing, such as one of a device
+    // whose home was never heard, fails with nothing pending.
+    let there = shard
+        .selection_for(&conversation_record, &target)
+        .await
+        .map_err(|refusal| RpcError::Failed(refusal.to_string()))?
+        == conversation_record.target;
     pend_move(&*shard, &conversation, target).await?;
     if there {
         port.stdout("This conversation runs there already.\n").await?;
@@ -682,46 +694,6 @@ async fn move_to(shard: Rc<dyn HostShard>, call: Call<MoveArgs>, port: RpcPort) 
         .await?;
     }
     Ok(0)
-}
-
-/// Whether `directory` is a directory on `host` now: through device access
-/// for a paired device, whose runner must be connected, and machine access
-/// for the Cloud, which wakes it (`sessions-and-targets.md` § Every way to
-/// a Host).
-async fn check_directory(
-    shard: &dyn HostShard,
-    host: &NamedDevice,
-    record: &demi_backend_database::devices::DeviceRecord,
-    directory: &str,
-) -> Result<(), RpcError> {
-    let stat = if host.cloud {
-        let access = shard
-            .cloud_shard()
-            .machine_access()
-            .await
-            .map_err(|error| RpcError::Failed(format!("Cloud: {error}")))?;
-        access.host.stat(directory).await
-    } else {
-        let Some(access) = shard.devices().device_access(&host.device) else {
-            return Err(RpcError::Failed(shard.offline(record).message));
-        };
-        access.stat(directory).await
-    };
-    let missing = || RpcError::Failed(format!("{directory} is not a directory on {}", host.name));
-    match stat {
-        Ok(stat) if stat.kind == FileKind::Directory => Ok(()),
-        Ok(_) => Err(missing()),
-        Err(error) => match &error.kind {
-            HostErrorKind::Failed { code }
-                if matches!(FsFailure::of(code.as_deref()), FsFailure::NotFound)
-                    || code.as_deref() == Some("ENOTDIR") =>
-            {
-                Err(missing())
-            }
-            HostErrorKind::Offline => Err(RpcError::Failed(shard.offline(record).message)),
-            _ => Err(RpcError::Failed(format!("{directory} on {}: {}", host.name, error.message))),
-        },
-    }
 }
 
 async fn current(

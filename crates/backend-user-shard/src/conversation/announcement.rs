@@ -415,7 +415,7 @@ mod tests {
     use demi_backend_database::control::ControlService;
     use demi_backend_database::conversation_index::{
         AttachedHostRecord, ConversationStart, Creation, ExecutionTarget, RecordChange, SwitchEnds,
-        TargetSwitch,
+        SwitchWrite,
     };
     use demi_backend_database::devices::DeviceChange;
     use demi_runner_protocol::wire::{OperatingSystem, RunnerPlatform};
@@ -456,6 +456,7 @@ mod tests {
                 )
                 .await
                 .unwrap();
+            testing::report_home(&control, &device.id, "/home/ana").await;
             devices.push(device.id);
         }
         testing::execute(
@@ -508,33 +509,24 @@ mod tests {
     async fn a_rename_after_an_announced_switch_announces_no_other_switch() {
         let data = tempfile::tempdir().unwrap();
         let (pool, owner, devices, id, control) = on_devices(data.path(), "alpha", &["beta"]).await;
-        let from = ConversationTarget::Device {
-            device_id: devices[0].clone(),
-            path: "/a".into(),
-        };
         let to = ConversationTarget::Device {
             device_id: devices[1].clone(),
             path: "/b".into(),
         };
-        let switch = TargetSwitch {
-            from: ExecutionTarget::Device {
-                device_id: devices[0].clone(),
-                path: "/a".into(),
-            },
-            to: ExecutionTarget::Device {
-                device_id: devices[1].clone(),
-                path: "/b".into(),
-            },
+        let left = ExecutionTarget::Device {
+            device_id: devices[0].clone(),
+            path: "/a".into(),
         };
         let ends = SwitchEnds {
             departed: Some((devices[0].clone(), "/a".into())),
             arriving: Some(devices[1].clone()),
         };
-        control
-            .switch_conversation_target(id.clone(), from, to, switch, ends, None)
+        let expected = control.conversation(id.clone()).await.unwrap().unwrap().target;
+        let switched = control
+            .switch_conversation_target(id.clone(), expected, left, to, ends, None)
             .await
-            .unwrap()
-            .expect("the switch wins");
+            .unwrap();
+        assert!(matches!(switched, SwitchWrite::Switched { .. }), "the switch wins");
         let mut seen = vec![block(&pool, &owner, &id, &[]).await.unwrap()];
         assert!(seen[0].contains(SWITCHED), "{}", seen[0]);
 
@@ -570,6 +562,7 @@ mod tests {
             .await
             .unwrap()
             .id;
+        testing::report_home(&control, &beta, "/home/ana").await;
         // The source's history holds a block of revision 7, which the Fork
         // copies.
         testing::execute(
@@ -607,25 +600,20 @@ mod tests {
             device_id: beta.clone(),
             path: "/b".into(),
         };
-        let switch = TargetSwitch {
-            from: ExecutionTarget::Device {
-                device_id: devices[0].clone(),
-                path: "/a".into(),
-            },
-            to: ExecutionTarget::Device {
-                device_id: beta.clone(),
-                path: "/b".into(),
-            },
+        let left = ExecutionTarget::Device {
+            device_id: devices[0].clone(),
+            path: "/a".into(),
         };
         let ends = SwitchEnds {
             departed: Some((devices[0].clone(), "/a".into())),
             arriving: Some(beta),
         };
-        control
-            .switch_conversation_target(fork.clone(), on_alpha, to, switch, ends, None)
+        let expected = control.conversation(fork.clone()).await.unwrap().unwrap().target;
+        let switched = control
+            .switch_conversation_target(fork.clone(), expected, left, to, ends, None)
             .await
-            .unwrap()
-            .expect("the switch wins");
+            .unwrap();
+        assert!(matches!(switched, SwitchWrite::Switched { .. }), "the switch wins");
 
         let mut seen = vec![copied];
         let announced = block(&pool, &owner, &fork, &seen).await.expect("the context changed");
@@ -688,7 +676,7 @@ mod tests {
             arch: "x86_64".into(),
         };
         control
-            .set_device_runner(desktop.clone(), os, "0".into(), 1, false)
+            .set_device_runner(desktop.clone(), os, "0".into(), 1, r"C:\Users\ana".into())
             .await
             .unwrap();
         testing::execute(

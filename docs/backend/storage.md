@@ -173,7 +173,8 @@ input, which the multi-worker control service also relies on
 - **Personal instructions:** `user_instructions` stores the
   [personal instructions](../agent/instructions.md#personal-instructions) of
   each user who has any: user and text. Saving an empty text deletes the row.
-- **Devices and workspaces:** `devices` stores ownership, kind, name,
+- **Devices and workspaces:** `devices` stores ownership, kind, name, the
+  home its runner last reported,
   platform, the operating system (with a Linux distribution's os-release `ID`) and architecture and the runner release its runner last reported, the device's
   [mark](../product/product.md#conversations-and-projects) number, given when its runner first reports its system and again when its logo changes, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen
   times, and the JSON list of artifacts its runner last reported its cache
@@ -187,7 +188,8 @@ input, which the multi-worker control service also relies on
   through one index lookup; it is absent until the backend issues a token. A
   partial unique index permits one managed device per user. A user's paired
   devices are listed by claim time, oldest first, and two claimed within one
-  millisecond by id. `workspaces` names directories on devices, with the model settings and
+  millisecond by id. `workspaces` names directories on devices, unique per device and
+  directory, with the model settings and
   workflow the project's next conversation starts with; deleting a
   workspace never deletes its files. Online status comes from live
   connections, not the last-seen time.
@@ -197,8 +199,10 @@ input, which the multi-worker control service also relies on
   switch, Cloud reset marker, the conversation's model selection as JSON
   ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).
   The target is
-  typed columns: its kind (Cloud, a device directory, or a workspace) and the
-  device, path or workspace that kind names, checked per kind. A target switch
+  typed columns: its kind (the Cloud's own directory, a Host's home, or a
+  workspace) and the device, path or workspace that kind names, checked per
+  kind; a workspace target keeps its device and path too, so a conversation
+  whose project was deleted can be restored to its directory. A target switch
   compares and sets these columns, so it commits only against the selection it
   expected. They are not foreign keys: a conversation that targets a device
   directly does not block revoking that device. A
