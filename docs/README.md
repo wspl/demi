@@ -24,6 +24,7 @@ layout and interaction; these documents do not repeat it.
   - [Writing a message](product/composer.md): the composer, input methods and attachments.
 - [Web application](product/web-application.md): the web app's packages, work panel, backend communication, [page synchronization](product/web-application.md#page-synchronization), authentication, persistence, [drafts](product/web-application.md#drafts) and development loop.
 - [Web API](product/web-api.md): every HTTP and WebSocket route with its request, response, status and error codes.
+  - [Conversations](product/web-api-conversations.md), [Hosts and files](product/web-api-hosts.md), [Accounts and settings](product/web-api-settings.md), [Page synchronization and plugins](product/web-api-sync.md).
 - [Sharing](product/sharing.md): a read-only snapshot of a conversation or one answer behind a random link: what it holds, the share dialog, safety, storage and routes.
 - [Localization](product/localization.md): English, Simplified and Traditional Chinese, Japanese and Korean: what is translated, choosing the language, each package's catalogue, and text from the backend as codes and values.
 - [File previews](product/file-previews.md): preview kinds and viewer choice, the byte path, ending transfers, inert content, [files named in messages](product/file-previews.md#files-named-in-messages), and [media a tool returned](product/file-previews.md#media-a-tool-returned).
@@ -35,7 +36,10 @@ layout and interaction; these documents do not repeat it.
 
 ## How does the agent run a conversation?
 
-- [Agent runtime](agent/runtime.md): sessions and turns with what the product supplies, input, command reports, the tool, the transcript and its context blocks, the rendering boundary, the frame protocol and the tree store.
+- [Agent runtime](agent/runtime.md): sessions and turns with what the product supplies, input, the identifiers the model sees, and the tree store.
+- [The shell tool](agent/shell-tool.md): command reports, the `shell` tool's input and window, the `demi shell` commands, results and media, failures, interrupted calls and lost commands.
+- [Transcript](agent/transcript.md): block types, context blocks, replay, media and images, views, patches and versions.
+- [Rendering](agent/rendering.md): the rendering boundary, work groups, calls being written, waiting for the model, and the frame protocol.
 - [Subagents](agent/subagents.md): the session tree, `demi agent` commands, agent messages, results, profiles and persistence.
 - [Compaction](agent/compaction.md): compaction through a session copy, token estimates, request sizes and window switches.
 - [Failures and recovery](agent/failures-and-recovery.md): the failure record and how it is read, retries, and resuming an interrupted turn.
