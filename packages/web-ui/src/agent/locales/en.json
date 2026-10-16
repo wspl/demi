@@ -107,6 +107,7 @@
     "stepsNotShared": "{count} step not shared | {count} steps not shared",
     "turnFailed": "The turn failed.",
     "failureResets": "{failure} {reset}.",
+    "signedOut": "{provider} signed {account} out. Sign it in again in Settings › Providers.",
     "work": {
       "ran": "ran {count} command | ran {count} commands",
       "checked": "checked {count} command | checked {count} commands",
@@ -200,7 +201,8 @@
     "resume": "Resume",
     "continue": "Continue",
     "stillOffline": "{name} is still offline",
-    "continueWith": "Continue with {label}"
+    "continueWith": "Continue with {label}",
+    "openProviders": "Open Providers"
   },
   "notices": {
     "hostOffline": "{name} is offline.",

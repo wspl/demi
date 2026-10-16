@@ -1,6 +1,8 @@
 //! The schedules of a running Cloud (`managed-hosts.md` § Lifecycle and
 //! capacity): its idle watch, which stops it once no conversation using it
-//! has been active for the idle window, with no releases, since the stop
+//! has been active for the idle window (the Claude Code machine: once no
+//! work has held it, `managed-hosts.md` § The Claude Code machine), with no
+//! releases, since the stop
 //! ends what they would (`resource-lifecycle.md` § A Cloud's idle stop),
 //! and its maintenance loop, which saves it every checkpoint interval and
 //! stops it at its lifetime cap. Both belong to the running
@@ -16,8 +18,12 @@ use demi_shared_gates::{GateLease, Purpose};
 use tokio::time::Instant;
 use tokio_util::task::AbortOnDropHandle;
 
+use demi_backend_database::devices::ManagedMachine;
+use demi_web_api_protocol::ids::ConversationId;
+
 use crate::CloudShard;
 use crate::machine::Machine;
+use crate::uses::Role;
 
 impl dyn CloudShard {
     /// Starts the idle watch and the maintenance loop of a machine that just
@@ -37,11 +43,20 @@ impl dyn CloudShard {
         ]
     }
 
+    /// The conversations using the machine, with their roles: none for the
+    /// Claude Code machine, whose work holds its gate instead.
+    async fn uses_of(&self, machine: &Machine) -> Result<Vec<(ConversationId, Role)>, String> {
+        match machine.kind() {
+            ManagedMachine::Cloud => self.cloud_uses().await.map_err(|error| error.to_string()),
+            ManagedMachine::ClaudeCode => Ok(Vec::new()),
+        }
+    }
+
     /// What the conversations using the Cloud, in any role, are doing: a
     /// turn of their tree, an operation holding their file gate, or a user
     /// stream someone has open keeps the Cloud awake.
-    async fn cloud_conversations_activity(&self) -> Result<Activity, String> {
-        let uses = self.cloud_uses().await.map_err(|error| error.to_string())?;
+    async fn cloud_conversations_activity(&self, machine: &Machine) -> Result<Activity, String> {
+        let uses = self.uses_of(machine).await?;
         Ok(uses.iter().fold(Activity::default(), |activity, (id, _)| {
             activity.and(self.activity(id))
         }))
@@ -114,7 +129,7 @@ impl dyn CloudShard {
     /// that reason, and once their leases are released the machine is saved
     /// and stopped as an idle stop would stop it.
     async fn stop_at_lifetime_cap(&self, machine: &Rc<Machine>) {
-        let uses = match self.cloud_uses().await {
+        let uses = match self.uses_of(machine).await {
             Ok(uses) => uses,
             Err(error) => {
                 tracing::warn!(
@@ -123,7 +138,9 @@ impl dyn CloudShard {
                 return;
             }
         };
-        if uses.iter().any(|(id, _)| self.attended(id)) {
+        // Work in flight on the Claude Code machine holds its gate.
+        let working = machine.kind() == ManagedMachine::ClaudeCode && machine.gate.state().demand > 0;
+        if working || uses.iter().any(|(id, _)| self.attended(id)) {
             return;
         }
         let device = machine.device.id.clone();
@@ -194,7 +211,7 @@ impl IdlePolicy for CloudIdle {
             .link(&machine.device.id)
             .map_or(0, |link| link.running_jobs());
         activity.busy |= jobs > 0;
-        Ok(activity.and(shard.cloud_conversations_activity().await?))
+        Ok(activity.and(shard.cloud_conversations_activity(machine).await?))
     }
 
     async fn reserve(&self) -> Result<Option<Retirement>, String> {
@@ -202,10 +219,7 @@ impl IdlePolicy for CloudIdle {
         let Some(gate) = self.machine.gate.try_reserve() else {
             return Ok(None);
         };
-        let uses = shard
-            .cloud_uses()
-            .await
-            .map_err(|error| error.to_string())?;
+        let uses = shard.uses_of(&self.machine).await?;
         let Some(held) = shard.hold_uses_for_idle(&uses) else {
             return Ok(None);
         };

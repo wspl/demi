@@ -47,7 +47,7 @@ use serde_json::{Value, json};
 
 use crate::accounts::{awaited, ended, followed, login_state, start_login};
 use crate::diagnostics::{lines_of, request_id};
-use crate::conversations::{Socket, choose, create, last_text, on_device, transcript};
+use crate::conversations::{Socket, choose, create, last_text, on_device, send, transcript};
 use crate::support::{Harness, PATIENCE, ServerLogCapture, Session, TestBackend, eventually};
 
 const CONVERSATION: &str = "3c1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01";
@@ -64,13 +64,18 @@ const LOGIN: &str = "/api/providers/subscription-login";
 /// `invalid` it calls invalid and waits again, one starting `refused` fails
 /// the login, and any other, `account#state`, signs in `account` with the
 /// access token `access-account-state`, whose tokens and account it writes
-/// as the CLI writes them. Its other runs read
-/// the access token from descriptor 3, answer the message the session they
-/// resume ends with, if it ends with one, and otherwise wait for input as a
-/// process prepared ahead does, answer `initialize`, answer each user message with the
-/// executable, the token, how many environment variables hold it, the
-/// directory they run in, their configuration directory and its mode, and
-/// record their start and their end. A session or message that asks for `three calls`
+/// into its directory as the CLI writes them; the vendor refuses the sign-in
+/// `access-expired-state`, as after a renewal it refused. Its other runs read the
+/// access token from the sign-in in their configuration directory, answer
+/// the message the session they resume ends with, if it ends with one, and
+/// otherwise wait for input as a process prepared ahead does, answer
+/// `initialize` and `get_usage`, answer each user message with the
+/// executable, the token, how many environment variables hold it, whether
+/// descriptor 3 is open, the directory they run in, their configuration
+/// directory and its mode and their own directory, and record the start
+/// and the end of each process that resumes a session. While
+/// `$HOME/hold-term` exists, a process asked to end writes its process id
+/// to `$HOME/term-held` and ends only once `$HOME/release-term` appears. A session or message that asks for `three calls`
 /// is answered by three calls to the vendor in one run, each streamed with
 /// its message's id and its own counts, then the quota the vendor reported
 /// after the last one, as the CLI prints a `rate_limit_event` after a call's
@@ -96,9 +101,15 @@ if [ "$1" = auth ]; then
   exit 0
 fi
 log="$HOME/claude-processes.log"
-token=$(cat <&3)
-echo "started $token $CLAUDE_CONFIG_DIR" >> "$log"
-trap 'echo "ended $token" >> "$log"; exit 0' TERM
+token=$(sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p' "$CLAUDE_CONFIG_DIR/.credentials.json")
+own="$CLAUDE_CONFIG_DIR/projects/$CLAUDE_CODE_PROJECT_DIR_NAME"
+session=$(ls "$own"/*.jsonl 2>/dev/null | head -n 1)
+# A process that resumes a session records its start and its end; a usage
+# probe resumes none.
+if [ -n "$session" ]; then
+  echo "started $token $own" >> "$log"
+  trap 'if [ -e "$HOME/hold-term" ]; then echo $$ > "$HOME/term-held"; while [ ! -e "$HOME/release-term" ]; do sleep 0.02; done; rm -f "$HOME/term-held" "$HOME/release-term"; fi; echo "ended $token" >> "$log"; exit 0' TERM
+fi
 calls() {
   for n in 1 2 3; do
     printf '{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_call_%s","usage":{"input_tokens":1%s,"cache_read_input_tokens":%s00,"cache_creation_input_tokens":%s0,"cache_creation":{"ephemeral_1h_input_tokens":%s}}}}}\n' "$n" "$n" "$n" "$n" "$n"
@@ -113,19 +124,25 @@ calls() {
   printf '{"type":"result","usage":{"input_tokens":36,"output_tokens":6,"cache_read_input_tokens":600}}\n'
 }
 answer() {
+  case "$token" in
+    access-expired-state)
+      printf '{"type":"assistant","error":"authentication_failed","is_api_error_message":true,"message":{"model":"<synthetic>","content":[{"type":"text","text":"Failed to authenticate"}]}}\n'
+      printf '{"type":"result","subtype":"success","is_error":true,"api_error_status":null,"result":"Failed to authenticate","usage":{"input_tokens":0,"output_tokens":0}}\n'
+      return
+      ;;
+  esac
   # The message may come before the context the request adds after it.
   if printf '%s' "$1" | grep -q 'three calls' || grep -q 'three calls' "$session"; then
     calls
     return
   fi
-  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"cli=%s token=%s environment=%s cwd=%s config=%s mode=%s"}]}}\n' \
-    "$0" "$token" "$(env | grep -c "$token")" "$(pwd)" "$CLAUDE_CONFIG_DIR" "$(ls -ld "$CLAUDE_CONFIG_DIR" | cut -c1-10)"
+  printf '{"type":"assistant","message":{"content":[{"type":"text","text":"cli=%s token=%s environment=%s descriptor=%s cwd=%s config=%s mode=%s own=%s"}]}}\n' \
+    "$0" "$token" "$(env | grep -c "$token")" "$( [ -e /dev/fd/3 ] && echo open || echo none)" "$(pwd)" "$CLAUDE_CONFIG_DIR" "$(ls -ld "$CLAUDE_CONFIG_DIR" | cut -c1-10)" "$own"
   printf '{"type":"result","usage":{"input_tokens":3,"output_tokens":2}}\n'
 }
 # A session that ends with input is answered at once; one that ends with an
 # answer waits for its input, as the CLI does.
-session=$(ls "$CLAUDE_CONFIG_DIR"/projects/*/*.jsonl | head -n 1)
-last=$(grep -E '"type":"(user|assistant)"' "$session" | tail -n 1)
+last=$(grep -E '"type":"(user|assistant)"' "$session" 2>/dev/null | tail -n 1)
 case "$last" in
   *'"type":"user"'*) answer "$last" ;;
 esac
@@ -134,6 +151,10 @@ while IFS= read -r line; do
     '{"type":"control_request"'*'"subtype":"initialize"'*)
       id=$(printf '%s\n' "$line" | sed 's/^{"type":"control_request","request_id":"\([^"]*\)".*/\1/')
       printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s"}}\n' "$id"
+      ;;
+    '{"type":"control_request"'*'"subtype":"get_usage"'*)
+      id=$(printf '%s\n' "$line" | sed 's/^{"type":"control_request","request_id":"\([^"]*\)".*/\1/')
+      printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{"subscription_type":"max","rate_limits":{"five_hour":{"utilization":12,"resets_at":"2030-01-01T00:00:00Z"}}}}}\n' "$id"
       ;;
     '{"type":"user"'*) answer "$line" ;;
   esac
@@ -287,16 +308,7 @@ async fn vendors() -> (MockVendor, MockVendor) {
     (distribution, catalog)
 }
 
-/// The user's one Cloud.
-fn the_cloud(harness: &Harness) -> String {
-    let devices = harness.manager.devices();
-    let [cloud] = devices.as_slice() else {
-        panic!("the user has one Cloud: {devices:?}");
-    };
-    cloud.clone()
-}
-
-/// The directories the CLI's logins ran in on the Cloud whose home is
+/// The directories the CLI's logins ran in on the machine whose home is
 /// `home`, with each one's mode as it ran.
 fn login_directories(home: &str) -> Vec<(String, String)> {
     std::fs::read_to_string(format!("{home}/claude-logins.log"))
@@ -394,28 +406,26 @@ async fn refused_code(backend: &TestBackend, master: &Session, id: &str, code: &
     (taken, words)
 }
 
-/// What the scripted CLI answers a message with, in a process of `token`'s
-/// whose configuration directory is `config`.
-fn answer(cli: &str, home: &str, token: &str, config: &str) -> String {
+/// What the scripted CLI answers a message with, in a process of the
+/// account `account` on the machine whose home is `home`, whose sign-in
+/// holds `token`, and whose own directory is `own`.
+fn answer(cli: &str, home: &str, token: &str, account: impl std::fmt::Display, own: &str) -> String {
     format!(
-        "cli={cli} token={token} environment=0 cwd={home}/.demi/claude/run config={config} mode=drwx------"
+        "cli={cli} token={token} environment=0 descriptor=none cwd={home}/run config={home}/accounts/{account} mode=drwx------ own={own}"
     )
 }
 
-/// The configuration directory an answer of the scripted CLI names.
-fn config_of(answer: &str) -> String {
-    let start = answer.find("config=").expect("the answer names its directory") + 7;
-    answer[start..]
-        .split(' ')
-        .next()
-        .unwrap()
-        .to_owned()
+/// The process's own directory an answer of the scripted CLI names.
+fn own_of(answer: &str) -> String {
+    let start = answer.find("own=").expect("the answer names its directory") + 4;
+    answer[start..].to_owned()
 }
 
-// About two seconds: the Cloud boots and installs the `demi.claude-code`
-// package, which runs the CLI's logins and three of its processes.
+// About two seconds: the Claude Code machine boots and installs the
+// `demi.claude-code` package, which runs the CLI's logins and three of its
+// processes.
 #[tokio::test]
-async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in_a_directory_of_its_own()
+async fn a_sign_in_on_the_claude_code_machine_takes_the_pasted_code_and_each_account_infers_in_its_directory()
  {
     let (distribution, catalog) = vendors().await;
     let harness = Harness::new()
@@ -424,8 +434,8 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
         .with_models_dev(catalog.url("/api.json"));
     let (backend, master) = harness.start_set_up().await;
 
-    // A sign-in runs Demi's CLI on the user's Cloud, which has none; the
-    // install fails, and the sign-in says why, with the version.
+    // A sign-in runs Demi's CLI on the Claude Code machine, which has none;
+    // the install fails, and the sign-in says why, with the version.
     let id = start_login(
         &backend,
         &master,
@@ -440,13 +450,20 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
     assert!(message.starts_with(&reason), "{message}");
     let providers = backend.get("/api/providers", Some(&master)).await;
     assert!(providers.json::<Providers>().providers.is_empty());
-    let cloud = the_cloud(&harness);
-    let home = harness.manager.home(&cloud);
-    let older = install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
+    let machine = harness.manager.claude_code_machine();
+    let home = harness.manager.home(&machine);
+    let older = install_by_hand(&harness.manager.artifacts(&machine), OLDER).await;
+    // The machine is no user's Host: the master's devices do not list it.
+    let devices = backend.devices(&master).await;
+    assert!(
+        devices.iter().all(|device| device.id.to_string() != machine),
+        "{devices:?}"
+    );
 
     // The sign-in shows the link the CLI printed and hands the CLI the code
-    // the user pastes; the account the CLI wrote is stored, and the CLI's
-    // directory, private to the Cloud's user, is gone.
+    // the user pastes; the account the CLI wrote is stored, with no token,
+    // and the CLI's directory, private to the machine's user, becomes the
+    // account's.
     let id = waiting_login(
         &backend,
         &master,
@@ -464,8 +481,12 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
     let provider = provider_id.as_str().to_owned();
     let logins = login_directories(&home);
     assert_eq!(logins.len(), 1, "{logins:?}");
+    assert!(logins[0].0.starts_with(&format!("{home}/accounts/.login-")), "{logins:?}");
     assert_eq!(logins[0].1, "drwx------");
     assert!(!std::path::Path::new(&logins[0].0).exists());
+    let first_dir = format!("{home}/accounts/{first}");
+    let signed_in = std::fs::read_to_string(format!("{first_dir}/.credentials.json")).unwrap();
+    assert!(signed_in.contains("access-first-state"), "{signed_in}");
     // The login ended; it takes no more codes.
     let late = backend
         .post(
@@ -487,10 +508,8 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
         .json::<Accounts>();
     assert_eq!(accounts.accounts.len(), 1);
     let account = &accounts.accounts[0];
-    assert_eq!(
-        (account.label.as_str(), account.detail.as_deref()),
-        ("first@example.test", Some("max"))
-    );
+    assert_eq!(account.label.as_str(), "first@example.test");
+    assert!(!account.signed_out);
     assert_eq!(accounts.active.as_ref(), Some(&first));
     let read = cli(&backend, &master, &provider).await;
     assert_eq!(
@@ -499,12 +518,11 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
             version: NEWEST.into()
         }
     );
-    assert_eq!(read.machines[0].versions, Some(vec![OLDER.to_owned()]));
 
     // A request of a conversation whose files are on a paired laptop infers
-    // through the Cloud's CLI, which reads the account's token from a
-    // descriptor and has a private directory of its own; nothing of it
-    // reaches the laptop.
+    // through the Claude Code machine's CLI, in the account's directory,
+    // which holds its sign-in, with a directory of its own under it and no
+    // token handed to it; nothing of it reaches the laptop.
     create(&backend, &master, CONVERSATION).await;
     let (laptop, _) = on_device(&harness, &backend, &master, CONVERSATION).await;
     choose(
@@ -521,21 +539,21 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello")
         .await;
     let first_answer = last_text(&saved(&backend, &master).await);
-    let first_config = config_of(&first_answer);
+    let first_own = own_of(&first_answer);
     assert!(
-        first_config.starts_with("/tmp/demi-claude-"),
+        first_own.starts_with(&format!("{first_dir}/projects/")),
         "{first_answer}"
     );
     assert_eq!(
         first_answer,
-        answer(&older, &home, "access-first-state", &first_config)
+        answer(&older, &home, "access-first-state", &first, &first_own)
     );
-    assert!(!laptop.runner.home_dir().join(".demi/claude").exists());
+    assert!(!laptop.runner.home_dir().join("accounts").exists());
 
     // Another account signs in beside it: a code the CLI refuses keeps the
     // login waiting, with the CLI's words, until the user pastes another.
-    // Signing in to the first account again replaces its tokens and keeps
-    // its ID and the entry's choice. No login leaves its directory.
+    // Signing in to the first account again replaces its directory, closing
+    // its process, and keeps its ID and the entry's choice.
     let accounts_path = format!("/api/providers/{provider}/accounts");
     let id = waiting_login(&backend, &master, &format!("{accounts_path}/login"), json!({})).await;
     assert_eq!(
@@ -565,6 +583,9 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
             .iter()
             .all(|(directory, _)| !std::path::Path::new(directory).exists())
     );
+    let signed_in = std::fs::read_to_string(format!("{first_dir}/.credentials.json")).unwrap();
+    assert!(signed_in.contains("access-first-again"), "{signed_in}");
+    assert!(!std::path::Path::new(&first_own).exists());
     let listed = backend
         .get(&accounts_path, Some(&master))
         .await
@@ -572,9 +593,8 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
     assert_eq!(listed.accounts.len(), 2);
     assert_eq!(listed.active.as_ref(), Some(&first));
 
-    // After the other account is selected, the next request closes the
-    // process, whose directory goes, and starts one with that account's
-    // token in a new directory.
+    // After the other account is selected, the next request starts a
+    // process in that account's directory.
     let selected = backend
         .put(
             &format!("{accounts_path}/active"),
@@ -592,15 +612,14 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a02", "and again")
         .await;
     let second_answer = last_text(&saved(&backend, &master).await);
-    let second_config = config_of(&second_answer);
-    assert_ne!(second_config, first_config);
+    let second_own = own_of(&second_answer);
     assert_eq!(
         second_answer,
-        answer(&older, &home, "access-second-state", &second_config)
+        answer(&older, &home, "access-second-state", &second, &second_own)
     );
-    assert!(!std::path::Path::new(&first_config).exists());
 
-    // Back on the first account, a new process has its new token.
+    // Back on the first account, the next request closes that process,
+    // whose own directory goes, and a new one finds the new sign-in.
     let selected = backend
         .put(
             &format!("{accounts_path}/active"),
@@ -613,39 +632,42 @@ async fn a_sign_in_on_the_cloud_takes_the_pasted_code_and_each_account_infers_in
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a03", "once more")
         .await;
     let third_answer = last_text(&saved(&backend, &master).await);
-    let third_config = config_of(&third_answer);
+    let third_own = own_of(&third_answer);
     assert_eq!(
         third_answer,
-        answer(&older, &home, "access-first-again", &third_config)
+        answer(&older, &home, "access-first-again", &first, &third_own)
     );
+    assert!(!std::path::Path::new(&second_own).exists());
     let processes = std::fs::read_to_string(format!("{home}/claude-processes.log")).unwrap();
     let expected = [
-        format!("started access-first-state {first_config}"),
+        format!("started access-first-state {first_own}"),
         "ended access-first-state".to_owned(),
-        format!("started access-second-state {second_config}"),
+        format!("started access-second-state {second_own}"),
         "ended access-second-state".to_owned(),
-        format!("started access-first-again {third_config}"),
+        format!("started access-first-again {third_own}"),
     ];
     assert_eq!(processes.lines().collect::<Vec<_>>(), expected);
     // The distribution was read once: its answer is believed.
     assert_eq!(distribution.requests().len(), 2);
     backend.close().await;
-    assert!(!std::path::Path::new(&third_config).exists());
+    assert!(!std::path::Path::new(&third_own).exists());
+    // The accounts' directories stay: they are the accounts' sign-ins.
+    assert!(std::path::Path::new(&first_dir).exists());
 }
 
 /// The release pointer holds up only a start that has no CLI to run
-/// (`claude-code.md` § Which version): on a Cloud with none, a sign-in waits
-/// for the read and fails with it; on a Cloud with one, a sign-in and a
-/// conversation start it while the read hangs, and the read, in the
+/// (`claude-code.md` § Which version): on a machine with none, a sign-in
+/// waits for the read and fails with it; on a machine with one, a sign-in
+/// and a conversation start it while the read hangs, and the read, in the
 /// background, keeps its answer for later starts, which the settings read
-/// as it ends rather than reading again. The session describes the Cloud
+/// as it ends rather than reading again. The session describes the machine
 /// by the kernel and the `SHELL` its runner reported in its hello: a
-/// `uname` first on the Cloud's `PATH` that names another kernel never
+/// `uname` first on the machine's `PATH` that names another kernel never
 /// runs (§ The session a process resumes).
-// About two seconds: the Cloud boots, and runs a sign-in and a process of
-// the scripted CLI.
+// About two seconds: the Claude Code machine boots, and runs a sign-in and
+// a process of the scripted CLI.
 #[tokio::test]
-async fn a_cloud_with_a_cli_starts_it_at_once_while_the_release_pointer_is_read_in_the_background()
+async fn a_machine_with_a_cli_starts_it_at_once_while_the_release_pointer_is_read_in_the_background()
 {
     let distribution = MockVendor::start().await;
     let catalog = MockVendor::start().await;
@@ -694,9 +716,9 @@ async fn a_cloud_with_a_cli_starts_it_at_once_while_the_release_pointer_is_read_
     };
     let reason = "Claude Code could not be installed: the distribution answered 503 Service Unavailable";
     assert!(message.starts_with(reason), "{message}");
-    let cloud = the_cloud(&harness);
-    let home = harness.manager.home(&cloud);
-    let older = install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
+    let machine = harness.manager.claude_code_machine();
+    let home = harness.manager.home(&machine);
+    let older = install_by_hand(&harness.manager.artifacts(&machine), OLDER).await;
 
     // The Cloud has a CLI: the sign-in starts it while the pointer's read,
     // which nothing kept an answer of, hangs.
@@ -730,9 +752,10 @@ async fn a_cloud_with_a_cli_starts_it_at_once_while_the_release_pointer_is_read_
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello")
         .await;
     let said = last_text(&saved(&backend, &master).await);
-    let config = config_of(&said);
-    assert_eq!(said, answer(&older, &home, "access-first-state", &config));
-    let session = std::fs::read_dir(format!("{config}/projects/demi"))
+    let own = own_of(&said);
+    let first = said.split("/accounts/").nth(1).unwrap().split(' ').next().unwrap().to_owned();
+    assert_eq!(said, answer(&older, &home, "access-first-state", &first, &own));
+    let session = std::fs::read_dir(&own)
         .unwrap()
         .next()
         .expect("the process's session is written")
@@ -749,7 +772,7 @@ async fn a_cloud_with_a_cli_starts_it_at_once_while_the_release_pointer_is_read_
         String::from_utf8(printed).unwrap().trim().to_owned()
     };
     let (kernel, release) = (uname_of("-s"), uname_of("-r"));
-    let run_dir = std::fs::canonicalize(format!("{home}/.demi/claude/run")).unwrap();
+    let run_dir = std::fs::canonicalize(format!("{home}/run")).unwrap();
     assert_eq!(
         environment["attachment"]["snapshot"],
         json!({
@@ -807,9 +830,9 @@ async fn a_sign_in_that_activates_its_account_prepares_the_open_conversation_wit
     )
     .await;
     awaited(&backend, &master, &id, ended).await;
-    let cloud = the_cloud(&harness);
-    let home = harness.manager.home(&cloud);
-    let older = install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
+    let machine = harness.manager.claude_code_machine();
+    let home = harness.manager.home(&machine);
+    let older = install_by_hand(&harness.manager.artifacts(&machine), OLDER).await;
     let id = waiting_login(
         &backend,
         &master,
@@ -832,7 +855,7 @@ async fn a_sign_in_that_activates_its_account_prepares_the_open_conversation_wit
     socket
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello")
         .await;
-    let first_config = config_of(&last_text(&saved(&backend, &master).await));
+    let first_own = own_of(&last_text(&saved(&backend, &master).await));
 
     // The entry's last account goes, and with it the process of its token.
     let accounts_path = format!("/api/providers/{provider}/accounts");
@@ -844,7 +867,11 @@ async fn a_sign_in_that_activates_its_account_prepares_the_open_conversation_wit
     // Signing in again makes the new account the active one: the open
     // conversation prepares its next process with its token.
     let id = waiting_login(&backend, &master, &format!("{accounts_path}/login"), json!({})).await;
-    let LoginState::Completed { .. } = pasted(&backend, &master, &id, "second#state").await else {
+    let LoginState::Completed {
+        credential_id: second,
+        ..
+    } = pasted(&backend, &master, &id, "second#state").await
+    else {
         panic!("the second sign-in did not complete");
     };
     tokio::time::timeout(Duration::from_secs(10), backend.until_prepared(&master, 1))
@@ -854,18 +881,18 @@ async fn a_sign_in_that_activates_its_account_prepares_the_open_conversation_wit
         .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a02", "and again")
         .await;
     let second_answer = last_text(&saved(&backend, &master).await);
-    let second_config = config_of(&second_answer);
+    let second_own = own_of(&second_answer);
     assert_eq!(
         second_answer,
-        answer(&older, &home, "access-second-state", &second_config)
+        answer(&older, &home, "access-second-state", &second, &second_own)
     );
     // The first process went with its account, and the second, started
     // before the message, answered it.
     let processes = std::fs::read_to_string(format!("{home}/claude-processes.log")).unwrap();
     let expected = [
-        format!("started access-first-state {first_config}"),
+        format!("started access-first-state {first_own}"),
         "ended access-first-state".to_owned(),
-        format!("started access-second-state {second_config}"),
+        format!("started access-second-state {second_own}"),
     ];
     assert_eq!(processes.lines().collect::<Vec<_>>(), expected);
     backend.close().await;
@@ -877,8 +904,8 @@ async fn a_sign_in_that_activates_its_account_prepares_the_open_conversation_wit
 /// ledger); the quota the vendor reported after the last call's end is that
 /// call's alone; the server log's lines of each call name its request, its agent
 /// and its account, and so does the run's timing line.
-// About two seconds: the Cloud boots, and runs a sign-in and a process of
-// the scripted CLI.
+// About two seconds: the Claude Code machine boots, and runs a sign-in and
+// a process of the scripted CLI.
 #[tokio::test]
 async fn a_claude_code_run_of_three_calls_is_three_ledger_rows_with_the_account() {
     let (distribution, catalog) = vendors().await;
@@ -888,7 +915,7 @@ async fn a_claude_code_run_of_three_calls_is_three_ledger_rows_with_the_account(
         .with_models_dev(catalog.url("/api.json"));
     let log = ServerLogCapture::open(&harness);
     let (backend, master) = harness.start_set_up().await;
-    // A first sign-in boots the Cloud, which has no CLI yet.
+    // A first sign-in boots the Claude Code machine, which has no CLI yet.
     let id = start_login(
         &backend,
         &master,
@@ -897,8 +924,8 @@ async fn a_claude_code_run_of_three_calls_is_three_ledger_rows_with_the_account(
     )
     .await;
     awaited(&backend, &master, &id, ended).await;
-    let cloud = the_cloud(&harness);
-    install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
+    let machine = harness.manager.claude_code_machine();
+    install_by_hand(&harness.manager.artifacts(&machine), OLDER).await;
     let id = waiting_login(
         &backend,
         &master,
@@ -1003,15 +1030,16 @@ async fn a_sign_in_that_fails_or_is_cancelled_stores_nothing_and_leaves_no_direc
         .with_models_dev(catalog.url("/api.json"));
     let (backend, master) = harness.start_set_up().await;
     let new_entry = json!({ "providerType": "claude-code" });
-    // The first sign-in wakes the Cloud, which has no CLI to run.
+    // The first sign-in wakes the Claude Code machine, which has no CLI to
+    // run.
     let id = start_login(&backend, &master, LOGIN, new_entry.clone()).await;
     assert!(matches!(
         awaited(&backend, &master, &id, ended).await,
         LoginState::Failed { .. }
     ));
-    let cloud = the_cloud(&harness);
-    let home = harness.manager.home(&cloud);
-    install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
+    let machine = harness.manager.claude_code_machine();
+    let home = harness.manager.home(&machine);
+    install_by_hand(&harness.manager.artifacts(&machine), OLDER).await;
 
     // The CLI's own words of failure are what the user sees.
     let id = waiting_login(&backend, &master, LOGIN, new_entry.clone()).await;
@@ -1073,7 +1101,7 @@ async fn logged(backend: &TestBackend, admin: &Session, request: &str) -> (Vec<S
 fn in_order(stages: &[LoginStage]) -> bool {
     let rank = |stage: &LoginStage| match stage {
         LoginStage::Preparing => 0,
-        LoginStage::WaitingForCloud => 1,
+        LoginStage::WaitingForMachine => 1,
         LoginStage::Installing => 2,
         LoginStage::Starting => 3,
         LoginStage::WaitingForUser => 4,
@@ -1092,8 +1120,8 @@ async fn started_sign_in(backend: &TestBackend, master: &Session) -> (String, St
     (answer.json::<LoginStarted>().login.id.into_string(), request)
 }
 
-// Several seconds: the frozen Cloud's runner timeout passes in real time,
-// then the Cloud boots and the CLI's login starts.
+// Several seconds: the frozen machine's runner timeout passes in real time,
+// then the machine boots and the CLI's login starts.
 #[tokio::test]
 async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_finish() {
     let (distribution, catalog) = vendors().await;
@@ -1101,7 +1129,7 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
         .with_claude_package()
         .with_claude_releases(distribution.url("/releases"))
         .with_models_dev(catalog.url("/api.json"));
-    // The timeout of a Cloud whose runner never connects, short enough to
+    // The timeout of a machine whose runner never connects, short enough to
     // wait for.
     harness.cloud.runner_connection = Duration::from_secs(2);
     let log = ServerLogCapture::open(&harness);
@@ -1109,27 +1137,28 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     let mut page = backend.sync(&master).await;
     page.snapshot().await;
 
-    // A Cloud whose runner never connects: the sign-in waits for the Cloud,
-    // and fails there, saying so, with the request that started it.
+    // A Claude Code machine whose runner never connects: the sign-in waits
+    // for the machine, and fails there, saying so, with the request that
+    // started it.
     harness.manager.script(|script| script.silent_wake = true);
     let (id, request) = started_sign_in(&backend, &master).await;
     let (stages, end) = followed(&mut page, &id).await;
     assert!(in_order(&stages), "{stages:?}");
-    assert_eq!(stages.last(), Some(&LoginStage::WaitingForCloud), "{stages:?}");
+    assert_eq!(stages.last(), Some(&LoginStage::WaitingForMachine), "{stages:?}");
     assert_eq!(
         end,
         LoginState::Failed {
-            message: "Your Cloud didn’t start. Its runner didn’t connect in 2 seconds."
+            message: "Claude Code’s machine didn’t start. Its runner didn’t connect in 2 seconds."
                 .into(),
             request_id: request.clone().try_into().unwrap(),
         }
     );
     assert_eq!(
         logged(&backend, &master, &request).await,
-        (vec!["waiting_for_cloud".to_owned()], "the login failed".to_owned())
+        (vec!["waiting_for_machine".to_owned()], "the login failed".to_owned())
     );
 
-    // A Cloud without the CLI installs it, and fails there.
+    // A machine without the CLI installs it, and fails there.
     harness.manager.script(|script| script.silent_wake = false);
     let (id, request) = started_sign_in(&backend, &master).await;
     let (stages, end) = followed(&mut page, &id).await;
@@ -1143,15 +1172,15 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     assert_eq!(
         logged(&backend, &master, &request).await,
         (
-            vec!["waiting_for_cloud".to_owned(), "installing".to_owned()],
+            vec!["waiting_for_machine".to_owned(), "installing".to_owned()],
             "the login failed".to_owned()
         )
     );
 
-    // A Cloud with the CLI starts it, and waits for the user once the CLI
+    // A machine with the CLI starts it, and waits for the user once the CLI
     // printed its link.
-    let cloud = the_cloud(&harness);
-    install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
+    let machine = harness.manager.claude_code_machine();
+    install_by_hand(&harness.manager.artifacts(&machine), OLDER).await;
     let (id, request) = started_sign_in(&backend, &master).await;
     let mut stages = Vec::new();
     loop {
@@ -1178,7 +1207,7 @@ async fn a_sign_in_says_what_it_waits_for_and_fails_at_the_stage_that_did_not_fi
     assert_eq!(
         logged(&backend, &master, &request).await,
         (
-            vec!["waiting_for_cloud".to_owned(), "starting".to_owned(), "waiting_for_user".to_owned()],
+            vec!["waiting_for_machine".to_owned(), "starting".to_owned(), "waiting_for_user".to_owned()],
             "the login was cancelled".to_owned()
         )
     );
@@ -1282,7 +1311,7 @@ pub(crate) struct PackageService {
 impl PackageService {
     /// The service the Cloud's runner started last.
     pub(crate) fn of(harness: &Harness) -> Self {
-        let log = harness.manager.log(&the_cloud(harness));
+        let log = harness.manager.log(&harness.manager.claude_code_machine());
         let started = format!(
             "service {} started (pid ",
             demi_command_package_claude_code_protocol::PACKAGE
@@ -1359,22 +1388,23 @@ async fn a_clouds_versions_are_asked_once_per_connection_and_again_after_a_lost_
     // The runner crashes: the next start wakes the Cloud and asks over the
     // new connection.
     let third = install_by_hand(cache.path(), "2.1.4").await;
-    kept.harness.manager.kill(&the_cloud(&kept.harness)).await;
+    kept.harness.manager.kill(&kept.harness.manager.claude_code_machine()).await;
     let said = kept.said(4).await;
     assert!(said.starts_with(&format!("cli={third} ")), "{said}");
     kept.close().await;
 }
 
-/// A first ask of the Cloud's versions that every start waiting for it gave
-/// up on is dropped with them (`claude-code.md` § Which version). An update
-/// to the newest release fails, as the distribution's address is not
-/// HTTPS, which drops what is kept while the Cloud's package service runs
-/// on; a line record that is a FIFO holds the service's listing of the
-/// versions, so the one ask two settings reads share hangs, and the reads
-/// go away. The hung ask then answers with a version that is gone; the next
-/// start asks again rather than take that answer, and starts the CLI
-/// without finding an executable gone.
-// A second or two: the Cloud boots and starts two CLI processes and those
+/// A first ask of the Claude Code machine's versions that every start
+/// waiting for it gave up on is dropped with them (`claude-code.md` § Which
+/// version). An update to the newest release fails, as the distribution's
+/// address is not HTTPS, which drops what is kept while the machine's
+/// package service runs on; a line record that is a FIFO holds the
+/// service's listing of the versions, so the one ask the starts of two
+/// conversations share hangs, and both turns are stopped. The hung ask then
+/// answers with a version that is gone; the next start asks again rather
+/// than take that answer, and starts the CLI without finding an executable
+/// gone.
+// A second or two: the machine boots and starts two CLI processes and those
 // prepared ahead.
 #[tokio::test]
 async fn concurrent_first_starts_share_one_ask_and_one_they_all_gave_up_on_is_asked_again() {
@@ -1398,15 +1428,21 @@ async fn concurrent_first_starts_share_one_ask_and_one_they_all_gave_up_on_is_as
         .post(&format!("/api/providers/{}/cli/install", kept.provider), Some(&kept.master), json!({}))
         .await;
     assert_eq!(started.status, StatusCode::ACCEPTED);
-    kept.logged("the Cloud's Claude Code was not updated").await;
+    kept.logged("the Claude Code machine's CLI was not updated").await;
 
-    // The listing opens the record and waits for bytes: a writer that opens
-    // it without blocking finds the ask there, and holds it hung.
-    let path = format!("/api/providers/{}/cli", kept.provider);
-    let reads = futures_util::future::join(
-        kept.backend.get(&path, Some(&kept.master)),
-        kept.backend.get(&path, Some(&kept.master)),
-    );
+    // Two conversations send a message. The listing opens the record and
+    // waits for bytes: a writer that opens it without blocking finds the
+    // ask there, and holds it hung.
+    let mut sockets = Vec::new();
+    for n in [3u8, 4] {
+        let id = format!("6a1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a{n:02}");
+        create(&kept.backend, &kept.master, &id).await;
+        choose(&kept.backend, &kept.master, &id, &kept.provider, "claude-opus-4-8").await;
+        let mut socket = Socket::connect(&kept.backend, &kept.master, &id).await;
+        socket.open().await;
+        socket.send(&send("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello")).await;
+        sockets.push(socket);
+    }
     let asked = async {
         loop {
             match rustix::fs::open(&record, OFlags::WRONLY | OFlags::NONBLOCK | OFlags::CLOEXEC, Mode::empty()) {
@@ -1416,18 +1452,20 @@ async fn concurrent_first_starts_share_one_ask_and_one_they_all_gave_up_on_is_as
             }
         }
     };
-    let writer = tokio::select! {
-        _ = reads => panic!("the settings read answered while the ask hung"),
-        writer = tokio::time::timeout(PATIENCE, asked) => writer.expect("the ask reaches the record"),
-    };
+    let writer = tokio::time::timeout(PATIENCE, asked)
+        .await
+        .expect("the ask reaches the record");
+    for socket in &mut sockets {
+        socket.stop().await;
+    }
     kept.logged("the ask of the device's Claude Code versions was given up by every start that waited for it")
         .await;
-    // The two reads shared one ask: the Cloud ran the package's status
+    // The two starts shared one ask: the machine ran the package's status
     // twice in all, for the first start and for them.
     let statuses = kept
         .harness
         .manager
-        .log(&the_cloud(&kept.harness))
+        .log(&kept.harness.manager.claude_code_machine())
         .matches("stream:claude-code.status opened")
         .count();
     assert_eq!(statuses, 2);
@@ -1506,5 +1544,316 @@ async fn a_failed_install_makes_the_next_start_ask_the_cloud_again() {
     let older = install_by_hand(cache.path(), OLDER).await;
     let said = kept.said(1).await;
     assert!(said.starts_with(&format!("cli={older} ")), "{said}");
+    kept.close().await;
+}
+
+/// An account an earlier release stored with its tokens hands them to its
+/// directory at its first use (`claude-code.md` § Accounts and sign-in,
+/// `upgrades.md` § What crosses releases): the first start writes them as
+/// the CLI's own files, private to the machine's user, and the record keeps
+/// none, so the next start finds the sign-in in the directory alone.
+// A second or two: the machine boots and starts two CLI processes and those
+// prepared ahead.
+#[tokio::test]
+async fn an_earlier_releases_sign_in_goes_to_the_accounts_directory_at_its_first_use() {
+    use std::os::unix::fs::MetadataExt as _;
+
+    let cache = tempfile::tempdir().unwrap();
+    let (distribution, catalog) = vendors().await;
+    let older = install_by_hand(cache.path(), OLDER).await;
+    let kept = Kept::start(&distribution, &catalog, cache.path()).await;
+    let said = kept.said(1).await;
+    assert!(said.starts_with(&format!("cli={older} token=access-kept ")), "{said}");
+    let accounts = kept
+        .backend
+        .get(&format!("/api/providers/{}/accounts", kept.provider), Some(&kept.master))
+        .await
+        .json::<Accounts>();
+    let account = accounts.active.unwrap();
+    let home = kept.harness.manager.home(&kept.harness.manager.claude_code_machine());
+    let directory = format!("{home}/accounts/{account}");
+    let file = |name: &str| {
+        let path = format!("{directory}/{name}");
+        let mode = std::fs::metadata(&path).unwrap().mode() & 0o777;
+        let text = std::fs::read_to_string(&path).unwrap();
+        (mode, serde_json::from_str::<Value>(&text).unwrap())
+    };
+    assert_eq!(
+        file(".credentials.json"),
+        (
+            0o600,
+            json!({ "claudeAiOauth": {
+                "accessToken": "access-kept",
+                "refreshToken": "refresh-kept",
+                "expiresAt": 4_102_444_800_000_i64,
+                "scopes": ["user:inference", "user:profile"],
+                "subscriptionType": "max",
+            } })
+        )
+    );
+    assert_eq!(
+        file(".claude.json"),
+        (
+            0o600,
+            json!({ "oauthAccount": { "accountUuid": "kept", "emailAddress": "kept@example.test" } })
+        )
+    );
+    let secret: Option<Vec<u8>> = kept
+        .harness
+        .control_database()
+        .query_row("SELECT secret FROM provider_credentials", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(secret, None);
+    let said = kept.said(2).await;
+    assert!(said.starts_with(&format!("cli={older} token=access-kept ")), "{said}");
+    kept.close().await;
+}
+
+/// A sign-in the vendor refused signs its account out (`claude-code.md`
+/// § Accounts and sign-in): the turn fails with the authentication error,
+/// whose words ask the user to sign in again, the accounts list says the
+/// account is signed out, and signing in to it again clears that, after
+/// which its requests run on the new sign-in.
+// About two seconds: the machine boots, and runs two sign-ins and two
+// processes of the scripted CLI.
+#[tokio::test]
+async fn a_sign_in_the_vendor_refused_signs_the_account_out_until_it_signs_in_again() {
+    let (distribution, catalog) = vendors().await;
+    let harness = Harness::new()
+        .with_claude_package()
+        .with_claude_releases(distribution.url("/releases"))
+        .with_models_dev(catalog.url("/api.json"));
+    let (backend, master) = harness.start_set_up().await;
+    let new_entry = json!({ "providerType": "claude-code", "label": "Claude" });
+    let id = start_login(&backend, &master, LOGIN, new_entry.clone()).await;
+    awaited(&backend, &master, &id, ended).await;
+    let machine = harness.manager.claude_code_machine();
+    let home = harness.manager.home(&machine);
+    let older = install_by_hand(&harness.manager.artifacts(&machine), OLDER).await;
+    let id = waiting_login(&backend, &master, LOGIN, new_entry).await;
+    let LoginState::Completed {
+        provider_id,
+        credential_id: account,
+    } = pasted(&backend, &master, &id, "expired#state").await
+    else {
+        panic!("the sign-in did not complete");
+    };
+    let provider = provider_id.as_str().to_owned();
+    let accounts_path = format!("/api/providers/{provider}/accounts");
+    create(&backend, &master, CONVERSATION).await;
+    choose(&backend, &master, CONVERSATION, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, CONVERSATION).await;
+    socket.open().await;
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello")
+        .await;
+    let blocks = saved(&backend, &master).await;
+    let Some(Block::Error(failed)) = blocks.last() else {
+        panic!("the refused sign-in did not fail the turn: {blocks:?}");
+    };
+    assert_eq!(failed.message, "Claude Code signed the account out. Sign in to it again");
+    let listed = backend.get(&accounts_path, Some(&master)).await.json::<Accounts>();
+    assert!(listed.accounts[0].signed_out, "{:?}", listed.accounts);
+
+    // Signing in to it again clears the mark, and its next request runs.
+    let id = waiting_login(&backend, &master, &format!("{accounts_path}/login"), json!({})).await;
+    let LoginState::Completed {
+        credential_id: again,
+        ..
+    } = pasted(&backend, &master, &id, "expired#again").await
+    else {
+        panic!("signing in again did not complete");
+    };
+    assert_eq!(again, account);
+    let listed = backend.get(&accounts_path, Some(&master)).await.json::<Accounts>();
+    assert!(!listed.accounts[0].signed_out, "{:?}", listed.accounts);
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a02", "again")
+        .await;
+    let said = last_text(&saved(&backend, &master).await);
+    let own = own_of(&said);
+    assert_eq!(said, answer(&older, &home, "access-expired-again", &account, &own));
+    backend.close().await;
+}
+
+/// Whether the server log holds a line whose message starts with `words`.
+async fn server_holds(backend: &TestBackend, master: &Session, words: &str) -> bool {
+    let read = backend.get("/api/server/log?limit=1000", Some(master)).await;
+    assert_eq!(read.status, StatusCode::OK);
+    read.json::<ServerLog>()
+        .lines
+        .iter()
+        .any(|line| line.message.starts_with(words))
+}
+
+/// One change of an account at a time (`claude-code.md` § Accounts and
+/// sign-in): signing an account in again first stops new processes of the
+/// account, closes the one it has and waits for it, then replaces its
+/// directory, and a request that came meanwhile starts in the new one; a
+/// login stays cancellable while it waits for the account's processes, and
+/// leaves the account as it was; removing the account closes its process
+/// and deletes its directory.
+// A few seconds: the machine boots, runs four sign-ins and three processes
+// of the scripted CLI, one of which takes its time to end.
+#[tokio::test]
+async fn a_change_of_an_account_closes_its_processes_first_and_a_request_meanwhile_waits_for_it() {
+    let (distribution, catalog) = vendors().await;
+    let harness = Harness::new()
+        .with_claude_package()
+        .with_claude_releases(distribution.url("/releases"))
+        .with_models_dev(catalog.url("/api.json"));
+    let log = ServerLogCapture::open(&harness);
+    let (backend, master) = harness.start_set_up().await;
+    let new_entry = json!({ "providerType": "claude-code", "label": "Claude" });
+    let id = start_login(&backend, &master, LOGIN, new_entry.clone()).await;
+    awaited(&backend, &master, &id, ended).await;
+    let machine = harness.manager.claude_code_machine();
+    let home = harness.manager.home(&machine);
+    let older = install_by_hand(&harness.manager.artifacts(&machine), OLDER).await;
+    let id = waiting_login(&backend, &master, LOGIN, new_entry).await;
+    let LoginState::Completed {
+        provider_id,
+        credential_id: account,
+    } = pasted(&backend, &master, &id, "first#state").await
+    else {
+        panic!("the sign-in did not complete");
+    };
+    let provider = provider_id.as_str().to_owned();
+    let accounts_path = format!("/api/providers/{provider}/accounts");
+    let directory = format!("{home}/accounts/{account}");
+    let second_conversation = "7c1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a02";
+    for conversation in [CONVERSATION, second_conversation] {
+        create(&backend, &master, conversation).await;
+        choose(&backend, &master, conversation, &provider, "claude-opus-4-8").await;
+    }
+    let mut first = Socket::connect(&backend, &master, CONVERSATION).await;
+    first.open().await;
+    first.chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "hello").await;
+    let mut second = Socket::connect(&backend, &master, second_conversation).await;
+    second.open().await;
+
+    // Signing in again: the kept process is asked to end, and takes its time.
+    let hold = format!("{home}/hold-term");
+    let held = format!("{home}/term-held");
+    let release = format!("{home}/release-term");
+    std::fs::write(&hold, "").unwrap();
+    let id = waiting_login(&backend, &master, &format!("{accounts_path}/login"), json!({})).await;
+    let code_path = format!("{LOGIN}/{id}/code");
+    let pasted_code = backend.post(&code_path, Some(&master), json!({ "code": "first#again" })).await;
+    assert_eq!(pasted_code.status, StatusCode::OK);
+    eventually("the account's process is asked to end", || async {
+        std::path::Path::new(&held).exists()
+    })
+    .await;
+    // A request meanwhile waits for the change, then starts in the account's
+    // new directory, with the new sign-in.
+    let (answered, ()) = tokio::join!(
+        second.chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a11", "meanwhile"),
+        async {
+            eventually("the request waits for the change", || {
+                server_holds(&backend, &master, "a start of a Claude Code account waits for a change of the account")
+            })
+            .await;
+            std::fs::write(&release, "").unwrap();
+        }
+    );
+    drop(answered);
+    let LoginState::Completed { credential_id, .. } = awaited(&backend, &master, &id, ended).await else {
+        panic!("signing in again did not complete");
+    };
+    assert_eq!(credential_id, account);
+    let said = last_text(&transcript(&backend, &master, second_conversation).await.blocks);
+    let own = own_of(&said);
+    assert_eq!(said, answer(&older, &home, "access-first-again", &account, &own));
+    let processes = std::fs::read_to_string(format!("{home}/claude-processes.log")).unwrap();
+    let lines: Vec<String> = processes.lines().map(str::to_owned).collect();
+    assert_eq!(lines[1..], ["ended access-first-state".to_owned(), format!("started access-first-again {own}")]);
+
+    // A login cancelled while it waits for the account's processes ends at
+    // once, and the account keeps its directory.
+    let id = waiting_login(&backend, &master, &format!("{accounts_path}/login"), json!({})).await;
+    let code_path = format!("{LOGIN}/{id}/code");
+    let pasted_code = backend.post(&code_path, Some(&master), json!({ "code": "first#third" })).await;
+    assert_eq!(pasted_code.status, StatusCode::OK);
+    eventually("the account's process is asked to end", || async {
+        std::path::Path::new(&held).exists()
+    })
+    .await;
+    let cancelled = backend.delete(&format!("{LOGIN}/{id}"), &master).await;
+    assert_eq!(cancelled.status, StatusCode::NO_CONTENT);
+    // The cancel answered while the account's process still ends: it did
+    // not wait for it, which would have taken until its kill.
+    let pid: i32 = std::fs::read_to_string(&held).unwrap().trim().parse().unwrap();
+    let pid = rustix::process::Pid::from_raw(pid).unwrap();
+    assert!(
+        rustix::process::test_kill_process(pid).is_ok(),
+        "the cancel waited for the account's process"
+    );
+    assert!(matches!(login_state(&backend, &master, &id).await, LoginState::Cancelled));
+    // The cancelled login's directory goes while the account's process
+    // still ends: the login did not wait to replace the account's.
+    eventually("the cancelled login's directory goes", || async {
+        login_directories(&home)
+            .iter()
+            .all(|(login, _)| !std::path::Path::new(login).exists())
+    })
+    .await;
+    std::fs::remove_file(&hold).unwrap();
+    std::fs::write(&release, "").unwrap();
+    let signed_in = std::fs::read_to_string(format!("{directory}/.credentials.json")).unwrap();
+    assert!(signed_in.contains("access-first-again"), "{signed_in}");
+
+    // Removing the account closes its process and deletes its directory.
+    first.chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a21", "once more").await;
+    let removed = backend.delete(&format!("{accounts_path}/{account}"), &master).await;
+    assert_eq!(removed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&removed.body));
+    assert!(!std::path::Path::new(&directory).exists());
+    let processes = std::fs::read_to_string(format!("{home}/claude-processes.log")).unwrap();
+    assert_eq!(processes.lines().filter(|line| line.starts_with("ended")).count(), 3, "{processes}");
+    drop((first, second));
+    backend.close().await;
+    log.close().await;
+}
+
+/// The handover of an earlier release's sign-in puts each file in place
+/// whole, the credentials last (`claude-code.md` § Accounts and sign-in): a
+/// handover that cannot put the account's file in place leaves the
+/// directory without a sign-in and the record holding it, and the next
+/// start hands it over.
+// A second or two: the machine boots, a sign-in is cancelled, and a CLI
+// process starts.
+#[tokio::test]
+async fn a_handover_that_fails_leaves_no_sign_in_and_keeps_the_record() {
+    let cache = tempfile::tempdir().unwrap();
+    let (distribution, catalog) = vendors().await;
+    let older = install_by_hand(cache.path(), OLDER).await;
+    let kept = Kept::start(&distribution, &catalog, cache.path()).await;
+    // A cancelled sign-in boots the machine.
+    let accounts_path = format!("/api/providers/{}/accounts", kept.provider);
+    let id = waiting_login(&kept.backend, &kept.master, &format!("{accounts_path}/login"), json!({})).await;
+    let cancelled = kept.backend.delete(&format!("{LOGIN}/{id}"), &kept.master).await;
+    assert_eq!(cancelled.status, StatusCode::NO_CONTENT);
+    let accounts = kept.backend.get(&accounts_path, Some(&kept.master)).await.json::<Accounts>();
+    let account = accounts.active.unwrap();
+    let home = kept.harness.manager.home(&kept.harness.manager.claude_code_machine());
+    let directory = format!("{home}/accounts/{account}");
+    // The account's file cannot be put in place: its name is taken by a
+    // directory that is not empty.
+    let blocked = format!("{directory}/.claude.json");
+    std::fs::create_dir_all(format!("{blocked}/inside")).unwrap();
+    let said = kept.said(1).await;
+    assert!(said.starts_with("failed: "), "{said}");
+    assert!(!std::path::Path::new(&format!("{directory}/.credentials.json")).exists());
+    let secret = || -> Option<Vec<u8>> {
+        kept.harness
+            .control_database()
+            .query_row("SELECT secret FROM provider_credentials", [], |row| row.get(0))
+            .unwrap()
+    };
+    assert!(secret().is_some());
+    std::fs::remove_dir_all(&blocked).unwrap();
+    let said = kept.said(2).await;
+    assert!(said.starts_with(&format!("cli={older} token=access-kept ")), "{said}");
+    assert_eq!(secret(), None);
     kept.close().await;
 }

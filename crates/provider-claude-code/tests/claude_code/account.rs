@@ -1,48 +1,47 @@
-//! The account, its quota and the catalog (`providers.md` § Subscription
-//! secrets, `usage-and-quota.md` § Claude Code, `models.md` § Directories).
+//! The account, its sign-in, its quota and the catalog (`claude-code.md` §
+//! Accounts and sign-in, `usage-and-quota.md` § Claude Code, `models.md` §
+//! Directories).
 
 use std::sync::Arc;
 
-use demi_provider_claude_code::{
-    AccountMachine, AccountWork, ClaudeCodeConfig, ClaudeCodeProvider, StartError,
-};
-use std::rc::Rc;
-
+use demi_host_interface::{ProcessEnd, Signal, SpawnEnv};
+use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider, CliWork};
 use demi_provider_common::credentials::{
-    AccountsCapability, CredentialPool, LoginError, LoginIo, LoginKind, MemoryCredentialPool,
+    AccountLabel, AccountsCapability, CredentialPool as _, LoginError, LoginIo, LoginKind,
+    MemoryCredentialPool,
 };
-use tokio_util::sync::CancellationToken;
 use demi_provider_common::quota::{MemorySnapshots, QuotaError};
 use demi_provider_common::testing::{MockResponse, MockVendor, login_io};
-use demi_provider_common::{
-    CatalogError, ErrorCode, Provider, ProviderEvent, RuntimeEnv, RuntimeError,
-};
-use futures_util::future::BoxFuture;
+use demi_provider_common::{CatalogError, Provider, RuntimeEnv, RuntimeError, Secret};
 use demi_shared_types::{
-    AuthState, LoginStage, QuotaKind, QuotaScope, QuotaSeverity, RuntimeState, SnapshotSource,
+    AuthState, LoginStage, QuotaKind, QuotaPlan, QuotaScope, QuotaSeverity, RuntimeState,
+    SnapshotSource,
 };
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::cli::*;
 
-fn json_answer(body: serde_json::Value) -> MockResponse {
+fn json_answer(body: Value) -> MockResponse {
     MockResponse::status(200)
         .header("content-type", "application/json")
         .chunk(body.to_string())
 }
 
-#[tokio::test(flavor = "local")]
-async fn a_sign_in_is_an_account_named_by_its_email_that_signs_in_on_a_machine_and_runs_in_a_placement()
-{
-    let pool = MemoryCredentialPool::new();
-    let staged = ClaudeCodeProvider::new(
-        ClaudeCodeConfig::new("entry-1", "Claude", None),
+/// A provider of an entry with no account yet, as a first sign-in builds.
+fn staged(pool: &MemoryCredentialPool) -> ClaudeCodeProvider {
+    ClaudeCodeProvider::new(
+        ClaudeCodeConfig::new("entry-1", "Claude", None, None),
         Arc::new(pool.clone()),
         Arc::new(MemorySnapshots::new()),
-        models_dev_client("http://127.0.0.1:9/api.json"),
-        reqwest::Client::new(),
+        models_dev_client(NOWHERE),
         clock(),
-    );
+    )
+}
+
+#[tokio::test(flavor = "local")]
+async fn an_account_is_named_by_its_record_and_runs_only_in_a_placement() {
+    let pool = MemoryCredentialPool::new();
+    let staged = staged(&pool);
     let unauthenticated = AuthState::Unauthenticated {
         message: Some("No Claude Code account is signed in".into()),
     };
@@ -55,23 +54,16 @@ async fn a_sign_in_is_an_account_named_by_its_email_that_signs_in_on_a_machine_a
         accounts.login(login_io(&|_| {})).await.unwrap_err(),
         LoginError::Unsupported
     );
-    let signing_in = staged.login_accounts(Arc::new(NoMachine));
-    assert_eq!(
-        signing_in.capability(),
-        AccountsCapability {
-            login: Some(LoginKind::PastedCode)
-        }
-    );
 
-    let account = seed(&pool, sign_in(TOKEN, REFRESH, "2026-09-24T16:00:00Z")).await;
-    let provider = provider_of(&pool, &account, &NOWHERE);
+    let account = seed(&pool, None).await;
+    let provider = provider_of(&pool, &account);
     let signed_in = AuthState::Authenticated {
         account_label: Some("alex@example.test".into()),
     };
     assert_eq!(provider.auth_status().await, signed_in);
     assert!(provider.capabilities().process_host);
-    // Whether it can run is the Cloud's to show, which the provider does not
-    // ask.
+    // Whether it can run is its machine's to show, which the provider does
+    // not ask.
     assert!(matches!(
         provider.runtime_state(),
         RuntimeState::Unknown { .. }
@@ -88,40 +80,117 @@ async fn a_sign_in_is_an_account_named_by_its_email_that_signs_in_on_a_machine_a
     );
 }
 
-/// A machine whose placement reports reaching it and then fails the start
-/// with `0` at once.
-struct FailingMachine(&'static str);
+// A few milliseconds: the scripted CLI signs in at once.
+#[tokio::test(flavor = "local")]
+async fn a_sign_in_runs_the_clis_login_in_a_new_directory_which_becomes_the_accounts() {
+    let pool = MemoryCredentialPool::new();
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let accounts = staged(&pool).login_accounts(machine(&placement));
+    assert_eq!(
+        accounts.capability(),
+        AccountsCapability {
+            login: Some(LoginKind::PastedCode)
+        }
+    );
+    let reached = std::sync::Mutex::new(Vec::new());
+    let stage = |stage: LoginStage| reached.lock().unwrap().push(stage);
+    let shown = std::sync::Mutex::new(None);
+    let pending = |pending: demi_shared_types::LoginPending| {
+        *shown.lock().unwrap() = Some(pending.verification_url);
+    };
+    let (codes, received) = tokio::sync::mpsc::unbounded_channel();
+    let io = LoginIo {
+        stage: &stage,
+        codes: received,
+        ..login_io(&pending)
+    };
+    let link = "https://claude.com/cai/oauth/authorize?code=true&state=scripted";
+    let (signed_in, (cli, holding)) = tokio::join!(accounts.login(io), async {
+        let mut cli = starts.next().await;
+        // The sign-in holds the machine while it runs.
+        let holding = placement.leases();
+        cli.say_text(&format!("Opening browser to sign in…\nIf the browser didn't open, visit: {link}\n"));
+        codes.send(Secret::try_from("code#state".to_owned()).unwrap()).unwrap();
+        // The code goes to the CLI with its newline, as the user typed it.
+        assert_eq!(cli.read().await, Value::String("code#state".into()));
+        cli.write_file(
+            ".claude.json",
+            r#"{"numStartups":1,"oauthAccount":{"accountUuid":"uuid-1","emailAddress":"alex@example.test","organizationUuid":"org-1"}}"#,
+        );
+        cli.write_file(".credentials.json", r#"{"claudeAiOauth":{"accessToken":"never-read"}}"#);
+        cli.exit(ProcessEnd::Exited(0));
+        (cli, holding)
+    });
+    let info = signed_in.unwrap();
+    assert_eq!(holding, 1);
+    assert_eq!(placement.leases(), 0);
+    assert_eq!(shown.lock().unwrap().as_deref(), Some(link));
+    assert_eq!(
+        *reached.lock().unwrap(),
+        [LoginStage::WaitingForMachine, LoginStage::Starting]
+    );
+    // The CLI's own login, in a new directory of its own.
+    assert_eq!(cli.work, CliWork::Login);
+    assert_eq!(cli.spawn.args, ["auth", "login", "--claudeai"]);
+    let SpawnEnv::Overlay(env) = &cli.spawn.env else {
+        panic!("the login's environment is an overlay");
+    };
+    assert_eq!(env["CLAUDE_CONFIG_DIR"].as_deref(), Some(cli.config_dir()));
+    // The account is the one the CLI signed in, named by its email; its
+    // record holds no token, and its directory is the sign-in's.
+    let key = AccountLabel {
+        label: "alex@example.test".into(),
+        detail: None,
+        identity_key: Some("account:uuid-1".into()),
+    };
+    assert_eq!(info.label, key.label);
+    assert_eq!(placement.adopted(), [info.id.clone()]);
+    assert_eq!(pool.document(&info.id).read().await.unwrap(), None);
+    let stored = pool.meta(&info.id).await.unwrap().unwrap();
+    assert_eq!(stored.identity_key, key.identity_key);
+    assert!(!stored.signed_out);
+}
 
-impl AccountMachine for FailingMachine {
-    fn run(&self, _: String, work: AccountWork) -> BoxFuture<'static, Result<(), StartError>> {
-        let failure = self.0;
-        let (ended, end) = tokio::sync::oneshot::channel();
-        tokio::task::spawn_local(async move {
-            let (placement, _starts) = ScriptedPlacement::new();
-            placement.fail_next(failure);
-            work(Rc::new(placement), CancellationToken::new()).await;
-            // The test waits for the answer, not for this.
-            let _ = ended.send(());
-        });
-        Box::pin(async move {
-            end.await.expect("the work runs to its end");
-            Ok(())
-        })
-    }
+// A few milliseconds: the scripted CLI signs in at once.
+#[tokio::test(flavor = "local")]
+async fn a_sign_in_stopped_while_it_waits_for_the_accounts_processes_ends_at_once() {
+    let pool = MemoryCredentialPool::new();
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let accounts = staged(&pool).login_accounts(machine(&placement));
+    let adopting = placement.hold_adoptions();
+    let (codes, received) = tokio::sync::mpsc::unbounded_channel();
+    let stop = tokio_util::sync::CancellationToken::new();
+    let io = LoginIo {
+        codes: received,
+        stop: stop.clone(),
+        ..login_io(&|_| {})
+    };
+    let login = demi_provider_common::testing::guarded("the stopped sign-in's end", accounts.login(io));
+    let (stopped, ()) = tokio::join!(login, async {
+        let mut cli = starts.next().await;
+        cli.say_text("If the browser didn't open, visit: https://claude.com/cai/oauth/authorize?state=s\n");
+        codes.send(Secret::try_from("code#state".to_owned()).unwrap()).unwrap();
+        cli.read().await;
+        cli.write_file(".claude.json", r#"{"oauthAccount":{"accountUuid":"uuid-1","emailAddress":"alex@example.test"}}"#);
+        cli.exit(ProcessEnd::Exited(0));
+        // The account's processes never end; the user cancels meanwhile.
+        adopting.await;
+        stop.cancel();
+    });
+    // Cancel ends the sign-in, which stores nothing and lets go of the
+    // machine.
+    assert_eq!(stopped.unwrap_err(), LoginError::Stopped);
+    assert!(placement.adopted().is_empty());
+    assert!(pool.list().await.unwrap().is_empty());
+    assert_eq!(placement.leases(), 0);
 }
 
 // Instant: the start fails as soon as the machine is reached.
 #[tokio::test(flavor = "local")]
 async fn a_sign_in_that_fails_right_after_a_stage_reports_the_stage_before_its_failure() {
-    let staged = ClaudeCodeProvider::new(
-        ClaudeCodeConfig::new("entry-1", "Claude", None),
-        Arc::new(MemoryCredentialPool::new()),
-        Arc::new(MemorySnapshots::new()),
-        models_dev_client("http://127.0.0.1:9/api.json"),
-        reqwest::Client::new(),
-        clock(),
-    );
-    let accounts = staged.login_accounts(Arc::new(FailingMachine("Your Cloud did not reconnect")));
+    let (placement, _starts) = ScriptedPlacement::new();
+    placement.fail_next("The Claude Code machine did not reconnect");
+    let accounts = staged(&MemoryCredentialPool::new()).login_accounts(machine(&placement));
     let reached = std::sync::Mutex::new(Vec::new());
     let stage = |stage: LoginStage| reached.lock().unwrap().push(stage);
     let io = LoginIo {
@@ -129,84 +198,102 @@ async fn a_sign_in_that_fails_right_after_a_stage_reports_the_stage_before_its_f
         ..login_io(&|_| {})
     };
     let failed = accounts.login(io).await.unwrap_err();
-    assert_eq!(failed, LoginError::Failed("Your Cloud did not reconnect".into()));
-    assert_eq!(*reached.lock().unwrap(), [LoginStage::WaitingForCloud]);
+    assert_eq!(
+        failed,
+        LoginError::Failed("The Claude Code machine did not reconnect".into())
+    );
+    assert_eq!(*reached.lock().unwrap(), [LoginStage::WaitingForMachine]);
 }
 
-/// A machine nothing signs in on.
-struct NoMachine;
+/// What Claude Code 2.1.301 answers `get_usage` with, around `rate_limits`.
+fn usage_answer(request_id: &Value, rate_limits: Value) -> Value {
+    json!({ "type": "control_response", "response": {
+        "subtype": "success",
+        "request_id": request_id,
+        "response": {
+            "session": { "total_cost_usd": 0, "model_usage": {} },
+            "subscription_type": "max",
+            "rate_limits_available": true,
+            "rate_limits": rate_limits,
+            "behaviors": null,
+        },
+    } })
+}
 
-impl AccountMachine for NoMachine {
-    fn run(&self, _: String, _: AccountWork) -> BoxFuture<'static, Result<(), StartError>> {
-        unreachable!("no sign-in runs")
-    }
+/// Probes `provider`'s usage on `placement`, whose process answers
+/// `get_usage` with `rate_limits`, and answers the probe's result with the
+/// process.
+async fn probed(
+    provider: &ClaudeCodeProvider,
+    starts: &mut Starts,
+    rate_limits: Value,
+) -> (Result<Arc<demi_shared_types::QuotaSnapshot>, QuotaError>, Cli) {
+    tokio::join!(provider.quota().unwrap().probe(), async {
+        let mut cli = starts.next().await;
+        let initialize = cli.read().await;
+        assert_eq!(initialize["request"], json!({ "subtype": "initialize" }));
+        let usage = cli.read().await;
+        assert_eq!(
+            usage["request"],
+            json!({ "subtype": "get_usage", "skip_behaviors": true })
+        );
+        cli.say(json!({ "type": "system", "subtype": "init" }));
+        cli.say(json!({ "type": "control_response", "response": {
+            "subtype": "success", "request_id": initialize["request_id"] } }));
+        cli.say(usage_answer(&usage["request_id"], rate_limits));
+        cli
+    })
 }
 
 #[tokio::test(flavor = "local")]
-async fn an_account_of_a_setup_token_fails_with_a_message_to_sign_in_again_and_starts_no_process() {
+async fn the_quota_is_the_clis_usage_answer_in_the_accounts_directory_and_its_lines() {
     let pool = MemoryCredentialPool::new();
-    let account = seed(
-        &pool,
-        json!({ "accessToken": "sk-ant-oat01-old-setup-token" }).to_string(),
+    let account = seed(&pool, None).await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let provider = provider_on(&pool, &account, Some(machine(&placement)));
+    let (snapshot, cli) = probed(
+        &provider,
+        &mut starts,
+        json!({
+            "five_hour": { "utilization": 12, "resets_at": "2026-09-24T10:00:00.000Z" },
+            "seven_day": { "utilization": "lots" },
+            "seven_day_opus": null,
+            "limits": [
+                { "kind": "session", "percent": 12 },
+                { "percent": 50 },
+                { "kind": "weekly_scoped", "percent": 100, "severity": "critical",
+                  "resets_at": "2026-09-28T08:00:00Z", "scope": { "model": { "display_name": "Fable" } } },
+                { "kind": "monthly_credits", "percent": 85, "severity": "sideways" },
+            ],
+        }),
     )
     .await;
-    let provider = provider_of(&pool, &account, &NOWHERE);
-    let message = "The Claude Code account cannot be read: its secret document is malformed \
-                   at .: a field is missing, unknown or of the wrong type. Remove \
-                   the account and sign in again";
-    // The document is refused, never repaired, and its token never shown.
+    let snapshot = snapshot.unwrap();
+    // A process of the account's directory that sends no message, whose
+    // quota reading stays on, closed once it answered.
     assert_eq!(
-        provider.auth_status().await,
-        AuthState::Error {
-            message: message.into()
+        cli.work,
+        CliWork::Account {
+            account,
+            handover: None
         }
     );
-    let (placement, _starts) = ScriptedPlacement::new();
-    let mut runtime = runtime_of(&provider, &placement);
-    let events = all_events(runtime.run(request(vec![user("hi")]))).await;
-    let [ProviderEvent::Error(failure)] = events.as_slice() else {
-        panic!("the request did not fail: {events:?}");
+    let SpawnEnv::Overlay(env) = &cli.spawn.env else {
+        panic!("the probe's environment is an overlay");
     };
-    assert_eq!(
-        (failure.message.as_str(), failure.code.clone()),
-        (message, Some(ErrorCode::AuthInvalid))
-    );
-    assert_eq!(placement.starts(), 0);
-    let stored = pool.document(&account).read().await.unwrap().unwrap();
-    assert!(stored.text.contains("sk-ant-oat01-old-setup-token"));
-}
-
-#[tokio::test(flavor = "local")]
-async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_lines() {
-    let vendor = MockVendor::start().await;
-    let usage = vendor.url("/api/oauth/usage");
-    let urls = Urls {
-        usage: &usage,
-        ..NOWHERE
-    };
-    let (provider, _) = provider_with(TOKEN, &urls).await;
-    vendor.respond(json_answer(json!({
-        "five_hour": { "utilization": 12, "resets_at": "2026-09-24T10:00:00.000Z" },
-        "seven_day": { "utilization": "lots" },
-        "seven_day_opus": null,
-        "limits": [
-            { "kind": "session", "percent": 12 },
-            { "percent": 50 },
-            { "kind": "weekly_scoped", "percent": 100, "severity": "critical",
-              "resets_at": "2026-09-28T08:00:00Z", "scope": { "model": { "display_name": "Fable" } } },
-            { "kind": "monthly_credits", "percent": 85, "severity": "sideways" },
-        ],
-    })));
-    let quota = provider.quota().unwrap();
-    let snapshot = quota.probe().await.unwrap();
-    let request = &vendor.requests()[0];
-    assert_eq!(
-        request.header("authorization"),
-        Some(format!("Bearer {TOKEN}").as_str())
-    );
-    assert_eq!(request.header("anthropic-beta"), Some("oauth-2025-04-20"));
+    assert_eq!(env["CLAUDE_CONFIG_DIR"].as_deref(), Some(cli.config_dir()));
+    assert_eq!(env.get("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"), Some(&None));
+    assert!(!cli.spawn.args.iter().any(|arg| arg == "--resume"));
+    assert!(cli.end().is_some());
+    assert_eq!(placement.leases(), 0);
     assert_eq!(snapshot.source, SnapshotSource::Probe);
-    assert_eq!(snapshot.plan, None);
+    assert_eq!(
+        snapshot.plan,
+        Some(QuotaPlan {
+            id: "max".into(),
+            label: "Max".into()
+        })
+    );
     let ids: Vec<&str> = snapshot
         .windows
         .iter()
@@ -240,26 +327,27 @@ async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_li
     // A severity Demi does not know falls back to the share's.
     assert_eq!(snapshot.windows[2].severity, Some(QuotaSeverity::Warning));
 
-    // An answer that is not a usage object is refused, never read as empty.
-    vendor.respond(json_answer(json!(["five_hour"])));
-    let unreadable = quota.probe().await.unwrap_err();
-    assert!(
-        matches!(unreadable, QuotaError::Invalid(_)),
-        "{unreadable:?}"
-    );
+    // Rate limits that are not a usage object are refused, never read as
+    // empty, and so are none, which the CLI answers when its quota reading
+    // is off.
+    for rate_limits in [json!(["five_hour"]), Value::Null] {
+        let (unreadable, _) = probed(&provider, &mut starts, rate_limits).await;
+        let unreadable = unreadable.unwrap_err();
+        assert!(matches!(unreadable, QuotaError::Invalid(_)), "{unreadable:?}");
+    }
 
-    // A refusal says why.
-    vendor.respond(MockResponse::status(401).chunk("token expired"));
-    let refused = quota.probe().await.unwrap_err();
-    assert_eq!(
-        refused,
-        QuotaError::Unavailable("Claude usage request failed (401): token expired".into())
-    );
+    // A probe whose process ends before it answers says why.
+    let (ended, ()) = tokio::join!(provider.quota().unwrap().probe(), async {
+        let cli = starts.next().await;
+        cli.stderr("Not logged in\n");
+        cli.exit(ProcessEnd::Exited(1));
+    });
+    assert_eq!(ended.unwrap_err(), QuotaError::Unavailable("Not logged in".into()));
 
     // A `rate_limit_event` line, as Claude Code 2.1.286 prints it from the
     // vendor's headers, updates the windows it names and keeps the others.
-    let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
+    let quota = provider.quota().unwrap();
     let (_, ()) = tokio::join!(
         all_events(runtime.run(request_without_tools(vec![user("hi")]))),
         async {
@@ -312,19 +400,55 @@ async fn the_quota_is_probed_with_the_accounts_token_and_observed_on_the_clis_li
     assert_eq!(observed.windows.len(), 5);
 }
 
+// Thirty seconds on a paused clock, then a few milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_probe_that_times_out_or_is_given_up_closes_its_process_sigterm_first() {
+    let pool = MemoryCredentialPool::new();
+    let account = seed(&pool, None).await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let provider = provider_on(&pool, &account, Some(machine(&placement)));
+    // A CLI that reads the usage request and never answers it.
+    async fn unanswered(starts: &mut Starts) -> Cli {
+        let mut cli = starts.next().await;
+        cli.read().await;
+        cli.read().await;
+        cli
+    }
+    let (timed_out, cli) = tokio::join!(provider.quota().unwrap().probe(), unanswered(&mut starts));
+    assert_eq!(
+        timed_out.unwrap_err(),
+        QuotaError::Unavailable("Claude Code did not answer its usage request within 30 seconds".into())
+    );
+    // Closed, never killed outright: a kill while the CLI renews the
+    // account's sign-in stops the account for a minute.
+    assert_eq!(cli.signals(), [Signal::Terminate]);
+    assert!(!cli.dropped());
+    assert!(cli.config_removed());
+
+    // Nobody waits for the probe any more: its process is closed the same
+    // way.
+    let mut probe = Box::pin(provider.quota().unwrap().probe());
+    let cli = tokio::select! {
+        probed = &mut probe => panic!("the probe ended unanswered: {probed:?}"),
+        cli = unanswered(&mut starts) => cli,
+    };
+    drop(probe);
+    cli.ended().await;
+    assert_eq!(cli.signals(), [Signal::Terminate]);
+    assert!(!cli.dropped());
+    assert_eq!(placement.leases(), 0);
+}
+
 /// A limit of the probe has its period and its model, never the vendor's
 /// kind, which the page names it from (`usage-and-quota.md` § Claude Code).
 #[tokio::test(flavor = "local")]
 async fn a_probed_limit_has_its_period_and_model() {
-    let vendor = MockVendor::start().await;
-    let usage = vendor.url("/api/oauth/usage");
-    let urls = Urls {
-        usage: &usage,
-        ..NOWHERE
-    };
-    let (provider, _) = provider_with(TOKEN, &urls).await;
+    let pool = MemoryCredentialPool::new();
+    let account = seed(&pool, None).await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let provider = provider_on(&pool, &account, Some(machine(&placement)));
     let on = |model: &str| json!({ "model": { "display_name": model } });
-    vendor.respond(json_answer(json!({
+    let (snapshot, _) = probed(&provider, &mut starts, json!({
         "limits": [
             { "kind": "weekly_scoped", "percent": 10, "scope": on("Fable") },
             { "kind": "session_scoped", "percent": 20, "scope": on("Fable") },
@@ -332,8 +456,9 @@ async fn a_probed_limit_has_its_period_and_model() {
             { "kind": "monthly_credits", "percent": 40, "scope": on("Opus") },
             { "kind": "monthly_credits", "percent": 50 },
         ],
-    })));
-    let snapshot = provider.quota().unwrap().probe().await.unwrap();
+    }))
+    .await;
+    let snapshot = snapshot.unwrap();
     let names: Vec<(Option<u64>, Option<&str>)> = snapshot
         .windows
         .iter()
@@ -383,12 +508,15 @@ async fn the_catalog_is_models_devs_claude_models_from_4_6_flagship_first_and_th
         },
         "openai": { "id": "openai", "name": "OpenAI", "models": {} },
     })));
-    let models_dev = vendor.url("/api.json");
-    let urls = Urls {
-        models_dev: &models_dev,
-        ..NOWHERE
-    };
-    let (provider, _) = provider_with(TOKEN, &urls).await;
+    let pool = MemoryCredentialPool::new();
+    let account = seed(&pool, None).await;
+    let provider = ClaudeCodeProvider::new(
+        ClaudeCodeConfig::new("entry-1", "Claude", Some(account), None),
+        Arc::new(pool),
+        Arc::new(MemorySnapshots::new()),
+        models_dev_client(&vendor.url("/api.json")),
+        clock(),
+    );
     let catalog = provider.list_models().await.unwrap();
     let ids: Vec<&str> = catalog
         .models

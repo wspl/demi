@@ -24,7 +24,6 @@ use std::sync::{Arc, Mutex, PoisonError};
 use std::time::Duration;
 
 use demi_backend_page_sync::{Part, SyncRegistry};
-use demi_provider_claude_code::AccountMachine;
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::{LoginError, LoginIo, LoginKind, MemoryCredentialPool};
 use demi_shared_types::{Clock, LoginPending, LoginStage, RequestId, Timestamp};
@@ -235,8 +234,8 @@ impl LoginFlows {
 
     /// Starts `starter`'s login of `family`, which the request `request`
     /// asked for: into `existing`, or into a new entry of `owner`'s
-    /// labelled `label`. A login that runs a process runs it on `machine`,
-    /// the starter's. Only `starter` reads, answers and cancels it.
+    /// labelled `label`. A login that runs a process runs it on the Claude
+    /// Code machine. Only `starter` reads, answers and cancels it.
     pub async fn start(
         self: &Arc<Self>,
         owner: UserId,
@@ -244,7 +243,6 @@ impl LoginFlows {
         family: String,
         label: String,
         existing: Option<ProviderEntry>,
-        machine: Arc<dyn AccountMachine>,
         request: RequestId,
     ) -> Result<LoginId, LoginRefusal> {
         if self.closing.is_cancelled() {
@@ -324,7 +322,7 @@ impl LoginFlows {
         let prepared = async {
             let (accounts, target) = match existing {
                 Some(entry) => {
-                    let accounts = self.assembly.login_accounts(&entry, machine).await?;
+                    let accounts = self.assembly.login_accounts(&entry).await?;
                     let entry = Box::new(entry);
                     (accounts, Target::Existing { entry })
                 }
@@ -344,7 +342,6 @@ impl LoginFlows {
                         id.as_str(),
                         &label,
                         Arc::new(staged.clone()),
-                        machine,
                     )?;
                     (
                         accounts,
@@ -747,7 +744,7 @@ mod tests {
 
     use demi_backend_database::control::{ControlService, testing};
     use demi_backend_page_sync::Registration;
-    use demi_provider_claude_code::{AccountWork, StartError};
+
     use demi_provider_common::Provider;
     use demi_provider_common::credentials::{
         AccountKit, AccountLabel, Accounts, AccountsCapability, NewAccount, SubscriptionAccounts,
@@ -839,7 +836,7 @@ mod tests {
                     });
                     std::future::pending::<()>().await;
                     Ok(NewAccount {
-                        secret: "{}".into(),
+                        secret: Some("{}".into()),
                         label: AccountLabel {
                             label: "never".into(),
                             detail: None,
@@ -950,7 +947,6 @@ mod tests {
                 "pasted".into(),
                 "Pasted".into(),
                 None,
-                Arc::new(NoMachine),
                 RequestId::try_from("req_starting".to_owned()).unwrap(),
             )
             .await
@@ -1048,7 +1044,6 @@ mod tests {
                 "none".into(),
                 "None".into(),
                 None,
-                Arc::new(NoMachine),
                 request.clone(),
             )
         };
@@ -1099,15 +1094,6 @@ mod tests {
             panic!("the entry is still held");
         };
         flows.close().await;
-    }
-
-    /// The machine of a backend whose logins run no process.
-    struct NoMachine;
-
-    impl AccountMachine for NoMachine {
-        fn run(&self, _: String, _: AccountWork) -> BoxFuture<'static, Result<(), StartError>> {
-            unreachable!("a device login runs no process")
-        }
     }
 
     /// A provider that only logs in.
@@ -1260,7 +1246,6 @@ mod tests {
                 "device".into(),
                 "Device".into(),
                 None,
-                Arc::new(NoMachine),
                 request.clone(),
             )
             .await

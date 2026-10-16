@@ -36,6 +36,7 @@ pub(crate) fn read_failure(
         Some(reset) => ProviderFailureFacts {
             retry_at: Some(reset),
             continue_with: None,
+            signed_out: None,
         },
         None => read_http_failure(diagnostics, received_at),
     }

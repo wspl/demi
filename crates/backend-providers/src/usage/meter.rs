@@ -346,6 +346,10 @@ impl ProviderRuntime for MeteredRuntime {
         self.inner.close()
     }
 
+    fn idle(&mut self) {
+        self.inner.idle();
+    }
+
     fn prepares_ahead(&self) -> bool {
         self.inner.prepares_ahead()
     }

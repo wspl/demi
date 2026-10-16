@@ -242,6 +242,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
           :code="block.code"
           :diagnostics="block.diagnostics"
           :retry-at="failure?.retryAt ?? null"
+          :signed-out="failure?.signedOut ?? null"
         />
       </div>
       <div

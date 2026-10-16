@@ -95,7 +95,7 @@ async fn a_refused_token_that_another_refresher_replaced_meanwhile_is_not_refres
             &vendor,
             json!({ "accessToken": "rotated-token", "refreshToken": "refresh-2" }),
         );
-        assert!(doc.replace(rotated, version).await.unwrap());
+        assert!(doc.replace(Some(rotated), version).await.unwrap());
         drop(turn);
     };
     let (events, ()) = tokio::join!(run(runtime.as_mut(), inference_request()), other);
@@ -267,8 +267,9 @@ async fn the_status_names_the_account_and_an_unreadable_or_absent_one_is_reporte
         updated_at: crate::NOW.parse().unwrap(),
         source: "test".into(),
         identity_key: None,
+        signed_out: false,
     };
-    pool.write(other, "{}".into()).await.unwrap();
+    pool.write(other, Some("{}".into())).await.unwrap();
     pool.set_active("cred-b").await.unwrap();
     assert_eq!(signed_in.auth_status().await, expected);
     // A field of the wrong type is corrupt material, refused without its

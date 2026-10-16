@@ -4,7 +4,7 @@
 //! with its records, their encryption and scope, subscription accounts,
 //! login flows and quotas (`vault`); and usage metering with the request
 //! rate limit (`usage`). A provider that needs a process gets it from the
-//! user's shard, which places it on the user's Cloud.
+//! user's shard, which places it on the Claude Code machine.
 
 pub mod llm;
 pub mod usage;

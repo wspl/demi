@@ -26,6 +26,9 @@ pub struct AccountMeta {
     /// family from the account itself, so that logging in again with the
     /// same account replaces its record.
     pub identity_key: Option<String>,
+    /// The vendor refused the account's sign-in; a login of the account
+    /// clears it (`claude-code.md` § Accounts and sign-in).
+    pub signed_out: bool,
 }
 
 impl AccountMeta {
@@ -36,6 +39,7 @@ impl AccountMeta {
             label: self.label.clone(),
             detail: self.detail.clone(),
             updated_at: Some(self.updated_at),
+            signed_out: self.signed_out,
         }
     }
 }
@@ -68,10 +72,11 @@ pub trait AccountDocument: Send + Sync {
     /// The current revision, or `None` when the account has no document.
     fn read(&self) -> BoxFuture<'_, Result<Option<Revision>, PoolError>>;
 
-    /// Stores `text` if the document is still at `version`; `false` when
-    /// another writer stored first, and the caller then reads again and uses
-    /// what it finds.
-    fn replace(&self, text: String, version: u64) -> BoxFuture<'_, Result<bool, PoolError>>;
+    /// Stores `text` if the document is still at `version`, or clears the
+    /// document when `text` is `None`; `false` when another writer stored
+    /// first, and the caller then reads again and uses what it finds.
+    fn replace(&self, text: Option<String>, version: u64)
+    -> BoxFuture<'_, Result<bool, PoolError>>;
 
     /// Waits until no other refresh of this account runs in this process. A
     /// refresh token is spent once, so refreshes of one account take turns and
@@ -98,8 +103,19 @@ pub trait CredentialPool: Send + Sync {
     fn set_active<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), PoolError>>;
 
     /// Inserts the account, or replaces the one with its id, with its secret
-    /// document.
-    fn write(&self, meta: AccountMeta, secret: String) -> BoxFuture<'_, Result<(), PoolError>>;
+    /// document; none for a family whose sign-in is kept elsewhere, such as
+    /// Claude Code's CLI (`providers.md` § Subscription secrets). Writing an
+    /// account clears its `signed_out`.
+    fn write(
+        &self,
+        meta: AccountMeta,
+        secret: Option<String>,
+    ) -> BoxFuture<'_, Result<(), PoolError>>;
+
+    /// Marks the account as signed out: the vendor refused its sign-in
+    /// (`claude-code.md` § Accounts and sign-in). An account removed
+    /// meanwhile marks nothing.
+    fn sign_out<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), PoolError>>;
 
     /// The secret document of the account `id`, which need not exist yet.
     fn document(&self, id: &str) -> Box<dyn AccountDocument>;

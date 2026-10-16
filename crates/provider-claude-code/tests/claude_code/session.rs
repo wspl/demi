@@ -252,7 +252,7 @@ async fn a_new_process_resumes_the_blocks_with_the_clis_entries_as_they_were_and
         "sessionId": SESSION,
         "timestamp": NOW,
         "attachment": { "type": "environment", "snapshot": {
-            "workingDirectory": "/home/demi/.demi/claude/run",
+            "workingDirectory": "/home/demi/run",
             "isWorktree": false,
             "isGitRepo": false,
             "additionalWorkingDirectories": [],

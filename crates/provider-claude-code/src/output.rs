@@ -16,6 +16,9 @@ use serde::Deserialize;
 
 use crate::failure::USAGE_LIMIT;
 
+/// The `error` the CLI names a call with whose sign-in the vendor refused.
+const AUTHENTICATION_FAILED: &str = "authentication_failed";
+
 tagged_wire! {
     /// One line of the CLI's output.
     pub(crate) enum Line {
@@ -88,6 +91,13 @@ impl AssistantLine {
     /// whose text repeats the failure the `result` line reports.
     pub(crate) fn is_refusal_notice(&self) -> bool {
         self.error.as_deref().is_some()
+    }
+
+    /// Whether the notice says the vendor refused the account's sign-in,
+    /// which the CLI could not renew (`authentication_failed`, Claude Code
+    /// 2.1.301).
+    pub(crate) fn refused_sign_in(&self) -> bool {
+        self.error.as_deref() == Some(AUTHENTICATION_FAILED)
     }
 
     /// The id of the message the line is part of.
@@ -306,6 +316,9 @@ pub(crate) struct ControlResponseBody {
     /// Why a request failed, as the CLI words it.
     #[serde(default)]
     pub(crate) error: ReportedString,
+    /// What a request that succeeded answered, such as `get_usage`'s usage.
+    #[serde(default)]
+    pub(crate) response: Option<serde_json::Value>,
 }
 
 /// The line that ends the CLI's turn.

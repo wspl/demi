@@ -53,7 +53,9 @@ pub use content::{
     ToolResultContentBlock, UserContentBlock, attachment_tag, char_offset, is_blank, push_escaped, trim,
     xml_escaped,
 };
-pub use failure::{ContinueWith, FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts};
+pub use failure::{
+    ContinueWith, FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, SignedOutAccount,
+};
 pub use context_limit::{
     CONTEXT_LIMIT_STEPS, ContextChoice, ContextLimitStep, ContextWordError, applied_context_limit,
     context_limits, context_word, effective_context_window, is_context_limit, offered_contexts,

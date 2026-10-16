@@ -1145,9 +1145,9 @@ catalog never resends a failed message.
 Each provider carries its models, `sourceFetchedAt`, `stale` and `warnings`,
 its authentication and runtime health, the `availability` the backend derives
 from that health, and `cliPackage`: the command package that installs the
-CLI its requests start on the user's Cloud, such as `demi.claude-code`, or
-null when its requests are HTTP; the page knows by it that the provider
-needs the Cloud. The entries of the product state carry the same `cliPackage`. `availability` is
+CLI its requests start on the Claude Code machine, such as `demi.claude-code`,
+or null when its requests are HTTP; the page knows by it that the provider
+runs a process. The entries of the product state carry the same `cliPackage`. `availability` is
 `{ type: "unavailable", reason: "setup", message, missing }` while the entry
 is incomplete, `missing` naming what it lacks (`apiKey`, `endpoint`, `models`,
 `account`)
@@ -1202,7 +1202,7 @@ with that account, in use or not; an unknown account is `account_not_found`.
 The test sends one request to the model and answers `{ type: "passed", model }`
 when the provider answers, or `{ type: "failed", message, model? }` with the
 provider's own reason: a test that ran and failed is a result, not an error. A
-provider whose transport is a process is tested on the acting user's Cloud,
+provider whose transport is a process is tested on the Claude Code machine,
 where its requests run too
 ([Where it runs](../providers/claude-code.md#where-it-runs)); the test wakes
 it.
@@ -1213,11 +1213,11 @@ The CLI of an entry whose provider runs a process is read and managed under
 
 | Route | Meaning |
 |---|---|
-| `GET …/cli?refresh=` | `{ newest, install, machines }`: the vendor's newest version (`{ type: "read", version }`, or `{ type: "unreadable", message }` when the vendor cannot be read; `refresh=true` asks it at once), the caller's last Cloud install since the backend started (`{ state: "installing" }`, `{ state: "installed", path }`, `{ state: "failed", message }`, or null), and the caller's Cloud as `{ deviceId, name, versions }` with its installed versions, newest first, while its runner is connected (`versions` is null when it did not answer). It wakes nothing: a stopped Cloud is simply absent. |
-| `POST …/cli/install` | Starts the install on the caller's Cloud again, unless one is under way; 202 `{ install }` with its state. |
+| `GET …/cli?refresh=` | `{ newest, install }`: the vendor's newest version (`{ type: "read", version }`, or `{ type: "unreadable", message }` when the vendor cannot be read; `refresh=true` asks it at once), and the Claude Code machine's last install since the backend started (`{ state: "installing" }`, `{ state: "installed", path }`, `{ state: "failed", message }`, or null), whose `path` names the installed version. It wakes nothing. |
+| `POST …/cli/install` | Starts the install on the Claude Code machine again, unless one is under way; 202 `{ install }` with its state. |
 
-Adding an account to such an entry starts the same install on the acting
-user's Cloud; its failure is this state and never the failure of adding the
+Adding an account to such an entry starts the same install on the Claude
+Code machine; its failure is this state and never the failure of adding the
 account.
 
 On a shared instance every user reads provider state, but only the master sees
@@ -1231,7 +1231,12 @@ refused with 403 `forbidden` ([Scope](../providers/providers.md#scope)).
 
 Every subscription account comes from a sign-in, below.
 `GET /api/providers/:id/accounts` lists public
-account metadata and the active account as `{ accounts, active }`.
+account metadata and the active account as `{ accounts, active }`. An account
+whose sign-in the vendor refused carries `signedOut: true`
+([Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in));
+its row says *Sign In Again* and offers that action, which starts
+`…/accounts/login` and replaces the account's sign-in when it names the same
+account.
 `PUT …/accounts/active` takes `{ credentialId }` and answers `{ active }`.
 `PUT …/accounts/order` takes `{ credentialIds }`, every account of the entry
 once, in the order In Order uses and the list shows. `PATCH
@@ -1254,7 +1259,7 @@ reaches every page of its starter on the sync channel's `logins` message
 `GET /api/providers/subscription-login/:id` answers the same `{ login }`:
 `{ status: "pending", stage, verificationUrl, userCode, expiresAt }`, where
 `stage` says what the login waits for (`preparing`, then `waiting_for_user`
-once it has something to show; Claude Code adds `waiting_for_cloud`,
+once it has something to show; Claude Code adds `waiting_for_machine`,
 `installing` and `starting` before it,
 [Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in)), the
 `verificationUrl` and `userCode`

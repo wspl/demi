@@ -5,7 +5,7 @@
 
 use std::{io, num::NonZeroU64, path::Path, time::Duration};
 
-use demi_machine_manager_protocol::Volume;
+use demi_machine_manager_protocol::{SandboxMachine, Volume};
 use demi_runner_protocol::boot::ManagedBoot;
 use tokio::task::JoinHandle;
 
@@ -136,6 +136,7 @@ impl Sandbox {
         programs: &Path,
         runner_release: &str,
         boot: &ManagedBoot,
+        machine: SandboxMachine,
     ) -> Result<(), SandboxError> {
         if boot.backend_url.url() != &core.config.backend_url {
             return Err(SandboxError::Allowlist);
@@ -210,7 +211,7 @@ impl Sandbox {
             namespace: &self.slot.namespace(),
             cgroup: core.config.limits.map(|limits| oci::Cgroup {
                 name: self.record.id.as_str(),
-                limits,
+                limits: limits.of(machine),
             }),
             runner_release,
             backend_socket: &backend_socket,

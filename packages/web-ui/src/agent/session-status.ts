@@ -215,6 +215,24 @@ export function continueWithOffer(
   return offered ? { providerId: end.model.providerId, ...offered } : null
 }
 
+/**
+ * Whether the unfinished turn ended because the vendor signed its account
+ * out, which the dock answers with Open Providers (`claude-code.md`
+ * § Accounts and sign-in): its failure's facts name the account while it is
+ * still signed out. False while running, and for any other end.
+ */
+export function signedOutOffer(
+  phase: 'idle' | string,
+  blocks: readonly (RecordCandidate & { id?: string })[],
+  failures: Readonly<Record<string, { signedOut?: { provider: string; account: string } | null }>>,
+): boolean {
+  if (phase !== 'idle') {
+    return false
+  }
+  const end = turnRecord(blocks)
+  return end?.type === 'error' && !!end.id && !!failures[end.id]?.signedOut
+}
+
 /** What `turnRecovery` reads of a block. */
 interface RecordCandidate {
   type: string

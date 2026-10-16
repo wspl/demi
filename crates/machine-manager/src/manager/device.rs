@@ -6,7 +6,7 @@
 use std::{num::NonZeroU64, path::Path, rc::Rc};
 
 use demi_machine_manager_protocol::image::PROGRAMS_PATH;
-use demi_machine_manager_protocol::{BaseVersion, DeviceId, MachineImageState, Volume};
+use demi_machine_manager_protocol::{BaseVersion, DeviceId, MachineImageState, SandboxMachine, Volume};
 use demi_runner_protocol::boot::ManagedBoot;
 use tokio::sync::{mpsc, oneshot};
 
@@ -43,7 +43,7 @@ pub enum DeviceCommand {
 
 /// The operations that change a device.
 pub enum DeviceOp {
-    Wake(ManagedBoot),
+    Wake(ManagedBoot, SandboxMachine),
     /// Stop and save; also what `reconcile` and shutdown do to every device.
     Hibernate,
     Checkpoint,
@@ -145,7 +145,7 @@ impl DeviceWorker {
 
     async fn operate(&mut self, op: DeviceOp) -> Result<(), OpError> {
         match op {
-            DeviceOp::Wake(boot) => self.wake(&boot).await,
+            DeviceOp::Wake(boot, machine) => self.wake(&boot, machine).await,
             DeviceOp::Hibernate => {
                 self.stop().await?;
                 self.save().await
@@ -213,7 +213,7 @@ impl DeviceWorker {
 
     /// Starts the device's sandbox on its newest storage: the working pair a
     /// crash left, saved first, else the committed generation, else a new one.
-    async fn wake(&mut self, boot: &ManagedBoot) -> Result<(), OpError> {
+    async fn wake(&mut self, boot: &ManagedBoot, machine: SandboxMachine) -> Result<(), OpError> {
         if self.runtime.is_some() {
             return Ok(());
         }
@@ -245,6 +245,7 @@ impl DeviceWorker {
                 &programs,
                 &runner_release,
                 boot,
+                machine,
             )
             .await;
         let Err(error) = started else {

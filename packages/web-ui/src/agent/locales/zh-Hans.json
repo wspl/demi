@@ -107,6 +107,7 @@
     "stepsNotShared": "{count} 个步骤未分享",
     "turnFailed": "轮次失败。",
     "failureResets": "{failure}{reset}。",
+    "signedOut": "{provider} 已将 {account} 退出登录。请在“设置 › 供应商”中重新登录。",
     "work": {
       "ran": "运行了 {count} 条命令",
       "checked": "检查了 {count} 条命令",
@@ -200,7 +201,8 @@
     "resume": "恢复",
     "continue": "继续",
     "stillOffline": "{name} 仍然离线",
-    "continueWith": "改用 {label} 继续"
+    "continueWith": "改用 {label} 继续",
+    "openProviders": "打开供应商"
   },
   "notices": {
     "hostOffline": "{name} 已离线。",

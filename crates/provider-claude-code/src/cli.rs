@@ -5,46 +5,35 @@
 //! the system prompt and tools of the request rather than those the session
 //! recorded; the request's model, system prompt and effort; the thinking
 //! display; stream-json in
-//! and out with partial messages; its own configuration directory; the
-//! account's access token on a descriptor, never in its environment; the
-//! CLI's updater and automatic compaction off; and the input a
-//! session ends with answered at once. A sign-in runs the CLI's own login
-//! in a directory of its own.
+//! and out with partial messages; the account's directory as its
+//! configuration directory, where the CLI reads and renews the sign-in
+//! itself, and a directory of its own there for its session; the CLI's
+//! updater and automatic compaction off; and the input a session ends with
+//! answered at once. A sign-in runs the CLI's own login in a new directory,
+//! and a usage probe a process that sends no message.
 
 use std::collections::BTreeMap;
 
-use bytes::Bytes;
-use demi_host_interface::{Descriptor, SpawnEnv, SpawnRequest};
+use demi_host_interface::{SpawnEnv, SpawnRequest};
+use demi_provider_common::InferenceRequest;
 use demi_provider_common::openai_request::reasoning_effort;
-use demi_provider_common::{InferenceRequest, Secret};
 use demi_shared_types::ThinkingConfig;
 
 use crate::input::MCP_SERVER;
 use crate::placement::{CliSite, CliStart};
-use crate::session::{PROJECT_DIR, SessionFile};
+use crate::session::SessionFile;
 
-/// The descriptor the access token reaches the CLI on.
-const TOKEN_FD: u32 = 3;
-
-/// What starts a CLI process at `site` for `request`: the session `session`
-/// in its configuration directory, and the process, with the account's
-/// access `token` on a descriptor. It is retained: the process is kept
-/// between turns and is not activity of its machine.
-pub(crate) fn start(
-    site: &CliSite,
-    request: &InferenceRequest,
-    token: &Secret,
-    session: &SessionFile,
-) -> CliStart {
+/// What starts a CLI process at `site` with `args`, a request's: the session `session`
+/// in the process's own directory, and the process, in the account's
+/// directory. It is retained: the process is kept between turns and is not
+/// activity of its machine.
+pub(crate) fn start(site: &CliSite, args: Vec<String>, session: &SessionFile) -> CliStart {
     let spawn = SpawnRequest {
         command: site.executable.clone(),
-        args: args(request, &session.id.to_string()),
+        args,
         cwd: Some(site.run_dir.clone()),
         env: SpawnEnv::Overlay(environment(site)),
-        descriptors: vec![Descriptor {
-            fd: TOKEN_FD,
-            bytes: Bytes::copy_from_slice(token.expose().as_bytes()),
-        }],
+        descriptors: Vec::new(),
         retained: true,
     };
     CliStart {
@@ -53,9 +42,42 @@ pub(crate) fn start(
     }
 }
 
+/// What starts the usage probe's process at `site`: stream-json in and out,
+/// with no message, so the CLI renews the sign-in when it is due and
+/// answers control requests without inferring (`claude-code.md` § Accounts
+/// and sign-in). Its environment never turns the CLI's nonessential
+/// traffic off, which turns its quota reading off with it. It is work of
+/// the machine while it runs.
+pub(crate) fn probe(site: &CliSite) -> CliStart {
+    let mut env = environment(site);
+    env.remove("CLAUDE_CODE_RESUME_INTERRUPTED_TURN");
+    env.insert("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC".to_owned(), None);
+    let spawn = SpawnRequest {
+        command: site.executable.clone(),
+        args: [
+            "--print",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--input-format",
+            "stream-json",
+        ]
+        .map(String::from)
+        .to_vec(),
+        cwd: Some(site.run_dir.clone()),
+        env: SpawnEnv::Overlay(env),
+        descriptors: Vec::new(),
+        retained: false,
+    };
+    CliStart {
+        spawn,
+        files: Vec::new(),
+    }
+}
+
 /// The request that starts the CLI's own sign-in at `site`: it prints the
 /// link to sign in at, reads the code the page shows from its input, and
-/// writes the tokens into its configuration directory. No web browser
+/// writes the sign-in into its configuration directory, a new one. No web browser
 /// opens on the machine. It is work of the machine while it runs.
 pub(crate) fn login_request(site: &CliSite) -> CliStart {
     let set = |value: &str| Some(value.to_owned());
@@ -144,25 +166,22 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
     args
 }
 
-/// The changes to the machine's environment: the descriptor the access
-/// token is on, and a token in the machine's own environment removed; the
-/// process's own configuration directory, and the directory of its
-/// sessions there; the CLI's updater off, since Demi alone changes its
-/// version; its automatic compaction off, since Demi compacts the
-/// conversation itself; an MCP tool-output limit of one million tokens, so
-/// the CLI never cuts a result Demi sends; `CLAUDECODE` removed, so the CLI
-/// never takes itself for a session inside another Claude Code; and the
-/// input the session ends with answered at once.
+/// The changes to the machine's environment: a token in the machine's own
+/// environment removed, so the CLI reads the directory's sign-in; the
+/// account's directory as the configuration directory, and the process's
+/// own directory of sessions there; the CLI's updater off, since Demi alone
+/// changes its version; its automatic compaction off, since Demi compacts
+/// the conversation itself; an MCP tool-output limit of one million tokens,
+/// so the CLI never cuts a result Demi sends; `CLAUDECODE` removed, so the
+/// CLI never takes itself for a session inside another Claude Code; and
+/// the input the session ends with answered at once.
 fn environment(site: &CliSite) -> BTreeMap<String, Option<String>> {
     let set = |value: &str| Some(value.to_owned());
     BTreeMap::from([
-        (
-            "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR".to_owned(),
-            Some(TOKEN_FD.to_string()),
-        ),
         ("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), None),
+        ("CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR".to_owned(), None),
         ("CLAUDE_CONFIG_DIR".to_owned(), set(&site.config_dir)),
-        ("CLAUDE_CODE_PROJECT_DIR_NAME".to_owned(), set(PROJECT_DIR)),
+        ("CLAUDE_CODE_PROJECT_DIR_NAME".to_owned(), set(&site.process_dir)),
         ("CLAUDE_CODE_RESUME_INTERRUPTED_TURN".to_owned(), set("1")),
         ("DISABLE_AUTOUPDATER".to_owned(), set("1")),
         ("DISABLE_AUTO_COMPACT".to_owned(), set("1")),

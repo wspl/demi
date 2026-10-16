@@ -188,7 +188,7 @@ where
         }
         Ok(next) => {
             let kept = doc
-                .replace(next.encode(), version)
+                .replace(Some(next.encode()), version)
                 .await
                 .map_err(AccountError::Store)?;
             if kept {

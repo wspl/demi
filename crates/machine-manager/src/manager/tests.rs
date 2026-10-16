@@ -51,6 +51,7 @@ fn fixture() -> Fixture {
         limits: Some(Limits {
             cpus: NonZeroU32::new(2).unwrap(),
             memory_mib: NonZeroU32::new(2048).unwrap(),
+            claude_code_memory_mib: NonZeroU32::new(4096).unwrap(),
         }),
         system_mib: NonZeroU32::new(32).unwrap(),
         home_mib: NonZeroU32::new(32).unwrap(),

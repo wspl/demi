@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use demi_provider_common::quota::{
     Observation, ProbeCost, ProbeReading, QuotaError, QuotaSource, clamp_used_percent,
-    header_number, severity, unix_seconds,
+    header_number, plan_label, severity, unix_seconds,
 };
 use demi_shared_types::{QuotaKind, QuotaPlan, QuotaUnit, QuotaWindow};
 use futures_util::future::BoxFuture;
@@ -200,13 +200,3 @@ fn window_of(
     }
 }
 
-/// `plus` reads `Plus`; `self_serve_business_usage_based` reads `Self serve
-/// business usage based`.
-fn plan_label(plan: &str) -> String {
-    let words = plan.replace('_', " ");
-    let mut characters = words.chars();
-    match characters.next() {
-        Some(first) => first.to_uppercase().chain(characters).collect(),
-        None => words,
-    }
-}

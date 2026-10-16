@@ -226,8 +226,9 @@ async fn pool_with(id: &str, secret: String) -> Arc<dyn CredentialPool> {
         updated_at: NOW.parse().unwrap(),
         source: "test".into(),
         identity_key: Some("acct-1".into()),
+        signed_out: false,
     };
-    pool.write(meta, secret).await.unwrap();
+    pool.write(meta, Some(secret)).await.unwrap();
     pool.set_active(id).await.unwrap();
     Arc::new(pool)
 }

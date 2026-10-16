@@ -21,5 +21,5 @@ pub use wire::{
     CheckpointParams, CurrentBaseVersionParams, DecodeError, GrowVolumeParams, HibernateParams,
     ImageStateParams, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, Message,
     Operation, ReconcileParams, Reconciled, ResetParams, RuntimeStateParams, VERSION as WIRE_VERSION,
-    WakeParams, decode_request, decode_response, encode_line,
+    SandboxMachine, WakeParams, decode_request, decode_response, encode_line,
 };

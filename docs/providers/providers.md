@@ -8,13 +8,13 @@ refresh and the reading of its responses. A conversation selects a provider
 entry and a model; it never holds a copy of the entry's credentials.
 
 HTTP inference runs in the backend. Claude Code, the one provider that needs a
-process, runs its CLI on the user's Cloud, whatever the conversation's execution
-target is. That difference decides where a credential must be available:
+process, runs its CLI on the Claude Code machine, whatever the conversation's
+execution target is, and that CLI keeps its own sign-in there:
 
 ```text
 Backend
 +-------------------------------------------+
-| vault: entry, active account, secret      |
+| vault: entry, active account, secret*     |
 |   |                                       |
 |   v                                       |
 | provider: one per entry and account       |
@@ -22,16 +22,18 @@ Backend
 |   v                                       |
 | session runtime                           |
 +---|--------------------------|------------+
-    | HTTPS                    | Host process IO, token in the environment
+    | HTTPS                    | Host process IO, the account's directory named
     |                          v
-    |               user's Cloud: runner -> Claude Code CLI
+    |        Claude Code machine: runner -> CLI, sign-in in ~/accounts/<id>
     v                                             |
 vendor API <------------------ HTTPS -------------+
+
+* none for Claude Code
 ```
 
 For example, an OpenAI API conversation infers without waking its user's Cloud.
-A Claude Code conversation wakes the user's Cloud; its next request starts
-Demi's copy of the CLI there with the active account's token, while its tools
+A Claude Code conversation wakes the Claude Code machine; its next request
+starts Demi's copy of the CLI there in the active account's directory, while its tools
 keep running on the conversation's own execution target
 ([Claude Code](claude-code.md)).
 
@@ -55,7 +57,7 @@ different keys, endpoints or model lists.
 | `google` | API key | Gemini `generateContent` | Backend |
 | `codex` | Subscription account, from device login | Codex Responses over a WebSocket or server-sent events | Backend |
 | `grok-build` | Subscription account, from device login | Chat Completions through Grok Build's chat proxy | Backend |
-| `claude-code` | Subscription account, from a Claude sign-in | stream-json with the Claude Code CLI | The user's Cloud |
+| `claude-code` | Subscription account, from a Claude sign-in | stream-json with the Claude Code CLI | The Claude Code machine |
 
 An API-key entry is a **vendor entry**, of the family's own vendor or of a
 vendor models.dev lists, or a **compatible entry**, of any endpoint that
@@ -581,8 +583,8 @@ entry's model directory ([Catalog cache](models.md#catalog-cache)).
 A provider declares whether it needs a process Host; admission uses that
 declaration, not the provider's name. For such a provider the backend asks the
 [placement](claude-code.md#where-it-runs) for the machine, which obtains or
-wakes the user's Cloud before inference, and the conversation
-[uses that Cloud as `provider`](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)
+wakes the Claude Code machine before inference, and the conversation
+[uses that machine as `provider`](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device)
 for as long as that provider is its selection.
 
 ## Credential vault
@@ -603,7 +605,7 @@ authenticates with is a file:
 | Record | Holds |
 |---|---|
 | `providers.config` | An API-key entry's key and endpoint settings |
-| `provider_credentials` | One subscription account: public metadata, the sealed secret document, its usage snapshot, and a version |
+| `provider_credentials` | One subscription account: public metadata, the sealed secret document (none for Claude Code, whose sign-in the CLI keeps on the Claude Code machine), its usage snapshot, and a version |
 | `providers.active_credential_id` | Which account the entry uses for inference |
 
 The backend never reads a vendor's own login from the machine it runs on: not
@@ -645,20 +647,17 @@ sharpens three rules:
 - **Refresh.** Many users on many workers use the same account at once, so the
   versioned replace of [Token refresh](#token-refresh) is what keeps one user's
   refresh from invalidating everyone else's tokens. On an isolated instance the
-  rule is the same and rarely contended.
+  rule is the same and rarely contended. A Claude Code account is renewed by
+  its CLI, in the account's one directory
+  ([Accounts and sign-in](claude-code.md#accounts-and-sign-in)).
 - **Usage.** The vendor's windows are consumed by all users together. The
   snapshot describes the account, not a user; per-user consumption is the usage
   ledger's, not the vendor's ([Usage and quota](usage-and-quota.md)).
-- **Disclosure.** A process provider sends the active account's token to the
-  Cloud of the user who infers
-  ([Execution boundary](claude-code.md#execution-boundary)), and to no paired
-  device. On an isolated instance that is the owner's token on the owner's
-  Cloud. On a shared instance it is the master's token on a Cloud another user
-  has a shell in: every user who can infer with a Claude Code entry can read
-  its token. Demi allows this and does not hide it; a master who adds a Claude
-  Code account to a shared instance is trusting every user with that account.
-  Network providers (Codex, Grok Build, API keys) send a credential only to
-  their vendor.
+- **Disclosure.** A Claude Code account's sign-in stays in its directory on
+  the Claude Code machine, where no user has a shell
+  ([Execution boundary](claude-code.md#execution-boundary)); no user's Cloud
+  and no paired device receives it. Network providers (Codex, Grok Build, API
+  keys) send a credential only to their vendor.
 
 ### Subscription secrets
 
@@ -670,17 +669,13 @@ the family's requests and refreshes need:
 |---|---|
 | `codex` | The ChatGPT sign-in's tokens, the account they act for, and the time of the last refresh |
 | `grok-build` | The OAuth tokens and their expiry, the issuer and client that issued them, the team or organization the tokens act for, and the user's ID and email |
-| `claude-code` | What the CLI's login wrote: the access token, the refresh token, the access token's expiry, the scopes granted and the subscription type, with the account's ID and email |
+| `claude-code` | Nothing: the CLI keeps the sign-in in the account's directory; the record keeps the account's ID and email as public metadata. A record an earlier release wrote still holds the tokens until their [handover](claude-code.md#accounts-and-sign-in) |
 
 A field the type does not name is an error, as is a missing required one. The
 provider
 validates the document on every read and validates a refreshed document before
 it is stored. A corrupt document is refused, never repaired: requests with that
-account fail with an authentication error. A Claude Code account that holds a
-setup token, which releases before Claude sign-in stored, is such a document:
-its requests fail with the authentication error, whose message asks the user
-to sign in again, and the user removes it and adds the account by signing
-in.
+account fail with an authentication error.
 
 ### The credential pool contract
 
@@ -727,7 +722,7 @@ refresh turn only saves needless vendor calls within one backend.
 |---|---|
 | `codex` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes, or the sign-in was last refreshed 8 or more days ago |
 | `grok-build` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes; a sign-in without a refresh token is used as it is |
-| `claude-code` | The stored access token expires within 30 minutes when a request or the usage probe would use it, or the CLI's request was refused with HTTP 401 and its token is still the stored one ([Accounts and sign-in](claude-code.md#accounts-and-sign-in)) |
+| `claude-code` | Never: the CLI renews its own sign-in ([Accounts and sign-in](claude-code.md#accounts-and-sign-in)) |
 
 A refused request names the token it was refused with, so a refresher that
 waited behind another finds the other's new tokens no longer due and uses
@@ -752,8 +747,8 @@ the account that made it, and a request that outlives a switch cannot credit
 the wrong account ([Vendor quota](usage-and-quota.md#vendor-quota)). Selecting
 another account changes which provider the next request's runtime is built
 from; a running request finishes with its own. For Claude Code, the switch
-closes the kept CLI process, and the next request starts a new one with the
-newly active account's token
+closes the kept CLI process, and the next request starts a new one in the
+newly active account's directory
 ([Process lifetime](claude-code.md#process-lifetime)).
 
 ### Account rotation
@@ -844,12 +839,13 @@ An account enters an entry in one of three ways:
 |---|---|
 | `codex` | Codex device login: the user opens `https://auth.openai.com/codex/device` on any device and enters a one-time code |
 | `grok-build` | OAuth device authorization (RFC 8628) at `https://auth.x.ai`: the user opens the verification address and approves |
-| `claude-code` | The CLI's own sign-in: Demi runs `claude auth login` on the user's Cloud, shows the link it prints, and gives it the code the user pastes |
+| `claude-code` | The CLI's own sign-in: Demi runs `claude auth login` on the Claude Code machine, shows the link it prints, and gives it the code the user pastes |
 
 Each login works on a headless or remote backend, because the user
 completes it in their own browser on any device. Demi starts a vendor CLI to
-log in only for Claude Code, whose CLI owns its sign-in; it keeps nothing of
-that login but the tokens it wrote. The flows are written by hand on shared OAuth pieces, not with
+log in only for Claude Code, whose CLI owns its sign-in; the sign-in stays in
+the directory the CLI wrote it to, and Demi keeps only the account's ID and
+email. The flows are written by hand on shared OAuth pieces, not with
 the `oauth2` crate, which refuses the vendors' token responses: they omit
 `token_type` and state `expires_in` as a string.
 
@@ -914,9 +910,9 @@ A login is followed, never asked about: the vault announces each change of
 its state on the starter's pages, its stage, its link or code, a refused code
 and its end, so a page shows what the login waits for at that moment and
 learns its end the moment it comes, a failure included. For example, the
-user adds a Claude account while their Cloud's runner is reconnecting: the
-dialog says it waits for the Cloud, and a minute later that the Cloud did not
-come back, with Try Again, instead of a spinner over *Contacting Claude
+user adds a Claude account while the Claude Code machine's runner is
+reconnecting: the dialog says it waits for the machine, and a minute later
+that the machine did not come back, with Try Again, instead of a spinner over *Contacting Claude
 Code…* that never moves. A page opened or reloaded meanwhile receives the
 running login with the product state and shows it again, Cancel included, so
 a reload never leaves a login nobody can reach; a second start on the

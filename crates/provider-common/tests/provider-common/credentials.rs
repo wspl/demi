@@ -48,12 +48,13 @@ fn meta(id: &str) -> AccountMeta {
         updated_at: NOW.parse().unwrap(),
         source: "test".into(),
         identity_key: Some(id.into()),
+        signed_out: false,
     }
 }
 
 async fn pool_with(id: &str, secret: &Tokens) -> MemoryCredentialPool {
     let pool = MemoryCredentialPool::new();
-    pool.write(meta(id), secret.encode()).await.unwrap();
+    pool.write(meta(id), Some(secret.encode())).await.unwrap();
     pool
 }
 
@@ -183,7 +184,7 @@ async fn a_refusal_uses_the_tokens_another_writer_stored_and_fails_when_nobody_d
             let pool = pool.clone();
             async move {
                 // Another worker refreshed first and spent the token.
-                pool.write(meta("a"), tokens("winner", "rw").encode())
+                pool.write(meta("a"), Some(tokens("winner", "rw").encode()))
                     .await
                     .unwrap();
                 Err("refresh token already used".to_owned())
@@ -214,7 +215,7 @@ async fn a_refreshed_secret_whose_replace_loses_gives_way_to_the_winner() {
         |_| {
             let pool = pool.clone();
             async move {
-                pool.write(meta("a"), tokens("winner", "rw").encode())
+                pool.write(meta("a"), Some(tokens("winner", "rw").encode()))
                     .await
                     .unwrap();
                 Ok::<_, String>(tokens("loser", "rl"))
@@ -249,7 +250,7 @@ async fn a_corrupt_document_is_refused_by_its_path_and_never_quotes_a_value() {
         ),
     ];
     for (text, path, fault) in cases {
-        pool.write(meta("a"), text.into()).await.unwrap();
+        pool.write(meta("a"), Some(text.into())).await.unwrap();
         let error = read_secret::<Tokens>(&*pool.document("a"))
             .await
             .unwrap_err();
@@ -267,8 +268,8 @@ async fn a_corrupt_document_is_refused_by_its_path_and_never_quotes_a_value() {
 #[tokio::test]
 async fn a_memory_pool_keeps_accounts_by_id_with_a_versioned_document_and_an_active_one() {
     let pool = MemoryCredentialPool::new();
-    pool.write(meta("b"), "{}".into()).await.unwrap();
-    pool.write(meta("a"), "{}".into()).await.unwrap();
+    pool.write(meta("b"), Some("{}".into())).await.unwrap();
+    pool.write(meta("a"), Some("{}".into())).await.unwrap();
     let ids: Vec<String> = pool
         .list()
         .await
@@ -282,14 +283,14 @@ async fn a_memory_pool_keeps_accounts_by_id_with_a_versioned_document_and_an_act
     let second = pool.document("a").read().await.unwrap().unwrap();
     assert!(
         pool.document("a")
-            .replace("two".into(), first.version)
+            .replace(Some("two".into()), first.version)
             .await
             .unwrap()
     );
     assert!(
         !pool
             .document("a")
-            .replace("lost".into(), second.version)
+            .replace(Some("lost".into()), second.version)
             .await
             .unwrap()
     );
@@ -310,12 +311,12 @@ async fn a_memory_pool_keeps_accounts_by_id_with_a_versioned_document_and_an_act
     // last one's leaves none.
     pool.remove("b").await.unwrap();
     assert_eq!(pool.active().await.unwrap().as_deref(), Some("a"));
-    let entries: Vec<(String, String)> = pool
+    let entries: Vec<(String, Option<String>)> = pool
         .entries()
         .into_iter()
         .map(|(meta, secret)| (meta.id, secret))
         .collect();
-    assert_eq!(entries, [("a".to_owned(), "two".to_owned())]);
+    assert_eq!(entries, [("a".to_owned(), Some("two".to_owned()))]);
     pool.remove("a").await.unwrap();
     assert_eq!(pool.active().await.unwrap(), None);
 }
@@ -343,7 +344,7 @@ struct Kit {
 
 fn account(identity: &str, secret: &str) -> NewAccount {
     NewAccount {
-        secret: secret.into(),
+        secret: Some(secret.into()),
         label: AccountLabel {
             label: format!("{identity}@example.com"),
             detail: Some("device".into()),

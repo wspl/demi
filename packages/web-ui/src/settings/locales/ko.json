@@ -480,6 +480,7 @@
     "account": {
       "active": "활성",
       "limitReached": "한도에 도달함",
+      "signInAgain": "다시 로그인",
       "activate": "활성화",
       "refreshUsage": "사용량 새로 고침",
       "test": "연결 테스트",
@@ -509,10 +510,8 @@
       "versionDescription": "최신 버전을 따라 자동으로 업데이트됩니다.",
       "check": "업데이트 확인",
       "unreadable": "최신 버전을 확인할 수 없습니다",
-      "noAnswer": "응답 없음",
-      "notInstalled": "설치되지 않음",
-      "installing": "클라우드에 설치하는 중",
-      "installFailed": "클라우드에 설치할 수 없습니다",
+      "installing": "설치하는 중…",
+      "installFailed": "설치할 수 없습니다",
       "install": "설치"
     },
     "models": {
@@ -624,8 +623,8 @@
     "doneActive": "로그인했습니다. 이 계정이 이제 {vendor}의 활성 계정입니다.",
     "doneKept": "로그인했습니다. {vendor}에서는 현재 활성 계정이 계속 사용됩니다.",
     "failedHint": "로그인이 완료되지 않았습니다.",
-    "waitingCloud": "클라우드 연결을 기다리는 중…",
-    "installing": "클라우드에 명령줄 도구를 설치하는 중…",
+    "waitingMachine": "Claude Code 머신 연결을 기다리는 중…",
+    "installing": "명령줄 도구를 설치하는 중…",
     "startingTool": "명령줄 도구를 시작하는 중…",
     "contacting": "{vendor}에 연결하는 중…",
     "copyCode": "코드 복사",

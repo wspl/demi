@@ -193,6 +193,7 @@ export function providerView(
         label: account.label,
         plan: accountPlan(entry.providerType, account),
         active: account.id === details.active,
+        signedOut: account.signedOut === true,
         quota: account.quota?.windows.flatMap((window) => {
           if (window.usedPercent === null) {
             return []

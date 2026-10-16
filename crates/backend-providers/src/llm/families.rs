@@ -53,12 +53,11 @@ pub trait ProviderFamily: Send + Sync + 'static {
     }
 
     /// The account operations of the provider `args` build, whose sign-in
-    /// runs on `machine`; none for a family whose login runs no process
-    /// (`claude-code.md` § Accounts and sign-in).
+    /// runs on the args' machine; none for a family whose login runs no
+    /// process (`claude-code.md` § Accounts and sign-in).
     fn login_accounts(
         &self,
         _args: FamilyArgs,
-        _machine: Arc<dyn AccountMachine>,
     ) -> Option<Result<Box<dyn SubscriptionAccounts>, FamilyError>> {
         None
     }
@@ -79,6 +78,10 @@ pub struct FamilyArgs {
     /// The backend's one models.dev copy, for a family whose directory it
     /// is.
     pub models_dev: ModelsDevClient,
+    /// The Claude Code machine, which a process provider's sign-in and usage
+    /// probe run on (`claude-code.md` § Where it runs); none before the
+    /// backend's shards started, and in a backend without them.
+    pub machine: Option<Arc<dyn AccountMachine>>,
 }
 
 /// The credential a provider stands for.

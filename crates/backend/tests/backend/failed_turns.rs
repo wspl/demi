@@ -153,6 +153,7 @@ impl Provider for LimitedProvider {
         ProviderFailureFacts {
             retry_at: Some(Timestamp::truncate(received_at.to_jiff() + SignedDuration::from_hours(1))),
             continue_with: None,
+            signed_out: None,
         }
     }
 

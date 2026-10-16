@@ -109,7 +109,7 @@ fn ok_replies_carry_their_operations_results() {
 #[test]
 fn requests_ignore_unknown_keys_and_refuse_malformed_values() {
     let device = r#""deviceId":"dev-1""#;
-    let boot = r#""boot":{"backendUrl":"http://backend","deviceToken":"opaque"}"#;
+    let boot = r#""boot":{"backendUrl":"http://backend","deviceToken":"opaque"},"machine":"cloud""#;
     let accepted = [
         format!(r#"{{"id":"1","op":"hibernate","params":{{{device}}},"trace":"x"}}"#),
         format!(r#"{{"id":"1","op":"hibernate","params":{{{device},"force":true}}}}"#),
@@ -133,13 +133,13 @@ fn requests_ignore_unknown_keys_and_refuse_malformed_values() {
         r#"{"id":"1","op":"hibernate","params":{"deviceId":7}}"#.to_owned(),
         format!(r#"{{"id":"1","op":"wake","params":{{{device}}}}}"#),
         format!(
-            r#"{{"id":"1","op":"wake","params":{{{device},"boot":{{"backendUrl":"http://backend","deviceToken":"opaque","command":"x"}}}}}}"#
+            r#"{{"id":"1","op":"wake","params":{{{device},"boot":{{"backendUrl":"http://backend","deviceToken":"opaque","command":"x"}},"machine":"cloud"}}}}"#
         ),
         format!(
-            r#"{{"id":"1","op":"wake","params":{{{device},"boot":{{"backendUrl":"ftp://backend","deviceToken":"opaque"}}}}}}"#
+            r#"{{"id":"1","op":"wake","params":{{{device},"boot":{{"backendUrl":"ftp://backend","deviceToken":"opaque"}},"machine":"cloud"}}}}"#
         ),
         format!(
-            r#"{{"id":"1","op":"wake","params":{{{device},"boot":{{"backendUrl":"http://backend","deviceToken":"two words"}}}}}}"#
+            r#"{{"id":"1","op":"wake","params":{{{device},"boot":{{"backendUrl":"http://backend","deviceToken":"two words"}},"machine":"cloud"}}}}"#
         ),
         format!(
             r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"home","bytes":0}}}}"#

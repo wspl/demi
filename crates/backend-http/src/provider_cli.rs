@@ -1,8 +1,8 @@
 //! A process provider's command-line tool (`web-api.md` § Model
 //! configuration and provider inspection, `claude-code.md` § What the user
-//! sees): the vendor's newest version, the last install on the caller's
-//! Cloud and the versions that Cloud has, read without waking it; and the
-//! install again. A sign-in installs the tool it runs itself.
+//! sees): the vendor's newest version and the caller's last install on the
+//! Claude Code machine, read without waking it; and the install again. A
+//! sign-in installs the tool it runs itself.
 
 use std::sync::Arc;
 
@@ -41,18 +41,12 @@ async fn process_entry(
 /// once.
 pub(super) async fn read(
     State(services): State<Arc<Services>>,
-    State(shards): State<Shards>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
     QueryParams(Refresh { refresh }): QueryParams<Refresh>,
 ) -> Result<Json<ProviderCli>, ApiError> {
     let entry = process_entry(&services, &user, &id).await?;
-    let shard = shards.of(&user.id);
-    let entry_id = entry.id.clone();
-    let machines = shard
-        .call(move |shard, cancel| async move { shard.cli_machines(&entry_id, &cancel).await });
-    let (newest, machines) = tokio::join!(services.claude_releases.latest(refresh.0), machines);
-    let newest = match newest {
+    let newest = match services.claude_releases.latest(refresh.0).await {
         Ok(release) => NewestVersion::Read {
             version: release.version,
         },
@@ -63,11 +57,10 @@ pub(super) async fn read(
     Ok(Json(ProviderCli {
         newest,
         install: services.cli_installs.state(&user.id, &entry.id),
-        machines: machines??,
     }))
 }
 
-/// Starts the install on the caller's Cloud again.
+/// Starts the install on the Claude Code machine again.
 pub(super) async fn install(
     State(services): State<Arc<Services>>,
     State(shards): State<Shards>,

@@ -8,7 +8,7 @@ mod account;
 mod cli;
 mod mcp;
 mod prepared;
-mod refresh;
 mod runs;
 mod session;
+mod sign_in;
 mod wire;

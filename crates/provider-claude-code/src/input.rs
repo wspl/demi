@@ -29,8 +29,10 @@ pub(crate) enum Input<'a> {
     },
 }
 
-/// A request Demi sends the CLI: only `initialize`, which declares the SDK
-/// MCP server.
+/// A request Demi sends the CLI: `initialize`, which declares the SDK MCP
+/// server of a request's process, or none for the usage probe's, and
+/// `get_usage`, which the probe asks (`claude-code.md` § Accounts and
+/// sign-in).
 #[derive(Serialize)]
 #[serde(tag = "subtype", rename_all = "snake_case")]
 pub(crate) enum ControlRequest<'a> {
@@ -39,6 +41,13 @@ pub(crate) enum ControlRequest<'a> {
         sdk_mcp_servers: [&'a str; 1],
         #[serde(rename = "systemPrompt")]
         system_prompt: &'a str,
+    },
+    #[serde(rename = "initialize")]
+    InitializeBare {},
+    GetUsage {
+        /// Leaves out the behaviors the answer would read, which the probe
+        /// does not show.
+        skip_behaviors: bool,
     },
 }
 

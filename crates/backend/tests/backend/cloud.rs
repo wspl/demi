@@ -30,8 +30,7 @@ use reqwest::StatusCode;
 use serde_json::json;
 use tokio::sync::Notify;
 
-use crate::conversations::{Socket, anthropic_at, choose, create};
-use crate::families::{self, ScriptedKey};
+use crate::conversations::{anthropic_at, create};
 use crate::files;
 use crate::streams::{self, received};
 use crate::support::{GNU_UTILITIES, Harness, PATIENCE, SCRATCH, Session, TestBackend, eventually};
@@ -112,47 +111,6 @@ pub(crate) async fn reset(backend: &TestBackend, session: &Session, id: &str) ->
         String::from_utf8_lossy(&answer.body)
     );
     answer.json()
-}
-
-/// `harness` with the family `process` too, whose provider runs a process
-/// on a Host, which the user's Cloud then is, and answers every run with
-/// `ok`.
-fn with_process_family(harness: Harness) -> Harness {
-    let process = ScriptedKey {
-        directory: Arc::new(families::Directory::default()),
-        wires: &[],
-        process_host: true,
-    };
-    harness.with_families(demi_backend::families::builtin().with("process", process))
-}
-
-/// The master's entry of the family `process`, with its one model `m`.
-async fn process_entry(backend: &TestBackend, master: &Session) -> String {
-    let created = backend
-        .post(
-            "/api/providers",
-            Some(master),
-            json!({
-                "source": "family", "providerType": "process", "label": "Process", "apiKey": "k",
-                "models": [{
-                    "id": "m", "displayName": "M", "contextWindow": 100000, "outputLimit": null,
-                    "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
-                }]
-            }),
-        )
-        .await;
-    assert_eq!(
-        created.status,
-        StatusCode::CREATED,
-        "{}",
-        String::from_utf8_lossy(&created.body)
-    );
-    created
-        .json::<demi_web_api_protocol::providers::ProviderAnswer>()
-        .provider
-        .id
-        .as_str()
-        .to_owned()
 }
 
 /// Waits until the Cloud's runner holds no job directory: it keeps nothing
@@ -1198,7 +1156,8 @@ async fn shutdown_cancels_a_cloud_boot_waiting_for_its_runner_and_saves_it_once(
     let harness = Harness::new().with_claude_package();
     harness.manager.script(|script| script.silent_wake = true);
     let (backend, master) = harness.start_set_up().await;
-    // A Claude sign-in runs the CLI's login on the Cloud, which it wakes.
+    // A Claude sign-in runs the CLI's login on the Claude Code machine,
+    // which it wakes.
     let login = backend
         .post(
             "/api/providers/subscription-login",
@@ -1207,7 +1166,7 @@ async fn shutdown_cancels_a_cloud_boot_waiting_for_its_runner_and_saves_it_once(
         )
         .await;
     assert_eq!(login.status, StatusCode::ACCEPTED);
-    eventually("the sign-in wakes the Cloud", || async {
+    eventually("the sign-in wakes the machine", || async {
         harness
             .manager
             .calls()
@@ -1215,7 +1174,7 @@ async fn shutdown_cancels_a_cloud_boot_waiting_for_its_runner_and_saves_it_once(
             .any(|call| call.starts_with("wake:"))
     })
     .await;
-    let device = the_cloud(&harness);
+    let device = harness.manager.claude_code_machine();
 
     tokio::time::timeout(PATIENCE, backend.close())
         .await
@@ -1394,43 +1353,6 @@ async fn an_upgrade_restarts_the_cloud_and_its_command_is_lost_to_the_upgrade() 
     );
     crate::lifetime::told_at_the_next_turn(&mut work, &harness, FIRST, &vendor, &report).await;
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
-    backend.close().await;
-}
-
-#[tokio::test]
-async fn a_reset_holds_a_conversation_on_a_paired_device_whose_provider_runs_on_the_cloud() {
-    let harness = with_process_family(Harness::new());
-    let (backend, master) = harness.start_set_up().await;
-    let alpha = backend.pair(&master, "alpha").await;
-    let provider = process_entry(&backend, &master).await;
-    // Its files and commands are on alpha; only its provider uses the Cloud.
-    create(&backend, &master, FIRST).await;
-    crate::work::switch(&backend, &master, FIRST, &alpha, alpha.runner.home_dir()).await;
-    choose(&backend, &master, FIRST, &provider, "m").await;
-    let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open().await;
-    drop(socket);
-
-    let (held, proceed) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
-    harness
-        .manager
-        .script(|script| script.hold_reset = Some((held.clone(), proceed.clone())));
-    reset(&backend, &master, RESET).await;
-    held.notified().await;
-    // It waits instead of failing, at its file gate, which the reset holds,
-    // and opens by itself when the reset ends.
-    let mut waiting = backend.file_gate(&master, FIRST).await.waiting();
-    let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    {
-        let opening = socket.open();
-        tokio::pin!(opening);
-        tokio::select! {
-            _ = &mut opening => panic!("the open did not wait for the reset"),
-            waits = waiting.wait_for(|count| *count > 0) => assert!(waits.is_ok()),
-        }
-        proceed.notify_one();
-        opening.await;
-    }
     backend.close().await;
 }
 
