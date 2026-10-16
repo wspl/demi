@@ -67,10 +67,10 @@ checkout, with the native programs it serves to runners, follow
 
 ## The README
 
-`README.md` and its translations, `README.zh-CN.md`, `README.ja.md` and
-`README.ko.md`, say the same thing section for section. A change to one
-changes all of them in the same commit; the English one is the reference
-when they differ.
+`README.md` and its translations, `README.zh-CN.md`, `README.zh-TW.md`,
+`README.ja.md` and `README.ko.md`, say the same thing section for section. A
+change to one changes all of them in the same commit; the English one is the
+reference when they differ.
 
 ## Architecture rules
 
