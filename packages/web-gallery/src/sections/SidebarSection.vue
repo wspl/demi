@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { GALLERY_MARKS } from '../fixtures/device-marks'
-import { simulatedRequestId } from '../fixtures/request-failures'
+import { refusal, simulatedRequestId } from '../fixtures/request-failures'
+import { reportError } from '@demicodes/web-ui/infra/errors'
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
 import type { SidebarConversation, SidebarProject, SidebarProjectHost, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
@@ -92,11 +93,11 @@ const anatomy: [string, string][] = [
   ],
   [
     'Conversations',
-    'Plain conversations that run in no checkout. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device ends in that device’s mark (Device Marks): its system’s logo with a dot for its state, or the plain computer without a dot once the device is removed, right of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive appears to the left of the mark, over the pin’s place on a pinned row, and a pinned row shows Unpin before it; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
+    'Conversations outside projects: those that run in their Host’s home, or on the Cloud in a directory of their own. Manual order, pinned on top. The group folds under its label, as Projects does (Folded Groups). One on a paired device ends in that device’s mark (Device Marks): its system’s logo with a dot for its state, or the plain computer without a dot once the device is removed, right of the pin when the row is pinned; a row on the Cloud shows none. On hover Archive appears to the left of the mark, over the pin’s place on a pinned row, and a pinned row shows Unpin before it; a row that is not pinned offers Pin in its menu. A new conversation shows only once its draft holds a character or a file, as New conversation; New opens an empty draft with no row, so opening it and leaving leaves nothing behind. The Conversations and Projects headings stick to the top of the list as it scrolls.'
   ],
   [
     'Projects',
-    'Every checkout the agent works in, in manual order; the whole group folds under its label (Folded Groups), each ending in the host it lives on as the same mark a conversation’s row ends in (Device Marks): the Cloud icon, or the device’s mark, its system’s logo with a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. A project shows its device’s name in words only beside another project of the same name on another device: the name stands before the mark, takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover the device’s name gives way and New conversation appears to the left of the mark; on a phone, where that button always shows, the name does not show. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
+    'Every directory a conversation runs in but a home, in manual order: moving a conversation to a directory makes its project, and moving it to the home takes it out; the whole group folds under its label (Folded Groups), each ending in the host it lives on as the same mark a conversation’s row ends in (Device Marks): the Cloud icon, or the device’s mark, its system’s logo with a dot, green while the device is online, amber while its runner updates itself, and faint while it is offline. A project shows its device’s name in words only beside another project of the same name on another device: the name stands before the mark, takes its own width, at most half of the text’s, and is cut at its end beyond that; the project’s name takes the rest and is cut only when it does not fit there; each cut name shows whole on hover. On hover the device’s name gives way and New conversation appears to the left of the mark; on a phone, where that button always shows, the name does not show. A project folds; its header reads as the group: bold, in the emphasis colour, and it sticks under the Projects heading while its rows scroll, which step in under it. An empty project offers its first conversation.'
   ],
   [
     'Row',
@@ -104,7 +105,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Selection',
-    'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open, rename and copy conversation ID for one row; pin, archive and delete for any count; a conversation moves into a project from its header, where it runs. Delete asks first in a dialog that names the one conversation or counts several, and its Delete button removes the rows for good. Copy ID writes the identifier to the clipboard and confirms with a toast. Project headers have their own menu.'
+    'One selection across plain rows and projects. Click selects and opens; ⌘-click toggles; Shift-click ranges. Drag rows to reorder within a group and pin partition. Project dragging temporarily folds all projects, restores their expansion on release, and smoothly centers the moved header. Right-click acts on the selection: open, rename and copy conversation ID for one row; pin, archive and delete for any count; a conversation moves into a project from its header, where it runs. Delete asks first in a dialog that names the one conversation or counts several, and its Delete button removes the rows for good. Copy ID writes the identifier to the clipboard and confirms with a toast. Project headers have their own menu: New Conversation Here, Fold, Select Conversations, and Delete Project…, which asks first, naming how many conversations it archives and that the files on the host stay; Delete archives them and the project goes, and a running conversation refuses it with a toast.'
   ],
   [
     'Keys',
@@ -245,14 +246,21 @@ function without(list: SidebarConversation[], ids: string[]): SidebarConversatio
   return list.filter((conversation) => !ids.includes(conversation.id))
 }
 
-/** Removing a project keeps its conversations as plain ones. */
-async function removeProject(id: string): Promise<void> {
+/**
+ * Deleting a project archives its conversations, as the backend does; one
+ * of them running refuses it, and the product's toast says why.
+ */
+async function deleteProject(specimen: 'demo' | 'marks', id: string): Promise<void> {
+  const [projectList, list] = specimen === 'demo' ? [projects, conversations] : [markProjectList, markConversations]
   await slow()
-  projects.value = projects.value.filter((project) => project.id !== id)
-  patchMany(
-    conversations.value.filter((c) => c.projectId === id).map((c) => c.id),
-    (c) => ({ ...c, projectId: null })
-  )
+  const rows = list.value.filter((conversation) => conversation.projectId === id)
+  if (rows.some((conversation) => conversation.status === 'active')) {
+    reportError('Could Not Delete the Project', refusal('turn_in_flight'), { userVisible: true })
+    return
+  }
+  projectList.value = projectList.value.filter((project) => project.id !== id)
+  list.value = without(list.value, rows.map((conversation) => conversation.id))
+  archivedRows.value = [...archivedRows.value, ...rows]
 }
 
 /** The hover specimen's rows: pinned and not, each on the Cloud and on a paired device. */
@@ -532,7 +540,7 @@ onBeforeUnmount(() => {
             @select="select"
             @create="create"
             @add-project="addProject"
-            @remove-project="removeProject"
+            @remove-project="(id) => deleteProject('demo', id)"
             @rename="(id, title) => patch(id, (c) => ({ ...c, title }))"
             @pin="(ids, pinned) => patchMany(ids, (c) => ({ ...c, pinned }))"
             @archive="dropMany"
@@ -598,7 +606,7 @@ onBeforeUnmount(() => {
                 @search="productWould('Open the Search Window')"
                 @create="productWould('Start a New Conversation')"
                 @add-project="productWould('Add a Project')"
-                @remove-project="async () => { await slow(); productWould('Remove the Project') }"
+                @remove-project="async () => { await slow(); productWould('Delete the Project') }"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
                 @hand-off-to-phone="wouldHandOffToPhone"
@@ -681,7 +689,7 @@ onBeforeUnmount(() => {
                 @search="productWould('Open the Search Window')"
                 @create="create"
                 @add-project="productWould('Add a Project')"
-                @remove-project="(id) => (markProjectList = markProjectList.filter((project) => project.id !== id))"
+                @remove-project="(id) => deleteProject('marks', id)"
                 @open-settings="wouldOpenSettings"
                 @sign-out="productWould('Sign Out')"
                 @hand-off-to-phone="wouldHandOffToPhone"

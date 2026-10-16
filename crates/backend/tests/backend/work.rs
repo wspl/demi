@@ -89,8 +89,9 @@ pub(crate) async fn switch(
     );
 }
 
-/// Moves the conversation into a new project of `path` on `device`, as the
-/// page's move into a project does; answers the project's id.
+/// Moves the conversation into the project of `path` on `device`, made by
+/// New Project when there is none, as the page's move into a project does;
+/// answers the project's id.
 pub(crate) async fn into_project(
     backend: &TestBackend,
     master: &Session,
@@ -100,9 +101,10 @@ pub(crate) async fn into_project(
 ) -> String {
     let body = json!({ "kind": "device", "deviceId": device.id(), "path": path.to_str().unwrap(), "name": "project" });
     let created = backend.post("/api/workspaces", Some(master), body).await;
-    assert_eq!(
-        created.status,
-        StatusCode::CREATED,
+    // A directory a conversation ran in is a project already, which the
+    // creation answers with.
+    assert!(
+        matches!(created.status, StatusCode::CREATED | StatusCode::CONFLICT),
         "{}",
         String::from_utf8_lossy(&created.body)
     );
@@ -341,8 +343,9 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
         "{}",
         listed.received[0]
     );
+    // The conversation runs in the device's home, outside projects.
     assert!(
-        listed.received[0].contains("host: machine \"alpha\""),
+        listed.received[0].contains("host: machine \"alpha\" (") && listed.received[0].contains(", online)"),
         "{}",
         listed.received[0]
     );
@@ -400,7 +403,7 @@ async fn a_switch_moves_the_work_and_the_departed_device_keeps_its_files_within_
         "{context}"
     );
     assert!(
-        context.contains("Previous target: the machine \\\"alpha\\\""),
+        context.contains("Previous target: workspace \\\"project\\\""),
         "{context}"
     );
     assert!(
@@ -806,7 +809,7 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     );
     assert!(after.received[1].contains("kept"), "{}", after.received[1]);
     assert!(
-        after.received[1].contains("host: machine \"alpha\""),
+        after.received[1].contains("host: machine \"alpha\" (") && after.received[1].contains(", online)"),
         "{}",
         after.received[1]
     );

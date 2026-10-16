@@ -55,7 +55,7 @@
     "fold": "Fold",
     "unfold": "Unfold",
     "select": "Select Conversations",
-    "remove": "Remove Project"
+    "delete": "Delete Project…"
   },
   "delete": {
     "title": "Delete “{title}”?",
@@ -64,6 +64,11 @@
     "many": "Their messages and files are deleted. This cannot be undone.",
     "filesOne": "Files it changed stay in the project.",
     "filesMany": "Files they changed stay in their projects."
+  },
+  "deleteProject": {
+    "title": "Delete “{name}”?",
+    "archived": "Its conversation will be archived. | Its {count} conversations will be archived.",
+    "files": "Files on {host} are not deleted."
   },
   "archivedToast": {
     "title": "Conversation Archived | {count} Conversations Archived",

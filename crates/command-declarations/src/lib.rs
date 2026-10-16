@@ -149,29 +149,19 @@ pub struct Leaf<B = Binding> {
     /// The id of the permission category the command needs, which one of
     /// its groups declares; only an `rpc` leaf names one.
     pub permission: Option<String>,
-    /// The string input field that names a host or a project the call may
-    /// bring into the conversation, which the dispatch resolves once and
-    /// hands to the handler; only an `rpc` leaf names one.
+    /// The string input field that names a host the call may bring into
+    /// the conversation, which the dispatch resolves once and hands to the
+    /// handler; only an `rpc` leaf names one.
     pub brings_host: Option<BringsHost>,
     pub kind: LeafKind<B>,
 }
 
-/// A leaf's input field that brings a host into the conversation
-/// (`permissions.md` § Hosts), and what it names.
+/// A leaf's input field that names a host the call may bring into the
+/// conversation (`permissions.md` § Hosts).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BringsHost {
     pub field: String,
-    pub names: BroughtKind,
-}
-
-/// What a `bringsHost` field names: a host by a name or id it goes by, or a
-/// project by its id or name, which stands for the project's host.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BroughtKind {
-    Host,
-    Project,
 }
 
 /// When a leaf reads its stdin field, by the options the command line gives.
@@ -467,6 +457,14 @@ impl<B> Node<B> {
                 let Some(permission) = &leaf.permission else {
                     return Ok(());
                 };
+                // A request asks the user for one thing (`permissions.md`
+                // § Hosts).
+                if leaf.brings_host.is_some() {
+                    return Err(invalid(format!(
+                        "command {} names a permission and a bringsHost field; a command needs one of the two",
+                        leaf.name
+                    )));
+                }
                 if matches!(leaf.kind, LeafKind::Native(_)) {
                     return Err(invalid(format!(
                         "native command {} names a permission; only an rpc command can",

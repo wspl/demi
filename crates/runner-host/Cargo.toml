@@ -19,6 +19,8 @@ demi-command-sdk = { path = "../command-sdk" }
 demi-runner-process = { path = "../runner-process" }
 demi-runner-protocol = { path = "../runner-protocol" }
 bytes.workspace = true
+# A canonical path without Windows' verbatim prefix, as a Host names a directory.
+dunce = "1"
 filetime = "0.2"
 futures-util.workspace = true
 sha2 = "0.10"

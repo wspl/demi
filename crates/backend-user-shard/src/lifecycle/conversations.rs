@@ -236,7 +236,7 @@ mod tests {
 
     /// Connects each device through a runner the test plays, which records
     /// the releases it answers.
-    fn runners(shard: &Rc<Shard>, devices: &[DeviceId]) -> (Released, Vec<PlayedRunner>) {
+    async fn runners(shard: &Rc<Shard>, devices: &[DeviceId]) -> (Released, Vec<PlayedRunner>) {
         let released = Released::new(Vec::new());
         let mut played = Vec::new();
         for device in devices {
@@ -246,7 +246,7 @@ mod tests {
                 Box::pin(
                     async move { log.send_modify(|released| released.push((id, Instant::now()))) },
                 )
-            }));
+            }).await);
         }
         (released, played)
     }
@@ -290,7 +290,7 @@ mod tests {
             .of(&owner)
             .call(move |shard, _| async move {
                 let id = ConversationId::try_from(ID).unwrap();
-                let (released, _) = runners(&shard, &devices);
+                let (released, _) = runners(&shard, &devices).await;
                 let [primary, attached] = [devices[0].clone(), devices[1].clone()];
                 shard.transition(&id, on(&primary)).await.unwrap();
                 let attach = RecordChange::Attach(AttachedHostRecord {
@@ -343,7 +343,7 @@ mod tests {
             .of(&owner)
             .call(move |shard, _| async move {
                 let id = ConversationId::try_from(ID).unwrap();
-                let (released, played) = runners(&shard, &devices);
+                let (released, played) = runners(&shard, &devices).await;
                 shard.transition(&id, on(&devices[0])).await.unwrap();
                 // Only the page's direct stream reaches the device: nothing
                 // the backend admitted started the idle watch.
@@ -381,7 +381,7 @@ mod tests {
             .of(&owner)
             .call(move |shard, _| async move {
                 let id = ConversationId::try_from(ID).unwrap();
-                let (released, _) = runners(&shard, &devices);
+                let (released, _) = runners(&shard, &devices).await;
                 let [old, new] = [devices[0].clone(), devices[1].clone()];
                 shard.transition(&id, on(&old)).await.unwrap();
                 let operate = async || {

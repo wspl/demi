@@ -219,7 +219,7 @@ async function removeProject(id: string) {
   try {
     await resources.removeProject(id)
   } catch (error) {
-    reportError('Could Not Remove the Project', error, { userVisible: true })
+    reportError('Could Not Delete the Project', error, { userVisible: true })
   }
 }
 async function signOut(): Promise<void> {

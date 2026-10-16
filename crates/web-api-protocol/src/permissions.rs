@@ -67,16 +67,16 @@ pub struct RequestingAgent {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "kind", rename_all = "snake_case", rename_all_fields = "camelCase")]
 pub enum PermissionRequest {
-    /// The grants of the categories a command lacked and the host it asks
-    /// to reach, at least one of the two (`permissions.md` § Hosts).
+    /// The grant of the category a command lacked, or the host it asks to
+    /// reach; never both (`permissions.md` § Hosts).
     Permission {
         #[garde(skip)]
         id: PermissionRequestId,
-        /// The categories the call lacked, ordered by id.
+        /// The category the call lacked; none when it asks for a host.
         #[garde(dive)]
         categories: Vec<PermissionCategory>,
-        /// The host the call asks to reach; null when it asks for
-        /// categories alone.
+        /// The host the call asks to reach; null when it asks for a
+        /// category.
         #[serde(deserialize_with = "Option::deserialize")]
         #[schemars(with = "Nullable<PermissionHost>")]
         #[garde(dive)]

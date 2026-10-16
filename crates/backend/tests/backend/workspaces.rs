@@ -1,9 +1,9 @@
 //! Workspaces and the sidebar's order (`web-api.md` § Workspaces, devices,
 //! and attached hosts, § Sidebar mutations, read state and page
 //! synchronization): a workspace is a named pointer at a directory of one
-//! of the user's devices, which stays while conversations target it; the
-//! sidebar keeps the order the user gave it, within each partition, however
-//! much the rows change.
+//! of the user's devices, one per directory and never its home, and
+//! deleting it archives its conversations; the sidebar keeps the order the
+//! user gave it, within each partition, however much the rows change.
 
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
@@ -81,15 +81,23 @@ async fn reorder(
         .status
 }
 
+/// Planted defect this catches: a deletion refused while conversations are
+/// in the project, or one that leaves them in a project that is gone; and a
+/// restore that leaves its conversation pointing at the deleted project.
+// About a second: one paired runner, no turn.
 #[tokio::test]
-async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_conversations_target_it()
+async fn a_workspace_points_at_a_directory_of_the_users_device_and_its_deletion_archives_its_conversations()
  {
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let laptop = backend.pair(&master, "laptop").await;
-    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let home = laptop.runner.home().to_owned();
+    let directory = format!("{home}/notes");
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::create_dir_all(format!("{home}/site")).unwrap();
+    std::os::unix::fs::symlink(&directory, format!("{home}/notes-link")).unwrap();
     let device =
-        json!({ "kind": "device", "deviceId": laptop.id(), "path": home, "name": "  notes  " });
+        json!({ "kind": "device", "deviceId": laptop.id(), "path": directory, "name": "  notes  " });
     let notes = create_workspace(&backend, &master, device).await;
     let body = json!({ "kind": "device", "deviceId": laptop.id(), "path": format!("{home}/site"), "name": "site" });
     create_workspace(&backend, &master, body).await;
@@ -97,7 +105,34 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
     // The product state carries them, in the same order.
     let state = backend.sync(&master).await.snapshot().await;
     assert_eq!(state.workspaces[0].id.as_str(), notes);
-    assert_eq!(state.workspaces[0].path.as_str(), home);
+    assert_eq!(state.workspaces[0].path.as_str(), directory);
+
+    // A directory is one project, whatever its spelling on its Host, which
+    // a second creation answers with; the device's home is none, reached
+    // through a link too.
+    for spelled in [format!("{directory}/"), format!("{home}/notes-link")] {
+        let again = backend
+            .post(
+                "/api/workspaces",
+                Some(&master),
+                json!({ "kind": "device", "deviceId": laptop.id(), "path": spelled, "name": "again" }),
+            )
+            .await;
+        assert_eq!(again.refusal(), (StatusCode::CONFLICT, ErrorCode::WorkspaceExists), "{spelled}");
+        assert_eq!(again.json::<Value>()["workspace"]["id"], json!(notes));
+    }
+    let linked_home = laptop.runner.linked_home().to_str().unwrap().to_owned();
+    assert_ne!(linked_home, home, "the temporary home is reached through a link");
+    for spelled in [home.clone(), linked_home] {
+        let at_home = backend
+            .post(
+                "/api/workspaces",
+                Some(&master),
+                json!({ "kind": "device", "deviceId": laptop.id(), "path": spelled, "name": "home" }),
+            )
+            .await;
+        assert_eq!(at_home.refusal(), (StatusCode::CONFLICT, ErrorCode::WorkspaceIsHome), "{spelled}");
+    }
 
     // What a creation names must be there and the user's.
     let refusals = [
@@ -105,6 +140,11 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
             json!({ "kind": "device", "deviceId": "nothing", "path": home, "name": "x" }),
             StatusCode::NOT_FOUND,
             ErrorCode::DeviceNotFound,
+        ),
+        (
+            json!({ "kind": "device", "deviceId": laptop.id(), "path": format!("{home}/missing"), "name": "x" }),
+            StatusCode::NOT_FOUND,
+            ErrorCode::FsNotFound,
         ),
         (
             json!({ "kind": "device", "deviceId": laptop.id(), "path": "relative", "name": "x" }),
@@ -173,7 +213,8 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
         (StatusCode::NOT_FOUND, ErrorCode::WorkspaceNotFound)
     );
 
-    // A conversation targets it: it does not go.
+    // A conversation made in its directory is in it, by the project's id
+    // or by the directory alike.
     let conversation = create_conversation(&backend, &master).await;
     let target = json!({ "target": { "kind": "workspace", "workspaceId": notes } });
     let moved = backend
@@ -189,33 +230,24 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
         "{}",
         String::from_utf8_lossy(&moved.body)
     );
-    let listed: Value = backend
-        .get("/api/conversations", Some(&master))
-        .await
-        .json();
-    assert_eq!(listed["conversations"][0]["cwd"], json!(home));
-    let in_use = backend
-        .delete(&format!("/api/workspaces/{notes}"), &master)
+    let second = uuid::Uuid::new_v4().to_string();
+    let made = backend
+        .post(
+            "/api/conversations",
+            Some(&master),
+            json!({ "id": second, "target": { "kind": "device", "deviceId": laptop.id(), "path": directory } }),
+        )
         .await;
-    assert_eq!(
-        in_use.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::WorkspaceInUse)
-    );
-    // The page words the refusal from its values (`localization.md` § Text
-    // from the backend): how many conversations still target it.
-    assert_eq!(in_use.error().params.get("count"), Some(&json!(1)));
+    assert_eq!(made.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&made.body));
+    for id in [&conversation, &second] {
+        let listed = summary(&backend, &master, id).await;
+        assert_eq!(
+            (serde_json::to_value(&listed.target).unwrap(), listed.cwd.as_str()),
+            (json!({ "kind": "workspace", "workspaceId": notes }), directory.as_str())
+        );
+    }
 
-    // Once nothing targets it, it goes, and its files stay.
-    let away = json!({ "target": { "kind": "cloud" } });
-    let moved = backend
-        .patch(&format!("/api/conversations/{conversation}"), &master, away)
-        .await;
-    assert_eq!(
-        moved.status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&moved.body)
-    );
+    // Deleting it archives both, and its files stay.
     assert_eq!(
         backend
             .delete(&format!("/api/workspaces/{notes}"), &master)
@@ -224,7 +256,44 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_stays_while_c
         StatusCode::NO_CONTENT
     );
     assert_eq!(workspace_names(&backend, &master).await, ["site"]);
-    assert!(std::path::Path::new(&home).is_dir());
+    let archived: Value = backend
+        .get("/api/conversations?archived=true", Some(&master))
+        .await
+        .json();
+    let mut archived: Vec<&str> = archived["conversations"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|conversation| conversation["id"].as_str().unwrap())
+        .collect();
+    archived.sort_unstable();
+    let mut both = [conversation.as_str(), second.as_str()];
+    both.sort_unstable();
+    assert_eq!(archived, both);
+    assert!(std::path::Path::new(&directory).is_dir());
+
+    // A restore makes the project of its directory again, which the other
+    // conversation joins when it is restored too.
+    for id in [&conversation, &second] {
+        let restored = backend
+            .patch(&format!("/api/conversations/{id}"), &master, json!({ "archived": false }))
+            .await;
+        assert_eq!(restored.status, StatusCode::OK, "{}", String::from_utf8_lossy(&restored.body));
+    }
+    let state = backend.sync(&master).await.snapshot().await;
+    let remade = state
+        .workspaces
+        .iter()
+        .find(|workspace| workspace.path == directory)
+        .expect("the restore makes the project again");
+    assert_eq!(remade.name, "notes");
+    for id in [&conversation, &second] {
+        let listed = summary(&backend, &master, id).await;
+        assert_eq!(
+            serde_json::to_value(&listed.target).unwrap(),
+            json!({ "kind": "workspace", "workspaceId": remade.id })
+        );
+    }
     let gone = backend
         .delete(&format!("/api/workspaces/{notes}"), &master)
         .await;
@@ -245,7 +314,8 @@ async fn revoking_a_device_removes_its_projects_but_not_their_conversations_or_f
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     let laptop = backend.pair(&master, "laptop").await;
-    let home = laptop.runner.home().to_owned();
+    let home = format!("{}/notes", laptop.runner.home());
+    std::fs::create_dir_all(&home).unwrap();
     let notes = create_workspace(
         &backend,
         &master,
@@ -361,7 +431,8 @@ async fn the_sidebar_keeps_the_users_order_within_each_partition_through_patches
     );
     // So is a workspace, and an archived row is in none.
     let mut laptop = backend.pair(&master, "laptop").await;
-    let home = laptop.runner.home_dir().to_str().unwrap().to_owned();
+    let home = format!("{}/notes", laptop.runner.linked_home().to_str().unwrap());
+    std::fs::create_dir_all(format!("{home}/site")).unwrap();
     let notes = create_workspace(
         &backend,
         &master,

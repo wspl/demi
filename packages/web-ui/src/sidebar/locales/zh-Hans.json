@@ -55,7 +55,7 @@
     "fold": "折叠",
     "unfold": "展开",
     "select": "选择对话",
-    "remove": "移除项目"
+    "delete": "删除项目…"
   },
   "delete": {
     "title": "删除“{title}”？",
@@ -64,6 +64,11 @@
     "many": "它们的消息和文件将被删除。此操作无法撤销。",
     "filesOne": "它更改过的文件会保留在项目中。",
     "filesMany": "它们更改过的文件会保留在各自的项目中。"
+  },
+  "deleteProject": {
+    "title": "删除“{name}”？",
+    "archived": "它的 {count} 个对话将被归档。",
+    "files": "{host} 上的文件不会被删除。"
   },
   "archivedToast": {
     "title": "已归档 {count} 个对话",

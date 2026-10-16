@@ -656,7 +656,7 @@ fn a_brings_host_field_is_a_string_field_of_an_rpc_leafs_input() {
         "properties": {"project": {"type": "string"}, "out": {"type": "boolean"}}});
     let leaf = |kind: &str, field: &str| {
         let mut leaf = json!({"name": "move", "summary": "Move", "kind": kind,
-            "input": input.clone(), "bringsHost": {"field": field, "names": "project"}});
+            "input": input.clone(), "bringsHost": {"field": field}});
         if kind == "native" {
             leaf["binding"] = json!({"package": "demi.file", "operation": "file.read",
                 "descriptorHash": "a".repeat(64)});
@@ -671,4 +671,14 @@ fn a_brings_host_field_is_a_string_field_of_an_rpc_leafs_input() {
     assert!(missing.contains("no string field"), "{missing}");
     let native = refused(tree(leaf("native", "project")));
     assert!(native.contains("only an rpc command can"), "{native}");
+    // A command needs a category or a host, never both: a request asks the
+    // user for one thing.
+    let both = serde_json::from_value::<Node>(json!({"name": "demi", "summary": "Demi",
+        "subcommands": [{"name": "host", "summary": "Host",
+            "permissions": [{"id": "host.organize", "action": "organize hosts", "description": "Organize."}],
+            "subcommands": [{"name": "move", "summary": "Move", "kind": "rpc", "input": input.clone(),
+                "permission": "host.organize", "bringsHost": {"field": "project"}}]}]}))
+    .unwrap();
+    let both = refused(both);
+    assert!(both.contains("needs one of the two"), "{both}");
 }

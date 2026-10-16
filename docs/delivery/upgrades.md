@@ -175,6 +175,21 @@ part of another release, and each is a contract that a release never breaks:
   ([Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in)),
   so an upgrade never asks the user to sign in again. The handover stays
   until the history starts again with the first formal release.
+- **A conversation outside a project in a directory other than its home.**
+  Releases before [projects by directory](../product/product.md#conversations-and-projects)
+  let a conversation run in any directory outside a project, and a project
+  in a home or under two spellings of one directory. The control migration
+  moves each such Cloud conversation into the workspace of its directory,
+  making it when there is none. When a device's runner first reports its
+  home after the upgrade, once, the backend has the runner resolve the
+  directory of each of the device's workspaces and of its conversations
+  outside projects: workspaces that turn out to be one directory become
+  one, the oldest, with their conversations; a workspace at the home is
+  removed and its conversations go among Conversations; and each
+  conversation outside a project goes to the home or its directory's
+  workspace. A device revoked before its first report keeps its
+  conversations outside projects, in their directories, since nothing can
+  resolve them.
 - **The configuration file.** It is the installation's. Each program
   refuses a setting it does not read, so a renamed or removed setting is
   reported, never silently ignored

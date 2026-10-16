@@ -66,9 +66,10 @@ impl OnDevice {
             .unwrap();
         control
             .execute(
-                "UPDATE conversations SET target_kind = 'workspace', target_workspace_id = 'workspace-1'
+                "UPDATE conversations SET target_kind = 'workspace', target_workspace_id = 'workspace-1',
+                   target_device_id = ?2, target_path = ?3
                  WHERE id = ?1",
-                [CONVERSATION],
+                [CONVERSATION, paired.id(), root.to_str().unwrap()],
             )
             .unwrap();
         Self {

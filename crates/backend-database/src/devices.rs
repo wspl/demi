@@ -8,22 +8,27 @@ use demi_runner_protocol::wire::{HostArtifact, OperatingSystem, RunnerPlatform};
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::devices::{DeviceKind, DeviceLogo, DeviceRoute};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId, WorkspaceId};
+use std::collections::HashMap;
+
+use demi_backend_remote_host::host_paths;
 use rusqlite::{Connection, OptionalExtension, Row, params};
 
 use super::StorageError;
 use super::accounts::TokenHash;
 use super::columns::{decode, instant, json, to_json};
 use super::control::ControlService;
-use super::conversation_index::raise_hosts_revision;
+use super::conversation_index::{TargetColumns, raise_hosts_revision};
+use super::selection::{CLOUD_HOME, Selection, directory, select_directory};
 
 /// What a device's deletion removed with it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeviceRemoval {
     /// The workspaces whose device it was.
     pub workspaces: Vec<RemovedWorkspace>,
-    /// The conversations the device's removal changed: those that targeted
-    /// those workspaces, which now target their directories on the device
-    /// directly, and those it was attached to, each once.
+    /// The conversations the device's removal changed: those that ran in
+    /// its home or in those workspaces, which now keep their directories on
+    /// the device, where they no longer run, and those it was attached to,
+    /// each once.
     pub conversations: Vec<ConversationId>,
 }
 
@@ -77,6 +82,10 @@ pub struct DeviceRecord {
     pub mark_number: Option<u32>,
     /// Which managed machine a managed device is; none for a paired device.
     pub machine: Option<ManagedMachine>,
+    /// The home its runner last reported; none before its runner first
+    /// reported one, or since the upgrade that began keeping it
+    /// (`sessions-and-targets.md` § Resolve a target).
+    pub home: Option<String>,
 }
 
 impl DeviceRecord {
@@ -123,6 +132,26 @@ impl ManagedMachine {
     }
 }
 
+/// What a runner's hello leaves to do: none, or for a paired device whose
+/// home the backend never heard, which holds projects or conversations an
+/// earlier release left in its directories, the directories its runner
+/// resolves before [`ControlService::settle_first_home`] records the home
+/// and puts them where they belong (`upgrades.md` § What crosses releases).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FirstHome {
+    pub home: String,
+    /// Each directory once, as the database keeps it.
+    pub directories: Vec<String>,
+}
+
+/// What a device's first home changed: the conversations it moved, and
+/// whether the user's projects changed, made, merged or removed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct HomeSettled {
+    pub moved: Vec<ConversationId>,
+    pub projects_changed: bool,
+}
+
 /// A paired device's system: its platform, and the operating system its
 /// runner last reported, none before its runner first connected.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -139,7 +168,7 @@ pub struct DeviceChange {
 }
 
 const DEVICE_COLUMNS: &str =
-    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, runner_instance, cloud_started_at, route, mark_number, machine";
+    "id, user_id, kind, name, platform, claimed_at, last_seen_at, installed, os, runner_version, runner_instance, cloud_started_at, route, mark_number, machine, home";
 
 /// The name and platform of the one device a user's Cloud is.
 pub const CLOUD_NAME: &str = "Cloud";
@@ -188,6 +217,7 @@ impl ControlService {
                 route: DeviceRoute::Automatic,
                 mark_number: None,
                 machine: None,
+                home: None,
             })
         })
         .await
@@ -245,33 +275,11 @@ impl ControlService {
         user: UserId,
         machine: ManagedMachine,
     ) -> Result<DeviceRecord, StorageError> {
-        let id = DeviceId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            transaction.execute(
-                "INSERT INTO devices (id, user_id, kind, name, platform, token_hash, claimed_at, last_seen_at, machine)
-                 VALUES (?1, ?2, 'managed', ?3, ?4, NULL, ?5, NULL, ?6)
-                 ON CONFLICT DO NOTHING",
-                params![
-                    id.as_str(),
-                    user.as_str(),
-                    machine.name(),
-                    CLOUD_PLATFORM.to_string(),
-                    now.as_millisecond(),
-                    machine.as_str()
-                ],
-            )?;
-            let device = one_of(
-                &transaction,
-                "kind = 'managed' AND user_id = ?1 AND machine = ?2",
-                [user.as_str(), machine.as_str()],
-            )?;
+            let device = machine_in_or_create(&transaction, &user, machine, now)?;
             transaction.commit()?;
-            device.ok_or(StorageError::Corrupt {
-                table: "devices",
-                column: "machine",
-                reason: "the user's managed device was neither found nor made".into(),
-            })
+            Ok(device)
         })
         .await
     }
@@ -330,10 +338,9 @@ impl ControlService {
             let transaction = connection.transaction()?;
             let mut conversations = {
                 let mut statement = transaction.prepare_cached(
-                    "UPDATE conversations SET target_kind = 'device', target_device_id = w.device_id,
-                       target_path = w.path, target_workspace_id = NULL
-                     FROM workspaces w
-                     WHERE conversations.target_workspace_id = w.id AND w.device_id = ?1
+                    "UPDATE conversations SET target_kind = 'device', target_workspace_id = NULL,
+                       target_path = COALESCE(target_path, (SELECT home FROM devices WHERE id = ?1))
+                     WHERE target_device_id = ?1 AND target_kind IN ('workspace', 'home')
                      RETURNING id",
                 )?;
                 let mut rows = statement.query([device.as_str()])?;
@@ -413,31 +420,36 @@ impl ControlService {
         .await
     }
 
-    /// Records the operating system, the runner release and the instance
-    /// `device`'s runner reported in its hello, and advances the execution
-    /// context of each conversation whose context the report changes
-    /// (`sessions-and-targets.md` § Resolve a target): when the system
-    /// changed, of those whose primary Host the device is; when
-    /// `home_changed`, the home its contexts named before differing from
-    /// the one reported, of those whose context names a directory under
-    /// that home: a Cloud conversation working in its session directory,
-    /// and one the device is attached to without a directory of its own.
-    /// A paired device whose mark has no number yet, or whose logo the
-    /// report changes, takes one more than the highest number among its
-    /// user's other devices of its new logo (`product.md` § Conversations
-    /// and projects).
+    /// Records the operating system, the runner release, the instance and
+    /// the home `device`'s runner reported in its hello, and advances the
+    /// execution context of each conversation whose context the report
+    /// changes (`sessions-and-targets.md` § Resolve a target): when the
+    /// system changed, of those whose primary Host the device is; when the
+    /// home differs from the one its contexts named before, the Cloud's
+    /// `/home/demi` before its first report, of those whose context names a
+    /// directory under that home: a Cloud conversation working in its own
+    /// directory, one in the device's home, and one the device is attached
+    /// to without a directory of its own. The first home a paired device
+    /// reports since the upgrade that began keeping it moves each of its
+    /// conversations the earlier release left in a directory of it to its
+    /// home or the workspace of that directory (`upgrades.md` § What
+    /// crosses releases), which changes no directory they work in. A paired
+    /// device whose mark has no number yet, or whose logo the report
+    /// changes, takes one more than the highest number among its user's
+    /// other devices of its new logo (`product.md` § Conversations and
+    /// projects).
     pub async fn set_device_runner(
         &self,
         device: DeviceId,
         os: OperatingSystem,
         runner_version: String,
         runner_instance: u64,
-        home_changed: bool,
-    ) -> Result<(), StorageError> {
-        self.call(move |connection, _| {
+        home: String,
+    ) -> Result<Option<FirstHome>, StorageError> {
+        self.call(move |connection, _|  {
             let transaction = connection.transaction()?;
             let Some(record) = one(&transaction, "id = ?1", device.as_str())? else {
-                return Ok(());
+                return Ok(None);
             };
             let logo = DeviceLogo::of(record.platform, Some(&os));
             let mark_number = match record.kind {
@@ -450,21 +462,40 @@ impl ControlService {
                 }
                 DeviceKind::User => Some(next_mark_number(&transaction, &record, logo)?),
             };
+            // A paired device's first home waits for its runner to resolve
+            // the directories an earlier release left on it, unless there
+            // are none.
+            let unsettled = if record.kind == DeviceKind::User && record.home.is_none() {
+                Some(left_directories(&transaction, &record.id)?).filter(|directories| !directories.is_empty())
+            } else {
+                None
+            };
+            let recorded = match unsettled {
+                Some(_) => None,
+                None => Some(home.as_str()),
+            };
             transaction.execute(
-                "UPDATE devices SET os = ?1, runner_version = ?2, runner_instance = ?3, mark_number = ?4
-                 WHERE id = ?5",
+                "UPDATE devices SET os = ?1, runner_version = ?2, runner_instance = ?3, mark_number = ?4,
+                   home = ?5
+                 WHERE id = ?6",
                 params![
                     to_json(&os),
                     runner_version,
                     runner_instance.cast_signed(),
                     mark_number,
+                    recorded,
                     device.as_str()
                 ],
             )?;
+            let named = match record.kind {
+                DeviceKind::Managed => Some(record.home.as_deref().unwrap_or(CLOUD_HOME)),
+                DeviceKind::User => record.home.as_deref(),
+            };
+            let home_changed = recorded.is_some() && named != recorded;
             let system_changed = record.os.as_ref() != Some(&os);
             if system_changed || home_changed {
-                // A Cloud conversation names no device: the Cloud is its
-                // owner's managed one.
+                // A Cloud conversation in a conversation's directory names
+                // no device: the Cloud is its owner's managed one.
                 transaction.execute(
                     "UPDATE conversations SET context_version = context_version + 1
                      WHERE id IN (
@@ -472,14 +503,13 @@ impl ControlService {
                          JOIN devices device ON device.id = ?1
                        WHERE (?2 AND (
                            conversation.target_device_id = device.id
-                           OR conversation.target_workspace_id IN
-                             (SELECT id FROM workspaces WHERE device_id = device.id)
                            OR (conversation.target_kind = 'cloud' AND device.kind = 'managed'
                              AND device.machine = 'cloud' AND conversation.user_id = device.user_id)))
                          OR (?3 AND (
                            (conversation.target_kind = 'cloud' AND conversation.target_path IS NULL
                              AND device.kind = 'managed' AND device.machine = 'cloud'
                              AND conversation.user_id = device.user_id)
+                           OR (conversation.target_kind = 'home' AND conversation.target_device_id = device.id)
                            OR EXISTS (SELECT 1 FROM conversation_hosts host
                              WHERE host.conversation_id = conversation.id
                                AND host.device_id = device.id AND host.cwd IS NULL))))",
@@ -487,7 +517,131 @@ impl ControlService {
                 )?;
             }
             transaction.commit()?;
-            Ok(())
+            Ok(unsettled.map(|directories| FirstHome { home, directories }))
+        })
+        .await
+    }
+
+    /// Records `home` as `device`'s first and puts what an earlier release
+    /// left on it where its directories say, each as its runner resolved
+    /// it in `resolved`, or as it is kept when the runner could not
+    /// (`upgrades.md` § What crosses releases): workspaces of one directory
+    /// become the oldest of them, with their conversations; one at the home
+    /// goes, and its conversations run in the home; and each conversation
+    /// outside a project moves to the home or its directory's workspace,
+    /// made when there is none. Nothing when the home was recorded
+    /// meanwhile.
+    pub async fn settle_first_home(
+        &self,
+        device: DeviceId,
+        home: String,
+        resolved: HashMap<String, String>,
+    ) -> Result<HomeSettled, StorageError> {
+        self.call(move |connection, now| {
+            let transaction = connection.transaction()?;
+            let Some(record) = one(&transaction, "id = ?1", device.as_str())? else {
+                return Ok(HomeSettled::default());
+            };
+            if record.home.is_some() || record.kind != DeviceKind::User {
+                return Ok(HomeSettled::default());
+            }
+            transaction.execute("UPDATE devices SET home = ?1 WHERE id = ?2", params![home, device.as_str()])?;
+            let paths = host_paths(record.platform);
+            let canonical = |path: &str| resolved.get(path).cloned().unwrap_or_else(|| directory(paths, path));
+            let home_directory = canonical(&home);
+            let device = DeviceRecord {
+                home: Some(home),
+                ..record
+            };
+            let mut settled = HomeSettled::default();
+            // The oldest workspace of each directory is the one kept.
+            let workspaces = transaction
+                .prepare("SELECT id, path FROM workspaces WHERE device_id = ?1 ORDER BY created_at, id")?
+                .query_map([device.id.as_str()], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            let mut kept: Vec<(String, String, String)> = Vec::new();
+            for (id, path) in workspaces {
+                let real = canonical(&path);
+                match kept.iter().find(|(_, _, directory)| *directory == real) {
+                    Some((survivor, _, directory)) => {
+                        settled.moved.extend(workspace_conversations(&transaction, &id)?);
+                        transaction.execute(
+                            "UPDATE conversations SET target_workspace_id = ?2, target_path = ?3 WHERE target_workspace_id = ?1",
+                            params![id, survivor, directory],
+                        )?;
+                        transaction.execute(
+                            "UPDATE conversations SET pending_workspace_id = ?2 WHERE pending_workspace_id = ?1",
+                            params![id, survivor],
+                        )?;
+                        transaction.execute("DELETE FROM workspaces WHERE id = ?1", [&id])?;
+                        settled.projects_changed = true;
+                    }
+                    None => kept.push((id, path, real)),
+                }
+            }
+            // A directory a workspace kept in another spelling is renamed in
+            // two steps, so no two rows hold one directory meanwhile.
+            for (id, path, real) in &kept {
+                if path != real {
+                    transaction.execute("UPDATE workspaces SET path = ?2 WHERE id = ?1", params![id, format!("moving:{id}")])?;
+                }
+            }
+            for (id, path, real) in &kept {
+                let conversations = workspace_conversations(&transaction, id)?;
+                if *real == home_directory {
+                    for conversation in &conversations {
+                        set_selection(&transaction, conversation, &Selection::Home { device_id: device.id.clone() })?;
+                    }
+                    transaction.execute(
+                        "UPDATE conversations SET pending_kind = 'device', pending_device_id = ?2, pending_path = ?3,
+                           pending_workspace_id = NULL
+                         WHERE pending_workspace_id = ?1",
+                        params![id, device.id.as_str(), real],
+                    )?;
+                    transaction.execute("DELETE FROM workspaces WHERE id = ?1", [id])?;
+                    settled.projects_changed = true;
+                    settled.moved.extend(conversations);
+                } else if path != real {
+                    transaction.execute("UPDATE workspaces SET path = ?2 WHERE id = ?1", params![id, real])?;
+                    transaction.execute(
+                        "UPDATE conversations SET target_path = ?2 WHERE target_workspace_id = ?1",
+                        params![id, real],
+                    )?;
+                    settled.projects_changed = true;
+                    settled.moved.extend(conversations);
+                }
+            }
+            let left = transaction
+                .prepare(
+                    "SELECT id, target_path FROM conversations
+                     WHERE target_kind = 'device' AND target_device_id = ?1",
+                )?
+                .query_map([device.id.as_str()], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
+                .collect::<rusqlite::Result<Vec<_>>>()?;
+            for (id, path) in left {
+                let id = decode("conversations", "id", ConversationId::try_from(id.as_str()))?;
+                let selected = select_directory(&transaction, &id, &device, &canonical(&path), now)?.map_err(|reason| {
+                    StorageError::Corrupt {
+                        table: "devices",
+                        column: "home",
+                        reason: format!("a directory of a device that reported its home is unselectable: {reason:?}"),
+                    }
+                })?;
+                set_selection(&transaction, &id, &selected.selection)?;
+                settled.projects_changed |= selected.made.is_some();
+                settled.moved.push(id);
+            }
+            settled.moved.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+            settled.moved.dedup();
+            // Each moved conversation's agent reads where it runs now.
+            for id in &settled.moved {
+                transaction.execute(
+                    "UPDATE conversations SET context_version = context_version + 1 WHERE id = ?1",
+                    [id.as_str()],
+                )?;
+            }
+            transaction.commit()?;
+            Ok(settled)
         })
         .await
     }
@@ -627,6 +781,95 @@ fn next_mark_number(
     Ok(highest + 1)
 }
 
+/// The device of `id`, in the caller's transaction.
+pub(crate) fn device_in(connection: &Connection, id: &DeviceId) -> Result<Option<DeviceRecord>, StorageError> {
+    one(connection, "id = ?1", id.as_str())
+}
+
+/// The user's Cloud device, if it was made, in the caller's transaction.
+pub(crate) fn managed_device_in(connection: &Connection, user: &UserId) -> Result<Option<DeviceRecord>, StorageError> {
+    one_of(
+        connection,
+        "kind = 'managed' AND user_id = ?1 AND machine = ?2",
+        [user.as_str(), ManagedMachine::Cloud.as_str()],
+    )
+}
+
+/// The user's Cloud device, made now when it was never made.
+pub(crate) fn cloud_device_in(connection: &Connection, user: &UserId, now: Timestamp) -> Result<DeviceRecord, StorageError> {
+    machine_in_or_create(connection, user, ManagedMachine::Cloud, now)
+}
+
+/// The user's managed device of `machine`, made now when it was never
+/// made, in the caller's transaction. The partial unique index admits one
+/// of each per user, so concurrent first uses find the same one. Its token
+/// is issued when it boots.
+fn machine_in_or_create(
+    connection: &Connection,
+    user: &UserId,
+    machine: ManagedMachine,
+    now: Timestamp,
+) -> Result<DeviceRecord, StorageError> {
+    let id = DeviceId::try_from(uuid::Uuid::new_v4().to_string()).expect("a UUID is not empty");
+    connection.execute(
+        "INSERT INTO devices (id, user_id, kind, name, platform, token_hash, claimed_at, last_seen_at, machine)
+         VALUES (?1, ?2, 'managed', ?3, ?4, NULL, ?5, NULL, ?6)
+         ON CONFLICT DO NOTHING",
+        params![
+            id.as_str(),
+            user.as_str(),
+            machine.name(),
+            CLOUD_PLATFORM.to_string(),
+            now.as_millisecond(),
+            machine.as_str()
+        ],
+    )?;
+    one_of(
+        connection,
+        "kind = 'managed' AND user_id = ?1 AND machine = ?2",
+        [user.as_str(), machine.as_str()],
+    )?
+    .ok_or(StorageError::Corrupt {
+        table: "devices",
+        column: "machine",
+        reason: "the user's managed device was neither found nor made".into(),
+    })
+}
+
+/// Writes `selection` as the conversation's, changing nothing else: a
+/// selection of the directory it works in already.
+/// The directories an earlier release left on the paired device `device`:
+/// its workspaces' and those of its conversations outside projects, each
+/// once.
+fn left_directories(connection: &Connection, device: &DeviceId) -> Result<Vec<String>, StorageError> {
+    Ok(connection
+        .prepare(
+            "SELECT path FROM workspaces WHERE device_id = ?1
+             UNION SELECT target_path FROM conversations WHERE target_kind = 'device' AND target_device_id = ?1",
+        )?
+        .query_map([device.as_str()], |row| row.get::<_, String>(0))?
+        .collect::<rusqlite::Result<Vec<_>>>()?)
+}
+
+/// The conversations that run in the workspace `workspace`.
+fn workspace_conversations(connection: &Connection, workspace: &str) -> Result<Vec<ConversationId>, StorageError> {
+    connection
+        .prepare("SELECT id FROM conversations WHERE target_workspace_id = ?1")?
+        .query_map([workspace], |row| row.get::<_, String>(0))?
+        .map(|id| decode("conversations", "id", ConversationId::try_from(id?.as_str())))
+        .collect()
+}
+
+pub(crate) fn set_selection(connection: &Connection, id: &ConversationId, selection: &Selection) -> Result<(), StorageError> {
+    let columns = TargetColumns::of(selection);
+    connection.execute(
+        "UPDATE conversations SET target_kind = ?2, target_device_id = ?3, target_path = ?4, target_workspace_id = ?5
+         WHERE id = ?1",
+        params![id.as_str(), columns.kind, columns.device, columns.path, columns.workspace],
+    )?;
+    Ok(())
+}
+
 /// The one device `condition` selects with `value`.
 fn one(
     connection: &Connection,
@@ -715,5 +958,6 @@ fn device_row(row: &Row<'_>) -> Result<DeviceRecord, StorageError> {
             Some(text) => Some(decode("devices", "machine", ManagedMachine::parse(&text))?),
             None => None,
         },
+        home: row.get("home")?,
     })
 }

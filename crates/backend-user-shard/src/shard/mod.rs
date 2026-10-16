@@ -6,6 +6,8 @@
 //! runs on the shard and need not be, and the answer is `Send`.
 
 mod adoption;
+#[cfg(test)]
+pub(crate) use adoption::PlayedHost;
 pub(crate) mod agent_profiles;
 pub(crate) mod credential_commands;
 pub mod credentials;

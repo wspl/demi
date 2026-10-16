@@ -33,7 +33,12 @@ const props = defineProps<{
   deviceId: string | null
   locked: boolean
   browseEnabled: boolean
-  recentDirectories: {
+  /**
+   * The projects on the Host the conversation runs on, in the sidebar's
+   * order: every directory a conversation runs in, but the home, is one
+   * (`product.md` § Conversations and projects).
+   */
+  projects: {
     id: string
     path: string
     disabled: boolean
@@ -41,7 +46,7 @@ const props = defineProps<{
   hosts: DirectoryBrowserHost[]
   selectFolder: (deviceId: string, path: string) => Promise<boolean>
 }>()
-const emit = defineEmits<{ selectRecent: [id: string] }>()
+const emit = defineEmits<{ selectProject: [id: string] }>()
 const directoryOpen = ref(false)
 const directoryName = computed(
   () => props.workspaceName ?? props.path?.split('/').filter(Boolean).at(-1) ?? '/',
@@ -73,9 +78,9 @@ function switchBrowserHost(deviceId: string) {
   browserPath.value = undefined
   browsingDevice.value = deviceId
 }
-function selectRecent(id: string) {
+function selectProject(id: string) {
   directoryOpen.value = false
-  emit('selectRecent', id)
+  emit('selectProject', id)
 }
 async function selectFolder(path: string) {
   const deviceId = browsingDevice.value
@@ -121,7 +126,7 @@ defineExpose({ browse })
           <!-- The menu lays its rows on one grid and scrolls itself; nothing wraps the items. -->
           <Menu>
             <MenuItem
-              v-for="item in recentDirectories"
+              v-for="item in projects"
               :key="item.id"
               :icon="Folder"
               :label="directoryParts(item.path, home).name"
@@ -129,11 +134,11 @@ defineExpose({ browse })
               choice
               :is-selected="item.id === selectedProjectId"
               :disabled="locked || item.disabled"
-              @select="selectRecent(item.id)"
+              @select="selectProject(item.id)"
             >
               <DirectoryLabel :path="item.path" :home="home" />
             </MenuItem>
-            <MenuDivider />
+            <MenuDivider v-if="projects.length" />
             <MenuItem
               :icon="Folder"
               :label="t('directory.chooseAnother')"

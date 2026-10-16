@@ -133,15 +133,6 @@ watch(
 const project = computed(() =>
   resources.projects.find((p) => p.id === conversation.value?.projectId),
 )
-watch(
-  () => project.value?.id,
-  (id) => {
-    if (id) {
-      resources.rememberProject(id)
-    }
-  },
-  { immediate: true },
-)
 const hasProvider = computed(() =>
   resources.providerInfos.some(
     (p) => p.id === conversation.value?.model.providerId && p.isAvailable,

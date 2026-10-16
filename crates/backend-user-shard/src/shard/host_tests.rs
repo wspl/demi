@@ -82,6 +82,9 @@ mod host_commands {
         };
         let laptop: DeviceId = device("laptop").await;
         let ci: DeviceId = device("ci").await;
+        // The laptop reported its home before; `/work` is a directory the
+        // conversation kept from a release before projects by directory.
+        testing::report_home(&control, &laptop, "/home/ana").await;
         testing::execute(
             &control,
             "UPDATE conversations SET target_kind = 'device', target_device_id = ?2, target_path = '/work'
@@ -104,7 +107,7 @@ mod host_commands {
             .shards()
             .of(&owner)
             .call(move |shard, _| async move {
-                let _link = shard.connect_for_tests(&laptop, "/home/ana");
+                let _link = shard.connect_for_tests(&laptop, "/home/ana").await;
                 let mut commands = CommandSet::new();
                 let this: Rc<dyn HostShard> = shard.clone();
                 let hosts: Weak<dyn HostShard> = Rc::downgrade(&this);
@@ -229,6 +232,9 @@ mod shells {
             .await
             .unwrap()
             .id;
+        // Its runner reported its home before, so its first connection here
+        // has nothing to settle.
+        testing::report_home(&control, &laptop, "/home/ana").await;
         testing::execute(
             &control,
             "UPDATE conversations SET target_kind = 'device', target_device_id = ?2, target_path = '/work'
@@ -243,7 +249,7 @@ mod shells {
             .shards()
             .of(&owner)
             .call(move |shard, _| async move {
-                let _connection = shard.connect_for_tests(&laptop, "/home/ana");
+                let _connection = shard.connect_for_tests(&laptop, "/home/ana").await;
                 let host = shard.host_shard().conversation_host(&id).await.unwrap();
                 assert_eq!(host.default_cwd(), "/work");
                 let ran = Cell::new(0);
@@ -315,6 +321,9 @@ mod project_reads {
             .await
             .unwrap()
             .id;
+        // Its runner reported its home before, so its first connection here
+        // has nothing to settle.
+        testing::report_home(&control, &laptop, "/home/ana").await;
         testing::execute(
             &control,
             "UPDATE conversations SET target_kind = 'device', target_device_id = ?2, target_path = '/work'
@@ -327,7 +336,7 @@ mod project_reads {
             .shards()
             .of(&owner)
             .call(move |shard, _| async move {
-                let _connection = shard.connect_for_tests(&laptop, "/home/ana");
+                let _connection = shard.connect_for_tests(&laptop, "/home/ana").await;
                 let left = DeviceId::try_from("device-it-left").unwrap();
                 let reads = [HostRead::new("/work/AGENTS.md".to_owned(), 0)];
                 let cancel = CancellationToken::new();
@@ -420,7 +429,7 @@ mod remote_files {
                     matches!(offline, Err(RemoteFileRefusal::Offline(_))),
                     "{offline:?}"
                 );
-                let _connection = shard.connect_for_tests(&build, "/home/build");
+                let _connection = shard.connect_for_tests(&build, "/home/build").await;
                 // One inaccessible reference refuses them all.
                 let refused = shard
                     .host_shard()

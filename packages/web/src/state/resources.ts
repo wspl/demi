@@ -1,7 +1,7 @@
 import { computed, ref, shallowRef, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue, moveBefore } from '@demicodes/utils'
-import { apiRequest, jsonBody, readResponse } from '../api/client'
+import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import type { RememberedChoices } from '@demicodes/web-ui/agent/starting-choices'
 import { t } from './locales/text'
@@ -257,15 +257,6 @@ export const useResources = defineStore('resources', () => {
       local.value.passkeyOfferAnswered = answered
     },
   })
-  const recentProjectIds = computed(() => local.value.recentProjects)
-
-  function rememberProject(id: string): void {
-    local.value.recentProjects = [
-      id,
-      ...local.value.recentProjects.filter((candidate) => candidate !== id),
-    ].slice(0, 30)
-  }
-
   /**
    * Moves the project before `beforeId`, or to the end, at once; the write
    * follows the earlier moves, and a failure, thrown, puts it back.
@@ -299,19 +290,31 @@ export const useResources = defineStore('resources', () => {
       })
   }
 
+  /**
+   * Makes the project `draft` names and answers its id; a directory that is
+   * already a project answers that project, which the caller opens instead
+   * of making a second (`product.md` § Conversations and projects).
+   */
   async function createProject(draft: CreateWorkspace): Promise<string> {
     const current = controller
-    const response = await apiRequest('/workspaces', {
-      method: 'POST',
-      signal: controller.signal,
-      ...jsonBody(draft),
-    })
-    const { workspace } = await readResponse(response, workspaceAnswerSchema)
+    let id: string
+    try {
+      const response = await apiRequest('/workspaces', {
+        method: 'POST',
+        signal: controller.signal,
+        ...jsonBody(draft),
+      })
+      id = (await readResponse(response, workspaceAnswerSchema)).workspace.id
+    } catch (error) {
+      if (!(error instanceof ApiError && error.code === 'workspace_exists' && error.workspaceId)) {
+        throw error
+      }
+      id = error.workspaceId
+    }
     // The caller opens the project, which the channel brings moments after
     // it was made.
-    await product.until((state) => state.workspaces.some((item) => item.id === workspace.id), current.signal)
-    rememberProject(workspace.id)
-    return workspace.id
+    await product.until((state) => state.workspaces.some((item) => item.id === id), current.signal)
+    return id
   }
 
   /**
@@ -384,8 +387,6 @@ export const useResources = defineStore('resources', () => {
     passkeyOfferAnswered,
     deviceById,
     conversationDevice,
-    recentProjectIds,
-    rememberProject,
     reorderProject,
     createProject,
     removeProject,
