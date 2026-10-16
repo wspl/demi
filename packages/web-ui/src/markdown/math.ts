@@ -2,10 +2,57 @@
 // (`file-previews.md` § Markdown): `$$…$$` is display math, and `$…$` is
 // inline math by Pandoc's rule, so prices such as `$10 vs $12` stay text
 // while math may touch Chinese text, as in `面积为$x^2$平方米`.
+//
+// KaTeX is a chunk of its own, which the first math shown starts loading
+// (`file-previews.md` § Markdown). Until it is there, math shows its TeX
+// source where the math will stand, inline in its line or a display on a
+// line of its own, and every Markdown render runs again on its arrival.
+import type { KatexOptions } from 'katex'
 import type { TokenizerAndRendererExtension, Tokens } from 'marked'
-import markedKatex, { type MarkedKatexOptions } from 'marked-katex-extension'
+import { reportError } from '../infra/errors'
+import { t } from '../locales/text'
+import { escapeHtml } from './html'
+import { renderAgain } from './render-version'
 
-/** `$$…$$` within a line: display math, as marked-katex-extension reads it. */
+/** KaTeX, from its chunk. */
+export type Katex = typeof import('./katex').default
+
+let katex: Katex | null = null
+let loading: Promise<void> | null = null
+
+/**
+ * Loads KaTeX once; Markdown renders again when it is there. One that fails
+ * to load leaves math as its source, as a highlighter that fails to load
+ * leaves code plain, and says so once.
+ */
+export function loadKatex(): Promise<void> {
+  loading ??= import('./katex').then(
+    (chunk) => {
+      katex = chunk.default
+      renderAgain()
+    },
+    (error: unknown) => reportError(t('markdown.mathUnavailable'), error),
+  )
+  return loading
+}
+
+/** KaTeX, null until it has loaded: the first call starts its load. */
+export function loadedKatex(): Katex | null {
+  if (!katex)
+    void loadKatex()
+  return katex
+}
+
+/**
+ * Math as it shows until KaTeX is there: its TeX source, in a display of its
+ * own line or inline. A span in both cases, since display math may stand
+ * within a paragraph, where a block element would end it.
+ */
+export function mathSourceHtml(tex: string, displayMode: boolean): string {
+  return `<span class="math ${displayMode ? 'math-display' : 'math-inline'}">${escapeHtml(tex)}</span>`
+}
+
+/** `$$…$$` within a line: display math. */
 const INLINE_DISPLAY_MATH = /^\$\$(?!\$)((?:\\.|[^\\\n])*?(?:\\.|[^\\\n$]))\$\$/
 
 /**
@@ -30,8 +77,9 @@ function inlineMathStart(src: string): number | undefined {
   return undefined
 }
 
-/** The inline math token at the start of `src`, in the extension's token shape. */
-function inlineMathToken(type: string, src: string): Tokens.Generic | undefined {
+/** The inline math token at the start of `src`. */
+function inlineMathToken(src: string): Tokens.Generic | undefined {
+  const type = 'inlineMath'
   const display = INLINE_DISPLAY_MATH.exec(src)
   if (display) {
     const [raw, tex = ''] = display
@@ -45,22 +93,47 @@ function inlineMathToken(type: string, src: string): Tokens.Generic | undefined 
   return undefined
 }
 
+/** `$$` or `$` alone on a line, the TeX, and the same alone on a line: block math, display for `$$`. */
+const BLOCK_MATH = /^(\${1,2})\n((?:\\[^]|[^\\])+?)\n\1(?:\n|$)/
+
+/** The block math token at the start of `src`. */
+function blockMathToken(src: string): Tokens.Generic | undefined {
+  const match = BLOCK_MATH.exec(src)
+  if (!match)
+    return undefined
+  const [raw, delimiter = '', tex = ''] = match
+  return { type: 'blockMath', raw, text: tex.trim(), displayMode: delimiter.length === 2 }
+}
+
 /**
- * marked-katex-extension's block math and KaTeX rendering, with Pandoc's
- * inline rule. The extension offers only two inline rules: its standard one
- * wants a space before the opening `$`, which math beside Chinese text lacks,
- * and its `nonStandard` one takes any pair of dollar signs as math, prices
- * included. Neither is Pandoc's, so its inline tokenizer is replaced here
- * and its renderer kept.
+ * Math in Markdown, by Pandoc's inline rule, rendered by KaTeX with
+ * `options` once it has loaded and as its source until then. The inline
+ * rule is Pandoc's, not marked-katex-extension's, whose standard rule wants
+ * a space before the opening `$`, which math beside Chinese text lacks, and
+ * whose `nonStandard` one takes any pair of dollar signs as math, prices
+ * included; and that extension imports KaTeX, which must stay out of the
+ * page until math shows. `katex` answers KaTeX once it has loaded, the
+ * page's own load unless a test stands in for it.
  */
-export function mathExtensions(options: MarkedKatexOptions): TokenizerAndRendererExtension[] {
-  return (markedKatex(options).extensions ?? []).map((extension) => {
-    if (!('tokenizer' in extension) || extension.level !== 'inline')
-      return extension
-    return {
-      ...extension,
+export function mathExtensions(options: KatexOptions, katex: () => Katex | null = loadedKatex): TokenizerAndRendererExtension[] {
+  const render = (token: Tokens.Generic): string => {
+    const tex = String(token['text'])
+    const displayMode = token['displayMode'] === true
+    return katex()?.renderToString(tex, { ...options, displayMode }) ?? mathSourceHtml(tex, displayMode)
+  }
+  return [
+    {
+      name: 'inlineMath',
+      level: 'inline',
       start: inlineMathStart,
-      tokenizer: (src: string) => inlineMathToken(extension.name, src),
-    }
-  })
+      tokenizer: inlineMathToken,
+      renderer: render,
+    },
+    {
+      name: 'blockMath',
+      level: 'block',
+      tokenizer: blockMathToken,
+      renderer: (token) => `${render(token)}\n`,
+    },
+  ]
 }

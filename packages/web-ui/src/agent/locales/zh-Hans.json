@@ -155,7 +155,9 @@
   "terminals": {
     "endCommand": "停止命令",
     "closeTab": "关闭标签页",
-    "chip": "{count} 个正在运行"
+    "chip": "{count} 个正在运行",
+    "loading": "正在加载终端…",
+    "unavailable": "无法加载终端。"
   },
   "session": {
     "loading": "正在加载对话…",

@@ -293,5 +293,8 @@
   },
   "conversation": {
     "untitled": "新しいチャット"
+  },
+  "markdown": {
+    "mathUnavailable": "数式の表示を使用できません"
   }
 }

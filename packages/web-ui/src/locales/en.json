@@ -293,5 +293,8 @@
   },
   "conversation": {
     "untitled": "New conversation"
+  },
+  "markdown": {
+    "mathUnavailable": "Math Formatting Is Unavailable"
   }
 }

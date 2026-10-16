@@ -5,6 +5,16 @@
  * otherwise make the page load itself again and again.
  */
 
+/**
+ * Loads the page again, at the address it shows. A drafted message and the
+ * reader's place outlive it (`web-application.md` § A page of another
+ * build), so this is the one reload of the page: for another build, and for
+ * a part of the page that failed to load (`infra/lazy.ts`).
+ */
+export function reloadPage(): void {
+  window.location.reload()
+}
+
 /** The `sessionStorage` key that keeps the build the page last loaded itself for. */
 const RELOADED_FOR = 'demi.reloadedFor'
 

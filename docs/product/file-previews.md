@@ -193,12 +193,20 @@ text in the theme's text color.
 
 The editor and its highlighter are not part of the page that opens: the
 first code that shows, and the first File or Change view, load them, about
-600 KB the first screen would not use. Until they arrive, code shows as
+600 KB the first screen would not use. KaTeX and the terminal are loaded the
+same way, by the first math ([Markdown](#markdown)) and the first terminal
+that opens, and a test of the build keeps all of them out of the files the
+page loads first. Until the editor arrives, code shows as
 plain text in the theme's text color, laid out as it will be, and a code
 block's language label keeps its row, empty; the colors and the label then
 fill in without moving anything. A File or Change view says *Reading…* until
 its editor is there, and *Couldn't load the code editor.* with Retry when it
-cannot load.
+cannot load; a terminal says *Loading terminal…*, and *Couldn't load the
+terminal.* with Retry. Retry loads the page again, as a page of another
+build does ([A page of another build](web-application.md#a-page-of-another-build)):
+a browser keeps a module that failed to load as failed for the page's life,
+and a drafted message and the place the reader was are kept across a
+reload.
 
 The File view's source and the Change view's diff are read-only, but they
 are text the user reads with the keyboard as well as the mouse, as a
@@ -218,6 +226,12 @@ box with its alt text, never the browser's broken-image icon. A single line brea
 lines, unlike in messages. Task list checkboxes are read-only. Leading YAML
 front matter shows as a YAML code block. A file over 2 MiB shows only its
 source, since rendering that much stalls the page.
+
+Until KaTeX arrives, math shows its TeX source, without the dollar signs,
+in the code font and the muted color, where the math will stand: inline in
+its line, a display centered on its own line and scrolling sideways, as
+ChatGPT and Claude show math before it is typeset. A KaTeX that cannot load
+leaves the source and says once *Math Formatting Is Unavailable*.
 
 Math follows Pandoc's rule for dollar signs, the same in a file and in the
 agent's replies, which render through the same Markdown renderer. `$$…$$` is

@@ -293,5 +293,8 @@
   },
   "conversation": {
     "untitled": "새 대화"
+  },
+  "markdown": {
+    "mathUnavailable": "수식 표시를 사용할 수 없습니다"
   }
 }

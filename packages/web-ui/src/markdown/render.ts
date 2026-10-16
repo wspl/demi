@@ -497,8 +497,8 @@ function separateMedia(blocks: Token[]): void {
 }
 
 const agentMarked = markdownReader({ breaks: true, renderer: messageRenderer }, scrollingTable)
-// LaTeX math, rendered to self-contained HTML (KaTeX CSS is loaded by web-ui's base
-// stylesheet); `throwOnError` keeps malformed math from blowing up the whole message.
+// LaTeX math, rendered to HTML whose stylesheet comes with KaTeX (`math.ts`);
+// `throwOnError` keeps malformed math from blowing up the whole message.
 agentMarked.use({ extensions: mathExtensions({ throwOnError: false, output: 'html' }) })
 agentMarked.use({
   hooks: {
@@ -611,7 +611,7 @@ export function messageBlockEnds(src: string): number[] {
   let offset = 0
   for (const token of new agentMarked.Lexer(agentMarked.defaults).blockTokens(src.slice(0, src.lastIndexOf('\n') + 1))) {
     if (token.type !== 'space')
-      blocks.push({ start: offset, live: token.type === 'html' || (token.type !== 'blockKatex' && MATH_OPENER.test(token.raw)) })
+      blocks.push({ start: offset, live: token.type === 'html' || (token.type !== 'blockMath' && MATH_OPENER.test(token.raw)) })
     offset += token.raw.length
   }
   let last = blocks.length - 1
