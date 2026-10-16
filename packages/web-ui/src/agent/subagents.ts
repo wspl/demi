@@ -96,7 +96,7 @@ export type SubagentJobFields = Pick<SubagentRecord, 'id' | 'number' | 'name' | 
  * subagents route's: a `started` job of a later round replaces the closed
  * round's start, end, phase and model.
  */
-export function subagentJobFields(job: SubagentJob): SubagentJobFields {
+export function subagentJobFields(job: Omit<SubagentJob, 'parentSessionId' | 'result'>): SubagentJobFields {
   return {
     id: job.subagentId,
     number: job.number,

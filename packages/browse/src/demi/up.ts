@@ -44,6 +44,14 @@ export interface UpOptions {
    * backend starts; one already up keeps its own.
    */
   publicHost?: string
+  /**
+   * Serves the web app as `vite build` makes it, through `vite preview`,
+   * instead of the development server: for a check of what only a build
+   * has, such as the service worker's page for opening offline
+   * (`web-application.md` § Installing and opening offline). The build is
+   * made as the web app starts; a web app already up is kept as it is.
+   */
+  built?: boolean
 }
 
 export async function up(tool: Tool, args: (string | UpOptions)[]): Promise<void> {
@@ -66,7 +74,7 @@ export async function up(tool: Tool, args: (string | UpOptions)[]): Promise<void
       await startBackend(tool, options)
     }
     if (wanted.includes('web')) {
-      await startWeb(tool)
+      await startWeb(tool, options)
     }
   })()
   // The gallery starts meanwhile; the first failure is thrown, and neither goes unhandled.
@@ -138,7 +146,7 @@ function borrowEnv(tool: Tool): void {
   tool.print(`Copied ${join(checkout, '.env')} into the slot; demi.down deletes it`)
 }
 
-async function startWeb(tool: Tool): Promise<void> {
+async function startWeb(tool: Tool, options: UpOptions): Promise<void> {
   const { ports } = tool.slot
   const account = readState(tool.slot).account
   if (!account) {
@@ -154,7 +162,15 @@ async function startWeb(tool: Tool): Promise<void> {
       extra.DEMI_DEV_EMAIL = account.email
       extra.DEMI_DEV_PASSWORD = account.password
     }
-    const server = await start(tool, 'web', ports.web, [process.execPath, 'scripts/web-dev.ts', '--port', String(ports.web), '--strictPort'], extra)
+    const vite = [process.execPath, 'scripts/web-dev.ts']
+    if (options.built) {
+      const build = Bun.spawnSync([...vite, 'build'], { cwd: tool.slot.root, env: childEnv(tool, extra), stdout: 'pipe', stderr: 'pipe' })
+      if (build.exitCode !== 0) {
+        throw new Failure(`vite build failed:\n${build.stderr.toString().split('\n').slice(-20).join('\n')}`)
+      }
+      vite.push('preview')
+    }
+    const server = await start(tool, 'web', ports.web, [...vite, '--port', String(ports.web), '--strictPort'], extra)
     await untilReady('The web app', server, async () => (await answersOk(local(ports.web)) ? true : null), VITE_START_MS)
     started = `ready in ${seconds(began)}`
   }

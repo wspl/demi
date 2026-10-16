@@ -706,6 +706,20 @@ export const useProduct = defineStore('product', () => {
     connect()
   }
 
+  /**
+   * Shows `state`, the account's copy kept for opening offline, until the
+   * channel's first snapshot replaces it, as a later snapshot replaces the
+   * copy (`web-application.md` § Installing and opening offline). A page
+   * that holds a state already keeps it.
+   */
+  function showCopy(state: ProductState): void {
+    if (read.value !== null) {
+      return
+    }
+    slot.replace(state)
+    load.value = 'ready'
+  }
+
   /** The user's Retry: connects at once when the channel is not open. */
   function reconnect(): void {
     if (!controller) {
@@ -768,6 +782,7 @@ export const useProduct = defineStore('product', () => {
     reloadModels,
     loadVendors,
     start,
+    showCopy,
     reconnect,
     stop,
   }

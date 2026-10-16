@@ -1129,6 +1129,93 @@ draft of the conversation lives in the backend.
 An edit of a sent message ([Message editing](../agent/message-editing.md)) is
 not the draft: it stays in the user's browser where it was opened.
 
+## Installing and opening offline
+
+The web app installs as an app, as Slack's and Linear's do, and opens while
+the backend cannot be reached. For example, a user adds Demi to their
+iPhone's Home Screen. Its icon is Demi's otter, and it opens in a window of
+its own, without the browser's address bar. On the train with no network,
+they open it: the sidebar shows their conversations as they last saw them,
+the banner says *You're offline*, and the conversation they read this
+morning shows as far as they read it. Back online, the banner goes and
+everything is current again.
+
+```text
+open the app
+  |
+  service worker: the page of the build that last ran, if the network fails
+  |
+  page: the cached copy of the account's state, shown at once
+  |
+  +-- the backend answers ---------> its snapshot replaces the copy
+  |                                  (A page of another build reloads first)
+  +-- it cannot be reached --------> the copy stays, under the banner;
+                                     a conversation opens from its cache
+```
+
+**Installing.** The page names a web app manifest: the name *Demi*, the
+otter as its icons (the browsers' sizes, a maskable one, and the Home
+Screen icon iOS reads), `/` as its start and scope, and `standalone` display,
+with the light and dark page colors as its theme. The installed app is the
+same page: the phone layout's bars stand inside the safe areas there as in
+a browser, every screen has its own way back since there is no Back button,
+and a link outside the app opens in the system's browser. An installed app on
+iOS keeps its own storage, so it signs in once on its own, by password,
+passkey or a sign-in code.
+
+**The page offline.** One service worker serves the page, the one that also
+answers the [direct channel's](../execution/direct-channel.md#bytes-the-browser-fetches-itself)
+raw requests. A navigation goes to the network first, so a page that reaches
+the backend always gets the build the backend serves and
+[A page of another build](#a-page-of-another-build) holds unchanged; only
+when the network fails, or a proxy in front of the backend answers that it
+is away (502, 503 or 504, as Cloudflare does while a server restarts), does
+the worker answer with the page of the build that last ran. That build's hashed files are kept as the page fetches them
+and answered from the cache, so a phone keeps what it used, a few MB, not
+the whole build with every language and file icon. The worker keeps one
+build: once a page of a newer build runs, the earlier build's files go. It
+answers nothing else from its cache: not `build.json`, not the API, not the
+sockets, not a share's page.
+
+**The account offline.** The page keeps its copy of the
+[product state](#page-synchronization) in the per-user IndexedDB, in the
+snapshot's shape, as the copy changes, and with it the account the session
+names. For every conversation the user opened on this device, it keeps the
+latest window of its root agent as the page holds it, the blocks from the
+end back as far as the reader has been, each block in the form the page
+holds it, light as a page read brought it
+([Light form](web-api-conversations.md#light-form)) or whole as the stream
+brought it or the reader opened it, with the conversation's agents. A write replaces the conversation's record with what
+the page then holds; nothing is ever merged, since the backend holds the
+conversation and the record is only the page's last view of it. For
+example, the user scrolled back 500 blocks yesterday; today the
+conversation opens from the backend with its latest page, and the record
+becomes that page. The page writes a record as its window changes, at most
+every few seconds, and when it hides. When the browser refuses a write for
+lack of room, the page drops the records of the conversations opened
+longest ago until it fits. Then:
+
+- **Opening** shows the cached copy at once, before the channel's first
+  snapshot, which replaces it as a later snapshot always does. A page that
+  cannot reach the backend at startup starts signed in as the cached
+  account, under the [connection banner](#a-page-of-another-build), instead
+  of *Connecting to Demi…*; only the backend's 401 signs it out.
+- **A conversation** whose history cannot be read opens from its cache, as
+  a conversation that opens no session opens, at the first step
+  ([Backend communication](#backend-communication)). Once the backend
+  answers, it opens again from the backend as a reconnected conversation
+  does, showing what the backend then holds, and its record is replaced. Online, a conversation opens from the
+  backend as it always does, never from the cache. One not cached says
+  *This conversation isn't available offline.* until the backend answers,
+  and then opens from it as any conversation does.
+- **Nothing is changed offline.** A request waits for the backend as every
+  request of the page does; nothing is queued beyond the page's lifetime.
+  Media, attachments, files and command output are not cached.
+- **The cache is disposable.** It is written by one build and read by that
+  build alone: a record of another build is dropped, never migrated. It is the
+  account's: signing out, a 401 or `session_ended` deletes it with the
+  account's other stores, and another account's sign-in replaces it.
+
 ## Development and checks
 
 Start the backend executable, `demi-backend`, which listens on port 3271 by
@@ -1199,6 +1286,6 @@ conversations is not offered, and nothing in the web app leads to it.
 Read-only links are [Sharing](sharing.md)'s, and the language is chosen as
 [Localization](localization.md) says.
 
-The selected scope excludes collaboration, offline mode, PWA behavior and
-push notifications. Components, layout, and interaction examples are
+The selected scope excludes collaboration, changes made offline and push
+notifications. Components, layout, and interaction examples are
 maintained in the gallery.
