@@ -14,10 +14,10 @@ use std::{
 };
 
 use demi_agent_store::CommandInterval;
-use demi_shared_types::CommandId;
+use demi_shared_types::{CommandId, ReportEvent};
 use tokio_util::task::AbortOnDropHandle;
 
-use super::SessionShared;
+use super::{SessionShared, input::Opens};
 
 /// The commands the session's calls left running, in the order they were
 /// left running.
@@ -118,21 +118,23 @@ impl Watched {
 }
 
 /// Starts the task that watches `command`, which the session watches, and
-/// gives it to the session.
-pub(super) fn start_watch(s: &Rc<SessionShared>, command: &CommandId) {
+/// gives it to the session. Its reports count from its start, which was
+/// `ran` ago when its call watched it that long (`runtime.md` § Command
+/// reports): the first comes at the next whole interval since then.
+pub(super) fn start_watch(s: &Rc<SessionShared>, command: &CommandId, ran: Duration) {
     let Some(interval_ms) = s.read(|core| core.watched.get(command)) else {
         return;
     };
     let task = tokio::task::spawn_local(
-        watch(Rc::downgrade(s), command.clone(), interval_ms).in_current_span(),
+        watch(Rc::downgrade(s), command.clone(), interval_ms, ran).in_current_span(),
     );
     s.update(|core| core.watched.set_task(command, AbortOnDropHandle::new(task)));
 }
 
-/// Reports `command`'s progress every `interval_ms` while it runs, and its
-/// end once it ends; then the session no longer watches it. The task holds
-/// the session only while it hands it a report.
-async fn watch(session: Weak<SessionShared>, command: CommandId, interval_ms: Option<u32>) {
+/// Reports `command`'s progress every `interval_ms` from its start, `ran`
+/// ago, while it runs, and its end once it ends; then the session no longer
+/// watches it. The task holds the session only while it hands it a report.
+async fn watch(session: Weak<SessionShared>, command: CommandId, interval_ms: Option<u32>, mut ran: Duration) {
     let Some(s) = session.upgrade() else {
         return;
     };
@@ -143,7 +145,11 @@ async fn watch(session: Weak<SessionShared>, command: CommandId, interval_ms: Op
     loop {
         let progress = async {
             match interval_ms {
-                Some(interval) => tokio::time::sleep(Duration::from_millis(interval.into())).await,
+                Some(interval) => {
+                    let interval = u64::from(interval);
+                    let since = u64::try_from(ran.as_millis()).unwrap_or(u64::MAX) % interval;
+                    tokio::time::sleep(Duration::from_millis(interval - since)).await;
+                }
                 None => std::future::pending().await,
             }
         };
@@ -151,6 +157,7 @@ async fn watch(session: Weak<SessionShared>, command: CommandId, interval_ms: Op
             () = &mut ended => true,
             () = progress => false,
         };
+        ran = Duration::ZERO;
         report(&session, &command).await;
         if ended_now {
             if let Some(s) = session.upgrade() {
@@ -181,7 +188,13 @@ async fn report(session: &Weak<SessionShared>, command: &CommandId) {
     else {
         return;
     };
+    // The loss of a resident command opens no turn: nothing waits for it
+    // (`runtime.md` § Lost commands).
+    let opens = match (&report.event, interval_ms) {
+        (ReportEvent::Lost { .. }, None) => Opens::Nothing,
+        _ => Opens::Turn,
+    };
     if let Some(s) = session.upgrade() {
-        s.update(|core| core.admit_report(report));
+        s.update(|core| core.admit_report(report, opens));
     }
 }

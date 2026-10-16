@@ -714,9 +714,10 @@ async fn record_result(
         Some(ToolEffect::Background {
             command,
             interval_ms,
+            ran,
         }) => {
             s.update(|core| core.watch_command(command.clone(), interval_ms));
-            reports::start_watch(s, &command);
+            reports::start_watch(s, &command, ran);
         }
         Some(ToolEffect::HostOffline(device)) => {
             s.update(|core| core.offline_host = Some(device));

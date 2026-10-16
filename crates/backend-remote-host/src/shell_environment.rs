@@ -66,9 +66,11 @@ pub trait HostAccess {
 /// them is the keeper's to record.
 pub trait CommandKeeper {
     /// Records that `command`, which the call `tool_use_id` titled `title`
-    /// started, runs as the job `job` on the environment's Host, before the
-    /// job starts, so that a backend that starts again takes it up and its
-    /// reports name it by its title (`storage.md` § Command outputs). A
+    /// started to report every `interval_ms`, or only its end when none,
+    /// runs as the job `job` on the environment's Host, before the job
+    /// starts, so that a backend that starts again takes it up, its reports
+    /// name it by its title, and an interrupted call's command keeps its
+    /// interval (`storage.md` § Command outputs). A
     /// failure to record it is the keeper's to log: the command runs all the
     /// same.
     fn started<'a>(
@@ -76,6 +78,7 @@ pub trait CommandKeeper {
         command: &'a CommandId,
         tool_use_id: &'a str,
         title: &'a str,
+        interval_ms: Option<u32>,
         job: &'a str,
     ) -> LocalBoxFuture<'a, ()>;
 
@@ -479,7 +482,7 @@ impl RemoteShellEnvironment {
         let id = RemoteHost::job_id();
         if let Some(keeper) = &self.0.options.keeper {
             keeper
-                .started(command, &request.caller.tool_use_id, &request.title, &id)
+                .started(command, &request.caller.tool_use_id, &request.title, request.interval_ms, &id)
                 .await;
         }
         let job = self

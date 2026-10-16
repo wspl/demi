@@ -478,6 +478,78 @@ async fn a_command_left_running_reports_every_interval_and_its_end_and_a_failed_
 }
 
 
+/// A server whose calls watch a command for at most a second, the
+/// product's minute shortened, and whose commands report at intervals from
+/// a tenth of a second.
+fn windowed() -> ServerConfig {
+    ServerConfig {
+        call_window_ms: 1_000,
+        ..reporting()
+    }
+}
+
+// About two and a half seconds: two scripts, each a shell job, and the
+// first report of one of them two seconds after its start.
+#[tokio::test(flavor = "local")]
+async fn a_call_returns_at_the_window_or_its_shorter_interval_and_reports_count_from_the_start() {
+    within(async {
+        // One after the other: the linter's end would end the suite's
+        // window.
+        let turns = [
+            Turn::Events(vec![exec("suite", "until [ -e done ]; do sleep 0.05; done", 2_000)]),
+            Turn::Events(vec![exec("lint", "sleep 0.8", 500)]),
+        ]
+        .into_iter()
+        .chain(replies(40));
+        let script = ScriptedRuntime::new(turns);
+        let fixture = Fixture::start_with(&script, windowed()).await;
+        let mut client = fixture.opened().await;
+        turn(&mut client, "message-1", "Run the suite and the linter.").await;
+        let suite = fixture_command(&script, "suite").await;
+
+        // Its first report comes two seconds after its start, not two
+        // seconds after its call returned.
+        let progress = reported(
+            &script,
+            &format!("Command {suite} (Run the test script) is still running after"),
+        )
+        .await;
+        assert!(
+            progress.starts_with(&format!("Command {suite} (Run the test script) is still running after 2s;")),
+            "{progress}"
+        );
+        let results: Results = Rc::default();
+        for request in &script.requests() {
+            record(&results, request);
+        }
+        let results = results.borrow();
+        // The suite's call returned once the window passed, and says that
+        // the suite moved to the background and how often it reports.
+        let watched = result(&results, "suite");
+        assert_eq!(field(watched, "status"), "running", "{watched}");
+        let ran: u64 = field(watched, "runningMs").parse().unwrap();
+        assert!((1_000..2_000).contains(&ran), "{watched}");
+        assert!(
+            watched.contains(
+                "\n[The command is still running, so it moved to the background. It reports every 2s until it ends, and when it ends.]\n"
+            ),
+            "{watched}"
+        );
+        // The linter's interval is shorter than the window: its call
+        // returned at its interval.
+        let lint = result(&results, "lint");
+        assert_eq!(field(lint, "status"), "running", "{lint}");
+        let ran: u64 = field(lint, "runningMs").parse().unwrap();
+        assert!(ran < 1_000, "{lint}");
+        assert!(lint.contains("It reports every 1s until it ends"), "{lint}");
+        drop(results);
+        std::fs::write(format!("{}/done", fixture.workspace), "").unwrap();
+        reported(&script, &format!("Command {suite} (Run the test script) ended")).await;
+        fixture.stop().await;
+    })
+    .await;
+}
+
 // About three seconds: two scripts, each a shell job, and the two seconds of
 // quiet that end a resident command's call.
 #[tokio::test(flavor = "local")]

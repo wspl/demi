@@ -27,7 +27,8 @@ interruption lasts as long as a restart, plus the copy. Afterwards:
 - Commands running on Hosts end: a paired device's runner replaces itself
   and a Cloud restarts, and the shell work of a command runs in its runner.
   Each node that ran one is told by its report that it was lost to the
-  upgrade ([Lost commands](../agent/runtime.md#lost-commands)). A backend that
+  upgrade, at once for a command it may be waiting for, at its next turn for
+  a resident one ([Lost commands](../agent/runtime.md#lost-commands)). A backend that
   only restarts, on the same release, ends none
   ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)).
 - Each paired device's runner reconnects, finds that the backend serves

@@ -10,13 +10,12 @@ use serde_json::{Map, Value};
 /// The least interval a command reports at, in milliseconds
 /// (`runtime.md` § Tool input).
 pub const INTERVAL_FLOOR_MS: u32 = 15_000;
-/// The greatest interval a command reports at, and the longest a `shell`
-/// call watches its command: ten minutes.
+/// The greatest interval a command reports at: ten minutes.
 pub const INTERVAL_CAP_MS: u32 = 600_000;
 
 /// What `intervalMs` asks of the model; its bounds are the product's, which
 /// every request states alike (`providers.md` § Prompt cache).
-const INTERVAL: &str = "How to watch the command, required: a number of whole milliseconds from 15000 to 600000 (ten minutes) for a command that ends, such as a build or a test suite; the call watches it that long, and if it still runs then, the call returns its commandId and the command reports to you every interval until it ends. Short for a command that should end within minutes, long for one that takes long. A value outside the bounds is taken as the nearest bound. null for a command that runs until it is stopped, such as a dev server or a watcher: the call returns once its output has been quiet for 2 seconds, or after 30 seconds, and the command reports only its end.";
+const INTERVAL: &str = "How often the command reports to you while it runs, required: a number of whole milliseconds from 15000 to 600000 (ten minutes) for a command that ends, such as a build or a test suite; if it still runs when the call returns, the result carries its commandId, and the command reports to you every interval until it ends, and when it ends. Short for a command that should end within minutes, long for one that takes long. A value outside the bounds is taken as the nearest bound. null for a command that runs until it is stopped, such as a dev server or a watcher: the call returns once its output has been quiet for 2 seconds, or after 30 seconds, and the command reports only its end.";
 
 /// What a call's `description` asks of the model: the title the user sees,
 /// which the model writes before the step runs (`runtime.md` § Tool

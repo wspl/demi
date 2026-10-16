@@ -9,7 +9,7 @@
 
 use std::{collections::HashMap, path::Path};
 
-use rusqlite::{Connection, Transaction, TransactionBehavior};
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior};
 use sha2::{Digest, Sha256};
 
 use demi_agent_store::CheckpointState;
@@ -815,8 +815,10 @@ CREATE TABLE plugin_oauth_clients (
 /// one of format 6 before a shell call marked the paths outside its
 /// agent's directory, and the one of format 7 before account rotation, and the one of format 8
 /// before the shares' snapshots. The last of those a server keeps is the
-/// one `0.1.22-dev.20261015T105826Z` deployed, of format 8, and the one
-/// `0.1.22-dev.20261015T134426Z` deployed, of format 9.
+/// one `0.1.22-dev.20261015T105826Z` deployed, of format 8, the one
+/// `0.1.22-dev.20261015T134426Z` deployed, of format 9, and the one
+/// `0.1.22-dev.20261016T043704Z` deployed, whose transcripts are trees of
+/// rows.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -883,6 +885,10 @@ pub(crate) const CONVERSATION: Schema = Schema {
         Shipped {
             sql: include_str!("schema/conversation-0.1.22-dev.20261015T134426Z.sql"),
             migration: Migration::Code(switches_with_window_names),
+        },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22-dev.20261016T043704Z.sql"),
+            migration: Migration::Code(commands_with_their_intervals),
         },
     ],
 };
@@ -964,6 +970,60 @@ fn switches_with_window_names(transaction: &Transaction<'_>, _: &dyn ReadBlob) -
     }
     shares_as_lists(transaction)?;
     transaction.execute_batch(ONE_PATH)
+}
+
+/// The least and the greatest interval a command reported at when
+/// `0.1.22-dev.20261016T043704Z` was deployed, in milliseconds, which bound
+/// the interval its calls asked for as they bounded it then.
+const INTERVAL_BOUNDS_MS: (i64, i64) = (15_000, 600_000);
+
+/// From the conversation schema that `0.1.22-dev.20261016T043704Z`
+/// deployed to the one in which each running command's record keeps the
+/// interval its call asked it to report at, read from the call's input in the transcript as that build
+/// bounded it, or none for a call that asked for none (`runtime.md`
+/// § Command reports): a command whose call a restart interrupted reports
+/// as its call asked. A record whose call the transcript lacks, or whose
+/// call's input names no interval, fails the migration.
+fn commands_with_their_intervals(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    transaction.execute_batch("ALTER TABLE running_commands ADD COLUMN interval_ms INTEGER CHECK (interval_ms >= 1);")?;
+    let rows = transaction
+        .prepare("SELECT command_id, node_id, tool_use_id FROM running_commands")?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let mut call = transaction.prepare(
+        "SELECT json_extract(block, '$.input') FROM blocks
+         WHERE node_id = ?1 AND json_extract(block, '$.type') = 'tool_call'
+           AND json_extract(block, '$.toolUseId') = ?2
+         LIMIT 1",
+    )?;
+    let mut update = transaction.prepare("UPDATE running_commands SET interval_ms = ?2 WHERE command_id = ?1")?;
+    for (command, node, tool_use_id) in rows {
+        let input: Option<String> = call
+            .query_row(rusqlite::params![node, tool_use_id], |row| row.get(0))
+            .optional()?;
+        let Some(input) = input else {
+            let reason = format!("the transcript lacks the call that started command {command}");
+            return Err(corrupt(std::io::Error::other(reason)));
+        };
+        let input: serde_json::Value = serde_json::from_str(&input).map_err(corrupt)?;
+        let interval_ms = match input.get("intervalMs") {
+            Some(serde_json::Value::Null) => None,
+            Some(asked) => {
+                let Some(asked) = asked.as_i64() else {
+                    let reason = format!("the call that started command {command} asked for no whole milliseconds");
+                    return Err(corrupt(std::io::Error::other(reason)));
+                };
+                let (floor, cap) = INTERVAL_BOUNDS_MS;
+                Some(asked.clamp(floor, cap))
+            }
+            None => {
+                let reason = format!("the call that started command {command} names no interval");
+                return Err(corrupt(std::io::Error::other(reason)));
+            }
+        };
+        update.execute(rusqlite::params![command, interval_ms])?;
+    }
+    Ok(())
 }
 
 /// From a transcript whose rows were its blocks' positions to a tree of
@@ -3261,8 +3321,10 @@ CREATE TABLE command_outputs (
 -- the same transaction: the node that ran it, its device, its job's id on
 -- that device, the call that started it, when it started, how far each
 -- node that looked at it has seen its output, a JSON object of each node's
--- bytes of stdout and stderr by the node's id, and the title of the call
--- that started it, empty for a command recorded before records kept it.
+-- bytes of stdout and stderr by the node's id, the title of the call that
+-- started it, empty for a command recorded before records kept it, and the
+-- interval in milliseconds that call asked it to report at, null for one
+-- that reports only its end.
 CREATE TABLE running_commands (
   command_id  TEXT PRIMARY KEY,
   node_id     TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
@@ -3272,7 +3334,8 @@ CREATE TABLE running_commands (
   started_at  INTEGER NOT NULL,
   -- running_commands.places: command places format 1
   places      TEXT NOT NULL,
-  title       TEXT NOT NULL DEFAULT ''
+  title       TEXT NOT NULL DEFAULT '',
+  interval_ms INTEGER CHECK (interval_ms >= 1)
 ) STRICT;
 CREATE INDEX running_commands_of_node ON running_commands (node_id);
 
@@ -4819,6 +4882,75 @@ mod tests {
             .collect();
         assert_eq!(leaves, [("root".to_owned(), Some(2), None), ("child".to_owned(), None, None)]);
         assert_eq!(crate::tree::root_blocks(&connection).unwrap(), blocks);
+    }
+
+    /// A command that ran under 0.1.22-dev.20261016T043704Z keeps the
+    /// interval its call asked for, as that build bounded it, or none for a
+    /// call that asked for none: a restart that interrupted its call
+    /// watches it at that interval.
+    // Cost: one database on disk, a few milliseconds.
+    #[test]
+    fn a_running_command_keeps_the_interval_its_call_asked_for() {
+        use demi_shared_types::{Block, ToolCallBlock, ToolCallStatus};
+
+        let call = |id: &str, interval: serde_json::Value| {
+            Block::ToolCall(ToolCallBlock {
+                id: id.try_into().unwrap(),
+                created_at: demi_shared_types::Timestamp::UNIX_EPOCH,
+                model: demi_agent_store::testing::test_model(),
+                tool_use_id: id.to_owned(),
+                tool_name: "shell".to_owned(),
+                input: serde_json::json!({"script": "make", "description": "Build", "intervalMs": interval}).to_string(),
+                status: ToolCallStatus::Executing,
+                output: Vec::new(),
+                view: None,
+                ended_at: None,
+                run: None,
+                entries: Vec::new(),
+            })
+        };
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/conversation-0.1.22-dev.20261016T043704Z.sql"));
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, parent_id, description, round, started_at, can_spawn, delivered, state,
+                    output_revision, cwd, cwd_under, leaf)
+                 VALUES ('root', 0, NULL, '', 1, 0, 1, 0, ?1, 0, NULL, NULL, 2)",
+                [state_of_development()],
+            )
+            .unwrap();
+        for (index, (id, interval)) in [("c1", 30_000.into()), ("c2", serde_json::Value::Null), ("c3", 100.into())]
+            .into_iter()
+            .enumerate()
+        {
+            connection
+                .execute(
+                    "INSERT INTO blocks (node_id, idx, block, follows) VALUES ('root', ?1, ?2, nullif(?1 - 1, -1))",
+                    rusqlite::params![i64::try_from(index).unwrap(), to_json(&call(id, interval))],
+                )
+                .unwrap();
+            connection
+                .execute(
+                    "INSERT INTO running_commands (command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title)
+                     VALUES (?1, 'root', 'device', ?1, ?2, 0, '{}', 'Build')",
+                    rusqlite::params![format!("{}", index + 1), id],
+                )
+                .unwrap();
+        }
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+
+        let intervals: Vec<(String, Option<i64>)> = connection
+            .prepare("SELECT command_id, interval_ms FROM running_commands ORDER BY command_id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            intervals,
+            [("1".to_owned(), Some(30_000)), ("2".to_owned(), None), ("3".to_owned(), Some(15_000))]
+        );
     }
 
     #[test]

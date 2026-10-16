@@ -678,7 +678,6 @@ async fn a_runner_stops_its_jobs_before_it_replaces_itself_and_they_are_lost_to_
     // follows once its job has heard TERM.
     backend.close().await;
     let upgraded = releases.publish("upgraded");
-    work.script(vec![say("noted")]);
     let backend = harness.start_at(address).await;
     while_updating("the runner of the backend's release is active", &state, || async {
         active_release(&state) == Some(json!(upgraded))
@@ -689,14 +688,10 @@ async fn a_runner_stops_its_jobs_before_it_replaces_itself_and_they_are_lost_to_
         "Command {command} (t1) was lost: {}. Start it again if it is still needed.",
         demi_backend_remote_host::UPGRADED
     );
-    eventually("the model hears the command was lost to the update", || {
-        let heard = vendor
-            .requests()
-            .iter()
-            .any(|request| request.json().to_string().contains(&lost));
-        async move { heard }
-    })
-    .await;
+    // The resident command's loss waits for the next turn.
+    let provider = crate::conversations::anthropic_at(&backend, &master, &vendor, "/update").await;
+    work.reconnect(&backend, &master, FIRST, &provider).await;
+    crate::lifetime::told_at_the_next_turn(&mut work, &harness, FIRST, &vendor, &lost).await;
     drop(installations);
     backend.close().await;
 }

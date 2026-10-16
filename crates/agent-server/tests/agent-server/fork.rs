@@ -379,3 +379,107 @@ async fn a_fork_onto_a_smaller_window_compacts_with_the_sources_model_first() {
     let kept = fixture.store.session_store(&source).load().await.unwrap().unwrap();
     assert!(!kept.transcript.iter().any(|block| matches!(block, Block::CompactionBoundary(_))));
 }
+
+/// Waits until the saved checkpoint of `node` holds the loss of a resident
+/// command for its next turn (`runtime.md` § Lost commands).
+async fn until_loss_waits(store: &MemoryTreeStore, node: &NodeId) {
+    for _ in 0..1_000 {
+        let saved = store.session_store(node).load().await.unwrap().unwrap();
+        if !saved.state.next_turn_reports.is_empty() {
+            return;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+    }
+    panic!("the loss never waited in the checkpoint of {node}");
+}
+
+// A dev server the root started was lost while the conversation was idle:
+// its report waits for the next turn, and a Fork from the root's answer
+// still succeeds, its new root holding no report of the source's command
+// (`conversation-fork.md` § The fork seed). Under a second on the paused
+// clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_conversation_fork_after_a_resident_commands_loss_succeeds_and_holds_no_report() {
+    let script = demi_provider_common::testing::ScriptedRuntime::new([
+        Turn::Events(vec![event::tool_call(
+            "call-1",
+            "shell",
+            json!({"script": "serve", "description": "Start the server", "intervalMs": null}),
+        )]),
+        said("Serving."),
+    ]);
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide("stub", &script);
+    let shells = Rc::new(ScriptedShells::default());
+    let store = MemoryTreeStore::new();
+    let server = scripted_host_server(providers, shells.clone(), store.clone());
+    let mut page = demi_agent_server::testing::TestClient::connect(&server, &conversation());
+    page.send(crate::support::open()).await;
+    page.next_until(crate::support::is_pending_steers).await;
+    page.send(crate::support::send("m1", "Serve.")).await;
+    page.next_until(crate::support::is_idle).await;
+    shells.last().lose();
+    until_loss_waits(&store, &conversation()).await;
+
+    let blocks = server
+        .node(&conversation(), &conversation())
+        .unwrap()
+        .session()
+        .transcript()
+        .blocks;
+    let answer = blocks
+        .iter()
+        .rev()
+        .find(|block| matches!(block, Block::Text(_)))
+        .unwrap()
+        .id()
+        .clone();
+    let seed = server.prepare_fork(&conversation(), &answer).await.unwrap();
+    let destination = NodeId::try_from("fork").unwrap();
+    server.initialize_fork(&destination, seed).await.unwrap();
+    let saved = store.session_store(&destination).load().await.unwrap().unwrap();
+    assert!(saved.state.next_turn_reports.is_empty() && saved.state.reports.is_empty());
+}
+
+// The child's dev server was lost after it answered: its report waits for
+// the child's next turn, and the child's fork holds no report of it
+// (`subagents.md` § Fork). Under a second on the paused clock.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_subagent_fork_after_a_resident_commands_loss_holds_no_report() {
+    let model = Model::default();
+    model.child(
+        "task serve",
+        [
+            Turn::Events(vec![event::tool_call(
+                "call-1",
+                "shell",
+                json!({"script": "serve", "description": "Start the server", "intervalMs": null}),
+            )]),
+            said("Serving."),
+            said("I started nothing."),
+        ],
+    );
+    model.root([said("noted"), said("noted")]);
+    let providers = Rc::new(ScriptedProviders::default());
+    providers.provide_runtime("stub", model.clone());
+    let shells = Rc::new(ScriptedShells::default());
+    let store = MemoryTreeStore::new();
+    let server = scripted_host_server(providers, shells.clone(), store.clone());
+    let mut page = demi_agent_server::testing::TestClient::connect(&server, &conversation());
+    page.send(crate::support::open()).await;
+    let spawned = agent(&server, &root(), "spawn", json!({ "prompt": "task serve" })).await;
+    let source = named_node(&store, &spawned);
+    wait_for_execution(&server, "waiting").await;
+    shells.last().lose();
+    until_loss_waits(&store, &source).await;
+
+    let forked = agent(&server, &root(), "fork", json!({ "id": 1, "message": "What runs?" })).await;
+    let child = named_node(&store, &forked);
+    page.next_until(is_closed(&child)).await;
+    let saved = store.session_store(&child).load().await.unwrap().unwrap();
+    assert!(saved.state.next_turn_reports.is_empty() && saved.state.reports.is_empty());
+    // The fork's request, the last of the source's script, tells of no loss.
+    let asked = model.requests_of("task serve");
+    let last = request_text(asked.last().unwrap());
+    assert!(last.contains("What runs?") && !last.contains("was lost"), "{last}");
+}
