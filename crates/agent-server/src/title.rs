@@ -1,12 +1,11 @@
 //! Conversation titles (`conversations.md` § Conversation titles): the title the
-//! first message gives at once, and the one model request that writes a
-//! better one. The request goes to the conversation's own provider runtime,
-//! which the caller supplies, and is no session turn: nothing is added to a
-//! transcript. The backend decides when a request starts, keeps the one in
-//! flight per conversation, and writes the title only while it is still the
-//! one the request began from.
+//! first message gives at once, the small request that writes a better one,
+//! and the title in its answer. The backend decides when a request starts,
+//! runs it on the user's small model, keeps the one in flight per
+//! conversation, and writes the title only while it is still the one the
+//! request began from.
 
-use std::{num::NonZeroU32, sync::Arc};
+use std::num::NonZeroU32;
 
 use comrak::{
     Arena, Options,
@@ -14,12 +13,10 @@ use comrak::{
     nodes::{AstNode, LineColumn, NodeValue},
     parse_document,
 };
-use demi_provider_common::{
-    InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderRuntime, RequestPurpose, UserPart,
-};
-use demi_shared_types::{Model, ModelSelection, ThinkingCapability, ThinkingConfig, char_offset};
-use futures_util::StreamExt;
-use tokio_util::sync::CancellationToken;
+use demi_provider_common::RequestPurpose;
+use demi_shared_types::char_offset;
+
+use crate::small_request::SmallRequest;
 
 /// The longest title, from the message or the model, in Unicode scalar
 /// values.
@@ -60,10 +57,6 @@ Write a brief title that would help the user find this conversation later.
   A question's title names what it asks, never its answer.
 - Never say you cannot write a title. For a short or conversational message,
   title its tone or intent.";
-
-/// Thinking efforts from the least to the most; an effort a catalog names
-/// outside this list sorts after them.
-const EFFORT_ORDER: [&str; 7] = ["none", "minimal", "low", "medium", "high", "xhigh", "max"];
 
 /// The title the first message gives before any model answers: the start
 /// of its plain text, on one line.
@@ -227,98 +220,16 @@ pub fn title_from_response(text: &str) -> Option<String> {
     (!title.is_empty()).then(|| title.to_owned())
 }
 
-/// The least thinking `model` offers: its lowest named effort. A budget
-/// model thinks only when asked, so no configuration is its least.
-pub fn lowest_thinking(model: &Model) -> Option<ThinkingConfig> {
-    model.thinking.iter().find_map(|capability| {
-        let (efforts, adaptive) = match capability {
-            ThinkingCapability::Adaptive { efforts, .. } => (efforts, true),
-            ThinkingCapability::Effort { efforts, .. } => (efforts, false),
-            ThinkingCapability::Budget { .. } | ThinkingCapability::Disabled {} => return None,
-        };
-        let effort = efforts
-            .iter()
-            .min_by_key(|effort| effort_rank(effort))?
-            .clone();
-        Some(if adaptive {
-            ThinkingConfig::Adaptive { effort }
-        } else {
-            ThinkingConfig::Effort {
-                effort,
-                summary: None,
-            }
-        })
-    })
-}
-
-fn effort_rank(effort: &str) -> usize {
-    EFFORT_ORDER
-        .iter()
-        .position(|known| *known == effort)
-        .unwrap_or(EFFORT_ORDER.len())
-}
-
-/// Why a title request wrote nothing.
-#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
-pub enum TitleError {
-    /// The provider refused or failed the request.
-    #[error("{0}")]
-    Failed(String),
-}
-
-/// Asks the model of `selection` for a title of the conversation `session`
-/// from the user's first `message`, on `runtime`, with the lowest thinking the
-/// model offers and the default service tier. Thinking output is ignored; a
-/// request that `cancel` stops, or that answers nothing usable, is none.
-pub async fn request_title(
-    runtime: &mut dyn ProviderRuntime,
-    session: &str,
-    request_id: String,
-    selection: &ModelSelection,
-    message: &str,
-    cancel: CancellationToken,
-) -> Result<Option<String>, TitleError> {
+/// The small request that titles the conversation whose first message is
+/// `message`; none when the message has no text to title.
+pub fn title_request(message: &str) -> Option<SmallRequest> {
     let input = title_input(message);
-    // A message without text leaves nothing to title.
-    if input.is_empty() {
-        return Ok(None);
-    }
-    let request = InferenceRequest {
-        session_id: session.to_owned(),
-        turn_id: format!("title:{request_id}"),
-        request_id,
-        model_id: selection.model.id.clone(),
-        output_limit: selection.model.output_limit.and_then(NonZeroU32::new),
-        output_cap: Some(OUTPUT_CAP),
-        system_prompt: TITLE_INSTRUCTION.to_owned(),
-        items: Arc::from([InferenceItem::UserMessage {
-            content: vec![UserPart::Text(framed(&input))],
-        }]),
-        blocks: Arc::from([]),
-        tools: Arc::from([]),
-        thinking: lowest_thinking(&selection.model),
-        service_tier_id: None,
-        // A title request is no session's: nothing extends it.
-        prompt_cache: PromptCache::Off,
-        cancel: cancel.clone(),
-        // No agent's: the entry's rotation picks one for this request alone.
-        account: None,
+    (!input.is_empty()).then(|| SmallRequest {
+        instruction: TITLE_INSTRUCTION,
+        message: framed(&input),
+        output_cap: OUTPUT_CAP,
         purpose: RequestPurpose::Title,
-        agent: None,
-    };
-    let mut events = runtime.run(request);
-    let mut answer = String::new();
-    while let Some(event) = events.next().await {
-        match event {
-            ProviderEvent::TextDelta(text) => answer.push_str(&text),
-            ProviderEvent::Error(failure) => return Err(TitleError::Failed(failure.message)),
-            _ => {}
-        }
-    }
-    if cancel.is_cancelled() {
-        return Ok(None);
-    }
-    Ok(title_from_response(&answer))
+    })
 }
 
 /// The user turn of a request: `input` framed as the message to title, not

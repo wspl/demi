@@ -658,8 +658,16 @@ pub struct ListedLogin {
 
 /// `GET /models`: the catalog of every entry the caller infers with.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ModelCatalog {
     pub providers: Vec<CatalogProvider>,
+    /// The selection Automatic resolves to for the small model
+    /// (`models.md` § Small model), as for a conversation on the first
+    /// entry; null when Only the Conversation's Provider is on or no tier
+    /// matches.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<ModelSelection>")]
+    pub small_model: Option<ModelSelection>,
 }
 
 /// One entry's catalog with the provider's health, read when the backend

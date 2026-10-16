@@ -14,18 +14,13 @@ import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Slider from '../ui/Slider.vue'
 import SwatchPicker from '../ui/SwatchPicker.vue'
 import AppearancePreview from './AppearancePreview.vue'
-import { otherWayKeys, sendWayLabel, type SendWhileRunning } from '../agent/send-way'
-import Switch from '../ui/Switch.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 
 /**
- * Language, look, what Enter does with a message while the agent works,
- * whether a turn a restart of Demi stopped goes on by itself once Demi is
- * back, and whether a turn a usage limit stopped goes on by itself once the
- * limit resets. Every row is a model; the preview beside the look reads the
- * live tokens. The language menu names each language in its own language,
+ * Language and look. Every row is a model; the preview beside the look
+ * reads the live tokens. The language menu names each language in its own language,
  * and System in the page's, as macOS's Language & Region does.
  */
 defineProps<{
@@ -37,9 +32,6 @@ const theme = defineModel<ThemeChoice>('theme', { required: true })
 const tone = defineModel<ProductTone>('tone', { required: true })
 const accent = defineModel<ProductAccent>('accent', { required: true })
 const fontSize = defineModel<number>('fontSize', { required: true })
-const sendWhileRunning = defineModel<SendWhileRunning>('sendWhileRunning', { required: true })
-const resumeAfterRestart = defineModel<boolean>('resumeAfterRestart', { required: true })
-const resumeAtRetry = defineModel<boolean>('resumeAtRetry', { required: true })
 
 /** A choice's name in the menu and on its button. */
 function choiceName(choice: LanguageChoice): string {
@@ -52,10 +44,6 @@ const themeOptions = computed<readonly SegmentedOption<ThemeChoice>[]>(() => [
   { value: 'system', label: t('settings.general.system'), icon: Monitor },
 ])
 const toneOptions = computed(() => PRODUCT_TONES.map((id) => ({ value: id, label: toneName(id) })))
-const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() => [
-  { value: 'steer', label: sendWayLabel('steer') },
-  { value: 'queue', label: sendWayLabel('queue') },
-])
 </script>
 
 <template>
@@ -122,34 +110,6 @@ const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() =>
           :value-label="`${fontSize}px`"
           class="w-48"
         />
-      </SettingsRow>
-    </SettingsGroup>
-    <SettingsGroup :title="t('settings.general.messages')">
-      <SettingsRow
-        :label="t('settings.general.sendWhileRunning')"
-        :description="t('settings.general.sendWhileRunningDescription', { keys: otherWayKeys() })"
-      >
-        <Segmented
-          v-model="sendWhileRunning"
-          size="sm"
-          :options="sendOptions"
-        />
-      </SettingsRow>
-      <SettingsRow
-        :label="t('settings.general.resumeAfterRestart')"
-        :description="t('settings.general.resumeAfterRestartDescription')"
-      >
-        <Switch
-          v-model="resumeAfterRestart"
-          size="sm"
-          :aria-label="t('settings.general.resumeAfterRestart')"
-        />
-      </SettingsRow>
-      <SettingsRow
-        :label="t('settings.general.resumeAtRetry')"
-        :description="t('settings.general.resumeAtRetryDescription')"
-      >
-        <Switch v-model="resumeAtRetry" size="sm" :aria-label="t('settings.general.resumeAtRetry')" />
       </SettingsRow>
     </SettingsGroup>
   </SettingsPage>

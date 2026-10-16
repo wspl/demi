@@ -2,7 +2,7 @@
   "settings": {
     "general": {
       "title": "General",
-      "description": "Language, look and messages.",
+      "description": "Language and look.",
       "appearance": "Appearance",
       "language": "Language",
       "system": "System",
@@ -12,19 +12,30 @@
       "tone": "Tone",
       "accent": "Accent",
       "textSize": "Message text size",
-      "messages": "Messages",
-      "sendWhileRunning": "Enter while the agent works",
-      "sendWhileRunningDescription": "Steer sends to the running turn. Queue waits for it to end. {keys} does the other.",
-      "resumeAfterRestart": "Resume after Demi restarts",
-      "resumeAfterRestartDescription": "Continues a turn that stopped because Demi restarted, such as for an update.",
-      "resumeAtRetry": "Resume after a usage limit resets",
-      "resumeAtRetryDescription": "Continues a turn that stopped at a usage limit when the limit resets.",
       "preview": {
         "title": "Preview",
         "firstLine": "Text at this size,",
         "secondLine": "line after line.",
         "button": "Button"
       }
+    },
+    "agent": {
+      "title": "Agent",
+      "description": "Small model and messages.",
+      "smallModel": "Small Model",
+      "model": "Model",
+      "modelDescription": "Writes conversation titles. Automatic picks a fast model from your providers.",
+      "automatic": "Automatic",
+      "automaticResolved": "Automatic ({model})",
+      "sameProvider": "Only the Conversation’s Provider",
+      "sameProviderDescription": "Small requests go only to the provider the conversation uses.",
+      "messages": "Messages",
+      "sendWhileRunning": "Enter while the agent works",
+      "sendWhileRunningDescription": "Steer sends to the running turn. Queue waits for it to end. {keys} does the other.",
+      "resumeAfterRestart": "Resume after Demi restarts",
+      "resumeAfterRestartDescription": "Continues a turn that stopped because Demi restarted, such as for an update.",
+      "resumeAtRetry": "Resume after a usage limit resets",
+      "resumeAtRetryDescription": "Continues a turn that stopped at a usage limit when the limit resets."
     }
   },
   "appearance": {

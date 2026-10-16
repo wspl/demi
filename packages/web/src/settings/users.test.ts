@@ -38,7 +38,7 @@ beforeEach(() => {
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const key = `${init?.method ?? 'GET'} ${String(input)}`
     if (key === 'GET /api/models') {
-      return Response.json({ providers: [] })
+      return Response.json({ providers: [], smallModel: null })
     }
     sent.push(init?.body === undefined ? key : `${key} ${String(init.body)}`)
     const answer = answers[key]?.shift()

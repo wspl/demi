@@ -2,7 +2,7 @@
   "settings": {
     "general": {
       "title": "一般",
-      "description": "言語、外観、メッセージ。",
+      "description": "言語と外観。",
       "appearance": "外観",
       "language": "言語",
       "system": "システム",
@@ -12,19 +12,30 @@
       "tone": "トーン",
       "accent": "アクセントカラー",
       "textSize": "メッセージのフォントサイズ",
-      "messages": "メッセージ",
-      "sendWhileRunning": "エージェントの作業中に Enter を押したとき",
-      "sendWhileRunningDescription": "「今すぐ反映」は実行中のターンにメッセージを送ります。「キューに追加」はターンの終了を待ちます。{keys} でもう一方になります。",
-      "resumeAfterRestart": "Demi の再起動後に再開",
-      "resumeAfterRestartDescription": "アップデートなどで Demi が再起動して停止したターンを、再起動後に再開します。",
-      "resumeAtRetry": "利用上限のリセット後に再開",
-      "resumeAtRetryDescription": "利用上限で停止したターンを、上限がリセットされたときに再開します。",
       "preview": {
         "title": "プレビュー",
         "firstLine": "このサイズのテキストが、",
         "secondLine": "一行ずつ続きます。",
         "button": "ボタン"
       }
+    },
+    "agent": {
+      "title": "エージェント",
+      "description": "軽量モデルとメッセージ。",
+      "smallModel": "軽量モデル",
+      "model": "モデル",
+      "modelDescription": "会話のタイトルを作成します。「自動」はプロバイダーから高速なモデルを選びます。",
+      "automatic": "自動",
+      "automaticResolved": "自動（{model}）",
+      "sameProvider": "会話のプロバイダーのみ",
+      "sameProviderDescription": "軽量リクエストを、会話で使っているプロバイダーにだけ送ります。",
+      "messages": "メッセージ",
+      "sendWhileRunning": "エージェントの作業中に Enter を押したとき",
+      "sendWhileRunningDescription": "「今すぐ反映」は実行中のターンにメッセージを送ります。「キューに追加」はターンの終了を待ちます。{keys} でもう一方になります。",
+      "resumeAfterRestart": "Demi の再起動後に再開",
+      "resumeAfterRestartDescription": "アップデートなどで Demi が再起動して停止したターンを、再起動後に再開します。",
+      "resumeAtRetry": "利用上限のリセット後に再開",
+      "resumeAtRetryDescription": "利用上限で停止したターンを、上限がリセットされたときに再開します。"
     }
   },
   "appearance": {

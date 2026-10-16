@@ -1,12 +1,14 @@
 //! `GET /api/models` (`models.md` § What the web app receives): the catalog
 //! of every entry the caller infers with, each model with the selection the
-//! backend builds from it and each entry with its health. It wakes no Cloud
-//! and runs no model; `refresh=true` waits for a shared forced refresh.
+//! backend builds from it and each entry with its health, and what the
+//! small model's Automatic resolves to. It wakes no Cloud and runs no model;
+//! `refresh=true` waits for a shared forced refresh.
 
 use std::sync::Arc;
 
 use axum::Json;
 use axum::extract::State;
+use demi_backend_providers::llm::small_model::automatic_small_model;
 use demi_web_api_protocol::providers::{ModelCatalog, ModelSearchResults};
 use demi_web_api_protocol::query::{ModelSearch, Refresh};
 
@@ -37,6 +39,11 @@ pub(super) async fn models(
 ) -> Result<Json<ModelCatalog>, ApiError> {
     let owner = services.vault.owner_for(&user.id).await?;
     let entries = services.vault.entries(owner).await?;
+    let preferences = services.control.preferences(user.id).await?;
     let providers = services.assembly.model_catalog(&entries, refresh.0).await;
-    Ok(Json(ModelCatalog { providers }))
+    let small_model = automatic_small_model(&providers, &preferences);
+    Ok(Json(ModelCatalog {
+        providers,
+        small_model,
+    }))
 }

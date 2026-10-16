@@ -29,6 +29,7 @@ pub mod settings;
 pub mod shares;
 mod socket;
 mod summary;
+pub(crate) mod small_requests;
 pub(crate) mod titles;
 pub mod transition;
 pub mod workflows;
@@ -63,12 +64,13 @@ use self::product::{
     ExecutionContext, HARNESS_GUIDE, INSTRUCTIONS, PluginContext, ShardSubagents, ShardToolsets,
 };
 use self::providers::ConversationProviders;
+use self::small_requests::SmallRequests;
 use self::titles::Titles;
 use crate::services::Services;
 use crate::shard::Shard;
 
 /// What a shard's conversations run on: the agent server and the title
-/// requests, which infer with the same providers.
+/// requests, small requests that infer with the same providers.
 pub(crate) struct ConversationParts {
     pub agent: Rc<AgentServer<ShardHosts>>,
     pub titles: Titles,
@@ -122,13 +124,14 @@ pub(crate) fn conversation_parts(
     };
     let providers = Rc::new(ConversationProviders::new(
         shard.clone(),
-        user,
+        user.clone(),
         services.clone(),
         http,
         rate_limit,
     ));
+    let small_requests = Rc::new(SmallRequests::new(providers.clone(), user, services.clone()));
     let titles = Titles::new(
-        providers.clone(),
+        small_requests,
         services.control.clone(),
         marks.clone(),
         services.conversation_tuning.titles,

@@ -28,8 +28,8 @@ test('the profile menu offers the composer’s items for a model with Fast and c
   const composer = modelMenuRows(providers, models, settings, false)
   const profile = modelMenuRows(providers, models, settings, true)
 
-  expect(profile).toEqual({ ...composer, parent: { selected: false } })
-  expect(composer.parent).toBeNull()
+  expect(profile).toEqual({ ...composer, standIn: { selected: false } })
+  expect(composer.standIn).toBeNull()
   expect(composer.fast).toEqual({ tier: opus.serviceTiers![0]!, on: true })
   expect(composer.reasoning?.value).toBe('High')
   expect(composer.reasoning?.options.map((option) => option.label)).toEqual(['Off', 'Low', 'Medium', 'High', 'Max'])
@@ -68,7 +68,7 @@ test('a profile’s Context offers Default with the user’s window, then the mo
 
 test('with Parent’s Model chosen, the profile menu marks it and no model', () => {
   const rows = modelMenuRows(providers, models, null, true)
-  expect(rows.parent).toEqual({ selected: true })
+  expect(rows.standIn).toEqual({ selected: true })
   expect(rows.selected).toBeNull()
   expect(rows.model.value).toBe('')
   expect(rows.model.groups.flatMap((group) => group.models).some((item) => item.selected)).toBe(false)

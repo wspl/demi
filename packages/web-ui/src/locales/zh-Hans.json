@@ -2,7 +2,7 @@
   "settings": {
     "general": {
       "title": "通用",
-      "description": "语言、外观和消息。",
+      "description": "语言和外观。",
       "appearance": "外观",
       "language": "语言",
       "system": "系统",
@@ -12,19 +12,30 @@
       "tone": "色调",
       "accent": "强调色",
       "textSize": "消息字号",
-      "messages": "消息",
-      "sendWhileRunning": "智能体工作时按 Enter",
-      "sendWhileRunningDescription": "“引导”会把消息发送给正在进行的轮次，“添加到队列”会等它结束。{keys} 则用另一种方式。",
-      "resumeAfterRestart": "Demi 重新启动后继续",
-      "resumeAfterRestartDescription": "轮次因 Demi 重新启动（例如更新）而停止时，在重新启动后继续。",
-      "resumeAtRetry": "用量限额重置后继续",
-      "resumeAtRetryDescription": "轮次因用量限额而停止时，在限额重置后继续。",
       "preview": {
         "title": "预览",
         "firstLine": "这个字号的文字，",
         "secondLine": "一行接一行。",
         "button": "按钮"
       }
+    },
+    "agent": {
+      "title": "智能体",
+      "description": "轻量模型和消息。",
+      "smallModel": "轻量模型",
+      "model": "模型",
+      "modelDescription": "用于撰写对话标题。“自动”会从你的供应商中选择一款快速模型。",
+      "automatic": "自动",
+      "automaticResolved": "自动（{model}）",
+      "sameProvider": "仅用对话的供应商",
+      "sameProviderDescription": "轻量请求只发送到对话所用的供应商。",
+      "messages": "消息",
+      "sendWhileRunning": "智能体工作时按 Enter",
+      "sendWhileRunningDescription": "“引导”会把消息发送给正在进行的轮次，“添加到队列”会等它结束。{keys} 则用另一种方式。",
+      "resumeAfterRestart": "Demi 重新启动后继续",
+      "resumeAfterRestartDescription": "轮次因 Demi 重新启动（例如更新）而停止时，在重新启动后继续。",
+      "resumeAtRetry": "用量限额重置后继续",
+      "resumeAtRetryDescription": "轮次因用量限额而停止时，在限额重置后继续。"
     }
   },
   "appearance": {

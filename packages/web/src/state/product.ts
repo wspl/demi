@@ -15,6 +15,8 @@ import {
   vendorCatalogSchema,
   type CatalogProvider,
   type ConversationSummary,
+  type ModelCatalog,
+  type Preferences,
   type ProductState,
   type SyncEvent,
   type VendorCatalog,
@@ -224,6 +226,19 @@ function answerOf(answer: Answer): SlotAnswer<ProductState> & { value: (read: Pr
 }
 
 /**
+ * The preferences the small model's Automatic is resolved with besides the
+ * catalog (`models.md` § Small model): the entries and models the user hid,
+ * and whether small requests stay on the conversation's provider.
+ */
+function smallModelInputs(preferences: Preferences | undefined): string {
+  return JSON.stringify([
+    preferences?.hiddenProviders ?? [],
+    preferences?.hiddenModels ?? [],
+    preferences?.smallModelSameProvider ?? false,
+  ])
+}
+
+/**
  * The product state this page shows around its conversations
  * (`web-application.md` § Page synchronization): the one module that follows
  * it, through the synchronization channel. The channel's snapshot is the
@@ -246,7 +261,15 @@ export const useProduct = defineStore('product', () => {
   /** What the page shows: the state it last read with its own changes not landed yet applied on top. */
   const snapshot = slot.shown
   const load = ref<'loading' | 'ready' | 'failed'>('loading')
-  const modelSnapshot = ref<{ key: string; providers: CatalogProvider[]; checkedAt: number } | null>(null)
+  const modelSnapshot = ref<{
+    key: string
+    providers: CatalogProvider[]
+    /** What the small model's Automatic resolves to, as the backend answered with the catalog. */
+    smallModel: ModelCatalog['smallModel']
+    /** The preferences Automatic was resolved with, by `smallModelInputs`. */
+    smallModelInputs: string
+    checkedAt: number
+  } | null>(null)
   const vendors = ref<VendorCatalog | null>(null)
   const modelError = ref<{ key: string; retryAt: number; message: string } | null>(null)
   const vendorError = ref<string | null>(null)
@@ -299,6 +322,13 @@ export const useProduct = defineStore('product', () => {
   })))
   const catalog = computed(() => modelSnapshot.value?.key === catalogKey.value
     ? modelSnapshot.value.providers : [])
+  /**
+   * The selection the small model's Automatic resolves to, which Settings ›
+   * Agent shows beside it (`models.md` § Small model); null when the backend
+   * resolves none for the page, or before the catalog is read.
+   */
+  const automaticSmallModel = computed(() => modelSnapshot.value?.key === catalogKey.value
+    ? modelSnapshot.value.smallModel : null)
   let modelRequest: { key: string; promise: Promise<void>; controller: AbortController } | null = null
   let vendorRequest: Promise<void> | null = null
   /** Set while the page is signed in and follows the state. */
@@ -453,6 +483,13 @@ export const useProduct = defineStore('product', () => {
       firstUser.value = event.user
     }
     if (event.type === 'providers') {
+      providersChanged()
+    }
+    // The preferences Automatic is resolved with changed, on this page or
+    // another: the catalog answers what it resolves to now. A read on its
+    // way drops its answer by itself when its inputs are no longer these.
+    if (event.type === 'preferences' && !modelRequest && modelSnapshot.value
+      && smallModelInputs(event.preferences) !== modelSnapshot.value.smallModelInputs) {
       providersChanged()
     }
   }
@@ -621,13 +658,29 @@ export const useProduct = defineStore('product', () => {
     modelError.value = null
     const request = (async () => {
       try {
-        const response = await apiRequest(force ? '/models?refresh=true' : '/models', {
-          signal,
-        })
-        const next = await readResponse(response, modelCatalogSchema)
-        signal.throwIfAborted()
-        if (key === catalogKey.value)
-          modelSnapshot.value = { key, providers: next.providers, checkedAt: Date.now() }
+        // An answer asked under preferences Automatic no longer depends on
+        // is dropped, and the catalog read again for the current ones.
+        for (;;) {
+          const inputs = smallModelInputs(read.value?.preferences)
+          const response = await apiRequest(force ? '/models?refresh=true' : '/models', {
+            signal,
+          })
+          const next = await readResponse(response, modelCatalogSchema)
+          signal.throwIfAborted()
+          if (inputs !== smallModelInputs(read.value?.preferences)) {
+            continue
+          }
+          if (key === catalogKey.value) {
+            modelSnapshot.value = {
+              key,
+              providers: next.providers,
+              smallModel: next.smallModel,
+              smallModelInputs: inputs,
+              checkedAt: Date.now(),
+            }
+          }
+          return
+        }
       } catch (cause) {
         if (!signal.aborted && key === catalogKey.value) {
           modelError.value = {
@@ -767,6 +820,7 @@ export const useProduct = defineStore('product', () => {
     connection,
     newBuild,
     catalog,
+    automaticSmallModel,
     vendors,
     vendorLoad,
     catalogLoad,

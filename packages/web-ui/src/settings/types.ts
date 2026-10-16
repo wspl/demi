@@ -15,6 +15,13 @@ import type { CredentialFieldView, CredentialKeep } from '../permissions/types'
 import type { HandoffHost } from '../auth/handoff'
 import type { VerificationHost } from '../auth/verification'
 
+/**
+ * The small model the user chose in Settings › Agent (`models.md` § Small
+ * model): model settings without a tier, since small requests use the
+ * default one; none for Automatic.
+ */
+export type SmallModelChoice = Pick<ModelSettings, 'providerId' | 'modelId' | 'thinkingEffort'>
+
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
 
