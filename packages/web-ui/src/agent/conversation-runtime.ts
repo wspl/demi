@@ -1,5 +1,5 @@
 import { shallowRef, triggerRef } from 'vue'
-import { coded, shownError } from '../infra/errors'
+import { errorCode, shownError } from '../infra/errors'
 import {
   ActionOutlivedError,
   SavedGoneError,
@@ -50,15 +50,14 @@ async function untilEndedOrLost(ended: Promise<void>): Promise<void> {
 /**
  * A Recall the session could not carry out, since the message went on
  * first: the agent read the steer, or the queued message's turn began. The
- * transcript holds the message.
+ * transcript holds the message, and the page shows it there with no toast
+ * (`turns.md` § Steer or queue); the message is for the console.
  */
 export class RemovalRefusedError extends Error {}
 
 /** The refusal of a removal whose message went on: a steer the agent read, or a queued message whose turn began. */
 function refusedRemoval(steer: boolean): RemovalRefusedError {
-  return steer
-    ? coded(new RemovalRefusedError('The agent had already read it.'), 'steer_already_read')
-    : coded(new RemovalRefusedError('Its turn had already begun.'), 'turn_already_begun')
+  return new RemovalRefusedError(steer ? 'The agent had already read it.' : 'Its turn had already begun.')
 }
 
 export type RuntimeState = Pick<
@@ -396,7 +395,12 @@ export class ConversationRuntime {
 
   /**
    * The tail row says Requesting from the click until the server's next
-   * `phase` event; a refused or lost request ends that wait as well.
+   * `phase` event; a refused or lost request ends that wait as well. A
+   * session busy running a turn already, as after another page's Resume,
+   * runs the turn on: what the user asked for is there, and nothing failed
+   * (`web-application.md` § Responding to the user). One busy with other
+   * work, such as another page's Compact, may end without running it, so
+   * that refusal is a failure.
    */
   async resume(): Promise<void> {
     const state = this.options.state
@@ -406,7 +410,10 @@ export class ConversationRuntime {
       await untilEndedOrLost((await this.ensureOpen()).resume())
     } catch (error) {
       this.settlePendingAction()
-      throw error
+      // The session's phase arrives before its refusal, in order.
+      if (errorCode(error) !== 'session_busy' || state.phase !== 'running') {
+        throw error
+      }
     }
   }
 
@@ -414,9 +421,19 @@ export class ConversationRuntime {
     this.options.state.pendingAction = null
   }
 
-  /** Compacts the context of `node`, a live subagent, or the root's when absent. */
+  /**
+   * Compacts the context of `node`, a live subagent, or the root's when
+   * absent. A subagent that ended meanwhile has no context left to compact,
+   * which is no failure (`web-application.md` § Responding to the user).
+   */
   async compact(node?: string): Promise<void> {
-    await untilEndedOrLost((await this.ensureOpen()).compact(node))
+    try {
+      await untilEndedOrLost((await this.ensureOpen()).compact(node))
+    } catch (error) {
+      if (node === undefined || errorCode(error) !== 'agent_ended') {
+        throw error
+      }
+    }
   }
 
   async connect(): Promise<void> {

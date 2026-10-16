@@ -8,20 +8,35 @@ use rusqlite::{Connection, OptionalExtension, params};
 use super::StorageError;
 use super::control::ControlService;
 
+/// What a move of a row in the sidebar's order did.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reorder {
+    Moved,
+    /// The row moved or the one it goes before is not the user's, as one
+    /// another page deleted meanwhile; nothing is written.
+    Missing,
+    /// Both are the user's, but not in one partition; nothing is written.
+    OutOfPartition,
+}
+
 impl ControlService {
     /// Moves the user's conversation `moved` before `before`, or to the end,
     /// within its partition (`storage.md` § Control records): the
     /// conversations that are not archived, pinned as it is, and in the same
-    /// workspace or in none. False, writing nothing, when either is not in
-    /// that partition, an archived one included.
+    /// workspace or in none. Nothing is written when either is not the
+    /// user's, or not in that partition, an archived one included.
     pub async fn reorder_conversations(
         &self,
         user: UserId,
         moved: ConversationId,
         before: Option<ConversationId>,
-    ) -> Result<bool, StorageError> {
+    ) -> Result<Reorder, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
+            let before = before.as_ref().map(ConversationId::as_str);
+            if !owns(&transaction, "conversations", &user, moved.as_str(), before)? {
+                return Ok(Reorder::Missing);
+            }
             let partition = transaction
                 .query_row(
                     "SELECT archived, pinned, target_workspace_id FROM conversations WHERE id = ?1 AND user_id = ?2",
@@ -30,7 +45,7 @@ impl ControlService {
                 )
                 .optional()?;
             let Some((false, pinned, workspace)) = partition else {
-                return Ok(false);
+                return Ok(Reorder::OutOfPartition);
             };
             let peers = {
                 let mut statement = transaction.prepare_cached(
@@ -41,24 +56,23 @@ impl ControlService {
                 let rows = statement.query_map(params![user.as_str(), pinned, workspace], |row| row.get::<_, String>(0))?;
                 rows.collect::<Result<Vec<String>, _>>()?
             };
-            let before = before.as_ref().map(ConversationId::as_str);
             if !write_order(&transaction, "conversations", peers, moved.as_str(), before)? {
-                return Ok(false);
+                return Ok(Reorder::OutOfPartition);
             }
             transaction.commit()?;
-            Ok(true)
+            Ok(Reorder::Moved)
         })
         .await
     }
 
     /// Moves the user's workspace `moved` before `before`, or to the end;
-    /// false when either is not one of the user's workspaces.
+    /// `Missing` when either is not one of the user's workspaces.
     pub async fn reorder_workspaces(
         &self,
         user: UserId,
         moved: WorkspaceId,
         before: Option<WorkspaceId>,
-    ) -> Result<bool, StorageError> {
+    ) -> Result<Reorder, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
             let peers = {
@@ -69,14 +83,33 @@ impl ControlService {
                 rows.collect::<Result<Vec<String>, _>>()?
             };
             let before = before.as_ref().map(WorkspaceId::as_str);
+            // The user's workspaces are one partition: a row not in it is not the user's.
             if !write_order(&transaction, "workspaces", peers, moved.as_str(), before)? {
-                return Ok(false);
+                return Ok(Reorder::Missing);
             }
             transaction.commit()?;
-            Ok(true)
+            Ok(Reorder::Moved)
         })
         .await
     }
+}
+
+/// Whether `moved`, and `before` when given, are rows of `user` in `table`.
+fn owns(
+    connection: &Connection,
+    table: &'static str,
+    user: &UserId,
+    moved: &str,
+    before: Option<&str>,
+) -> Result<bool, StorageError> {
+    let mut statement =
+        connection.prepare_cached(&format!("SELECT 1 FROM {table} WHERE id = ?1 AND user_id = ?2"))?;
+    for id in std::iter::once(moved).chain(before) {
+        if statement.query_row(params![id, user.as_str()], |_| Ok(())).optional()?.is_none() {
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 /// Moves `moved` before `before`, or to the end, among `peers`, a

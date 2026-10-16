@@ -1,7 +1,7 @@
 import { t } from './locales/text'
 import { defineStore } from 'pinia'
 import { SerialQueue } from '@demicodes/utils'
-import { reportError } from '@demicodes/web-ui/infra/errors'
+import { errorCode, reportError } from '@demicodes/web-ui/infra/errors'
 import { apiRequest, jsonBody } from '../api/client'
 import type { PluginSwitch } from '../api/generated/web-api'
 import { useProduct, withPart } from '../state/product'
@@ -33,6 +33,11 @@ export const usePluginSettings = defineStore('plugin-settings', () => {
       })
       .catch((error) => {
         change.drop()
+        // A plugin gone from the server meanwhile has nothing to switch,
+        // and the channel takes it off the list.
+        if (errorCode(error) === 'unknown_plugin') {
+          return
+        }
         reportError(enabled ? t('plugins.turnOnFailed') : t('plugins.turnOffFailed'), error, {
           userVisible: true,
         })

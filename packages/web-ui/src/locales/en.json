@@ -262,8 +262,6 @@
     "auth_refresh_failed": "The provider’s sign-in couldn’t be refreshed.",
     "interrupted": "The turn was interrupted before it finished.",
     "host_offline": "The host went offline, so this turn couldn’t finish.",
-    "steer_already_read": "The agent had already read it.",
-    "turn_already_begun": "Its turn had already begun.",
     "edit_media_not_stored": "A file of this message isn’t stored with the conversation, so an edit can’t keep it."
   },
   "common": {

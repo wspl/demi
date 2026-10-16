@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
 import { httpStatusLine } from '@demicodes/utils'
-import { coded } from '@demicodes/web-ui/infra/errors'
+import { coded, environmental } from '@demicodes/web-ui/infra/errors'
 import { errorBodySchema, errorCodeSchema, type ErrorBody, type ErrorCode } from './generated/web-api'
 
 /** The header every answer of the backend names its request in. */
@@ -188,6 +188,11 @@ function unreachable(error: unknown): boolean {
   return error.code === null ? AWAY_STATUSES.has(error.status) : error.code === 'backend_closing'
 }
 
+/** `error`, marked as the environment's when the backend could not be reached (`unreachable`). */
+function reachedOrNot(error: unknown): unknown {
+  return unreachable(error) ? environmental(error) : error
+}
+
 /** The URL of an API path, for what the web browser loads itself: an image, a player, a download. */
 export function apiUrl(path: string): string {
   return `/api${path}`
@@ -294,6 +299,8 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits' | 'on
     credentials: 'same-origin',
     cache: 'no-store',
     signal,
+  }).catch((error: unknown) => {
+    throw reachedOrNot(error)
   })
   // An answer without content: a 204, or a 304 the caller allowed, which says
   // the version it named is still the Host's.
@@ -309,7 +316,7 @@ async function send(path: string, options: Omit<ApiRequestOptions, 'waits' | 'on
     return response
   }
 
-  throw apiError(response.status, await response.text(), response.headers, response.statusText)
+  throw reachedOrNot(apiError(response.status, await response.text(), response.headers, response.statusText))
 }
 
 /**

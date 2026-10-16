@@ -1,6 +1,6 @@
 import { ref, shallowRef } from 'vue'
 import { useCopy } from '../composables/useCopy'
-import { reportError } from '../infra/errors'
+import { errorCode, reportError } from '../infra/errors'
 import { showToast } from '../infra/toast'
 import { t } from './locales/text'
 
@@ -152,8 +152,11 @@ export function useShare(service: () => ShareService | undefined, existing: () =
     try {
       await host.remove(current.token)
     } catch (error) {
-      reportError(t('share.failedStop'), error, { userVisible: true })
-      return
+      // A share another page stopped meanwhile is stopped: that is done.
+      if (errorCode(error) !== 'share_not_found') {
+        reportError(t('share.failedStop'), error, { userVisible: true })
+        return
+      }
     }
     isOpen.value = false
   }
