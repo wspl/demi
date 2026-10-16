@@ -86,8 +86,7 @@ for moving to a new release.
 ### Anywhere, on any machine
 
 - **Works in any browser**: Desktop, tablet or phone, with nothing to install.
-- **Always on**: Tasks keep running on the server after you close the tab,
-  and pick up again after the server restarts.
+- **Always on**: Tasks keep running on the server after you close the tab.
 - **One place for every conversation**: Conversations are stored on the
   server, not scattered across the machines the agent worked on. Start on your
   laptop and continue on your phone, live.
@@ -114,8 +113,7 @@ for moving to a new release.
 - **Workflows**: Bundle a set of agent profiles with instructions for one kind
   of work. Keep workflows in a project's `.demi/workflows/`, pick one in the
   message box, and share them with your team through the repository.
-- **Skills and instructions**: Install skills to teach Demi new tasks. A
-  project's `AGENTS.md`, `CLAUDE.md` and skills work as they are.
+- **Skills**: Install skills to teach Demi new tasks.
 - **Secure credentials**: API keys and passwords are requested through a secure
   form and never appear in the conversation.
 
