@@ -56,7 +56,7 @@ const surfaces = [
 <template>
   <GallerySection
     title="Control Layout"
-    note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. A segmented control can show icons alone, each naming itself in a tooltip. Icon segments are square, and a control with two options is one toggle: a click anywhere on it, the chosen segment and the frame included, switches to the other. In a container narrower than its segments, it keeps every label whole and scrolls in its own box, with the chosen segment in view. Command text and copy controls share a vertical center."
+    note="Production CSS checks: all input sizes, fixed and flexible widths, adornments, disabled and bare fields. A segmented control can show icons alone, each naming itself in a tooltip. Icon segments are square, and a control with two options is one toggle: a click anywhere on it, the chosen segment and the frame included, switches to the other. In a container narrower than its segments, the segments narrow together, as macOS's do, each label cut short with an ellipsis and whole in its tooltip, down to its first few characters; in one narrower still, it scrolls in its own box, with the chosen segment in view. Command text and copy controls share a vertical center."
   >
     <div class="mb-6 flex flex-wrap gap-4">
       <div
@@ -81,6 +81,11 @@ const surfaces = [
         />
       </div>
     </div>
+    <GallerySpecimen variant="segmented · 120px container" class="mb-6">
+      <div class="max-w-full" :style="{ width: '120px' }">
+        <Segmented v-model="changes" :options="changesOptions" size="sm" />
+      </div>
+    </GallerySpecimen>
     <GallerySpecimen variant="segmented · 200px container" class="mb-6">
       <div class="max-w-full" :style="{ width: '200px' }">
         <Segmented v-model="step" :options="stepOptions" size="sm" />
