@@ -155,7 +155,9 @@
   "terminals": {
     "endCommand": "結束指令",
     "closeTab": "關閉分頁",
-    "chip": "{count} 個執行中"
+    "chip": "{count} 個執行中",
+    "loading": "正在載入終端機…",
+    "unavailable": "無法載入終端機。"
   },
   "session": {
     "loading": "正在載入對話…",

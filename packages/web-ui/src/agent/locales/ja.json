@@ -155,7 +155,9 @@
   "terminals": {
     "endCommand": "コマンドを終了",
     "closeTab": "タブを閉じる",
-    "chip": "{count} 件を実行中"
+    "chip": "{count} 件を実行中",
+    "loading": "ターミナルを読み込んでいます…",
+    "unavailable": "ターミナルを読み込めませんでした。"
   },
   "session": {
     "loading": "チャットを読み込んでいます…",

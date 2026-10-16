@@ -155,7 +155,9 @@
   "terminals": {
     "endCommand": "명령 중지",
     "closeTab": "탭 닫기",
-    "chip": "실행 중 {count}개"
+    "chip": "실행 중 {count}개",
+    "loading": "터미널을 불러오는 중…",
+    "unavailable": "터미널을 불러올 수 없습니다."
   },
   "session": {
     "loading": "대화를 불러오는 중…",

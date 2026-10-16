@@ -1,5 +1,3 @@
-/* Math in messages and documents is KaTeX's HTML, laid out by its stylesheet. */
-@import 'katex/dist/katex.min.css';
 /* Every scrollbar is OverlayScrollbars' (`ui/scrollbars.ts`), in the theme below. */
 @import 'overlayscrollbars/overlayscrollbars.css';
 
@@ -1851,9 +1849,28 @@ html[data-theme="light"] .file-pill {
   table-layout: fixed;
 }
 
-.markdown-body .katex-display {
+/* Math in messages and documents is KaTeX's HTML, laid out by KaTeX's
+   stylesheet, which comes with KaTeX (`markdown/math.ts`). Until then math is
+   its TeX source in the code font, where the math will stand: inline in its
+   line, or a display centred on a line of its own with KaTeX's margins,
+   scrolling sideways as KaTeX's does rather than wrapping. */
+.markdown-body .katex-display,
+.markdown-body .math-display {
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+.markdown-body .math {
+  font-family: var(--font-mono);
+  font-size: 0.9em;
+  color: var(--color-fg-muted);
+}
+
+.markdown-body .math-display {
+  display: block;
+  margin: 1em 0;
+  text-align: center;
+  white-space: pre;
 }
 
 /* A code block, table or equation that scrolls sideways keeps its scrollbar out of
@@ -1861,11 +1878,11 @@ html[data-theme="light"] .file-pill {
    overflows. `useContentScrollers` gives it an overlay scrollbar when the pointer
    first comes onto it; until then, as OverlayScrollbars does for an element it is
    about to take over, the native bar is hidden. */
-.markdown-body :is(pre, .table-scroll, .katex-display):not([data-overlayscrollbars]) {
+.markdown-body :is(pre, .table-scroll, .katex-display, .math-display):not([data-overlayscrollbars]) {
   scrollbar-width: none;
 }
 
-.markdown-body :is(pre, .table-scroll, .katex-display):not([data-overlayscrollbars])::-webkit-scrollbar {
+.markdown-body :is(pre, .table-scroll, .katex-display, .math-display):not([data-overlayscrollbars])::-webkit-scrollbar {
   display: none;
 }
 

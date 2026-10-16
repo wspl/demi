@@ -6,7 +6,7 @@ import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
 import SessionOverlay from './SessionOverlay.vue'
 import TabItem from './TabItem.vue'
-import XtermView from './XtermView.vue'
+import TerminalView from './TerminalView.vue'
 import { terminalPanelTabs, terminalStatus, type TerminalRecord } from './terminals'
 
 const props = defineProps<{
@@ -77,13 +77,10 @@ function closeTab(id: string): void {
         @select="closeTab(id)"
       />
     </template>
-    <XtermView
+    <TerminalView
       v-if="active"
       :key="active.id"
-      :output="active.output"
-      :chars="active.chars"
-      :running="active.phase === 'running'"
-      :script="active.script"
+      :terminal="active"
     />
   </SessionOverlay>
 </template>
