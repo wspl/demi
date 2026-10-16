@@ -1,5 +1,13 @@
 # @demicodes/provider
 
+## 0.25.10
+
+### Patch Changes
+
+- 4688493: A Codex response stream that ends before `response.completed`, `response.failed`, `response.incomplete` or `error` — a WebSocket closed or an SSE body cut off mid-response — is now a transport error instead of a silent end of the turn, so the turn retry policy retries it. TLS and certificate verification failures now classify as transient `overloaded` errors too.
+  - @demicodes/core@0.25.10
+  - @demicodes/utils@0.25.10
+
 ## 0.25.9
 
 ### Patch Changes
