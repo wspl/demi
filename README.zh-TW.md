@@ -97,11 +97,11 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 - **管理工具**：新增使用者、管理角色、重設密碼、傳送手機登入代碼。
 - **一行指令安裝與升級**：一行指令部署伺服器，再一行指令完成升級。
 
-## 建立在 Shell 上的 Harness
+## 建立在 Shell 上的智慧體
 
-Demi 既是智慧體的介面，也是智慧體的 Harness（執行框架）。它不包裝 Claude Code 或 Codex，而是由自己的執行階段驅動所有模型；用 Claude 或 ChatGPT 訂閱登入時，只使用訂閱中的模型。
+Demi 既是智慧體的介面，也是智慧體本身。它不包裝 Claude Code 或 Codex，而是由自己的執行階段驅動所有模型；用 Claude 或 ChatGPT 訂閱登入時，只使用訂閱中的模型。
 
-大多數 Harness 會給模型一長串工具，Demi 只給一個：Shell。瀏覽器、其他機器、子智慧體等所有能力，都是這個 Shell 裡的 `demi` 指令：
+大多數智慧體會給模型一長串工具，Demi 只給一個：Shell。瀏覽器、其他機器、子智慧體等所有能力，都是這個 Shell 裡的 `demi` 指令：
 
 ```sh
 demi browser open http://localhost:5173 && demi browser screenshot t1 | demi file view
@@ -116,7 +116,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 - **適合長時間任務**：指令在背景持續執行，結束後自動回報，開發伺服器和測試套件不會阻塞對話。
 
 > [!NOTE]
-> **規劃中**：Demi Harness 將以獨立的 TypeScript 函式庫提供，你可以不依賴 Demi 應用程式，直接在它之上打造自己的智慧體。
+> **規劃中**：Demi 的智慧體執行階段將以獨立的 TypeScript 函式庫提供，你可以不依賴 Demi 應用程式，直接在它之上打造自己的智慧體。
 
 ## 架構
 
@@ -147,34 +147,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 
 ## 比較
 
-截至 2026 年 10 月，依據各產品的官方文件整理。
-
-| | Demi | [Pi](https://github.com/earendil-works/pi) | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | [OpenHands](https://github.com/OpenHands/OpenHands) | [opencode](https://github.com/anomalyco/opencode) | [Orca](https://github.com/stablyai/orca) | [herdr](https://github.com/herdrdev/herdr) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 原⁠始⁠碼 | Apache-2.0；伺服器和網頁應用程式為 [Demi License](LICENSE-DEMI) | MIT | MIT | MIT | MIT | MIT | Apache-2.0 |
-| Harness | 自行開發 | 自行開發 | 自行開發 | 自行開發，或包裝 ACP 智慧體 | 自行開發 | 包裝 Claude Code、Codex、OpenCode、Pi 等 | 包裝 Claude Code、Codex、OpenCode、Pi 等 |
-| 使⁠用⁠介⁠面 | 多使用者網頁應用程式，任何裝置 | 終端機 | 本機網頁與終端機 | 網頁 | 終端機、網頁、桌面 | 桌面應用程式，搭配手機應用程式 | 終端機介面 |
-| 對⁠話⁠存⁠放 | 集中在你的伺服器上 | 各台機器各自保存 | 各台機器各自保存 | 各個後端各自保存 | 各台機器或伺服器各自保存 | 各台機器各自保存 | 各台機器各自保存 |
-| 執⁠行⁠位⁠置 | 雲端沙箱或你的任何電腦 | 執行它的那台機器 | 執行它的那台機器 | 本機、Docker、虛擬機或雲端 | 執行它的那台機器 | 本機工作樹、SSH 主機或你的雲端虛擬機 | 本機或 SSH 機器 |
-| 一⁠個⁠對⁠話⁠操⁠作⁠多⁠台⁠機⁠器 | 支援 | — | — | — | 不支援 | 不支援 | 不支援 |
-| 工⁠具⁠設⁠計 | 純 Shell | 工具呼叫，可選程式碼模式 | 工具呼叫，可選程式碼模式 | 工具呼叫 | 工具呼叫，MCP 工具用程式碼模式 | 取決於被包裝的智慧體 | 取決於被包裝的智慧體 |
-| 模⁠型 | 任何模型，支援 Claude、ChatGPT、Grok 訂閱 | 多家供應商及訂閱 | DeepSeek 等，使用 API 金鑰 | 任何模型 | 任何模型 | 取決於被包裝的智慧體 | 取決於被包裝的智慧體 |
-| 瀏⁠覽⁠器 | 在你的任何機器上 | 透過擴充功能 | 實驗性外掛 | SDK 中提供 | — | 內建瀏覽器 | — |
-| 團⁠隊⁠與⁠管⁠理 | 支援 | — | 共用存取權杖 | Enterprise 版 | 共用密碼 | — | — |
-
-— 表示該產品的文件中未提及。
-
-<details>
-<summary>來源</summary>
-
-- Pi: [README](https://github.com/earendil-works/pi), [Sessions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sessions.md), [Providers](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/providers.md), [Settings](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md)
-- DeepSeek Harness: [README](https://github.com/deepseek-ai/deepseek-harness), [Architecture](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md), [Providers](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/providers.md), [Tool catalog](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/tool-catalog.md), [Public deployments](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/public-deployments.md)
-- OpenHands: [README](https://github.com/OpenHands/OpenHands), [Backends](https://docs.openhands.dev/openhands/usage/agent-canvas/backends), [Enterprise vs. open source](https://docs.openhands.dev/enterprise/enterprise-vs-oss), [Browser use](https://docs.openhands.dev/sdk/guides/agent-browser-use)
-- opencode: [Web](https://opencode.ai/docs/web/), [Server](https://opencode.ai/docs/server/), [Tools](https://opencode.ai/docs/tools/), [Providers](https://opencode.ai/docs/providers/)
-- Orca: [README](https://github.com/stablyai/orca), [Supported agents](https://www.onorca.dev/docs/agents/supported), [Ways to run](https://www.onorca.dev/docs/ways-to-run), [Browser](https://www.onorca.dev/docs/browser/overview)
-- herdr: [README](https://github.com/herdrdev/herdr), [Agents](https://herdr.dev/docs/agents/), [Connecting machines](https://herdr.dev/docs/connecting-machines/), [Session state](https://herdr.dev/docs/session-state/)
-
-</details>
+Demi 與 Pi、DeepSeek Harness、OpenHands、opencode、Orca、herdr、T3 Code 的逐項比較，請見 [Demi 比較](docs/comparison.zh-TW.md)。
 
 ## 文件
 

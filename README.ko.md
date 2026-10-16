@@ -97,11 +97,11 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 - **관리 도구**: 사용자를 추가하고, 역할을 관리하고, 비밀번호를 재설정하고, 휴대폰 로그인 코드를 보냅니다.
 - **명령 하나로 설치와 업그레이드**: 명령 하나로 서버를 설정하고, 또 하나로 업그레이드합니다.
 
-## 셸 위에 만든 하네스
+## 셸 위에 만든 에이전트
 
-Demi는 앱이자 에이전트 하네스(실행 기반)입니다. Claude Code나 Codex를 감싸지 않고, 자체 런타임이 모든 모델을 구동합니다. Claude나 ChatGPT 구독은 모델을 사용하는 데에만 쓰입니다.
+Demi는 앱이자 에이전트 그 자체입니다. Claude Code나 Codex를 감싸지 않고, 자체 런타임이 모든 모델을 구동합니다. Claude나 ChatGPT 구독은 모델을 사용하는 데에만 쓰입니다.
 
-대부분의 하네스는 모델에 긴 도구 목록을 주지만, Demi는 셸 하나만 줍니다. 브라우저, 다른 컴퓨터, 하위 에이전트 등 나머지는 모두 그 셸 안의 `demi` 명령입니다:
+대부분의 에이전트는 모델에 긴 도구 목록을 주지만, Demi는 셸 하나만 줍니다. 브라우저, 다른 컴퓨터, 하위 에이전트 등 나머지는 모두 그 셸 안의 `demi` 명령입니다:
 
 ```sh
 demi browser open http://localhost:5173 && demi browser screenshot t1 | demi file view
@@ -116,7 +116,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 - **오래 걸리는 작업에 적합**: 명령은 백그라운드에서 계속 실행되고 끝나면 보고하므로, 개발 서버나 테스트 스위트가 대화를 막지 않습니다.
 
 > [!NOTE]
-> **계획**: Demi 하네스를 독립된 TypeScript 라이브러리로 제공해, Demi 앱 없이도 그 위에 자신만의 에이전트를 만들 수 있게 할 예정입니다.
+> **계획**: Demi 에이전트 런타임을 독립된 TypeScript 라이브러리로 제공해, Demi 앱 없이도 그 위에 자신만의 에이전트를 만들 수 있게 할 예정입니다.
 
 ## 아키텍처
 
@@ -147,34 +147,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 
 ## 비교
 
-2026년 10월 기준, 각 제품의 문서를 바탕으로 정리했습니다.
-
-| | Demi | [Pi](https://github.com/earendil-works/pi) | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | [OpenHands](https://github.com/OpenHands/OpenHands) | [opencode](https://github.com/anomalyco/opencode) | [Orca](https://github.com/stablyai/orca) | [herdr](https://github.com/herdrdev/herdr) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 소⁠스 코⁠드 | Apache-2.0, 서버와 웹 앱은 [Demi License](LICENSE-DEMI) | MIT | MIT | MIT | MIT | MIT | Apache-2.0 |
-| 하⁠네⁠스 | 자체 | 자체 | 자체 | 자체, 또는 ACP 에이전트를 감쌈 | 자체 | Claude Code, Codex, OpenCode, Pi 등을 감쌈 | Claude Code, Codex, OpenCode, Pi 등을 감쌈 |
-| 인⁠터⁠페⁠이⁠스 | 여러 사용자를 위한 웹 앱, 모든 기기 | 터미널 | 로컬 웹 앱과 터미널 | 웹 앱 | 터미널, 웹, 데스크톱 | 데스크톱 앱, 모바일 보조 앱 | 터미널 UI |
-| 대⁠화 저⁠장 위⁠치 | 내 서버 한곳에 | 각 컴퓨터 | 각 컴퓨터 | 각 백엔드 | 각 컴퓨터 또는 서버 | 각 컴퓨터 | 각 컴퓨터 |
-| 작⁠업 실⁠행 위⁠치 | 클라우드 샌드박스 또는 내 컴퓨터 어디서나 | 실행 중인 컴퓨터 | 실행 중인 컴퓨터 | 로컬, Docker, VM, 클라우드 | 실행 중인 컴퓨터 | 로컬 워크트리, SSH 호스트, 내 클라우드 VM | 로컬 또는 SSH 컴퓨터 |
-| 한 대⁠화⁠에⁠서 여⁠러 컴⁠퓨⁠터 사⁠용 | 지원 | — | — | — | 미지원 | 미지원 | 미지원 |
-| 도⁠구 설⁠계 | 셸만 사용 | 도구 호출, 선택적 코드 모드 | 도구 호출, 선택적 코드 모드 | 도구 호출 | 도구 호출, MCP 도구에는 코드 모드 | 감싼 에이전트의 도구 | 감싼 에이전트의 도구 |
-| 모⁠델 | 모든 모델, Claude, ChatGPT, Grok 구독 포함 | 여러 제공자와 구독 | DeepSeek 등, API 키로 사용 | 모든 모델 | 모든 모델 | 감싼 에이전트의 모델 | 감싼 에이전트의 모델 |
-| 브⁠라⁠우⁠저 자⁠동⁠화 | 내 컴퓨터 어디서나 | 확장 기능으로 | 실험적 플러그인 | SDK에서 제공 | — | 내장 브라우저 | — |
-| 팀⁠과 관⁠리 | 지원 | — | 공유 액세스 토큰 | Enterprise 에디션 | 공유 비밀번호 | — | — |
-
-—는 해당 제품의 문서에 언급이 없음을 뜻합니다.
-
-<details>
-<summary>출처</summary>
-
-- Pi: [README](https://github.com/earendil-works/pi), [Sessions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sessions.md), [Providers](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/providers.md), [Settings](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md)
-- DeepSeek Harness: [README](https://github.com/deepseek-ai/deepseek-harness), [Architecture](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md), [Providers](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/providers.md), [Tool catalog](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/tool-catalog.md), [Public deployments](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/public-deployments.md)
-- OpenHands: [README](https://github.com/OpenHands/OpenHands), [Backends](https://docs.openhands.dev/openhands/usage/agent-canvas/backends), [Enterprise vs. open source](https://docs.openhands.dev/enterprise/enterprise-vs-oss), [Browser use](https://docs.openhands.dev/sdk/guides/agent-browser-use)
-- opencode: [Web](https://opencode.ai/docs/web/), [Server](https://opencode.ai/docs/server/), [Tools](https://opencode.ai/docs/tools/), [Providers](https://opencode.ai/docs/providers/)
-- Orca: [README](https://github.com/stablyai/orca), [Supported agents](https://www.onorca.dev/docs/agents/supported), [Ways to run](https://www.onorca.dev/docs/ways-to-run), [Browser](https://www.onorca.dev/docs/browser/overview)
-- herdr: [README](https://github.com/herdrdev/herdr), [Agents](https://herdr.dev/docs/agents/), [Connecting machines](https://herdr.dev/docs/connecting-machines/), [Session state](https://herdr.dev/docs/session-state/)
-
-</details>
+Pi, DeepSeek Harness, OpenHands, opencode, Orca, herdr, T3 Code와 Demi의 기능별 비교는 [Demi 비교](docs/comparison.ko.md)를 참고하세요.
 
 ## 문서
 
