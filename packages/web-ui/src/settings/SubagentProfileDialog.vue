@@ -4,21 +4,18 @@ import { t } from './locales/text'
 import { t as agentText } from '../agent/locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, ref, watch } from 'vue'
-import { TriangleAlert, Zap } from '@lucide/vue'
+import { CornerLeftUp } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import ModelMenu from '../agent/ModelMenu.vue'
 import ContextMenu from '../agent/ContextMenu.vue'
 import { profileContextChoice, profileContextOptions } from '../agent/context-limit'
-import { isFastMode } from '../agent/fast-mode'
 import {
   applyModelChange,
   initialModelSettings,
-  offersEffort,
   type ModelSettings,
   type ModelSettingsChange,
 } from '../agent/model-selection'
-import { buildReasoningState, reasoningOptionLabel } from '../agent/reasoning'
 import Button from '../ui/Button.vue'
 import Dialog from '../ui/Dialog.vue'
 import Dropdown from '../ui/Dropdown.vue'
@@ -28,9 +25,10 @@ import InlineError from '../ui/InlineError.vue'
 import Switch from '../ui/Switch.vue'
 import TextArea from '../ui/TextArea.vue'
 import TextInput from '../ui/TextInput.vue'
-import { ICON_PX } from '../ui/icon-metrics'
 import SettingsRow from './SettingsRow.vue'
-import { profileMissing, profileModelLabel, profileNameProblem } from './subagent-profiles'
+import ModelChoiceTrigger from './ModelChoiceTrigger.vue'
+import { modelChoiceLabel, type ModelChoiceLabel } from './model-choice'
+import { profileMissing, profileNameProblem } from './subagent-profiles'
 import type { SettingsSubagentDraft } from './types'
 
 /**
@@ -96,22 +94,11 @@ watch(
  * Model, or the model with its provider, then its effort a step quieter,
  * then the bolt while Fast is on.
  */
-const modelLabel = computed(() => {
+const modelLabel = computed<ModelChoiceLabel>(() => {
   const settings = draft.value.model
-  if (!settings) {
-    return { name: agentText('models.parent'), effort: '', fast: false }
-  }
-  const listed = (props.catalogModels[settings.providerId] ?? []).find((model) => model.id === settings.modelId)
-  const effort = settings.thinkingEffort
-  const reasoning = buildReasoningState(listed)
-  return {
-    name: profileModelLabel(settings, props.providers, props.catalogModels),
-    // An effort the model no longer offers reads as itself, never as the first one a menu would show.
-    effort: listed && effort !== null && !offersEffort(listed, effort)
-      ? effort
-      : reasoning ? reasoningOptionLabel(reasoning, effort) : '',
-    fast: isFastMode(listed, settings.serviceTierId),
-  }
+  return settings
+    ? modelChoiceLabel(settings, props.providers, props.catalogModels)
+    : { name: agentText('models.parent'), effort: '', fast: false }
 })
 const missing = computed(() => profileMissing(draft.value.model, props.providers, props.catalogModels))
 
@@ -148,6 +135,9 @@ function changeModel(change: ModelSettingsChange): void {
   draft.value.model = applyModelChange(draft.value.model ?? initialModelSettings(), change)
   keepContext()
 }
+
+/** The model menu's choice at its top: the parent's model, which a profile without one of its own infers with. */
+const parentChoice = computed(() => ({ label: agentText('models.parent'), icon: CornerLeftUp }))
 
 function chooseParentModel(): void {
   draft.value.model = null
@@ -228,23 +218,16 @@ const title = computed(() => (props.mode === 'create' ? t('profile.new') : t('pr
               :trigger-label="t('profile.model')"
             >
               <template #trigger>
-                <span class="flex min-w-0 items-center gap-1.5">
-                  <TriangleAlert v-if="missing" :size="ICON_PX.in24" class="shrink-0 text-on-warning" />
-                  <span class="flex min-w-0 items-center gap-1">
-                    <span class="min-w-0 truncate">{{ modelLabel.name }}</span>
-                    <span v-if="modelLabel.effort" class="shrink-0 text-fg-subtle">{{ modelLabel.effort }}</span>
-                    <Zap v-if="modelLabel.fast" :size="ICON_PX.in24" class="shrink-0" :aria-label="t('profile.fast')" />
-                  </span>
-                </span>
+                <ModelChoiceTrigger :label="modelLabel" :missing="missing" />
               </template>
               <template #content>
                 <ModelMenu
                   :providers="providers"
                   :models="models"
                   :settings="draft.model"
-                  parent-model
+                  :stand-in="parentChoice"
                   without-context
-                  @parent-model="chooseParentModel"
+                  @stand-in="chooseParentModel"
                   @change="changeModel"
                 />
               </template>

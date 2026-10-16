@@ -16,8 +16,12 @@ import { buildReasoningState, reasoningOptionIndex, reasoningOptionLabel } from 
 export interface ModelMenuRows {
   /** The model the settings name, when the menu can send with it. */
   selected: SelectedModel | null
-  /** Parent's Model at the top, offered to a subagent profile only; chosen while the settings are none. */
-  parent: { selected: boolean } | null
+  /**
+   * The choice of no model of its own at the top, chosen while the settings
+   * are none: Parent's Model of a subagent profile, Automatic of the small
+   * model.
+   */
+  standIn: { selected: boolean } | null
   /** Fast Mode, for a model with a Fast tier. */
   fast: { tier: ModelServiceTier; on: boolean } | null
   /** Reasoning, for a model that lists efforts: Off when it can turn thinking off, then each effort. */
@@ -48,17 +52,18 @@ export interface ModelMenuRows {
 /**
  * The rows of the model menu (`web-application.md` § Web app scope: a profile's model is
  * chosen with the composer's menu, the same items plus Parent's Model): one
- * derivation for the composer and the profile editor, so Parent's Model is
- * the only row the profile's menu adds and none of the composer's is cut.
+ * derivation for the composer, the profile editor and the small model's
+ * menu, so the stand-in at the top, Parent's Model or Automatic, is the only
+ * row another menu adds.
  */
 export function modelMenuRows(
   providers: readonly ProviderInfo[],
   models: Record<string, ModelInfo[]>,
   settings: ModelSettings | null | undefined,
-  parentModel: boolean,
+  standIn: boolean,
 ): ModelMenuRows {
-  const parentChosen = parentModel && !settings
-  const selected = parentChosen
+  const standInChosen = standIn && !settings
+  const selected = standInChosen
     ? null
     : resolveSelectedModel(providers, models, settings?.providerId, settings?.modelId)
   const model = selected?.model ?? null
@@ -72,7 +77,7 @@ export function modelMenuRows(
 
   return {
     selected,
-    parent: parentModel ? { selected: parentChosen } : null,
+    standIn: standIn ? { selected: standInChosen } : null,
     fast: tier ? { tier, on: isFastMode(model, settings?.serviceTierId) } : null,
     reasoning: reasoning
       ? {
@@ -92,7 +97,7 @@ export function modelMenuRows(
       : null,
     model: {
       // A choice the menu cannot send with still names itself, as the composer's chip does.
-      value: parentChosen
+      value: standInChosen
         ? ''
         : model?.name ?? composerModel(providers, models, settings?.providerId, settings?.modelId).label,
       groups: providers

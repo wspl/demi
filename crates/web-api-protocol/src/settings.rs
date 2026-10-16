@@ -457,6 +457,44 @@ pub struct Preferences {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[garde(dive)]
     pub hidden_models: Vec<HiddenModel>,
+    /// The model Settings › Agent chose for small jobs, such as a
+    /// conversation's title (`models.md` § Small model). Absent means
+    /// Automatic.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "SmallModelSettings")]
+    #[garde(dive)]
+    pub small_model: Option<SmallModelSettings>,
+    /// Whether every small request stays on the provider entry the
+    /// conversation itself uses. Absent means no.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub small_model_same_provider: Option<bool>,
+}
+
+/// The small model the user chose: model settings without a service tier,
+/// since a small request uses the vendor's default.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SmallModelSettings {
+    #[garde(skip)]
+    pub provider_id: ProviderId,
+    #[garde(length(chars, min = 1))]
+    pub model_id: String,
+    /// An effort the model lists, or `disabled` for thinking off; null only
+    /// for a model that lists no efforts.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    #[garde(length(chars, min = 1))]
+    pub thinking_effort: Option<String>,
 }
 
 impl Preferences {
@@ -671,6 +709,23 @@ pub struct PreferencesPatch {
     #[schemars(with = "Vec<HiddenModel>")]
     #[garde(dive)]
     pub hidden_models: Option<Vec<HiddenModel>>,
+    /// The small model to choose; null goes back to Automatic.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "double_option"
+    )]
+    #[schemars(with = "Option<SmallModelSettings>")]
+    #[garde(dive)]
+    pub small_model: Option<Option<SmallModelSettings>>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub small_model_same_provider: Option<bool>,
 }
 
 /// `{ preferences }`: the answer of `GET` and `PATCH /settings/preferences`.

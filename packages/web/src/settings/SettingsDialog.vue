@@ -41,6 +41,7 @@ import DevicesPanel from './DevicesPanel.vue'
 import { useSettingsAddress } from './address'
 import { CODE_CORRECTIONS, EMAIL_CORRECTIONS, PASSWORD_CORRECTIONS } from './corrections'
 import { usePluginSettings } from './plugins'
+import AgentPanel from './AgentPanel.vue'
 import ProvidersPanel from './ProvidersPanel.vue'
 import InstructionsPanel from './InstructionsPanel.vue'
 import SubagentsPanel from './SubagentsPanel.vue'
@@ -405,12 +406,6 @@ function resetShortcuts(): void {
       @update:font-size="
         preferences.update({ appearance: { fontSize: $event } }, { bursty: true })
       "
-      :send-while-running="preferences.sendWhileRunning"
-      @update:send-while-running="preferences.update({ sendWhileRunning: $event })"
-      :resume-after-restart="preferences.resumeAfterRestart"
-      @update:resume-after-restart="preferences.update({ resumeAfterRestart: $event })"
-      :resume-at-retry="preferences.resumeAtRetry"
-      @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
     />
     <SettingsAccount
       v-else-if="section === 'account'"
@@ -445,6 +440,7 @@ function resetShortcuts(): void {
       :permission="notifications.permission"
       :request-permission="notifications.requestPermission"
     />
+    <AgentPanel v-else-if="section === 'agent'" />
     <ProvidersPanel v-else-if="section === 'models' && resources.canConfigure" />
     <DevicesPanel v-else-if="section === 'devices'" />
     <UsersPanel v-else-if="section === 'users' && product.snapshot?.user.role !== 'user'" />

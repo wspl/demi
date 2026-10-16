@@ -42,7 +42,7 @@ e2e tests" and presses Enter: with Steer chosen, the agent reads it when the
 test command's call returns and goes on in the same turn; with Queue chosen,
 it reads it after it has finished and answered.
 
-Settings › General chooses what Enter does while the agent works; Steer is the
+Settings › Agent chooses what Enter does while the agent works; Steer is the
 default, as in Claude Code and Codex. ⌘/Ctrl+Enter, or ⌘/Ctrl-click on the
 send button, sends that one message the other way. While the agent works, the
 send button's tooltip names what it does and the key for the other way. While
@@ -75,7 +75,7 @@ either without the user typing anything.
   without either such a record or the user's own Stop. A turn a graceful
   shutdown interrupted, such as one a deployment or an upgrade ended,
   goes on by itself once the backend is back, unless the user turned that
-  off in Settings › General
+  off in Settings › Agent
   ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
   its record stays in the transcript, followed by the turn's progress.
 
@@ -108,7 +108,7 @@ as a usage limit that resets at 09:00, also says that time and carries the
 one switch that belongs to it: *Resume at 09:00*, a checkbox that is the
 user's preference to resume such a turn by itself
 ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn)),
-the same as Settings › General's *Resume after a usage limit resets*. It is
+the same as Settings › Agent's *Resume after a usage limit resets*. It is
 a preference, not a choice for this record: ticked on one record, it holds
 for every later one and in Settings, and the record whose time has passed
 shows it no more. The fact and the checkbox name the same time, rounded up
