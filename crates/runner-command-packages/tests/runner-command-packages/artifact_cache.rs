@@ -9,12 +9,17 @@ use demi_runner_command_packages::{
     ArtifactResolver, ArtifactSource, RuntimeError,
     cache::{ArtifactCache, SILENT, Wanted},
 };
-use futures_util::future::BoxFuture;
+use futures_util::{FutureExt, future::BoxFuture};
 use sha2::{Digest, Sha256};
 use std::{
     path::{Path, PathBuf},
-    sync::atomic::{AtomicUsize, Ordering},
+    sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
+use std::time::SystemTime;
+use tokio::sync::watch;
 use tokio_util::sync::CancellationToken;
 
 struct Resolver {
@@ -23,11 +28,11 @@ struct Resolver {
 }
 
 impl Resolver {
-    fn at(path: PathBuf) -> Self {
-        Self {
+    fn at(path: PathBuf) -> Arc<Self> {
+        Arc::new(Self {
             path,
             calls: AtomicUsize::new(0),
-        }
+        })
     }
 }
 
@@ -62,10 +67,252 @@ fn file<'a>(name: &'a str, version: &'a str, bytes: &[u8]) -> Wanted<'a> {
     }
 }
 
-async fn cache(root: &Path) -> ArtifactCache {
-    ArtifactCache::new(root.join("cache"), None, None)
+async fn cache(root: &Path) -> Arc<ArtifactCache> {
+    Arc::new(
+        ArtifactCache::new(root.join("cache"), None, None)
+            .await
+            .unwrap(),
+    )
+}
+
+/// Locates `path` only once the test opens it, and tells the test of each
+/// call, so a test holds a download at its start.
+struct Gated {
+    path: PathBuf,
+    calls: watch::Sender<usize>,
+    open: watch::Sender<bool>,
+}
+
+impl Gated {
+    fn at(path: PathBuf) -> Arc<Self> {
+        Arc::new(Self {
+            path,
+            calls: watch::Sender::new(0),
+            open: watch::Sender::new(false),
+        })
+    }
+
+    async fn called(&self) {
+        let mut calls = self.calls.subscribe();
+        calls.wait_for(|calls| *calls > 0).await.unwrap();
+    }
+}
+
+impl ArtifactResolver for Gated {
+    fn resolve<'a>(
+        &'a self,
+        _: &'a PackageArtifact,
+        cancel: &'a CancellationToken,
+    ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
+        Box::pin(async move {
+            self.calls.send_modify(|calls| *calls += 1);
+            let mut open = self.open.subscribe();
+            tokio::select! {
+                _ = cancel.cancelled() => Err(RuntimeError::Cancelled),
+                _ = open.wait_for(|open| *open) => Ok(ArtifactSource::Local(self.path.clone())),
+            }
+        })
+    }
+}
+
+/// A stream's resolver whose first location is a URL that has expired by
+/// the time it arrives, so the download asks for a location again; it
+/// tells the test of each call, and once its stream has ended, as when its
+/// caller left, it locates nothing more.
+struct Expiring {
+    calls: watch::Sender<usize>,
+    ended: watch::Sender<bool>,
+}
+
+impl ArtifactResolver for Expiring {
+    fn resolve<'a>(
+        &'a self,
+        _: &'a PackageArtifact,
+        cancel: &'a CancellationToken,
+    ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
+        Box::pin(async move {
+            let mut first = false;
+            self.calls.send_modify(|calls| {
+                first = *calls == 0;
+                *calls += 1;
+            });
+            if first {
+                return Ok(ArtifactSource::Url {
+                    // Never fetched: the URL has expired.
+                    url: "http://127.0.0.1:9/expired".to_owned(),
+                    expires_at: Some(SystemTime::UNIX_EPOCH),
+                });
+            }
+            let mut ended = self.ended.subscribe();
+            tokio::select! {
+                _ = cancel.cancelled() => Err(RuntimeError::Cancelled),
+                _ = ended.wait_for(|ended| *ended) => {
+                    Err(RuntimeError::Location("the stream has ended".into()))
+                }
+            }
+        })
+    }
+}
+
+/// The URL the stream of the conversation that started a download located
+/// expired, and that conversation is stopped while the download asks for
+/// the location again: the download asks the conversation still waiting,
+/// rather than the closed stream, and that one gets the file
+/// (`native-runtime.md` § Install artifacts). Cost: a few small files.
+#[tokio::test]
+async fn a_shared_download_asks_a_remaining_caller_again_for_its_location() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let bytes = b"claude code executable fixture";
+    tokio::fs::write(&source, bytes).await.unwrap();
+    let starting = Arc::new(Expiring {
+        calls: watch::Sender::new(0),
+        ended: watch::Sender::new(false),
+    });
+    let staying = Resolver::at(source);
+    let cache = cache(root.path()).await;
+    let wanted = file("Claude Code", "2.1.0", bytes);
+    let stopped = CancellationToken::new();
+    let waiting = CancellationToken::new();
+    let mut first = Box::pin(cache.install(&wanted, starting.clone(), SILENT, &stopped));
+    let mut second = Box::pin(cache.install(&wanted, staying.clone(), SILENT, &waiting));
+    assert!(first.as_mut().now_or_never().is_none());
+    assert!(second.as_mut().now_or_never().is_none());
+    let mut calls = starting.calls.subscribe();
+    tokio::select! {
+        _ = calls.wait_for(|calls| *calls == 2) => {}
+        result = &mut first => panic!("the first install ended before asking again: {result:?}"),
+        result = &mut second => panic!("the second install ended before the download: {result:?}"),
+    }
+    stopped.cancel();
+    let cancelled = first.await;
+    assert!(matches!(cancelled, Err(RuntimeError::Cancelled)), "{cancelled:?}");
+    starting.ended.send_replace(true);
+    let path = second.await.unwrap();
+    assert_eq!(tokio::fs::read(&path).await.unwrap(), bytes);
+    assert_eq!(staying.calls.load(Ordering::SeqCst), 1, "the waiting one located it");
+}
+
+/// A download that failed is not handed to a conversation that asks for
+/// the artifact afterwards, even while another caller of the failed one
+/// has yet to read its failure: the later one downloads afresh and gets
+/// the file. Cost: a few small files.
+#[tokio::test]
+async fn a_caller_after_a_failed_shared_download_starts_a_fresh_one() {
+    let root = tempfile::tempdir().unwrap();
+    let bytes = b"claude code executable fixture";
+    let damaged = root.path().join("damaged");
+    tokio::fs::write(&damaged, b"claude code executable FIXTURE").await.unwrap();
+    let good = root.path().join("good");
+    tokio::fs::write(&good, bytes).await.unwrap();
+    let failing = Gated::at(damaged);
+    let cache = cache(root.path()).await;
+    let wanted = file("Claude Code", "2.1.0", bytes);
+    let cancel = CancellationToken::new();
+    let mut first = Box::pin(cache.install(&wanted, failing.clone(), SILENT, &cancel));
+    let mut second = Box::pin(cache.install(&wanted, failing.clone(), SILENT, &cancel));
+    assert!(first.as_mut().now_or_never().is_none());
+    assert!(second.as_mut().now_or_never().is_none());
+    failing.open.send_replace(true);
+    let failed = first.await;
+    // Shared, since the second holds the same failure.
+    assert!(matches!(failed, Err(RuntimeError::Shared(_))), "{failed:?}");
+    // The second still holds the failed download, unread.
+    let fresh = Resolver::at(good);
+    let path = cache
+        .install(&wanted, fresh.clone(), SILENT, &cancel)
         .await
+        .unwrap();
+    assert_eq!(tokio::fs::read(&path).await.unwrap(), bytes);
+    assert_eq!(fresh.calls.load(Ordering::SeqCst), 1);
+    let shared = second.await;
+    assert!(matches!(shared, Err(RuntimeError::Shared(_))), "{shared:?}");
+}
+
+/// The names in the cache directory, which holds no staged file once its
+/// installs are done.
+fn listed(root: &Path) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(root.join("cache"))
         .unwrap()
+        .map(|entry| entry.unwrap().file_name().into_string().unwrap())
+        .collect();
+    names.sort();
+    names
+}
+
+/// Five conversations that start Claude Code at once after a deploy share
+/// one download of its executable instead of five copies that fill the
+/// disk, and each gets the one published file. An install joins the
+/// download as it is first polled, so polling each once makes them
+/// concurrent. Cost: a few small files.
+#[tokio::test]
+async fn concurrent_installs_of_one_artifact_share_one_download() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let bytes = b"claude code executable fixture";
+    tokio::fs::write(&source, bytes).await.unwrap();
+    let resolver = Resolver::at(source);
+    let cache = cache(root.path()).await;
+    let cancel = CancellationToken::new();
+    let wanted = file("Claude Code", "2.1.0", bytes);
+    let mut installs: Vec<_> = (0..5)
+        .map(|_| Box::pin(cache.install(&wanted, resolver.clone(), SILENT, &cancel)))
+        .collect();
+    for install in &mut installs {
+        assert!(install.as_mut().now_or_never().is_none());
+    }
+    let paths = futures_util::future::join_all(installs).await;
+    let destination = root.path().join("cache").join(&wanted.artifact.sha256);
+    for path in paths {
+        assert_eq!(path.unwrap(), destination);
+    }
+    assert_eq!(resolver.calls.load(Ordering::SeqCst), 1, "one download");
+    assert_eq!(tokio::fs::read(&destination).await.unwrap(), bytes);
+    let sha256 = &wanted.artifact.sha256;
+    assert_eq!(listed(root.path()), [sha256.clone(), format!("{sha256}.line.json")]);
+}
+
+/// A conversation stopped while its stream locates the executable leaves
+/// the download to another one that waits for it: the download asks that
+/// one where the artifact is and goes on, and nothing staged is left
+/// beside the file (`native-runtime.md` § Install artifacts). Cost: a few
+/// small files.
+#[tokio::test]
+async fn cancelling_one_install_leaves_the_shared_download_to_the_others() {
+    let root = tempfile::tempdir().unwrap();
+    let source = root.path().join("source");
+    let bytes = b"claude code executable fixture";
+    tokio::fs::write(&source, bytes).await.unwrap();
+    let starting = Gated::at(source.clone());
+    let staying = Resolver::at(source);
+    let cache = cache(root.path()).await;
+    let wanted = file("Claude Code", "2.1.0", bytes);
+    let stopped = CancellationToken::new();
+    let waiting = CancellationToken::new();
+    let mut first = Box::pin(cache.install(&wanted, starting.clone(), SILENT, &stopped));
+    let mut second = Box::pin(cache.install(&wanted, staying.clone(), SILENT, &waiting));
+    assert!(first.as_mut().now_or_never().is_none());
+    assert!(second.as_mut().now_or_never().is_none());
+    tokio::select! {
+        _ = starting.called() => {}
+        result = &mut first => panic!("the first install ended at its start: {result:?}"),
+        result = &mut second => panic!("the second install downloaded on its own: {result:?}"),
+    }
+    stopped.cancel();
+    let cancelled = first.await;
+    assert!(matches!(cancelled, Err(RuntimeError::Cancelled)), "{cancelled:?}");
+    // A location the first one's stream gave now would not be asked for.
+    starting.open.send_replace(true);
+    let path = second.await.unwrap();
+    assert_eq!(tokio::fs::read(&path).await.unwrap(), bytes);
+    assert_eq!(*starting.calls.borrow(), 1);
+    assert_eq!(
+        staying.calls.load(Ordering::SeqCst),
+        1,
+        "the waiting one locates it once the first left, in the same download"
+    );
+    let sha256 = &wanted.artifact.sha256;
+    assert_eq!(listed(root.path()), [sha256.clone(), format!("{sha256}.line.json")]);
 }
 
 /// An entry was verified as it was published, so a second install reuses it
@@ -81,7 +328,7 @@ async fn a_cached_file_is_reused_without_asking_and_one_of_another_size_fails() 
     let cache = cache(root.path()).await;
     let cancel = CancellationToken::new();
     let wanted = file("program", "1.0.0", bytes);
-    let path = cache.install(&wanted, &resolver, SILENT, &cancel).await.unwrap();
+    let path = cache.install(&wanted, resolver.clone(), SILENT, &cancel).await.unwrap();
     assert_eq!(tokio::fs::read(&path).await.unwrap(), bytes);
     #[cfg(unix)]
     {
@@ -90,12 +337,12 @@ async fn a_cached_file_is_reused_without_asking_and_one_of_another_size_fails() 
         assert_eq!(mode & 0o111, 0o111, "the cached file runs");
     }
     assert_eq!(
-        cache.install(&wanted, &resolver, SILENT, &cancel).await.unwrap(),
+        cache.install(&wanted, resolver.clone(), SILENT, &cancel).await.unwrap(),
         path
     );
     assert_eq!(resolver.calls.load(Ordering::SeqCst), 1);
     tokio::fs::write(&path, b"corrupt cache").await.unwrap();
-    let result = cache.install(&wanted, &resolver, SILENT, &cancel).await;
+    let result = cache.install(&wanted, resolver.clone(), SILENT, &cancel).await;
     assert!(
         matches!(
             result,
@@ -119,7 +366,7 @@ async fn a_mismatched_or_cancelled_install_leaves_nothing_behind() {
     let mismatched = cache
         .install(
             &file("program", "1.0.0", b"small"),
-            &resolver,
+            resolver.clone(),
             SILENT,
             &CancellationToken::new(),
         )
@@ -133,7 +380,7 @@ async fn a_mismatched_or_cancelled_install_leaves_nothing_behind() {
     let cancelled = cache
         .install(
             &file("program", "1.0.0", b"too much data"),
-            &resolver,
+            resolver.clone(),
             SILENT,
             &cancel,
         )
@@ -183,7 +430,7 @@ async fn an_archive_reports_its_download_by_tenths_and_is_unpacked_once() {
     let reported = std::sync::Mutex::new(Vec::new());
     let report = |progress| reported.lock().unwrap().push(progress);
     let entry = cache
-        .install(&wanted, &resolver, &report, &cancel)
+        .install(&wanted, resolver.clone(), &report, &cancel)
         .await
         .unwrap();
     let size = wanted.artifact.size;
@@ -220,7 +467,7 @@ async fn an_archive_reports_its_download_by_tenths_and_is_unpacked_once() {
     let report = |progress| again.lock().unwrap().push(progress);
     assert_eq!(
         cache
-            .install(&wanted, &resolver, &report, &cancel)
+            .install(&wanted, resolver.clone(), &report, &cancel)
             .await
             .unwrap(),
         entry
@@ -243,13 +490,13 @@ async fn a_newer_version_replaces_the_older_ones_no_service_holds() {
         tokio::fs::write(&source, bytes).await.unwrap();
         let resolver = Resolver::at(source);
         let wanted = file("Claude Code", version, bytes);
-        paths.push(cache.install(&wanted, &resolver, SILENT, &cancel).await.unwrap());
+        paths.push(cache.install(&wanted, resolver.clone(), SILENT, &cancel).await.unwrap());
     }
     let other_source = root.path().join("other");
     tokio::fs::write(&other_source, b"program").await.unwrap();
     let other = file("program", "0.1.3", b"program");
     let other_path = cache
-        .install(&other, &Resolver::at(other_source), SILENT, &cancel)
+        .install(&other, Resolver::at(other_source), SILENT, &cancel)
         .await
         .unwrap();
     assert!(!paths[0].exists(), "version 1 is replaced");
@@ -268,7 +515,7 @@ async fn a_newer_version_replaces_the_older_ones_no_service_holds() {
     tokio::fs::write(&three, b"cli three").await.unwrap();
     let wanted = file("Claude Code", "3", b"cli three");
     cache
-        .install(&wanted, &Resolver::at(three), SILENT, &cancel)
+        .install(&wanted, Resolver::at(three), SILENT, &cancel)
         .await
         .unwrap();
     let listed: Vec<String> = cache
@@ -282,7 +529,7 @@ async fn a_newer_version_replaces_the_older_ones_no_service_holds() {
     assert!(paths[1].exists());
     drop(held);
     cache
-        .install(&wanted, &Resolver::at(root.path().join("3")), SILENT, &cancel)
+        .install(&wanted, Resolver::at(root.path().join("3")), SILENT, &cancel)
         .await
         .unwrap();
     assert!(!paths[1].exists(), "version 2 goes once nothing holds it");
