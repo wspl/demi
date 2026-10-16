@@ -34,6 +34,10 @@ import { sidebarDrawerKey } from './sidebar-drawer'
  * one top bar there: a page with its own puts the sidebar's button in it
  * (`useSidebarDrawer`), and the frame's own, the button and `label`, shows
  * only while none does.
+ *
+ * The main pane stacks what it holds within itself (`isolate`): a page's
+ * own layers, such as the conversation's dock over its transcript, stay
+ * under the drawer and its scrim, whatever their z-index.
  */
 withDefaults(defineProps<{ label?: string }>(), { label: 'Demi' })
 const emit = defineEmits<{
@@ -252,7 +256,7 @@ useEventListener(sidebar, 'touchmove', swipeMove, { passive: false })
       :label="t('layout.sidebarWidth')"
       @commit="emit('resizeEnd', $event)"
     />
-    <main data-region class="flex min-w-0 flex-1 flex-col overflow-hidden">
+    <main data-region class="isolate flex min-w-0 flex-1 flex-col overflow-hidden">
       <!-- The frame's own top bar, while no page shows its own (`useSidebarDrawer`). -->
       <div
         v-if="phone && barOwners === 0"
