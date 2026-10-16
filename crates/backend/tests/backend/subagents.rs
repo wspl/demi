@@ -264,8 +264,13 @@ impl ProviderRuntime for TreeRuntime {
         Box::pin(async {})
     }
 
+    /// Its wire carries images in a tool result, as the vendors' do, so a
+    /// model that reads them sees what `demi file view` shows.
     fn request_limits(&self, _model: &demi_shared_types::Model) -> RequestLimits {
-        RequestLimits::default()
+        RequestLimits {
+            tool_results: demi_provider_common::ToolResultKinds::IMAGES,
+            ..RequestLimits::default()
+        }
     }
 }
 

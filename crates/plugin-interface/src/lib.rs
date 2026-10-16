@@ -11,6 +11,7 @@ mod manifest;
 mod plugin;
 mod port;
 pub mod project;
+mod providers;
 mod request;
 #[cfg(feature = "testing")]
 pub mod testing;
@@ -29,6 +30,9 @@ pub use port::{
     CallKind, DirectoryFile, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile,
     HostRead, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage, PortRefusal,
     StoredValue,
+};
+pub use providers::{
+    ImageAsk, ImageAspect, ImageInput, ImageKind, ImageModel, ImageRefusal, MadeImage,
 };
 pub use request::{PanelTabChange, PluginError, Reply, Request};
 /// What a project search names to watch (`Reply::Project`).

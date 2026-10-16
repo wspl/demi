@@ -989,7 +989,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
     // offered, and none of the packages'.
     assert!(system.contains("demi skills"), "{system}");
     assert!(
-        !system.contains("demi file") && !system.contains("demi browser"),
+        !system.contains("\ndemi file\n") && !system.contains("\ndemi browser\n"),
         "{system}"
     );
     assert_eq!(body["model"], "claude-opus-4-8");

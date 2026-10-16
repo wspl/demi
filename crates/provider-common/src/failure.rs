@@ -29,6 +29,20 @@ pub struct ProviderFailure {
     pub retry_after: Option<Duration>,
 }
 
+/// What a request that did not reach the vendor, or broke off, failed
+/// with: the error and each of its causes, without the URL.
+pub(crate) fn transport_cause(error: reqwest::Error) -> String {
+    let error = error.without_url();
+    let mut message = error.to_string();
+    let mut cause = error.source();
+    while let Some(inner) = cause {
+        message.push_str(": ");
+        message.push_str(&inner.to_string());
+        cause = inner.source();
+    }
+    message
+}
+
 impl ProviderFailure {
     /// A frame or line Demi could not decode, or one that breaks the vendor's
     /// protocol. It has no code, its source is `stream`, and its record is the
@@ -53,14 +67,7 @@ impl ProviderFailure {
     /// the provider.
     pub fn transport(label: &str, error: reqwest::Error) -> Self {
         let unbuilt = error.is_builder();
-        let error = error.without_url();
-        let mut message = format!("{label} API request failed: {error}");
-        let mut cause = error.source();
-        while let Some(inner) = cause {
-            message.push_str(": ");
-            message.push_str(&inner.to_string());
-            cause = inner.source();
-        }
+        let message = format!("{label} API request failed: {}", transport_cause(error));
         let failure = Self::no_answer(message);
         if unbuilt {
             return Self {

@@ -49,6 +49,7 @@ fn caller() -> JobCaller {
     JobCaller {
         node: NodeId::try_from("test-session").unwrap(),
         tool_use_id: "call".into(),
+        turn: None,
     }
 }
 
@@ -1541,7 +1542,7 @@ impl CommandKeeper for Publisher {
     fn started<'a>(
         &'a self,
         _: &'a CommandId,
-        _: &'a str,
+        _: &'a JobCaller,
         _: &'a str,
         _: Option<u32>,
         _: &'a str,

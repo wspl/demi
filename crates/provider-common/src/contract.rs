@@ -16,7 +16,9 @@ use futures_util::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::{ErrorCode, ProviderFailure, credentials::SubscriptionAccounts, quota::ProviderQuota};
+use crate::{
+    ErrorCode, ProviderFailure, credentials::SubscriptionAccounts, images::ImageMaker, quota::ProviderQuota,
+};
 
 /// One provider entry and account, shared by every user and request of the
 /// entry. It is used from any thread: the backend's request handlers read its
@@ -74,6 +76,11 @@ pub trait Provider: Send + Sync + 'static {
 
     /// The account operations of a subscription family.
     fn accounts(&self) -> Option<&dyn SubscriptionAccounts> {
+        None
+    }
+
+    /// The image role of a provider that makes images (`images.md`).
+    fn images(&self) -> Option<&dyn ImageMaker> {
         None
     }
 

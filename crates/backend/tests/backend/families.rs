@@ -1,7 +1,8 @@
 //! Scripted provider families: an API-key family whose directory the test
 //! answers, and a subscription family whose device login and quota probe the
 //! test scripts, both over the account operations and the
-//! quota every family shares. No test calls a real vendor.
+//! quota every family shares, and makes images as the test scripts. No
+//! test calls a real vendor.
 
 use std::collections::VecDeque;
 use std::rc::Rc;
@@ -20,12 +21,13 @@ use demi_provider_common::quota::{
     Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError, QuotaSource,
 };
 use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
+use demi_provider_common::images::{ImageAnswer, ImageFailure, ImageMaker, ImageRequest, MadeImage};
 use demi_provider_common::{
     Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError,
 };
 use demi_shared_types::{
     AuthState, LoginPending, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModel,
-    ProviderModelList, QuotaWindow, RuntimeState, Timestamp, WireApi,
+    ProviderModelList, QuotaWindow, RuntimeState, Timestamp, TokenUsage, WireApi,
 };
 use demi_web_api_protocol::providers::CredentialKind;
 use futures_util::future::BoxFuture;
@@ -117,6 +119,7 @@ impl ProviderFamily for ScriptedKey {
             account: None,
             process_host: self.process_host,
             runs: None,
+            images: None,
         }))
     }
 
@@ -202,6 +205,101 @@ pub struct ScriptedSubscription {
     /// so a session gets its runtime for its account through the family's
     /// process runtime.
     pub process_host: bool,
+    /// The image role of its provider; none for a family that makes no
+    /// images.
+    pub images: Option<Arc<ImageScript>>,
+}
+
+/// A scripted image role: its models, the image every call answers, the
+/// accounts whose calls fail as used up, and the calls it was sent.
+pub struct ImageScript {
+    pub models: &'static [&'static str],
+    pub image: Mutex<bytes::Bytes>,
+    pub used_up: Mutex<Vec<String>>,
+    /// Whether a call waits, never answering, until it is dropped.
+    pub hold: std::sync::atomic::AtomicBool,
+    calls: Mutex<Vec<(String, ImageRequest)>>,
+    /// How many calls were asked, and how many held calls were dropped.
+    pub counts: watch::Sender<(usize, usize)>,
+}
+
+/// Counts a held call as dropped when it is.
+struct Dropped(Arc<ImageScript>);
+
+impl Drop for Dropped {
+    fn drop(&mut self) {
+        self.0.counts.send_modify(|(_, dropped)| *dropped += 1);
+    }
+}
+
+impl ImageScript {
+    pub fn new(models: &'static [&'static str], image: bytes::Bytes) -> Self {
+        Self {
+            models,
+            image: Mutex::new(image),
+            used_up: Mutex::default(),
+            hold: std::sync::atomic::AtomicBool::new(false),
+            calls: Mutex::default(),
+            counts: watch::Sender::new((0, 0)),
+        }
+    }
+
+    /// Each call's account, by its ID, and request, in order.
+    pub fn calls(&self) -> Vec<(String, ImageRequest)> {
+        self.calls.lock().unwrap().clone()
+    }
+}
+
+/// The image role of one account's provider.
+struct ScriptedImages {
+    script: Arc<ImageScript>,
+    account: String,
+}
+
+impl ImageMaker for ScriptedImages {
+    fn vendor(&self) -> &'static str {
+        "Scripted"
+    }
+
+    fn models(&self) -> &'static [&'static str] {
+        self.script.models
+    }
+
+    fn make<'a>(
+        &'a self,
+        _: &'a reqwest::Client,
+        request: ImageRequest,
+    ) -> BoxFuture<'a, ImageAnswer> {
+        let mut calls = self.script.calls.lock().unwrap();
+        calls.push((self.account.clone(), request));
+        self.script.counts.send_modify(|(asked, _)| *asked += 1);
+        if self.script.hold.load(Ordering::SeqCst) {
+            let dropped = Dropped(self.script.clone());
+            return Box::pin(async move {
+                let _dropped = dropped;
+                std::future::pending().await
+            });
+        }
+        let answer = if self.script.used_up.lock().unwrap().contains(&self.account) {
+            Err(ImageFailure::UsageLimit { retry_at: None })
+        } else {
+            Ok(MadeImage {
+                bytes: self.script.image.lock().unwrap().clone(),
+                usage: Some(TokenUsage {
+                    input_tokens: 25,
+                    output_tokens: 515,
+                    cache_read_tokens: 0,
+                    cache_write_tokens: 0,
+                }),
+                vendor_id: Some(format!("gen-{}", calls.len())),
+            })
+        };
+        let answer = ImageAnswer {
+            result: answer,
+            observed: Vec::new(),
+        };
+        Box::pin(std::future::ready(answer))
+    }
 }
 
 impl ProviderFamily for ScriptedSubscription {
@@ -228,6 +326,10 @@ impl ProviderFamily for ScriptedSubscription {
             directory: self.directory.clone(),
             accounts: Some(Box::new(accounts)),
             quota,
+            images: self.images.clone().zip(subscription.account.as_ref()).map(|(script, binding)| ScriptedImages {
+                script,
+                account: binding.credential_id.clone(),
+            }),
             account: subscription.account.map(|binding| binding.credential_id),
             process_host: self.process_host,
             runs: self.runs.clone(),
@@ -344,6 +446,7 @@ struct Scripted {
     account: Option<String>,
     process_host: bool,
     runs: Option<Arc<crate::conversations::Runs>>,
+    images: Option<ScriptedImages>,
 }
 
 impl Provider for Scripted {
@@ -377,6 +480,10 @@ impl Provider for Scripted {
 
     fn accounts(&self) -> Option<&dyn SubscriptionAccounts> {
         self.accounts.as_deref()
+    }
+
+    fn images(&self) -> Option<&dyn ImageMaker> {
+        self.images.as_ref().map(|images| images as &dyn ImageMaker)
     }
 
     fn runtime(&self, _: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {

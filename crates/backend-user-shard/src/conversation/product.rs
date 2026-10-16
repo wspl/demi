@@ -49,7 +49,7 @@ pub(crate) const HARNESS_GUIDE: &str = "How Demi works:\n\nHosts. Your shell too
 
 /// What a conversation's tree opens with: the commands of the plugins the
 /// user has on, with the product's `demi host`, `demi attachment`, `demi
-/// conversation` and `demi credentials` groups.
+/// conversation`, `demi credentials` and `demi providers` groups.
 pub(crate) struct ShardToolsets {
     /// Weak: the shard owns the agent server that holds the source.
     pub(crate) shard: Weak<Shard>,

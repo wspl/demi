@@ -575,7 +575,7 @@ async fn demi_call<H: HostResolver>(
     }))
     .expect("the invocation is well formed");
     // The backend's record of the job names the node and call that started it.
-    invocation.caller = Some(live.job_caller(AGENT_CALL));
+    invocation.caller = Some(live.job_caller(AGENT_CALL, None));
     let port = Rc::new(NodePort {
         stdout: RefCell::new(Vec::new()),
         stderr: RefCell::new(Vec::new()),

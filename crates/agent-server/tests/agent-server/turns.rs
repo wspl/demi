@@ -1182,6 +1182,7 @@ async fn a_job_whose_command_cannot_be_taken_up_answers_why() {
             command: CommandId::try_from("7").unwrap(),
             job: "job-7".into(),
             tool_use_id: "t1".into(),
+            turn: None,
             title: "Build".into(),
             interval_ms: None,
             started: demi_shared_types::Timestamp::UNIX_EPOCH,

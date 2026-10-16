@@ -42,6 +42,7 @@ mod history;
 mod history_commands;
 mod holding_edge;
 mod hosts;
+mod images;
 mod install;
 mod instructions;
 mod isolation;

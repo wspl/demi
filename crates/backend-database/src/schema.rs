@@ -88,7 +88,7 @@ impl ReadBlob for NoBlobs {
 /// before the usage ledger kept a row per vendor call and before the
 /// Claude Code machine and the accounts whose CLI keeps their sign-in, and
 /// 0.1.22-dev.20261016T095626Z's, before each account had the size of its
-/// Cloud disks.
+/// Cloud disks, and 0.1.22's, before a ledger row could be an image's.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -228,11 +228,15 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.20261016T095626Z.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_22_DEV_20261016T095626Z),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_22),
+        },
     ],
 };
 
 /// From 0.1.22-dev.20261016T095626Z's control schema, which a server keeps
-/// data of, to the current one: each account has the size of its Cloud
+/// data of, to 0.1.22's: each account has the size of its Cloud
 /// disks, 16 GB each until an administrator changes it (`users.md` § User
 /// system).
 const CONTROL_FROM_0_1_22_DEV_20261016T095626Z: &str = "
@@ -240,7 +244,41 @@ ALTER TABLE users ADD COLUMN cloud_system_gb INTEGER NOT NULL DEFAULT 16 CHECK (
 ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_home_gb BETWEEN 1 AND 1024);
 ";
 
-/// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
+/// From 0.1.22's control schema to the current one: a usage ledger row may
+/// be an image's (`images.md` § Accounts and failures), which SQLite's
+/// checks let in only on a table made again, its rows as they were.
+const CONTROL_FROM_0_1_22: &str = "
+CREATE TABLE usage_ledger_images (
+  id                    TEXT PRIMARY KEY,
+  user_id               TEXT NOT NULL REFERENCES users (id),
+  conversation_id       TEXT NOT NULL,
+  -- Null for a request outside a session, such as a title.
+  agent                 INTEGER CHECK (agent >= 0),
+  turn_id               TEXT,
+  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title', 'image')),
+  provider_id           TEXT NOT NULL,
+  -- Null for an API key.
+  account_id            TEXT,
+  model_id              TEXT NOT NULL,
+  request_id            TEXT,
+  vendor_id             TEXT,
+  input_tokens          INTEGER,
+  output_tokens         INTEGER,
+  cache_read_tokens     INTEGER,
+  cache_write_tokens    INTEGER,
+  cache_write_1h_tokens INTEGER,
+  -- 'answered', 'cancelled' or the failure code of a refused call.
+  outcome               TEXT,
+  quota                 TEXT,
+  started_at            INTEGER,
+  ended_at              INTEGER NOT NULL
+) STRICT;
+INSERT INTO usage_ledger_images SELECT * FROM usage_ledger ORDER BY rowid;
+DROP TABLE usage_ledger;
+ALTER TABLE usage_ledger_images RENAME TO usage_ledger;
+CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
+";
+
 /// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
 /// data of, to the current one, in two steps. First the usage ledger keeps
 /// a row per vendor call (`usage-and-quota.md` § Usage ledger), a managed
@@ -1032,7 +1070,8 @@ CREATE TABLE plugin_oauth_clients (
 /// one `0.1.22-dev.20261015T105826Z` deployed, of format 8, the one
 /// `0.1.22-dev.20261015T134426Z` deployed, of format 9, and the one
 /// `0.1.22-dev.20261016T043704Z` deployed, whose transcripts are trees of
-/// rows.
+/// rows. 0.1.22 shipped that one too, before a running command kept its
+/// turn.
 pub(crate) const CONVERSATION: Schema = Schema {
     sql: CONVERSATION_V1,
     history: &[
@@ -1104,8 +1143,21 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22-dev.20261016T043704Z.sql"),
             migration: Migration::Code(commands_with_their_intervals),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.22.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_0_1_22),
+        },
     ],
 };
+
+/// From 0.1.22's conversation schema to the current one: a running
+/// command keeps the turn
+/// whose shell call started it, which a command's call's usage ledger row
+/// names (`usage-and-quota.md` § Usage ledger); one recorded before keeps
+/// none.
+const CONVERSATION_FROM_0_1_22: &str = "
+ALTER TABLE running_commands ADD COLUMN turn_id TEXT;
+";
 
 /// From 0.1.22-dev.20261015T134426Z's control schema, which a server keeps
 /// data of, to the one whose quota snapshots (format 2) give each window a
@@ -3343,7 +3395,7 @@ CREATE TABLE usage_ledger (
   -- Null for a request outside a session, such as a title.
   agent                 INTEGER CHECK (agent >= 0),
   turn_id               TEXT,
-  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title')),
+  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title', 'image')),
   provider_id           TEXT NOT NULL,
   -- Null for an API key.
   account_id            TEXT,
@@ -3599,7 +3651,10 @@ CREATE TABLE running_commands (
   -- running_commands.places: command places format 1
   places      TEXT NOT NULL,
   title       TEXT NOT NULL DEFAULT '',
-  interval_ms INTEGER CHECK (interval_ms >= 1)
+  interval_ms INTEGER CHECK (interval_ms >= 1),
+  -- The turn whose shell call started it; null for a command recorded
+  -- before records kept it.
+  turn_id     TEXT
 ) STRICT;
 CREATE INDEX running_commands_of_node ON running_commands (node_id);
 
@@ -5248,6 +5303,63 @@ mod tests {
         );
     }
 
+    /// A command running when 0.1.22 stopped keeps its record, its title
+    /// and interval included, with no turn,
+    /// and a command recorded afterwards keeps its turn, which a backend
+    /// that starts again hands the job it takes up.
+    /// Planted defect this catches: a turn the record drops, so a command
+    /// taken up after a restart counts its calls under no turn.
+    /// One small database, milliseconds.
+    #[test]
+    fn a_running_command_keeps_its_turn_and_one_from_before_keeps_none() {
+        use crate::running;
+
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/conversation-0.1.22.sql"));
+        connection
+            .execute(
+                "INSERT INTO nodes
+                   (id, number, parent_id, description, round, started_at, can_spawn, delivered, state,
+                    output_revision, cwd, cwd_under, leaf)
+                 VALUES ('root', 0, NULL, '', 1, 0, 1, 0, ?1, 0, NULL, NULL, NULL)",
+                [state_of_development()],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO running_commands
+                   (command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title, interval_ms)
+                 VALUES ('1', 'root', 'device', 'job-1', 'call-1', 7, '{}', 'Build', 2000)",
+                [],
+            )
+            .unwrap();
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let root = demi_shared_types::NodeId::try_from("root").unwrap();
+        let mut later = running::of_node(&connection, &root).unwrap().remove(0);
+        assert_eq!(
+            (
+                later.command.as_str(),
+                later.device.as_str(),
+                later.job.as_str(),
+                later.tool_use_id.as_str(),
+                later.started.as_millisecond(),
+                later.title.as_str(),
+                later.interval_ms,
+                later.turn.as_ref(),
+            ),
+            ("1", "device", "job-1", "call-1", 7, "Build", Some(2000), None)
+        );
+        later.command = demi_shared_types::CommandId::try_from("2").unwrap();
+        later.turn = Some(demi_shared_types::TurnId::try_from("m4").unwrap());
+        running::insert(&connection, &later).unwrap();
+        let turns: Vec<Option<String>> = running::of_node(&connection, &root)
+            .unwrap()
+            .into_iter()
+            .map(|command| command.turn.map(|turn| turn.to_string()))
+            .collect();
+        assert_eq!(turns, [None, Some("m4".to_owned())]);
+    }
+
     #[test]
     fn a_stored_account_switch_gets_its_windows_name() {
         use demi_shared_types::{Block, QuotaKind, QuotaScope, QuotaWindowName};
@@ -6115,6 +6227,45 @@ mod tests {
                 "row-1 user-1 conversation-1 null null null entry-1 null model-1 null null 1 2 3 4 null null null null 20",
             ]
         );
+    }
+
+    /// A ledger row of 0.1.22 keeps every column
+    /// through the table made again, and the ledger then takes an image's
+    /// row (`images.md` § Accounts and failures).
+    /// Planted defect this catches: a migration that leaves the purpose's
+    /// check as it was, or copies the columns out of order.
+    /// One small database, milliseconds.
+    #[test]
+    fn a_ledger_row_of_0_1_22_stays_whole_and_the_ledger_takes_an_images_row() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.22.sql"));
+        let row = "'row-1', 'user-1', 'conversation-1', 2, 'turn-1', 'turn', 'entry-1', 'account-1', 'model-1', \
+            'request-1', 'vendor-1', 1, 2, 3, 4, 5, 'answered', '[]', 10, 20";
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('user-1', 'a@example.test', 'A', 'hash', 'master', 1);
+                 INSERT INTO usage_ledger VALUES ({row});"
+            ))
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        connection
+            .execute_batch(
+                "INSERT INTO usage_ledger (id, user_id, conversation_id, purpose, provider_id, model_id, ended_at)
+                   VALUES ('row-2', 'user-1', 'conversation-1', 'image', 'entry-1', 'gpt-image-2', 30);",
+            )
+            .unwrap();
+        let kept: String = connection
+            .query_row(
+                "SELECT id || user_id || conversation_id || agent || turn_id || purpose || provider_id || account_id
+                   || model_id || request_id || vendor_id || input_tokens || output_tokens || cache_read_tokens
+                   || cache_write_tokens || cache_write_1h_tokens || outcome || quota || started_at || ended_at
+                 FROM usage_ledger WHERE id = 'row-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(kept, "row-1user-1conversation-12turn-1turnentry-1account-1model-1request-1vendor-112345answered[]1020");
     }
 
     #[test]

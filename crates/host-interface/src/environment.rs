@@ -8,7 +8,7 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use bytes::Bytes;
-use demi_shared_types::{
+use demi_shared_types::{TurnId, 
     BinaryStdout, CommandId, EditedFile, ErrorDevice, NodeId, OutputView, PathChange, Sequence, StreamKind,
     StreamView,
 };
@@ -176,6 +176,11 @@ pub struct JobCaller {
     pub node: NodeId,
     /// The provider's id of the `shell` call.
     pub tool_use_id: String,
+    /// The turn that call belongs to, which a command's call to a vendor
+    /// is counted under, even after the turn ended (`usage-and-quota.md`
+    /// § Usage ledger); none for a job recorded before records kept it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub turn: Option<TurnId>,
 }
 
 /// How long a running command's Host has been unreachable, as far as Demi

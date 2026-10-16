@@ -22,7 +22,7 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 pub(crate) const CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 
 /// How account failures name the family.
-const FAMILY: &str = "Codex";
+pub(crate) const FAMILY: &str = "Codex";
 
 /// How long before its expiry a token is refreshed.
 const EXPIRY_SKEW: Duration = Duration::from_secs(5 * 60);

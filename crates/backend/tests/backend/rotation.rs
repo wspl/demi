@@ -50,6 +50,7 @@ async fn two_accounts(process_host: bool) -> TwoAccounts {
         directory,
         runs: Some(runs.clone()),
         process_host,
+        images: None,
     };
     let scripts = Scripts {
         login,
