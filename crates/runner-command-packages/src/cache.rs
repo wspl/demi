@@ -9,8 +9,9 @@
 //! artifact's size and as it unpacks an archive, to whoever follows it
 //! (§ Install artifacts). Before it downloads an artifact, it takes the copy the Host's image
 //! preinstalled (§ Preinstalled artifacts), which it checks the same way the
-//! first time the process needs it. Runners that share the cache publish one
-//! copy of each artifact.
+//! first time the process needs it. Concurrent installs of one digest in
+//! this process share one download, which lives while any of them waits
+//! for it; runners that share the cache publish one copy of each artifact.
 
 use std::{
     collections::HashMap,
@@ -28,7 +29,9 @@ use serde::{Deserialize, Serialize};
 use demi_runner_process::backend::Backend;
 use demi_runner_protocol::wire::HostArtifact;
 use tokio::io::AsyncWrite;
-use tokio::sync::watch;
+use futures_util::FutureExt;
+use futures_util::future::{BoxFuture, Shared, WeakShared};
+use tokio::sync::{broadcast, watch};
 use tokio_util::sync::CancellationToken;
 
 use demi_runner_process::private_files::chmod;
@@ -49,6 +52,155 @@ pub type Progress<'a> = &'a (dyn Fn(ArtifactProgress) + Send + Sync);
 /// executable, which installs before the command that needs it starts.
 pub const SILENT: Progress<'static> = &|_| {};
 
+/// An install of one digest that its callers share, from its fetch to its
+/// publication.
+type Install = BoxFuture<'static, Result<PathBuf, RuntimeError>>;
+
+/// A shared install's progress, which each caller forwards to its own.
+type Report = Arc<dyn Fn(ArtifactProgress) + Send + Sync>;
+
+/// How many progress events a caller may fall behind: an attempt reports
+/// eleven at most, ten tenths and its unpacking.
+const PROGRESS_BACKLOG: usize = 64;
+
+/// An install as its callers share it, whose error each of them reports.
+type Sharing = BoxFuture<'static, Result<PathBuf, Arc<RuntimeError>>>;
+
+/// An install in progress. The table holds it weakly, so the last caller
+/// that leaves drops it.
+struct InFlight {
+    install: WeakShared<Sharing>,
+    callers: Arc<Mutex<Callers>>,
+    progress: Arc<Mutex<Reported>>,
+}
+
+impl InFlight {
+    /// Whether the install still runs; one that ended, as one that
+    /// failed, is not joined but started again.
+    fn running(&self) -> Option<Shared<Sharing>> {
+        self.install
+            .upgrade()
+            .filter(|install| install.peek().is_none())
+    }
+}
+
+/// The callers waiting for an install, in the order they joined, each with
+/// the resolver that locates the artifact for its work.
+#[derive(Default)]
+struct Callers {
+    next: u64,
+    waiting: Vec<Caller>,
+}
+
+struct Caller {
+    id: u64,
+    resolver: Arc<dyn ArtifactResolver>,
+    /// Cancelled when the caller is cancelled or leaves.
+    left: CancellationToken,
+}
+
+impl Callers {
+    fn lock(callers: &Mutex<Self>) -> MutexGuard<'_, Self> {
+        callers.lock().expect("the waiting callers are intact")
+    }
+
+    fn add(&mut self, resolver: Arc<dyn ArtifactResolver>, cancel: &CancellationToken) -> u64 {
+        let id = self.next;
+        self.next += 1;
+        self.waiting.push(Caller {
+            id,
+            resolver,
+            left: cancel.child_token(),
+        });
+        id
+    }
+
+    fn remove(&mut self, id: u64) {
+        if let Some(index) = self.waiting.iter().position(|caller| caller.id == id) {
+            self.waiting.remove(index).left.cancel();
+        }
+    }
+}
+
+/// How far a shared install got, which a caller that joins reports first,
+/// and the channel of what it reports later. One lock orders both, so a
+/// joiner misses no event and hears none twice.
+struct Reported {
+    last: Option<ArtifactProgress>,
+    sender: broadcast::Sender<ArtifactProgress>,
+}
+
+impl Reported {
+    fn lock(progress: &Mutex<Self>) -> MutexGuard<'_, Self> {
+        progress.lock().expect("the install's progress is intact")
+    }
+}
+
+/// Locates a shared download's artifact by the resolver of the first
+/// caller still waiting (`native-runtime.md` § Install artifacts): the one
+/// that started the download may have left by the time an expired URL or a
+/// retry asks again, and a caller that leaves while its resolver answers
+/// hands the question to the next.
+struct Waiting(Arc<Mutex<Callers>>);
+
+impl ArtifactResolver for Waiting {
+    fn resolve<'a>(
+        &'a self,
+        artifact: &'a PackageArtifact,
+        cancel: &'a CancellationToken,
+    ) -> BoxFuture<'a, Result<ArtifactSource, RuntimeError>> {
+        Box::pin(async move {
+            loop {
+                let first = Callers::lock(&self.0)
+                    .waiting
+                    .iter()
+                    .find(|caller| !caller.left.is_cancelled())
+                    .map(|caller| (caller.resolver.clone(), caller.left.clone()));
+                // With nobody waiting, the install is about to be dropped.
+                let Some((resolver, left)) = first else {
+                    return Err(RuntimeError::Cancelled);
+                };
+                let resolved = tokio::select! {
+                    biased;
+                    _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
+                    _ = left.cancelled() => continue,
+                    resolved = resolver.resolve(artifact, &left) => resolved,
+                };
+                match resolved {
+                    Err(_) if left.is_cancelled() => continue,
+                    resolved => return resolved,
+                }
+            }
+        })
+    }
+}
+
+/// One caller's share of an install. Dropping it, as the caller ends or is
+/// dropped, takes the caller off the install's waiting callers, and the
+/// install off the table once nobody waits for it or it ended.
+struct Joined<'a> {
+    installs: &'a Mutex<HashMap<String, InFlight>>,
+    sha256: &'a str,
+    callers: Arc<Mutex<Callers>>,
+    id: u64,
+    install: Option<Shared<Sharing>>,
+}
+
+impl Drop for Joined<'_> {
+    fn drop(&mut self) {
+        // The share goes first, so the table sees whether another remains.
+        drop(self.install.take());
+        Callers::lock(&self.callers).remove(self.id);
+        let mut installs = self.installs.lock().expect("the installs in flight are intact");
+        if installs
+            .get(self.sha256)
+            .is_some_and(|in_flight| in_flight.running().is_none())
+        {
+            installs.remove(self.sha256);
+        }
+    }
+}
+
 pub struct ArtifactCache {
     root: PathBuf,
     /// Where the Host's image preinstalls command artifacts, each in a
@@ -60,6 +212,8 @@ pub struct ArtifactCache {
     /// reaches it, when that takes its own way, as a Cloud's socket does.
     backend: Option<(Backend, reqwest::Client)>,
     holds: Holds,
+    /// The installs in progress, by digest, which concurrent callers share.
+    installs: Mutex<HashMap<String, InFlight>>,
     /// What the cache holds, which the connection reports to the backend
     /// (`native-runtime.md` § Installed artifacts).
     contents: watch::Sender<Vec<HostArtifact>>,
@@ -156,6 +310,7 @@ impl ArtifactCache {
             http: demi_shared_artifacts::client_allowing_http()?,
             backend,
             holds: Holds::default(),
+            installs: Mutex::default(),
             contents: watch::Sender::new(Vec::new()),
         };
         cache.publish_contents().await;
@@ -179,11 +334,13 @@ impl ArtifactCache {
     /// removes the line's other artifacts that no running service holds. A
     /// cached entry whose metadata shows damage fails the install. A
     /// download reports to `progress` at each tenth of the artifact's size,
-    /// and an archive once more as it is unpacked.
+    /// and an archive once more as it is unpacked. Concurrent installs of
+    /// one digest share one download, located by the resolver of the
+    /// install that started it.
     pub async fn install(
-        &self,
+        self: &Arc<Self>,
         wanted: &Wanted<'_>,
-        resolver: &dyn ArtifactResolver,
+        resolver: Arc<dyn ArtifactResolver>,
         progress: Progress<'_>,
         cancel: &CancellationToken,
     ) -> Result<PathBuf, RuntimeError> {
@@ -259,68 +416,188 @@ impl ArtifactCache {
     }
 
     async fn install_file(
-        &self,
+        self: &Arc<Self>,
         wanted: &Wanted<'_>,
-        resolver: &dyn ArtifactResolver,
+        resolver: Arc<dyn ArtifactResolver>,
         progress: Progress<'_>,
         cancel: &CancellationToken,
     ) -> Result<PathBuf, RuntimeError> {
-        let destination = self.root.join(&wanted.artifact.sha256);
-        if let Some(cached) = cached(&destination, &wanted.artifact).await? {
-            return Ok(cached);
-        }
-        let expected = digest_of(&wanted.artifact);
-        attempts(cancel, || async {
-            if let Some(file) = self
-                .preinstalled(ImageCopy::File(&expected), cancel)
-                .await?
-            {
-                return Ok(file);
-            }
-            self.download(wanted, &destination, resolver, progress, cancel)
-                .await?;
-            Ok(destination.clone())
+        let cache = self.clone();
+        let artifact = wanted.artifact.clone();
+        let sha256 = &wanted.artifact.sha256;
+        self.shared(sha256, resolver, progress, cancel, move |report, resolver, cancel| {
+            Box::pin(async move {
+                let destination = cache.root.join(&artifact.sha256);
+                if let Some(cached) = cached(&destination, &artifact).await? {
+                    return Ok(cached);
+                }
+                let expected = digest_of(&artifact);
+                attempts(&cancel, || async {
+                    if let Some(file) = cache
+                        .preinstalled(ImageCopy::File(&expected), &cancel)
+                        .await?
+                    {
+                        return Ok(file);
+                    }
+                    cache
+                        .download(&artifact, &destination, resolver.as_ref(), &*report, &cancel)
+                        .await?;
+                    Ok(destination.clone())
+                })
+                .await
+            })
         })
         .await
     }
 
     async fn install_archive(
-        &self,
+        self: &Arc<Self>,
         wanted: &Wanted<'_>,
         entry: &str,
-        resolver: &dyn ArtifactResolver,
+        resolver: Arc<dyn ArtifactResolver>,
         progress: Progress<'_>,
         cancel: &CancellationToken,
     ) -> Result<PathBuf, RuntimeError> {
+        let cache = self.clone();
+        let artifact = wanted.artifact.clone();
         let archive = Archive {
             digest: digest_of(&wanted.artifact),
             entry: entry.to_owned(),
         };
-        let directory = self.root.join(&wanted.artifact.sha256);
-        if let Some(entry) = demi_shared_artifacts::recorded(&directory, &archive).await? {
-            return Ok(entry);
-        }
-        attempts(cancel, || async {
-            if let Some(entry) = self
-                .preinstalled(ImageCopy::Archive(&archive), cancel)
-                .await?
-            {
-                return Ok(entry);
-            }
-            let unpacking =
-                match demi_shared_artifacts::install_archive(&self.root, &archive, cancel).await? {
-                    // Another runner sharing the cache installed it meanwhile.
-                    ArchiveInstall::Installed(entry) => return Ok(entry),
-                    ArchiveInstall::Unpack(unpacking) => unpacking,
-                };
-            let mut output = tokio::fs::File::create(unpacking.archive()).await?;
-            self.fetch(&wanted.artifact, &mut output, resolver, progress, cancel)
-                .await?;
-            drop(output);
-            progress(ArtifactProgress::Unpack);
-            Ok(unpacking.finish(cancel).await?)
+        let sha256 = &wanted.artifact.sha256;
+        self.shared(sha256, resolver, progress, cancel, move |report, resolver, cancel| {
+            Box::pin(async move {
+                let directory = cache.root.join(&artifact.sha256);
+                if let Some(entry) = demi_shared_artifacts::recorded(&directory, &archive).await? {
+                    return Ok(entry);
+                }
+                attempts(&cancel, || async {
+                    if let Some(entry) = cache
+                        .preinstalled(ImageCopy::Archive(&archive), &cancel)
+                        .await?
+                    {
+                        return Ok(entry);
+                    }
+                    let unpacking =
+                        match demi_shared_artifacts::install_archive(&cache.root, &archive, &cancel)
+                            .await?
+                        {
+                            // Another runner sharing the cache installed it meanwhile.
+                            ArchiveInstall::Installed(entry) => return Ok(entry),
+                            ArchiveInstall::Unpack(unpacking) => unpacking,
+                        };
+                    let mut output = tokio::fs::File::create(unpacking.archive()).await?;
+                    cache
+                        .fetch(&artifact, &mut output, resolver.as_ref(), &*report, &cancel)
+                        .await?;
+                    drop(output);
+                    (*report)(ArtifactProgress::Unpack);
+                    Ok(unpacking.finish(&cancel).await?)
+                })
+                .await
+            })
         })
         .await
+    }
+
+    /// Waits for the install of `sha256` in progress, or starts it with
+    /// `start` when none is (`native-runtime.md` § Install artifacts:
+    /// concurrent callers share one download per digest). The install
+    /// lives while any caller waits for it: one caller's cancellation only
+    /// leaves it, and the last one's drops it, which cancels the token it
+    /// was started with and so removes what it staged. It locates the
+    /// artifact by the resolver of a caller still waiting. A caller that
+    /// joins reports where the install already is, then what it reports
+    /// later. The caller joins before its first await, so a caller polled
+    /// once shares the install.
+    async fn shared(
+        &self,
+        sha256: &str,
+        resolver: Arc<dyn ArtifactResolver>,
+        progress: Progress<'_>,
+        cancel: &CancellationToken,
+        start: impl FnOnce(Report, Arc<dyn ArtifactResolver>, CancellationToken) -> Install,
+    ) -> Result<PathBuf, RuntimeError> {
+        let (mut joined, mut events, last) = {
+            let mut installs = self.installs();
+            let running = installs
+                .get(sha256)
+                .and_then(|in_flight| Some((in_flight.running()?, in_flight)));
+            let (install, callers, reported) = match running {
+                Some((install, in_flight)) => {
+                    (install, in_flight.callers.clone(), in_flight.progress.clone())
+                }
+                None => {
+                    let (sender, _) = broadcast::channel(PROGRESS_BACKLOG);
+                    let reported = Arc::new(Mutex::new(Reported { last: None, sender }));
+                    let report: Report = Arc::new({
+                        let reported = reported.clone();
+                        move |event| {
+                            let mut reported = Reported::lock(&reported);
+                            reported.last = Some(event);
+                            // Nobody follows the install when no caller hears it.
+                            let _heard = reported.sender.send(event);
+                        }
+                    });
+                    let callers = Arc::new(Mutex::new(Callers::default()));
+                    let token = CancellationToken::new();
+                    let guard = token.clone().drop_guard();
+                    let started = start(report, Arc::new(Waiting(callers.clone())), token);
+                    let install = async move {
+                        let _cancel_when_dropped = guard;
+                        started.await.map_err(Arc::new)
+                    }
+                    .boxed()
+                    .shared();
+                    let weak = install
+                        .downgrade()
+                        .expect("an install that was never polled has not finished");
+                    installs.insert(
+                        sha256.to_owned(),
+                        InFlight {
+                            install: weak,
+                            callers: callers.clone(),
+                            progress: reported.clone(),
+                        },
+                    );
+                    (install, callers, reported)
+                }
+            };
+            let id = Callers::lock(&callers).add(resolver, cancel);
+            let (events, last) = {
+                let reported = Reported::lock(&reported);
+                (reported.sender.subscribe(), reported.last)
+            };
+            let joined = Joined {
+                installs: &self.installs,
+                sha256,
+                callers,
+                id,
+                install: Some(install),
+            };
+            (joined, events, last)
+        };
+        if let Some(last) = last {
+            progress(last);
+        }
+        let install = joined.install.as_mut().expect("the share is held until the caller ends");
+        let result = loop {
+            tokio::select! {
+                biased;
+                _ = cancel.cancelled() => return Err(RuntimeError::Cancelled),
+                Ok(event) = events.recv() => progress(event),
+                result = &mut *install => break result,
+            }
+        };
+        // What the install reported in the poll that finished it.
+        while let Ok(event) = events.try_recv() {
+            progress(event);
+        }
+        result.map_err(|error| Arc::try_unwrap(error).unwrap_or_else(RuntimeError::Shared))
+    }
+
+    fn installs(&self) -> MutexGuard<'_, HashMap<String, InFlight>> {
+        self.installs.lock().expect("the installs in flight are intact")
     }
 
     /// Records `wanted`, installed at `path`, in its line, unless the cache
@@ -471,7 +748,7 @@ impl ArtifactCache {
     /// the one installed.
     async fn download(
         &self,
-        wanted: &Wanted<'_>,
+        artifact: &PackageArtifact,
         destination: &Path,
         resolver: &dyn ArtifactResolver,
         progress: Progress<'_>,
@@ -486,13 +763,13 @@ impl ArtifactCache {
             },
         )
         .await?;
-        self.fetch(&wanted.artifact, staged.file(), resolver, progress, cancel)
+        self.fetch(artifact, staged.file(), resolver, progress, cancel)
             .await?;
         match staged.publish().await {
             Err(demi_shared_artifacts::Error::Io(error))
                 if error.kind() == io::ErrorKind::AlreadyExists =>
             {
-                cached(destination, &wanted.artifact).await?;
+                cached(destination, artifact).await?;
                 Ok(())
             }
             published => Ok(published?),

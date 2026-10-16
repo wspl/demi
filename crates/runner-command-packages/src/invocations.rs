@@ -126,10 +126,9 @@ impl ServiceArtifacts {
                 // Held from the start, so an install of another version of
                 // the line meanwhile leaves it.
                 let hold = self.cache.holds().hold(&install.sha256);
-                let official = install.url.clone().map(Official);
-                let resolver: &dyn ArtifactResolver = match &official {
-                    Some(official) => official,
-                    None => invocation.resolver.as_ref(),
+                let resolver: Arc<dyn ArtifactResolver> = match install.url.clone() {
+                    Some(url) => Arc::new(Official(url)),
+                    None => invocation.resolver,
                 };
                 let path = self
                     .cache

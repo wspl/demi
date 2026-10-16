@@ -271,8 +271,14 @@ unpacks, which the agent reads as it reads any command's output; an artifact
 a command needs on its first use installs silently, before the command
 starts.
 
-Concurrent callers share one download per digest. Cancelling one caller preserves
-a download still needed by another. If the download fails or is cancelled, the
+Concurrent callers share one download per digest. For example, five
+conversations that start Claude Code at once on a runner without it make one
+download of its 268 MB, not five copies on the disk. Cancelling one caller
+preserves a download still needed by another, and the download ends when its
+last caller leaves. A location the download needs again, after an expired
+URL or a retry, is asked of a caller still waiting, since the one that
+started it may have left. A caller that joins a download in progress reports
+where it already is, then each later tenth as the one that started it does. If the download fails or is cancelled, the
 runner releases the response and removes the temporary file or directory. The
 runner never executes partial or mismatched files.
 
