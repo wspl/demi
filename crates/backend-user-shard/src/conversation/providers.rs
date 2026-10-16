@@ -599,9 +599,13 @@ impl ConversationRuntime {
             };
             let ledger = Ledger {
                 control: scope.services.control.clone(),
+                clock: scope.services.clock.clone(),
                 user: scope.user.clone(),
                 conversation: scope.conversation.clone(),
                 provider: scope.provider.clone(),
+                // The account the provider calls with: the agent's, else
+                // the entry's active one; none for an API key.
+                account: account.or(entry.active()).cloned(),
             };
             let metered = MeteredRuntime::new(runtime, scope.rate_limit.clone(), ledger);
             self.close_current().await;

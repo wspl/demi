@@ -60,9 +60,9 @@ says so ([Vendor quota](#vendor-quota)).
 | `provider_id`, `account_id`, `model_id` | The provider entry, its subscription account (null for an API key) and the model |
 | `request_id` | Demi's id of the request, under which the server log holds its course |
 | `vendor_id` | The vendor's id of the call, such as a Messages API message id, when the vendor gives one |
-| `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cache_write_1h_tokens` | The vendor's counts for this call alone ([Usage](providers.md#usage)); `cache_write_1h_tokens` is the part of the cache write kept for an hour, which a vendor prices apart, 0 where the vendor has no such tier |
-| `outcome` | `answered`, or the failure code of a call the vendor refused ([Failures and recovery](../agent/failures-and-recovery.md)), whose counts are what the vendor reported, often none |
-| `quota` | The windows of the account's quota observed during the call, `[{ label, usedPercent, resetsAt }]`, or null when the call brought no observation |
+| `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cache_write_1h_tokens` | The vendor's counts for this call alone ([Usage](providers.md#usage)), each null when the vendor reported none, as for a call cancelled before it answered; `cache_write_1h_tokens` is the part of the cache write kept for an hour, which a vendor prices apart, 0 where the vendor has no such tier |
+| `outcome` | `answered`; the failure code of a call the vendor refused ([Failures and recovery](../agent/failures-and-recovery.md)); `failed` for a failure with no code; `cancelled` |
+| `quota` | The windows of the account's quota that this call's own response reported, each as the snapshot names a window, its kind, period and scope, with `usedPercent` and `resetsAt`; null when the call reported none. Windows the snapshot holds from other calls are not repeated here. A window the vendor reports after the call's end and before the next call starts, as Claude Code's `rate_limit_event` follows its `message_stop`, is this call's and is added to its row when it arrives |
 | `started_at`, `ended_at` | When the call was sent and when it ended |
 
 - **Every call.** Every call a conversation makes passes the same metered
@@ -74,6 +74,11 @@ says so ([Vendor quota](#vendor-quota)).
   `message_start` and `message_delta`, read as the run's response usage is
   ([Requests over stream-json](claude-code.md#requests-over-stream-json)),
   never the `result` line's sum.
+- **The log meets the ledger.** Each call's lines in the server log carry
+  its `request_id`, its agent and its account, so a row found in the ledger
+  finds its course in the log, and a question the ledger answers, such as
+  which account an agent used after a compaction, the log answers too while
+  it keeps the lines.
 - **Written as each call ends.** The backend writes a call's row when the
   call ends, and the row of a run's last call before the run's response
   reaches the agent. A write that fails is logged and the request goes on:

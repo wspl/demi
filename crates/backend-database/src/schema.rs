@@ -83,8 +83,9 @@ impl ReadBlob for NoBlobs {
 /// the one with them before shares, the one with shares before a
 /// device's mark had a number, 0.1.22-dev.20261015T105826Z's, before a
 /// project remembered the model and workflow its next conversation starts
-/// with, and 0.1.22-dev.20261015T134426Z's, before a quota window had a
-/// kind instead of an English name.
+/// with, 0.1.22-dev.20261015T134426Z's, before a quota window had a
+/// kind instead of an English name, and 0.1.22-dev.20261016T043704Z's,
+/// before the usage ledger kept a row per vendor call.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -216,8 +217,52 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.20261015T134426Z.sql"),
             migration: Migration::Code(snapshots_with_window_kinds),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.20261016T043704Z.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_22_DEV_20261016T043704Z),
+        },
     ],
 };
+
+/// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
+/// data of, to the one whose usage ledger keeps a row per vendor call with
+/// its agent, turn, purpose, account, ids, outcome, observed quota and
+/// times (`usage-and-quota.md` § Usage ledger). A row written before keeps
+/// null for what it lacked; its `created_at`, written as its response
+/// ended, is its `ended_at`. A call's counts are null when the vendor
+/// reported none.
+const CONTROL_FROM_0_1_22_DEV_20261016T043704Z: &str = "
+CREATE TABLE usage_ledger_calls (
+  id                    TEXT PRIMARY KEY,
+  user_id               TEXT NOT NULL REFERENCES users (id),
+  conversation_id       TEXT NOT NULL,
+  agent                 INTEGER CHECK (agent >= 0),
+  turn_id               TEXT,
+  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title')),
+  provider_id           TEXT NOT NULL,
+  account_id            TEXT,
+  model_id              TEXT NOT NULL,
+  request_id            TEXT,
+  vendor_id             TEXT,
+  input_tokens          INTEGER,
+  output_tokens         INTEGER,
+  cache_read_tokens     INTEGER,
+  cache_write_tokens    INTEGER,
+  cache_write_1h_tokens INTEGER,
+  outcome               TEXT,
+  quota                 TEXT,
+  started_at            INTEGER,
+  ended_at              INTEGER NOT NULL
+) STRICT;
+INSERT INTO usage_ledger_calls (id, user_id, conversation_id, provider_id, model_id,
+    input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, ended_at)
+  SELECT id, user_id, conversation_id, provider_id, model_id,
+    input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, created_at
+  FROM usage_ledger ORDER BY rowid;
+DROP TABLE usage_ledger;
+ALTER TABLE usage_ledger_calls RENAME TO usage_ledger;
+CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
+";
 
 /// From 0.1.22-dev.20261015T105826Z's control schema, which a server keeps
 /// data of, to the one in which a workspace keeps what its project's next
@@ -3085,19 +3130,37 @@ CREATE TABLE model_catalogs (
 ) STRICT;
 
 -- Usage and attachments; neither holds attachment bytes.
+-- One row per vendor call. A row written before the ledger kept a call's
+-- agent, turn, purpose, account, ids, hour-long cache write, outcome, quota
+-- and start keeps null for them; a call the vendor reported no counts for
+-- has null counts.
+-- usage_ledger.quota: [{ kind, periodSeconds, scope, usedPercent, resetsAt }], format 1
 CREATE TABLE usage_ledger (
-  id                 TEXT PRIMARY KEY,
-  user_id            TEXT NOT NULL REFERENCES users (id),
-  conversation_id    TEXT NOT NULL,
-  provider_id        TEXT NOT NULL,
-  model_id           TEXT NOT NULL,
-  input_tokens       INTEGER NOT NULL,
-  output_tokens      INTEGER NOT NULL,
-  cache_read_tokens  INTEGER NOT NULL,
-  cache_write_tokens INTEGER NOT NULL,
-  created_at         INTEGER NOT NULL
+  id                    TEXT PRIMARY KEY,
+  user_id               TEXT NOT NULL REFERENCES users (id),
+  conversation_id       TEXT NOT NULL,
+  -- Null for a request outside a session, such as a title.
+  agent                 INTEGER CHECK (agent >= 0),
+  turn_id               TEXT,
+  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title')),
+  provider_id           TEXT NOT NULL,
+  -- Null for an API key.
+  account_id            TEXT,
+  model_id              TEXT NOT NULL,
+  request_id            TEXT,
+  vendor_id             TEXT,
+  input_tokens          INTEGER,
+  output_tokens         INTEGER,
+  cache_read_tokens     INTEGER,
+  cache_write_tokens    INTEGER,
+  cache_write_1h_tokens INTEGER,
+  -- 'answered', 'cancelled' or the failure code of a refused call.
+  outcome               TEXT,
+  quota                 TEXT,
+  started_at            INTEGER,
+  ended_at              INTEGER NOT NULL
 ) STRICT;
-CREATE INDEX usage_ledger_user ON usage_ledger (user_id, created_at);
+CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
 
 CREATE TABLE attachments (
   id         TEXT PRIMARY KEY,
@@ -5774,6 +5837,54 @@ mod tests {
     /// A server records the one with the plugins' secrets before read
     /// states, and may record the one with the users' credentials before
     /// passkeys and the one with passkeys before the signed-in browsers.
+    /// A ledger row of 0.1.22-dev.20261016T043704Z keeps its user,
+    /// conversation, entry, model, counts and order, its `created_at` as its
+    /// `ended_at`, and null for what it lacked.
+    #[test]
+    fn a_ledger_row_from_before_calls_keeps_its_counts_and_null_for_what_it_lacked() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.22-dev.20261016T043704Z.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('user-1', 'a@example.test', 'A', 'hash', 'master', 1);
+                 INSERT INTO usage_ledger VALUES
+                   ('row-2', 'user-1', 'conversation-1', 'entry-1', 'model-1', 5, 6, 7, 8, 30),
+                   ('row-1', 'user-1', 'conversation-1', 'entry-1', 'model-1', 1, 2, 3, 4, 20);",
+            )
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let rows: Vec<String> = connection
+            .prepare(
+                "SELECT id, user_id, conversation_id, agent, turn_id, purpose, provider_id, account_id,
+                   model_id, request_id, vendor_id, input_tokens, output_tokens, cache_read_tokens,
+                   cache_write_tokens, cache_write_1h_tokens, outcome, quota, started_at, ended_at
+                 FROM usage_ledger ORDER BY rowid",
+            )
+            .unwrap()
+            .query_map([], |row| {
+                Ok((0..20)
+                    .map(|index| match row.get_ref(index).unwrap() {
+                        rusqlite::types::ValueRef::Null => "null".to_owned(),
+                        rusqlite::types::ValueRef::Integer(value) => value.to_string(),
+                        rusqlite::types::ValueRef::Text(text) => String::from_utf8_lossy(text).into_owned(),
+                        other => format!("{other:?}"),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" "))
+            })
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                "row-2 user-1 conversation-1 null null null entry-1 null model-1 null null 5 6 7 8 null null null null 30",
+                "row-1 user-1 conversation-1 null null null entry-1 null model-1 null null 1 2 3 4 null null null null 20",
+            ]
+        );
+    }
+
     #[test]
     fn the_development_builds_in_the_history_are_the_ones_their_server_records() {
         for (schema, development, version) in [
@@ -5788,6 +5899,7 @@ mod tests {
             (&CONTROL, include_str!("schema/control-0.1.22-dev.plugin-secrets-unread.sql"), 1_293_042_998),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.credentials.sql"), 235_949_009),
             (&CONTROL, include_str!("schema/control-0.1.22-dev.passkeys.sql"), 2_096_003_688),
+            (&CONTROL, include_str!("schema/control-0.1.22-dev.20261016T043704Z.sql"), 1_043_494_885),
         ] {
             assert_eq!(version_of(development), version);
             assert!(schema.history.iter().any(|shipped| shipped.sql == development));

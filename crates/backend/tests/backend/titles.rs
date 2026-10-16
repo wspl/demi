@@ -232,7 +232,7 @@ async fn pushed(
 #[tokio::test]
 async fn the_first_message_titles_the_conversation_once_and_an_archive_ends_the_request() {
     let script = Script::new(&format!("\"{GENERATED}\"\n"));
-    let (_harness, backend, master, provider) = titling(&script).await;
+    let (harness, backend, master, provider) = titling(&script).await;
     create(&backend, &master, FIRST).await;
     choose(&backend, &master, FIRST, &provider, "m").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
@@ -269,6 +269,14 @@ async fn the_first_message_titles_the_conversation_once_and_an_archive_ends_the_
         .await
         .json::<demi_web_api_protocol::usage::UsageTotals>();
     assert_eq!(totals.totals[0].requests, 2);
+    // Its row is no agent's and no turn's, and says it was a title's.
+    let rows = crate::usage::rows(&harness);
+    let rows: Vec<_> = rows
+        .iter()
+        .map(|row| (row.agent, row.turn_id.is_some(), row.purpose.as_deref()))
+        .collect();
+    assert!(rows.contains(&(None, false, Some("title"))), "{rows:?}");
+    assert!(rows.contains(&(Some(0), true, Some("turn"))), "{rows:?}");
 
     // A later message titles nothing, nothing asks for a title again, and
     // the summary says nothing of a request.

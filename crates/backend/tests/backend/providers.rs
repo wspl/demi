@@ -807,6 +807,20 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
     );
     assert_eq!(model.as_deref(), Some("Claude Opus 4.8"));
 
+    // An answer whose stream fails at once, which the provider reports to
+    // the usage ledger as a call before its failure, fails the test.
+    vendor.respond(MockResponse::event_stream(
+        "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n",
+    ));
+    let failed = backend
+        .post(&path, Some(&master), json!({ "modelId": "claude-opus-4-8" }))
+        .await
+        .json::<TestResult>();
+    let TestResult::Failed { message, .. } = failed else {
+        panic!("the stream failed: {failed:?}");
+    };
+    assert!(message.contains("Overloaded"), "{message}");
+
     let unknown = backend
         .post(&path, Some(&master), json!({ "modelId": "no-such-model" }))
         .await
@@ -829,7 +843,7 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
         account.refusal(),
         (StatusCode::NOT_FOUND, ErrorCode::AccountNotFound)
     );
-    assert_eq!(vendor.requests().len(), 2);
+    assert_eq!(vendor.requests().len(), 3);
 
     // The other API-key families build from their entries alike: an
     // `openai` entry on the wire it names or on Responses, and a `google`

@@ -215,6 +215,24 @@ async fn an_agent_keeps_its_account_until_a_compaction_or_a_used_up_account_move
     assert_eq!(usage_account(&turn), Some(second.to_string()));
     let tail: Vec<_> = accounts_run(&setup.runs)[runs_before..].to_vec();
     assert_eq!(tail, [first.as_str(), second.as_str()]);
+    // The refused call keeps its row, with its outcome and its account, and
+    // no counts, since the vendor reported none; the totals count it and
+    // add nothing.
+    let rows = crate::usage::rows(&setup.harness);
+    let calls: Vec<_> = rows[rows.len() - 2..]
+        .iter()
+        .map(|row| (row.account_id.as_deref(), row.outcome.as_deref(), row.tokens[0].is_some()))
+        .collect();
+    assert_eq!(
+        calls,
+        [(Some(first.as_str()), Some("usage_limit"), false), (Some(second.as_str()), Some("answered"), true)]
+    );
+    let totals = crate::conversations::usage(&backend, &setup.master).await.totals;
+    let counted: i64 = rows.iter().filter_map(|row| row.tokens[0]).sum();
+    assert_eq!(
+        (totals[0].requests, totals[0].input_tokens),
+        (rows.len() as u64, counted as u64)
+    );
     assert!(
         !turn.iter().any(|frame| matches!(frame, ServerFrame::RetryScheduled { .. })),
         "{turn:?}"

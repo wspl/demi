@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    EarlyEnd, ErrorCode, ProviderEvent, ProviderFailure, ToolCall, tagged_wire,
+    EarlyEnd, ErrorCode, ProviderEvent, ProviderFailure, ToolCall, VendorCall, tagged_wire,
     wire::{
         ReportedString, Tagged, Vendor, WireError, decode_tagged, sse_data, tool_input,
         undecodable, usage_with_cached_input,
@@ -109,6 +109,9 @@ pub struct Completed {
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct CompletedResponse {
+    /// The response's id, the vendor's id of the call.
+    #[serde(default)]
+    pub id: ReportedString,
     #[serde(default)]
     pub usage: Option<Usage>,
 }
@@ -167,7 +170,11 @@ pub struct Incomplete {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct IncompleteResponse {
     #[serde(default)]
+    pub id: ReportedString,
+    #[serde(default)]
     pub incomplete_details: Option<IncompleteDetails>,
+    #[serde(default)]
+    pub usage: Option<Usage>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]
@@ -390,6 +397,14 @@ where
                 }
             };
             let ended = mapper.event(received, &mut out);
+            // The run's one call ends with it, under the response's id and
+            // with its own counts, for the usage ledger.
+            if ended
+                && let Some(last) = out.last()
+                && let Some(call) = VendorCall::ended_by(mapper.vendor_id.take(), mapper.usage, last)
+            {
+                out.insert(out.len() - 1, call);
+            }
             for event in out.drain(..) {
                 yield event;
             }
@@ -418,6 +433,10 @@ struct Mapper {
     writing: HashMap<String, String>,
     reasoning_streamed: bool,
     text_streamed: bool,
+    /// The response's id and the counts it reported, once its last event
+    /// named them.
+    vendor_id: Option<String>,
+    usage: Option<TokenUsage>,
 }
 
 impl Mapper {
@@ -430,6 +449,8 @@ impl Mapper {
             writing: HashMap::new(),
             reasoning_streamed: false,
             text_streamed: false,
+            vendor_id: None,
+            usage: None,
         }
     }
 
@@ -501,14 +522,19 @@ impl Mapper {
                 false
             }
             ResponsesEvent::Completed(completed) => {
-                let usage = completed.response.and_then(|response| response.usage);
+                let (id, usage) = completed
+                    .response
+                    .map(|response| (response.id.into_inner(), response.usage))
+                    .unwrap_or_default();
                 let usage = usage.map(|usage| usage.token_usage());
+                self.vendor_id = id;
                 out.push(ProviderEvent::response(usage, self.vendor.label, &self.vendor.model));
                 true
             }
             ResponsesEvent::Failed(failed) => {
                 let response = failed.response;
                 let response_id = response.as_ref().and_then(|response| response.id.0.clone());
+                self.vendor_id = response_id.clone();
                 let error = response.and_then(|response| response.error);
                 let fallback = format!("{} response failed", self.vendor.label);
                 let failure = self.failure(
@@ -523,8 +549,12 @@ impl Mapper {
                 true
             }
             ResponsesEvent::Incomplete(incomplete) => {
-                let reason = incomplete
-                    .response
+                let response = incomplete.response;
+                if let Some(response) = &response {
+                    self.vendor_id = response.id.0.clone();
+                    self.usage = response.usage.map(|usage| usage.token_usage());
+                }
+                let reason = response
                     .and_then(|response| response.incomplete_details)
                     .and_then(|details| details.reason.into_inner())
                     .unwrap_or_else(|| "unknown".to_owned());

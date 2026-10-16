@@ -4,7 +4,7 @@
 use std::{collections::HashMap, sync::Arc};
 
 use demi_provider_common::{
-    EarlyEnd, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
+    CallEvent, CallOutcome, EarlyEnd, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
     http_failure, read_http_failure, tagged_wire,
     wire::{
         NonEmpty, ReportedString, Tagged, decode_tagged,
@@ -112,7 +112,14 @@ pub(crate) fn run(
                 Some(Ok(data)) => match mapper.frame(&data) {
                     Next::Nothing => {}
                     Next::Event(event) => yield event,
+                    // The call ends with the run, with its message's id and
+                    // its own counts for the usage ledger.
                     Next::Last(event) => {
+                        let outcome = match &event {
+                            ProviderEvent::Error(failure) => CallOutcome::Refused(failure.code.clone()),
+                            _ => CallOutcome::Answered,
+                        };
+                        yield ProviderEvent::Call(CallEvent::Ended(mapper.usage.call(outcome)));
                         yield event;
                         return;
                     }
@@ -177,7 +184,7 @@ impl Mapper {
                 Next::Last(ProviderEvent::Error(self.failure(event, data)))
             }
             StreamEvent::MessageStart(start) => {
-                self.usage.start(start.message.usage);
+                self.usage.start(start.message.id, start.message.usage);
                 Next::Nothing
             }
             StreamEvent::MessageDelta(message) => {
@@ -358,6 +365,8 @@ struct MessageStart {
 
 #[derive(Deserialize)]
 struct StartedMessage {
+    #[serde(default)]
+    id: Option<String>,
     usage: Option<MessagesUsage>,
 }
 

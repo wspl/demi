@@ -48,9 +48,7 @@ async fn events_with(
 ) -> Vec<ProviderEvent> {
     let cancel = CancellationToken::new();
     let events = sse_events(body(frames), "Codex", cancel.clone());
-    map_events(events, vendor(reader), "codex:", cancel)
-        .collect()
-        .await
+    demi_provider_common::testing::all_events(map_events(events, vendor(reader), "codex:", cancel)).await
 }
 
 async fn events(frames: &[Value]) -> Vec<ProviderEvent> {

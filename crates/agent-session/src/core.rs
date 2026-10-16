@@ -25,7 +25,7 @@ use demi_agent_transcript::{
 };
 use demi_conversation_socket_protocol::AbortTarget;
 use demi_provider_common::{
-    Ahead, EntriesOf, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure,
+    Ahead, EntriesOf, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, RequestPurpose,
     ProviderRuntime, RequestBlock, RequestLimits, ToolDefinition,
 };
 use demi_shared_types::{
@@ -106,6 +106,8 @@ pub(crate) struct SessionCore {
     /// The session sends one request per turn and runs no tool, as a
     /// session copy does (`compaction.md` § The summary request).
     pub(super) one_request: bool,
+    /// The turn a session copy's request belongs to ([`CoreParts`]).
+    request_turn: Option<TurnId>,
     /// Dispose started: every admission is refused.
     pub(super) disposing: bool,
     /// What the next request's runtime is to ready ahead, once the session
@@ -385,6 +387,9 @@ pub(super) struct CoreParts {
     /// Whether the session sends one request per turn and runs no tool, as
     /// a session copy does (`compaction.md` § The summary request).
     pub(super) one_request: bool,
+    /// The turn a session copy's request belongs to: the one its session's
+    /// pass runs in; none for a session, whose requests belong to its own.
+    pub(super) request_turn: Option<TurnId>,
     pub(super) ids: Rc<dyn IdSource>,
     pub(super) clock: Arc<dyn Clock>,
     /// The node's runtime, which knows which commands' ends a look showed it.
@@ -417,6 +422,7 @@ impl SessionCore {
             activity: Activity::Idle,
             held: false,
             one_request: parts.one_request,
+            request_turn: parts.request_turn,
             disposing: false,
             ahead: None,
             prepares_ahead: false,
@@ -817,9 +823,15 @@ impl SessionCore {
 
     /// The turn the running action writes.
     pub(super) fn turn(&self) -> TurnId {
+        self.running_turn()
+            .unwrap_or_else(|| unreachable!("only a running action writes a turn"))
+    }
+
+    /// The turn of the running action; none while no action runs.
+    pub(super) fn running_turn(&self) -> Option<TurnId> {
         match &self.activity {
-            Activity::Running(run) => run.turn.clone(),
-            _ => unreachable!("only a running action writes a turn"),
+            Activity::Running(run) => Some(run.turn.clone()),
+            _ => None,
         }
     }
 
@@ -1641,6 +1653,9 @@ impl SessionCore {
             ProviderEvent::Entries { .. } => {
                 unreachable!("apply_event keeps entries before it writes blocks")
             }
+            // A call's accounting is the usage ledger's, which the metered
+            // runtime writes; the transcript keeps the run's response.
+            ProviderEvent::Call(_) => {}
         }
     }
 
@@ -1768,9 +1783,10 @@ impl SessionCore {
             items,
             written: Vec::new(),
         };
+        let turn = self.request_turn.clone().unwrap_or_else(|| self.turn());
         InferenceRequest {
             session_id: self.id.to_string(),
-            turn_id: self.turn().to_string(),
+            turn_id: turn.to_string(),
             request_id,
             model_id: self.model.model.id.clone(),
             output_limit: self.model.model.output_limit.and_then(NonZeroU32::new),
@@ -1786,6 +1802,13 @@ impl SessionCore {
             },
             cancel,
             account: self.account.clone(),
+            // A session copy sends a compaction pass's summary request.
+            purpose: if self.one_request {
+                RequestPurpose::Compaction
+            } else {
+                RequestPurpose::Turn
+            },
+            agent: Some(self.runtime.agent()),
         }
     }
 
@@ -1865,6 +1888,8 @@ impl SessionCore {
             },
             cancel: CancellationToken::new(),
             account: self.account.clone(),
+            purpose: RequestPurpose::Turn,
+            agent: Some(self.runtime.agent()),
         }
     }
 
