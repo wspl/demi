@@ -192,7 +192,7 @@ const title = computed(() => (props.mode === 'create' ? t('profile.new') : t('pr
     <div class="flex min-h-0 flex-col">
       <header class="min-w-0 select-none p-5 pb-4 pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
-        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">
+        <p class="mt-0.5 text-explanation leading-5 text-fg-muted">
           {{ t('profile.hint') }}
         </p>
       </header>

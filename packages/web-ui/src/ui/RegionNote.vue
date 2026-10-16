@@ -26,7 +26,7 @@ defineEmits<{ action: [] }>()
   <!-- The action keeps the same distance to the note's end as to its top and bottom: (28 - 20) / 2. -->
   <div
     role="status"
-    class="flex h-7 shrink-0 select-none items-center gap-2 border-b border-line pl-3 text-[12px] text-fg-muted"
+    class="flex h-7 shrink-0 select-none items-center gap-2 border-b border-line pl-3 text-detail text-fg-muted"
     :class="action ? 'pr-1' : 'pr-3'"
   >
     <component :is="icon" :size="12" class="shrink-0 text-fg-subtle" aria-hidden="true" />

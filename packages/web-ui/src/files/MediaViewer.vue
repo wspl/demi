@@ -153,7 +153,7 @@ function onSize(width: number, height: number): void {
       <div class="min-h-0 flex-1">
         <ReuseMedium :flush="false" :swipe="true" />
       </div>
-      <div class="h-6 shrink-0 px-3 text-center text-[11px] tabular-nums text-fg-muted">
+      <div class="h-6 shrink-0 px-3 text-center text-caption tabular-nums text-fg-muted">
         {{ details(false) }}
       </div>
     </div>

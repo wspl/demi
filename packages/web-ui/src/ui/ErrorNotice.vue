@@ -64,14 +64,14 @@ const rawOpen = ref(false)
         <p class="text-chrome leading-5">{{ label }}</p>
         <p
           v-if="detail"
-          class="mt-0.5 whitespace-pre-line break-words text-[12px] leading-[18px] text-on-danger-muted"
+          class="mt-0.5 whitespace-pre-line break-words text-detail leading-[18px] text-on-danger-muted"
         >
           {{ detail }}
         </p>
         <!-- Facts wrap on a narrow screen: a time cut off says nothing. -->
         <p
           v-if="facts.length > 0"
-          class="mt-1 break-words text-[12px] leading-[18px] text-on-danger-muted"
+          class="mt-1 break-words text-detail leading-[18px] text-on-danger-muted"
         >
           {{ facts.join(' · ') }}
         </p>
@@ -85,7 +85,7 @@ const rawOpen = ref(false)
         <template v-if="raw">
           <button
             type="button"
-            class="mt-1 flex cursor-default items-center gap-1 text-[12px] leading-[18px] text-on-danger-muted hover:text-on-danger"
+            class="mt-1 flex cursor-default items-center gap-1 text-detail leading-[18px] text-on-danger-muted hover:text-on-danger"
             :aria-expanded="rawOpen"
             @click="rawOpen = !rawOpen"
           >

@@ -59,7 +59,7 @@ const stop = computed<Operation>(() => ({ action: 'stop', target: `share:${token
   <Dialog :is-open="isOpen" :overlay-store="overlayStore" :label="title" @close="emit('close')">
     <div class="flex flex-col gap-3 px-5 pt-5">
       <h3 class="select-none pr-8 text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
-      <p class="text-[13px] leading-5 text-fg-body">
+      <p class="text-explanation leading-5 text-fg-body">
         {{ kind === 'conversation' ? t('share.whoConversation') : t('share.whoAnswer') }}
       </p>
       <TextInput

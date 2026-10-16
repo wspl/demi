@@ -30,7 +30,12 @@ const METRICS = [
   { control: 'Form fields', face: '44 px', icon: '—', text: '16 px' },
   { control: 'Switches', face: '51 × 31 px, as iOS’s', icon: '—', text: '—' },
   { control: 'Settings’ descriptions', face: '—', icon: '—', text: '15 px' },
-  { control: 'The sidebar, menu sheets, Settings’ sections, the file tree', face: '44 px rows, 32 px actions', icon: '18 px', text: '16–17 px' },
+  { control: 'The sidebar and its group labels, Settings’ sections, the file tree, a folder’s list, Search’s rows', face: '44 px rows, 32 px actions', icon: '18 px', text: '16–17 px' },
+  { control: 'Every menu’s rows, a sheet’s or one beside its field, such as a path’s completions', face: '44 px', icon: '18 px', text: '16 px' },
+  { control: 'A path’s crumbs, chevrons between them', face: '36 px tall, 36 px wide at least', icon: '16 px', text: '15 px' },
+  { control: 'Bars over a view: the toolbar (two rows where one would crowd), a file’s bar and header, a window’s status bar', face: '44 px', icon: '16–20 px', text: '15 px; facts 13 px' },
+  { control: 'A link in running text', face: 'its line’s height, the text laid out as on the desktop', icon: '—', text: 'the prose’s' },
+  { control: 'What a dialog, a card or a sign-in page explains; a fact or a hint beside controls; a tag', face: '—', icon: '—', text: '15 px; 13 px; 13 px' },
   { control: 'A device’s number badge', face: '—', icon: '—', text: '11 px' },
   { control: 'The transcript’s prose; the composer’s text', face: '—', icon: '—', text: 'the user’s Message text size; 16 px at least' },
 ]

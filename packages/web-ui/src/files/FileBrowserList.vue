@@ -274,7 +274,7 @@ defineExpose({
 <template>
   <div class="@container flex min-h-0 flex-1 flex-col">
     <div
-      class="grid h-7 shrink-0 grid-cols-[minmax(0,1fr)_5.5rem] items-center border-b border-line px-2 text-[12px] text-fg-subtle @md:grid-cols-[minmax(0,1fr)_10rem_5.5rem]"
+      class="grid h-7 shrink-0 grid-cols-[minmax(0,1fr)_5.5rem] items-center border-b border-line px-2 text-detail phone:h-11 text-fg-subtle @md:grid-cols-[minmax(0,1fr)_10rem_5.5rem]"
       role="row"
     >
       <span
@@ -324,7 +324,7 @@ defineExpose({
       >
         <div
           v-if="creating"
-          class="grid h-7 shrink-0 grid-cols-[minmax(0,1fr)_5.5rem] items-center rounded-md bg-hover px-1 @md:grid-cols-[minmax(0,1fr)_10rem_5.5rem]"
+          class="grid h-7 shrink-0 grid-cols-[minmax(0,1fr)_5.5rem] items-center rounded-md bg-hover px-1 phone:h-row @md:grid-cols-[minmax(0,1fr)_10rem_5.5rem]"
           role="option"
           aria-selected="true"
         >
@@ -351,7 +351,7 @@ defineExpose({
           :aria-selected="entry.name === selected"
           :aria-disabled="!reachable(entry) || undefined"
           :data-selected="entry.name === selected || undefined"
-          class="grid h-7 shrink-0 select-none grid-cols-[minmax(0,1fr)_5.5rem] items-center rounded-md px-1 text-chrome transition-colors duration-200 ease-out @md:grid-cols-[minmax(0,1fr)_10rem_5.5rem]"
+          class="grid h-7 shrink-0 select-none grid-cols-[minmax(0,1fr)_5.5rem] items-center rounded-md px-1 text-chrome phone:h-row phone:text-[16px] transition-colors duration-200 ease-out @md:grid-cols-[minmax(0,1fr)_10rem_5.5rem]"
           :class="
             entry.name === selected
               ? ['bg-active text-fg-emphasis', keyboard ? 'focus-ring-shown' : '']
@@ -375,11 +375,11 @@ defineExpose({
             <LinkMark v-if="entry.link" class="ml-auto" :class="!pickable(entry) ? 'opacity-40' : ''" :link="entry.link" />
           </span>
           <span
-            class="hidden truncate px-1 text-[12px] text-fg-subtle @md:block"
+            class="hidden truncate px-1 text-detail text-fg-subtle @md:block"
             >{{ formatModified(entry.modifiedAt) }}</span
           >
           <Tooltip
-            class="truncate px-1 text-right text-[12px] text-fg-subtle"
+            class="truncate px-1 text-right text-detail text-fg-subtle"
             :content="entryKind(entry.name, entry.isDirectory)"
           >
             {{
@@ -406,7 +406,7 @@ defineExpose({
           <span class="text-chrome text-fg-muted">{{ failureCopy.title }}</span>
           <span
             v-if="failure?.message"
-            class="text-[12px] leading-4 text-fg-subtle"
+            class="text-detail leading-4 text-fg-subtle"
             >{{ failure.message }}</span
           >
         </div>

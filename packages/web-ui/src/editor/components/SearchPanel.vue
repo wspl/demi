@@ -62,7 +62,7 @@ function flip(key: Toggle): void {
       @update:model-value="emit('change', { ...options, search: $event })"
     >
       <template v-if="options.search" #suffix>
-        <span class="whitespace-nowrap text-[11px] tabular-nums text-fg-subtle" aria-live="polite">{{ status }}</span>
+        <span class="whitespace-nowrap text-caption tabular-nums text-fg-subtle" aria-live="polite">{{ status }}</span>
       </template>
     </TextInput>
     <Tooltip v-for="toggle in toggles" :key="toggle.key" :content="toggle.label">

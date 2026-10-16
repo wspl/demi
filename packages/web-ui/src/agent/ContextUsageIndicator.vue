@@ -7,7 +7,7 @@ import ProviderQuota from '../settings/ProviderQuota.vue'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
 import FoldChevron from '../ui/FoldChevron.vue'
-import { ICON_PX } from '../ui/icon-metrics'
+import { ICON_PX, useIconPx } from '../ui/icon-metrics'
 import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
@@ -93,6 +93,9 @@ const room = computed(() => (props.usage ? untilCompaction(props.usage) : null))
 
 /** On a phone the card is a sheet, which scrolls the details itself. */
 const phone = usePhone()
+/** The ring is a toolbar button's icon, and in a status bar a chip's, at the layout's size. */
+const icons = useIconPx()
+const ringPx = computed(() => (props.segment ? icons.value.chip : icons.value.in28))
 
 /** Whether the rows show; the header opens and closes them, and the browser keeps the choice. */
 const listOpen = useContextListOpen()
@@ -180,12 +183,13 @@ const ringColor = computed(() => {
           class="relative flex cursor-default items-center justify-center transition-colors hover:bg-hover"
           :class="[segment ? 'status-bar-segment h-full' : 'size-hit rounded-md', isOpen ? 'bg-hover' : '']"
           :data-acting="segment || undefined"
+          data-drawn-target
         >
-          <IndeterminateSpinner v-if="isCompacting" />
+          <IndeterminateSpinner v-if="isCompacting" :size="ringPx" />
           <svg
             v-else
-            width="14"
-            height="14"
+            :width="ringPx"
+            :height="ringPx"
             viewBox="0 0 14 14"
             class="-rotate-90"
           >
@@ -210,7 +214,8 @@ const ringColor = computed(() => {
         </button>
       </template>
       <template #content="{ close }">
-        <div class="overlay-shell rounded-md text-xs text-fg" :style="{ '--elevation': elevation }">
+        <!-- On a phone the card is a sheet's content, read at a sheet's size. -->
+        <div class="overlay-shell rounded-md text-detail leading-4 text-fg phone:text-[15px] phone:leading-5" :style="{ '--elevation': elevation }">
           <div v-if="parts.context" class="context-card-head">
             <span v-if="isCompacting" class="text-fg-body">{{ t('context.compacting') }}</span>
             <!-- The header is the list's disclosure, as a Finder disclosure row is. -->
@@ -218,7 +223,7 @@ const ringColor = computed(() => {
               v-else-if="usage"
               type="button"
               :aria-expanded="listOpen"
-              class="flex w-full min-w-0 cursor-default items-baseline gap-3 whitespace-nowrap rounded-sm text-left"
+              class="flex w-full min-w-0 cursor-default items-baseline gap-3 whitespace-nowrap rounded-sm text-left phone:min-h-row phone:items-center"
               @click="listOpen = !listOpen"
             >
               <span class="font-medium text-fg-emphasis">{{ t('context.window') }}</span>
@@ -266,7 +271,7 @@ const ringColor = computed(() => {
                   </Button>
                 </div>
                 <div v-if="limits" class="pb-3" :class="parts.context ? 'border-t border-line' : 'pt-1'">
-                  <SectionRow class="text-[11px] font-medium text-fg-subtle">
+                  <SectionRow class="text-caption font-medium text-fg-subtle">
                     <span class="shrink-0">{{ t('context.usageLimits') }}</span>
                     <template v-if="limits.accountLabel">
                       <span class="shrink-0 px-1">·</span>
@@ -297,18 +302,18 @@ const ringColor = computed(() => {
                   </div>
                 </div>
                 <div v-if="instructionList.length" class="border-t border-line pb-1">
-                  <div class="px-3 pt-2 pb-1 text-[11px] font-medium text-fg-subtle">{{ t('context.instructions') }}</div>
+                  <div class="px-3 pt-2 pb-1 text-caption font-medium text-fg-subtle">{{ t('context.instructions') }}</div>
                   <ul class="px-1">
                     <li v-for="row in instructionList" :key="row.path ?? 'personal'">
                       <Tooltip tag="div" :content="row.path ?? undefined">
                         <button
                           type="button"
-                          class="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-hover"
+                          class="flex w-full items-center gap-2 rounded px-2 py-1 text-left hover:bg-hover phone:min-h-row phone:py-0"
                           @click="openEntry(row.entry, close)"
                         >
-                          <UserRound v-if="row.entry.kind === 'personal'" :size="14" class="shrink-0 text-fg-subtle" />
-                          <Network v-else-if="row.entry.kind === 'workflow'" :size="14" class="shrink-0 text-fg-subtle" />
-                          <FileText v-else :size="14" class="shrink-0 text-fg-subtle" />
+                          <UserRound v-if="row.entry.kind === 'personal'" :size="icons.chip" class="shrink-0 text-fg-subtle" />
+                          <Network v-else-if="row.entry.kind === 'workflow'" :size="icons.chip" class="shrink-0 text-fg-subtle" />
+                          <FileText v-else :size="icons.chip" class="shrink-0 text-fg-subtle" />
                           <span class="min-w-0 flex-1 truncate text-fg-body">{{ row.label }}</span>
                         </button>
                       </Tooltip>
@@ -341,6 +346,13 @@ const ringColor = computed(() => {
   min-height: 2.25rem;
   padding: 0.5rem 0.75rem;
   line-height: 1.25rem;
+}
+
+/* On a phone the disclosure is a row's height itself, the head no taller. */
+@media (max-width: 767px) {
+  .context-card-head {
+    padding-block: 0;
+  }
 }
 
 /* A row: its color, its name, its tokens and its share of the window. */

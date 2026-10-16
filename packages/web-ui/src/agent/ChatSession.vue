@@ -546,7 +546,7 @@ watch(
         </Menu>
         <!-- Where the conversation runs, as the desktop's header shows it beside the title. -->
         <div v-if="$slots.workspace" class="px-4 pb-3 pt-1">
-          <p class="pb-1 text-[12px] text-fg-subtle">{{ t('session.runsOn') }}</p>
+          <p class="pb-1 text-detail text-fg-subtle">{{ t('session.runsOn') }}</p>
           <div ref="workspaceTarget" />
         </div>
       </Sheet>

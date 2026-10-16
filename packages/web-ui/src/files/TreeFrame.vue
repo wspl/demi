@@ -169,8 +169,9 @@ defineExpose({ show, dismiss })
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
-    <!-- The row stands right under the panel's tab strip: its tips open below, never over the strip. -->
-    <div class="flex h-11 shrink-0 items-center gap-1 px-2">
+    <!-- The row stands right under the panel's tab strip: its tips open below, never over the strip.
+         On a phone a view may break it into two rows of 44 px rather than crowd one (`ChangeView`). -->
+    <div class="flex h-11 shrink-0 items-center gap-1 px-2 phone:h-auto phone:min-h-11 phone:flex-wrap phone:gap-y-0">
       <TooltipPlacement placement="bottom">
         <slot name="header" />
         <Tooltip v-if="$slots.tree" :content="toggleLabel" class="shrink-0">

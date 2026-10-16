@@ -139,7 +139,7 @@ defineExpose({
         <!-- The web browser's PDF viewer refuses a sandboxed frame. -->
         <iframe v-else :src="src" :title="name" class="h-full w-full border-0" />
       </div>
-      <div v-if="caption && facts" class="shrink-0 px-3 pb-2 text-center text-[11px] tabular-nums text-fg-muted">
+      <div v-if="caption && facts" class="shrink-0 px-3 pb-2 text-center text-caption tabular-nums text-fg-muted">
         {{ mediaFactParts(facts).join(' · ') }}
       </div>
     </template>

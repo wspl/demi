@@ -27,7 +27,7 @@ const emit = defineEmits<{
       <header class="select-none pr-8">
         <h3 class="text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
       </header>
-      <dl class="grid select-text grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2 text-[13px] leading-5">
+      <dl class="grid select-text grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2 text-explanation leading-5">
         <template v-for="entry in entries" :key="entry.label">
           <dt class="text-fg-subtle">{{ entry.label }}</dt>
           <dd class="break-words text-fg">

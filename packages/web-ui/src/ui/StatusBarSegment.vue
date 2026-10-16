@@ -16,6 +16,7 @@ defineProps<{ acting?: boolean }>()
     v-if="acting"
     type="button"
     data-acting
+    data-drawn-target
     class="status-bar-segment flex h-full cursor-default items-center gap-1.5 whitespace-nowrap transition-colors hover:bg-hover"
   >
     <slot />

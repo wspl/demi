@@ -133,7 +133,7 @@ function files(count: number): string {
           </div>
         </template>
       </Tooltip>
-      <div v-if="failure" class="flex select-none items-center gap-2 px-2 py-1.5 text-[12px] text-fg-subtle">
+      <div v-if="failure" class="flex select-none items-center gap-2 px-2 py-1.5 text-detail text-fg-subtle">
         <span class="min-w-0 flex-1">{{ failure }}</span>
         <Button size="xs" variant="ghost" @click="emit('more')">{{ shared('common.retry') }}</Button>
       </div>

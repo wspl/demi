@@ -31,7 +31,7 @@ watch(computed(() => visible.value && props.autoRefresh), (shown) => {
 </script>
 
 <template>
-  <div ref="region" class="text-[12px] leading-4 text-fg-subtle tabular-nums">
+  <div ref="region" class="text-detail leading-4 text-fg-subtle tabular-nums">
     <div v-if="error" class="mb-2 text-fg-subtle">
       <p class="break-words">{{ error.message }}</p>
       <RequestIdLine v-if="error.requestId" :request-id="error.requestId" />
