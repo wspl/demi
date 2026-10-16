@@ -12,6 +12,8 @@
     "changeContextLimit": "無法變更上下文上限",
     "readPermissionRequests": "無法讀取通知的權限請求",
     "updateTimeZoneLanguage": "無法更新時區和語言",
-    "readSync": "無法讀取同步通道的訊息"
+    "readSync": "無法讀取同步通道的訊息",
+    "keepOffline": "無法儲存離線副本",
+    "readOffline": "無法讀取離線副本"
   }
 }

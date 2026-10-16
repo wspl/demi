@@ -69,28 +69,42 @@ export class ApiError extends Error {
 }
 
 
-let expired: (() => void) | null = null
+/**
+ * What hears that the page's session may be over: `ended` when the backend
+ * said it ended, false when it only refused a request of an account still
+ * to choose its password.
+ */
+type ExpiryListener = (ended: boolean) => void
 
-export function onSessionExpired(handler: () => void): () => void {
-  expired = handler
+const expiryListeners = new Set<ExpiryListener>()
+
+/** Tells `handler` each time the session may be over; answers the stop. */
+export function onSessionExpired(handler: ExpiryListener): () => void {
+  expiryListeners.add(handler)
   return () => {
-    if (expired === handler) {
-      expired = null
-    }
+    expiryListeners.delete(handler)
   }
 }
 
 export function notifySessionExpired(code: ErrorCode | UnknownErrorCode): void {
   // A request an account still to choose its password sent is refused as a
   // session that ended is: the page asks who it is and shows what it finds.
-  if (code === 'unauthenticated' || code === 'password_choice_required') {
+  if (code === 'unauthenticated') {
     notifySessionEnded()
+  } else if (code === 'password_choice_required') {
+    tellExpiry(false)
   }
 }
 
 /** Ends the session on the page: an answer of 401 does, and so does the synchronization channel's `session_ended`. */
 export function notifySessionEnded(): void {
-  expired?.()
+  tellExpiry(true)
+}
+
+function tellExpiry(ended: boolean): void {
+  for (const listener of [...expiryListeners]) {
+    listener(ended)
+  }
 }
 
 export async function readResponse<T>(
@@ -220,6 +234,12 @@ interface ApiRequestOptions extends RequestInit {
    * synchronization channel's own question after it could not connect.
    */
   waits?: boolean
+  /**
+   * Told each time a try could not reach the backend, before the request
+   * waits for it: what the page shows meanwhile, as a conversation that
+   * opens from its copy for opening offline.
+   */
+  onUnreachable?: () => void
 }
 
 /**
@@ -231,7 +251,7 @@ interface ApiRequestOptions extends RequestInit {
  * and sends nothing more. Every request of the page goes through it: the
  * HTTP client's, and an upload's bytes.
  */
-export async function untilReached<T>(send: () => Promise<T>, signal?: AbortSignal): Promise<T> {
+export async function untilReached<T>(send: () => Promise<T>, signal?: AbortSignal, onUnreachable?: () => void): Promise<T> {
   for (let attempt = 1; ; attempt += 1) {
     try {
       return await send()
@@ -243,6 +263,7 @@ export async function untilReached<T>(send: () => Promise<T>, signal?: AbortSign
       if (!wait || !unreachable(error)) {
         throw error
       }
+      onUnreachable?.()
       await wait(attempt, signal ?? NEVER)
     }
   }
@@ -257,12 +278,12 @@ export async function apiRequest(
   path: string,
   options: ApiRequestOptions = {},
 ): Promise<Response> {
-  const { waits = true, ...request } = options
-  return waits ? untilReached(() => send(path, request), request.signal ?? undefined) : send(path, request)
+  const { waits = true, onUnreachable, ...request } = options
+  return waits ? untilReached(() => send(path, request), request.signal ?? undefined, onUnreachable) : send(path, request)
 }
 
 /** One try of a request, with its own deadline. */
-async function send(path: string, options: Omit<ApiRequestOptions, 'waits'>): Promise<Response> {
+async function send(path: string, options: Omit<ApiRequestOptions, 'waits' | 'onUnreachable'>): Promise<Response> {
   const { allowNotModified, timeoutMs, ...request } = options
   const timeout = AbortSignal.timeout(timeoutMs ?? REQUEST_TIMEOUT_MS)
   const signal = options.signal

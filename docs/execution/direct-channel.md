@@ -320,8 +320,10 @@ them: the media type of the [file-type table](../architecture/contracts.md#logic
 the ETag, the cache rule of a `version`ed URL and `Content-Disposition` for a
 download ([File text and working tree changes](../product/web-api-hosts.md#file-text-and-working-tree-changes)).
 A request for a conversation that is not direct, or one the page cannot
-answer, goes to the network unchanged. The service worker intercepts nothing
-else.
+answer, goes to the network unchanged. The same service worker keeps the
+page for opening offline
+([Installing and opening offline](../product/web-application.md#installing-and-opening-offline)),
+and intercepts nothing else.
 
 ## Liveness
 

@@ -33,6 +33,6 @@
   "exclude": [
     "node_modules",
     "dist",
-    "src/direct/service-worker.ts"
+    "src/offline/service-worker.ts"
   ]
 }
