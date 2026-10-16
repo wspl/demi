@@ -524,6 +524,158 @@ async fn an_agent_searches_its_history_for_every_word_or_any_and_pages_the_hits(
     backend.close().await;
 }
 
+// About a second: nine turns of a scripted model, the index following each
+// within the 20 ms interval the test sets, and a real device runs the shell
+// jobs of the last. The user is in Shanghai, eight hours ahead of UTC, and
+// the second turn comes ten hours after the first: the next day there, the
+// same day in UTC.
+#[tokio::test]
+async fn an_agent_narrows_its_history_search_by_who_wrote_it_and_when() {
+    let scripts = Arc::new(Scripts::default());
+    let mut harness = Harness::new();
+    harness.conversations.search_interval = Duration::from_millis(20);
+    let (harness, backend, master, _laptop, _root, _) = tree_on(&scripts, harness).await;
+    let preferences = backend
+        .patch(
+            "/api/settings/preferences",
+            &master,
+            json!({ "locale": { "timeZone": "Asia/Shanghai", "languages": ["en"] }, "colorScheme": "light" }),
+        )
+        .await;
+    assert!(preferences.status.is_success(), "{}", String::from_utf8_lossy(&preferences.body));
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    // September 24, 4:00 PM in Shanghai.
+    scripts.root(FIRST, vec![say("The README intro is drafted")]);
+    socket.chat("m0", "Draft the README intro").await;
+    // September 25, 2:00 AM in Shanghai, still September 24 in UTC.
+    harness.clock.advance(SignedDuration::from_hours(10));
+    scripts.root(
+        FIRST,
+        vec![titled("t0", "Rewrite the README intro", "true"), say("The README intro is shorter")],
+    );
+    socket.chat("m1", "Shorten the README intro").await;
+    for note in 0..5 {
+        scripts.root(FIRST, vec![say(&format!("Noted {note}"))]);
+        socket.chat(&format!("n{note}"), &format!("README note {note}")).await;
+    }
+    eventually("the index holds the last answer", || async {
+        let found = backend.get("/api/search?q=Noted%204", Some(&master)).await;
+        String::from_utf8_lossy(&found.body).contains("Noted 4")
+    })
+    .await;
+    let blocks = transcript(&backend, &master, FIRST).await.blocks;
+    let at = |wanted: &str| {
+        blocks
+            .iter()
+            .position(|block| match block {
+                Block::User(user) => format!("{:?}", user.content).contains(wanted),
+                Block::Text(text) => text.text == wanted,
+                Block::ToolCall(call) => call.tool_use_id == wanted,
+                _ => false,
+            })
+            .unwrap_or_else(|| panic!("no {wanted} in {blocks:?}"))
+    };
+    let (draft, drafted, shorten, rewrite, shorter) = (
+        at("Draft the README"),
+        at("The README intro is drafted"),
+        at("Shorten the README"),
+        at("t0"),
+        at("The README intro is shorter"),
+    );
+    let notes: Vec<usize> = (0..5).map(|note| at(&format!("README note {note}"))).collect();
+    let users = |indices: &[usize]| indices.iter().map(|at| format!("{at} · user")).collect::<Vec<_>>();
+    scripts.root(
+        FIRST,
+        vec![
+            shell("t1", "demi conversation history search --from user README"),
+            shell("t2", "demi conversation history search --from agent README"),
+            shell("t3", "demi conversation history search --from user --oldest README"),
+            // The continuation of a filtered search runs as it is printed.
+            shell(
+                "t4",
+                "line=$(demi conversation history search --from user --oldest README | tail -n 1) && echo \"$line\" && eval \"${line#*next: }\"",
+            ),
+            shell("t5", &format!("demi conversation history search --after {drafted} --before {} README", notes[0])),
+            shell("t6", "demi conversation history search --before 2026-09-25 README"),
+            shell(
+                "t7",
+                "demi conversation history search --from user --after 2026-09-24 --before 2026-09-26 --oldest README",
+            ),
+            shell("t8", &format!("demi conversation history read --from user {draft}..{shorter}")),
+            shell("t9", &format!("demi conversation history read --from agent {draft}..{shorter}")),
+            say("found"),
+        ],
+    );
+    socket.chat("find", "Find what I asked").await;
+
+    let heads = |text: &str| -> Vec<String> {
+        text.lines()
+            .filter(|line| line.split(" · ").next().is_some_and(|first| first.parse::<usize>().is_ok()))
+            .map(|line| line.split(" · ").take(2).collect::<Vec<_>>().join(" · "))
+            .collect()
+    };
+    // The user's messages alone, the newest first: no answer and no
+    // command, and the next page names the filter.
+    let user = result(&backend, &master, "t1").await;
+    let newest: Vec<usize> = notes.iter().rev().copied().collect();
+    assert_eq!(heads(&user), users(&newest), "{user}");
+    assert!(user.contains("Page 1 of 2 · next: demi conversation history search --from user --page 2 -- README"), "{user}");
+    // The agent's texts and commands alone.
+    let agent = result(&backend, &master, "t2").await;
+    assert_eq!(
+        heads(&agent),
+        vec![format!("{shorter} · agent"), format!("{rewrite} · command"), format!("{drafted} · agent")],
+        "{agent}"
+    );
+    // The oldest first, and its second page as the first page's line runs.
+    let oldest = result(&backend, &master, "t3").await;
+    assert_eq!(heads(&oldest), users(&[draft, shorten, notes[0], notes[1], notes[2]]), "{oldest}");
+    let second = result(&backend, &master, "t4").await;
+    assert!(
+        second.contains("Page 1 of 2 · next: demi conversation history search --from user --oldest --page 2 -- README\n"),
+        "{second}"
+    );
+    assert_eq!(heads(&second), users(&notes[3..]), "{second}");
+    assert!(second.ends_with("Page 2 of 2"), "{second}");
+    // Between two blocks, neither included.
+    let between = result(&backend, &master, "t5").await;
+    assert_eq!(
+        heads(&between),
+        vec![format!("{shorter} · agent"), format!("{rewrite} · command"), format!("{shorten} · user")],
+        "{between}"
+    );
+    // Before September 25 in Shanghai: the first turn alone, though the
+    // second was on September 24 in UTC.
+    let before = result(&backend, &master, "t6").await;
+    assert_eq!(heads(&before), vec![format!("{drafted} · agent"), format!("{draft} · user")], "{before}");
+    // After September 24 and before September 26 there: the second turn
+    // on.
+    let after = result(&backend, &master, "t7").await;
+    assert_eq!(heads(&after), users(&[shorten, notes[0], notes[1], notes[2], notes[3]]), "{after}");
+    assert!(
+        after.contains(
+            "next: demi conversation history search --from user --after 2026-09-24 --before 2026-09-26 --oldest --page 2 -- README"
+        ),
+        "{after}"
+    );
+    // A read of one side prints its messages alone, each with its index.
+    let read = result(&backend, &master, "t8").await;
+    assert!(read.contains(&format!("[{draft} user · Sep 24, 4:00 PM]\nDraft the README intro\n")), "{read}");
+    assert!(read.contains(&format!("[{shorten} user · Sep 25, 2:00 AM]\nShorten the README intro")), "{read}");
+    assert!(!read.contains(" agent · ") && !read.contains(" command: "), "{read}");
+    // The agent's side is its texts and its command lines, as a search
+    // counts them.
+    let read = result(&backend, &master, "t9").await;
+    assert!(
+        read.contains(&format!("[{drafted} agent · Sep 24, 4:00 PM]\nThe README intro is drafted\n[{rewrite} command: Rewrite the README intro · exit 0 · ")),
+        "{read}"
+    );
+    assert!(read.contains(&format!("[{shorter} agent · Sep 25, 2:00 AM]\nThe README intro is shorter")), "{read}");
+    assert!(!read.contains(" user · "), "{read}");
+    backend.close().await;
+}
+
 // A few seconds: a real device runs the shell jobs of three turns, one of
 // them stopped while its call waits for the file's bytes.
 #[tokio::test]

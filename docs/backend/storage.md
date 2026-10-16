@@ -611,7 +611,8 @@ Each user has a search index, `search/<userId>.sqlite`, that
 [Search](../product/web-api.md#search) reads: an SQLite FTS5 table with one
 row per searchable text, a conversation's title, or the text of a `user` or
 `steer` block, an agent's text or a command's description, of any agent of
-it, each with its conversation's id, its agent and its block's index and id,
+it, each with its conversation's id, its agent, its block's index, id and
+time,
 so [Reading the earlier history](../agent/compaction.md#reading-the-earlier-history)
 searches it as well as the product's search. Its tokenizer is FTS5's `trigram`, which matches any piece of text of
 three characters or more in every language without splitting words, as
