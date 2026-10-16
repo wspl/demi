@@ -13,9 +13,6 @@ import { directRoute } from '.'
 import { ChannelFailed, type DirectPeer, type OperationChannel } from './peer'
 import { rawAnswer, type RawRequest } from './raw'
 
-/** Where the built app and the development server serve the worker, so its scope is the whole origin. */
-export const SERVICE_WORKER_URL = '/direct-sw.js'
-
 /** A request the worker hands the page. */
 const rawRequestSchema = z.object({
   type: z.literal('demi-direct-raw'),
@@ -31,18 +28,10 @@ const pullSchema = z.object({ type: z.enum(['pull', 'cancel']) })
 const RAW_ROUTE = /^\/api\/conversations\/([^/]+)\/fs\/raw$/
 
 /**
- * Registers the worker and answers its requests for the page's lifetime.
- * A browser without service workers, or a page served where it cannot
- * register one, fetches every byte from the relay.
+ * Answers the requests the page's service worker hands it, for the page's
+ * lifetime; `offline/page.ts` registers the worker.
  */
-export function startRawBridge(): void {
-  const container = typeof navigator === 'undefined' ? undefined : navigator.serviceWorker
-  if (!container)
-    return
-  container.register(SERVICE_WORKER_URL, { scope: '/', type: 'module' }).catch((error: unknown) => {
-    // The relay serves every byte meanwhile; the reason is for a developer.
-    console.warn('The direct channel’s service worker did not register', error)
-  })
+export function answerRawRequests(container: ServiceWorkerContainer): void {
   container.addEventListener('message', (event: MessageEvent) => {
     const request = rawRequestSchema.safeParse(event.data)
     const port = event.ports[0]

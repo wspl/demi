@@ -13,6 +13,7 @@ import {
 } from '../api/generated/web-api'
 import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
 import { signalUnknownPasskey, signWithPasskey } from './webauthn'
+import { deleteAccountCache } from '../state/offline'
 
 type User = UserDto
 type SessionState =
@@ -91,14 +92,26 @@ export const useSession = defineStore('session', {
   actions: {
     /**
      * Checks who is signed in. A check the backend cannot answer waits for it
-     * in the HTTP client; only its 401 signs the page out. The first check,
-     * or its retry, that the backend fails otherwise shows the failure.
+     * in the HTTP client; only its 401 signs the page out. The first check, or its retry,
+     * that the backend fails otherwise shows the failure. `offline` names
+     * the account the page kept for opening offline, which a first check
+     * that cannot reach the backend signs in as meanwhile
+     * (`web-application.md` § Installing and opening offline).
      */
-    async restore(signal?: AbortSignal): Promise<void> {
+    async restore(signal?: AbortSignal, offline?: () => Promise<User | null>): Promise<void> {
       const previous = this.current
       const first = previous.status === 'checking' || previous.status === 'failed'
+      const signInOffline = first && offline
+        ? () => {
+            void offline().then((user) => {
+              if (user && !signal?.aborted && (this.current.status === 'checking' || this.current.status === 'failed')) {
+                this.current = signedInAs(user)
+              }
+            })
+          }
+        : undefined
       try {
-        const response = await apiRequest('/auth/me', { signal })
+        const response = await apiRequest('/auth/me', { signal, onUnreachable: signInOffline })
         const user = await readIdentity(response)
         signal?.throwIfAborted()
         this.current = signedInAs(user)
@@ -237,6 +250,9 @@ export const useSession = defineStore('session', {
           throw error
         }
       }
+      // Deleted before the page loads itself again, which could cut it short;
+      // one that stays is replaced by the next account that signs in.
+      await deleteAccountCache().catch((cause: unknown) => console.error('The cache for opening offline was not deleted', cause))
       this.current = { status: 'signedOut' }
     },
   },

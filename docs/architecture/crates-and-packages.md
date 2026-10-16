@@ -1580,11 +1580,13 @@ under `packages/`.
   `settings/` settings containers; `auth/` cookie-session state and entry
   containers; `api/` validated HTTP and agent wire adapters and upload
   requests; `state/` the product state its synchronization channel keeps,
-  preferences and per-user local state;
+  preferences and per-user local state, the account's cache for opening
+  offline included;
   `devices/` pairing and filesystem adapters; `direct/` the
   [direct channel](../execution/direct-channel.md): the peer, the choice of
-  path, the operations' clients and the service worker that answers the raw
-  route's requests over it; `plugins/` the page context
+  path and the operations' clients; `offline/` the page's one service
+  worker, which answers the raw route's requests over the direct channel and
+  keeps the page for opening offline; `plugins/` the page context
   over the page call routes, the conversation state route, the
   synchronization channel and the file routes, and the registry `xtask
   contracts` generates into `plugins/generated/` from the backend's plugins

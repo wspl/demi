@@ -12,6 +12,8 @@
     "changeContextLimit": "Could Not Change the Context Limit",
     "readPermissionRequests": "Could Not Read the Permission Requests for a Notification",
     "updateTimeZoneLanguage": "Could Not Update Time Zone and Language",
-    "readSync": "Could Not Read a Message of the Synchronization Channel"
+    "readSync": "Could Not Read a Message of the Synchronization Channel",
+    "keepOffline": "Could Not Keep a Copy for Offline Use",
+    "readOffline": "Could Not Read the Copy for Offline Use"
   }
 }

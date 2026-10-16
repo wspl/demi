@@ -110,6 +110,7 @@ import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import ModelMenu from '@demicodes/web-ui/agent/ModelMenu.vue'
 import ModelSelector from '@demicodes/web-ui/agent/ModelSelector.vue'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
+import { showToast } from '@demicodes/web-ui/infra/toast'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/message-content'
 import { compactionTranscript, type CompactionCase } from '../fixtures/compaction'
@@ -3486,7 +3487,18 @@ onBeforeUnmount(() => {
             wide
           >
             <div class="gallery-frame h-[16rem] bg-surface">
-              <SessionStatus kind="none" />
+              <SessionStatus
+                kind="none"
+                @create="showToast({ title: 'Start a Conversation', message: 'The product opens a new conversation here.', tone: 'neutral' })"
+              />
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen
+            variant="offline · not kept for opening offline"
+            wide
+          >
+            <div class="gallery-frame h-[16rem] bg-surface">
+              <SessionStatus kind="offline" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen

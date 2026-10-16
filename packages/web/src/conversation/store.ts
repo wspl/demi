@@ -96,6 +96,8 @@ import { applyConversationEvent, updateLiveStatus } from './activity'
 import { composerWriting, createRecordSync, newRecord, type Writing } from './record'
 import { createConversationHistoryReads } from './history'
 import { findCallBlock, shellCallOf } from './terminals'
+import { createConversationCopies } from './offline'
+import { readConversationCopy, type AgentCopy } from '../state/offline'
 import { t } from './locales/text'
 import { EMPTY_TRANSCRIPT, addPage, heldBlocks } from '@demicodes/web-ui/transport/protocol'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
@@ -204,6 +206,8 @@ export const useConversations = defineStore('conversations', () => {
     () => lifetime.signal,
     (conversation) => cache.get(conversation.id)?.runtime != null,
   )
+  /** The copies of the conversations opened here, for opening offline (`web-application.md` § Installing and opening offline). */
+  const copies = createConversationCopies(() => items.value, () => session.user?.id ?? null)
   /** The commands whose call the page has gone to read whole, each once. */
   const callReads = new WeakSet<TerminalRecord>()
 
@@ -1017,6 +1021,9 @@ export const useConversations = defineStore('conversations', () => {
       }
       return
     }
+    if (conversation.persistence === 'synced') {
+      copies.opened(conversation.id)
+    }
     // A conversation the page shows already stays shown while it opens: the
     // first send opens the record it just created, and the composer the user
     // sent from must stay where it is, with the focus in it.
@@ -1053,6 +1060,8 @@ export const useConversations = defineStore('conversations', () => {
    */
   interface OpeningReads {
     transcript: Promise<TranscriptPage>
+    /** Resolves once a try of the transcript's read could not reach the backend, and the read waits for it. */
+    unreachable: Promise<void>
     subagents: Promise<Subagents>
     hosts: Promise<AttachedHosts>
     draft: Promise<ConversationDraft>
@@ -1065,8 +1074,10 @@ export const useConversations = defineStore('conversations', () => {
 
   function openingReads(id: string, signal: AbortSignal): OpeningReads {
     const path = `/conversations/${encodeURIComponent(id)}`
+    const unreachable = Promise.withResolvers<void>()
     const reads = {
-      transcript: apiRequest(`${path}/transcript`, { signal }).then((response) => readResponse(response, transcriptPageSchema)),
+      transcript: apiRequest(`${path}/transcript`, { signal, onUnreachable: () => unreachable.resolve() })
+        .then((response) => readResponse(response, transcriptPageSchema)),
       subagents: apiRequest(`${path}/subagents`, { signal }).then((response) => readResponse(response, subagentsSchema)),
       hosts: apiRequest(`${path}/hosts`, { signal }).then((response) => readResponse(response, attachedHostsSchema)),
       draft: loadDraft(id, signal),
@@ -1075,7 +1086,7 @@ export const useConversations = defineStore('conversations', () => {
     for (const read of Object.values(reads)) {
       read.catch(() => {})
     }
-    return reads
+    return { ...reads, unreachable: unreachable.promise }
   }
 
   /** The conversation's socket address. */
@@ -1294,7 +1305,13 @@ export const useConversations = defineStore('conversations', () => {
       conversation.attachedHosts.replace(answer.hosts, { revisions: { '': hostsRevision }, since: hostsSince })
     })
     hostsRead.catch(() => {})
+    // A transcript that cannot be read shows the copy the page kept for
+    // opening offline meanwhile; once the backend answers, the conversation
+    // opens from it below, as if it had never shown the copy.
+    let answered = false
+    void reads.unreachable.then(() => openFromCopy(conversation, signal, () => answered))
     const [page, listed] = await Promise.all([reads.transcript, reads.subagents, draftRead])
+    answered = true
     signal.throwIfAborted()
     // The latest page is the transcript's end until the stream says more.
     conversation.history = addPage(EMPTY_TRANSCRIPT, page, false)
@@ -1309,8 +1326,16 @@ export const useConversations = defineStore('conversations', () => {
     // read is the tree's own list, so the frame takes back none of them.
     // The session that sends it starts only after this read is applied, so
     // the read never overwrites a frame.
-    conversation.subagents = listed.subagents.map((subagent) => ({
-      ...subagentJobFields(subagent),
+    conversation.subagents = listed.subagents.map(subagentRecord)
+    // The status stays the summary's until the session tells its phase.
+    conversation.load = runnable ? 'opening' : 'ready'
+    return { hosts: hostsRead }
+  }
+
+  /** A child as the page holds it before its session says more, from its job. */
+  function subagentRecord(job: AgentCopy): Conversation['subagents'][number] {
+    return {
+      ...subagentJobFields(job),
       pendingCalls: [],
       waitingSince: null,
       // A live child's `phase` frame comes with the opening handshake.
@@ -1319,10 +1344,37 @@ export const useConversations = defineStore('conversations', () => {
       failures: {},
       // A live child's usage comes with the opening handshake.
       contextUsage: null,
-    }))
-    // The status stays the summary's until the session tells its phase.
-    conversation.load = runnable ? 'opening' : 'ready'
-    return { hosts: hostsRead }
+    }
+  }
+
+  /**
+   * Shows the conversation from the copy the page kept for opening offline,
+   * as the first step of an opening that starts no session; one with no
+   * copy says it is not available offline. Nothing changes once the
+   * backend `answered` or the opening ended meanwhile.
+   */
+  async function openFromCopy(conversation: Conversation, signal: AbortSignal, answered: () => boolean): Promise<void> {
+    const userId = session.user?.id
+    const copy = userId ? await readConversationCopy(userId, conversation.id) : null
+    if (signal.aborted || answered() || conversation.load !== 'loading') {
+      return
+    }
+    if (!copy) {
+      conversation.load = 'offline'
+      return
+    }
+    const { transcript } = copy
+    conversation.history = {
+      length: transcript.length,
+      windows: transcript.blocks.length > 0 ? [{ start: transcript.start, blocks: transcript.blocks }] : [],
+    }
+    conversation.shownAt = null
+    conversation.failures = copy.failures
+    conversation.instructions = copy.instructions
+    conversation.summaries = copy.summaries
+    conversation.subagents = copy.agents.map(subagentRecord)
+    clearSession(conversation)
+    conversation.load = 'ready'
   }
 
   /**
@@ -2756,6 +2808,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   function stopAll(): void {
+    copies.clear()
     pendingChanges.value = []
     cache.clear()
     earlyReads.clear()
@@ -2829,6 +2882,8 @@ export const useConversations = defineStore('conversations', () => {
     retryFile,
     saveDrafts,
     keepLastWords,
+    /** Writes the copies for opening offline that wait for their delay, as the page hides; resolves once written. */
+    keepCopies: () => copies.keep(),
     /** Saves the drafts that wait for typing to pause: when the page is hidden, or, with `keepalive`, closes. */
     flushDrafts: (keepalive = false) => recordSync.flush(items.value, keepalive),
     saveForLater,
