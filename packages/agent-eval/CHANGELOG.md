@@ -1,5 +1,23 @@
 # @demicodes/agent-eval
 
+## 0.25.10
+
+### Patch Changes
+
+- Updated dependencies [4688493]
+  - @demicodes/provider-codex@0.25.10
+  - @demicodes/provider@0.25.10
+  - @demicodes/agent@0.25.10
+  - @demicodes/coding-agent@0.25.10
+  - @demicodes/core@0.25.10
+  - @demicodes/host-local@0.25.10
+  - @demicodes/provider-anthropic-api@0.25.10
+  - @demicodes/provider-claude-code@0.25.10
+  - @demicodes/provider-grok-build@0.25.10
+  - @demicodes/provider-openai-api@0.25.10
+  - @demicodes/shell@0.25.10
+  - @demicodes/utils@0.25.10
+
 ## 0.25.9
 
 ### Patch Changes

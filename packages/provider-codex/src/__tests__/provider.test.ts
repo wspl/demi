@@ -246,6 +246,39 @@ test('AgentSession retries Codex server errors without replaying the user turn',
   expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
 })
 
+test('AgentSession retries a Codex stream that ends after reasoning without completing', async () => {
+  const reasoning = { type: 'reasoning' as const, id: 'rs_1', encrypted_content: 'enc', summary: [] }
+  const transport = new FakeCodexTransport([
+    [
+      { type: 'response.output_item.added', item: { type: 'reasoning', id: 'rs_1' } },
+      { type: 'response.output_item.done', item: reasoning },
+    ],
+    [
+      { type: 'response.output_text.delta', delta: 'recovered' },
+      { type: 'response.completed', response: { usage: { input_tokens: 1, output_tokens: 1 } } },
+    ],
+  ])
+  const provider = new CodexProvider({
+    authStore: new StaticCodexAuthStore(chatgptAuth),
+    transportImpl: transport,
+  })
+  const runtime: AgentHarnessRuntime<Record<string, never>> = {
+    harnessName: 'codex-cut-stream-retry-test',
+    initialState: () => ({}),
+    systemPrompt: () => 'system',
+    tools: () => [],
+  }
+  const session = new AgentSession(
+    { provider, model, cwd: process.cwd(), runtime },
+    { agentSessionId: 'agent-session-1', retry: { baseDelayMs: 0, maxDelayMs: 0 } },
+  )
+
+  await session.send([{ type: 'text', text: 'run' }])
+
+  expect(transport.requests).toHaveLength(2)
+  expect(session.transcript().blocks.map((block) => block.type)).toEqual(['user', 'text', 'response'])
+})
+
 test('AutoCodexResponsesTransport falls back to SSE only before WebSocket has emitted events', async () => {
   const beforeStart = new AutoCodexResponsesTransport(
     new FakeCodexTransport([new Error('connect failed')]),

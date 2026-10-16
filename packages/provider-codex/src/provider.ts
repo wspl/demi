@@ -123,7 +123,15 @@ export class CodexProvider implements AgentProvider {
             this.observeQuotaResponse({ headers: response.headers, status: response.status })
           },
         })
-        yield* mapCodexResponseEvents(stream)
+        // A stream that stops before `response.completed`, `response.failed`,
+        // `response.incomplete` or `error` (a socket closed or a body cut off
+        // mid-response) is a transport failure, not the end of the turn.
+        let ended = false
+        for await (const event of mapCodexResponseEvents(stream)) {
+          if (event.type === 'response' || event.type === 'error') ended = true
+          yield event
+        }
+        if (!ended) throw new Error('Codex response stream ended before the response completed')
         return
       } catch (error) {
         if (error instanceof CodexHttpError) {
