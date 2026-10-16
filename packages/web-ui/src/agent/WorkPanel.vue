@@ -14,6 +14,7 @@ import ContextMenu from '../ui/ContextMenu.vue'
 import { useContextMenuOwner } from '../composables/useContextMenuOwner'
 import { appOverlayStore } from '../overlay/appOverlay'
 import { usePhone } from '../ui/phone'
+import { isKeptStartCut } from '../ui/truncation'
 import type { TitleText } from '../ui/ui-text'
 import { tabsToClose, type TabCloseScope } from './tab-close'
 import { keptContents, pinnedData, shownSelection, type PanelState, type PinnedTabs } from './panel-tabs'
@@ -117,6 +118,12 @@ function closeScope(scope: TabCloseScope): void {
   }
 }
 
+/** Whether a pinned tab, by its element, shows less than its whole title. */
+function pinnedTitleCut(tab: HTMLElement): boolean {
+  const title = tab.querySelector<HTMLElement>('[data-pinned-title]')
+  return title !== null && isKeptStartCut(title)
+}
+
 /** The tab the menu is open on, with its kind. */
 const menuTab = computed(() => tabs.value.find((item) => item.tab.id === menuId.value) ?? null)
 /** What the menu's tab kind offers before the Close commands. */
@@ -167,27 +174,38 @@ function reorder(from: number, to: number): void {
         surface="raised"
         @reorder="reorder"
       >
-        <!-- The pinned tabs lead the strip and give way before its tabs: in a narrow panel their titles
-             truncate, down to their marks and badges, so the strip keeps room for its selected tab. A pinned
-             tab is a grid so that its smallest width is its mark and badge, never a cut badge. It is a tab as
-             the strip's own are: a press selects it, as do Enter and Space, and the arrows reach it. -->
+        <!-- The pinned tabs lead the strip and give way before its tabs: in a narrow panel the titles of
+             those not selected truncate to their first few characters, then leave their marks and badges
+             alone, so the strip keeps room for its selected tab. A selected pinned tab keeps its title
+             whole, as the strip's selected tab does, and the strip's tabs narrow and scroll beside it. A
+             pinned tab is a grid so that its smallest width is its mark and badge, never a cut badge. It is
+             a tab as the strip's own are: a press selects it, as do Enter and Space, and the arrows reach it. -->
         <template v-if="pinnedTabs.length" #leading>
-          <span
+          <!-- As a tab of the strip, it names itself in a tooltip over the whole tab, here only while its title is cut. -->
+          <Tooltip
             v-for="item in pinnedTabs"
             :key="item.kind.kind"
+            tag="span"
+            :content="item.kind.title(item.data)"
+            :disabled="item.kind.kind === selection"
+            :show-if="pinnedTitleCut"
+            placement="bottom"
             role="tab"
             tabindex="0"
             :aria-selected="item.kind.kind === selection"
-            class="grid h-tab grid-flow-col grid-cols-[auto_minmax(0,auto)] auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome select-none hover:bg-surface-base hover:text-fg"
-            :class="item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
+            class="grid h-tab grid-flow-col auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome select-none hover:bg-surface-base hover:text-fg"
+            :class="item.kind.kind === selection
+              ? 'grid-cols-[auto_auto] bg-surface-base text-fg-emphasis'
+              : 'grid-cols-[auto_minmax(0,auto)] text-fg-subtle'"
             @pointerdown.left="emit('select', item.kind.kind)"
             @keydown.enter.self="emit('select', item.kind.kind)"
             @keydown.space.self.prevent="emit('select', item.kind.kind)"
           >
             <component :is="item.kind.mark" :data="item.data" />
-            <TruncatedText :text="item.kind.title(item.data)" />
+            <span v-if="item.kind.kind === selection">{{ item.kind.title(item.data) }}</span>
+            <TruncatedText v-else data-pinned-title :text="item.kind.title(item.data)" keeps-start no-tooltip />
             <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
-          </span>
+          </Tooltip>
         </template>
         <TabItem
           v-for="item in tabs"

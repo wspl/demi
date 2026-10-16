@@ -6,6 +6,7 @@ import { disabledTooltip } from './disabled'
 import { useIconPx } from './icon-metrics'
 import { clickedChoice } from './segmented'
 import Tooltip from './Tooltip.vue'
+import { isTextCut } from './truncation'
 import type { SentenceText, TitleText } from './ui-text'
 
 /**
@@ -14,10 +15,13 @@ import type { SentenceText, TitleText } from './ui-text'
  * That width fits the longest label, and a settings row that drops the
  * control under its label stretches it (`data-field`, except with `iconOnly`
  * whose segments stay square): the segments then share the row's width, each
- * label whole. In a container narrower than the
- * segments, as on a phone, they scroll inside their own box instead of
- * squeezing their labels into each other, and the chosen one scrolls into
- * view.
+ * label whole. In a container narrower than that, as a narrow work panel's
+ * toolbar, the segments narrow together, as macOS's do, each label cut short
+ * with an ellipsis and whole in its tooltip, down to its first few characters
+ * (3em); in a container narrower still, as on a phone with many segments, they
+ * scroll inside their own box instead of squeezing their labels into each
+ * other, and the chosen one scrolls into view. Icon segments never narrow;
+ * they only scroll.
  * With `iconOnly`, each segment shows its icon alone and its label as the
  * tooltip and the accessible name, and is square: as wide as it is tall, the
  * icon in its centre.
@@ -53,6 +57,12 @@ const selectedIndex = computed(
 )
 
 const segments = ref<HTMLElement | null>(null)
+
+/** A labelled segment's tooltip shows only while its label is cut. */
+function labelCut(trigger: HTMLElement): boolean {
+  const label = trigger.querySelector<HTMLElement>('[data-segment-label]')
+  return label !== null && isTextCut(label)
+}
 
 /** Scrolls the segments' own box, never the page, so that the chosen one shows whole. */
 function revealChosen(): void {
@@ -110,10 +120,24 @@ function choose(clicked: T | undefined) {
     :data-field="iconOnly ? undefined : true"
     :open-delay-ms="80"
   >
+    <!-- Labelled segments are equal columns that may narrow to nothing, so the thumb's share stays theirs;
+         the grid's least width keeps each label's first 3em with its padding, then the box scrolls. -->
     <div
       ref="segments"
-      class="relative grid w-max min-w-full shrink-0 auto-cols-fr grid-flow-col rounded-md bg-(--fill-color) p-[2px] [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_6%)] *:on-fill"
-      :class="disabled ? 'pointer-events-none cursor-not-allowed opacity-40' : ''"
+      class="relative grid grow grid-flow-col rounded-md bg-(--fill-color) p-[2px] [--fill-color:color-mix(in_srgb,var(--surface-current),var(--overlay)_6%)] *:on-fill"
+      :class="[
+        iconOnly
+          ? 'w-max shrink-0 auto-cols-fr'
+          : [
+              'auto-cols-[minmax(0,1fr)] min-w-[calc(var(--segment-least)*var(--segments)+4px)]',
+              // 3em of the label's size, with the segment's padding; a phone pads its segments wider.
+              size === 'sm'
+                ? '[--segment-least:calc(3*var(--text-control-xs)+--spacing(3))] phone:[--segment-least:calc(3*var(--text-control-xs)+--spacing(6))]'
+                : '[--segment-least:calc(3*var(--text-control-sm)+--spacing(4))] phone:[--segment-least:calc(3*var(--text-control-sm)+--spacing(6))]',
+            ],
+        disabled ? 'pointer-events-none cursor-not-allowed opacity-40' : '',
+      ]"
+      :style="{ '--segments': options.length }"
       role="radiogroup"
       :aria-disabled="disabled || undefined"
       @click="choose(undefined)"
@@ -131,13 +155,13 @@ function choose(clicked: T | undefined) {
         :key="option.value"
         tag="span"
         :content="option.label"
-        :disabled="!iconOnly"
+        :show-if="iconOnly ? undefined : labelCut"
         :open-delay-ms="80"
         role="radio"
         :aria-checked="model === option.value"
         :aria-label="iconOnly ? option.label : undefined"
         :tabindex="disabled ? undefined : index === selectedIndex ? 0 : -1"
-        class="relative z-10 inline-flex cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
+        class="relative z-10 inline-flex min-w-0 cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
         :class="[
           // A phone draws either size at its segment's height (`base.css`).
           iconOnly
@@ -153,8 +177,9 @@ function choose(clicked: T | undefined) {
           :is="option.icon"
           v-if="option.icon"
           :size="icons.in24"
+          class="shrink-0"
         />
-        <template v-if="!iconOnly">{{ option.label }}</template>
+        <span v-if="!iconOnly" data-segment-label class="min-w-0 truncate">{{ option.label }}</span>
       </Tooltip>
     </div>
   </Tooltip>
