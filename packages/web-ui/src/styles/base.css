@@ -135,8 +135,10 @@
   --spacing-hit-lg: 32px;
   /* The sizes below, like the hit sizes above, are the desktop's; a phone
      draws them at its own (the phone's metrics, under the root's rules). */
-  /* A transcript's work row, a tab. */
+  /* A transcript's work row. */
   --spacing-row: 28px;
+  /* A tab of a tab strip, which floats in its bar with room above and below. */
+  --spacing-tab: 28px;
   /* A chip under the composer: the model, the workflow, Running, Agents. */
   --spacing-chip: 28px;
   /* A file-change pill under a work row, and its text. */
@@ -166,7 +168,8 @@
    theirs; the gallery's Phone section lists them. A toolbar or action
    button is 40 with a 20 px icon (`ICON_PX` in `ui/icon-metrics.ts` holds the
    icons' sizes, `useIconPx` the phone's), an answer's actions 36 with 18,
-   a small one 28 with 16; rows, tabs and fields are 44, a chip 32, a
+   a small one 28 with 16; rows and fields are 44, a tab 36 so that it
+   floats in its 44 px bar as a desktop's does, a chip 32, a
    file-change pill 28 with 13 px text, a segment 36; text that names a control or a row is 15, a Settings
    label 17. The large icon button stays 32, the size the sidebar's rows
    already draw on a phone. */
@@ -177,6 +180,7 @@
     --spacing-hit-sm: 36px;
     --spacing-hit: 40px;
     --spacing-row: 44px;
+    --spacing-tab: 36px;
     --spacing-chip: 32px;
     --spacing-pill: 28px;
     --text-pill: 13px;
