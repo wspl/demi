@@ -106,8 +106,10 @@ async fn run_turn(
         }
         if !recover && arrived {
             // The command reports wait until the response's tools have run;
-            // the boundary after them writes them.
-            if s.update(|core| core.write_inputs(Take::AllButReports)) {
+            // the boundary after them writes them. The human steers wait for
+            // the next request, pending, so Send Now and Recall still reach
+            // them while the tools run.
+            if s.update(|core| core.write_inputs(Take::AgentMessages)) {
                 persist::flush(s).await?;
             }
         }
@@ -127,8 +129,10 @@ async fn run_turn(
                 continue;
             }
         }
+        // Input that arrived during the round asks the provider once more;
+        // the human steers among it are written before that request.
         if s.update(|core| core.arrived_since(before)) {
-            write_inputs(s).await?;
+            write_inputs_after_step(s).await?;
             continue;
         }
         if !executed {
@@ -189,7 +193,17 @@ pub(super) async fn apply_switch(
 /// Writes the waiting input into the turn: human steers, command reports
 /// and agent messages. An agent message written is saved at once.
 async fn write_inputs(s: &SessionShared) -> Result<(), TurnError> {
-    if s.update(|core| core.write_inputs(Take::Everything)) {
+    write_taken(s, Take::Everything).await
+}
+
+/// Writes the waiting input but the human steers, which stay pending until
+/// the request that carries them (`runtime.md` § Input).
+async fn write_inputs_after_step(s: &SessionShared) -> Result<(), TurnError> {
+    write_taken(s, Take::AllButSteers).await
+}
+
+async fn write_taken(s: &SessionShared, take: Take) -> Result<(), TurnError> {
+    if s.update(|core| core.write_inputs(take)) {
         persist::flush(s).await?;
     }
     Ok(())
@@ -218,10 +232,11 @@ async fn sent_now(s: &SessionShared) {
     }
 }
 
-/// Writes the waiting input when some arrived since `arrivals` was read.
+/// Writes the waiting input but the human steers when some arrived since
+/// `arrivals` was read: the boundary after a step of tool calls.
 async fn write_inputs_since(s: &SessionShared, arrivals: u64) -> Result<(), TurnError> {
     if s.update(|core| core.arrived_since(arrivals)) {
-        write_inputs(s).await?;
+        write_inputs_after_step(s).await?;
     }
     Ok(())
 }
@@ -505,8 +520,8 @@ fn complete_text(s: &SessionShared) {
 /// is a step of its own. A step ends when each of its calls has returned;
 /// each result is recorded as its call returns, in its call's place, and a
 /// Stop keeps those of the calls that returned before it. Input that arrives
-/// meanwhile is written after each step, unless the turn is about to
-/// compact. Returns whether the response requested any call.
+/// meanwhile, but a human steer, is written after each step, unless the turn
+/// is about to compact. Returns whether the response requested any call.
 async fn run_tools(
     s: &Rc<SessionShared>,
     cancel: &TurnCancel,

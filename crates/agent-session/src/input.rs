@@ -36,11 +36,16 @@ pub(super) enum Take {
     Everything,
     /// A shutdown writes the human steers; the rest stays in the checkpoint.
     Steers,
-    /// The boundary after a response's stream writes all but the command
-    /// reports, which wait until the response's tools have run, so a look
-    /// among them that shows a command's end takes its report
-    /// (`runtime.md` § Command reports).
-    AllButReports,
+    /// The boundary after a response's stream writes only the agent
+    /// messages: the command reports wait until the response's tools have
+    /// run, so a look among them that shows a command's end takes its
+    /// report (`runtime.md` § Command reports), and the human steers wait
+    /// for the request that carries them.
+    AgentMessages,
+    /// The boundary after a step of tool calls writes all but the human
+    /// steers, which stay pending until the request that carries them
+    /// (`runtime.md` § Input).
+    AllButSteers,
 }
 
 impl Take {
@@ -48,7 +53,8 @@ impl Take {
         match self {
             Self::Everything => true,
             Self::Steers => matches!(input, Input::Steer(_)),
-            Self::AllButReports => !matches!(input, Input::Report(_)),
+            Self::AgentMessages => matches!(input, Input::Agent(_)),
+            Self::AllButSteers => !matches!(input, Input::Steer(_)),
         }
     }
 }
