@@ -155,7 +155,9 @@
   "terminals": {
     "endCommand": "End Command",
     "closeTab": "Close Tab",
-    "chip": "{count} Running"
+    "chip": "{count} Running",
+    "loading": "Loading terminal…",
+    "unavailable": "Couldn’t load the terminal."
   },
   "session": {
     "loading": "Loading conversation…",

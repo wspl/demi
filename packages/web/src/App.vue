@@ -4,7 +4,7 @@ import { RouterView, useRoute, useRouter } from 'vue-router'
 import StartingScreen from '@demicodes/web-ui/ui/StartingScreen.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { reloadFor } from '@demicodes/web-ui/infra/build-reload'
+import { reloadFor, reloadPage } from '@demicodes/web-ui/infra/build-reload'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
@@ -57,15 +57,12 @@ const updateFailed = ref(false)
 watch(
   () => product.newBuild ?? newerStorage.value,
   (newer) => {
-    if (newer !== null && !reloadFor(newer, reload)) {
+    if (newer !== null && !reloadFor(newer, reloadPage)) {
       updateFailed.value = true
     }
   },
   { immediate: true },
 )
-function reload(): void {
-  window.location.reload()
-}
 const mediaViewer = provideMediaViewer()
 const session = useSession()
 const conversations = useConversations()
@@ -358,6 +355,6 @@ useAppShortcuts(
     <RouterView />
   </div>
   <ToastHost :below="APP_BAR_PX + (session.signedIn && product.connection ? CONNECTION_BANNER_PX : 0)" />
-  <UpdateFailedScreen v-if="updateFailed" @reload="reload" />
+  <UpdateFailedScreen v-if="updateFailed" @reload="reloadPage" />
   <MediaViewer :viewer="mediaViewer" />
 </template>

@@ -3,7 +3,7 @@ import { computed, onScopeDispose, ref, shallowReactive, shallowRef, watch, type
 import { useElementSize } from '@vueuse/core'
 import { md } from '@demicodes/web-ui/markdown/md'
 import { fitMessageMedia, fitMessageMedium, messagePicture, messagePictures, type MessagePicture } from '@demicodes/web-ui/markdown/media-run'
-import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/highlight'
+import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/render-version'
 import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
 import { openMessageLink, pressMessageLink, useMessageFiles, useRenderedFiles } from '@demicodes/web-ui/markdown/message-files'
 import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'

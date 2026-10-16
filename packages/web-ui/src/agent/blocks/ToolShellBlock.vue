@@ -14,7 +14,8 @@ import { toolRowIcon } from './tool-row-icon'
 import { useShellRow } from '../shell-row'
 import { shellTitle } from '../tool-rendering'
 import { splitMedia, toolMedia } from '../tool-media'
-import { codeRuns, codeTextColor, useMarkdownRenderVersion } from '../../markdown/highlight'
+import { codeRuns, codeTextColor } from '../../markdown/highlight'
+import { useMarkdownRenderVersion } from '../../markdown/render-version'
 
 const props = defineProps<{
   block: ToolCallBlock

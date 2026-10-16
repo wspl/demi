@@ -71,7 +71,6 @@
     "marked": "^18.0.5",
     "marked-cjk-friendly": "0.1.2",
     "marked-gfm-heading-id": "^4.1.4",
-    "marked-katex-extension": "^5.1.10",
     "material-icon-theme": "^5.38.1",
     "overlayscrollbars": "^2.16.0",
     "overlayscrollbars-vue": "^0.5.10",
