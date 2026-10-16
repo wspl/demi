@@ -191,6 +191,15 @@ in the file it came from, as VS Code shows a Markdown preview's code in its
 editor's colors. A language the highlighter does not know shows as plain
 text in the theme's text color.
 
+The editor and its highlighter are not part of the page that opens: the
+first code that shows, and the first File or Change view, load them, about
+600 KB the first screen would not use. Until they arrive, code shows as
+plain text in the theme's text color, laid out as it will be, and a code
+block's language label keeps its row, empty; the colors and the label then
+fill in without moving anything. A File or Change view says *Reading…* until
+its editor is there, and *Couldn't load the code editor.* with Retry when it
+cannot load.
+
 The File view's source and the Change view's diff are read-only, but they
 are text the user reads with the keyboard as well as the mouse, as a
 read-only file is in VS Code or Xcode: a click puts a blinking caret there,

@@ -1,13 +1,18 @@
-import { expect, test } from 'bun:test'
+import { beforeAll, expect, test } from 'bun:test'
 import { EditorState } from '@codemirror/state'
 import { ensureSyntaxTree, highlightingFor } from '@codemirror/language'
 import { highlightTree } from '@lezer/highlight'
 import { fenceLanguage, loadFileLanguage } from '../../editor/language'
 import { editorTheme } from '../../editor/theme/cmTheme'
+import { loadHighlighter } from '../highlight'
 import { renderMarkdown } from '../render'
 
 // Code shows in one highlighter and theme wherever it shows (`file-previews.md`
-// § Code). Cost: two languages loaded and a few lines parsed, under 50 ms.
+// § Code). Cost: the highlighter and two languages loaded and a few lines
+// parsed, under 50 ms.
+
+// The page has the highlighter, as it does once the first code has shown.
+beforeAll(() => loadHighlighter())
 
 test('a code block is labeled with the full name of the language its fence names, by name, short name or extension', () => {
   const label = (fence: string) => renderMarkdown(`\`\`\`${fence}\nx\n\`\`\``).match(/<div class="code-block-lang">(.*?)<\/div>/)?.[1] ?? null

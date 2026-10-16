@@ -8,6 +8,7 @@
     "next": "下一个匹配项"
   },
   "syntaxColorsUnavailable": "语法着色不可用",
+  "unavailable": "无法加载代码编辑器。",
   "diff": {
     "unchanged": "{count} 个未更改的行",
     "noNewline": "文件末尾没有换行符"

@@ -1,6 +1,7 @@
 import { afterEach, expect, test } from 'bun:test'
 import { createPageI18n } from '../../i18n/text'
 import type { Language } from '../../i18n/languages'
+import { languageName } from '../../editor/language'
 import { fileBar } from '../file-bar'
 import { entryKind, linkDescription } from '../format'
 import { gitMark } from '../git-status'
@@ -48,7 +49,7 @@ test.each<{ language: Language; lines: string; kind: string; marked: string; lin
   },
 ])('a $language page words the file area in $language', ({ language, lines, kind, marked, link, uploads }) => {
   createPageI18n(language)
-  expect(fileBar('/w/a.ts', { as: 'text', text: 'a=1\n' }).label).toBe(lines)
+  expect(fileBar('/w/a.ts', { as: 'text', text: 'a=1\n' }, languageName).label).toBe(lines)
   expect(entryKind('a.ts', false)).toBe(kind)
   expect(gitMark('UD')?.text).toBe(marked)
   expect(linkDescription({ target: '/tmp/gone.log', broken: { kind: 'missing' } })).toBe(link)

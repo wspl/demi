@@ -8,6 +8,7 @@
     "next": "Next match"
   },
   "syntaxColorsUnavailable": "Syntax Colors Are Unavailable",
+  "unavailable": "Couldn’t load the code editor.",
   "diff": {
     "unchanged": "{count} unchanged line | {count} unchanged lines",
     "noNewline": "No newline at end of file"
