@@ -11,7 +11,8 @@
 //! reset resumes, a reset holds the conversations that need the Cloud and
 //! leaves the ones that only have it attached, capacity counts across users,
 //! a Cloud that keeps dying stops booting until a reset, a boot whose runner
-//! never connects fails, and a shutdown saves the Cloud. The machine manager
+//! never connects fails, a shutdown saves the Cloud, and each wake names the
+//! size its account's Cloud disks have then. The machine manager
 //! is the scripted one; each Cloud's runner is real, and the model is an
 //! Anthropic endpoint the test scripts.
 
@@ -1678,5 +1679,42 @@ async fn a_watch_of_an_attached_cloud_answers_offline_while_it_is_stopped_withou
     assert_eq!((&live["type"], &live["key"]), (&json!("live"), &json!("session")), "{live}");
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
     drop(working);
+    backend.close().await;
+}
+
+/// Cost: one backend and one Cloud, which boots twice; about two seconds.
+#[tokio::test]
+async fn each_wake_names_the_cloud_storage_its_account_has_then() {
+    let mut harness = Harness::new();
+    harness.lifecycle = idle_after(Duration::from_millis(400));
+    harness.cloud.sweep = Duration::from_millis(50);
+    let (backend, master) = harness.start_set_up().await;
+    let own = format!("/api/users/{}", master.user.id);
+    let set = |system: u16, home: u16| json!({ "cloudStorage": { "systemGb": system, "homeGb": home } });
+    assert_eq!(backend.patch(&own, &master, set(20, 40)).await.status, StatusCode::NO_CONTENT);
+    create(&backend, &master, FIRST).await;
+    let listing = format!("/api/conversations/{FIRST}/fs");
+    let wake = || async {
+        let working = backend
+            .file_gate(&master, FIRST)
+            .await
+            .enter(Purpose::Demand)
+            .await;
+        let listed = backend.get(&listing, Some(&master)).await;
+        assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+        drop(working);
+        until_status(&backend, &master, "the idle Cloud stops", |status| {
+            status.state == CloudState::Off
+        })
+        .await;
+    };
+    wake().await;
+    let device = the_cloud(&harness);
+    assert_eq!(harness.manager.named_capacity(&device), (20 << 30, 40 << 30));
+
+    // A change takes effect at the Cloud's next start.
+    assert_eq!(backend.patch(&own, &master, set(8, 64)).await.status, StatusCode::NO_CONTENT);
+    wake().await;
+    assert_eq!(harness.manager.named_capacity(&device), (8 << 30, 64 << 30));
     backend.close().await;
 }

@@ -45,6 +45,7 @@
   "users": {
     "newPasswordFailed": "新しいパスワードを作成できませんでした",
     "roleFailed": "ロールを変更できませんでした",
+    "cloudStorageFailed": "クラウドストレージを変更できませんでした",
     "disableFailed": "アカウントを無効にできませんでした",
     "enableFailed": "アカウントを有効にできませんでした",
     "signOutFailed": "アカウントをサインアウトできませんでした",

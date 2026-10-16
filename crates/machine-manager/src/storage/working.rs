@@ -78,8 +78,7 @@ impl WorkingPair {
 
     /// Publishes the working pair as `device`'s new generation and removes
     /// it; nothing happens without one. Nothing may write the images: each
-    /// is checked, an interrupted growth completed, and each synced, then
-    /// linked into the generation.
+    /// is checked and synced, then linked into the generation.
     pub async fn save(
         &self,
         tools: &Tools,

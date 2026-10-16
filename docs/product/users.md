@@ -100,6 +100,16 @@ own password first. When Bo leaves, she disables his account.
 - **Change Role…** moves an account between the roles below the
   administrator's own: the master makes users admins and admins users; an
   admin changes no role.
+- **Cloud Storage…** sets the size of the account's Cloud disks, System
+  and Home, in whole GB from 1 to 1024, 16 each until an administrator
+  changes it. For example, Ana gives Bo, who builds large projects, a
+  64 GB home. The sizes take effect the next time his Cloud starts, which
+  the dialog says, and a disk already larger than the size chosen keeps
+  its size, since a disk is never shrunk. The disks are sparse files, so
+  a size reserves nothing on the server: it is the most the Cloud can
+  write. Unlike the other items, it is also on the administrator's own
+  row, since it decides the server's disk, not the account: the master
+  sets every account's and an admin those of users and its own.
 - **Sign Out Everywhere** ends every session of the account at once, its
   open pages included, as Sign Out beside a browser does for one.
 - **Disable Account…** signs the account out everywhere and refuses its

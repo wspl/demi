@@ -19,7 +19,10 @@ has 409 `email_taken`, and a session not verified in the last five minutes
 first password for a lower-ranked account, the account's earlier one
 stopping, and answers `{ password }`, with the same verification.
 `PATCH /api/users/:id` changes a lower-ranked account with one of
-`{ role }` or `{ disabled }` and answers 204: a role the
+`{ role }`, `{ disabled }` or `{ cloudStorage }` and answers 204;
+`cloudStorage`, `{ systemGb, homeGb }` with whole numbers from 1 to 1024,
+may also change the caller's own account, and each account in `GET
+/api/users` carries its own. A role the
 caller does not outrank answers 403 `forbidden`, and disabling ends the
 account's sessions and runner connections at once. `POST
 /api/users/:id/sign-out` ends every session of a lower-ranked account and

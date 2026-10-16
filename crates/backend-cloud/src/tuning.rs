@@ -26,10 +26,6 @@ pub struct CloudTuning {
     /// How long a reset, or the lifetime cap, waits for the work it stops to
     /// let go.
     pub reset_hold: Duration,
-    /// The largest system and home filesystems a Cloud may grow to, in
-    /// bytes.
-    pub system_quota: u64,
-    pub home_quota: u64,
     /// How many Clouds, across every user, may be booting, running, saving
     /// or resetting at once.
     pub capacity: usize,
@@ -37,7 +33,6 @@ pub struct CloudTuning {
 
 impl Default for CloudTuning {
     fn default() -> Self {
-        const GIB: u64 = 1 << 30;
         Self {
             sweep: Duration::from_secs(30),
             checkpoint_interval: Duration::from_secs(15 * 60),
@@ -47,8 +42,6 @@ impl Default for CloudTuning {
             crash_loop_window: Duration::from_secs(10 * 60),
             sync_timeout: Duration::from_secs(5),
             reset_hold: Duration::from_secs(30),
-            system_quota: 16 * GIB,
-            home_quota: 32 * GIB,
             capacity: 16,
         }
     }

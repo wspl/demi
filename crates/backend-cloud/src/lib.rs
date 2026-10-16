@@ -14,7 +14,6 @@
 pub mod access;
 pub mod capacity;
 pub mod client;
-mod growth;
 pub mod machine;
 mod maintenance;
 pub mod reset;

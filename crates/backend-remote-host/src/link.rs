@@ -25,7 +25,7 @@ use demi_host_interface::{
 use demi_runner_protocol::direct::{Introduction, OfferRefusal, StunUrl};
 use demi_runner_protocol::wire::{
     self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, Inbound, LogLine, Outbound,
-    ReadAt, VolumeName,
+    ReadAt,
 };
 use demi_shared_gates::GateLease;
 use demi_shared_types::{BlobRef, StreamKind};
@@ -88,13 +88,6 @@ pub trait LinkPolicy {
     /// handler returns as a medium (`commands.md` § Return media); none when
     /// the namespace does not hold it.
     fn read_blob(&self, blob: BlobRef) -> LocalBoxFuture<'static, Result<Option<Bytes>, String>>;
-
-    /// A managed guest asks for a larger volume.
-    fn grow_volume(
-        &self,
-        volume: VolumeName,
-        bytes: u64,
-    ) -> LocalBoxFuture<'static, Result<(), String>>;
 
     /// The device's runner asks that the device be revoked, as `run
     /// uninstall` does (`runner.md` § Installation, pairing and removal):
@@ -272,8 +265,8 @@ pub(crate) struct Inner {
     pipes: Pipes,
     policy: Rc<dyn LinkPolicy>,
     state: RefCell<State>,
-    /// The backend's work for the connection, such as its calls, artifact
-    /// resolutions and volume growth, which its end waits for.
+    /// The backend's work for the connection, such as its calls and artifact
+    /// resolutions, which its end waits for.
     tasks: TaskTracker,
     /// Cancelled once the connection's end gave `tasks` their grace: what
     /// still runs is aborted.
@@ -1203,7 +1196,6 @@ impl Link {
                 }
                 self.0.pongs.send_replace(());
             }
-            Outbound::VolumeGrow { id, volume, bytes } => self.grow_volume(id, volume, bytes),
             Outbound::Revoke {} => self.revoke(),
             Outbound::DirectAnswer { id, sdp } => {
                 let answer = Answer::Direct(DirectAnswer::Answer(sdp));
@@ -1520,23 +1512,6 @@ impl Link {
             // A stream's owner that stopped waiting has closed it.
             let _ = done.send(end);
         }
-    }
-
-    fn grow_volume(&self, id: String, volume: VolumeName, bytes: u64) {
-        let link = self.clone();
-        let growth = self.0.policy.grow_volume(volume, bytes);
-        self.spawn("volume growth", async move {
-            let error = growth.await.err();
-            let answer = Inbound::VolumeGrown {
-                id,
-                volume,
-                bytes,
-                error,
-            };
-            if let Err(error) = link.send(&answer).await {
-                tracing::warn!(device = %link.0.device, "volume growth answer not sent: {error}");
-            }
-        });
     }
 
     /// Revokes the device at its runner's request. A revoked device's

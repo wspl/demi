@@ -1,8 +1,9 @@
 //! Account administration (`web-api-settings.md` § Account API; `users.md` § User
 //! system): an administrator lists the accounts, creates one of a role it
 //! outranks with a first password the server makes, makes another first
-//! password, changes a role or disables an account, signs an account out
-//! everywhere, and makes a sign-in code for it.
+//! password, changes a role or disables an account, sets the size of an
+//! account's Cloud disks, signs an account out everywhere, and makes a
+//! sign-in code for it.
 
 use std::fmt;
 
@@ -23,6 +24,36 @@ pub struct ListedUser {
     /// The latest activity of any of its sessions, to the hour; none while
     /// it has no session, as before its first sign-in.
     pub last_active_at: Option<Timestamp>,
+    pub cloud_storage: CloudStorage,
+}
+
+/// The size of an account's Cloud disks in whole GB, each from 1 to 1024
+/// (`users.md` § User system), which the next start of its Cloud takes; a
+/// GB here is 2^30 bytes, as the Cloud's storage shows it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CloudStorage {
+    #[garde(range(min = 1, max = 1024))]
+    pub system_gb: u16,
+    #[garde(range(min = 1, max = 1024))]
+    pub home_gb: u16,
+}
+
+impl CloudStorage {
+    /// An account's until an administrator changes it, and always the
+    /// Claude Code machine's.
+    pub const DEFAULT: Self = Self {
+        system_gb: 16,
+        home_gb: 16,
+    };
+
+    pub fn system_bytes(self) -> u64 {
+        u64::from(self.system_gb) << 30
+    }
+
+    pub fn home_bytes(self) -> u64 {
+        u64::from(self.home_gb) << 30
+    }
 }
 
 /// `GET /users`: every account, in the order they were created.
@@ -92,7 +123,9 @@ pub struct NewFirstPassword {
 }
 
 /// `PATCH /users/:id`: one change of an account the caller outranks, its
-/// role or whether it is disabled; the body names exactly one.
+/// role, whether it is disabled, or the size of its Cloud disks, which an
+/// administrator may also change on its own account; the body names
+/// exactly one.
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UserChange {
@@ -102,4 +135,7 @@ pub struct UserChange {
     #[serde(default)]
     #[garde(skip)]
     pub disabled: Option<bool>,
+    #[serde(default)]
+    #[garde(dive)]
+    pub cloud_storage: Option<CloudStorage>,
 }

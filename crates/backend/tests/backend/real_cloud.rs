@@ -705,97 +705,79 @@ async fn attachments_larger_than_the_sandbox_reads_at_once_arrive_whole() {
     backend.close().await;
 }
 
-// Tens of seconds: the Cloud boots, stops when idle, wakes, grows its home
-// and is saved; the runner asks for growth as it connects. It needs a
-// manager that holds CAP_SYS_RESOURCE (`scenarios.md` § Cloud suite).
+// Tens of seconds: the Cloud boots, stops when idle, and wakes at a larger
+// size, which enlarges its images before they are mounted.
 #[tokio::test]
 #[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
-async fn a_cloud_grows_its_home_online_and_its_saved_generation_records_the_grown_capacity() {
-    const TEST: &str = "growth";
+async fn a_cloud_saved_at_1_gb_wakes_at_the_larger_size_its_account_names_with_its_files() {
+    const TEST: &str = "capacity";
+    const GIB: u64 = 1 << 30;
     let _one = one_at_a_time().await;
     let environment = Environment::read();
     let vendor = MockVendor::start().await;
     let harness = environment.harness();
     let backend = harness.start_at(environment.address()).await;
     let master = backend.setup().await;
+    let own = format!("/api/users/{}", master.user.id);
+    let storage = |system: u16, home: u16| json!({ "cloudStorage": { "systemGb": system, "homeGb": home } });
+    let set = backend.patch(&own, &master, storage(1, 1)).await;
+    assert_eq!(set.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&set.body));
     let mut first = on_cloud(&backend, &master, &master, &vendor, FIRST, "/a").await;
     let working = backend
         .file_gate(&master, FIRST)
         .await
         .enter(Purpose::Demand)
         .await;
-
-    // Fills the home past what its runner keeps free, without writing the
-    // blocks, so the host stores none of it. The runner looks at its
-    // volumes when it connects, and then once a minute.
-    let filled = run(
-        &mut first,
-        "fill",
-        "fallocate -l 800M ~/fill && df -B1 --output=size /home | tail -1",
-    )
-    .await;
-    let initial: u64 = filled
-        .lines()
-        .find_map(|line| line.trim().parse().ok())
-        .unwrap_or_else(|| panic!("no size: {filled}"));
+    run(&mut first, "kept", "echo kept > ~/kept").await;
     let device = the_device(&backend, &master).await;
+    let image = |device: String| {
+        let manager = environment.manager();
+        async move {
+            manager
+                .call(ImageStateParams { device_id: device })
+                .await
+                .unwrap()
+                .expect("the Cloud has a generation")
+        }
+    };
+    // A fresh Cloud is made at the size its account names.
+    let made = image(device.clone()).await;
+    assert_eq!((made.system_bytes.get(), made.home_bytes.get()), (GIB, GIB), "{made:?}");
 
-    // Woken by a Host operation, not a job: the runner looks at its volumes
-    // as it connects only while no job runs.
     drop(working);
     until_cloud(&backend, &master, "the idle Cloud stops", |status| {
         status.state == CloudState::Off
     })
     .await;
+    let set = backend.patch(&own, &master, storage(2, 3)).await;
+    assert_eq!(set.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&set.body));
     let working = backend
         .file_gate(&master, FIRST)
         .await
         .enter(Purpose::Demand)
         .await;
-    let listed = list(&backend, &master, FIRST).await;
-    assert_eq!(
-        listed.status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&listed.body)
-    );
-
-    // The home grows while the Cloud runs.
     let started = Instant::now();
-    let grown = run(
-        &mut first,
-        "grown",
-        &format!(
-            "for second in $(seq 180); do size=$(df -B1 --output=size /home | tail -1); \
-             [ $size -gt {initial} ] && break; sleep 1; done; echo home-size $size"
-        ),
-    )
-    .await;
-    measured(TEST, "growth after the wake", started.elapsed());
-    let size: u64 = grown
+    let listed = list(&backend, &master, FIRST).await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    measured(TEST, "a wake that enlarges both images", started.elapsed());
+
+    // The running Cloud sees the larger home, and its files are as they were.
+    let woken = run(&mut first, "woken", "cat ~/kept && df -B1 --output=size /home | tail -1").await;
+    assert!(woken.contains("kept"), "{woken}");
+    let size: u64 = woken
         .lines()
-        .find_map(|line| {
-            line.strip_prefix("home-size ")
-                .and_then(|size| size.trim().parse().ok())
-        })
-        .unwrap_or_else(|| panic!("no size: {grown}"));
-    assert!(size > initial, "the home stayed at {size} bytes: {grown}");
+        .find_map(|line| line.trim().parse().ok())
+        .unwrap_or_else(|| panic!("no size: {woken}"));
+    assert!(size > 2 * GIB, "the home stayed at {size} bytes: {woken}");
     drop(working);
     backend.close().await;
 
-    // The saved generation records the grown filesystem's capacity as its
-    // superblock gives it, not the size the runner asked for.
-    let saved = environment
-        .manager()
-        .call(ImageStateParams {
-            device_id: device.clone(),
-        })
-        .await
-        .unwrap()
-        .expect("the saved Cloud has a generation");
+    // The saved generation records each filesystem's capacity as its
+    // superblock gives it.
+    let saved = image(device.clone()).await;
+    assert_eq!((saved.system_bytes.get(), saved.home_bytes.get()), (2 * GIB, 3 * GIB), "{saved:?}");
     let home = environment.generation(&device, &saved).join("home.ext4");
     assert_eq!(saved.home_bytes.get(), superblock_capacity(&home));
-    assert!(saved.home_bytes.get() > initial, "{saved:?}");
 }
 
 // Tens of seconds: the Cloud boots, resets twice, stops once, and fails one

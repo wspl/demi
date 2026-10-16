@@ -28,7 +28,7 @@ use demi_host_interface::{
 use demi_runner_protocol::wire::{
     ArtifactOwner, FsOk, FsResult, Inbound, JOB_VIEW_BYTES, StreamArtifactOwner,
     JobArtifactOwner, JobFileChange, KeptRecord, Outbound, OutputLengths, OutputStream,
-    STDIN_CHUNK_BYTES, Signal, VolumeName, WireBytes, encode_record,
+    STDIN_CHUNK_BYTES, Signal, WireBytes, encode_record,
 };
 use demi_shared_gates::{ActivityGate, Purpose};
 use demi_shared_types::{
@@ -935,9 +935,6 @@ impl LinkPolicy for AdmitsDirectStreams {
         Box::pin(async { Ok(None) })
     }
 
-    fn grow_volume(&self, _: VolumeName, _: u64) -> LocalBoxFuture<'static, Result<(), String>> {
-        Box::pin(async { Err("no".into()) })
-    }
 
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
         Box::pin(async { Err("no".into()) })
@@ -2025,9 +2022,6 @@ impl LinkPolicy for Refusing {
         Box::pin(async { Ok(None) })
     }
 
-    fn grow_volume(&self, _: VolumeName, _: u64) -> LocalBoxFuture<'static, Result<(), String>> {
-        Box::pin(async { Err("no".into()) })
-    }
 
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
         Box::pin(async { Err("no".into()) })

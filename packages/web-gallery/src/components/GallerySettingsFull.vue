@@ -49,8 +49,7 @@ const cloud = ref<CloudState>(
     operationId: null,
     phase: null,
     error: null,
-    volumes: { systemBytes: 6 * 1024 ** 3, homeBytes: 20 * 1024 ** 3 },
-    limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 64 * 1024 ** 3 },
+    volumes: { systemBytes: 16 * 1024 ** 3, homeBytes: 16 * 1024 ** 3 },
     // The server was upgraded since this Cloud's last reset; a reset moves
     // its system to the new image.
     newerImage: true,

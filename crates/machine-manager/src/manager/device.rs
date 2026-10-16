@@ -3,10 +3,12 @@
 //! arrival order. The sandbox's exit is one more event between operations,
 //! never during one.
 
-use std::{num::NonZeroU64, path::Path, rc::Rc};
+use std::{path::Path, rc::Rc};
 
 use demi_machine_manager_protocol::image::PROGRAMS_PATH;
-use demi_machine_manager_protocol::{BaseVersion, DeviceId, MachineImageState, SandboxMachine, Volume};
+use demi_machine_manager_protocol::{
+    BaseVersion, Capacity, DeviceId, MachineImageState, SandboxMachine, Volume,
+};
 use demi_runner_protocol::boot::ManagedBoot;
 use tokio::sync::{mpsc, oneshot};
 
@@ -43,14 +45,18 @@ pub enum DeviceCommand {
 
 /// The operations that change a device.
 pub enum DeviceOp {
-    Wake(ManagedBoot, SandboxMachine),
+    Wake {
+        boot: ManagedBoot,
+        machine: SandboxMachine,
+        capacity: Capacity,
+    },
     /// Stop and save; also what `reconcile` and shutdown do to every device.
     Hibernate,
     Checkpoint,
-    Grow(Volume, NonZeroU64),
     Reset {
         operation: String,
         base: BaseVersion,
+        capacity: Capacity,
     },
 }
 
@@ -145,14 +151,21 @@ impl DeviceWorker {
 
     async fn operate(&mut self, op: DeviceOp) -> Result<(), OpError> {
         match op {
-            DeviceOp::Wake(boot, machine) => self.wake(&boot, machine).await,
+            DeviceOp::Wake {
+                boot,
+                machine,
+                capacity,
+            } => self.wake(&boot, machine, capacity).await,
             DeviceOp::Hibernate => {
                 self.stop().await?;
                 self.save().await
             }
             DeviceOp::Checkpoint => self.checkpoint().await,
-            DeviceOp::Grow(volume, bytes) => self.grow(volume, bytes).await,
-            DeviceOp::Reset { operation, base } => self.reset(&operation, &base).await,
+            DeviceOp::Reset {
+                operation,
+                base,
+                capacity,
+            } => self.reset(&operation, &base, capacity).await,
         }
     }
 
@@ -212,15 +225,22 @@ impl DeviceWorker {
     }
 
     /// Starts the device's sandbox on its newest storage: the working pair a
-    /// crash left, saved first, else the committed generation, else a new one.
-    async fn wake(&mut self, boot: &ManagedBoot, machine: SandboxMachine) -> Result<(), OpError> {
+    /// crash left, saved first, else the committed generation, else a new one
+    /// at `capacity`. An image smaller than `capacity` is enlarged before it
+    /// is mounted.
+    async fn wake(
+        &mut self,
+        boot: &ManagedBoot,
+        machine: SandboxMachine,
+        capacity: Capacity,
+    ) -> Result<(), OpError> {
         if self.runtime.is_some() {
             return Ok(());
         }
         self.save().await?;
         let state = match self.committed().await? {
             Some(state) => state,
-            None => self.initialize(&self.base.clone()).await?,
+            None => self.initialize(&self.base.clone(), capacity).await?,
         };
         let bases = self.core.store.bases();
         let base = bases.join(&state.base_version);
@@ -231,7 +251,7 @@ impl DeviceWorker {
         let runner_release = base::runner_release(&configured).await?;
         let programs = configured.join("rootfs").join(PROGRAMS_PATH.trim_start_matches('/'));
         let stage = Stage::create(&self.core, "wake").await?;
-        let copied = self.stage_working(&state, stage.path()).await;
+        let copied = self.stage_working(state, capacity, stage.path()).await;
         stage.remove().await;
         copied?;
         fault::point("working-staged");
@@ -264,19 +284,40 @@ impl DeviceWorker {
         }
     }
 
-    /// Copies the committed generation into `stage` and makes the stage the
-    /// working pair.
-    async fn stage_working(&self, state: &MachineImageState, stage: &Path) -> Result<(), OpError> {
+    /// Copies the committed generation into `stage`, enlarges each copy
+    /// smaller than `capacity` and records the capacity its superblock
+    /// reports, and makes the stage the working pair. A larger image keeps
+    /// its size: shrinking a filesystem risks its data.
+    async fn stage_working(
+        &self,
+        mut state: MachineImageState,
+        capacity: Capacity,
+        stage: &Path,
+    ) -> Result<(), OpError> {
         let sources = self.core.store.images(&self.device, &state.generation);
         let copies = ImagePair::in_directory(stage);
-        let stage = stage.to_owned();
-        let working = self.working.directory().to_owned();
-        let state = state.clone();
+        let copied = copies.clone();
         blocking::run(move |off| -> std::io::Result<()> {
             for volume in Volume::ALL {
-                clone_sparse(off, sources.get(volume), copies.get(volume))?;
-                sync(off, copies.get(volume))?;
+                clone_sparse(off, sources.get(volume), copied.get(volume))?;
+                sync(off, copied.get(volume))?;
             }
+            Ok(())
+        })
+        .await?;
+        for volume in Volume::ALL {
+            let wanted = capacity.bytes(volume);
+            if state.bytes(volume) < wanted {
+                let enlarged = ext4::enlarge(&self.core.tools, copies.get(volume), wanted).await?;
+                match volume {
+                    Volume::System => state.system_bytes = enlarged,
+                    Volume::Home => state.home_bytes = enlarged,
+                }
+            }
+        }
+        let stage = stage.to_owned();
+        let working = self.working.directory().to_owned();
+        blocking::run(move |off| -> std::io::Result<()> {
             write_json(off, &stage.join("manifest.json"), &state)?;
             sync(off, &stage)?;
             fs_err::rename(&stage, &working)?;
@@ -291,11 +332,15 @@ impl DeviceWorker {
         Ok(())
     }
 
-    /// A device's first storage: a home from the base's skeleton, an empty
-    /// system, published as its first generation.
-    async fn initialize(&self, base: &BaseVersion) -> Result<MachineImageState, OpError> {
+    /// A device's first storage at `capacity`: a home from the base's
+    /// skeleton, an empty system, published as its first generation.
+    async fn initialize(
+        &self,
+        base: &BaseVersion,
+        capacity: Capacity,
+    ) -> Result<MachineImageState, OpError> {
         let stage = Stage::create(&self.core, "initial").await?;
-        let made = self.make_first_generation(base, stage.path()).await;
+        let made = self.make_first_generation(base, capacity, stage.path()).await;
         stage.remove().await;
         made
     }
@@ -303,6 +348,7 @@ impl DeviceWorker {
     async fn make_first_generation(
         &self,
         base: &BaseVersion,
+        capacity: Capacity,
         stage: &Path,
     ) -> Result<MachineImageState, OpError> {
         let skeleton = self.core.store.bases().join(base).join("rootfs/etc/skel");
@@ -316,16 +362,15 @@ impl DeviceWorker {
             skeleton::copy(off, &skeleton, &prepared.join("demi"))
         })
         .await?;
-        let config = &self.core.config;
         let images = ImagePair::in_directory(stage);
-        ext4::make_home(&self.core.tools, &root, &images.home, config.home_bytes()).await?;
-        ext4::make_system(&self.core.tools, &images.system, config.system_bytes()).await?;
+        ext4::make_home(&self.core.tools, &root, &images.home, capacity.home_bytes).await?;
+        ext4::make_system(&self.core.tools, &images.system, capacity.system_bytes).await?;
         let state = MachineImageState {
             generation: new_generation(),
             base_version: base.clone(),
             reset_id: None,
-            system_bytes: config.system_bytes(),
-            home_bytes: config.home_bytes(),
+            system_bytes: capacity.system_bytes,
+            home_bytes: capacity.home_bytes,
         };
         let store = self.core.store.clone();
         let device = self.device.clone();
@@ -404,30 +449,14 @@ impl DeviceWorker {
         Ok(())
     }
 
-    /// Grows a running volume, never shrinking it, and records the
-    /// capacity its filesystem reports.
-    async fn grow(&mut self, volume: Volume, bytes: NonZeroU64) -> Result<(), OpError> {
-        let Some(sandbox) = self.runtime.as_ref() else {
-            return Err(OpError::NotRunning);
-        };
-        let Some(state) = self.working_manifest().await? else {
-            return Err(OpError::NoWorkingManifest);
-        };
-        if bytes <= state.bytes(volume) {
-            return Ok(());
-        }
-        let capacity = sandbox
-            .grow(&self.core, &self.working, volume, bytes)
-            .await?;
-        let grown = state.with_bytes(volume, capacity);
-        let pair = self.working.clone();
-        blocking::run(move |off| pair.write_manifest(off, &grown)).await?;
-        Ok(())
-    }
-
-    /// Publishes a fresh system on `base` with the saved home, once per
-    /// `operation`; it does not boot.
-    async fn reset(&mut self, operation: &str, base: &BaseVersion) -> Result<(), OpError> {
+    /// Publishes a fresh system on `base` at `capacity` with the saved home,
+    /// once per `operation`; it does not boot.
+    async fn reset(
+        &mut self,
+        operation: &str,
+        base: &BaseVersion,
+        capacity: Capacity,
+    ) -> Result<(), OpError> {
         let manifest = self.core.store.bases().join(base).join("manifest.json");
         let imported = blocking::run(move |_| fs_err::metadata(manifest)).await;
         match imported {
@@ -441,14 +470,14 @@ impl DeviceWorker {
         self.save().await?;
         let state = match self.committed().await? {
             Some(state) => state,
-            None => self.initialize(base).await?,
+            None => self.initialize(base, capacity).await?,
         };
         if state.reset_id.as_deref() == Some(operation) {
             return Ok(());
         }
         let stage = Stage::create(&self.core, "reset").await?;
         let published = self
-            .publish_reset(state, operation, base, stage.path())
+            .publish_reset(state, operation, base, capacity, stage.path())
             .await;
         stage.remove().await;
         published
@@ -459,10 +488,11 @@ impl DeviceWorker {
         state: MachineImageState,
         operation: &str,
         base: &BaseVersion,
+        capacity: Capacity,
         stage: &Path,
     ) -> Result<(), OpError> {
         let system = ImagePair::in_directory(stage).system;
-        let system_bytes = self.core.config.system_bytes();
+        let system_bytes = capacity.system_bytes;
         ext4::make_system(&self.core.tools, &system, system_bytes).await?;
         fault::point("reset-staged");
         // The home enters the new generation as a link to the saved image.

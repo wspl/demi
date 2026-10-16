@@ -11,7 +11,7 @@ use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::UserId;
 use demi_web_api_protocol::settings::Preferences;
 use demi_web_api_protocol::text::EmailAddress;
-use demi_web_api_protocol::users::ListedUser;
+use demi_web_api_protocol::users::{CloudStorage, ListedUser};
 use jiff::SignedDuration;
 use rusqlite::{Connection, OptionalExtension, Row, Transaction, params};
 
@@ -154,11 +154,11 @@ impl ControlService {
     }
 
     /// Every account, in the order they were created, each with when it was
-    /// last active.
+    /// last active and the size of its Cloud disks.
     pub async fn users(&self) -> Result<Vec<ListedUser>, StorageError> {
         self.call(|connection, _| {
             let mut statement = connection.prepare_cached(&format!(
-                "SELECT {USER_COLUMNS}, users.last_active_at
+                "SELECT {USER_COLUMNS}, users.last_active_at, users.cloud_system_gb, users.cloud_home_gb
                  FROM users ORDER BY users.created_at, users.rowid"
             ))?;
             let mut rows = statement.query([])?;
@@ -170,6 +170,7 @@ impl ControlService {
                         .get::<_, Option<i64>>("last_active_at")?
                         .map(|millisecond| decode("web_sessions", "last_active_at", Timestamp::from_millisecond(millisecond)))
                         .transpose()?,
+                    cloud_storage: cloud_storage_row(row)?,
                 });
             }
             Ok(users)
@@ -269,6 +270,32 @@ impl ControlService {
             connection.execute(
                 "UPDATE users SET password_hash = ?1, chooses_password = ?2 WHERE id = ?3",
                 params![password_hash.as_str(), chooses, user.as_str()],
+            )?;
+            Ok(())
+        })
+        .await
+    }
+
+    /// The size of the account's Cloud disks; none for an id that names no
+    /// account.
+    pub async fn cloud_storage(&self, user: UserId) -> Result<Option<CloudStorage>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection.prepare_cached(
+                "SELECT cloud_system_gb, cloud_home_gb FROM users WHERE id = ?1",
+            )?;
+            let mut rows = statement.query([user.as_str()])?;
+            rows.next()?.map(cloud_storage_row).transpose()
+        })
+        .await
+    }
+
+    /// Sets the size of the account's Cloud disks, which its Cloud's next
+    /// start takes.
+    pub async fn set_cloud_storage(&self, user: UserId, storage: CloudStorage) -> Result<(), StorageError> {
+        self.call(move |connection, _| {
+            connection.execute(
+                "UPDATE users SET cloud_system_gb = ?1, cloud_home_gb = ?2 WHERE id = ?3",
+                params![storage.system_gb, storage.home_gb, user.as_str()],
             )?;
             Ok(())
         })
@@ -563,6 +590,16 @@ pub(crate) fn user_row(row: &Row<'_>) -> Result<UserDto, StorageError> {
         disabled: row.get("disabled")?,
         chooses_password: row.get("chooses_password")?,
     })
+}
+
+/// The size of an account's Cloud disks, from its row's `cloud_system_gb`
+/// and `cloud_home_gb`.
+fn cloud_storage_row(row: &Row<'_>) -> Result<CloudStorage, StorageError> {
+    let storage = CloudStorage {
+        system_gb: row.get("cloud_system_gb")?,
+        home_gb: row.get("cloud_home_gb")?,
+    };
+    decode("users", "cloud_system_gb", garde::Validate::validate(&storage).map(|()| storage))
 }
 
 /// Deletes the user's sessions and answers their tokens' hashes.

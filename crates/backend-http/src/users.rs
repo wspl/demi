@@ -1,10 +1,12 @@
 //! Account administration (`web-api-settings.md` § Account API; `users.md` § User
 //! system): administrators list every account, create accounts of a role
 //! they outrank with a first password the server makes, make another first
-//! password, change a role, disable and enable, sign an account out
-//! everywhere and make a sign-in code for it. Every route acts only on a
-//! role below the caller's: nobody acts on a peer or on the master, and no
-//! account is deleted.
+//! password, change a role, disable and enable, set the size of an
+//! account's Cloud disks, sign an account out everywhere and make a sign-in
+//! code for it. Every route acts only on a role below the caller's: nobody
+//! acts on a peer or on the master, and no account is deleted. The one
+//! exception is the size of the Cloud disks, which an administrator also
+//! sets on its own account: it decides the server's disk, not the account.
 
 use std::sync::Arc;
 
@@ -134,7 +136,8 @@ pub(super) async fn new_first_password(
 }
 
 /// Changes the role of an account the caller outranks to a role the caller
-/// outranks too, or disables or enables it. Disabling ends its sessions and
+/// outranks too, disables or enables it, or sets the size of its Cloud
+/// disks, also on the caller's own account. Disabling ends its sessions and
 /// its devices' runner connections at once.
 pub(super) async fn change(
     State(state): State<AppState>,
@@ -143,27 +146,39 @@ pub(super) async fn change(
     body: Result<JsonBody<UserChange>, ApiError>,
 ) -> Result<StatusCode, ApiError> {
     let services = &state.services;
-    let target = lower_account(services, &caller, id).await?;
+    // An administrator's own account takes one change, its Cloud storage;
+    // any other account must be lower, which is answered before the body.
+    let own = id == caller.id.as_str();
+    let account = if own {
+        caller.id.clone()
+    } else {
+        lower_account(services, &caller, id).await?.user.id
+    };
     let JsonBody(change) = body?;
-    match (change.role, change.disabled) {
-        (Some(role), None) => {
+    match (change.role, change.disabled, change.cloud_storage) {
+        (None, None, Some(storage)) => {
+            services.control.set_cloud_storage(account, storage).await?;
+            services.sync.mark_everyone(&Part::Users);
+        }
+        _ if own => return Err(ApiError::forbidden("A role acts on lower roles only")),
+        (Some(role), None, None) => {
             let role = Role::from(role);
             if !caller.role.outranks(role) {
                 return Err(ApiError::forbidden("A role gives lower roles only"));
             }
-            services.control.set_role(target.user.id.clone(), role).await?;
-            services.sync.mark(&target.user.id, Part::User);
+            services.control.set_role(account.clone(), role).await?;
+            services.sync.mark(&account, Part::User);
             services.sync.mark_everyone(&Part::Users);
         }
-        (None, Some(disabled)) => {
+        (None, Some(disabled), None) => {
             let ended = services
                 .control
-                .set_disabled(target.user.id.clone(), disabled)
+                .set_disabled(account.clone(), disabled)
                 .await?;
-            end_sessions(services, &target.user.id, &ended);
+            end_sessions(services, &account, &ended);
             services.sync.mark_everyone(&Part::Users);
             if disabled {
-                let user = target.user.id.clone();
+                let user = account.clone();
                 state
                     .shards
                     .of(&user)
@@ -171,7 +186,11 @@ pub(super) async fn change(
                     .await??;
             }
         }
-        _ => return Err(ApiError::invalid_body("Change the role or whether the account is disabled")),
+        _ => {
+            return Err(ApiError::invalid_body(
+                "Change the role, whether the account is disabled, or its Cloud storage",
+            ));
+        }
     }
     Ok(StatusCode::NO_CONTENT)
 }

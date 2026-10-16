@@ -282,6 +282,16 @@
     "current": "{name} のロールは{role}です。",
     "role": "ロール"
   },
+  "cloudStorage": {
+    "title": "クラウドストレージ",
+    "account": "{name} のクラウドのディスクサイズです。",
+    "system": "システム",
+    "systemDescription": "インストールしたパッケージとシステム設定。",
+    "home": "ホーム",
+    "homeDescription": "ファイルとクラウドプロジェクト。",
+    "note": "サイズは次にクラウドが起動したときに適用されます。すでにこれより大きいディスクはそのサイズのままです。",
+    "problem": "1〜{max} の整数を GB 単位で入力してください。"
+  },
   "addPasskey": {
     "title": "パスキーを追加",
     "hint": "パスワードを入力します。ブラウザーがサインイン用のパスキーを保存します。",
@@ -311,6 +321,7 @@
     "action": {
       "resetPassword": "パスワードをリセット…",
       "changeRole": "ロールを変更…",
+      "cloudStorage": "クラウドストレージ…",
       "signInCode": "サインインコード…",
       "signOutEverywhere": "すべての場所でサインアウト…",
       "disable": "アカウントを無効化…",
