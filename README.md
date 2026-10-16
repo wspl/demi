@@ -130,13 +130,13 @@ for moving to a new release.
 - **One-line install and upgrades**: Set up a server with one command and
   upgrade it with another.
 
-## A harness built on a shell
+## An agent built on a shell
 
-Demi is both the app and the agent harness. It doesn't wrap Claude Code or
+Demi is both the app and the agent. It doesn't wrap Claude Code or
 Codex: its own runtime drives every model, and a Claude or ChatGPT
 subscription is used only for the model.
 
-Most harnesses give the model a long list of tools. Demi gives it one: a
+Most agents give the model a long list of tools. Demi gives it one: a
 shell. Everything else, from the browser to other machines to subagents, is a
 `demi` command inside it:
 
@@ -162,7 +162,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
   conversation.
 
 > [!NOTE]
-> **Planned**: the Demi harness as a standalone TypeScript library, so you can
+> **Planned**: the Demi agent runtime as a standalone TypeScript library, so you can
 > build your own agents on it without the Demi app.
 
 ## Architecture
@@ -201,34 +201,8 @@ Read the [design docs](docs/README.md), starting with the
 
 ## Comparison
 
-As of October 2026, based on each product's documentation.
-
-| | Demi | [Pi](https://github.com/earendil-works/pi) | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | [OpenHands](https://github.com/OpenHands/OpenHands) | [opencode](https://github.com/anomalyco/opencode) | [Orca](https://github.com/stablyai/orca) | [herdr](https://github.com/herdrdev/herdr) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| Source code | Apache-2.0; server and web app [Demi License](LICENSE-DEMI) | MIT | MIT | MIT | MIT | MIT | Apache-2.0 |
-| Harness | Its own | Its own | Its own | Its own, or wraps ACP agents | Its own | Wraps Claude Code, Codex, OpenCode, Pi and others | Wraps Claude Code, Codex, OpenCode, Pi and others |
-| Interface | Web app for many users, on any device | Terminal | Local web app and terminal | Web app | Terminal, web, desktop | Desktop app, mobile companion | Terminal UI |
-| Where conversations live | On your server, one place for all devices | On each machine | On each machine | On each backend | On each machine or server | On each machine | On each machine |
-| Where tasks run | Cloud sandbox or any of your computers | The machine it runs on | The machine it runs on | Local, Docker, VM or cloud | The machine it runs on | Local worktrees, SSH hosts or your cloud VMs | Local or SSH machines |
-| Several machines in one conversation | Yes | — | — | — | No | No | No |
-| Tool design | Shell only | Tool calls; optional code mode | Tool calls; optional code mode | Tool calls | Tool calls; code mode for MCP tools | Those of the wrapped agent | Those of the wrapped agent |
-| Models | Any, including Claude, ChatGPT and Grok subscriptions | Many providers and subscriptions | DeepSeek and others by API key | Any | Any | Those of the wrapped agents | Those of the wrapped agents |
-| Browser automation | On any of your machines | Through extensions | Experimental plugin | In the SDK | — | Built-in browser | — |
-| Teams and admin | Yes | — | Shared access token | Enterprise edition | Shared password | — | — |
-
-— Not mentioned in the product's documentation.
-
-<details>
-<summary>Sources</summary>
-
-- Pi: [README](https://github.com/earendil-works/pi), [Sessions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sessions.md), [Providers](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/providers.md), [Settings](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md)
-- DeepSeek Harness: [README](https://github.com/deepseek-ai/deepseek-harness), [Architecture](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md), [Providers](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/providers.md), [Tool catalog](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/tool-catalog.md), [Public deployments](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/public-deployments.md)
-- OpenHands: [README](https://github.com/OpenHands/OpenHands), [Backends](https://docs.openhands.dev/openhands/usage/agent-canvas/backends), [Enterprise vs. open source](https://docs.openhands.dev/enterprise/enterprise-vs-oss), [Browser use](https://docs.openhands.dev/sdk/guides/agent-browser-use)
-- opencode: [Web](https://opencode.ai/docs/web/), [Server](https://opencode.ai/docs/server/), [Tools](https://opencode.ai/docs/tools/), [Providers](https://opencode.ai/docs/providers/)
-- Orca: [README](https://github.com/stablyai/orca), [Supported agents](https://www.onorca.dev/docs/agents/supported), [Ways to run](https://www.onorca.dev/docs/ways-to-run), [Browser](https://www.onorca.dev/docs/browser/overview)
-- herdr: [README](https://github.com/herdrdev/herdr), [Agents](https://herdr.dev/docs/agents/), [Connecting machines](https://herdr.dev/docs/connecting-machines/), [Session state](https://herdr.dev/docs/session-state/)
-
-</details>
+How Demi differs from Pi, DeepSeek Harness, OpenHands, opencode, Orca,
+herdr and T3 Code, feature by feature: [Demi compared](docs/comparison.md).
 
 ## Documentation
 

@@ -97,11 +97,11 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 - **管理ツール**：ユーザーの追加、ロールの管理、パスワードのリセット、スマートフォン用サインインコードの送信を行えます。
 - **コマンドひとつでインストールとアップグレード**：コマンドひとつでサーバーをセットアップし、もうひとつでアップグレードします。
 
-## シェルの上に築いたハーネス
+## シェルの上に築いたエージェント
 
-Demi はアプリであり、エージェントのハーネス（実行基盤）でもあります。Claude Code や Codex をラップするのではなく、独自のランタイムがすべてのモデルを動かします。Claude や ChatGPT のサブスクリプションは、モデルの利用にだけ使います。
+Demi はアプリであり、エージェントそのものでもあります。Claude Code や Codex をラップするのではなく、独自のランタイムがすべてのモデルを動かします。Claude や ChatGPT のサブスクリプションは、モデルの利用にだけ使います。
 
-多くのハーネスはモデルに長いツールの一覧を渡しますが、Demi が渡すのはシェルひとつだけです。ブラウザ、他のマシン、サブエージェントなど、それ以外の機能はすべてシェルの中の `demi` コマンドです:
+多くのエージェントはモデルに長いツールの一覧を渡しますが、Demi が渡すのはシェルひとつだけです。ブラウザ、他のマシン、サブエージェントなど、それ以外の機能はすべてシェルの中の `demi` コマンドです:
 
 ```sh
 demi browser open http://localhost:5173 && demi browser screenshot t1 | demi file view
@@ -116,7 +116,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 - **長時間のジョブに対応**：コマンドはバックグラウンドで動き続け、終わると報告するので、開発サーバーやテストスイートが会話を止めません。
 
 > [!NOTE]
-> **予定**：Demi のハーネスを単独の TypeScript ライブラリとして提供し、Demi アプリなしで独自のエージェントを構築できるようにします。
+> **予定**：Demi のエージェントランタイムを単独の TypeScript ライブラリとして提供し、Demi アプリなしで独自のエージェントを構築できるようにします。
 
 ## アーキテクチャ
 
@@ -147,34 +147,7 @@ demi agent spawn --profile research --description "Compare pricing pages" < brie
 
 ## 比較
 
-2026 年 10 月時点、各製品のドキュメントに基づきます。
-
-| | Demi | [Pi](https://github.com/earendil-works/pi) | [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) | [OpenHands](https://github.com/OpenHands/OpenHands) | [opencode](https://github.com/anomalyco/opencode) | [Orca](https://github.com/stablyai/orca) | [herdr](https://github.com/herdrdev/herdr) |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| ソ⁠ー⁠ス⁠コ⁠ー⁠ド | Apache-2.0。サーバーと Web アプリは [Demi License](LICENSE-DEMI) | MIT | MIT | MIT | MIT | MIT | Apache-2.0 |
-| ハ⁠ー⁠ネ⁠ス | 独自 | 独自 | 独自 | 独自、または ACP エージェントをラップ | 独自 | Claude Code、Codex、OpenCode、Pi などをラップ | Claude Code、Codex、OpenCode、Pi などをラップ |
-| イ⁠ン⁠タ⁠ー⁠フ⁠ェ⁠ー⁠ス | 複数ユーザーで使う Web アプリ、どのデバイスでも | ターミナル | ローカルの Web アプリとターミナル | Web アプリ | ターミナル、Web、デスクトップ | デスクトップアプリ、モバイル版コンパニオン | ターミナル UI |
-| 会⁠話⁠の⁠保⁠存⁠先 | あなたのサーバーに一元化 | 各マシン | 各マシン | 各バックエンド | 各マシンまたはサーバー | 各マシン | 各マシン |
-| タ⁠ス⁠ク⁠の⁠実⁠行⁠場⁠所 | クラウドのサンドボックス、またはあなたのどのコンピューターでも | 動かしているマシン | 動かしているマシン | ローカル、Docker、VM、クラウド | 動かしているマシン | ローカルのワークツリー、SSH ホスト、あなたのクラウド VM | ローカルまたは SSH 接続のマシン |
-| ひ⁠と⁠つ⁠の⁠会⁠話⁠で⁠複⁠数⁠の⁠マ⁠シ⁠ン | 対応 | — | — | — | 非対応 | 非対応 | 非対応 |
-| ツ⁠ー⁠ル⁠設⁠計 | シェルのみ | ツール呼び出し、コードモードも選択可 | ツール呼び出し、コードモードも選択可 | ツール呼び出し | ツール呼び出し、MCP ツールにはコードモード | ラップしたエージェントによる | ラップしたエージェントによる |
-| モ⁠デ⁠ル | 任意。Claude、ChatGPT、Grok のサブスクリプションにも対応 | 多数のプロバイダーとサブスクリプション | DeepSeek ほか、API キーで利用 | 任意 | 任意 | ラップしたエージェントによる | ラップしたエージェントによる |
-| ブ⁠ラ⁠ウ⁠ザ⁠の⁠自⁠動⁠操⁠作 | あなたのどのマシンでも | 拡張機能で | 実験的なプラグイン | SDK で提供 | — | 内蔵ブラウザ | — |
-| チ⁠ー⁠ム⁠と⁠管⁠理 | 対応 | — | 共有アクセストークン | Enterprise 版 | 共有パスワード | — | — |
-
-— は製品のドキュメントに記載がないことを示します。
-
-<details>
-<summary>出典</summary>
-
-- Pi: [README](https://github.com/earendil-works/pi), [Sessions](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/sessions.md), [Providers](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/providers.md), [Settings](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/settings.md)
-- DeepSeek Harness: [README](https://github.com/deepseek-ai/deepseek-harness), [Architecture](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/architecture.md), [Providers](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/providers.md), [Tool catalog](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/tool-catalog.md), [Public deployments](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/user/guide/public-deployments.md)
-- OpenHands: [README](https://github.com/OpenHands/OpenHands), [Backends](https://docs.openhands.dev/openhands/usage/agent-canvas/backends), [Enterprise vs. open source](https://docs.openhands.dev/enterprise/enterprise-vs-oss), [Browser use](https://docs.openhands.dev/sdk/guides/agent-browser-use)
-- opencode: [Web](https://opencode.ai/docs/web/), [Server](https://opencode.ai/docs/server/), [Tools](https://opencode.ai/docs/tools/), [Providers](https://opencode.ai/docs/providers/)
-- Orca: [README](https://github.com/stablyai/orca), [Supported agents](https://www.onorca.dev/docs/agents/supported), [Ways to run](https://www.onorca.dev/docs/ways-to-run), [Browser](https://www.onorca.dev/docs/browser/overview)
-- herdr: [README](https://github.com/herdrdev/herdr), [Agents](https://herdr.dev/docs/agents/), [Connecting machines](https://herdr.dev/docs/connecting-machines/), [Session state](https://herdr.dev/docs/session-state/)
-
-</details>
+Pi、DeepSeek Harness、OpenHands、opencode、Orca、herdr、T3 Code と Demi の機能ごとの比較は [Demi の比較](docs/comparison.ja.md)をご覧ください。
 
 ## ドキュメント
 
