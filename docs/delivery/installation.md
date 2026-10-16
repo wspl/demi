@@ -26,6 +26,18 @@ answers.
 `https://demi.sh/install.sh` redirects to
 `https://github.com/wspl/demi/releases/latest/download/install.sh`, the
 latest release's `install.sh`; either address installs the same release.
+A deploy's pre-releases are never the latest
+([A development build on a server](upgrades.md#a-development-build-on-a-server)):
+`--prerelease` installs the newest release, pre-releases included, and any
+release's own `install.sh` installs that release:
+
+```sh
+curl -fsSL https://demi.sh/install.sh | sudo bash -s -- --prerelease
+curl -fsSL https://github.com/wspl/demi/releases/download/v0.1.22/install.sh | sudo bash
+```
+
+While no release is published, the first address answers 404 and only the
+second works.
 
 `setup` checks the machine, installs the few system packages the
 machine manager needs, fetches the newest release, writes the configuration,
@@ -44,10 +56,11 @@ uninstall.
 
 `install.sh` is an asset of every release, beside `demi-server-<target>` for
 the two Linux targets ([Release workflow](builds-and-releases.md#release-workflow)).
-It takes no parameter and does only what a shell must: it checks that it
-runs as root on Linux, picks the target from the machine's architecture,
-downloads that `demi-server` and the release's `SHA256SUMS` from the release
-it came from, checks the one against the other, installs it as
+It takes one parameter of its own, `--prerelease`, and does only what a
+shell must: it checks that it runs as root on Linux, picks the target from
+the machine's architecture, downloads that `demi-server` and the release's
+`SHA256SUMS` from the release it came from, or with `--prerelease` from the
+newest release, pre-releases included (below), checks the one against the other, installs it as
 `/usr/local/bin/demi-server`, and runs `demi-server setup` with the
 parameters it was given (`bash -s -- <parameters>`), its input the session's
 terminal, `/dev/tty`, when there is one, since its own input is the script.
@@ -92,6 +105,7 @@ and composes the command.
 | `--cloud-data <directory>` | The machine manager's state directory, on one filesystem. Default `/opt/demi/data/cloud`. |
 | `--cloud-limits on\|off` | Whether Clouds run under cgroup limits. Default `on`; a machine without the cgroup v2 controllers is refused unless it is `off`. |
 | `--version <version>` | The release to set up. Default the release of the running `demi-server`. |
+| `--prerelease` | Set up the newest release, pre-releases included, instead of the running `demi-server`'s. Not with `--version`. |
 | `--no-packages` | Install no system package: the operator installed e2fsprogs, bsdtar and nftables, on a distribution `setup` does not know ([Distributions](#distributions)). |
 | `--no-input` | Never ask, as without a terminal ([A person or an agent](#a-person-or-an-agent)). |
 

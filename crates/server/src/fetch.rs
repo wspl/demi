@@ -51,31 +51,38 @@ fn image_asset(version: &Version, architecture: &str) -> String {
     format!("demi-{version}-image-linux-{architecture}.tar")
 }
 
+/// A release as GitHub's API describes it, of which only the tag matters.
+#[derive(serde::Deserialize)]
+struct Release {
+    tag_name: String,
+}
+
+/// The most releases one page of GitHub's list gives.
+const PAGE: usize = 100;
+
 /// The newest release `source` offers. On GitHub that is the latest
-/// release, which is never a pre-release: a deploy's pre-release is
-/// installed only by its version (`upgrades.md` § A development build on a
-/// server), which [`fetch`] downloads by its tag as any release's.
-pub async fn newest(source: &Source) -> io::Result<Version> {
+/// release, which is never a pre-release, or with `prerelease` the highest
+/// version among all the repository's releases tagged `v<version>`, a
+/// deploy's pre-releases included (`upgrades.md` § The upgrade). A
+/// directory's newest is its highest version either way.
+pub async fn newest(source: &Source, prerelease: bool) -> io::Result<Version> {
     match source {
-        Source::GitHub => {
-            #[derive(serde::Deserialize)]
-            struct Latest {
-                tag_name: String,
+        Source::GitHub if prerelease => {
+            let mut tags = Vec::new();
+            for page in 1.. {
+                let releases: Vec<Release> =
+                    github(&format!("releases?per_page={PAGE}&page={page}")).await?;
+                let whole = releases.len() == PAGE;
+                tags.extend(releases.into_iter().map(|release| release.tag_name));
+                if !whole {
+                    break;
+                }
             }
-            let client = demi_shared_artifacts::client_following_redirects().map_err(io::Error::other)?;
-            let response = client
-                .get(format!("https://api.github.com/repos/{REPOSITORY}/releases/latest"))
-                .header("user-agent", "demi-server")
-                .header("accept", "application/vnd.github+json")
-                .send()
-                .await
-                .and_then(|response| response.error_for_status())
-                .map_err(|error| io::Error::other(error.without_url().to_string()))?;
-            let bytes = response
-                .bytes()
-                .await
-                .map_err(|error| io::Error::other(error.without_url().to_string()))?;
-            let latest: Latest = serde_json::from_slice(&bytes).map_err(io::Error::other)?;
+            highest(tags.iter().map(String::as_str))
+                .ok_or_else(|| io::Error::other(format!("{REPOSITORY} has no release tagged v<version>")))
+        }
+        Source::GitHub => {
+            let latest: Release = github("releases/latest").await?;
             let version = latest.tag_name.strip_prefix('v').ok_or_else(|| {
                 io::Error::other(format!("the newest release's tag {} names no version", latest.tag_name))
             })?;
@@ -96,6 +103,32 @@ pub async fn newest(source: &Source) -> io::Result<Version> {
             })
         }
     }
+}
+
+/// The highest version among `tags` that are `v<version>`; any other tag,
+/// such as the gVisor build's `runsc-release-*`, is no Demi release.
+pub fn highest<'a>(tags: impl IntoIterator<Item = &'a str>) -> Option<Version> {
+    tags.into_iter()
+        .filter_map(|tag| Version::parse(tag.strip_prefix('v')?).ok())
+        .max()
+}
+
+/// Reads `path` of the repository's GitHub API.
+async fn github<T: serde::de::DeserializeOwned>(path: &str) -> io::Result<T> {
+    let client = demi_shared_artifacts::client_following_redirects().map_err(io::Error::other)?;
+    let response = client
+        .get(format!("https://api.github.com/repos/{REPOSITORY}/{path}"))
+        .header("user-agent", "demi-server")
+        .header("accept", "application/vnd.github+json")
+        .send()
+        .await
+        .and_then(|response| response.error_for_status())
+        .map_err(|error| io::Error::other(error.without_url().to_string()))?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| io::Error::other(error.without_url().to_string()))?;
+    serde_json::from_slice(&bytes).map_err(io::Error::other)
 }
 
 /// Unpacks `version` into its release directory, unless it is there.

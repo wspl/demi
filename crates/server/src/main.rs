@@ -51,6 +51,9 @@ enum Action {
     /// the one named.
     Upgrade {
         version: Option<Version>,
+        /// Moves to the newest release, pre-releases included.
+        #[arg(long, conflicts_with = "version")]
+        prerelease: bool,
         /// A directory holding the release's assets instead of the
         /// repository's GitHub releases.
         #[arg(long, value_name = "DIRECTORY")]
@@ -169,7 +172,7 @@ fn act(layout: &Layout, command: Action) -> Result<(), Box<dyn std::error::Error
         return Err(hand_over(layout, &journal.to, "resume").into());
     }
     match command {
-        Action::Upgrade { version, from } => upgrade(layout, version, from),
+        Action::Upgrade { version, prerelease, from } => upgrade(layout, version, prerelease, from),
         Action::Rollback { yes } => rollback(layout, yes),
         Action::Move => {
             moving::start(layout, &Systemd, &own_version())?;
@@ -191,6 +194,7 @@ impl std::error::Error for moving::Failure {}
 fn upgrade(
     layout: &Layout,
     version: Option<Version>,
+    prerelease: bool,
     from: Option<PathBuf>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let source = match from {
@@ -204,7 +208,7 @@ fn upgrade(
     let cancel = CancellationToken::new();
     let version = match version {
         Some(version) => version,
-        None => runtime.block_on(fetch::newest(&source))?,
+        None => runtime.block_on(fetch::newest(&source, prerelease))?,
     };
     if version == current {
         println!("The server runs {version} already");
