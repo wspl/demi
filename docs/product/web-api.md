@@ -145,3 +145,16 @@ the blob as a download.
 
 When its [server release](../delivery/builds-and-releases.md#server-release)
 has a `web/`, the backend serves that built web app directory alongside the
+API and conversation sockets. The directory's `build.json`,
+`{ "build": "<id>" }`, which `vite build` writes, names the build; the
+backend reads it as it starts, refuses to start without it, and sends it in
+every snapshot as `webBuild`
+([A page of another build](web-application.md#a-page-of-another-build)). Extensionless HTML navigations
+fall back to index.html, enabling deep-page refresh. `index.html` and
+`build.json` are answered with `Cache-Control: no-cache` and an `ETag` of
+their content, so a browser or a cache in front of the backend asks again
+on every load and gets the new build's page even when its files are older
+than the old build's, as after a rollback; the hashed assets are immutable. Missing assets and
+`/api/*` misses remain 404. The product frontend builds separately and uses a
+Vite proxy during development; its fetch and WebSocket adapters connect the
+shared UI to this backend.
