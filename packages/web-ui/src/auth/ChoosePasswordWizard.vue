@@ -131,7 +131,7 @@ async function submit(): Promise<void> {
             name="password"
             focused
           />
-          <span class="text-[12px] leading-4 text-fg-subtle">{{ passwordHint() }}</span>
+          <span class="text-detail leading-4 text-fg-subtle">{{ passwordHint() }}</span>
         </label>
         <label class="flex flex-col gap-1.5 text-chrome text-fg-muted">
           {{ t('choose.confirm') }}

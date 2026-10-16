@@ -85,6 +85,6 @@ const surface = ref<InstanceType<typeof SessionSurface>>()
         />
       </div>
     </SessionSurface>
-    <footer class="shrink-0 py-2 text-center text-[12px] text-fg-subtle">{{ t('share.footer') }}</footer>
+    <footer class="shrink-0 py-2 text-center text-detail text-fg-subtle">{{ t('share.footer') }}</footer>
   </section>
 </template>

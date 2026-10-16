@@ -108,7 +108,7 @@ function submitCode(): void {
         <!-- While it starts, the body alone says so. -->
         <p
           v-if="phase.kind !== 'starting'"
-          class="mt-0.5 text-[13px] leading-5 text-fg-muted"
+          class="mt-0.5 text-explanation leading-5 text-fg-muted"
         >
           <template v-if="phase.kind === 'device'">{{ t('login.deviceHint') }}</template>
           <template v-else-if="phase.kind === 'code'">{{ t('login.codeHint') }}</template>
@@ -151,7 +151,7 @@ function submitCode(): void {
             :hint="t('login.copyLinkHint')"
             size="md"
           />
-          <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
+          <span class="flex items-center gap-1.5 text-detail text-fg-subtle">
             <IndeterminateSpinner :size="ICON_PX.in20" />
             {{ left ? t('login.waitingExpires', { left }) : t('login.waiting') }}
           </span>
@@ -192,7 +192,7 @@ function submitCode(): void {
         </div>
         <!-- The vendor's own words for a code it refused; the sign-in waits for another. -->
         <InlineError v-if="phase.error && !phase.submitted" :message="phase.error" />
-        <span class="flex items-center gap-1.5 text-[12px] text-fg-subtle">
+        <span class="flex items-center gap-1.5 text-detail text-fg-subtle">
           <IndeterminateSpinner :size="ICON_PX.in20" />
           <template v-if="phase.submitted">{{ t('login.signingIn') }}</template>
           <template v-else>{{ left ? t('login.waitingCodeExpires', { left }) : t('login.waitingCode') }}</template>

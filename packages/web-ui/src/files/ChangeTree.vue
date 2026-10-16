@@ -127,7 +127,7 @@ function tooltip(row: ChangeTreeRow): string {
       </div>
     </template>
     <template #after>
-      <div v-if="truncated" class="select-none px-2 py-2 text-[11px] text-fg-faint">
+      <div v-if="truncated" class="select-none px-2 py-2 text-caption text-fg-faint">
         {{ t('changes.truncated') }}
       </div>
     </template>

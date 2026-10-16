@@ -168,7 +168,7 @@ const emptyLabel = computed(() =>
             :key="row.conversationId"
             role="option"
             :aria-selected="index === current"
-            class="flex cursor-default select-none flex-col gap-0.5 rounded-md px-2.5 py-2"
+            class="flex cursor-default select-none flex-col gap-0.5 rounded-md px-2.5 py-2 phone:min-h-row phone:justify-center phone:py-2.5"
             :class="index === current ? 'bg-active' : ''"
             @mousemove="selected = index"
             @click="openRow(row)"
@@ -176,10 +176,10 @@ const emptyLabel = computed(() =>
             <div class="flex min-w-0 items-center gap-2">
               <span class="min-w-0 flex-1 truncate text-chrome text-fg-emphasis"><HighlightText :text="conversationTitle(row.title)" :ranges="row.titleRanges" /></span>
               <Tag v-if="row.archived">{{ t('archived') }}</Tag>
-              <RelativeTime class="shrink-0 text-[12px] text-fg-subtle" :timestamp="row.lastActiveAt" />
+              <RelativeTime class="shrink-0 text-detail text-fg-subtle" :timestamp="row.lastActiveAt" />
             </div>
             <!-- Two lines hold the backend's 160 characters, so the marked words stay in sight. -->
-            <p v-if="row.match" class="line-clamp-2 break-words text-[13px] leading-5 text-fg-muted">
+            <p v-if="row.match" class="line-clamp-2 break-words text-explanation leading-5 text-fg-muted">
               <HighlightText :text="row.match.text" :ranges="row.match.ranges" />
             </p>
           </div>

@@ -49,7 +49,7 @@ const emit = defineEmits<{
       <!-- A message of several lines, such as one per refused conversation, keeps its lines. -->
       <div
         v-if="message"
-        class="text-[12px] leading-4 whitespace-pre-line text-fg-muted"
+        class="text-detail leading-4 whitespace-pre-line text-fg-muted"
       >{{ message }}</div>
       <RequestIdLine v-if="requestId" class="text-fg-subtle" :request-id="requestId" />
       <Button

@@ -223,12 +223,14 @@ function save(): void {
             :description="editable ? t('modelDialog.reasoningDescription') : undefined"
             :compact="!editable"
           >
-            <template v-if="editable">
+            <!-- On a phone the efforts wrap rather than run past the row's start. -->
+            <span v-if="editable" class="flex justify-end gap-2 phone:flex-wrap">
               <button
                 v-for="effort in THINKING_EFFORTS"
                 :key="effort"
                 type="button"
-                class="h-6 cursor-default select-none rounded-md px-2 text-[12px] transition-colors duration-200 ease-out"
+                class="h-6 cursor-default select-none rounded-md px-2 text-control-sm transition-colors duration-200 ease-out phone:h-hit-sm phone:px-3"
+                data-drawn-target
                 :class="
                   draft.efforts.includes(effort)
                     ? 'bg-tint-accent text-on-accent'
@@ -238,7 +240,7 @@ function save(): void {
               >
                 {{ effortLabel(effort) }}
               </button>
-            </template>
+            </span>
             <span v-else class="text-chrome text-fg">{{
               draft.efforts.length ? draft.efforts.map(effortLabel).join(' · ') : t('modelDialog.none')
             }}</span>
@@ -299,14 +301,15 @@ function save(): void {
           </template>
           <div
             v-if="editable && draft.extensions?.length"
-            class="flex flex-wrap gap-1 px-4 py-3"
+            class="flex flex-wrap gap-1 px-4 py-3 phone:gap-2"
           >
             <Tag v-for="ext in draft.extensions" :key="ext">
               {{ ext }}
+              <!-- On a phone the × is a small icon button's 28 px, inside a tag a little taller than its text. -->
               <button
                 v-if="editable"
                 type="button"
-                class="ml-1 text-fg-subtle hover:text-fg"
+                class="ml-1 text-fg-subtle hover:text-fg phone:-my-1.5 phone:-mr-2 phone:ml-0 phone:size-hit-xs"
                 :aria-label="t('modelDialog.removeExtension', { ext })"
                 @click="
                   draft.extensions = (draft.extensions ?? []).filter(

@@ -29,7 +29,7 @@ defineProps<{
       >
         <header class="select-none">
           <h1 class="text-[22px] font-medium text-fg-emphasis">{{ title }}</h1>
-          <p class="mt-1 text-[13px] leading-5 text-fg-muted">{{ message }}</p>
+          <p class="mt-1 text-explanation leading-5 text-fg-muted">{{ message }}</p>
         </header>
         <div class="mt-8">
           <slot />

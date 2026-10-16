@@ -33,7 +33,7 @@ const emit = defineEmits<{
     :title="t('handoffPage.openingTitle')"
     :message="t('handoffPage.openingMessage')"
   >
-    <div class="flex items-center gap-2 text-[13px] text-fg-muted" role="status">
+    <div class="flex items-center gap-2 text-explanation text-fg-muted" role="status">
       <IndeterminateSpinner />
       {{ t('handoffPage.opening') }}
     </div>

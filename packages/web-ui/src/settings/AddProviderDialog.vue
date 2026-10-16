@@ -76,24 +76,27 @@ const results = computed(() =>
       >
         <button
           type="button"
-          class="flex h-10 w-full cursor-default select-none items-center gap-3 px-3 text-left hover:bg-hover"
+          class="flex h-10 w-full cursor-default select-none items-center gap-3 px-3 text-left hover:bg-hover phone:h-auto phone:min-h-row phone:py-1.5"
           @click="emit('addCompatible')"
         >
           <span
             class="inline-flex size-6 items-center justify-center rounded-md bg-overlay/8 text-fg-muted"
             ><Terminal :size="ICON_PX.in24"
           /></span>
-          <span class="min-w-0 flex-1 truncate text-chrome text-fg"
-            ><HighlightText :text="t('addProvider.compatible')" :query="query"
-          /></span>
-          <span class="shrink-0 truncate text-[12px] text-fg-subtle">{{ t('addProvider.compatibleHint') }}</span>
+          <!-- On a phone what the row is stands under its name, as a list's subtitle, so neither is cut short. -->
+          <span class="flex min-w-0 flex-1 items-center gap-3 phone:flex-col phone:items-start phone:gap-0.5">
+            <span class="min-w-0 truncate text-chrome text-fg phone:max-w-full"
+              ><HighlightText :text="t('addProvider.compatible')" :query="query"
+            /></span>
+            <span class="ml-auto shrink-0 truncate text-detail text-fg-subtle phone:ml-0 phone:max-w-full phone:shrink">{{ t('addProvider.compatibleHint') }}</span>
+          </span>
         </button>
       </div>
     </div>
     <AsyncRegion :state="load" :label="t('addProvider.loading')" @retry="emit('retry')">
       <div v-if="results.length">
         <div
-          class="select-none px-1 pb-1.5 text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
+          class="select-none px-1 pb-1.5 text-caption font-medium uppercase tracking-[0.04em] text-fg-subtle"
         >
           {{ t('addProvider.vendors') }}
         </div>
@@ -104,23 +107,25 @@ const results = computed(() =>
             v-for="v in results"
             :key="v.id"
             type="button"
-            class="flex h-10 w-full cursor-default select-none items-center gap-3 px-3 text-left hover:bg-hover"
+            class="flex h-10 w-full cursor-default select-none items-center gap-3 px-3 text-left hover:bg-hover phone:h-auto phone:min-h-row phone:py-1.5"
             @click="emit('add', v)"
           >
             <VendorMark :label="v.name" :src="v.logo" size="sm" />
-            <span class="min-w-0 flex-1 truncate text-chrome text-fg"
-              ><HighlightText :text="v.name" :query="query" />
-              <span
-                v-if="
-                  q &&
-                  !v.name.toLowerCase().includes(q) &&
-                  v.id.toLowerCase().includes(q)
-                "
-                class="ml-2 text-fg-subtle"
-              >
-                <HighlightText :text="v.id" :query="query" /> </span
-            ></span>
-            <Tag>{{ WIRE_API_LABELS[v.wireApi] }}</Tag>
+            <span class="flex min-w-0 flex-1 items-center gap-3 phone:flex-col phone:items-start phone:gap-0.5">
+              <span class="min-w-0 flex-1 truncate text-chrome text-fg phone:max-w-full"
+                ><HighlightText :text="v.name" :query="query" />
+                <span
+                  v-if="
+                    q &&
+                    !v.name.toLowerCase().includes(q) &&
+                    v.id.toLowerCase().includes(q)
+                  "
+                  class="ml-2 text-fg-subtle"
+                >
+                  <HighlightText :text="v.id" :query="query" /> </span
+              ></span>
+              <Tag>{{ WIRE_API_LABELS[v.wireApi] }}</Tag>
+            </span>
           </button>
         </div>
       </div>

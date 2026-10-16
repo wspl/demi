@@ -15,7 +15,7 @@ defineProps<{
 </script>
 
 <template>
-  <div class="flex min-w-0 items-center gap-0.5 text-[12px] leading-4">
+  <div class="flex min-w-0 items-center gap-0.5 text-detail leading-4">
     <span class="min-w-0 truncate select-text">{{ t('requestId', { id: requestId }) }}</span>
     <CopyButton :source="requestId" size="xs" />
   </div>

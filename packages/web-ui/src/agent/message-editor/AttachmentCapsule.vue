@@ -180,7 +180,7 @@ const preview = computed<
       <button
         v-if="failed"
         type="button"
-        class="-mr-1 flex size-4 shrink-0 items-center justify-center rounded text-on-danger hover:bg-tint-danger-strong"
+        class="-mr-1 flex size-4 shrink-0 items-center justify-center rounded text-on-danger hover:bg-tint-danger-strong phone:-my-1.5 phone:-mr-2 phone:size-hit-xs phone:[&>svg]:size-3.5"
         :aria-label="shared('common.retry')"
         @click.stop="emit('retry')"
       >

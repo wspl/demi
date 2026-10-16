@@ -49,7 +49,7 @@ watch(
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('verify.title') }}</h3>
-        <p class="mt-0.5 text-[13px] leading-5 text-fg-muted">{{ message }}</p>
+        <p class="mt-0.5 text-explanation leading-5 text-fg-muted">{{ message }}</p>
       </header>
       <VerifyForm :verification="verification" :email="email" />
     </div>

@@ -157,7 +157,7 @@ watch(handedOffTo, (name) => {
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
         <h3 class="text-[15px] font-medium text-fg-emphasis">{{ wording.title }}</h3>
-        <p v-if="step.kind === 'verify'" class="mt-0.5 text-[13px] leading-5 text-fg-muted">
+        <p v-if="step.kind === 'verify'" class="mt-0.5 text-explanation leading-5 text-fg-muted">
           {{ wording.confirm }}
         </p>
       </header>
@@ -182,14 +182,14 @@ watch(handedOffTo, (name) => {
           />
           <div v-else class="flex size-48 flex-col items-center justify-center gap-3 text-center" role="status">
             <CircleCheck :size="40" class="text-on-success" />
-            <p class="text-[13px] leading-5 text-fg">{{ wording.done(handedOffTo) }}</p>
+            <p class="text-explanation leading-5 text-fg">{{ wording.done(handedOffTo) }}</p>
           </div>
           <template v-if="handedOffTo === null">
-            <p v-if="left !== null" class="select-none text-center text-[13px] leading-5 text-fg-muted">
+            <p v-if="left !== null" class="select-none text-center text-explanation leading-5 text-fg-muted">
               {{ wording.scan }}
-              <span class="block text-[12px] tabular-nums text-fg-subtle">{{ t('handoff.expires', { left }) }}</span>
+              <span class="block text-detail tabular-nums text-fg-subtle">{{ t('handoff.expires', { left }) }}</span>
             </p>
-            <p v-else class="select-none text-center text-[13px] leading-5 text-fg-muted">{{ t('handoff.expired') }}</p>
+            <p v-else class="select-none text-center text-explanation leading-5 text-fg-muted">{{ t('handoff.expired') }}</p>
           </template>
         </div>
         </template>

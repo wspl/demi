@@ -109,7 +109,7 @@ const body = computed(() => {
   >
     <div class="flex flex-col gap-4 px-5 pt-5">
       <h3 class="pr-8 text-[15px] font-medium text-fg-emphasis">{{ title }}</h3>
-      <p class="text-[13px] leading-5 text-fg-muted">{{ body }}</p>
+      <p class="text-explanation leading-5 text-fg-muted">{{ body }}</p>
     </div>
     <template #footer>
       <Button @click="emit('skip')">{{ t('conflict.skip') }}</Button>

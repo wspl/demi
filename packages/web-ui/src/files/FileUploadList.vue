@@ -126,7 +126,7 @@ const FAILURES_LISTED = 8
               />
             </Tooltip>
           </div>
-          <div class="col-span-2 col-start-2 min-w-0 text-[11px] leading-4">
+          <div class="col-span-2 col-start-2 min-w-0 text-caption leading-4">
             <ProgressBar
               v-if="upload.state.phase === 'uploading'"
               class="my-1"

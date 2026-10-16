@@ -29,7 +29,7 @@ const emit = defineEmits<{
 
 <template>
   <div
-    class="group/heading mb-1.5 flex h-6 items-center pr-0.5 text-[11px] uppercase tracking-wide text-fg-subtle phone:h-9 phone:text-[13px]"
+    class="group/heading mb-1.5 flex h-6 items-center pr-0.5 text-[11px] uppercase tracking-wide text-fg-subtle phone:h-11 phone:text-[13px]"
   >
     <!-- The button starts where the rows' content does, so the label stays on the list's line. -->
     <button

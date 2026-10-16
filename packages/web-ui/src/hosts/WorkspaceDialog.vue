@@ -370,7 +370,7 @@ function selectDevice(id: string, close: () => void): void {
                   {{ t('project.browse') }}
                 </Button>
               </span>
-              <span :id="`${directoryId}-hint`" class="text-[12px] leading-4 text-fg-subtle">{{
+              <span :id="`${directoryId}-hint`" class="text-detail leading-4 text-fg-subtle">{{
                 projectName
                   ? t('project.called', { name: projectName })
                   : t('project.takesName')
