@@ -93,7 +93,8 @@ for moving to a new release.
 - **QR code and passkey sign-in**: Scan a code to sign in on your phone, or use
   Touch ID, Face ID or Windows Hello.
 - **Private cloud sandbox**: Every user gets their own Linux sandbox on your
-  server, isolated with gVisor.
+  server. It runs under gVisor, can't reach your server's services or your
+  private network, and can't see other users' sandboxes.
 - **Bring your own computers**: Connect macOS, Windows and Linux machines with
   a single command. No open ports needed.
 - **Multi-machine tasks**: Use several machines in one conversation, for
