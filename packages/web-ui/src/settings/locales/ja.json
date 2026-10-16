@@ -215,6 +215,14 @@
       "failsKeywords": "エラー",
       "permissionKeywords": "許可のリクエスト"
     },
+    "agentPage": {
+      "keywords": "軽量モデル,タイトル,高速モデル,haiku,flash,ターン",
+      "modelKeywords": "タイトルのモデル,haiku,flash,自動",
+      "sameProviderKeywords": "プライバシー,同じプロバイダー",
+      "sendKeywords": "ステア,キュー,Enter",
+      "restartKeywords": "再起動,アップデート,続行",
+      "retryKeywords": "使用量の上限,クォータ,リセット"
+    },
     "providers": {
       "keywords": "モデル,API キー,anthropic,openai,claude code,codex,ベース URL,カタログ"
     },

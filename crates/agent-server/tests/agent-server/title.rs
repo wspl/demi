@@ -3,16 +3,18 @@
 
 use std::num::NonZeroU32;
 
+use demi_agent_server::small_request::{SmallRequestError, run_small_request};
 use demi_agent_server::title::{
-    INPUT_MAX_CHARS, OUTPUT_CAP, TITLE_INSTRUCTION, TitleError, request_title, title_from_message,
-    title_from_response, title_input,
+    INPUT_MAX_CHARS, OUTPUT_CAP, TITLE_INSTRUCTION, title_from_message, title_from_response,
+    title_input, title_request,
 };
 use demi_agent_store::testing::test_model;
 use demi_provider_common::{
-    InferenceItem, PromptCache, ProviderEvent, ProviderFailure, UserPart,
+    InferenceItem, PromptCache, ProviderEvent, ProviderFailure, ProviderRuntime, RequestPurpose,
+    UserPart,
     testing::{ScriptedRuntime, Turn, event},
 };
-use demi_shared_types::{ThinkingCapability, ThinkingConfig, ThinkingSummary};
+use demi_shared_types::{ModelSelection, ThinkingConfig};
 use tokio_util::sync::CancellationToken;
 
 #[test]
@@ -94,35 +96,31 @@ async fn a_question_is_titled_not_answered() {
     }))]);
     let mut runtime = script.clone();
 
-    let title = request_title(
-        &mut runtime,
-        "c1",
-        "r1".into(),
-        &test_model(),
-        "What is **5 times 8**?",
-        CancellationToken::new(),
-    )
-    .await;
+    let title = titled(&mut runtime, &test_model(), "What is **5 times 8**?").await;
 
     assert_eq!(title, Ok(Some("5 times 8".into())));
 }
 
+/// The title a small request on `runtime` with `selection` answers for the
+/// first message `message`; none for a message without text, which asks
+/// nothing.
+async fn titled(
+    runtime: &mut dyn ProviderRuntime,
+    selection: &ModelSelection,
+    message: &str,
+) -> Result<Option<String>, SmallRequestError> {
+    let Some(request) = title_request(message) else {
+        return Ok(None);
+    };
+    let answer = run_small_request(runtime, "c1", "r1".into(), selection, request, CancellationToken::new()).await?;
+    Ok(answer.as_deref().and_then(title_from_response))
+}
+
 #[tokio::test(flavor = "local")]
-async fn a_request_reads_the_instruction_at_the_lowest_effort_and_ignores_thinking() {
+async fn a_request_reads_the_instruction_with_the_small_models_thinking_and_ignores_thinking_output() {
+    // The small model as the backend resolved it: thinking off.
     let mut selection = test_model();
-    selection.service_tier_id = Some("priority".into());
-    selection.model.thinking = vec![
-        ThinkingCapability::Budget {
-            min_budget_tokens: None,
-            max_budget_tokens: None,
-            default_budget_tokens: None,
-        },
-        ThinkingCapability::Effort {
-            efforts: vec!["high".into(), "minimal".into(), "medium".into()],
-            summaries: vec![ThinkingSummary::Auto],
-            default_summary: None,
-        },
-    ];
+    selection.thinking = Some(ThinkingConfig::Disabled {});
     let script = ScriptedRuntime::new([
         Turn::Events(vec![
             event::thinking("Let me see."),
@@ -146,36 +144,22 @@ async fn a_request_reads_the_instruction_at_the_lowest_effort_and_ignores_thinki
         ("  ", None),
     ] {
         selection.model.output_limit = model_limit;
-        let title = request_title(
-            &mut runtime,
-            "c1",
-            "r1".into(),
-            &selection,
-            message,
-            CancellationToken::new(),
-        )
-        .await;
-        titles.push(title);
+        titles.push(titled(&mut runtime, &selection, message).await);
     }
     let [titled, failed, empty] = <[_; 3]>::try_from(titles).unwrap();
 
     assert_eq!(titled, Ok(Some("Refresh token support".into())));
-    assert_eq!(failed, Err(TitleError::Failed("quota exhausted".into())));
+    assert_eq!(failed, Err(SmallRequestError::Failed("quota exhausted".into())));
     assert_eq!(empty, Ok(None));
     let requests = script.requests();
     assert_eq!(requests.len(), 2, "a message without text asks nothing");
     let request = &requests[0];
     assert_eq!(request.system_prompt, TITLE_INSTRUCTION);
     assert!(request.tools.is_empty());
-    assert_eq!(
-        request.thinking,
-        Some(ThinkingConfig::Effort {
-            effort: "minimal".into(),
-            summary: None
-        })
-    );
+    assert_eq!(request.thinking, Some(ThinkingConfig::Disabled {}));
     assert_eq!(request.service_tier_id, None);
     assert_eq!(request.prompt_cache, PromptCache::Off);
+    assert_eq!(request.purpose, RequestPurpose::Title);
     assert_eq!(request.max_output_tokens(), Some(OUTPUT_CAP));
     assert_eq!(request.turn_id, "title:r1");
     assert_eq!(requests[1].max_output_tokens(), NonZeroU32::new(256));

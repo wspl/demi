@@ -23,7 +23,7 @@ beforeEach(() => {
   setActivePinia(pinia)
   saved = { appearance: {}, shortcuts: {} }
   patches = []
-  catalog = { providers: [] }
+  catalog = { providers: [], smallModel: null }
   Object.defineProperty(navigator, 'languages', {
     configurable: true,
     get: () => ['zh-cn', 'en', 'zh-CN'],
@@ -138,7 +138,7 @@ test("a model or an entry the user turns off is saved in the user's preferences,
     providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
     warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
     availability: { type: 'available' }, models: [catalogModel('a'), catalogModel('b')],
-  }] }
+  }], smallModel: null }
   useProduct().start()
   channels.last().connect(productState({ preferences: saved, providers: [stub] }))
   const preferences = usePreferences()
@@ -231,4 +231,57 @@ test("a switch's change is written at once, and one behind a write in flight goe
   } finally {
     jest.useRealTimers()
   }
+})
+
+test('Settings › Agent names Automatic’s model from the catalog, read again when what Automatic depends on changes, and a choice shows at once until Automatic clears it', async () => {
+  let modelReads = 0
+  const haiku = {
+    providerId: 'p1',
+    model: { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', contextWindow: 200_000, outputLimit: null, thinking: [], acceptedExtensions: null },
+    thinking: null,
+    serviceTierId: null,
+  }
+  catalog = { providers: [], smallModel: haiku }
+  const fetchAsBefore = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) {
+      modelReads++
+    }
+    if (path === '/api/settings/preferences' && init?.method === 'PATCH') {
+      // The backend stores no choice for Automatic.
+      const { smallModel, ...body } = JSON.parse(String(init.body))
+      patches.push({ smallModel, ...body })
+      saved = { ...saved, ...body, ...(smallModel ? { smallModel } : {}) }
+      if (smallModel === null) {
+        delete saved.smallModel
+      }
+      return Response.json({ preferences: saved })
+    }
+    return fetchAsBefore(input, init)
+  }) as typeof fetch
+  const product = useProduct()
+  product.start()
+  channels.last().connect(productState({ preferences: saved }))
+  const preferences = usePreferences()
+  await waitFor(() => product.automaticSmallModel?.model.name === 'Claude Haiku 4.5')
+  expect(modelReads).toBe(1)
+
+  const chosen = { providerId: 'p1', modelId: 'claude-sonnet', thinkingEffort: 'low' }
+  preferences.update({ smallModel: chosen })
+  expect(preferences.smallModel).toEqual(chosen)
+  preferences.update({ smallModel: null })
+  expect(preferences.smallModel).toBeNull()
+  await waitFor(() => patches.length === 1)
+  expect(patches).toEqual([{ smallModel: null }])
+  expect(product.snapshot?.preferences.smallModel).toBeUndefined()
+
+  // A change Automatic does not depend on reads nothing; small requests
+  // kept on the conversation's provider, from another page, read the
+  // catalog again, which then names no model.
+  channels.last().send({ type: 'preferences', preferences: { ...saved, sendWhileRunning: 'queue' } })
+  catalog = { providers: [], smallModel: null }
+  channels.last().send({ type: 'preferences', preferences: { ...saved, smallModelSameProvider: true } })
+  await waitFor(() => product.automaticSmallModel === null)
+  expect(modelReads).toBe(2)
 })

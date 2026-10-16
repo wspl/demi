@@ -13,7 +13,6 @@ import {
 } from '@demicodes/web-ui/theme/productAppearance'
 import { galleryState } from '../gallery-state'
 import { productWould } from '../product-would'
-import { galleryMessages } from '../fixtures/send-while-running'
 import SettingsAccount from '@demicodes/web-ui/settings/SettingsAccount.vue'
 import SettingsArchived from '@demicodes/web-ui/settings/SettingsArchived.vue'
 import SettingsData from '@demicodes/web-ui/settings/SettingsData.vue'
@@ -34,6 +33,7 @@ import GalleryInstructions from './GalleryInstructions.vue'
 import GalleryCredentials from './GalleryCredentials.vue'
 import GalleryUsers from './GalleryUsers.vue'
 import GallerySubagents from './GallerySubagents.vue'
+import GalleryAgent from './GalleryAgent.vue'
 import GalleryAbout from './GalleryAbout.vue'
 import { slow } from '../fixtures/slow'
 
@@ -292,9 +292,6 @@ function resetShortcuts() {
     v-model:tone="tone"
     v-model:accent="accent"
     v-model:font-size="s.general.fontSize"
-    v-model:send-while-running="galleryMessages.sendWhileRunning"
-    v-model:resume-after-restart="galleryMessages.resumeAfterRestart"
-    v-model:resume-at-retry="galleryMessages.resumeAtRetry"
     :theme="s.general.theme"
     :overlay-store="appOverlayStore"
     @update:theme="setThemeChoice"
@@ -331,6 +328,8 @@ function resetShortcuts() {
     :permission="s.notifications.permission"
     :request-permission="askBrowser"
   />
+
+  <GalleryAgent v-else-if="tab === 'agent'" :state="s.smallModel" />
 
   <GallerySettingsProviders v-else-if="tab === 'models'" :state="state" />
 

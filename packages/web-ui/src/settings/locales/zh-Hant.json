@@ -215,6 +215,14 @@
       "failsKeywords": "錯誤,出錯",
       "permissionKeywords": "權限請求,請求許可"
     },
+    "agentPage": {
+      "keywords": "輕量模型,標題,快速模型,haiku,flash,輪次",
+      "modelKeywords": "標題模型,haiku,flash,自動",
+      "sameProviderKeywords": "隱私,同一供應商",
+      "sendKeywords": "引導,排隊,Enter",
+      "restartKeywords": "重新啟動,更新,繼續",
+      "retryKeywords": "用量限制,額度,重設"
+    },
     "providers": {
       "keywords": "模型,API 金鑰,anthropic,openai,claude code,codex,基礎 URL,目錄"
     },

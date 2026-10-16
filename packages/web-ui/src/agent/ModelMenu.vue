@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { t } from './locales/text'
 import { computed } from 'vue'
-import { Brain, CornerLeftUp, Cpu, Layers, Zap } from '@lucide/vue'
+import { Brain, Cpu, Layers, Zap } from '@lucide/vue'
+import type { Component } from 'vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
+import type { TitleText } from '../ui/ui-text'
 import type { ContextLimitChange } from './context-limit'
 import { modelSwitch, type ModelSettings, type ModelSettingsChange } from './model-selection'
 import { modelMenuRows } from './model-menu'
@@ -22,34 +24,39 @@ const props = defineProps<{
    */
   settings?: ModelSettings | null
   /**
-   * Offers Parent's model at the top, chosen while `settings` is none: for
-   * a subagent profile, whose children may infer with their parent's model.
+   * Offers a choice of no model of its own at the top, chosen while
+   * `settings` is none: Parent's Model for a subagent profile, whose
+   * children may infer with their parent's model, or Automatic for the
+   * small model.
    */
-  parentModel?: boolean
+  standIn?: { label: TitleText; icon: Component }
   /**
    * Leaves out the Context row, the user's limit, as a subagent profile's
    * editor does, whose Context is the profile's own.
    */
   withoutContext?: boolean
+  /** Leaves out Fast Mode, as the small model's menu does, whose requests use the default tier. */
+  withoutFast?: boolean
 }>()
 
 const emit = defineEmits<{
-  /** Parent's model was chosen. */
-  parentModel: []
+  /** The stand-in at the top was chosen. */
+  standIn: []
   /** One change of the model settings, naming only the parts it changes. */
   change: [change: ModelSettingsChange]
   /** The user's context limit on the selected model, for all their conversations with it. */
   contextLimit: [change: ContextLimitChange]
 }>()
 
-const rows = computed(() => modelMenuRows(props.providers, props.models, props.settings, props.parentModel === true))
+const rows = computed(() => modelMenuRows(props.providers, props.models, props.settings, props.standIn !== undefined))
 const context = computed(() => (props.withoutContext ? null : rows.value.context))
+const fast = computed(() => (props.withoutFast ? null : rows.value.fast))
 
 function setFast(enabled: boolean) {
-  const fast = rows.value.fast
-  if (!fast)
+  const tier = fast.value?.tier
+  if (!tier)
     return
-  emit('change', { serviceTierId: enabled ? fast.tier.id : null })
+  emit('change', { serviceTierId: enabled ? tier.id : null })
 }
 
 function setEffort(next: string) {
@@ -70,33 +77,33 @@ function selectModel(providerId: string, model: ModelInfo, selected: boolean) {
   emit('change', modelSwitch(props.settings, rows.value.selected?.model, providerId, model))
 }
 
-function selectParent() {
-  if (!rows.value.parent?.selected)
-    emit('parentModel')
+function selectStandIn() {
+  if (!rows.value.standIn?.selected)
+    emit('standIn')
 }
 </script>
 
 <template>
   <Menu>
-    <template v-if="rows.parent">
+    <template v-if="standIn && rows.standIn">
       <MenuItem
-        :icon="CornerLeftUp"
-        :label="t('models.parent')"
+        :icon="standIn.icon"
+        :label="standIn.label"
         choice
-        :is-selected="rows.parent.selected"
-        @select="selectParent"
+        :is-selected="rows.standIn.selected"
+        @select="selectStandIn"
       />
       <MenuDivider />
     </template>
     <MenuItem
-      v-if="rows.fast"
+      v-if="fast"
       :icon="Zap"
       :label="t('models.fast')"
-      @select="setFast(!rows.fast.on)"
+      @select="setFast(!fast.on)"
     >
       <template #suffix>
         <Switch
-          :model-value="rows.fast.on"
+          :model-value="fast.on"
           size="sm"
           @click.stop
           @update:model-value="setFast"
@@ -136,7 +143,7 @@ function selectParent() {
         />
       </template>
     </MenuItem>
-    <MenuDivider v-if="rows.fast || rows.reasoning || context" />
+    <MenuDivider v-if="fast || rows.reasoning || context" />
     <MenuItem :icon="Cpu" :label="t('models.model')" :value="rows.model.value">
       <template #submenu>
         <Menu>

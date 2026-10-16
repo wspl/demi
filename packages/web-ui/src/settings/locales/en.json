@@ -215,6 +215,14 @@
       "failsKeywords": "error",
       "permissionKeywords": "permission request"
     },
+    "agentPage": {
+      "keywords": "small model,title,fast model,haiku,flash,turn",
+      "modelKeywords": "title model,haiku,flash,automatic",
+      "sameProviderKeywords": "privacy,same provider",
+      "sendKeywords": "steer,queue,enter",
+      "restartKeywords": "restart,update,continue",
+      "retryKeywords": "usage limit,quota,reset"
+    },
     "providers": {
       "keywords": "models,api key,anthropic,openai,claude code,codex,base url,catalog"
     },

@@ -21,7 +21,7 @@ beforeEach(() => {
   pinia = createPinia()
   setActivePinia(pinia)
   channels = playChannels()
-  modelResponse = async () => Response.json({ providers: [] })
+  modelResponse = async () => Response.json({ providers: [], smallModel: null })
   vendorResponse = async () => Response.json({ subscriptions: [], vendors: [] })
   vendorReads = 0
   sessionReads = 0
@@ -579,7 +579,7 @@ test('failed catalog reads can retry, and a cached catalog survives a failed ref
   modelResponse = () => deferred.promise
   const retry = product.loadModels(true)
   expect(product.catalogLoad).toBe('loading')
-  deferred.resolve(Response.json({ providers: [] }))
+  deferred.resolve(Response.json({ providers: [], smallModel: null }))
   await retry
   expect(product.catalogLoad).toBe('ready')
   modelResponse = async () => {
@@ -621,7 +621,7 @@ test('conversations and the channel\'s messages reuse one catalog until it is a 
   let calls = 0
   modelResponse = async () => {
     calls++
-    return Response.json({ providers: [] })
+    return Response.json({ providers: [], smallModel: null })
   }
   try {
     const product = started()
@@ -643,7 +643,7 @@ test('conversations and the channel\'s messages reuse one catalog until it is a 
     const second = product.loadModels()
     expect(calls).toBe(2)
     expect(product.catalogLoad).toBe('ready')
-    pending.resolve(Response.json({ providers: [] }))
+    pending.resolve(Response.json({ providers: [], smallModel: null }))
     await Promise.all([first, second])
     await product.loadModels()
     expect(calls).toBe(2)
@@ -660,10 +660,10 @@ test('the first snapshot does not wait for the catalog; a sign-out leaves a late
   expect(product.catalogLoad).toBe('loading')
   const old = product.loadModels().catch(error => error)
   product.stop()
-  modelResponse = async () => Response.json({ providers: [] })
+  modelResponse = async () => Response.json({ providers: [], smallModel: null })
   started()
   await product.loadModels()
-  pending.resolve(Response.json({ providers: [] }))
+  pending.resolve(Response.json({ providers: [], smallModel: null }))
   expect(await old).toBeInstanceOf(Error)
   expect(product.catalogLoad).toBe('ready')
 })
@@ -679,10 +679,68 @@ test('a change of an entry loads the catalog again with a refresh, dropping a re
   }) as typeof fetch
   const product = started()
   const old = product.loadModels().catch(error => error)
-  modelResponse = async () => Response.json({ providers: [] })
+  modelResponse = async () => Response.json({ providers: [], smallModel: null })
   await product.reloadModels()
   expect(paths.filter((path) => path.startsWith('/api/models'))).toEqual(['/api/models', '/api/models?refresh=true'])
-  pending.resolve(Response.json({ providers: [] }))
+  pending.resolve(Response.json({ providers: [], smallModel: null }))
   expect(await old).toBeInstanceOf(Error)
   expect(product.catalogLoad).toBe('ready')
+})
+
+/** What Automatic resolves to in a catalog answer: the model `name`, or none. */
+function smallModelAnswer(name: string | null): Response {
+  const smallModel = name && {
+    providerId: 'p1',
+    model: { id: name, name, contextWindow: 200_000, outputLimit: null, thinking: [], acceptedExtensions: null },
+    thinking: null,
+    serviceTierId: null,
+  }
+  return Response.json({ providers: [], smallModel })
+}
+
+/** Catalog reads that each wait for the test to answer them, in order. */
+function heldCatalogReads() {
+  const reads: PromiseWithResolvers<Response>[] = []
+  modelResponse = () => {
+    const read = Promise.withResolvers<Response>()
+    reads.push(read)
+    return read.promise
+  }
+  return reads
+}
+
+const sameProvider = (on: boolean) =>
+  ({ type: 'preferences', preferences: { appearance: {}, shortcuts: {}, smallModelSameProvider: on } }) as const
+
+test('Only the Conversation’s Provider turned on and off again before the catalog answers shows what Automatic resolves to for off', async () => {
+  const reads = heldCatalogReads()
+  const product = started()
+  await waitFor(() => reads.length === 1)
+  reads[0]!.resolve(smallModelAnswer('Claude Haiku'))
+  await waitFor(() => product.automaticSmallModel?.model.name === 'Claude Haiku')
+
+  channels.last().send(sameProvider(true))
+  await waitFor(() => reads.length === 2)
+  channels.last().send(sameProvider(false))
+  // Asked while the switch was on, so no longer the answer.
+  reads[1]!.resolve(smallModelAnswer(null))
+  await waitFor(() => reads.length === 3)
+  expect(product.automaticSmallModel?.model.name).toBe('Claude Haiku')
+  reads[2]!.resolve(smallModelAnswer('Claude Haiku'))
+  await waitFor(() => product.catalogLoad === 'ready' && reads.length === 3)
+  expect(product.automaticSmallModel?.model.name).toBe('Claude Haiku')
+})
+
+test('Only the Conversation’s Provider turned on during the first catalog read shows Automatic alone', async () => {
+  const reads = heldCatalogReads()
+  const product = started()
+  await waitFor(() => reads.length === 1)
+  channels.last().send(sameProvider(true))
+  // Asked while the switch was off.
+  reads[0]!.resolve(smallModelAnswer('Claude Haiku'))
+  await waitFor(() => reads.length === 2)
+  expect(product.automaticSmallModel).toBeNull()
+  reads[1]!.resolve(smallModelAnswer(null))
+  await waitFor(() => product.catalogLoad === 'ready')
+  expect(product.automaticSmallModel).toBeNull()
 })

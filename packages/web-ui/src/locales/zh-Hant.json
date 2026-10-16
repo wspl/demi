@@ -2,7 +2,7 @@
   "settings": {
     "general": {
       "title": "一般",
-      "description": "語言、外觀和訊息。",
+      "description": "語言和外觀。",
       "appearance": "外觀",
       "language": "語言",
       "system": "系統",
@@ -12,19 +12,30 @@
       "tone": "色調",
       "accent": "強調色",
       "textSize": "訊息文字大小",
-      "messages": "訊息",
-      "sendWhileRunning": "智慧體執行時按 Enter",
-      "sendWhileRunningDescription": "「引導」會將訊息傳送給進行中的輪次，「加入佇列」會等它結束。{keys} 則使用另一種方式。",
-      "resumeAfterRestart": "Demi 重新啟動後繼續",
-      "resumeAfterRestartDescription": "輪次因 Demi 重新啟動（例如更新）而停止時，在重新啟動後繼續。",
-      "resumeAtRetry": "使用上限重設後繼續",
-      "resumeAtRetryDescription": "輪次因使用上限而停止時，在上限重設後繼續。",
       "preview": {
         "title": "預覽",
         "firstLine": "這個大小的文字，",
         "secondLine": "一行接一行。",
         "button": "按鈕"
       }
+    },
+    "agent": {
+      "title": "智慧體",
+      "description": "輕量模型和訊息。",
+      "smallModel": "輕量模型",
+      "model": "模型",
+      "modelDescription": "用於撰寫對話標題。「自動」會從你的供應商中選擇一款快速模型。",
+      "automatic": "自動",
+      "automaticResolved": "自動（{model}）",
+      "sameProvider": "僅用對話的供應商",
+      "sameProviderDescription": "輕量請求只傳送到對話所用的供應商。",
+      "messages": "訊息",
+      "sendWhileRunning": "智慧體執行時按 Enter",
+      "sendWhileRunningDescription": "「引導」會將訊息傳送給進行中的輪次，「加入佇列」會等它結束。{keys} 則使用另一種方式。",
+      "resumeAfterRestart": "Demi 重新啟動後繼續",
+      "resumeAfterRestartDescription": "輪次因 Demi 重新啟動（例如更新）而停止時，在重新啟動後繼續。",
+      "resumeAtRetry": "使用上限重設後繼續",
+      "resumeAtRetryDescription": "輪次因使用上限而停止時，在上限重設後繼續。"
     }
   },
   "appearance": {

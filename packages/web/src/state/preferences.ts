@@ -23,10 +23,11 @@ import { DEFAULT_ACCENT, DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/
  * `preferences` with what `patch` changes, as the backend applies it
  * (`web-api-settings.md` § User preferences): appearance keys merge, a shortcut set
  * to null goes back to its default, a context limit of null leaves the
- * model's full window, and every other field replaces the stored one.
+ * model's full window, a small model of null goes back to Automatic, and
+ * every other field replaces the stored one.
  */
 function withPatch(preferences: Preferences, patch: PreferencesPatch): Preferences {
-  const { appearance, shortcuts, contextLimit, ...fields } = patch
+  const { appearance, shortcuts, contextLimit, smallModel, ...fields } = patch
   const next: Preferences = {
     ...preferences,
     ...fields,
@@ -40,6 +41,12 @@ function withPatch(preferences: Preferences, patch: PreferencesPatch): Preferenc
     } else if (keys !== undefined) {
       next.shortcuts[key] = keys
     }
+  }
+  // Null goes back to Automatic, which is no stored choice.
+  if (smallModel === null) {
+    delete next.smallModel
+  } else if (smallModel !== undefined) {
+    next.smallModel = smallModel
   }
   if (contextLimit) {
     const { providerId, modelId, tokens } = contextLimit
@@ -110,6 +117,10 @@ export const usePreferences = defineStore('preferences', () => {
    * rotation); absent means no.
    */
   const multiAccountWarned = computed(() => product.snapshot?.preferences.multiAccountWarned ?? false)
+  /** The small model the user chose (`models.md` § Small model); null for Automatic. */
+  const smallModel = computed(() => product.snapshot?.preferences.smallModel ?? null)
+  /** Whether small requests stay on the conversation's provider; absent means no. */
+  const smallModelSameProvider = computed(() => product.snapshot?.preferences.smallModelSameProvider ?? false)
 
   /**
    * Whether the user turned the provider entry `providerId` off in
@@ -361,6 +372,8 @@ export const usePreferences = defineStore('preferences', () => {
     resumeAtRetry,
     resumeAfterRestart,
     multiAccountWarned,
+    smallModel,
+    smallModelSameProvider,
     contextLimit,
     setContextLimit,
     hidesProvider,

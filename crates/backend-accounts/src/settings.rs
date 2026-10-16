@@ -64,8 +64,9 @@ fn canonical(locale: BrowserLocale) -> Result<BrowserLocale, LocaleError> {
 
 /// `preferences` with `patch` applied: a field the patch holds replaces the
 /// saved one, the lists of hidden entries and models whole, a `null`
-/// shortcut removes that override, a context limit changes that one
-/// model's, and everything the patch leaves out stays.
+/// shortcut removes that override, a `null` small model goes back to
+/// Automatic, a context limit changes that one model's, and everything the
+/// patch leaves out stays.
 pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) -> Preferences {
     if let Some(appearance) = patch.appearance {
         let saved = &mut preferences.appearance;
@@ -103,6 +104,12 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
     if let Some(hidden) = patch.hidden_models {
         preferences.hidden_models = hidden;
     }
+    if let Some(small_model) = patch.small_model {
+        preferences.small_model = small_model;
+    }
+    preferences.small_model_same_provider = patch
+        .small_model_same_provider
+        .or(preferences.small_model_same_provider);
     if let Some(change) = patch.context_limit {
         set_context_limit(&mut preferences.context_limits, change);
     }
