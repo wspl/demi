@@ -205,7 +205,12 @@ databases migrate, and the first formal release starts it again
 ## The upgrade
 
 `demi-server upgrade` without a version moves to the newest published
-release; `demi-server upgrade 0.2.0` names one. `--from <directory>` takes
+release, `--prerelease` to the newest release a deploy's pre-releases
+included, and `demi-server upgrade 0.2.0` names one. The newest release is the
+highest version among the repository's releases tagged `v<version>`, which
+`releases/latest` gives for published ones and the list of releases for
+all; a release of another tag, such as the gVisor build's, is no Demi
+release. `--from <directory>` takes
 the assets from a directory instead of the repository's GitHub releases, as a
 developer's build or a server without internet access provides them. An
 older version than the current one is refused: going back is a
