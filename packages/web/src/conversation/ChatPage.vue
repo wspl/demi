@@ -82,7 +82,7 @@ watch(
 )
 onUnmounted(() => void store.activate(null))
 // The chat's own address with no conversation open starts a new one, an
-// immediately typeable draft, as New does (`product.md` § Conversations and
+// immediately typeable draft, as New does (`conversations.md` § Conversations and
 // projects). Settings opened by a link over that address leave it as it is,
 // since moving the address would close them.
 watch(
@@ -95,7 +95,7 @@ watch(
   { immediate: true },
 )
 // A conversation deleted while the page shows it, by this page or another,
-// gives way to a new one (`product.md` § Conversations and projects). Under
+// gives way to a new one (`conversations.md` § Conversations and projects). Under
 // open settings the address waits until they close, since moving it would
 // close them.
 watch(

@@ -64,7 +64,7 @@ const conversations = useConversations()
 const pluginSettings = usePluginSettings()
 const router = useRouter()
 const lifetime = new AbortController()
-/** The rail lists Users for the master and admins only (`product.md` § User system). */
+/** The rail lists Users for the master and admins only (`users.md` § User system). */
 const withUsers = computed(() => withUsersSection(settingsSections(), product.snapshot?.user.role ?? 'user'))
 const sections = computed(() =>
   withPluginSections(withUsers.value, PLUGIN_PAGES, (plugin) =>

@@ -49,7 +49,7 @@ over the manager's Unix socket.
 | `edge` | `backend-http` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and web app asset routes, runner acceptance, and the byte copies of file transfers, pipes and user streams | [Web API](../product/web-api.md) |
 | `shard` | `backend-user-shard` | Shard threads, each user's shard, calls into it, the shared services every shard is given, socket adoption and the page socket both of a page's sockets are served through | [Runtime model](#runtime-model) |
 | `config` | `demi-backend` | The typed configuration, validated at startup, and the instance secret with the keys derived from it | [Configuration](#configuration) |
-| `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences and subagent settings | [Authentication and ownership](#authentication-and-ownership), [Product](../product/product.md#user-system), [Web API](../product/web-api.md#user-preferences) |
+| `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences and subagent settings | [Authentication and ownership](#authentication-and-ownership), [Product](../product/users.md#user-system), [Web API](../product/web-api.md#user-preferences) |
 | `sync` | `backend-page-sync`, `backend-user-shard` | The registry that marks changes on each user's channels (`backend-page-sync`); the pages' synchronization channels with the product state and the parts that changed (`backend-user-shard`) | [Page synchronization](#page-synchronization) |
 | `conversation` | `backend-user-shard` | Agent-tree hosting with the agent server's dependencies, the product's instructions and the execution context source, frame scoping, attachment references, history and Fork, summaries and titles, the Claude Code CLI's work on the Claude Code machine, and the provider test | [Sessions and targets](../execution/sessions-and-targets.md) |
 | `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the installation of the plugins' Host directories before a job, the product's `demi host` and `demi attachment` groups | [Host operations](../execution/sessions-and-targets.md#host-operations) |
@@ -199,7 +199,7 @@ page                                    backend
 
 A handoff code opens the account that made it on a phone, in the phone's
 own session of that account when it has one, else in a new one
-([User system](../product/product.md#user-system)):
+([User system](../product/users.md#user-system)):
 
 ```
 laptop page                        backend                         phone
@@ -337,7 +337,7 @@ requests carry the device token as a bearer token.
 [Runner](../execution/runner.md#connection-and-identity) defines the
 connection itself.
 
-[Instance mode](../product/product.md#instance-mode-shared-vs-isolated)
+[Instance mode](../product/users.md#instance-mode-shared-vs-isolated)
 controls provider ownership. Every provider lookup, catalog, configuration
 route, and inference resolution uses the same scope.
 
@@ -700,7 +700,7 @@ the same flag.
 | `DEMI_BACKEND_PUBLIC_URL` | The URL at which browsers and paired runners reach the backend: installers embed it, the page's install command fetches them from it, and a local store's downloads are on it. Required. The machine manager reads it too, as the URL every Cloud's boot record names. | [Public URL and listening address](#public-url-and-listening-address) |
 | `DEMI_MACHINE_MANAGER_SOCKET` | The machine manager's Unix socket, which the manager listens on and the backend connects to. Default `/run/demi-cloud/machines.sock`. | [Cloud setup](../cloud/setup.md#configuration) |
 | `DEMI_BACKEND_RUNNER_SOCKET` | The Unix socket the backend serves its Clouds' runners on, and whose directory the machine manager mounts into each Cloud. Default `/run/demi-backend/runners.sock`. | [Backend socket](../cloud/managed-hosts.md#backend-socket) |
-| `DEMI_INSTANCE_MODE` | `shared` or `isolated`. Required: whoever deploys decides it, and nothing chooses for them. | [Product](../product/product.md#instance-mode-shared-vs-isolated) |
+| `DEMI_INSTANCE_MODE` | `shared` or `isolated`. Required: whoever deploys decides it, and nothing chooses for them. | [Product](../product/users.md#instance-mode-shared-vs-isolated) |
 | `DEMI_STORAGE` | `local` or `s3`: where the one object store lives. Default `local`. With `s3`, the `DEMI_S3_*` settings name the bucket. | [Storage](storage.md#the-object-store) |
 | `DEMI_INSTANCE_SECRET` | The instance secret as 64 hexadecimal digits. Optional: generated into the data directory otherwise. | [Storage](storage.md#passwords-and-credentials-at-rest) |
 | `DEMI_CLAUDE_RELEASES_URL` | The Claude Code distribution whose newest release the CLI on each Cloud follows. Default `https://downloads.claude.ai/claude-code-releases`, the vendor's. | [Claude Code](../providers/claude-code.md#which-version) |

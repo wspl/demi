@@ -62,7 +62,7 @@ impl dyn HostShard + '_ {
 /// the first free `name-2.ext`, `name-3.ext` and so on, which the write
 /// itself takes (`runner.md` § Host operations), and answers the absolute
 /// path. A file of the same bytes under one of those names is the
-/// attachment already there, and is not written again (`product.md`
+/// attachment already there, and is not written again (`composer.md`
 /// § Attachments). Nothing is overwritten, and what is written stays, so the
 /// path a transcript names stays readable. The number belongs to the path
 /// alone: the attachment keeps `file_name`.

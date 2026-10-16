@@ -199,7 +199,7 @@ before the third, 4 before the fourth. Before each wait, the client receives `re
 attempt number, the delay, the code and the diagnostics. The turn stays in its
 streaming stage while it waits, so steers keep being accepted, and Stop ends
 the wait. The product shows the whole wait as one Requesting row
-([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
 
 A request refused as too large is never sent again as it was: the same
 request would be refused again. The attempt left nothing in the transcript,
@@ -238,7 +238,7 @@ turn ran the pass, and a turn it ended is unfinished like any other.
 The last turn is unfinished when the record that ended it is an `error`
 block (something broke) or an `abort` block (the user stopped it); any other
 end means it finished. The product offers recovery from that record
-([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
 Only an action that began a turn, that is, wrote into the transcript, can
 leave such a record, and a compaction leaves none:
 
@@ -259,7 +259,7 @@ leave such a record, and a compaction leaves none:
   and no later call of the turn ran on that Host, the session appends an
   `error` block of Demi's own, cause `host_offline` with the device, after
   the agent's last words, so the turn offers Resume
-  ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+  ([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
   Resume continues it with a `resume` block whose reason says where the
   turn now runs: "MacBook Pro is back online. Continue from where you left
   off.", or, after the user moved the conversation meanwhile, "This
@@ -406,7 +406,7 @@ unfinished.
 
 The product offers `resume` in one control above the composer, labeled Resume
 after an error and Continue after the user's Stop
-([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
 A turn the backend shut down, or that a crash interrupted, ends with an `error`
 block with the code `interrupted`
 ([Dispose and restore](runtime.md#dispose-and-restore)), and `resume` drops it

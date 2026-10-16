@@ -21,7 +21,7 @@ import VerifyForm from './VerifyForm.vue'
 import { useVerification } from './verification'
 
 /**
- * Hand Off to Your Phone (`product.md` § User system). Opening it asks the
+ * Hand Off to Your Phone (`users.md` § User system). Opening it asks the
  * host for a code; when the backend wants the user to confirm it is them
  * first, the confirmation step comes before it: the password, red with
  * Required or the host's sentence under it as other forms are, or Use

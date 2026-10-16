@@ -7,7 +7,7 @@ import ConfirmDialog from '../ui/ConfirmDialog.vue'
 import type { Action } from '../ui/operations'
 
 /**
- * The question before conversations are deleted for good (`product.md`
+ * The question before conversations are deleted for good (`conversations.md`
  * § Conversations and projects): one is named in the title, several are
  * counted. The body says what goes with them, that it cannot be undone, and
  * that the files they changed in their projects stay. Delete is the

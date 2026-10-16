@@ -1,5 +1,5 @@
 //! A conversation's Workflow menu (`subagents.md` § Workflows of a
-//! project, `product.md` § A conversation's workflow): `GET
+//! project, `conversations.md` § A conversation's workflow): `GET
 //! /conversations/:id/workflows` lists the workflows of its working
 //! directory with what the page watches to hear of a change, and `GET
 //! /devices/:id/workflows?directory=` those of a new conversation's

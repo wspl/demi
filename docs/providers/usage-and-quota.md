@@ -68,7 +68,7 @@ says so ([Vendor quota](#vendor-quota)).
 - **Every call.** Every call a conversation makes passes the same metered
   runtime: the turns of its root session and of its subagents, their
   continuations and automatic retries, compaction, and title requests
-  ([Conversation titles](../product/product.md#conversation-titles)). A run
+  ([Conversation titles](../product/conversations.md#conversation-titles)). A run
   of several calls, such as a Claude Code run in which the CLI calls tools,
   writes one row per call: the CLI's stream gives each call's
   `message_start` and `message_delta`, read as the run's response usage is
@@ -94,7 +94,7 @@ says so ([Vendor quota](#vendor-quota)).
   order each pair was first used, with the number of calls and the sum of
   each token count. Each user sees their own totals; on a shared instance an
   administrator also sees the instance's totals per user
-  ([Instance mode](../product/product.md#instance-mode-shared-vs-isolated),
+  ([Instance mode](../product/users.md#instance-mode-shared-vs-isolated),
   [Web API](../product/web-api.md#resource-index)).
 - **Kept** as long as the account that made the calls; deleting a
   conversation keeps its rows ([Storage](../backend/storage.md#control-records)).
@@ -117,7 +117,7 @@ ones leave the 60-second window.
   which is distinct from a vendor's `rate_limit`: the agent does not retry it
   by itself ([Retries](../agent/failures-and-recovery.md#retries)), so the turn
   stops with the failure, and the user can
-  [resume it](../product/product.md#recovering-an-unfinished-turn) later.
+  [resume it](../product/turns.md#recovering-an-unfinished-turn) later.
 - **A ceiling, not a budget.** The limit is generous: it stops runaway loops
   and abuse, and it does not price use. Demi enforces no token or spending
   budget per user, and a quota snapshot is information, not a limit.

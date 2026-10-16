@@ -13,7 +13,7 @@ export type ListEntry =
     id: string
   }
 
-/** The sidebar's two groups, each folding under its label (`product.md` § Conversations and projects). */
+/** The sidebar's two groups, each folding under its label (`conversations.md` § Conversations and projects). */
 export const SIDEBAR_GROUPS = ['conversations', 'projects'] as const
 export type SidebarGroup = (typeof SIDEBAR_GROUPS)[number]
 

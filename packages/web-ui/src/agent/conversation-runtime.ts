@@ -153,7 +153,7 @@ export class ConversationRuntime {
   }
 
   /**
-   * Steers the running turn with a message (`product.md` § Steer or queue);
+   * Steers the running turn with a message (`turns.md` § Steer or queue);
    * resolves once the session holds it as a pending steer. A steer the
    * session refuses, because its turn is ending or nothing runs, is sent as
    * a message instead, with the same id and no error. A connection lost
@@ -308,7 +308,7 @@ export class ConversationRuntime {
 
   /**
    * Removes a steer or a queued message that waits for the agent
-   * (`product.md` § Steer or queue); resolves once the session answers it
+   * (`turns.md` § Steer or queue); resolves once the session answers it
    * removed, and rejects with `RemovalRefusedError` when the session answers
    * that the message had gone on (`runtime.md` § Pending steers). A
    * connection lost before the answer fails nothing: once the conversation
@@ -351,7 +351,7 @@ export class ConversationRuntime {
   }
 
   /**
-   * Sends a queued message now (`product.md` § Steer or queue): the running
+   * Sends a queued message now (`turns.md` § Steer or queue): the running
    * turn ends at once without stopping its commands, and the message runs
    * next.
    */
@@ -361,7 +361,7 @@ export class ConversationRuntime {
   }
 
   /**
-   * Delivers a pending steer now (`product.md` § Steer or queue): the agent's
+   * Delivers a pending steer now (`turns.md` § Steer or queue): the agent's
    * running call returns at once with its command still running, and the
    * turn goes on with the steer.
    */
@@ -426,7 +426,7 @@ export class ConversationRuntime {
   /**
    * Lets the connection go, and opens none until `connect`, keeping all the
    * conversation shows, as an archived conversation does, whose socket the
-   * backend closes (`product.md` § Conversations and projects). A
+   * backend closes (`conversations.md` § Conversations and projects). A
    * connection the runtime was trying to bring back stops being tried: the
    * transcript it holds is what it shows.
    */

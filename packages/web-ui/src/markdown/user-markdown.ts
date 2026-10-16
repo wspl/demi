@@ -3,7 +3,7 @@ import { Lexer, type Token } from 'marked'
 import { markdownReader } from './reader'
 
 // A user message's Markdown and the editor document that shows it, both ways
-// (`product.md` § Writing a message). The message is lines: every line break
+// (`composer.md` § Writing a message). The message is lines: every line break
 // is kept as typed, a fenced code block is the only block, and each line reads
 // only the inline constructs the dialect below keeps.
 

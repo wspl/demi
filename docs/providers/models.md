@@ -182,7 +182,7 @@ account. A vendor entry's address is never missing: it uses its vendor's
 ([Endpoints](providers.md#endpoints)). The page knows whether a key is saved
 from the entry's `hasApiKey`, and shows the masked key only then. What it
 lacks is shown plainly, never in red, since nothing failed
-([Models & providers](../product/product.md#provider-management)): an empty key
+([Models & providers](providers.md#provider-management)): an empty key
 field, *No models yet* with Add Model, and a subscription's Sign In row.
 
 An incomplete entry wears the yellow dot in the providers list, the same
@@ -467,7 +467,7 @@ continuations after the user switches models within one provider: a provider
 runtime never keeps the first model's limit.
 
 A request may also cap its own output. A title request asks for at most 4,096
-tokens ([Conversation titles](../product/product.md#conversation-titles)); a
+tokens ([Conversation titles](../product/conversations.md#conversation-titles)); a
 turn sets no cap. The field the vendor receives, in the table below, carries
 the lower of the model's limit and the cap, and the cap alone when the model
 has no limit. The cap belongs to the request, not to the model: a configured
@@ -664,7 +664,7 @@ applies when it explains why a file was not sent. For example,
 `demi file view shot.png` shows the image to the model only when the model
 accepts `png` and its provider carries an image in a tool result
 ([Media the model views](../agent/runtime.md#what-demi-file-view-shows)). Native media beside a
-message's attachment follows [Attachments](../product/product.md#attachments).
+message's attachment follows [Attachments](../product/composer.md#attachments).
 After a model switch, the history can hold media the new model does not
 accept; each request replays those as text
 ([Replay](../agent/runtime.md#replay)).

@@ -9,7 +9,7 @@ const BLOCKS = new Set(['paragraph', 'heading', 'code', 'blockquote', 'list', 'l
 /**
  * An agent's message as the words it shows, on one line, without its Markdown
  * syntax: for a place that says what a message holds in plain text, such as a
- * notification (`product.md` § Notifications). HTML shows nothing, as the page
+ * notification (`turns.md` § Notifications). HTML shows nothing, as the page
  * does not render it.
  */
 export function markdownPlainText(markdown: string): string {

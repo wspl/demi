@@ -12,7 +12,7 @@ import type { SavedRow } from './saved'
 
 /**
  * The list of messages saved for later under the composer
- * (`product.md` § Saved for later), about four
+ * (`conversations.md` § Saved for later), about four
  * rows tall and scrolling within; a fifth row shows half, so the list reads
  * as one that goes on. Each row is a menu row: its first line and, when the
  * message has files, their count, with no time; pressing it edits the

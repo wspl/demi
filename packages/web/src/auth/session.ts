@@ -26,7 +26,7 @@ type SessionState =
   | { status: 'passkeyStep'; user: User }
   /**
    * The account is signed in and still to choose its own password, which
-   * nothing else of the product opens before (`product.md` § User system):
+   * nothing else of the product opens before (`users.md` § User system):
    * the wizard asks, and `passwordChosen` ends the state.
    */
   | { status: 'choosingPassword'; user: User }

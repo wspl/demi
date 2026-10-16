@@ -21,7 +21,7 @@ export interface PendingSubmissionState {
   /**
    * How it was sent, which says what it will be: the next message, a steer
    * waiting for the running turn, or a message in the queue
-   * (`product.md` § Steer or queue).
+   * (`turns.md` § Steer or queue).
    */
   way: SendWay
   text: string

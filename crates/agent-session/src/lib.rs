@@ -524,7 +524,7 @@ impl SessionShared {
     /// Holds the events of the changes from now on until `release_events`:
     /// a response that requested no tool may have ended the turn, whose end
     /// reaches clients as one change, the response's last text with the
-    /// phase that goes idle after the closing save (`product.md` § Following
+    /// phase that goes idle after the closing save (`turns.md` § Following
     /// the agent's work).
     fn hold_events(&self) {
         self.bus.hold();

@@ -38,7 +38,7 @@ seconds of opening. Besides its token, version and platform, the hello names
 the Host's operating system with its release, such as `Ubuntu 26.04` or
 `macOS 26.5`, on Linux its distribution's os-release `ID`, such as `ubuntu`
 (the logo of the device's mark, [Conversations and
-projects](../product/product.md#conversations-and-projects)), its
+projects](../product/conversations.md#conversations-and-projects)), its
 architecture, such as `x86_64`, and, read once at the
 runner's start without a shell, its kernel's name and release (`uname -s`,
 `uname -r`) and the `SHELL` of its environment, which the Claude Code

@@ -113,7 +113,7 @@ export function createConversationUploads(
   }
 
   /**
-   * Waits until a file of a sent message is uploaded (`product.md` § Writing
+   * Waits until a file of a sent message is uploaded (`composer.md` § Writing
    * a message): the upload under way, or a new one of a file whose upload
    * failed, as Retry asks. Rejects when the upload fails, or when the file
    * has no upload and no bytes to make one, so the message is not delivered

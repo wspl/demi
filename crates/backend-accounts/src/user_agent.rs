@@ -1,6 +1,6 @@
 //! The browser and system a request's User-Agent names, which name a
 //! signed-in browser and a passkey no password manager names
-//! (`product.md` § User system).
+//! (`users.md` § User system).
 
 /// The browser and system a User-Agent names, such as `Safari on iPhone`:
 /// their families, in the order that tells them apart (Edge's names Chrome

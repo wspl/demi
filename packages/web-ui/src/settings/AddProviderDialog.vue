@@ -14,8 +14,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { WIRE_API_LABELS, type SettingsVendor } from './types'
 
 /**
- * Adding an API-key provider is one pick of two kinds (`product.md` § Models
- * & providers), and the pick creates the entry at once, with no question
+ * Adding an API-key provider is one pick of two kinds (`providers.md` § Provider management), and the pick creates the entry at once, with no question
  * before it (`models.md` § A provider is in the list from the start). A
  * compatible API, for any proxy or server that speaks one of the protocols,
  * comes first; its protocol, endpoint and key are set on its page. A vendor,

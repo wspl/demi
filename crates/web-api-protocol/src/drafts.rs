@@ -13,7 +13,7 @@ use serde_with::rust::unwrap_or_skip;
 use crate::ids::AttachmentId;
 
 /// The mark a draft's text holds where each file's capsule stands, the one
-/// the composer's editor writes (`product.md` § Attachments).
+/// the composer's editor writes (`composer.md` § Attachments).
 pub const ATTACHMENT_MARK: char = '\u{FFFC}';
 
 /// The most bytes a draft's text and files take as stored.

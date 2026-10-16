@@ -501,7 +501,7 @@ async fn phone_spends_code(backend: &TestBackend, laptop: &Session, held: Option
     }
 }
 
-/// A code's sign-in is the phone's confirmation (`product.md` § User
+/// A code's sign-in is the phone's confirmation (`users.md` § User
 /// system): the phone adds a passkey at once, whether the code made its
 /// session or the phone kept the one it had, and a session that has not
 /// signed in for five minutes is asked to confirm first. The passkey then

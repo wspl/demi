@@ -18,7 +18,7 @@ import { useOpening } from '../ui/operations'
  * alone (`PasskeyOffer`) or after the password a first sign-in chose
  * (`ChoosePasswordWizard`). Each opening starts over.
  *
- * The offer to add a passkey (`product.md` § User system), *Use a passkey
+ * The offer to add a passkey (`users.md` § User system), *Use a passkey
  * next time?* with Add Passkey and Not Now: a one-step wizard
  * (`web-application.md` § Responding to the user), which a host opens once
  * on a browser after a sign-in that has just proved the user: a handoff

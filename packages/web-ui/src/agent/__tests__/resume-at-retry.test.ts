@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { resumeAtLabel } from '../resume-at-retry'
 
-// The Resume at control of a failure's record (`product.md` § Recovering an
+// The Resume at control of a failure's record (`turns.md` § Recovering an
 // unfinished turn), against a fixed clock in the local time zone: Sunday,
 // October 11, 2026, 8:15 AM.
 const now = new Date(2026, 9, 11, 8, 15).getTime()

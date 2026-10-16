@@ -1412,7 +1412,7 @@ pub struct OperatingSystem {
     #[garde(length(chars, min = 1, max = 256))]
     pub name: String,
     /// On Linux, the distribution's os-release `ID`, such as `ubuntu` or
-    /// `fedora`, which picks the logo of the device's mark (`product.md`
+    /// `fedora`, which picks the logo of the device's mark (`conversations.md`
     /// § Conversations and projects); none on other systems.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(inner(length(chars, min = 1, max = 64)))]

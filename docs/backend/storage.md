@@ -149,7 +149,7 @@ input, which the multi-worker control service also relies on
   address-change challenge per user, including code hash, password hash at
   issue, expiry, send time, and failed-attempt count. Confirming the challenge
   updates the email and consumes the challenge in one transaction. Account
-  behavior belongs to [Product](../product/product.md#user-system), its HTTP
+  behavior belongs to [Product](../product/users.md#user-system), its HTTP
   contract to [Web API](../product/web-api.md#account-api), and sessions and
   lockout to [Backend](backend.md#authentication-and-ownership).
 - **Preferences:** `user_preferences` stores validated appearance and shortcut
@@ -176,7 +176,7 @@ input, which the multi-worker control service also relies on
 - **Devices and workspaces:** `devices` stores ownership, kind, name, the
   home its runner last reported,
   platform, the operating system (with a Linux distribution's os-release `ID`) and architecture and the runner release its runner last reported, the device's
-  [mark](../product/product.md#conversations-and-projects) number, given when its runner first reports its system and again when its logo changes, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen
+  [mark](../product/conversations.md#conversations-and-projects) number, given when its runner first reports its system and again when its logo changes, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen
   times, and the JSON list of artifacts its runner last reported its cache
   holds ([Installed artifacts](../execution/native-runtime.md#installed-artifacts)),
   the instance its runner last said hello with, so a restarted backend tells
@@ -194,7 +194,7 @@ input, which the multi-worker control service also relies on
   workspace never deletes its files. Online status comes from live
   connections, not the last-seen time.
 - **Conversation index:** `conversations` stores ownership, title and its
-  [origin](../product/product.md#conversation-titles), archive and pin state,
+  [origin](../product/conversations.md#conversation-titles), archive and pin state,
   ordering, read revision, target selection, target context revision, last
   switch, Cloud reset marker, the conversation's model selection as JSON
   ([A conversation's model settings](../providers/models.md#a-conversations-model-settings)).

@@ -9,7 +9,7 @@ import { transferCopiedMessage, type CopiedMessage } from '../message-input/copi
 import { capsuleOf, type MessageCapsule } from './capsules'
 import { fragmentDocument, markdownSlice, trimmedSlice } from './clipboard-slices'
 
-// What a composer takes in (`product.md` § Attachments): whatever is pasted
+// What a composer takes in (`composer.md` § Attachments): whatever is pasted
 // or dropped, from Finder, a web page, another app or Demi's own transcript,
 // becomes text in the user dialect or a capsule as it enters. Files and
 // images whose bytes the page can read become capsules, as a pasted

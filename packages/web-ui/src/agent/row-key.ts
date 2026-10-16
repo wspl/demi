@@ -3,7 +3,7 @@ import { isWorkStep, workRowId } from './work-groups'
 
 /**
  * What names a row of the list across the forms it takes
- * (`product.md` § Following the agent's work): the message being sent and
+ * (`turns.md` § Following the agent's work): the message being sent and
  * the message the server confirmed are one row, named by the message's id,
  * which the confirmed message keeps as its turn's id; a steer waiting for
  * the turn and the steer written, and a queued message and the message it
@@ -75,7 +75,7 @@ export interface DrawnRow extends ListRow {
 
 /**
  * The keys the list draws `next` under, after it drew `previous`
- * (`product.md` § Following the agent's work: what replaces a row takes its
+ * (`turns.md` § Following the agent's work: what replaces a row takes its
  * place). A row the list drew before keeps the key it was drawn under,
  * wherever it moved. A row that is gone gives its key to the first new row
  * that stands where it stood, between the same rows that stayed in their

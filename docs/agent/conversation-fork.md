@@ -30,7 +30,7 @@ Creation defaults:
 - Leave the destination unpinned and unarchived, with a new creation time.
 - Each explicit Fork appends the suffix literally, including when the source
   title already ends in ` (Fork)`. The title's origin is `user`, so it is not
-  regenerated ([Conversation titles](../product/product.md#conversation-titles)).
+  regenerated ([Conversation titles](../product/conversations.md#conversation-titles)).
 
 For example, for `U1 → A1 → U2 → A2`, Fork on `A1` creates a conversation whose
 history is `U1 → A1`. If the source is generating `A2`, generation continues

@@ -10,7 +10,7 @@ import {
 import { joinMessageContent, sentMarkdown, splitMessageContent } from '../message-input/message-content'
 
 // A message's content blocks and the editor's Markdown, with a mark where
-// each file stands (`product.md` § Attachments).
+// each file stands (`composer.md` § Attachments).
 
 const image: UserContentBlock = { type: 'image', source: { type: 'url', url: '/blobs/before.png' } }
 const record: UserContentBlock = {
@@ -100,7 +100,7 @@ test('a capsule names its file, shows its picture or opening lines, and its uplo
 
 // A message being sent is drawn as the message it becomes: a bubble one line
 // taller until the server confirms it, for a newline an input method's Enter
-// left in the draft, shrinks the list (`product.md` § Following the agent's
+// left in the draft, shrinks the list (`turns.md` § Following the agent's
 // work).
 test('a message being sent shows the text its send carries, without the line breaks and spaces the send drops', () => {
   expect(sentMarkdown('2b: 按现在的规则。\n', 0)).toBe('2b: 按现在的规则。')

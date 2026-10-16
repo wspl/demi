@@ -5,7 +5,7 @@ import { trimBlankLines } from '../message-input/copied-message'
 import type { MessageCapsule } from './capsules'
 
 // What a composer takes from the clipboard and puts on it, as editor slices
-// (`product.md` § Writing a message): never a blank line of the clipboard's
+// (`composer.md` § Writing a message): never a blank line of the clipboard's
 // own at either end.
 
 /** How an end of pasted content joins the line it lands in: a paragraph's joins it, a code block stands on its own. */

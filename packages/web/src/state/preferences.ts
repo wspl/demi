@@ -89,7 +89,7 @@ export const usePreferences = defineStore('preferences', () => {
   const lastProjectHost = computed(() => product.snapshot?.preferences.lastProjectHost)
   /** The language the user chose (`localization.md` § Choosing the language); absent means System. */
   const language = computed(() => product.snapshot?.preferences.language ?? 'system')
-  /** What Enter does with a message while the agent works (`product.md` § Steer or queue). */
+  /** What Enter does with a message while the agent works (`turns.md` § Steer or queue). */
   const sendWhileRunning = computed(() =>
     product.snapshot?.preferences.sendWhileRunning ?? DEFAULT_SEND_WHILE_RUNNING,
   )

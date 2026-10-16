@@ -324,7 +324,7 @@ A device in `GET /devices` and in the product state carries, besides its
 name and online state, `os`, the operating system and architecture its runner
 last reported, and `runnerVersion`, the runner release it last reported, such
 as `0.1.16`; both are null before its runner first connected; `mark`, the
-logo and number of its [mark](product.md#conversations-and-projects), null for the Cloud:
+logo and number of its [mark](conversations.md#conversations-and-projects), null for the Cloud:
 `{ logo, number }`, where `logo` is `apple`, `windows`, `ubuntu`, `debian`,
 `fedora`, `arch`, `centos`, `redhat`, `mint` or `tux`, which the backend
 derives from the platform and the reported distribution, and `number` is
@@ -363,7 +363,7 @@ file, its snippet. The snippet is the opening of the file with leading blank
 space removed and line endings normalized, cut to 160 characters (Unicode scalar
 values). The composer, for a new message or for an edited one, shows the media
 type and the snippet on the file's capsule
-([Attachments](product.md#attachments)), so the capsule shows what the backend
+([Attachments](composer.md#attachments)), so the capsule shows what the backend
 determined.
 
 The page sends no bytes the caller's namespace holds already. Before an upload
@@ -630,7 +630,7 @@ lasts as long as its conversation, and a Fork starts with an empty one
 ## Messages saved for later
 
 A conversation keeps the messages its user saved for later
-([Saved for later](product.md#saved-for-later)), newest first. The saved
+([Saved for later](conversations.md#saved-for-later)), newest first. The saved
 messages and the draft are one piece of state to the page
 ([Responding to the user](web-application.md#responding-to-the-user)): every
 answer of a route below and of the draft's `PUT` carries `revisions`,
@@ -835,7 +835,7 @@ Add User… made or an administrator's reset changed chooses its own
 password, and `lastActiveAt`, the latest activity of any of its sessions,
 never the password hash.
 
-Passkeys ([User system](product.md#user-system),
+Passkeys ([User system](users.md#user-system),
 [Authentication and ownership](../backend/backend.md#authentication-and-ownership)):
 
 - `POST /api/auth/passkey/options` is public and returns `{ challengeId,
@@ -935,7 +935,7 @@ the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
 `settings`). A null shortcut removes that override. `sendWhileRunning` is
 `"steer"` or `"queue"`: what Enter does with a message while the agent works
-([Steer or queue](product.md#steer-or-queue)); absent means `"steer"`, and a
+([Steer or queue](turns.md#steer-or-queue)); absent means `"steer"`, and a
 patch sets it. `resumeAtRetry` is whether a turn that failed with a known
 time to try again, such as a usage limit that resets at 09:00, resumes by
 itself at that time ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
@@ -948,7 +948,7 @@ past the dialog about using several subscription accounts
 then never shows again. Settings › General shows `resumeAfterRestart` as *Resume after Demi
 restarts* and `resumeAtRetry` as *Resume after a usage
 limit resets*, and so does the error record of such a failure, as *Resume at
-09:00* ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
+09:00* ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
 `{ providerId, modelId }` pairs, are the switches of Settings › Providers that
 take an entry or a model out of the model menu without deleting it; a patch
 replaces the list it names. They are the user's, not a browser's: every
@@ -987,7 +987,7 @@ that lists no efforts. From then on the
 conversation has its own settings, which a later change of the preference does
 not touch. `lastProjectHost` stores where New Project starts,
 `{ kind: "cloud" | "device", deviceId? }`: the kind and the device the user
-last chose in it ([Conversations and projects](product.md#conversations-and-projects)).
+last chose in it ([Conversations and projects](conversations.md#conversations-and-projects)).
 A patch replaces it whole; a `deviceId` the user no longer has is kept and
 the dialog chooses no device for it. `language` is `system`, `en`,
 `zh-Hans`, `zh-Hant`, `ja` or `ko`, absent meaning `system` ([Localization](localization.md#choosing-the-language)). `locale` stores the time
@@ -1326,7 +1326,7 @@ field applied and 207 when any was refused. Unexpected operation failures are
 reported as 500 field results. Applied fields remain applied. Archive is
 evaluated before the other fields, so archiving and renaming together archives
 successfully but refuses the rename. A rename follows [Conversation
-titles](product.md#conversation-titles). `POST /api/conversations/batch` accepts
+titles](conversations.md#conversation-titles). `POST /api/conversations/batch` accepts
 up to 100 `{ id, patch }` items and returns 207 with an outcome per item:
 `{ id, status: "updated", conversation, results }`, or
 `{ id, status: "refused", code, message }` for a conversation the caller does
@@ -1464,7 +1464,7 @@ or null before the first: `id` is the block that ended it, so a turn that
 Resume or Regenerate takes up and that ends again is a new end; `outcome` is
 `finished`, `failed` or `stopped`; and `answerStart` is the first 400
 characters of its last answer's Markdown, or null when it gave none. A failed
-compaction ends no turn. A page [notifies](product.md#notifications) when a
+compaction ends no turn. A page [notifies](turns.md#notifications) when a
 conversation that no longer runs names a `lastTurn` the page has not seen
 end, so a turn that starts and ends between two summaries the page receives
 still notifies, and the page needs no transcript to say how the answer
@@ -1543,7 +1543,7 @@ cache. The web app build serves the shared page at `/s/:token`.
 
 `GET /api/search?q=<query>` answers `{ results }`: the caller's conversations
 that match the query, at most 50, in the order
-[Finding a conversation](product.md#finding-a-conversation) gives. A result is
+[Finding a conversation](conversations.md#finding-a-conversation) gives. A result is
 `{ conversationId, title, titleRanges, archived, lastActiveAt, match }`, where
 `titleRanges` are the ranges of the query's words in the title, as `match`
 gives them below, empty when the title does not match, and `lastActiveAt` is

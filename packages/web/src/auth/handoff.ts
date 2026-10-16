@@ -113,7 +113,7 @@ export async function spendHandoffCode(code: string): Promise<HandoffSpent> {
 }
 
 /**
- * The account's signed-in browsers (`product.md` § User system), which the
+ * The account's signed-in browsers (`users.md` § User system), which the
  * synchronization channel's `sessions` part brings, and the dialog that
  * hands off to a phone: it learns of the phone from the session that
  * carries the code, the one the code made or the phone's own.

@@ -12,7 +12,7 @@ import { splitMessageContent } from '../message-input/message-content'
 
 /**
  * A file as its capsule in a message shows it, and as the message carries it
- * (`product.md` § Attachments). The capsule's node keeps these, so the
+ * (`composer.md` § Attachments). The capsule's node keeps these, so the
  * document alone says which files a message has, in what order, and what each
  * one is.
  */

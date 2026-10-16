@@ -107,9 +107,9 @@ const pageRoute = computed(() =>
   settingsAddress.section.value === undefined ? route : router.resolve(pageUnderSettings(router)),
 )
 const { open, openFound, create } = useConversationNavigation()
-/** The search window (`product.md` § Finding a conversation). */
+/** The search window (`conversations.md` § Finding a conversation). */
 const searchOpen = ref(false)
-/** Hand Off to Your Phone (`product.md` § User system): its code opens the page the window shows. */
+/** Hand Off to Your Phone (`users.md` § User system): its code opens the page the window shows. */
 const handoffOpen = ref(false)
 const sessions = useSessions()
 const handoffHost = computed(() => sessions.handoffHost(() => pageRoute.value.fullPath))

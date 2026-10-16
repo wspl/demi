@@ -4,7 +4,7 @@ import type { HostDeviceOption, HostMenuHost } from '../hosts/types'
 
 /**
  * The conversation's offline primary Host, as its card above the composer
- * shows it (`product.md` § Recovering an unfinished turn): its name, how to
+ * shows it (`turns.md` § Recovering an unfinished turn): its name, how to
  * start its runner again, and what Move to Another Host… lists.
  */
 export interface OfflineHost {

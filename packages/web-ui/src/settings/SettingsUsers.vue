@@ -30,7 +30,7 @@ import type { SettingsNewUser, SettingsUser, SettingsUsersHost, UserAddOutcome }
 import { roleLabel, assignableRoles, userActions, type UserAction } from './users'
 
 /**
- * Settings › Users (`product.md` § User system), which only the master and
+ * Settings › Users (`users.md` § User system), which only the master and
  * admins see, as macOS's Users & Groups or a GitHub organization's People:
  * one row per account with its nickname and email, its role and when it was
  * last active, *Disabled* on a disabled one, *Hasn’t Chosen a Password* on

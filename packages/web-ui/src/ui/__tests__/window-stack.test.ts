@@ -2,7 +2,7 @@ import { expect, test } from 'bun:test'
 import { createWindowStack, KEEPS_WINDOWS, type StackedWindow } from '../window-stack'
 
 // The session's windows close on a press outside them, the newest first
-// (`product.md`, the dock's chips under § Recovering an unfinished turn), over
+// (`turns.md`, the dock's chips under § Recovering an unfinished turn), over
 // a page of plain objects instead of the DOM: a few milliseconds.
 
 /** A place on the page, as an element is: its parent, and whether it keeps the windows open. */

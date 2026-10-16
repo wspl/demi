@@ -15,7 +15,7 @@ const OVERSCAN = 8
 export const BLOCK_GAP = 4
 /**
  * The reader is at the end while the end of the list is in view or less than
- * this far below it (`product.md` § Following the agent's work): the list
+ * this far below it (`turns.md` § Following the agent's work): the list
  * follows its end from there.
  */
 const AT_END_PX = 16

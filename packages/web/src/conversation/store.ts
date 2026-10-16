@@ -174,7 +174,7 @@ export const useConversations = defineStore('conversations', () => {
    * What the sidebar lists: every conversation not archived; a new
    * conversation whose draft holds nothing yet only while it is the open
    * one, so it shows the moment it opens and goes when it is left empty
-   * (`product.md` § Conversations and projects).
+   * (`conversations.md` § Conversations and projects).
    */
   const listed = computed(() => items.value.filter((item) =>
     !item.archived && (!isEmptyDraft(item) || item.id === product.activeConversationId)))
@@ -256,7 +256,7 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * The deliveries of the messages sent, by conversation: each
    * conversation's go one at a time, in the order they were sent, so a
-   * message never overtakes the one before it (`product.md` § Steer or
+   * message never overtakes the one before it (`turns.md` § Steer or
    * queue).
    */
   let deliveries = new SerialQueue()
@@ -323,7 +323,7 @@ export const useConversations = defineStore('conversations', () => {
       return 'active'
     }
     // A turn the process died under is a failure, like a provider's; only the
-    // user's own Stop is an abort (`product.md` § Recovering an unfinished turn).
+    // user's own Stop is an abort (`turns.md` § Recovering an unfinished turn).
     if (status === 'error' || status === 'interrupted') {
       return 'error'
     }
@@ -453,7 +453,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Keeps everything the conversation shows as its archive flag changes
-   * (`product.md` § Conversations and projects): archived, it lets its
+   * (`conversations.md` § Conversations and projects): archived, it lets its
    * socket go, which the backend would close; brought back, it connects
    * again from the blocks it holds once the restore lands, or, opened while
    * archived, starts its session then. Nothing is read again; a change of
@@ -759,7 +759,7 @@ export const useConversations = defineStore('conversations', () => {
         conversation.persistence = draft.local.phase
         conversation.load = 'ready'
         // Drafts lead the list, newest first, whether the channel's state
-        // is here yet or not (`product.md` § Conversations and projects).
+        // is here yet or not (`conversations.md` § Conversations and projects).
         const index = items.value.findIndex((item) =>
           item.persistence === 'synced' || item.createdAt < conversation.createdAt)
         items.value.splice(index < 0 ? items.value.length : index, 0, conversation)
@@ -879,7 +879,7 @@ export const useConversations = defineStore('conversations', () => {
     for (const file of conversation.files) {
       if (isComposerFile(file) && !file.upload) {
         // A pasted file whose attaching the page did not see end attaches
-        // again, and falls back as a paste does (`product.md` § Writing a message).
+        // again, and falls back as a paste does (`composer.md` § Writing a message).
         // Any other failure its capsule shows, with Retry.
         const claimed = !!file.claim
         void uploadInComposer(file).then((uploaded) => {
@@ -1589,7 +1589,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Archives the conversations, which leave the list at once, and says so in
-   * a toast whose Undo restores them (`product.md` § Conversations and
+   * a toast whose Undo restores them (`conversations.md` § Conversations and
    * projects). Once the backend answered, the toast counts, and its Undo
    * restores, only those it archived; the refusal's own toast says why of
    * the others. Answers whether every one was archived.
@@ -1613,7 +1613,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Deletes the conversations for good, once the user confirmed it
-   * (`product.md` § Conversations and projects): they leave the list at
+   * (`conversations.md` § Conversations and projects): they leave the list at
    * once; one the backend has no record of leaves this page, and each other
    * one leaves the backend and every page. What this browser keeps of their
    * drafts goes too. A refusal brings the conversation back with a toast.
@@ -2027,7 +2027,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * The user makes `workflow` the conversation's Workflow menu choice
-   * (`product.md` § A conversation's workflow), which its project's next
+   * (`conversations.md` § A conversation's workflow), which its project's next
    * conversation starts with; settles once it is written or refused.
    */
   async function changeWorkflow(id: string, workflow: WorkflowChoice): Promise<void> {
@@ -2113,7 +2113,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Sends the draft the way the composer chose (`product.md` § Steer or
+   * Sends the draft the way the composer chose (`turns.md` § Steer or
    * queue): as the next message, as a steer of the running turn, or into the
    * queue, which is a message sent while a turn runs. The message shows as
    * what it will be from the send, and goes after the messages still on
@@ -2135,7 +2135,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Save for Later (`product.md` § Saved for later): the composer's message,
+   * Save for Later (`conversations.md` § Saved for later): the composer's message,
    * its files included, stands at the top of the list and leaves the
    * composer at once, under the id the page gives it, once its files are
    * uploaded; the backend keeps it and empties the draft with it.
@@ -2296,7 +2296,7 @@ export const useConversations = defineStore('conversations', () => {
    * upload of its files, trying again one that failed, makes the
    * conversation's record when it has none, then gives the message to the
    * session with its id, which takes it once, as a message or as a steer. A
-   * message never goes without a file of it (`product.md` § Writing a
+   * message never goes without a file of it (`composer.md` § Writing a
    * message): one that cannot be uploaded leaves it undelivered.
    */
   async function deliver(
@@ -2412,7 +2412,7 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * How a message pasted into the conversation's composer brings its files
    * back: a stored file at once, attaching beside its capsule without its
-   * bytes, and a device file by its device and path (`product.md` § Writing
+   * bytes, and a device file by its device and path (`composer.md` § Writing
    * a message).
    */
   function pasteHost(conversation: Conversation): PasteHost {
@@ -2503,7 +2503,7 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Recall on a steer or a queued message, or on a message on its way
-   * that will be one (`product.md` § Steer or queue): its row goes at once,
+   * that will be one (`turns.md` § Steer or queue): its row goes at once,
    * and the rest follows once the session holds the message.
    */
   function recall(conversation: Conversation, id: string): void {
@@ -2539,7 +2539,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Gives a message Recall took back to the user (`product.md` § Steer or
+   * Gives a message Recall took back to the user (`turns.md` § Steer or
    * queue): into the composer when it is empty, its files coming back as a
    * paste brings them, without their bytes; otherwise the draft stays as it
    * is, and a toast's Undo sends the message again the way it was sent, once
@@ -2722,7 +2722,7 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * Moves the conversation to run on `target` (`product.md` § Where a
+   * Moves the conversation to run on `target` (`hosts.md` § Where a
    * conversation runs); with `notifyAgent`, the backend tells its agent.
    */
   function switchTarget(id: string, target: ConversationSummary['target'], notifyAgent = false): Promise<boolean> {

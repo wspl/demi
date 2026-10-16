@@ -271,7 +271,7 @@ const saveDrafts = () => {
 }
 window.addEventListener('pagehide', saveDrafts)
 // A page closed while a sent message waits for its files' uploads asks first,
-// as a mail client does while it sends attachments (`product.md` § Writing a
+// as a mail client does while it sends attachments (`composer.md` § Writing a
 // message); the prompt is held only while such a message waits.
 const askBeforeLeaving = (event: BeforeUnloadEvent) => event.preventDefault()
 const stopLeaving = watch(

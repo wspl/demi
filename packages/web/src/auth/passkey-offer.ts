@@ -22,7 +22,7 @@ function requestedBefore(): boolean {
 }
 
 /**
- * The offer to add a passkey (`product.md` § User system): any flow that has
+ * The offer to add a passkey (`users.md` § User system): any flow that has
  * just proved the user calls `request`, a handoff landing now and the
  * password chosen at a first sign-in later; the offer then shows once the
  * account is loaded and passkeys are offered, unless this browser answered

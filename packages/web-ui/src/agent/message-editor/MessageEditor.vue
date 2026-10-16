@@ -24,7 +24,7 @@ import { fragmentDocument, markdownSlice, trimmedSlice } from './clipboard-slice
 import type { PlaceholderText } from '../../ui/ui-text'
 
 /**
- * A user message, written or shown in one editor (`product.md` § Writing a
+ * A user message, written or shown in one editor (`composer.md` § Writing a
  * message): its Markdown formatted as it will look, each file a capsule where
  * it stands. In the composer it is typed into; in the conversation it is the
  * sent message, read-only.
@@ -150,7 +150,7 @@ const editor = new Editor({
       class: 'markdown-body message-editor-text',
       ...(props.composer ? fieldAttributes() : {}),
     }),
-    // A sent message copies with its files (`product.md` § Writing a message);
+    // A sent message copies with its files (`composer.md` § Writing a message);
     // the composer's own copy keeps ProseMirror's, which a paste in it reads.
     handleDOMEvents: props.composer ? {} : { copy: (view, event) => copySelection(view, event) },
     // A copy, a cut or a drag holds no blank line before its first line or

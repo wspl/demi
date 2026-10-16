@@ -14,7 +14,7 @@ import { resumeAtLabel, useResumeAtRetry } from '../resume-at-retry'
  * from the failure's code and when the provider says it works again, the
  * provider's response as it arrived behind a disclosure, and Copy. It
  * says what happened and offers no action: recovery sits in the dock above
- * the composer (`product.md` § Recovering an unfinished turn). A failure of
+ * the composer (`turns.md` § Recovering an unfinished turn). A failure of
  * the conversation's own agent that names when it works again carries the
  * one switch that belongs to it until that time: Resume at that time, the
  * user's preference for every such turn.

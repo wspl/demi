@@ -29,7 +29,7 @@ const props = defineProps<{
    * A message the agent has not read yet, drawn faded, with what happens to
    * it said under it and its controls in view: a steer, which the running
    * turn reads at its next step, or a queued message, which runs after it.
-   * Send Now delivers either at once (`product.md` § Steer or queue);
+   * Send Now delivers either at once (`turns.md` § Steer or queue);
    * Recall takes it back, into the composer when that is empty.
    */
   pending?: 'steer' | 'queued'
@@ -60,7 +60,7 @@ const editor = ref<InstanceType<typeof MessageEditor>>()
 
 /**
  * Copy puts the message on the clipboard in every form, its files with it
- * (`product.md` § Writing a message); a brief, as its Markdown, as an
+ * (`composer.md` § Writing a message); a brief, as its Markdown, as an
  * answer's Copy does.
  */
 function copySource(): CopySource {

@@ -203,7 +203,7 @@ impl Shard {
         demi_backend_permissions::withdrawn(self.permission_shard(), id);
     }
 
-    /// Deletes the user's project `id` as one transition (`product.md`
+    /// Deletes the user's project `id` as one transition (`conversations.md`
     /// § Conversations and projects, `web-api.md` § Workspaces, devices,
     /// and attached hosts): every conversation in it is held as its archive
     /// holds it, released on its Hosts, and archived in the transaction

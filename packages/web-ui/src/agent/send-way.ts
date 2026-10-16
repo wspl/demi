@@ -6,7 +6,7 @@ import type { TitleText } from '../ui/ui-text'
 
 /**
  * What a message the user sends while the agent works does
- * (`product.md` § Steer or queue): it steers the running turn, which reads it
+ * (`turns.md` § Steer or queue): it steers the running turn, which reads it
  * as soon as the call it waits on returns, or waits in the queue for the turn
  * to end. The user's preference chooses what Enter does; Steer when unset.
  */
@@ -48,7 +48,7 @@ export interface MessageOnItsWay {
  * The message on its way that starts a turn, or undefined while none does:
  * the one reading for the composer's Stop and its way of sending, the
  * transcript's Requesting row, Stop's wait and Retry's way. Its turn is as
- * good as running from the send (`product.md` § Recovering an unfinished
+ * good as running from the send (`turns.md` § Recovering an unfinished
  * turn), so the composer shows Stop and a message sent meanwhile steers it
  * or waits in the queue (§ Steer or queue).
  *
@@ -86,7 +86,7 @@ export function otherWayKeys(): string {
 /**
  * Enter on a message that cannot go only because what it needs is still
  * loading, as the model list is right after the page loads
- * (`product.md` § Writing a message): the send button says why, and the
+ * (`composer.md` § Writing a message): the send button says why, and the
  * message goes by itself, the way Enter asked, once it can. What loaded and
  * still cannot send, such as no usable model, ends the wait, and the button
  * says why then. Call it in a component's setup, whose scope ends the watch.

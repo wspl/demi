@@ -84,8 +84,8 @@ import type { TitleText } from '../ui/ui-text'
  * subscription is always listed and manages its accounts; an API key is added from
  * the rail. A vendor entry shows its vendor's endpoint as plain text and lists the
  * vendor's catalog; a compatible API sets its protocol, its endpoint and, when its
- * server takes one, its key, and lists only the models the user adds (`product.md`
- * § Models & providers). Adding creates the entry at once, selected, on the page
+ * server takes one, its key, and lists only the models the user adds (`providers.md`
+ * § Provider management). Adding creates the entry at once, selected, on the page
  * every entry has, and what it still lacks is a plain wait, the rail's yellow dot,
  * an empty field and the words *No models yet*; red marks a failure only. Add Model
  * adds the model it is given at once and opens it in Edit Model, the dialog every

@@ -166,7 +166,7 @@ export function formatSpan(ms: number): string {
 /**
  * When a failed request can succeed again, `timestamp`, after `verb`, as a
  * failure's record says it and as the control that resumes the turn then
- * names it (`product.md` § Recovering an unfinished turn): "Resets at
+ * names it (`turns.md` § Recovering an unfinished turn): "Resets at
  * 9:00 AM" on `now`'s day, "Resume Sat at 9:00 AM" within a week either way,
  * then "Resets Oct 24 at 9:00 AM", with the year when it is not this one. The
  * moment is rounded up to the minute, so neither ever names a time before

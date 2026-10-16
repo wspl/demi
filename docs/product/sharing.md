@@ -16,7 +16,7 @@ again.
 
 | | An answer | The conversation |
 | --- | --- | --- |
-| Holds | The user's message and the agent's texts of its reply, up to the text that ends it, the one that carries Copy and Fork ([Following the agent's work](product.md#following-the-agents-work)), with the attachments and media they show; the work between them as one line ([Steps not shared](#steps-not-shared)) | The user's messages and the agent's texts, with the attachments and media they show, in order; the work between them as one line ([Steps not shared](#steps-not-shared)) |
+| Holds | The user's message and the agent's texts of its reply, up to the text that ends it, the one that carries Copy and Fork ([Following the agent's work](turns.md#following-the-agents-work)), with the attachments and media they show; the work between them as one line ([Steps not shared](#steps-not-shared)) | The user's messages and the agent's texts, with the attachments and media they show, in order; the work between them as one line ([Steps not shared](#steps-not-shared)) |
 | Title | The conversation's title when shared | The same |
 
 A share never holds what the user's own conversation does not show either,

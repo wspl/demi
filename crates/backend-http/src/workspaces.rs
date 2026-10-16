@@ -1,7 +1,7 @@
 //! Workspaces (`web-api.md` § Workspaces, devices, and attached hosts): the
 //! user's named directories on their devices, created, renamed and deleted
 //! as pointers that never touch a file. Deleting one archives its
-//! conversations (`product.md` § Conversations and projects).
+//! conversations (`conversations.md` § Conversations and projects).
 
 use std::sync::Arc;
 

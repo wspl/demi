@@ -12,7 +12,7 @@ import type { SidebarConversation } from './types'
  * shown (ChatSession). One row gets open, rename and copy ID; any count
  * gets pin, archive and delete, which asks first. A conversation enters or
  * leaves a project only through where it runs, so there is no Move To
- * (`product.md` § Where a conversation runs).
+ * (`hosts.md` § Where a conversation runs).
  */
 const props = defineProps<{
   targets: Pick<SidebarConversation, 'id' | 'pinned'>[]

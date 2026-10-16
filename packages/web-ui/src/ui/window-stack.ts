@@ -3,7 +3,7 @@ import { onBeforeUnmount, shallowRef, watch, type ShallowRef } from 'vue'
 /**
  * The session's floating windows, such as the Agents and Running windows
  * and the media viewer, stand in the order they opened, the newest in front
- * (`product.md` § Recovering an unfinished turn, the dock's chips): a press
+ * (`turns.md` § Recovering an unfinished turn, the dock's chips): a press
  * outside every window closes the newest alone, as Escape does, and the
  * press still does what it does there; a second press closes the next. A
  * press in a window closes nothing, nor does one on a place marked with

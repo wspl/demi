@@ -61,7 +61,7 @@ test('a message the transcript holds shows there alone, not again in the tail', 
 })
 
 // A message on its way shows as what it will be from the send
-// (`product.md` § Steer or queue): the next message in the turn's flow, a
+// (`turns.md` § Steer or queue): the next message in the turn's flow, a
 // steer after the steers, or a queued message counted under the queue's
 // divider; once the session holds it, its confirmed row alone shows.
 test('a message on its way stands where what it will be stands, and leaves once the session holds it', () => {

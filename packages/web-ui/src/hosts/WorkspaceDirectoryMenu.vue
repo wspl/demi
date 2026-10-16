@@ -36,7 +36,7 @@ const props = defineProps<{
   /**
    * The projects on the Host the conversation runs on, in the sidebar's
    * order: every directory a conversation runs in, but the home, is one
-   * (`product.md` § Conversations and projects).
+   * (`conversations.md` § Conversations and projects).
    */
   projects: {
     id: string

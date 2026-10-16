@@ -12,7 +12,7 @@ import type { ConversationSummary, LastTurn, PermissionRequest } from '../api/ge
 import { useProduct } from './product'
 
 /**
- * Notifications (`product.md` § Notifications): the browser's own, shown
+ * Notifications (`turns.md` § Notifications): the browser's own, shown
  * while a conversation is not in front, of what the page's synchronization
  * channel tells about it.
  */

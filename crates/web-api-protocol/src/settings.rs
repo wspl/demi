@@ -15,7 +15,7 @@ use crate::conversations::ModelSettings;
 use crate::ids::{DeviceId, ProviderId};
 
 /// Who configures providers, fixed for the instance's lifetime
-/// (`product.md` § Instance mode).
+/// (`users.md` § Instance mode).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum InstanceMode {
@@ -195,7 +195,7 @@ pub enum ProjectHostKind {
     Device,
 }
 
-/// Where New project starts (`product.md` § Conversations and projects): the
+/// Where New project starts (`conversations.md` § Conversations and projects): the
 /// kind the user last chose and the device last chosen in its device menu,
 /// kept while the Cloud is chosen. A device the user no longer has stays
 /// here; the dialog chooses no device for it.
@@ -214,7 +214,7 @@ pub struct ProjectHostChoice {
     pub device_id: Option<DeviceId>,
 }
 
-/// What a message the user sends while the agent works does (`product.md` §
+/// What a message the user sends while the agent works does (`turns.md` §
 /// Steer or queue): steer the running turn or wait in the queue. Absent
 /// means steer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]

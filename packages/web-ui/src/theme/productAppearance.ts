@@ -58,7 +58,7 @@ export function applyProductAppearance(choice: ProductAppearanceChoice): void {
 
 /**
  * The transcript's text size, in px, when the user has picked none
- * (`product.md` § Following the agent's work). The one default: the page
+ * (`turns.md` § Following the agent's work). The one default: the page
  * writes it to `--agent-text`, which the stylesheets leave to it.
  */
 export const DEFAULT_TRANSCRIPT_TEXT_SIZE = 15

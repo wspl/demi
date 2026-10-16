@@ -146,7 +146,7 @@ export const useResources = defineStore('resources', () => {
       : { kind: 'removed' }
   }
   /**
-   * The device a conversation's sidebar row shows (`product.md` § Conversations and projects):
+   * The device a conversation's sidebar row shows (`conversations.md` § Conversations and projects):
    * for one outside a project on a paired device, its name and state, or that it was removed;
    * none on the Cloud, in a project, or before the first snapshot names the devices.
    */
@@ -293,7 +293,7 @@ export const useResources = defineStore('resources', () => {
   /**
    * Makes the project `draft` names and answers its id; a directory that is
    * already a project answers that project, which the caller opens instead
-   * of making a second (`product.md` § Conversations and projects).
+   * of making a second (`conversations.md` § Conversations and projects).
    */
   async function createProject(draft: CreateWorkspace): Promise<string> {
     const current = controller

@@ -1,7 +1,7 @@
 import { t } from './locales/text'
 
 /**
- * The composer's Workflow menu (`product.md` § A conversation's workflow):
+ * The composer's Workflow menu (`conversations.md` § A conversation's workflow):
  * what the conversation's choice shows as, and the rows the menu offers,
  * derived from the choice and the project's workflows as the page keeps them.
  */

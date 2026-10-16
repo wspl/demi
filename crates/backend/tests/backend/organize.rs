@@ -7,7 +7,7 @@
 //! conversation may not reach, checks its directory and waits, as `demi
 //! host detach` does, until the conversation's work ends, when they are
 //! made in one transition, and the directory decides the project it lands
-//! in (`product.md` § Conversations and projects); a move that fails then
+//! in (`conversations.md` § Conversations and projects); a move that fails then
 //! leaves the conversation where it was and wakes the root with Demi's
 //! notice of the reason. Deleting a project archives its conversations,
 //! unless one works; a device's first home report after the upgrade puts
@@ -411,7 +411,7 @@ fn project_of(harness: &Harness, id: &str) -> Option<(String, String)> {
         .unwrap()
 }
 
-/// Where a conversation runs decides its project (`product.md`
+/// Where a conversation runs decides its project (`conversations.md`
 /// § Conversations and projects): `demi host move` to a directory puts the
 /// conversation in a new project named after it, which a second
 /// conversation moved there joins; a project's subdirectory is a project of

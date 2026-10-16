@@ -14,7 +14,7 @@ const localStateSchema = z.object({
   dockWindowShare: z.number().min(0).max(1).optional(),
   /**
    * Whether this browser was offered a passkey and answered, by either
-   * button: it is not offered again here (`product.md` § User system).
+   * button: it is not offered again here (`users.md` § User system).
    */
   passkeyOfferAnswered: z.boolean().optional(),
   /** Whether the work panel is open, keyed by conversation id. */

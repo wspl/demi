@@ -7,7 +7,7 @@ import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
 import InlineError from '../ui/InlineError.vue'
 
 /**
- * The page a phone's camera opens from a handoff code (`product.md` § User
+ * The page a phone's camera opens from a handoff code (`users.md` § User
  * system): it says it opens the page while the host spends the code, then
  * the host goes on to the page the code opens, signed in to its account.
  * A code that expired or was used says so, with Sign In, which the host

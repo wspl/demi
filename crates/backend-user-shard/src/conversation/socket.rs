@@ -184,7 +184,7 @@ impl Shard {
                         Outgoing::Frame(frame) => {
                             // The frames the outbox holds at once, as a
                             // turn's end, go in one message, which the page
-                            // applies as one change (`product.md`
+                            // applies as one change (`turns.md`
                             // § Following the agent's work).
                             let mut batch = vec![frame];
                             let mut after = None;
@@ -545,7 +545,7 @@ impl Shard {
 
     /// Sends `frames` as one message: a frame alone as itself, several as
     /// a JSON array of them in order, which the page applies as one change
-    /// (`product.md` § Following the agent's work). Every `error` frame
+    /// (`turns.md` § Following the agent's work). Every `error` frame
     /// carries the request ID of the socket's upgrade.
     async fn send_frames(&self, page: &mut PageSocket, frames: Vec<ServerFrame>) -> bool {
         let mut texts = Vec::with_capacity(frames.len());

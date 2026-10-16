@@ -1,4 +1,4 @@
-//! Conversation titles (`product.md` § Conversation titles): the title the
+//! Conversation titles (`conversations.md` § Conversation titles): the title the
 //! first message gives at once, and the one model request that writes a
 //! better one. The request goes to the conversation's own provider runtime,
 //! which the caller supplies, and is no session turn: nothing is added to a
@@ -80,7 +80,7 @@ pub fn title_input(message: &str) -> String {
 /// A user message's Markdown as the user reads it, plain text: `` `pnpm
 /// build` `` is `pnpm build`, and no mark or escape shows.
 ///
-/// The message dialect (`product.md` § Writing a message) keeps some
+/// The message dialect (`composer.md` § Writing a message) keeps some
 /// CommonMark as typed: each line reads only inline constructs, so a list,
 /// heading or quote marker at a line's start stays, as do `_` and `__`,
 /// a single `~` and `<…>`. Those come from the source; the rest is the

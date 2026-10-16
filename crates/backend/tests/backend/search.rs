@@ -1,4 +1,4 @@
-//! Finding a conversation (`product.md` § Finding a conversation,
+//! Finding a conversation (`conversations.md` § Finding a conversation,
 //! `web-api.md` § Search, `storage.md` § Search index): a query lists the
 //! conversations whose title matches first, then those whose messages do,
 //! each group most recently active first, archived ones marked; a match is
