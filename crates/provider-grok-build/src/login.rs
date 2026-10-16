@@ -93,7 +93,7 @@ impl GrokKit {
         let secret = self.secret(tokens).await;
         Ok(NewAccount {
             label: secret.label(),
-            secret: secret.encode(),
+            secret: Some(secret.encode()),
         })
     }
 

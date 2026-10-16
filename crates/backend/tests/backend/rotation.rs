@@ -289,6 +289,47 @@ async fn a_claude_code_like_agent_that_changes_account_closes_its_process_for_on
     setup.backend.close().await;
 }
 
+// A backend, one turn: about half a second.
+#[tokio::test]
+async fn rotation_passes_over_an_account_its_vendor_signed_out_which_the_list_shows() {
+    let setup = two_accounts(false).await;
+    let (first, second) = (setup.first.clone(), setup.second.clone());
+    setup.rotate("in_order").await;
+    // The provider marks an account whose sign-in its vendor refused, as
+    // Claude Code's does (`claude-code.md` § Accounts and sign-in).
+    let marked = setup
+        .harness
+        .control_database()
+        .execute(
+            "UPDATE provider_credentials SET signed_out = 1 WHERE id = ?1",
+            [first.as_str()],
+        )
+        .unwrap();
+    assert_eq!(marked, 1);
+    let listed = setup
+        .backend
+        .get(&format!("/api/providers/{}/accounts", setup.entry), Some(&setup.master))
+        .await;
+    let body: serde_json::Value = listed.json();
+    let signed_out: Vec<(String, bool)> = body["accounts"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|account| {
+            let id = account["id"].as_str().unwrap().to_owned();
+            (id, account.get("signedOut").and_then(serde_json::Value::as_bool).unwrap_or(false))
+        })
+        .collect();
+    assert_eq!(signed_out, [(first.to_string(), true), (second.to_string(), false)]);
+    create(&setup.backend, &setup.master, FIRST).await;
+    choose(&setup.backend, &setup.master, FIRST, &setup.entry, "m").await;
+    let mut socket = Socket::connect(&setup.backend, &setup.master, FIRST).await;
+    socket.open().await;
+    socket.chat("m1", "one").await;
+    assert_eq!(accounts_run(&setup.runs), [second.as_str()]);
+    setup.backend.close().await;
+}
+
 /// A window `used` percent used that resets `hours` hours after `now`, of
 /// a period of `period` hours.
 fn window(now: Timestamp, used: f64, hours: i64, period: u64) -> QuotaWindow {

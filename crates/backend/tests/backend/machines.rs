@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions, runner_binary};
 use demi_host_interface::SpawnEnv;
 use demi_machine_manager_protocol::{
-    BaseVersion, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState,
+    BaseVersion, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState, SandboxMachine,
     WIRE_VERSION, decode_request, encode_line,
 };
 use futures_util::FutureExt as _;
@@ -66,6 +66,8 @@ pub struct Script {
 
 /// A device's storage and its sandbox.
 struct Guest {
+    /// The kind of machine its first wake named.
+    machine: SandboxMachine,
     runner: Option<RunnerProcess>,
     image: MachineImageState,
     generations: u64,
@@ -195,9 +197,30 @@ impl ScriptedManager {
         change(&mut self.shared.lock().script);
     }
 
-    /// The devices whose storage the manager made.
+    /// The users' Clouds whose storage the manager made.
     pub fn devices(&self) -> Vec<String> {
-        let mut devices: Vec<String> = self.shared.lock().guests.keys().cloned().collect();
+        self.of(SandboxMachine::Cloud)
+    }
+
+    /// The Claude Code machine, once the manager made its storage
+    /// (`managed-hosts.md` § The Claude Code machine).
+    pub fn claude_code_machine(&self) -> String {
+        let machines = self.of(SandboxMachine::ClaudeCode);
+        let [machine] = machines.as_slice() else {
+            panic!("the instance has one Claude Code machine: {machines:?}");
+        };
+        machine.clone()
+    }
+
+    fn of(&self, machine: SandboxMachine) -> Vec<String> {
+        let mut devices: Vec<String> = self
+            .shared
+            .lock()
+            .guests
+            .iter()
+            .filter(|(_, guest)| guest.machine == machine)
+            .map(|(device, _)| device.clone())
+            .collect();
         devices.sort();
         devices
     }
@@ -450,6 +473,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                 };
                 let base = state.script.base.clone().unwrap_or_else(|| BASE.into());
                 let guest = state.guests.entry(device.clone()).or_insert_with(|| Guest {
+                    machine: params.machine,
                     runner: None,
                     image: image(1, &base, None, VOLUME_BYTES, VOLUME_BYTES),
                     generations: 1,

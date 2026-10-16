@@ -611,7 +611,7 @@ impl dyn HostShard + '_ {
             ) => control.device(device_id.clone()).await?,
         };
         let device = found
-            .filter(|device| device.user == record.owner)
+            .filter(|device| device.is_host_of(&record.owner))
             .ok_or(Refusal::DeviceGone)?;
         let (root, prepare, primary) = match named.filter(|host| host.role == HostRole::Attached) {
             Some(attached) => (attached.path, false, false),

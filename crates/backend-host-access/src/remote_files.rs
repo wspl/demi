@@ -60,7 +60,7 @@ impl dyn HostShard + '_ {
             let device = control
                 .device(id)
                 .await?
-                .filter(|device| device.user == record.owner)
+                .filter(|device| device.is_host_of(&record.owner))
                 .ok_or(RemoteFileRefusal::NotAccessible)?;
             if !self.devices().online(&device.id) {
                 return Err(RemoteFileRefusal::Offline(device.name));

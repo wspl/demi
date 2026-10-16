@@ -72,8 +72,8 @@ impl PreparedProcesses {
     }
 
     /// Closes every process prepared for the provider entry `entry`, as
-    /// when the entry's active account changed and they hold the previous
-    /// account's token.
+    /// when the entry's active account changed and they run in the previous
+    /// account's directory.
     pub fn close_entry(&self, entry: &str) {
         self.seats.borrow_mut().retain(|seat| {
             let kept = seat.entry != entry;
@@ -148,7 +148,6 @@ impl Prepared {
     /// answer, through `placement`.
     pub(crate) fn start(
         shared: &Arc<Shared>,
-        http: &reqwest::Client,
         placement: &Rc<dyn Placement>,
         request: InferenceRequest,
     ) -> Self {
@@ -159,7 +158,6 @@ impl Prepared {
         let items = request.items.clone();
         let task = tokio::task::spawn_local(wait(
             shared.clone(),
-            http.clone(),
             placement.clone(),
             request,
             received,
@@ -217,10 +215,9 @@ impl Prepared {
 /// would, then answers what the CLI asks while it waits, until a request
 /// takes it or it is closed. Ten minutes after the preparation began, a
 /// process no request took is closed. Closing a process still starting
-/// gives its start up, which kills what it started.
+/// gives its start up, which closes what it started.
 async fn wait(
     shared: Arc<Shared>,
-    http: reqwest::Client,
     placement: Rc<dyn Placement>,
     request: InferenceRequest,
     mut commands: oneshot::Receiver<Command>,
@@ -230,7 +227,7 @@ async fn wait(
     let unused = tokio::time::sleep(UNUSED_FOR);
     tokio::pin!(unused);
     let started = async {
-        let mut live = LiveCli::start(&shared, &http, &*placement, &request, None).await?;
+        let mut live = LiveCli::start(&shared, &*placement, &request).await?;
         live.prepare(&request).await?;
         Ok::<_, demi_provider_common::ProviderFailure>(live)
     };
@@ -242,7 +239,7 @@ async fn wait(
             started = &mut started => break started,
             command = &mut commands, if taker.is_none() => match command {
                 Ok(Command::Take(given)) => taker = Some(given),
-                // Dropping the start gives it up and kills what it started.
+                // Dropping the start gives it up and closes what it started.
                 Ok(Command::Close) | Err(_) => return,
             },
             () = seat.close.cancelled() => return,

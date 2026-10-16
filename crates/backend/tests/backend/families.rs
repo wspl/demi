@@ -298,8 +298,10 @@ impl AccountKit for Kit {
                 guard.0 = None;
                 let account = script.account.lock().unwrap().clone();
                 Ok(NewAccount {
-                    secret: serde_json::json!({ "token": format!("login-secret-{account}") })
-                        .to_string(),
+                    secret: Some(
+                        serde_json::json!({ "token": format!("login-secret-{account}") })
+                            .to_string(),
+                    ),
                     label: AccountLabel {
                         label: format!("{account}@example.test"),
                         detail: None,
@@ -366,7 +368,7 @@ impl Provider for Scripted {
     }
 
     fn read_failure(&self, _: &ProviderErrorDiagnostics, _: Timestamp) -> ProviderFailureFacts {
-        ProviderFailureFacts { retry_at: None, continue_with: None }
+        ProviderFailureFacts { retry_at: None, continue_with: None, signed_out: None }
     }
 
     fn quota(&self) -> Option<&ProviderQuota> {

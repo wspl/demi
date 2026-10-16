@@ -248,7 +248,7 @@ mod linux {
                 }
                 MachineCall::Wake(params) => {
                     let device = DeviceId::parse(params.device_id)?;
-                    self.run(&device, DeviceOp::Wake(params.boot)).await?;
+                    self.run(&device, DeviceOp::Wake(params.boot, params.machine)).await?;
                     Ok(reply::<WakeParams>(()))
                 }
                 MachineCall::Hibernate(params) => {

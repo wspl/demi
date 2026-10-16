@@ -4,7 +4,7 @@
 //! back only where the conversation can go on in it: at the turn's `result`,
 //! and at a batch of tool calls whose results the next run delivers. It hands
 //! it back before the run's last event, since the agent stops reading a run
-//! at its failure. Every other end closes it, or drops it, which kills it.
+//! at its failure. Every other end closes it, SIGTERM first.
 //! When the next request is known but for its input, the runtime prepares
 //! its process ahead, and the request takes that one as a kept process
 //! when it is the request it was prepared for (`claude-code.md` §
@@ -14,9 +14,10 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use async_stream::stream;
+use demi_provider_common::credentials::{AuthFailure, AuthReason};
 use demi_provider_common::{
     Ahead, CallEvent, CallOutcome, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
-    ProviderRuntime, RequestLimits, Secret, ToolResultKinds, VendorCall, offers, quota::Observation,
+    ProviderRuntime, RequestLimits, ToolResultKinds, offers, quota::Observation,
 };
 use demi_shared_types::Model;
 use futures_util::StreamExt as _;
@@ -27,38 +28,37 @@ use crate::Shared;
 use crate::failure::read_failure;
 use crate::live::{LiveCli, Next};
 use crate::output::{Answered, ContentBlock, Line, Printed, StreamEvent, Streaming, TurnEnd};
-use crate::placement::Placement;
+use crate::placement::{Placement, WorkLease};
 use crate::prepared::Prepared;
 use crate::timing::{self, RunTiming, Took};
 
-/// The HTTP status of a call the vendor refused for its token.
+/// The HTTP status of a call the vendor refused for its sign-in.
 const UNAUTHORIZED: u16 = 401;
 
 /// A session's runtime.
 pub(crate) struct ClaudeCodeRuntime {
     shared: Arc<Shared>,
-    /// The client of the shard the runtime runs on.
-    http: reqwest::Client,
     placement: Rc<dyn Placement>,
     /// The process kept from the last run.
     live: Option<LiveCli>,
     /// The process prepared for the next request; a runtime that keeps a
     /// process prepares none.
     prepared: Option<Prepared>,
+    /// The hold of the machine for the session's action that infers here,
+    /// from its first request to its end, across the tool calls between its
+    /// requests, so a CLI that waits on a long tool keeps its machine awake
+    /// (`managed-hosts.md` § The Claude Code machine).
+    action: Option<WorkLease>,
 }
 
 impl ClaudeCodeRuntime {
-    pub(crate) fn new(
-        shared: Arc<Shared>,
-        http: reqwest::Client,
-        placement: Rc<dyn Placement>,
-    ) -> Self {
+    pub(crate) fn new(shared: Arc<Shared>, placement: Rc<dyn Placement>) -> Self {
         Self {
             shared,
-            http,
             placement,
             live: None,
             prepared: None,
+            action: None,
         }
     }
 }
@@ -92,15 +92,12 @@ impl ProviderRuntime for ClaudeCodeRuntime {
     }
 
     fn fresh(&self) -> Box<dyn ProviderRuntime> {
-        Box::new(Self::new(
-            self.shared.clone(),
-            self.http.clone(),
-            self.placement.clone(),
-        ))
+        Box::new(Self::new(self.shared.clone(), self.placement.clone()))
     }
 
     fn close(&mut self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async {
+            self.action = None;
             if let Some(live) = self.live.take() {
                 live.close().await;
             }
@@ -110,6 +107,12 @@ impl ProviderRuntime for ClaudeCodeRuntime {
         })
     }
 
+    /// The action ended, completed, failed or stopped: the machine is no
+    /// longer held for it.
+    fn idle(&mut self) {
+        self.action = None;
+    }
+
     fn prepares_ahead(&self) -> bool {
         true
     }
@@ -117,9 +120,8 @@ impl ProviderRuntime for ClaudeCodeRuntime {
     /// Prepares the process of the next request, `request` but for its
     /// input, when the runtime holds none that would serve it: as a page
     /// opens the conversation or the user picks another model, effort or
-    /// account; and, as an action ends, when the kept process's token is
-    /// about to expire. A prepared process the history moved away from is
-    /// closed. A history that does not end with an answer prepares nothing.
+    /// account. A prepared process the history moved away from is closed,
+    /// as an action's end finds it. A history that does not end with an answer prepares nothing.
     /// Nothing here waits for a process: the session readies while the
     /// user may be sending, so what it closes ends by itself.
     fn prepare(&mut self, request: InferenceRequest, ahead: Ahead) -> LocalBoxFuture<'_, ()> {
@@ -133,11 +135,8 @@ impl ProviderRuntime for ClaudeCodeRuntime {
             }
             let wanted = match (ahead, &self.live) {
                 (Ahead::Opened | Ahead::Chosen, None) => true,
-                (Ahead::Opened | Ahead::Chosen, Some(live)) => {
-                    !(live.continues(&request) && live.fresh())
-                }
-                (Ahead::Ended, Some(live)) => live.continues(&request) && !live.fresh(),
-                (Ahead::Ended, None) => false,
+                (Ahead::Opened | Ahead::Chosen, Some(live)) => !live.continues(&request),
+                (Ahead::Ended, _) => false,
             };
             if !wanted || !answered(&request.items) {
                 return;
@@ -151,12 +150,7 @@ impl ProviderRuntime for ClaudeCodeRuntime {
                 ?ahead,
                 "preparing a Claude Code process ahead"
             );
-            self.prepared = Some(Prepared::start(
-                &self.shared,
-                &self.http,
-                &self.placement,
-                request,
-            ));
+            self.prepared = Some(Prepared::start(&self.shared, &self.placement, request));
         })
     }
 
@@ -175,9 +169,9 @@ impl ProviderRuntime for ClaudeCodeRuntime {
 /// One run: the process kept for the session when it can go on with the
 /// request, else a new one that resumes the session written from the
 /// request's blocks; then the CLI's output until the turn's end or a batch
-/// of tool calls, with the entries the CLI mirrors of its session. A turn the vendor
-/// refuses for its token is run once more in a new process with a refreshed
-/// token (`claude-code.md` § Accounts and sign-in).
+/// of tool calls, with the entries the CLI mirrors of its session. A turn
+/// whose sign-in the vendor refused fails with the authentication error and
+/// marks the account signed out (`claude-code.md` § Accounts and sign-in).
 fn run(
     runtime: &mut ClaudeCodeRuntime,
     request: InferenceRequest,
@@ -185,10 +179,12 @@ fn run(
 ) -> impl Stream<Item = ProviderEvent> + '_ {
     stream! {
         let cancel = request.cancel.clone();
-        // The token the vendor refused in the first attempt.
-        let mut refused: Option<Secret> = None;
-        'attempt: loop {
-            // A second attempt starts afresh: the first closed its process.
+        // The machine stays awake from the action's first request to its
+        // end, however long its process waits on a tool's result.
+        if runtime.action.is_none() {
+            runtime.action = Some(runtime.placement.work());
+        }
+        {
             let mut kept = runtime.live.take().map(|live| (live, Took::Kept));
             if let Some(prepared) = runtime.prepared.take() {
                 if prepared.serves(&request) {
@@ -242,16 +238,10 @@ fn run(
                     if let Some((previous, _)) = previous {
                         previous.close().await;
                     }
-                    let started = LiveCli::start(
-                        &runtime.shared,
-                        &runtime.http,
-                        &*runtime.placement,
-                        &request,
-                        refused.as_ref(),
-                    );
+                    let started = LiveCli::start(&runtime.shared, &*runtime.placement, &request);
                     let mut live = match cancel.run_until_cancelled(started).await {
-                        // Giving the start up drops what it started, which kills
-                        // it.
+                        // Giving the start up drops what it started, which
+                        // closes it.
                         None => return,
                         Some(Err(failure)) => {
                             yield ProviderEvent::Error(failure);
@@ -279,13 +269,13 @@ fn run(
                     }
                 }
             };
-            // Whether the run has yielded anything of this attempt, which a
-            // second attempt would then repeat.
-            let mut yielded = false;
             // The line the CLI made up for a call the vendor refused, as
             // received, which the failure's record keeps beside the result:
             // only it carries the refusal's reset.
             let mut refusal: Option<String> = None;
+            // The vendor refused the account's sign-in: the CLI said
+            // `authentication_failed` on the line it made up for the call.
+            let mut signed_out = false;
             loop {
                 let (text, line) = match live.next(&cancel).await {
                     Next::Cancelled => {
@@ -342,6 +332,7 @@ fn run(
                         // The refused call is one of its own, which the
                         // run's failure ends.
                         yield ProviderEvent::Call(CallEvent::Started);
+                        signed_out |= message.refused_sign_in();
                         refusal = Some(text);
                         let id = message.message_id();
                         for printed in message.content() {
@@ -393,7 +384,6 @@ fn run(
                                         let (events, answered) = replaced.events(block);
                                         for event in events {
                                             live.mirror.observe(&event);
-                                            yielded = true;
                                             timing.delta();
                                             yield event;
                                         }
@@ -501,7 +491,6 @@ fn run(
                             if let Some(streaming) = &mut live.streaming {
                                 streaming.observe(&event, live.mirror.last_block());
                             }
-                            yielded = true;
                             timing.delta();
                             yield event;
                         }
@@ -519,24 +508,25 @@ fn run(
                         live.streaming = None;
                         let usage = live.last_call.take();
                         let end = line.end();
-                        // The vendor refused the process's token, before
-                        // anything of the attempt reached the agent: the
-                        // token is refreshed and the request sent again,
-                        // once, in a new process, which resumes the
-                        // transcript.
-                        if let TurnEnd::Failed {
-                            status: Some(UNAUTHORIZED),
-                            code,
-                            ..
-                        } = &end
-                            && refused.is_none()
-                            && !yielded
+                        // The vendor refused the account's sign-in, which the
+                        // CLI could not renew and emptied: the account waits
+                        // for the user to sign in again, and rotation passes
+                        // over it.
+                        if let TurnEnd::Failed { status, .. } = &end
+                            && (signed_out || *status == Some(UNAUTHORIZED))
                         {
-                            // The refused call keeps its row.
-                            yield VendorCall::refused(code.clone());
-                            refused = Some(live.token.clone());
                             live.close().await;
-                            continue 'attempt;
+                            runtime.shared.auth.signed_out().await;
+                            let record = match refusal {
+                                Some(refusal) => format!("{refusal}\n{text}"),
+                                None => text,
+                            };
+                            let failure = AuthFailure::new(crate::FAMILY, AuthReason::SignedOut).failure();
+                            yield ProviderEvent::Error(ProviderFailure {
+                                code: failure.code,
+                                ..ProviderFailure::protocol(failure.message, record)
+                            });
+                            return;
                         }
                         runtime.live = Some(live);
                         match end {

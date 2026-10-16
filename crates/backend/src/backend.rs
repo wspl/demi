@@ -629,8 +629,9 @@ impl Backend {
             updated_at: self.services.clock.now(),
             source: "login:code".into(),
             identity_key: Some(identity.to_owned()),
+            signed_out: false,
         };
-        staged.write(meta, secret).await.expect("a pool in memory stores");
+        staged.write(meta, Some(secret)).await.expect("a pool in memory stores");
         staged.set_active(&id).await.expect("a pool in memory selects");
         self.services
             .vault

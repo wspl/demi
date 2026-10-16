@@ -44,7 +44,6 @@ use serde_json::json;
 use tokio::sync::Notify;
 
 use crate::conversations::{FIRST, SECOND, Socket, choose, create, on_device, transcript};
-use crate::cloud::reset;
 use crate::support::{Harness, Session, TestBackend, eventually};
 use demi_plugin_skills::testing::skill_md;
 
@@ -237,7 +236,7 @@ impl Provider for TreeProvider {
     }
 
     fn read_failure(&self, _: &ProviderErrorDiagnostics, _: Timestamp) -> ProviderFailureFacts {
-        ProviderFailureFacts { retry_at: None, continue_with: None }
+        ProviderFailureFacts { retry_at: None, continue_with: None, signed_out: None }
     }
 
     fn runtime(&self, _: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {
@@ -1255,79 +1254,6 @@ async fn a_live_trees_subagent_list_is_the_one_its_open_sends() {
     let listed: Vec<_> = listed.json::<Subagents>().subagents.into_iter().map(|job| job.child).collect();
     assert_eq!(listed, sent);
     assert_eq!(sent[0].model.provider, "Again");
-    backend.close().await;
-}
-
-// Several seconds: the child's shell job runs on a real device until the
-// reset holds the conversation.
-#[tokio::test]
-async fn a_reset_holds_a_conversation_whose_subagent_infers_with_a_provider_on_the_cloud() {
-    let scripts = Arc::new(Scripts::default());
-    let (harness, backend, master, _paired, _root, _provider) = tree(&scripts).await;
-    // Its files and commands and its root's provider are on the device;
-    // only the provider of its child's profile runs on the Cloud.
-    let created = backend
-        .post(
-            "/api/providers",
-            Some(&master),
-            json!({
-                "source": "family", "providerType": "tree-process", "label": "On the Cloud",
-                "apiKey": "k",
-                "models": [{
-                    "id": "c", "displayName": "C", "contextWindow": 100000, "outputLimit": null,
-                    "thinkingEfforts": [], "acceptedExtensions": null, "fastTier": null
-                }]
-            }),
-        )
-        .await;
-    assert_eq!(created.status, StatusCode::CREATED);
-    let process = created.json::<ProviderAnswer>().provider.id;
-    let profile = json!({
-        "name": "cloud", "description": "Runs on the Cloud's provider.",
-        "model": { "providerId": process, "modelId": "c", "thinkingEffort": null, "serviceTierId": null },
-        "contextLimit": null, "instructions": null, "canSpawn": true
-    });
-    let created = backend
-        .post("/api/subagents/profiles", Some(&master), profile)
-        .await;
-    assert_eq!(created.status, StatusCode::CREATED);
-    let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open().await;
-    scripts.child(vec![shell("c1", WAIT), say("never said")]);
-    scripts.root(
-        FIRST,
-        vec![
-            shell("t1", "demi agent spawn --profile cloud <<< 'Wait for go'"),
-            say("dispatched"),
-        ],
-    );
-    socket.chat("m1", "Delegate").await;
-    eventually("the child runs its command", || async {
-        scripts.asked(|session| session != FIRST).len() == 1
-    })
-    .await;
-    drop(socket);
-
-    let (held, proceed) = (Arc::new(Notify::new()), Arc::new(Notify::new()));
-    harness
-        .manager
-        .script(|script| script.hold_reset = Some((held.clone(), proceed.clone())));
-    reset(&backend, &master, "6e2d3c4b-8f3a-4c1e-9d2b-7a1c2e3f4a19").await;
-    held.notified().await;
-    // The reset holds the conversation for its child: an open waits at its
-    // file gate and goes on when the reset ends.
-    let mut waiting = backend.file_gate(&master, FIRST).await.waiting();
-    let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    {
-        let opening = socket.open();
-        tokio::pin!(opening);
-        tokio::select! {
-            _ = &mut opening => panic!("the open did not wait for the reset"),
-            waits = waiting.wait_for(|count| *count > 0) => assert!(waits.is_ok()),
-        }
-        proceed.notify_one();
-        opening.await;
-    }
     backend.close().await;
 }
 

@@ -36,6 +36,7 @@ pub fn meta(row: &CredentialRow) -> AccountMeta {
         updated_at: row.updated_at,
         source: row.source.clone(),
         identity_key: row.identity_key.clone(),
+        signed_out: row.signed_out,
     }
 }
 
@@ -104,12 +105,16 @@ impl CredentialPool for VaultCredentialPool {
 
     /// Stores the account, and selects it when the entry has no active
     /// account, in one transaction; the record's time is the write's.
-    fn write(&self, meta: AccountMeta, secret: String) -> BoxFuture<'_, Result<(), PoolError>> {
+    fn write(
+        &self,
+        meta: AccountMeta,
+        secret: Option<String>,
+    ) -> BoxFuture<'_, Result<(), PoolError>> {
         Box::pin(async move {
             let id = CredentialId::try_from(meta.id)
                 .map_err(|error| PoolError::Store(error.to_string()))?;
             let account = CredentialWrite {
-                secret: self.vault.seal_secret(&self.provider, &id, &secret),
+                secret: secret.map(|secret| self.vault.seal_secret(&self.provider, &id, &secret)),
                 id,
                 identity_key: meta.identity_key,
                 label: meta.label,
@@ -127,6 +132,24 @@ impl CredentialPool for VaultCredentialPool {
                 ));
             }
             self.vault.mark_entry_changed(&self.provider).await;
+            Ok(())
+        })
+    }
+
+    fn sign_out<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), PoolError>> {
+        Box::pin(async move {
+            let Ok(account) = CredentialId::try_from(id) else {
+                return Ok(());
+            };
+            let changed = self
+                .vault
+                .control()
+                .sign_out_credential(self.provider.clone(), account)
+                .await
+                .map_err(store)?;
+            if changed {
+                self.vault.mark_entry_changed(&self.provider).await;
+            }
             Ok(())
         })
     }
@@ -183,13 +206,16 @@ impl AccountDocument for VaultDocument {
             else {
                 return Ok(None);
             };
+            let Some(secret) = &row.secret else {
+                return Ok(None);
+            };
             // A secret that does not open is corrupt: requests with the
             // account fail with an authentication error, and nothing
             // replaces it.
             let document = self
                 .vault
                 .key()
-                .open(seal::Row::Secret(&self.provider, account), &row.secret)
+                .open(seal::Row::Secret(&self.provider, account), secret)
                 .map_err(|_| {
                     PoolError::Store(format!("the secret of {} does not open", self.name))
                 })?;
@@ -203,12 +229,16 @@ impl AccountDocument for VaultDocument {
         })
     }
 
-    fn replace(&self, text: String, version: u64) -> BoxFuture<'_, Result<bool, PoolError>> {
+    fn replace(
+        &self,
+        text: Option<String>,
+        version: u64,
+    ) -> BoxFuture<'_, Result<bool, PoolError>> {
         Box::pin(async move {
             let Some(account) = &self.account else {
                 return Ok(false);
             };
-            let sealed = self.vault.seal_secret(&self.provider, account, &text);
+            let sealed = text.map(|text| self.vault.seal_secret(&self.provider, account, &text));
             let replaced = self
                 .vault
                 .control()
@@ -256,6 +286,7 @@ mod tests {
             updated_at: Timestamp::UNIX_EPOCH,
             source: "login:device".into(),
             identity_key: Some(id.into()),
+            signed_out: false,
         }
     }
 
@@ -292,14 +323,14 @@ mod tests {
             .unwrap();
         let pool = vault.pool(entry.id.clone());
         assert_eq!(pool.active().await, Ok(None));
-        pool.write(account("a"), r#"{"refresh":"one"}"#.into())
+        pool.write(account("a"), Some(r#"{"refresh":"one"}"#.into()))
             .await
             .unwrap();
         // The first account of an entry without an active one becomes it, in
         // the same write.
         assert_eq!(pool.active().await.unwrap().as_deref(), Some("a"));
         let rows = control.credentials(entry.id.clone()).await.unwrap();
-        assert!(!rows[0].secret.windows(3).any(|window| window == b"one"));
+        assert!(!rows[0].secret.as_ref().unwrap().windows(3).any(|window| window == b"one"));
 
         // Two refreshers read one revision; the second write finds a newer one.
         let document = pool.document("a");
@@ -308,13 +339,13 @@ mod tests {
         assert_eq!(first.text, r#"{"refresh":"one"}"#);
         assert!(
             document
-                .replace(r#"{"refresh":"two"}"#.into(), first.version)
+                .replace(Some(r#"{"refresh":"two"}"#.into()), first.version)
                 .await
                 .unwrap()
         );
         assert!(
             !document
-                .replace(r#"{"refresh":"lost"}"#.into(), second.version)
+                .replace(Some(r#"{"refresh":"lost"}"#.into()), second.version)
                 .await
                 .unwrap()
         );
@@ -363,7 +394,7 @@ mod tests {
         assert_eq!(foreign.document("a").read().await, Ok(None));
         assert_eq!(foreign.list().await, Ok(Vec::new()));
         // A secret moved into another entry's row does not open there.
-        foreign.write(account("a"), "{}".into()).await.unwrap();
+        foreign.write(account("a"), Some("{}".into())).await.unwrap();
         testing::execute(
             &control,
             "UPDATE provider_credentials SET secret = (SELECT secret FROM provider_credentials
@@ -376,7 +407,7 @@ mod tests {
             Err(PoolError::Store(_))
         ));
 
-        pool.write(account("b"), "{}".into()).await.unwrap();
+        pool.write(account("b"), Some("{}".into())).await.unwrap();
         assert_eq!(
             pool.set_active("missing").await,
             Err(PoolError::NotFound("missing".into()))

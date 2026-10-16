@@ -128,7 +128,7 @@ const props = defineProps<{
   onRemove?: Action<[id: string]>
   onRemoveAccount?: Action<[provider: SettingsProviderEntry, accountId: string]>
   onRemoveModel?: Action<[provider: SettingsProviderEntry, model: SettingsProviderModel]>
-  /** Installs the CLI on the user's Cloud again; Install works until the backend took it. */
+  /** Installs the CLI on Claude Code's machine again; Install works until the backend took it. */
   onInstallCli?: Action<[provider: SettingsProviderEntry]>
   /** Whether the user went on past the warning about several accounts, which then never shows again. */
   multiAccountWarned?: boolean
@@ -157,7 +157,7 @@ const emit = defineEmits<{
   refresh: [provider: SettingsProviderEntry]
   /** Ask the vendor for one account's usage again. */
   refreshUsage: [provider: SettingsProviderEntry, accountId: string, automatic?: boolean]
-  /** Read the CLI's newest version and the machines again. */
+  /** Read the CLI's newest version again. */
   checkCli: [provider: SettingsProviderEntry]
   activateAccount: [provider: SettingsProviderEntry, accountId: string]
   /** The accounts in the order the user dragged them to, every one once. */
@@ -797,6 +797,7 @@ function endpointCheck(value: string) {
                   <template #tags>
                     <Tag v-if="account.plan">{{ account.plan }}</Tag>
                     <Tag v-if="account.active" tone="accent">{{ t('providers.account.active') }}</Tag>
+                    <Tag v-if="account.signedOut" tone="warning">{{ t('providers.state.signedOut') }}</Tag>
                     <Tag
                       v-if="
                         account.quota.some(
@@ -816,6 +817,16 @@ function endpointCheck(value: string) {
                       @refresh="emit('refreshUsage', selected, account.id, true)"
                     />
                   </template>
+                  <!-- A sign-in that names the account replaces its sign-in
+                       (`web-api.md` § Subscription accounts), so it skips the warning
+                       about several accounts. -->
+                  <Button
+                    size="sm"
+                    v-if="account.signedOut"
+                    :disabled="busy(selected.id)"
+                    @click="emit('signIn', selected)"
+                    >{{ t('providers.account.signInAgain') }}</Button
+                  >
                   <Button
                     size="sm"
                     v-if="!account.active"
@@ -1052,8 +1063,8 @@ function endpointCheck(value: string) {
             </SettingsGroup>
 
             <!-- The CLI of a provider whose requests are a process: Demi installs the vendor's newest
-               on the machines that run it, so this shows what is wanted and what each machine has,
-               and only a failure asks for anything. -->
+               on Claude Code's one machine and keeps it updated, so this shows the version it
+               follows, and only a failure asks for anything. -->
             <SettingsGroup v-if="selected.cli" :title="t('providers.cli.title')">
               <SettingsRow
                 :label="t('providers.cli.version')"
@@ -1081,20 +1092,6 @@ function endpointCheck(value: string) {
                 :label="t('providers.cli.unreadable')"
                 :description="selected.cli.newest.error"
               />
-              <SettingsRow
-                v-for="machine in selected.cli.machines"
-                :key="machine.id"
-                compact
-                :label="machine.name"
-              >
-                <span class="text-[13px] tabular-nums text-fg-muted">{{
-                  machine.versions === null
-                    ? t('providers.cli.noAnswer')
-                    : machine.versions.length
-                      ? machine.versions.join(', ')
-                      : t('providers.cli.notInstalled')
-                }}</span>
-              </SettingsRow>
               <SettingsRow
                 v-if="selected.cli.install && selected.cli.install.state !== 'installed'"
                 compact

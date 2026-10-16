@@ -15,6 +15,7 @@ use std::{
 };
 
 use clap::{CommandFactory, FromArgMatches, parser::ValueSource};
+use demi_machine_manager_protocol::SandboxMachine;
 use demi_machine_manager_protocol::runtime::RuntimeRelease;
 use ipnet::Ipv4Net;
 
@@ -117,6 +118,11 @@ struct Cli {
     /// The memory limit of one sandbox, in MiB, with the limits on.
     #[arg(long, env = "DEMI_MANAGED_MEM_MIB", value_name = "DEMI_MANAGED_MEM_MIB", default_value = "2048", value_parser = decimal::<NonZeroU32>)]
     mem_mib: NonZeroU32,
+    /// The memory limit of the Claude Code machine's sandbox, in MiB, with
+    /// the limits on: every user's CLI processes share it
+    /// (`managed-hosts.md` § The Claude Code machine).
+    #[arg(long, env = "DEMI_MANAGED_CLAUDE_CODE_MEM_MIB", value_name = "DEMI_MANAGED_CLAUDE_CODE_MEM_MIB", default_value = "4096", value_parser = decimal::<NonZeroU32>)]
+    claude_code_mem_mib: NonZeroU32,
     /// A new system filesystem's capacity, in MiB.
     #[arg(long, env = "DEMI_MANAGED_SYSTEM_MIB", value_name = "DEMI_MANAGED_SYSTEM_MIB", default_value = "1024", value_parser = decimal::<NonZeroU32>)]
     system_mib: NonZeroU32,
@@ -191,9 +197,23 @@ pub struct Config {
 pub struct Limits {
     pub cpus: NonZeroU32,
     pub memory_mib: NonZeroU32,
+    /// The Claude Code machine's memory limit.
+    pub claude_code_memory_mib: NonZeroU32,
 }
 
 impl Limits {
+    /// The limits of a sandbox of `machine`: the Claude Code machine's
+    /// memory is its own setting.
+    pub fn of(self, machine: SandboxMachine) -> Self {
+        match machine {
+            SandboxMachine::Cloud => self,
+            SandboxMachine::ClaudeCode => Self {
+                memory_mib: self.claude_code_memory_mib,
+                ..self
+            },
+        }
+    }
+
     /// The memory limit in bytes.
     pub fn memory_bytes(&self) -> NonZeroU64 {
         mebibytes(self.memory_mib)
@@ -274,12 +294,14 @@ impl Config {
             Switch::On => Some(Limits {
                 cpus: cli.cpus,
                 memory_mib: cli.mem_mib,
+                claude_code_memory_mib: cli.claude_code_mem_mib,
             }),
             Switch::Off => {
                 // A budget nothing would apply is refused, not ignored.
                 for (id, variable) in [
                     ("cpus", "DEMI_MANAGED_CPUS"),
                     ("mem_mib", "DEMI_MANAGED_MEM_MIB"),
+                    ("claude_code_mem_mib", "DEMI_MANAGED_CLAUDE_CODE_MEM_MIB"),
                 ] {
                     if matches.value_source(id) != Some(ValueSource::DefaultValue) {
                         return Err(ConfigError::LimitsOff(variable));

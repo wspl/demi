@@ -20,7 +20,7 @@ use tokio::runtime::Handle;
 use url::Url;
 
 /// The command package that installs the CLI `provider`'s requests start on
-/// the user's Cloud: Claude Code's, the one provider whose requests are a
+/// the Claude Code machine: Claude Code's, the one provider whose requests are a
 /// process (`claude-code.md` § The package); none for an HTTP provider.
 pub fn cli_package(provider: &dyn Provider) -> Option<String> {
     provider

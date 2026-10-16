@@ -1,39 +1,37 @@
 //! The Claude sign-in (`claude-code.md` § Accounts and sign-in): Demi runs
-//! the CLI's own login on the acting user's Cloud, in a configuration
-//! directory of its own, shows the user the link the CLI prints, and writes
-//! the code the user pastes to the CLI's input. When the CLI exits with
-//! success, Demi reads the tokens and the account it wrote, and the
-//! directory goes, as it does when the login fails or is stopped. A code the
-//! CLI refuses leaves it waiting, and the user sees its words and pastes
-//! another. Demi never writes Claude's OAuth flow itself, and never logs the
-//! code.
+//! the CLI's own login on the Claude Code machine, in a new configuration
+//! directory, shows the user the link the CLI prints, and writes the code
+//! the user pastes to the CLI's input. When the CLI exits with success, Demi
+//! reads the account it signed in, its ID and email, and nothing of its
+//! tokens, and the directory becomes the account's; when the login fails or
+//! is stopped, the directory goes. A code the CLI refuses leaves it
+//! waiting, and the user sees its words and pastes another. Demi never
+//! writes Claude's OAuth flow itself, and never logs the code.
 
 use std::sync::Arc;
 
 use bytes::Bytes;
-use demi_host_interface::{Process, ProcessControl, ProcessEnd, Signal};
+use demi_host_interface::{Process, ProcessControl, ProcessEnd};
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::{
-    AccountKit, AccountsCapability, LoginError, LoginIo, LoginKind, NewAccount, SecretDocument,
-    decode_secret,
+    AccountKit, AccountsCapability, AccountsError, CredentialPool, LoginError, LoginIo, LoginKind,
+    NewAccount,
+    credential_id_for, decode_secret, find_by_identity,
 };
-use demi_shared_types::{LoginPending, LoginStage, RefusedCode, StreamKind, Timestamp};
+use demi_shared_types::{LoginPending, LoginStage, RefusedCode, StreamKind};
 use futures_util::future::BoxFuture;
 use futures_util::{FutureExt as _, StreamExt as _};
 use reqwest::Url;
-use serde::Deserialize;
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
-use crate::account::ClaudeSecret;
+use crate::account::{identity_key, label};
 use crate::cli;
-use crate::live::{Tail, exit_message};
-use crate::placement::{AccountMachine, AccountWork, Placed, Placement, StartStage};
-
-/// The file the CLI writes its tokens to in its configuration directory.
-const CREDENTIALS: &str = ".credentials.json";
-/// The file the CLI writes its account to there.
-const CONFIG: &str = ".claude.json";
+use crate::files::{CONFIG, ConfigFile};
+use crate::live::{Handle, Tail, exit_message};
+use crate::placement::{
+    AccountMachine, AccountWork, CliWork, ConfigDir, Placed, Placement, StartStage,
+};
 
 /// What the sign-in shows the user while it runs.
 enum Shown {
@@ -52,6 +50,9 @@ pub(crate) struct ClaudeKit {
     pub(crate) machine: Option<Arc<dyn AccountMachine>>,
     /// The entry the sign-in is for, or the login that is to make it.
     pub(crate) entry: String,
+    /// The entry's accounts, which name the directory a sign-in's account
+    /// takes.
+    pub(crate) pool: Arc<dyn CredentialPool>,
 }
 
 impl AccountKit for ClaudeKit {
@@ -66,9 +67,27 @@ impl AccountKit for ClaudeKit {
         io: LoginIo<'a>,
     ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>> {
         let machine = self.machine.clone()?;
-        Some(Box::pin(sign_in(machine, self.entry.clone(), io)))
+        Some(Box::pin(sign_in(
+            machine,
+            self.entry.clone(),
+            self.pool.clone(),
+            io,
+        )))
     }
 
+    /// The account's directory on the machine goes before its record, so
+    /// no sign-in outlives the account in Demi.
+    fn forget<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), AccountsError>> {
+        Box::pin(async move {
+            let machine = self.machine.clone().ok_or_else(|| {
+                AccountsError::Unavailable("Claude Code's machine is not available".into())
+            })?;
+            machine
+                .remove_account(id.to_owned())
+                .await
+                .map_err(|error| AccountsError::Unavailable(error.0))
+        })
+    }
 }
 
 /// Runs the CLI's sign-in on `machine` and relays it: what the start waits
@@ -79,6 +98,7 @@ impl AccountKit for ClaudeKit {
 async fn sign_in(
     machine: Arc<dyn AccountMachine>,
     entry: String,
+    pool: Arc<dyn CredentialPool>,
     io: LoginIo<'_>,
 ) -> Result<NewAccount, LoginError> {
     let LoginIo {
@@ -91,7 +111,8 @@ async fn sign_in(
     let (answer, answered) = oneshot::channel();
     let work: AccountWork = Box::new(move |placement, abandoned| {
         Box::pin(async move {
-            let signed_in = sign_in_at(&*placement, shown_to, codes, stop, abandoned).await;
+            let signed_in =
+                sign_in_at(&*placement, &*pool, shown_to, codes, stop, abandoned).await;
             // A login that gave up waiting has stopped the sign-in already.
             let _ = answer.send(signed_in);
         })
@@ -144,11 +165,13 @@ async fn sign_in(
     })
 }
 
-/// The sign-in on the machine `placement` stands for. It ends early when
-/// `stop` fires or nobody waits for it any more (`abandoned`), and removes
-/// its directory however it ends.
+/// The sign-in on the machine `placement` stands for, whose account takes
+/// its id among `pool`'s. It ends early when `stop` fires or nobody waits
+/// for it any more (`abandoned`), and removes its directory however it ends
+/// but with success, which makes the directory the account's.
 async fn sign_in_at(
     placement: &dyn Placement,
+    pool: &dyn CredentialPool,
     shown: mpsc::UnboundedSender<Shown>,
     codes: mpsc::UnboundedReceiver<Secret>,
     stop: CancellationToken,
@@ -162,11 +185,12 @@ async fn sign_in_at(
     };
     // The login is gone once it stopped waiting, and a stage nobody shows
     // matters to nobody.
+    let _work = placement.work();
     let stages = {
         let shown = shown.clone();
         move |reached: StartStage| {
             let _ = shown.send(Shown::Stage(match reached {
-                StartStage::Machine => LoginStage::WaitingForCloud,
+                StartStage::Machine => LoginStage::WaitingForMachine,
                 StartStage::Install => LoginStage::Installing,
                 StartStage::Process => LoginStage::Starting,
             }));
@@ -176,7 +200,7 @@ async fn sign_in_at(
     let Placed {
         process, config, ..
     } = tokio::select! {
-        placed = placement.start(&cli::login_request, &stages) => {
+        placed = placement.start(CliWork::Login, Arc::new(cli::login_request), &stages) => {
             placed.map_err(|error| LoginError::Failed(error.0))?
         }
         () = stopped() => return Err(LoginError::Stopped),
@@ -187,30 +211,38 @@ async fn sign_in_at(
         exit,
     } = process;
     let exit = exit.shared();
+    // The process is held apart from what stops, and closed, SIGTERM
+    // first, unless it ended by itself.
+    let mut handle = Handle::of(control, exit.clone(), None);
     let relayed = tokio::select! {
-        relayed = relay(output, &*control, shown, codes) => relayed,
+        relayed = relay(output, handle.control(), shown, codes) => relayed,
         () = stopped() => Err(LoginError::Stopped),
     };
-    let signed_in = match relayed {
-        Ok(stderr) => match exit.clone().await {
-            ProcessEnd::Exited(0) => signed_in(&*config).await,
-            end => Err(LoginError::Failed(if stderr.is_empty() {
-                exit_message(&end)
-            } else {
-                stderr
-            })),
+    let ended = match relayed {
+        Ok(stderr) => tokio::select! {
+            () = handle.ended() => match exit.clone().await {
+                ProcessEnd::Exited(0) => Ok(()),
+                end => Err(LoginError::Failed(if stderr.is_empty() {
+                    exit_message(&end)
+                } else {
+                    stderr
+                })),
+            },
+            () = stopped() => Err(LoginError::Stopped),
         },
-        Err(error) => {
-            // A process that already ended takes no signal; its end is
-            // awaited either way.
-            let _ = control.kill(Signal::Kill).await;
-            exit.clone().await;
-            Err(error)
-        }
+        Err(error) => Err(error),
     };
-    drop(control);
-    config.remove().await;
-    signed_in
+    handle.close().await;
+    if let Err(error) = ended {
+        config.remove().await;
+        return Err(error);
+    }
+    // The adoption waits for the account's processes, and stops with the
+    // login all the same; one given up removes the sign-in's directory.
+    tokio::select! {
+        signed_in = signed_in(config, pool) => signed_in,
+        () = stopped() => Err(LoginError::Stopped),
+    }
 }
 
 /// Relays the sign-in until the CLI's output ends: the link it prints goes
@@ -297,70 +329,50 @@ fn link(line: &str) -> Option<String> {
     (url.scheme() == "https").then(|| url.to_string())
 }
 
-/// The account the CLI's sign-in wrote into its directory.
-async fn signed_in(config: &dyn crate::placement::ConfigDir) -> Result<NewAccount, LoginError> {
-    let read = |name: &'static str| async move {
-        let bytes = config.read(name).await.map_err(|error| {
-            LoginError::Failed(format!("Claude Code wrote no {name}: {error}"))
+/// The account the CLI's sign-in wrote into its directory `config`, which
+/// becomes the account's directory: its ID and email, read from the CLI's
+/// `.claude.json`, and nothing of its tokens. The account's id is the one
+/// it has among `pool`'s accounts, or the one a new account gets.
+async fn signed_in(
+    config: Box<dyn ConfigDir>,
+    pool: &dyn CredentialPool,
+) -> Result<NewAccount, LoginError> {
+    let read = async {
+        let bytes = config.read(CONFIG).await.map_err(|error| {
+            LoginError::Failed(format!("Claude Code wrote no {CONFIG}: {error}"))
         })?;
-        String::from_utf8(bytes.to_vec())
-            .map_err(|_| LoginError::Failed(format!("Claude Code's {name} is not text")))
+        let text = String::from_utf8(bytes.to_vec())
+            .map_err(|_| LoginError::Failed(format!("Claude Code's {CONFIG} is not text")))?;
+        decode_secret::<ConfigFile>(&text).map_err(|error| {
+            LoginError::Failed(format!("Claude Code's {CONFIG} cannot be read: {error}"))
+        })
     };
-    let unreadable =
-        |name: &str, error| LoginError::Failed(format!("Claude Code's {name} cannot be read: {error}"));
-    let credentials: CredentialsFile = decode_secret(&read(CREDENTIALS).await?)
-        .map_err(|error| unreadable(CREDENTIALS, error))?;
-    let config: ConfigFile =
-        decode_secret(&read(CONFIG).await?).map_err(|error| unreadable(CONFIG, error))?;
-    let tokens = credentials.claude_ai_oauth;
-    let expires_at = Timestamp::from_millisecond(tokens.expires_at).map_err(|_| {
-        LoginError::Failed("Claude Code's sign-in names an expiry out of range".into())
+    let file = match read.await {
+        Ok(file) => file,
+        Err(error) => {
+            config.remove().await;
+            return Err(error);
+        }
+    };
+    let account = file.oauth_account;
+    let label = label(&account.account_uuid, account.email_address.as_deref());
+    let key = identity_key(&account.account_uuid);
+    let existing = find_by_identity(pool, &key).await;
+    let id = match existing {
+        Ok(Some(existing)) => existing.id,
+        Ok(None) => credential_id_for(Some(&key), &label.label),
+        Err(error) => {
+            config.remove().await;
+            return Err(LoginError::Failed(error.to_string()));
+        }
+    };
+    config.adopt(&id).await.map_err(|error| {
+        LoginError::Failed(format!(
+            "Claude Code's sign-in could not become the account's: {error}"
+        ))
     })?;
-    let secret = ClaudeSecret {
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        expires_at,
-        scopes: tokens.scopes,
-        subscription_type: tokens.subscription_type,
-        account_id: config.oauth_account.account_uuid,
-        email: config.oauth_account.email_address,
-    };
     Ok(NewAccount {
-        label: secret.label(),
-        secret: secret.encode(),
+        label,
+        secret: None,
     })
-}
-
-/// The CLI's credentials file, of which Demi reads the sign-in's tokens.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct CredentialsFile {
-    claude_ai_oauth: SignedInTokens,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct SignedInTokens {
-    access_token: Secret,
-    refresh_token: Secret,
-    /// Milliseconds since the Unix epoch.
-    expires_at: i64,
-    scopes: Vec<String>,
-    #[serde(default)]
-    subscription_type: Option<String>,
-}
-
-/// The CLI's configuration file, of which Demi reads the signed-in account.
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct ConfigFile {
-    oauth_account: OauthAccount,
-}
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct OauthAccount {
-    account_uuid: String,
-    #[serde(default)]
-    email_address: Option<String>,
 }

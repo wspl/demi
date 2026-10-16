@@ -480,6 +480,7 @@
     "account": {
       "active": "使用中",
       "limitReached": "已達上限",
+      "signInAgain": "重新登入",
       "activate": "設為使用中",
       "refreshUsage": "重新整理用量",
       "test": "測試連線",
@@ -509,10 +510,8 @@
       "versionDescription": "跟隨最新版本並自動更新。",
       "check": "檢查更新",
       "unreadable": "無法讀取最新版本",
-      "noAnswer": "無回應",
-      "notInstalled": "未安裝",
-      "installing": "正在雲端上安裝",
-      "installFailed": "無法在雲端上安裝",
+      "installing": "正在安裝…",
+      "installFailed": "無法安裝",
       "install": "安裝"
     },
     "models": {
@@ -624,8 +623,8 @@
     "doneActive": "已登入。{vendor} 現在使用此帳號。",
     "doneKept": "已登入。{vendor} 會繼續使用目前的帳號。",
     "failedHint": "登入未完成。",
-    "waitingCloud": "正在等待你的雲端連線…",
-    "installing": "正在你的雲端上安裝命令列工具…",
+    "waitingMachine": "正在等待 Claude Code 的機器連線…",
+    "installing": "正在安裝命令列工具…",
     "startingTool": "正在啟動命令列工具…",
     "contacting": "正在連線到 {vendor}…",
     "copyCode": "複製代碼",

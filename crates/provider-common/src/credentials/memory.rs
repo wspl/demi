@@ -37,7 +37,7 @@ struct Held {
 #[derive(Debug)]
 struct Entry {
     meta: AccountMeta,
-    text: String,
+    text: Option<String>,
     version: u64,
 }
 
@@ -48,7 +48,7 @@ impl MemoryCredentialPool {
 
     /// Every account with its secret document, ordered by id, for whoever
     /// stores a completed login.
-    pub fn entries(&self) -> Vec<(AccountMeta, String)> {
+    pub fn entries(&self) -> Vec<(AccountMeta, Option<String>)> {
         self.shared
             .lock()
             .accounts
@@ -106,16 +106,30 @@ impl CredentialPool for MemoryCredentialPool {
         Box::pin(async { result })
     }
 
-    fn write(&self, meta: AccountMeta, secret: String) -> BoxFuture<'_, Result<(), PoolError>> {
+    fn write(
+        &self,
+        meta: AccountMeta,
+        secret: Option<String>,
+    ) -> BoxFuture<'_, Result<(), PoolError>> {
         {
             let mut held = self.shared.lock();
             let version = held.accounts.get(&meta.id).map_or(0, |entry| entry.version) + 1;
             let entry = Entry {
-                meta: meta.clone(),
+                meta: AccountMeta {
+                    signed_out: false,
+                    ..meta.clone()
+                },
                 text: secret,
                 version,
             };
             held.accounts.insert(meta.id, entry);
+        }
+        Box::pin(async { Ok(()) })
+    }
+
+    fn sign_out<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), PoolError>> {
+        if let Some(entry) = self.shared.lock().accounts.get_mut(id) {
+            entry.meta.signed_out = true;
         }
         Box::pin(async { Ok(()) })
     }
@@ -160,14 +174,20 @@ impl AccountDocument for MemoryDocument {
             .lock()
             .accounts
             .get(&self.id)
-            .map(|entry| Revision {
-                text: entry.text.clone(),
-                version: entry.version,
+            .and_then(|entry| {
+                Some(Revision {
+                    text: entry.text.clone()?,
+                    version: entry.version,
+                })
             });
         Box::pin(async { Ok(revision) })
     }
 
-    fn replace(&self, text: String, version: u64) -> BoxFuture<'_, Result<bool, PoolError>> {
+    fn replace(
+        &self,
+        text: Option<String>,
+        version: u64,
+    ) -> BoxFuture<'_, Result<bool, PoolError>> {
         let kept = {
             let mut held = self.shared.lock();
             match held.accounts.get_mut(&self.id) {

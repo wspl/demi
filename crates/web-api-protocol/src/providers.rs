@@ -12,7 +12,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::{double_option, unwrap_or_skip};
 
-use crate::ids::{CredentialId, DeviceId, LoginId, ProviderId};
+use crate::ids::{CredentialId, LoginId, ProviderId};
 use crate::text::{EndpointUrl, Trimmed};
 
 /// The most characters (Unicode scalar values) an entry's label has, after
@@ -346,8 +346,8 @@ pub struct ProviderDetails {
     pub quota: Option<QuotaSnapshot>,
     pub quota_capability: QuotaCapability,
     /// The command package that installs the CLI the provider's requests
-    /// start on the user's Cloud, such as `demi.claude-code`; null when its
-    /// requests are HTTP.
+    /// start on the Claude Code machine, such as `demi.claude-code`; null
+    /// when its requests are HTTP.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub cli_package: Option<String>,
@@ -670,7 +670,7 @@ pub struct CatalogProvider {
     pub provider_id: ProviderId,
     pub display_name: String,
     /// The command package that installs the CLI the provider's requests
-    /// start on the user's Cloud; null when its requests are HTTP.
+    /// start on the Claude Code machine; null when its requests are HTTP.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub cli_package: Option<String>,
@@ -797,17 +797,15 @@ pub struct ModelMatch {
 }
 
 /// `GET /providers/:id/cli`: the command-line tool of an entry whose
-/// provider runs one on the user's Cloud. Reading it wakes nothing.
+/// provider runs one on the Claude Code machine. Reading it wakes nothing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ProviderCli {
     pub newest: NewestVersion,
-    /// The last install on the caller's Cloud that no conversation asked
-    /// for, since the backend started; null before one.
+    /// The caller's last install on the Claude Code machine that no
+    /// conversation asked for, since the backend started; null before one.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<CliInstall>")]
     pub install: Option<CliInstall>,
-    /// The caller's Cloud while its runner is connected; empty otherwise.
-    pub machines: Vec<CliMachine>,
 }
 
 /// The vendor's newest version, or why it could not be read.
@@ -831,25 +829,13 @@ pub enum NewestVersion {
 )]
 pub enum CliInstall {
     Installing {},
-    /// `path` is the executable on the Cloud.
+    /// `path` is the executable on the Claude Code machine.
     Installed {
         path: String,
     },
     Failed {
         message: String,
     },
-}
-
-/// A machine the tool runs on, with the versions it has, newest first;
-/// null when it did not answer.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub struct CliMachine {
-    pub device_id: DeviceId,
-    pub name: String,
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<Vec<String>>")]
-    pub versions: Option<Vec<String>>,
 }
 
 /// The 202 answer of `POST /providers/:id/cli/install`.

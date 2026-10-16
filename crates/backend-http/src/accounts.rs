@@ -14,7 +14,6 @@ use demi_backend_providers::vault::accounts;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{CredentialId, LoginId};
 use demi_backend_providers::vault::logins::CodeRefusal;
-use demi_backend_user_shard::conversation::claude_cli::ShardMachine;
 use demi_provider_common::Secret;
 use demi_web_api_protocol::providers::{
     AccountOrder, Accounts, ActivateAccount, ActiveAccount, CodeTaken, CredentialKind, LoginAnswer, LoginCode,
@@ -27,7 +26,6 @@ use super::gate::AuthUser;
 use super::request_id;
 use super::providers::{configures, reserve, scoped};
 use demi_backend_user_shard::services::Services;
-use demi_backend_user_shard::shard::Shards;
 
 /// The entry's accounts; a user who only infers sees none.
 pub(super) async fn list(
@@ -94,10 +92,9 @@ fn started(id: LoginId) -> (StatusCode, Json<LoginStarted>) {
 }
 
 /// Starts a login into a new entry of the family the body names; a
-/// sign-in that runs a process runs it on the caller's Cloud.
+/// sign-in that runs a process runs it on the Claude Code machine.
 pub(super) async fn start_login(
     State(services): State<Arc<Services>>,
-    State(shards): State<Shards>,
     AuthUser(user): AuthUser,
     JsonBody(login): JsonBody<SubscriptionLogin>,
 ) -> Result<(StatusCode, Json<LoginStarted>), ApiError> {
@@ -108,11 +105,10 @@ pub(super) async fn start_login(
         None => family_name(&family).to_owned(),
     };
     let owner = services.vault.owner_for(&user.id).await?;
-    let machine = Arc::new(ShardMachine::new(shards, user.id.clone()));
     let request = request_id::current_or_new();
     let id = services
         .logins
-        .start(owner, user.id, family, label, None, machine, request)
+        .start(owner, user.id, family, label, None, request)
         .await?;
     Ok(started(id))
 }
@@ -121,7 +117,6 @@ pub(super) async fn start_login(
 /// until it ends.
 pub(super) async fn login_into(
     State(services): State<Arc<Services>>,
-    State(shards): State<Shards>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
 ) -> Result<(StatusCode, Json<LoginStarted>), ApiError> {
@@ -137,11 +132,10 @@ pub(super) async fn login_into(
     let family = entry.family.clone();
     let label = entry.label.clone();
     let owner = entry.owner.clone();
-    let machine = Arc::new(ShardMachine::new(shards, user.id.clone()));
     let request = request_id::current_or_new();
     let id = services
         .logins
-        .start(owner, user.id, family, label, Some(entry), machine, request)
+        .start(owner, user.id, family, label, Some(entry), request)
         .await?;
     Ok(started(id))
 }

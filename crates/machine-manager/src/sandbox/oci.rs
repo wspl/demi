@@ -317,6 +317,7 @@ mod tests {
                 limits: Limits {
                     cpus: std::num::NonZeroU32::new(2).unwrap(),
                     memory_mib: std::num::NonZeroU32::new(2048).unwrap(),
+                    claude_code_memory_mib: std::num::NonZeroU32::new(4096).unwrap(),
                 },
             }),
             runner_release: "release-of-the-runner",

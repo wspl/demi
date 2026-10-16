@@ -35,6 +35,12 @@ pub trait SubscriptionAccounts: Send + Sync {
     /// as soon as it has released what it holds. Dropping the future cancels
     /// it as well. A login that does not complete stores nothing.
     fn login<'a>(&'a self, io: LoginIo<'a>) -> BoxFuture<'a, Result<AccountInfo, LoginError>>;
+
+    /// Deletes what the family keeps of the account `id` outside its
+    /// record, before the vault removes the record: Claude Code's directory
+    /// of the account on its machine (`claude-code.md` § Accounts and
+    /// sign-in). Most families keep nothing.
+    fn forget<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), AccountsError>>;
 }
 
 /// How a family adds an account.
@@ -62,7 +68,7 @@ pub struct LoginIo<'a> {
     pub pending: &'a (dyn Fn(LoginPending) + Send + Sync),
     /// What the login waits for before it has anything to show, for a
     /// family whose login prepares in steps the user should see, such as a
-    /// Claude sign-in waiting for the Cloud (`claude-code.md` § Accounts
+    /// Claude sign-in waiting for the Claude Code machine (`claude-code.md` § Accounts
     /// and sign-in). A login is `preparing` until it reports another stage,
     /// and `waiting_for_user` once it reports `pending`; a family whose
     /// login prepares in one step reports none.
@@ -96,6 +102,10 @@ pub enum AccountsError {
     /// The account store failed.
     #[error("{0}")]
     Store(String),
+    /// What the family keeps of an account outside its record could not be
+    /// reached, such as the machine its sign-in is on.
+    #[error("{0}")]
+    Unavailable(String),
 }
 
 impl From<PoolError> for AccountsError {
@@ -137,8 +147,9 @@ pub struct AccountLabel {
 /// An account a family made: its secret document and how it names itself.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NewAccount {
-    /// The secret document, in the family's own format.
-    pub secret: String,
+    /// The secret document, in the family's own format; none for a family
+    /// whose sign-in is kept elsewhere, such as Claude Code's CLI.
+    pub secret: Option<String>,
     pub label: AccountLabel,
 }
 
@@ -152,6 +163,12 @@ pub trait AccountKit: Send + Sync + 'static {
         &'a self,
         io: LoginIo<'a>,
     ) -> Option<BoxFuture<'a, Result<NewAccount, LoginError>>>;
+
+    /// What [`SubscriptionAccounts::forget`] deletes; nothing by default.
+    fn forget<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), AccountsError>> {
+        let _ = id;
+        Box::pin(std::future::ready(Ok(())))
+    }
 }
 
 /// The account operations of one entry's pool, with a family's kit.
@@ -192,6 +209,7 @@ impl<K: AccountKit> Accounts<K> {
             }
             .to_owned(),
             identity_key: label.identity_key,
+            signed_out: false,
         };
         let info = meta.info();
         self.pool.write(meta, secret).await.map_err(stored)?;
@@ -230,5 +248,9 @@ impl<K: AccountKit> SubscriptionAccounts for Accounts<K> {
             let account = login.await?;
             self.import(account).await
         })
+    }
+
+    fn forget<'a>(&'a self, id: &'a str) -> BoxFuture<'a, Result<(), AccountsError>> {
+        self.kit.forget(id)
     }
 }

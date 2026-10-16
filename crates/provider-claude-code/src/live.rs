@@ -1,11 +1,13 @@
 //! A CLI process a runtime keeps across the turns of a session
 //! (`claude-code.md` § Process lifetime): its input and output, its SDK MCP
 //! server, what it has received of the transcript, the tool calls it holds,
-//! the blocks its session's entries belong to, and the account's access
-//! token it holds, with that token's expiry. Its standard error is drained
-//! all the time, keeping the last 64 KiB. Dropping it asks the Host to kill the process without
-//! waiting, and its configuration directory goes once it ended;
-//! [`LiveCli::close`] ends it, removes the directory and waits.
+//! and the blocks its session's entries belong to. Its standard error is
+//! drained all the time, keeping the last 64 KiB. A process is closed,
+//! never killed outright: [`LiveCli::close`] sends SIGTERM, waits up to five
+//! seconds, then sends SIGKILL, removes the process's own directory and
+//! waits; dropping it closes it the same way, as a task nobody waits for,
+//! since a process killed while it renews the account's sign-in stops the
+//! account for a minute (`claude-code.md` § Process lifetime).
 
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
@@ -19,10 +21,10 @@ use demi_host_interface::{Process, ProcessControl, ProcessEnd, ProcessOutput, Si
 use demi_provider_common::quota::Observation;
 use demi_provider_common::wire::Tagged;
 use demi_provider_common::{
-    InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ResultPart, Secret, ToolCall,
+    InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ResultPart, ToolCall,
     UserPart, encode_body,
 };
-use demi_shared_types::{StreamKind, ThinkingConfig, Timestamp};
+use demi_shared_types::{StreamKind, ThinkingConfig};
 use futures_channel::mpsc;
 use futures_util::future::{LocalBoxFuture, Shared as SharedFuture};
 use futures_util::stream::LocalBoxStream;
@@ -40,7 +42,6 @@ use crate::mirror::Mirror;
 use crate::output::{ControlRequestLine, LastCall, Line, Replaced, Streaming};
 use crate::placement::{CliSite, ConfigDir, Placed, Placement};
 use crate::session::SessionFile;
-use crate::account::expiring;
 use crate::timing::StartTiming;
 use crate::{FAMILY, Shared, cli};
 
@@ -180,12 +181,8 @@ pub(crate) enum Waited {
 pub(crate) struct LiveCli {
     shared: Arc<Shared>,
     key: ProcessKey,
-    /// The access token the process holds, and when it expires.
-    pub(crate) token: Secret,
-    expires_at: Timestamp,
-    /// The process's configuration directory, which goes with it.
-    config: Option<Box<dyn ConfigDir>>,
-    control: Box<dyn ProcessControl>,
+    /// The process's control and its own directory, which go with it.
+    handle: Handle,
     /// How the process ended, awaited as often as needed.
     exit: SharedFuture<LocalBoxFuture<'static, ProcessEnd>>,
     lines: Lines,
@@ -218,26 +215,23 @@ pub(crate) struct LiveCli {
 }
 
 impl LiveCli {
-    /// Starts a new process for `request` through `placement`, with the
-    /// account's access token, refreshed first when it expires within thirty
-    /// minutes or is still the one the vendor `refused`; the CLI is never
-    /// started without one. The process resumes the session written from
-    /// the request's blocks (`claude-code.md` § The session a process
-    /// resumes).
+    /// Starts a new process for `request` through `placement`, in the
+    /// account's directory, which the CLI reads its sign-in from; an
+    /// account the vendor signed out starts none. The process resumes the
+    /// session written from the request's blocks (`claude-code.md` § The
+    /// session a process resumes). A sign-in an earlier release kept in the
+    /// account's record goes to the directory with the start, and the
+    /// record's secret is cleared once the process started.
     pub(crate) async fn start(
         shared: &Arc<Shared>,
-        http: &reqwest::Client,
         placement: &dyn Placement,
         request: &InferenceRequest,
-        refused: Option<&Secret>,
     ) -> Result<Self, ProviderFailure> {
-        let secret = shared
+        let account = shared
             .auth
-            .credentials(http, refused)
+            .work()
             .await
             .map_err(|failure| failure.failure())?;
-        let expires_at = secret.expires_at;
-        let token = secret.access_token;
         let building = tokio::time::Instant::now();
         let file = {
             let session = request.session_id.clone();
@@ -250,10 +244,11 @@ impl LiveCli {
             .await?
         };
         let session_build = building.elapsed();
-        let start = |site: &CliSite| {
-            let start = cli::start(site, request, &token, &file);
-            // The environment and the descriptors are left out: a
-            // descriptor holds the token.
+        let args = cli::args(request, &file.id.to_string());
+        let start = Arc::new(move |site: &CliSite| {
+            let start = cli::start(site, args.clone(), &file);
+            // The environment is left out: the machine's own may hold
+            // anything.
             tracing::trace!(
                 target: WIRE,
                 direction = "spawn",
@@ -262,18 +257,21 @@ impl LiveCli {
                 args = ?start.spawn.args,
             );
             start
-        };
+        });
         let Placed {
             process,
             config,
             steps,
         } = placement
-            .start(&start, &|_| {})
+            .start(account.work, start, &|_| {})
             .await
             // The machine could not be reached or readied, as when its
             // connection is being replaced or its network fails a lookup:
             // the agent's retry starts the process again.
             .map_err(|error| ProviderFailure::no_answer(error.0))?;
+        if let Some(version) = account.handed_over {
+            shared.auth.handed_over(version).await;
+        }
         let Process {
             output,
             control,
@@ -284,14 +282,16 @@ impl LiveCli {
         let drain = tokio::task::spawn_local(drain(output, stdout, stderr.clone()));
         let mcp = (!request.tools.is_empty()).then(|| Mcp::start(request.tools.clone()));
         let cut = Rc::new(Cell::new(false));
+        let exit = exit.shared();
         Ok(Self {
             shared: shared.clone(),
             key: ProcessKey::of(request),
-            token,
-            expires_at,
-            config: Some(config),
-            control,
-            exit: exit.shared(),
+            handle: Handle(Some(Parts {
+                control,
+                exit: exit.clone(),
+                config: Some(config),
+            })),
+            exit,
             lines: FramedRead::new(
                 StreamReader::new(lines),
                 CliLines {
@@ -328,11 +328,11 @@ impl LiveCli {
     pub(crate) fn serves(&self, request: &InferenceRequest) -> bool {
         let gains_input =
             !self.held.is_empty() || input::user_messages(&request.items).count() > self.sent.count;
-        self.continues(request) && self.fresh() && gains_input
+        self.continues(request) && gains_input
     }
 
-    /// Whether the process could go on with `request`, whatever its input
-    /// and its token: it still runs, for the same session, model and
+    /// Whether the process could go on with `request`, whatever its input:
+    /// it still runs, for the same session, model and
     /// thinking setting, it has an MCP server when the request offers
     /// tools, and the transcript continues what it received.
     pub(crate) fn continues(&self, request: &InferenceRequest) -> bool {
@@ -342,12 +342,6 @@ impl LiveCli {
             && offers_tools
             && self.key == ProcessKey::of(request)
             && !self.sent.diverged(&request.items)
-    }
-
-    /// Whether the process's token lasts: one about to expire would be
-    /// refused midway, so a new process starts with a fresh token.
-    pub(crate) fn fresh(&self) -> bool {
-        !expiring(self.expires_at, self.shared.clock.now())
     }
 
     /// Sets a new process up for `request`: when the request offers tools,
@@ -774,7 +768,8 @@ impl LiveCli {
                 tracing::trace!(target: WIRE, direction = "in", line = %String::from_utf8_lossy(line));
             }
         }
-        self.control
+        self.handle
+            .control()
             .write_stdin(Bytes::from(bytes))
             .await
             .map_err(|error| failure(format!("Claude Code's input could not be written: {error}")))
@@ -788,9 +783,7 @@ impl LiveCli {
         let stderr = self.stderr.borrow().text();
         let exit = self.exit.clone().await;
         tracing::trace!(target: WIRE, direction = "exit", end = ?exit);
-        if let Some(config) = self.config.take() {
-            config.remove().await;
-        }
+        self.handle.ended().await;
         if matches!(exit, ProcessEnd::Lost(_)) {
             return Some(ended(&exit, exit_message(&exit)));
         }
@@ -828,30 +821,116 @@ impl LiveCli {
 
     /// Ends the process: its MCP server stops, SIGTERM asks it to end, and
     /// SIGKILL follows after five seconds; either way its end is awaited.
-    pub(crate) async fn close(self) {
-        let LiveCli {
+    pub(crate) async fn close(mut self) {
+        drop(self.mcp.take());
+        self.handle.close().await;
+    }
+}
+
+/// A process's control, its end and its own directory: closed, SIGTERM
+/// first, however the process goes, its directory removed once it ended.
+/// Every CLI process the provider holds is held this way, so none is
+/// dropped raw, which would kill it outright.
+pub(crate) struct Handle(Option<Parts>);
+
+struct Parts {
+    control: Box<dyn ProcessControl>,
+    exit: SharedFuture<LocalBoxFuture<'static, ProcessEnd>>,
+    config: Option<Box<dyn ConfigDir>>,
+}
+
+impl Handle {
+    /// Holds the process `control` drives, whose end is `exit`, with its
+    /// own directory `config`, when it has one.
+    pub(crate) fn of(
+        control: Box<dyn ProcessControl>,
+        exit: SharedFuture<LocalBoxFuture<'static, ProcessEnd>>,
+        config: Option<Box<dyn ConfigDir>>,
+    ) -> Self {
+        Self(Some(Parts {
             control,
             exit,
-            mcp,
             config,
-            ..
-        } = self;
-        drop(mcp);
-        // A process that already ended, or whose machine went away, takes no
-        // signal; its end is known either way.
-        let _ = control.kill(Signal::Terminate).await;
-        let end = match tokio::time::timeout(CLOSE_GRACE, exit.clone()).await {
-            Ok(end) => end,
-            Err(_) => {
-                let _ = control.kill(Signal::Kill).await;
-                exit.await
-            }
+        }))
+    }
+
+    pub(crate) fn control(&self) -> &dyn ProcessControl {
+        // The parts go only with the handle's end, after which nothing
+        // writes to the process.
+        &*self.0.as_ref().expect("the process is not closed").control
+    }
+
+    /// Closes the process and waits for its end.
+    pub(crate) async fn close(&mut self) {
+        if let Some(parts) = self.0.take() {
+            close(parts).await;
+        }
+    }
+
+    /// Waits for the process to end by itself, then removes its
+    /// directory. Dropping the future while it waits leaves the process
+    /// held, to be closed.
+    pub(crate) async fn ended(&mut self) {
+        let Some(parts) = &self.0 else {
+            return;
         };
-        tracing::trace!(target: WIRE, direction = "exit", end = ?end);
-        if let Some(config) = config {
+        parts.exit.clone().await;
+        if let Some(Parts { config, .. }) = self.0.take()
+            && let Some(config) = config
+        {
             config.remove().await;
         }
     }
+}
+
+impl Drop for Handle {
+    /// A process nobody closed, as when the turn drops its run's stream, is
+    /// closed by a task of its own, SIGTERM first.
+    fn drop(&mut self) {
+        if let Some(parts) = self.0.take() {
+            tokio::task::spawn_local(close(parts));
+        }
+    }
+}
+
+/// Closes a process: SIGTERM asks it to end, and SIGKILL follows after five
+/// seconds; its end is awaited, then its directory removed.
+async fn close(parts: Parts) {
+    let Parts {
+        control,
+        exit,
+        config,
+    } = parts;
+    // A process that already ended, or whose machine went away, takes no
+    // signal; its end is known either way.
+    let _ = control.kill(Signal::Terminate).await;
+    let end = match tokio::time::timeout(CLOSE_GRACE, exit.clone()).await {
+        Ok(end) => end,
+        Err(_) => {
+            let _ = control.kill(Signal::Kill).await;
+            exit.await
+        }
+    };
+    tracing::trace!(target: WIRE, direction = "exit", end = ?end);
+    if let Some(config) = config {
+        config.remove().await;
+    }
+}
+
+/// Closes the process `control` drives, whose end is `exit`, SIGTERM first
+/// and SIGKILL five seconds later, and waits for its end: how anything that
+/// holds a CLI process closes it, a sign-in or the backend's relay of a
+/// process to another user's shard (`claude-code.md` § Process lifetime).
+pub async fn close_process(
+    control: Box<dyn ProcessControl>,
+    exit: SharedFuture<LocalBoxFuture<'static, ProcessEnd>>,
+) {
+    close(Parts {
+        control,
+        exit,
+        config: None,
+    })
+    .await;
 }
 
 /// The server's next event; a process without tools has none.

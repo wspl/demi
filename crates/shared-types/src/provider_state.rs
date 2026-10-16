@@ -119,19 +119,25 @@ pub struct AccountInfo {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Timestamp>")]
     pub updated_at: Option<Timestamp>,
+    /// The vendor refused the account's sign-in, and it waits for the user
+    /// to sign in again (`claude-code.md` § Accounts and sign-in); rotation
+    /// passes over it until a login replaces it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub signed_out: bool,
 }
 
 /// What a login waits for (`claude-code.md` § Accounts and sign-in): it is
 /// `preparing` from its start, and `waiting_for_user` once it has a link or
-/// a code to show. A Claude sign-in waits for the Cloud, for the CLI's
-/// install and for the CLI's start in between.
+/// a code to show. A Claude sign-in waits for the Claude Code machine, for
+/// the CLI's install and for the CLI's start in between.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum LoginStage {
     Preparing,
-    /// The Cloud's machine access is acquired: its runner woken or awaited.
-    WaitingForCloud,
-    /// The CLI is installed on the Cloud.
+    /// The Claude Code machine's access is acquired: its runner woken or
+    /// awaited.
+    WaitingForMachine,
+    /// The CLI is installed on the machine.
     Installing,
     /// The CLI runs and has not printed its link yet.
     Starting,
@@ -144,7 +150,7 @@ impl LoginStage {
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Preparing => "preparing",
-            Self::WaitingForCloud => "waiting_for_cloud",
+            Self::WaitingForMachine => "waiting_for_machine",
             Self::Installing => "installing",
             Self::Starting => "starting",
             Self::WaitingForUser => "waiting_for_user",

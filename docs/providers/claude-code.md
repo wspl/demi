@@ -15,7 +15,7 @@ where the conversation's tools run: the CLI hands each tool call back to Demi,
 and the agent executes it.
 
 For example, a conversation on a paired laptop uses Claude Code. Its request
-wakes the user's Cloud and starts the CLI there with the account's token. The
+starts the CLI on the Claude Code machine, in the account's directory. The
 CLI streams the model's answer back as stream-json. When the model calls
 `shell`, the CLI asks Demi for the result over the SDK MCP channel and
 waits. The run ends with that tool call, and the agent runs the command on the
@@ -30,31 +30,23 @@ process.
 
 The Claude Code provider is a backend component: like every runtime, its
 runtime lives on the user's shard. It starts the CLI through the Host process
-interface on the user's Cloud and exchanges stream-json on the process's
+interface on the Claude Code machine and exchanges stream-json on the process's
 standard input and output. Which CLI that is, and which machine, are defined
-below: Demi's own verified copy, on the user's Cloud, whatever the
+below: Demi's own verified copy, on the Claude Code machine, whatever the
 conversation's execution target is.
 
-The provider gives each CLI process its account's access token, never its
-refresh token, as [Accounts and sign-in](#accounts-and-sign-in) describes. The runner and the CLI
-therefore receive this credential: the user's Cloud is trusted with that
-account's token, which on a shared instance means every user
-([Scope](providers.md#scope)). When the token cannot be read, the request fails
-with the authentication error; the CLI is never started without a token.
+Each CLI process runs in its account's directory on the Claude Code machine,
+where the CLI keeps that account's sign-in and renews it itself
+([Accounts and sign-in](#accounts-and-sign-in)). No sign-in reaches a user's
+Cloud or a paired device, and the backend holds none. The CLI sends its
+inference traffic directly to the vendor. Demi adds no inference proxy and no
+remote-inference call.
 
-The CLI sends its inference traffic directly to the vendor. Demi adds no
-inference proxy and no remote-inference call. The quota probe is a backend
-operation that needs no CLI and no machine
-([Vendor quota](usage-and-quota.md#vendor-quota)); the token's refresh is the
-backend's as well. The runner keeps no credential of its own: an access
-token reaches the Cloud only on a CLI process's file descriptor, and the
-process's private directory goes with the process.
-
-The backend's transcript stays the only record. A new process, after a Cloud
-stop or reset, a change of account, model or thinking setting, or any other
+The backend's transcript stays the only record. A new process, after the machine
+stopped, a change of account, model or thinking setting, or any other
 reason, resumes a session file the provider writes from the transcript
 ([The session a process resumes](#the-session-a-process-resumes)), so nothing
-depends on an earlier process or on files the Cloud kept.
+depends on an earlier process or on files the machine kept.
 
 The provider uses the same Host process interface as every other Host
 operation ([Host operations](../execution/runner.md#host-operations)), not a
@@ -66,86 +58,120 @@ kill the process without waiting.
 
 ## Accounts and sign-in
 
-The CLI owns Claude's sign-in, and Demi does not write it again: Demi starts
-the CLI's login, relays it to the user, and keeps the tokens the login wrote
-in the [credential vault](providers.md#credential-vault), the one place an
-account's tokens live. Every CLI process then gets only what its one account
-needs, in a place of its own, so accounts neither mix nor leak. For example,
-the user adds a work account and a personal one, and conversations use the
-work account:
+The CLI owns Claude's sign-in, whole: it signs in, keeps the tokens, renews
+them, and says when the vendor refused them. Demi starts its login, relays it
+to the user, and from then on only names the account a process uses. For
+example, the user adds a work account and a personal one, and three
+conversations are running:
 
 ```text
-backend vault                     user's Cloud
-  work:     access, refresh   ─▶  CLI process A: private config dir A,
-  personal: access, refresh         work access token on a file descriptor
-                                  (personal's tokens are nowhere on the Cloud)
+Claude Code machine (gVisor, nobody's shell)
+  ~/accounts/<work id>/       the CLI's sign-in    CLI A, CLI B
+  ~/accounts/<personal id>/   the CLI's sign-in    CLI C
+users' Clouds, paired devices, the backend: no sign-in
 ```
 
-**Signing in.** Adding an account installs the CLI on the user's Cloud when
-it is missing, then starts `claude auth login --claudeai` there through the
-Cloud's machine access, with `CLAUDE_CONFIG_DIR` naming a new directory of its
-own, `/tmp/demi-claude-<id>`, private to the runner's user (mode 0700) and
-outside every workspace; a Cloud stop clears `/tmp`, so a directory a lost
-login left behind goes with it. The CLI prints its sign-in link and waits for a code; Demi
-shows the link, the user signs in on any device and pastes the code the page
-shows, and Demi writes it to the CLI's input. When the CLI exits with
-success, Demi reads what it wrote, `.credentials.json` (`claudeAiOauth`:
-tokens, expiry, scopes, subscription type) and the account in `.claude.json`
-(`oauthAccount`: its ID and email), decodes both against their schemas, stores
-them as the account's secret, and removes the directory, as it does when the
-login fails, is cancelled or ends after 15 minutes. A code the CLI refuses
-as invalid leaves the login waiting, as the CLI itself waits for another: the
-login says the code was not accepted, and the user pastes it again. A login
-that names an account already in the entry replaces that account's tokens,
-as signing in again to a lapsed account should; its ID and the entry's
-active choice stay. The link, the code and the CLI's own words of failure are
-what the user sees; the code is never logged.
+**One directory per account.** An account's directory,
+`~/accounts/<account id>` on the [Claude Code machine](#where-it-runs), mode
+0700, is the CLI's configuration directory (`CLAUDE_CONFIG_DIR`) for every
+process of that account, whoever's conversation it serves, and the one place
+its sign-in exists. That is a requirement, not a convenience. Measured with
+Claude Code 2.1.301, a renewal revokes at once the refresh token it spends and
+the access token it replaces, one with eight hours left included, so a second
+copy of a sign-in anywhere is signed out by the first renewal of the other.
+In one directory the CLI renews it once for all its processes: it takes a lock
+there (`.oauth_refresh.lock`) and the others read the renewed sign-in. On
+Linux, five processes started together on a sign-in about to expire made one
+renewal and all five answered, three batches out of three.
 
-The login's stage follows what it waits for, so a Cloud that does not come
-back reads as the Cloud, not as Claude: `waiting_for_cloud` while the Cloud's
-machine access is acquired, its runner woken or awaited, `installing` while
-the CLI is installed, `starting` until the CLI prints its link, then
-`waiting_for_user`. A failure names its stage, such as *Your Cloud did not
-connect within a minute*, which is what the user saw as a hang when the
-Cloud's runner was frozen.
+**Signing in.** Adding an account starts `claude auth login --claudeai` on the
+Claude Code machine with a new directory as its configuration directory. The
+CLI prints its sign-in link and waits for a code; Demi shows the link, the
+user signs in on any device and pastes the code the page shows, and Demi
+writes it, with its newline, to the CLI's input. When the CLI exits with
+success, Demi reads the account from `.claude.json` (`oauthAccount`: its ID
+and email), decoded against its schema, and keeps it as the account's public
+metadata; it reads nothing of the tokens. The new directory becomes the
+account's directory. A login that names an account already in the entry
+signs that account in again: the account's processes are closed and its
+directory replaced by the new one, and its ID and the entry's active choice
+stay. A login that fails, is cancelled or ends after 15 minutes removes its
+directory. A code the CLI refuses as invalid leaves the login waiting, as
+the CLI itself waits for another: the login says the code was not accepted,
+and the user pastes it again. The link, the code and the CLI's own words of
+failure are what the user sees; the code is never logged.
+
+The login's stage follows what it waits for, so a machine that does not come
+back reads as the machine, not as Claude: `waiting_for_machine` while the
+Claude Code machine is woken or awaited, `installing` while the CLI is
+installed, `starting` until the CLI prints its link, then
+`waiting_for_user`. A failure names its stage, such as *Claude Code's machine
+did not start within a minute*.
 
 **Using an account.** Each CLI process belongs to one account for its whole
 life ([An account is the unit](providers.md#an-account-is-the-unit)):
 
-- **Its own configuration directory.** A new private directory per process,
-  `/tmp/demi-claude-<id>`, removed when it ends, named by `CLAUDE_CONFIG_DIR`, so no CLI state of one
-  account, its cached account record, settings or history, is read by a
-  process of another, and the user's own `~/.claude` on the Cloud, should the
-  user run Claude Code there themselves, is never read or written.
-- **Only the access token.** The token reaches the CLI on a file descriptor
-  (`CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR`), not in its environment, which
-  another process of the same user could read. The refresh token never
-  leaves the backend.
-- **Refresh by the backend.** A request that would start a process, or use
-  a kept one, whose token expires within 30 minutes first refreshes the
-  account's token under its refresh turn
-  ([Token refresh](providers.md#token-refresh)) and starts a new process
-  with it, closing the kept one. A request the vendor refuses for its token
-  (the CLI's authentication error) refreshes the token when the refused one
-  is still the stored one, closes the process and sends the same request
-  again, once, in a new process: the transcript is the backend's, so the new
-  process goes on where the old one stood. Claude Code 2.1.294 also lets a
-  host answer a 401 itself (`oauth_token_refresh`, with
-  `CLAUDE_CODE_SDK_HAS_OAUTH_REFRESH`), but only for its own clients, the
-  desktop app and the VS Code extension, which Demi does not claim to be.
-  One refresher per account, the backend, is what keeps single-use refresh
-  tokens from being spent twice by two processes or two Clouds, which a CLI
-  holding the refresh token would do. The refresh is a `refresh_token` grant at the
-  CLI's token endpoint with the CLI's client, read from Claude Code 2.1.294.
+- **The account's directory**, named by `CLAUDE_CONFIG_DIR`. What a process
+  writes of its own, its session, lies in a directory of its own under it
+  ([The session a process resumes](#the-session-a-process-resumes)), removed
+  when the process ends. The process gets no token from Demi: the CLI reads
+  the directory's sign-in.
+- **Renewal is the CLI's.** The backend never renews a Claude sign-in and
+  never asks Anthropic anything with one.
+- **Closed, never killed.** A process killed while it renews leaves the lock
+  behind, and for about a minute every process of the account fails with
+  *another Claude Code process is refreshing it or exited mid-refresh*, until
+  the CLI takes the lock back; the sign-in survives. So a process is always
+  closed, SIGTERM first ([Process lifetime](#process-lifetime)), and one that
+  still dies mid-renewal costs the account that minute, not its sign-in.
+- **A refused sign-in.** When the vendor refuses the renewal, the CLI empties
+  the tokens in the directory and the run ends with `authentication_failed`
+  (`is_error`, though its `subtype` says success). The request fails with the
+  authentication error, whose message asks the user to sign in again, and the
+  account is marked *Sign In Again* until a login replaces it; rotation passes
+  over it ([Account rotation](providers.md#account-rotation)).
 - **Switching.** Selecting another account closes the kept process, and the
-  next request starts a new one with the other account's token in a new
-  directory ([Process lifetime](#process-lifetime)). Nothing of the first
-  account remains on the Cloud.
+  next request starts a new one in the other account's directory
+  ([Process lifetime](#process-lifetime)).
+- **One change of an account at a time.** Signing an account in again and
+  removing it replace or delete its directory, so each first stops new
+  processes of the account from starting, requests and probes alike, then
+  closes every process it has and waits for them, and only then changes the
+  directory; a request that comes meanwhile waits and then starts in the
+  new directory, or fails with the account's removal. Removing an account
+  deletes its directory, so no sign-in outlives the account in Demi. A
+  login stays cancellable to its end, and its 15 minutes hold through every
+  stage.
+- **What a conversation shows.** A request the sign-in failed shows *Claude
+  Code signed alex@example.com out. Sign it in again in Settings ›
+  Providers.*, with Open Providers, as the failure's own words rather than
+  the generic sign-in failure.
 
-**The usage probe** asks `https://api.anthropic.com/api/oauth/usage` with the
-account's access token from the backend, refreshed first when due; the
-sign-in grants the `user:profile` scope it requires
-([Claude Code](usage-and-quota.md#claude-code)).
+**Sign-ins of an earlier release.** Releases before this one kept each
+account's tokens sealed in its record and renewed them in the backend. The
+first time such an account is used, for a request, a probe or a test, the
+backend writes them into the account's new directory as the CLI's own files,
+`.credentials.json` (`claudeAiOauth`: the tokens, their expiry, the scopes
+and the subscription type) and `.claude.json` (`oauthAccount`: the ID and
+email), mode 0600, then clears the record's secret, so the user keeps the
+sign-in without signing in again. A directory that already holds a sign-in
+wins, and the record's secret is cleared without writing. The tokens move,
+they are not copied: once written, the backend holds none. This handover is
+one of the things that cross releases
+([What crosses releases](../delivery/upgrades.md#what-crosses-releases)).
+
+**The usage probe** asks the CLI. It starts a process in the account's
+directory in stream-json, sends no message, and lets the CLI renew the sign-in
+when it is due; it then sends `initialize` and the control request
+`get_usage` with `skip_behaviors`, reads the answer and closes the process.
+The answer's `rate_limits` is the vendor's usage object and
+`subscription_type` the plan ([Claude Code](usage-and-quota.md#claude-code)).
+Measured, it took 0.7–1.0 s with a renewal, spent no inference and cost
+nothing. The probe's process runs without
+`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, which turns the CLI's quota
+reading off (`rate_limits` then reads `null`). One that does not answer
+within 30 seconds, such as one waiting on a lock a killed process left,
+fails the probe.
 
 ## Which version
 
@@ -175,7 +201,7 @@ leave. A process start takes the version from what is kept and asks the
 machine nothing; for example, the root's process and three subagents'
 processes starting on a laptop ask its runner once in all. What is kept is
 dropped, and asked again at the next start, when the runner connection ends
-(a runner that restarts, a Cloud that stops or is reset), when the runner
+(a runner that restarts, a machine that stops), when the runner
 says the package was lost, when an install fails, or when a start finds the
 executable it was given gone. A first ask that every start waiting for it
 has given up on is dropped with them, so the next start asks again. The kept list is in
@@ -245,56 +271,44 @@ installed as every artifact is, through the runner's cache
   progress like any other, and keeps no failed file. There is no fallback to
   another version, location or executable.
 - `claude-code.status` asks the runner which `Claude Code` artifacts it has,
-  in its cache or in a Cloud image's preinstalled ones, and answers their
-  versions and paths, newest install first. It reads only the Cloud.
+  in its cache or in the machine image's preinstalled ones, and answers their
+  versions and paths, newest install first. It reads only the Claude Code
+  machine.
 
 The backend starts the CLI through the ordinary Host process interface with the
-path `claude-code.ensure` answered, the account's token, a configuration home of
-Demi's, and the CLI's own updater turned off. Demi is the only thing that
+path `claude-code.ensure` answered, the account's directory as its
+configuration home, and the CLI's own updater turned off. Demi is the only thing that
 changes the version.
 
 ## Where it runs
 
-The CLI runs on Cloud, always: the Cloud of the conversation's user for a
-request, the Cloud of the acting user for work that belongs to no conversation
-(installing after an account is added, **Test connection**). Every deployment
-has Cloud ([Managed hosts](../cloud/managed-hosts.md)), Demi owns it, and it is
-one kind of machine, so the CLI has one install to keep and one platform to be
-right on. A conversation whose files and commands are on a paired device still
-infers through the user's Cloud; its tools keep running on its own device, and
-the account's token never reaches a paired device. Usage and plan need no CLI
-and no machine at all: the backend asks the vendor itself
-([Vendor quota](usage-and-quota.md#vendor-quota)).
+The CLI runs on the **Claude Code machine**, always: one gVisor sandbox the
+machine manager keeps for the deployment, which belongs to no user and in
+which nobody has a shell ([Managed hosts](../cloud/managed-hosts.md#the-claude-code-machine)).
+Every request, login, probe and **Test connection** of every user runs there,
+so each account's sign-in lives in one directory
+([Accounts and sign-in](#accounts-and-sign-in)), and the CLI has one install
+to keep and one platform to be right on. A conversation whose files and
+commands are on a paired device or on the user's Cloud infers through it;
+its tools keep running where they run.
 
 A **placement** decides the machine. It is one rule in one place: what needs a
 provider's process says what the work is and takes the Host, the run directory
 and the command context it is given, and does not know why it got that one.
-
-| Work | Placement |
-|---|---|
-| A conversation's request | The Cloud of the conversation's user |
-| Work that belongs to no conversation | The acting user's Cloud |
-
-A placement answers with candidates in order and the work takes the first that
-is available; each list has one entry, and a different policy is a different
-list. The placement reaches the Cloud through machine access, which wakes a
-stopped Cloud and takes no conversation's file gate
-([Host operations](../execution/sessions-and-targets.md#host-operations)). The
-placement is also what makes a conversation
-[use the Cloud as `provider`](../execution/sessions-and-targets.md#how-a-conversation-uses-a-device),
-which is all the Cloud's lifecycle knows of this: the conversation's turn keeps
-the Cloud awake, and a reset holds the conversation and lets it go on
-afterwards. Nothing in the lifecycle names Claude Code.
+Every work's placement is the Claude Code machine. The placement reaches it
+through machine access, which wakes the stopped machine and takes no
+conversation's file gate
+([Host operations](../execution/sessions-and-targets.md#host-operations)).
 
 The process is **retained** between turns and is not activity
-([Activity](../execution/resource-lifecycle.md#activity)): a Cloud that goes
-idle stops with the process in it, and the next request wakes the Cloud, starts
-the CLI again, which resumes the conversation's session
-([The session a process resumes](#the-session-a-process-resumes)). It runs in `~/.demi/claude/run` on the
-Cloud, with a private configuration directory of its own
-([Accounts and sign-in](#accounts-and-sign-in)), not in the
-conversation's directory, which on a paired device is a path the Cloud does not
-have; the CLI reads and writes nothing there that a conversation owns.
+([Activity](../execution/resource-lifecycle.md#activity)): a machine with no
+work left goes idle and stops with its processes, and the next request wakes
+it and starts the CLI again, which resumes the conversation's session
+([The session a process resumes](#the-session-a-process-resumes)). It runs in
+`~/run` on the machine, in its account's directory
+([Accounts and sign-in](#accounts-and-sign-in)), not in the conversation's
+directory, which the machine does not have; the CLI reads and writes nothing
+there that a conversation owns.
 
 ### How a runtime gets its process
 
@@ -308,27 +322,27 @@ backend, on the user's shard                 provider-claude-code
   claude-code family -- same arguments --->  provider + placement = runtime
                                                   |
   placement.start(spawn) <------------------------+  a run needs a new process
-    machine access: wake or admit the Cloud
+    machine access: wake or admit the Claude Code machine
     demi.claude-code: claude-code.status, claude-code.ensure when needed
-    make ~/.demi/claude/run and the process's /tmp/demi-claude-<id>
-    spawn(executable, run dir, config dir) -> the provider's spawn request
-    Host process interface: start it, then release the Cloud's admission
+    the account's directory: hand over an earlier release's sign-in once
+    spawn(executable, run dir, account dir) -> the provider's spawn request
+    Host process interface: start it, then release the machine's admission
   --- shell's Process ---------------------------->  the run drives it
 ```
 
 `provider-claude-code` defines the placement contract: `start` starts a new CLI
 process on the machine the placement chooses and answers shell's `Process`. The
 provider builds the spawn request itself, from the executable's path and the
-run and configuration directories the placement names on that machine, so the
-CLI's arguments, environment and token stay the provider's. The backend
-implements the placement by the rules above: it holds the Cloud's admission
+run directory and the account's directory the placement names on that machine,
+so the CLI's arguments and environment stay the provider's. The backend
+implements the placement by the rules above: it holds the machine's admission
 only while the process starts, since the process is retained, and a failure to
-wake the Cloud, to install the CLI or to start it fails the request with its
+wake the machine, to install the CLI or to start it fails the request with its
 reason ([What the user sees](#what-the-user-sees)). Such a failure, and a
 process whose machine went away, as when the Host's runner reconnects, is a
 request that got no answer: `overloaded`, which the agent retries
 ([Failures and recovery](../agent/failures-and-recovery.md)). For example, a
-subagent's CLI on a Cloud whose runner missed a ping and reconnected starts
+subagent's CLI on a machine whose runner missed a ping and reconnected starts
 again on the new connection, and an install that failed a DNS lookup is
 tried again a second later.
 
@@ -338,8 +352,8 @@ to its concrete type. The conversation's runtime and **Test connection** build
 a provider's runtime this way whenever the provider's capabilities say that it
 needs a process.
 
-On a shared instance each user's requests run on their own Cloud with the
-master's account, so the master's token reaches every user's Cloud
+On a shared instance every user's requests use the master's accounts, in the
+same directories; no user's Cloud holds any sign-in
 ([Scope](providers.md#scope)).
 
 ## Requests over stream-json
@@ -370,8 +384,7 @@ thinking setting.
   ([Waiting for the model](../agent/runtime.md#waiting-for-the-model));
 - stream-json input and output with partial messages, so reasoning and text
   stream as they are generated;
-- the account's access token on a file descriptor, the process's private
-  configuration directory, and an environment with the CLI's
+- the account's directory as its configuration directory, and an environment with the CLI's
   updater and its automatic compaction turned off (Demi compacts the
   conversation itself), an MCP tool-output limit of one million tokens so the
   CLI does not cut a result Demi sends, `CLAUDECODE` unset so the CLI never
@@ -381,7 +394,7 @@ thinking setting.
   not yet answered is answered at once.
 
   The CLI's telemetry stays on. Turning it off (`DISABLE_TELEMETRY=1`)
-  halved the CLI's start in a Cloud sandbox, but CLI 2.1.296 then reports
+  halved the CLI's start in a gVisor sandbox, but CLI 2.1.296 then reports
   each call's `iterations` empty, and Demi read the turn's sum as the last
   call's usage and compacted after every response.
 
@@ -448,7 +461,7 @@ shell_exec with input: …]`, under names unlike its tools'.
 - **The CLI's context.** The CLI adds its own context after the first user
   message of a session: an `environment` entry, with the directory, system
   and shell it runs in, `model` and `date` entries. The environment would
-  describe the Cloud the CLI runs on, not the conversation's Host, which the
+  describe the machine the CLI runs on, not the conversation's Host, which the
   agent learns from its context block
   ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
   So the provider writes that entry itself, with a single space as its
@@ -617,7 +630,7 @@ no second MCP transport.
 ## Process lifetime
 
 The process is kept between turns ([Where it runs](#where-it-runs) says what
-that means for the Cloud). A run takes the process while it runs and hands it
+that means for the machine). A run takes the process while it runs and hands it
 back to the runtime only where the conversation can continue in it; every other
 exit ends it. It hands the process back before the run's last event, because
 the agent stops reading a run at its failure.
@@ -629,14 +642,15 @@ the agent stops reading a run at its failure.
 | The CLI's output ends | The run fails if stored results were never asked for, or if the process exited with a nonzero status and the run was not cancelled; the message is the tail of standard error, or "Claude Code exited with code N" | Gone |
 | A malformed line or tool use | The run fails with the line as its record | Closed |
 | An `error` line | The run fails with the CLI's words | Closed |
-| A `result` with `api_error_status` 401, before anything of the run reached the agent | The token is refreshed when the refused one is still the stored one, and the request is sent again once in a new process | Closed |
-| A request whose kept process holds a token expiring within 30 minutes | The token is refreshed and a new process takes the request | Closed |
+| `authentication_failed`, or a `result` with `api_error_status` 401 | The run fails with the authentication error, and the account is marked *Sign In Again* ([Accounts and sign-in](#accounts-and-sign-in)) | Closed |
 | The run is cancelled | The run ends without an event | Closed |
-| The turn drops the run's stream | — | Killed by the Host |
+| The turn drops the run's stream | — | Closed |
 | The runtime is closed: the session is disposed, or the backend builds the session a new runtime | — | Closed |
 
 Closing sends SIGTERM, waits up to five seconds for the process to exit, then
-sends SIGKILL and waits for it.
+sends SIGKILL and waits for it. Nothing kills a process without SIGTERM
+first, a dropped stream included, since a kill mid-renewal stops the
+account for a minute ([Accounts and sign-in](#accounts-and-sign-in)).
 
 ### Preparing a process ahead
 
@@ -646,8 +660,8 @@ its first word, against 1.4 s for a kept process, and a long conversation's
 new process took 5.3 s before its CLI was ready. So the runtime starts the
 process before the request whenever the request it will serve is already
 known but for its input. For example, the user opens a conversation that ran
-on Claude Opus 5.5 yesterday; while they type, its process starts on their
-Cloud, resumes the history and waits, and the message they send goes to it
+on Claude Opus 5.5 yesterday; while they type, its process starts on the
+Claude Code machine, resumes the history and waits, and the message they send goes to it
 as to a kept process.
 
 - **When.** A conversation whose model is a Claude Code model and whose
@@ -655,10 +669,7 @@ as to a kept process.
   when the user picks another model or effort in it, when the active account
   of its provider changes while a page has it open, whether the user
   activated it, removed the active one or signed a new one in (the change
-  closes every process prepared with the previous account's token first), and when a
-  turn ends and its kept process would be refused by the next request
-  because its token expires within 30 minutes: the token is refreshed and
-  the replacement prepared then. Nothing else prepares one: a subagent
+  closes every process prepared with the previous account first). Nothing else prepares one: a subagent
   starts its process at its spawn, as now.
 - **What.** Everything a start does: the placement, the session file of the
   history up to its last answered turn, with no input at its end, the spawn,
@@ -676,7 +687,7 @@ as to a kept process.
   history before its input are those it was prepared for, and starts a new
   one otherwise, closing the prepared one. A prepared process unused for 10
   minutes is closed, and so is one whose conversation's history changed
-  beneath it, by an edit, a fork point or a compaction. A Cloud holds at most
+  beneath it, by an edit, a fork point or a compaction. A user has at most
   two prepared processes not yet used; a third preparation closes the oldest.
 - **Never in the way.** A preparation that fails is logged and forgotten:
   the request then starts its process as it would have, and the user sees
@@ -685,7 +696,7 @@ as to a kept process.
 
 **Timing.** Each run's `tracing` span carries whether it took a kept, a
 prepared or a new process, and, for a new or prepared one, the milliseconds
-of each step of the placement (waking or admitting the Cloud, finding the
+of each step of the placement (waking or admitting the machine, finding the
 executable, the directories, writing the session file and its size, the
 spawn on the Host), of the `initialize` answer, and of the first content
 delta, counted from the request; the backend logs them at `info` when the
@@ -694,8 +705,8 @@ without turning on the wire trace.
 
 A runtime stands for one account. Selecting another account builds a new
 provider, the session's next request builds a new runtime from it and closes
-the previous one, and the new process starts with the newly active account's
-token ([An account is the unit](providers.md#an-account-is-the-unit)).
+the previous one, and the new process starts in the newly active account's
+directory ([An account is the unit](providers.md#an-account-is-the-unit)).
 
 **Diagnostics.** The provider drains the CLI's standard error continuously and
 keeps its last 64 KiB, which become the failure message when the process exits
@@ -705,12 +716,12 @@ only to the `tracing` target `demi::provider::claude_code::wire`, at trace
 level, which is off by default and which `DEMI_LOG` turns on
 ([Configuration](../backend/backend.md#configuration)). Turned on, it records
 every line in both directions, prompts and tool output included; the line that
-records a spawn leaves out the environment, so the token is never written.
+records a spawn leaves out the environment.
 
 ## What the user sees
 
 Installing is not an event of the conversation: it leaves nothing in the
-transcript. A request whose Cloud has no usable CLI installs one and then
+transcript. A request whose machine has no usable CLI installs one and then
 proceeds, under the same **Requesting** the request would show anyway. An
 update installs beside the version in use, so no request waits for it.
 
@@ -726,10 +737,10 @@ Backend shutdown cancels an install in progress; the next request, or
 **Install**, starts it again.
 
 Settings show, for a Claude Code entry, the vendor's newest version and the
-version the user's Cloud has when it can be asked now, and, while the Cloud
-downloads or unpacks a CLI, that install's progress. Before the download
-starts, while the Cloud wakes and the release is read, the entry says
-**Installing on Cloud**. Updates are automatic;
+version the Claude Code machine has when it can be asked now, and, while the
+machine downloads or unpacks a CLI, that install's progress. Before the
+download starts, while the machine wakes and the release is read, the entry
+says **Installing**. Updates are automatic;
 **Check for updates** refreshes the release information, and **Install** retries
 a failed installation. The routes are listed in
 [Web API](../product/web-api.md#model-configuration-and-provider-inspection).
@@ -752,9 +763,15 @@ a failed installation. The routes are listed in
 - Cancelling a run closes the process and ends the run without an event; a
   process that ignores SIGTERM is killed after five seconds.
 - After another account is selected, the next request starts a new process
-  with that account's token.
-- A conversation on a paired device infers through the user's Cloud, and the
-  account's token never reaches the paired device.
+  in that account's directory.
+- Five processes of one account started together on a sign-in about to
+  expire all answer, after one renewal; no user's Cloud and no paired device
+  holds a sign-in, and the backend refreshes none.
+- An account of an earlier release, its tokens in its record, answers its
+  first request after the upgrade without a new sign-in, and its record then
+  holds no secret.
+- A refused renewal fails the request with the authentication error and marks
+  the account *Sign In Again*.
 - The real CLI, against a scripted vendor, does what the product relies on in
   the [Claude Code suite](../delivery/scenarios.md#claude-code-suite).
 - A real account, driven by hand during acceptance, runs against the vendor:

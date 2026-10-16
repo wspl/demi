@@ -11,7 +11,7 @@ import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import type { ConnectionProblem } from '@demicodes/web-ui/transport/connection'
 import type { Block } from '@demicodes/protocol'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
-import { accountSwitchBlocks, generationErrorBlock, hostOfflineErrorBlock, shortTranscriptBlocks, usageLimitErrorBlock } from '../fixtures/blocks'
+import { accountSwitchBlocks, generationErrorBlock, hostOfflineErrorBlock, shortTranscriptBlocks, signedOutErrorBlock, usageLimitErrorBlock } from '../fixtures/blocks'
 import { galleryMessages } from '../fixtures/send-while-running'
 import {
   compactedAfterFailedTurnTranscript,
@@ -187,6 +187,15 @@ const cases: SessionCase[] = [
     composer: 'default',
   },
   {
+    variant: 'Signed out · Open Providers',
+    note: 'Claude refused the account’s sign-in and its command-line tool could not renew it, so Demi marked the account signed out. The record says so in its own words rather than the generic sign-in failure, and the dock offers Open Providers, where the account’s row offers Sign In Again. Once it is signed in again, the record reads as the generic sign-in failure.',
+    session: state('signed-out', {
+      blocks: [...shortTranscriptBlocks(), signedOutErrorBlock('signed-out-error')],
+      failures: { 'signed-out-error': { retryAt: null, signedOut: { provider: 'Claude Code', account: 'alex@example.com' } } },
+    }),
+    composer: 'default',
+  },
+  {
     variant: 'Account rotation · the agent moved to another account',
     note: 'Not a failure. With In Order or Balanced, the agent’s account reached its limit before anything of the answer showed: the same request went at once to the next account, the transcript says so in a neutral line, with the reset in the viewer’s time zone, and the answer follows. Nothing to click.',
     session: state('account-switch', {
@@ -291,6 +300,7 @@ const cases: SessionCase[] = [
                 v-model:resume-at-retry="galleryMessages.resumeAtRetry"
                 @retry="productWould('Resume the Turn')"
                 @continue-with="(_provider, account) => productWould(`Make ${account === 'a2' ? 'sam@example.com' : account} the Active Account and Resume the Turn`)"
+                @open-providers="productWould('Open Settings › Providers')"
                 @retry-load="productWould('Load the Conversation Again')"
                 @rename="item.session.title = $event"
                 @save-scroll="(_id, value) => (item.session.scroll = value)"

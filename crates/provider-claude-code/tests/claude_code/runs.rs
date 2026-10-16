@@ -2,13 +2,10 @@
 //! Requests over stream-json, § Process lifetime).
 
 use std::collections::BTreeMap;
-use std::sync::Arc;
 
-use bytes::Bytes;
-use demi_host_interface::{Descriptor, ProcessEnd, Signal, SpawnEnv, SpawnRequest};
-use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider};
-use demi_provider_common::credentials::MemoryCredentialPool;
-use demi_provider_common::quota::MemorySnapshots;
+use demi_host_interface::{ProcessEnd, Signal, SpawnEnv, SpawnRequest};
+use demi_provider_claude_code::CliWork;
+use demi_provider_common::credentials::{CredentialPool as _, MemoryCredentialPool};
 use demi_provider_common::{
     ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
 };
@@ -276,9 +273,9 @@ async fn as_the_agent_reads(mut run: ProviderRun<'_>) -> Vec<ProviderEvent> {
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_token_on_a_descriptor()
-{
-    let provider = provider().await;
+async fn a_new_process_starts_with_the_cli_contract_in_its_accounts_directory_with_no_token() {
+    let (provider, pool) = provider_with_pool().await;
+    let account = pool.active().await.unwrap().unwrap();
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
     let request = InferenceRequest {
@@ -354,24 +351,31 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
     .into_iter()
     .map(String::from)
     .collect();
-    // The access token is on descriptor 3, never in the environment, which
-    // removes a token the machine's own environment holds; the process
-    // claims to be no other client, finds its sessions in a directory of
-    // Demi's and answers what the session ends with.
+    // The process is the account's: its directory is the CLI's
+    // configuration directory, where the CLI keeps and renews the sign-in,
+    // and nothing hands it a token, neither a descriptor nor the
+    // environment, which removes any the machine's own holds. It claims to
+    // be no other client, keeps its session in a directory of its own under
+    // the account's and answers what the session ends with.
+    assert_eq!(
+        cli.work,
+        CliWork::Account {
+            account: account.clone(),
+            handover: None
+        }
+    );
+    assert_eq!(cli.config_dir(), format!("{ACCOUNTS}/{account}"));
     let env = BTreeMap::from([
         ("CLAUDECODE".to_owned(), None),
         ("CLAUDE_CODE_OAUTH_TOKEN".to_owned(), None),
-        (
-            "CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR".to_owned(),
-            Some("3".to_owned()),
-        ),
+        ("CLAUDE_CODE_OAUTH_TOKEN_FILE_DESCRIPTOR".to_owned(), None),
         (
             "CLAUDE_CONFIG_DIR".to_owned(),
             Some(cli.config_dir().to_owned()),
         ),
         (
             "CLAUDE_CODE_PROJECT_DIR_NAME".to_owned(),
-            Some("demi".to_owned()),
+            Some(cli.process_dir().to_owned()),
         ),
         (
             "CLAUDE_CODE_RESUME_INTERRUPTED_TURN".to_owned(),
@@ -389,39 +393,43 @@ async fn a_new_process_starts_with_the_cli_contract_its_own_directory_and_the_to
         args,
         cwd: Some(site().run_dir),
         env: SpawnEnv::Overlay(env),
-        descriptors: vec![Descriptor {
-            fd: 3,
-            bytes: Bytes::from_static(TOKEN.as_bytes()),
-        }],
+        descriptors: Vec::new(),
         retained: true,
     };
     assert_eq!(cli.spawn, expected);
+    // The session is a file of the process's own directory.
+    assert_eq!(cli.files[0].0, format!("{resumed}.jsonl"));
     // Kept for the next turn: never signalled, still running, with its
     // directory.
     assert!(cli.signals().is_empty());
     assert_eq!(cli.end(), None);
     assert!(!cli.config_removed());
 
-    // Closing the runtime ends the process, and its directory goes.
+    // Closing the runtime ends the process, and its own directory goes.
     runtime.close().await;
     assert!(cli.end().is_some());
     assert!(cli.config_removed());
+
+    // Another process of the account starts in the same directory, with a
+    // directory of its own under it.
+    let (_, second) = tokio::join!(
+        all_events(runtime.run(request_without_tools(vec![user("again")]))),
+        async {
+            let cli = starts.next().await;
+            cli.result(1, 1);
+            cli
+        }
+    );
+    assert_eq!(second.config_dir(), format!("{ACCOUNTS}/{account}"));
+    assert_ne!(second.process_dir(), cli.process_dir());
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_process_is_never_started_without_the_accounts_token_or_when_the_placement_fails() {
-    // An account whose secret document is gone.
-    let pool = MemoryCredentialPool::new();
-    let signed_out = ClaudeCodeProvider::new(
-        ClaudeCodeConfig::new("entry-1", "Claude", Some("cred-gone".into())),
-        Arc::new(pool),
-        Arc::new(MemorySnapshots::new()),
-        models_dev_client("http://127.0.0.1:9/api.json"),
-        reqwest::Client::new(),
-        clock(),
-    );
+async fn a_process_is_never_started_for_an_account_that_is_gone_or_when_the_placement_fails() {
+    // An account removed meanwhile.
+    let gone = provider_of(&MemoryCredentialPool::new(), "cred-gone");
     let (placement, _starts) = ScriptedPlacement::new();
-    let mut runtime = runtime_of(&signed_out, &placement);
+    let mut runtime = runtime_of(&gone, &placement);
     let events = all_events(runtime.run(request(vec![user("hi")]))).await;
     assert_eq!(events.len(), 1);
     let refused = failure(&events[0]);
@@ -751,7 +759,7 @@ async fn a_cancelled_run_closes_its_process_and_ends_without_an_event() {
 }
 
 #[tokio::test(flavor = "local")]
-async fn dropping_a_run_or_a_runtime_kills_the_process_without_waiting() {
+async fn dropping_a_run_or_a_runtime_closes_the_process_sigterm_first_without_waiting() {
     let provider = provider().await;
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
@@ -763,8 +771,16 @@ async fn dropping_a_run_or_a_runtime_kills_the_process_without_waiting() {
             cli
         });
         assert_eq!(first, Some(text("first")));
+        assert_eq!(placement.leases(), 1);
         drop(run);
-        assert!(cli.dropped());
+        // The action, not the run, holds the machine.
+        assert_eq!(placement.leases(), 1);
+        // The turn dropped the run's stream: the process is asked to end,
+        // never killed outright, since a kill while it renews the account's
+        // sign-in stops the account for a minute.
+        cli.ended().await;
+        assert_eq!(cli.signals(), [Signal::Terminate]);
+        assert!(!cli.dropped());
         assert!(cli.unread().is_empty());
     }
     let (_, cli) = tokio::join!(
@@ -786,11 +802,67 @@ async fn dropping_a_run_or_a_runtime_kills_the_process_without_waiting() {
             other
         }
     );
-    assert!(!cli.dropped() && cli.signals().is_empty());
+    assert!(cli.signals().is_empty());
     drop(fresh);
-    assert!(other.dropped() && !cli.dropped());
+    other.ended().await;
+    assert_eq!(other.signals(), [Signal::Terminate]);
+    assert!(cli.signals().is_empty());
     drop(runtime);
-    assert!(cli.dropped());
+    cli.ended().await;
+    assert_eq!(cli.signals(), [Signal::Terminate]);
+    assert!(!cli.dropped());
+    assert_eq!(placement.leases(), 0);
+}
+
+// A few milliseconds: three turns of the scripted CLI.
+#[tokio::test(flavor = "local")]
+async fn an_action_holds_the_machine_from_its_first_request_to_its_end() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let mut kept: Option<Cli> = None;
+    let mut history = Vec::new();
+    for message in ["one", "two"] {
+        history.push(user(message));
+        let (_, cli) = tokio::join!(
+            all_events(runtime.run(request_without_tools(history.clone()))),
+            async {
+                let cli = match kept.take() {
+                    Some(mut cli) => {
+                        cli.read().await;
+                        cli
+                    }
+                    None => starts.next().await,
+                };
+                cli.result(1, 1);
+                cli
+            }
+        );
+        kept = Some(cli);
+        // Between the action's requests, as while its tools run, the
+        // machine stays held, once for the whole action.
+        assert_eq!(placement.leases(), 1);
+    }
+    // The action ended, completed, failed or stopped: the machine is let go,
+    // though the runtime keeps its process for the next one.
+    runtime.idle();
+    assert_eq!(placement.leases(), 0);
+    let cli = kept.unwrap();
+    assert!(cli.signals().is_empty());
+    // The next action holds it again, until the runtime closes.
+    let (_, cli) = tokio::join!(
+        all_events(runtime.run(request_without_tools(vec![user("one"), user("two"), user("three")]))),
+        async {
+            let mut cli = cli;
+            cli.read().await;
+            cli.result(1, 1);
+            cli
+        }
+    );
+    assert_eq!(placement.leases(), 1);
+    runtime.close().await;
+    assert_eq!(placement.leases(), 0);
+    assert!(cli.end().is_some());
 }
 
 #[tokio::test(flavor = "local")]

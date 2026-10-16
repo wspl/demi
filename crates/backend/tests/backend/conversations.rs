@@ -1484,7 +1484,7 @@ impl Provider for KeyedProvider {
     }
 
     fn read_failure(&self, _: &ProviderErrorDiagnostics, _: Timestamp) -> ProviderFailureFacts {
-        ProviderFailureFacts { retry_at: None, continue_with: None }
+        ProviderFailureFacts { retry_at: None, continue_with: None, signed_out: None }
     }
 
     fn runtime(&self, _: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {

@@ -35,7 +35,7 @@ use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserI
 use futures_util::future::LocalBoxFuture;
 use futures_util::StreamExt as _;
 
-use crate::conversation::claude_cli::{CloudPlacement, ProcessWork};
+use crate::conversation::claude_cli::{CrossPlacement, ProcessWork};
 use crate::services::Services;
 use crate::shard::Shard;
 use demi_backend_host_access::conversation_of;
@@ -577,12 +577,12 @@ impl ConversationRuntime {
             Arc::ptr_eq(&current.provider, &provider) && current.model == selection.model.id
         });
         if !kept {
-            // A provider that runs a process gets it on the user's Cloud,
-            // whatever the conversation's target (`claude-code.md` § Where it
-            // runs).
+            // A provider that runs a process gets it on the Claude Code
+            // machine, whatever the conversation's target (`claude-code.md`
+            // § Where it runs).
             let runtime = if provider.capabilities().process_host {
                 let work = ProcessWork::Conversation(scope.conversation.clone());
-                let placement = CloudPlacement::placement(scope.shard.clone(), work);
+                let placement = CrossPlacement::placement(scope.shard.clone(), work);
                 let env = RuntimeEnv {
                     http: scope.http.clone(),
                 };
@@ -778,9 +778,13 @@ impl ProviderRuntime for ConversationRuntime {
     }
 
     /// The session's action ended: the agent keeps its account, but no
-    /// longer counts as running on it.
+    /// longer counts as running on it, and its runtime lets go of what it
+    /// held for the action.
     fn idle(&mut self) {
         self.running = None;
+        if let Some(current) = &mut self.current {
+            current.runtime.idle();
+        }
     }
 
     fn prepares_ahead(&self) -> bool {

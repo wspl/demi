@@ -90,12 +90,16 @@ pub struct CredentialRow {
     pub label: String,
     pub detail: Option<String>,
     pub source: String,
-    pub secret: Vec<u8>,
+    /// The sealed secret document; none for an account whose sign-in is
+    /// kept elsewhere, as a Claude Code account's CLI keeps it.
+    pub secret: Option<Vec<u8>>,
     /// Advanced by every write of the secret.
     pub version: u64,
     pub quota: Option<QuotaSnapshot>,
     /// When the account was last stored or refreshed.
     pub updated_at: Timestamp,
+    /// The vendor refused the account's sign-in.
+    pub signed_out: bool,
 }
 
 /// An account as a write stores it; the record's time is the write's.
@@ -106,14 +110,14 @@ pub struct CredentialWrite {
     pub label: String,
     pub detail: Option<String>,
     pub source: String,
-    pub secret: Vec<u8>,
+    pub secret: Option<Vec<u8>>,
 }
 
 const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation";
 /// The columns a new entry stores; its rotation is the default, manual.
 const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at";
 const CREDENTIAL_COLUMNS: &str =
-    "id, identity_key, label, detail, source, secret, version, quota, updated_at";
+    "id, identity_key, label, detail, source, secret, version, quota, updated_at, signed_out";
 
 impl ControlService {
     /// The master account, which a shared instance's entries belong to.
@@ -306,13 +310,13 @@ impl ControlService {
         .await
     }
 
-    /// Stores a refreshed secret only while the account is still at
-    /// `version`; `false` when another writer stored first.
+    /// Stores a refreshed secret, or clears it, only while the account is
+    /// still at `version`; `false` when another writer stored first.
     pub async fn replace_credential_secret(
         &self,
         provider: ProviderId,
         id: CredentialId,
-        secret: Vec<u8>,
+        secret: Option<Vec<u8>>,
         version: u64,
     ) -> Result<bool, StorageError> {
         self.call(move |connection, now| {
@@ -325,6 +329,24 @@ impl ControlService {
                 "UPDATE provider_credentials SET secret = ?1, version = version + 1, updated_at = ?2
                  WHERE provider_id = ?3 AND id = ?4 AND version = ?5",
                 params![secret, now.as_millisecond(), provider.as_str(), id.as_str(), version],
+            )?;
+            Ok(changed == 1)
+        })
+        .await
+    }
+
+    /// Marks the account as signed out by its vendor; an account removed
+    /// meanwhile marks nothing. Answers whether it changed.
+    pub async fn sign_out_credential(
+        &self,
+        provider: ProviderId,
+        id: CredentialId,
+    ) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let changed = connection.execute(
+                "UPDATE provider_credentials SET signed_out = 1
+                 WHERE provider_id = ?1 AND id = ?2 AND signed_out = 0",
+                params![provider.as_str(), id.as_str()],
             )?;
             Ok(changed == 1)
         })
@@ -526,7 +548,7 @@ fn write_credential(
          ON CONFLICT (provider_id, id) DO UPDATE SET
            identity_key = excluded.identity_key, label = excluded.label, detail = excluded.detail,
            source = excluded.source, secret = excluded.secret, version = version + 1,
-           updated_at = excluded.updated_at",
+           updated_at = excluded.updated_at, signed_out = 0",
         params![
             provider.as_str(),
             account.id.as_str(),
@@ -613,5 +635,6 @@ fn credential_row(row: &Row<'_>) -> Result<CredentialRow, StorageError> {
             .map(|text| json("provider_credentials", "quota", &text))
             .transpose()?,
         updated_at: instant(row, "provider_credentials", "updated_at")?,
+        signed_out: row.get("signed_out")?,
     })
 }
