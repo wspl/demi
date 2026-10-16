@@ -8,6 +8,7 @@ use demi_provider_claude_code::CliWork;
 use demi_provider_common::credentials::{CredentialPool as _, MemoryCredentialPool};
 use demi_provider_common::{
     ErrorCode, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
+    ProviderRuntime,
 };
 use demi_shared_types::{ThinkingConfig, ThinkingSummary, TokenUsage};
 use serde_json::{Value, json};
@@ -327,6 +328,7 @@ async fn a_new_process_starts_with_the_cli_contract_in_its_accounts_directory_wi
         "--input-format",
         "stream-json",
         "--include-partial-messages",
+        "--replay-user-messages",
         "--resume",
         &resumed,
         "--session-mirror",
@@ -494,6 +496,265 @@ fn a_line_the_cli_prints_before_answering_initialize_is_read_by_the_run_after_th
     assert_eq!(events, [text("hello"), usage(1, 1)]);
 }
 
+/// What a kept process answered `first` with, and the transcript after it.
+fn answered_first() -> Vec<InferenceItem> {
+    vec![
+        user("first"),
+        InferenceItem::AssistantText {
+            model_id: "claude-test".into(),
+            text: "one".into(),
+        },
+    ]
+}
+
+/// A process kept after it answered `first`.
+async fn kept_after_first(runtime: &mut Box<dyn ProviderRuntime>, starts: &mut Starts) -> Cli {
+    let (events, cli) = tokio::join!(all_events(runtime.run(request(vec![user("first")]))), async {
+        let mut cli = starts.next().await;
+        cli.initialized().await;
+        cli.text("one");
+        cli.result(1, 1);
+        cli
+    });
+    assert_eq!(events, [text("one"), usage(1, 1)]);
+    cli
+}
+
+/// The incident: two subagents' receipts written to a kept process, which
+/// the CLI answers in two turns, each with its `result`. Both answers are
+/// responses of the run that wrote the receipts, whole and in order, and the
+/// next run starts clean in the same process. (The run ended at the first
+/// `result`; the next one skipped the start of the second answer, showed its
+/// rest and then its whole line again, and the answer to its own message
+/// printed after it ended.)
+// Three runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn messages_answered_in_turns_of_their_own_are_responses_of_the_run_that_wrote_them() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let mut cli = kept_after_first(&mut runtime, &mut starts).await;
+
+    let mut receipts = answered_first();
+    receipts.push(user("receipt A"));
+    receipts.push(user("receipt B"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(receipts.clone()))), async {
+        assert_eq!(cli.take().await, user_line("receipt A"));
+        cli.text("answer ");
+        cli.text("to A");
+        cli.result(2, 2);
+        assert_eq!(cli.take().await, user_line("receipt B"));
+        cli.text("answer ");
+        cli.text("to B");
+        cli.result(3, 3);
+    });
+    assert_eq!(
+        events,
+        [
+            text("answer "),
+            text("to A"),
+            usage(2, 2),
+            text("answer "),
+            text("to B"),
+            usage(3, 3),
+        ]
+    );
+
+    let mut next = receipts.clone();
+    next.push(InferenceItem::AssistantText {
+        model_id: "claude-test".into(),
+        text: "answer to B".into(),
+    });
+    next.push(user("receipt C"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(next))), async {
+        assert_eq!(cli.take().await, user_line("receipt C"));
+        cli.text("the table");
+        cli.result(4, 4);
+    });
+    assert_eq!(events, [text("the table"), usage(4, 4)]);
+    assert!(cli.unread().is_empty());
+    assert_eq!(placement.starts(), 1);
+    assert!(cli.signals().is_empty());
+}
+
+/// Two messages the CLI takes into one turn are both printed back before
+/// that turn's one `result`, which ends the run. (Fails with a run that
+/// waits for a `result` for each message it wrote.)
+// Three runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn messages_taken_into_one_turn_end_the_run_at_its_one_result() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let mut cli = kept_after_first(&mut runtime, &mut starts).await;
+
+    let mut receipts = answered_first();
+    receipts.push(user("receipt A"));
+    receipts.push(user("receipt B"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(receipts.clone()))), async {
+        cli.take().await;
+        cli.take().await;
+        cli.text("both");
+        cli.result(2, 2);
+    });
+    assert_eq!(events, [text("both"), usage(2, 2)]);
+
+    let mut next = receipts.clone();
+    next.push(InferenceItem::AssistantText {
+        model_id: "claude-test".into(),
+        text: "both".into(),
+    });
+    next.push(user("next"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(next))), async {
+        cli.take().await;
+        cli.text("next answer");
+        cli.result(3, 3);
+    });
+    assert_eq!(events, [text("next answer"), usage(3, 3)]);
+    assert_eq!(placement.starts(), 1);
+}
+
+/// What the CLI prints for a message it answers itself, a command it does
+/// not offer: its own whole answer and a `result`, with no message printed
+/// back and no model call (Claude Code 2.1.296 and 2.1.301 with
+/// `--disable-slash-commands`).
+fn answer_locally(cli: &Cli, command: &str) {
+    cli.say(json!({
+        "type": "assistant",
+        "message": { "model": "<synthetic>", "content": [
+            { "type": "text", "text": format!("{command} isn't available in this environment.") },
+        ] },
+    }));
+    cli.say(json!({ "type": "result", "subtype": "success", "is_error": false, "num_turns": 0 }));
+}
+
+/// A message the CLI answers itself, never printing it back, ends the run
+/// at the `result` of that answer. (The run waited for its message to be
+/// printed back, for good.)
+// Two runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_message_the_cli_answers_itself_ends_the_run_at_its_result() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let mut cli = kept_after_first(&mut runtime, &mut starts).await;
+
+    let mut items = answered_first();
+    items.push(user("/cost"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(items))), async {
+        assert_eq!(cli.read().await, user_line("/cost"));
+        answer_locally(&cli, "/cost");
+    });
+    assert!(
+        matches!(events.as_slice(), [.., ProviderEvent::Response(None)]),
+        "{events:?}"
+    );
+    assert!(events.contains(&text("/cost isn't available in this environment.")), "{events:?}");
+    assert!(cli.signals().is_empty());
+}
+
+/// A message the CLI answers itself, written with one it takes into a turn
+/// of the model's, gives both answers in the run, which ends at the second.
+/// (The run ended at the first `result`, or waited for good.)
+// Two runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_message_the_cli_answers_itself_and_one_for_the_model_give_both_answers_and_end() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let mut cli = kept_after_first(&mut runtime, &mut starts).await;
+
+    let mut items = answered_first();
+    items.push(user("/cost"));
+    items.push(user("hello"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(items))), async {
+        assert_eq!(cli.read().await, user_line("/cost"));
+        answer_locally(&cli, "/cost");
+        assert_eq!(cli.take().await, user_line("hello"));
+        cli.message_start();
+        cli.text("hi");
+        cli.result(2, 2);
+    });
+    let texts: Vec<&ProviderEvent> = events
+        .iter()
+        .filter(|event| matches!(event, ProviderEvent::TextDelta(_) | ProviderEvent::Response(_)))
+        .collect();
+    assert_eq!(
+        texts,
+        [
+            &text("/cost isn't available in this environment."),
+            &ProviderEvent::Response(None),
+            &text("hi"),
+            &usage(2, 2),
+        ]
+    );
+    assert_eq!(placement.starts(), 1);
+    assert!(cli.signals().is_empty());
+}
+
+/// A turn that fails while a message the run wrote is not printed back yet
+/// fails the run and closes the process, which would otherwise answer that
+/// message after the run ended. (The process was kept.)
+// Two runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_turn_that_fails_before_every_message_was_taken_fails_the_run_and_closes_the_process() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let mut cli = kept_after_first(&mut runtime, &mut starts).await;
+
+    let mut items = answered_first();
+    items.push(user("receipt A"));
+    items.push(user("receipt B"));
+    let (events, ()) = tokio::join!(all_events(runtime.run(request(items))), async {
+        cli.take().await;
+        cli.message_start();
+        cli.say(json!({ "type": "result", "is_error": true, "result": "overloaded" }));
+    });
+    assert!(
+        matches!(events.as_slice(), [.., ProviderEvent::Error(_)]),
+        "{events:?}"
+    );
+    assert_eq!(cli.signals(), [Signal::Terminate]);
+}
+
+/// A kept process that printed output after the `result` that ended its
+/// last run went on without a request: the next run closes it, and a new
+/// process resumes the transcript, so none of that output is shown. (The
+/// run skipped it and wrote to the process that printed it.)
+// Two runs against a scripted CLI: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn output_waiting_before_a_run_writes_closes_the_process() {
+    let provider = provider().await;
+    let (placement, mut starts) = ScriptedPlacement::new();
+    let mut runtime = runtime_of(&provider, &placement);
+    let (events, cli) = tokio::join!(all_events(runtime.run(request(vec![user("first")]))), async {
+        let mut cli = starts.next().await;
+        cli.initialized().await;
+        cli.text("one");
+        cli.result(1, 1);
+        // A turn nobody asked for, printed with the first.
+        cli.text("stray");
+        cli.result(9, 9);
+        cli
+    });
+    assert_eq!(events, [text("one"), usage(1, 1)]);
+
+    let mut second = answered_first();
+    second.push(user("second"));
+    let (events, mut resumed) = tokio::join!(all_events(runtime.run(request(second))), async {
+        let mut resumed = starts.next().await;
+        resumed.initialized().await;
+        resumed.text("two");
+        resumed.result(2, 2);
+        resumed
+    });
+    assert_eq!(events, [text("two"), usage(2, 2)]);
+    assert_eq!(cli.signals(), [Signal::Terminate]);
+    assert_eq!(placement.starts(), 2);
+    assert!(resumed.unread().is_empty());
+}
+
 #[tokio::test(flavor = "local")]
 async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_another_model_or_new_tools_restart_it()
  {
@@ -518,7 +779,7 @@ async fn a_kept_process_receives_only_what_the_transcript_gained_until_an_edit_a
     });
     second.push(user("second question"));
     let (events, ()) = tokio::join!(all_events(runtime.run(request(second.clone()))), async {
-        assert_eq!(cli.read().await, user_line("second question"));
+        assert_eq!(cli.take().await, user_line("second question"));
         cli.text("two");
         cli.result(1, 1);
     });
@@ -829,7 +1090,7 @@ async fn an_action_holds_the_machine_from_its_first_request_to_its_end() {
             async {
                 let cli = match kept.take() {
                     Some(mut cli) => {
-                        cli.read().await;
+                        cli.take().await;
                         cli
                     }
                     None => starts.next().await,
@@ -854,7 +1115,7 @@ async fn an_action_holds_the_machine_from_its_first_request_to_its_end() {
         all_events(runtime.run(request_without_tools(vec![user("one"), user("two"), user("three")]))),
         async {
             let mut cli = cli;
-            cli.read().await;
+            cli.take().await;
             cli.result(1, 1);
             cli
         }
@@ -905,7 +1166,7 @@ async fn the_clis_error_ends_the_turn_and_keeps_the_process_while_a_broken_line_
     let (events, ()) = tokio::join!(
         all_events(runtime.run(request_without_tools(items))),
         async {
-            assert_eq!(cli.read().await, user_line("smaller"));
+            assert_eq!(cli.take().await, user_line("smaller"));
             cli.say_text("{\"type\": \"stream_event\", \"event\": {\"type\": \"message_delta\", \"usage\": {\"input_tokens\": \"many\"}}}\n");
         }
     );

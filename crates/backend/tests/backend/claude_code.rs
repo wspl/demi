@@ -5,7 +5,9 @@
 //! SDK MCP server and offers the model its tools, streams reasoning and
 //! text, runs a batch of tool calls through Demi and sends back their
 //! results, reports usage, stops in the middle of a stream, and reports a
-//! vendor error as the request's failure. Each new process, for another
+//! vendor error as the request's failure. It prints back each user message
+//! it takes, before the `result` that answers it, and answers a command it
+//! does not offer itself, never printing it back. Each new process, for another
 //! model and effort, after another provider's turn or after a stop,
 //! resumes the session the blocks hold: its first request begins with the
 //! last request of the process before it, with no account of the CLI's
@@ -1191,4 +1193,148 @@ async fn the_installed_cli_starts_while_the_package_answers_nothing() {
     drop(service);
     drop(socket);
     world.backend.close().await;
+}
+
+/// What the supplied CLI prints, started with the provider's flags that
+/// shape its input and output, against a scripted vendor that answers
+/// `answers`, when `messages` are written to it at once: each line's `type`,
+/// `user:<text>` for a message it printed back, until it printed `results`
+/// results.
+async fn printed(messages: &[&str], answers: &[&str], results: usize) -> Vec<String> {
+    use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _};
+
+    let path = std::env::var_os("DEMI_TEST_CLAUDE_CODE")
+        .expect("DEMI_TEST_CLAUDE_CODE names the Claude Code CLI");
+    let vendor = MockVendor::start().await;
+    for answer in answers {
+        vendor.respond_at(
+            "/v1/messages",
+            message(
+                vec![text_block(0, &[answer])],
+                "end_turn",
+                json!({ "input_tokens": 5, "output_tokens": 1 }),
+                2,
+            ),
+        );
+    }
+    let home = tempfile::tempdir().unwrap();
+    let mut cli = tokio::process::Command::new(path)
+        .args([
+            "--print",
+            "--output-format",
+            "stream-json",
+            "--verbose",
+            "--input-format",
+            "stream-json",
+            "--include-partial-messages",
+            "--replay-user-messages",
+            "--safe-mode",
+            "--disable-slash-commands",
+            "--tools",
+            "",
+            "--permission-mode",
+            "bypassPermissions",
+            "--allow-dangerously-skip-permissions",
+            "--model",
+            MODEL,
+        ])
+        .env_clear()
+        .envs(QUIET)
+        .env("DISABLE_AUTOUPDATER", "1")
+        .env("HOME", home.path())
+        .env("CLAUDE_CONFIG_DIR", home.path())
+        .env("ANTHROPIC_BASE_URL", vendor.url(""))
+        .env("ANTHROPIC_API_KEY", "sk-ant-api03-demi-suite-made-up-key")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("the CLI starts");
+    let mut input = cli.stdin.take().unwrap();
+    for text in messages {
+        let line = json!({ "type": "user", "message": { "role": "user", "content": text } });
+        input.write_all(format!("{line}\n").as_bytes()).await.unwrap();
+    }
+    input.flush().await.unwrap();
+
+    let mut lines = tokio::io::BufReader::new(cli.stdout.take().unwrap()).lines();
+    let mut printed: Vec<String> = Vec::new();
+    let read = async {
+        while let Some(line) = lines.next_line().await.unwrap() {
+            let line: Value = serde_json::from_str(&line).unwrap();
+            let kind = match line["type"].as_str() {
+                Some("user") if line["isReplay"] == true => {
+                    format!("user:{}", line["message"]["content"].as_str().unwrap_or_default())
+                }
+                Some("stream_event") => format!("stream_event:{}", line["event"]["type"].as_str().unwrap_or_default()),
+                Some(kind) => kind.to_owned(),
+                None => continue,
+            };
+            let done = kind == "result"
+                && printed.iter().filter(|kind| *kind == "result").count() + 1 == results;
+            printed.push(kind);
+            if done {
+                return;
+            }
+        }
+        panic!("the CLI's output ended: {printed:?}");
+    };
+    tokio::time::timeout(std::time::Duration::from_secs(60), read)
+        .await
+        .unwrap_or_else(|_| panic!("the CLI printed {results} results within a minute: {printed:?}"));
+    drop(input);
+    cli.kill().await.unwrap();
+    printed
+}
+
+/// The CLI prints back each user message it takes into a turn, before the
+/// `result` of that turn, when it runs with `--replay-user-messages`: a run
+/// counts on it to know which `result` answers the last message it wrote
+/// (`claude-code.md` § Which `result` ends a run). Two messages are written
+/// at once, as a run writes two subagents' receipts; whether the CLI answers
+/// them in one turn or in two, no `result` comes before the first is
+/// printed back, and the last comes after both.
+// One process of the supplied CLI and two answers of the scripted vendor:
+// a few seconds, most of it the CLI's start.
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+async fn the_cli_prints_back_each_user_message_it_takes_before_the_result_that_answers_it() {
+    let written = ["First receipt.", "Second receipt."];
+    let printed = printed(&written, &["First answer.", "Second answer."], 2).await;
+    let taken: Vec<&str> = printed
+        .iter()
+        .filter_map(|kind| kind.strip_prefix("user:"))
+        .collect();
+    assert_eq!(taken, written, "{printed:?}");
+    let first = printed.iter().position(|kind| kind.starts_with("user:")).unwrap();
+    let result = printed.iter().position(|kind| kind == "result").unwrap();
+    assert!(first < result, "{printed:?}");
+}
+
+/// A message that starts with `/`, which the CLI takes for a command it
+/// does not offer, is answered by the CLI itself: it prints an answer and a
+/// `result` with no model call and never prints the message back, which the
+/// provider counts on to end the run (`claude-code.md` § Which `result`
+/// ends a run). A path such as `/Users/…` is a message like any other.
+// Two processes of the supplied CLI and one answer of the scripted vendor:
+// a few seconds.
+#[tokio::test]
+#[ignore = "requires DEMI_TEST_CLAUDE_CODE naming the Claude Code CLI, as builds-and-releases.md § Validation runs it"]
+async fn a_command_the_cli_does_not_offer_gets_a_result_with_no_model_call_and_is_never_printed_back() {
+    let printed_for_command = printed(&["/cost"], &[], 1).await;
+    assert!(
+        !printed_for_command
+            .iter()
+            .any(|kind| kind.starts_with("user:") || kind.starts_with("stream_event:")),
+        "{printed_for_command:?}"
+    );
+    assert_eq!(printed_for_command.last().map(String::as_str), Some("result"));
+
+    let path = "/Users/x/a.txt 是什么";
+    let printed_for_path = printed(&[path], &["A text file."], 1).await;
+    assert!(
+        printed_for_path.contains(&format!("user:{path}"))
+            && printed_for_path.contains(&"stream_event:message_start".to_owned()),
+        "{printed_for_path:?}"
+    );
 }

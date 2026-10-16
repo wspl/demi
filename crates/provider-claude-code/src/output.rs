@@ -23,6 +23,7 @@ tagged_wire! {
     /// One line of the CLI's output.
     pub(crate) enum Line {
         "assistant" => Assistant(AssistantLine),
+        "user" => User(UserLine),
         "stream_event" => StreamEvent(StreamEventLine),
         "control_request" => ControlRequest(ControlRequestLine),
         "control_response" => ControlResponse(ControlResponseLine),
@@ -45,6 +46,16 @@ pub(crate) struct RateLimitLine {}
 pub(crate) struct MirrorLine {
     #[serde(default)]
     pub(crate) entries: Vec<serde_json::Value>,
+}
+
+/// A user message the CLI printed: one written to it, printed back as the
+/// CLI takes it into a turn (`--replay-user-messages`), or the results of
+/// tool calls, which it prints as it sends them.
+#[derive(Deserialize)]
+pub(crate) struct UserLine {
+    /// Set on a message written to the CLI that it printed back.
+    #[serde(default, rename = "isReplay")]
+    pub(crate) is_replay: bool,
 }
 
 /// A whole assistant message. With partial messages the CLI streams the
