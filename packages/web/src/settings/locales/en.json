@@ -45,6 +45,7 @@
   "users": {
     "newPasswordFailed": "Could Not Make a New Password",
     "roleFailed": "Could Not Change the Role",
+    "cloudStorageFailed": "Could Not Change the Cloud Storage",
     "disableFailed": "Could Not Disable the Account",
     "enableFailed": "Could Not Enable the Account",
     "signOutFailed": "Could Not Sign the Account Out",

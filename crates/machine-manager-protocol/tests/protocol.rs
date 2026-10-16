@@ -110,14 +110,16 @@ fn ok_replies_carry_their_operations_results() {
 fn requests_ignore_unknown_keys_and_refuse_malformed_values() {
     let device = r#""deviceId":"dev-1""#;
     let boot = r#""boot":{"backendUrl":"http://backend","deviceToken":"opaque"},"machine":"cloud""#;
+    let capacity = r#""capacity":{"systemBytes":1,"homeBytes":2}"#;
     let accepted = [
         format!(r#"{{"id":"1","op":"hibernate","params":{{{device}}},"trace":"x"}}"#),
         format!(r#"{{"id":"1","op":"hibernate","params":{{{device},"force":true}}}}"#),
         r#"{"id":"1","op":"reconcile","params":{"all":true}}"#.to_owned(),
-        format!(r#"{{"id":"1","op":"wake","params":{{{device},{boot}}}}}"#),
+        format!(r#"{{"id":"1","op":"wake","params":{{{device},{capacity},{boot}}}}}"#),
         // The pattern of a device id or base version is the operation's to check.
-        r#"{"id":"1","op":"reset","params":{"deviceId":"../x","operationId":"o","baseVersion":"../b"}}"#
-            .to_owned(),
+        format!(
+            r#"{{"id":"1","op":"reset","params":{{"deviceId":"../x","operationId":"o","baseVersion":"../b",{capacity}}}}}"#
+        ),
     ];
     for line in &accepted {
         decode_request(line).unwrap_or_else(|error| panic!("{line}: {error}"));
@@ -133,30 +135,32 @@ fn requests_ignore_unknown_keys_and_refuse_malformed_values() {
         r#"{"id":"1","op":"hibernate","params":{"deviceId":7}}"#.to_owned(),
         format!(r#"{{"id":"1","op":"wake","params":{{{device}}}}}"#),
         format!(
-            r#"{{"id":"1","op":"wake","params":{{{device},"boot":{{"backendUrl":"http://backend","deviceToken":"opaque","command":"x"}},"machine":"cloud"}}}}"#
+            r#"{{"id":"1","op":"wake","params":{{{device},{capacity},"boot":{{"backendUrl":"http://backend","deviceToken":"opaque","command":"x"}},"machine":"cloud"}}}}"#
         ),
         format!(
-            r#"{{"id":"1","op":"wake","params":{{{device},"boot":{{"backendUrl":"ftp://backend","deviceToken":"opaque"}},"machine":"cloud"}}}}"#
+            r#"{{"id":"1","op":"wake","params":{{{device},{capacity},"boot":{{"backendUrl":"ftp://backend","deviceToken":"opaque"}},"machine":"cloud"}}}}"#
         ),
         format!(
-            r#"{{"id":"1","op":"wake","params":{{{device},"boot":{{"backendUrl":"http://backend","deviceToken":"two words"}},"machine":"cloud"}}}}"#
+            r#"{{"id":"1","op":"wake","params":{{{device},{capacity},"boot":{{"backendUrl":"http://backend","deviceToken":"two words"}},"machine":"cloud"}}}}"#
+        ),
+        // A wake or a reset names both capacities, each more than nothing.
+        format!(r#"{{"id":"1","op":"wake","params":{{{device},{boot}}}}}"#),
+        format!(
+            r#"{{"id":"1","op":"wake","params":{{{device},"capacity":{{"systemBytes":0,"homeBytes":2}},{boot}}}}}"#
         ),
         format!(
-            r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"home","bytes":0}}}}"#
+            r#"{{"id":"1","op":"wake","params":{{{device},"capacity":{{"systemBytes":1}},{boot}}}}}"#
         ),
         format!(
-            r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"home","bytes":-1}}}}"#
+            r#"{{"id":"1","op":"wake","params":{{{device},"capacity":{{"systemBytes":1,"homeBytes":2,"swapBytes":3}},{boot}}}}}"#
         ),
         format!(
-            r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"home","bytes":1.5}}}}"#
+            r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"o","baseVersion":"b"}}}}"#
         ),
         format!(
-            r#"{{"id":"1","op":"grow_volume","params":{{{device},"volume":"swap","bytes":1}}}}"#
+            r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"","baseVersion":"b",{capacity}}}}}"#
         ),
-        format!(
-            r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"","baseVersion":"b"}}}}"#
-        ),
-        format!(r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"o"}}}}"#),
+        format!(r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"o",{capacity}}}}}"#),
     ];
     for line in &refused {
         assert!(decode_request(line).is_err(), "{line} decoded");

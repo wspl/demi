@@ -66,7 +66,7 @@ operations of one device run in arrival order, requests on a connection are
 answered as they finish, and a death reaches every connection. It starts the
 same runner as a local process with the boot record's backend URL and token,
 over a home that survives stop, wake and reset, and it records wake,
-hibernate, checkpoint, reset, and growth calls. A test can hold or fail a
+hibernate, checkpoint and reset calls. A test can hold or fail a
 reset, keep a wake's runner from connecting, fail a save, or kill a runner as
 a crash would. It does not start a sandbox, mount disk images, or implement
 filesystem isolation. A stop clears the runner's state but its log and its
@@ -353,13 +353,6 @@ restores IP forwarding, and removes the state directory. It then compares the
 processes, mounts, loop devices, network interfaces and namespaces, nftables
 tables, cgroups, and listeners with their state before the run, and fails when
 anything the run made remains.
-
-A Cloud's disks cannot grow where the manager lacks `CAP_SYS_RESOURCE`
-([Linux requirements](../cloud/setup.md#linux-requirements)), as in a container
-that drops it even for root. There the growth test cannot pass, and the suite
-runs without it: the script takes `-- --skip grows_its_home_online` after its
-own arguments, and the `cargo test` command takes `--skip grows_its_home_online`
-after its `--`.
 
 ### Browser suite
 

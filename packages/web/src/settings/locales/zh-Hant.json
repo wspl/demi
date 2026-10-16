@@ -45,6 +45,7 @@
   "users": {
     "newPasswordFailed": "無法產生新密碼",
     "roleFailed": "無法變更角色",
+    "cloudStorageFailed": "無法變更雲端儲存空間",
     "disableFailed": "無法停用帳號",
     "enableFailed": "無法啟用帳號",
     "signOutFailed": "無法登出該帳號",

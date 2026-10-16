@@ -10,7 +10,6 @@ use std::{
     io,
     path::PathBuf,
     sync::Arc,
-    time::Duration,
 };
 
 use demi_runner_command_packages::ServiceHandle;
@@ -18,7 +17,7 @@ use demi_runner_direct::{Addresses, Direct};
 use demi_runner_host::{
     files,
     host::HostServer,
-    volumes::{ManagedVolume, Volumes},
+    volumes::Volumes,
 };
 use demi_runner_jobs::{
     commands::{
@@ -99,7 +98,9 @@ pub struct Registered {
     /// The default working directory and the environment jobs start from.
     pub cwd: PathBuf,
     pub env: BTreeMap<String, String>,
-    pub volumes: Vec<ManagedVolume>,
+    /// A managed guest's writable filesystems, which a `sync` flushes;
+    /// none on a paired device.
+    pub volumes: Vec<PathBuf>,
     /// The command that removes this runner; none for a managed guest's.
     pub removal: Option<String>,
     /// The number this start of the runner drew, which each hello names.
@@ -232,8 +233,6 @@ impl Owner<'_> {
         .map_err(io::Error::other)?;
         self.send(hello).await?;
         let management = self.registered.management.clone();
-        let mut volume_tick = tokio::time::interval(Duration::from_secs(60));
-        volume_tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {
                 biased;
@@ -252,11 +251,6 @@ impl Owner<'_> {
                 _ = management.draining.cancelled(), if self.kept.jobs.is_empty() => {
                     return Ok(End::Stopped);
                 }
-                _ = volume_tick.tick(), if management.phase() == Phase::Online => {
-                    if self.kept.jobs.job_count() == 0 {
-                        self.volumes.poll();
-                    }
-                }
                 // Before the backend's messages: a call registers before it
                 // sends the call, so a reply queued beside its registration
                 // finds the call.
@@ -267,7 +261,6 @@ impl Owner<'_> {
                 Some(work) = self.work.join_next() => {
                     self.worked(work.expect("connection work does not panic"))?;
                 }
-                Some(()) = self.volumes.checked() => {}
                 Ok(()) = self.cached.changed(), if management.phase() == Phase::Online => {
                     self.report_installed().await?;
                 }
@@ -568,12 +561,6 @@ impl Owner<'_> {
                 });
             }
             Inbound::Sync { id } => self.volumes.sync(id)?,
-            Inbound::VolumeGrown {
-                id,
-                volume,
-                bytes,
-                error,
-            } => self.volumes.grown(&id, volume, bytes, error)?,
             message if message.fs_request_id().is_some() => self.host.handle_filesystem(message)?,
             message if message.git_request_id().is_some() => self.host.handle_git(message)?,
             Inbound::FsSubscribe { .. } | Inbound::FsUnsubscribe { .. } | Inbound::FsRenew { .. } => {

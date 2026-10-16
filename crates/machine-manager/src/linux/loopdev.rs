@@ -1,7 +1,6 @@
 //! Loop devices the manager attaches itself (`managed-hosts.md` § Images):
 //! each working image gets a free device with auto-clear set, so unmounting
-//! its filesystem, or a mount that fails, detaches the device. The sandbox
-//! keeps the device's number for growth.
+//! its filesystem, or a mount that fails, detaches the device.
 
 use std::{
     io,
@@ -10,11 +9,11 @@ use std::{
 };
 
 use linux_raw_sys::loop_device::{
-    LO_FLAGS_AUTOCLEAR, LOOP_CONFIGURE, LOOP_CTL_GET_FREE, LOOP_SET_CAPACITY, loop_config,
+    LO_FLAGS_AUTOCLEAR, LOOP_CONFIGURE, LOOP_CTL_GET_FREE, loop_config,
 };
 use rustix::{
     io::Errno,
-    ioctl::{Ioctl, IoctlOutput, NoArg, Opcode, Setter},
+    ioctl::{Ioctl, IoctlOutput, Opcode, Setter},
 };
 
 use super::failed;
@@ -28,10 +27,6 @@ pub struct LoopDevice {
 }
 
 impl LoopDevice {
-    pub fn number(&self) -> u32 {
-        self.number
-    }
-
     pub fn path(&self) -> PathBuf {
         path(self.number)
     }
@@ -119,16 +114,4 @@ pub fn attach(_: &OffLoop, image: &Path) -> io::Result<LoopDevice> {
             Err(error) => return Err(failed("attaching", &device_path, error)),
         }
     }
-}
-
-/// Makes loop device `number` see its backing file's new size.
-pub fn refresh_capacity(_: &OffLoop, number: u32) -> io::Result<()> {
-    let device_path = path(number);
-    let device = fs_err::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(&device_path)?;
-    // SAFETY: LOOP_SET_CAPACITY takes no argument and is served by a loop device.
-    unsafe { rustix::ioctl::ioctl(device.as_fd(), NoArg::<{ LOOP_SET_CAPACITY }>::new()) }
-        .map_err(|error| failed("refreshing the capacity of", &device_path, error))
 }

@@ -124,15 +124,6 @@ impl MachineImageState {
             Volume::Home => self.home_bytes,
         }
     }
-
-    /// The record with `volume`'s capacity replaced.
-    pub fn with_bytes(mut self, volume: Volume, bytes: NonZeroU64) -> Self {
-        match volume {
-            Volume::System => self.system_bytes = bytes,
-            Volume::Home => self.home_bytes = bytes,
-        }
-        self
-    }
 }
 
 /// Whether the manager runs a sandbox for a device.

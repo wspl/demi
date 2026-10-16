@@ -17,7 +17,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 /// The wire's version, which the manager's `hello` names. The backend and
 /// the manager of a deployment run one release, so a change to any message
 /// changes it (`managed-hosts.md` § Control and ownership).
-pub const VERSION: u32 = 2;
+pub const VERSION: u32 = 3;
 
 /// A request: an id the client chooses, which its reply names, and the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -43,12 +43,11 @@ pub enum MachineCall {
     Wake(#[garde(dive)] WakeParams),
     Hibernate(#[garde(dive)] HibernateParams),
     Checkpoint(#[garde(dive)] CheckpointParams),
-    GrowVolume(#[garde(dive)] GrowVolumeParams),
     Reset(#[garde(dive)] ResetParams),
 }
 
 impl MachineCall {
-    /// The operation's name on the wire, such as `grow_volume`.
+    /// The operation's name on the wire, such as `image_state`.
     pub fn name(&self) -> &'static str {
         match self {
             Self::Reconcile(_) => "reconcile",
@@ -58,7 +57,6 @@ impl MachineCall {
             Self::Wake(_) => "wake",
             Self::Hibernate(_) => "hibernate",
             Self::Checkpoint(_) => "checkpoint",
-            Self::GrowVolume(_) => "grow_volume",
             Self::Reset(_) => "reset",
         }
     }
@@ -97,13 +95,36 @@ pub struct RuntimeStateParams {
     pub device_id: String,
 }
 
-/// Create first-use storage or recover existing storage, then start one
-/// sandbox with the boot credential.
+/// The capacities, in bytes, of a device's system and home filesystems,
+/// which the backend names from the account's setting (`managed-hosts.md`
+/// § Lifecycle and capacity).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct Capacity {
+    pub system_bytes: NonZeroU64,
+    pub home_bytes: NonZeroU64,
+}
+
+impl Capacity {
+    /// The capacity of `volume`.
+    pub fn bytes(&self, volume: Volume) -> NonZeroU64 {
+        match volume {
+            Volume::System => self.system_bytes,
+            Volume::Home => self.home_bytes,
+        }
+    }
+}
+
+/// Create first-use storage or recover existing storage at `capacity`,
+/// enlarging a smaller image, then start one sandbox with the boot
+/// credential.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct WakeParams {
     #[garde(length(min = 1))]
     pub device_id: String,
+    #[garde(skip)]
+    pub capacity: Capacity,
     /// Checked as it is read: an unknown key refuses the message.
     #[garde(skip)]
     pub boot: ManagedBoot,
@@ -138,20 +159,9 @@ pub struct CheckpointParams {
     pub device_id: String,
 }
 
-/// Grow one of the running device's filesystems to at least `bytes`.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
-#[serde(rename_all = "camelCase")]
-pub struct GrowVolumeParams {
-    #[garde(length(min = 1))]
-    pub device_id: String,
-    #[garde(skip)]
-    pub volume: Volume,
-    #[garde(skip)]
-    pub bytes: NonZeroU64,
-}
-
-/// Publish a clean system on `base_version` with the retained home, once
-/// per `operation_id`; does not boot.
+/// Publish a clean system on `base_version` at `capacity`'s system bytes
+/// with the retained home, a first home at its home bytes on a device that
+/// has none, once per `operation_id`; does not boot.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase")]
 pub struct ResetParams {
@@ -161,6 +171,8 @@ pub struct ResetParams {
     pub operation_id: String,
     #[garde(length(min = 1))]
     pub base_version: String,
+    #[garde(skip)]
+    pub capacity: Capacity,
 }
 
 /// A message from the manager: the reply to a request, or the death of a
@@ -228,7 +240,6 @@ operations! {
     WakeParams => Wake: (),
     HibernateParams => Hibernate: (),
     CheckpointParams => Checkpoint: (),
-    GrowVolumeParams => GrowVolume: (),
     ResetParams => Reset: (),
 }
 

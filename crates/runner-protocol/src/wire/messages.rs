@@ -86,16 +86,6 @@ pub enum Inbound {
     Sync {
         id: String,
     },
-    /// The named backing image is now `bytes` large, or `error` says why it
-    /// did not grow.
-    VolumeGrown {
-        id: String,
-        volume: VolumeName,
-        #[garde(range(min = 1))]
-        bytes: u64,
-        #[serde(deserialize_with = "Option::deserialize")]
-        error: Option<String>,
-    },
     Spawn {
         spawn_id: String,
         command: String,
@@ -912,13 +902,6 @@ pub enum Outbound {
         )]
         error: Option<String>,
     },
-    /// A writable volume is nearly full: the runner asks for this total size.
-    VolumeGrow {
-        id: String,
-        volume: VolumeName,
-        #[garde(range(min = 1))]
-        bytes: u64,
-    },
     FsOk(FsOk),
     /// A failed fs call; `code` is the errno-style code when there is one,
     /// and `readAt` the Host's number as the runner received the call.
@@ -1273,14 +1256,6 @@ pub enum Signal {
     Stop,
     #[serde(rename = "SIGCONT")]
     Continue,
-}
-
-/// A managed guest's writable volume.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum VolumeName {
-    System,
-    Home,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -2029,7 +2004,6 @@ pub struct LogLine {
 // Closed sets display as the wire spells them, for logs.
 serde_plain::derive_display_from_serialize!(HelloErrorCode);
 serde_plain::derive_display_from_serialize!(Signal);
-serde_plain::derive_display_from_serialize!(VolumeName);
 serde_plain::derive_display_from_serialize!(OutputStream);
 serde_plain::derive_display_from_serialize!(ServiceErrorCode);
 serde_plain::derive_display_from_serialize!(ChangeKind);

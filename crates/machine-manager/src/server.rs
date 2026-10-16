@@ -448,11 +448,10 @@ mod tests {
             r#"{"id":"2","op":"current_base_version","params":{}}"#,
             r#"{"id":"3","op":"image_state","params":{"deviceId":"dev-1"}}"#,
             r#"{"id":"4","op":"runtime_state","params":{"deviceId":"dev-1"}}"#,
-            r#"{"id":"5","op":"wake","params":{"deviceId":"dev-1","boot":{"backendUrl":"http://backend","deviceToken":"tok"},"machine":"cloud"}}"#,
+            r#"{"id":"5","op":"wake","params":{"deviceId":"dev-1","capacity":{"systemBytes":4096,"homeBytes":4096},"boot":{"backendUrl":"http://backend","deviceToken":"tok"},"machine":"cloud"}}"#,
             r#"{"id":"6","op":"checkpoint","params":{"deviceId":"dev-1"}}"#,
-            r#"{"id":"7","op":"grow_volume","params":{"deviceId":"dev-1","volume":"home","bytes":4096}}"#,
-            r#"{"id":"8","op":"reset","params":{"deviceId":"dev-1","operationId":"op-1","baseVersion":"base-2"}}"#,
-            r#"{"id":"9","op":"hibernate","params":{"deviceId":"dev-1"}}"#,
+            r#"{"id":"7","op":"reset","params":{"deviceId":"dev-1","operationId":"op-1","baseVersion":"base-2","capacity":{"systemBytes":4096,"homeBytes":4096}}}"#,
+            r#"{"id":"8","op":"hibernate","params":{"deviceId":"dev-1"}}"#,
         ];
         for line in lines {
             let request = decode_request(line).expect("request");

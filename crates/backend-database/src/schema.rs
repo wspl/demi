@@ -84,9 +84,11 @@ impl ReadBlob for NoBlobs {
 /// device's mark had a number, 0.1.22-dev.20261015T105826Z's, before a
 /// project remembered the model and workflow its next conversation starts
 /// with, 0.1.22-dev.20261015T134426Z's, before a quota window had a
-/// kind instead of an English name, and 0.1.22-dev.20261016T043704Z's,
+/// kind instead of an English name, 0.1.22-dev.20261016T043704Z's,
 /// before the usage ledger kept a row per vendor call and before the
-/// Claude Code machine and the accounts whose CLI keeps their sign-in.
+/// Claude Code machine and the accounts whose CLI keeps their sign-in, and
+/// 0.1.22-dev.20261016T095626Z's, before each account had the size of its
+/// Cloud disks.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -222,8 +224,21 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22-dev.20261016T043704Z.sql"),
             migration: Migration::Code(control_from_0_1_22_dev_20261016t043704z),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.22-dev.20261016T095626Z.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_22_DEV_20261016T095626Z),
+        },
     ],
 };
+
+/// From 0.1.22-dev.20261016T095626Z's control schema, which a server keeps
+/// data of, to the current one: each account has the size of its Cloud
+/// disks, 16 GB each until an administrator changes it (`users.md` § User
+/// system).
+const CONTROL_FROM_0_1_22_DEV_20261016T095626Z: &str = "
+ALTER TABLE users ADD COLUMN cloud_system_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_system_gb BETWEEN 1 AND 1024);
+ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_home_gb BETWEEN 1 AND 1024);
+";
 
 /// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
 /// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
@@ -2677,7 +2692,10 @@ CREATE TABLE users (
   -- True until the owner of an account an administrator made or reset chooses its own password.
   chooses_password INTEGER NOT NULL DEFAULT 0 CHECK (chooses_password IN (0, 1)),
   -- Written with a session's last activity, so it outlives the sessions; none before the first sign-in.
-  last_active_at INTEGER
+  last_active_at INTEGER,
+  -- The size of the account's Cloud disks in whole GB, which its Cloud's next start takes.
+  cloud_system_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_system_gb BETWEEN 1 AND 1024),
+  cloud_home_gb   INTEGER NOT NULL DEFAULT 16 CHECK (cloud_home_gb BETWEEN 1 AND 1024)
 ) STRICT;
 CREATE UNIQUE INDEX users_one_master ON users (role) WHERE role = 'master';
 
@@ -3776,6 +3794,37 @@ mod tests {
     /// Every schema a published release shipped migrates to the current
     /// one: the same tables, columns, indexes, constraints and foreign keys
     /// as a new database.
+    /// The server runs 0.1.22-dev.20261016T095626Z, whose control schema
+    /// its database records: an upgrade keeps its accounts and gives each
+    /// the default size of its Cloud disks.
+    #[test]
+    fn a_control_database_of_0_1_22_dev_20261016t095626z_keeps_its_accounts_and_gets_the_default_cloud_storage() {
+        let deployed = include_str!("schema/control-0.1.22-dev.20261016T095626Z.sql");
+        assert_eq!(version_of(deployed), 690_719_127, "the server's recorded version");
+        let (_directory, path, mut database) = database(deployed);
+        database
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u-1', 'ana@example.test', 'Ana', 'hash', 'master', 1),
+                          ('u-2', 'bo@example.test', 'Bo', 'hash', 'user', 2);",
+            )
+            .unwrap();
+        CONTROL.apply(&mut database, &path, &NoBlobs).unwrap();
+        let rows: Vec<(String, String, i64, i64)> = database
+            .prepare("SELECT id, nickname, cloud_system_gb, cloud_home_gb FROM users ORDER BY id")
+            .unwrap()
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            rows,
+            [("u-1".into(), "Ana".into(), 16, 16), ("u-2".into(), "Bo".into(), 16, 16)]
+        );
+        let recorded: i32 = database.pragma_query_value(None, "user_version", |row| row.get(0)).unwrap();
+        assert_eq!(recorded, version_of(CONTROL_V1));
+    }
+
     #[test]
     fn each_shipped_schema_migrates_to_the_current_one() {
         for schema in [CONTROL, CONVERSATION] {

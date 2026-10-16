@@ -1,13 +1,12 @@
 //! A device's ext4 images (`managed-hosts.md` § Images): making the two
-//! filesystems, reading a capacity from the superblock, growing a mounted
-//! one, and recovering an unmounted image before it is published.
+//! filesystems, reading a capacity from the superblock, enlarging an
+//! unmounted one to the capacity a wake names (`managed-hosts.md`
+//! § Lifecycle and capacity), and checking an unmounted image before it is
+//! published.
 
 use std::{
     ffi::OsStr, fs::File, io, num::NonZeroU64, os::unix::fs::FileExt, path::Path, time::Duration,
 };
-
-#[cfg(target_os = "linux")]
-use rustix::thread::CapabilitySet;
 
 use crate::{
     blocking::{self, OffLoop},
@@ -32,13 +31,6 @@ pub enum Ext4Error {
     Io(#[from] io::Error),
     #[error("{0} is not an ext4 image")]
     NotExt4(String),
-    /// `resize2fs` failed, and the programs the manager starts cannot hold
-    /// `CAP_SYS_RESOURCE`, without which the kernel grows no mounted ext4
-    /// filesystem (`setup.md` § Linux requirements).
-    #[error(
-        "growing a mounted ext4 filesystem needs CAP_SYS_RESOURCE; this host's manager lacks it"
-    )]
-    GrowthCapability(#[source] ToolError),
 }
 
 /// A filesystem's capacity: its block count times its block size, read from
@@ -119,40 +111,34 @@ pub async fn make_home(
     Ok(())
 }
 
-/// Grows the mounted ext4 filesystem on `device` to the device's size.
-/// `resize2fs` reports the kernel's refusal for want of `CAP_SYS_RESOURCE`
-/// as a bare "Permission denied"; the error names the capability instead
-/// (`managed-hosts.md` § Lifecycle and capacity). Only the manager's Linux
-/// sandboxes grow a mounted filesystem.
-#[cfg(target_os = "linux")]
-pub async fn grow_mounted(tools: &Tools, device: &Path) -> Result<(), Ext4Error> {
-    let Err(failed) = tools.run(Tool::Resize2fs, [device], None).await else {
-        return Ok(());
-    };
-    // The manager runs as root, so `resize2fs` holds what the manager's
-    // bounding set allows.
-    let held = rustix::thread::capability_is_in_bounding_set(CapabilitySet::SYS_RESOURCE)
-        .map_err(io::Error::from)?;
-    if !held {
-        return Err(Ext4Error::GrowthCapability(failed));
-    }
-    Err(failed.into())
-}
-
-/// Checks an unmounted image and completes a growth that was interrupted
-/// after its file was extended, then syncs the image and returns its
-/// capacity. A check or a resize runs as long as it needs.
+/// Checks an unmounted image, then syncs it and returns its capacity. A
+/// check runs as long as it needs.
 pub async fn recover(tools: &Tools, image: &Path) -> Result<NonZeroU64, Ext4Error> {
     check(tools, image, "-p").await?;
     let path = image.to_owned();
-    let (length, filesystem) = blocking::run(move |off| -> Result<_, Ext4Error> {
-        Ok((fs_err::metadata(&path)?.len(), capacity(off, &path)?))
+    blocking::run(move |off| {
+        sync(off, &path)?;
+        capacity(off, &path)
+    })
+    .await
+}
+
+/// Enlarges the unmounted image to `bytes`: extends its sparse file, then
+/// grows its filesystem to fill it, after the full check `resize2fs`
+/// requires; syncs it and returns the capacity its superblock reports. A
+/// check or a resize runs as long as it needs.
+pub async fn enlarge(tools: &Tools, image: &Path, bytes: NonZeroU64) -> Result<NonZeroU64, Ext4Error> {
+    let path = image.to_owned();
+    blocking::run(move |_| -> io::Result<()> {
+        let file = fs_err::OpenOptions::new().write(true).open(&path)?;
+        if file.metadata()?.len() < bytes.get() {
+            file.set_len(bytes.get())?;
+        }
+        Ok(())
     })
     .await?;
-    if length > filesystem.get() {
-        check(tools, image, "-pf").await?;
-        tools.run(Tool::Resize2fs, [image], None).await?;
-    }
+    check(tools, image, "-pf").await?;
+    tools.run(Tool::Resize2fs, [image], None).await?;
     let path = image.to_owned();
     blocking::run(move |off| {
         sync(off, &path)?;
@@ -210,10 +196,7 @@ mod tests {
         use std::process::Command;
 
         use super::super::*;
-        use crate::{
-            linux::{loopdev, mount, testing::isolate},
-            tools::Tools,
-        };
+        use crate::tools::Tools;
 
         fn output(program: &str, args: &[&OsStr]) -> std::process::Output {
             Command::new(program).args(args).output().expect(program)
@@ -243,83 +226,6 @@ mod tests {
                 .unwrap();
             assert_eq!(read.get(), expected);
             assert_eq!(expected, 48 << 20);
-        }
-
-        #[tokio::test]
-        #[ignore = "needs root: run the Linux suite with --ignored as root"]
-        async fn a_growth_the_kernel_refuses_for_want_of_cap_sys_resource_names_the_capability() {
-            isolate();
-            // As on a host that drops it: this thread, and resize2fs, which
-            // it starts, cannot hold the capability from here on.
-            rustix::thread::remove_capability_from_bounding_set(CapabilitySet::SYS_RESOURCE)
-                .unwrap();
-            let tools = Tools::on_path();
-            let off = OffLoop::in_test();
-            let directory = tempfile::tempdir().unwrap();
-            let image = directory.path().join("volume.ext4");
-            let nominal = 32 << 20;
-            make_system(&tools, &image, NonZeroU64::new(nominal).unwrap())
-                .await
-                .unwrap();
-            let target = directory.path().join("volume");
-            std::fs::create_dir(&target).unwrap();
-            let device = loopdev::attach(&off, &image).unwrap();
-            mount::ext4(&off, &device.path(), &target).unwrap();
-            let number = device.number();
-            // The mount holds the device from here on.
-            drop(device);
-            std::fs::File::options()
-                .write(true)
-                .open(&image)
-                .unwrap()
-                .set_len(nominal * 2)
-                .unwrap();
-            loopdev::refresh_capacity(&off, number).unwrap();
-            let refused = grow_mounted(&tools, &loopdev::path(number)).await;
-            mount::unmount(&off, &target).unwrap();
-            assert_eq!(
-                refused.unwrap_err().to_string(),
-                "growing a mounted ext4 filesystem needs CAP_SYS_RESOURCE; this host's manager lacks it"
-            );
-            assert_eq!(capacity(&off, &image).unwrap().get(), nominal);
-        }
-
-        #[tokio::test]
-        async fn recovery_completes_an_interrupted_growth() {
-            let tools = Tools::on_path();
-            let directory = tempfile::tempdir().unwrap();
-            let root = directory.path().join("mkhome");
-            std::fs::create_dir_all(root.join("demi/work")).unwrap();
-            std::fs::write(root.join("demi/work/a.txt"), "alpha\n").unwrap();
-            let image = directory.path().join("home.ext4");
-            let nominal = 64 << 20;
-            make_home(&tools, &root, &image, NonZeroU64::new(nominal).unwrap())
-                .await
-                .unwrap();
-            assert_eq!(std::fs::metadata(&image).unwrap().len(), nominal);
-            let listed = output(
-                "debugfs",
-                &[
-                    OsStr::new("-R"),
-                    OsStr::new("cat /demi/work/a.txt"),
-                    image.as_os_str(),
-                ],
-            );
-            assert_eq!(String::from_utf8_lossy(&listed.stdout), "alpha\n");
-
-            std::fs::File::options()
-                .write(true)
-                .open(&image)
-                .unwrap()
-                .set_len(nominal * 2)
-                .unwrap();
-            assert_eq!(recover(&tools, &image).await.unwrap().get(), nominal * 2);
-            // The filesystem now fills its file and is consistent.
-            assert!(
-                output("e2fsck", &[OsStr::new("-fn"), image.as_os_str()])
-                    .status
-                    .success()
-            );
         }
     }
 }

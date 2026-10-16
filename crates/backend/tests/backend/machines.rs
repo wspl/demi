@@ -21,7 +21,7 @@ use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use demi_backend_remote_host::testing::{RunnerProcess, RunnerProcessOptions, runner_binary};
 use demi_host_interface::SpawnEnv;
 use demi_machine_manager_protocol::{
-    BaseVersion, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState, SandboxMachine,
+    BaseVersion, Capacity, GenerationId, MachineCall, MachineImageState, MachineResponse, RuntimeState, SandboxMachine,
     WIRE_VERSION, decode_request, encode_line,
 };
 use futures_util::FutureExt as _;
@@ -33,9 +33,6 @@ use tokio_util::task::AbortOnDropHandle;
 
 /// The base every device boots from.
 pub const BASE: &str = "test-base";
-
-/// The capacity of each of a device's filesystems until it grows.
-const VOLUME_BYTES: u64 = 1 << 30;
 
 /// What the manager does differently, as a test sets it.
 #[derive(Default)]
@@ -71,6 +68,8 @@ struct Guest {
     runner: Option<RunnerProcess>,
     image: MachineImageState,
     generations: u64,
+    /// The capacity its latest wake named.
+    named: Capacity,
 }
 
 #[derive(Default)]
@@ -223,6 +222,12 @@ impl ScriptedManager {
             .collect();
         devices.sort();
         devices
+    }
+
+    /// The system and home bytes the device's latest wake named.
+    pub fn named_capacity(&self, device: &str) -> (u64, u64) {
+        let named = self.shared.lock().guests[device].named;
+        (named.system_bytes.get(), named.home_bytes.get())
     }
 
     /// Whether the device's runner runs.
@@ -472,12 +477,25 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                     (None, None) => SpawnEnv::Inherit,
                 };
                 let base = state.script.base.clone().unwrap_or_else(|| BASE.into());
+                let capacity = params.capacity;
                 let guest = state.guests.entry(device.clone()).or_insert_with(|| Guest {
                     machine: params.machine,
                     runner: None,
-                    image: image(1, &base, None, VOLUME_BYTES, VOLUME_BYTES),
+                    image: image(
+                        1,
+                        &base,
+                        None,
+                        capacity.system_bytes.get(),
+                        capacity.home_bytes.get(),
+                    ),
                     generations: 1,
+                    named: capacity,
                 });
+                guest.named = capacity;
+                // A smaller disk is enlarged to the capacity named, a larger
+                // one kept.
+                guest.image.system_bytes = guest.image.system_bytes.max(capacity.system_bytes);
+                guest.image.home_bytes = guest.image.home_bytes.max(capacity.home_bytes);
                 (silent, env, program, guest.runner.take())
             };
             let backend = params.boot.backend_url.to_string();
@@ -527,21 +545,6 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             shared.record(format!("checkpoint:{device}"));
             json(serde_json::Value::Null)
         }
-        MachineCall::GrowVolume(params) => {
-            let device = params.device_id;
-            let worker = shared.worker(&device);
-            let _turn = worker.acquire().await.unwrap();
-            shared.record(format!("grow:{device}:{}:{}", params.volume, params.bytes));
-            let mut state = shared.lock();
-            let guest = state
-                .guests
-                .get_mut(&device)
-                .ok_or("the device has no storage")?;
-            if params.bytes.get() > guest.image.bytes(params.volume).get() {
-                guest.image = guest.image.clone().with_bytes(params.volume, params.bytes);
-            }
-            json(serde_json::Value::Null)
-        }
         MachineCall::Reset(params) => {
             let device = params.device_id;
             let worker = shared.worker(&device);
@@ -573,11 +576,12 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
             let mut state = shared.lock();
             if let Some(guest) = state.guests.get_mut(&device) {
                 guest.generations += 1;
+                // A fresh system at the capacity named, the home kept.
                 guest.image = image(
                     guest.generations,
                     &params.base_version,
                     Some(params.operation_id),
-                    guest.image.system_bytes.get(),
+                    params.capacity.system_bytes.get(),
                     guest.image.home_bytes.get(),
                 );
             }

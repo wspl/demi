@@ -18,7 +18,6 @@ mod update;
 
 use demi_runner_jobs::scratch::Scratch;
 use demi_command_protocol::{LocalInvocation, host_target};
-use demi_runner_host::volumes::ManagedVolume;
 use demi_runner_process::{
     command_client::{self, RAW, RawCommand, Stdio},
     stdio::{self, standard_file},
@@ -508,16 +507,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         runner,
         token: boot.as_ref().map(|boot| boot.device_token.clone()),
         volumes: if boot.is_some() {
-            vec![
-                ManagedVolume {
-                    name: wire::VolumeName::System,
-                    mount: "/".into(),
-                },
-                ManagedVolume {
-                    name: wire::VolumeName::Home,
-                    mount: "/home".into(),
-                },
-            ]
+            vec!["/".into(), "/home".into()]
         } else {
             vec![]
         },

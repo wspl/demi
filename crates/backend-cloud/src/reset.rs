@@ -19,7 +19,9 @@ use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::devices::DeviceRecord;
 use demi_backend_database::managed::ManagedOperation;
-use demi_machine_manager_protocol::{CurrentBaseVersionParams, ReconcileParams, ResetParams};
+use demi_machine_manager_protocol::{
+    Capacity, CurrentBaseVersionParams, ReconcileParams, ResetParams,
+};
 use demi_web_api_protocol::cloud::ResetPhase;
 use demi_web_api_protocol::ids::{DeviceId, OperationId};
 use tokio::time::Instant;
@@ -190,9 +192,10 @@ impl dyn CloudShard {
         self.save(machine).await?;
         self.record_phase(machine, &operation, ResetPhase::Rebuilding, None)
             .await?;
+        let capacity = crate::machine::capacity(self.control(), &machine.device).await?;
         self.cloud_services()
             .machines
-            .call(reset_params(machine, &operation))
+            .call(reset_params(machine, &operation, capacity))
             .await?;
         self.control()
             .announce_cloud_reset(self.user().clone(), operation.id.clone())
@@ -230,11 +233,12 @@ impl dyn CloudShard {
     }
 }
 
-fn reset_params(machine: &Machine, operation: &ManagedOperation) -> ResetParams {
+fn reset_params(machine: &Machine, operation: &ManagedOperation, capacity: Capacity) -> ResetParams {
     ResetParams {
         device_id: machine.device.id.to_string(),
         operation_id: operation.id.to_string(),
         base_version: operation.base_version.to_string(),
+        capacity,
     }
 }
 
@@ -259,6 +263,7 @@ pub async fn recover_clouds(
             device_id: device.to_string(),
             operation_id: operation.id.to_string(),
             base_version: operation.base_version.to_string(),
+            capacity: crate::machine::capacity(control, &record).await?,
         };
         // The reset stops a sandbox that still runs before its disk step.
         cloud.machines.call(params).await?;

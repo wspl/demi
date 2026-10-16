@@ -25,8 +25,6 @@ pub enum OpError {
     WorkerStopped,
     #[error("Cannot publish working disks with an active writer")]
     ActiveWriter,
-    #[error("Cloud is not running")]
-    NotRunning,
     #[error("Cloud working manifest is missing")]
     NoWorkingManifest,
     #[error("Cloud base {0} is not imported")]

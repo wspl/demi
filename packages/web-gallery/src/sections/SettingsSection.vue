@@ -69,8 +69,7 @@ const directCloud: CloudState = {
   operationId: null,
   phase: null,
   error: null,
-  volumes: { systemBytes: 3 * 1024 ** 3, homeBytes: 9 * 1024 ** 3 },
-  limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 64 * 1024 ** 3 },
+  volumes: { systemBytes: 16 * 1024 ** 3, homeBytes: 16 * 1024 ** 3 },
   newerImage: false,
   deviceId: 'cloud',
   report: demoDeviceReport('linux', DEMO_RUNNER_RELEASE),
@@ -99,7 +98,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Cloud',
-    'Cloud shows its shared-environment description and its storage: each filesystem’s current size and the most it may grow to, or only the most before its first start. There is no connection or lifecycle status. Reset progress and errors belong to the reset dialog.'
+    'Cloud shows its shared-environment description and its storage: each filesystem’s size, System 16 GB · Home 16 GB, which an administrator sets for the account; the row is hidden before the Cloud’s first start. There is no connection or lifecycle status. Reset progress and errors belong to the reset dialog.'
   ],
   [
     'Providers',
@@ -127,7 +126,7 @@ const anatomy: [string, string][] = [
   ],
   [
     'Users',
-    'Under Workspace, only for the master and admins. One row per account: nickname with You on the user’s own, Disabled on a disabled one and Hasn’t Chosen a Password on one still to choose its own (a new account, or one an administrator reset), then email, role and when it was last active. A row’s ··· menu has only what the user may do to that account: an admin has Reset Password…, Sign-In Code…, Sign Out Everywhere… and Disable Account… on users and nothing on a peer, the master or their own row; the master also has Change Role… and nothing on their own. A disabled account has Enable Account, which asks nothing, in place of the last three. Sign-In Code… shows the Hand Off to Your Phone dialog’s QR code for the account, after the administrator’s own confirmation. Add User… asks the email and the role; the server makes the first password, which the last step shows with Copy and New Password beside the sign-in code. Reset Password… asks first and ends on the same last step. Add User…, Reset Password… and Sign-In Code… ask the administrator’s own confirmation when the session was not verified in the last five minutes.'
+    'Under Workspace, only for the master and admins. One row per account: nickname with You on the user’s own, Disabled on a disabled one and Hasn’t Chosen a Password on one still to choose its own (a new account, or one an administrator reset), then email, role and when it was last active. A row’s ··· menu has only what the user may do to that account: an admin has Reset Password…, Cloud Storage…, Sign-In Code…, Sign Out Everywhere… and Disable Account… on users and nothing on a peer or the master; the master also has Change Role…. On their own row an administrator has Cloud Storage… alone, since the disks are the server’s. Cloud Storage… sets System and Home in whole GB from 1 to 1024 and says the sizes apply the next time the Cloud starts, a larger disk keeping its size; Save waits for a change, and a size out of range turns its field red and says the range. A disabled account has Enable Account, which asks nothing, in place of the last three. Sign-In Code… shows the Hand Off to Your Phone dialog’s QR code for the account, after the administrator’s own confirmation. Add User… asks the email and the role; the server makes the first password, which the last step shows with Copy and New Password beside the sign-in code. Reset Password… asks first and ends on the same last step. Add User…, Reset Password… and Sign-In Code… ask the administrator’s own confirmation when the session was not verified in the last five minutes.'
   ],
   [
     'Data',
@@ -337,7 +336,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Users"
-        note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width. Every control acts on its own specimen: Add User… adds a row (alex@example.com is taken, and the new row comes with its password and QR code in its last step; Lena and Joe show the new-account and disabled looks), Change Role… moves a user to admin, Reset Password… marks the account as still to choose its password, the first of those needing a confirmation asks for a password (any but wrong confirms), and Disable Account… and Sign Out Everywhere… toast what the product would do to the account’s sessions. As the admin, Ana, there is no Change Role…, and the master’s row, the other admin’s and her own have no menu."
+        note="Settings › Users as the master sees it, as an admin sees it, and at a phone’s width. Every control acts on its own specimen: Add User… adds a row (alex@example.com is taken, and the new row comes with its password and QR code in its last step; Lena and Joe show the new-account and disabled looks), Change Role… moves a user to admin, Cloud Storage… changes the account’s sizes (Bo has a 64 GB home), Reset Password… marks the account as still to choose its password, the first of those needing a confirmation asks for a password (any but wrong confirms), and Disable Account… and Sign Out Everywhere… toast what the product would do to the account’s sessions. As the admin, Ana, there is no Change Role…, the master’s row and the other admin’s have no menu, and her own has Cloud Storage… alone."
       >
         <GallerySpecimen variant="Master" wide>
           <div class="@container w-full max-w-2xl rounded-xl border border-line bg-surface-dialog p-6">

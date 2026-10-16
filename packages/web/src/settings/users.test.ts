@@ -58,11 +58,16 @@ afterEach(() => {
   globalThis.fetch = realFetch
 })
 
-const listed = (...users: Array<typeof master | typeof bo>) => users.map((user) => ({ ...user, lastActiveAt: null }))
+const STORAGE = { systemGb: 16, homeGb: 16 }
+const listed = (...users: Array<typeof master | typeof bo>) =>
+  users.map((user) => ({ ...user, lastActiveAt: null, cloudStorage: STORAGE }))
 
 test('the list is the channel’s users part, keeps an empty nickname, and follows each message of it', () => {
   channels.last().connect(productState({
-    users: [{ ...master, lastActiveAt: '2026-10-13T08:00:00.000Z' }, { ...bo, lastActiveAt: null }],
+    users: [
+      { ...master, lastActiveAt: '2026-10-13T08:00:00.000Z', cloudStorage: STORAGE },
+      { ...bo, lastActiveAt: null, cloudStorage: STORAGE },
+    ],
   }))
   const users = useUserSettings()
   expect(users.users.map((user) => [user.nickname, user.choosesPassword, user.lastActiveAt])).toEqual([

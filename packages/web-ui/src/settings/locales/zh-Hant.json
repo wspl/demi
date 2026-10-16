@@ -282,6 +282,16 @@
     "current": "{name} 目前的角色是{role}。",
     "role": "角色"
   },
+  "cloudStorage": {
+    "title": "雲端儲存空間",
+    "account": "{name} 的雲端磁碟大小。",
+    "system": "系統",
+    "systemDescription": "已安裝的套件和系統設定。",
+    "home": "主目錄",
+    "homeDescription": "檔案和雲端專案。",
+    "note": "大小會在雲端下次啟動時生效。已經更大的磁碟會維持原本的大小。",
+    "problem": "請輸入 1 到 {max} 之間的整數（單位 GB）。"
+  },
   "addPasskey": {
     "title": "新增通行密鑰",
     "hint": "輸入你的密碼。瀏覽器會儲存一個用於登入的通行密鑰。",
@@ -311,6 +321,7 @@
     "action": {
       "resetPassword": "重設密碼…",
       "changeRole": "變更角色…",
+      "cloudStorage": "雲端儲存空間…",
       "signInCode": "登入代碼…",
       "signOutEverywhere": "登出所有瀏覽器…",
       "disable": "停用帳號…",

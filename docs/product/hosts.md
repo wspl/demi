@@ -208,11 +208,11 @@ removing project metadata does not allocate or delete a machine.
 Settings shows the Cloud's storage and Reset environment, but not its lifecycle
 state. A stopped Cloud is not unavailable: the next operation that needs it
 wakes it ([Resolve a target](../execution/sessions-and-targets.md#resolve-a-target)),
-and a label such as "Sleeping" would suggest otherwise. Storage is the current
-capacity of each writable filesystem, system and home, against the most it may
-grow to ([Lifecycle and capacity](../cloud/managed-hosts.md#lifecycle-and-capacity));
-while the capacities are unknown, as before the Cloud's first start, it shows
-only the limits.
+and a label such as "Sleeping" would suggest otherwise. Storage is the
+capacity of each writable filesystem, system and home
+([Lifecycle and capacity](../cloud/managed-hosts.md#lifecycle-and-capacity)),
+such as *System 16 GB · Home 16 GB*; while the capacities are unknown, as
+before the Cloud's first start, the row is not shown.
 
 When the server has moved to a release with a newer Cloud image than the one
 the Cloud's system is on, Settings says so beside Reset environment: "A newer

@@ -282,6 +282,16 @@
     "current": "{name}의 역할은 {role}입니다.",
     "role": "역할"
   },
+  "cloudStorage": {
+    "title": "클라우드 저장 공간",
+    "account": "{name}의 클라우드 디스크 크기입니다.",
+    "system": "시스템",
+    "systemDescription": "설치한 패키지와 시스템 설정.",
+    "home": "홈",
+    "homeDescription": "파일과 클라우드 프로젝트.",
+    "note": "크기는 다음에 클라우드가 시작될 때 적용됩니다. 이미 더 큰 디스크는 크기가 그대로 유지됩니다.",
+    "problem": "1에서 {max} 사이의 정수를 GB 단위로 입력하십시오."
+  },
   "addPasskey": {
     "title": "패스키 추가",
     "hint": "비밀번호를 입력하십시오. 브라우저가 로그인에 사용할 패스키를 저장합니다.",
@@ -311,6 +321,7 @@
     "action": {
       "resetPassword": "비밀번호 재설정…",
       "changeRole": "역할 변경…",
+      "cloudStorage": "클라우드 저장 공간…",
       "signInCode": "로그인 코드…",
       "signOutEverywhere": "모든 곳에서 로그아웃…",
       "disable": "계정 비활성화…",

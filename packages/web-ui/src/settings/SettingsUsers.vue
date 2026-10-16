@@ -2,7 +2,7 @@
 import { t as uiText } from '../locales/text'
 import { t } from './locales/text'
 import { computed, ref } from 'vue'
-import { Ellipsis, KeyRound, LogIn, LogOut, UserCheck, UserCog, UserX } from '@lucide/vue'
+import { Ellipsis, HardDrive, KeyRound, LogIn, LogOut, UserCheck, UserCog, UserX } from '@lucide/vue'
 import type { Component } from 'vue'
 import { accountDisplayName } from '../auth/account-display'
 import HandoffDialog from '../auth/HandoffDialog.vue'
@@ -22,11 +22,12 @@ import Tag from '../ui/Tag.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import AddUserDialog from './AddUserDialog.vue'
 import ChangeUserRoleDialog from './ChangeUserRoleDialog.vue'
+import CloudStorageDialog from './CloudStorageDialog.vue'
 import FirstPasswordCard from './FirstPasswordCard.vue'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import type { SettingsNewUser, SettingsUser, SettingsUsersHost, UserAddOutcome } from './types'
+import type { SettingsCloudStorage, SettingsNewUser, SettingsUser, SettingsUsersHost, UserAddOutcome } from './types'
 import { roleLabel, assignableRoles, userActions, type UserAction } from './users'
 
 /**
@@ -36,16 +37,16 @@ import { roleLabel, assignableRoles, userActions, type UserAction } from './user
  * last active, *Disabled* on a disabled one, *Hasn’t Chosen a Password* on
  * one still to choose its own (new, or reset by an administrator) and *You*
  * on the user's own. A row's ··· menu offers what the user may do to that
- * account and is absent where they may do nothing (their own row, a peer or
- * a higher role).
+ * account and is absent where they may do nothing (a peer or a higher
+ * role); on their own row it offers Cloud Storage… alone.
  *
  * Add User… asks the email and the role; the server makes the first password.
  * Reset Password… asks first and makes another. Both end on one last step:
  * the password, with Copy and New Password, beside a sign-in code, which Sign-In
  * Code… shows alone. Those three ask the administrator's own confirmation, as
  * Hand Off to Your Phone does, when the session has not been verified in
- * the last five minutes. Change Role…, Sign Out Everywhere… and Disable
- * Account… ask for one thing or confirm, saying what happens; Enable Account does
+ * the last five minutes. Change Role…, Cloud Storage…, Sign Out Everywhere…
+ * and Disable Account… ask for one thing or confirm, saying what happens; Enable Account does
  * not ask, since it only undoes. The host carries each out and says itself a
  * refusal it could not hide.
  */
@@ -54,7 +55,7 @@ const props = defineProps<{
   overlayStore: OverlayStore
 }>()
 
-type Dialog = 'add' | 'reset' | 'role' | 'signOut' | 'disable'
+type Dialog = 'add' | 'reset' | 'role' | 'cloudStorage' | 'signOut' | 'disable'
 
 const viewer = computed(() => props.host.users.find((user) => user.id === props.host.viewerId))
 /** The roles the viewer may give; none when the viewer's account is not in the list. */
@@ -222,6 +223,13 @@ async function changeRole(role: SettingsNewUser['role']): Promise<void> {
   }
 }
 
+async function setCloudStorage(storage: SettingsCloudStorage): Promise<void> {
+  const user = target.value
+  if (user) {
+    await carryOut('cloudStorage', user, () => props.host.setCloudStorage(user.id, storage))
+  }
+}
+
 async function signOutEverywhere(): Promise<void> {
   const user = target.value
   if (user) {
@@ -253,6 +261,8 @@ function run(action: UserAction, user: SettingsUser): void | Promise<void> {
     ask('reset', user)
   } else if (action === 'changeRole') {
     ask('role', user)
+  } else if (action === 'cloudStorage') {
+    ask('cloudStorage', user)
   } else if (action === 'signInCode') {
     showSignInCode(user)
   } else if (action === 'signOutEverywhere') {
@@ -270,6 +280,8 @@ function actionLabel(action: UserAction): string {
       return t('users.action.resetPassword')
     case 'changeRole':
       return t('users.action.changeRole')
+    case 'cloudStorage':
+      return t('users.action.cloudStorage')
     case 'signInCode':
       return t('users.action.signInCode')
     case 'signOutEverywhere':
@@ -284,6 +296,7 @@ function actionLabel(action: UserAction): string {
 const ACTION_ICONS: Record<UserAction, Component> = {
   resetPassword: KeyRound,
   changeRole: UserCog,
+  cloudStorage: HardDrive,
   signInCode: LogIn,
   signOutEverywhere: LogOut,
   disable: UserX,
@@ -383,6 +396,15 @@ function closeDialog(): void {
     :operation="onUser('changeRole', target)"
     @close="closeDialog"
     @submit="changeRole"
+  />
+  <CloudStorageDialog
+    :is-open="open === 'cloudStorage'"
+    :overlay-store="overlayStore"
+    :name="targetName"
+    :current="target?.cloudStorage ?? { systemGb: 16, homeGb: 16 }"
+    :operation="onUser('cloudStorage', target)"
+    @close="closeDialog"
+    @submit="setCloudStorage"
   />
   <ConfirmDialog
     :is-open="open === 'reset'"
