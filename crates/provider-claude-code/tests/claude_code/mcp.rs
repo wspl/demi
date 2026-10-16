@@ -490,8 +490,15 @@ async fn a_batch_without_all_its_results_or_results_never_asked_for_fail_the_run
     );
 }
 
+/// A steer written with a batch's results, which the CLI answers in a turn
+/// of its own after the batch's turn ended, is answered in the run that
+/// wrote it: that run ends at the second `result`, the one after the CLI
+/// printed the steer back, and the next run starts clean in the same
+/// process. (The run ended at the first `result`, and the steer's answer
+/// was skipped as output of no request.)
+// Three runs against a scripted CLI: a few milliseconds.
 #[tokio::test(flavor = "local")]
-async fn output_a_run_left_behind_belongs_to_no_request() {
+async fn a_steer_written_with_a_batchs_results_and_answered_in_a_turn_of_its_own_is_answered_in_its_run() {
     let provider = provider().await;
     let (placement, mut starts) = ScriptedPlacement::new();
     let mut runtime = runtime_of(&provider, &placement);
@@ -506,8 +513,6 @@ async fn output_a_run_left_behind_belongs_to_no_request() {
         cli.message_stop();
         cli
     });
-    // The result comes back with a steer; the CLI answers the steer in a
-    // turn of its own after the run ended at the first result.
     let mut second = first.clone();
     second.push(tool_use("toolu_1", "pwd"));
     second.push(tool_result("toolu_1", "/tmp"));
@@ -520,21 +525,26 @@ async fn output_a_run_left_behind_belongs_to_no_request() {
         cli.mcp_reply("call-1").await;
         cli.text("done");
         cli.result(1, 1);
+        let mut replay = steer.clone();
+        replay["isReplay"] = json!(true);
+        cli.say(replay);
         cli.text("listed it");
         cli.result(2, 2);
     });
     assert_eq!(
         events,
-        [ProviderEvent::TextDelta("done".into()), usage(1, 1)]
+        [
+            ProviderEvent::TextDelta("done".into()),
+            usage(1, 1),
+            ProviderEvent::TextDelta("listed it".into()),
+            usage(2, 2),
+        ]
     );
-    for _ in 0..10 {
-        tokio::task::yield_now().await;
-    }
 
     let mut third = second.clone();
     third.push(user("next"));
     let (events, ()) = tokio::join!(all_events(runtime.run(request(third))), async {
-        cli.read().await;
+        cli.take().await;
         cli.text("next answer");
         cli.result(3, 3);
     });
@@ -542,6 +552,8 @@ async fn output_a_run_left_behind_belongs_to_no_request() {
         events,
         [ProviderEvent::TextDelta("next answer".into()), usage(3, 3)]
     );
+    assert_eq!(placement.starts(), 1);
+    assert!(cli.signals().is_empty());
 }
 
 fn stream_event(cli: &Cli, event: serde_json::Value) {

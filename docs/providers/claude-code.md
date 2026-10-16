@@ -498,11 +498,34 @@ such as one the vendor refused as overloaded; the kept process already holds
 the transcript and would wait for input that never comes, so a new one
 resumes the history the retry cut back to.
 
-Output that a kept process printed after the previous run ended belongs to no
-request, as when the CLI answered a steer in a turn of its own after the run
-stopped at the first `result`. Before it writes, the next run answers the
-control requests among that output and skips the rest, a `result` included.
-What the CLI prints after that is read as the new request's.
+**Which `result` ends a run.** The CLI answers the user messages written to
+it in turns of their own when they reach it at different times: two
+subagents' receipts written one after the other, or a steer written while
+it waits for a batch's results, may each get a turn and a `result`. For
+example, a run writes the receipts of two subagents; the CLI answers the
+first, prints a `result`, then answers the second and prints another. Were
+the run to end at the first, the second answer would reach no request: the
+next run would take part of it for its own and the answer to its own input
+would print after it ended, kept in the session file and never shown.
+
+So the CLI runs with `--replay-user-messages`, which prints each user message
+back as it takes it into a turn, and a `result` ends the run only once every
+user message the run wrote has been printed back before it. Until then the run
+reads on, and each turn's answer is a response of the run. When the CLI takes
+two messages into one turn, both are printed back before its one `result`,
+which ends the run. A message the CLI answers itself without the model, such
+as text starting with `/` that it takes for a command it does not offer
+(`/cost`), is never printed back: it prints its own answer and a successful
+`result` with nothing printed back and no model call since the previous
+`result`. Such a `result` takes the
+oldest message not yet printed back, as a printed-back message would, and
+the run ends when no message is left, so a message that starts with `/`
+never leaves a run waiting. A turn that fails while a message the run wrote is not
+yet printed back fails the run and closes the process, which would otherwise
+go on answering that message after the run ended. Nothing a kept process
+prints is skipped: a run that finds
+output waiting before it writes, which a process in step with its requests
+never has, closes the process and starts a new one from the transcript.
 
 **Reading.** Each output line is decoded by its `type` tag
 ([Reading vendor input](providers.md#reading-vendor-input)). Partial messages
@@ -777,7 +800,8 @@ a failed installation. The routes are listed in
 - A real account, driven by hand during acceptance, runs against the vendor:
   its Claude sign-in installs the CLI from the official distribution and passes
   **Test connection**, a message and a two-tool batch complete, and the wire
-  trace shows what a batch's results sent together with a steer make the CLI
-  print (one `result` or two), the quota shows the windows of the vendor's
+  trace shows that the CLI prints back each user message it takes, and the
+  `result` lines that a batch's results sent together with a steer make it
+  print, the quota shows the windows of the vendor's
   `rate_limit_event` lines ([Vendor quota](usage-and-quota.md#claude-code)),
   and **Refresh usage** probes the account's quota.

@@ -69,7 +69,8 @@ const LOGIN: &str = "/api/providers/subscription-login";
 /// access token from the sign-in in their configuration directory, answer
 /// the message the session they resume ends with, if it ends with one, and
 /// otherwise wait for input as a process prepared ahead does, answer
-/// `initialize` and `get_usage`, answer each user message with the
+/// `initialize` and `get_usage`, print each user message back as they take
+/// it and answer it with the
 /// executable, the token, how many environment variables hold it, whether
 /// descriptor 3 is open, the directory they run in, their configuration
 /// directory and its mode and their own directory, and record the start
@@ -156,7 +157,12 @@ while IFS= read -r line; do
       id=$(printf '%s\n' "$line" | sed 's/^{"type":"control_request","request_id":"\([^"]*\)".*/\1/')
       printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s","response":{"subscription_type":"max","rate_limits":{"five_hour":{"utilization":12,"resets_at":"2030-01-01T00:00:00Z"}}}}}\n' "$id"
       ;;
-    '{"type":"user"'*) answer "$line" ;;
+    # Printed back as it is taken, as `--replay-user-messages` has the CLI
+    # do.
+    '{"type":"user"'*)
+      printf '%s,"isReplay":true}\n' "${line%\}}"
+      answer "$line"
+      ;;
   esac
 done
 "#;

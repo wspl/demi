@@ -1,8 +1,10 @@
 //! A session's runtime and its runs (`claude-code.md` § Requests over
 //! stream-json, § Tool-call batches, § Process lifetime). The runtime keeps
 //! at most one CLI process. A run takes it, or starts a new one, and hands it
-//! back only where the conversation can go on in it: at the turn's `result`,
-//! and at a batch of tool calls whose results the next run delivers. It hands
+//! back only where the conversation can go on in it: at the `result` printed
+//! once the CLI took every message the run wrote (`claude-code.md` § Which
+//! `result` ends a run), and at a batch of tool calls whose results the next
+//! run delivers. It hands
 //! it back before the run's last event, since the agent stops reading a run
 //! at its failure. Every other end closes it, SIGTERM first.
 //! When the next request is known but for its input, the runtime prepares
@@ -168,8 +170,10 @@ impl ProviderRuntime for ClaudeCodeRuntime {
 
 /// One run: the process kept for the session when it can go on with the
 /// request, else a new one that resumes the session written from the
-/// request's blocks; then the CLI's output until the turn's end or a batch
-/// of tool calls, with the entries the CLI mirrors of its session. A turn
+/// request's blocks; then the CLI's output until the end of the turn that
+/// answers the last message the run wrote, each earlier turn's answer a
+/// response of its own, or a batch of tool calls, with the entries the CLI
+/// mirrors of its session. A turn
 /// whose sign-in the vendor refused fails with the authentication error and
 /// marks the account signed out (`claude-code.md` § Accounts and sign-in).
 fn run(
@@ -200,6 +204,22 @@ fn run(
                     prepared.close().await;
                 }
             }
+            // A process kept at a `result` prints nothing until it is given
+            // input; one that did went on without a request, and a new one
+            // starts from the transcript (`claude-code.md` § Which `result`
+            // ends a run). One kept at a batch goes on with its turn, which
+            // this run reads.
+            let kept = match kept {
+                Some((mut live, Took::Kept)) if live.held.is_empty() => {
+                    if live.quiet().await {
+                        Some((live, Took::Kept))
+                    } else {
+                        live.close().await;
+                        None
+                    }
+                }
+                kept => kept,
+            };
             let mut live = match kept {
                 Some((mut live, took)) if live.serves(&request) => {
                     timing.took(took, live.started.take());
@@ -207,8 +227,7 @@ fn run(
                         mcp.offer(request.tools.clone());
                     }
                     let continued = async {
-                        let mut entries = live.mirror.begin(&request);
-                        entries.extend(live.skip_leftovers(&request).await?);
+                        let entries = live.mirror.begin(&request);
                         if !live.held.is_empty() {
                             live.deliver(&request).await?;
                         }
@@ -314,6 +333,15 @@ fn run(
                 };
                 match line {
                     None | Some(Line::ControlResponse(_)) => {}
+                    // A message the run wrote, taken into a turn; the
+                    // results of calls are printed too, and count for
+                    // nothing.
+                    Some(Line::User(line)) => {
+                        if line.is_replay {
+                            live.unreplayed = live.unreplayed.saturating_sub(1);
+                            live.turn_began = true;
+                        }
+                    }
                     // The quota the vendor reported is the call's open now,
                     // or the one that ended last; the snapshot took it as
                     // the line was read.
@@ -437,6 +465,7 @@ fn run(
                         // one, and its message_stop ends it; a message that
                         // starts while another streams abandons that call.
                         if let StreamEvent::MessageStart(_) = &event {
+                            live.turn_began = true;
                             if live.streaming.is_some() {
                                 yield live.last_call.ended(CallOutcome::Refused(None));
                             }
@@ -508,6 +537,19 @@ fn run(
                         live.streaming = None;
                         let usage = live.last_call.take();
                         let end = line.end();
+                        // A turn the CLI answered itself, with no message
+                        // printed back and no model call, as for a `/cost`
+                        // it does not offer, took the oldest message not yet
+                        // printed back (`claude-code.md` § Which `result`
+                        // ends a run). A failed turn is never one: a call the
+                        // vendor refused starts no stream either.
+                        if !std::mem::take(&mut live.turn_began) && matches!(end, TurnEnd::Answered) {
+                            live.unreplayed = live.unreplayed.saturating_sub(1);
+                        }
+                        // The CLI has not taken every message the run wrote:
+                        // this result ends a turn of an earlier one, and the
+                        // run reads on to the turns of the rest.
+                        let earlier = live.unreplayed > 0;
                         // The vendor refused the account's sign-in, which the
                         // CLI could not renew and emptied: the account waits
                         // for the user to sign in again, and rotation passes
@@ -528,12 +570,20 @@ fn run(
                             });
                             return;
                         }
-                        runtime.live = Some(live);
                         match end {
                             // Without a call's own count the response reports
                             // none: the result's usage sums the turn's calls,
                             // which no request measured.
-                            TurnEnd::Answered => yield ProviderEvent::response(usage, crate::FAMILY, &request.model_id),
+                            TurnEnd::Answered if earlier => {
+                                refusal = None;
+                                signed_out = false;
+                                yield ProviderEvent::response(usage, crate::FAMILY, &request.model_id);
+                                continue;
+                            }
+                            TurnEnd::Answered => {
+                                runtime.live = Some(live);
+                                yield ProviderEvent::response(usage, crate::FAMILY, &request.model_id);
+                            }
                             TurnEnd::Failed { message, code, status } => {
                                 let record = match refusal {
                                     Some(refusal) => format!("{refusal}\n{text}"),
@@ -552,6 +602,14 @@ fn run(
                                     read_failure,
                                     runtime.shared.clock.now(),
                                 );
+                                // A process that would still answer a message
+                                // of the run's after its failure is out of step
+                                // with the requests: the next starts a new one.
+                                if earlier {
+                                    live.close().await;
+                                } else {
+                                    runtime.live = Some(live);
+                                }
                                 yield ProviderEvent::Error(failure);
                             }
                         }

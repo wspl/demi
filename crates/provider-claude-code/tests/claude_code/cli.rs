@@ -573,6 +573,18 @@ impl Cli {
             .expect("the process's input stays open while the test reads it")
     }
 
+    /// The next line the provider writes, a user message, which the CLI
+    /// takes into a turn and prints back, as `--replay-user-messages` has it
+    /// do.
+    pub async fn take(&mut self) -> Value {
+        let message = self.read().await;
+        assert_eq!(message["type"], "user", "{message}");
+        let mut replay = message.clone();
+        replay["isReplay"] = json!(true);
+        self.say(replay);
+        message
+    }
+
     /// Every line the provider wrote and the test did not read yet.
     pub fn unread(&mut self) -> Vec<Value> {
         std::iter::from_fn(|| self.inputs.try_recv().ok()).collect()

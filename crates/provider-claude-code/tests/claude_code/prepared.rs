@@ -71,7 +71,7 @@ async fn the_request_a_process_was_prepared_for_takes_it_and_starts_none() {
     assert_eq!(placement.prepared_count(), 1);
 
     let (events, ()) = tokio::join!(all_events(runtime.run(request(next()))), async {
-        assert_eq!(cli.read().await, user_line("next question"));
+        assert_eq!(cli.take().await, user_line("next question"));
         cli.say(json!({
             "type": "stream_event",
             "event": { "type": "content_block_delta", "delta": { "type": "text_delta", "text": "two" } },

@@ -1907,6 +1907,58 @@ async fn the_stream_becomes_blocks_and_each_delta_one_patch() {
     assert_eq!(appends, ["private ", "notes", "world"]);
 }
 
+/// A run that yields a second response after the first, as Claude Code does
+/// when it answers two messages of one run in turns of their own, streams
+/// the second's text to the page as it comes: the frames the first held
+/// for the turn's end are released by what follows it in the run
+/// (`rendering.md` § Order and delivery). (The second answer reached the
+/// page only when the run ended.)
+// One turn of a scripted provider: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_second_response_of_one_run_streams_its_text_before_the_run_ends() {
+    use futures_util::StreamExt;
+    let (release, released) = tokio::sync::oneshot::channel::<()>();
+    let first = [event::text("one"), event::response(1, 1), event::text("two")];
+    let run = Turn::Stream(Box::new(move |_| {
+        futures_util::stream::iter(first)
+            .chain(futures_util::stream::once(released).map(|_| event::response(2, 2)))
+            .boxed_local()
+    }));
+    let provider = ScriptedRuntime::new([run]);
+    let store = MemoryTreeStore::new();
+    let session = start(&provider, Vec::new(), &store, SessionConfig::default()).await;
+    let shown = Rc::new(RefCell::new(Vec::<String>::new()));
+    let _subscription = session.subscribe({
+        let shown = shown.clone();
+        move |event| {
+            if let SessionEvent::TranscriptChanged { patches, .. } = event {
+                for patch in patches {
+                    match patch {
+                        TranscriptPatch::AppendText { delta, .. } => shown.borrow_mut().push(delta.clone()),
+                        TranscriptPatch::Add { value: Block::Text(text), .. } => shown.borrow_mut().push(text.text.clone()),
+                        _ => {}
+                    }
+                }
+            }
+        }
+    });
+
+    let running = session.send(text("two receipts"), turn("t1")).unwrap();
+    until(|| shown.borrow().iter().any(|text| text == "two")).await;
+    release.send(()).unwrap();
+    running.await.unwrap();
+    let texts: Vec<String> = session
+        .transcript()
+        .blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::Text(text) => Some(text.text.clone()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(texts, ["one", "two"]);
+}
+
 /// A call the model is writing (`rendering.md` § Calls being written): it is
 /// listed from its start, which completes the text before it, gains its
 /// description once that string is whole, and leaves the list in the step

@@ -397,6 +397,8 @@ Linux, the Cloud's platform. The scenarios cover what the product relies on from
 - the `initialize` request with the SDK MCP server, which offers the model
   Demi's tools;
 - reasoning and text as they stream;
+- two user messages written at once, each printed back as the CLI takes it
+  into a turn, before the `result` that answers it;
 - a batch of tool calls through Demi's tools, and their results;
 - usage;
 - Stop in the middle of a stream;
