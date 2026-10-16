@@ -15,7 +15,7 @@ use comrak::{
     parse_document,
 };
 use demi_provider_common::{
-    InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderRuntime, UserPart,
+    InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderRuntime, RequestPurpose, UserPart,
 };
 use demi_shared_types::{Model, ModelSelection, ThinkingCapability, ThinkingConfig, char_offset};
 use futures_util::StreamExt;
@@ -303,6 +303,8 @@ pub async fn request_title(
         cancel: cancel.clone(),
         // No agent's: the entry's rotation picks one for this request alone.
         account: None,
+        purpose: RequestPurpose::Title,
+        agent: None,
     };
     let mut events = runtime.run(request);
     let mut answer = String::new();

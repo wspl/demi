@@ -824,6 +824,9 @@ fn session_copy(s: &Rc<SessionShared>, history: Vec<Block>, media: HeldMedia) ->
         // cached.
         account: core.account.clone(),
         one_request: true,
+        // The summary request belongs to the turn the pass runs in, which
+        // its usage ledger row names.
+        request_turn: core.running_turn(),
         ids: s.ids.clone(),
         clock: core.clock(),
         runtime: s.runtime.clone(),
@@ -888,6 +891,11 @@ impl SessionRuntime for CopyRuntime {
 
     fn tools(&self) -> Arc<[ToolDefinition]> {
         self.session.tools()
+    }
+
+    /// The summary request is its session's agent's.
+    fn agent(&self) -> u64 {
+        self.session.agent()
     }
 
     /// The copy runs one request and no tool (`compaction.md` § The summary

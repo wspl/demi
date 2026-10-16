@@ -760,9 +760,9 @@ mod tests {
             // one before interrupted turns were marked, the one before a
             // conversation kept the hosts it may reach, the one before
             // shares, the one before a device's mark had a number,
-            // 0.1.22-dev.20261015T105826Z's and 0.1.22-dev.20261015T134426Z's
-            // follow in the history.
-            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 8);
+            // 0.1.22-dev.20261015T105826Z's, 0.1.22-dev.20261015T134426Z's
+            // and 0.1.22-dev.20261016T043704Z's follow in the history.
+            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 9);
             (data, path, own.id, proxy.id)
         };
         let clock = Arc::new(demi_shared_types::SystemClock);

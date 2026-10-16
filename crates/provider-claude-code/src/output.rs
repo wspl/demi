@@ -8,7 +8,7 @@ use demi_provider_common::wire::{
     Reported, ReportedString, Tagged,
     messages::{CallUsage, MessagesUsage},
 };
-use demi_provider_common::{ErrorCode, ProviderEvent, ToolCall, tagged_wire};
+use demi_provider_common::{CallEvent, CallOutcome, ErrorCode, ProviderEvent, ToolCall, tagged_wire};
 use std::collections::HashMap;
 
 use demi_shared_types::TokenUsage;
@@ -26,8 +26,15 @@ tagged_wire! {
         "result" => Result(ResultLine),
         "error" => Error(ErrorLine),
         "transcript_mirror" => TranscriptMirror(MirrorLine),
+        "rate_limit_event" => RateLimit(RateLimitLine),
     }
 }
+
+/// The account's quota as the vendor reported it after a call, which the
+/// account's snapshot reads from the line's text as every line is read, and
+/// the usage ledger from the line the run takes.
+#[derive(Deserialize)]
+pub(crate) struct RateLimitLine {}
 
 /// A batch of entries the CLI wrote to its session (`--session-mirror`),
 /// as it wrote them.
@@ -335,8 +342,10 @@ impl LastCall {
     pub(crate) fn observe(&mut self, event: &StreamEvent) {
         match event {
             StreamEvent::MessageStart(start) => {
-                self.0
-                    .start(start.message.as_ref().and_then(|message| message.usage));
+                self.0.start(
+                    start.message_id(),
+                    start.message.as_ref().and_then(|message| message.usage),
+                );
             }
             StreamEvent::MessageDelta(MessageDelta {
                 usage: Some(counts),
@@ -345,13 +354,20 @@ impl LastCall {
         }
     }
 
-    /// A call whose message came whole, without streaming, with the counts
-    /// it stated.
-    pub(crate) fn answered(&mut self, counts: Option<MessagesUsage>) {
-        self.0.start(None);
+    /// A call whose message `id` came whole, without streaming, with the
+    /// counts it stated.
+    pub(crate) fn answered(&mut self, id: Option<String>, counts: Option<MessagesUsage>) {
+        self.0.start(id, None);
         if let Some(counts) = counts {
             self.0.delta(counts);
         }
+    }
+
+    /// The latest call as the usage ledger keeps it, ended as `outcome`
+    /// says: one row per call, never the `result` line's sum
+    /// (`usage-and-quota.md` § Usage ledger).
+    pub(crate) fn ended(&self, outcome: CallOutcome) -> ProviderEvent {
+        ProviderEvent::Call(CallEvent::Ended(self.0.call(outcome)))
     }
 
     /// The latest call's usage, which the run's end takes, at the turn's

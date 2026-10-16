@@ -85,18 +85,33 @@ impl ProviderQuota {
     }
 
     /// Merges the windows a live response reports into the account's
-    /// snapshot, keeping its plan and label. A response the source cannot
-    /// read changes nothing, and observing never fails the request.
-    pub fn observe(&self, observation: Observation<'_>) {
-        let Some(windows) = self.source.observe(observation) else {
-            return;
-        };
+    /// snapshot, keeping its plan and label, and answers them, which the
+    /// call's usage ledger row keeps (`usage-and-quota.md` § Usage ledger).
+    /// A response the source cannot read changes nothing and answers none,
+    /// and observing never fails the request.
+    pub fn observe(&self, observation: Observation<'_>) -> Option<Vec<QuotaWindow>> {
+        let windows = self.source.observe(observation)?;
         let observed_at = self.clock.now();
-        let mut windows = Some(windows);
+        let mut merged = Some(windows.clone());
         self.store.update(&mut |previous| {
-            let windows = windows.take().unwrap_or_default();
+            let windows = merged.take().unwrap_or_default();
             merge(previous, Update::Observation(windows), observed_at)
         });
+        Some(windows)
+    }
+
+    /// The windows `observation` reports, without merging them into the
+    /// snapshot, for a provider that merged them as it read the response
+    /// and reports them to the usage ledger later.
+    pub fn windows(&self, observation: Observation<'_>) -> Option<Vec<QuotaWindow>> {
+        self.source.observe(observation)
+    }
+
+    /// [`Self::observe`] as the run's event for the usage ledger, none when
+    /// the response reported no window.
+    pub fn observed(&self, observation: Observation<'_>) -> Option<crate::ProviderEvent> {
+        let windows = self.observe(observation).filter(|windows| !windows.is_empty())?;
+        Some(crate::ProviderEvent::Call(crate::CallEvent::Observed(windows)))
     }
 }
 

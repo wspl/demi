@@ -2,8 +2,8 @@
 //! § Endpoints).
 
 use demi_provider_common::{
-    ErrorCode, ProviderEvent, ProviderFailure, ToolCall,
-    testing::{MockResponse, MockVendor, inference_request, next_event},
+    CallEvent, CallOutcome, ErrorCode, ProviderEvent, ProviderFailure, ToolCall, VendorCall,
+    testing::{MockResponse, MockVendor, every_event, inference_request, next_event},
 };
 use demi_shared_types::{FailureSource, TokenUsage};
 use serde_json::{Value, json};
@@ -253,4 +253,35 @@ async fn cancelling_mid_stream_ends_the_run_without_an_event_and_drops_the_conne
             .is_empty()
     );
     assert!(vendor.requests().is_empty());
+}
+
+/// The run's one call is the usage ledger's under the response's id, with
+/// its counts, before the run's end (`usage-and-quota.md` § Usage ledger).
+#[tokio::test]
+async fn the_call_ends_under_the_response_id_with_its_counts() {
+    let vendor = MockVendor::start().await;
+    vendor.respond(chunks(&[
+        json!({ "responseId": "resp-g1", "candidates": [{ "content": { "parts": [{ "text": "done" }] } }] }),
+        json!({ "responseId": "resp-g1", "candidates": [{ "finishReason": "STOP" }], "usageMetadata": { "promptTokenCount": 10, "candidatesTokenCount": 4 } }),
+    ]));
+    let events = every_event(runtime(&vendor).run(inference_request())).await;
+    let usage = TokenUsage {
+        input_tokens: 10,
+        output_tokens: 4,
+        cache_read_tokens: 0,
+        cache_write_tokens: 0,
+    };
+    assert_eq!(
+        events,
+        [
+            ProviderEvent::TextDelta("done".into()),
+            ProviderEvent::Call(CallEvent::Ended(VendorCall {
+                vendor_id: Some("resp-g1".into()),
+                usage: Some(usage),
+                cache_write_1h_tokens: 0,
+                outcome: CallOutcome::Answered,
+            })),
+            ProviderEvent::Response(Some(usage)),
+        ]
+    );
 }

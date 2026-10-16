@@ -15,8 +15,8 @@ use std::sync::Arc;
 
 use async_stream::stream;
 use demi_provider_common::{
-    Ahead, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
-    ProviderRuntime, RequestLimits, Secret, ToolResultKinds, offers,
+    Ahead, CallEvent, CallOutcome, InferenceItem, InferenceRequest, ProviderEvent, ProviderFailure, ProviderRun,
+    ProviderRuntime, RequestLimits, Secret, ToolResultKinds, VendorCall, offers, quota::Observation,
 };
 use demi_shared_types::Model;
 use futures_util::StreamExt as _;
@@ -324,9 +324,24 @@ fn run(
                 };
                 match line {
                     None | Some(Line::ControlResponse(_)) => {}
+                    // The quota the vendor reported is the call's open now,
+                    // or the one that ended last; the snapshot took it as
+                    // the line was read.
+                    Some(Line::RateLimit(_)) => {
+                        let windows = serde_json::from_str(&text)
+                            .ok()
+                            .and_then(|value| runtime.shared.quota.windows(Observation::CliLine(&value)))
+                            .filter(|windows| !windows.is_empty());
+                        if let Some(windows) = windows {
+                            yield ProviderEvent::Call(CallEvent::Observed(windows));
+                        }
+                    }
                     // A notice of a refused call repeats the failure the result
                     // reports, so the failure shows once; it writes no block.
                     Some(Line::Assistant(message)) if message.is_refusal_notice() => {
+                        // The refused call is one of its own, which the
+                        // run's failure ends.
+                        yield ProviderEvent::Call(CallEvent::Started);
                         refusal = Some(text);
                         let id = message.message_id();
                         for printed in message.content() {
@@ -347,8 +362,15 @@ fn run(
                         // that repeats what streamed.
                         let mut complete = None;
                         if !live.streaming.as_ref().is_some_and(|streaming| streaming.repeats(&id)) {
+                            // The abandoned stream's call failed; the
+                            // complete answer is a call of its own.
+                            if live.streaming.is_some() {
+                                yield live.last_call.ended(CallOutcome::Refused(None));
+                            }
                             complete = Some(live.abandon_streaming());
-                            live.last_call.answered(message.usage());
+                            yield ProviderEvent::Call(CallEvent::Started);
+                            live.last_call.answered(id.clone(), message.usage());
+                            yield live.last_call.ended(CallOutcome::Answered);
                         }
                         for Printed { raw, block } in message.content() {
                             match block {
@@ -421,7 +443,19 @@ fn run(
                         let Some(event) = line.event() else {
                             continue;
                         };
+                        // Each call is a usage ledger row: a message starts
+                        // one, and its message_stop ends it; a message that
+                        // starts while another streams abandons that call.
+                        if let StreamEvent::MessageStart(_) = &event {
+                            if live.streaming.is_some() {
+                                yield live.last_call.ended(CallOutcome::Refused(None));
+                            }
+                            yield ProviderEvent::Call(CallEvent::Started);
+                        }
                         live.last_call.observe(&event);
+                        if let StreamEvent::MessageStop(_) = &event {
+                            yield live.last_call.ended(CallOutcome::Answered);
+                        }
                         match &event {
                             // A new message abandons one whose stream never
                             // stopped, and the calls it collected.
@@ -492,11 +526,14 @@ fn run(
                         // transcript.
                         if let TurnEnd::Failed {
                             status: Some(UNAUTHORIZED),
+                            code,
                             ..
                         } = &end
                             && refused.is_none()
                             && !yielded
                         {
+                            // The refused call keeps its row.
+                            yield VendorCall::refused(code.clone());
                             refused = Some(live.token.clone());
                             live.close().await;
                             continue 'attempt;

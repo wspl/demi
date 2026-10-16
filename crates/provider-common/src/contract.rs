@@ -6,7 +6,8 @@ use std::{num::NonZeroU32, sync::Arc};
 
 use demi_shared_types::{
     AgentAccount, AuthState, B64Bytes, MODEL_MEDIA_TYPES, Model, ModelMediaKind, ProviderErrorDiagnostics,
-    ProviderFailureFacts, ProviderModelList, QuotaWindowName, RuntimeState, ThinkingConfig, Timestamp, TokenUsage,
+    ProviderFailureFacts, ProviderModelList, QuotaWindow, QuotaWindowName, RuntimeState, ThinkingConfig, Timestamp,
+    TokenUsage,
     model_accepts_media_type, model_media_type_for,
 };
 use futures_util::{
@@ -15,7 +16,7 @@ use futures_util::{
 };
 use tokio_util::sync::CancellationToken;
 
-use crate::{ProviderFailure, credentials::SubscriptionAccounts, quota::ProviderQuota};
+use crate::{ErrorCode, ProviderFailure, credentials::SubscriptionAccounts, quota::ProviderQuota};
 
 /// One provider entry and account, shared by every user and request of the
 /// entry. It is used from any thread: the backend's request handlers read its
@@ -330,6 +331,35 @@ pub struct InferenceRequest {
     /// and for a request that is no session's (`providers.md` § Account
     /// rotation).
     pub account: Option<AgentAccount>,
+    /// What the request is for, which its usage ledger rows say
+    /// (`usage-and-quota.md` § Usage ledger).
+    pub purpose: RequestPurpose,
+    /// The number of the session's agent in the conversation's tree, 0 for
+    /// the root; none for a request that is no session's, such as a title
+    /// request.
+    pub agent: Option<u64>,
+}
+
+/// What a request is for (`usage-and-quota.md` § Usage ledger).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RequestPurpose {
+    /// A request of a session's turn: its first, a continuation or a retry.
+    Turn,
+    /// A compaction pass's summary request.
+    Compaction,
+    /// A conversation's title request.
+    Title,
+}
+
+impl RequestPurpose {
+    /// The purpose as the ledger stores it.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Turn => "turn",
+            Self::Compaction => "compaction",
+            Self::Title => "title",
+        }
+    }
 }
 
 /// How a request extends the session's earlier requests (`providers.md`
@@ -534,6 +564,85 @@ pub enum ProviderEvent {
         of: EntriesOf,
         entries: Vec<serde_json::Value>,
     },
+    /// One call to the vendor of a run that makes several, such as a Claude
+    /// Code run in which the CLI calls the vendor more than once, for the
+    /// usage ledger, which keeps a row per call; the agent reads nothing of
+    /// it. A run's first call starts with the run, and a call no `Ended`
+    /// reports is ended by the run's end (`usage-and-quota.md` § Usage
+    /// ledger).
+    Call(CallEvent),
+}
+
+/// What a run tells the usage ledger of one of its calls.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CallEvent {
+    /// A call starts; the run's first call already started with the run.
+    Started,
+    /// The call that started last ended.
+    Ended(VendorCall),
+    /// The windows of the account's quota the vendor reported with the call
+    /// open now, or, between a call's end and the next one's start, with the
+    /// call that ended last, as Claude Code's `rate_limit_event` follows its
+    /// `message_stop`.
+    Observed(Vec<QuotaWindow>),
+}
+
+/// One call to the vendor as it ended: its own counts, never a sum over the
+/// run's calls.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VendorCall {
+    /// The vendor's id of the call, such as a Messages API message id.
+    pub vendor_id: Option<String>,
+    /// The counts the vendor reported for the call; none when it reported
+    /// none.
+    pub usage: Option<TokenUsage>,
+    /// The part of the cache write kept for an hour, 0 where the vendor has
+    /// no such tier.
+    pub cache_write_1h_tokens: u64,
+    pub outcome: CallOutcome,
+}
+
+impl VendorCall {
+    /// The end of a run's one call by `last`, the run's last event: its
+    /// response, with its usage, or its failure, with `usage`, what the
+    /// vendor counted before it failed, if anything. None for an event that
+    /// ends no run.
+    pub fn ended_by(
+        vendor_id: Option<String>,
+        usage: Option<TokenUsage>,
+        last: &ProviderEvent,
+    ) -> Option<ProviderEvent> {
+        let (usage, outcome) = match last {
+            ProviderEvent::Response(usage) => (*usage, CallOutcome::Answered),
+            ProviderEvent::Error(failure) => (usage, CallOutcome::Refused(failure.code.clone())),
+            _ => return None,
+        };
+        Some(ProviderEvent::Call(CallEvent::Ended(Self {
+            vendor_id,
+            usage,
+            cache_write_1h_tokens: 0,
+            outcome,
+        })))
+    }
+
+    /// A call the vendor refused with `code` before it answered, counting
+    /// nothing, such as one refused for its token and sent again.
+    pub fn refused(code: Option<ErrorCode>) -> ProviderEvent {
+        ProviderEvent::Call(CallEvent::Ended(Self {
+            vendor_id: None,
+            usage: None,
+            cache_write_1h_tokens: 0,
+            outcome: CallOutcome::Refused(code),
+        }))
+    }
+}
+
+/// How a call to the vendor ended.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CallOutcome {
+    Answered,
+    /// The vendor refused it, with the failure's code when it has one.
+    Refused(Option<ErrorCode>),
 }
 
 impl ProviderEvent {
@@ -572,7 +681,8 @@ impl ProviderEvent {
             | Self::Error(_)
             | Self::Account(_)
             | Self::AccountSwitch(_)
-            | Self::Entries { .. } => false,
+            | Self::Entries { .. }
+            | Self::Call(_) => false,
         }
     }
 }
