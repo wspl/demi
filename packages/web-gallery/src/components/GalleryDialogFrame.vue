@@ -13,6 +13,10 @@ import { overlayContainerKey, overlayInlineKey } from '@demicodes/web-ui/overlay
  * pinned state. `reopen` lets a specimen whose state moved put it back.
  * `startsClosed` shows Open first, for a dialog that only a click opens,
  * such as one that writes the clipboard.
+ *
+ * On a phone the frame is as wide as the product draws a dialog, the screen
+ * less 1rem each side (`Dialog`'s 100% - 2rem), reaching past the catalog's
+ * wider margins, so a specimen lays out as the product's dialog does.
  */
 const props = defineProps<{ startsClosed?: boolean }>()
 const emit = defineEmits<{ reopen: [] }>()
@@ -35,8 +39,17 @@ function reopen(): void {
 </script>
 
 <template>
-  <div ref="frame" class="relative isolate">
+  <div ref="frame" class="gallery-dialog-frame relative isolate">
     <slot :open="open" :close="close" />
     <Button v-if="!open" size="md" @click="reopen">Open</Button>
   </div>
 </template>
+
+<style scoped>
+@media (max-width: 767px) {
+  .gallery-dialog-frame {
+    width: calc(100vw - 2rem);
+    margin-inline: calc(50% - (100vw - 2rem) / 2);
+  }
+}
+</style>
