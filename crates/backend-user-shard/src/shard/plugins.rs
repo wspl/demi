@@ -1,6 +1,7 @@
 //! The product's side of the plugins' port (`plugins.md` § The contract):
-//! package calls and reads of a conversation through its host access, and
-//! the user's blobs. The plugin host answers the rest itself.
+//! package calls and reads of a conversation through its host access, the
+//! user's blobs, and the Providers service's images. The plugin host
+//! answers the rest itself.
 
 use std::rc::Weak;
 use std::sync::Arc;
@@ -12,12 +13,14 @@ use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_backend_host_access::stream::{ServiceBinding, ServiceCall, UserCallError, UserCallKind};
 use demi_backend_page_sync::Part;
 use demi_backend_host_access::host_commands::reachable;
-use demi_backend_plugins::{Lost, ProductPort};
+use demi_backend_plugins::{Lost, ProductPort, ReadOn};
 use demi_backend_providers::vault::seal::Row;
 use demi_backend_remote_host::ServiceCallError;
 use demi_command_declarations::NativeOperation;
-use demi_host_interface::{HostErrorKind, PortError};
-use demi_plugin_interface::{CallKind, HostFile, HostRead, PortFailure, PortRefusal};
+use demi_host_interface::{HostErrorKind, JobCaller, PortError};
+use demi_plugin_interface::{
+    CallKind, HostFile, HostRead, ImageAsk, ImageModel, MadeImage, PortFailure, PortRefusal,
+};
 use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
@@ -92,25 +95,46 @@ impl ProductPort for ShardPort {
     fn read_host_files<'a>(
         &'a self,
         conversation: &'a ConversationId,
-        on: Option<&'a DeviceId>,
+        on: &'a ReadOn,
         reads: Vec<HostRead>,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>> {
         Box::pin(async move {
             let shard = self.shard()?;
-            shard
-                .host_shard()
-                .read_files_on(conversation, on, &reads, cancel)
-                .await
-                .map(|(files, _)| files)
-                .map_err(|error| match error {
-                    // A project search's Host that is no longer the
-                    // conversation's is not running for it.
-                    ReadFilesError::NotRunning | ReadFilesError::Moved => {
-                        PortFailure::Refused(PortRefusal::NotRunning)
-                    }
-                    ReadFilesError::Access(error) => access_refusal(error),
-                })
+            let hosts = shard.host_shard();
+            let read = match on {
+                ReadOn::Primary => hosts.read_files_on(conversation, None, &reads, cancel).await.map(|(files, _)| files),
+                ReadOn::PrimaryOf(device) => hosts
+                    .read_files_on(conversation, Some(device), &reads, cancel)
+                    .await
+                    .map(|(files, _)| files),
+                ReadOn::Job { device, directory } => {
+                    hosts.read_job_files(conversation, device, directory, &reads, cancel).await
+                }
+            };
+            read.map_err(|error| match error {
+                // A project search's Host that is no longer the
+                // conversation's is not running for it.
+                ReadFilesError::NotRunning | ReadFilesError::Moved => PortFailure::Refused(PortRefusal::NotRunning),
+                ReadFilesError::Access(error) => access_refusal(error),
+            })
+        })
+    }
+
+    fn image_models(&self) -> LocalBoxFuture<'_, Result<Vec<ImageModel>, PortFailure>> {
+        Box::pin(async move { super::images::image_models(&*self.shard()?).await })
+    }
+
+    fn make_image<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        caller: Option<&'a JobCaller>,
+        ask: ImageAsk,
+        cancel: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<MadeImage, PortFailure>> {
+        Box::pin(async move {
+            let shard = self.shard()?;
+            super::images::make_image(&shard, conversation, caller, ask, cancel).await
         })
     }
 

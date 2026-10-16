@@ -975,7 +975,7 @@ async fn node_call(
         "stdin": false,
     }))
     .expect("the invocation is well formed");
-    invocation.caller = Some(root.job_caller("call"));
+    invocation.caller = Some(root.job_caller("call", None));
     let port = MemoryPort::new();
     let code = root
         .commands()

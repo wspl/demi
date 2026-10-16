@@ -373,10 +373,24 @@ impl ProductPort for TestProduct {
     fn read_host_files<'a>(
         &'a self,
         _: &'a ConversationId,
-        _: Option<&'a demi_web_api_protocol::ids::DeviceId>,
+        _: &'a demi_backend_plugins::ReadOn,
         _: Vec<HostRead>,
         _: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>> {
+        none()
+    }
+
+    fn image_models(&self) -> LocalBoxFuture<'_, Result<Vec<demi_plugin_interface::ImageModel>, PortFailure>> {
+        none()
+    }
+
+    fn make_image<'a>(
+        &'a self,
+        _: &'a ConversationId,
+        _: Option<&'a demi_host_interface::JobCaller>,
+        _: demi_plugin_interface::ImageAsk,
+        _: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<demi_plugin_interface::MadeImage, PortFailure>> {
         none()
     }
 

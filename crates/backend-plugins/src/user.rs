@@ -5,10 +5,11 @@
 //! user streams exist; the context sources among them; the Host directories
 //! of the plugins on; and the answers to their port operations. The plugin
 //! host answers values, directories, changes, secrets, outbound requests
-//! and sign-ins itself; what reaches the user's blobs or a conversation's
-//! Hosts goes to the product, which owns the blob namespace and the
-//! conversation's host access, and so do the sealing of a secret, the
-//! client an outbound request is sent with, the public URL and the time.
+//! and sign-ins itself; what reaches the user's blobs, a conversation's
+//! Hosts or the user's provider entries goes to the product, which owns
+//! the blob namespace, the conversation's host access and the providers,
+//! and so do the sealing of a secret, the client an outbound request is
+//! sent with, the public URL and the time.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -21,8 +22,9 @@ use demi_backend_database::panels::PanelOutcome;
 use demi_backend_database::plugin_values::{ValueWrite, Written};
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::NativeOperation;
-use demi_host_interface::{CommandSet, GroupBuilder, PortError, RpcPort};
+use demi_host_interface::{CommandSet, GroupBuilder, JobCaller, PortError, RpcPort};
 use demi_plugin_interface::{
+    ImageAsk, ImageModel, MadeImage,
     CallKind, DirectoryPath, HostDirectory, HostFile, HostRead, PanelTabChange, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
     PortRefusal, Reply, Request, Scope, StoredValue,
@@ -59,16 +61,32 @@ pub trait ProductPort {
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Value, PortFailure>>;
 
-    /// Reads `reads` on the conversation's primary Host in the form that never
-    /// wakes it; [`PortRefusal::NotRunning`] when it is not running, or, with
-    /// `on`, when it is no longer that device's.
+    /// Reads `reads` where `on` says in the form that never wakes the Host;
+    /// [`PortRefusal::NotRunning`] when it is not running, or, on the
+    /// primary Host of a device, when it is no longer that device's.
     fn read_host_files<'a>(
         &'a self,
         conversation: &'a ConversationId,
-        on: Option<&'a DeviceId>,
+        on: &'a ReadOn,
         reads: Vec<HostRead>,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>>;
+
+    /// The image models of the user's provider entries, the default first
+    /// (`images.md`).
+    fn image_models(&self) -> LocalBoxFuture<'_, Result<Vec<ImageModel>, PortFailure>>;
+
+    /// Makes the image `ask` names for the conversation, through the entry
+    /// and account the providers choose; its usage ledger row names the
+    /// agent and the turn of `caller`, the job that called the command, if
+    /// any.
+    fn make_image<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        caller: Option<&'a JobCaller>,
+        ask: ImageAsk,
+        cancel: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<MadeImage, PortFailure>>;
 
     /// Stores `bytes` in the user's blob namespace.
     fn put_blob(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, PortFailure>>;
@@ -93,6 +111,20 @@ pub trait ProductPort {
 
     /// The wall clock.
     fn now(&self) -> Timestamp;
+}
+
+/// Where a request's reads of files go (`plugins.md` § The contract).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ReadOn {
+    /// The conversation's primary Host.
+    Primary,
+    /// The primary Host, while it is this device's, as a project search
+    /// asked of it.
+    PrimaryOf(DeviceId),
+    /// A command's job: the Host it runs on, the conversation's primary
+    /// Host or an attached one, with a relative path read against the
+    /// job's directory.
+    Job { device: DeviceId, directory: String },
 }
 
 /// A page's call of a plugin method.
@@ -236,13 +268,28 @@ impl Shared {
         rpc: Option<RpcPort>,
         cancel: CancellationToken,
     ) -> Result<Reply, PluginError> {
+        let (caller, read_on) = match (&request, host) {
+            (Request::Command { invocation, .. }, _) => {
+                let caller = invocation.caller.clone();
+                // A Host name that is no device's reads nowhere; the read
+                // answers that the Host is not running.
+                let read_on = match DeviceId::try_from(invocation.host.as_str()) {
+                    Ok(device) => ReadOn::Job { device, directory: invocation.cwd.clone() },
+                    Err(_) => ReadOn::Primary,
+                };
+                (caller, read_on)
+            }
+            (_, Some(device)) => (None, ReadOn::PrimaryOf(device)),
+            (_, None) => (None, ReadOn::Primary),
+        };
         let transport = RequestPort {
             shared: self.clone(),
             plugin,
             conversation,
             rpc,
             cancel: cancel.clone(),
-            host,
+            read_on,
+            caller,
         };
         let port = PluginPort::new(Rc::new(transport), cancel);
         self.instances[plugin].call(request, port).await
@@ -1001,9 +1048,11 @@ struct RequestPort {
     conversation: Option<ConversationId>,
     rpc: Option<RpcPort>,
     cancel: CancellationToken,
-    /// The device whose primary Host a project search was asked of, which
-    /// its reads are bound to.
-    host: Option<DeviceId>,
+    /// Where its reads of files go.
+    read_on: ReadOn,
+    /// The job that called the command, for a command an agent's job
+    /// called.
+    caller: Option<JobCaller>,
 }
 
 impl RequestPort {
@@ -1097,7 +1146,7 @@ impl RequestPort {
             },
             PortMessage::ReadHostFiles { reads } => PortAnswer::HostFiles {
                 files: product
-                    .read_host_files(self.conversation()?, self.host.as_ref(), reads, &self.cancel)
+                    .read_host_files(self.conversation()?, &self.read_on, reads, &self.cancel)
                     .await?,
             },
             PortMessage::Changed { scope } => {
@@ -1185,6 +1234,14 @@ impl RequestPort {
                 shared.oauth_sign_out(self.plugin, &self.cancel).await?;
                 PortAnswer::Done
             }
+            PortMessage::ImageModels => PortAnswer::ImageModels {
+                models: product.image_models().await?,
+            },
+            PortMessage::MakeImage { ask } => PortAnswer::Image {
+                image: product
+                    .make_image(self.conversation()?, self.caller.as_ref(), ask, &self.cancel)
+                    .await?,
+            },
         };
         Ok(answer)
     }

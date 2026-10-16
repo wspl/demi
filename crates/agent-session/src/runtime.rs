@@ -265,6 +265,8 @@ pub struct ToolInvocation {
     /// the call starts names.
     pub tool_use_id: String,
     pub tool_name: String,
+    /// The turn the call belongs to.
+    pub turn: TurnId,
     /// The input as the JSON value the provider supplied, or its text when
     /// that is not valid JSON; the tool validates it.
     pub input: Value,

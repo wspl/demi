@@ -1419,6 +1419,7 @@ async fn a_command_whose_call_a_crash_interrupted_keeps_its_interval_and_its_los
         command: CommandId::try_from("17").unwrap(),
         job: "job-17".into(),
         tool_use_id: "call-1".into(),
+        turn: None,
         title: "Run the suite".into(),
         interval_ms: Some(300_000),
         started: Timestamp::UNIX_EPOCH,

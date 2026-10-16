@@ -28,7 +28,7 @@ use demi_backend_runners::host_key::device_of;
 use demi_backend_runners::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
-    CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
+    CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey, JobCaller,
     PageView, Seen, ShellEnvironment, ShellError, TakenUp, Unreachable, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
@@ -327,7 +327,7 @@ impl CommandKeeper for Keeper {
     fn started<'a>(
         &'a self,
         command: &'a CommandId,
-        tool_use_id: &'a str,
+        caller: &'a JobCaller,
         title: &'a str,
         interval_ms: Option<u32>,
         job: &'a str,
@@ -348,7 +348,8 @@ impl CommandKeeper for Keeper {
                 node: self.node.clone(),
                 device: self.device.clone(),
                 job: job.to_owned(),
-                tool_use_id: tool_use_id.to_owned(),
+                tool_use_id: caller.tool_use_id.clone(),
+                turn: caller.turn.clone(),
                 title: title.to_owned(),
                 interval_ms,
                 started: self.clock.now(),

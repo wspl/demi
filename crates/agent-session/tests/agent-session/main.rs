@@ -1437,6 +1437,7 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
         command: CommandId::try_from("254").unwrap(),
         job: "job-254".into(),
         tool_use_id: "call-1".into(),
+        turn: None,
         title: "Write a.txt".into(),
         interval_ms: None,
         started: Timestamp::UNIX_EPOCH,

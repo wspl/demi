@@ -24,7 +24,7 @@ pub struct UsageRow {
     pub agent: Option<u64>,
     /// None outside a turn.
     pub turn: Option<String>,
-    /// `turn`, `compaction` or `title`.
+    /// `turn`, `compaction`, `title` or `image`.
     pub purpose: &'static str,
     pub provider: ProviderId,
     /// The subscription account; none for an API key.

@@ -561,6 +561,7 @@ async fn a_directory_catalog_is_cached_refreshed_on_demand_and_kept_after_a_fail
                 directory: directory.clone(),
                 runs: None,
                 process_host: false,
+                images: None,
             },
         ),
     };

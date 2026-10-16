@@ -1,6 +1,7 @@
 //! What the user's plugins reach on a Host (`plugins.md` § Host
 //! directories, § Reading a conversation's files): reads of a
-//! conversation's primary Host in the form that never wakes it, and the
+//! conversation's primary Host, or of a command job's Host, in the form
+//! that never wakes it, and the
 //! plugins' directories, which each job of the user's installs before it
 //! starts, once per runner connection.
 
@@ -101,6 +102,34 @@ impl dyn HostShard + '_ {
         let waits = Waits::until_ended(cancel, &access.open.ended);
         let found = waits.wait(look_files(&access.host.host, reads)).await?;
         Ok(found.map_err(HostAccessError::Host)?)
+    }
+
+    /// Reads `reads` for a command's job on `device`, the conversation's
+    /// primary Host or an attached one, admitted as
+    /// [`read_files`](Self::read_files) is; a relative path is read against
+    /// `directory`, the job's, as that Host resolves it (`plugins.md`
+    /// § The contract).
+    pub async fn read_job_files(
+        &self,
+        id: &ConversationId,
+        device: &DeviceId,
+        directory: &str,
+        reads: &[HostRead],
+        cancel: &CancellationToken,
+    ) -> Result<Vec<HostFile>, ReadFilesError> {
+        let access = self.admit_stream(id, Some(device), Attention::Looks, cancel).await?;
+        let paths = access.host.host.identity().paths;
+        let reads: Vec<HostRead> = reads
+            .iter()
+            .map(|read| HostRead {
+                path: paths.resolve(directory, &read.path),
+                limit: read.limit,
+                within: read.within.as_ref().map(|within| paths.resolve(directory, within)),
+            })
+            .collect();
+        let waits = Waits::until_ended(cancel, &access.open.ended);
+        let found = waits.wait(look_files(&access.host.host, &reads)).await?;
+        Ok(found.map_err(HostAccessError::Host)?.0)
     }
 
     /// A holder of subscriptions on the conversation's primary Host

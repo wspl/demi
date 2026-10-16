@@ -60,6 +60,7 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
         directory: Arc::new(Directory::default()),
         runs: None,
         process_host: false,
+        images: None,
     };
     let families = demi_backend::families::builtin()
         .with("claude-code", family())
@@ -738,6 +739,7 @@ async fn removing_the_active_account_selects_the_next_and_the_last_leaves_none()
         directory,
         runs: Some(runs.clone()),
         process_host: false,
+        images: None,
     };
     let scripts = Scripts {
         login,
