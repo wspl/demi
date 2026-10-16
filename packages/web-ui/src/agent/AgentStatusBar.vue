@@ -31,11 +31,12 @@ import { isSubagentRunning, runEffortWords, subagentStatus, type AgentRun } from
  * The segments run close to the window's ends (`.status-bar`): the bar's
  * inset is the same on every side, and the first and last text stands as far
  * from the window's side as the window's corner is round, never at the
- * transcript's wide indent; on a phone the bar is 36px tall and its text
- * 15px, as a tab's. Where
- * the room runs out, *Forked from* gives way first, then the model's name
- * and the folder's name, which leaves its icon and its tip,
- * by the bar's own width; the state and the time always stay. An ended
+ * transcript's wide indent; on a phone the bar is a row's height, 44px, and
+ * its text 15px, as a tab's. Where
+ * the room runs out, *Forked from* gives way first, then the model's name,
+ * the profile's tag and the folder's name, which leaves its icon and its tip,
+ * by the bar's own width, so a phone's bar keeps the effort whole beside the
+ * context indicator; the state and the time always stay. An ended
  * child's session is closed, so its bar has no context indicator.
  */
 const props = defineProps<{
@@ -118,7 +119,7 @@ const forkedSentence = computed(() => around('subagents.forkedFrom', 'agent'))
       </template>
     </div>
     <div class="ml-auto flex min-w-0 items-stretch">
-      <StatusBarSegment v-if="run.profile">
+      <StatusBarSegment v-if="run.profile" class="hidden @min-[28rem]:flex">
         <Tag>{{ run.profile }}</Tag>
       </StatusBarSegment>
       <Tooltip tag="span" class="flex min-w-0" wide>
