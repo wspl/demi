@@ -5,7 +5,8 @@ import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agen
 import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
 import { rowKey } from '@demicodes/web-ui/agent/row-key'
 import { toasts } from '@demicodes/web-ui/infra/toast'
-import { codeText } from '@demicodes/web-ui/infra/errors'
+import { codeText, reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
+import { sendPageErrorReport } from '../api/page-errors'
 import { pageReturned, reconnectNow } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { nextTick, toRaw, watch } from 'vue'
@@ -1390,32 +1391,63 @@ test('Recall with a draft in the composer keeps it untouched, and the toast\'s U
   })
 })
 
-// A refusal, as when the agent read the steer meanwhile, brings the row back
-// where it was with a toast, and takes back out of the composer what Undo
-// Send put there, unless the user changed it since (`turns.md` § Steer or
-// queue).
+// A Recall the agent beat, as when it read the steer meanwhile, is no
+// failure: the message shows where the agent took it, with no toast and no
+// report of a defect, and what Recall put in the composer goes back out
+// unless the user changed it since (`turns.md` § Steer or queue). Before, it
+// toasted "Could Not Recall the Message" and posted it to /api/page-errors.
 test.each([
   { since: 'left as it was', draft: '' },
   { since: 'edited', draft: `Compare ${ATTACHMENT_MARK} with the old one, please` },
-] as const)('a refused Recall brings the row back where it was, and the composer it refilled, $since, holds "$draft"', async ({ since, draft }) => {
+] as const)('a Recall the agent beat leaves the message in the transcript with no toast and no report, and the composer it refilled, $since, holds "$draft"', async ({ since, draft }) => {
+  const stopReports = reportPageErrorsWith(sendPageErrorReport)
+  try {
+    await withRemovals(async (conversation, removal) => {
+      const store = useConversations()
+      const steer = (text: string) => ({ id: text, content: [{ type: 'text' as const, text }] })
+      conversation.pendingSteers = [steer('first'), withPicture('second'), steer('third')]
+      store.recall(conversation, 'second')
+      expect(shownRows(conversation).waiting).toEqual(['message:first', 'message:third'])
+      const fileIds = [...conversation.attachmentIds]
+      if (since === 'edited') {
+        conversation.draft += ', please'
+      }
+      await waitFor(() => removal.calls() === 1, () => 'the removal was not sent')
+      // The agent read the steer: the session writes it into the turn.
+      conversation.pendingSteers = [steer('first'), steer('third')]
+      conversation.history = wholeHistory([{
+        type: 'user', id: 'second', turnId: 'running-turn', createdAt: '2026-10-16T00:00:00.000Z', model,
+        content: withPicture('second').content, preamble: null,
+      }])
+      const shown = toasts.length
+      removal.answer.reject(new RemovalRefusedError('The agent had already read it.'))
+      await waitFor(() => !conversation.removing.includes('second'), () => 'the Recall did not end')
+      expect(latestBlocks(conversation.history).map((block) => block.id)).toEqual(['second'])
+      expect(shownRows(conversation).waiting).toEqual(['message:first', 'message:third'])
+      expect(toasts.slice(shown)).toEqual([])
+      expect(requests.filter((request) => request.path === '/api/page-errors')).toEqual([])
+      expect(conversation.draft).toBe(draft)
+      expect(conversation.attachmentIds).toEqual(since === 'edited' ? fileIds : [])
+      expect(conversation.files.some((file) => fileIds.includes(file.id))).toBe(since === 'edited')
+    })
+  } finally {
+    stopReports()
+  }
+})
+
+// Any other failure of a Recall is one: the row comes back where it was,
+// and a toast says why.
+test('a Recall that fails brings the row back where it was with a toast', async () => {
   await withRemovals(async (conversation, removal) => {
     const store = useConversations()
     const steer = (text: string) => ({ id: text, content: [{ type: 'text' as const, text }] })
-    conversation.pendingSteers = [steer('first'), withPicture('second'), steer('third')]
+    conversation.pendingSteers = [steer('first'), steer('second')]
     store.recall(conversation, 'second')
-    expect(shownRows(conversation).waiting).toEqual(['message:first', 'message:third'])
-    const fileIds = [...conversation.attachmentIds]
-    if (since === 'edited') {
-      conversation.draft += ', please'
-    }
     await waitFor(() => removal.calls() === 1, () => 'the removal was not sent')
-    removal.answer.reject(new RemovalRefusedError('The agent had already read it.'))
-    await waitFor(() => shownRows(conversation).waiting.length === 3, () => 'the row did not come back')
-    expect(shownRows(conversation).waiting).toEqual(['message:first', 'message:second', 'message:third'])
-    expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Recall the Message', message: 'The agent had already read it.' })
-    expect(conversation.draft).toBe(draft)
-    expect(conversation.attachmentIds).toEqual(since === 'edited' ? fileIds : [])
-    expect(conversation.files.some((file) => fileIds.includes(file.id))).toBe(since === 'edited')
+    removal.answer.reject(new Error('The agent session is closed'))
+    await waitFor(() => shownRows(conversation).waiting.length === 2, () => 'the row did not come back')
+    expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Recall the Message', message: 'The agent session is closed' })
+    expect(conversation.draft).toBe('')
   })
 })
 
@@ -2953,6 +2985,46 @@ test('deleted rows leave at once, and a deletion that fails brings its row back 
   expect(listed()).not.toContain(FIRST)
   expect(listed()).toContain(SECOND)
   expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Delete “second”', message: 'Something went wrong on the server.' })
+})
+
+// An outcome already reached is no failure (`web-application.md`
+// § Responding to the user): a conversation another page deleted meanwhile
+// is deleted, with no toast. Before, it toasted "Could Not Delete".
+test('deleting a conversation another page deleted already is done, with no toast', async () => {
+  const store = useConversations()
+  const fetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    if (init?.method === 'DELETE' && String(input) === `/api/conversations/${SECOND}`) {
+      return Response.json({ requestId: 'req_test000000000001', code: 'conversation_not_found', message: 'No such conversation' }, { status: 404 })
+    }
+    return fetch(input, init)
+  }) as typeof fetch
+  const shown = toasts.length
+  expect(await store.remove([SECOND])).toBe(true)
+  expect(store.items.map((item) => item.id)).not.toContain(SECOND)
+  // This test's browser keeps no drafts, which a toast of its own says.
+  expect(toasts.slice(shown).filter((toast) => toast.title !== 'Could Not Save Drafts')).toEqual([])
+})
+
+// A move naming a conversation another page deleted meanwhile lost a race
+// and says nothing; an order the backend refuses as out of partition is a
+// defect of the page's and still toasts.
+test.each([
+  { answer: 'conversation_not_found', status: 404, toast: false },
+  { answer: 'invalid_order', status: 409, toast: true },
+] as const)('a reorder the backend answers $answer toasts: $toast', async ({ answer, status, toast }) => {
+  const store = useConversations()
+  const fetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    if (String(input) === '/api/sidebar/reorder') {
+      return Response.json({ requestId: 'req_test000000000001', code: answer, message: 'Refused' }, { status })
+    }
+    return fetch(input, init)
+  }) as typeof fetch
+  const shown = toasts.length
+  await store.reorder(FIRST, null)
+  const titles = toasts.slice(shown).map((each) => each.title).filter((title) => title !== 'Could Not Save Drafts')
+  expect(titles).toEqual(toast ? ['Could Not Reorder Conversations'] : [])
 })
 
 test('read acknowledgements use the observed revision and wait for history', async () => {

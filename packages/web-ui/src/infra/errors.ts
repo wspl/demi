@@ -77,6 +77,49 @@ export function coded<E extends Error>(error: E, code: string, params: Readonly<
   return Object.assign(error, { code, params })
 }
 
+/** The code a refusal or a failure the page coded carries (`coded`), or null. */
+export function errorCode(error: unknown): string | null {
+  return error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : null
+}
+
+/**
+ * Marks `error` as a failure of the page's environment, not a defect: the
+ * network that brought no answer, the browser's storage that refused, as
+ * with a full quota, or a part of the page that did not load
+ * (`backend.md` § The page's own errors). `reportError` tells of it as of
+ * any failure and reports it to no one. Marked where the failure comes
+ * from, which alone knows what it is; answers `error`.
+ */
+export function environmental<E>(error: E): E {
+  if (error instanceof Error) {
+    Object.assign(error, { environment: true })
+  }
+  return error
+}
+
+/**
+ * How the browsers reject a dynamic import whose module did not download:
+ * Chrome's, Firefox's and Safari's TypeError, and Vite's own when a chunk's
+ * stylesheet did not load. A loader such as CodeMirror's language data
+ * imports and builds in one promise, and the browsers give no other way to
+ * tell a download that failed from a module that threw.
+ */
+const CHUNK_DOWNLOAD_FAILED = /dynamically imported module|Importing a module script failed|Unable to preload CSS/
+
+/**
+ * `error` of loading a part of the page, marked as the environment's
+ * (`environmental`) when the part did not download; a module that threw as
+ * it loaded or was built is a defect, and stays one.
+ */
+export function chunkLoadFailure(error: unknown): unknown {
+  return error instanceof Error && CHUNK_DOWNLOAD_FAILED.test(error.message) ? environmental(error) : error
+}
+
+/** Whether `error` is the environment's (`environmental`). */
+function isEnvironmental(error: unknown): boolean {
+  return error instanceof Error && 'environment' in error && error.environment === true
+}
+
 /**
  * The catalogue's text for the code `code`, `errors.<code>`, filled with
  * `params` as the page writes each: a value whose name ends in `Bytes` as
@@ -104,11 +147,12 @@ export function errorMessage(error: unknown): SentenceText {
   if (!(error instanceof Error)) {
     return String(error)
   }
-  if ('code' in error && typeof error.code === 'string') {
+  const code = errorCode(error)
+  if (code !== null) {
     const params = 'params' in error && typeof error.params === 'object' && error.params !== null
       ? Object.fromEntries(Object.entries(error.params))
       : {}
-    const worded = codeText(error.code, params)
+    const worded = codeText(code, params)
     if (worded !== null) {
       return worded
     }
@@ -156,7 +200,7 @@ export function formError(
   error: unknown,
   corrections: Readonly<Record<string, SentenceText | null | undefined>>,
 ): ShownError {
-  const code = error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : null
+  const code = errorCode(error)
   if (code !== null && code in corrections) {
     return worded(() => corrections[code] ?? errorMessage(error), null)
   }
@@ -201,8 +245,10 @@ async function sendReport(report: PageErrorReport): Promise<string | null> {
 /**
  * Tells of a failure: on the console unless it was expected, and in a toast
  * when the user should see it, with the ID of the request it came from. A
- * failure no request names, one the page found itself, is reported to the
- * backend, and its toast shows the report's ID once the report is in.
+ * defect no request names, one the page found itself, is reported to the
+ * backend, and its toast shows the report's ID once the report is in; a
+ * failure of the environment (`environmental`) is not
+ * (`backend.md` § The page's own errors).
  */
 export function reportError(
   title: HeadlineText,
@@ -213,7 +259,7 @@ export function reportError(
   if (!options.expected)
     console.error(`[demi] ${title}: ${message}`, options.detail ?? '')
   const requestId = requestIdOf(error)
-  const reported = options.expected || requestId !== null
+  const reported = options.expected || requestId !== null || isEnvironmental(error)
     ? null
     : sendReport({ title, message, detail: options.detail ?? detailOf(error) })
   if (!options.userVisible)

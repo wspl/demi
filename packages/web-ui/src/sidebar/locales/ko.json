@@ -77,6 +77,8 @@
   "refused": {
     "quote": "“{name}”",
     "line": "{name}: {reasons}",
+    "deleteProject": "프로젝트를 삭제할 수 없습니다",
+    "reorderProjects": "프로젝트를 다시 정렬할 수 없습니다",
     "archive": {
       "one": "{name} 대화를 보관할 수 없습니다",
       "many": "대화 {count}개를 보관할 수 없습니다"

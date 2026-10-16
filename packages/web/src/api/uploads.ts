@@ -1,6 +1,6 @@
 import type { ClaimFile, UploadedFile, UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
-import { coded } from '@demicodes/web-ui/infra/errors'
+import { coded, environmental } from '@demicodes/web-ui/infra/errors'
 import { apiError, apiRequest, apiUrl, invalidResponse, readResponse, untilReached } from './client'
 import { type AttachmentDto, attachmentAnswerSchema, attachmentCheckAnswerSchema } from './generated/web-api'
 
@@ -83,7 +83,7 @@ function sendBytes(
     const moved = () => {
       clearTimeout(stall)
       // A deadline, as a request's own timeout is: the backend did not answer in time.
-      stall = setTimeout(() => stop(new DOMException('Upload stalled.', 'TimeoutError')), UPLOAD_STALL_MS)
+      stall = setTimeout(() => stop(environmental(new DOMException('Upload stalled.', 'TimeoutError'))), UPLOAD_STALL_MS)
     }
     xhr.open(options.method ?? 'POST', apiUrl(path))
     xhr.withCredentials = true
@@ -93,7 +93,7 @@ function sendBytes(
       options.progress(event.loaded)
     }
     // No answer came, which fetch reports as a TypeError: the backend could not be reached.
-    xhr.onerror = () => fail(coded(new TypeError('Upload connection failed.'), 'upload_connection_failed'))
+    xhr.onerror = () => fail(environmental(coded(new TypeError('Upload connection failed.'), 'upload_connection_failed')))
     xhr.onabort = () => fail(coded(new Error('Upload cancelled.'), 'upload_cancelled'))
     xhr.onload = () => {
       if (xhr.status < 200 || xhr.status >= 300) {

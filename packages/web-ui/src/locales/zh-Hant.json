@@ -262,8 +262,6 @@
     "auth_refresh_failed": "無法重新整理供應商的登入。",
     "interrupted": "輪次在完成前遭到中斷。",
     "host_offline": "主機已離線，因此此輪次無法完成。",
-    "steer_already_read": "智慧體已讀取該訊息。",
-    "turn_already_begun": "其輪次已經開始。",
     "edit_media_not_stored": "此訊息中的某個檔案未隨對話儲存，因此編輯時無法保留。"
   },
   "common": {

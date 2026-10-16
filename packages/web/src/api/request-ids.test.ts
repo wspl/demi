@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, expect, test } from 'bun:test'
 import { z } from 'zod'
+import { waitFor } from '@demicodes/utils'
+import { reportError, reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
 import { ApiError, UnreadableResponse, apiRequest, readResponse } from './client'
 import { sendPageErrorReport } from './page-errors'
 
@@ -24,6 +26,10 @@ beforeEach(() => {
         { code: 'fork_conflict', message: 'Another fork is on its way', requestId: 'req_fork0000000000001' },
         { status: 409, headers: { 'X-Request-Id': 'req_fork0000000000001' } },
       )
+    }
+    if (request === 'GET /api/unreachable') {
+      // What fetch rejects with when no connection could be made.
+      throw new TypeError('Failed to fetch')
     }
     if (request === 'GET /api/plugin-state') {
       return Response.json({ title: 31337, secret: 'sk-live-value' }, { headers: { 'X-Request-Id': 'req_state000000000001' } })
@@ -62,6 +68,23 @@ test('an answer that does not read is the page’s own failure: its detail names
   expect(detail).toContain('expected string, received number')
   for (const value of ['31337', 'sk-live-value']) {
     expect(detail).not.toContain(value)
+  }
+})
+
+// Only a defect is reported (`backend.md` § The page's own errors): a
+// request that reached no backend is the environment's failure, told on the
+// console alone. Before, it was posted to /api/page-errors as a defect.
+test('a request that reached no backend posts no report; a defect does', async () => {
+  const stopReports = reportPageErrorsWith(sendPageErrorReport)
+  try {
+    const unreached = await apiRequest('/unreachable', { waits: false }).catch((error: unknown) => error)
+    reportError('Could Not Read the Settings', unreached)
+    // Reports go in the order of their failures: once this one is in, the others would be too.
+    reportError('Could Not Open the File', new Error('handler threw'))
+    await waitFor(() => reports.length > 0, () => 'the defect was not reported')
+    expect(reports).toEqual([expect.objectContaining({ title: 'Could Not Open the File' })])
+  } finally {
+    stopReports()
   }
 })
 

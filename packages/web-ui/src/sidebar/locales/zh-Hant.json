@@ -77,6 +77,8 @@
   "refused": {
     "quote": "「{name}」",
     "line": "{name}：{reasons}",
+    "deleteProject": "無法刪除專案",
+    "reorderProjects": "無法重新排序專案",
     "archive": {
       "one": "無法封存{name}",
       "many": "無法封存 {count} 個對話"

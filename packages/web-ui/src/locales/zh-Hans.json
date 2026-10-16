@@ -262,8 +262,6 @@
     "auth_refresh_failed": "无法刷新供应商的登录。",
     "interrupted": "轮次在完成前被中断。",
     "host_offline": "主机已离线，因此此轮次无法完成。",
-    "steer_already_read": "智能体已读取该消息。",
-    "turn_already_begun": "其轮次已经开始。",
     "edit_media_not_stored": "此消息中的某个文件未随对话存储，因此编辑时无法保留。"
   },
   "common": {

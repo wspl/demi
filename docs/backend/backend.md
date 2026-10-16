@@ -535,6 +535,12 @@ with the error. A report carries what failed and where, never a value it
 held: a schema's refusal names the path and the expected and received types,
 a schema's own refinement words its refusal without quoting the value, and
 an address in a report's message keeps its path, never its query.
+Only a defect is reported: a value the page refused, a handler that threw,
+and the page's diagnostics. A failure of the network, of the browser's
+storage, such as a full quota, or of loading a part of the page is the
+environment's, and an action that lost a race
+([Only a failure interrupts](../product/web-application.md#responding-to-the-user))
+is nobody's: neither is reported.
 A page sends at most 30 reports a minute; more are answered 429 and shown
 without an ID.
 

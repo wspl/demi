@@ -1,4 +1,5 @@
 import { shallowRef } from 'vue'
+import { environmental } from '@demicodes/web-ui/infra/errors'
 
 /**
  * One IndexedDB database of the page: opened on first use and kept open, so
@@ -21,6 +22,19 @@ import { shallowRef } from 'vue'
  * again for only once.
  */
 export const newerStorage = shallowRef<string | null>(null)
+
+/**
+ * The failures of the browser's storage itself, which are the environment's
+ * (`environmental`): a full quota, and storage that is unavailable, as in a
+ * private window or after the browser lost its files. Any other failure of
+ * an operation, such as a ConstraintError, is this page's defect.
+ */
+const STORAGE_FAILURES = new Set(['QuotaExceededError', 'UnknownError', 'InvalidStateError'])
+
+/** `error`, marked as the environment's when the browser's storage itself failed. */
+function storageFailure<E>(error: E): E {
+  return error instanceof DOMException && STORAGE_FAILURES.has(error.name) ? environmental(error) : error
+}
 
 export class IndexedDatabase {
   #database: IDBDatabase | null = null
@@ -79,7 +93,7 @@ export class IndexedDatabase {
       transaction = database.transaction(store, mode)
     } catch (error) {
       if (retried || !(error instanceof DOMException) || error.name !== 'InvalidStateError') {
-        return Promise.reject(error)
+        return Promise.reject(storageFailure(error))
       }
       // The connection closed without a close event. No transaction was
       // made, so nothing of `operation` ran: it runs once on a new one.
@@ -93,7 +107,7 @@ export class IndexedDatabase {
       transaction.onabort = () => {
         const error = transaction.error ?? new DOMException(`A transaction on ${this.name} was aborted.`, 'AbortError')
         if (retried || error.name !== 'AbortError') {
-          reject(error)
+          reject(storageFailure(error))
           return
         }
         // The web browser closed the connection under the transaction, which
@@ -141,14 +155,14 @@ export class IndexedDatabase {
         if (request.error?.name === 'VersionError') {
           newerStorage.value = `${this.name} ${this.version}`
         }
-        reject(request.error)
+        reject(environmental(request.error))
       }
       request.onblocked = () => {
         blocked = true
         if (this.#opening === opening) {
           this.#opening = null
         }
-        reject(new Error(`Another page keeps an older version of ${this.name} open.`))
+        reject(environmental(new Error(`Another page keeps an older version of ${this.name} open.`)))
       }
     })
     this.#opening = opening

@@ -2,6 +2,7 @@
 import { GALLERY_MARKS } from '../fixtures/device-marks'
 import { refusal, simulatedRequestId } from '../fixtures/request-failures'
 import { reportError } from '@demicodes/web-ui/infra/errors'
+import { t as sidebarText } from '@demicodes/web-ui/sidebar/locales/text'
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import { moveBefore } from '@demicodes/utils'
 import type { SidebarConversation, SidebarProject, SidebarProjectHost, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
@@ -255,7 +256,7 @@ async function deleteProject(specimen: 'demo' | 'marks', id: string): Promise<vo
   await slow()
   const rows = list.value.filter((conversation) => conversation.projectId === id)
   if (rows.some((conversation) => conversation.status === 'active')) {
-    reportError('Could Not Delete the Project', refusal('turn_in_flight'), { userVisible: true })
+    reportError(sidebarText('refused.deleteProject'), refusal('turn_in_flight'), { userVisible: true })
     return
   }
   projectList.value = projectList.value.filter((project) => project.id !== id)
