@@ -293,5 +293,8 @@
   },
   "conversation": {
     "untitled": "新对话"
+  },
+  "markdown": {
+    "mathUnavailable": "数学公式显示不可用"
   }
 }

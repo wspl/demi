@@ -4,7 +4,6 @@
 // from their text, because their output depends on inline styles the
 // allowlist removes.
 import DOMPurify, { type DOMPurify as Purifier } from 'dompurify'
-import katex from 'katex'
 import type { MarkedExtension, Token, Tokens } from 'marked'
 import { gfmHeadingId } from 'marked-gfm-heading-id'
 import { z } from 'zod'
@@ -15,7 +14,7 @@ import type { ThemeMode } from '../theme/appTheme'
 import { WEB_LINK_REL, decodedTarget } from './filePath'
 import { codeBlockHtml } from './highlight'
 import { escapeHtml } from './html'
-import { mathExtensions } from './math'
+import { loadedKatex, mathExtensions, mathSourceHtml } from './math'
 import { markdownReader } from './reader'
 import { scrollingTable } from './table'
 
@@ -148,16 +147,11 @@ const githubAlerts: MarkedExtension = {
 const MODE_ONLY = /#gh-(dark|light)-mode-only$/
 
 // Math placeholders keep the messages' math syntax and hold the TeX as text
-// until sanitizing is done.
+// until sanitizing is done; they are what math shows until KaTeX is there.
 const mathPlaceholders: MarkedExtension = {
   extensions: mathExtensions({ throwOnError: false }).map((extension) => ({
     ...extension,
-    renderer: (token: Tokens.Generic) => {
-      const tex = escapeHtml(String(token['text']))
-      return token['displayMode']
-        ? `<div class="math math-display">${tex}</div>\n`
-        : `<span class="math math-inline">${tex}</span>`
-    },
+    renderer: (token: Tokens.Generic) => mathSourceHtml(String(token['text']), token['displayMode'] === true),
   })),
 }
 
@@ -357,13 +351,21 @@ export function mediaForTheme(media: string, theme: ThemeMode): string | null {
   return queries.length === 0 ? null : queries.join(', ')
 }
 
-/** Math and code, rendered from their text: nothing a document wrote reaches their output. */
+/**
+ * Math and code, rendered from their text: nothing a document wrote reaches
+ * their output. Until KaTeX is there, math stays as its source.
+ */
 function renderAfterSanitizing(fragment: DocumentFragment): void {
-  for (const element of fragment.querySelectorAll<HTMLElement>('.math')) {
-    katex.render(element.textContent ?? '', element, {
-      displayMode: element.classList.contains('math-display'),
-      throwOnError: false,
-    })
+  const katex = loadedKatex()
+  if (katex) {
+    for (const element of fragment.querySelectorAll<HTMLElement>('.math')) {
+      const rendered = document.createElement('template')
+      rendered.innerHTML = katex.renderToString(element.textContent ?? '', {
+        displayMode: element.classList.contains('math-display'),
+        throwOnError: false,
+      })
+      element.replaceWith(rendered.content)
+    }
   }
   for (const code of fragment.querySelectorAll<HTMLElement>('pre > code')) {
     const language = [...code.classList].find((name) => name.startsWith('language-'))?.slice('language-'.length) ?? ''
@@ -372,7 +374,10 @@ function renderAfterSanitizing(fragment: DocumentFragment): void {
     if (language === 'math') {
       // A `math` block is display math, as on GitHub.
       const block = document.createElement('div')
-      katex.render(text, block, { displayMode: true, throwOnError: false })
+      if (katex)
+        katex.render(text, block, { displayMode: true, throwOnError: false })
+      else
+        block.innerHTML = mathSourceHtml(text, true)
       pre.replaceWith(block)
       continue
     }

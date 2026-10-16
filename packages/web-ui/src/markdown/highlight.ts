@@ -1,9 +1,9 @@
-import { readonly, shallowRef } from 'vue'
 import { appThemeStore } from '../theme/appTheme'
 import { codeTheme } from '../theme/codeTheme'
 import { reportSyntaxColorsUnavailable } from '../editor/load'
 import type { Highlighter } from './highlighter'
 import { escapeHtml } from './html'
+import { renderAgain } from './render-version'
 
 // Code outside the editor (`file-previews.md` § Code), as the page shows it
 // before and after the highlighter arrives. The highlighter is a chunk of its
@@ -11,14 +11,6 @@ import { escapeHtml } from './html'
 // shows as plain text in the theme's text color, laid out as it will be, and
 // a block's language label keeps its row, empty; on its arrival every code
 // renders again with its colors and its label.
-
-const renderVersion = shallowRef(0)
-
-// Code shows in the app's mode, so a mode switch is a new render too. The
-// subscription lasts as long as the page, like the loaded languages.
-appThemeStore.subscribe(() => {
-  renderVersion.value += 1
-})
 
 let highlighter: Highlighter | null = null
 let loading: Promise<void> | null = null
@@ -30,10 +22,8 @@ let loading: Promise<void> | null = null
 export function loadHighlighter(): Promise<void> {
   loading ??= import('./highlighter').then(
     ({ createHighlighter }) => {
-      highlighter = createHighlighter(() => {
-        renderVersion.value += 1
-      })
-      renderVersion.value += 1
+      highlighter = createHighlighter(renderAgain)
+      renderAgain()
     },
     reportSyntaxColorsUnavailable,
   )
@@ -90,9 +80,4 @@ export interface CodeRun {
  */
 export function codeRuns(code: string, lang: string): CodeRun[] {
   return loadedHighlighter()?.runs(code, lang) ?? []
-}
-
-/** Changes when rendered code should render again: the highlighter's or a language's arrival, and the page's mode. */
-export function useMarkdownRenderVersion() {
-  return readonly(renderVersion)
 }

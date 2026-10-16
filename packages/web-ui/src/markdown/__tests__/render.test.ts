@@ -1,4 +1,6 @@
 import { expect, test } from 'bun:test'
+import { Marked } from 'marked'
+import { loadKatex, mathExtensions } from '../math'
 import { messageMedia, renderMarkdown } from '../render'
 import type { AttachmentLookup, MessageFiles } from '../types'
 import type { HostImage } from '../../files/host-image'
@@ -323,7 +325,21 @@ test('prices stay text', () => {
     expect(renderMarkdown(text)).toBe(`<p>${text}</p>\n`)
 })
 
-test('math renders on its own, beside Chinese text, and as a display', () => {
+test('until KaTeX arrives, math shows its source where it will stand, and asks for KaTeX', () => {
+  // A KaTeX that has not arrived, whatever another test loaded in this process.
+  let asked = 0
+  const reader = new Marked({ extensions: mathExtensions({}, () => {
+    asked += 1
+    return null
+  }) })
+  expect(reader.parse('面积为$x^2$平方米')).toBe('<p>面积为<span class="math math-inline">x^2</span>平方米</p>\n')
+  expect(reader.parse('$$a < b$$')).toBe('<p><span class="math math-display">a &lt; b</span></p>\n')
+  expect(reader.parse('$$\nx_1\n$$')).toBe('<span class="math math-display">x_1</span>\n')
+  expect(asked).toBe(3)
+})
+
+test('math renders on its own, beside Chinese text, and as a display', async () => {
+  await loadKatex()
   expect(renderMarkdown('$x$')).toStartWith('<p><span class="katex">')
   const beside = renderMarkdown('面积为$x^2$平方米')
   expect(beside).toStartWith('<p>面积为<span class="katex">')

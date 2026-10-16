@@ -3,7 +3,7 @@ import { computed, nextTick, ref, shallowRef, watch } from 'vue'
 import { renderMarkdownDocument, type DocumentPlace } from '../markdown/document'
 import { useDocumentImages } from './document-images'
 import type { FileContents } from './types'
-import { useMarkdownRenderVersion } from '../markdown/highlight'
+import { useMarkdownRenderVersion } from '../markdown/render-version'
 import { useTheme } from '../theme/appTheme'
 import { useContentScrollers } from '../composables/useContentScrollers'
 import ScrollArea from '../ui/ScrollArea.vue'
@@ -27,7 +27,7 @@ const emit = defineEmits<{ open: [path: string] }>()
 const renderVersion = useMarkdownRenderVersion()
 const { theme } = useTheme()
 const rendered = computed(() => {
-  // The highlighter arriving, or the theme changing, renders the code anew.
+  // The highlighter or KaTeX arriving, or the theme changing, renders the code and math anew.
   void renderVersion.value
   // The theme also picks the images made for it.
   return renderMarkdownDocument(props.text, props.place, theme.value)

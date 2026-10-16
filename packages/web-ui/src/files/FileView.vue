@@ -281,7 +281,7 @@ const bar = computed(() => {
   const editor = editorLoad.value
   if (props.path === null || editor.phase !== 'ready')
     return null
-  const shown = fileBar(props.path, shownFile.value, editor.editor.languageName)
+  const shown = fileBar(props.path, shownFile.value, editor.chunk.languageName)
   return { ...shown, download: shown.download && props.source.contents !== undefined }
 })
 
