@@ -1001,6 +1001,20 @@ impl ScriptedShell {
         self.ends.send_replace(());
     }
 
+    /// The running command is lost, as when its runner started anew.
+    pub fn lose(&self) {
+        let record = self.command.borrow().clone().expect("the command started");
+        record.borrow_mut().settle(
+            Ending::Lost("the Host's runner started anew".to_owned()),
+            Arc::new(WholeOutput::default()),
+            None,
+            Vec::new(),
+            "",
+        );
+        self.feed.changed(&record);
+        self.ends.send_replace(());
+    }
+
     /// The running command ends, as its runner reports a stop's end.
     pub fn end(&self) {
         assert!(!self.detached.get(), "the environment let go of its command");

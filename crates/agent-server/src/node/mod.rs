@@ -304,6 +304,7 @@ impl<H: HostResolver> Node<H> {
             feed: &feed,
             numbers: &runtime.numbers,
             interval_floor_ms: runtime.interval_floor_ms,
+            call_window_ms: runtime.call_window_ms,
         };
         // One left recorded running is tried again at the next restore.
         let _ = adopt_all(access, &running, runtime.clock.now().as_millisecond()).await;
@@ -430,6 +431,9 @@ pub(crate) struct NodeRuntime<H: HostResolver> {
     agent: u64,
     /// The least interval its commands report at, in milliseconds.
     interval_floor_ms: u32,
+    /// The longest a call of a command with an interval watches it, in
+    /// milliseconds.
+    call_window_ms: u32,
     /// Where the time a command taken up again has run comes from.
     clock: Arc<dyn Clock>,
 }
@@ -544,6 +548,7 @@ impl<H: HostResolver> NodeRuntime<H> {
             feed: &self.feed,
             numbers: &self.numbers,
             interval_floor_ms: self.interval_floor_ms,
+            call_window_ms: self.call_window_ms,
         }
     }
 
@@ -1023,6 +1028,9 @@ pub(crate) struct NodeSpec<H: HostResolver> {
     pub(crate) config: SessionConfig,
     /// The least interval its commands report at, in milliseconds.
     pub(crate) interval_floor_ms: u32,
+    /// The longest a call of a command with an interval watches it, in
+    /// milliseconds.
+    pub(crate) call_window_ms: u32,
 }
 
 /// A node, and what it has yet to run: what its restore handed back, or a new
@@ -1071,6 +1079,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         clock,
         config,
         interval_floor_ms,
+        call_window_ms,
     } = spec;
     let record = origin.record().clone();
     let session_store = store.session_store(&record.id);
@@ -1094,6 +1103,7 @@ pub(crate) async fn assemble<H: HostResolver>(
         numbers: Rc::new(StoreNumbers(store.clone())),
         agent: record.number,
         interval_floor_ms,
+        call_window_ms,
         store: store.clone(),
         shells,
         environments: Environments::default(),
@@ -1114,7 +1124,8 @@ pub(crate) async fn assemble<H: HostResolver>(
             // shells were let go carries what the command's stored output
             // holds since the node's place, as a report of a command no
             // shells hold does (`runtime.md` § Command reports).
-            for report in &mut checkpoint.state.reports {
+            let state = &mut checkpoint.state;
+            for report in state.reports.iter_mut().chain(&mut state.next_turn_reports) {
                 let ended = !matches!(report.event, ReportEvent::Running { .. });
                 let recorded = running.iter().any(|running| running.command == report.command_id);
                 if ended && report.output.is_empty() && !recorded

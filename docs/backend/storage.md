@@ -457,7 +457,7 @@ A running command has a row of its own in `running_commands`, written when
 its job starts and deleted in the transaction that writes its
 `command_outputs` row: its number, the node that ran it, its device, its
 job's id on that device, the tool call that started it, when it started,
-and the place in its output each node has looked to, which a look or a
+the interval it reports at (null for a resident one), and the place in its output each node has looked to, which a look or a
 report moves ([Command reports](../agent/runtime.md#command-reports)).
 The control database's `running_jobs` table indexes them by device: each
 running job's id with its device and conversation, written before the job

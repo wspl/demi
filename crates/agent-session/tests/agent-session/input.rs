@@ -1304,3 +1304,152 @@ async fn a_roots_failed_turn_holds_what_arrives_until_resume_and_a_childs_does_n
     child.settled().await;
     assert!(child.failed_turn().is_none());
 }
+
+// The loss of a resident command, such as a dev server an upgrade ended,
+// opens no turn, also after a restart: the next turn's first request
+// carries it (`runtime.md` § Lost commands). One session restored once and
+// two scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_resident_commands_loss_opens_no_turn_and_reaches_the_next_turns_first_request() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(background_call("17", None, "Serve")),
+        answer("serving"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (session, commands) = reporting_session(&provider, &store).await;
+    session
+        .send(text("serve it"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    commands.lose("17");
+    until(|| !session.status().commands).await;
+    assert!(session.is_settled());
+    assert!(!session.status().input, "a loss that waits is no work of the node's");
+    session.dispose().await.unwrap();
+    drop(session);
+    let state = store.checkpoint(&root()).unwrap().state;
+    assert_eq!(
+        state.next_turn_reports.iter().map(report_text).collect::<Vec<_>>(),
+        [lost_report("17", "Serve")]
+    );
+    assert!(state.reports.is_empty());
+    assert_eq!(provider.requests().len(), 2);
+
+    let later = ScriptedRuntime::new([answer("it was lost; starting it again")]);
+    let (restored, continuation) = restore_session(
+        store.checkpoint(&root()).unwrap(),
+        &store,
+        &later,
+        test_runtime(Vec::new()),
+        Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
+    );
+    assert!(!continuation.interrupted);
+    restored.wake();
+    restored.settled().await;
+    assert!(later.requests().is_empty(), "the restored loss opens no turn either");
+    restored
+        .send(text("is the server up?"), turn("t2"))
+        .unwrap()
+        .await
+        .unwrap();
+    let requests = later.requests();
+    assert_eq!(requests.len(), 1);
+    assert_eq!(steers(&requests[0].items), [lost_report("17", "Serve")]);
+    assert!(store.checkpoint(&root()).unwrap().state.next_turn_reports.is_empty());
+}
+
+// The loss of a command started with an interval wakes its node, which may
+// be waiting for it (`runtime.md` § Lost commands). One session and three
+// scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_loss_of_a_command_with_an_interval_opens_a_turn() {
+    let provider = ScriptedRuntime::new([
+        Turn::Events(background_call("17", Some(300_000), "Run the suite")),
+        answer("the suite runs"),
+        answer("it was lost"),
+    ]);
+    let store = MemoryTreeStore::new();
+    let (session, commands) = reporting_session(&provider, &store).await;
+    session
+        .send(text("run the suite"), turn("t1"))
+        .unwrap()
+        .await
+        .unwrap();
+
+    commands.lose("17");
+    until(|| provider.requests().len() == 3).await;
+    session.settled().await;
+    assert_eq!(
+        provider.requests()[2].items.last(),
+        Some(&InferenceItem::UserMessage {
+            content: sent_text(&lost_report("17", "Run the suite")),
+        })
+    );
+}
+
+// A call that watched a command with an interval when the process died: the
+// restored session watches the command at the interval its record kept,
+// so its loss opens a turn as any loss of such a command does
+// (`runtime.md` § Lost commands). One session restored once and two
+// scripted requests: a few milliseconds.
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_command_whose_call_a_crash_interrupted_keeps_its_interval_and_its_loss_opens_a_turn() {
+    let provider = ScriptedRuntime::new([Turn::Events(vec![
+        event::tool_call("call-1", "suite", json!({})),
+        event::response(1, 1),
+    ])]);
+    let store = MemoryTreeStore::new();
+    let (suite, _releases, started) = gated_tool("suite");
+    let session = start(&provider, vec![suite], &store, SessionConfig::default()).await;
+    let _running = session.send(text("run the suite"), turn("t1")).unwrap();
+    started.await.unwrap();
+    // The process dies here: what the store holds is all that is left.
+    let crashed = store.copy();
+    drop(session);
+
+    let later = ScriptedRuntime::new([answer("the suite runs"), answer("the suite was lost")]);
+    let runtime = test_runtime(Vec::new());
+    let commands = runtime.commands.clone();
+    commands.start("17", "Run the suite");
+    // The conversation recorded the command the call started, and its
+    // interval.
+    let running = [RunningCommand {
+        command: CommandId::try_from("17").unwrap(),
+        job: "job-17".into(),
+        tool_use_id: "call-1".into(),
+        title: "Run the suite".into(),
+        interval_ms: Some(300_000),
+        started: Timestamp::UNIX_EPOCH,
+        place: Default::default(),
+    }];
+    let deps = SessionDeps {
+        runtime: Rc::new(runtime),
+        store: crashed.session_store(&root()),
+        ids: Rc::new(SequentialIds::new("restored")),
+        clock: Arc::new(TokioClock::new(Timestamp::UNIX_EPOCH)),
+        config: SessionConfig::default(),
+    };
+    let (restored, _) = AgentSession::restore(
+        crashed.checkpoint(&root()).unwrap(),
+        root(),
+        Box::new(later.clone()),
+        deps,
+        &running,
+    )
+    .unwrap();
+    assert_eq!(restored.interval_of(&running[0].command), Some(Some(300_000)));
+    // The interrupted turn waits for the user, who resumes it.
+    restored.resume(None).unwrap().await.unwrap();
+
+    commands.lose("17");
+    until(|| later.requests().len() == 2).await;
+    restored.settled().await;
+    assert_eq!(
+        later.requests()[1].items.last(),
+        Some(&InferenceItem::UserMessage {
+            content: sent_text(&lost_report("17", "Run the suite")),
+        })
+    );
+}

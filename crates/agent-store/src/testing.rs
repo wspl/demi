@@ -901,6 +901,7 @@ pub mod store_contract {
                 queue,
                 agent_inputs: Vec::new(),
                 reports: Vec::new(),
+                next_turn_reports: Vec::new(),
                 intervals: Vec::new(),
                 model: test_model(),
                 edits: Vec::new(),

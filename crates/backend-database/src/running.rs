@@ -34,13 +34,16 @@ pub struct RunningCommand {
     /// That call's title, which the command's reports name; empty for a
     /// command recorded before records kept it.
     pub title: String,
+    /// How often its call asked it to report, or only its end when none
+    /// (`runtime.md` § Command reports).
+    pub interval_ms: Option<u32>,
     pub started: Timestamp,
     /// How far each node that looked at it has seen its output, which a
     /// look or a report moves.
     pub places: BTreeMap<NodeId, Seen>,
 }
 
-const COLUMNS: &str = "command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title";
+const COLUMNS: &str = "command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title, interval_ms";
 
 /// How far one node has seen a running command's output, as the `places`
 /// column stores it (command places format 1): any count of bytes is one.
@@ -90,7 +93,7 @@ impl StoredPlaces {
 pub fn insert(connection: &Connection, running: &RunningCommand) -> Result<(), StorageError> {
     connection
         .prepare_cached(&format!(
-            "INSERT INTO running_commands ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+            "INSERT INTO running_commands ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
              ON CONFLICT (command_id) DO NOTHING"
         ))?
         .execute(params![
@@ -102,6 +105,7 @@ pub fn insert(connection: &Connection, running: &RunningCommand) -> Result<(), S
             running.started.as_millisecond(),
             to_json(&StoredPlaces::of(&running.places)),
             running.title,
+            running.interval_ms,
         ])?;
     Ok(())
 }
@@ -182,6 +186,7 @@ fn decode_row(row: &Row<'_>) -> Result<RunningCommand, StorageError> {
         job: row.get(3)?,
         tool_use_id: row.get(4)?,
         title: row.get(7)?,
+        interval_ms: row.get(8)?,
         started: instant(row, table, "started_at")?,
         places: json::<StoredPlaces>(table, "places", &row.get::<_, String>(6)?)?.places(),
     })

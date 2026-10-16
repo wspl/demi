@@ -26,7 +26,7 @@ use demi_agent_session::{
 };
 use demi_agent_store::{AgentTreeStore, Checkpoint, CheckpointUpdate, NodeRecord, StoreError};
 use demi_agent_tools::{
-    ContextSource, HostResolver, INTERVAL_FLOOR_MS, ProfileModel, ShellEnvironmentFactory,
+    CALL_WINDOW_MS, ContextSource, HostResolver, INTERVAL_FLOOR_MS, ProfileModel, ShellEnvironmentFactory,
     SubagentSource, ToolsetSource, Unavailable,
 };
 use demi_agent_transcript::{ForkEnd, IdSource};
@@ -157,6 +157,10 @@ pub struct ServerConfig {
     /// (`runtime.md` § Tool input): [`INTERVAL_FLOOR_MS`] in the product,
     /// which a test shortens to see reports within its time.
     pub interval_floor_ms: u32,
+    /// The longest a `shell` call of a command with an interval watches it,
+    /// in milliseconds (`runtime.md` § Tool input): [`CALL_WINDOW_MS`] in the
+    /// product, which a test shortens to see a call return within its time.
+    pub call_window_ms: u32,
 }
 
 impl Default for ServerConfig {
@@ -166,6 +170,7 @@ impl Default for ServerConfig {
             outbox_frames: 4_096,
             idle_tree: Duration::from_secs(600),
             interval_floor_ms: INTERVAL_FLOOR_MS,
+            call_window_ms: CALL_WINDOW_MS,
         }
     }
 }
@@ -452,6 +457,7 @@ impl<H: HostResolver> AgentServer<H> {
             && state.queue.is_empty()
             && state.agent_inputs.is_empty()
             && state.reports.is_empty()
+            && state.next_turn_reports.is_empty()
             && state.intervals.is_empty()
             && state.edits.is_empty();
         if !fresh {

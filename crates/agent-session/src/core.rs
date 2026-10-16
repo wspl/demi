@@ -41,7 +41,7 @@ use super::{
     Execution, ModelSwitch, SessionEvent, Settle, Status, SteerError,
     cancel::{CancelReason, TurnCancel},
     editing::{EditCheck, EditError, EditInFlight, EditSubmission},
-    input::{Input, InputQueue, Take},
+    input::{Input, InputQueue, Opens, Take},
     persist::PersistMarks,
     reports::Watched,
     runtime::{Arrivals, CallCommand, CommandLook, SessionRuntime},
@@ -316,6 +316,7 @@ struct Published {
     pending_calls: Vec<PendingCall>,
     agent_inputs: Vec<BlockId>,
     reports: Vec<CommandReport>,
+    next_turn_reports: Vec<CommandReport>,
     intervals: Vec<CommandInterval>,
     edits: usize,
     waiting_since: Option<Timestamp>,
@@ -432,6 +433,7 @@ impl SessionCore {
                 pending_calls: Vec::new(),
                 agent_inputs: Vec::new(),
                 reports: Vec::new(),
+                next_turn_reports: Vec::new(),
                 intervals: Vec::new(),
                 edits: 0,
                 waiting_since: None,
@@ -440,7 +442,8 @@ impl SessionCore {
         // What the checkpoint holds counts as published: only later changes
         // make a save due.
         core.published.agent_inputs = core.agent_input_ids();
-        core.published.reports = core.inputs.reports();
+        core.published.reports = core.inputs.reports(Opens::Turn);
+        core.published.next_turn_reports = core.inputs.reports(Opens::Nothing);
         core.published.intervals = core.watched.intervals();
         core.published.edits = core.edits.len();
         core
@@ -1310,7 +1313,7 @@ impl SessionCore {
         let mut reports: Vec<CommandReport> = inputs
             .iter()
             .filter_map(|input| match input {
-                Input::Report(report) => Some(report.clone()),
+                Input::Report(report, _) => Some(report.clone()),
                 _ => None,
             })
             .collect();
@@ -1321,8 +1324,8 @@ impl SessionCore {
                     self.transcript
                         .push_steer(steer.id, turn.clone(), &steer.model, steer.content);
                 }
-                Input::Report(_) if reports.is_empty() => {}
-                Input::Report(_) => {
+                Input::Report(..) if reports.is_empty() => {}
+                Input::Report(..) => {
                     let reports = mem::take(&mut reports);
                     self.push_reports(turn.clone(), WakeupPlacement::Steer, reports);
                 }
@@ -1379,9 +1382,10 @@ impl SessionCore {
     }
 
     /// Admits a command's report for the next boundary: it joins the running
-    /// turn, or opens a continuation. A session that is closing keeps no
-    /// more input.
-    pub(super) fn admit_report(&mut self, report: CommandReport) {
+    /// turn, or opens a continuation unless it `opens` nothing, when it
+    /// waits for the node's next turn (`runtime.md` § Lost commands). A
+    /// session that is closing keeps no more input.
+    pub(super) fn admit_report(&mut self, report: CommandReport, opens: Opens) {
         if self.disposing || end_seen(self.runtime.as_ref(), &report) {
             return;
         }
@@ -1389,9 +1393,9 @@ impl SessionCore {
         // window: the call shows the end itself (`runtime.md` § Command
         // reports).
         if is_end(&report) && self.runtime.looks_at(&report.command_id) {
-            self.inputs.add_quiet(report);
+            self.inputs.add_quiet(report, opens);
         } else {
-            self.inputs.add(Input::Report(report));
+            self.inputs.add(Input::Report(report, opens));
         }
         self.wake();
     }
@@ -2097,7 +2101,8 @@ impl SessionCore {
             phase: self.recorded_phase(),
             queue: self.queued_messages(),
             agent_inputs: self.inputs.agent_inputs(),
-            reports: self.inputs.reports(),
+            reports: self.inputs.reports(Opens::Turn),
+            next_turn_reports: self.inputs.reports(Opens::Nothing),
             intervals: self.watched.intervals(),
             model: self.model.clone(),
             edits: self.edits.clone(),
@@ -2199,9 +2204,14 @@ impl SessionCore {
             self.published.agent_inputs = agent_inputs;
             self.mark_state_changed();
         }
-        let reports = self.inputs.reports();
+        let reports = self.inputs.reports(Opens::Turn);
         if reports != self.published.reports {
             self.published.reports = reports;
+            self.mark_state_changed();
+        }
+        let next_turn_reports = self.inputs.reports(Opens::Nothing);
+        if next_turn_reports != self.published.next_turn_reports {
+            self.published.next_turn_reports = next_turn_reports;
             self.mark_state_changed();
         }
         let intervals = self.watched.intervals();

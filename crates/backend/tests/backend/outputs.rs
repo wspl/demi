@@ -183,7 +183,8 @@ async fn a_command_whose_script_ended_names_the_background_task_that_keeps_it_ru
         .await;
     let result = &started.received[0];
     assert!(result.starts_with("status: running"), "{result}");
-    assert!(result.contains(&format!("output:\nstarted\n{line}\nnext: ")), "{result}");
+    let moved = "[The command is still running, so it moved to the background. It reports every 1s until it ends, and when it ends.]";
+    assert!(result.contains(&format!("output:\nstarted\n{moved}\n{line}\nnext: ")), "{result}");
     let command = field(result, "commandId").to_owned();
 
     let look = format!("demi shell status {command}");

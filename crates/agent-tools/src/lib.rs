@@ -49,7 +49,7 @@ use input::{ShellInput, parse};
 pub use reports::{EndOf, end_report, fill_output, progress_report};
 pub use demi_agent_transcript::duration;
 pub use result::{
-    Look, interrupted_look, look_text, report_media, report_output, whole_look_text, whole_status,
+    Look, Moved, interrupted_look, look_text, report_media, report_output, whole_look_text, whole_status,
 };
 pub use product::{
     ChosenWorkflow, ContextAnswer, ContextSource, ConversationProfiles, EFFORT_OFF, HostResolver,
@@ -133,7 +133,7 @@ impl Directory for Option<ChildDirectory> {
 const SHELL: &str = "shell";
 
 /// What the `shell` tool does, as the model is told.
-const SHELL_DESCRIPTION: &str = "Start a shell script in your working directory and watch it as intervalMs says. Watching is not a deadline: a command still running when the call returns keeps running, the result carries its commandId, and the command reports to you as its interval says until it ends. Completed short output is returned directly. The shell calls of one response run at the same time.";
+const SHELL_DESCRIPTION: &str = "Start a shell script in your working directory. A command still running when the call returns keeps running: the result carries its commandId, and the command reports to you as intervalMs says until it ends. Completed short output is returned directly. The shell calls of one response run at the same time.";
 
 /// The definitions the model receives, made once: the `shell` tool alone.
 pub fn definitions() -> Arc<[ToolDefinition]> {
@@ -157,6 +157,10 @@ pub fn runs_together(tool: &str) -> bool {
 const QUIET: Duration = Duration::from_secs(2);
 /// The longest a resident command's call watches it.
 const RESIDENT_WINDOW: Duration = Duration::from_secs(30);
+/// The longest a call of a command with an interval watches it, in
+/// milliseconds: a minute, so a steer waits at most that long for the model
+/// to read it (`runtime.md` § Tool input). No tool text mentions it.
+pub const CALL_WINDOW_MS: u32 = 60_000;
 
 /// A node's access to its shell environments: the resolver that names the
 /// current Host, the product's factory, the environments made so far, and
@@ -180,6 +184,9 @@ pub struct ShellAccess<'a, H: HostResolver> {
     /// The least interval a command reports at, in milliseconds:
     /// [`INTERVAL_FLOOR_MS`] in the product.
     pub interval_floor_ms: u32,
+    /// The longest a call of a command with an interval watches it, in
+    /// milliseconds: [`CALL_WINDOW_MS`] in the product.
+    pub call_window_ms: u32,
 }
 
 // Every field is a reference or a number, so a step's tasks each hold a
@@ -305,6 +312,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 tool_use_id: call.tool_use_id,
             },
             title: input.description.0.clone(),
+            interval_ms,
             viewable: Viewable {
                 model: call.model.model.id.clone(),
                 media_types: call.request_limits.tool_results.viewable(&call.model.model),
@@ -340,30 +348,40 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             command: command.clone(),
             interval_ms,
         });
+        let window_ms = interval_ms.map(|interval| interval.min(self.call_window_ms));
         let (status, ended_by) = watch(
             environment.as_ref(),
             &command,
-            interval_ms,
+            window_ms,
             call.arrival.arrived(),
         )
         .await?;
         stopping.disarm();
+        let running = matches!(status.state, CommandState::Running { .. });
+        let moved = match (ended_by, interval_ms) {
+            (Some(WindowEnd::SentNow), _) => Some(Moved::SentNow),
+            (None, Some(interval_ms)) if running => Some(Moved::TimePassed { interval_ms }),
+            _ => None,
+        };
         let mut outcome = result::shell_outcome(
             &status,
             &call.model.model,
             call.request_limits,
             Look {
                 note: note.as_deref(),
-                sent_now: ended_by == Some(WindowEnd::SentNow),
+                moved,
                 interval_ms: Some(interval_ms),
                 unreachable: None,
             },
         )
         .await;
-        if matches!(status.state, CommandState::Running { .. }) {
+        if running {
+            // Its reports count from its start, which its call watched
+            // for its running time (`runtime.md` § Command reports).
             outcome.effect = Some(ToolEffect::Background {
                 command,
                 interval_ms,
+                ran: Duration::from_millis(status.running_ms),
             });
         } else {
             self.release(environment.as_ref(), &command).await;
@@ -446,20 +464,20 @@ impl Drop for CallStop {
 }
 
 /// Watches `command` until the first of (`runtime.md` § The window): it
-/// ends; `interval_ms` passes, or for a resident command, its output has
+/// ends; `window_ms` passes, or for a resident command, its output has
 /// been quiet for 2 seconds or 30 seconds have passed; or `until` resolves.
 /// Then returns its status, with what `until` gave when it ended the watch.
 /// Ending the watch never stops the command.
 async fn watch<T>(
     environment: &dyn ShellEnvironment,
     command: &CommandId,
-    interval_ms: Option<u32>,
+    window_ms: Option<u32>,
     until: impl Future<Output = T>,
 ) -> Result<(CommandStatus, Option<T>), ShellError> {
     let window = async {
-        match interval_ms {
-            Some(interval) => {
-                tokio::time::sleep(Duration::from_millis(interval.into())).await;
+        match window_ms {
+            Some(window) => {
+                tokio::time::sleep(Duration::from_millis(window.into())).await;
                 Ok(())
             }
             None => {
