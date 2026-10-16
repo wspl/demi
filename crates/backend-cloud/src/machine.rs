@@ -24,6 +24,7 @@
 use std::cell::{Cell, RefCell, RefMut};
 use std::collections::VecDeque;
 use std::future::Future;
+use std::num::NonZeroU64;
 use std::ops::{Deref, DerefMut};
 use std::rc::Rc;
 use std::time::Duration;
@@ -36,14 +37,16 @@ use demi_backend_page_sync::{Part, UserMarks};
 use demi_backend_remote_host::Admission;
 use demi_backend_runners::codes::new_device_token;
 use demi_host_interface::{HostError, HostErrorKind};
+use demi_backend_database::control::ControlService;
 use demi_machine_manager_protocol::{
-    HibernateParams, RuntimeState, RuntimeStateParams, SandboxMachine, WakeParams,
+    Capacity, HibernateParams, RuntimeState, RuntimeStateParams, SandboxMachine, WakeParams,
 };
 use demi_runner_protocol::boot::ManagedBoot;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose};
 use demi_web_api_protocol::cloud::CloudState;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{DeviceId, OperationId};
+use demi_web_api_protocol::users::CloudStorage;
 use futures_util::FutureExt as _;
 use futures_util::future::{LocalBoxFuture, Shared};
 use tokio::time::Instant;
@@ -52,6 +55,31 @@ use tokio_util::task::AbortOnDropHandle;
 use crate::CloudShard;
 use crate::capacity::CapacityPermit;
 use crate::client::MachinesError;
+
+/// The capacities the backend names for the disks of `device`, a managed
+/// machine (`managed-hosts.md` § Lifecycle and capacity): its account's
+/// Cloud storage, and always the default for the Claude Code machine.
+pub(crate) async fn capacity(
+    control: &ControlService,
+    device: &DeviceRecord,
+) -> Result<Capacity, StorageError> {
+    let storage = match device.machine.unwrap_or(ManagedMachine::Cloud) {
+        ManagedMachine::ClaudeCode => CloudStorage::DEFAULT,
+        ManagedMachine::Cloud => control
+            .cloud_storage(device.user.clone())
+            .await?
+            .ok_or_else(|| StorageError::Corrupt {
+                table: "devices",
+                column: "user_id",
+                reason: format!("the Cloud {} names no account", device.id),
+            })?,
+    };
+    let bytes = |bytes| NonZeroU64::new(bytes).expect("a Cloud disk has at least 1 GB");
+    Ok(Capacity {
+        system_bytes: bytes(storage.system_bytes()),
+        home_bytes: bytes(storage.home_bytes()),
+    })
+}
 
 /// Why the Cloud admits no operation, or why one of its transitions failed.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -578,6 +606,7 @@ impl dyn CloudShard {
             .ok_or_else(|| CloudError::Failed("The backend does not listen yet".into()))?;
         let wake = WakeParams {
             device_id: device.to_string(),
+            capacity: capacity(self.control(), &machine.device).await?,
             boot: ManagedBoot {
                 backend_url,
                 device_token: token,

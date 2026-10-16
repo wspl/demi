@@ -12,8 +12,7 @@
   },
   "storage": {
     "title": "저장 공간",
-    "line": "시스템 {system} · 홈 {home}",
-    "max": "최대 {size}"
+    "line": "시스템 {system} · 홈 {home}"
   },
   "reset": {
     "title": "클라우드 환경 초기화",

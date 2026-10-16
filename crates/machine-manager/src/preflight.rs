@@ -18,8 +18,6 @@ use crate::{
 
 const PROBE_PREFIX: &str = ".preflight-";
 const PROBE_BYTES: u64 = 32 << 20;
-/// The bit of `CAP_SYS_RESOURCE` in a capability set.
-const SYS_RESOURCE: u32 = 24;
 /// How long a probe sandbox may take to run `/bin/true`.
 const RUNTIME_PROBE: std::time::Duration = std::time::Duration::from_secs(60);
 
@@ -35,10 +33,6 @@ pub enum PreflightError {
         "DEMI_MACHINE_MANAGER_DATA must be one filesystem: {0} and {1} are on different filesystems"
     )]
     Filesystems(String, String),
-    #[error(
-        "Cloud requires CAP_SYS_RESOURCE, which the kernel requires to grow a mounted ext4 filesystem; this machine drops it, as some container platforms do"
-    )]
-    SysResource,
     #[error("Cloud's gVisor sandbox does not run on this machine: {0}")]
     Runtime(ToolError),
     #[error(transparent)]
@@ -64,20 +58,6 @@ pub fn require_private_namespace(_: &OffLoop) -> Result<(), PreflightError> {
     let host = fs_err::metadata("/proc/1/ns/mnt")?;
     if (own.dev(), own.ino()) == (host.dev(), host.ino()) {
         return Err(PreflightError::SharedNamespace);
-    }
-    Ok(())
-}
-
-/// Requires `CAP_SYS_RESOURCE` among the process's effective capabilities.
-pub fn require_sys_resource(_: &OffLoop) -> Result<(), PreflightError> {
-    let status = fs_err::read_to_string("/proc/self/status")?;
-    let effective = status
-        .lines()
-        .find_map(|line| line.strip_prefix("CapEff:"))
-        .and_then(|value| u64::from_str_radix(value.trim(), 16).ok())
-        .ok_or_else(|| io::Error::other("/proc/self/status names no effective capabilities"))?;
-    if effective & (1 << SYS_RESOURCE) == 0 {
-        return Err(PreflightError::SysResource);
     }
     Ok(())
 }

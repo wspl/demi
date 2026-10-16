@@ -42,25 +42,44 @@ export function assignableRoles(role: UserRole): Array<Exclude<UserRole, 'master
 export type UserAction =
   | 'resetPassword'
   | 'changeRole'
+  | 'cloudStorage'
   | 'signInCode'
   | 'signOutEverywhere'
   | 'disable'
   | 'enable'
 
 /**
- * What `viewer` may do to `target`, in menu order: nothing to themselves or
- * to a role not below theirs; only the master changes roles; a disabled
- * account refuses every sign-in and has no session to end, so it offers
- * Enable Account instead of Sign-In Code, Sign Out Everywhere and Disable
- * Account.
+ * What `viewer` may do to `target`, in menu order: nothing to a role not
+ * below theirs; to themselves an administrator only sets Cloud Storage,
+ * which decides the server's disk, not the account; only the master changes
+ * roles; a disabled account refuses every sign-in and has no session to end,
+ * so it offers Enable Account instead of Sign-In Code, Sign Out Everywhere
+ * and Disable Account.
  */
 export function userActions(viewer: SettingsUser, target: SettingsUser): UserAction[] {
-  if (viewer.id === target.id || !outranks(viewer.role, target.role)) {
+  if (viewer.id === target.id) {
+    return viewer.role === 'user' ? [] : ['cloudStorage']
+  }
+  if (!outranks(viewer.role, target.role)) {
     return []
   }
   return [
     'resetPassword',
     ...(viewer.role === 'master' ? (['changeRole'] as const) : []),
+    'cloudStorage',
     ...(target.disabled ? (['enable'] as const) : (['signInCode', 'signOutEverywhere', 'disable'] as const)),
   ]
+}
+
+/** The most a Cloud disk may be, in GB. */
+export const CLOUD_GB_MAX = 1024
+
+/** The size `text` names in GB, a whole number from 1 to 1024, or null when it names none. */
+export function parseCloudGb(text: string): number | null {
+  const trimmed = text.trim()
+  if (!/^\d+$/.test(trimmed)) {
+    return null
+  }
+  const size = Number(trimmed)
+  return size >= 1 && size <= CLOUD_GB_MAX ? size : null
 }

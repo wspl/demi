@@ -15,7 +15,7 @@ import { productWould } from '../product-would'
  * Add User… adds a row that has not signed in yet and still has to choose
  * its password (an address another row has is refused); Reset Password… and
  * New Password make a first password and mark the account the same;
- * Change Role… and Disable Account… change the row; and the product would
+ * Change Role…, Cloud Storage… and Disable Account… change the row; and the product would
  * end the sessions of an account signed out, which a toast says.
  */
 const props = defineProps<{
@@ -86,6 +86,7 @@ const host = computed<SettingsUsersHost>(() => ({
       disabled: false,
       choosesPassword: true,
       lastActiveAt: null,
+      cloudStorage: { systemGb: 16, homeGb: 16 },
     })
     return { kind: 'added', id: `added-${added}`, nickname: draft.email.toLowerCase(), password: fakeFirstPassword() }
   },
@@ -105,6 +106,13 @@ const host = computed<SettingsUsersHost>(() => ({
     const user = find(id)
     if (user) {
       user.role = role
+    }
+  },
+  setCloudStorage: async (id, storage) => {
+    await beat()
+    const user = find(id)
+    if (user) {
+      user.cloudStorage = storage
     }
   },
   signOutEverywhere: async (id) => {

@@ -79,7 +79,7 @@ It runs a program only where no library does the job:
 | Program | Why the manager runs it |
 | --- | --- |
 | `runsc` | The sandbox runtime; the manager drives the pinned distribution through its OCI commands. |
-| `mke2fs`, `e2fsck`, `resize2fs` | Create, check, and grow the ext4 images; no Rust library creates or repairs ext4 filesystems. `resize2fs` both grows a mounted filesystem and completes an interrupted growth offline. |
+| `mke2fs`, `e2fsck`, `resize2fs` | Create, check, and enlarge the ext4 images; no Rust library creates or repairs ext4 filesystems. `resize2fs` enlarges an image that is not mounted to its configured capacity. |
 | `bsdtar` | Extract a base archive with numeric ownership, modes including setuid bits, ACLs, and extended attributes intact, refusing paths that leave the target directory. |
 | `nft` | Apply the firewall table as one transaction ([Networking](#networking)). |
 
@@ -136,11 +136,10 @@ socket.
 | `current_base_version`, `image_state` | Read the configured base and a device's committed generation. |
 | `runtime_state` | Read whether the manager runs a sandbox for the device, after the device's earlier operations. |
 | `reconcile` | Report the devices it runs, which stay running, recover incomplete operations, and install the network policy again. |
-| `wake` | Create first-use storage or recover existing storage, then start one sandbox with the supplied boot credential. |
+| `wake` | Create first-use storage or recover existing storage at the system and home capacities the backend names, enlarging a smaller image, then start one sandbox with the supplied boot credential. |
 | `checkpoint` | Publish paired system/home storage while preserving the running processes. |
 | `hibernate` | Stop execution, save storage, and release runtime resources. No memory image is saved. |
-| `grow_volume` | Increase one writable filesystem's capacity within policy limits. |
-| `reset` | Publish a clean system paired with retained home, idempotently by operation id; do not boot. |
+| `reset` | Publish a clean system at the system capacity the backend names, paired with retained home (a first home at the home capacity named, on a device that has none), idempotently by operation id; do not boot. |
 
 The backend sends `reconcile` when it starts, before it serves requests. Its
 close leaves the manager's sandboxes running, so a backend restart stops no
@@ -331,8 +330,7 @@ images of the committed generation into the device's working directory and
 mounts the two working ext4 images through loop devices in its private mount
 namespace. It attaches each image to a loop device it allocates itself, with
 auto-clear set, and keeps the device number for the sandbox's lifetime:
-unmounting the filesystem, or a failed mount, detaches the loop device, and
-growth refreshes the device the sandbox already holds. Linux OverlayFS combines
+unmounting the filesystem, or a failed mount, detaches the loop device. Linux OverlayFS combines
 the immutable base with upper/work on the system filesystem; the resulting
 directory is the OCI root. The home filesystem is a separate OCI bind mount at
 `/home`. The images and loop devices themselves are never visible inside the
@@ -593,34 +591,26 @@ across users; everything else about a user's Cloud lives in that user's shard.
 | Machine manager | [Resource limits](#resource-limits) | On |
 | Machine manager | CPU budget / memory limit per sandbox, with the limits on | 2 CPUs / 2 GiB |
 | Machine manager | CPU budget / memory limit of the Claude Code machine, with the limits on | 2 CPUs / 4 GiB |
-| Machine manager | Writable system / home initial capacity | 1 GiB / 1 GiB |
+| Backend policy | Writable system / home capacity, each account's as an administrator sets it ([Users](../product/users.md#user-system)); the Claude Code machine's always the default | 16 GiB / 16 GiB |
 | Machine manager | `/dev/shm` / `/tmp` / `/run` size limits | 256 MiB / 256 MiB / 256 MiB |
-| Backend policy | System / home maximum capacity | 16 GiB / 32 GiB |
 | Backend lifecycle | Idle window / unattended-job cap | 1 hour / 24 hours |
 | Backend lifecycle | Checkpoint interval | 15 minutes |
 | Backend lifecycle | Runner connection after a boot or during recovery | 60 seconds |
 | Backend lifecycle | Runtime losses that stop automatic boots | 3 within 10 minutes |
 | Backend edge, across all users | Cloud machines booting, running, saving, or resetting | 16 |
 
-Growth changes only one working filesystem: enlarge its sparse backing file,
-refresh the capacity of the loop device the sandbox holds, and grow the mounted
-ext4 filesystem with `resize2fs`. It runs in the device's order, so it never
-overlaps saving or reset. It is monotonic, bounded by backend policy, and
-recoverable if interrupted between those steps: before the manager publishes an
-image whose file is larger than its filesystem, it checks the filesystem and
-grows it to the file. Record the actual filesystem capacity, read from its
-superblock, not merely the requested file size, before reporting success. A
-quota increase does not promise physical disk space; admission and monitoring
-must handle host `ENOSPC`. A sandbox cannot grow its own backing device.
-
-The kernel grows a mounted ext4 filesystem only for a caller with
-`CAP_SYS_RESOURCE` ([Linux requirements](setup.md#linux-requirements)), and
-`resize2fs` reports its refusal as a bare "Permission denied". When `resize2fs`
-fails and the capability is missing from the manager's bounding set, which its
-programs inherit, the growth fails with an error that names the capability
-instead. The manager logs that error, and the backend logs the refused growth
-with it and answers it to the Cloud's runner, which writes it to its
-[Host log](../execution/runner.md#host-log). The filesystem keeps its capacity.
+A Cloud's two writable filesystems have a fixed capacity, which the backend
+names in each wake from its account's setting, and never grow while it runs. Each image is a sparse file, so a
+capacity costs the host only what the Cloud writes: a 16 GiB home with 300 MB
+in it takes about 300 MB. For example, a Cloud first made with 1 GiB, or one
+whose administrator raised its home to 32 GiB, is enlarged at its next wake,
+before its images are mounted: the manager extends the working copy's file and
+runs `resize2fs` on it, then records the capacity read from the superblock. An
+image larger than the capacity named keeps its size, since shrinking a
+filesystem risks its data. A Cloud that fills a filesystem gets `ENOSPC` like any full
+disk, and its working data stays as it was; the host's own free space is
+not promised by any capacity, and the manager handles its `ENOSPC` as an
+error of the operation that met it.
 
 Archiving conversations or deleting project metadata never deletes Cloud data.
 Account-data destruction requires its own explicit retention/deletion policy.
@@ -951,7 +941,7 @@ how the suite runs; a run must show the following:
 | Tools | Installers run in the login shell (rustup, nvm), and later jobs find the tools they installed (cargo, node). |
 | Browser | Chrome opens, and closes at the release of its conversation while the Cloud runs on; the live view receives frames and delivers input. |
 | Checkpoint | A live checkpoint with a running conversation browser publishes both images; the saved image contains pages a live process wrote through a writable mapping and never flushed. |
-| Growth and space | Online growth records the actual capacity; it needs `CAP_SYS_RESOURCE` ([Linux requirements](setup.md#linux-requirements)). A full disk fails the operation and keeps working data. |
+| Capacity and space | A wake enlarges an image smaller than the setting and records the actual capacity. A full disk fails the operation and keeps working data. |
 | Recovery | A restart at each publication boundary loses neither published nor newer working data; runtime and out-of-memory loss report a death. |
 | Manager recovery | After the manager is killed while a filesystem is frozen, the next start recovers through the saved namespace, and the backend reads the Cloud's files and wakes it without restarting itself. A service stop whose drain fails is completed by the stop-post recovery. |
 | Network | Public HTTPS works; private, metadata, and cross-user destinations are refused, and so is the backend's address, which a Cloud reaches through its runner socket; the DNS path is permitted; IPv6 is off. |

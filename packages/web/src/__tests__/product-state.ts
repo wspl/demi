@@ -38,7 +38,6 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
       operation: null,
       error: null,
       volumes: null,
-      limits: { systemBytes: 16 * 1024 ** 3, homeBytes: 32 * 1024 ** 3 },
       newerImage: false,
     },
     logins: [],

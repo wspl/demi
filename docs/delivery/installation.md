@@ -154,7 +154,7 @@ operator does next, and exits with a status other than 0.
    serves ([Startup and recovery](../cloud/managed-hosts.md#startup-and-recovery)),
    on the state directory and with the limits the parameters give, without
    starting anything. A machine that fails is refused with the manager's
-   reasons, such as a container that drops `CAP_SYS_RESOURCE`, or SELinux
+   reasons, such as a missing cgroup controller, or SELinux
    refusing gVisor.
 5. **Write the installation**: the system user `demi` and the group
    `demi-cloud`, the data directories, and `/opt/demi/config/demi.env` readable by

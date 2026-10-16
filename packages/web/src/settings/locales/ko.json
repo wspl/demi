@@ -45,6 +45,7 @@
   "users": {
     "newPasswordFailed": "새 비밀번호를 만들 수 없습니다",
     "roleFailed": "역할을 변경할 수 없습니다",
+    "cloudStorageFailed": "클라우드 저장 공간을 변경할 수 없습니다",
     "disableFailed": "계정을 비활성화할 수 없습니다",
     "enableFailed": "계정을 활성화할 수 없습니다",
     "signOutFailed": "계정을 로그아웃할 수 없습니다",

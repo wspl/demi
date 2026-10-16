@@ -4,7 +4,7 @@ import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import type { CloudState } from './types'
-import { formatByteRatio, formatBytes } from '../files/format'
+import { formatBytes } from '../files/format'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import SettingsGroup from '../settings/SettingsGroup.vue'
@@ -48,18 +48,12 @@ const busy = computed(
       phase.value !== 'ready' &&
       phase.value !== 'failed'),
 )
-/**
- * Each filesystem's current size against the most it may grow to; before the
- * Cloud's first start there is no size yet, only the limit.
- */
+/** Each filesystem's capacity; none before the Cloud's first start made them. */
 const storage = computed(() => {
-  const { volumes, limits } = props.cloud
-  const size = (current: number | undefined, limit: number) =>
-    current === undefined ? t('storage.max', { size: formatBytes(limit) }) : formatByteRatio(current, limit)
-  return t('storage.line', {
-    system: size(volumes?.systemBytes, limits.systemBytes),
-    home: size(volumes?.homeBytes, limits.homeBytes),
-  })
+  const { volumes } = props.cloud
+  return volumes
+    ? t('storage.line', { system: formatBytes(volumes.systemBytes), home: formatBytes(volumes.homeBytes) })
+    : null
 })
 /** The Cloud's one line, as a device's row has: its system and how this page reaches it. */
 const line = computed(() => {
@@ -105,7 +99,11 @@ function reset() {
       :label="t('environment.newerImage')"
       :description="t('environment.newerImageDescription')"
     />
-    <SettingsRow :label="t('storage.title')" :description="storage" />
+    <SettingsRow
+      v-if="storage"
+      :label="t('storage.title')"
+      :description="storage"
+    />
     <CloudResetDialog
       :is-open="open"
       :overlay-store="overlayStore"

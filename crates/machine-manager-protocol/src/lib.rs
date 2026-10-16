@@ -18,7 +18,7 @@ pub use state::{
     is_image_name,
 };
 pub use wire::{
-    CheckpointParams, CurrentBaseVersionParams, DecodeError, GrowVolumeParams, HibernateParams,
+    Capacity, CheckpointParams, CurrentBaseVersionParams, DecodeError, HibernateParams,
     ImageStateParams, MAX_LINE_BYTES, MachineCall, MachineRequest, MachineResponse, Message,
     Operation, ReconcileParams, Reconciled, ResetParams, RuntimeStateParams, VERSION as WIRE_VERSION,
     SandboxMachine, WakeParams, decode_request, decode_response, encode_line,

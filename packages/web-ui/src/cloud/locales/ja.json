@@ -12,8 +12,7 @@
   },
   "storage": {
     "title": "ストレージ",
-    "line": "システム {system} · ホーム {home}",
-    "max": "最大 {size}"
+    "line": "システム {system} · ホーム {home}"
   },
   "reset": {
     "title": "クラウド環境をリセット",

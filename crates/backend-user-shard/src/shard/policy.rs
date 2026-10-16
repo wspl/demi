@@ -22,7 +22,6 @@ use demi_backend_database::permissions::AskedHost;
 use demi_backend_permissions::Need;
 use demi_command_protocol::ServiceSequence;
 use demi_host_interface::{BroughtHost, RpcError, RpcInvocation, RpcPort};
-use demi_runner_protocol::wire::VolumeName;
 use demi_shared_gates::Purpose;
 use demi_shared_types::{BlobRef, Sequence};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -126,27 +125,6 @@ impl LinkPolicy for ShardPolicy {
                 .get(&blob)
                 .await
                 .map_err(|error| error.to_string())
-        })
-    }
-
-    /// Only the user's Cloud grows its volumes (`managed-hosts.md`
-    /// § Lifecycle and capacity).
-    fn grow_volume(
-        &self,
-        volume: VolumeName,
-        bytes: u64,
-    ) -> LocalBoxFuture<'static, Result<(), String>> {
-        let shard = self.shard();
-        let device = self.device.clone();
-        Box::pin(async move {
-            let grown = shard?
-                .cloud_shard()
-                .grow_cloud_volume(&device, volume, bytes)
-                .await;
-            if let Err(error) = &grown {
-                tracing::warn!(device = %device, %volume, bytes, "volume growth refused: {error}");
-            }
-            grown
         })
     }
 

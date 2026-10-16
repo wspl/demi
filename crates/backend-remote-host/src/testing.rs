@@ -31,7 +31,7 @@ use demi_command_protocol::{
     host_target,
 };
 use demi_host_interface::{CommandSet, HostIdentity, HostKey, RpcError, RpcInvocation, RpcPort};
-use demi_runner_protocol::wire::{self, Inbound, Outbound, VolumeName};
+use demi_runner_protocol::wire::{self, Inbound, Outbound};
 use demi_shared_types::BlobRef;
 use futures_util::future::LocalBoxFuture;
 use sha2::{Digest, Sha256};
@@ -122,9 +122,6 @@ impl LinkPolicy for CommandPolicy {
         Box::pin(async move { Ok(bytes) })
     }
 
-    fn grow_volume(&self, _: VolumeName, _: u64) -> LocalBoxFuture<'static, Result<(), String>> {
-        Box::pin(async { Err("volume growth is not available".into()) })
-    }
 
     fn revoke_device(&self) -> LocalBoxFuture<'static, Result<(), String>> {
         Box::pin(async { Err("revocation is not available".into()) })

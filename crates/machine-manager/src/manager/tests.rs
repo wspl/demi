@@ -5,28 +5,32 @@
 use std::{
     net::Ipv4Addr,
     num::{NonZeroU32, NonZeroU64},
-    os::unix::fs::MetadataExt,
+    os::unix::fs::{MetadataExt, PermissionsExt},
     path::{Path, PathBuf},
     rc::Rc,
 };
 
 use demi_machine_manager_protocol::{
-    BaseVersion, DeviceId, GrowVolumeParams, HibernateParams, ImageStateParams, MachineCall,
-    MachineImageState, ReconcileParams, ResetParams, RuntimeStateParams, Volume,
+    BaseVersion, Capacity, DeviceId, HibernateParams, ImageStateParams, MachineCall,
+    MachineImageState, ReconcileParams, ResetParams, RuntimeStateParams, SandboxMachine, Volume,
+    WakeParams,
 };
 use tokio::sync::mpsc;
 
 use super::{Core, Manager, OpError};
 use crate::{
+    blocking,
     config::{Config, Limits, Mode},
     linux::testing::isolate,
     recovery::{self, RecoveryError},
     server::MachineService,
-    storage::store::ImagePair,
-    tools::Tools,
+    storage::{ext4, store::ImagePair},
+    tools::{Tool, Tools},
 };
 
 struct Fixture {
+    /// While it exists, the manager's resize2fs refuses.
+    refusal: PathBuf,
     _directory: tempfile::TempDir,
     data: PathBuf,
     core: Rc<Core>,
@@ -36,15 +40,32 @@ struct Fixture {
 }
 
 /// A manager on a state directory with one imported base, whose skeleton
-/// holds a profile. runsc is never run.
+/// holds a profile. Its runsc lists no sandbox and starts none; its
+/// resize2fs refuses while [`Fixture::refuse_resize`] says so.
 fn fixture() -> Fixture {
     let directory = tempfile::tempdir().unwrap();
     let data = directory.path().join("data");
+    let program = |name: &str, script: String| {
+        let path = directory.path().join(name);
+        std::fs::write(&path, script).unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    };
+    let runsc = program("runsc", "#!/bin/sh\necho '[]'\n".into());
+    let refusal = directory.path().join("refuse-resize");
+    let resize2fs = program(
+        "resize2fs",
+        format!(
+            "#!/bin/sh\n[ -e {} ] && {{ echo 'resize2fs: refused' >&2; exit 1; }}\nexec {} \"$@\"\n",
+            refusal.display(),
+            which::which("resize2fs").unwrap().display(),
+        ),
+    );
     let config = Config {
         mode: Mode::Serve,
         socket: PathBuf::from("/nonexistent/machines.sock"),
         data: data.clone(),
-        runsc: PathBuf::from("/nonexistent/runsc"),
+        runsc: runsc.clone(),
         image: directory.path().join("image"),
         backend_url: "http://203.0.113.10:3271".parse().unwrap(),
         runner_socket: PathBuf::from("/nonexistent/runner/runners.sock"),
@@ -53,8 +74,6 @@ fn fixture() -> Fixture {
             memory_mib: NonZeroU32::new(2048).unwrap(),
             claude_code_memory_mib: NonZeroU32::new(4096).unwrap(),
         }),
-        system_mib: NonZeroU32::new(32).unwrap(),
-        home_mib: NonZeroU32::new(32).unwrap(),
         subnet: "172.30.0.0/16".parse().unwrap(),
         slots: 8,
         dns: vec![Ipv4Addr::new(1, 1, 1, 1)],
@@ -63,11 +82,19 @@ fn fixture() -> Fixture {
     let rootfs = config.images().join("bases").join(&base).join("rootfs");
     std::fs::create_dir_all(rootfs.join("etc/skel")).unwrap();
     std::fs::write(rootfs.join("etc/skel/.profile"), "export EDITOR=vi\n").unwrap();
-    std::fs::write(rootfs.parent().unwrap().join("manifest.json"), "{}").unwrap();
+    std::fs::write(
+        rootfs.parent().unwrap().join("manifest.json"),
+        image_manifest().to_string(),
+    )
+    .unwrap();
     std::fs::create_dir_all(config.working()).unwrap();
-    let core = Rc::new(Core::new(config, Tools::on_path()));
+    let tools = Tools::on_path()
+        .with(Tool::Runsc, runsc)
+        .with(Tool::Resize2fs, resize2fs);
+    let core = Rc::new(Core::new(config, tools));
     let (deaths, received) = mpsc::channel(4);
     Fixture {
+        refusal,
         _directory: directory,
         data,
         manager: Manager::new(core.clone(), base.clone(), deaths),
@@ -78,6 +105,15 @@ fn fixture() -> Fixture {
 }
 
 impl Fixture {
+    /// Makes the manager's resize2fs refuse, or work again.
+    fn refuse_resize(&self, refuse: bool) {
+        if refuse {
+            std::fs::write(&self.refusal, "").unwrap();
+        } else {
+            std::fs::remove_file(&self.refusal).unwrap();
+        }
+    }
+
     async fn call(&self, call: impl Into<MachineCall>) -> Result<serde_json::Value, OpError> {
         self.manager.handle(call.into()).await
     }
@@ -109,11 +145,19 @@ impl Fixture {
     }
 }
 
+/// The capacity the tests' resets name: 32 MiB for the system, 48 MiB for
+/// the home.
+const CAPACITY: Capacity = Capacity {
+    system_bytes: NonZeroU64::new(32 << 20).unwrap(),
+    home_bytes: NonZeroU64::new(48 << 20).unwrap(),
+};
+
 fn reset(device: &str, operation: &str, base: &BaseVersion) -> ResetParams {
     ResetParams {
         device_id: device.into(),
         operation_id: operation.into(),
         base_version: base.to_string(),
+        capacity: CAPACITY,
     }
 }
 
@@ -134,9 +178,10 @@ async fn a_reset_publishes_a_fresh_system_with_the_saved_home_once_per_operation
     let first = fixture.state("dev-1").await.expect("a generation");
     assert_eq!(first.reset_id.as_deref(), Some("op-1"));
     assert_eq!(first.base_version, fixture.base);
+    // A first use makes both filesystems at the capacity named.
     assert_eq!(
         (first.system_bytes.get(), first.home_bytes.get()),
-        (32 << 20, 32 << 20)
+        (32 << 20, 48 << 20)
     );
     // The first use made the initial pair, which the reset replaced but for home.
     assert_eq!(fixture.generations("dev-1").len(), 2);
@@ -262,15 +307,6 @@ async fn operations_on_a_stopped_device_answer_in_order() {
         .unwrap();
     assert_eq!(state, serde_json::json!("stopped"));
     let error = fixture
-        .call(GrowVolumeParams {
-            device_id: "dev-1".into(),
-            volume: Volume::Home,
-            bytes: NonZeroU64::new(1 << 30).unwrap(),
-        })
-        .await
-        .unwrap_err();
-    assert_eq!(error.to_string(), "Cloud is not running");
-    let error = fixture
         .call(HibernateParams {
             device_id: "dev/1".into(),
         })
@@ -289,3 +325,152 @@ async fn operations_on_a_stopped_device_answer_in_order() {
         .unwrap_err();
     assert_eq!(error.to_string(), "the Cloud manager is stopping");
 }
+
+/// A wake whose sandbox does not start: its boot names a backend the
+/// manager does not allow, so the wake stops after it staged the working
+/// pair, before it mounts anything. The runsc that the failed start's close
+/// asks lists no sandbox.
+fn refused_wake(device: &str, capacity: Capacity) -> WakeParams {
+    WakeParams {
+        device_id: device.into(),
+        capacity,
+        boot: serde_json::from_value(serde_json::json!({
+            "backendUrl": "http://198.51.100.1:3271",
+            "deviceToken": "token",
+        }))
+        .unwrap(),
+        machine: SandboxMachine::Cloud,
+    }
+}
+
+/// The text of `path` in the ext4 image `image`, as `debugfs` reads it.
+fn read_in_image(image: &Path, path: &str) -> String {
+    let output = std::process::Command::new("debugfs")
+        .arg("-R")
+        .arg(format!("cat {path}"))
+        .arg(image)
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&output.stdout).into_owned()
+}
+
+/// Cost: makes a 1 GiB pair and enlarges it to 16 GiB, sparse; about a
+/// second.
+#[tokio::test(flavor = "local")]
+#[ignore = "needs root: run the Linux suite with --ignored as root"]
+async fn a_wake_enlarges_a_smaller_saved_pair_to_the_capacity_named_and_keeps_its_files() {
+    const GIB: u64 = 1 << 30;
+    isolate();
+    let fixture = fixture();
+
+    // A Cloud first made at 1 GiB each, as before the capacity was 16 GiB.
+    let small = Capacity {
+        system_bytes: NonZeroU64::new(GIB).unwrap(),
+        home_bytes: NonZeroU64::new(GIB).unwrap(),
+    };
+    let large = Capacity {
+        system_bytes: NonZeroU64::new(16 * GIB).unwrap(),
+        home_bytes: NonZeroU64::new(16 * GIB).unwrap(),
+    };
+    fixture.call(refused_wake("dev-1", small)).await.unwrap_err();
+    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    let saved = fixture.state("dev-1").await.unwrap();
+    assert_eq!((saved.system_bytes.get(), saved.home_bytes.get()), (GIB, GIB));
+
+    // The next wake names 16 GiB: both images are enlarged before they would
+    // be mounted, and the save records what each superblock says.
+    let refused = fixture.call(refused_wake("dev-1", large)).await.unwrap_err();
+    assert_eq!(refused.to_string(), "Cloud backend differs from configured allowlist");
+    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    let woken = fixture.state("dev-1").await.unwrap();
+    assert_eq!((woken.system_bytes.get(), woken.home_bytes.get()), (16 * GIB, 16 * GIB));
+    let images = fixture.generation("dev-1", &woken);
+    for volume in Volume::ALL {
+        let image = images.get(volume).clone();
+        let read = blocking::run(move |off| ext4::capacity(off, &image)).await.unwrap();
+        assert_eq!(read.get(), 16 * GIB, "{volume}");
+    }
+    // The home's files are as they were.
+    assert_eq!(read_in_image(&images.home, "/demi/.profile"), "export EDITOR=vi\n");
+
+    // A wake that names less keeps the larger images.
+    fixture.call(refused_wake("dev-1", small)).await.unwrap_err();
+    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    let kept = fixture.state("dev-1").await.unwrap();
+    assert_eq!((kept.system_bytes.get(), kept.home_bytes.get()), (16 * GIB, 16 * GIB));
+}
+
+/// A valid image manifest whose runner speaks this build's protocols, as a
+/// base the manager imported names it.
+fn image_manifest() -> serde_json::Value {
+    let runner = serde_json::json!({ "sha256": "a".repeat(64), "size": 38710848 });
+    let (architecture, target) = if cfg!(target_arch = "aarch64") {
+        ("arm64", "aarch64-unknown-linux-musl")
+    } else {
+        ("amd64", "x86_64-unknown-linux-musl")
+    };
+    serde_json::json!({
+        "formatVersion": 1,
+        "os": "linux",
+        "architecture": architecture,
+        "rootfs": { "sha256": "d".repeat(64), "size": 733308752, "file": "rootfs.tar.zst" },
+        "ubuntu": "26.04",
+        "packages": [],
+        "executables": { "/opt/demi/bin/demi-runner": runner },
+        "releases": [],
+        "runner": {
+            "release": "f".repeat(64),
+            "wire": demi_runner_protocol::wire::VERSION,
+            "commandProtocol": 1,
+            "targets": { target: runner },
+        },
+    })
+}
+
+/// Cost: makes a 1 GiB pair, reads it twice and enlarges it to 16 GiB,
+/// once refused and once done; about half a minute.
+#[tokio::test(flavor = "local")]
+#[ignore = "needs root: run the Linux suite with --ignored as root"]
+async fn an_enlargement_that_fails_midway_keeps_the_saved_pair_and_the_next_wake_enlarges_it() {
+    const GIB: u64 = 1 << 30;
+    isolate();
+    let fixture = fixture();
+    let small = Capacity {
+        system_bytes: NonZeroU64::new(GIB).unwrap(),
+        home_bytes: NonZeroU64::new(GIB).unwrap(),
+    };
+    let large = Capacity {
+        system_bytes: NonZeroU64::new(16 * GIB).unwrap(),
+        home_bytes: NonZeroU64::new(16 * GIB).unwrap(),
+    };
+    fixture.call(refused_wake("dev-1", small)).await.unwrap_err();
+    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    let saved = fixture.state("dev-1").await.unwrap();
+    let images = fixture.generation("dev-1", &saved);
+    let digest = |path: &Path| {
+        let output = std::process::Command::new("sha256sum").arg(path).output().unwrap();
+        String::from_utf8(output.stdout).unwrap()
+    };
+    let before: Vec<_> = Volume::ALL.iter().map(|volume| digest(images.get(*volume))).collect();
+
+    // resize2fs refuses after the copy's file was extended: the wake fails
+    // with its error, and the saved pair is as it was.
+    fixture.refuse_resize(true);
+    let failed = fixture.call(refused_wake("dev-1", large)).await.unwrap_err();
+    assert!(crate::server::chain(&failed).contains("resize2fs: refused"), "{}", crate::server::chain(&failed));
+    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    assert_eq!(fixture.state("dev-1").await.unwrap(), saved);
+    let after: Vec<_> = Volume::ALL.iter().map(|volume| digest(images.get(*volume))).collect();
+    assert_eq!(after, before);
+
+    // The next wake enlarges both images.
+    fixture.refuse_resize(false);
+    let refused = fixture.call(refused_wake("dev-1", large)).await.unwrap_err();
+    assert_eq!(refused.to_string(), "Cloud backend differs from configured allowlist");
+    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    let woken = fixture.state("dev-1").await.unwrap();
+    assert_eq!((woken.system_bytes.get(), woken.home_bytes.get()), (16 * GIB, 16 * GIB));
+    let images = fixture.generation("dev-1", &woken);
+    assert_eq!(read_in_image(&images.home, "/demi/.profile"), "export EDITOR=vi\n");
+}
+

@@ -123,12 +123,6 @@ struct Cli {
     /// (`managed-hosts.md` § The Claude Code machine).
     #[arg(long, env = "DEMI_MANAGED_CLAUDE_CODE_MEM_MIB", value_name = "DEMI_MANAGED_CLAUDE_CODE_MEM_MIB", default_value = "4096", value_parser = decimal::<NonZeroU32>)]
     claude_code_mem_mib: NonZeroU32,
-    /// A new system filesystem's capacity, in MiB.
-    #[arg(long, env = "DEMI_MANAGED_SYSTEM_MIB", value_name = "DEMI_MANAGED_SYSTEM_MIB", default_value = "1024", value_parser = decimal::<NonZeroU32>)]
-    system_mib: NonZeroU32,
-    /// A new home filesystem's capacity, in MiB.
-    #[arg(long, env = "DEMI_MANAGED_HOME_MIB", value_name = "DEMI_MANAGED_HOME_MIB", default_value = "1024", value_parser = decimal::<NonZeroU32>)]
-    home_mib: NonZeroU32,
     /// The IPv4 pool the sandboxes' networks come from.
     #[arg(long, env = "DEMI_MANAGED_SUBNET", value_name = "DEMI_MANAGED_SUBNET", default_value = "172.30.0.0/16", value_parser = subnet)]
     subnet: Ipv4Net,
@@ -185,8 +179,6 @@ pub struct Config {
     /// Each sandbox's cgroup limits; `None` with `DEMI_MANAGED_LIMITS=off`,
     /// which runs sandboxes without cgroups.
     pub limits: Option<Limits>,
-    pub system_mib: NonZeroU32,
-    pub home_mib: NonZeroU32,
     pub subnet: Ipv4Net,
     pub slots: u16,
     pub dns: Vec<Ipv4Addr>,
@@ -319,8 +311,6 @@ impl Config {
             backend_url: cli.backend_url,
             runner_socket: cli.runner_socket,
             limits,
-            system_mib: cli.system_mib,
-            home_mib: cli.home_mib,
             subnet: cli.subnet,
             slots: cli.slots,
             dns,
@@ -340,16 +330,6 @@ impl Config {
     /// The runtime directory: `/run/demi-machine-manager`.
     pub fn runtime(&self) -> &Path {
         Path::new(RUNTIME_DIRECTORY)
-    }
-
-    /// A new system filesystem's capacity in bytes.
-    pub fn system_bytes(&self) -> NonZeroU64 {
-        mebibytes(self.system_mib)
-    }
-
-    /// A new home filesystem's capacity in bytes.
-    pub fn home_bytes(&self) -> NonZeroU64 {
-        mebibytes(self.home_mib)
     }
 }
 
@@ -550,8 +530,6 @@ mod tests {
         let limits = config.limits.expect("the limits are on by default");
         assert_eq!(limits.cpus.get(), 2);
         assert_eq!(limits.memory_bytes().get(), 2 << 30);
-        assert_eq!(config.system_bytes().get(), 1 << 30);
-        assert_eq!(config.home_bytes().get(), 1 << 30);
         assert_eq!(config.subnet.to_string(), "172.30.0.0/16");
         assert_eq!(config.slots, 256);
         assert_eq!(
@@ -580,8 +558,8 @@ mod tests {
             &[("DEMI_MANAGED_CPUS", "0")],
             &[("DEMI_MANAGED_CPUS", "0x10")],
             &[("DEMI_MANAGED_MEM_MIB", "1e3")],
-            &[("DEMI_MANAGED_SYSTEM_MIB", " 12 ")],
-            &[("DEMI_MANAGED_HOME_MIB", "+12")],
+            &[("DEMI_MANAGED_MEM_MIB", " 12 ")],
+            &[("DEMI_MANAGED_MEM_MIB", "+12")],
             &[("DEMI_MANAGED_SLOTS", "16385")],
             &[("DEMI_MANAGED_RUNSC", "runsc")],
             &[("DEMI_MANAGED_DATA", "state")],
