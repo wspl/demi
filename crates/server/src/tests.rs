@@ -362,12 +362,36 @@ async fn a_release_is_fetched_whole_only_when_its_assets_match_their_sums() {
     let published = tempfile::tempdir().unwrap();
     assets(published.path(), &version, false);
     let source = fetch::Source::Directory(published.path().to_owned());
-    assert_eq!(fetch::newest(&source).await.unwrap(), version);
+    assert_eq!(fetch::newest(&source, false).await.unwrap(), version);
     fetch::fetch(&layout, &source, &version, &cancel).await.unwrap();
     let release = layout.release(&version);
     assert!(release.join("bin/demi-server").exists());
     assert!(release.join("image/manifest.json").exists());
     assert_eq!(layout.versions().unwrap(), [version]);
+}
+
+#[test]
+fn the_newest_release_is_the_highest_version_tagged_v_pre_releases_included() {
+    // As GitHub lists them: a deploy's pre-release above the last published
+    // release, the gVisor build's own tag, and 0.1.10 after 0.1.9 in
+    // version order, not in the order of the strings.
+    let tags = ["runsc-release-20260901.0", "v0.1.22", "v0.1.21", "v0.1.9", "v0.1.10", "nightly"];
+    assert_eq!(fetch::highest(tags), Some(Version::new(0, 1, 22)));
+    assert_eq!(fetch::highest(["v0.1.9", "v0.1.10"]), Some(Version::new(0, 1, 10)));
+    assert_eq!(fetch::highest(["runsc-release-20260901.0"]), None);
+}
+
+#[test]
+fn prerelease_is_refused_beside_a_version() {
+    #[derive(clap::Parser)]
+    struct Command {
+        #[command(flatten)]
+        options: crate::setup::Options,
+    }
+    let refused = <Command as clap::Parser>::try_parse_from(["setup", "--prerelease", "--version", "0.1.22"]);
+    assert_eq!(refused.err().map(|error| error.kind()), Some(clap::error::ErrorKind::ArgumentConflict));
+    let refused = <crate::Cli as clap::Parser>::try_parse_from(["demi-server", "upgrade", "--prerelease", "0.1.22"]);
+    assert_eq!(refused.err().map(|error| error.kind()), Some(clap::error::ErrorKind::ArgumentConflict));
 }
 
 /// `setup`'s options as a command line gives them.

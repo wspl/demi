@@ -113,6 +113,10 @@ pub struct Options {
     /// The release to set up [default: this demi-server's].
     #[arg(long)]
     version: Option<Version>,
+    /// Set up the newest release, pre-releases included, instead of this
+    /// demi-server's.
+    #[arg(long, conflicts_with = "version")]
+    prerelease: bool,
     /// A directory holding the release's assets instead of the GitHub
     /// releases.
     #[arg(long, value_name = "DIRECTORY", hide = true)]
@@ -163,8 +167,17 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     };
     crate::require_root(layout)?;
     let _lock = crate::lock(layout)?;
-    let version = options.version.clone().unwrap_or_else(crate::own_version);
     let settings = configuration(&choices, &options)?;
+    let source = match &options.from {
+        Some(directory) => fetch::Source::Directory(std::path::absolute(directory)?),
+        None => fetch::Source::GitHub,
+    };
+    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
+    let version = match &options.version {
+        Some(version) => version.clone(),
+        None if options.prerelease => runtime.block_on(fetch::newest(&source, true))?,
+        None => crate::own_version(),
+    };
 
     step("Checking the machine");
     let manager = machine()?;
@@ -181,11 +194,6 @@ pub fn run(layout: &Layout, services: &dyn Services, mut options: Options) -> Re
     }
 
     step(&format!("Fetching Demi {version}"));
-    let source = match &options.from {
-        Some(directory) => fetch::Source::Directory(std::path::absolute(directory)?),
-        None => fetch::Source::GitHub,
-    };
-    let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build()?;
     runtime.block_on(fetch::fetch(layout, &source, &version, &CancellationToken::new()))?;
     step("Fetching the gVisor runtime it pins");
     gvisor::of_release(layout, &version)?;
