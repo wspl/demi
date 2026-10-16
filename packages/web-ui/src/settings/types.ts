@@ -88,6 +88,8 @@ export interface SettingsDevice extends DeviceReport {
   id: string
   name: string
   state: DeviceState
+  /** How much of its next runner it has downloaded, while that download moves (`DeviceStatus`). */
+  downloadPercent?: number | null
   /** When the host was last seen, as an ISO 8601 timestamp; shown while it is offline. */
   seen?: string
   /** How to start its runner again; its page's header gives it while it is offline. */

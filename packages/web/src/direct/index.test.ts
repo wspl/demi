@@ -51,7 +51,7 @@ beforeEach(() => {
       installed: [],
       startCommand: null,
       os: null,
-      runnerVersion: null,
+      runnerVersion: null, downloadPercent: null,
       mark: { logo: 'apple', number: index + 1 },
       route: 'automatic',
     })),

@@ -345,6 +345,12 @@ enum Liveness {
     Paused,
 }
 
+/// The id a prefetch of `release` waits for its answer under, apart from
+/// every request's own.
+fn prefetch_id(release: &str) -> String {
+    format!("prefetch:{release}")
+}
+
 /// What a reply must be.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Expected {
@@ -353,6 +359,7 @@ pub(crate) enum Expected {
     Log,
     Release,
     Sync,
+    Prefetch,
     Service,
     JobRead,
     JobMediaRead,
@@ -824,6 +831,22 @@ impl Link {
             .map(|_| ())
     }
 
+    /// Asks the runner to download runner release `release` ahead, whose
+    /// executable for its target has `sha256` and `size` (`runner.md`
+    /// § Runner updates): done once it is in place, or why it is not. The
+    /// runner names its answer by the release, which stands for the
+    /// request's id.
+    pub async fn prefetch(&self, release: &str, sha256: &str, size: u64) -> Result<(), HostError> {
+        let answered = self.wait_for(prefetch_id(release), Expected::Prefetch)?;
+        self.send(&Inbound::Prefetch {
+            release: release.to_owned(),
+            sha256: sha256.to_owned(),
+            size,
+        })
+        .await?;
+        answered.receive().await.map(|_| ())
+    }
+
     /// Asks the runner to release what its services hold for
     /// `conversation`. It admits no work and waits at most six minutes.
     pub async fn release_conversation(&self, conversation: &str) -> Result<(), HostError> {
@@ -1157,6 +1180,12 @@ impl Link {
                         duration_ms,
                     });
                 });
+            }
+            Outbound::Prefetched { release } => {
+                self.answer(&prefetch_id(&release), Expected::Prefetch, Answer::Done);
+            }
+            Outbound::PrefetchFailed { release, reason } => {
+                self.refuse(&prefetch_id(&release), HostError::failed(None, reason));
             }
             Outbound::SyncDone { id, error } => match error {
                 None => self.answer(&id, Expected::Sync, Answer::Done),

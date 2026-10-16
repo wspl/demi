@@ -65,8 +65,8 @@ export function demoProjects(): SidebarProject[] {
       // name is cut at half of the text, the project's name in the rest; each shows whole on hover.
       name: 'dotfiles-and-machine-setup-scripts',
       hostKind: 'device',
-      // Its runner replaces itself with the server's release.
-      device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating', mark: GALLERY_MARKS.macPro },
+      // Its runner replaces itself with the server's release, a quarter downloaded.
+      device: { kind: 'paired', name: 'Alexs-MacBook-Pro.local', state: 'updating', downloadPercent: 26, mark: GALLERY_MARKS.macPro },
       path: '/Users/alex/dotfiles-and-machine-setup-scripts'
     },
     {

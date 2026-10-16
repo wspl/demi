@@ -631,11 +631,21 @@ mod tests {
         };
         std::fs::write(&file, encode(b"another runner")).unwrap();
         let cancel = CancellationToken::new();
-        let refused = catalog.runner_executable(target, &runner, &cancel).await.err().unwrap();
+        let refused = catalog
+            .runner_executable(target, &runner, None, 0, &cancel)
+            .await
+            .err()
+            .unwrap();
         assert!(refused.contains("demi-runner-"), "{refused}");
         let encoded = encode(&bytes);
         std::fs::write(&file, &encoded).unwrap();
-        let stored = catalog.runner_executable(target, &runner, &cancel).await.unwrap();
+        let crate::native::RunnerBytes::Stored(stored) = catalog
+            .runner_executable(target, &runner, None, 0, &cancel)
+            .await
+            .unwrap()
+        else {
+            panic!("the whole copy is stored");
+        };
         assert_eq!(
             stored.attributes.get(&Attribute::ContentEncoding).map(|coding| coding.as_ref()),
             Some(demi_shared_artifacts::CONTENT_CODING)

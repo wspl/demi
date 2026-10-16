@@ -38,6 +38,7 @@ use demi_web_api_protocol::sessions::SessionId;
 use demi_backend_runners::devices::Returning;
 use demi_backend_runners::native::NativeCatalog;
 use demi_backend_runners::install::RunnerReleases;
+use demi_backend_runners::prefetch::Prefetches;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_runner_protocol::direct::StunUrl;
 use demi_plugin_interface::PluginFactory;
@@ -105,6 +106,10 @@ pub struct Services {
     pub web_build: Option<String>,
     /// The runner releases paired devices follow.
     pub runner_releases: RunnerReleases,
+    /// The runner release an upgrade announced as next, which the
+    /// connected paired devices download ahead (`runner.md` § Runner
+    /// updates).
+    pub prefetches: Prefetches,
     /// The STUN servers pages and runners ask for their public address
     /// (`direct-channel.md` § Making the channel).
     pub stun: Vec<StunUrl>,
@@ -405,6 +410,7 @@ impl Services {
             public_url: PublicUrl::default(),
             web_build: settings.web_build,
             runner_releases: settings.runner_releases,
+            prefetches: Prefetches::default(),
             stun: settings.stun,
             run: uuid::Uuid::new_v4().to_string(),
             lifecycle: settings.lifecycle,

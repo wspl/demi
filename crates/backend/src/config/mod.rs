@@ -107,6 +107,15 @@ pub struct Config {
         default_value = "/run/demi-backend/runners.sock"
     )]
     pub runner_socket: PathBuf,
+    /// The Unix socket only root may open, on which an upgrade names the
+    /// runner release that comes next
+    #[arg(
+        long,
+        env = demi_runner_protocol::release::MANAGE_SOCKET_ENV,
+        value_name = "DEMI_BACKEND_MANAGE_SOCKET",
+        default_value = demi_runner_protocol::release::MANAGE_SOCKET
+    )]
+    pub manage_socket: PathBuf,
     /// Where the one object store lives: `local`, the data directory, or `s3`
     #[arg(
         long,
@@ -282,6 +291,7 @@ impl Config {
         );
         config.instance_secret = instance_secret;
         config.runner_socket = Some(self.runner_socket.clone());
+        config.manage_socket = Some(self.manage_socket.clone());
         config.storage = self.storage()?;
         // A root serves the parts it holds: a developer's has no web app,
         // which Vite serves instead.
@@ -310,6 +320,10 @@ pub struct BackendConfig {
     /// (`managed-hosts.md` § Backend socket); none serves them only on the
     /// network, as a test's backend does.
     pub runner_socket: Option<PathBuf>,
+    /// The management socket an upgrade names the next runner release on
+    /// (`upgrades.md` § Prepare); none, as for a test's backend, takes no
+    /// such request.
+    pub manage_socket: Option<PathBuf>,
     /// Where the listener binds; port 0 picks a free port.
     pub address: SocketAddr,
     /// Who configures providers (`users.md` § Instance mode).
@@ -384,6 +398,7 @@ impl BackendConfig {
             data_dir,
             machines_socket,
             runner_socket: None,
+            manage_socket: None,
             address,
             mode,
             web_directory: None,
