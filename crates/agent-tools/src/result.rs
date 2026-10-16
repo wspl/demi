@@ -36,9 +36,8 @@ pub struct Look<'a> {
     /// The line it starts with, such as the one that says the interval
     /// asked for was outside the bounds (`runtime.md` § Tool input).
     pub note: Option<&'a str>,
-    /// The user's send now ended the call's window (`runtime.md` § Send
-    /// now).
-    pub sent_now: bool,
+    /// Why the call returned while its command runs, which its result says.
+    pub moved: Option<Moved>,
     /// How the command reports to its node while it runs: every so many
     /// milliseconds, or only its end when none; not known when the outer
     /// option is none, as for a look at another agent's command.
@@ -47,6 +46,17 @@ pub struct Look<'a> {
     /// command's: a look from another Host says so (`runtime.md` § The
     /// `demi shell` commands).
     pub unreachable: Option<Unreachable>,
+}
+
+/// Why a `shell` call returned while its command runs: its command moved to
+/// the background, and its result says why.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Moved {
+    /// The user's send now ended the window (`runtime.md` § Send now).
+    SentNow,
+    /// The window's time passed, and the command reports every
+    /// `interval_ms` (`runtime.md` § Command reports).
+    TimePassed { interval_ms: u32 },
 }
 
 /// The `shell` call's outcome for `status`: its text, the media it attaches
@@ -172,9 +182,9 @@ fn unseen_output(status: &CommandStatus) -> OutputText {
 /// The lines the model reads: first the look's note, then the status, the
 /// handles and timings that matter, the output since the model's last look
 /// within the replay bound, while the command runs each stream's newest
-/// lines beyond its start, and the next step, after the line that says the
-/// command moved to the background when the user's send now ended the
-/// window (`runtime.md` § Send now).
+/// lines beyond its start, and the next step, after the line that says why
+/// the command moved to the background when the call returned while it ran
+/// (`runtime.md` § Send now, § Command reports).
 fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> String {
     let command = &status.command_id;
     let running = matches!(status.state, CommandState::Running { .. });
@@ -197,10 +207,15 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> Str
     after.extend(unreceived_line(status, &newest));
     match &status.state {
         CommandState::Running { hint, outliving } => {
-            if look.sent_now {
-                after.push(format!(
+            match look.moved {
+                Some(Moved::SentNow) => after.push(format!(
                     "[The user sent a message, so command {command} moved to the background. It keeps running.]"
-                ));
+                )),
+                Some(Moved::TimePassed { interval_ms }) => after.push(format!(
+                    "[The command is still running, so it moved to the background. It reports every {} until it ends, and when it ends.]",
+                    super::duration(interval_ms.into())
+                )),
+                None => {}
             }
             after.extend(outliving_line(outliving));
             match hint {

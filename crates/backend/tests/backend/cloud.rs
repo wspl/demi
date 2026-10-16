@@ -1359,8 +1359,9 @@ async fn a_cloud_taken_over_at_a_backend_start_keeps_its_lifetime_cap_clock() {
 
 /// An upgrade stops the Cloud with the manager, so the command on it ends:
 /// the next start takes its conversation up, which starts the Cloud with
-/// the new release's programs, and the command is reported lost to the
-/// upgrade (`upgrades.md`). Several seconds: the Cloud boots twice.
+/// the new release's programs, and the resident command is reported lost to
+/// the upgrade at the next turn (`upgrades.md`). Several seconds: the Cloud
+/// boots twice.
 #[tokio::test]
 async fn an_upgrade_restarts_the_cloud_and_its_command_is_lost_to_the_upgrade() {
     let vendor = MockVendor::start().await;
@@ -1384,20 +1385,14 @@ async fn an_upgrade_restarts_the_cloud_and_its_command_is_lost_to_the_upgrade() 
         .control_database()
         .execute("UPDATE devices SET runner_version = '0.0.1'", [])
         .unwrap();
-    work.script(vec![say("noted")]);
     let backend = harness.start_at(address).await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/a").await;
+    work.reconnect(&backend, &master, FIRST, &provider).await;
     let report = format!(
         "Command {command} (t1) was lost: {}. Start it again if it is still needed.",
         demi_backend_remote_host::UPGRADED
     );
-    eventually("the command's loss reaches the model", || {
-        let held = vendor
-            .requests()
-            .iter()
-            .any(|request| request.json().to_string().contains(&report));
-        async move { held }
-    })
-    .await;
+    crate::lifetime::told_at_the_next_turn(&mut work, &harness, FIRST, &vendor, &report).await;
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
     backend.close().await;
 }

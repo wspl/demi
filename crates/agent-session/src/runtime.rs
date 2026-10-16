@@ -7,6 +7,7 @@ use std::{
     cell::{Cell, RefCell},
     rc::Rc,
     sync::Arc,
+    time::Duration,
 };
 
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
@@ -426,12 +427,14 @@ impl ToolOutcome {
 /// § Dispatch and failures): a tool never reaches into its session.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ToolEffect {
-    /// The call returned while its command still runs: the session watches
-    /// it, and the command reports every `interval_ms` until it ends, or
-    /// only its end when none (`runtime.md` § Command reports).
+    /// The call returned while its command still runs, which had run for
+    /// `ran`: the session watches it, and the command reports every
+    /// `interval_ms` from its start until it ends, or only its end when none
+    /// (`runtime.md` § Command reports).
     Background {
         command: CommandId,
         interval_ms: Option<u32>,
+        ran: Duration,
     },
     /// The call ran nothing because its Host, `device`, was offline: unless
     /// a later call of the turn runs there, a root's turn that ends after it

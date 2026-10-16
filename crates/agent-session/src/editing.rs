@@ -429,6 +429,7 @@ pub fn fork_seed(
             queue: Vec::new(),
             agent_inputs: Vec::new(),
             reports: Vec::new(),
+            next_turn_reports: Vec::new(),
             intervals: Vec::new(),
             edits: Vec::new(),
             ..state

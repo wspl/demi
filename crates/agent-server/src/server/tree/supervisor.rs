@@ -714,6 +714,7 @@ impl<H: HostResolver> Tree<H> {
             clock: deps.clock.clone(),
             config: deps.config.session,
             interval_floor_ms: deps.config.interval_floor_ms,
+            call_window_ms: deps.config.call_window_ms,
         })
         .await
         .map_err(|error| error.to_string())?;

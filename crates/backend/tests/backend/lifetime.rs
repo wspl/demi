@@ -195,23 +195,47 @@ async fn wakeups(backend: &TestBackend, master: &Session) -> Vec<demi_shared_typ
         .collect()
 }
 
-/// The reports that wait in the root's saved checkpoint for the turn to
-/// take them.
-fn reports_waiting(harness: &Harness) -> Vec<serde_json::Value> {
-    let file = harness.data_dir().join("conversations").join(format!("{FIRST}.sqlite"));
+/// The reports that wait in the saved checkpoint of `conversation`'s root
+/// for the turn to take them, and then those that wait for the next turn.
+fn reports_waiting(harness: &Harness, conversation: &str) -> Vec<serde_json::Value> {
+    let file = harness.data_dir().join("conversations").join(format!("{conversation}.sqlite"));
     let connection = rusqlite::Connection::open(file).unwrap();
     connection.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
     let state: String = connection
         .query_row("SELECT state FROM nodes WHERE parent_id IS NULL", [], |row| row.get(0))
         .unwrap();
     let state: serde_json::Value = serde_json::from_str(&state).unwrap();
-    state["reports"].as_array().cloned().unwrap_or_default()
+    ["reports", "nextTurnReports"]
+        .iter()
+        .flat_map(|list| state[list].as_array().cloned().unwrap_or_default())
+        .collect()
 }
 
-/// How many reports of a loss wait in the root's saved checkpoint for the
-/// turn to take them.
-fn lost_reports_waiting(harness: &Harness) -> usize {
-    reports_waiting(harness)
+/// Waits until the loss of a resident command, `report`, waits in the
+/// saved checkpoint of `conversation`'s root for the next turn, having
+/// opened none, then sends a message: its turn's first request carries the
+/// loss (`runtime.md` § Lost commands).
+pub(crate) async fn told_at_the_next_turn(
+    work: &mut Driven<'_>,
+    harness: &Harness,
+    conversation: &str,
+    vendor: &MockVendor,
+    report: &str,
+) {
+    eventually("the loss waits for the next turn", || {
+        let waiting = lost_reports_waiting(harness, conversation);
+        async move { waiting == 1 }
+    })
+    .await;
+    assert_eq!(requested(vendor, report), 0, "the loss opened no turn");
+    let told = work.turn(vec![say("noted")]).await;
+    assert!(told.first_request().contains(report), "{}", told.first_request());
+}
+
+/// How many reports of a loss wait in the saved checkpoint of
+/// `conversation`'s root for a turn to take them.
+fn lost_reports_waiting(harness: &Harness, conversation: &str) -> usize {
+    reports_waiting(harness, conversation)
         .iter()
         .filter(|report| report["event"]["kind"] == "lost")
         .count()
@@ -339,19 +363,14 @@ async fn a_command_another_runner_does_not_list_is_lost_and_never_sent_again() {
     network.cut();
     backend.until_online(&master, alpha.id(), false).await;
     alpha.runner.kill().await;
-    work.script(vec![say("noted")]);
     network.open();
     alpha.runner.start_again();
 
-    until_requested(
-        &vendor,
-        &format!(
-            "Command {command} (t1) was lost: {}. Start it again if it is still needed.",
-            demi_backend_remote_host::RUNNER_RESTARTED
-        ),
-    )
-    .await;
-    work.socket.until_idle().await;
+    let report = format!(
+        "Command {command} (t1) was lost: {}. Start it again if it is still needed.",
+        demi_backend_remote_host::RUNNER_RESTARTED
+    );
+    told_at_the_next_turn(&mut work, &harness, FIRST, &vendor, &report).await;
     assert!(!home.join("runs").exists(), "the command never ran");
     backend.close().await;
 }
@@ -387,15 +406,10 @@ async fn a_connection_that_stays_away_past_the_grace_loses_the_command_and_says_
         async move { !alive }
     })
     .await;
-    work.script(vec![say("noted")]);
     network.open();
 
-    until_requested(
-        &vendor,
-        &format!("Command {command} (t1) was lost: {}. Start it again", demi_backend_remote_host::UNREACHED),
-    )
-    .await;
-    work.socket.until_idle().await;
+    let report = format!("Command {command} (t1) was lost: {}. Start it again", demi_backend_remote_host::UNREACHED);
+    told_at_the_next_turn(&mut work, &harness, FIRST, &vendor, &report).await;
     let look = format!("demi shell status {command}");
     let shown = work.turn(vec![shell("t2", &look, 10_000), say("looked")]).await;
     assert!(
@@ -448,10 +462,13 @@ async fn a_backend_restart_takes_running_commands_up_again_and_they_report_their
     backend.close().await;
 }
 
+/// An upgrade that leaves a conversation idle with its server running loses
+/// the server: the loss wakes nobody, and the next message's turn reads it
+/// first (`runtime.md` § Lost commands, `upgrades.md`).
 // Several seconds: a real device pairs, the backend restarts, and the
 // device's runner starts anew as another release's would.
 #[tokio::test]
-async fn a_release_change_loses_running_commands_to_the_upgrade() {
+async fn a_release_change_loses_a_resident_command_and_the_next_turn_hears_of_it() {
     let vendor = MockVendor::start().await;
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
@@ -468,19 +485,17 @@ async fn a_release_change_loses_running_commands_to_the_upgrade() {
         .control_database()
         .execute("UPDATE devices SET runner_version = '0.0.1'", [])
         .unwrap();
-    work.script(vec![say("noted")]);
     let backend = harness.start_at(address).await;
     alpha.runner.start_again();
     backend.until_online(&master, alpha.id(), true).await;
+    let provider = anthropic_at(&backend, &master, &vendor, "/lifetime").await;
+    work.reconnect(&backend, &master, FIRST, &provider).await;
 
-    until_requested(
-        &vendor,
-        &format!(
-            "Command {command} (t1) was lost: {}. Start it again if it is still needed.",
-            demi_backend_remote_host::UPGRADED
-        ),
-    )
-    .await;
+    let report = format!(
+        "Command {command} (t1) was lost: {}. Start it again if it is still needed.",
+        demi_backend_remote_host::UPGRADED
+    );
+    told_at_the_next_turn(&mut work, &harness, FIRST, &vendor, &report).await;
     backend.close().await;
 }
 
@@ -544,7 +559,7 @@ async fn a_command_lost_after_a_shutdown_interrupted_its_call_is_reported_by_the
             reason: demi_backend_remote_host::UPGRADED.to_owned()
         }
     );
-    assert_eq!(lost_reports_waiting(&harness), 0);
+    assert_eq!(lost_reports_waiting(&harness, FIRST), 0);
     backend.close().await;
 }
 
@@ -794,7 +809,7 @@ async fn a_loss_the_next_steps_look_shows_is_not_reported_and_another_reports_it
     // Both reports wait in the turn before the step runs: a report that
     // came while it ran would end its window.
     eventually("both losses' reports wait", || {
-        let waiting = lost_reports_waiting(&harness);
+        let waiting = lost_reports_waiting(&harness, FIRST);
         async move { waiting == 2 }
     })
     .await;

@@ -613,10 +613,10 @@ impl AgentSession {
             watched.add(interval.command_id.clone(), interval.interval_ms);
         }
         for call in transcript.pending_tool_calls() {
-            let command = running
+            let started = running
                 .iter()
-                .find(|running| running.tool_use_id == call.tool_use_id)
-                .map(|running| running.command.clone());
+                .find(|running| running.tool_use_id == call.tool_use_id);
+            let command = started.map(|running| running.command.clone());
             let text = core::interrupted_text(&core::CallEnd::Crashed, command.as_ref());
             // The call keeps naming the command it started, which runs as
             // far as the conversation knows, so that its later report and
@@ -624,12 +624,11 @@ impl AgentSession {
             let view = command
                 .clone()
                 .map(|command| ToolView::Shell(ShellToolView::named(command, ShellViewStatus::Running)));
-            if let Some(command) = command
-                && watched.get(&command).is_none()
+            if let Some(started) = started
+                && watched.get(&started.command).is_none()
             {
-                // Only its end reports: the call's interval is the tool's to
-                // read.
-                watched.add(command, None);
+                // It reports as its call asked, which its record kept.
+                watched.add(started.command.clone(), started.interval_ms);
             }
             transcript.complete_tool_call(
                 &call.tool_use_id,
@@ -646,7 +645,7 @@ impl AgentSession {
             transcript,
             media: HeldMedia::default(),
             tools: deps.runtime.tools(),
-            inputs: InputQueue::restored(state.agent_inputs, state.reports),
+            inputs: InputQueue::restored(state.agent_inputs, state.reports, state.next_turn_reports),
             watched,
             edits: state.edits,
             account: state.account,
@@ -673,7 +672,7 @@ impl AgentSession {
         });
         let commands = session.shared.read(|core| core.watched.commands());
         for command in &commands {
-            reports::start_watch(&session.shared, command);
+            reports::start_watch(&session.shared, command, Duration::ZERO);
         }
         Ok((session, continuation))
     }
@@ -1069,7 +1068,7 @@ impl AgentSession {
         {
             return false;
         }
-        reports::start_watch(&self.shared, command);
+        reports::start_watch(&self.shared, command, Duration::ZERO);
         true
     }
 
