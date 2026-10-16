@@ -188,7 +188,7 @@ export const ROTATION_HINTS: Record<SettingsRotation, SentenceText> = {
   },
 }
 
-/** The protocols a compatible API can speak, which its page offers (`product.md` § Models & providers). */
+/** The protocols a compatible API can speak, which its page offers (`providers.md` § Provider management). */
 export const COMPATIBLE_WIRE_APIS: readonly SettingsWireApi[] = [
   'anthropic-messages',
   'openai-chat',
@@ -277,7 +277,7 @@ export interface SettingsProviderEntry {
   /** The entry's vendor; null for a compatible API. */
   vendorId: string | null
   /**
-   * A compatible API (`product.md` § Models & providers): its protocol,
+   * A compatible API (`providers.md` § Provider management): its protocol,
    * endpoint and optional key are the user's to set at any time, and its
    * models are the ones the user adds. Any other API-key entry is a vendor's:
    * its endpoint is shown, never edited. Fixed with the entry.
@@ -478,7 +478,7 @@ export interface SettingsCredentialDraft {
   fields: SettingsCredentialDraftField[]
 }
 
-/** A passkey of the account, as Settings › Account lists it (`product.md` § User system). */
+/** A passkey of the account, as Settings › Account lists it (`users.md` § User system). */
 export interface SettingsPasskey {
   id: string
   /** The password manager's name, the browser and system that added it, or the user's own. */
@@ -523,7 +523,7 @@ export interface SettingsPasskeyHost {
   remove: (id: string) => Promise<void>
 }
 
-/** A browser signed in to the account, as Settings › Account lists it (`product.md` § User system). */
+/** A browser signed in to the account, as Settings › Account lists it (`users.md` § User system). */
 export interface SettingsSession {
   id: string
   /** The browser and system it signed in from, such as Safari on iPhone. */
@@ -543,7 +543,7 @@ export interface SettingsSessionHost {
   signOut: (id: string) => Promise<void>
 }
 
-/** An account's role (`product.md` § User system). */
+/** An account's role (`users.md` § User system). */
 export type UserRole = 'master' | 'admin' | 'user'
 
 /** An account as Settings › Users lists it (`web-api.md` § Account API), its password left out. */
@@ -600,7 +600,7 @@ export interface SettingsUsersHost extends VerificationHost {
   setRole: (id: string, role: Exclude<UserRole, 'master'>) => Promise<void>
   signOutEverywhere: (id: string) => Promise<void>
   setDisabled: (id: string, disabled: boolean) => Promise<void>
-  /** The sign-in codes of the account `id` (`product.md` § User system): good for ten minutes and once; the dialog asks the confirmation itself. */
+  /** The sign-in codes of the account `id` (`users.md` § User system): good for ten minutes and once; the dialog asks the confirmation itself. */
   signInCode: (id: string) => HandoffHost
 }
 

@@ -408,7 +408,7 @@ wake, keeping its home, and the reset's notice says why
 
 Cloud settings tells the user when the Cloud's base is not the configured one:
 the backend compares the Cloud's `image_state` with `current_base_version`
-([Cloud settings](../product/product.md#cloud-settings)). A reset moves the
+([Cloud settings](../product/hosts.md#cloud-settings)). A reset moves the
 system to the configured base.
 
 ### Container initialization

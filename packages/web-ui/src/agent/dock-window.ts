@@ -3,7 +3,7 @@ import { clampSize, type ResizeBounds } from '../ui/resize-handle'
 
 /**
  * The height of the windows the dock opens, such as Agents and Running
- * (`product.md`, the dock's chips): kept as a share of the session area's
+ * (`turns.md`, the dock's chips): kept as a share of the session area's
  * height, so a window made tall in a large browser window stays tall in a
  * small one and never exceeds the room. The two windows keep one share.
  */

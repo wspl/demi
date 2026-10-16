@@ -11,7 +11,7 @@ import { productWould } from '../product-would'
 
 /**
  * A conversation's host menu acting on the specimen's own conversation as
- * the product's header does (`product.md` § Where a conversation runs): a
+ * the product's header does (`hosts.md` § Where a conversation runs): a
  * conversation with messages asks before it moves, one whose agent works
  * asks to stop it first, a new one moves at once, one in a project opens the chosen device's directory picker, which the
  * gallery says in a toast, and Detach takes the device from Attached.

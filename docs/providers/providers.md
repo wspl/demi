@@ -553,7 +553,7 @@ real vendor. The conversation-wide checks are in
 
 ## Inference admission and runtime ownership
 
-[Instance mode](../product/product.md#instance-mode-shared-vs-isolated)
+[Instance mode](../product/users.md#instance-mode-shared-vs-isolated)
 determines provider scope: shared instances use the master's entries; isolated
 instances use each user's own. The backend checks scope and resolves the
 current entry at each inference boundary. A missing, deleted or inaccessible
@@ -623,7 +623,7 @@ reads the same accounts, the same active account and the same usage.
 
 A credential has no owner of its own. It belongs to a provider entry, and every
 entry belongs to a user.
-[Instance mode](../product/product.md#instance-mode-shared-vs-isolated) only
+[Instance mode](../product/users.md#instance-mode-shared-vs-isolated) only
 decides whose entries a user infers with: the master's on a shared instance,
 their own on an isolated one. There is no ownerless entry and no second kind of
 credential.
@@ -947,4 +947,56 @@ routes are listed in [Web API](../product/web-api.md#subscription-accounts).
 The backend meters every response event into the usage ledger, applies a
 per-user request rate limit before inference, and keeps each subscription
 account's vendor quota snapshot with its record. All three are defined in
+[Usage and quota](usage-and-quota.md).
+
+## Provider management
+
+Models & providers is available to users permitted to configure their provider
+scope. The model picker groups models by entry. For a model whose window is
+over 500,000 tokens, the model menu also offers a Context row: a smaller
+window that every conversation of the user with that model then uses
+([Context limit](models.md#context-limit)). Choosing a model
+closes its submenu only, and the model menu stays open on the new model, so
+the user can set its effort or context next, as macOS menus with
+submenus close one level per choice. Adding an entry has three paths:
+
+| Path | User input and result |
+|---|---|
+| Subscription | Claude sign-in, or Codex/Grok device login; additional accounts go into the existing family entry |
+| Vendor | Select a vendor, Anthropic, OpenAI, Google or one models.dev lists: the entry is created at once, named after the vendor, and its page asks for the key; its endpoint is the vendor's own and is shown but not edited, and its models come from the vendor's catalog |
+| Compatible API | Select Compatible API: the entry is created at once as *Compatible API*, and on its page the user sets the protocol, Anthropic Messages, OpenAI Chat Completions or OpenAI Responses, the endpoint and, when the server takes one, the key, and changes any of them later; its models are the ones the user adds, none until then |
+
+A vendor entry and a compatible one differ in who decides the models. A
+vendor's own API serves the vendor's catalog, so its entry lists them at
+once. A compatible API, such as a proxy or a self-hosted server that speaks
+the Anthropic Messages API, serves whatever models it chooses under whatever
+names, so its entry starts empty, *No models yet* with Add Model, and never
+borrows the protocol's vendor's catalog. For example, Alex adds a compatible
+Anthropic Messages entry at `https://proxy.example/v1`: its Models list is
+empty until he adds `claude-sonnet-5-5` with Add Model. An entry stays the
+kind it was added as: a vendor entry's endpoint is never edited, and a
+compatible entry's endpoint and protocol always can be
+([A provider is in the list from the start](models.md#a-provider-is-in-the-list-from-the-start)).
+
+Red marks a failure only: a key the vendor refused, an endpoint that did
+not answer, a catalog that could not be read. An entry just added has failed
+at nothing, so it shows no error; a compatible entry with no models yet says
+*No models yet* in plain text with Add Model, and an entry nobody has tested
+shows no status until it is tested or used.
+
+Entries can be renamed, edited, or removed. A vendor entry's models can be
+replaced by a manual list; clearing it returns to the vendor's catalog. A new entry's default name takes *(2)* when taken; a name the user gives need not be unique.
+Provider configuration stores explicit endpoint and model overrides. Fetched
+model directories are cached; they are not a fresh network lookup on every
+conversation opening.
+
+The page displays authentication/runtime state, account selection, and available
+quota information. Reading status must not run inference. An explicit Test
+action can make a real request; a provider whose transport is a process runs
+it on the Claude Code machine, which wakes for it
+([Where it runs](claude-code.md#where-it-runs)). Hiding a
+provider or model from the picker is a web app preference and does not stop
+existing work. Provider protocol and credential details have their
+authoritative home in [Providers](providers.md), catalogs in
+[Models](models.md), and quota in
 [Usage and quota](usage-and-quota.md).

@@ -1047,7 +1047,7 @@ restores its own: a tree restore, with one rule per node.
 
 The root's interrupted turn is its client's to resume: the root records the
 interruption, and the web app offers Resume
-([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
 The root's queued messages run, and its pending agent input and command
 reports wake it only when its last turn was not interrupted
 ([Dispose and restore](runtime.md#dispose-and-restore)).
@@ -1413,7 +1413,7 @@ an agent wrote, not text the user typed: it renders as an answer does, in full
 Markdown, headings, lists, tables and code blocks included, inside the user
 bubble that marks it as the child's input. The user dialect, which keeps a
 `#` or a `-` at a line's start as typed
-([Writing a message](../product/product.md#writing-a-message)), is for what
+([Writing a message](../product/composer.md#writing-a-message)), is for what
 the user types.
 
 Root assistant text is the only user-visible reply stream. A child's `text`

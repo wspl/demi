@@ -78,7 +78,7 @@ const props = withDefaults(defineProps<{
   /**
    * The waiting messages whose Recall is on its way, by id: their rows are
    * gone from the press, and come back only when the removal is refused
-   * (`product.md` § Steer or queue).
+   * (`turns.md` § Steer or queue).
    */
   removing?: readonly string[]
   editVersion?: TranscriptVersion | null

@@ -6,7 +6,7 @@ The composer's context card lists what the block holds, and each entry leads
 to where it is written. This document owns which files are read, what the
 model receives, and what the card lists. The context blocks themselves are the
 [agent runtime](runtime.md#context)'s; the Instructions settings section is
-[the product's](../product/product.md#web-app-scope).
+[the product's](../product/web-application.md#web-app-scope).
 
 ## What the model receives
 

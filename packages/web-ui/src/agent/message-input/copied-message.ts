@@ -8,7 +8,7 @@ import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '../..
 import type { MessageEditContent } from '../message-editing'
 import { contentMessage, type MessageCapsule } from '../message-editor/capsules'
 
-// A sent message on the clipboard (`product.md` § Writing a message): its
+// A sent message on the clipboard (`composer.md` § Writing a message): its
 // Markdown with each file by name for plain text, its formatting for HTML,
 // and Demi's own form, which a composer reads to bring the files back as
 // capsules without sending their bytes again. Demi's own form travels as a
@@ -98,7 +98,7 @@ function trimParagraphLines(content: readonly JSONContent[], end: boolean): JSON
 
 /**
  * A document's blocks without the blank lines at its start and its end
- * (`product.md` § Writing a message): blank paragraphs there go, and the
+ * (`composer.md` § Writing a message): blank paragraphs there go, and the
  * first and last paragraphs lose their blank lines on that side; the lines
  * between, and each line's indentation, stay. `from` and `to` are the range
  * of `blocks` kept, so a slice knows whether its open ends were dropped.
@@ -168,7 +168,7 @@ export function messageClipboard(whole: JSONContent): MessageClipboard {
 /**
  * A message the session holds, from its content, as Demi's own form of a
  * copy of it: what Recall pastes back into the composer, each file a
- * capsule again without its bytes (`product.md` § Steer or queue).
+ * capsule again without its bytes (`turns.md` § Steer or queue).
  */
 export function contentCopy(content: readonly MessageEditContent[]): CopiedMessage {
   const { markdown, capsules } = contentMessage(content)
@@ -211,7 +211,7 @@ export function copiedMessageHtml(message: CopiedMessage, content: Node): string
  * A drag of an attachment's link or picture in an agent's message carries
  * the file in Demi's own form, as a copy of a message holding it alone
  * would, so a composer it is dropped on makes a capsule of the same file and
- * uploads nothing (`product.md` § Attachments). The browser's own forms,
+ * uploads nothing (`composer.md` § Attachments). The browser's own forms,
  * the address and the picture, stay for any other place.
  */
 export function attachmentDrag(event: DragEvent): void {
@@ -239,7 +239,7 @@ export function transferCopiedMessage(transfer: DataTransfer): CopiedMessage | n
 }
 
 /**
- * How a composer takes the files of a pasted message (`product.md` § Writing
+ * How a composer takes the files of a pasted message (`composer.md` § Writing
  * a message). A stored file is a capsule at once, and attaches beside it as
  * an upload does: the backend makes an upload of the user's own stored file,
  * sending no bytes. `kept` answers whether the capsule stays: true once the

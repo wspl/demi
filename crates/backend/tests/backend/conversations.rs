@@ -948,7 +948,7 @@ async fn a_message_runs_over_the_socket_and_a_reload_shows_what_the_database_hol
             break message;
         }
     };
-    // The turn's end is one change (`product.md` § Following the agent's
+    // The turn's end is one change (`turns.md` § Following the agent's
     // work): the patch that completes its last text comes in the message
     // that says the conversation went idle, so no page draws the finished
     // text of a running turn, followed by Requesting, in between.

@@ -33,7 +33,7 @@ import { DOCK_WINDOW_SHARE, dockWindowBounds, dockWindowHeight, dockWindowKey, d
  * (`ui/region.ts`): its menus grow toward its inside.
  *
  * It stands in the page's stack of windows with what it opens, such as the
- * media viewer (`product.md`, the dock's chips under § Recovering an
+ * media viewer (`turns.md`, the dock's chips under § Recovering an
  * unfinished turn; `window-stack.ts`): while it is the newest, a press
  * outside every window, the composer and the dock's empty space included,
  * closes it, though not one on its chip. It also closes by its chip, its close control, or Escape while the

@@ -4,7 +4,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import FunctionalBlock from './FunctionalBlock.vue'
 import { t } from '../locales/text'
 
-/** Where the user stopped the turn: a decision, not a failure (`product.md` § Recovering an unfinished turn). */
+/** Where the user stopped the turn: a decision, not a failure (`turns.md` § Recovering an unfinished turn). */
 </script>
 
 <template>

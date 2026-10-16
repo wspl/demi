@@ -2,7 +2,7 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
 // A conversation on a device since removed shows the plain computer without a
-// state dot, in its header's host button as in its sidebar row (`product.md`
+// state dot, in its header's host button as in its sidebar row (`conversations.md`
 // § Conversations and projects): the page no longer knows the device's state,
 // though the conversation still names it. The button is Run On's trigger, fed
 // as the product feeds it, on a page of happy-dom. A few milliseconds,

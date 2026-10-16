@@ -7,7 +7,7 @@ import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 
 /**
- * Settings › Notifications (`product.md` § Notifications): whether this
+ * Settings › Notifications (`turns.md` § Notifications): whether this
  * browser notifies at all, and what notifies. The setting belongs to the
  * browser, which the host keeps it in; turning it on asks the browser for
  * permission, and a refusal turns the switch back off and says how to allow

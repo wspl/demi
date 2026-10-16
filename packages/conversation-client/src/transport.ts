@@ -48,7 +48,7 @@ export interface WebSocketLike {
  * The conversation socket as a transport: each message is JSON text, one
  * frame or an array of the frames the backend had ready at once, as a
  * turn's end, which are handed over in order within the message's event, so
- * the page applies them as one change (`product.md` § Following the agent's
+ * the page applies them as one change (`turns.md` § Following the agent's
  * work). A message that is not JSON text is a peer that does not speak the
  * protocol, and the transport closes rather than skipping it.
  */

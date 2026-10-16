@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::ids::UserId;
 use crate::text::{EmailAddress, Trimmed};
 
-/// An account's role (`product.md` § User system). A role administers only
+/// An account's role (`users.md` § User system). A role administers only
 /// the roles below it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]

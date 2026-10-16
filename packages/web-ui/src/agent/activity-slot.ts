@@ -7,7 +7,7 @@ import type { SessionLoad } from './session-status'
  * `requesting` is the wait for the provider's answer: from the send of a
  * message that starts a turn, its delivery included, and a recovery the server
  * has not acknowledged yet and the agent's own retries, which are the same
- * wait and keep the same word (`product.md` § Recovering an unfinished turn).
+ * wait and keep the same word (`turns.md` § Recovering an unfinished turn).
  */
 export type ActivityKind = 'connecting' | 'requesting'
 
@@ -53,7 +53,7 @@ export interface ActivitySlotInput {
    * The transcript's rows as the list draws them, the runs of steps grouped,
    * with the calls the model is writing; never the messages that wait or
    * the message being sent, since what the turn is doing is read from the
-   * transcript alone (`product.md` § Following the agent's work).
+   * transcript alone (`turns.md` § Following the agent's work).
    */
   turnRows?: readonly MessageListBlock[]
 }
@@ -62,7 +62,7 @@ export interface ActivitySlotInput {
  * The tail row's kind, or null when the tail is content (streaming thinking or
  * text, a call being written or executing) or nothing is happening. Text the
  * model finished, with nothing after it yet, is followed by Requesting
- * (`product.md` § Recovering an unfinished turn). A lost socket wins over
+ * (`turns.md` § Recovering an unfinished turn). A lost socket wins over
  * everything, since a recovery or a turn cannot progress without it: the row
  * says Connecting while the page still reaches the backend, and nothing while
  * the connection banner says the backend is away. A conversation that failed

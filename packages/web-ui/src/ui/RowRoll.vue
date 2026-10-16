@@ -9,7 +9,7 @@ import { CHROME_ROLL_EASING, CHROME_ROLL_MS } from './chrome-roll'
  * (`ChromeRoll`, whose 28px face keeps its icon standing while only the label
  * rolls). A row that takes another's place rolls over it this way: Stopped
  * into Requesting, Requesting into the step it waited for or the answer
- * (`product.md` § Following the agent's work). A row mounted with its face
+ * (`turns.md` § Following the agent's work). A row mounted with its face
  * does not roll.
  */
 const props = defineProps<{

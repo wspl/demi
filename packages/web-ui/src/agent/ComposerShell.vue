@@ -21,7 +21,7 @@ import { transferCopiedMessage } from './message-input/copied-message'
  * The list opens and closes in 150 ms: the layout takes its new shape at
  * once, so the transcript above resizes once, and the frame glides from where
  * it was drawn to its new place while the list unrolls beneath it, or rolls
- * up as it leaves, through transforms and clips alone (`product.md` § Saved
+ * up as it leaves, through transforms and clips alone (`conversations.md` § Saved
  * for later). A toggle in the midst turns the glide around from where it is
  * drawn; reduced motion shows the change at once.
  *

@@ -26,7 +26,7 @@ export interface ListTailInput {
   pendingSubmissions?: readonly PendingSubmissionState[]
   /**
    * The waiting messages whose Recall is on its way, by id: their rows are
-   * gone from the press (`product.md` § Steer or queue).
+   * gone from the press (`turns.md` § Steer or queue).
    */
   removing?: readonly string[]
 }
@@ -41,7 +41,7 @@ export interface ListTail {
    */
   turn: MessageListBlock[]
   /**
-   * The messages that wait below the turn (`product.md` § Following the
+   * The messages that wait below the turn (`turns.md` § Following the
    * agent's work): the steers, then the queue under its divider, each with
    * the messages on their way that will be ones of them, shown from their
    * send as what they will be, in the order they were sent.
@@ -58,7 +58,7 @@ export interface ListTail {
  * tells first. A message whose Recall is on its way shows nowhere. A message
  * whose delivery failed is followed by the row that tells it. A steer on its
  * way that starts the turn, as when nothing runs and the message before it
- * was not delivered, is the user's next message (`product.md` § Following
+ * was not delivered, is the user's next message (`turns.md` § Following
  * the agent's work): it stands in the turn's flow, in the row it keeps.
  */
 export function listTailBlocks(input: ListTailInput): ListTail {

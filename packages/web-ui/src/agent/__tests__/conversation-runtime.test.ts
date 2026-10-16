@@ -181,7 +181,7 @@ test('send now on a pending steer or a queued message stops nothing and never tu
   }
 })
 
-// Remove on a steer or a queued message (`product.md` § Steer or queue): the
+// Remove on a steer or a queued message (`turns.md` § Steer or queue): the
 // session answers whether it removed the message or the message had gone on
 // (`runtime.md` § Pending steers), and the removal settles on that answer
 // alone, whatever frames come before it.

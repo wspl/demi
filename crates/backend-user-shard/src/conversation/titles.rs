@@ -1,4 +1,4 @@
-//! Generated conversation titles (`product.md` § Conversation titles): one
+//! Generated conversation titles (`conversations.md` § Conversation titles): one
 //! model request beside the first turn, through the same metered runtime a
 //! turn uses, which writes the title only while it is still the one the
 //! request began from. An archive or the shard's close aborts it.

@@ -12,7 +12,7 @@ export type AttachmentPhase = 'attaching' | 'uploading' | 'ready' | 'failed'
 /**
  * A local file on its way to the message. It is uploaded as it is added, and
  * the message names the upload; on send the backend writes the file to the
- * Host (`product.md` § Attachments).
+ * Host (`composer.md` § Attachments).
  */
 export interface ComposerFileAttachment {
   kind: 'file'
@@ -116,7 +116,7 @@ export function pastedTextIsLong(text: string): boolean {
 /**
  * The file a long paste becomes. Every one is `pasted-text.txt`, as every
  * pasted picture is `image.png`: a message holds files of one name, and the
- * Host keeps each under a suffix of its own (`product.md` § Attachments).
+ * Host keeps each under a suffix of its own (`composer.md` § Attachments).
  */
 export function pastedTextFile(text: string): File {
   return new File([text], PASTED_TEXT_NAME, { type: 'text/plain' })
@@ -208,7 +208,7 @@ export function composerAttachmentFromFile(file: File): ComposerFileAttachment {
 /**
  * Why a file cannot join a message: only an empty one and one over 25 MB are
  * refused. A name already in the message is no reason, since a name says
- * nothing about a file's contents (`product.md` § Attachments).
+ * nothing about a file's contents (`composer.md` § Attachments).
  */
 export function attachmentFileError(file: File): string | undefined {
   if (!file.size || file.size > ATTACHMENT_MAX_BYTES) {

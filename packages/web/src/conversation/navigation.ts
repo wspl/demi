@@ -110,7 +110,7 @@ export function useConversationNavigation() {
 
   /**
    * Creates the project and opens a new conversation in it, as the project's
-   * own New Conversation does (`product.md` § Conversations and projects).
+   * own New Conversation does (`conversations.md` § Conversations and projects).
    */
   async function createProject(draft: CreateWorkspace): Promise<void> {
     create(await resources.createProject(draft))

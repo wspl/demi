@@ -28,7 +28,7 @@ pub struct ConversationRecord {
     pub id: ConversationId,
     pub owner: UserId,
     /// Its title; none while it is the placeholder, which holds no words
-    /// and which the page shows in the reader's language (`product.md`
+    /// and which the page shows in the reader's language (`conversations.md`
     /// § Conversation titles).
     pub title: Option<String>,
     pub archived: bool,
@@ -481,7 +481,7 @@ impl ControlService {
 
     /// Acknowledges the output up to `revision`, and the permission requests
     /// that wait; an acknowledgement never moves the read revision back. A
-    /// request raised later is unread (`product.md` § Conversations and
+    /// request raised later is unread (`conversations.md` § Conversations and
     /// projects).
     pub async fn mark_conversation_read(
         &self,

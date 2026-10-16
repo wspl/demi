@@ -26,7 +26,7 @@ pub enum HashError {
 const FIRST_PASSWORD_LENGTH: usize = 20;
 
 /// A first password for an account an administrator made or reset
-/// (`product.md` § User system): 20 random letters and digits, never typed
+/// (`users.md` § User system): 20 random letters and digits, never typed
 /// by anyone.
 pub fn generate_first_password() -> Password {
     use rand::distr::{Alphanumeric, SampleString as _};

@@ -7,7 +7,7 @@ import type { Action } from '../ui/operations'
 import { projectTarget } from './project-hosts'
 
 /**
- * The question before a project is deleted (`product.md` § Conversations
+ * The question before a project is deleted (`conversations.md` § Conversations
  * and projects): the title names it, the body says that its conversations
  * are archived, a sentence a project without one leaves out, and that its
  * files on its host stay. Delete is the danger button and shows the

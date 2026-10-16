@@ -91,14 +91,14 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /**
    * The messages sent and not yet confirmed, in the order they were sent,
    * each with the way it was sent, which says what it will be while it is
-   * delivered (`product.md` § Steer or queue); a page that restores them
+   * delivered (`turns.md` § Steer or queue); a page that restores them
    * after it closed holds them as messages whose delivery was interrupted.
    */
   pendingSends: PendingSend[]
   /**
    * The waiting messages whose Recall is on its way, by id: a steer, a
    * queued message, or a message on its way that will be one. The list
-   * shows none of them from the press (`product.md` § Steer or queue).
+   * shows none of them from the press (`turns.md` § Steer or queue).
    */
   removing: string[]
   messageEdit: MessageEditState | null

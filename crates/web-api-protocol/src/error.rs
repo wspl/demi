@@ -310,7 +310,7 @@ pub enum ErrorCode {
     /// the answer carries as `workspace`.
     WorkspaceExists,
     /// The directory is the device's home, which holds the conversations
-    /// outside projects and is never a project (`product.md`
+    /// outside projects and is never a project (`conversations.md`
     /// § Conversations and projects).
     WorkspaceIsHome,
     /// A move names a directory on a device whose runner never reported its

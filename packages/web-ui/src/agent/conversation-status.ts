@@ -7,7 +7,7 @@ export type ConversationStatus = 'idle' | 'active' | 'done' | 'error' | 'aborted
 /**
  * The tone of a conversation's status dot wherever it shows, a sidebar
  * row's, a tab's or an agent's mark, so one state has one look everywhere
- * (`product.md` § Conversations and projects): running in the accent, which
+ * (`conversations.md` § Conversations and projects): running in the accent, which
  * breathes, finished green, failed red. Green and red say there is something new
  * to see, so where the place knows whether it was read, a sidebar row, a read
  * answer or failure settles; an agent's tab and link have no read state, pass no

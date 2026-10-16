@@ -79,7 +79,7 @@ const props = withDefaults(
     /** Makes an upload of a file the user's blobs hold, for a message pasted into the edit composer. */
     claim: ClaimFile
     /**
-     * Takes the files of a message pasted into the draft (`product.md`
+     * Takes the files of a message pasted into the draft (`composer.md`
      * § Writing a message): the host carries the draft's files.
      */
     paste: PasteHost
@@ -88,7 +88,7 @@ const props = withDefaults(
     focused?: boolean
     /**
      * The draft takes the focus as the composer shows, so a new or opened
-     * conversation is typed into at once (`product.md` § Conversations and
+     * conversation is typed into at once (`conversations.md` § Conversations and
      * projects); not on a phone, where it would raise the on-screen
      * keyboard, nor while another field holds the focus.
      */
@@ -152,13 +152,13 @@ const props = withDefaults(
     draftShown?: number
     /**
      * The conversation's Workflow menu choice and the project's workflows
-     * (`product.md` § A conversation's workflow); none where a conversation
+     * (`conversations.md` § A conversation's workflow); none where a conversation
      * has no choice yet, as before its first send.
      */
     workflow?: { choice: WorkflowChoice; list: WorkflowList } | null
     /**
      * The conversation's messages saved for later, newest first
-     * (`product.md` § Saved for later): the entry under the composer counts
+     * (`conversations.md` § Saved for later): the entry under the composer counts
      * them and opens their list.
      */
     saved?: SavedRow[]
@@ -350,7 +350,7 @@ const modelsLoading = computed(() => props.modelLoad === 'loading' && modelState
 /**
  * The phases of the draft's uploads that keep it from going: a failed one.
  * A message whose files are still uploading goes, and waits for them
- * (`product.md` § Writing a message).
+ * (`composer.md` § Writing a message).
  */
 const failedUploads = computed(() => carrying.value
   .filter(isComposerFile)
@@ -402,7 +402,7 @@ const compactUnavailable = computed(() => {
   }
   return null
 })
-/** The agent works: a message steers it or waits in the queue, one or the other (`product.md` § Steer or queue). */
+/** The agent works: a message steers it or waits in the queue, one or the other (`turns.md` § Steer or queue). */
 const working = computed(() => props.running || props.compacting)
 const submitLabel = computed(() => shownEdit.value
   ? shownEdit.value.phase === 'uncertain' ? shared('common.retry') : t('composer.saveAndResend')
@@ -493,7 +493,7 @@ function insertCapsules(added: readonly MessageCapsule[]): void {
 /**
  * A copied message pasted: it goes in where it was pasted at once, text and
  * capsules, and each stored file attaches beside it as an upload does, so the
- * message can be sent meanwhile (`product.md` § Writing a message). A file
+ * message can be sent meanwhile (`composer.md` § Writing a message). A file
  * the paste could not add stands as its name where its capsule stood, and a
  * toast names it once the paste's files have all answered.
  */

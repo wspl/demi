@@ -39,7 +39,7 @@ export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>)
 
 /**
  * Why the conversation's move controls are unavailable, if they are
- * (`product.md` § Where a conversation runs): it is archived, or a change of
+ * (`hosts.md` § Where a conversation runs): it is archived, or a change of
  * it is under way. Work that runs does not lock them; moving asks to stop it
  * first.
  */

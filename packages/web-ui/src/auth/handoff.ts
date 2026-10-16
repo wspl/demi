@@ -2,7 +2,7 @@ import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
 
 /**
- * Handing off to a phone by a QR code (`product.md` § User system): what
+ * Handing off to a phone by a QR code (`users.md` § User system): what
  * the dialog shows of a code, and what its host does for it.
  */
 

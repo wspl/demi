@@ -40,7 +40,7 @@ export type SentMessage = Pick<PendingSubmissionState, 'text' | 'attachments'> &
 
 /**
  * The composer a specimen shows beside its flow, where Recall gives a
- * message back as the product's does (`product.md` § Steer or queue).
+ * message back as the product's does (`turns.md` § Steer or queue).
  */
 export interface RecallComposer {
   /** Puts the message into the composer when it is empty, the caret at its end; false when it holds a draft, which stays. */

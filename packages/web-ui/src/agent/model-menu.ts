@@ -46,7 +46,7 @@ export interface ModelMenuRows {
 }
 
 /**
- * The rows of the model menu (`product.md` § Settings: a profile's model is
+ * The rows of the model menu (`web-application.md` § Web app scope: a profile's model is
  * chosen with the composer's menu, the same items plus Parent's Model): one
  * derivation for the composer and the profile editor, so Parent's Model is
  * the only row the profile's menu adds and none of the composer's is cut.

@@ -490,7 +490,7 @@ mod fork_format_2 {
 }
 
 /// From the control schema that keeps each share's record to the one in
-/// which a paired device keeps the number of its mark (`product.md`
+/// which a paired device keeps the number of its mark (`conversations.md`
 /// § Conversations and projects). A device of the earlier schema takes its
 /// number at its runner's next hello.
 const CONTROL_FROM_SHARES: &str = "
@@ -564,7 +564,7 @@ CREATE TABLE interrupted_turns (
 
 /// From the control schema with account rotation, whose placeholder titles
 /// held the English "New conversation", to the one where a placeholder
-/// title holds no words (`product.md` § Conversation titles).
+/// title holds no words (`conversations.md` § Conversation titles).
 const CONTROL_FROM_ACCOUNT_ROTATION: &str =
     "UPDATE conversations SET title = '' WHERE title_origin = 'placeholder';";
 
@@ -973,7 +973,7 @@ CREATE INDEX credential_allowances_of_credential ON credential_allowances (crede
 ";
 
 /// From the control schema with the plugins' secrets, which a server keeps,
-/// to the one where a request has a read state (`product.md`
+/// to the one where a request has a read state (`conversations.md`
 /// § Conversations and projects): a request that waits has not been read
 /// yet.
 const CONTROL_FROM_PLUGIN_SECRETS_UNREAD: &str =
@@ -1748,7 +1748,7 @@ ALTER TABLE user_subagents ADD COLUMN max_depth INTEGER DEFAULT 1 CHECK (max_dep
 ";
 
 /// From the control schema with the subagent limits: Detect Title is gone
-/// (`product.md` § Conversation titles), and with it the counts of the
+/// (`conversations.md` § Conversation titles), and with it the counts of the
 /// messages the user sent and the last generated title had seen, which
 /// only it read.
 const CONTROL_FROM_SUBAGENT_LIMITS: &str = "
@@ -2831,7 +2831,7 @@ CREATE TABLE devices (
   -- never booted.
   cloud_started_at INTEGER,
   -- A paired device's number among its user's devices of the same logo
-  -- (product.md § Conversations and projects), given when its runner first
+  -- (conversations.md § Conversations and projects), given when its runner first
   -- reports its system and again when its logo changes; none before, and
   -- for a Cloud.
   mark_number INTEGER CHECK (mark_number > 0),
@@ -2956,7 +2956,7 @@ CREATE TABLE conversations (
   id                  TEXT PRIMARY KEY COLLATE NOCASE,
   user_id             TEXT NOT NULL REFERENCES users (id),
   -- title: empty exactly while title_origin is 'placeholder', a title that
-  -- holds no words (product.md § Conversation titles).
+  -- holds no words (conversations.md § Conversation titles).
   title               TEXT NOT NULL,
   title_origin        TEXT NOT NULL
                         CHECK (title_origin IN ('placeholder', 'message', 'generated', 'user')),

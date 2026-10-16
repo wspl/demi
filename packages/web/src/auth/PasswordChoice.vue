@@ -12,7 +12,7 @@ import { setupStatus, useSession } from './session'
 import { browserHasPasskeys } from './webauthn'
 
 /**
- * Choose Your Password and the passkey offer after it (`product.md` § User
+ * Choose Your Password and the passkey offer after it (`users.md` § User
  * system): the wizard an account signed in with a first password sees
  * before the product, over a blank page. Choosing it signs the account's
  * other pages up for the same, and the offer, where this server and browser

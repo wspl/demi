@@ -3,7 +3,7 @@ import { formatRetryAt } from '../ui/dates'
 
 /**
  * The user's preference to resume a turn by itself at the time its failure
- * names, such as a usage limit that resets at 9:00 AM (`product.md`
+ * names, such as a usage limit that resets at 9:00 AM (`turns.md`
  * § Recovering an unfinished turn): what it is now, and how a control
  * changes it. One preference, shown in Settings › General and on each such
  * failure's record.

@@ -77,7 +77,7 @@ pub struct DeviceRecord {
     /// How pages reach it (`direct-channel.md` § Choosing the path).
     pub route: DeviceRoute,
     /// A paired device's number among its user's devices of its logo
-    /// (`product.md` § Conversations and projects); none before its runner
+    /// (`conversations.md` § Conversations and projects); none before its runner
     /// first reported its system, and for a Cloud.
     pub mark_number: Option<u32>,
     /// Which managed machine a managed device is; none for a paired device.
@@ -436,7 +436,7 @@ impl ControlService {
     /// crosses releases), which changes no directory they work in. A paired
     /// device whose mark has no number yet, or whose logo the report
     /// changes, takes one more than the highest number among its user's
-    /// other devices of its new logo (`product.md` § Conversations and
+    /// other devices of its new logo (`conversations.md` § Conversations and
     /// projects).
     pub async fn set_device_runner(
         &self,

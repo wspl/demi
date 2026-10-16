@@ -33,7 +33,7 @@ Contracts and crate boundaries
 | Devices and targets | Claim/reconnect/revoke and target exchange preserve attribution, context, and execution-tree admission | [Sessions and targets](../execution/sessions-and-targets.md) |
 | Resource lifecycle | One conversation idle rule stops idle Cloud machines and releases idle conversations on paired devices and running Clouds; no cleanup wake or orphan state | [Conversation idle and Host resource release](../execution/resource-lifecycle.md#acceptance) |
 | Personal Cloud | One user has one machine; disk generations survive ordinary wake; external reset retains home and serializes recovery | [Managed hosts](../cloud/managed-hosts.md) |
-| Accounts and product | Authentication, roles, provider mode, and resource isolation hold across every exposed operation | [Product](../product/product.md), [Web API](../product/web-api.md) |
+| Accounts and product | Authentication, roles, provider mode, and resource isolation hold across every exposed operation | [Users](../product/users.md), [Web API](../product/web-api.md) |
 | Web app | Shared UI has real product adapters and gallery examples; backend persistence and authorization are verified through the product | [Web architecture](../product/web-application.md) |
 | Browser automation | Conversation-owned browser, shell commands, observations, screenshots, and lifecycle satisfy their contracts on paired devices and Cloud | [Conversation browser](../browser/browser.md#acceptance) |
 | Live browser view | The user watches and operates the conversation's tabs in the work panel on paired devices and Cloud | [Live browser view](../browser/live-view.md#acceptance) |

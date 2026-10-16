@@ -1217,7 +1217,7 @@ function shownRows(conversation: ReturnType<typeof useConversations>['items'][nu
 // Recall or Send Now pressed on a steer still on its way is the user's
 // latest wish, carried out once the session holds the steer, on what it
 // became: the steer, or the queued message a refused steer went as
-// (`web-application.md` § Responding to the user, `product.md` § Steer or queue).
+// (`web-application.md` § Responding to the user, `turns.md` § Steer or queue).
 // Recall takes the row away at once all the same, and puts the message
 // back into the empty composer once it is carried out.
 test.each([
@@ -1328,7 +1328,7 @@ async function withRemovals(check: (
 }
 
 // Recall takes a waiting message back into the empty composer, as
-// iMessage's does (`product.md` § Steer or queue): its text, and its files
+// iMessage's does (`turns.md` § Steer or queue): its text, and its files
 // as capsules, which attach as a pasted message's do, without their bytes.
 // Before, the message was only removed.
 test('Recall puts a steer back into the empty composer, its file a capsule attached without uploading it', async () => {
@@ -1355,7 +1355,7 @@ test('Recall puts a steer back into the empty composer, its file a capsule attac
 
 // With a draft in the composer, Recall keeps the draft as it is and the
 // message is not put back; a toast's Undo sends it again the way it was
-// sent (`product.md` § Steer or queue).
+// sent (`turns.md` § Steer or queue).
 test('Recall with a draft in the composer keeps it untouched, and the toast\'s Undo sends the message again to the queue', async () => {
   await withRemovals(async (conversation, removal) => {
     const store = useConversations()
@@ -1392,7 +1392,7 @@ test('Recall with a draft in the composer keeps it untouched, and the toast\'s U
 
 // A refusal, as when the agent read the steer meanwhile, brings the row back
 // where it was with a toast, and takes back out of the composer what Undo
-// Send put there, unless the user changed it since (`product.md` § Steer or
+// Send put there, unless the user changed it since (`turns.md` § Steer or
 // queue).
 test.each([
   { since: 'left as it was', draft: '' },
@@ -1420,7 +1420,7 @@ test.each([
 })
 
 // A message can be sent while the one before it is on its way
-// (`product.md` § Steer or queue): before, Enter did nothing until the first
+// (`turns.md` § Steer or queue): before, Enter did nothing until the first
 // was confirmed. Both show at once, as what they will be, and go in order.
 test('two messages sent in a row while the first is unconfirmed both show at once, go in order, and each becomes its row in place', async () => {
   const store = useConversations()
@@ -1593,7 +1593,7 @@ test('a draft moves without telling anyone and is created where it moved; a conv
   }
 })
 
-// `product.md` § Where a conversation runs: moving a conversation whose agent
+// `hosts.md` § Where a conversation runs: moving a conversation whose agent
 // works stops its work first, and the move goes out once the session says it
 // is idle, since the backend refuses a move while its tree is busy.
 test('moving a conversation whose agent works stops its work and sends the move only once the session is idle', async () => {
@@ -1823,7 +1823,7 @@ function pastePicture(current: ReturnType<typeof useConversations>['items'][numb
 }
 
 // A message whose file still uploads is sent like any other, and goes once
-// the upload is done (`product.md` § Writing a message).
+// the upload is done (`composer.md` § Writing a message).
 test('a message sent while its file uploads leaves the composer at once and is delivered with the file once the upload finishes', async () => {
   await withSession(async (current, sent) => {
     const gate = deferred()
@@ -1848,7 +1848,7 @@ test('a message sent while its file uploads leaves the composer at once and is d
 })
 
 // Two screenshots pasted one after the other are both `image.png`; a name
-// says nothing about a file's contents (`product.md` § Attachments).
+// says nothing about a file's contents (`composer.md` § Attachments).
 test('two files of one name both join the message, upload, and go as two files', async () => {
   await withSession(async (current, sent) => {
     const taken = useConversations().addFiles(current, [
@@ -1924,7 +1924,7 @@ function answerClaims(gate: Promise<void>): () => void {
 
 // A pasted message's stored file is a capsule at once, attaching beside it
 // as an upload does; a message sent meanwhile waits for it
-// (`product.md` § Writing a message).
+// (`composer.md` § Writing a message).
 test('a pasted message\'s stored file is the message\'s at once, and a send waits for its attaching, which sends no bytes', async () => {
   await withSession(async (current, sent) => {
     const gate = deferred()
@@ -3671,7 +3671,7 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
 
 // A pasted file whose attaching the page did not see end is saved with the
 // draft as its stored file, and attaches again when the draft is restored,
-// or falls back as a paste does (`product.md` § Writing a message).
+// or falls back as a paste does (`composer.md` § Writing a message).
 test('a draft saved while its pasted files attach restores them attaching, and their claims finish or fall back', async () => {
   let signOut = signIn()
   const saved = new Map<string, draftStorage.SavedDraft>()

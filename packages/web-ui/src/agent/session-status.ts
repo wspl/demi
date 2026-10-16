@@ -158,7 +158,7 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
 }
 
 /**
- * The recovery the dock offers for a turn that did not finish (`product.md`
+ * The recovery the dock offers for a turn that did not finish (`turns.md`
  * § Recovering an unfinished turn), from the record that ended the last
  * turn among the visible `blocks`: an error resumes, the user's own Stop
  * continues, and anything else is finished or still running. An error that
@@ -266,7 +266,7 @@ function isLateInput(block: RecordCandidate): boolean {
 }
 
 /**
- * The Host the dock's Resume waits for (`product.md` § Recovering an
+ * The Host the dock's Resume waits for (`turns.md` § Recovering an
  * unfinished turn): the turn ended unfinished because a device was offline,
  * and the conversation's current primary Host, where the resume runs, is a
  * device that is not online; that is the device the record names unless the

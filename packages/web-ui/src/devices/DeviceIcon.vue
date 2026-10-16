@@ -8,7 +8,7 @@ import type { DeviceMark } from './mark'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE, type DeviceState } from './state'
 
 /**
- * A device's mark (`product.md` § Conversations and projects), the same wherever a device is
+ * A device's mark (`conversations.md` § Conversations and projects), the same wherever a device is
  * drawn: its system's logo in the subtle icon color, at a brand mark's size, its state's dot on
  * the logo's top right, and under the dot the number that tells it from the user's other devices
  * of the same logo, when `mark` shows one (`shownMark`). A device since removed has no mark: the

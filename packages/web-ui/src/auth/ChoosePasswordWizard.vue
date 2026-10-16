@@ -23,7 +23,7 @@ import {
 
 /**
  * Choose Your Password and the passkey offer after it, one wizard
- * (`product.md` § User system, `web-application.md` § Responding to the
+ * (`users.md` § User system, `web-application.md` § Responding to the
  * user): what an account an administrator made or reset sees before
  * anything else of the product opens, on a computer one dialog at the centre
  * over the page, on a phone the whole screen. The password it was given is

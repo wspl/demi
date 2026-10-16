@@ -242,7 +242,7 @@ impl ClientFrame {
 
 /// How a message saved for later goes, the composer's choice: as the next
 /// message while nothing runs, otherwise as a steer of the running turn or
-/// into the queue (`product.md` § Steer or queue).
+/// into the queue (`turns.md` § Steer or queue).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum SavedDelivery {

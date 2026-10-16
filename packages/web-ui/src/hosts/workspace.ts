@@ -40,7 +40,7 @@ export type WorkspaceDraft =
 /**
  * Where New Project starts: the kind the user last chose and the device last
  * chosen in its device menu, kept while the Cloud is chosen
- * (`product.md` § Conversations and projects).
+ * (`conversations.md` § Conversations and projects).
  */
 export interface WorkspaceHostChoice {
   kind: 'cloud' | 'device'
@@ -97,7 +97,7 @@ export function usePairedSelection(
 export type DeviceProjectAction = 'add' | 'create'
 
 /**
- * New Project's button for a directory on a device (`product.md`
+ * New Project's button for a directory on a device (`conversations.md`
  * § Conversations and projects): Add Project when the directory exists,
  * Create Project when Demi will create it, as the listing the directory
  * field completes from tells (`useDirectoryExistence`). While the listing is

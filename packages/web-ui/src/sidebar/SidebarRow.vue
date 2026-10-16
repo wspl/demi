@@ -121,7 +121,7 @@ const rowClass = computed(() => [
       ]"
     >
       <!-- A pinned row offers Unpin before Archive; Pin is in the row's menu
-           (`product.md` § Conversations and projects). -->
+           (`conversations.md` § Conversations and projects). -->
       <Tooltip v-if="conversation.pinned" :content="t('row.unpin')" class="flex items-center">
         <IconButton
           :icon="PinOff"

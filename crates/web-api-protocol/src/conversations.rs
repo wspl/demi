@@ -149,7 +149,7 @@ pub struct ConversationSummary {
     pub id: ConversationId,
     /// Its title; null while it is the placeholder, which holds no words
     /// and which the page shows as New conversation in the reader's
-    /// language (`product.md` § Conversation titles).
+    /// language (`conversations.md` § Conversation titles).
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub title: Option<String>,
@@ -182,7 +182,7 @@ pub struct ConversationSummary {
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub revision: u64,
     /// The root's latest ended turn; null before the first. A page notifies
-    /// of a turn it has not seen end (`product.md` § Notifications).
+    /// of a turn it has not seen end (`turns.md` § Notifications).
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<LastTurn>")]
     pub last_turn: Option<LastTurn>,
@@ -234,7 +234,7 @@ pub struct ConversationSummary {
     pub permission_requests: u64,
     /// How many of those the user has not read: the sidebar's needs-you mark
     /// shows while this is above zero, and settles once the user reads the
-    /// conversation, as it does for an answer (`product.md` § Conversations
+    /// conversation, as it does for an answer (`conversations.md` § Conversations
     /// and projects). The read acknowledgement reads them with the output.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub unread_permission_requests: u64,

@@ -130,7 +130,7 @@ test('without a Host, paths stay text and Host images show their alt text', () =
 })
 
 test('emphasis beside CJK text formats as a CJK writer means it', () => {
-  // Plain CommonMark reads these stars and tildes, beside CJK punctuation, as text (`product.md` § Writing a message).
+  // Plain CommonMark reads these stars and tildes, beside CJK punctuation, as text (`composer.md` § Writing a message).
   expect(renderMarkdown('**建议：**一组')).toBe('<p><strong>建议：</strong>一组</p>\n')
   expect(renderMarkdown('这是**“扫光”**效果')).toBe('<p>这是<strong>“扫光”</strong>效果</p>\n')
   expect(renderMarkdown('**注意：**これは')).toBe('<p><strong>注意：</strong>これは</p>\n')

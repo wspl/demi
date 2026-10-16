@@ -1,4 +1,4 @@
-//! Account administration (`web-api.md` § Account API; `product.md` § User
+//! Account administration (`web-api.md` § Account API; `users.md` § User
 //! system): an administrator lists the accounts, creates one of a role it
 //! outranks with a first password the server makes, makes another first
 //! password, changes a role or disables an account, signs an account out

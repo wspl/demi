@@ -37,7 +37,7 @@ What is never translated:
   the agent's behavior does not depend on the user's.
 - What people and models wrote: messages, replies, summaries and the titles
   a model gives conversations, which follow the language the user writes in
-  ([Product](product.md)).
+  ([Conversation titles](conversations.md#conversation-titles)).
 - Names: files, paths, commands, models, vendors, branches, accounts.
 - The gallery's notes, which document a section for the people building
   Demi, and the content of its fixtures, such as a specimen conversation's

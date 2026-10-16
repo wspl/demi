@@ -9,7 +9,7 @@ import { stopSentence, type MoveAnswers, type MoveQuestion } from './move-questi
 
 /**
  * The question before a conversation that has messages moves
- * (`product.md` § Where a conversation runs): where it will run, that the
+ * (`hosts.md` § Where a conversation runs): where it will run, that the
  * files stay where they are, and when the agent learns of it. Move and Tell
  * Agent is the default and moves it and wakes the agent; Move moves it only.
  * While the agent works the first line says what stops and the answers read

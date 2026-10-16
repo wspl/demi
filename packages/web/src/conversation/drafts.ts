@@ -21,7 +21,7 @@ const fileSchema = z.object({
   /**
    * The stored file a pasted message names, while it is not attached yet,
    * with the picture its copy carried for when the paste cannot use it
-   * (`product.md` § Writing a message).
+   * (`composer.md` § Writing a message).
    */
   claim: z.object({ file: copiedStoredFileSchema, picture: z.instanceof(File).nullable() }).optional(),
   /** A text file's opening, as the backend answered its upload. */

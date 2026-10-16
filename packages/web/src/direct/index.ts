@@ -110,7 +110,7 @@ const lastPathSchema = z.enum(DEVICE_PATHS)
 /**
  * The path this browser found to paired device `deviceId` last time, in
  * this page or an earlier one, which the host menu shows fainter until the
- * page finds a current one (`product.md` § Where a conversation runs);
+ * page finds a current one (`hosts.md` § Where a conversation runs);
  * none for a device it never reached.
  */
 export function lastDirectPath(deviceId: string): DevicePath | null {

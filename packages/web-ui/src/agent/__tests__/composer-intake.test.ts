@@ -7,7 +7,7 @@ import { composerExtensions } from '../message-editor/extensions'
 import type { IntakeOptions } from '../message-editor/intake'
 import { attachmentDrag, type CopiedMessage } from '../message-input/copied-message'
 
-// What a composer takes in (`product.md` § Attachments): whatever is pasted
+// What a composer takes in (`composer.md` § Attachments): whatever is pasted
 // or dropped becomes text in the user dialect or a capsule, never a picture
 // set into the text or a node of another kind. The events go through
 // ProseMirror's own handlers on a page of happy-dom, which lays nothing out,

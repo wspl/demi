@@ -16,7 +16,12 @@ layout and interaction; these documents do not repeat it.
 
 ## What can users do, and how does the web app talk to the backend?
 
-- [Product](product/product.md): users, roles and instance mode; conversations and projects; writing a message; attachments; provider management; Cloud settings.
+- [Product](product/product.md): what Demi is for its user, and where each part of the product is designed:
+  - [Users and instance mode](product/users.md): shared and isolated instances, accounts, roles and sign-in.
+  - [Conversations and projects](product/conversations.md): projects by directory, the sidebar, workflows, titles, finding, reading and saving for later.
+  - [Hosts](product/hosts.md): a device's mark, where a conversation runs, the host menu and the Cloud's settings.
+  - [Turns](product/turns.md): steer or queue, recovering an unfinished turn, following the agent's work and notifications.
+  - [Writing a message](product/composer.md): the composer, input methods and attachments.
 - [Web application](product/web-application.md): the web app's packages, work panel, backend communication, [page synchronization](product/web-application.md#page-synchronization), authentication, persistence, [drafts](product/web-application.md#drafts) and development loop.
 - [Web API](product/web-api.md): every HTTP and WebSocket route with its request, response, status and error codes.
 - [Sharing](product/sharing.md): a read-only snapshot of a conversation or one answer behind a random link: what it holds, the share dialog, safety, storage and routes.

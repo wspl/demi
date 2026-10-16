@@ -1086,7 +1086,7 @@ fn system(name: &str, distribution: Option<&str>) -> wire::OperatingSystem {
 /// distribution its hello names, with a number among the user's devices of
 /// that logo: given at the first hello as one more than the highest, kept
 /// while the device stays and when another goes, and given anew when a
-/// reinstall changes the logo (`product.md` § Conversations and projects).
+/// reinstall changes the logo (`conversations.md` § Conversations and projects).
 // About 0.2 s: six raw runners pair and two say hello again.
 #[tokio::test(flavor = "multi_thread")]
 async fn a_devices_mark_numbers_it_among_the_users_devices_of_its_systems_logo() {

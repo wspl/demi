@@ -42,7 +42,7 @@ import {
  * device it is a directory there, and takes the directory's name. The folder
  * browser is a page of the same dialog, opened by Browse…. Every opening
  * starts from a clean form on the user's last choice of kind and device,
- * the Cloud the first time (`product.md` § Conversations and projects); the
+ * the Cloud the first time (`conversations.md` § Conversations and projects); the
  * host remembers it from `choose`. Moving a conversation between existing
  * projects is the conversation header's menus, not this dialog.
  */
@@ -346,7 +346,7 @@ function selectDevice(id: string, close: () => void): void {
             </div>
             <!-- Not a <label>: a label hands every click inside it, on the caption, the hint or
                  the gaps between, to the field, which would take the focus back and reopen
-                 its completion (`product.md` § Conversations and projects). -->
+                 its completion (`conversations.md` § Conversations and projects). -->
             <div class="flex flex-col gap-1.5 text-chrome text-fg-muted">
               <span :id="`${directoryId}-label`">{{ t('project.directory') }}</span>
               <span class="flex items-center gap-2">

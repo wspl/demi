@@ -42,7 +42,7 @@ export interface SidebarConversation {
   needsYou?: boolean
   /**
    * The paired device a conversation outside a project runs on, which its row's end shows
-   * (`product.md` § Conversations and projects); absent on the Cloud and in a project.
+   * (`conversations.md` § Conversations and projects); absent on the Cloud and in a project.
    */
   device?: SidebarDevice
 }

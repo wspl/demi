@@ -7,7 +7,7 @@ import Wizard from '../ui/Wizard.vue'
 import PasskeyOfferSteps from './PasskeyOfferSteps.vue'
 
 /**
- * The offer to add a passkey as a wizard of its own (`product.md` § User
+ * The offer to add a passkey as a wizard of its own (`users.md` § User
  * system), which a host opens once on a browser after a sign-in that has
  * just proved the user: a handoff code's. Its steps are `PasskeyOfferSteps`,
  * which Choose Your Password goes on into in its own dialog.

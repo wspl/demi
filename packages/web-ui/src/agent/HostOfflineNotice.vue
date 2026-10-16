@@ -13,7 +13,7 @@ import type { HostChoice, HostDeviceOption, HostMenuHost } from '../hosts/types'
 
 /**
  * The conversation's primary Host is a paired device whose runner is not
- * connected (`product.md` § Recovering an unfinished turn): offered above
+ * connected (`turns.md` § Recovering an unfinished turn): offered above
  * the composer with how to start the runner again, and Move to Another
  * Host…, which lists Run On's online Hosts once the conversation's work
  * is idle; choosing one is the host's to carry out, as the header's host

@@ -19,7 +19,7 @@ device's runner connection, and a shell environment on that Host.
 | Workspace | The workspace's device | The workspace path |
 
 These three are the only selections, and which one a destination is follows
-from its directory ([Conversations and projects](../product/product.md#conversations-and-projects)):
+from its directory ([Conversations and projects](../product/conversations.md#conversations-and-projects)):
 a move to a Host and directory, the user's or an agent's, selects the
 Cloud's directory of a conversation (any directory directly under
 `/home/demi/sessions`, so a Fork stays outside projects in its source's) or
@@ -61,7 +61,7 @@ does not own a sandbox or restrict filesystem access. Revoking its device
 removes the workspace but not its files; its conversations stay outside any
 project and cannot run there any more ([Web API](../product/web-api.md)).
 Deleting a workspace archives its conversations
-([Conversations and projects](../product/product.md#conversations-and-projects));
+([Conversations and projects](../product/conversations.md#conversations-and-projects));
 restoring one moves it back to its directory by the rule above, which makes
 the workspace again. Default Cloud project paths are
 `/home/demi/projects/<workspaceId>`. A user can also select an existing directory.
@@ -121,7 +121,7 @@ those jobs to the runner that keeps them, and they report when it is back.
 For example, the user's laptop goes offline with a build running, the agent
 says it cannot reach the laptop and ends its turn, and the user moves the
 conversation to the Cloud from the offline card
-([Where a conversation runs](../product/product.md#where-a-conversation-runs)),
+([Where a conversation runs](../product/hosts.md#where-a-conversation-runs)),
 telling the agent.
 
 The backend performs one protected transition:
@@ -158,7 +158,7 @@ their original device; another directory on the same Cloud machine remains
 locally accessible.
 
 **Telling the agent.** A switch the user makes may tell the agent at once
-([Where a conversation runs](../product/product.md#where-a-conversation-runs)):
+([Where a conversation runs](../product/hosts.md#where-a-conversation-runs)):
 with `notifyAgent`, the backend commits the switch and then admits a message
 from the user into the root, through the entry a permission decision uses
 ([The decision's message](../agent/permissions.md#the-decisions-message)), so
@@ -262,7 +262,7 @@ The conversation's agents attach the devices their work needs, with
 `demi host attach`, which the user allows for each host
 ([Hosts a conversation may reach](#hosts-a-conversation-may-reach)); the product offers
 no way to attach one by hand, and the user detaches one from the header's
-menu ([Where a conversation runs](../product/product.md#where-a-conversation-runs)).
+menu ([Where a conversation runs](../product/hosts.md#where-a-conversation-runs)).
 Each device appears once across the primary and attached bindings.
 An attached host goes by its device's name, the one the user sees in the
 header's menu and in Settings, with a numeric suffix when two names collide;
@@ -332,7 +332,7 @@ hosts it reaches:
 
 | Command | Does | Permission |
 | --- | --- | --- |
-| `demi conversation rename "<title>"` | Renames this conversation ([Conversation titles](../product/product.md#conversation-titles)) | `conversation.organize` |
+| `demi conversation rename "<title>"` | Renames this conversation ([Conversation titles](../product/conversations.md#conversation-titles)) | `conversation.organize` |
 | `demi conversation projects` | Lists the user's projects: name, Host, directory | `conversation.organize` |
 | `demi host move <host> <directory>` | Makes `<host>` where this conversation runs, in `<directory>`, an absolute path there, and so puts it in that directory's project, or among Conversations for the Host's home ([Resolve a target](#resolve-a-target)); the primary Host it leaves is attached. The command checks the directory at once and fails, with nothing pending, when the host is offline or the path is no directory there (`/srv/x is not a directory on build-box`) | The host, when the conversation may not reach it |
 | `demi host devices` | Lists the user's paired devices and the Cloud, with their states | none |

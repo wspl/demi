@@ -176,7 +176,7 @@ export function settingsGroupName(id: SettingsGroupId): string {
   return id === 'agent' ? t('sections.agent') : t('sections.workspace')
 }
 
-/** Settings › Users, which only the master and admins have (`product.md` § User system). */
+/** Settings › Users, which only the master and admins have (`users.md` § User system). */
 export function usersSection(): SettingsNavItem {
   return {
     id: 'users',

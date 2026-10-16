@@ -1,4 +1,4 @@
-//! Finding a conversation (`product.md` § Finding a conversation,
+//! Finding a conversation (`conversations.md` § Finding a conversation,
 //! `web-api.md` § Search, `storage.md` § Search index): the user's indexer,
 //! which keeps the user's search index in step with the conversations, and
 //! the search the edge answers from that index alone.

@@ -1,4 +1,4 @@
-//! Conversation titles (`product.md` § Conversation titles, `web-api.md`
+//! Conversation titles (`conversations.md` § Conversation titles, `web-api.md`
 //! § Resource index): the first message titles the conversation at once and
 //! a request beside the first turn writes a better one, and nothing asks
 //! again; a rename that lands while the request is in flight wins; an

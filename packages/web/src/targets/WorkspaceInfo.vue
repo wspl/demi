@@ -17,7 +17,7 @@ import type { HostChoice } from '@demicodes/web-ui/hosts/types'
 
 /**
  * The header's place: the Host the conversation runs on and its directory
- * (`product.md` § Where a conversation runs). Every move the two menus
+ * (`hosts.md` § Where a conversation runs). Every move the two menus
  * start, to another Host or another directory, comes through `move`, which
  * asks first when the conversation has messages, and to stop the agent
  * first while it works; so does one the offline primary Host's card above

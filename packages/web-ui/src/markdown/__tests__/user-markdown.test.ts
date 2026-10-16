@@ -10,7 +10,7 @@ import {
 } from '../user-markdown'
 
 // A user message's Markdown and the editor document it shows as
-// (`product.md` § Writing a message).
+// (`composer.md` § Writing a message).
 
 function paragraph(...content: JSONContent[]): JSONContent {
   return content.length ? { type: 'paragraph', content } : { type: 'paragraph' }

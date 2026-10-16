@@ -11,7 +11,7 @@ import { isCompactionDivider } from './visible-blocks'
  * compacted after it, and nothing of the turn followed. A message being
  * sent, `sending`, is the user's next message from the moment it is sent,
  * so the last block stays the end while the message is delivered and its
- * turn starts (`product.md` § Following the agent's work).
+ * turn starts (`turns.md` § Following the agent's work).
  */
 export function replyEndIds(
   visibleBlocks: readonly Pick<Block, 'id' | 'type'>[],

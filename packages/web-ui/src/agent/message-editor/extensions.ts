@@ -22,7 +22,7 @@ import { readCapsule } from './capsules'
 import ImageNodeView from './ImageNodeView.vue'
 import { ComposerIntake, MESSAGE_IMAGE_ATTRIBUTE, type IntakeOptions } from './intake'
 
-// The editor a user message is written and shown in (`product.md` § Writing
+// The editor a user message is written and shown in (`composer.md` § Writing
 // a message): the schema the dialect reads into, formatting applied as a
 // construct is typed, the composer's keys, and what the page draws over the
 // text (links for bare URLs, colors for code).
@@ -61,7 +61,7 @@ const AttachmentNode = Node.create({
 /**
  * Which events a capsule keeps from the editor. A drag is the editor's, in a
  * sent message as in the composer, so a capsule can be dragged out of the
- * conversation into a composer (`product.md` § Attachments): tiptap's own
+ * conversation into a composer (`composer.md` § Attachments): tiptap's own
  * rule lets a node be dragged only after a press in an editable editor. A
  * press selects the capsule and the clipboard's events are the editor's;
  * everything else, Retry's press among it, is the capsule's own.
@@ -322,7 +322,7 @@ export interface MessageKeyOptions {
    * Enter outside a code block, or ⌘/Ctrl+Enter anywhere: send. `otherWay`
    * is true for ⌘/Ctrl+Enter outside a code block, which sends the message
    * the other way while the agent works; in a code block ⌘/Ctrl+Enter is the
-   * send key, as Enter is elsewhere (`product.md` § Steer or queue).
+   * send key, as Enter is elsewhere (`turns.md` § Steer or queue).
    */
   submit: (otherWay: boolean) => void
   /** Escape: true when it ended something, such as an edit. */

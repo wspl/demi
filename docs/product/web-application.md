@@ -5,7 +5,7 @@ Tailwind. vue-router owns navigation; Pinia holds application state.
 `web/main.ts` composes the router and account-scoped stores. A user message is
 a tiptap (ProseMirror) editor: editable in the composer, read-only in the
 conversation, so both show it one way
-([Writing a message](product.md#writing-a-message)). `web-ui` reads and writes
+([Writing a message](composer.md#writing-a-message)). `web-ui` reads and writes
 the message's Markdown itself rather than through tiptap's Markdown extension,
 which backslash-escapes every `_` and writes `<` as `&lt;` in what the model
 would read.
@@ -228,7 +228,7 @@ why.
     the backend fetches; an upload's progress; moving a conversation to
     another Host.
   Sending a message has its own states
-  ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)).
+  ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)).
 
 ### Keyboard
 
@@ -1035,7 +1035,7 @@ the working-tree change routes, the raw file routes behind
 and uploads; the live browser view's source
 to the user stream route; and shared account interfaces to provider, pairing,
 and Cloud APIs. The main composer and the edit composer add a file through the
-same upload adapter ([Attachments](product.md#attachments)); no message
+same upload adapter ([Attachments](composer.md#attachments)); no message
 carries a file's bytes. The product reports the time zone and languages of the
 user's browser to the user's preferences when they change.
 The work panel keeps one file selection and one change selection per
@@ -1091,7 +1091,7 @@ The backend keeps the draft, its revision, and the version a save replaced
   it displaces is offered in its place and nothing is lost.
 - **Clears the draft on send.** A sent message leaves the composer at once and
   shows in the transcript under the Requesting row
-  ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)), but the saved draft
+  ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)), but the saved draft
   stays until the
   backend accepts the message; until then the emptied composer is the page's
   unsaved change. The page then saves an empty draft, based on the revision
@@ -1159,3 +1159,46 @@ web app contract suite in `web` runs the product's API client and
 ([Web app contract suite](../delivery/scenarios.md#web-app-contract-suite)).
 Backend acceptance and deployment requirements belong to
 [Delivery and acceptance](../delivery/roadmap.md).
+
+## Web app scope
+
+The web app provides conversations, account settings, provider management,
+devices, and Cloud controls. Administrative account management and usage have
+backend APIs; their dedicated pages in the web app are deferred. Settings
+list the backend's plugins, each with a switch that turns it on or off for
+the user, and an open conversation whose commands a switch changed offers a
+reload ([A user's plugins](../architecture/plugins.md#a-users-plugins)).
+Settings have a Subagents section ([Profiles](../agent/subagents.md#profiles)):
+a switch that turns subagents on or off for the user, on for a new user; the
+two [limits](../agent/subagents.md#limits), Maximum subagents and Maximum
+depth, each a number with Unlimited as a choice, which asks first in a
+dialog warning that it can make conversations unstable, the dialog's
+default button keeping the limit, and which keeps the number, so choosing
+Limited again shows the limit as it was; and the user's subagent profiles, which the user creates, edits and deletes
+there, each with a switch of its own that enables or disables it; a new
+profile starts enabled. The next spawn of every conversation uses a change.
+A profile's model is chosen with the composer's own model menu, the same
+control with the same items, providers, models, Reasoning and the rest, plus
+*Parent's model* at its top, but without the Context row, which there would
+change the user's limit for every conversation; the profile's own Context
+is a row of the editor beside the menu, *Default (500K)* naming the window
+the user's limit gives
+([Profiles](../agent/subagents.md#profiles)). A profile whose provider entry, model, effort
+or tier is gone is marked as unavailable, with the part that is missing,
+until the user fixes it.
+Settings have an Instructions section, after Providers: one text
+field for the user's [personal instructions](../agent/instructions.md#personal-instructions),
+which every conversation's agents follow, with Save, available while the
+text differs from the saved one, and the count of characters against the
+limit. Saving an empty text removes them. The context card's Personal
+instructions entry opens this section.
+Skills have a settings section of their own, which the sidebar also opens
+([Skills](../agent/skills.md#the-page)).
+Data and privacy actions and account deletion are also deferred. Exporting
+conversations is not offered, and nothing in the web app leads to it.
+Read-only links are [Sharing](sharing.md)'s, and the language is chosen as
+[Localization](localization.md) says.
+
+The selected scope excludes collaboration, offline mode, PWA behavior and
+push notifications. Components, layout, and interaction examples are
+maintained in the gallery.

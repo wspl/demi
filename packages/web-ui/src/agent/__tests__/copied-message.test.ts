@@ -16,7 +16,7 @@ import {
 } from '../message-input/copied-message'
 import { splitMessageContent } from '../message-input/message-content'
 
-// A sent message on the clipboard and back in a composer (`product.md`
+// A sent message on the clipboard and back in a composer (`composer.md`
 // § Writing a message): Demi's own form carries each file as the message
 // holds it, so a paste brings the files back as capsules without their
 // bytes. About 10 ms in all.

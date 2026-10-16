@@ -5,7 +5,7 @@ import StatusDot from '@demicodes/web-ui/ui/StatusDot.vue'
 import { statusTone } from '@demicodes/web-ui/agent/conversation-status'
 import type { SidebarConversation } from './types'
 
-// One quiet mark (`product.md` § Conversations and projects): yellow while a permission
+// One quiet mark (`conversations.md` § Conversations and projects): yellow while a permission
 // request waits for the user and has not been read, the same size as every other dot and with
 // nothing around it, over every other mark; otherwise the tone the conversation's state wears on
 // its tab too, the accent breathing while it runs, green once finished and red once failed, until

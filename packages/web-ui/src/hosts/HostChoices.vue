@@ -11,7 +11,7 @@ import type { HostChoice, HostDeviceOption, HostMenuHost } from './types'
 
 /**
  * The Hosts a conversation can run on, as Run On lists them
- * (`product.md` § Where a conversation runs): the Cloud, then each paired
+ * (`hosts.md` § Where a conversation runs): the Cloud, then each paired
  * device, an online one with the path this page reaches it by, or fainter
  * the path this browser found last time before the page reached it, the primary
  * Host checked. In a project, choosing a device other than the checked one

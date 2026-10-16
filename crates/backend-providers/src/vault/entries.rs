@@ -353,7 +353,7 @@ impl Vault {
         self.0.mode == InstanceMode::Isolated || user.role == Role::Master
     }
 
-    /// Whose entries `user` infers with (`product.md` § Instance mode): their
+    /// Whose entries `user` infers with (`users.md` § Instance mode): their
     /// own on an isolated instance, the master's on a shared one.
     pub async fn owner_for(&self, user: &UserId) -> Result<UserId, StorageError> {
         if self.0.mode == InstanceMode::Isolated {

@@ -44,7 +44,7 @@ pub enum DeviceRoute {
 serde_plain::derive_display_from_serialize!(DeviceRoute);
 serde_plain::derive_fromstr_from_deserialize!(DeviceRoute);
 
-/// The logo of a device's mark (`product.md` § Conversations and projects):
+/// The logo of a device's mark (`conversations.md` § Conversations and projects):
 /// its system's, Apple for macOS, the Windows logo, for Linux its
 /// distribution's, or Tux for any other.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]

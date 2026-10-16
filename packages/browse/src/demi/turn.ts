@@ -1,6 +1,6 @@
 // `demi.turn({ timeout })`: waits until the open conversation no longer
 // runs, as the page and the backend both tell it. The page counts a turn
-// from the send of the message that starts it (`product.md` § Following
+// from the send of the message that starts it (`turns.md` § Following
 // the agent's work): its composer offers Stop and its transcript ends in
 // Requesting while the message is on its way, before the backend has it.
 // The backend counts a conversation running while its tree works without

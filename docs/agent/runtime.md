@@ -252,7 +252,7 @@ restart holds them again. It hands back its queued messages and
 whether a turn was interrupted; the node's lifecycle policy decides what
 happens next ([Persistence](subagents.md#persistence)). A root leaves its interrupted turn to
 its client, which the product offers as Resume
-([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
 When the transcript does not yet end with an interruption record, because the
 process died instead of shutting down, the root appends one and saves it at
 once.
@@ -321,7 +321,7 @@ A human steer is written only at the first of these, just before the request
 that carries it, never after a stream or a tool step: until the model is
 about to read it, it stays pending, so the page keeps showing it above the
 composer with *Will be sent to the agent at its next step*, Send Now and
-Recall ([Steer or queue](../product/product.md#steer-or-queue)). For example,
+Recall ([Steer or queue](../product/turns.md#steer-or-queue)). For example,
 a steer sent the moment the model asked for a five-minute build used to be
 written at once, below the build's call, as a plain message with nothing
 running after it, and the model read it only when the build's window ended;
@@ -1294,7 +1294,7 @@ that replays it, and a short number is copied without a slip.
 - **Paths stay whole.** A path keeps the identifiers it is made of, since
   several backends and users can share one machine: an attachment's path on a
   Host names its conversation's full id
-  ([Attachments](../product/product.md#attachments)).
+  ([Attachments](../product/composer.md#attachments)).
 - **Inside Demi**, an identity keeps the form its storage and its wire need;
   this rule is about the text the model reads and writes.
 
@@ -1397,7 +1397,7 @@ and redacted data are replayed whole, because the vendor verifies them as they
 were sent. Each medium is replayed with the bytes the session holds for it,
 and a tool's medium that is gone as its text ([Media](#media)). A message's
 reference is replayed as its text, and an attachment record
-([Attachments](../product/product.md#attachments)) as a tag that names the
+([Attachments](../product/composer.md#attachments)) as a tag that names the
 file, its media type, its size and its path, never its content. A tool
 call's input is replayed as the JSON value the provider supplied, or as text
 when it is not valid JSON. A call of a tool the request no longer declares,
@@ -1485,7 +1485,7 @@ says none. With Claude Code, a run that ends in a batch of tool calls
 turn
 ([Requests over stream-json](../providers/claude-code.md#requests-over-stream-json)),
 so its latest answered request is the last request that ended a turn. A title request says instead that it is no session's
-([Conversation titles](../product/product.md#conversation-titles)).
+([Conversation titles](../product/conversations.md#conversation-titles)).
 
 ### Media
 
@@ -1593,7 +1593,7 @@ a block cannot hold bytes and a provider cannot receive a reference:
 An image enters the transcript once: when a tool result attaches it
 ([Media the model views](#media-the-model-views)), or when a message's upload
 becomes its native medium
-([Attachments](../product/product.md#attachments)). It is fitted then to what
+([Attachments](../product/composer.md#attachments)). It is fitted then to what
 every provider accepts of one image, at most 2,000 px on each side and
 5,000,000 bytes as base64, which is 3,750,000 bytes of image, and kept light,
 since every request replays it. It never changes afterwards, so every request
@@ -1936,13 +1936,13 @@ The wait for the model ends when a call's title is written, not when the call
 opens ([Waiting for the model](#waiting-for-the-model)). A vendor that sends
 calls only whole has no calls being written: between its text and its call,
 the tail row says Requesting, and its wait runs on
-([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
 
 ### Waiting for the model
 
 While a node waits for the model's answer, the tail row of its transcript
 says Requesting with how long the wait has lasted
-([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)).
+([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
 How long is the session's fact, not the page's. For example, a subagent's
 request has waited eight minutes when the user first opens its view: the view
 says Requesting for 8m, and so does a page reloaded a minute later, where a
@@ -1983,7 +1983,7 @@ starts again.
   minus `waitedMs`, and compares no time of the server's with its own, so a
   difference between the two clocks never shows.
 - **A message the page sent.** Its wait starts at the send, before the server
-  has the message ([Recovering an unfinished turn](../product/product.md#recovering-an-unfinished-turn)):
+  has the message ([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)):
   that page counts from the send, the earlier of the two starts.
 
 So whenever the row says Requesting, the server holds the wait's start, but

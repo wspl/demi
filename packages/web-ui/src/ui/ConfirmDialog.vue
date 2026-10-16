@@ -13,7 +13,7 @@ import type { HeadlineText, TitleText } from './ui-text'
  * what happens, and `goes` names what goes with it, one line each. Cancel is the
  * safe answer, the default button, and closes; the action is the danger
  * button, which takes a click (Dialog). Nothing the user
- * set up disappears on one click (`product.md`). The action is the caller's
+ * set up disappears on one click (`hosts.md` § Where a conversation runs). The action is the caller's
  * `onConfirm`, which returns the promise of its `operation`'s work: the
  * danger button shows it while it runs, the dialog opened again included,
  * and the caller closes the dialog then if it is still this one's. Cancel

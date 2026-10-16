@@ -597,7 +597,7 @@ it was, not dimmed, so the user can go on reading and typing beside it.
   browser, whose controls and full-screen control it keeps.
 - **Close.** The close control in the title bar closes it; so does a press
   outside every window while it is the newest one, by the rule the
-  session's windows share ([Recovering an unfinished turn](product.md#recovering-an-unfinished-turn)); and so does
+  session's windows share ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)); and so does
   Escape, unless the focus is in a text field or in another layer that takes
   Escape, such as a menu or a dialog. Opening moves the focus into the
   window, so Escape right after a click closes it; closing returns the focus

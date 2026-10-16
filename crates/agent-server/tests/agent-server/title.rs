@@ -1,4 +1,4 @@
-//! The conversation title (`product.md` § Conversation titles): from the
+//! The conversation title (`conversations.md` § Conversation titles): from the
 //! first message at once, then from the model's answer to a request.
 
 use std::num::NonZeroU32;

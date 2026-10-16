@@ -273,8 +273,8 @@ every other mark, the running one included, until the user reads the
 conversation, as every mark of something new does: the sidebar then shows the
 settled ring while the request still waits in the conversation and in the
 Running window, and a new request lights the dot again
-([Conversations and projects](../product/product.md#conversations-and-projects)). It is distinct from the red mark of a
-conversation that failed ([Conversations and projects](../product/product.md#conversations-and-projects)).
+([Conversations and projects](../product/conversations.md#conversations-and-projects)). It is distinct from the red mark of a
+conversation that failed ([Conversations and projects](../product/conversations.md#conversations-and-projects)).
 
 **The decision in the transcript.** The message an agent receives shows as a
 receipt row, as an agent message does ([Product

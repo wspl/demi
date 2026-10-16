@@ -14,7 +14,7 @@ import SettingsRow from './SettingsRow.vue'
 import type { SettingsPasskey, SettingsPasskeyHost } from './types'
 
 /**
- * The account's passkeys (`product.md` § User system), oldest first: each
+ * The account's passkeys (`users.md` § User system), oldest first: each
  * with its password manager's name, whether it syncs (Synced) or stays on
  * one device (This Device Only), when it was added and, once it has signed
  * in, when it was last used, and

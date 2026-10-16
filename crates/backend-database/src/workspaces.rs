@@ -89,7 +89,7 @@ pub enum WorkspaceCreation {
     /// The device is not the user's.
     DeviceNotFound,
     /// The directory is the device's home, which holds the conversations
-    /// outside projects (`product.md` § Conversations and projects).
+    /// outside projects (`conversations.md` § Conversations and projects).
     Home,
 }
 
@@ -203,7 +203,7 @@ impl ControlService {
     }
 
     /// Deletes the user's workspace `id` and archives `conversations`, the
-    /// ones in it, as one transaction (`product.md` § Conversations and
+    /// ones in it, as one transaction (`conversations.md` § Conversations and
     /// projects); when they are no longer all the unarchived ones in it,
     /// nothing changes. An archived conversation in it keeps its
     /// directory, which its restore selects again.

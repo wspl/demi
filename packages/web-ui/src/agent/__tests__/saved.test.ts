@@ -3,7 +3,7 @@ import { isMacOS } from '@tiptap/core'
 import { asksSaveForLater, savedLabel, savedPreview, saveForLaterKeys } from '../saved'
 
 // What the entry of the messages saved for later reads and which key saves
-// the message for later (`product.md` § Saved for later). Under 1 ms.
+// the message for later (`conversations.md` § Saved for later). Under 1 ms.
 
 test('the entry counts the saved messages', () => {
   expect([1, 2, 7].map(savedLabel)).toEqual(['1 Saved', '2 Saved', '7 Saved'])
