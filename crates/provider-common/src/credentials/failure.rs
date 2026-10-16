@@ -31,6 +31,9 @@ pub enum AuthReason {
     /// The vendor refused the refresh and nobody else stored new tokens; the
     /// text is the family's message.
     Refresh(String),
+    /// The vendor refused the account's sign-in, which waits for the user to
+    /// sign in again (`claude-code.md` § Accounts and sign-in).
+    SignedOut,
 }
 
 impl AuthFailure {
@@ -68,6 +71,9 @@ impl AuthFailure {
                 format!("The {family} account could not be loaded: {detail}")
             }
             AuthReason::Refresh(message) => message.clone(),
+            AuthReason::SignedOut => {
+                format!("{family} signed the account out. Sign in to it again")
+            }
         }
     }
 
@@ -79,6 +85,7 @@ impl AuthFailure {
             AuthReason::Invalid(_) => Some(ErrorCode::AuthInvalid),
             AuthReason::Store(_) => None,
             AuthReason::Refresh(_) => Some(ErrorCode::AuthRefreshFailed),
+            AuthReason::SignedOut => Some(ErrorCode::AuthExpired),
         };
         ProviderFailure {
             message: self.message(),
@@ -92,7 +99,7 @@ impl AuthFailure {
     /// otherwise.
     pub fn state(&self) -> AuthState {
         match self.reason {
-            AuthReason::Missing => AuthState::Unauthenticated {
+            AuthReason::Missing | AuthReason::SignedOut => AuthState::Unauthenticated {
                 message: Some(self.message()),
             },
             AuthReason::Invalid(_) | AuthReason::Store(_) | AuthReason::Refresh(_) => {
@@ -108,9 +115,10 @@ impl AuthFailure {
     pub fn quota_error(&self) -> QuotaError {
         match self.reason {
             AuthReason::Store(_) => QuotaError::Unavailable(self.message()),
-            AuthReason::Missing | AuthReason::Invalid(_) | AuthReason::Refresh(_) => {
-                QuotaError::Unauthenticated(self.message())
-            }
+            AuthReason::Missing
+            | AuthReason::Invalid(_)
+            | AuthReason::Refresh(_)
+            | AuthReason::SignedOut => QuotaError::Unauthenticated(self.message()),
         }
     }
 
@@ -118,9 +126,10 @@ impl AuthFailure {
     pub fn catalog_error(&self) -> CatalogError {
         match self.reason {
             AuthReason::Store(_) => CatalogError::Unavailable(self.message()),
-            AuthReason::Missing | AuthReason::Invalid(_) | AuthReason::Refresh(_) => {
-                CatalogError::Unauthenticated(self.message())
-            }
+            AuthReason::Missing
+            | AuthReason::Invalid(_)
+            | AuthReason::Refresh(_)
+            | AuthReason::SignedOut => CatalogError::Unauthenticated(self.message()),
         }
     }
 }

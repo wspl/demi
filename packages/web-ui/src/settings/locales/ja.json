@@ -480,6 +480,7 @@
     "account": {
       "active": "有効",
       "limitReached": "上限に達しました",
+      "signInAgain": "もう一度サインイン",
       "activate": "有効にする",
       "refreshUsage": "使用量を更新",
       "test": "接続をテスト",
@@ -509,10 +510,8 @@
       "versionDescription": "最新バージョンに追従し、自動で更新されます。",
       "check": "アップデートを確認",
       "unreadable": "最新バージョンを読み取れませんでした",
-      "noAnswer": "応答なし",
-      "notInstalled": "未インストール",
-      "installing": "クラウドにインストール中",
-      "installFailed": "クラウドにインストールできませんでした",
+      "installing": "インストール中…",
+      "installFailed": "インストールできませんでした",
       "install": "インストール"
     },
     "models": {
@@ -624,8 +623,8 @@
     "doneActive": "サインインしました。このアカウントが {vendor} の有効なアカウントになりました。",
     "doneKept": "サインインしました。{vendor} は引き続き有効なアカウントを使います。",
     "failedHint": "サインインを完了できませんでした。",
-    "waitingCloud": "クラウドの接続を待っています…",
-    "installing": "クラウドにコマンドラインツールをインストールしています…",
+    "waitingMachine": "Claude Code のマシンの接続を待っています…",
+    "installing": "コマンドラインツールをインストールしています…",
     "startingTool": "コマンドラインツールを起動しています…",
     "contacting": "{vendor} に接続しています…",
     "copyCode": "コードをコピー",

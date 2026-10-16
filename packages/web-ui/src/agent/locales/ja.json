@@ -107,6 +107,7 @@
     "stepsNotShared": "{count} 件のステップは共有されていません",
     "turnFailed": "ターンが失敗しました。",
     "failureResets": "{failure}{reset}されます。",
+    "signedOut": "{provider} が {account} をサインアウトしました。設定 › プロバイダーでもう一度サインインしてください。",
     "work": {
       "ran": "{count} 件のコマンドを実行",
       "checked": "{count} 件のコマンドを確認",
@@ -200,7 +201,8 @@
     "resume": "再開",
     "continue": "続ける",
     "stillOffline": "{name} はまだオフラインです",
-    "continueWith": "{label} で続ける"
+    "continueWith": "{label} で続ける",
+    "openProviders": "プロバイダーを開く"
   },
   "notices": {
     "hostOffline": "{name} はオフラインです。",

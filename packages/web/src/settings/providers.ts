@@ -481,11 +481,6 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       install: cli.install && (cli.install.state === 'failed'
         ? { state: 'failed', message: cli.install.message }
         : { state: cli.install.state }),
-      machines: cli.machines.map((machine) => ({
-        id: machine.deviceId,
-        name: machine.name,
-        versions: machine.versions,
-      })),
     }
     if (cli.install?.state === 'installing') {
       window.setTimeout(() => {

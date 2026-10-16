@@ -302,12 +302,12 @@ reset time.
 
 | Part | Behavior |
 |---|---|
-| Probe | `GET https://api.anthropic.com/api/oauth/usage`, with the account's access token as its bearer token and the OAuth beta header; the sign-in's `user:profile` scope is what the endpoint requires, which a setup token lacked. An answer that is not an object is refused. |
+| Probe | The CLI's SDK control request `get_usage` (`skip_behaviors`), in a process of the account's directory that sends no message ([Accounts and sign-in](claude-code.md#accounts-and-sign-in)): the CLI renews the sign-in when due and answers `rate_limits`, the vendor's usage object, and `subscription_type`. A `rate_limits` that is not an object fails the probe. |
 | Observation | The `rate_limit_event` line of the CLI's stream-json output, which the CLI prints when the vendor's `anthropic-ratelimit-unified-*` headers change. Its `rate_limit_info.unifiedWindows` gives each window's `utilization` and `resetsAt`; the window `rateLimitType` names as binding, with the top-level `utilization` and `resetsAt`, counts too when `unifiedWindows` does not hold it. The backend reads each line as it arrives over the runner connection ([Claude Code](claude-code.md)). |
 | Windows | `five_hour`, `seven_day`, `seven_day_sonnet` and `seven_day_opus` (scope Sonnet, Opus), each a `limit`, from `utilization`. A probe also reports every other entry of `limits` as a `limit`, with the vendor's `severity` when it states one, by its period and its scope, never by the vendor's identifier: a `weekly_*` kind has a week, a session kind five hours, and a limit on one model has the model as its scope, so `weekly_scoped` on Fable reads *Weekly Fable limit*; a kind whose period Demi cannot tell has none. The `session` and `weekly_all` kinds are the named windows above, so they are skipped. An observed window Demi does not name, such as `seven_day_overage_included`, is left out. |
-| Plan | None: the usage endpoint does not say it. |
+| Plan | `subscription_type`, such as `max` or `pro`, shown with a capital first letter. |
 | Account label | Not reported. |
-| Units | The usage endpoint states `utilization` as a percentage and `resets_at` as an RFC 3339 time. A `rate_limit_event` line passes the headers through: `utilization` is a fraction of one and `resetsAt` is Unix seconds (Claude Code 2.1.286, against a scripted vendor that sent the headers). |
+| Units | The usage object states `utilization` as a percentage and `resets_at` as an RFC 3339 time. A `rate_limit_event` line passes the headers through: `utilization` is a fraction of one and `resetsAt` is Unix seconds (Claude Code 2.1.286, against a scripted vendor that sent the headers). |
 
 #### Grok Build
 

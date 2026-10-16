@@ -107,6 +107,7 @@
     "stepsNotShared": "{count} 個步驟未分享",
     "turnFailed": "輪次失敗。",
     "failureResets": "{failure}{reset}。",
+    "signedOut": "{provider} 已將 {account} 登出。請在「設定 › 供應商」中重新登入。",
     "work": {
       "ran": "執行了 {count} 個指令",
       "checked": "檢查了 {count} 個指令",
@@ -200,7 +201,8 @@
     "resume": "恢復",
     "continue": "繼續",
     "stillOffline": "{name} 仍為離線",
-    "continueWith": "改用 {label} 繼續"
+    "continueWith": "改用 {label} 繼續",
+    "openProviders": "打開供應商"
   },
   "notices": {
     "hostOffline": "{name} 已離線。",

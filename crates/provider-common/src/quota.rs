@@ -313,6 +313,18 @@ pub fn unix_seconds(seconds: f64) -> Option<Timestamp> {
     Timestamp::from_millisecond(milliseconds as i64).ok()
 }
 
+/// A plan as a vendor names it, shown with a capital first letter and its
+/// underscores as spaces: `plus` reads `Plus`, `self_serve_business_usage_based`
+/// reads `Self serve business usage based`.
+pub fn plan_label(plan: &str) -> String {
+    let words = plan.replace('_', " ");
+    let mut characters = words.chars();
+    match characters.next() {
+        Some(first) => first.to_uppercase().chain(characters).collect(),
+        None => words,
+    }
+}
+
 /// A reset time a vendor field states as an RFC 3339 time, such as
 /// `2026-08-21T10:45:24.951512+00:00`, to the millisecond; `None` for any
 /// other text.

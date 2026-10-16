@@ -448,7 +448,7 @@ mod tests {
             r#"{"id":"2","op":"current_base_version","params":{}}"#,
             r#"{"id":"3","op":"image_state","params":{"deviceId":"dev-1"}}"#,
             r#"{"id":"4","op":"runtime_state","params":{"deviceId":"dev-1"}}"#,
-            r#"{"id":"5","op":"wake","params":{"deviceId":"dev-1","boot":{"backendUrl":"http://backend","deviceToken":"tok"}}}"#,
+            r#"{"id":"5","op":"wake","params":{"deviceId":"dev-1","boot":{"backendUrl":"http://backend","deviceToken":"tok"},"machine":"cloud"}}"#,
             r#"{"id":"6","op":"checkpoint","params":{"deviceId":"dev-1"}}"#,
             r#"{"id":"7","op":"grow_volume","params":{"deviceId":"dev-1","volume":"home","bytes":4096}}"#,
             r#"{"id":"8","op":"reset","params":{"deviceId":"dev-1","operationId":"op-1","baseVersion":"base-2"}}"#,

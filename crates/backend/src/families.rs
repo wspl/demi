@@ -9,7 +9,7 @@ use demi_backend_providers::llm::families::{
     AccountBinding, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
-use demi_provider_claude_code::{AccountMachine, ClaudeCodeConfig, ClaudeCodeProvider, Placement};
+use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider, Placement};
 use demi_provider_codex::{CodexConfig, CodexProvider, CodexReleases};
 use demi_provider_common::credentials::SubscriptionAccounts;
 use demi_provider_common::quota::{MemorySnapshots, QuotaSnapshotStore};
@@ -24,7 +24,7 @@ use demi_web_api_protocol::providers::CredentialKind;
 pub fn builtin() -> FamilyRegistry {
     FamilyRegistry::default()
         .with("anthropic", AnthropicFamily)
-        .with("claude-code", ClaudeCodeFamily::default())
+        .with("claude-code", ClaudeCodeFamily)
         .with("codex", CodexFamily::default())
         .with("google", GoogleFamily)
         .with("grok-build", GrokBuildFamily)
@@ -180,26 +180,9 @@ impl ProviderFamily for GrokBuildFamily {
 }
 
 /// The `claude-code` family: Claude accounts signed in by the Claude Code
-/// CLI's own login, whose requests run the CLI on the user's Cloud.
-pub struct ClaudeCodeFamily {
-    /// The OAuth usage endpoint, the product's unless a test serves its own.
-    pub usage_url: url::Url,
-    /// The CLI's token endpoint, the product's unless a test serves its own.
-    pub token_url: url::Url,
-}
-
-impl Default for ClaudeCodeFamily {
-    fn default() -> Self {
-        Self {
-            usage_url: ClaudeCodeConfig::USAGE_URL
-                .parse()
-                .expect("the usage URL parses"),
-            token_url: ClaudeCodeConfig::TOKEN_URL
-                .parse()
-                .expect("the token URL parses"),
-        }
-    }
-}
+/// CLI's own login, whose requests run the CLI on the Claude Code machine.
+#[derive(Default)]
+pub struct ClaudeCodeFamily;
 
 impl ClaudeCodeFamily {
     fn build(&self, args: FamilyArgs) -> Result<ClaudeCodeProvider, FamilyError> {
@@ -207,15 +190,12 @@ impl ClaudeCodeFamily {
             return Err(FamilyError::WrongCredential);
         };
         let (account, quota) = bound(subscription.account);
-        let mut config = ClaudeCodeConfig::new(args.entry_id, args.label, account);
-        config.usage_url = self.usage_url.clone();
-        config.token_url = self.token_url.clone();
+        let config = ClaudeCodeConfig::new(args.entry_id, args.label, account, args.machine);
         Ok(ClaudeCodeProvider::new(
             config,
             subscription.pool,
             quota,
             args.models_dev,
-            args.http,
             args.clock,
         ))
     }
@@ -233,20 +213,20 @@ impl ProviderFamily for ClaudeCodeFamily {
     fn process_runtime(
         &self,
         args: FamilyArgs,
-        env: RuntimeEnv,
+        _env: RuntimeEnv,
         placement: Rc<dyn Placement>,
     ) -> Option<Result<Box<dyn ProviderRuntime>, FamilyError>> {
         Some(
             self.build(args)
-                .map(|provider| provider.process_runtime(env, placement)),
+                .map(|provider| provider.process_runtime(placement)),
         )
     }
 
     fn login_accounts(
         &self,
         args: FamilyArgs,
-        machine: Arc<dyn AccountMachine>,
     ) -> Option<Result<Box<dyn SubscriptionAccounts>, FamilyError>> {
+        let machine = args.machine.clone()?;
         Some(
             self.build(args)
                 .map(|provider| provider.login_accounts(machine)),

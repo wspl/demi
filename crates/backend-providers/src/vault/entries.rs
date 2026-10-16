@@ -478,7 +478,7 @@ impl Vault {
                     reason: format!("a login staged an account whose id is invalid: {error}"),
                 })?;
             accounts.push(CredentialWrite {
-                secret: self.seal_secret(&id, &account, &secret),
+                secret: secret.map(|secret| self.seal_secret(&id, &account, &secret)),
                 id: account,
                 identity_key: meta.identity_key,
                 label: meta.label,

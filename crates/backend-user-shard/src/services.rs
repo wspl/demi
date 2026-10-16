@@ -46,7 +46,7 @@ use demi_shared_types::Clock;
 use demi_web_api_protocol::settings::InstanceMode;
 use object_store::ObjectStore;
 
-use crate::conversation::claude_cli::CliInstalls;
+use crate::conversation::claude_cli::{ClaudeMachine, CliInstalls};
 use crate::tuning::{ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning};
 
 const CONTROL_DATABASE: &str = "control.sqlite";
@@ -72,10 +72,12 @@ pub struct Services {
     pub email: EmailChanges,
     pub vault: Vault,
     pub assembly: Arc<ProviderAssembly>,
-    /// The vendor's Claude Code releases, which the CLI on each Cloud follows.
+    /// The vendor's Claude Code releases, which the CLI on the Claude Code machine follows.
     pub claude_releases: ClaudeReleases,
     /// The outcome of the CLI installs no conversation asked for.
     pub cli_installs: CliInstalls,
+    /// The Claude Code machine, set as the shards start.
+    pub claude_machine: std::sync::OnceLock<ClaudeMachine>,
     pub operations: Arc<ProviderOperations>,
     pub logins: Arc<LoginFlows>,
     /// Runners waiting to be paired, which have no user yet.
@@ -383,6 +385,7 @@ impl Services {
             assembly,
             claude_releases,
             cli_installs: CliInstalls::default(),
+            claude_machine: std::sync::OnceLock::new(),
             operations,
             logins,
             claims: PendingClaims::new(settings.runners.claims_per_minute),

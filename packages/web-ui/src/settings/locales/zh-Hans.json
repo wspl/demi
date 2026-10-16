@@ -480,6 +480,7 @@
     "account": {
       "active": "当前",
       "limitReached": "已达限额",
+      "signInAgain": "重新登录",
       "activate": "设为当前",
       "refreshUsage": "刷新用量",
       "test": "测试连接",
@@ -509,10 +510,8 @@
       "versionDescription": "跟随最新版本并自动更新。",
       "check": "检查更新",
       "unreadable": "无法读取最新版本",
-      "noAnswer": "无响应",
-      "notInstalled": "未安装",
-      "installing": "正在云端安装",
-      "installFailed": "无法在云端安装",
+      "installing": "正在安装…",
+      "installFailed": "无法安装",
       "install": "安装"
     },
     "models": {
@@ -624,8 +623,8 @@
     "doneActive": "已登录。此账户现在是 {vendor} 的当前账户。",
     "doneKept": "已登录。{vendor} 会继续使用其当前账户。",
     "failedHint": "登录未完成。",
-    "waitingCloud": "正在等待你的云端连接…",
-    "installing": "正在你的云端安装命令行工具…",
+    "waitingMachine": "正在等待 Claude Code 的机器连接…",
+    "installing": "正在安装命令行工具…",
     "startingTool": "正在启动命令行工具…",
     "contacting": "正在联系 {vendor}…",
     "copyCode": "复制代码",

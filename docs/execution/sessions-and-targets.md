@@ -510,20 +510,20 @@ touches no conversation's files. This table names every way to a Host:
 | [Lifecycle access](#lifecycle-access), a form of the conversation's host access | The conversation release | Nothing: the release is a runner message, sent only to a connected runner | Not woken: the Cloud hears the release after its next wake |
 | Device access | A [direct channel](direct-channel.md) between the page and a paired device's runner, which carries the page's user streams, file transfers, file text, listings and file watch of the user's conversations on that device, and the relay probes that measure its paths; the [device log](../product/web-api.md#device-log); browsing a paired device's directories to choose a target, and reading
 the [workflows](../agent/subagents.md#workflows-of-a-project) of a directory
-for a new conversation there, on a paired device or the user's Cloud, with the [file watch](../product/web-api.md#file-watch) that keeps the dialog's listings current; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show | Nothing: the caller must own the device, and its runner must be connected | Not woken |
-| Machine access | Creating a Cloud project; checking the directory of a `demi host move` to the Cloud; [placing a provider's process](../providers/claude-code.md#where-it-runs) on the user's Cloud; [a Claude Code sign-in](../providers/claude-code.md#accounts-and-sign-in), which runs the CLI's login there | The Cloud's admission; no file gate | Woken; a running reset is waited for |
+for a new conversation there, on a paired device or the user's Cloud, with the [file watch](../product/web-api.md#file-watch) that keeps the dialog's listings current; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show, from the Claude Code machine | Nothing: the caller must own the device, or, for the Claude Code machine, own a Claude Code entry; its runner must be connected | Not woken |
+| Machine access | Creating a Cloud project; checking the directory of a `demi host move` to the Cloud; [placing a provider's process](../providers/claude-code.md#where-it-runs), a [Claude Code sign-in](../providers/claude-code.md#accounts-and-sign-in) and its usage probe, on the [Claude Code machine](../cloud/managed-hosts.md#the-claude-code-machine) | The machine's admission; no file gate | Woken; a running reset is waited for |
 
 Device access and machine access touch no conversation's files, so they take no
 file gate and check no conversation's binding. Device access reaches a device
 the caller owns only while its runner is
 connected. It never wakes a stopped Cloud: a log is read when its Host runs again, and directory
 browsing never names a Cloud, and showing a version is never a reason to wake
-one. Machine access is for work that needs the user's
-Cloud itself rather than a conversation's files on it. Creating a Cloud project
+one. Machine access is for work that needs a machine
+itself rather than a conversation's files on it. Creating a Cloud project
 makes the project's directory before any conversation uses it. A provider's
-process runs in a directory of Demi's on the Cloud, for a conversation's
-requests (the [`provider` role](#how-a-conversation-uses-a-device)) and for
-account work that belongs to no conversation, such as **Test connection**.
+process runs on the Claude Code machine, for a conversation's requests and
+for account work that belongs to no conversation, such as **Test
+connection**.
 Anything else that reaches a conversation's primary or attached Host goes
 through the conversation's host access. A direct channel is the device
 owner's work on their own device, as browsing its folders is: the backend
@@ -592,8 +592,9 @@ infers with a provider that needs a process on a Host, and the
 [placement](../providers/claude-code.md#where-it-runs) says which device that
 process runs on. The same placement starts the process, so the role and the
 process cannot name different machines. A conversation on a paired device whose
-model is Claude Code therefore uses its device as `target` and the user's Cloud
-as `provider`. The lifecycle knows roles; it does not know providers.
+model is Claude Code therefore uses its device as `target` and the
+[Claude Code machine](../cloud/managed-hosts.md#the-claude-code-machine) as
+`provider`. The lifecycle knows roles; it does not know providers.
 
 A reset reaches a conversation through the `target` and `provider` roles, and
 no others: those conversations cannot work without the device. A conversation

@@ -1,12 +1,17 @@
 //! Where the CLI runs (`claude-code.md` § How a runtime gets its process, §
-//! Accounts and sign-in): the backend chooses the machine and readies Demi's
-//! CLI there, and the provider builds the spawn request from what the
-//! placement found. Every process gets a configuration directory of its
-//! own, private to the machine's user, which goes when the process does.
-//! Account work that belongs to no conversation, a sign-in, reaches its
-//! machine through an [`AccountMachine`], from any thread.
+//! Accounts and sign-in): the backend chooses the machine, the Claude Code
+//! machine, and readies Demi's CLI there, and the provider builds the spawn
+//! request from what the placement found. Every process of an account runs
+//! in that account's one directory, the CLI's configuration directory, and
+//! writes its session into a directory of its own under it, which goes when
+//! the process does; a sign-in runs in a new directory, which becomes the
+//! account's when it succeeds. Account work that belongs to no
+//! conversation, a sign-in or a usage probe, reaches the machine through an
+//! [`AccountMachine`], from any thread.
 
+use std::any::Any;
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use bytes::Bytes;
@@ -21,12 +26,16 @@ use crate::prepared::PreparedProcesses;
 pub struct CliSite {
     /// The absolute path of Demi's CLI executable there.
     pub executable: String,
-    /// The process's working directory, `~/.demi/claude/run`.
+    /// The process's working directory, `~/run`.
     pub run_dir: String,
-    /// The process's own configuration directory: new, private to the
-    /// machine's user, outside every workspace, holding only the files the
-    /// start put there.
+    /// The CLI's configuration directory: the account's directory, where
+    /// its sign-in is, or a sign-in's new directory; private to the
+    /// machine's user, outside every workspace.
     pub config_dir: String,
+    /// The name of the process's own directory under the configuration
+    /// directory's `projects`, which holds its session and goes with it
+    /// (`CLAUDE_CODE_PROJECT_DIR_NAME`).
+    pub process_dir: String,
     /// What the machine tells a process there of itself.
     pub system: CliSystem,
 }
@@ -46,13 +55,40 @@ pub struct CliSystem {
     pub working_directory: String,
 }
 
-/// What a start puts on the machine: the process, and the files its
-/// configuration directory holds before it starts.
+/// What a start puts on the machine: the process, and the files its own
+/// directory holds before it starts.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CliStart {
     pub spawn: SpawnRequest,
-    /// Each file's path relative to the configuration directory, and its
+    /// Each file's path relative to the process's own directory, and its
     /// bytes.
+    pub files: Vec<(String, Bytes)>,
+}
+
+/// What a start is for: a process of an account, in the account's
+/// directory, or a sign-in, in a new one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CliWork {
+    Account {
+        /// The account's id, which names its directory.
+        account: String,
+        /// The sign-in an earlier release kept in the account's record, as
+        /// the CLI's own files, to write into the account's directory
+        /// before the process starts unless the directory holds a sign-in
+        /// already (`claude-code.md` § Accounts and sign-in).
+        handover: Option<Handover>,
+    },
+    Login,
+}
+
+/// A sign-in handed over to the account's directory: the CLI's files, each
+/// by its name there and its bytes, written private to the machine's user.
+/// The last is the one whose presence means the directory holds a sign-in:
+/// each file is put in place whole, in order, so the directory holds a
+/// sign-in only once every file is there, and one that holds it already
+/// takes none of them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Handover {
     pub files: Vec<(String, Bytes)>,
 }
 
@@ -78,20 +114,46 @@ pub enum StartStage {
     Process,
 }
 
-/// Starts the CLI processes of a runtime or a sign-in, on a machine the
-/// placement chooses. It lives on the user's shard with its user.
+/// What says what to start at the site a placement found, given to the
+/// machine's side with the start: it is built from the request where the
+/// request is, and runs where the machine is.
+pub type CliStarter = Arc<dyn Fn(&CliSite) -> CliStart + Send + Sync>;
+
+/// A hold of the placement's machine for one piece of work in flight on
+/// it: a run, a sign-in or a usage probe, for its whole life. The machine
+/// does not stop while one is held, and taking one wakes it
+/// (`managed-hosts.md` § The Claude Code machine). Dropping it lets go.
+pub struct WorkLease(#[allow(dead_code, reason = "held for its drop")] Box<dyn Any>);
+
+impl WorkLease {
+    /// A lease that lets go when `held` is dropped.
+    pub fn new(held: impl Any) -> Self {
+        Self(Box::new(held))
+    }
+}
+
+/// Starts the CLI processes of a runtime, a sign-in or a usage probe, on a
+/// machine the placement chooses. It lives on the shard of the user whose
+/// work it serves.
 pub trait Placement {
-    /// Starts a new CLI process: the placement readies the machine, Demi's
-    /// CLI and a new configuration directory there, `start` says what to
-    /// start at the site it found, and the placement writes its files into
-    /// the directory and starts its request on the machine's Host; it
-    /// reports each stage it reaches to `stages`. Dropping the future gives
-    /// the start up, and removes the directory.
+    /// Starts a new CLI process for `work`: the placement readies the
+    /// machine, Demi's CLI, the configuration directory (the account's, with
+    /// its handover, or a sign-in's new one) and the process's own
+    /// directory under it, `start` says what to start at the site it found,
+    /// and the placement writes its files into the process's directory and
+    /// starts its request on the machine's Host; it reports each stage it
+    /// reaches to `stages`. Dropping the future gives the start up, and
+    /// removes what it made.
     fn start<'a>(
         &'a self,
-        start: &'a dyn Fn(&CliSite) -> CliStart,
+        work: CliWork,
+        start: CliStarter,
         stages: &'a dyn Fn(StartStage),
     ) -> LocalBoxFuture<'a, Result<Placed, StartError>>;
+
+    /// A hold of the machine for a piece of work starting now, taken at
+    /// once; the machine wakes meanwhile when it is stopped.
+    fn work(&self) -> WorkLease;
 
     /// The processes prepared ahead on the placement's machine and not yet
     /// used, which every placement of that machine shares
@@ -99,8 +161,8 @@ pub trait Placement {
     fn prepared(&self) -> Rc<PreparedProcesses>;
 }
 
-/// A started CLI process and its configuration directory, with how long
-/// each step of its start took.
+/// A started CLI process and its own directory, with how long each step of
+/// its start took.
 pub struct Placed {
     pub process: Process,
     pub config: Box<dyn ConfigDir>,
@@ -130,30 +192,48 @@ pub struct StartSteps {
     pub spawn: Duration,
 }
 
-/// A process's configuration directory on its machine.
+/// What a process made of its own on its machine: an account's process,
+/// its own directory under the account's; a sign-in, its new configuration
+/// directory.
 pub trait ConfigDir {
-    /// The file `name` the process wrote there.
+    /// The file `name` the process wrote into its configuration directory.
     fn read<'a>(&'a self, name: &'a str) -> LocalBoxFuture<'a, Result<Bytes, HostError>>;
 
-    /// Removes the directory once its process has ended. A directory whose
-    /// handle is dropped instead is removed the same way, by the placement,
-    /// without anyone waiting for it.
+    /// Removes what the process made once it has ended. One whose handle is
+    /// dropped instead is removed the same way, by the placement, without
+    /// anyone waiting for it.
     fn remove(self: Box<Self>) -> LocalBoxFuture<'static, ()>;
+
+    /// Makes a sign-in's directory, once its process ended with success,
+    /// the directory of `account`: no process of the account starts
+    /// meanwhile, every one it has is closed and awaited, and its
+    /// directory, when it has one, is replaced by this one; a start that
+    /// waited starts in the new one (`claude-code.md` § Accounts and
+    /// sign-in). Dropping the future before the directory is replaced
+    /// gives the adoption up, and the sign-in's directory goes. An
+    /// account's process has nothing to adopt.
+    fn adopt<'a>(self: Box<Self>, account: &'a str) -> LocalBoxFuture<'a, Result<(), HostError>>;
 }
 
-/// The work a sign-in does on its machine: given the placement of that
-/// machine and a token that fires when nobody waits for the work any more,
-/// it runs to its end.
+/// The work a sign-in or a usage probe does on its machine: given the
+/// placement of that machine and a token that fires when nobody waits for
+/// the work any more, it runs to its end.
 pub type AccountWork =
     Box<dyn FnOnce(Rc<dyn Placement>, CancellationToken) -> LocalBoxFuture<'static, ()> + Send>;
 
-/// The machine account work runs on, the acting user's Cloud
+/// The machine account work runs on, the Claude Code machine
 /// (`claude-code.md` § Where it runs), as the backend gives it to a sign-in
-/// from any thread.
+/// and a usage probe from any thread.
 pub trait AccountMachine: Send + Sync {
     /// Runs `work` for the provider entry `entry`, or the login that is to
     /// make it, where the machine is reached, and answers once it ended.
     /// Dropping the answer fires the token `work` received; `work` runs to
     /// its end either way.
     fn run(&self, entry: String, work: AccountWork) -> BoxFuture<'static, Result<(), StartError>>;
+
+    /// Deletes the directory of the removed account `account`: no process
+    /// of it starts meanwhile, every one it has is closed and awaited
+    /// first, and a start that waited fails with the removal
+    /// (`claude-code.md` § Accounts and sign-in).
+    fn remove_account(&self, account: String) -> BoxFuture<'static, Result<(), StartError>>;
 }

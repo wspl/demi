@@ -168,6 +168,13 @@ part of another release, and each is a contract that a release never breaks:
   pinned to, which an earlier release built. What the manager needs of a
   base, its users, directories and init, is part of the base's
   `formatVersion` ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)).
+- **A Claude Code sign-in kept in its record.** Releases before the Claude
+  Code machine kept each account's tokens sealed in its record; a later
+  release hands them to the account's directory at the account's first use
+  and clears the record
+  ([Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in)),
+  so an upgrade never asks the user to sign in again. The handover stays
+  until the history starts again with the first formal release.
 - **The configuration file.** It is the installation's. Each program
   refuses a setting it does not read, so a renamed or removed setting is
   reported, never silently ignored

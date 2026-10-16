@@ -8,7 +8,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { ArrowRightLeft, ChevronDown, Ellipsis, PanelLeft, PanelRight, Play, Share, TextCursorInput } from '@lucide/vue'
+import { ArrowRightLeft, ChevronDown, Ellipsis, PanelLeft, PanelRight, Play, Settings2, Share, TextCursorInput } from '@lucide/vue'
 import type { InstructionEntry, TranscriptVersion } from '@demicodes/protocol'
 import {
   beginMessageEdit,
@@ -61,7 +61,7 @@ import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
-import { continueWithOffer, endsWithErrorRecord, resumeWaitsFor, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
+import { continueWithOffer, endsWithErrorRecord, signedOutOffer, resumeWaitsFor, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
@@ -182,6 +182,8 @@ const emit = defineEmits<{
    * (`providers.md` § Account rotation).
    */
   continueWith: [providerId: string, credentialId: string]
+  /** Open Settings › Providers, where an account the vendor signed out is signed in again. */
+  openProviders: []
   retryLoad: []
   /** Retry on the message `id`, whose delivery failed. */
   retrySubmission: [id: string]
@@ -371,6 +373,10 @@ const continueWith = computed(() =>
   canRecover.value
     ? continueWithOffer(props.conversation.phase, getVisibleBlocks(latest.value), props.conversation.failures)
     : null,
+)
+/** Whether the turn ended because the vendor signed its account out, which the dock answers with Open Providers. */
+const signedOut = computed(() =>
+  canRecover.value && signedOutOffer(props.conversation.phase, getVisibleBlocks(latest.value), props.conversation.failures),
 )
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
   && !props.pendingSubmissions?.length
@@ -735,6 +741,10 @@ watch(
               >
                 <ArrowRightLeft :size="ICON_PX.in28" />
                 <span class="min-w-0 truncate">{{ t('dock.continueWith', { label: continueWith.label }) }}</span>
+              </SessionDockChip>
+              <SessionDockChip v-if="signedOut" data-open-providers @click="emit('openProviders')">
+                <Settings2 :size="ICON_PX.in28" />
+                {{ t('dock.openProviders') }}
               </SessionDockChip>
               <TerminalChip
                 :terminals="terminals"

@@ -6,6 +6,7 @@ import Checkbox from '../../ui/Checkbox.vue'
 import { useClock } from '../../composables/useClock'
 import { useTranscript } from '../edit-selection'
 import { errorReportText, failureHeadline, failureSource } from '../error-detail'
+import { t } from '../locales/text'
 import { resumeAtLabel, useResumeAtRetry } from '../resume-at-retry'
 
 /**
@@ -25,6 +26,8 @@ const props = defineProps<{
   diagnostics?: ProviderErrorDiagnostics
   /** When the provider says the request can succeed again, as the backend read it. */
   retryAt?: string | null
+  /** The account the vendor signed out, while it still is, which the record names instead of the code's words. */
+  signedOut?: { provider: string; account: string } | null
 }>()
 
 const source = computed(() => failureSource(props.message, props.code, props.diagnostics))
@@ -35,7 +38,11 @@ const reportText = computed(() =>
 const resumeAtRetry = useResumeAtRetry()
 const transcript = useTranscript()
 const now = useClock()
-const label = computed(() => failureHeadline(props.code, props.retryAt ?? null, new Date(now.value)))
+const label = computed(() =>
+  props.signedOut
+    ? t('transcript.signedOut', { provider: props.signedOut.provider, account: props.signedOut.account })
+    : failureHeadline(props.code, props.retryAt ?? null, new Date(now.value)),
+)
 const ownAgent = transcript === null || transcript.node === null
 /** The preference this record offers, until its time has passed. */
 const resume = computed(() => {

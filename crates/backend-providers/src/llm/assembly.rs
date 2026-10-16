@@ -6,7 +6,7 @@
 
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 
 use demi_backend_database::StorageError;
 use demi_provider_claude_code::{AccountMachine, Placement};
@@ -89,6 +89,9 @@ pub struct ProviderAssembly {
     /// built from. A `std` mutex: lookups never await under it.
     built: Mutex<HashMap<BuiltKey, Built>>,
     rotation: Arc<AccountRotation>,
+    /// The Claude Code machine, set once the backend's shards started,
+    /// which hold it.
+    machine: OnceLock<Arc<dyn AccountMachine>>,
 }
 
 impl ProviderAssembly {
@@ -111,6 +114,16 @@ impl ProviderAssembly {
             clock,
             built: Mutex::default(),
             rotation: AccountRotation::new(),
+            machine: OnceLock::new(),
+        }
+    }
+
+    /// Sets the Claude Code machine, once, as the backend's shards start
+    /// (`managed-hosts.md` § The Claude Code machine); a second setting is
+    /// refused and the first kept.
+    pub fn set_machine(&self, machine: Arc<dyn AccountMachine>) {
+        if self.machine.set(machine).is_err() {
+            tracing::error!("the Claude Code machine was set twice; the first is kept");
         }
     }
 
@@ -201,7 +214,8 @@ impl ProviderAssembly {
     }
 
     /// The entry's accounts in the list's order with their snapshots, for
-    /// a choice under its rotation; with `fresh`, a snapshot older than five
+    /// a choice under its rotation, which passes over an account its vendor
+    /// signed out (`claude-code.md` § Accounts and sign-in); with `fresh`, a snapshot older than five
     /// minutes, or none, is read again first by a free probe, and one that
     /// fails leaves the snapshot as it was (`providers.md` § Account
     /// rotation).
@@ -210,7 +224,8 @@ impl ProviderAssembly {
         entry: &ProviderEntry,
         fresh: bool,
     ) -> Result<Vec<Candidate>, AssemblyError> {
-        let records = self.vault.accounts(entry.id.clone()).await?;
+        let mut records = self.vault.accounts(entry.id.clone()).await?;
+        records.retain(|record| !record.signed_out);
         let now = self.clock.now().as_millisecond();
         let mut stale = Vec::new();
         for record in &records {
@@ -268,15 +283,11 @@ impl ProviderAssembly {
     }
 
     /// The account operations a login into `entry` runs, whose sign-in runs
-    /// on `machine` for a family whose login runs a process.
-    pub async fn login_accounts(
-        &self,
-        entry: &ProviderEntry,
-        machine: Arc<dyn AccountMachine>,
-    ) -> Result<LoginAccounts, AssemblyError> {
+    /// on the Claude Code machine for a family whose login runs a process.
+    pub async fn login_accounts(&self, entry: &ProviderEntry) -> Result<LoginAccounts, AssemblyError> {
         let family = self.family(&entry.family)?;
         let args = self.entry_args(entry, None).await?;
-        match family.login_accounts(args, machine) {
+        match family.login_accounts(args) {
             Some(accounts) => Ok(LoginAccounts::Machine(accounts?)),
             None => Ok(LoginAccounts::Provider(self.provider_for(entry).await?)),
         }
@@ -284,15 +295,14 @@ impl ProviderAssembly {
 
     /// The account operations of a login of `family` over `pool` with no
     /// account yet, whose entry does not exist until the login completes;
-    /// its sign-in runs on `machine` for a family whose login runs a
-    /// process.
+    /// its sign-in runs on the Claude Code machine for a family whose login
+    /// runs a process.
     pub fn detached_login_accounts(
         &self,
         family: &str,
         id: &str,
         label: &str,
         pool: Arc<dyn CredentialPool>,
-        machine: Arc<dyn AccountMachine>,
     ) -> Result<LoginAccounts, AssemblyError> {
         let registered = self.family(family)?;
         let args = || {
@@ -302,14 +312,14 @@ impl ProviderAssembly {
             });
             self.args(id.to_owned(), label.to_owned(), credential)
         };
-        match registered.login_accounts(args(), machine) {
+        match registered.login_accounts(args()) {
             Some(accounts) => Ok(LoginAccounts::Machine(accounts?)),
             None => Ok(LoginAccounts::Provider(registered.provider(args())?)),
         }
     }
 
     /// Whether `entry`'s provider runs a process on a Host, which then is the
-    /// user's Cloud (`claude-code.md` § Where it runs).
+    /// Claude Code machine (`claude-code.md` § Where it runs).
     pub async fn runs_a_process(&self, entry: &ProviderEntry) -> Result<bool, AssemblyError> {
         Ok(self.provider_for(entry).await?.capabilities().process_host)
     }
@@ -440,6 +450,7 @@ impl ProviderAssembly {
             http: self.http.clone(),
             clock: self.clock.clone(),
             models_dev: self.vendors.models_dev().clone(),
+            machine: self.machine.get().cloned(),
         }
     }
 }

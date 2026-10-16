@@ -8,7 +8,8 @@ boundary.
 
 Cloud is one persistent logical device per user, with at most one active gVisor
 sandbox running its runner. **Every deployment provides Cloud.** Conversations
-without a paired device and process-backed provider work need it. The sole
+without a paired device need it, and the [Claude Code machine](#the-claude-code-machine),
+where every vendor CLI process runs, is one more sandbox of the same kind. The sole
 execution platform is **gVisor with systrap**. There is no selectable
 hypervisor, ordinary-container fallback, or unsandboxed execution on the backend
 host.
@@ -591,6 +592,7 @@ across users; everything else about a user's Cloud lives in that user's shard.
 | --- | --- | --- |
 | Machine manager | [Resource limits](#resource-limits) | On |
 | Machine manager | CPU budget / memory limit per sandbox, with the limits on | 2 CPUs / 2 GiB |
+| Machine manager | CPU budget / memory limit of the Claude Code machine, with the limits on | 2 CPUs / 4 GiB |
 | Machine manager | Writable system / home initial capacity | 1 GiB / 1 GiB |
 | Machine manager | `/dev/shm` / `/tmp` / `/run` size limits | 256 MiB / 256 MiB / 256 MiB |
 | Backend policy | System / home maximum capacity | 16 GiB / 32 GiB |
@@ -667,6 +669,48 @@ ordinary-user jobs, not sandbox root; CPU and memory remain the resource
 boundary for sudo workloads, and with the limits off there is none. Reserve
 capacity for the host and manager rather than treating 16 devices as safe on
 every VPS.
+
+## The Claude Code machine
+
+Besides each user's Cloud, the manager keeps one more machine: the **Claude
+Code machine**, where every CLI process of the Claude Code provider runs, for
+every user ([Where it runs](../providers/claude-code.md#where-it-runs)). It
+holds each Claude Code account's sign-in in a directory of its own, so the one
+copy of a sign-in lives where no user has a shell
+([Accounts and sign-in](../providers/claude-code.md#accounts-and-sign-in)).
+
+It is a Cloud in every mechanism this document describes: the same image and
+base, a gVisor sandbox with its runner, a home kept across stop and wake, the
+idle rule, checkpoints, the network rules and a capacity permit. It differs in
+whom it serves. It serves the deployment, not a user: it is in no user's
+Hosts, no conversation binds it, nobody pairs it, opens a shell in it or
+resets it, and only the backend's machine access reaches it
+([Every way to a Host](../execution/sessions-and-targets.md#every-way-to-a-host)).
+
+Its record belongs to the instance's master, the one user every instance
+has, as a managed machine of a second kind beside the master's Cloud
+(`kind`: `cloud` or `claude_code`, one of each per user at most, the second
+only for the master). So the master's shard holds it as it holds the
+master's Cloud: its runner is adopted there, and its phase, admission and
+idle watch run there. Its activity is the work in flight on it, the
+requests, logins and probes, not any conversation of the master's. Each
+holds a lease of the machine for its whole life, taken once as it starts:
+an agent's action that infers with Claude Code holds one from its first
+request to its end, across the tool calls between its requests, on a new or
+a kept process alike, so a turn whose CLI waits fifteen minutes on a shell
+tool keeps the machine awake although no byte flows. With no lease and no
+operation for an idle window it stops, and the next lease wakes it; its
+retained processes are not activity, as on a Cloud. Another user's work crosses to the
+master's shard once per process start, never per line
+([The user shard](../architecture/concurrency.md#the-user-shard)):
+the placement asks the master's shard to start the process, and gets back its
+standard input, output and error as `Send` pipe ends and its end as a
+`Send` future, which a task on the master's shard relays; dropping them closes
+the process there, SIGTERM first. The Claude Code versions the machine has
+are kept there too. Its
+memory limit is its own setting (the table in
+[Lifecycle and capacity](#lifecycle-and-capacity)), since every user's
+processes share it.
 
 ## System reset
 
@@ -768,7 +812,7 @@ address. Starting a sandbox adds its pair before the sandbox runs, and stopping
 it removes the pair. Installing the table whole puts the pair of every sandbox
 that runs into it, in the same transaction, since a reconcile keeps those
 sandboxes running. For example, a backend that restarts sends `reconcile`
-while the user's Cloud runs a Claude Code request; without its pair, the new
+while the Claude Code machine runs a request; without its pair, the new
 table would drop every packet the Cloud sends, and the request would wait on
 DNS that never answers while the Cloud looks healthy. A packet from a Cloud interface whose (interface, source
 address) pair is not in the set is dropped, so a workload can neither replace

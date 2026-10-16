@@ -414,8 +414,8 @@ Linux, the Cloud's platform. The scenarios cover what the product relies on from
   text of the CLI's; and a change of system prompt or tools reaches it;
 - a change of model, which needs a new process;
 - a vendor error as the request's failure;
-- the token on a file descriptor, the process's private directory and its
-  removal, and a refused token refreshed and the request sent again.
+- a sign-in of an earlier release handed over to the account's directory,
+  and the process's own directory under it, which goes with the process.
 
 Each scenario asserts what the product observes: the transcript, the frames,
 the usage ledger and what the scripted endpoint received. What the suite cannot

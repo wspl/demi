@@ -311,15 +311,11 @@ export function mockProviders(): MockProvider[] {
       id: 'claude-code', name: 'Claude Code', kind: 'subscription', family: 'claude-code',
       // Its three accounts share the work: each agent takes the one with the most room.
       rotation: 'balanced',
-      // Two machines answered; the Cloud install after the last account failed, which is the one
-      // state here that asks the user for anything.
+      // Claude Code's machine answered; its install after the last account failed, which is the
+      // one state here that asks the user for anything.
       cli: {
         newest: { version: '2.1.278' },
         install: { state: 'failed', message: 'Claude Code 2.1.278 could not be installed: the download stopped after 120 MB' },
-        machines: [
-          { id: 'cloud', name: 'Cloud', versions: ['2.1.267'] },
-          { id: 'laptop', name: 'MacBook Pro', versions: [] },
-        ],
       },
       accounts: [
         {
@@ -346,6 +342,16 @@ export function mockProviders(): MockProvider[] {
             { id: 'five_hour', name: windowNamed('limit', 5 * HOUR_SECONDS), used: 100, max: 100, resetsAt: ahead(-20 * SECOND) },
             { id: 'seven_day', name: windowNamed('limit', WEEK_SECONDS), used: 88, max: 100, resetsAt: ahead(5 * DAY) },
           ]
+        },
+        // The vendor refused its sign-in: the row offers Sign In Again, and rotation passes
+        // over it.
+        {
+          id: 'a5',
+          label: 'sam@example.com',
+          plan: 'Pro',
+          active: false,
+          signedOut: true,
+          quota: [],
         },
         // The vendor names no plan, so the row shows none.
         {

@@ -404,7 +404,7 @@ impl From<AccountRefusal> for ApiError {
             ),
             AccountRefusal::NotFound => Self::account_not_found(),
             AccountRefusal::Order => Self::invalid_body(message),
-            AccountRefusal::Assembly(_) => Self::internal(&refusal),
+            AccountRefusal::Assembly(_) | AccountRefusal::Forget(_) => Self::internal(&refusal),
         }
     }
 }

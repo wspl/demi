@@ -480,6 +480,7 @@
     "account": {
       "active": "Active",
       "limitReached": "Limit reached",
+      "signInAgain": "Sign In Again",
       "activate": "Activate",
       "refreshUsage": "Refresh usage",
       "test": "Test connection",
@@ -509,10 +510,8 @@
       "versionDescription": "Follows the newest version and updates itself.",
       "check": "Check for updates",
       "unreadable": "Couldn’t read the newest version",
-      "noAnswer": "No answer",
-      "notInstalled": "Not installed",
-      "installing": "Installing on Cloud",
-      "installFailed": "Couldn’t install on Cloud",
+      "installing": "Installing…",
+      "installFailed": "Couldn’t install",
       "install": "Install"
     },
     "models": {
@@ -624,8 +623,8 @@
     "doneActive": "Signed in. This account is now active for {vendor}.",
     "doneKept": "Signed in. {vendor} keeps using its active account.",
     "failedHint": "The sign-in didn’t complete.",
-    "waitingCloud": "Waiting for your Cloud to connect…",
-    "installing": "Installing the command-line tool on your Cloud…",
+    "waitingMachine": "Waiting for Claude Code’s machine to connect…",
+    "installing": "Installing the command-line tool…",
     "startingTool": "Starting the command-line tool…",
     "contacting": "Contacting {vendor}…",
     "copyCode": "Copy code",

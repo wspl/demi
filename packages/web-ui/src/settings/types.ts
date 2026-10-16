@@ -253,18 +253,18 @@ export interface SettingsProviderAccount {
   label: string
   plan: string
   active: boolean
+  /** The vendor refused the account's sign-in: its row offers Sign In Again, and rotation passes over it. */
+  signedOut?: boolean
   /** Rate-window quotas, when the vendor exposes them. */
   quota: SettingsQuotaWindow[]
 }
 
-/** The CLI a process provider starts, which Demi installs and updates on the machines that run it. */
+/** The CLI a process provider starts, which Demi installs and updates on Claude Code's machine. */
 export interface SettingsProviderCli {
   /** The vendor's newest version, or why it could not be read. */
   newest: { version: string } | { error: string }
-  /** The last install on the user's Cloud, which adding an account starts. */
+  /** The last install on Claude Code's machine, which adding an account starts. */
   install: { state: 'installing' } | { state: 'installed' } | { state: 'failed'; message: string } | null
-  /** The machines that could be asked now, and what each has; null when one did not answer. */
-  machines: Array<{ id: string; name: string; versions: string[] | null }>
 }
 
 /**
@@ -372,10 +372,10 @@ export interface SettingsModelEditor {
 
 /**
  * What a sign-in waits for before it has a link or a code to show
- * (`claude-code.md` § Accounts and sign-in): the vendor, the user's Cloud,
+ * (`claude-code.md` § Accounts and sign-in): the vendor, Claude Code's machine,
  * the command-line tool's install on it, or its start.
  */
-export type ProviderLoginStage = 'preparing' | 'waiting_for_cloud' | 'installing' | 'starting' | 'waiting_for_user'
+export type ProviderLoginStage = 'preparing' | 'waiting_for_machine' | 'installing' | 'starting' | 'waiting_for_user'
 
 export type ProviderLoginPhase =
   | { kind: 'starting'; stage: ProviderLoginStage }

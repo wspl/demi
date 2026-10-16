@@ -85,7 +85,8 @@ impl ReadBlob for NoBlobs {
 /// project remembered the model and workflow its next conversation starts
 /// with, 0.1.22-dev.20261015T134426Z's, before a quota window had a
 /// kind instead of an English name, and 0.1.22-dev.20261016T043704Z's,
-/// before the usage ledger kept a row per vendor call.
+/// before the usage ledger kept a row per vendor call and before the
+/// Claude Code machine and the accounts whose CLI keeps their sign-in.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -230,7 +231,15 @@ pub(crate) const CONTROL: Schema = Schema {
 /// times (`usage-and-quota.md` § Usage ledger). A row written before keeps
 /// null for what it lacked; its `created_at`, written as its response
 /// ended, is its `ended_at`. A call's counts are null when the vendor
-/// reported none.
+/// reported none. In the same schema a managed device says which managed
+/// machine it is, the user's Cloud or the master's Claude Code machine
+/// (`managed-hosts.md` § The Claude Code machine), and a subscription
+/// account may hold no secret, as a Claude Code account whose CLI keeps its
+/// sign-in does, and says whether the vendor signed it out
+/// (`claude-code.md` § Accounts and sign-in). Every managed device of the
+/// earlier schema is a Cloud. A Claude Code account keeps the tokens it
+/// holds until its first use hands them over. No table refers to
+/// `provider_credentials`, so it is made again.
 const CONTROL_FROM_0_1_22_DEV_20261016T043704Z: &str = "
 CREATE TABLE usage_ledger_calls (
   id                    TEXT PRIMARY KEY,
@@ -262,6 +271,33 @@ INSERT INTO usage_ledger_calls (id, user_id, conversation_id, provider_id, model
 DROP TABLE usage_ledger;
 ALTER TABLE usage_ledger_calls RENAME TO usage_ledger;
 CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
+ALTER TABLE devices ADD COLUMN machine TEXT CHECK (machine IN ('cloud', 'claude_code'));
+UPDATE devices SET machine = 'cloud' WHERE kind = 'managed';
+DROP INDEX devices_one_managed;
+CREATE UNIQUE INDEX devices_one_machine ON devices (user_id, machine) WHERE kind = 'managed';
+CREATE TABLE provider_credentials_new (
+  provider_id  TEXT NOT NULL REFERENCES providers (id) ON DELETE CASCADE,
+  id           TEXT NOT NULL,
+  identity_key TEXT,
+  label        TEXT NOT NULL,
+  detail       TEXT,
+  source       TEXT NOT NULL,
+  secret       BLOB,
+  version      INTEGER NOT NULL CHECK (version >= 1),
+  quota        TEXT,
+  updated_at   INTEGER NOT NULL,
+  position     INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
+  signed_out   INTEGER NOT NULL DEFAULT 0 CHECK (signed_out IN (0, 1)),
+  PRIMARY KEY (provider_id, id)
+) STRICT;
+INSERT INTO provider_credentials_new
+  (provider_id, id, identity_key, label, detail, source, secret, version, quota, updated_at, position)
+  SELECT provider_id, id, identity_key, label, detail, source, secret, version, quota, updated_at, position
+  FROM provider_credentials;
+DROP TABLE provider_credentials;
+ALTER TABLE provider_credentials_new RENAME TO provider_credentials;
+CREATE UNIQUE INDEX provider_credentials_identity ON provider_credentials (provider_id, identity_key)
+  WHERE identity_key IS NOT NULL;
 ";
 
 /// From 0.1.22-dev.20261015T105826Z's control schema, which a server keeps
@@ -2672,9 +2708,13 @@ CREATE TABLE devices (
   -- (product.md § Conversations and projects), given when its runner first
   -- reports its system and again when its logo changes; none before, and
   -- for a Cloud.
-  mark_number INTEGER CHECK (mark_number > 0)
+  mark_number INTEGER CHECK (mark_number > 0),
+  -- Which managed machine a managed device is: the user's Cloud, or the
+  -- Claude Code machine, which only the instance's master holds
+  -- (managed-hosts.md § The Claude Code machine); none for a paired device.
+  machine      TEXT CHECK (machine IN ('cloud', 'claude_code'))
 ) STRICT;
-CREATE UNIQUE INDEX devices_one_managed ON devices (user_id) WHERE kind = 'managed';
+CREATE UNIQUE INDEX devices_one_machine ON devices (user_id, machine) WHERE kind = 'managed';
 
 CREATE TABLE workspaces (
   id         TEXT PRIMARY KEY,
@@ -3111,7 +3151,9 @@ CREATE TABLE provider_credentials (
   label        TEXT NOT NULL,
   detail       TEXT,
   source       TEXT NOT NULL,
-  secret       BLOB NOT NULL,
+  -- The sealed secret document; none for a Claude Code account, whose
+  -- sign-in its CLI keeps (providers.md § Subscription secrets).
+  secret       BLOB,
   version      INTEGER NOT NULL CHECK (version >= 1),
   -- A quota snapshot, format 2, whose windows have a kind (format 1 named
   -- each window in English).
@@ -3119,6 +3161,8 @@ CREATE TABLE provider_credentials (
   updated_at   INTEGER NOT NULL,
   -- The account's place in its entry's list, which In Order follows.
   position     INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
+  -- The vendor refused the account's sign-in; a login of it clears this.
+  signed_out   INTEGER NOT NULL DEFAULT 0 CHECK (signed_out IN (0, 1)),
   PRIMARY KEY (provider_id, id)
 ) STRICT;
 CREATE UNIQUE INDEX provider_credentials_identity ON provider_credentials (provider_id, identity_key)

@@ -30,14 +30,14 @@ use std::time::Duration;
 
 use demi_backend_database::StorageError;
 use demi_backend_database::accounts::TokenHash;
-use demi_backend_database::devices::DeviceRecord;
+use demi_backend_database::devices::{DeviceRecord, ManagedMachine};
 use demi_backend_database::managed::ManagedOperation;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_backend_remote_host::Admission;
 use demi_backend_runners::codes::new_device_token;
 use demi_host_interface::{HostError, HostErrorKind};
 use demi_machine_manager_protocol::{
-    HibernateParams, RuntimeState, RuntimeStateParams, WakeParams,
+    HibernateParams, RuntimeState, RuntimeStateParams, SandboxMachine, WakeParams,
 };
 use demi_runner_protocol::boot::ManagedBoot;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose};
@@ -115,17 +115,37 @@ pub struct CloudAdmission {
 /// waits.
 pub(crate) type Transition = Shared<LocalBoxFuture<'static, Result<(), CloudError>>>;
 
-/// The user's Cloud, in the user's shard: its one machine, made on the
-/// first need, and whether the shard is closing it.
+/// The user's managed machines, in the user's shard: the Cloud, and for
+/// the master the Claude Code machine (`managed-hosts.md` § The Claude Code
+/// machine), each made on the first need, and whether the shard is closing
+/// them.
 #[derive(Default)]
 pub struct Cloud {
     machine: RefCell<Option<Rc<Machine>>>,
+    claude_code: RefCell<Option<Rc<Machine>>>,
     closed: Cell<bool>,
 }
 
 impl Cloud {
+    /// The user's Cloud machine, once its first need made it.
     pub(crate) fn machine(&self) -> Option<Rc<Machine>> {
         self.machine.borrow().clone()
+    }
+
+    /// The slot of the managed machine `kind`.
+    fn slot(&self, kind: ManagedMachine) -> &RefCell<Option<Rc<Machine>>> {
+        match kind {
+            ManagedMachine::Cloud => &self.machine,
+            ManagedMachine::ClaudeCode => &self.claude_code,
+        }
+    }
+
+    /// Every managed machine the shard made.
+    pub(crate) fn machines(&self) -> Vec<Rc<Machine>> {
+        [self.machine(), self.claude_code.borrow().clone()]
+            .into_iter()
+            .flatten()
+            .collect()
     }
 
     pub(crate) fn is_closed(&self) -> bool {
@@ -136,7 +156,7 @@ impl Cloud {
     /// shard's close does first; a retirement already running finishes.
     pub fn stop(&self) {
         self.closed.set(true);
-        if let Some(machine) = self.machine() {
+        for machine in self.machines() {
             machine.stop_schedules();
         }
     }
@@ -159,8 +179,9 @@ pub(crate) struct Machine {
     deaths: RefCell<VecDeque<Instant>>,
     /// Why the last boot, save or reset failed, until a boot succeeds.
     pub(crate) error: RefCell<Option<String>>,
-    /// The user's pages, which show the Cloud's state.
-    marks: UserMarks,
+    /// The user's pages, which show the Cloud's state; none for the Claude
+    /// Code machine, which no page shows.
+    marks: Option<UserMarks>,
 }
 
 /// The machine's phase held for a change: once a change of the Cloud's state
@@ -168,7 +189,7 @@ pub(crate) struct Machine {
 pub(crate) struct PhaseChange<'a> {
     phase: RefMut<'a, Phase>,
     before: CloudState,
-    marks: &'a UserMarks,
+    marks: Option<&'a UserMarks>,
 }
 
 impl Deref for PhaseChange<'_> {
@@ -187,8 +208,10 @@ impl DerefMut for PhaseChange<'_> {
 
 impl Drop for PhaseChange<'_> {
     fn drop(&mut self) {
-        if state_of(&self.phase) != self.before {
-            self.marks.mark(Part::Cloud);
+        if let Some(marks) = self.marks
+            && state_of(&self.phase) != self.before
+        {
+            marks.mark(Part::Cloud);
         }
     }
 }
@@ -234,7 +257,11 @@ enum Ready {
 }
 
 impl Machine {
-    fn new(device: DeviceRecord, operation: Option<ManagedOperation>, marks: UserMarks) -> Self {
+    fn new(
+        device: DeviceRecord,
+        operation: Option<ManagedOperation>,
+        marks: Option<UserMarks>,
+    ) -> Self {
         Self {
             device,
             gate: ActivityGate::new(),
@@ -253,7 +280,7 @@ impl Machine {
         PhaseChange {
             before: state_of(&phase),
             phase,
-            marks: &self.marks,
+            marks: self.marks.as_ref(),
         }
     }
 
@@ -261,11 +288,18 @@ impl Machine {
         state_of(&self.phase.borrow())
     }
 
+    /// Which managed machine this is.
+    pub(crate) fn kind(&self) -> ManagedMachine {
+        self.device.machine.unwrap_or(ManagedMachine::Cloud)
+    }
+
     /// Records the latest reset as storage now holds it, which the user's
     /// pages show.
     pub(crate) fn record_operation(&self, operation: ManagedOperation) {
         self.operation.replace(Some(operation));
-        self.marks.mark(Part::Cloud);
+        if let Some(marks) = &self.marks {
+            marks.mark(Part::Cloud);
+        }
     }
 
     pub(crate) fn is_running(&self) -> bool {
@@ -362,13 +396,16 @@ impl Machine {
 }
 
 impl dyn CloudShard {
-    /// The user's Cloud machine, made on the first need with the latest
-    /// reset its records hold.
+    /// The managed machine of `device`, the user's Cloud or the Claude Code
+    /// machine, made on the first need with the latest reset its records
+    /// hold.
     pub(crate) async fn cloud_machine(
         &self,
         device: &DeviceRecord,
     ) -> Result<Rc<Machine>, StorageError> {
-        if let Some(machine) = self.cloud().machine() {
+        let kind = device.machine.unwrap_or(ManagedMachine::Cloud);
+        let slot = self.cloud().slot(kind);
+        if let Some(machine) = slot.borrow().clone() {
             return Ok(machine);
         }
         let operation = self
@@ -377,12 +414,12 @@ impl dyn CloudShard {
             .await?;
         // Two first needs may both have read; the first to get here makes
         // the machine, and no await separates this check from the store.
-        if let Some(machine) = self.cloud().machine() {
+        if let Some(machine) = slot.borrow().clone() {
             return Ok(machine);
         }
-        let marks = self.marks();
+        let marks = (kind == ManagedMachine::Cloud).then(|| self.marks());
         let machine = Rc::new(Machine::new(device.clone(), operation, marks));
-        self.cloud().machine.replace(Some(machine.clone()));
+        slot.replace(Some(machine.clone()));
         Ok(machine)
     }
 
@@ -545,6 +582,10 @@ impl dyn CloudShard {
                 backend_url,
                 device_token: token,
             },
+            machine: match machine.kind() {
+                ManagedMachine::Cloud => SandboxMachine::Cloud,
+                ManagedMachine::ClaudeCode => SandboxMachine::ClaudeCode,
+            },
         };
         let cloud = self.cloud_services();
         cloud.machines.call(wake).await?;
@@ -555,8 +596,12 @@ impl dyn CloudShard {
             // Let the failed-boot path save what the sandbox wrote.
             () = self.closed() => return Err(CloudError::Closed),
             connected = tokio::time::timeout(connection, self.devices().until_online(device)) => {
+                let name = match machine.kind() {
+                    ManagedMachine::Cloud => "Your Cloud",
+                    ManagedMachine::ClaudeCode => "Claude Code’s machine",
+                };
                 connected.map_err(|_| CloudError::Failed(format!(
-                    "Your Cloud didn’t start. Its runner didn’t connect in {} seconds.",
+                    "{name} didn’t start. Its runner didn’t connect in {} seconds.",
                     connection.as_secs()
                 )))?;
             }
@@ -654,8 +699,9 @@ impl dyn CloudShard {
     pub async fn cloud_died(&self, device: &DeviceId) {
         let Some(machine) = self
             .cloud()
-            .machine()
-            .filter(|machine| machine.device.id == *device)
+            .machines()
+            .into_iter()
+            .find(|machine| machine.device.id == *device)
         else {
             return;
         };
@@ -754,16 +800,15 @@ impl dyn CloudShard {
     /// ownership).
     pub async fn close_cloud(&self) {
         self.cloud().stop();
-        let Some(machine) = self.cloud().machine() else {
-            return;
-        };
-        // A failed reset is recorded with its operation, and a boot the
-        // close cut short saved what its sandbox wrote.
-        if let Some(reset) = machine.reset_task() {
-            let _ = reset.await;
-        }
-        if let Some(transition) = machine.transition() {
-            let _ = transition.await;
+        for machine in self.cloud().machines() {
+            // A failed reset is recorded with its operation, and a boot the
+            // close cut short saved what its sandbox wrote.
+            if let Some(reset) = machine.reset_task() {
+                let _ = reset.await;
+            }
+            if let Some(transition) = machine.transition() {
+                let _ = transition.await;
+            }
         }
     }
 
