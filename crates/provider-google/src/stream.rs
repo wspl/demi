@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use demi_provider_common::{
-    EarlyEnd, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, encode_body,
+    EarlyEnd, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, ToolCall, VendorCall, encode_body,
     http_failure, read_http_failure,
     wire::{NonEmpty, ReportedString, decode_untagged, sse_data, undecodable},
 };
@@ -92,6 +92,9 @@ pub(crate) fn run(
                 }
             };
             let ended = mapper.frame(&data, &mut out);
+            if ended {
+                mapper.end_call(&mut out);
+            }
             for event in out.drain(..) {
                 yield event;
             }
@@ -100,7 +103,11 @@ pub(crate) fn run(
             }
         }
         if !cancel.is_cancelled() {
-            yield mapper.end();
+            let mut out = vec![mapper.end()];
+            mapper.end_call(&mut out);
+            for event in out {
+                yield event;
+            }
         }
     }
 }
@@ -114,6 +121,8 @@ struct Mapper {
     thinking_open: bool,
     usage: Option<TokenUsage>,
     ended: Option<(Ending, String)>,
+    /// The response's id, once a chunk named it.
+    id: Option<String>,
 }
 
 /// Why Gemini ended a reply: a candidate's finish reason, or the reason it
@@ -131,6 +140,17 @@ impl Mapper {
             thinking_open: false,
             usage: None,
             ended: None,
+            id: None,
+        }
+    }
+
+    /// The run's one call ends before `out`'s last event, the run's, under
+    /// the response's id and with its counts, for the usage ledger.
+    fn end_call(&mut self, out: &mut Vec<ProviderEvent>) {
+        if let Some(last) = out.last()
+            && let Some(call) = VendorCall::ended_by(self.id.take(), self.usage, last)
+        {
+            out.insert(out.len() - 1, call);
         }
     }
 
@@ -144,6 +164,9 @@ impl Mapper {
                 return true;
             }
         };
+        if let Some(id) = chunk.response_id.filter(|id| !id.is_empty()) {
+            self.id = Some(id);
+        }
         if let Some(error) = chunk.error {
             out.push(ProviderEvent::Error(self.failure(error, data)));
             return true;
@@ -268,6 +291,9 @@ impl Mapper {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct Chunk {
+    /// The vendor's id of the call, which every chunk repeats.
+    #[serde(default)]
+    response_id: Option<String>,
     #[serde(default)]
     candidates: Option<Vec<Candidate>>,
     #[serde(default)]

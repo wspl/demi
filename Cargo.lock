@@ -2193,6 +2193,7 @@ name = "demi-backend-providers"
 version = "0.1.21"
 dependencies = [
  "aes-gcm",
+ "async-stream",
  "demi-backend-database",
  "demi-backend-page-sync",
  "demi-command-package-claude-code-protocol",

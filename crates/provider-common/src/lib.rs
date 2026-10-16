@@ -31,9 +31,10 @@ pub mod wire;
 
 pub use body::{encode_body, json_body};
 pub use contract::{
-    AccountSwitch, Ahead, Capabilities, CatalogError, EntriesOf, InferenceItem, InferenceRequest, MediaBytes, Medium, PromptCache,
-    Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestBlock, RequestLimits, ResultPart, RuntimeEnv,
-    RuntimeError, ToolCall, ToolDefinition, ToolResultKinds, UserPart, offers,
+    AccountSwitch, Ahead, CallEvent, CallOutcome, Capabilities, CatalogError, EntriesOf, InferenceItem, InferenceRequest,
+    MediaBytes, Medium, PromptCache, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestBlock, RequestLimits,
+    RequestPurpose, ResultPart, RuntimeEnv, RuntimeError, ToolCall, ToolDefinition, ToolResultKinds, UserPart, VendorCall,
+    offers,
 };
 pub use endpoint::endpoint_url;
 pub use failure::{EarlyEnd, ErrorCode, FailureReader, ProviderFailure};

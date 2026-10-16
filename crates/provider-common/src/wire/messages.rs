@@ -7,6 +7,8 @@ use std::borrow::Cow;
 use demi_shared_types::TokenUsage;
 use serde::Deserialize;
 
+use crate::{CallOutcome, VendorCall};
+
 /// A stored tool call id as the Messages API takes a tool use's and its
 /// result's, which allows letters, digits, `_` and `-`: each other
 /// character becomes `_`, so Codex's `call_7Qm…|fc_68e…` goes as
@@ -34,6 +36,23 @@ pub struct MessagesUsage {
     pub cache_read_input_tokens: Option<u64>,
     #[serde(default)]
     pub cache_creation_input_tokens: Option<u64>,
+    /// The cache write by how long it is kept.
+    #[serde(default)]
+    pub cache_creation: Option<CacheCreation>,
+}
+
+/// The parts of a call's cache write by lifetime.
+#[derive(Debug, Deserialize, Clone, Copy, Default, PartialEq, Eq)]
+pub struct CacheCreation {
+    /// The part kept for an hour (`"ttl": "1h"`).
+    #[serde(default)]
+    pub ephemeral_1h_input_tokens: Option<u64>,
+}
+
+impl MessagesUsage {
+    fn cache_write_1h(&self) -> Option<u64> {
+        self.cache_creation?.ephemeral_1h_input_tokens
+    }
 }
 
 /// The token counts of the stream's latest API call: its last
@@ -44,16 +63,26 @@ pub struct MessagesUsage {
 /// in for a count the API did not send.
 #[derive(Debug, Default)]
 pub struct CallUsage {
+    /// The id of the latest call's message.
+    id: Option<String>,
     /// The counts the latest call's `message_start` stated.
     started: MessagesUsage,
     /// The latest call's counts once a `message_delta` stated them.
     ended: Option<TokenUsage>,
+    /// The part of the latest call's cache write kept for an hour, as its
+    /// `message_delta`, else its `message_start`, stated it.
+    ended_1h: u64,
 }
 
 impl CallUsage {
-    /// A call's `message_start`, with the counts it stated, if any.
-    pub fn start(&mut self, counts: Option<MessagesUsage>) {
-        self.started = counts.unwrap_or_default();
+    /// A call's `message_start`, with its message's id and the counts it
+    /// stated, if any.
+    pub fn start(&mut self, id: Option<String>, counts: Option<MessagesUsage>) {
+        *self = Self {
+            id,
+            started: counts.unwrap_or_default(),
+            ..Self::default()
+        };
     }
 
     /// A `message_delta` of the latest call, with the counts it stated.
@@ -71,10 +100,25 @@ impl CallUsage {
                 .or(started.cache_creation_input_tokens)
                 .unwrap_or(0),
         });
+        self.ended_1h = counts
+            .cache_write_1h()
+            .or(started.cache_write_1h())
+            .unwrap_or(0);
     }
 
     /// The latest call's counts, once a `message_delta` stated them.
     pub fn usage(&self) -> Option<TokenUsage> {
         self.ended
+    }
+
+    /// The latest call as the usage ledger keeps it, ended as `outcome`
+    /// says (`usage-and-quota.md` § Usage ledger).
+    pub fn call(&self, outcome: CallOutcome) -> VendorCall {
+        VendorCall {
+            vendor_id: self.id.clone(),
+            usage: self.ended,
+            cache_write_1h_tokens: self.ended_1h,
+            outcome,
+        }
     }
 }

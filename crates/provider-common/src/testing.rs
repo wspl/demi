@@ -30,7 +30,7 @@ use tokio::sync::{Notify, watch};
 use tokio_util::{sync::CancellationToken, task::AbortOnDropHandle};
 
 use crate::{
-    Ahead, InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure,
+    Ahead, InferenceItem, InferenceRequest, PromptCache, ProviderEvent, ProviderFailure, RequestPurpose,
     ProviderRun, ProviderRuntime, RequestLimits, ToolCall, ToolDefinition, ToolResultKinds,
     UserPart,
 };
@@ -151,6 +151,8 @@ pub fn inference_request() -> InferenceRequest {
         prompt_cache: PromptCache::Off,
         cancel: CancellationToken::new(),
         account: None,
+        purpose: RequestPurpose::Turn,
+        agent: Some(0),
     }
 }
 
@@ -320,13 +322,31 @@ pub async fn guarded<T>(what: &str, future: impl Future<Output = T>) -> T {
     value
 }
 
-/// The run's next event, or `None` once it has ended.
+/// The run's next event the agent receives, or `None` once it has ended:
+/// the calls a run reports are the usage ledger's, which the metered
+/// runtime keeps from the agent ([`ProviderEvent::Call`]).
 pub async fn next_event(run: &mut ProviderRun<'_>) -> Option<ProviderEvent> {
-    guarded("the run's next event or its end", run.next()).await
+    loop {
+        match guarded("the run's next event or its end", run.next()).await {
+            Some(ProviderEvent::Call(_)) => {}
+            event => return event,
+        }
+    }
 }
 
-/// Every event of `run`, once it has ended.
+/// Every event of `run` the agent receives, once it has ended
+/// ([`next_event`]).
 pub async fn all_events(run: impl Stream<Item = ProviderEvent>) -> Vec<ProviderEvent> {
+    let events = every_event(run).await;
+    events
+        .into_iter()
+        .filter(|event| !matches!(event, ProviderEvent::Call(_)))
+        .collect()
+}
+
+/// Every event of `run`, the calls it reports to the usage ledger
+/// included, once it has ended.
+pub async fn every_event(run: impl Stream<Item = ProviderEvent>) -> Vec<ProviderEvent> {
     guarded("the run's end", run.collect()).await
 }
 

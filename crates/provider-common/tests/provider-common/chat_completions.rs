@@ -38,9 +38,7 @@ fn body(frames: &[Value]) -> impl futures_util::Stream<Item = reqwest::Result<By
 }
 
 async fn events(frames: &[Value]) -> Vec<ProviderEvent> {
-    map_sse(body(frames), vendor(), CancellationToken::new())
-        .collect()
-        .await
+    demi_provider_common::testing::all_events(map_sse(body(frames), vendor(), CancellationToken::new())).await
 }
 
 fn call(id: &str, name: &str, input: Value) -> ProviderEvent {

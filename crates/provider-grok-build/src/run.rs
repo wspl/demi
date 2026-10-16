@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use demi_provider_common::{
-    ErrorCode, HttpFailureRecord, InferenceRequest, ProviderEvent, ProviderFailure, encode_body,
+    CallEvent, ErrorCode, HttpFailureRecord, InferenceRequest, ProviderEvent, ProviderFailure, VendorCall, encode_body,
     http_failure,
     quota::Observation,
     read_http_failure,
@@ -83,14 +83,19 @@ pub(crate) fn run(
                     return;
                 }
             };
-            shared.quota.observe(Observation::Response {
+            if let Some(observed) = shared.quota.observed(Observation::Response {
                 status: response.status(),
                 headers: response.headers(),
-            });
+            }) {
+                yield observed;
+            }
             if response.status() == StatusCode::UNAUTHORIZED && refused_token.is_none() {
                 // The refused answer's body is not needed; dropping the
-                // response releases its connection.
+                // response releases its connection. The refused attempt is
+                // a call of its own, and the next one starts.
                 refused_token = Some(credentials.access_token);
+                yield VendorCall::refused(Some(ErrorCode::AuthExpired));
+                yield ProviderEvent::Call(CallEvent::Started);
                 continue;
             }
             break response;
