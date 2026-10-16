@@ -2039,8 +2039,9 @@ async fn a_shutdown_in_the_middle_of_a_turn_saves_its_interruption_and_the_next_
     assert_eq!(record.code.as_deref(), Some("interrupted"));
     let summary = summaries(&backend, &master).await.remove(0);
     assert_eq!(summary.status, ConversationStatus::Interrupted);
-    // The ledger carries its rows over the restart.
-    assert_eq!(usage(&backend, &master).await.totals[0].requests, 1);
+    // The ledger carries its rows over the restart, the interrupted call's,
+    // cancelled before the vendor answered, among them.
+    assert_eq!(usage(&backend, &master).await.totals[0].requests, 2);
 
     // The next turn runs on the restored tree.
     let mut socket = Socket::connect(&backend, &master, FIRST).await;

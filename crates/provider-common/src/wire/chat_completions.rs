@@ -13,7 +13,7 @@ use serde::Deserialize;
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    EarlyEnd, ErrorCode, ProviderEvent, ProviderFailure, ToolCall,
+    EarlyEnd, ErrorCode, ProviderEvent, ProviderFailure, ToolCall, VendorCall,
     wire::{
         ReportedString, Vendor, WireError, decode_untagged, sse_data, tool_input, undecodable,
         usage_with_cached_input,
@@ -25,6 +25,10 @@ use crate::{
 /// spell their absence as `null`.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Chunk {
+    /// The completion's id, which every chunk of it repeats: the vendor's id
+    /// of the call.
+    #[serde(default)]
+    pub id: Option<String>,
     #[serde(default)]
     pub choices: Option<Vec<Choice>>,
     #[serde(default)]
@@ -149,6 +153,9 @@ where
                 }
             };
             let ended = mapper.frame(&data, &vendor, &mut out);
+            if ended {
+                mapper.end_call(&mut out);
+            }
             for event in out.drain(..) {
                 yield event;
             }
@@ -160,6 +167,7 @@ where
             return;
         }
         mapper.finish(&vendor, &mut out);
+        mapper.end_call(&mut out);
         for event in out.drain(..) {
             yield event;
         }
@@ -186,9 +194,21 @@ struct Mapper {
     usage: Option<TokenUsage>,
     /// The finish reason a choice named, with the chunk that named it.
     finished: Option<(String, String)>,
+    /// The completion's id, once a chunk named it.
+    id: Option<String>,
 }
 
 impl Mapper {
+    /// The run's one call ends before `out`'s last event, the run's, under
+    /// the completion's id and with its counts, for the usage ledger.
+    fn end_call(&mut self, out: &mut Vec<ProviderEvent>) {
+        if let Some(last) = out.last()
+            && let Some(call) = VendorCall::ended_by(self.id.take(), self.usage, last)
+        {
+            out.insert(out.len() - 1, call);
+        }
+    }
+
     /// Pushes the run's events for one frame onto `out`; `true` when the
     /// frame ends the run.
     fn frame(&mut self, data: &str, vendor: &Vendor, out: &mut Vec<ProviderEvent>) -> bool {
@@ -207,6 +227,9 @@ impl Mapper {
                 return true;
             }
         };
+        if let Some(id) = chunk.id.filter(|id| !id.is_empty()) {
+            self.id = Some(id);
+        }
         if let Some(error) = chunk.error {
             out.push(ProviderEvent::Error(failure(error, vendor, data)));
             return true;

@@ -752,6 +752,10 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         definitions()
     }
 
+    fn agent(&self) -> u64 {
+        self.agent
+    }
+
     /// The commands the node's shells run, oldest first, each with its
     /// call's title, and the node's live children in spawn order.
     fn running_work(&self) -> LocalBoxFuture<'_, RunningWork> {

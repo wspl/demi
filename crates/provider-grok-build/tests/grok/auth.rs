@@ -3,9 +3,9 @@
 //! (`providers.md` § Token refresh).
 
 use demi_provider_common::{
-    ErrorCode, Provider, ProviderEvent,
+    CallEvent, CallOutcome, ErrorCode, Provider, ProviderEvent, VendorCall,
     credentials::{AccountMeta, CredentialPool, MemoryCredentialPool},
-    testing::{MockResponse, MockVendor, inference_request},
+    testing::{MockResponse, MockVendor, every_event, inference_request},
 };
 use demi_shared_types::AuthState;
 use serde_json::{Value, json};
@@ -23,7 +23,7 @@ async fn a_request_refused_with_401_refreshes_once_for_its_principal_and_is_sent
     vendor.respond_at("/oauth2/token", json_answer(200, json!({ "access_token": "refreshed-token", "refresh_token": "refresh-2", "expires_in": 3600, "token_type": "Bearer" })));
     vendor.respond_at(
         CHAT,
-        chat(&[json!({ "choices": [{ "delta": { "content": "ok" } }] })]),
+        chat(&[json!({ "id": "chatcmpl-2", "choices": [{ "delta": { "content": "ok" } }] })]),
     );
     let pool = pool_with(secret(
         &vendor,
@@ -31,11 +31,21 @@ async fn a_request_refused_with_401_refreshes_once_for_its_principal_and_is_sent
     ))
     .await;
     let provider = provider(&vendor, &pool, Some(ACCOUNT));
-    let events = run(runtime_of(&provider).as_mut(), inference_request()).await;
+    let events = every_event(runtime_of(&provider).run(inference_request())).await;
+    // Each attempt is a call of the usage ledger's: the refused one with its
+    // code, then the one sent again, under the completion's id.
     assert_eq!(
         events,
         [
+            VendorCall::refused(Some(ErrorCode::AuthExpired)),
+            ProviderEvent::Call(CallEvent::Started),
             ProviderEvent::TextDelta("ok".into()),
+            ProviderEvent::Call(CallEvent::Ended(VendorCall {
+                vendor_id: Some("chatcmpl-2".into()),
+                usage: None,
+                cache_write_1h_tokens: 0,
+                outcome: CallOutcome::Answered,
+            })),
             ProviderEvent::Response(None)
         ]
     );

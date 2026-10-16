@@ -12,7 +12,7 @@ use std::sync::Arc;
 use demi_backend_providers::llm::catalog::configured_selection;
 use demi_backend_providers::vault::entries::ProviderEntry;
 use demi_provider_common::{
-    InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RuntimeEnv, UserPart,
+    InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RequestPurpose, RuntimeEnv, UserPart,
 };
 use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::providers::TestResult;
@@ -102,14 +102,27 @@ impl Shard {
             prompt_cache: PromptCache::Off,
             cancel: request_cancel.clone(),
             account: None,
+            // A connection test is no conversation's, and no ledger meters
+            // its runtime.
+            purpose: RequestPurpose::Turn,
+            agent: None,
         };
-        // The first event decides: a failure is the provider's refusal, and
-        // anything else shows that it answers.
+        // The first event that is not the usage ledger's accounting decides:
+        // a failure is the provider's refusal, and anything else shows that
+        // it answers.
         let first = {
             let mut run = runtime.run(request);
+            let judged = async {
+                loop {
+                    match run.next().await {
+                        Some(ProviderEvent::Call(_)) => {}
+                        next => break next,
+                    }
+                }
+            };
             let first = tokio::select! {
                 () = cancel.cancelled() => None,
-                first = run.next() => Some(first),
+                first = judged => Some(first),
             };
             // Ends the run however it stands; dropping its stream is its
             // cancellation.

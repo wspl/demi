@@ -70,7 +70,11 @@ const LOGIN: &str = "/api/providers/subscription-login";
 /// process prepared ahead does, answer `initialize`, answer each user message with the
 /// executable, the token, how many environment variables hold it, the
 /// directory they run in, their configuration directory and its mode, and
-/// record their start and their end.
+/// record their start and their end. A session or message that asks for `three calls`
+/// is answered by three calls to the vendor in one run, each streamed with
+/// its message's id and its own counts, then the quota the vendor reported
+/// after the last one, as the CLI prints a `rate_limit_event` after a call's
+/// `message_stop`, and a `result` whose usage sums them.
 const SCRIPTED_CLI: &str = r#"#!/bin/sh
 if [ "$1" = auth ]; then
   echo "login $CLAUDE_CONFIG_DIR $(ls -ld "$CLAUDE_CONFIG_DIR" | cut -c1-10)" >> "$HOME/claude-logins.log"
@@ -95,7 +99,25 @@ log="$HOME/claude-processes.log"
 token=$(cat <&3)
 echo "started $token $CLAUDE_CONFIG_DIR" >> "$log"
 trap 'echo "ended $token" >> "$log"; exit 0' TERM
+calls() {
+  for n in 1 2 3; do
+    printf '{"type":"stream_event","event":{"type":"message_start","message":{"id":"msg_call_%s","usage":{"input_tokens":1%s,"cache_read_input_tokens":%s00,"cache_creation_input_tokens":%s0,"cache_creation":{"ephemeral_1h_input_tokens":%s}}}}}\n' "$n" "$n" "$n" "$n" "$n"
+    printf '{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}}\n'
+    printf '{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"call %s. "}}}\n' "$n"
+    printf '{"type":"stream_event","event":{"type":"content_block_stop","index":0}}\n'
+    printf '{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":%s}}}\n' "$n"
+    printf '{"type":"stream_event","event":{"type":"message_stop"}}\n'
+  done
+  # As Claude Code 2.1 prints it, after the call's message_stop.
+  printf '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","resetsAt":1791882600,"rateLimitType":"five_hour","overageStatus":"rejected","overageDisabledReason":"org_level_disabled","isUsingOverage":false,"unifiedWindows":{"five_hour":{"utilization":0.31,"resetsAt":1791882600},"seven_day":{"utilization":0.05,"resetsAt":1792447200}}}}\n'
+  printf '{"type":"result","usage":{"input_tokens":36,"output_tokens":6,"cache_read_input_tokens":600}}\n'
+}
 answer() {
+  # The message may come before the context the request adds after it.
+  if printf '%s' "$1" | grep -q 'three calls' || grep -q 'three calls' "$session"; then
+    calls
+    return
+  fi
   printf '{"type":"assistant","message":{"content":[{"type":"text","text":"cli=%s token=%s environment=%s cwd=%s config=%s mode=%s"}]}}\n' \
     "$0" "$token" "$(env | grep -c "$token")" "$(pwd)" "$CLAUDE_CONFIG_DIR" "$(ls -ld "$CLAUDE_CONFIG_DIR" | cut -c1-10)"
   printf '{"type":"result","usage":{"input_tokens":3,"output_tokens":2}}\n'
@@ -105,7 +127,7 @@ answer() {
 session=$(ls "$CLAUDE_CONFIG_DIR"/projects/*/*.jsonl | head -n 1)
 last=$(grep -E '"type":"(user|assistant)"' "$session" | tail -n 1)
 case "$last" in
-  *'"type":"user"'*) answer ;;
+  *'"type":"user"'*) answer "$last" ;;
 esac
 while IFS= read -r line; do
   case "$line" in
@@ -113,7 +135,7 @@ while IFS= read -r line; do
       id=$(printf '%s\n' "$line" | sed 's/^{"type":"control_request","request_id":"\([^"]*\)".*/\1/')
       printf '{"type":"control_response","response":{"subtype":"success","request_id":"%s"}}\n' "$id"
       ;;
-    '{"type":"user"'*) answer ;;
+    '{"type":"user"'*) answer "$line" ;;
   esac
 done
 "#;
@@ -847,6 +869,124 @@ async fn a_sign_in_that_activates_its_account_prepares_the_open_conversation_wit
     ];
     assert_eq!(processes.lines().collect::<Vec<_>>(), expected);
     backend.close().await;
+}
+
+/// A Claude Code run of three calls to the vendor is three usage ledger
+/// rows, one per call, each with its message's id, its own counts and the
+/// account, never the `result` line's sum (`usage-and-quota.md` § Usage
+/// ledger); the quota the vendor reported after the last call's end is that
+/// call's alone; the server log's lines of each call name its request, its agent
+/// and its account, and so does the run's timing line.
+// About two seconds: the Cloud boots, and runs a sign-in and a process of
+// the scripted CLI.
+#[tokio::test]
+async fn a_claude_code_run_of_three_calls_is_three_ledger_rows_with_the_account() {
+    let (distribution, catalog) = vendors().await;
+    let harness = Harness::new()
+        .with_claude_package()
+        .with_claude_releases(distribution.url("/releases"))
+        .with_models_dev(catalog.url("/api.json"));
+    let log = ServerLogCapture::open(&harness);
+    let (backend, master) = harness.start_set_up().await;
+    // A first sign-in boots the Cloud, which has no CLI yet.
+    let id = start_login(
+        &backend,
+        &master,
+        LOGIN,
+        json!({ "providerType": "claude-code", "label": "Claude" }),
+    )
+    .await;
+    awaited(&backend, &master, &id, ended).await;
+    let cloud = the_cloud(&harness);
+    install_by_hand(&harness.manager.artifacts(&cloud), OLDER).await;
+    let id = waiting_login(
+        &backend,
+        &master,
+        LOGIN,
+        json!({ "providerType": "claude-code", "label": "Claude" }),
+    )
+    .await;
+    let LoginState::Completed {
+        provider_id,
+        credential_id: account,
+    } = pasted(&backend, &master, &id, "first#state").await
+    else {
+        panic!("the sign-in did not complete");
+    };
+    create(&backend, &master, CONVERSATION).await;
+    choose(&backend, &master, CONVERSATION, provider_id.as_str(), "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, CONVERSATION).await;
+    socket.open().await;
+    socket
+        .chat("5e1d2e4f-8f3a-4c1e-9d2b-7a1c2e3f4a01", "answer in three calls")
+        .await;
+
+    let rows = crate::usage::rows(&harness);
+    let calls: Vec<_> = rows
+        .iter()
+        .map(|row| {
+            (
+                row.vendor_id.as_deref(),
+                row.tokens,
+                row.cache_write_1h_tokens,
+                row.outcome.as_deref(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        calls,
+        [
+            (Some("msg_call_1"), [Some(11), Some(1), Some(100), Some(10)], Some(1), Some("answered")),
+            (Some("msg_call_2"), [Some(12), Some(2), Some(200), Some(20)], Some(2), Some("answered")),
+            (Some("msg_call_3"), [Some(13), Some(3), Some(300), Some(30)], Some(3), Some("answered")),
+        ]
+    );
+    let quota: Vec<Option<Value>> = rows
+        .iter()
+        .map(|row| row.quota.as_deref().map(|quota| serde_json::from_str(quota).unwrap()))
+        .collect();
+    assert_eq!(
+        quota,
+        [
+            None,
+            None,
+            Some(json!([
+                { "kind": "limit", "periodSeconds": 18_000, "scope": null, "usedPercent": 31.0,
+                  "resetsAt": "2026-10-13T09:10:00.000Z" },
+                { "kind": "limit", "periodSeconds": 604_800, "scope": null, "usedPercent": 5.0,
+                  "resetsAt": "2026-10-19T22:00:00.000Z" },
+            ])),
+        ]
+    );
+    let first = &rows[0];
+    assert!(
+        rows.iter().all(|row| row.account_id.as_deref() == Some(account.as_str())
+            && row.agent == Some(0)
+            && row.purpose.as_deref() == Some("turn")
+            && row.turn_id == first.turn_id
+            && row.request_id == first.request_id
+            && row.provider_id == provider_id.as_str()),
+        "{rows:?}"
+    );
+    drop(socket);
+    backend.close().await;
+    log.close().await;
+    let lines = crate::usage::logged(&harness);
+    let call_lines: Vec<_> = lines
+        .iter()
+        .filter(|(message, _)| message == "a vendor call ended")
+        .collect();
+    assert_eq!(call_lines.len(), 3, "{lines:?}");
+    let timing = lines
+        .iter()
+        .filter(|(message, _)| message == "Claude Code run ended")
+        .collect::<Vec<_>>();
+    assert!(!timing.is_empty(), "{lines:?}");
+    for (_, fields) in call_lines.iter().chain(&timing) {
+        assert_eq!(fields["request"], first.request_id.as_deref().unwrap(), "{fields}");
+        assert_eq!(fields["agent"], 0, "{fields}");
+        assert_eq!(fields["account"], account.as_str(), "{fields}");
+    }
 }
 
 // An expired sign-in stops the CLI as a cancelled one does

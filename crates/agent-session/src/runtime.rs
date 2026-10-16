@@ -102,6 +102,11 @@ pub trait SessionRuntime {
     /// The tools the model may call.
     fn tools(&self) -> Arc<[ToolDefinition]>;
 
+    /// The node's number in the conversation's tree, 0 for the root, which
+    /// its requests carry to the usage ledger (`usage-and-quota.md` § Usage
+    /// ledger).
+    fn agent(&self) -> u64;
+
     /// The node's working directory now, where its `shell` calls start,
     /// read as a step starts without reaching its Host: the files a call of
     /// the step changed outside it are left out of what the conversation

@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use demi_provider_common::{
-    InferenceRequest, ProviderEvent, ProviderFailure, encode_body,
+    CallEvent, CallOutcome, ErrorCode, InferenceRequest, ProviderEvent, ProviderFailure, VendorCall, encode_body,
     wire::{ReportedString, Vendor, responses},
 };
 use futures_util::{Stream, StreamExt};
@@ -68,15 +68,23 @@ pub(crate) fn run(
                 }
             };
             let headers = request::inference_headers(&credentials, &shared.user_agent, &session_id, &request_id);
+            let mut observed = Vec::new();
             let opened = tokio::select! {
                 biased;
                 () = cancel.cancelled() => return,
-                opened = transport::open(&shared, &http, &headers, &body, &cancel) => opened,
+                opened = transport::open(&shared, &http, &headers, &body, &cancel, &mut observed) => opened,
             };
+            if !observed.is_empty() {
+                yield ProviderEvent::Call(CallEvent::Observed(observed));
+            }
             match opened {
                 Ok(events) => break events,
+                // The refused attempt is a call of its own, and the next one
+                // starts.
                 Err(OpenError::Refused(refusal)) if refusal.status == StatusCode::UNAUTHORIZED && refused_token.is_none() => {
                     refused_token = Some(credentials.access_token);
+                    yield VendorCall::refused(Some(ErrorCode::AuthExpired));
+                    yield ProviderEvent::Call(CallEvent::Started);
                 }
                 Err(OpenError::Refused(refusal)) => {
                     yield ProviderEvent::Error(refused(*refusal, &shared));
@@ -95,11 +103,27 @@ pub(crate) fn run(
             model,
         };
         let mut events = std::pin::pin!(responses::map_events(events, vendor, SIGNATURE_TAG, cancel));
+        // The call's end, held until the event after it: a failure's code
+        // is Codex's reading, which the call's outcome then says too.
+        let mut ended = None;
         while let Some(event) = events.next().await {
-            yield match event {
-                ProviderEvent::Error(failure) => ProviderEvent::Error(with_usage_limit(failure)),
-                event => event,
-            };
+            match event {
+                ProviderEvent::Call(CallEvent::Ended(call)) => ended = Some(call),
+                ProviderEvent::Error(failure) => {
+                    let failure = with_usage_limit(failure);
+                    if let Some(mut call) = ended.take() {
+                        call.outcome = CallOutcome::Refused(failure.code.clone());
+                        yield ProviderEvent::Call(CallEvent::Ended(call));
+                    }
+                    yield ProviderEvent::Error(failure);
+                }
+                event => {
+                    if let Some(call) = ended.take() {
+                        yield ProviderEvent::Call(CallEvent::Ended(call));
+                    }
+                    yield event;
+                }
+            }
         }
     }
 }

@@ -2,7 +2,8 @@
 //! Endpoints): over a WebSocket as one `response.create` message, over
 //! server-sent events, or the WebSocket first with server-sent events as the
 //! fallback. Every answer of the service, a refusal included, is shown to the
-//! account's quota.
+//! account's quota, and the windows it reported are kept for the call's usage
+//! ledger row.
 
 use std::time::Duration;
 
@@ -15,7 +16,7 @@ use demi_provider_common::{
         undecodable,
     },
 };
-use demi_shared_types::Timestamp;
+use demi_shared_types::{QuotaWindow, Timestamp};
 use futures_util::{SinkExt, StreamExt, stream::LocalBoxStream};
 use http::{
     HeaderMap, HeaderValue, StatusCode,
@@ -63,15 +64,16 @@ pub(crate) async fn open(
     headers: &HeaderMap,
     body: &Encoded,
     cancel: &CancellationToken,
+    observed: &mut Vec<QuotaWindow>,
 ) -> Result<Events, OpenError> {
     match shared.transport {
-        TransportMode::Sse => sse(shared, http, headers, body, cancel).await,
-        TransportMode::WebSocket => websocket(shared, headers, body, cancel).await,
+        TransportMode::Sse => sse(shared, http, headers, body, cancel, observed).await,
+        TransportMode::WebSocket => websocket(shared, headers, body, cancel, observed).await,
         TransportMode::Auto => {
             if websocket_unreachable(shared) {
-                return sse(shared, http, headers, body, cancel).await;
+                return sse(shared, http, headers, body, cancel, observed).await;
             }
-            match websocket(shared, headers, body, cancel).await {
+            match websocket(shared, headers, body, cancel, observed).await {
                 Ok(mut events) => match events.next().await {
                     Some(Ok(first)) => {
                         return Ok(futures_util::stream::once(async { Ok(first) })
@@ -94,7 +96,7 @@ pub(crate) async fn open(
                 }
                 Err(OpenError::Refused(_)) => {}
             }
-            sse(shared, http, headers, body, cancel).await
+            sse(shared, http, headers, body, cancel, observed).await
         }
     }
 }
@@ -127,6 +129,7 @@ async fn sse(
     headers: &HeaderMap,
     body: &Encoded,
     cancel: &CancellationToken,
+    observed: &mut Vec<QuotaWindow>,
 ) -> Result<Events, OpenError> {
     let send = http
         .post(shared.responses_url.clone())
@@ -144,10 +147,10 @@ async fn sse(
         Ok(Err(error)) => return Err(OpenError::Failed(ProviderFailure::transport(LABEL, error))),
         Ok(Ok(response)) => response,
     };
-    shared.quota.observe(Observation::Response {
+    observed.extend(shared.quota.observe(Observation::Response {
         status: response.status(),
         headers: response.headers(),
-    });
+    }).into_iter().flatten());
     if !response.status().is_success() {
         let status = response.status();
         let headers = response.headers().clone();
@@ -171,6 +174,7 @@ async fn websocket(
     headers: &HeaderMap,
     body: &Encoded,
     cancel: &CancellationToken,
+    observed: &mut Vec<QuotaWindow>,
 ) -> Result<Events, OpenError> {
     let Some(message) = body.websocket.clone() else {
         // The body is encoded with its WebSocket message whenever the
@@ -206,10 +210,10 @@ async fn websocket(
             return Err(OpenError::Failed(ProviderFailure::no_answer(message)));
         }
         Ok(Err(tungstenite::Error::Http(response))) => {
-            shared.quota.observe(Observation::Response {
+            observed.extend(shared.quota.observe(Observation::Response {
                 status: response.status(),
                 headers: response.headers(),
-            });
+            }).into_iter().flatten());
             let (parts, body) = (*response).into_parts();
             let body = String::from_utf8_lossy(body.as_deref().unwrap_or_default()).into_owned();
             let refusal = Refusal {
@@ -226,10 +230,10 @@ async fn websocket(
         }
         Ok(Ok(connected)) => connected,
     };
-    shared.quota.observe(Observation::Response {
+    observed.extend(shared.quota.observe(Observation::Response {
         status: response.status(),
         headers: response.headers(),
-    });
+    }).into_iter().flatten());
     if let Err(error) = socket.send(Message::Text(message)).await {
         // The socket connected, so a failed send fails its stream before the
         // first event, not the connection.
