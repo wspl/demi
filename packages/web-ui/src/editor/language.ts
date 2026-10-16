@@ -7,8 +7,7 @@ import { javascript } from '@codemirror/lang-javascript'
 import { json } from '@codemirror/lang-json'
 import { markdown } from '@codemirror/lang-markdown'
 import { vue } from '@codemirror/lang-vue'
-import { reportError } from '../infra/errors'
-import { t } from './locales/text'
+import { reportSyntaxColorsUnavailable } from './load'
 import { baseName } from '@demicodes/utils'
 
 /** Files whose name the language data does not match, by the language-data name they read as. */
@@ -16,7 +15,7 @@ const nameOverrides: Record<string, string> = {
   '.gitignore': 'Shell',
 }
 
-// The common languages ship with the editor; the rest load from language-data on demand. Each names
+// The common languages ship in the editor's chunk; the rest load from language-data on demand. Each names
 // the language-data language it reads as, for the files the data itself does not match, such as `.jsonc`.
 const bundledLanguages: readonly { name: RegExp; language: string; load: () => Extension }[] = [
   { name: /\.tsx$/i, language: 'TSX', load: () => javascript({ typescript: true, jsx: true }) },
@@ -93,9 +92,4 @@ export async function loadFileLanguage(path: string): Promise<Extension> {
     reportSyntaxColorsUnavailable(error)
     return []
   }
-}
-
-/** Tells that a language's syntax colors could not load, as the editor and a message's code blocks both do. */
-export function reportSyntaxColorsUnavailable(error: unknown): void {
-  reportError(t('syntaxColorsUnavailable'), error)
 }

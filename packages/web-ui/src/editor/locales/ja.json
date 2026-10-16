@@ -8,6 +8,7 @@
     "next": "次の一致項目"
   },
   "syntaxColorsUnavailable": "構文の色分けを使用できません",
+  "unavailable": "コードエディターを読み込めませんでした。",
   "diff": {
     "unchanged": "変更されていない {count} 行",
     "noNewline": "ファイルの末尾に改行がありません"

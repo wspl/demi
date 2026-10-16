@@ -1,5 +1,4 @@
 import { baseName } from '@demicodes/utils'
-import { languageName } from '../editor/language'
 import { formatCount } from '../ui/numbers'
 import { entryKind, fileExtension, formatBytes } from './format'
 import { t } from './locales/text'
@@ -27,6 +26,13 @@ export type ShownFile =
   | { as: 'media'; facts: MediaFacts }
   /** Its card, with its size once described. */
   | { as: 'card'; size: number | null }
+
+/**
+ * The full name of the language a file's text is colored as, by its path,
+ * as the editor names it (`editor/language.ts`), which the editor's chunk
+ * brings; null for text in no language.
+ */
+export type LanguageName = (path: string) => string | null
 
 /** What the File view's bar says and offers for a file (`file-previews.md` § The File view's bars). */
 export interface FileBar {
@@ -64,7 +70,7 @@ const MEDIA_KINDS = { image: 'kind.image', video: 'kind.video', audio: 'kind.aud
  * What a file is, in full: *PNG Image*, *TypeScript*, *Plain Text* for text
  * in no language, a card's kind. An SVG shown as its source is text.
  */
-function kindName(path: string, shown: ShownFile): string {
+function kindName(path: string, shown: ShownFile, languageName: LanguageName): string {
   const name = baseName(path)
   const kind = previewKind(path)
   const asText = shown.as === 'text' || shown.as === 'start'
@@ -100,11 +106,11 @@ function facts(shown: ShownFile): string[] {
  * facts, Preview and Source for Markdown and SVG, Copy of its whole text
  * while the page holds all of it, and Download.
  */
-export function fileBar(path: string, shown: ShownFile): FileBar {
+export function fileBar(path: string, shown: ShownFile, languageName: LanguageName): FileBar {
   if (shown.as === 'missing')
     return { label: baseName(path), modes: false, copy: null, download: false }
   return {
-    label: [kindName(path, shown), ...facts(shown)].join(' · '),
+    label: [kindName(path, shown, languageName), ...facts(shown)].join(' · '),
     modes: hasSourceView(path),
     copy: shown.as === 'text' ? shown.text : null,
     download: true,
