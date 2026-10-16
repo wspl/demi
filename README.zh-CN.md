@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <b>简体中文</b>
+  <a href="README.md">English</a> · <b>简体中文</b> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a>
 </p>
 
 <!-- Screenshot -->
@@ -79,7 +79,6 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 - **接入你自己的电脑**：一条命令即可连接 macOS、Windows 和 Linux 机器，无需开放端口。
 - **多机协作**：一个对话可以同时使用多台机器，比如在 Mac 上构建、在 Windows 上测试。
 - **随时切换机器**：对话可以在云端和你的电脑之间迁移，无需从头开始。
-- **分享预览**：通过临时公网链接，分享任意机器上运行的开发服务器。
 
 ### Agent 能力
 

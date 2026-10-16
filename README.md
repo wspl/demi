@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <b>English</b> · <a href="README.zh-CN.md">简体中文</a>
+  <b>English</b> · <a href="README.zh-CN.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a>
 </p>
 
 <!-- Screenshot -->
@@ -100,8 +100,6 @@ for moving to a new release.
   example to build on a Mac and test on Windows.
 - **Switch machines mid-task**: Move a conversation between the cloud and your
   computers without starting over.
-- **Share a preview**: Expose a dev server on any machine through a temporary
-  public URL.
 
 ### Agent
 
