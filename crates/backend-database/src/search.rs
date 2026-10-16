@@ -21,7 +21,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use demi_shared_gates::KeyedSerialGate;
-use demi_shared_types::{Block, BlockId, UserContentBlock};
+use demi_shared_types::{Block, BlockId, Timestamp, UserContentBlock};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use demi_web_api_protocol::search::LINE_MAX;
 use tokio::sync::broadcast;
@@ -54,7 +54,8 @@ CREATE TABLE agents (
 
 -- One row per searchable text: a conversation's title, which has no agent
 -- and no block, or the text of an agent's message, answer or command's
--- title, at the block's index.
+-- title, at the block's index, with the block's time in milliseconds since
+-- the Unix epoch.
 CREATE TABLE texts (
   id           INTEGER PRIMARY KEY,
   conversation TEXT NOT NULL COLLATE NOCASE,
@@ -62,10 +63,12 @@ CREATE TABLE texts (
   kind         TEXT CHECK (kind IN ('message', 'answer', 'command')),
   block        TEXT,
   position     INTEGER CHECK (position >= 0),
+  time         INTEGER,
   text         TEXT NOT NULL,
   CHECK ((block IS NULL) = (position IS NULL)),
   CHECK ((block IS NULL) = (agent IS NULL)),
-  CHECK ((block IS NULL) = (kind IS NULL))
+  CHECK ((block IS NULL) = (kind IS NULL)),
+  CHECK ((block IS NULL) = (time IS NULL))
 ) STRICT;
 CREATE UNIQUE INDEX texts_block ON texts (conversation, agent, block) WHERE block IS NOT NULL;
 CREATE UNIQUE INDEX texts_title ON texts (conversation) WHERE block IS NULL;
@@ -153,12 +156,13 @@ pub struct IndexedMessage {
     pub text: Searchable,
 }
 
-/// What a block holds that a search finds: which kind of text, and the
-/// text.
+/// What a block holds that a search finds: which kind of text, the text,
+/// and the block's time, which a history search may bound.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Searchable {
     pub kind: SearchKind,
     pub text: String,
+    pub time: Timestamp,
 }
 
 /// The kinds of a block's searchable text. The product's search finds a
@@ -181,6 +185,32 @@ impl SearchKind {
             Self::Command => "command",
         }
     }
+}
+
+/// What `demi conversation history search` looks for in an agent's rows
+/// (`compaction.md` § Reading the earlier history).
+#[derive(Debug, Clone)]
+pub struct HistoryQuery {
+    /// The words a text holds every one of, or any with `any`.
+    pub words: Vec<String>,
+    pub any: bool,
+    /// The kinds of text searched; every kind when empty.
+    pub kinds: Vec<SearchKind>,
+    /// What a text lies after: a block, or a moment, from which on.
+    pub after: Option<HistoryBound>,
+    /// What a text lies before: a block, or a moment, up to which.
+    pub before: Option<HistoryBound>,
+    /// The oldest first, rather than the newest.
+    pub oldest: bool,
+}
+
+/// One end of a history search: a block's index, which the texts lie
+/// strictly after or before, or a moment, from which on or up to which they
+/// lie.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HistoryBound {
+    Index(usize),
+    Time(Timestamp),
 }
 
 /// A conversation a query found: whether its title holds every word, and
@@ -423,15 +453,20 @@ impl SearchIndexes {
                             "DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND position = ?3 AND block <> ?4",
                         )?
                         .execute(params![id, agent, position, block])?;
-                    let held: Option<(i64, String, String)> = transaction
+                    let held: Option<(i64, String, String, i64)> = transaction
                         .prepare_cached(
-                            "SELECT position, kind, text FROM texts WHERE conversation = ?1 AND agent = ?2 AND block = ?3",
+                            "SELECT position, kind, text, time FROM texts WHERE conversation = ?1 AND agent = ?2 AND block = ?3",
                         )?
-                        .query_row(params![id, agent, block], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+                        .query_row(params![id, agent, block], |row| {
+                            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                        })
                         .optional()?;
                     let unchanged = match (&held, &written.text) {
-                        (Some((at, kind, held)), Some(text)) => {
-                            *at == position && kind == text.kind.as_str() && *held == text.text
+                        (Some((at, kind, held, time)), Some(text)) => {
+                            *at == position
+                                && kind == text.kind.as_str()
+                                && *held == text.text
+                                && *time == text.time.as_millisecond()
                         }
                         (None, None) => true,
                         _ => false,
@@ -510,41 +545,64 @@ impl SearchIndexes {
     }
 
     /// The block indices of the texts of the conversation's agent `agent`
-    /// that hold every one of `words`, or any with `any`, case ignored,
-    /// newest first: what `demi conversation history search` finds
-    /// (`compaction.md` § Reading the earlier history). A word is found as
-    /// [`SearchIndexes::find`] finds it: through the trigram index, or by a
-    /// scan when it is shorter.
+    /// that `query` finds: those of its kinds and between its bounds that
+    /// hold every one of its words, or any, case ignored, newest first or
+    /// oldest first as it says: what `demi conversation history search`
+    /// finds (`compaction.md` § Reading the earlier history). A word is
+    /// found as [`SearchIndexes::find`] finds it: through the trigram index,
+    /// or by a scan when it is shorter.
     pub async fn find_in(
         &self,
         user: &UserId,
         conversation: &ConversationId,
         agent: u64,
-        words: Vec<String>,
-        any: bool,
+        query: HistoryQuery,
     ) -> Result<Vec<usize>, StorageError> {
         let conversation = conversation.clone();
         self.with(user, move |connection| {
-            let mut conditions = Vec::new();
+            let mut matches = Vec::new();
             // `?1` and `?2` come first, so each `?` after them is the next
-            // word's.
+            // condition's, in the order the conditions are written.
             let mut values = vec![Value::Text(conversation.as_str().to_owned()), Value::Integer(integer(agent))];
-            for word in &words {
+            for word in &query.words {
                 if word.chars().count() >= TRIGRAM {
                     // The word a phrase, so FTS5 reads none of it as an
                     // operator.
-                    conditions.push("t.id IN (SELECT rowid FROM texts_fts WHERE texts_fts MATCH ?)");
+                    matches.push("t.id IN (SELECT rowid FROM texts_fts WHERE texts_fts MATCH ?)");
                     values.push(Value::Text(format!("\"{}\"", word.replace('"', "\"\""))));
                 } else {
-                    conditions.push(r"t.text LIKE ? ESCAPE '\'");
+                    matches.push(r"t.text LIKE ? ESCAPE '\'");
                     values.push(Value::Text(format!("%{}%", escape_like(word))));
                 }
             }
-            let joined = conditions.join(if any { " OR " } else { " AND " });
+            let mut conditions = vec![format!("({})", matches.join(if query.any { " OR " } else { " AND " }))];
+            if !query.kinds.is_empty() {
+                let marks = vec!["?"; query.kinds.len()].join(", ");
+                conditions.push(format!("t.kind IN ({marks})"));
+                values.extend(query.kinds.iter().map(|kind| Value::Text(kind.as_str().to_owned())));
+            }
+            for (bound, index, time) in [
+                (query.after, "t.position > ?", "t.time >= ?"),
+                (query.before, "t.position < ?", "t.time < ?"),
+            ] {
+                match bound {
+                    Some(HistoryBound::Index(at)) => {
+                        conditions.push(index.to_owned());
+                        values.push(Value::Integer(count(at)));
+                    }
+                    Some(HistoryBound::Time(moment)) => {
+                        conditions.push(time.to_owned());
+                        values.push(Value::Integer(moment.as_millisecond()));
+                    }
+                    None => {}
+                }
+            }
+            let order = if query.oldest { "ASC" } else { "DESC" };
             let mut statement = connection.prepare(&format!(
                 "SELECT t.position FROM texts t
-                 WHERE t.conversation = ?1 AND t.agent = ?2 AND ({joined})
-                 ORDER BY t.position DESC"
+                 WHERE t.conversation = ?1 AND t.agent = ?2 AND {}
+                 ORDER BY t.position {order}",
+                conditions.join(" AND ")
             ))?;
             let mut rows = statement.query(params_from_iter(values))?;
             let mut found = Vec::new();
@@ -745,7 +803,7 @@ fn insert_text(
 ) -> Result<(), StorageError> {
     transaction
         .prepare_cached(
-            "INSERT INTO texts (conversation, agent, kind, block, position, text) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            "INSERT INTO texts (conversation, agent, kind, block, position, time, text) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         )?
         .execute(params![
             conversation.as_str(),
@@ -753,6 +811,7 @@ fn insert_text(
             message.text.kind.as_str(),
             message.block.as_str(),
             count(message.position),
+            message.text.time.as_millisecond(),
             message.text.text
         ])?;
     Ok(())
@@ -860,7 +919,11 @@ pub fn searchable_text(block: &Block) -> Option<Searchable> {
         Block::ToolCall(call) => (SearchKind::Command, call.shell_command()?.title),
         _ => return None,
     };
-    Some(Searchable { kind, text })
+    Some(Searchable {
+        kind,
+        text,
+        time: block.created_at(),
+    })
 }
 
 /// How many characters of a long line come before its first match.
@@ -1034,6 +1097,7 @@ mod tests {
                         text: Searchable {
                             kind: SearchKind::Message,
                             text: (*text).to_owned(),
+                            time: Timestamp::UNIX_EPOCH,
                         },
                     })
                     .collect(),
@@ -1153,7 +1217,17 @@ mod tests {
         indexes.index(&user(), &conversation(1), conversation_rows).await.unwrap();
         let words = |text: &str| text.split_whitespace().map(str::to_owned).collect::<Vec<_>>();
         let (ana, first) = (user(), conversation(1));
-        let find = |agent, query: &str, any| indexes.find_in(&ana, &first, agent, words(query), any);
+        let find = |agent, query: &str, any| {
+            let query = HistoryQuery {
+                words: words(query),
+                any,
+                kinds: Vec::new(),
+                after: None,
+                before: None,
+                oldest: false,
+            };
+            indexes.find_in(&ana, &first, agent, query)
+        };
         assert_eq!(find(1, "release switch", false).await.unwrap(), vec![0]);
         assert_eq!(find(1, "switch notes", true).await.unwrap(), vec![1, 0]);
         assert_eq!(find(0, "release switch", false).await.unwrap(), vec![0]);

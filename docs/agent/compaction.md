@@ -333,7 +333,7 @@ edit before it changes ([Versions](message-editing.md#versions)). An index is wr
 without `#`, which a shell would read as a comment, so every line the
 commands print can be run as it stands.
 
-**`search <words>… [--any] [--page <n>]`** finds the agent's messages, its
+**`search <words>… [--any] [--from user|agent] [--after <when>] [--before <when>] [--oldest] [--page <n>]`** finds the agent's messages, its
 user's or parent's messages and steers, its own text and the description of
 each command it ran, that hold every word, or any with `--any`; words match
 anywhere in a text, in any language, case aside. The newest come first, five
@@ -353,7 +353,17 @@ Page 1 of 4 · next: demi conversation history search README feature list --page
 Thinking, scripts and command output are not searched: they are most of a
 transcript's text and drown what was said.
 
-**`read <range>`** prints the conversation in that range as plain text: each
+The filters narrow what is searched, so a common word does not bury what
+was asked: `--from user` keeps the messages and steers of the agent's user
+or parent, `--from agent` the agent's own texts and command descriptions;
+`--after` and `--before` keep what lies after or before a block, `4213`, or
+a day, `2026-10-14`, in the user's time zone, neither including the block or
+the day it names, and both may be given;
+`--oldest` lists the oldest first. For example, `search --from user
+--before 2026-10-15 README` finds what the user asked of the README in the
+days before, oldest last.
+
+**`read <range> [--from user|agent]`** prints the conversation in that range as plain text: each
 message and each of the agent's texts whole, as written, and every other
 block as one line saying what it is and how to open it, such as
 `[4214 command: Rewrite the README feature list · exit 0 · 3s]` or
@@ -363,7 +373,9 @@ year when it is not this year. A range is `4213..4260`, `4213..` or `..4260`. A 
 stops at about 8,000 characters, at a block's end, and its last line says
 where to go on, `Stopped at 4231 · next: demi conversation history read
 4232..4260`; one message longer than that is cut, and the line names `open` on it for
-the rest.
+the rest. With `--from`, only what that side wrote is printed, as `search
+--from` counts it: the user's messages, or the agent's texts and command
+lines.
 
 **`open <item> [--page <n>]`** prints what a read names in one line or
 cuts: a command's script, exit code, duration and output, the output a page
