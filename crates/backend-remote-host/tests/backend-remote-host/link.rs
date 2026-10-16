@@ -1541,7 +1541,14 @@ struct Publisher {
 }
 
 impl CommandKeeper for Publisher {
-    fn started<'a>(&'a self, _: &'a CommandId, _: &'a str, _: &'a str, _: &'a str) -> LocalBoxFuture<'a, ()> {
+    fn started<'a>(
+        &'a self,
+        _: &'a CommandId,
+        _: &'a str,
+        _: &'a str,
+        _: Option<u32>,
+        _: &'a str,
+    ) -> LocalBoxFuture<'a, ()> {
         Box::pin(async {})
     }
 

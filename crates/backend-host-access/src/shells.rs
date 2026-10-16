@@ -329,6 +329,7 @@ impl CommandKeeper for Keeper {
         command: &'a CommandId,
         tool_use_id: &'a str,
         title: &'a str,
+        interval_ms: Option<u32>,
         job: &'a str,
     ) -> LocalBoxFuture<'a, ()> {
         Box::pin(async move {
@@ -349,6 +350,7 @@ impl CommandKeeper for Keeper {
                 job: job.to_owned(),
                 tool_use_id: tool_use_id.to_owned(),
                 title: title.to_owned(),
+                interval_ms,
                 started: self.clock.now(),
                 places: Default::default(),
             };

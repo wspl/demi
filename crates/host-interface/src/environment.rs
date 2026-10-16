@@ -157,6 +157,10 @@ pub struct ExecRequest {
     /// The title of that call, its `description`, which the command's
     /// record keeps and its reports name (`runtime.md` § Command reports).
     pub title: String,
+    /// How often the command reports while it runs, or only its end when
+    /// none, which its record keeps from its start (`runtime.md` § Command
+    /// reports).
+    pub interval_ms: Option<u32>,
     /// The media types the call's model reads in a tool result, which the
     /// job may show it (`runtime.md` § What `demi file view` shows).
     pub viewable: Viewable,

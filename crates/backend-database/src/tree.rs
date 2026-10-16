@@ -369,6 +369,7 @@ impl AgentTreeStore for SqliteTreeStore {
                     job: row.job,
                     tool_use_id: row.tool_use_id,
                     title: row.title,
+                    interval_ms: row.interval_ms,
                     started: row.started,
                 })
                 .collect())
@@ -1979,6 +1980,7 @@ pub(crate) mod tests {
             queue: Vec::new(),
             agent_inputs: Vec::new(),
             reports: Vec::new(),
+            next_turn_reports: Vec::new(),
             intervals: Vec::new(),
             model: test_model(),
             edits: Vec::new(),

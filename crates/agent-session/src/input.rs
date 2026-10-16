@@ -12,8 +12,9 @@ use demi_agent_store::PendingAgentInput;
 pub(super) enum Input {
     /// A human steer, which the pending steers list shows.
     Steer(PendingSteer),
-    /// A command report, kept in the checkpoint.
-    Report(CommandReport),
+    /// A command report, kept in the checkpoint, and whether it opens a
+    /// turn of its own.
+    Report(CommandReport, Opens),
     /// A message from another agent of the tree, kept in the checkpoint.
     Agent(PendingAgentInput),
 }
@@ -23,10 +24,19 @@ impl Input {
     fn id(&self) -> Option<&str> {
         match self {
             Self::Steer(steer) => Some(steer.id.as_str()),
-            Self::Report(_) => None,
+            Self::Report(..) => None,
             Self::Agent(input) => Some(input.message.id.as_str()),
         }
     }
+}
+
+/// Whether a waiting command report opens a turn of its own. Each joins a
+/// running turn at its next boundary; the loss of a resident command opens
+/// none, and waits for the node's next turn (`runtime.md` § Lost commands).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Opens {
+    Turn,
+    Nothing,
 }
 
 /// Which inputs a boundary writes.
@@ -74,13 +84,20 @@ pub(super) struct InputQueue {
 
 impl InputQueue {
     /// A queue that starts with what a checkpoint kept.
-    pub(super) fn restored(agent_inputs: Vec<PendingAgentInput>, reports: Vec<CommandReport>) -> Self {
+    pub(super) fn restored(
+        agent_inputs: Vec<PendingAgentInput>,
+        reports: Vec<CommandReport>,
+        next_turn_reports: Vec<CommandReport>,
+    ) -> Self {
         let mut queue = Self::default();
         for input in agent_inputs {
             queue.add(Input::Agent(input));
         }
         for report in reports {
-            queue.add(Input::Report(report));
+            queue.add(Input::Report(report, Opens::Turn));
+        }
+        for report in next_turn_reports {
+            queue.add(Input::Report(report, Opens::Nothing));
         }
         queue
     }
@@ -95,8 +112,8 @@ impl InputQueue {
 
     /// Adds a command report that ends no window: the end report of a
     /// command a running call looks at, whose end the call shows itself.
-    pub(super) fn add_quiet(&mut self, report: CommandReport) {
-        self.entries.push(Input::Report(report));
+    pub(super) fn add_quiet(&mut self, report: CommandReport, opens: Opens) {
+        self.entries.push(Input::Report(report, opens));
         self.arrivals += 1;
     }
 
@@ -151,12 +168,14 @@ impl InputQueue {
             .collect()
     }
 
-    /// The command reports waiting, as the checkpoint keeps them.
-    pub(super) fn reports(&self) -> Vec<CommandReport> {
+    /// The command reports waiting that open a turn, or with
+    /// [`Opens::Nothing`] those that wait for the next, as the checkpoint
+    /// keeps them.
+    pub(super) fn reports(&self, which: Opens) -> Vec<CommandReport> {
         self.entries
             .iter()
             .filter_map(|input| match input {
-                Input::Report(report) => Some(report.clone()),
+                Input::Report(report, opens) if *opens == which => Some(report.clone()),
                 _ => None,
             })
             .collect()
@@ -168,10 +187,12 @@ impl InputQueue {
             .any(|input| matches!(input, Input::Agent(_)))
     }
 
+    /// Whether a command report waits that opens a turn of its own: one
+    /// that waits for the next turn is no work of the node's.
     pub(super) fn has_report(&self) -> bool {
         self.entries
             .iter()
-            .any(|input| matches!(input, Input::Report(_)))
+            .any(|input| matches!(input, Input::Report(_, Opens::Turn)))
     }
 
     /// Whether any input waits under `id`.
@@ -201,7 +222,7 @@ impl InputQueue {
     pub(super) fn retain_reports(&mut self, mut keep: impl FnMut(&CommandReport) -> bool) {
         let before = self.entries.len();
         self.entries.retain(|input| match input {
-            Input::Report(report) => keep(report),
+            Input::Report(report, _) => keep(report),
             _ => true,
         });
         let withdrawn = u64::try_from(before - self.entries.len()).unwrap_or(u64::MAX);
@@ -211,9 +232,9 @@ impl InputQueue {
     /// Takes the command reports: the input a continuation opens with.
     pub(super) fn take_reports(&mut self) -> Vec<CommandReport> {
         self.entries
-            .extract_if(.., |input| matches!(input, Input::Report(_)))
+            .extract_if(.., |input| matches!(input, Input::Report(..)))
             .filter_map(|input| match input {
-                Input::Report(report) => Some(report),
+                Input::Report(report, _) => Some(report),
                 _ => None,
             })
             .collect()

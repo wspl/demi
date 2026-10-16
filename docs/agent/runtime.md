@@ -460,10 +460,11 @@ stays a steer, and a queued message starts a turn of its own.
 ## Command reports
 
 For example, the model starts the test suite, command 17, with
-`intervalMs: 300000`. The suite runs on after five minutes, so the call
-returns its handle and output, and the model tells the user that the tests
-are running and ends its turn: the user can talk to the agent meanwhile.
-Five minutes later the node is woken with a report, "Command 17 is still
+`intervalMs: 300000`. The suite runs on after a minute, so the call returns
+its handle and output, saying that the command moved to the background and
+reports every 5 minutes, and the model tells the user that the tests are
+running and ends its turn: the user can talk to the agent meanwhile.
+Five minutes after the start the node is woken with a report, "Command 17 is still
 running; no output for 4 minutes 50 seconds", and the newest lines. The model
 sees that the suite hangs in one test, stops it and runs that test alone.
 Had the suite ended first, the node would have been woken with "Command 17
@@ -476,11 +477,19 @@ or a subagent ends, the work it waits for wakes it.
   `intervalMs`, a number or `null`, and no default, so the model decides when
   it starts the command:
   - **A number**, from 15,000 to 600,000 milliseconds, for a command that
-    ends, such as a build or a test suite: short for one that should end
-    within minutes, long for one that takes long, since each report is a
-    request of the whole conversation. The call watches the command for
-    up to that long; if it still runs, the call returns its handle, and the
-    node then gets a report every interval until the command ends. A report
+    ends, such as a build or a test suite: how often the command reports
+    while it runs, short for one that should end within minutes, long for
+    one that takes long, since each report is a request of the whole
+    conversation. The call watches the command for a minute, or for its
+    interval when that is shorter; if it still runs, the call returns its
+    handle and output so far with the line `[The command is still running,
+    so it moved to the background. It reports every 5m until it ends, and
+    when it ends.]`, and the node then gets a report every interval from
+    the command's start until it ends. The minute is not the model's to
+    set and no tool text mentions it: a call never holds the turn longer,
+    so a user's steer waits at most a minute for the model to read it,
+    where a ten-minute interval used to hold it ten.
+     A report
     carries what `demi shell status` would show: the output since the
     model's last look, how long the command has printed nothing, and how to
     change the interval. A smaller value is taken as 15,000 and a larger one
@@ -685,18 +694,19 @@ is not `shell` completes as an error `Tool not found: <name>`.
 
 ### The window
 
-For example, the model runs the test suite with a ten-minute interval, and two
-minutes in a subagent reports that the failing test is a flaky one. The window
-ends at once: the call returns the running command's handle and its output so
-far, the agent message enters the transcript, and the model can stop the
-command and run it again without that test. Without that, the message would
-wait up to eight more minutes.
+For example, the model runs the test suite, and twenty seconds in a subagent
+reports that the failing test is a flaky one. The window ends at once: the
+call returns the running command's handle and its output so far, the agent
+message enters the transcript, and the model can stop the command and run it
+again without that test. Without that, the message would wait for the rest of
+the minute.
 
 A `shell` call watches its command until the first of:
 
 - the command ends;
-- the interval passes, or, for a command whose interval is `null`, its
-  output has been quiet for 2 seconds or 30 seconds have passed
+- a minute passes, or its interval when that is shorter, or, for a
+  command whose interval is `null`, its output has been quiet for 2 seconds
+  or 30 seconds have passed
   ([Command reports](#command-reports));
 - an agent message or a command report arrives, which joins the turn at its
   next boundary ([Input](#input));
@@ -1224,15 +1234,25 @@ watched one follows the line with the command's output since the model's
 last look, as a result shows it, so the model sees how far the command got
 without looking again: after a Stop in a product check, the model's next
 step was `demi shell status` only to read `ok group 1`. A command an
-interrupted call leaves running, after a shutdown or a crash, reports its end
-as any command whose call returned does ([Command reports](#command-reports)).
+interrupted call leaves running, after a shutdown or a crash, reports as any
+command whose call returned does, at the interval it was started with, which
+its record keeps, and its end, or, lost, as a resident or a numbered command
+by that interval ([Command reports](#command-reports)).
 
 ### Lost commands
 
 A command whose runner lost it, which the backend learns when the runner
 connects again ([Recovery and persistence](../execution/sessions-and-targets.md#recovery-and-persistence)),
 ends as lost with its reason, and the node that ran it is told as of any
-other end ([Command reports](#command-reports)):
+other end ([Command reports](#command-reports)), with one exception: the loss
+of a resident command, one whose interval was `null` when it was lost, opens
+no turn. Its report joins the node's running turn at its next boundary, or
+waits, as a pending report, for the node's next turn and is written before
+that turn's first request. For example, a conversation left idle with its
+dev server and emulator running is no longer woken, and charged a request,
+by every upgrade that replaces its runner; the next time the user writes to
+it, the model reads first that both were lost. A lost command started with a
+number still wakes its node, since the model may be waiting for it:
 `Command 437 (bun run dev) was lost: Demi was upgraded and the Host's runner
 replaced itself. Start it again if it is still needed.` A conversation
 browser tab that its browser lost reaches the node the same way:

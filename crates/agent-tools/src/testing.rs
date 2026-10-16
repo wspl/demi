@@ -70,6 +70,11 @@ pub fn shown_output(result: &str) -> String {
         return String::new();
     };
     let output = output.split("\nnext: ").next().unwrap_or(output);
+    // The line that says the command moved to the background follows it.
+    let output = output
+        .split("\n[The command is still running, so it moved to the background.")
+        .next()
+        .unwrap_or(output);
     let output = match output.find(" bytes not shown so far; the newest: ") {
         Some(at) => output[..at]
             .rsplit_once("\n[... ")

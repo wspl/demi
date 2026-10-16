@@ -93,6 +93,8 @@ struct TestCommands {
     titles: RefCell<std::collections::HashMap<CommandId, String>>,
     /// How many progress reports each command made.
     reports: RefCell<std::collections::HashMap<CommandId, u32>>,
+    /// The commands that ended as lost.
+    lost: RefCell<std::collections::HashSet<CommandId>>,
     /// Whether a command a call watches ends when the call is stopped, as
     /// a real command does.
     end_on_stop: Cell<bool>,
@@ -118,6 +120,13 @@ impl TestCommands {
     /// Ends the command `id`.
     fn end(&self, id: &str) {
         self.ended.borrow()[&CommandId::try_from(id).unwrap()].send_replace(true);
+    }
+
+    /// Ends the command `id` as lost, as a runner that started anew loses
+    /// it ([`lost_report`]).
+    fn lose(&self, id: &str) {
+        self.lost.borrow_mut().insert(CommandId::try_from(id).unwrap());
+        self.end(id);
     }
 
     fn has_ended(&self, command: &CommandId) -> bool {
@@ -233,7 +242,9 @@ impl SessionRuntime for TestRuntime {
         _: RequestLimits,
     ) -> LocalBoxFuture<'a, Option<CommandReport>> {
         let title = self.commands.title(command);
-        let report = if self.commands.has_ended(command) {
+        let report = if self.commands.lost.borrow().contains(command) {
+            test_report(command.as_str(), &title, lost())
+        } else if self.commands.has_ended(command) {
             test_report(command.as_str(), &title, ReportEvent::Ended { exit_code: None })
         } else {
             let mut reports = self.commands.reports.borrow_mut();
@@ -358,6 +369,7 @@ fn background_tool(commands: &Rc<TestCommands>) -> (String, Invoke) {
                 effect: Some(ToolEffect::Background {
                     command,
                     interval_ms,
+                    ran: Duration::ZERO,
                 }),
                 ..output("status: running")
             })
@@ -1422,6 +1434,7 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
         job: "job-254".into(),
         tool_use_id: "call-1".into(),
         title: "Write a.txt".into(),
+        interval_ms: None,
         started: Timestamp::UNIX_EPOCH,
         place: Default::default(),
     }];
@@ -2419,6 +2432,19 @@ fn running(count: u32, interval_ms: u32) -> ReportEvent {
 /// once it ended.
 pub(crate) fn ended_report(command: &str, title: &str) -> String {
     report_text(&test_report(command, title, ReportEvent::Ended { exit_code: None }))
+}
+
+/// Why a test command was lost.
+fn lost() -> ReportEvent {
+    ReportEvent::Lost {
+        reason: "the Host's runner started anew".to_owned(),
+    }
+}
+
+/// What the model reads of the test command `command`, titled `title`,
+/// once it was lost.
+pub(crate) fn lost_report(command: &str, title: &str) -> String {
+    report_text(&test_report(command, title, lost()))
 }
 
 /// What the model reads of the test command's nth progress report.

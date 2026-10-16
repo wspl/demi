@@ -179,7 +179,8 @@ pub trait AgentTreeStore {
 }
 
 /// A command the conversation records running: its job on its Host, the
-/// `shell` call that started it and that call's title, when it started,
+/// `shell` call that started it, that call's title and interval, when it
+/// started,
 /// and how far the node that ran it has looked in its output.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RunningCommand {
@@ -189,6 +190,10 @@ pub struct RunningCommand {
     /// The title its reports name (`runtime.md` § Command reports); empty
     /// for a command recorded before records kept it.
     pub title: String,
+    /// How often its call asked it to report, or only its end when none
+    /// (`runtime.md` § Command reports): an interrupted call's command
+    /// keeps it.
+    pub interval_ms: Option<u32>,
     pub started: Timestamp,
     pub place: Seen,
 }
@@ -422,6 +427,12 @@ pub struct CheckpointState {
     /// transcript, in arrival order (`runtime.md` § Command reports).
     #[garde(dive)]
     pub reports: Vec<CommandReport>,
+    /// The reports of lost resident commands, which open no turn and wait,
+    /// in arrival order, for the node's next one (`runtime.md` § Lost
+    /// commands).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub next_turn_reports: Vec<CommandReport>,
     /// The commands the session's `shell` calls left running, each with
     /// how often it reports (`runtime.md` § Command reports).
     #[garde(dive)]
