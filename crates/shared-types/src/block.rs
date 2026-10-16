@@ -1,4 +1,4 @@
-//! Transcript blocks (`runtime.md` § Block types): a session's history, one
+//! Transcript blocks (`transcript.md` § Block types): a session's history, one
 //! block per row of its checkpoint. Every block has an id, the time it was
 //! written and the model selection current then.
 
@@ -132,7 +132,7 @@ impl Block {
         }
     }
 
-    /// The run of steps the block belongs to (`runtime.md` § Work groups);
+    /// The run of steps the block belongs to (`rendering.md` § Work groups);
     /// none for a block that is not a step.
     pub fn run(&self) -> Option<&BlockId> {
         match self {
@@ -263,7 +263,7 @@ pub struct UserBlock {
     pub entries: Vec<serde_json::Value>,
 }
 
-/// What one context source told the node before a request (`runtime.md`
+/// What one context source told the node before a request (`transcript.md`
 /// § Context), which the model receives as a user message.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -312,7 +312,7 @@ pub struct ContextBlock {
 pub const INSTRUCTIONS_SOURCE: &str = "instructions";
 
 /// The context source of the conversation's execution context
-/// (`runtime.md` § Context), which also names what still runs after a
+/// (`transcript.md` § Context), which also names what still runs after a
 /// compaction (`compaction.md` § What the model receives afterward); no
 /// plugin may be named so.
 pub const EXECUTION_SOURCE: &str = "execution";
@@ -382,7 +382,7 @@ impl InstructionEntry {
     }
 }
 
-/// Command reports that arrived together (`runtime.md` § Command reports).
+/// Command reports that arrived together (`shell-tool.md` § Command reports).
 /// The model receives their text, one paragraph each, as a user message or
 /// as a steer, as the placement says; the text is rendered from the reports
 /// where it is replayed, never stored beside them. The user sees each report
@@ -403,7 +403,7 @@ pub struct WakeupBlock {
     /// The reports, in the order they arrived.
     #[garde(dive)]
     pub reports: Vec<CommandReport>,
-    /// The run of steps the block belongs to (`runtime.md` § Work groups):
+    /// The run of steps the block belongs to (`rendering.md` § Work groups):
     /// the id of the run's first block, which the backend sets as it stores
     /// the block and never changes.
     #[serde(
@@ -426,7 +426,7 @@ pub struct WakeupBlock {
 }
 
 /// What a command a `shell` call left running tells its node
-/// (`runtime.md` § Command reports): its progress, or its end.
+/// (`shell-tool.md` § Command reports): its progress, or its end.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandReport {
@@ -444,7 +444,7 @@ pub struct CommandReport {
     #[garde(skip)]
     pub output: String,
     /// The media the job viewed, which an end carries as the `shell` result
-    /// would have (`runtime.md` § What a result attaches): each medium by
+    /// would have (`shell-tool.md` § What a result attaches): each medium by
     /// reference, or the part that took its place, then the text of the
     /// lines about them; none for a report of progress.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -483,7 +483,7 @@ pub enum ReportEvent {
         #[garde(dive)]
         by: Option<StoppedBy>,
     },
-    /// It was lost, for `reason` (`runtime.md` § Lost commands).
+    /// It was lost, for `reason` (`shell-tool.md` § Lost commands).
     Lost {
         #[garde(skip)]
         reason: String,
@@ -525,7 +525,7 @@ pub enum CommandEnd {
     /// It was stopped: by a page, `demi shell stop`, a Stop of its action,
     /// or the end of its node's shells.
     Stopped,
-    /// Its Host lost it, for this reason (`runtime.md` § Lost commands).
+    /// Its Host lost it, for this reason (`shell-tool.md` § Lost commands).
     Lost {
         #[garde(length(chars, min = 1, max = 1024))]
         reason: String,
@@ -586,7 +586,7 @@ pub struct AgentMessageBlock {
     pub model: ModelSelection,
     #[garde(dive)]
     pub message: AgentMessage,
-    /// The run of steps the block belongs to (`runtime.md` § Work groups):
+    /// The run of steps the block belongs to (`rendering.md` § Work groups):
     /// the id of the run's first block, which the backend sets as it stores
     /// the block and never changes.
     #[serde(
@@ -717,7 +717,7 @@ pub struct ThinkingBlock {
     #[schemars(with = "Nullable<String>")]
     #[garde(skip)]
     pub signature: Option<String>,
-    /// The run of steps the block belongs to (`runtime.md` § Work groups):
+    /// The run of steps the block belongs to (`rendering.md` § Work groups):
     /// the id of the run's first block, which the backend sets as it stores
     /// the block and never changes.
     #[serde(
@@ -764,7 +764,7 @@ pub struct RedactedThinkingBlock {
     pub model: ModelSelection,
     #[garde(skip)]
     pub data: String,
-    /// The run of steps the block belongs to (`runtime.md` § Work groups):
+    /// The run of steps the block belongs to (`rendering.md` § Work groups):
     /// the id of the run's first block, which the backend sets as it stores
     /// the block and never changes.
     #[serde(
@@ -827,7 +827,7 @@ impl ToolCallBlock {
     /// What the call ran, read from the input text it keeps, when it is a
     /// `shell` call that started a command or was suppressed as a repeat;
     /// none for any other call. The shell tool checked the input when the
-    /// call was made (`runtime.md` § Tool input); this reads the two fields
+    /// call was made (`shell-tool.md` § Tool input); this reads the two fields
     /// a stored call is shown and searched by
     /// (`compaction.md` § Reading the earlier history).
     pub fn shell_command(&self) -> Option<ShellCommand> {
@@ -869,12 +869,12 @@ pub struct ToolCallBlock {
     pub view: Option<ToolView>,
     /// When the call returned, set as its result is stored; null while it
     /// executes. A run's time adds up its calls' times from `created_at` to
-    /// this (`runtime.md` § Work groups).
+    /// this (`rendering.md` § Work groups).
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<Timestamp>")]
     #[garde(skip)]
     pub ended_at: Option<Timestamp>,
-    /// The run of steps the block belongs to (`runtime.md` § Work groups):
+    /// The run of steps the block belongs to (`rendering.md` § Work groups):
     /// the id of the run's first block, which the backend sets as it stores
     /// the block and never changes.
     #[serde(

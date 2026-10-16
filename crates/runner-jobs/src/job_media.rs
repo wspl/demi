@@ -4,7 +4,7 @@
 //! `media/<n>` of the job's directory within the job's bounds. Each one's
 //! line goes into the job's output as it arrives, and each one kept is
 //! announced to the backend as `job_medium`
-//! (`runtime.md` § What `demi file view` shows).
+//! (`shell-tool.md` § What `demi file view` shows).
 
 use std::{
     io,

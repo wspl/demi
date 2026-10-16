@@ -1,4 +1,4 @@
-//! A command's whole output (`runtime.md` § The whole output): each read of
+//! A command's whole output (`shell-tool.md` § The whole output): each read of
 //! its stdout and stderr with its stream, in the order the runner read them,
 //! and where the Host's kept output left bytes out. The backend stores it
 //! when the command ends; `demi shell output` and the result that reports
@@ -196,7 +196,7 @@ impl WholeOutput {
 }
 
 /// The line that stands for a binary stdout of `length` bytes wherever
-/// output is shown as text (`runtime.md` § Results and previews).
+/// output is shown as text (`shell-tool.md` § Results and previews).
 pub fn binary_line(length: u64) -> String {
     format!("<binary stdout: {length} bytes>")
 }
@@ -232,7 +232,7 @@ impl Seen {
     };
 }
 
-/// A whole output as lines of text (`runtime.md` § The whole output): the
+/// A whole output as lines of text (`shell-tool.md` § The whole output): the
 /// kept bytes of the streams read, in the order the runner read them, as
 /// `--raw` prints them, and the notes that stand for bytes they do not hold:
 /// where the kept output left bytes out, and at the end the bytes the backend

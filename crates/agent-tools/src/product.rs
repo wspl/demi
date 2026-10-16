@@ -426,7 +426,7 @@ impl From<String> for ContextAnswer {
     }
 }
 
-/// One source of what the model must learn before a request (`runtime.md`
+/// One source of what the model must learn before a request (`transcript.md`
 /// § Context), such as the conversation's execution context, the
 /// instructions or a plugin.
 pub trait ContextSource {

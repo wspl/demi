@@ -1,4 +1,4 @@
-//! What the web app sends (`runtime.md` § Client frames).
+//! What the web app sends (`rendering.md` § Client frames).
 
 use demi_shared_types::{BlobRef, BlockId, CommandId, NodeId, OperationId, TurnId, is_blank};
 use schemars::JsonSchema;
@@ -20,7 +20,7 @@ pub enum ClientFrame {
     /// it is not live with the model selection the conversation's record
     /// holds; no frame names a model (`runtime.md` § Model switch). `from`
     /// and `edge` name the root's blocks the page holds, so the reset sends
-    /// none before them (`runtime.md` § Where a reset starts).
+    /// none before them (`rendering.md` § Where a reset starts).
     Open {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[garde(skip)]

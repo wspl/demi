@@ -54,7 +54,7 @@ request the estimate let through and the vendor refused is compacted then
 tokens only: a request's bytes and its number of images never start a pass.
 Images can bring a request near its vendor's limits long before its tokens
 fill the window; they are kept light where they enter
-([Images in the transcript](runtime.md#images-in-the-transcript)), and a
+([Images in the transcript](transcript.md#images-in-the-transcript)), and a
 request the vendor still refuses for its size fails its turn
 ([Retries](failures-and-recovery.md#retries)). Each pass logs
 what started it and the numbers it compared, so a pass is never a mystery.
@@ -226,7 +226,7 @@ user messages: first this note,
 
 then each message it kept, as the user message it was, oldest first, then
 the summary in `<summary>` tags. The blocks after it are replayed as usual,
-and the `compaction_marker` is not replayed ([Replay](runtime.md#replay)).
+and the `compaction_marker` is not replayed ([Replay](transcript.md#replay)).
 The transcript keeps every block, so the user can still read the summarized
 part.
 
@@ -245,7 +245,7 @@ The kept blocks often hold the reasoning of the latest answer, which the model
 produced after a history that the summary has now replaced. Replay marks that
 reasoning as kept past a summary, and a provider whose vendor checks reasoning
 against the history before it leaves it out
-([Replay](runtime.md#replay)).
+([Replay](transcript.md#replay)).
 
 ### The summary request
 
@@ -401,8 +401,8 @@ close to the provider's own count.
 - A text's token estimate is its length in UTF-8 bytes divided by 4, rounded
   up. For example, `hello` (5 bytes) and `你好` (6 bytes) are both 2 tokens.
 - The replay bound below, the shell preview and the shell view window count
-  Unicode scalar values, and a cut never splits one ([Tools](runtime.md#tools),
-  [Views](runtime.md#views)).
+  Unicode scalar values, and a cut never splits one ([Tools](shell-tool.md#tools),
+  [Views](transcript.md#views)).
 - Limits that the web app also checks count Unicode scalar values as well
   ([Validation at entry](../architecture/contracts.md#validation-at-entry)).
 
@@ -410,9 +410,9 @@ close to the provider's own count.
 
 A block's estimate is the token estimate of its text plus the weight of its
 media, for the model of one request: each medium as that request carries it
-([Replay](runtime.md#replay)). A medium it carries with its bytes weighs what
+([Replay](transcript.md#replay)). A medium it carries with its bytes weighs what
 the table below says. A medium it carries as the text that names it, because
-its blob is missing ([Media](runtime.md#media)), the model does not accept
+its blob is missing ([Media](transcript.md#media)), the model does not accept
 its type, or it would take more than half of the model's request body limit,
 weighs nothing, and its text counts. The same medium therefore weighs less
 for a model that does not read it: for example, after a switch to a model
@@ -481,11 +481,11 @@ weighed, so only their media's bytes matter to the estimate.
 The page shows this estimate, never one of its own: every node's session,
 a subagent's as the root's, reports it
 with the window in use and the estimate from which the user may compact
-(`context_usage`, [Server frames](runtime.md#server-frames)) after each
+(`context_usage`, [Server frames](rendering.md#server-frames)) after each
 provider response, after each pass that compacted, and when an action ends.
 A page that opens the conversation receives it right after the open
 handshake, computed without reading a blob, since opening reads none
-([Media](runtime.md#media)). A session just restored holds no bytes for its
+([Media](transcript.md#media)). A session just restored holds no bytes for its
 media, and that is enough while the weighed blocks reference none, which is
 the usual case: a medium sent in an earlier request is inside the anchor.
 When a weighed block does reference a medium, such as an image in a message
@@ -594,7 +594,7 @@ The replay bound keeps one long text from filling a request:
 - The transcript keeps the full text; only what the model receives is cut.
 - A shell tool's result is made to fit the bound where it is made, with a line
   that names the command printing the whole output
-  ([Results and previews](runtime.md#results-and-previews)), so replay sends it
+  ([Results and previews](shell-tool.md#results-and-previews)), so replay sends it
   unchanged.
 
 For example, a user message that pastes a log of 50,000 characters reaches the
@@ -611,7 +611,7 @@ its only use.
 | --- | --- |
 | Id | The session's, which its requests carry, so the vendor keeps them with the session's ([Prompt cache](../providers/providers.md#prompt-cache)) |
 | Transcript | A copy of the history the next request would carry, or of the window alone when that does not fit |
-| Held media | The bytes the session holds for that history's media ([Media](runtime.md#media)), so the summary request reads no blob |
+| Held media | The bytes the session holds for that history's media ([Media](transcript.md#media)), so the summary request reads no blob |
 | Model selection, working directory, retry policy | The session's |
 | System prompt, tools, thinking | The session's |
 | Provider runtime | A fresh runtime from the same provider: the same configuration and credentials, none of the session's execution state, such as a retained CLI process or a pending tool call ([Providers](../providers/providers.md)) |

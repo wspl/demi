@@ -1,5 +1,5 @@
 //! One command's record: the model's view, which its looks read, and
-//! the pages' view (`runtime.md` § Results and previews, § Live output).
+//! the pages' view (`shell-tool.md` § Results and previews, § Live output).
 //! Every shell environment keeps its commands in these; a record does not
 //! know what ran the script.
 //!
@@ -27,7 +27,7 @@ pub struct CommandRecord {
     /// The `shell` call that started the command.
     tool_use_id: String,
     /// That call's title, its `description`, which every report of the
-    /// command names, whatever became of the call (`runtime.md` § Command
+    /// command names, whatever became of the call (`shell-tool.md` § Command
     /// reports).
     title: String,
     started: Instant,
@@ -60,7 +60,7 @@ struct Positions {
     whole: bool,
 }
 
-/// The pages' view of a command's output (`runtime.md` § Live output): its
+/// The pages' view of a command's output (`shell-tool.md` § Live output): its
 /// last [`TAIL_CHARS`] characters, and how many characters it has held since
 /// the command started. No read moves it.
 #[derive(Debug, Default)]
@@ -78,7 +78,7 @@ impl PageText {
     }
 }
 
-/// A command as the pages see it (`runtime.md` § Live output): its handle,
+/// A command as the pages see it (`shell-tool.md` § Live output): its handle,
 /// the `shell` call that started it, where it is, the last
 /// [`TAIL_CHARS`] characters of the pages' view of its output, and how many
 /// characters that view has held since the command started.
@@ -102,7 +102,7 @@ pub enum PageState {
     Stopping,
     Exited { exit_code: i32 },
     Aborted,
-    /// Its runner lost it, for `reason` (`runtime.md` § Lost commands): the
+    /// Its runner lost it, for `reason` (`shell-tool.md` § Lost commands): the
     /// pages tag it *Lost*, as its notice does, not as a failure.
     Lost { reason: String },
 }
@@ -149,7 +149,7 @@ pub enum Ending {
     Exited(i32),
     /// It was stopped: its streams settle, its status is the stop.
     Aborted,
-    /// Its Host lost it, for this reason (`runtime.md` § Lost commands).
+    /// Its Host lost it, for this reason (`shell-tool.md` § Lost commands).
     Lost(String),
 }
 
@@ -204,7 +204,7 @@ impl CommandRecord {
         matches!(self.phase, Phase::Running | Phase::Stopping)
     }
 
-    /// How long the command has printed nothing (`runtime.md` § Results and
+    /// How long the command has printed nothing (`shell-tool.md` § Results and
     /// previews), which no look moves.
     pub fn quiet(&self) -> std::time::Duration {
         Instant::now() - self.last_output
@@ -276,7 +276,7 @@ impl CommandRecord {
 
     /// `stream` grew to `length` bytes on the Host, beyond what the record
     /// holds, such as past the runner's view of it: the command is not idle
-    /// (`runtime.md` § Results and previews).
+    /// (`shell-tool.md` § Results and previews).
     pub fn grew(&mut self, stream: StreamKind, length: u64) {
         let host = &mut self.stream_mut(stream).host_bytes;
         *host = Some(host.map_or(length, |known| known.max(length)));
@@ -308,7 +308,7 @@ impl CommandRecord {
 
     /// Ends the command with its whole output, its binary stdout and the
     /// media its commands returned; `page` is what the end adds to the
-    /// pages' view (`runtime.md` § Live output). True when the pages' view
+    /// pages' view (`shell-tool.md` § Live output). True when the pages' view
     /// changed: a command that had ended already keeps the end the pages
     /// were shown.
     pub fn settle(

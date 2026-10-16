@@ -22,7 +22,7 @@ import { asError, createId } from '@demicodes/utils'
 import type { ConversationClientListener, ClientSessionEvent, ServerFrameOf } from './events'
 import { FrameTooLargeError, type ConversationClientTransport } from './transport'
 
-/** The root's blocks the page holds, as `open` and `sync_transcript` name them (`runtime.md` § Where a reset starts). */
+/** The root's blocks the page holds, as `open` and `sync_transcript` name them (`rendering.md` § Where a reset starts). */
 export interface HeldEdge {
   from: number
   edge: string
@@ -133,7 +133,7 @@ type Decision<T> = { resolve: T } | { reject: Error } | undefined
 
 /**
  * The web app's client of the conversation socket's frame protocol
- * (`runtime.md` § Frame protocol). It validates every frame it receives with
+ * (`rendering.md` § Frame protocol). It validates every frame it receives with
  * the generated schemas and drops the connection when one does not match,
  * keeps the patch revisions, the phase, the queue and the pending steers,
  * and tells its listeners what the transcript frames bring, which the page
@@ -165,7 +165,7 @@ export class ConversationClient {
   private phase: SessionPhase | null = null
   private queue: QueuedMessage[] = []
   private pending: PendingSteer[] = []
-  /** The calls the root's model is writing, as the server last listed them (`runtime.md` § Calls being written). */
+  /** The calls the root's model is writing, as the server last listed them (`rendering.md` § Calls being written). */
   private calls: PendingCall[] = []
 
   constructor(transport: ConversationClientTransport) {
@@ -182,7 +182,7 @@ export class ConversationClient {
    * Attaches to the conversation's tree, which runs with the model settings
    * the conversation's record holds; resolves on `opened`. `held` names the
    * root's blocks the page holds, now and at each later sync, so the stream
-   * sends none before them (`runtime.md` § Where a reset starts).
+   * sends none before them (`rendering.md` § Where a reset starts).
    */
   open(held: () => HeldEdge | undefined = () => undefined): Promise<void> {
     this.held = held
@@ -795,7 +795,7 @@ export class ConversationClient {
         }
         return
       // A heartbeat only shows that the socket is alive
-      // (`runtime.md` § Order and delivery); it changes nothing here.
+      // (`rendering.md` § Order and delivery); it changes nothing here.
       case 'heartbeat':
         return
     }
@@ -804,7 +804,7 @@ export class ConversationClient {
   /**
    * Applies a patch whose revision is one past the client's, ignores one that
    * is not past it, and asks for a fresh transcript at a gap
-   * (`runtime.md` § Order and delivery).
+   * (`rendering.md` § Order and delivery).
    */
   private patchTranscript(frame: ServerFrameOf<'transcript_patch'>): void {
     const state = this.transcriptState

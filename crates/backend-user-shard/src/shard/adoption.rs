@@ -284,7 +284,7 @@ impl Shard {
     /// Restores the tree of each of `conversations`, whose commands ran on a
     /// device whose runner just connected, as an `open` does, so the agent
     /// that ran each command takes it up again and hears of its end
-    /// (`runtime.md` § Command reports). A tree that is live already is
+    /// (`shell-tool.md` § Command reports). A tree that is live already is
     /// left as it is.
     fn take_up(self: &Rc<Self>, conversations: impl Iterator<Item = ConversationId>) {
         let conversations: std::collections::BTreeSet<ConversationId> = conversations.collect();

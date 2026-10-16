@@ -381,7 +381,7 @@ thinking setting.
   the vendor, which sends every thinking block empty. A summarized block's
   text arrives in its `thinking_delta`s, and the block's start ends the
   page's Requesting at once
-  ([Waiting for the model](../agent/runtime.md#waiting-for-the-model));
+  ([Waiting for the model](../agent/rendering.md#waiting-for-the-model));
 - stream-json input and output with partial messages, so reasoning and text
   stream as they are generated;
 - the account's directory as its configuration directory, and an environment with the CLI's
@@ -444,7 +444,7 @@ shell_exec with input: …]`, under names unlike its tools'.
   would have had without the attempt, with no entry twice and no failure the
   model reads as its own words.
 - **The file is written from the blocks** the replay would send
-  ([Replay](../agent/runtime.md#replay)), in their order, into the process's
+  ([Replay](../agent/transcript.md#replay)), in their order, into the process's
   configuration directory, before the process starts. A block with entries
   gives them as they are. A block without, one another provider produced or
   input Demi wrote, gives entries in the CLI's format: the user's input as a
@@ -589,7 +589,7 @@ such tool is available, and asks the model again in the same process. The run
 reads on, as after any other result the CLI writes, and the model corrects
 itself within the turn. Failing the run instead would end the turn for a slip
 the model recovers from, and yielding the call would leave the agent holding a
-call that replay drops ([Replay](../agent/runtime.md#replay)) and that no
+call that replay drops ([Replay](../agent/transcript.md#replay)) and that no
 result of Demi's can answer.
 
 The next run starts by delivering the batch's results. Every call of the held
@@ -677,7 +677,7 @@ as to a kept process.
   process then waits for its input on standard input, as a kept process
   does. A preparation reads the blobs of the media its history replays: it
   runs after the page's open is answered, so the rule that an open reads no
-  blob ([Media](../agent/runtime.md#media)) still holds for the open itself.
+  blob ([Media](../agent/transcript.md#media)) still holds for the open itself.
   The CLI cannot resume an empty session, so a conversation with no answered
   turn yet prepares nothing. A conversation whose history ends in input not yet answered, such as
   a turn that failed, prepares nothing, since its next request answers that

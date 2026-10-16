@@ -1,5 +1,5 @@
 //! Conversations (`web-api.md` § Conversation creation and Fork, § Sidebar
-//! mutations, read state and page synchronization; `runtime.md` § Frame
+//! mutations, read state and page synchronization; `rendering.md` § Frame
 //! protocol): creation under the web app's id, the list and the product
 //! state, a chat over the socket with an Anthropic endpoint the test
 //! scripts, a reload whose history is what the database holds, a client that

@@ -265,7 +265,7 @@ fn block_entries(
     let (mut calls, mut results) = (kept, results);
     // What an item is covered by: the block's own entries, never one written
     // for an earlier item of the block, since a `compaction_boundary` gives
-    // several user messages (`runtime.md` § Replay).
+    // several user messages (`transcript.md` § Replay).
     let (own_calls, own_results) = (calls.len(), results.len());
     let mut users_before = 0;
     for item in block_items {

@@ -118,7 +118,7 @@ pub struct QueuedMessage {
     pub content: Vec<UserContentBlock>,
 }
 
-/// A call the model is writing (`runtime.md` § Calls being written): the
+/// A call the model is writing (`rendering.md` § Calls being written): the
 /// provider opened it and has not handed it over whole. It is never saved.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase")]

@@ -392,7 +392,7 @@ drops the error and the thinking and stops at the tool call; `resume` appends a
 If the scan reaches the block that opened the turn without stopping, the whole
 turn was discardable, and `resume` reruns it from that block the way `retry`
 does; a turn is opened by a `user`, `context` or new-turn `wakeup` block
-([Block types](runtime.md#block-types)). A rerun spares the model a
+([Block types](transcript.md#block-types)). A rerun spares the model a
 continuation attached to a stub of its own aborted output.
 
 Otherwise, the leftovers are dropped, the latest stopped marker is marked as resumed, a `resume` block is

@@ -1,4 +1,4 @@
-//! The live output of commands (`runtime.md` § Live output) at a tree's
+//! The live output of commands (`shell-tool.md` § Live output) at a tree's
 //! connections: what a command prints while no page is attached, and what
 //! waited when the last page left, never reaches the next page as new
 //! output; that page finds the command's current view in its handshake, and

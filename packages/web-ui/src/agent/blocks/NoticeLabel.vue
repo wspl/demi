@@ -3,7 +3,7 @@ import { KEEPS_WINDOWS } from '../../ui/window-stack'
 import { t } from '../locales/text'
 
 /**
- * What a notice row says (`runtime.md` § Command reports, `subagents.md`
+ * What a notice row says (`shell-tool.md` § Command reports, `subagents.md`
  * § Product rendering): what happened, then what it happened to by its
  * title, the notice's object, underlined with dots, after a colon; or,
  * for a title that ends the sentence, such as *main agent* in *Message from

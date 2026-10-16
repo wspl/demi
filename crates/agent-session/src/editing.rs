@@ -376,7 +376,7 @@ fn named(media: &MediaRef) -> (&'static str, &BlobRef) {
 }
 
 /// Each native media block of `content` by its kind and the blob it
-/// references (`runtime.md` § Media).
+/// references (`transcript.md` § Media).
 fn referenced_media(
     content: &[UserContentBlock],
 ) -> impl Iterator<Item = (&'static str, &BlobRef, &UserContentBlock)> {

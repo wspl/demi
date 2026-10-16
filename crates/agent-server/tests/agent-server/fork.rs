@@ -381,7 +381,7 @@ async fn a_fork_onto_a_smaller_window_compacts_with_the_sources_model_first() {
 }
 
 /// Waits until the saved checkpoint of `node` holds the loss of a resident
-/// command for its next turn (`runtime.md` § Lost commands).
+/// command for its next turn (`shell-tool.md` § Lost commands).
 async fn until_loss_waits(store: &MemoryTreeStore, node: &NodeId) {
     for _ in 0..1_000 {
         let saved = store.session_store(node).load().await.unwrap().unwrap();

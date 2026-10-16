@@ -1,4 +1,4 @@
-//! A medium's size in pixels, read from its header alone (`runtime.md`
+//! A medium's size in pixels, read from its header alone (`transcript.md`
 //! § Media), which its reference and an attachment's record carry so a page
 //! knows a thumbnail's box before the bytes arrive: an image's as it shows,
 //! and a video's from its container's header, MP4 and QuickTime or WebM.

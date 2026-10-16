@@ -51,7 +51,7 @@ pub fn model_reading(provider: &str, model: &str, extensions: &[FileExtension]) 
 
 /// A PNG of `width` × `height` px whose pixels follow `seed`, for tests that
 /// send images: a real one, since an image is decoded as it enters a
-/// transcript (`runtime.md` § Images in the transcript).
+/// transcript (`transcript.md` § Images in the transcript).
 pub fn png(width: u32, height: u32, seed: u8) -> B64Bytes {
     use image::{DynamicImage, Rgba, RgbaImage, codecs::png::PngEncoder};
 

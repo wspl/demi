@@ -32,7 +32,7 @@ impl Input {
 
 /// Whether a waiting command report opens a turn of its own. Each joins a
 /// running turn at its next boundary; the loss of a resident command opens
-/// none, and waits for the node's next turn (`runtime.md` § Lost commands).
+/// none, and waits for the node's next turn (`shell-tool.md` § Lost commands).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Opens {
     Turn,
@@ -49,7 +49,7 @@ pub(super) enum Take {
     /// The boundary after a response's stream writes only the agent
     /// messages: the command reports wait until the response's tools have
     /// run, so a look among them that shows a command's end takes its
-    /// report (`runtime.md` § Command reports), and the human steers wait
+    /// report (`shell-tool.md` § Command reports), and the human steers wait
     /// for the request that carries them.
     AgentMessages,
     /// The boundary after a step of tool calls writes all but the human
@@ -78,7 +78,7 @@ pub(super) struct InputQueue {
     /// causes no request.
     arrivals: u64,
     /// How many of them were agent messages and command reports, which end
-    /// a shell call's window (`runtime.md` § The window).
+    /// a shell call's window (`shell-tool.md` § The window).
     joining: u64,
 }
 

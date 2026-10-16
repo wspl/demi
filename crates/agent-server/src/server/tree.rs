@@ -1,4 +1,4 @@
-//! A conversation's live tree (`runtime.md` § Connections and the live
+//! A conversation's live tree (`rendering.md` § Connections and the live
 //! tree, `subagents.md`): its root and every live child, the connections
 //! attached to it, the frames its sessions' events become, and its eviction
 //! once it has stayed detached and quiescent. The supervisor operations on
@@ -126,7 +126,7 @@ fn unended_views(environment: &dyn ShellEnvironment) -> impl Iterator<Item = Pag
 pub(crate) struct FrameSink {
     attachments: watch::Sender<Vec<Attachment>>,
     /// Whether any connection is attached, which the nodes' jobs follow
-    /// (`runtime.md` § Live output).
+    /// (`shell-tool.md` § Live output).
     attached: watch::Sender<bool>,
 }
 
@@ -477,7 +477,7 @@ impl<H: HostResolver> Tree<H> {
     /// the admission; what waits to run stays queued and runs once it is
     /// dropped.
     /// `hold` names the transition, as the stopped calls' results say it
-    /// (`runtime.md` § Interrupted calls), such as "the Cloud is being
+    /// (`shell-tool.md` § Interrupted calls), such as "the Cloud is being
     /// reset".
     pub async fn interrupt(self: &Rc<Self>, hold: &str) -> Reservation {
         let stop = async {
@@ -581,7 +581,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// The least interval its commands report at, in milliseconds
-    /// (`runtime.md` § Tool input).
+    /// (`shell-tool.md` § Tool input).
     pub(crate) fn interval_floor_ms(&self) -> u32 {
         self.interval_floor_ms
     }
@@ -703,7 +703,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// The root's transcript from the blocks the page holds
-    /// (`runtime.md` § Where a reset starts).
+    /// (`rendering.md` § Where a reset starts).
     fn root_reset(&self, from: Option<u32>, edge: Option<&BlockId>) -> ServerFrame {
         let snapshot = self.root.session().transcript();
         let start = reset_start(&snapshot.blocks, from, edge);
@@ -717,7 +717,7 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    /// The `shell_output` of each live command (`runtime.md` § Live
+    /// The `shell_output` of each live command (`shell-tool.md` § Live
     /// output): the root's, then each live child's, depth first in spawn
     /// order, then each one a closed child's shells hold while it stops.
     fn live_commands(&self) -> Vec<ServerFrame> {

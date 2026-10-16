@@ -230,7 +230,7 @@ impl TranscriptLog {
     /// Replaces every block with `blocks`, as a history rewrite publishes
     /// its retained history, and answers the batch that publishes it: a
     /// `truncate` at the first block that differs and an `add` for each
-    /// block from there, never the blocks before it (`runtime.md` § Patches
+    /// block from there, never the blocks before it (`transcript.md` § Patches
     /// and versions). The changes recorded before it are superseded, and
     /// the rewrite's own save wrote its rows, so the batch marks none.
     ///
@@ -658,7 +658,7 @@ impl TranscriptLog {
     }
 
     /// Appends `block` with the run of steps it joins, which the blocks
-    /// before it decide once (`runtime.md` § Work groups).
+    /// before it decide once (`rendering.md` § Work groups).
     fn append(&mut self, mut block: Block) {
         block.set_run(run_of(&self.blocks, &block));
         let index = self.blocks.len();

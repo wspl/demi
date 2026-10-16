@@ -1,4 +1,4 @@
-//! The `shell` tool's timing on a real runner (`runtime.md` § Dispatch and
+//! The `shell` tool's timing on a real runner (`shell-tool.md` § Dispatch and
 //! failures, § The window, § Command reports): the calls of one response
 //! start together, every one starts in the working directory whatever the
 //! one before did, an agent message or a command report ends a window and a
@@ -629,7 +629,7 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
 // Under a second: one shell job and a look through the status command. The
 // end report is made while the model writes its next step, and the model's
 // `demi shell status --wait` shows the end before the report would join the
-// turn (`runtime.md` § Command reports).
+// turn (`shell-tool.md` § Command reports).
 #[tokio::test(flavor = "local")]
 async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
     within(async {
@@ -687,7 +687,7 @@ async fn an_end_a_look_showed_while_its_report_waited_is_not_reported() {
 
 // Under a second: one shell job that views an image as it ends, and a look
 // through the status command that shows the end before the report would
-// join the turn (`runtime.md` § What a result attaches).
+// join the turn (`shell-tool.md` § What a result attaches).
 //
 // Planted defects this catches: an end report dropped because a look showed
 // the end first, which loses the media no look attaches; and one that
@@ -753,7 +753,7 @@ async fn a_look_that_shows_the_end_leaves_the_end_report_its_media_alone() {
 // About three seconds: three shell jobs, two of whose calls return after two
 // seconds of quiet, and a look through the status command. A look at two
 // commands waits for both; the first one's end report arrives meanwhile and
-// ends no window, since the look shows that end itself (`runtime.md`
+// ends no window, since the look shows that end itself (`shell-tool.md`
 // § Command reports).
 #[tokio::test(flavor = "local")]
 async fn the_end_report_of_a_command_a_look_waits_for_ends_no_window() {
@@ -1084,7 +1084,7 @@ async fn a_stop_ends_the_command_a_call_watches_with_its_output_and_leaves_one_a
         )
         .await;
         // The stopped call's result shows how far its command got
-        // (`runtime.md` § Interrupted calls).
+        // (`shell-tool.md` § Interrupted calls).
         let results: Results = Rc::default();
         for request in &script.requests() {
             record(&results, request);

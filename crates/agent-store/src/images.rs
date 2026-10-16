@@ -1,4 +1,4 @@
-//! Images as they enter a transcript (`runtime.md` § Images in the
+//! Images as they enter a transcript (`transcript.md` § Images in the
 //! transcript): each is fitted once to what every provider accepts of one
 //! image, at most 2,000 px on each side and 5,000,000 bytes as base64, and
 //! kept light, since every request replays it. It never changes afterwards,
@@ -75,7 +75,7 @@ pub async fn fit(data: B64Bytes, media_type: &str) -> Result<Fitted, Unfit> {
     }
 }
 
-/// Fits `data` as the table of `runtime.md` § Images in the transcript
+/// Fits `data` as the table of `transcript.md` § Images in the transcript
 /// says: a PNG, JPEG or WebP within 2,000 px on each side and 500,000 bytes
 /// enters as it came, once it decodes. Any other image is turned upright;
 /// one over 2,000 px on a side is scaled to fit 2,000 × 2,000 px and, like a

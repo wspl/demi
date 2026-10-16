@@ -67,7 +67,7 @@ interface Recovery {
 /**
  * The rows a transcript list shows and what closes them, derived from the
  * conversation's state (`turns.md` § Following the agent's work,
- * `runtime.md` § Work groups): the transcript's blocks with the run of steps
+ * `rendering.md` § Work groups): the transcript's blocks with the run of steps
  * grouped, then the tail, the tail row under them, and the footers. A row is
  * named by `rowKey`, which it keeps as it changes form: the message being
  * sent and the message confirmed, a run from its first step to its end.

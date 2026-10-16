@@ -1,4 +1,4 @@
-//! Images as they enter a transcript (`runtime.md` § Images in the
+//! Images as they enter a transcript (`transcript.md` § Images in the
 //! transcript).
 
 use std::io::Cursor;
@@ -13,7 +13,7 @@ use image::{
     codecs::{jpeg::JpegEncoder, png::PngEncoder},
 };
 
-/// The most bytes of a fitted image (`runtime.md` § Images in the
+/// The most bytes of a fitted image (`transcript.md` § Images in the
 /// transcript).
 const MAX_BYTES: usize = 3_750_000;
 

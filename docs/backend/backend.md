@@ -106,7 +106,7 @@ request for that user and loads nothing ahead of need: the Cloud's device
 record and its latest reset load when the Cloud is first needed, and
 conversations, agent trees and devices when they are first used, and
 an agent tree that no socket watches closes again once it is idle
-([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)).
+([Connections and the live tree](../agent/rendering.md#connections-and-the-live-tree)).
 The machine manager's death events reach one edge task, which calls the shard
 of the device's owner.
 
@@ -351,9 +351,9 @@ code, is defined once in the contract crates and generated for the web app
 
 Each page that has a conversation open uses one WebSocket at
 `/api/conversations/:id/stream`, carrying the agent protocol's client and
-server frames ([Frame protocol](../agent/runtime.md#frame-protocol)); the
+server frames ([Frame protocol](../agent/rendering.md#frame-protocol)); the
 sockets of several pages attach to the conversation's one live tree
-([Connections and the live tree](../agent/runtime.md#connections-and-the-live-tree)). After
+([Connections and the live tree](../agent/rendering.md#connections-and-the-live-tree)). After
 the upgrade the socket moves into the user's shard, which serves it until it
 closes. Execution context comes from the conversation's server-side target;
 the page cannot override it with an arbitrary frame cwd.
@@ -391,7 +391,7 @@ task of each channel reads the summary and sends it to its page.
 The channel and the conversation sockets stay apart. A conversation's frames
 are a log the page applies in order, so the socket's outbox keeps every frame
 and closes a page that falls 4,096 frames behind
-([Order and delivery](../agent/runtime.md#order-and-delivery)); the channel
+([Order and delivery](../agent/rendering.md#order-and-delivery)); the channel
 sends current values, which it can merge, so it never closes a slow page. On
 one shared socket, a conversation that lagged would close the page's channel
 and every other conversation with it, and a transcript's handshake or a burst
@@ -413,7 +413,7 @@ not block readable history ([Models](../providers/models.md#catalog-cache)).
 ## Media by reference
 
 Transcript blocks hold their media by blob reference
-([Media](../agent/runtime.md#media)), so the frames that carry them carry
+([Media](../agent/transcript.md#media)), so the frames that carry them carry
 references, and the conversation socket sends each frame as the agent wrote
 it: it neither stores nor reads media. A blob is stored before the first frame
 that names it, so the page can fetch every reference a frame carries, when
@@ -443,7 +443,7 @@ the workspace. The agent receives an attachment record, with the same snippet
 for a text file, and the native media block of an image, a video or a PDF,
 which references the upload's own blob. An image enters fitted to what every
 provider accepts
-([Images in the transcript](../agent/runtime.md#images-in-the-transcript)):
+([Images in the transcript](../agent/transcript.md#images-in-the-transcript)):
 when fitting changes it, its block references the fitted image's blob, which
 the socket stores first. The socket hands the session the bytes of the
 block's medium, those it read to write the file or the fitted ones, so the
@@ -462,7 +462,7 @@ Its contents can change before that read.
 the wire shape.
 
 Resolving uploads keeps the socket's frame order
-([Order and delivery](../agent/runtime.md#order-and-delivery)). A frame whose
+([Order and delivery](../agent/rendering.md#order-and-delivery)). A frame whose
 resolution fails reports an error without affecting the frames behind it, and
 closing the socket stops resolution that has not reached the session yet. The
 underlying persistence and blob ownership are defined in [Storage](storage.md).

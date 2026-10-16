@@ -1228,7 +1228,7 @@ fn ended_turn(
 /// that changes the transcript changes one of them: a save of output, or one
 /// that removes rows, advances the revision, and a save of input alone adds
 /// blocks. The transcript's own version, its epoch and revision
-/// (`runtime.md` § Patches and versions), lives only in the running session.
+/// (`transcript.md` § Patches and versions), lives only in the running session.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SavedVersion {
     pub revision: u64,

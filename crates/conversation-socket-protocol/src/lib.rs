@@ -1,5 +1,5 @@
 //! The conversation WebSocket's frames (`crates-and-packages.md`
-//! § conversation-socket-protocol; behavior in `runtime.md` § Frame protocol): what the
+//! § conversation-socket-protocol; behavior in `rendering.md` § Frame protocol): what the
 //! web app sends ([`ClientFrame`]) and what the backend answers
 //! ([`ServerFrame`]), with transcript patches and versions. It holds types
 //! and their checks; the session logic and the socket live elsewhere, and no

@@ -15,7 +15,7 @@ export interface CommandEnd {
 }
 
 /**
- * How a command ended, as a shell row or a report row marks it (`runtime.md`
+ * How a command ended, as a shell row or a report row marks it (`rendering.md`
  * § Rendering boundary, § Command reports), or that a stop waits for its
  * runner to end it (`runner.md` § Cancellation and completion): a row marks
  * only what went wrong, and a call's row and its notice mark it alike.
@@ -46,7 +46,7 @@ export function commandEndMark(view: CommandEnd | null): CommandEndMark | null {
 
 /**
  * How long a command runs before its row wears the time as a tag
- * (`runtime.md` § Rendering boundary), and a run before its title says it
+ * (`rendering.md` § Rendering boundary), and a run before its title says it
  * (§ Work groups): a quicker one shows none, so it does not flash one.
  */
 export const SHOW_TIME_AFTER_MS = 3000
@@ -57,7 +57,7 @@ export function runningTime(elapsedMs: number | null): string | null {
 }
 
 /**
- * What an open shell row says above the output (`runtime.md` § Rendering
+ * What an open shell row says above the output (`rendering.md` § Rendering
  * boundary): how long the command has run, while it runs and `end` is
  * none, or how it ended and after how long, given how long it ran or has
  * run, `elapsedMs`. A lost command says why, as its tag does, and no time;

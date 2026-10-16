@@ -1,4 +1,4 @@
-//! The `shell` tool's input, declared once (`runtime.md` § Tool input): the
+//! The `shell` tool's input, declared once (`shell-tool.md` § Tool input): the
 //! JSON Schema the model receives and the check a call runs come from the
 //! same type.
 
@@ -8,7 +8,7 @@ use serde::de::DeserializeOwned;
 use serde_json::{Map, Value};
 
 /// The least interval a command reports at, in milliseconds
-/// (`runtime.md` § Tool input).
+/// (`shell-tool.md` § Tool input).
 pub const INTERVAL_FLOOR_MS: u32 = 15_000;
 /// The greatest interval a command reports at: ten minutes.
 pub const INTERVAL_CAP_MS: u32 = 600_000;
@@ -18,13 +18,13 @@ pub const INTERVAL_CAP_MS: u32 = 600_000;
 const INTERVAL: &str = "How often the command reports to you while it runs, required: a number of whole milliseconds from 15000 to 600000 (ten minutes) for a command that ends, such as a build or a test suite; if it still runs when the call returns, the result carries its commandId, and the command reports to you every interval until it ends, and when it ends. Short for a command that should end within minutes, long for one that takes long. A value outside the bounds is taken as the nearest bound. null for a command that runs until it is stopped, such as a dev server or a watcher: the call returns once its output has been quiet for 2 seconds, or after 30 seconds, and the command reports only its end.";
 
 /// What a call's `description` asks of the model: the title the user sees,
-/// which the model writes before the step runs (`runtime.md` § Tool
+/// which the model writes before the step runs (`rendering.md` § Tool
 /// descriptions).
 pub(super) const DESCRIPTION: &str = "Short title of what this step does, as a command in the imperative, such as \"Install Chrome for Testing\", \"Start the browser with a blank tab\" or \"Run the type checker\". It is written before the step runs, so never state a result or a state reached (not \"Chrome for Testing installed\"). Do not describe waiting, pausing or tool mechanics; no generic action or bare noun; no scripts, output, protocol state, step numbers, tool names, ids, internal labels or reasons.";
 
 // `description` comes first: a model writes a call's fields in the schema's
 // order, so the title the page shows arrives before a long script
-// (`runtime.md` § Calls being written).
+// (`rendering.md` § Calls being written).
 #[derive(Debug, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct ShellInput {
@@ -66,7 +66,7 @@ fn interval<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Interva
 
 /// A command's interval as a node's shells take it: `asked`, within the
 /// bounds from `floor` to [`INTERVAL_CAP_MS`], and the line that says so
-/// when it was outside them (`runtime.md` § Tool input), naming it as
+/// when it was outside them (`shell-tool.md` § Tool input), naming it as
 /// `field` names it, such as `intervalMs 900000 is above the cap; taken as
 /// 600000`. The floor is [`INTERVAL_FLOOR_MS`] in the product; a test
 /// configures a shorter one.

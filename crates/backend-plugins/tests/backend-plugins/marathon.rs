@@ -230,7 +230,7 @@ async fn a_page_feeds_and_stops_commands_left_running_and_their_ends_wake_the_mo
         assert_eq!(shown_output(&results[1]), "long-ready\n");
 
         // The page saw each command's output and its end, and nothing of a
-        // command after its end (`runtime.md` § Live output).
+        // command after its end (`shell-tool.md` § Live output).
         let mut ends: Vec<(CommandId, ShellStatus)> = Vec::new();
         for frame in &frames {
             let ServerFrame::ShellOutput { status, .. } = frame else {

@@ -5,7 +5,7 @@ import { commandEndBlocks, demoModel, editingShellTool, removedToolBlocks, runni
 import { ago } from './time'
 
 /**
- * One step of each kind a run holds (`runtime.md` § Work groups), for the
+ * One step of each kind a run holds (`rendering.md` § Work groups), for the
  * specimen that shows each in every place it stands: alone, inside an
  * opened run, and as a running run's folded face. `before` is the step the
  * run holds before it.

@@ -1,4 +1,4 @@
-//! What a message and a tool result hold (`runtime.md` § Transcript): text,
+//! What a message and a tool result hold (`transcript.md` § Transcript): text,
 //! media the model reads natively, held by reference or by URL and never as
 //! bytes, references, the records of files that came with a message, and a
 //! tool's media that are gone.
@@ -233,7 +233,7 @@ pub struct PixelSize {
 }
 
 /// Where a message's image or video is: never its bytes, which a session
-/// holds beside the transcript while a request can send them (`runtime.md`
+/// holds beside the transcript while a request can send them (`transcript.md`
 /// § Media).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
@@ -256,7 +256,7 @@ pub enum MediaSource {
         #[garde(skip)]
         media_type: String,
         /// An image's width and height in pixels, as it shows; a video's
-        /// when its container's header gives them (`runtime.md` § Media).
+        /// when its container's header gives them (`transcript.md` § Media).
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",
@@ -318,14 +318,14 @@ pub enum ToolResultContentBlock {
         #[garde(dive)]
         source: ToolMediaSource,
     },
-    /// A PDF document the model viewed (`runtime.md` § Media the model
+    /// A PDF document the model viewed (`shell-tool.md` § Media the model
     /// views), named as its line names it.
     Document {
         #[garde(dive)]
         source: DocumentSource,
     },
     /// An image, a video or a document the result no longer holds, in its place: what
-    /// it was and why it is gone (`runtime.md` § Media). The model reads it
+    /// it was and why it is gone (`transcript.md` § Media). The model reads it
     /// as one line of text.
     Gone {
         #[garde(skip)]
@@ -368,7 +368,7 @@ pub enum ToolMediaSource {
         #[garde(skip)]
         media_type: String,
         /// An image's width and height in pixels, as it shows; a video's
-        /// when its container's header gives them (`runtime.md` § Media).
+        /// when its container's header gives them (`transcript.md` § Media).
         #[serde(
             default,
             skip_serializing_if = "Option::is_none",

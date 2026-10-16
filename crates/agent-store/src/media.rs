@@ -1,4 +1,4 @@
-//! Media by reference (`runtime.md` § Media): a medium is stored once, as a
+//! Media by reference (`transcript.md` § Media): a medium is stored once, as a
 //! blob in the conversation owner's namespace, and blocks hold its reference
 //! everywhere. A session holds the bytes of the media its replayed blocks
 //! and its waiting input reference, and the model's view is the replayed
@@ -95,7 +95,7 @@ impl HeldMedia {
     }
 }
 
-/// The replayed blocks as the model receives them (`runtime.md` § Media):
+/// The replayed blocks as the model receives them (`transcript.md` § Media):
 /// the blocks as the transcript holds them, by reference, with what the
 /// session holds for each medium they reference. Replay, the token
 /// estimates and compaction read it.
@@ -238,7 +238,7 @@ pub fn content_references(content: &[UserContentBlock]) -> impl Iterator<Item = 
 }
 
 /// Stores the media of a tool's result as the result enters the transcript
-/// (`runtime.md` § Media): each medium's bytes are put, the result keeps
+/// (`transcript.md` § Media): each medium's bytes are put, the result keeps
 /// the reference, with the medium's size in pixels, and the bytes are held.
 /// A medium whose put fails is gone from the result, not stored, with the
 /// store's error, so no block names a blob that was not stored.

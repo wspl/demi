@@ -230,7 +230,7 @@ A run yields these events:
 | Error | A failure: its message, a typed code, its diagnostics and the wait the vendor asked for |
 
 A call's start and input pieces are for display only
-([Calls being written](../agent/runtime.md#calls-being-written)): the agent
+([Calls being written](../agent/rendering.md#calls-being-written)): the agent
 runs a call only from its Tool call event, which follows them with the whole
 input. A vendor that streams a call reports its start as soon as the model
 opens it (Anthropic's `content_block_start` of a `tool_use`, a Responses
@@ -273,7 +273,7 @@ with the next request ([Input](../agent/runtime.md#input)).
 ### Media in tool results
 
 A tool result carries images, videos and PDF documents the model viewed
-([Media the model views](../agent/runtime.md#media-the-model-views)), but a
+([Media the model views](../agent/shell-tool.md#media-the-model-views)), but a
 model reads a medium there only when its provider's wire carries that kind in
 a tool result. Which types a model reads in a tool result is therefore its
 accepted types ([Accepted attachment types](models.md#accepted-attachment-types))
@@ -293,7 +293,7 @@ The backend gives a job this list for the node's model when the job starts,
 so `demi file view` refuses at once what the model cannot see, and each
 request checks it again, since the model can change: a medium the request's
 model cannot read in a tool result is replayed as its line
-([Replay](../agent/runtime.md#replay)). A provider never drops a medium
+([Replay](../agent/transcript.md#replay)). A provider never drops a medium
 silently: what it cannot carry is not in its list.
 
 ### Failures
@@ -412,12 +412,12 @@ Only these change what a session has already sent:
 | A model switch ([Model switch](../agent/runtime.md#model-switch)) | Everything | A vendor keeps one cache per model, and the new model's provider sends the history in its own format |
 | An edit ([Message editing](../agent/message-editing.md)) | The messages from the edited message on | The user replaced that message |
 | A change of the thinking setting | What the vendor renders the setting into: the messages on the Anthropic API; everything on the OpenAI API, whose reasoning instructions come first | The user chose it, as with a model switch |
-| An edit of a configured model's accepted file types | The messages from the first medium whose replay the edit changes | Replay sends each medium as the request's model accepts it ([Replay](../agent/runtime.md#replay)) |
+| An edit of a configured model's accepted file types | The messages from the first medium whose replay the edit changes | Replay sends each medium as the request's model accepts it ([Replay](../agent/transcript.md#replay)) |
 | A new Demi release | The system prompt, the tools or the request format the release changed | Once per conversation |
 
 `retry` and `resume` are not exceptions: they cut the history back, so their
 request is an earlier request of the session, or begins with one. A medium
-whose blob is lost is replayed as text ([Media](../agent/runtime.md#media));
+whose blob is lost is replayed as text ([Media](../agent/transcript.md#media));
 that is lost data, not a change the rule allows.
 
 Each request sends the thinking setting the user chose for it. Some vendors
@@ -430,12 +430,12 @@ models offer it.
 - **The system prompt and the tools** follow from the runtime's rules, the
   product's fixed instructions, the node's profile and its commands, rendered once when the node is assembled. They hold no time, id,
   Host or state, and nothing that differs by user: what does reaches the model
-  as a `context` block ([Context](../agent/runtime.md#context)). The tool is the one `shell` tool
-  ([Tools](../agent/runtime.md#tools)).
+  as a `context` block ([Context](../agent/transcript.md#context)). The tool is the one `shell` tool
+  ([Tools](../agent/shell-tool.md#tools)).
 - **The items** come from replay, which reads only what the blocks hold for
   the model, keeps each block in its place and never changes what a block
   replays once a request has carried it; new input joins at the end
-  ([Replay](../agent/runtime.md#replay)).
+  ([Replay](../agent/transcript.md#replay)).
 - **The body** follows from the request alone: fields in the order their
   types declare them, JSON objects in the order they were written or read,
   media as the base64 of the stored bytes, and no request id or time. Request
@@ -449,7 +449,7 @@ models offer it.
   session's, which a title request and a connection test are not: no later
   request extends them, and they extend none. A session's request also says
   how many of its leading items the session's latest answered request carried
-  ([Replay](../agent/runtime.md#replay)). A vendor that caches only where a
+  ([Replay](../agent/transcript.md#replay)). A vendor that caches only where a
   request marks it needs both.
 
 ### Per vendor
@@ -512,7 +512,7 @@ changed, they refuse the request or drop the block, depending on the account.
 After compaction, the latest answer's reasoning follows a summary instead of
 the history it was produced after, so the Anthropic provider leaves out the
 reasoning that replay marks as kept past a summary
-([Replay](../agent/runtime.md#replay)); leaving blocks out at the start of the
+([Replay](../agent/transcript.md#replay)); leaving blocks out at the start of the
 history is allowed. Reasoning the model produces afterwards follows the
 summary and is replayed. The other vendors document no such check, and their
 providers replay the marked reasoning as before.

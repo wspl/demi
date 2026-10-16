@@ -634,7 +634,7 @@ async fn a_stopped_command_lets_its_programs_end_cleanly() {
 /// A command whose stream goes beyond what the backend receives while it
 /// runs ends with its whole output, which the backend reads once from the
 /// Host, and the Host then keeps nothing of it; while it runs, its output
-/// reads as the Host keeps it so far (`runtime.md` § The whole output).
+/// reads as the Host keeps it so far (`shell-tool.md` § The whole output).
 /// About a second: two jobs, each a login shell.
 #[tokio::test(flavor = "local")]
 async fn a_command_beyond_its_views_ends_with_its_whole_output_and_leaves_nothing_on_its_host() {

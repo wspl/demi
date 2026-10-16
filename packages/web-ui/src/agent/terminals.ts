@@ -14,7 +14,7 @@ export type TerminalPhase = ShellViewStatus
 
 /**
  * A command as the page shows it: from the live frames of the
- * conversation's tree (`runtime.md` § Live output), or, for one the page has
+ * conversation's tree (`shell-tool.md` § Live output), or, for one the page has
  * seen no frame of, from the transcript's stored view.
  */
 export interface TerminalRecord {
@@ -55,7 +55,7 @@ export const LIVE_OUTPUT_CHARS = 32_768
  * What a page adds to a command's output that it shows up to the `shown`-th
  * character of the live view, given the view's `tail`, which ends at its
  * `chars`-th: only the characters beyond those shown, or, after a gap or
- * with nothing shown yet, the tail anew (`runtime.md` § Rendering boundary).
+ * with nothing shown yet, the tail anew (`rendering.md` § Rendering boundary).
  * Characters are Unicode code points, as the backend counts them.
  */
 export function liveOutputDelta(
@@ -80,7 +80,7 @@ export interface TerminalShown {
 /**
  * What a terminal writes to show `output` after what it showed (`shown`,
  * null before anything): for a live view, the characters beyond those shown,
- * by the view's count (`runtime.md` § Rendering boundary); for whole output,
+ * by the view's count (`rendering.md` § Rendering boundary); for whole output,
  * what continues it. Otherwise it starts anew, clearing what it showed when
  * it showed anything. The `prompt` line opens the terminal each time it
  * starts and is never part of the output or its count.
@@ -124,7 +124,7 @@ const RESET = '\x1b[0m'
 
 /**
  * The line a command's terminal opens with, as a terminal shows what was
- * typed (`runtime.md` § Rendering boundary): `$ ` and the script's first
+ * typed (`rendering.md` § Rendering boundary): `$ ` and the script's first
  * line, `> ` before each further line, the prompt muted and the script
  * highlighted as Bash by `runs`, in its own color where no run colors it;
  * the terminal wraps what is longer than its width. No script, no line.
@@ -178,7 +178,7 @@ export function followLiveOutput(
     : next
 }
 
-/** A command's live view, as a `shell_output` frame carries it (`runtime.md` § Live output). */
+/** A command's live view, as a `shell_output` frame carries it (`shell-tool.md` § Live output). */
 export type CommandFrame = Extract<ClientSessionEvent, { type: 'shell_output' }>['status']
 
 /**
@@ -276,7 +276,7 @@ function executingCalls(blocks: readonly Block[]): ReadonlySet<string> {
 const NO_CALLS: ReadonlySet<string> = new Set()
 
 /**
- * The commands the dock holds (`runtime.md` § Rendering boundary): all but
+ * The commands the dock holds (`rendering.md` § Rendering boundary): all but
  * those whose `shell` call still runs, whose output shows under the call.
  * Each agent's running calls are a computed of their own, over the latest
  * blocks of that agent's transcript: a patch to one transcript, as each
@@ -315,7 +315,7 @@ export function isTerminalRunning(phase: TerminalPhase): boolean {
 }
 
 /**
- * Whether a `shell` row shimmers (`runtime.md` § Rendering boundary):
+ * Whether a `shell` row shimmers (`rendering.md` § Rendering boundary):
  * while its call runs, and after the call returned for as long as the
  * command it started runs, as the command's live frames say, until its end
  * arrives.
@@ -328,7 +328,7 @@ export function shellRowRunning(
 }
 
 /**
- * How a `shell` row's command ended (`runtime.md` § Rendering
+ * How a `shell` row's command ended (`rendering.md` § Rendering
  * boundary): that a stop waits for its end, while its runner has not said
  * so; none while its call runs otherwise; after, the end the command's
  * record has, from its live frames or a stored view, and otherwise the view
@@ -354,7 +354,7 @@ export function shellRowEnd(call: ToolCallBlock, command: TerminalRecord | undef
 }
 
 /**
- * How long a `shell` row's command has run or ran (`runtime.md` § Rendering
+ * How long a `shell` row's command has run or ran (`rendering.md` § Rendering
  * boundary): while it runs, from the start the server reported for it;
  * once it ended, how long it ran, by its live frames or by the view its
  * call stored. None while that is unknown, as for a command whose call

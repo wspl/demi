@@ -125,7 +125,7 @@ export function applyConversationEvent(
       }
     })
   } else if (event.type === 'shell_output') {
-    // A command's live view, the same for every page (`runtime.md` § Live
+    // A command's live view, the same for every page (`shell-tool.md` § Live
     // output): what it adds to the output shown, under its call while the
     // call runs and in the dock after.
     const { subagentId, status } = event

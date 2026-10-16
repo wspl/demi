@@ -465,10 +465,10 @@ impl JobConfig {
         // A job's execution context, held until the job has ended.
         let mut execution = None;
         // The media its commands hand to it, as they arrive
-        // (`runtime.md` § What `demi file view` shows).
+        // (`shell-tool.md` § What `demi file view` shows).
         let mut arrivals: Option<mpsc::UnboundedReceiver<Arrival>> = None;
         // The background tasks that keep a job running once its script has
-        // ended (`runtime.md` § Results and previews); a raw process has none.
+        // ended (`shell-tool.md` § Results and previews); a raw process has none.
         let mut outliving: Option<watch::Receiver<Vec<String>>> = None;
         let (mut child, stdin, stdout) = match spec.command {
             TaskCommand::Process {

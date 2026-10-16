@@ -249,7 +249,7 @@ impl ToolResultKinds {
     }
 
     /// The media types `model` reads in a tool result, as a job carries
-    /// them (`runtime.md` § What `demi file view` shows); none when which
+    /// them (`shell-tool.md` § What `demi file view` shows); none when which
     /// types the model reads is unknown and the wire carries some.
     pub fn viewable(self, model: &Model) -> Option<Vec<String>> {
         if model.accepted_extensions.is_none() && self != Self::NONE {
@@ -310,7 +310,7 @@ pub struct InferenceRequest {
     /// limit, such as a title request's; null for a turn.
     pub output_cap: Option<NonZeroU32>,
     pub system_prompt: String,
-    /// The transcript as the model receives it (`runtime.md` § Replay).
+    /// The transcript as the model receives it (`transcript.md` § Replay).
     pub items: Arc<[InferenceItem]>,
     /// The replayed blocks that give `items`, in order: which items each
     /// gives and the entries a vendor kept on it (`claude-code.md` § The
@@ -373,7 +373,7 @@ pub enum PromptCache {
     /// A request of a session, a summary request included. Its first
     /// `answered_items` items are what the session's latest answered request
     /// carried; none when no request was answered since the last compaction
-    /// (`runtime.md` § Replay).
+    /// (`transcript.md` § Replay).
     Session { answered_items: usize },
 }
 
@@ -401,7 +401,7 @@ pub struct RequestBlock {
 
 /// One entry of the transcript as a provider replays it. Its media hold
 /// their bytes, or an image's or a video's URL, and never a reference
-/// (`runtime.md` § Media).
+/// (`transcript.md` § Media).
 #[derive(Debug, Clone, PartialEq)]
 pub enum InferenceItem {
     UserMessage {
@@ -422,7 +422,7 @@ pub enum InferenceItem {
         text: String,
         signature: Option<String>,
         /// Compaction kept it after a summary, which replaced the history it
-        /// followed (`runtime.md` § Replay): a provider whose vendor checks
+        /// followed (`transcript.md` § Replay): a provider whose vendor checks
         /// reasoning against that history leaves it out (`providers.md`
         /// § Per vendor).
         kept_past_summary: bool,
@@ -451,7 +451,7 @@ pub enum InferenceItem {
 
 /// One part of a message or a steer as a request carries it. A reference
 /// and an attachment record reach the model as the text that names them
-/// (`runtime.md` § Replay), and so does a medium the request's model does
+/// (`transcript.md` § Replay), and so does a medium the request's model does
 /// not take.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UserPart {
@@ -505,7 +505,7 @@ pub struct ToolDefinition {
 }
 
 /// Whether `tools` offer the tool `name`; a call of any other names a tool
-/// that is not there (`runtime.md` § Replay).
+/// that is not there (`transcript.md` § Replay).
 pub fn offers(tools: &[ToolDefinition], name: &str) -> bool {
     tools.iter().any(|tool| tool.name == name)
 }
@@ -529,7 +529,7 @@ pub enum ProviderEvent {
     TextDelta(String),
     /// The model opened a tool call. With its input pieces it is for
     /// display only: the agent runs a call only from its `ToolCall`, which
-    /// follows with the whole input (`runtime.md` § Calls being written).
+    /// follows with the whole input (`rendering.md` § Calls being written).
     ToolCallStart {
         tool_use_id: String,
         tool_name: String,

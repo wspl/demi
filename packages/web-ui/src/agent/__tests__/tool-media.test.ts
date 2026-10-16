@@ -68,7 +68,7 @@ for (const { name, output, shows } of cases) {
 }
 
 // A call inside a folded group still shows its media, in the group's row
-// (`runtime.md` § Work groups): the loop that viewed two screenshots shows
+// (`rendering.md` § Work groups): the loop that viewed two screenshots shows
 // both, named by its call, after the media of the call before it.
 const second: ToolMediaSource = { type: 'ref', ref: 'd'.repeat(64), mediaType: 'image/png' }
 const call = (id: string, description: string, output: ToolResultContentBlock[]): WorkStep => ({

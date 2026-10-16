@@ -110,7 +110,7 @@ export function callPills(block: ToolCallBlock): ChangeFile[] {
 }
 
 /**
- * The files a run's folded pills show (`runtime.md` § Work groups): those
+ * The files a run's folded pills show (`rendering.md` § Work groups): those
  * its latest call stored, counted from before the run to after that call.
  */
 export function runFiles(calls: readonly ToolCallBlock[]): ChangedFile[] {

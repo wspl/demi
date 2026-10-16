@@ -461,7 +461,7 @@ pub fn resident(id: &str, script: &str) -> ProviderEvent {
 
 /// A model that answers each request with the next of `steps`, but notes a
 /// request whose input is commands' reports alone, which a command left
-/// running opens when it reports (`runtime.md` § Command reports): how many
+/// running opens when it reports (`shell-tool.md` § Command reports): how many
 /// such requests come depends on when the commands end.
 pub fn tolerant(steps: Vec<Vec<ProviderEvent>>) -> ScriptedRuntime {
     let steps = Rc::new(RefCell::new(std::collections::VecDeque::from(steps)));

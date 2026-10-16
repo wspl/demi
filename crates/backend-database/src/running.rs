@@ -35,7 +35,7 @@ pub struct RunningCommand {
     /// command recorded before records kept it.
     pub title: String,
     /// How often its call asked it to report, or only its end when none
-    /// (`runtime.md` § Command reports).
+    /// (`shell-tool.md` § Command reports).
     pub interval_ms: Option<u32>,
     pub started: Timestamp,
     /// How far each node that looked at it has seen its output, which a

@@ -87,7 +87,7 @@ fn same_model(one: &ModelSelection, other: &ModelSelection) -> bool {
 }
 
 /// Where the content of each request answered since the last compaction
-/// ends, in order (`runtime.md` § Replay): each `response` block after the
+/// ends, in order (`transcript.md` § Replay): each `response` block after the
 /// last boundary and its marker closes an answer, the run of thinking, text
 /// and tool-call blocks directly before it, and what the blocks before that
 /// answer replay is what its request carried. A boundary whose marker an

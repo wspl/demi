@@ -1,4 +1,4 @@
-//! The agent server of one user shard (`runtime.md` § Frame protocol,
+//! The agent server of one user shard (`rendering.md` § Frame protocol,
 //! § Connections and the live tree): it holds each open conversation's live
 //! tree and hands out the connections that attach conversation sockets to
 //! them. The backend owns the sockets, decodes each client frame, and passes
@@ -53,7 +53,7 @@ use crate::Node;
 /// the provider itself.
 pub trait ProviderResolver {
     /// The model selection the conversation `root`'s tree opens with: the
-    /// one its record holds (`runtime.md` § Connections and the live tree).
+    /// one its record holds (`rendering.md` § Connections and the live tree).
     fn selection<'a>(
         &'a self,
         root: &'a NodeId,
@@ -154,11 +154,11 @@ pub struct ServerConfig {
     /// How long a tree stays live once it is detached and quiescent.
     pub idle_tree: Duration,
     /// The least interval a command reports at, in milliseconds
-    /// (`runtime.md` § Tool input): [`INTERVAL_FLOOR_MS`] in the product,
+    /// (`shell-tool.md` § Tool input): [`INTERVAL_FLOOR_MS`] in the product,
     /// which a test shortens to see reports within its time.
     pub interval_floor_ms: u32,
     /// The longest a `shell` call of a command with an interval watches it,
-    /// in milliseconds (`runtime.md` § Tool input): [`CALL_WINDOW_MS`] in the
+    /// in milliseconds (`shell-tool.md` § Tool input): [`CALL_WINDOW_MS`] in the
     /// product, which a test shortens to see a call return within its time.
     pub call_window_ms: u32,
 }
@@ -205,7 +205,7 @@ pub struct ServerDeps<H: HostResolver> {
     pub config: ServerConfig,
     /// Told the root of a live tree that started or stopped working, whose
     /// root's phase changed, or that was disposed: a product that shows each
-    /// conversation's status reads it again (`runtime.md` § Connections and
+    /// conversation's status reads it again (`rendering.md` § Connections and
     /// the live tree).
     pub status_changed: Rc<dyn Fn(&NodeId)>,
 }
@@ -285,7 +285,7 @@ impl<H: HostResolver> AgentServer<H> {
 
     /// Takes up the command of the conversation `root`'s live tree whose
     /// job is `job`, as the job's `rpc` call asks once the tree is restored
-    /// (`runtime.md` § Command reports); why it could not be, when it could
+    /// (`shell-tool.md` § Command reports); why it could not be, when it could
     /// not.
     pub async fn take_up_job(&self, root: &NodeId, job: &str) -> Result<(), String> {
         let unknown = || "rpc requires a live job dispatched to this device".to_owned();

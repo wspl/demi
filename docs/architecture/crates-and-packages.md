@@ -165,7 +165,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 - **Public boundary:** the types above. The agent resolves the files a
   frame's content refers to through the backend (`agent-server`'s
   `ContentResolver`) before the session sees the content. The protocol's
-  behavior is in [Frame protocol](../agent/runtime.md#frame-protocol).
+  behavior is in [Frame protocol](../agent/rendering.md#frame-protocol).
 - **Must not:** hold session logic or a transport, or carry file bytes inside a
   frame.
 
@@ -249,7 +249,7 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   `fetch.get`, with their limits.
 - **Public boundary:** the types above. `plugin-web` declares the `demi web fetch`
   commands from them and `demi-fetch` decodes invocations with them.
-  Behavior: [Web search and fetch](../agent/web.md#demi-fetch).
+  Behavior: [Web search and fetch](../agent/web.md#demi-web-fetch).
 - **Must not:** implement operations or perform IO.
 
 #### `command-package-browser-protocol`
@@ -569,7 +569,7 @@ Each crate implements the provider contract for one vendor family.
     pages' view of it (`PageView`), and the feed through which an
     environment reports that view's changes and learns whether a page
     watches (`PageFeed`,
-    [Live output](../agent/runtime.md#live-output)); the reading of a
+    [Live output](../agent/shell-tool.md#live-output)); the reading of a
     running command's kept output; a command's whole output
     (`WholeOutput`) and its lines of text (`OutputText`), which the result
     that reports a command's end and `demi shell output` read alike; where an
@@ -579,9 +579,9 @@ Each crate implements the provider contract for one vendor family.
     and the keeper to which an environment hands what a command leaves when it ends,
     its whole output, its media and its edit copies, which the product
     implements over its storage
-    ([The whole output](../agent/runtime.md#the-whole-output)); a command's
+    ([The whole output](../agent/shell-tool.md#the-whole-output)); a command's
     media as the backend holds them when it ended (`CommandMedium`,
-    [Media the model views](../agent/runtime.md#media-the-model-views)).
+    [Media the model views](../agent/shell-tool.md#media-the-model-views)).
 - **Public boundary:** the items above; `host_interface::testing` supplies the Host
   conformance cases, an in-memory port for rpc handler tests
   (`MemoryPort`) and sequences that count from 1 (`CountingNumbers`). The Host rules are in
@@ -622,7 +622,7 @@ Each crate implements the provider contract for one vendor family.
     each block references, media and edit copies, which a store indexes for
     [retention](../backend/storage.md#retention); the fitting of an image as
     it enters, with the `image` crate (`images`,
-    [Images in the transcript](../agent/runtime.md#images-in-the-transcript));
+    [Images in the transcript](../agent/transcript.md#images-in-the-transcript));
   - the run and request rules and the lists of changed files a shell call
     stores (`changes`), from the edit copies through a blob reader, for the
     session and for the block format 3 migration alike
@@ -1404,7 +1404,7 @@ demi-backend (executable: configuration, composition)
 - **Owns:** the independently released `demi.fetch` resident program: an
   HTTP fetch from the Host, HTML to Markdown, the parts it prints, the Host's
   15-minute cache of fetched pages, and the files it saves
-  ([`demi web fetch`](../agent/web.md#demi-fetch)). It holds no conversation state.
+  ([`demi web fetch`](../agent/web.md#demi-web-fetch)). It holds no conversation state.
 - **Public boundary:** the executable.
 - **Must not:** run JavaScript, send a credential or a cookie, or be linked
   into the runner.

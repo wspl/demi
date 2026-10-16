@@ -49,7 +49,7 @@ export function uncopiedFile(file: Omit<EditedFile, 'edits'>): EditedFile {
 }
 
 /**
- * `blocks` as one run of steps, as the backend stores it (`runtime.md`
+ * `blocks` as one run of steps, as the backend stores it (`rendering.md`
  * § Work groups): each carries the id of the run's first block, which the
  * fixture names by putting the run's blocks together.
  */
@@ -458,14 +458,14 @@ export const editingShellTool = toolCall({
   }),
 })
 
-/** The line a command's output shows for its binary stdout (`runtime.md` § What `demi file view` shows). */
+/** The line a command's output shows for its binary stdout (`shell-tool.md` § What `demi file view` shows). */
 function binaryLine(bytes: number): string {
   return `<binary stdout: ${bytes} bytes>\n`
 }
 
 /**
  * A shell call that viewed one image or video with `demi file view`
- * (`runtime.md` § Media the model views): its output holds the medium's line,
+ * (`shell-tool.md` § Media the model views): its output holds the medium's line,
  * which the runner wrote, and the result attaches the medium, or the part
  * that took its place, after it.
  */
@@ -521,7 +521,7 @@ function captureText(capture: Capture): string {
 }
 
 /**
- * A shell call whose screenshots it viewed (`runtime.md` § Media the model
+ * A shell call whose screenshots it viewed (`shell-tool.md` § Media the model
  * views): the output holds each screenshot's description, from its stderr,
  * and the line `[image n: …]` the runner wrote, then the lines of the media
  * it viewed after them, `after`; the result attaches the media after the
@@ -1223,7 +1223,7 @@ function report(commandId: string, title: string, event: CommandReport['event'],
 const suite = 'Run the test suite'
 
 /**
- * The reports the report-row specimens show, one of each event (`runtime.md`
+ * The reports the report-row specimens show, one of each event (`shell-tool.md`
  * § Command reports), by the specimen's variant.
  */
 export function commandReportCases(): { variant: string, reports: CommandReport[] }[] {
@@ -1260,7 +1260,7 @@ export function severalReports(): CommandReport[] {
 /**
  * Calls of tools the runtime no longer has, as a conversation from before
  * they were removed keeps them: a look and a wait, each a generic tool card
- * (`runtime.md` § Rendering boundary).
+ * (`rendering.md` § Rendering boundary).
  */
 export function removedToolBlocks(): ToolCallBlock[] {
   return [
@@ -1602,7 +1602,7 @@ export function thoughtAnswerBlocks(): Block[] {
 }
 
 /**
- * Runs that only check a command, and ones that run one too (`runtime.md`
+ * Runs that only check a command, and ones that run one too (`rendering.md`
  * § Work groups): the agent starts the end-to-end suite and ends its turn;
  * asked, it checks the suite twice; the suite's end report wakes it, a row
  * of its own, and carries the suite's last lines, so the agent answers
@@ -1662,7 +1662,7 @@ export function commandLookBlocks(): Block[] {
 export const RUNNING_RUN_CALL = 'running-run-merge'
 
 /**
- * A turn whose run still goes (`runtime.md` § Work groups): it thought,
+ * A turn whose run still goes (`rendering.md` § Work groups): it thought,
  * checked the branch, and its newest call has merged and run the tests for
  * a minute and a half. Folded, the run's row is that call and wears the time
  * its command has run, as the call's own row does; open, it says what runs
@@ -1713,7 +1713,7 @@ export function steppedRunCall(stage: number): (typeof STEPPED_RUN_CALLS)[number
 }
 
 /**
- * A running turn's run at `stage` of `STEPPED_RUN_STAGES` (`runtime.md`
+ * A running turn's run at `stage` of `STEPPED_RUN_STAGES` (`rendering.md`
  * § Work groups), as the transcript shows it while the run goes: one step
  * runs, its own row; it returned and a second runs under it; the second
  * returned failed and joined the run, Requesting under it while the model
@@ -1750,7 +1750,7 @@ export function steppedRunBlocks(stage: number): Block[] {
 export const LEFT_RUNNING_CALL = 'left-running-suite'
 
 /**
- * A turn that ended while a command it started runs on (`runtime.md`
+ * A turn that ended while a command it started runs on (`rendering.md`
  * § Work groups): the agent thought, started the suite, and replied without
  * waiting. The ended run's row says what it did and wears the time the
  * command has run until it ends. The gallery's `leftRunningCommand` is it.
@@ -1849,7 +1849,7 @@ export function viewedMediaBlocks(): Block[] {
 
 /**
  * A turn whose model has finished its sentence and goes on writing a call
- * (`runtime.md` § Calls being written): the user's message and the finished
+ * (`rendering.md` § Calls being written): the user's message and the finished
  * text, which the specimens follow with a call being written or with
  * Requesting.
  */

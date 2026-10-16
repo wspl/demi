@@ -1,6 +1,6 @@
-//! A shell tool's result (`runtime.md` § Results and previews): the text the
+//! A shell tool's result (`shell-tool.md` § Results and previews): the text the
 //! model reads, the media its job viewed and the line about a binary stdout
-//! (`runtime.md` § What a result attaches), and the bounded
+//! (`shell-tool.md` § What a result attaches), and the bounded
 //! view the user sees, all from one command status.
 
 use std::sync::Arc;
@@ -24,7 +24,7 @@ use super::PAGE_CHARS;
 pub(super) const VIEW_CHARS: usize = 32_768;
 /// The largest video or document: about ten minutes of video at a
 /// viewing-grade encoding, under the inline payload ceiling the major APIs
-/// enforce. An image is fitted instead (`runtime.md` § Images in the
+/// enforce. An image is fitted instead (`transcript.md` § Images in the
 /// transcript).
 const MEDIUM_CAP_BYTES: u64 = 16 * 1024 * 1024;
 /// How many of a running command's newest lines its result points to.
@@ -34,7 +34,7 @@ const NEWEST_LINES: u64 = 50;
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Look<'a> {
     /// The line it starts with, such as the one that says the interval
-    /// asked for was outside the bounds (`runtime.md` § Tool input).
+    /// asked for was outside the bounds (`shell-tool.md` § Tool input).
     pub note: Option<&'a str>,
     /// Why the call returned while its command runs, which its result says.
     pub moved: Option<Moved>,
@@ -43,7 +43,7 @@ pub struct Look<'a> {
     /// option is none, as for a look at another agent's command.
     pub interval_ms: Option<Option<u32>>,
     /// The command's Host is unreachable, so its silence is not the
-    /// command's: a look from another Host says so (`runtime.md` § The
+    /// command's: a look from another Host says so (`shell-tool.md` § The
     /// `demi shell` commands).
     pub unreachable: Option<Unreachable>,
 }
@@ -55,7 +55,7 @@ pub enum Moved {
     /// The user's send now ended the window (`runtime.md` § Send now).
     SentNow,
     /// The window's time passed, and the command reports every
-    /// `interval_ms` (`runtime.md` § Command reports).
+    /// `interval_ms` (`shell-tool.md` § Command reports).
     TimePassed { interval_ms: u32 },
 }
 
@@ -63,7 +63,7 @@ pub enum Moved {
 /// and the lines about them, and its view. `model` is the call's, and its
 /// vendor takes requests within `limits`. A command that exited with a
 /// status other than 0, or was stopped or lost, is an error to the provider
-/// (`runtime.md` § Results and previews).
+/// (`shell-tool.md` § Results and previews).
 pub(super) async fn shell_outcome(
     status: &CommandStatus,
     model: &Model,
@@ -110,7 +110,7 @@ pub fn look_text(status: &CommandStatus, look: Look<'_>) -> String {
 /// What a look at `command` shows the model from its whole output `whole`,
 /// from the node's own place `seen` in it: the look of a node that does not
 /// hold the command, such as at another agent's command, or at one whose
-/// shells ended (`runtime.md` § The `demi shell` commands). The command is
+/// shells ended (`shell-tool.md` § The `demi shell` commands). The command is
 /// in `state`, has run `running_ms` and printed nothing for `idle_ms`.
 pub fn whole_look_text(
     command: &CommandId,
@@ -247,7 +247,7 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> Str
 }
 
 /// The line that says where the command is, as the model reads it
-/// (`runtime.md` § The `demi shell` commands): running, as far as Demi knows
+/// (`shell-tool.md` § The `demi shell` commands): running, as far as Demi knows
 /// while its Host is `unreachable`; exited; stopped; or lost, with why.
 fn status_line(state: &CommandState, unreachable: Option<Unreachable>) -> String {
     match (state, unreachable) {
@@ -263,7 +263,7 @@ fn status_line(state: &CommandState, unreachable: Option<Unreachable>) -> String
     }
 }
 
-/// What a command's report carries of `status`'s output (`runtime.md`
+/// What a command's report carries of `status`'s output (`shell-tool.md`
 /// § Command reports): the output since the node's last look as a result
 /// shows it, within `budget` characters, the lines that name what it leaves
 /// out among them; empty when there is none.
@@ -279,7 +279,7 @@ pub fn report_output(status: &CommandStatus, budget: usize) -> String {
 }
 
 /// What the result of a call that something other than its tool ended
-/// shows of the command it watched (`runtime.md` § Interrupted calls): its
+/// shows of the command it watched (`shell-tool.md` § Interrupted calls): its
 /// output since the node's last look as a report carries it, within
 /// `budget` characters, and the user's view of the call.
 pub fn interrupted_look(status: &CommandStatus, budget: usize) -> (String, ShellToolView) {
@@ -336,7 +336,7 @@ fn output_lines(text: &OutputText, command: &CommandId, newest: &[&Newest], budg
 
 /// The next step for a command that runs: it reports to the node as its
 /// interval says, and the `demi shell` commands look at it, answer it and
-/// stop it (`runtime.md` § Results and previews).
+/// stop it (`shell-tool.md` § Results and previews).
 fn running_next(command: &CommandId, interval_ms: Option<Option<u32>>) -> String {
     let reports = match interval_ms {
         Some(Some(interval)) => format!(
@@ -352,7 +352,7 @@ fn running_next(command: &CommandId, interval_ms: Option<Option<u32>>) -> String
 }
 
 /// The line that names the background tasks that keep a command running
-/// once its script has ended, and says its stop stops them (`runtime.md`
+/// once its script has ended, and says its stop stops them (`shell-tool.md`
 /// § Results and previews); none while the script runs.
 fn outliving_line(tasks: &[String]) -> Option<String> {
     let quoted: Vec<String> = tasks.iter().map(|task| format!("\"{task}\"")).collect();
@@ -559,7 +559,7 @@ fn chars_marker(command: &CommandId, line: u64, from: usize, to: usize) -> Strin
     )
 }
 
-/// The most media one result attaches (`runtime.md` § What a result
+/// The most media one result attaches (`shell-tool.md` § What a result
 /// attaches).
 const RESULT_MEDIA: usize = 20;
 
@@ -606,7 +606,7 @@ impl Budget {
 /// What the end report of a command whose job viewed `media` attaches, as
 /// the `shell` result would have: the media, by number, while `model`
 /// reads them and they fit the bounds of requests within `limits`, then the
-/// text of the lines about them; nothing when it viewed none (`runtime.md`
+/// text of the lines about them; nothing when it viewed none (`shell-tool.md`
 /// § What a result attaches).
 pub async fn report_media(
     media: &[CommandMedium],
@@ -620,7 +620,7 @@ pub async fn report_media(
     parts
 }
 
-/// What a result that reports a command's end attaches (`runtime.md`
+/// What a result that reports a command's end attaches (`shell-tool.md`
 /// § What a result attaches): the media its job viewed, by number, each
 /// while the model reads it in a tool result and it fits the result's
 /// bounds; and the lines that tell of each one not attached or attached in

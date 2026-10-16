@@ -1,4 +1,4 @@
-//! The live output of commands (`runtime.md` § Live output): every attached
+//! The live output of commands (`shell-tool.md` § Live output): every attached
 //! page receives each command's output as it comes and its end, with no frame
 //! of its own; a page that attaches finds the live commands in its
 //! handshake and then follows them too; a page writes to a command and stops
@@ -295,7 +295,7 @@ async fn settle_on(fixture: &Fixture, script: &ScriptedRuntime, count: usize) {
 
 /// The model keeps its own place in a command's output: the page seeing a
 /// running command's new output leaves all of it to the command's next
-/// report (`runtime.md` § Results and previews, § Command reports).
+/// report (`shell-tool.md` § Results and previews, § Command reports).
 // About a second: the command runs as a shell job and reports every 300 ms.
 #[tokio::test(flavor = "local")]
 async fn what_a_page_sees_of_a_running_command_is_left_to_the_model() {
@@ -354,7 +354,7 @@ async fn what_a_page_sees_of_a_running_command_is_left_to_the_model() {
 /// one frame every 250 ms, so a page that reads nothing until the end keeps
 /// its connection; and while a page is attached the runner follows the
 /// command, so its view shows output beyond the first 32 KiB of a stream
-/// while it runs (`runtime.md` § Live output). About four seconds: a login
+/// while it runs (`shell-tool.md` § Live output). About four seconds: a login
 /// shell, a loop of 1,000 writes, which a page's outbox of 64 frames would
 /// not hold one frame each, then 140 KB of numbers, and the two seconds of
 /// quiet that end its call.

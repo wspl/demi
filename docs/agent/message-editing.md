@@ -65,7 +65,7 @@ path**: from the first block to the current leaf.
   their position on the current path, as before, and a switch is one
   rewrite batch: a `truncate` at the first position that differs, then an
   `add` for each block of the new path from there
-  ([Patches and versions](runtime.md#patches-and-versions)). What must stay
+  ([Patches and versions](transcript.md#patches-and-versions)). What must stay
   valid across switches, a share's list and the search index's rows, names
   a row by its row number, never by position; `demi conversation history`
   numbers blocks by their position on the current path, as the agent reads
@@ -86,7 +86,7 @@ the one before it, and its last row is the leaf.
 The agent session owns the operation. The request names the target block,
 supplies the complete replacement content, carries a stable operation ID, and
 identifies the transcript snapshot the editor showed: the transcript's version,
-its epoch and revision ([Patches and versions](runtime.md#patches-and-versions)).
+its epoch and revision ([Patches and versions](transcript.md#patches-and-versions)).
 
 The transcript owns suffix replacement and the patch that replicates it. The
 session prepares the replacement turn, commits the checkpoint, publishes the
@@ -104,7 +104,7 @@ and replay sends it.
 
 Only a `user` block is an editable target. An explicit user submission has its
 own block type, so the session and the page read editability from the block's
-type, and no second rule decides it ([Transcript](runtime.md#transcript)). The
+type, and no second rule decides it ([Transcript](transcript.md#transcript)). The
 hidden inputs (`context`, `wakeup`, and `agent_message` blocks), human `steer`
 blocks, and every block the model produced are not editable.
 
@@ -118,7 +118,7 @@ files and changes only the text sends the new text, an
 `{ type: "attachment", path }` reference for each record, naming the path the
 record holds, and the image's `media` by blob reference. New files arrive as
 uploads or remote files, as in a send
-([Client frames](runtime.md#client-frames)).
+([Client frames](rendering.md#client-frames)).
 
 The session puts the target message's own block in the place of each
 reference, and takes nothing from elsewhere:
@@ -130,7 +130,7 @@ reference, and takes nothing from elsewhere:
   message holds them, whatever the reference says. The block goes in place as
   the message holds it, by reference, so nothing is stored again, and the
   model reads the chart's bytes, which the session holds or reads back
-  ([Media](runtime.md#media)).
+  ([Media](transcript.md#media)).
 
 A reference that no block of the target message matches rejects the edit
 without mutation: `The edited message holds no attachment at <path>`, or
@@ -210,7 +210,7 @@ and becomes a capsule where it is dropped or pasted, and an upload still
 running stops when the edit is left. The edit request carries no file bytes: a
 new file travels as its upload, and native media the message already holds,
 such as an image, a video, or a PDF, travels as `media` by blob reference
-([Client frames](runtime.md#client-frames)). Keys are those of the composer:
+([Client frames](rendering.md#client-frames)). Keys are those of the composer:
 Enter submits, Shift+Enter inserts a newline, and an active IME composition
 does not submit.
 

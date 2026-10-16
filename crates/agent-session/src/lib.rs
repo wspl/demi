@@ -346,13 +346,13 @@ pub enum SessionEvent {
     PendingSteersChanged {
         pending_steers: Vec<PendingSteer>,
     },
-    /// The calls the model is writing changed (`runtime.md` § Calls being
+    /// The calls the model is writing changed (`rendering.md` § Calls being
     /// written).
     PendingCallsChanged {
         pending_calls: Vec<PendingCall>,
     },
     /// The node began to wait for the model's answer, with how long it has
-    /// waited, or its wait ended (`runtime.md` § Waiting for the model).
+    /// waited, or its wait ended (`rendering.md` § Waiting for the model).
     WaitingChanged {
         waited_ms: Option<u64>,
     },
@@ -413,7 +413,7 @@ pub struct Status {
     /// An agent message or a command report waits for a boundary.
     pub input: bool,
     /// A command the session's calls left running still runs, and will
-    /// report to it (`runtime.md` § Command reports).
+    /// report to it (`shell-tool.md` § Command reports).
     pub commands: bool,
 }
 
@@ -467,7 +467,7 @@ pub(crate) struct SessionShared {
     persist_gate: SerialGate,
     status: watch::Sender<Status>,
     /// What ends a shell call's window early: one more agent message or
-    /// command report, or the user's send now (`runtime.md` § The window).
+    /// command report, or the user's send now (`shell-tool.md` § The window).
     arrivals: watch::Sender<runtime::Arrivals>,
     /// Wakes the worker when an action starts.
     work: Rc<Notify>,
@@ -737,7 +737,7 @@ impl AgentSession {
     }
 
     /// How long the node has waited for the model's answer, while it waits
-    /// (`runtime.md` § Waiting for the model).
+    /// (`rendering.md` § Waiting for the model).
     pub fn waited_ms(&self) -> Option<u64> {
         self.shared.read(SessionCore::waited_ms)
     }
@@ -825,7 +825,7 @@ impl AgentSession {
 
     /// Holds the bytes the backend read of the media a frame's content
     /// references, for the send, steer or edit that follows it
-    /// (`runtime.md` § Media); what nothing references by the next request
+    /// (`transcript.md` § Media); what nothing references by the next request
     /// is let go.
     pub fn hold_media(&self, media: HeldMedia) {
         self.shared.update(|core| core.media.absorb(media));
@@ -1061,7 +1061,7 @@ impl AgentSession {
 
     /// Changes how often `command`, which one of the session's calls left
     /// running, reports from now on: every `interval_ms`, or only its end
-    /// when none (`runtime.md` § Command reports). False when the session
+    /// when none (`shell-tool.md` § Command reports). False when the session
     /// does not watch it.
     pub fn set_interval(&self, command: &CommandId, interval_ms: Option<u32>) -> bool {
         if !self
@@ -1106,7 +1106,7 @@ impl AgentSession {
     /// Stops the running action and returns once it recorded the stop;
     /// what waits to run stays, and runs once admission lets it.
     /// `hold` names the hold, as the stopped calls' results say it
-    /// (`runtime.md` § Interrupted calls), such as "the Cloud is being
+    /// (`shell-tool.md` § Interrupted calls), such as "the Cloud is being
     /// reset".
     pub async fn stop_running(&self, hold: &str) {
         let hold: Rc<str> = hold.into();

@@ -90,7 +90,7 @@ to `old/x.ts` followed by `mv old moved` shows as `moved/x.ts`.
 
 | Limit | Value | Beyond it |
 | --- | --- | --- |
-| File size, before or after | 8 MiB | The file remains in the list, with no diff or line counts for that edit. Binary content, by the one rule ([What `demi file view` shows](../agent/runtime.md#what-demi-file-view-shows)), is treated the same; other bytes are text. |
+| File size, before or after | 8 MiB | The file remains in the list, with no diff or line counts for that edit. Binary content, by the one rule ([What `demi file view` shows](../agent/shell-tool.md#what-demi-file-view-shows)), is treated the same; other bytes are text. |
 | Snapshot bytes written per job | 64 MiB | Further edits have no contents. This includes replacement snapshots when successive writes are combined. |
 | Recorded paths per job | 500 | Later paths go unrecorded; `filesTruncated` is true. |
 | Renames and removals per job | 500 | Later ones go unlisted; `filesTruncated` is true. |
@@ -214,7 +214,7 @@ A copy that cannot be read or stored leaves its entry in the list without
 copies; the list is never lost over the copies.
 
 The shell call's view in the transcript block carries the list, in its `files`
-field ([Transcript](../agent/runtime.md#transcript)): `path`, `kind`, `added`,
+field ([Transcript](../agent/transcript.md#transcript)): `path`, `kind`, `added`,
 `removed`, and `edits`. Each edit has `copies`, the blobs of the file's two
 sides, `original` before the edit and `modified` after it, or none when they
 were not stored. An added segment's original is the empty blob. For example, a
@@ -305,7 +305,7 @@ parent's own commands changed.
 - **What a page receives, it shows; it counts nothing.** Every list of
   changed files and every line count the conversation shows is computed
   once by the backend, when it stores a call's block, and stored in the
-  call's view ([Rendering boundary](../agent/runtime.md#rendering-boundary)):
+  call's view ([Rendering boundary](../agent/rendering.md#rendering-boundary)):
   the backend holds the edit copies it just stored and the whole transcript,
   so it reads no blob twice and needs no page of the transcript the page has
   not read. A list once stored never changes: where a run or a request
@@ -318,7 +318,7 @@ parent's own commands changed.
 - **The pills.** Under a shell call, its files, from the block's view: what
   the call wrote, removed (struck through) and renamed (under its new name,
   the old one in its tooltip). Under a folded work group
-  ([Work groups](../agent/runtime.md#work-groups)), the run's files as the
+  ([Work groups](../agent/rendering.md#work-groups)), the run's files as the
   latest call of the run stored them in `runFiles`: each file once, in the
   order first changed, its kind, and the lines added and removed between
   its contents before the run and after that call, so a line two calls
@@ -471,7 +471,7 @@ Only creations and modifications are reported because the conversation shows
 what the model wrote, not the state of the directory.
 
 Binary contents, by the one rule a job's stdout is judged by
-([What `demi file view` shows](../agent/runtime.md#what-demi-file-view-shows)),
+([What `demi file view` shows](../agent/shell-tool.md#what-demi-file-view-shows)),
 are never retained, whatever their size: copies of images and
 media would fill the blob store for little use, since the change view's
 history is about text. The work panel shows a binary file only as it exists

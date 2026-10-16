@@ -1,5 +1,5 @@
 //! What the conversation shows of a transcript's work, computed once as a
-//! block is stored and kept with it (`runtime.md` § Work groups,
+//! block is stored and kept with it (`rendering.md` § Work groups,
 //! `edit-tracking.md` § What the conversation shows): the run of steps each
 //! block belongs to, and for each shell call its own files, its run's and
 //! its request's. The session applies them to the blocks it writes and the
@@ -81,7 +81,7 @@ fn place(block: &Block) -> Place {
     }
 }
 
-/// The run `block` joins after `before` (`runtime.md` § Work groups): the
+/// The run `block` joins after `before` (`rendering.md` § Work groups): the
 /// run of the step before it, past the blocks the reader never sees, or a
 /// run of its own after anything that ends one; none for a block that is
 /// not a step.

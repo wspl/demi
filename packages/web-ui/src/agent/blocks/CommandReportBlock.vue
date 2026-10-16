@@ -12,7 +12,7 @@ import { provideBlockScope } from '../whole-blocks'
 
 /**
  * The ends a `wakeup` block reports, one notice row each where the block
- * lies (`runtime.md` § Command reports): a reply the agent writes after a
+ * lies (`shell-tool.md` § Command reports): a reply the agent writes after a
  * command's end never appears without its cause. A report of progress shows
  * nothing; the agent's answer to it says what it learned. The notice names
  * the call that started the command, which a click brings into view. The

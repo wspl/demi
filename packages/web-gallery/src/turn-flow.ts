@@ -257,7 +257,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   /**
    * The model is asked, as the server would tell a page when it begins to
-   * wait (`runtime.md` § Waiting for the model): from the turn's start and
+   * wait (`rendering.md` § Waiting for the model): from the turn's start and
    * the end of each step. The model's first block, or a call being written
    * once its title is, ends the wait, and so does the turn's end.
    */
@@ -280,7 +280,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
 
   /**
    * Writes a step of the agent's work in its run, as the backend stores it
-   * (`runtime.md` § Work groups): the run of the step before it, past a
+   * (`rendering.md` § Work groups): the run of the step before it, past a
    * `resume` and a Stop the user continued, which end no run; a run of its
    * own after anything else the flow writes.
    */

@@ -49,7 +49,7 @@ fn a_gap_inside_a_line_keeps_the_numbering_of_the_raw_bytes() {
 }
 
 /// A stdout is binary when its first 8 KiB hold a NUL byte or it begins as
-/// a media type, as git and GNU diff decide (`runtime.md` § What `demi file
+/// a media type, as git and GNU diff decide (`shell-tool.md` § What `demi file
 /// view` shows). Any other stdout is text, and a byte that is not UTF-8 costs
 /// one U+FFFD, where before it hid the whole output.
 #[test]

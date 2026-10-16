@@ -1,10 +1,10 @@
-//! The conversation socket (`runtime.md` § Frame protocol, `backend.md`
+//! The conversation socket (`rendering.md` § Frame protocol, `backend.md`
 //! § Page synchronization): `WS /api/conversations/:id/stream`, moved into
 //! the user's shard once upgraded. The socket decodes each message into a
 //! client frame and hands it to the conversation's agent connection, one at a
 //! time in arrival order; the connection's outbox carries every server frame
 //! back, with the failure facts of the error blocks it brings; its media are
-//! references into the owner's blobs already (`runtime.md` § Media). A frame the
+//! references into the owner's blobs already (`transcript.md` § Media). A frame the
 //! backend refuses before the agent sees it is answered with an `error`
 //! frame: one that is not a valid frame (`invalid_frame`), one sent while the
 //! conversation is archived (`conversation_archived`), an `open` of a

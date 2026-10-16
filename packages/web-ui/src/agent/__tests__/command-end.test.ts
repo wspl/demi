@@ -25,7 +25,7 @@ test('a row marks only a command that failed or was stopped', () => {
 })
 
 // An open shell row says above its output how long the command has run or
-// ran (`runtime.md` § Rendering boundary), however it ended.
+// ran (`rendering.md` § Rendering boundary), however it ended.
 test('an open row says how long its command has run, or how it ended and after how long', () => {
   expect(commandStatusLine(null, 88_000)).toBe('Running for 1m 28s')
   expect(commandStatusLine(view({ status: 'exited', exitCode: 0 }), 133_000)).toBe('Exited with 0 after 2m 13s')

@@ -74,7 +74,7 @@ async fn run_turn(
         cancel.check()?;
         // The turn needs the model's next answer from here: after its input,
         // a step's calls, or a response that the input arriving meanwhile
-        // continues (`runtime.md` § Waiting for the model).
+        // continues (`rendering.md` § Waiting for the model).
         s.update(SessionCore::start_waiting);
         if switch_first && apply_switch(s, cancel).await? {
             s.update(|core| core.push_resume(None));
@@ -343,7 +343,7 @@ async fn compact_before_request(
 /// Drops what a failed attempt wrote, cutting the history to its first
 /// `cut` blocks. The row says Requesting again, so the node waits for the
 /// model again, unless its wait runs on from before any output
-/// (`runtime.md` § Waiting for the model).
+/// (`rendering.md` § Waiting for the model).
 async fn drop_attempt(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
     let blocks = s.read(|core| core.transcript.blocks()[..cut].to_vec());
     persist::commit_rewrite(s, blocks).await?;
@@ -356,7 +356,7 @@ async fn drop_attempt(s: &SessionShared, cut: usize) -> Result<(), TurnError> {
 async fn request(s: &SessionShared, cancel: &TurnCancel) -> Result<InferenceRequest, TurnError> {
     // Only the context the model receives counts as seen: a block before
     // the last compaction boundary is summarized away, so its source tells
-    // the model again (`runtime.md` § Context).
+    // the model again (`transcript.md` § Context).
     let (seen, turn) = s.read(|core| {
         let blocks = core.transcript.blocks();
         let seen: Vec<(String, String)> = blocks[replay_start(blocks)..]
@@ -486,7 +486,7 @@ async fn read(
                 }
                 // The page says Requesting under text the model finished,
                 // so its end starts the wait again within the run, until
-                // something else shows (`runtime.md` § Waiting for the
+                // something else shows (`rendering.md` § Waiting for the
                 // model); the response's end is the run's, after which the
                 // turn ends or its next request waits. One update, so an
                 // event that shows, such as a whole call, ends that wait
@@ -515,7 +515,7 @@ fn complete_text(s: &SessionShared) {
 }
 
 /// Runs the calls the last response requested, after saving them as
-/// executing, in steps (`runtime.md` § Dispatch and failures): consecutive
+/// executing, in steps (`shell-tool.md` § Dispatch and failures): consecutive
 /// calls of a tool that runs together start together, and each other call
 /// is a step of its own. A step ends when each of its calls has returned;
 /// each result is recorded as its call returns, in its call's place, and a
@@ -600,7 +600,7 @@ async fn run_tools(
                     Err(stopped) => {
                         // The backend's shutdown leaves the calls' commands
                         // running, which the calls see as they are dropped
-                        // (`runtime.md` § Interrupted calls).
+                        // (`shell-tool.md` § Interrupted calls).
                         if cancel.reason() == Some(CancelReason::Shutdown) {
                             for handle in &handles {
                                 handle.keep_running();
@@ -682,7 +682,7 @@ async fn relist_later_calls(s: &SessionShared, tool_use_id: &str) {
 
 /// Records the result of `call`, and watches the command it left running;
 /// its media are stored before it enters the transcript, and the session
-/// holds their bytes (`runtime.md` § Media).
+/// holds their bytes (`transcript.md` § Media).
 async fn record_result(
     s: &Rc<SessionShared>,
     call: &PendingCall,

@@ -3,11 +3,11 @@
 //! job; the record holds the model's view of its output, the head while it
 //! runs and the whole output once it ended, and the pages' view, which also
 //! holds the newest output the runner sends while a page watches and the job
-//! is therefore followed (`runtime.md` § Live output). At the job's end the
+//! is therefore followed (`shell-tool.md` § Live output). At the job's end the
 //! product's keeper stores the whole output, and the runner lets the job's
-//! directory go (`runtime.md` § The whole output). Every job starts in its
+//! directory go (`shell-tool.md` § The whole output). Every job starts in its
 //! node's working directory on the Host, and nothing of an earlier
-//! one carries over (`runtime.md` § Running shell tools). A command outlives
+//! one carries over (`shell-tool.md` § Running shell tools). A command outlives
 //! the environment: its keeper records it running before its job starts, a
 //! disposed environment lets its jobs run on, and the next environment of
 //! its node takes them up again (`sessions-and-targets.md` § Recovery and
@@ -62,7 +62,7 @@ pub trait HostAccess {
 
 /// Keeps what a command leaves when it ends, before its command reads as
 /// ended: the copies of its edits (`edit-tracking.md` § Edit copies), and
-/// its whole output (`runtime.md` § The whole output). A failure to keep
+/// its whole output (`shell-tool.md` § The whole output). A failure to keep
 /// them is the keeper's to record.
 pub trait CommandKeeper {
     /// Records that `command`, which the call `tool_use_id` titled `title`
@@ -473,7 +473,7 @@ impl RemoteShellEnvironment {
             return Err("Shell command aborted".into());
         }
         // Every job starts in its node's working directory on the Host, the
-        // conversation's for the root (`runtime.md` § Running shell tools).
+        // conversation's for the root (`shell-tool.md` § Running shell tools).
         let cwd = request
             .cwd
             .unwrap_or_else(|| self.0.options.host.default_cwd().to_owned());
@@ -643,7 +643,7 @@ impl RemoteShellEnvironment {
                 // What the Host held beyond what the backend received went
                 // with the connection. The output keeps only what the
                 // command printed: the end says why it was lost
-                // (`runtime.md` § The whole output).
+                // (`shell-tool.md` § The whole output).
                 let missing = Some(Missing {
                     bytes: streams.iter().map(Received::unreceived).sum(),
                     reason: LOST.into(),
@@ -736,7 +736,7 @@ impl RemoteShellEnvironment {
             page.insert_str(0, &format!("{}\n", binary_line(length)));
         }
         // A stop of the command, or of the call that watches it, is a stop
-        // (`runtime.md` § Live output), whatever signal ended the job.
+        // (`shell-tool.md` § Live output), whatever signal ended the job.
         let stopped = running.stop.is_cancelled();
         let end = match lost {
             Some(reason) => CommandEnd::Lost { reason },
@@ -758,7 +758,7 @@ impl RemoteShellEnvironment {
         self.end(command, record, settlement, Some(job)).await;
     }
 
-    /// The media the job's commands returned (`runtime.md` § Where media
+    /// The media the job's commands returned (`shell-tool.md` § Where media
     /// are kept), each with its bytes: from the conversation owner's
     /// namespace when it holds them, otherwise read from the Host, all with
     /// one request; or why the backend does not have them.

@@ -68,7 +68,7 @@ pub trait ShellJob: Send + Sync {
     /// Reads what the job's stdout pipe holds now, without waiting for
     /// more, into [`ShellJob::output`]; the answer comes once those chunks
     /// are there, so what follows them follows everything written before
-    /// (`runtime.md` § What `demi file view` shows).
+    /// (`shell-tool.md` § What `demi file view` shows).
     fn drain_stdout(&self) -> oneshot::Receiver<()>;
 
     /// Stops the job for a signal that ends it, which its exit reports:
@@ -83,7 +83,7 @@ pub trait ShellJob: Send + Sync {
 
     /// The background tasks that keep the job running once its script has
     /// ended, each by its command line, and each change of them as they end;
-    /// empty while the script runs (`runtime.md` § Results and previews).
+    /// empty while the script runs (`shell-tool.md` § Results and previews).
     fn outliving(&self) -> watch::Receiver<Vec<String>>;
 
     /// The job's exit, once everything it ran has finished.

@@ -162,7 +162,7 @@ conversation. What a
 plugin needs the model to know beyond its index entries and help reaches the model as
 a `context` block, and so does anything that differs by user or
 conversation, or changes while a conversation lives
-([Transcript](../agent/runtime.md#block-types)). Before each provider request
+([Transcript](../agent/transcript.md#block-types)). Before each provider request
 of a node, the session asks every context source at once and takes their
 answers in a fixed order: the product's execution context first, then the
 product's [instructions](../agent/instructions.md), then each

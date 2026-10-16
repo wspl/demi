@@ -50,11 +50,11 @@ export interface ConversationState {
   phase: SessionPhase
   queue: QueuedMessage[]
   pendingSteers: PendingSteerMessage[]
-  /** The calls the model is writing, as the server lists them (`runtime.md` § Calls being written). */
+  /** The calls the model is writing, as the server lists them (`rendering.md` § Calls being written). */
   pendingCalls: PendingCall[]
   /**
    * When the root began to wait for the model's answer, as `Date.now()`, as
-   * the server tells it; null when it waits for none (`runtime.md` § Waiting
+   * the server tells it; null when it waits for none (`rendering.md` § Waiting
    * for the model).
    */
   waitingSince: number | null

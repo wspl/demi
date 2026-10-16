@@ -11,7 +11,7 @@ Every node of the tree, the root included, is the same kind of session: built by
 the same assembly, stored under the same contract ([Runtime](#runtime),
 [Persistence](#persistence)), carrying the same `demi agent` command group, and
 supervising its own children. The model-facing tool surface stays the one
-`shell` tool ([Tools](runtime.md#tools)). The web app receives the whole
+`shell` tool ([Tools](shell-tool.md#tools)). The web app receives the whole
 tree on the conversation's socket, beside the root's own frames
 ([Protocol](#protocol)).
 
@@ -877,7 +877,7 @@ The agent server does not inject project instruction files, git status, parent
 memory, or a roster dump. What the context sources tell the parent, such as
 the execution context and the skills that are on, they tell each child as
 well, before the child's first request, since every node asks them
-([Context](runtime.md#context)). A profile's child keeps the context too. An
+([Context](transcript.md#context)). A profile's child keeps the context too. An
 explore-style profile pairs a cheap model with instructions that narrow the
 work; a profile is added instructions, a model and a spawn permission, never
 a restriction the Host enforces.
@@ -1036,7 +1036,7 @@ restores its own: a tree restore, with one rule per node.
 - The messages queued in the checkpoint are sent again, in order.
 - Saved command reports are written at the child's next action, and a
   command the backend takes up again keeps it live
-  ([Command reports](runtime.md#command-reports)).
+  ([Command reports](shell-tool.md#command-reports)).
 - A child that is quiescent closes with its result. Whether it is quiescent is
   read only once its own live children are back, so a child waiting for its
   children keeps waiting.
@@ -1067,7 +1067,7 @@ delivers its completion separately.
 
 **Eviction.** A connection that closes only detaches, and a tree that has been
 detached and quiescent for 10 minutes is disposed
-([Connections and the live tree](runtime.md#connections-and-the-live-tree)). A
+([Connections and the live tree](rendering.md#connections-and-the-live-tree)). A
 tree with a live child or a running command is not quiescent, so eviction only
 ever disposes an idle root. Disposing it saves its checkpoint, and the next
 open restores the tree by the rules above, exactly as after a restart.
@@ -1113,16 +1113,16 @@ The role is a node option, not a depth. Every child has its parent's commands.
   all the user's conversations together, and each tree's depth. No command
   changes them.
 - A shell result is cut by the same rule in every node, whatever its model
-  ([Results and previews](runtime.md#results-and-previews)), and every node
+  ([Results and previews](shell-tool.md#results-and-previews)), and every node
   reads any command's whole output of the conversation
-  ([The whole output](runtime.md#the-whole-output)).
+  ([The whole output](shell-tool.md#the-whole-output)).
 - Dispose detaches the subtree without closing it: checkpoints are saved, and
   the next open restores the subtree. Abort closes it.
 
 ### Working directory
 
 Every node has a working directory on the primary Host, where its `shell`
-calls start ([Running shell tools](runtime.md#running-shell-tools)) and
+calls start ([Running shell tools](shell-tool.md#running-shell-tools)) and
 against which everything it writes with a relative path is read. For
 example, the root works in `~/Projects/demi` and spawns a child with
 `--cwd ../demi-slots/2`; the child's commands start in
@@ -1184,14 +1184,14 @@ runner-backed shell environments.
 ## Protocol
 
 Subagent traffic for the whole tree travels on the conversation's socket,
-beside the root's frames ([Frame protocol](runtime.md#frame-protocol)). Each
+beside the root's frames ([Frame protocol](rendering.md#frame-protocol)). Each
 session's inference transcript is only its own transcript frames.
 
 | Server frame | Fields | Sent |
 | --- | --- | --- |
 | `subagent` | `event` (`started`, `changed` or `closed`), `job` | When a child starts (spawn, resume, or restore), when its record changes, as when it moves to another directory, and when it closes |
 | `subagents` | `subagents`, every child's summary as the open's snapshot lists them | Each open, after the root's state |
-| `subagent_transcript_reset` | `subagentId`, `start`, `blocks` from that index on, `length`, `revision`, optional `failures` | After `started`, and for every live child when a page opens the conversation or syncs its transcript; it starts at the child's latest page ([Where a reset starts](runtime.md#where-a-reset-starts)) |
+| `subagent_transcript_reset` | `subagentId`, `start`, `blocks` from that index on, `length`, `revision`, optional `failures` | After `started`, and for every live child when a page opens the conversation or syncs its transcript; it starts at the child's latest page ([Where a reset starts](rendering.md#where-a-reset-starts)) |
 | `subagent_transcript_patch` | `subagentId`, `patches`, `revision`, optional `failures` | When a child's transcript changes |
 
 A job describes one child:
@@ -1212,23 +1212,23 @@ A job describes one child:
 | `result` | Only on a `completed` close: the child's last assistant text, at most 32 KiB |
 
 Patches and revisions follow the root's rules
-([Frame protocol](runtime.md#frame-protocol)), separately for each subagent
+([Frame protocol](rendering.md#frame-protocol)), separately for each subagent
 stream. `failures` is the backend's reading of the error blocks the frame
 carries, attached when the frame is sent and never stored; root transcript
 frames carry the same field ([Failure facts](../backend/backend.md#failure-facts)).
 A child's other session events, such as phase, queue and errors, send no
 frames; its commands' output reaches the web app as the root's does, in
 `shell_output` frames that name the child
-([Live output](runtime.md#live-output)), and its waits for the model as the
+([Live output](shell-tool.md#live-output)), and its waits for the model as the
 root's do, in `waiting` frames that name it
-([Waiting for the model](runtime.md#waiting-for-the-model)). `ConversationClient` in
+([Waiting for the model](rendering.md#waiting-for-the-model)). `ConversationClient` in
 `@demicodes/conversation-client` mirrors the three frames as client events; its
 transcript events omit `revision`, as the root's do.
 
 `parentSessionId` is the tree: the web app keys nested UI by it. Frames from any
 depth are flat on the connection; the protocol has no per-level nesting. A
 child's blocks are the same types as the root's
-([Transcript](runtime.md#transcript)). They never appear in another session's
+([Transcript](transcript.md#transcript)). They never appear in another session's
 inference transcript.
 
 An incorporated agent message is a transcript patch that adds an
@@ -1282,7 +1282,7 @@ transcript_patch                 parent + agent_message (completion receipt), at
 ## Product rendering
 
 Agent-originated inputs render as receipts, notice rows of the same form as a
-command's end ([Command reports](runtime.md#command-reports)):
+command's end ([Command reports](shell-tool.md#command-reports)):
 what happened, in the user's words, then the agent named by its
 description, dotted-underlined, as a command's notice names its call. A
 child's description is an imperative title, so it is the notice's object,
@@ -1437,7 +1437,7 @@ never count. A creation command exits independently and adds nothing to the
 Running terminal count for its child's lifetime. The Running count and its
 panel hold every command of the tree that still runs after its call
 returned, a child's as well as the root's
-([Rendering boundary](runtime.md#rendering-boundary)).
+([Rendering boundary](rendering.md#rendering-boundary)).
 
 ## Layering
 

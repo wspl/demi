@@ -97,7 +97,7 @@ test('a running inspect lists every running job; an exited inspect is that job o
   ])
 })
 
-// `runtime.md` § Rendering boundary: a page adds only the characters beyond
+// `rendering.md` § Rendering boundary: a page adds only the characters beyond
 // those it has shown, by the live view's count, and shows the tail anew
 // after a gap; characters are code points, as the backend counts them.
 test('a live view adds the characters beyond those shown, or its tail anew', () => {
@@ -286,7 +286,7 @@ test('the dock and the rows read each command and block a bounded number of time
   expect(reads.terminals).toBeLessThanOrEqual(1)
 })
 
-// `runtime.md` § Rendering boundary: a command's terminal opens with its
+// `rendering.md` § Rendering boundary: a command's terminal opens with its
 // script as a terminal shows what was typed, the page's own line.
 const COLORS = { prompt: '<p>', script: '<s>' }
 const R = '\x1b[0m'
@@ -326,7 +326,7 @@ test('the prompt line opens the terminal once, and again only when it starts ane
   expect(terminalWrite({ output: 'a\n', chars: undefined }, 'a\nb\n', undefined, prompt)).toEqual({ reset: false, text: 'b\n' })
 })
 
-// `runtime.md` § Rendering boundary: a shell row shimmers as long as its
+// `rendering.md` § Rendering boundary: a shell row shimmers as long as its
 // command runs, also after its call returned, until the command's end arrives.
 test('a shell row runs while its call runs, and after it returned until its command ends', () => {
   // The call runs; its command's first frame has not come yet.
@@ -342,7 +342,7 @@ test('a shell row runs while its call runs, and after it returned until its comm
   expect(shellRowRunning('error', undefined)).toBe(false)
 })
 
-// `runtime.md` § Rendering boundary: every shell row marks how its command
+// `rendering.md` § Rendering boundary: every shell row marks how its command
 // ended, also a command that ran on after its call returned.
 test('a returned call marks its command\'s end once the end arrives, and not from its own running view', () => {
   const returned: ToolCallBlock = {
@@ -372,7 +372,7 @@ test('a returned call marks its command\'s end once the end arrives, and not fro
   expect(shellRowEnd({ ...ended, status: 'executing' }, undefined)).toBeNull()
 })
 
-// `runtime.md` § Rendering boundary and § Live output: a page that attaches
+// `rendering.md` § Rendering boundary and § Live output: a page that attaches
 // after a reload receives each live command's view in its handshake, and
 // its row times the command from the start the server reports, not from
 // when the page loaded; the tag goes when the command's end arrives.

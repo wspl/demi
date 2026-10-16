@@ -194,7 +194,7 @@ transcript's tail row says **Requesting**, with how long it has waited since
 the send. The clock is the conversation's, not the page's: a page opened or
 reloaded during the wait, and a subagent's view shown during its wait, count
 from when the wait began
-([Waiting for the model](../agent/runtime.md#waiting-for-the-model)), so a
+([Waiting for the model](../agent/rendering.md#waiting-for-the-model)), so a
 wait that has lasted long never reads as one that just began. The message shows at once as it will stay, and delivering it to
 Demi is part of the same wait: there is no separate sending state, since
 which part of the system holds the message is no concern of the person
@@ -214,7 +214,7 @@ retries have no control; the Resume control appears only after they give up.
 
 While a turn runs, the transcript's end always shows that work goes on:
 reasoning or text as it streams, a call being written or running
-([Calls being written](../agent/runtime.md#calls-being-written)), or the
+([Calls being written](../agent/rendering.md#calls-being-written)), or the
 Requesting row. Text the model has finished, with nothing after it yet, is
 followed by the Requesting row, its clock counting from the text's end: a
 vendor that sends its calls only whole leaves that gap between a sentence
@@ -261,7 +261,7 @@ few milliseconds reads as the list twitching.
   *Requesting* in that place, and Requesting into the turn's next step; Resume
   after an error rolls the error record the same way, and when the turn's
   first step arrives it joins the run above, and the Requesting row gives way
-  ([Work groups](../agent/runtime.md#work-groups)). A change the backend
+  ([Work groups](../agent/rendering.md#work-groups)). A change the backend
   refuses rolls the row back to what it said. A taller row that rolls into a
   shorter one, as an error record into Requesting, narrows over the roll:
   the user's Continue, Resume or Retry asked for it, so the list may shrink

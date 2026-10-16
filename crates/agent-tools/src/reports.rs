@@ -1,4 +1,4 @@
-//! What a command's report tells its node (`runtime.md` § Command reports):
+//! What a command's report tells its node (`shell-tool.md` § Command reports):
 //! its progress while it runs, or its end, each with the output since the
 //! node's last look as a `shell` result shows it. A report is data; the text
 //! the model reads is rendered from it where it is replayed
@@ -18,7 +18,7 @@ pub enum EndOf {
     Exited(i32),
     /// It was stopped, by whom when that is known.
     Stopped(Option<Stopper>),
-    /// Its Host lost it, for this reason (`runtime.md` § Lost commands).
+    /// Its Host lost it, for this reason (`shell-tool.md` § Lost commands).
     Lost(String),
     /// Its record keeps no end.
     Unrecorded,
@@ -77,7 +77,7 @@ pub fn end_report(
 
 /// Gives `report` the output `status` shows since the node's last look,
 /// within what the replay bound leaves after the report's other lines, so
-/// that replay sends it unchanged (`runtime.md` § Results and previews).
+/// that replay sends it unchanged (`shell-tool.md` § Results and previews).
 pub fn fill_output(report: &mut CommandReport, status: &CommandStatus) {
     report.output.clear();
     let others = report_text(report).chars().count();

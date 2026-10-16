@@ -4,7 +4,7 @@ import type { CommandEndMark } from './command-end'
 import { t } from './locales/text'
 
 /**
- * The call a report row names (`runtime.md` § Command reports): its title, or
+ * The call a report row names (`shell-tool.md` § Command reports): its title, or
  * the command by its number when the title is not known.
  */
 export function reportTitle(report: CommandReport): string {

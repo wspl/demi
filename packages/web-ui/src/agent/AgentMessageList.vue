@@ -299,7 +299,7 @@ let revealing: AbortController | null = null
  * one way every reveal of this list goes, a search result's, a notice's
  * call's and a receipt's block's alike: a block folded in a run opens the
  * run first, and its step's row is the one placed and marked, never the
- * run's (`runtime.md` § Command reports). False when the list does not
+ * run's (`shell-tool.md` § Command reports). False when the list does not
  * hold it.
  */
 function revealAndMark(id: string): boolean {

@@ -68,7 +68,7 @@ pub(crate) fn usage_with_cached_input(
 
 /// The input of a tool call as the vendor streamed it: the JSON value, or the
 /// text itself when it is not JSON, so the agent reports the bad input
-/// instead of losing the call (`runtime.md` § Replay).
+/// instead of losing the call (`transcript.md` § Replay).
 pub(crate) fn tool_input(text: &str) -> serde_json::Value {
     serde_json::from_str(text).unwrap_or_else(|_| serde_json::Value::String(text.to_owned()))
 }

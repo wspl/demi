@@ -901,7 +901,7 @@ fn uncached(mut body: Value) -> Value {
 /// The signatures of `request`'s reasoning that `tag` marks as its
 /// vendor's, without the tag; with `checks_history`, a vendor that checks
 /// reasoning against the history before it, not the reasoning kept past a
-/// summary (`runtime.md` § Replay).
+/// summary (`transcript.md` § Replay).
 fn signatures(request: &InferenceRequest, tag: &str, checks_history: bool) -> Vec<String> {
     request
         .items

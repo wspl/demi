@@ -8,7 +8,7 @@ import type { PendingSteerMessage, PendingSubmissionState } from './types'
 /**
  * A compaction in progress: its divider, at the end of the transcript, where
  * the pass appends the marker that shows the finished one
- * (`runtime.md` § Block types).
+ * (`transcript.md` § Block types).
  */
 export interface CompactionProgressBlock {
   type: 'compaction_progress'
@@ -106,7 +106,7 @@ export function listTailBlocks(input: ListTailInput): ListTail {
  * The calls the model is writing, each as its row from the moment its
  * description is written, without a call whose block the transcript holds
  * already: the block takes its place, so the call never shows twice
- * (`runtime.md` § Calls being written). A call without its description yet
+ * (`rendering.md` § Calls being written). A call without its description yet
  * adds nothing, so the list goes on showing what it showed, Requesting or
  * the step before, rather than a placeholder title.
  */

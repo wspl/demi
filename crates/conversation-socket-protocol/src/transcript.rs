@@ -1,4 +1,4 @@
-//! How a transcript travels (`runtime.md` § Patches and versions): as
+//! How a transcript travels (`transcript.md` § Patches and versions): as
 //! patches, each naming the index of the block it touches, and a version.
 
 use std::ops::Range;
@@ -117,14 +117,14 @@ pub const PAGE_BYTES: usize = 64 * 1024;
 
 /// How long a call's input a light form keeps whole: a short script, such
 /// as one that only looks at a command, says on the folded row what the
-/// call did (`runtime.md` § Work groups).
+/// call did (`rendering.md` § Work groups).
 pub const LIGHT_INPUT_BYTES: usize = 512;
 
 /// Whole requests' `blocks` in their light form (`web-api.md` § Light
 /// form): each without what only its open row shows, and of the lists of
 /// changed files a shell call carries, only those a page shows: the run's
 /// on the latest call of each run, and the request's on the latest call of
-/// each request (`runtime.md` § Rendering boundary).
+/// each request (`rendering.md` § Rendering boundary).
 pub fn light<'a>(blocks: impl IntoIterator<Item = &'a Block>) -> Vec<Block> {
     let mut light: Vec<Block> = blocks.into_iter().map(light_block).collect();
     // From the end, the first call met with a run's or a request's list is
@@ -313,7 +313,7 @@ pub fn page(
 }
 
 /// The start of a transcript's latest page, for a reset the page named no
-/// blocks for (`runtime.md` § Where a reset starts).
+/// blocks for (`rendering.md` § Where a reset starts).
 pub fn latest_page_start(blocks: &[Block]) -> usize {
     let users: Vec<usize> = blocks
         .iter()
@@ -328,7 +328,7 @@ pub fn latest_page_start(blocks: &[Block]) -> usize {
 }
 
 /// Where a reset of `blocks` starts for a page that holds them from `from`,
-/// whose block there it holds as `edge` (`runtime.md` § Where a reset
+/// whose block there it holds as `edge` (`rendering.md` § Where a reset
 /// starts): at `from` while that block is still `edge`, and otherwise, or
 /// when the page names none or only one of them, at the start of the latest
 /// page.

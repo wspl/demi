@@ -321,7 +321,7 @@ test('retry, resume and compact resolve when their action ends, and a busy sessi
   expect(h.sent).toEqual([{ type: 'retry' }, { type: 'resume' }, { type: 'compact' }])
 })
 
-// A child's context card compacts that child (`runtime.md` § Client frames):
+// A child's context card compacts that child (`rendering.md` § Client frames):
 // the frame names it, and the wait follows the child's phase, not the root's.
 test('a compact of a subagent names it and ends when the child\'s compaction ends', async () => {
   const h = harness()
@@ -340,7 +340,7 @@ test('a compact of a subagent names it and ends when the child\'s compaction end
   expect(ended).toBe(true)
 })
 
-// A child's phase is the child's (`runtime.md` § Frame protocol): it reaches
+// A child's phase is the child's (`rendering.md` § Frame protocol): it reaches
 // the listeners and leaves the root's own phase, and what waits on it, alone.
 test('a subagent\'s phase frame is passed on and ends no action of the root', async () => {
   const h = harness()

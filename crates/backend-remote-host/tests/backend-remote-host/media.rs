@@ -1,4 +1,4 @@
-//! The media a job's commands view (`runtime.md` § Media the model views,
+//! The media a job's commands view (`shell-tool.md` § Media the model views,
 //! `commands.md` § Return media) over a real runner: each medium goes to
 //! the job whatever the command's stdout is, its line goes into the job's
 //! output as it arrives, and the backend has each one the job kept when the
