@@ -1,4 +1,4 @@
-//! The user's personal instructions (`web-api.md` § Instructions), written
+//! The user's personal instructions (`web-api-settings.md` § Instructions), written
 //! here once the edge checked the text. Each change reaches the user's pages
 //! as the `instructions` part, and the next request of every node, since the
 //! instructions source reads them at each request (`instructions.md` § When

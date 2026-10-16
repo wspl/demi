@@ -1,4 +1,4 @@
-//! Passkeys (`web-api.md` § Account API): the public sign-in with one, and
+//! Passkeys (`web-api-settings.md` § Account API): the public sign-in with one, and
 //! the caller's own, which adding takes a verified session for. A change reaches
 //! the caller's pages as the `passkeys` part.
 

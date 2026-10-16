@@ -1,5 +1,5 @@
 //! `GET/PUT /conversations/:id/draft` and `POST .../draft/replaced`
-//! (`web-api.md` § Conversation drafts): the conversation's draft, which a
+//! (`web-api-conversations.md` § Conversation drafts): the conversation's draft, which a
 //! save always changes, keeping the version it replaced when it was built on
 //! an older revision; an archived conversation reads its draft and refuses
 //! the rest.

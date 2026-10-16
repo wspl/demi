@@ -43,7 +43,7 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   archived: boolean
   /** The open tree runs with commands of plugins since turned on or off; a reload would change it. */
   pluginsChanged: boolean
-  /** The conversation's shares, its own and its answers' (`web-api.md` § Sharing). */
+  /** The conversation's shares, its own and its answers' (`web-api-conversations.md` § Sharing). */
   shares: ConversationShare[]
   createdAt: string
   cwd: string
@@ -76,7 +76,7 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   draftShown: number
   /**
    * The conversation's draft and its messages saved for later, newest first
-   * (`web-api.md` § Messages saved for later): one slot, which the backend
+   * (`web-api-conversations.md` § Messages saved for later): one slot, which the backend
    * changes in one transaction, of what the page last read of each, with
    * their revisions, and the page's own typing, saves, edits, sends and
    * deletions not landed yet (`record.ts`). The composer shows its draft.

@@ -413,7 +413,7 @@ impl InputSource for PageSource {
     }
 }
 
-/// A page's file watch on the runner (`web-api.md` § File watch): the
+/// A page's file watch on the runner (`web-api-hosts.md` § File watch): the
 /// page's subscriptions as the relay's watch keeps them, held as
 /// subscriptions of the runner's own through the connection's watches,
 /// which the backend's subscriptions share, with the same numbers.

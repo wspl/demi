@@ -1,4 +1,4 @@
-//! A conversation's draft (`web-api.md` § Conversation drafts): the message
+//! A conversation's draft (`web-api-conversations.md` § Conversation drafts): the message
 //! its composer holds before it is sent, which the backend keeps so that
 //! every page of the conversation shows it. A save names the revision its
 //! text was built on and always takes effect; one built on an older revision
@@ -65,7 +65,7 @@ pub struct DraftAnswer {
 
 /// The revisions of a conversation's draft and of its messages saved for
 /// later after a write, which every answer of a write of either carries:
-/// the page holds the two as one piece of state (`web-api.md` § Messages
+/// the page holds the two as one piece of state (`web-api-conversations.md` § Messages
 /// saved for later).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Revisions {

@@ -1,4 +1,4 @@
-//! A conversation's permission routes (`web-api.md` § Conversation
+//! A conversation's permission routes (`web-api-conversations.md` § Conversation
 //! permissions): the read of its undecided requests and a decision on one,
 //! each in the user's shard. An archived conversation has no requests and
 //! refuses a decision.

@@ -3,7 +3,7 @@ import { Slot, type SlotChange } from '../infra/slot'
 import { removeTabs, type PanelTab } from './panel-tabs'
 
 /**
- * One change of the work panel's tabs (`web-api.md` § Work panel state). An
+ * One change of the work panel's tabs (`web-api-conversations.md` § Work panel state). An
  * update sets the fields of `data` it names and removes the null ones.
  */
 export type PanelChange =
@@ -109,7 +109,7 @@ interface Unsent {
  * the panel one revision past the one the page holds is the panel with the
  * request in it; the panel is read only when an answer, or the summary,
  * names a revision past the one the page then holds, which says another
- * change came in between (`web-api.md` § Work panel state). A change leaves
+ * change came in between (`web-api-conversations.md` § Work panel state). A change leaves
  * once a panel at least as new as its answer is held, so a panel read after
  * a removal never brings the tab back. A request the backend refuses leaves
  * at once, and the panel shows as the backend has it.

@@ -1,4 +1,4 @@
-//! The provider **Test** (`web-api.md` § Model configuration and provider
+//! The provider **Test** (`web-api-settings.md` § Model configuration and provider
 //! inspection): one real, minimal request to the model the user names, with
 //! the account the user names or the active one. It runs on the acting
 //! user's shard, which builds the runtime with its own HTTP client, or over

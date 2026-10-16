@@ -79,7 +79,7 @@ test('a tab that shows a running sign-in and then leaves the page does not cance
 
 // A tab's unsent code is its own: another tab's paste, and the refusal of
 // it, leave what this tab typed; only this tab's code, once the sign-in took
-// it, empties the field (`web-api.md` § Subscription accounts). A few
+// it, empties the field (`web-api-settings.md` § Subscription accounts). A few
 // milliseconds.
 test('another tab’s paste and its refusal leave the code this tab typed; this tab’s taken code empties it', async () => {
   const pasted: string[] = []

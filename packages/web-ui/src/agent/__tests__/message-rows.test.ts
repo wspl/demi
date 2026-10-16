@@ -687,7 +687,7 @@ function finishedRows(blocks: Block[]): string[] {
   return rows
 }
 
-/** `blocks` as a page read after a reload holds them: each in its light form (`web-api.md` § Light form). */
+/** `blocks` as a page read after a reload holds them: each in its light form (`web-api-conversations.md` § Light form). */
 function reopened(blocks: Block[]): Block[] {
   const light = blocks.map((block): Block =>
     block.type === 'thinking' ? { ...block, text: '', signature: null, textLength: [...block.text.trim()].length } : block)

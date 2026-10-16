@@ -67,7 +67,7 @@ pub enum ClientFrame {
         content: Vec<ClientContent>,
     },
     /// Send a message saved for later as the composer would, as the message
-    /// `turn_id`, and remove it from the list in the same step (`web-api.md`
+    /// `turn_id`, and remove it from the list in the same step (`web-api-conversations.md`
     /// § Messages saved for later). The backend handles it; `turn_id`, the
     /// page's id for this send, becomes its turn's or its steer's, never the
     /// saved message's own.
@@ -304,7 +304,7 @@ pub enum ClientContent {
         #[garde(skip)]
         reference: String,
     },
-    /// A file the page uploaded (`web-api.md` § Uploads and media); the
+    /// A file the page uploaded (`web-api-hosts.md` § Uploads and media); the
     /// backend writes it to the Host before the session sees the content.
     Upload {
         /// The upload's attachment id.
@@ -320,7 +320,7 @@ pub enum ClientContent {
         file_name: String,
     },
     /// A file on a paired device, read at execution time
-    /// (`web-api.md` § Device files and remote references).
+    /// (`web-api-hosts.md` § Device files and remote references).
     RemoteFile {
         #[garde(length(chars, min = 1))]
         device_id: String,

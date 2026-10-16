@@ -125,7 +125,7 @@ let workspaces: WorkspaceDto[]
 let serverDrafts: Map<string, ConversationDraft>
 
 /**
- * The backend's draft routes (`web-api.md` § Conversation drafts): a save
+ * The backend's draft routes (`web-api-conversations.md` § Conversation drafts): a save
  * always takes effect and keeps the version it replaced when it was built on
  * another revision; a restore exchanges the replaced version with the draft.
  */
@@ -171,7 +171,7 @@ function revisionsOf(id: string) {
 }
 
 /**
- * The backend's routes of messages saved for later (`web-api.md` § Messages
+ * The backend's routes of messages saved for later (`web-api-conversations.md` § Messages
  * saved for later): the list, with the revision the conversation's summary
  * carries; a save of the composer's message, which empties the draft, and a
  * plain one, each under the page's id; an edit, kept by its operation id;
@@ -2872,7 +2872,7 @@ test('an archive the backend refuses keeps the open conversation\'s transcript a
   expect(loads).toEqual([])
 })
 
-// `web-api.md` § Light form: a running command's tab needs its call's
+// `web-api-conversations.md` § Light form: a running command's tab needs its call's
 // script, which the page reads whole when it holds the call light with its
 // input cut, or finds by the command when it does not hold the call at all.
 test('a running command\'s tab reads its call whole when the page holds it light or not at all', async () => {

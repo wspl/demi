@@ -237,7 +237,7 @@ pub fn take_conversation(transaction: &Transaction<'_>, token: &ShareToken) -> R
 /// the steps between them, along the root's current path. False, and
 /// nothing made, when `block` is not a complete text of that path: the
 /// page offers Share only on the text that ends a reply, and which text
-/// does is the page's to judge (`web-api.md` § Sharing).
+/// does is the page's to judge (`web-api-conversations.md` § Sharing).
 pub fn take_answer(
     transaction: &Transaction<'_>,
     token: &ShareToken,

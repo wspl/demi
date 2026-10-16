@@ -1,4 +1,4 @@
-//! Passkeys (`backend.md` § Authentication and ownership, `web-api.md`
+//! Passkeys (`backend.md` § Authentication and ownership, `web-api-settings.md`
 //! § Account API): signing in with one, without an email first, and adding
 //! one to an account, each in two requests around the browser's own step.
 //! `webauthn-rs` makes every challenge and does every check; this module

@@ -1,4 +1,4 @@
-//! The work panel (`web-api.md` § Work panel state): a conversation's tabs,
+//! The work panel (`web-api-conversations.md` § Work panel state): a conversation's tabs,
 //! which the backend changes a request of changes at a time, all or none,
 //! and never interprets, counted by a revision the summary carries, with
 //! each tab's id used once.

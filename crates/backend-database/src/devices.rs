@@ -331,7 +331,7 @@ impl ControlService {
     /// workspaces, one transaction. The workspaces' conversations first move
     /// off them, each to its workspace's directory
     /// on the device as a direct device target, which no longer runs
-    /// (`web-api.md` § Workspaces, devices, and attached hosts). A
+    /// (`web-api-hosts.md` § Workspaces, devices, and attached hosts). A
     /// workspace is a pointer: no file goes.
     pub async fn delete_device(&self, device: DeviceId) -> Result<DeviceRemoval, StorageError> {
         self.call(move |connection, _| {

@@ -1,4 +1,4 @@
-//! `/api/conversations` (`web-api.md` § Conversation creation and Fork,
+//! `/api/conversations` (`web-api-conversations.md` § Conversation creation and Fork,
 //! § Sidebar mutations, read state and page synchronization): creating a
 //! conversation under the id the web app chose, listing the caller's
 //! conversations, changing their fields one patch at a time or in a batch,

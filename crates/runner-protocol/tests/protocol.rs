@@ -617,7 +617,7 @@ fn split(effects: Vec<Effect>) -> (Vec<Subject>, Vec<Subject>, Vec<FileWatchMess
 /// `live` at once once it runs, and the subject is let go with its last
 /// key; a subscription inside the conversation's working tree also holds
 /// the tree's own, which the page hears of only under a key of its own
-/// (`web-api.md` § File watch).
+/// (`web-api-hosts.md` § File watch).
 #[test]
 fn a_pages_keys_share_one_host_subscription_and_hold_the_working_tree_while_inside_it() {
     use SubscriptionKind::*;

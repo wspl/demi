@@ -7,7 +7,7 @@ import { galleryBlobUrl, galleryHoldsBlob } from './blobs'
 const PROTOTYPE_UPLOAD_MS = 1400
 /** How long the stand-in takes to answer a claim of a stored file, one request's round trip. */
 const CLAIM_MS = 150
-/** How much of a text file the backend's answer carries (`web-api.md` § Uploads and media). */
+/** How much of a text file the backend's answer carries (`web-api-hosts.md` § Uploads and media). */
 const SNIPPET_CHARS = 160
 
 /** Prototype host: an upload that sweeps from 0 to 1 in PROTOTYPE_UPLOAD_MS, a report per frame. */

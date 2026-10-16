@@ -1,4 +1,4 @@
-//! A Host's subscriptions as the backend shares them (`web-api.md` § File
+//! A Host's subscriptions as the backend shares them (`web-api-hosts.md` § File
 //! watch, `runner.md` § Watching files): one runner subscription per
 //! subject on a connection, held by every page's watch that holds the same
 //! subject. The first holder subscribes with `fs_subscribe`, the last one to

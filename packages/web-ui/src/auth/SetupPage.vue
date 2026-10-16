@@ -41,7 +41,7 @@ const props = defineProps<{
   phase: SetupPhase
 }>()
 
-/** The most characters a name has once trimmed (`web-api.md` § Account API). */
+/** The most characters a name has once trimmed (`web-api-settings.md` § Account API). */
 const NAME_MAX_LENGTH = 80
 
 const name = defineModel<string>('name', { default: '' })

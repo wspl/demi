@@ -1,5 +1,5 @@
 /**
- * A plugin's user stream as a page holds it (`web-api.md` § User streams):
+ * A plugin's user stream as a page holds it (`web-api-hosts.md` § User streams):
  * bytes both ways between the page and the plugin's package on the
  * conversation's Host, over the product's WebSocket or a gallery's fixture.
  * What the bytes mean is the plugin's own protocol.

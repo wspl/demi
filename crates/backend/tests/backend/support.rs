@@ -713,7 +713,7 @@ pub struct TestBackend {
     http: reqwest::Client,
 }
 
-/// A page's synchronization channel (`web-api.md` § Page synchronization).
+/// A page's synchronization channel (`web-api-sync.md` § Page synchronization).
 pub struct SyncChannel {
     socket: tokio_tungstenite::WebSocketStream<
         tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,

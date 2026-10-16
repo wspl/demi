@@ -1,5 +1,5 @@
 //! The files the agent gives the user (`commands.md` § Attachment commands,
-//! `web-api.md` § Uploads and media): `demi attachment upload` copies files
+//! `web-api-hosts.md` § Uploads and media): `demi attachment upload` copies files
 //! beside the invocation into the conversation as `a1`, `a2`, …, and a file
 //! it cannot copy fails with its own line while the others are stored; the
 //! page reads an attachment by its number from the conversation's database,

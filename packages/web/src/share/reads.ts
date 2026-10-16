@@ -12,7 +12,7 @@ import {
 } from '../api/generated/web-api'
 
 /**
- * The public routes of share `token` (`web-api.md` § Sharing), the only
+ * The public routes of share `token` (`web-api-conversations.md` § Sharing), the only
  * ones its page calls: the page's Content Security Policy lets it connect
  * to nothing else.
  */
@@ -45,7 +45,7 @@ export function sharedPage(page: SharedTranscriptPage): { start: number; length:
 
 /**
  * The reads of share `token`'s pages, from its latest back as the reader
- * scrolls, as a conversation's history reads its pages (`web-api.md`
+ * scrolls, as a conversation's history reads its pages (`web-api-conversations.md`
  * § Pages): `held` is what the page holds, and `hold` takes what a read
  * added. A page one read is fetching already is not fetched twice. Nothing
  * streams to a share, so each page's length stands.

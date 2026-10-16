@@ -1630,7 +1630,7 @@ async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_
 
 // Over a second: the Cloud boots twice, and a paired device's runner starts.
 //
-// A page's watch of an attached Cloud does not wake it (`web-api.md` § File
+// A page's watch of an attached Cloud does not wake it (`web-api-hosts.md` § File
 // watch): stopped, it answers `offline` and closes, and once something else
 // woke it, the page's next watch is live there.
 #[tokio::test]

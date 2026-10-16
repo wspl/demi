@@ -1,4 +1,4 @@
-//! A subscription entry's accounts (`web-api.md` § Subscription accounts,
+//! A subscription entry's accounts (`web-api-settings.md` § Subscription accounts,
 //! `providers.md` § Login and publication, `usage-and-quota.md` § Vendor
 //! quota): signed-in accounts sealed and never returned, explicit selection,
 //! device logins published once, held entries, cancellation, and

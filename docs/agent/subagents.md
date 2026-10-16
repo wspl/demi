@@ -494,7 +494,7 @@ Profiles are the user's own. One list serves all of the user's conversations,
 in both instance modes; it is stored in the control store with the user's
 other settings ([Control records](../backend/storage.md#control-records)), and
 the settings page's Subagents section creates, edits, enables, disables and
-deletes its profiles ([Subagents](../product/web-api.md#subagents)). No
+deletes its profiles ([Subagents](../product/web-api-settings.md#subagents)). No
 plugin declares a profile, and with no profile configured, every child
 inherits.
 
@@ -643,7 +643,7 @@ next spawn on its agents can start `explore` and `reviewer`.
   watch; one with no directory yet, or whose device is offline, offers
   Global Workflow and No Subagents. A new conversation starts with the choice last
   made in its project, or outside projects, No Subagents until one is made
-  ([User preferences](../product/web-api.md#user-preferences)). **Global Workflow** applies
+  ([User preferences](../product/web-api-settings.md#user-preferences)). **Global Workflow** applies
   the user's Subagents settings, the profiles of Settings › Subagents. **No Subagents** turns subagents off for this
   conversation, as the settings' switch does for all of them. **A workflow**
   applies its profiles in place of the user's, for this conversation only,
@@ -1241,7 +1241,7 @@ state frames and then, for each live agent of the tree in depth-first spawn
 order, `subagent` with `started` and `subagent_transcript_reset`. A page
 learns of the subagents that no longer run from the conversation's list of
 subagents, and reads a subagent's transcript, live or not, by its pages when
-it shows it ([Conversation history](../product/web-api.md#conversation-history)). A transcript
+it shows it ([Conversation history](../product/web-api-conversations.md#conversation-history)). A transcript
 sync replays the live children the same way.
 
 Every open, a first one or one after the connection dropped, sends

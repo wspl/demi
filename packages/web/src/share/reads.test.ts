@@ -6,7 +6,7 @@ import type { SharedItem } from '@demicodes/web-ui/share/shared-items'
 import { heldBlocks, type HeldTranscript } from '@demicodes/web-ui/transport/protocol'
 import { EMPTY_SHARE, createShareReads, shareBlobUrl, sharePath } from './reads'
 
-// A shared page's attachments (`web-api.md` § Sharing): each is asked of the
+// A shared page's attachments (`web-api-conversations.md` § Sharing): each is asked of the
 // share's own route and loads from the share's blob route, and one the
 // snapshot lacks shows missing, as in the conversation. The backend is a
 // stubbed fetch. A few milliseconds.

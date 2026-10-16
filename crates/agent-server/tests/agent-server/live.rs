@@ -168,7 +168,7 @@ async fn a_detached_tree_stays_live_while_its_command_runs_and_goes_after_its_id
 }
 
 /// A command that outlives its turn is the conversation's work, but it does
-/// not make the conversation running (`web-api.md` § Sidebar mutations and
+/// not make the conversation running (`web-api-conversations.md` § Sidebar mutations and
 /// read state): once the turn ended the tree no longer works, while the
 /// command keeps the tree live.
 #[tokio::test(flavor = "local", start_paused = true)]

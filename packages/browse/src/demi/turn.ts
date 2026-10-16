@@ -4,7 +4,7 @@
 // the agent's work): its composer offers Stop and its transcript ends in
 // Requesting while the message is on its way, before the backend has it.
 // The backend counts a conversation running while its tree works without
-// the user (`web-api.md` § Sidebar mutations and read state), so this also
+// the user (`web-api-conversations.md` § Sidebar mutations and read state), so this also
 // waits for the subagents and background jobs the turn started.
 // `demi.message` waits only for the turn its message starts, which the
 // root's latest ended turn names once it ends.

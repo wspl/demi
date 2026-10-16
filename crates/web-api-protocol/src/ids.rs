@@ -93,7 +93,7 @@ demi_shared_types::id!(
 demi_shared_types::id!(
     /// A message saved for later's id, which the page chooses: a UUID. A save
     /// sent again with the same id and content is the same save
-    /// (`web-api.md` § Messages saved for later).
+    /// (`web-api-conversations.md` § Messages saved for later).
     SavedMessageId,
     check = uuid,
     error = NotUuid,
@@ -103,7 +103,7 @@ demi_shared_types::id!(
 demi_shared_types::id!(
     /// An edit of a message saved for later, which the page names: a UUID.
     /// The backend keeps each edit's answer by it for a day, so the same edit
-    /// sent again answers as it first did (`web-api.md` § Messages saved for
+    /// sent again answers as it first did (`web-api-conversations.md` § Messages saved for
     /// later).
     SavedEditId,
     check = uuid,

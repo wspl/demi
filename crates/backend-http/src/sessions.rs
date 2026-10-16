@@ -1,5 +1,5 @@
 //! The account's signed-in browsers, verifying the session, and handing the
-//! account to a phone by a code (`web-api.md` § Account API, `backend.md`
+//! account to a phone by a code (`web-api-settings.md` § Account API, `backend.md`
 //! § Authentication and ownership). A session that starts or ends reaches
 //! the account's pages as the `sessions` part.
 

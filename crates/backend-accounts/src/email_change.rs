@@ -1,4 +1,4 @@
-//! Changing an account's email address (`web-api.md` § Account API): the
+//! Changing an account's email address (`web-api-settings.md` § Account API): the
 //! current password starts a challenge, and only the six-digit code sent to
 //! the new address changes the login identity.
 

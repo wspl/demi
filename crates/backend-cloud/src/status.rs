@@ -1,4 +1,4 @@
-//! The Cloud's status as the page reads it (`web-api.md` § Cloud): the
+//! The Cloud's status as the page reads it (`web-api-hosts.md` § Cloud): the
 //! device, its lifecycle state, its latest reset, why it last failed, its
 //! filesystems' capacities and their limits, and whether its system is on
 //! another image than the configured one. Reading it never wakes the Cloud.

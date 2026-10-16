@@ -124,10 +124,10 @@ const props = withDefaults(defineProps<{
   /**
    * Finds the call that started a command a report names when the window
    * shown does not hold it: the host reads where it lies and sets `reveal`
-   * (`web-api.md` § Subagents and commands). Absent, such a title is no link.
+   * (`web-api-conversations.md` § Subagents and commands). Absent, such a title is no link.
    */
   revealCommand?: (commandId: string) => void
-  /** Reads a block whole for a row the page holds light (`web-api.md` § Light form); absent, no row is light. */
+  /** Reads a block whole for a row the page holds light (`web-api-conversations.md` § Light form); absent, no row is light. */
   readBlock?: BlockReader
   /**
    * The usage limits of the account a provider entry runs on, which a

@@ -21,7 +21,7 @@ import { conversationStates } from './states'
  * The plugin pages' host in the product (`plugins.md` § The page): each
  * plugin's user state from the product state the sync channel keeps, which
  * drops a plugin the user turned off; its conversation states by revision;
- * its calls over the plugin call routes (`web-api.md` § Plugin calls), these
+ * its calls over the plugin call routes (`web-api-sync.md` § Plugin calls), these
  * calls and the states' reads waiting in the HTTP client while the backend
  * cannot be reached; its
  * user streams; what a conversation's primary Host holds of its packages,

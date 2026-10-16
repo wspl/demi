@@ -1,4 +1,4 @@
-//! A user's subagent profiles (`web-api.md` § Subagents): the rules a
+//! A user's subagent profiles (`web-api-settings.md` § Subagents): the rules a
 //! profile's name and texts follow, which a body passes before it is
 //! written, and how a patch merges into a stored profile. The model a body
 //! names is checked against its entry's catalog by the user's shard.

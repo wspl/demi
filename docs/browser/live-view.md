@@ -12,7 +12,7 @@ uses belong to [Native runtime](../execution/native-runtime.md#user-streams),
 [Runner](../execution/runner.md#service-streams),
 [Sessions and targets](../execution/sessions-and-targets.md#host-operations) and
 [Conversation idle](../execution/resource-lifecycle.md#activity); the routes belong to
-[Web API](../product/web-api.md#user-streams). The gallery shows what the view looks like.
+[Web API](../product/web-api-hosts.md#user-streams). The gallery shows what the view looks like.
 
 ## What the user sees
 
@@ -76,7 +76,7 @@ User's browser (Demi web)   Backend                        Host (Cloud or paired
 
 The live view is the content of the work panel's `browser`
 [tab kind](../product/web-application.md#work-panel). The backend keeps the
-panel's tabs ([Work panel state](../product/web-api.md#work-panel-state)), and
+panel's tabs ([Work panel state](../product/web-api-conversations.md#work-panel-state)), and
 `plugin-browser` takes part in its kind's tabs on the backend
 ([Panel kinds](../architecture/plugins.md#panel-kinds)). A `browser` tab's
 `data` is:
@@ -348,7 +348,7 @@ keeps looking at `t3`.
 5. Once the runner has opened the stream, the edge completes the WebSocket
    upgrade and relays bytes between the socket and the two pipes until the
    stream ends. A refusal before this step is an HTTP answer
-   ([User streams](../product/web-api.md#user-streams)).
+   ([User streams](../product/web-api-hosts.md#user-streams)).
 6. The live view module answers with the tab list and the watched tab's first
    key frame.
 
@@ -806,8 +806,8 @@ been checked either.
 The `browser` kind reads the conversation browser's tabs as
 `plugin-browser`'s conversation state, for the tabs' titles, and moves its
 bound tabs through the plugin's page methods, called for the conversation the
-panel shows ([Conversation state of plugins](../product/web-api.md#conversation-state-of-plugins),
-[Plugin calls](../product/web-api.md#plugin-calls)). Opening and closing
+panel shows ([Conversation state of plugins](../product/web-api-sync.md#conversation-state-of-plugins),
+[Plugin calls](../product/web-api-sync.md#plugin-calls)). Opening and closing
 browser tabs for panel tabs is the plugin's own work on the backend
 ([A browser tab in the panel](#a-browser-tab-in-the-panel)). The state, the
 methods and that work run the operations the agent's commands run,

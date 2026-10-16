@@ -9,7 +9,7 @@ kinds of file they preview, how a view picks one, how the bytes reach the
 page, when a transfer ends, and what file content may do in the page. It also
 owns how a message shows the files it names, and how a tool call shows the
 images and videos its result carries. The routes belong to
-[Web API](web-api.md#file-text-and-working-tree-changes), the runner's byte
+[Web API](web-api-hosts.md#file-text-and-working-tree-changes), the runner's byte
 transport to [Runner](../execution/runner.md#file-contents), and Host access
 to [Sessions and targets](../execution/sessions-and-targets.md#host-operations).
 The gallery shows what each preview looks like.
@@ -343,7 +343,7 @@ conversation does not have shows its alt text with *No attachment a9 in this
 conversation*. A number above the conversation's latest names one still to
 come: for example, a reply names `a9` before the agent uploads it, and shows
 it missing; the upload stores `a9`, the conversation's summary carries 9 as
-its latest attachment ([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)),
+its latest attachment ([Sidebar mutations and read state](web-api-conversations.md#sidebar-mutations-and-read-state)),
 and that reply and every later one that names `a9` show the image. A
 number up to the latest that has no attachment never gets one. The product's instructions tell the model that its messages
 render as Markdown, which of the two to use, and that a file it names is a
@@ -610,7 +610,7 @@ The bytes come from the blob route
 ([Media by reference](../backend/backend.md#media-by-reference)). The user's
 browser keeps its answers, so opening an image large loads nothing again. A
 player reads a video by byte range
-([Uploads and media](web-api.md#uploads-and-media)): Safari plays a video only
+([Uploads and media](web-api-hosts.md#uploads-and-media)): Safari plays a video only
 from a server that answers ranges, and every player seeks with them.
 
 ## Changes

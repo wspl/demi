@@ -3,7 +3,7 @@ import type { CredentialFieldKind } from '../permissions/types'
 import type { SentenceText } from '../ui/ui-text'
 import type { SettingsCredentialDraftField } from './types'
 
-/** The limits of a credential (`web-api.md` § Credentials). */
+/** The limits of a credential (`web-api-conversations.md` § Credentials). */
 export const NAME_MAX = 80
 export const LABEL_MAX = 80
 export const FIELD_NAME_MAX = 32

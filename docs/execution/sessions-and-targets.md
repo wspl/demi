@@ -512,7 +512,7 @@ same way and ends the same way: a transition ends it instead of waiting for it
 to finish. A call that operates the Host, such as closing a tab, is activity; a
 look at what runs there, such as listing the tabs, is not.
 
-The [file watch](../product/web-api.md#file-watch), which carries the Host's
+The [file watch](../product/web-api-hosts.md#file-watch), which carries the Host's
 reports of changed files to a page, is admitted and ended as a user stream is,
 and never wakes a stopped Cloud, whose files cannot change. It is not
 activity: a page that shows files does not keep a Cloud awake. When a stopped
@@ -534,9 +534,9 @@ touches no conversation's files. This table names every way to a Host:
 | The conversation's host access | The agent's tool calls and shell jobs, with the plugins' Host directories each job needs; attachments, the working tree, file text and file transfers; one-shot user calls that start work, such as opening a conversation browser tab | The conversation's file gate while the operation runs, and, for a Cloud, the Cloud's admission | Woken; a running reset is waited for |
 | User-stream admission, a form of the conversation's host access | User streams; one-shot user calls that must not wake the Host; a plugin's [reads of the conversation's files](../architecture/plugins.md#reading-a-conversations-files) | The file gate while admitting only | Not woken: the caller learns that the Host is stopped |
 | [Lifecycle access](#lifecycle-access), a form of the conversation's host access | The conversation release | Nothing: the release is a runner message, sent only to a connected runner | Not woken: the Cloud hears the release after its next wake |
-| Device access | A [direct channel](direct-channel.md) between the page and a paired device's runner, which carries the page's user streams, file transfers, file text, listings and file watch of the user's conversations on that device, and the relay probes that measure its paths; the [device log](../product/web-api.md#device-log); browsing a paired device's directories to choose a target, and reading
+| Device access | A [direct channel](direct-channel.md) between the page and a paired device's runner, which carries the page's user streams, file transfers, file text, listings and file watch of the user's conversations on that device, and the relay probes that measure its paths; the [device log](../product/web-api-hosts.md#device-log); browsing a paired device's directories to choose a target, and reading
 the [workflows](../agent/subagents.md#workflows-of-a-project) of a directory
-for a new conversation there, on a paired device or the user's Cloud, with the [file watch](../product/web-api.md#file-watch) that keeps the dialog's listings current; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show, from the Claude Code machine | Nothing: the caller must own the device, or, for the Claude Code machine, own a Claude Code entry; its runner must be connected | Not woken |
+for a new conversation there, on a paired device or the user's Cloud, with the [file watch](../product/web-api-hosts.md#file-watch) that keeps the dialog's listings current; the [Claude Code versions](../providers/claude-code.md#what-the-user-sees) a provider's settings show, from the Claude Code machine | Nothing: the caller must own the device, or, for the Claude Code machine, own a Claude Code entry; its runner must be connected | Not woken |
 | Machine access | Creating a Cloud project; checking the directory of a `demi host move` to the Cloud; [placing a provider's process](../providers/claude-code.md#where-it-runs), a [Claude Code sign-in](../providers/claude-code.md#accounts-and-sign-in) and its usage probe, on the [Claude Code machine](../cloud/managed-hosts.md#the-claude-code-machine) | The machine's admission; no file gate | Woken; a running reset is waited for |
 
 Device access and machine access touch no conversation's files, so they take no

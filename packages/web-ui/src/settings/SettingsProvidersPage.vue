@@ -818,7 +818,7 @@ function endpointCheck(value: string) {
                     />
                   </template>
                   <!-- A sign-in that names the account replaces its sign-in
-                       (`web-api.md` § Subscription accounts), so it skips the warning
+                       (`web-api-settings.md` § Subscription accounts), so it skips the warning
                        about several accounts. -->
                   <Button
                     size="sm"

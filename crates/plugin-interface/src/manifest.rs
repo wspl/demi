@@ -351,7 +351,7 @@ impl Method {
 }
 
 /// Whom a page method is called for, which decides its route
-/// (`web-api.md` § Plugin calls), and whom a page state is of.
+/// (`web-api-sync.md` § Plugin calls), and whom a page state is of.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Scope {

@@ -1,4 +1,4 @@
-//! Sharing (`sharing.md`, `web-api.md` § Sharing): an answer's share holds
+//! Sharing (`sharing.md`, `web-api-conversations.md` § Sharing): an answer's share holds
 //! the message and the texts of the reply to it; a conversation's holds the
 //! root's messages and texts, with the media they show, as they were when it
 //! was taken until the owner takes it again, and in place of the agent's

@@ -37,7 +37,7 @@ An entry's catalog comes from one source, chosen in this order:
 1. **The entry's configured model list**, when it has one. Only API-key entries
    have one. It is user configuration: no fetched catalog changes it and a
    refresh never clears it; removing the list returns the entry to the next
-   source ([Web API](../product/web-api.md#model-configuration-and-provider-inspection)).
+   source ([Web API](../product/web-api-settings.md#model-configuration-and-provider-inspection)).
    A configured model states its facts directly. Its Fast tier, when it names
    one, is its only service tier, and it is taken to call tools.
 2. **Its vendor's model list in models.dev**, when the entry was added from the
@@ -363,7 +363,7 @@ that no refresh has filled, carry the Unix epoch as their `sourceFetchedAt`,
 because they were never fetched. The backend builds each model's selection
 ([Request parameters](#request-parameters)) and sends it with the model, so
 the web app never converts a catalog model itself.
-[Web API](../product/web-api.md#model-configuration-and-provider-inspection)
+[Web API](../product/web-api-settings.md#model-configuration-and-provider-inspection)
 defines the route.
 
 ### In the web app
@@ -409,7 +409,7 @@ facts again at every inference boundary, so an edit of a model's limits reaches
 the next request of a running conversation, while the conversation's thinking
 and tier choices stay as the user made them. A model that the configured list
 does not name fails the request. The choice a new conversation starts with is
-a [user preference](../product/web-api.md#user-preferences).
+a [user preference](../product/web-api-settings.md#user-preferences).
 
 ### A conversation's model settings
 
@@ -418,7 +418,7 @@ holds, with the provider entry, the model and its facts, the thinking setting
 and the service tier. Every tab and every device shows that value, a change
 made anywhere reaches all of them, and the conversation's next provider request
 uses it
-([Sidebar mutations and read state](../product/web-api.md#sidebar-mutations-and-read-state)).
+([Sidebar mutations and read state](../product/web-api-conversations.md#sidebar-mutations-and-read-state)).
 The page shows and changes the value as its settings, the parts a user
 chooses:
 
@@ -591,7 +591,7 @@ The limits a model offers depend on its window:
   reaches running conversations from their next check, and starts no
   compaction by itself.
 
-The user's limits are a [user preference](../product/web-api.md#user-preferences),
+The user's limits are a [user preference](../product/web-api-settings.md#user-preferences),
 which every page of the user receives. The Models & providers settings do not
 show them: the model menu is the one place to see and change a model's
 limit.

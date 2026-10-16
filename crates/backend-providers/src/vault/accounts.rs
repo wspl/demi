@@ -1,5 +1,5 @@
 //! The product's rules over a subscription entry's accounts
-//! (`providers.md` § Login and publication, `web-api.md` § Subscription
+//! (`providers.md` § Login and publication, `web-api-settings.md` § Subscription
 //! accounts): every account comes from a sign-in, selecting an account is
 //! explicit, and removing the active account selects the entry's next one,
 //! or leaves it with none. A change of accounts invalidates the entry's

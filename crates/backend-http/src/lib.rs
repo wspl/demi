@@ -481,7 +481,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
     edge(app, closing, state)
 }
 
-/// The public routes of the shares (`web-api.md` § Sharing): no session
+/// The public routes of the shares (`web-api-conversations.md` § Sharing): no session
 /// gate, the token their only key, each answer with the headers that keep
 /// the token and the snapshot out of indexes, referrers and caches.
 fn public_shares() -> Router<AppState> {

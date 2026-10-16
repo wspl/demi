@@ -43,7 +43,7 @@ import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
 
 /**
  * What came back for a call that failed, which a page says for a reason it
- * has no words for (`web-api.md` § Plugin calls): the backend's answer, by
+ * has no words for (`web-api-sync.md` § Plugin calls): the backend's answer, by
  * its status line such as `500 Internal Server Error`; none, as for a
  * network failure or a timeout; or an answer the page could not read.
  */

@@ -1,5 +1,5 @@
 /**
- * The file watches of the page (`web-api.md` § File watch): a
+ * The file watches of the page (`web-api-hosts.md` § File watch): a
  * conversation's, `WS /conversations/:id/fs/watch` or its direct channel's
  * `watch`, which also carries an attached host's subscriptions under their
  * `host`, and a device's folder dialog's, `WS /devices/:deviceId/fs/watch`.

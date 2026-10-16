@@ -49,7 +49,7 @@ over the manager's Unix socket.
 | `edge` | `backend-http` | The listener and router, the session gate, request extractors and body limits, error codes, installer, native artifact and web app asset routes, runner acceptance, and the byte copies of file transfers, pipes and user streams | [Web API](../product/web-api.md) |
 | `shard` | `backend-user-shard` | Shard threads, each user's shard, calls into it, the shared services every shard is given, socket adoption and the page socket both of a page's sockets are served through | [Runtime model](#runtime-model) |
 | `config` | `demi-backend` | The typed configuration, validated at startup, and the instance secret with the keys derived from it | [Configuration](#configuration) |
-| `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences and subagent settings | [Authentication and ownership](#authentication-and-ownership), [Product](../product/users.md#user-system), [Web API](../product/web-api.md#user-preferences) |
+| `auth`, `settings` | `backend-accounts` | Accounts, password hashing, web sessions, login lockout, email-change delivery; per-user preferences and subagent settings | [Authentication and ownership](#authentication-and-ownership), [Product](../product/users.md#user-system), [Web API](../product/web-api-settings.md#user-preferences) |
 | `sync` | `backend-page-sync`, `backend-user-shard` | The registry that marks changes on each user's channels (`backend-page-sync`); the pages' synchronization channels with the product state and the parts that changed (`backend-user-shard`) | [Page synchronization](#page-synchronization) |
 | `conversation` | `backend-user-shard` | Agent-tree hosting with the agent server's dependencies, the product's instructions and the execution context source, frame scoping, attachment references, history and Fork, summaries and titles, the Claude Code CLI's work on the Claude Code machine, and the provider test | [Sessions and targets](../execution/sessions-and-targets.md) |
 | `host_access` | `backend-host-access` | The conversation's host access, target resolution and transitions, file transfers, uploads, remote files and user streams with the leases the edge holds of them, the nodes' shell environments with the keeper that stores what a command leaves when it ends, the installation of the plugins' Host directories before a job, the product's `demi host` and `demi attachment` groups | [Host operations](../execution/sessions-and-targets.md#host-operations) |
@@ -362,7 +362,7 @@ Each page also holds one synchronization channel, `WS /api/sync`. It sends the
 page the product state when it connects, then every part of it that changes:
 the account, preferences, providers, workspaces, devices, the Cloud, each
 plugin's state, and each conversation's summary
-([Page synchronization](../product/web-api.md#page-synchronization)). No page
+([Page synchronization](../product/web-api-sync.md#page-synchronization)). No page
 polls. The socket moves into the user's shard, as a conversation socket does.
 For example, a rename commits in the user's shard; the shard then marks the
 conversation's summary as changed on each of the user's open channels, and the
@@ -431,7 +431,7 @@ Other content downloads as `application/octet-stream`; responses include
 An upload stores the file's bytes in the caller's blob namespace with an
 attachment record. The backend reads the file's media type from its bytes,
 and for a text file a short opening snippet; the upload response carries both
-([Web API](../product/web-api.md#uploads-and-media)), so the composer shows
+([Web API](../product/web-api-hosts.md#uploads-and-media)), so the composer shows
 them without reading the file itself.
 
 Send, steer and edit content refers to uploads and remote files with typed
@@ -458,7 +458,7 @@ A remote-file reference retains its device and absolute path instead of
 copying bytes. The backend checks ownership and connectivity before adding
 attached-host grants; the model reads the file later through the host command.
 Its contents can change before that read.
-[Web API](../product/web-api.md#device-files-and-remote-references) defines
+[Web API](../product/web-api-hosts.md#device-files-and-remote-references) defines
 the wire shape.
 
 Resolving uploads keeps the socket's frame order
@@ -480,7 +480,7 @@ result as `failures`, keyed by block id, beside the blocks:
   `transcript_reset` and `transcript_patch` frames, for the blocks each frame
   carries.
 - The history routes attach it to the blocks of a page and to a block read
-  whole ([Conversation history](../product/web-api.md#conversation-history)).
+  whole ([Conversation history](../product/web-api-conversations.md#conversation-history)).
 
 One backend function reads the failures of a list of blocks, and both paths
 call it. The facts are never stored, and an error block is sent whole, as it

@@ -1,4 +1,4 @@
-//! Shares on the owner's shard (`sharing.md`, `web-api.md` § Sharing): the
+//! Shares on the owner's shard (`sharing.md`, `web-api-conversations.md` § Sharing): the
 //! owner makes a share, makes a conversation's share's list again and
 //! removes a share, each announced on the owner's pages through the conversation's
 //! summary, which lists its shares; and a share's reader reads what its

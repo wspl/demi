@@ -546,7 +546,7 @@ export interface SettingsSessionHost {
 /** An account's role (`users.md` § User system). */
 export type UserRole = 'master' | 'admin' | 'user'
 
-/** An account as Settings › Users lists it (`web-api.md` § Account API), its password left out. */
+/** An account as Settings › Users lists it (`web-api-settings.md` § Account API), its password left out. */
 export interface SettingsUser {
   id: string
   nickname: string

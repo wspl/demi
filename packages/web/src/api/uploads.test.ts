@@ -3,7 +3,7 @@ import { deferred, waitFor } from '@demicodes/utils'
 import { waitForBackendWith } from './client'
 import { claimStoredFile, uploadAttachment } from './uploads'
 
-// An upload from the composer (`web-api.md` § Uploads and media): the page
+// An upload from the composer (`web-api-hosts.md` § Uploads and media): the page
 // names the file's SHA-256 first and sends its bytes only when the backend
 // does not hold them, naming the same SHA-256 again.
 

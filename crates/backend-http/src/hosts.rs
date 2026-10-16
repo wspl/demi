@@ -1,4 +1,4 @@
-//! A conversation's attached hosts (`web-api.md` § Workspaces, devices, and
+//! A conversation's attached hosts (`web-api-hosts.md` § Workspaces, devices, and
 //! attached hosts; `sessions-and-targets.md` § Attached hosts): the list,
 //! with each device's connection, and a detach, which is a transition and
 //! reaches the conversation's nodes at their next context block. The

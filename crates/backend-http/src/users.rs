@@ -1,4 +1,4 @@
-//! Account administration (`web-api.md` § Account API; `users.md` § User
+//! Account administration (`web-api-settings.md` § Account API; `users.md` § User
 //! system): administrators list every account, create accounts of a role
 //! they outrank with a first password the server makes, make another first
 //! password, change a role, disable and enable, sign an account out

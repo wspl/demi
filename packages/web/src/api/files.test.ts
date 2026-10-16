@@ -2,7 +2,7 @@ import { afterEach, expect, test } from 'bun:test'
 import { FileBrowserError } from '@demicodes/web-ui/files/types'
 import { fileReads, rawFileContents } from './files'
 
-// A raw route as the file views load it (`web-api.md` § File text and working
+// A raw route as the file views load it (`web-api-hosts.md` § File text and working
 // tree changes): URLs the web browser fetches itself, and HEAD answers read as
 // file descriptions.
 

@@ -1,7 +1,7 @@
 import { apiRequest, jsonBody, readResponse } from './client'
 import { shareAnswerSchema, type ShareAnswer, type ShareTarget } from './generated/web-api'
 
-/** A conversation's owner routes for its shares (`web-api.md` § Sharing). */
+/** A conversation's owner routes for its shares (`web-api-conversations.md` § Sharing). */
 function sharesPath(conversationId: string): string {
   return `/conversations/${encodeURIComponent(conversationId)}/shares`
 }

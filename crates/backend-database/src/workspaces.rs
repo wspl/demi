@@ -3,7 +3,7 @@
 //! a pointer: it owns no files, and the user has one per device and
 //! directory. A new workspace joins the user's others at the end of their
 //! order. It keeps the model settings and the workflow
-//! the project's next conversation starts with (`web-api.md` § User
+//! the project's next conversation starts with (`web-api-settings.md` § User
 //! preferences).
 
 use demi_shared_types::{Timestamp, WorkflowChoice};

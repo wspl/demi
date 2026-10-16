@@ -145,7 +145,7 @@ test("a refusal rejects with the plugin's own reason and the answer's status", a
   })
 })
 
-// `web-api.md` § Plugin calls: a page says the status's standard phrase where
+// `web-api-sync.md` § Plugin calls: a page says the status's standard phrase where
 // the answer carried none, and an answer it could not read as such, never as
 // no answer.
 test('an answer without a status text names the standard phrase, and one that does not read rejects as unreadable', async () => {

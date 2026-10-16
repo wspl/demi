@@ -1,4 +1,4 @@
-//! Which blocks a page of a transcript holds (`web-api.md` § Pages): whole
+//! Which blocks a page of a transcript holds (`web-api-conversations.md` § Pages): whole
 //! requests within the page budget, from where the page is taken, in their
 //! light form.
 

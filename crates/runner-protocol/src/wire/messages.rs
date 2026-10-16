@@ -1541,7 +1541,7 @@ impl FileHash {
 
 /// A file's version, from its size and modification time in milliseconds:
 /// a weak ETag, the one the web app's file routes answer
-/// (`web-api.md` § File text and working tree changes). A negative time is
+/// (`web-api-hosts.md` § File text and working tree changes). A negative time is
 /// written with a minus sign, as JavaScript's `toString(16)` writes it.
 pub fn file_version(size: u64, modified_ms: i64) -> String {
     let time = if modified_ms < 0 {
@@ -1709,7 +1709,7 @@ pub enum Looked {
 }
 
 /// A working tree's changes, as `git status` lists them. The web app
-/// receives it too, beside the directory it lists (`web-api.md` § File text
+/// receives it too, beside the directory it lists (`web-api-hosts.md` § File text
 /// and working tree changes).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate, JsonSchema)]
 #[serde(deny_unknown_fields)]

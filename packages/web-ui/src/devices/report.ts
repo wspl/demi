@@ -3,7 +3,7 @@ import type { SentenceText, TitleText } from '../ui/ui-text'
 
 /**
  * What a device's runner last reported about the machine and about itself
- * (`web-api.md` § Workspaces, devices, and attached hosts); each is null
+ * (`web-api-hosts.md` § Workspaces, devices, and attached hosts); each is null
  * before its runner first connected.
  */
 export interface DeviceReport {

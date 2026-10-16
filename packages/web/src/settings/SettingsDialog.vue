@@ -144,7 +144,7 @@ function rename(nickname: string): Promise<void> {
     })
 }
 
-/** Why the email cannot be changed on a server without mail (`web-api.md` § Account API). */
+/** Why the email cannot be changed on a server without mail (`web-api-settings.md` § Account API). */
 
 const emailDraft = ref({ email: '', password: '', code: '' })
 const passwordDraft = ref({ current: '', next: '', confirm: '' })

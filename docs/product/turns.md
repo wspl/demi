@@ -327,7 +327,7 @@ on by default:
 
 | Switch | Notifies when | The notification says |
 | --- | --- | --- |
-| A turn finishes | A turn of the conversation's root ends with an answer, and the conversation no longer [runs](web-api.md#sidebar-mutations-and-read-state): its subagents are done too | The title, and the start of the answer as plain text, cut to 120 characters |
+| A turn finishes | A turn of the conversation's root ends with an answer, and the conversation no longer [runs](web-api-conversations.md#sidebar-mutations-and-read-state): its subagents are done too | The title, and the start of the answer as plain text, cut to 120 characters |
 | A turn fails | A turn of the root ends with an error, which offers Resume | The title, and that the turn stopped with an error |
 | Demi needs permission | The conversation asks for a [permission](../agent/permissions.md) | The title, and what the request asks |
 
@@ -336,7 +336,7 @@ user: the page is hidden or not focused, or it shows another conversation. A
 turn the user stopped notifies nothing, since the user was there. The pages
 learn of these events from their synchronization channel, a turn's end from
 the conversation's summary
-([Sidebar mutations and read state](web-api.md#sidebar-mutations-and-read-state)), so notifications
+([Sidebar mutations and read state](web-api-conversations.md#sidebar-mutations-and-read-state)), so notifications
 come while any Demi page of the browser is open, and none come when none is,
 which would need push notifications. Each notification is tagged with its
 conversation and turn, or its permission request, so several open pages show
@@ -358,7 +358,7 @@ names, no leading "the" or "my", and something meaningful even for a greeting.
 
 The page learns the generated title the way it learns a rename made
 elsewhere, from the conversation's summary on its
-[synchronization channel](web-api.md#page-synchronization); there is no title
+[synchronization channel](web-api-sync.md#page-synchronization); there is no title
 event of its own.
 
 Not included: asking the model for a new title later, retitling by itself as

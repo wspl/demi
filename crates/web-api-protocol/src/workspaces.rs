@@ -1,4 +1,4 @@
-//! Workspaces (`web-api.md` § Workspaces, devices, and attached hosts): a
+//! Workspaces (`web-api-hosts.md` § Workspaces, devices, and attached hosts): a
 //! named directory on one of the user's devices, which conversations can
 //! target and the page calls a project. A workspace is a pointer: renaming or
 //! deleting it touches no file.
@@ -28,7 +28,7 @@ pub struct WorkspaceDto {
     pub name: String,
     pub created_at: Timestamp,
     /// The model settings the project's next conversation starts with, as
-    /// last chosen in it (`web-api.md` § User preferences); absent before
+    /// last chosen in it (`web-api-settings.md` § User preferences); absent before
     /// the first choice.
     #[serde(default, skip_serializing_if = "Option::is_none", with = "unwrap_or_skip")]
     #[schemars(with = "ModelSettings")]

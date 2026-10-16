@@ -122,7 +122,7 @@ pub enum PageCallError {
     Plugin(#[from] PluginError),
 }
 
-/// Why a change of a work panel was refused (`web-api.md` § Work panel
+/// Why a change of a work panel was refused (`web-api-conversations.md` § Work panel
 /// state).
 #[derive(Debug, thiserror::Error)]
 pub enum PanelError {
@@ -206,7 +206,7 @@ pub(crate) struct Shared {
     directories: RefCell<Option<Vec<Vec<HostDirectory>>>>,
     /// How many times each plugin's conversation state changed since the
     /// shard started, by the plugin's index and the conversation; a pair
-    /// without an entry has changed none (`web-api.md` § Conversation state
+    /// without an entry has changed none (`web-api-sync.md` § Conversation state
     /// of plugins).
     revisions: RefCell<HashMap<(usize, ConversationId), u64>>,
 }

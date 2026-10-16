@@ -1,5 +1,5 @@
 /**
- * A raw file answer as the relay's route gives it (`web-api.md` § File text
+ * A raw file answer as the relay's route gives it (`web-api-hosts.md` § File text
  * and working tree changes), for the bytes the service worker serves over a
  * direct channel (`direct-channel.md` § Bytes the browser fetches itself):
  * the part a `Range` asks for, and the headers that keep the bytes inert,

@@ -24,7 +24,7 @@ const watches = new Map<string, ConversationWatch>()
 
 /**
  * The file watch of a conversation's Host, on the relay or its direct
- * channel (`web-api.md` § File watch): what the conversation's views keep
+ * channel (`web-api-hosts.md` § File watch): what the conversation's views keep
  * of its Host's files is subscribed on it.
  */
 export function conversationWatch(conversationId: string): ConversationWatch {
@@ -43,7 +43,7 @@ const following = new Set<string>()
  * The files of a Host the conversation reaches, as its attachment picker
  * lists them, with sizes and times: its primary Host's on the
  * conversation's own watch, an attached host's on the conversation's watch
- * with each subscription naming the host (`web-api.md` § File watch), which
+ * with each subscription naming the host (`web-api-hosts.md` § File watch), which
  * connects at once when the host comes online, as a stopped Cloud that
  * started.
  */

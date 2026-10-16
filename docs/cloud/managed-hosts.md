@@ -714,7 +714,7 @@ processes share it.
 
 ## System reset
 
-The owner can reset through the backend ([Web API](../product/web-api.md#cloud))
+The owner can reset through the backend ([Web API](../product/web-api-hosts.md#cloud))
 even when the runner, shell, or system files are broken. The backend persists an
 operation id, selected base, phase, and error. A retry resumes that operation,
 rather than selecting a newer base.

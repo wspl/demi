@@ -4,7 +4,7 @@ import { useTranscript } from './edit-selection'
 
 /**
  * Reads a block whole, for a row whose block the page holds in its light
- * form (`web-api.md` § Light form): the agent's (`node`, null for the
+ * form (`web-api-conversations.md` § Light form): the agent's (`node`, null for the
  * conversation's own) and the block's id. The host keeps the block whole
  * once it arrives.
  */

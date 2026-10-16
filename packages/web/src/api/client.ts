@@ -23,7 +23,7 @@ export class ApiError extends Error {
   readonly retryAfterSeconds: number | null
   /**
    * The answer's headers, such as the ETag and `X-Demi-Read-At` a refusal
-   * that is a file's answer carries (`web-api.md` § File text and working
+   * that is a file's answer carries (`web-api-hosts.md` § File text and working
    * tree changes); empty for an error no answer gave.
    */
   readonly headers: Headers

@@ -731,7 +731,7 @@ pub struct ThinkingBlock {
     /// The length in characters (Unicode scalar values) of the text without
     /// the white space around it, which a page's light form carries in
     /// place of the text, so the page tells a withheld text from none
-    /// (`web-api.md` § Light form); omitted from a block whole.
+    /// (`web-api-conversations.md` § Light form); omitted from a block whole.
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

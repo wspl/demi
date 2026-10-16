@@ -596,7 +596,7 @@ impl<H: HostResolver> Tree<H> {
     }
 
     /// Whether the tree will go on working without the user, which makes its
-    /// conversation running (`web-api.md` § Sidebar mutations and read
+    /// conversation running (`web-api-conversations.md` § Sidebar mutations and read
     /// state): a child is live, or the root runs or waits to run. A command
     /// that outlives its turn does not count, as that section says.
     pub fn works(&self) -> bool {

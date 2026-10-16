@@ -1,4 +1,4 @@
-//! Uploads (`web-api.md` § Uploads and media, `backend.md` § Media by
+//! Uploads (`web-api-hosts.md` § Uploads and media, `backend.md` § Media by
 //! reference): a file's bytes go to the caller's blobs with its record, the
 //! answer says what the backend read from them, and a message or a steer
 //! that names the upload writes the file to the conversation's Host, gives

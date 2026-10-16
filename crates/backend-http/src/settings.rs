@@ -1,4 +1,4 @@
-//! The instance's settings and the caller's preferences (`web-api.md` §
+//! The instance's settings and the caller's preferences (`web-api-settings.md` §
 //! User preferences). Preferences belong to the signed-in user alone, in
 //! both instance modes.
 

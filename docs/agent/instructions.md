@@ -142,7 +142,7 @@ carries, beside its text, the list of its entries (`instructions`, each
 `{ kind: "personal" }` or `{ kind: "file", path }`), so the page never parses the model's text and
 never asks the backend for anything more. The page holds the newest block
 when its latest window does; otherwise a page of the transcript names the
-newest block's entries ([Pages](../product/web-api.md#pages)). The block itself stays hidden from
+newest block's entries ([Pages](../product/web-api-conversations.md#pages)). The block itself stays hidden from
 the transcript, as every context block is.
 
 ## Rationale

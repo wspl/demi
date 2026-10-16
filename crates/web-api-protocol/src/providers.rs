@@ -1,5 +1,5 @@
 //! Provider entries, their accounts and logins, and the account-wide model
-//! catalog (`web-api.md` § Model configuration and provider inspection, §
+//! catalog (`web-api-settings.md` § Model configuration and provider inspection, §
 //! Subscription accounts). No body the backend answers carries key or token
 //! material.
 
@@ -640,7 +640,7 @@ pub enum LoginState {
 }
 
 /// One of the user's sign-ins, as the `logins` message and the product
-/// state list them (`web-api.md` § Page synchronization).
+/// state list them (`web-api-sync.md` § Page synchronization).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListedLogin {

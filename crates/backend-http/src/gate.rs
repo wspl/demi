@@ -227,7 +227,7 @@ pub(super) async fn session(
 }
 
 /// Whether a request opens for an account still to choose its password
-/// (`web-api.md` § Account API): reading who it is, choosing the password,
+/// (`web-api-settings.md` § Account API): reading who it is, choosing the password,
 /// signing out, and the passkey routes. `path` is the one the `/api` router
 /// sees.
 fn opens_before_password_choice(method: &Method, path: &str) -> bool {

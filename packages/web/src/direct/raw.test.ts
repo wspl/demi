@@ -3,7 +3,7 @@ import { IMAGE_CONTENT_POLICY } from '@demicodes/protocol'
 import { rangeAnswer, rawAnswer, type RawRequest } from './raw'
 
 // The service worker's answers to a raw request over the direct channel
-// against the relay's route for the same file (`web-api.md` § File text
+// against the relay's route for the same file (`web-api-hosts.md` § File text
 // and working tree changes): the same status, headers and part, from the
 // relay's own cases (`RangeAnswer`, `content_headers`, `raw`).
 

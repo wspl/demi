@@ -183,7 +183,7 @@ pub enum ChangeOutcome {
     Archived,
 }
 
-/// What a new conversation starts with (`web-api.md` § Conversation
+/// What a new conversation starts with (`web-api-conversations.md` § Conversation
 /// creation and Fork); by default the Cloud, the placeholder title and no
 /// model.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1466,7 +1466,7 @@ pub fn may_reach(
 
 /// Raises the revision of the conversation's attached hosts, which its
 /// summary carries, so a page that shows them reads them again
-/// (`web-api.md` § Sidebar mutations and read state).
+/// (`web-api-conversations.md` § Sidebar mutations and read state).
 pub fn raise_hosts_revision(
     connection: &Connection,
     conversation: &ConversationId,

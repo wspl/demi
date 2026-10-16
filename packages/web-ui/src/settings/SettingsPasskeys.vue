@@ -29,7 +29,7 @@ const props = defineProps<{
   email: string
 }>()
 
-/** The most characters a passkey's name has once trimmed (`web-api.md` § Account API). */
+/** The most characters a passkey's name has once trimmed (`web-api-settings.md` § Account API). */
 const NAME_MAX_LENGTH = 80
 
 const adding = ref(false)

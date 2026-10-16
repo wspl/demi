@@ -24,7 +24,7 @@ pub struct ReadAt {
 }
 
 impl fmt::Display for ReadAt {
-    /// `<epoch>.<number>`, as `X-Demi-Read-At` carries it (`web-api.md`
+    /// `<epoch>.<number>`, as `X-Demi-Read-At` carries it (`web-api-hosts.md`
     /// § File text and working tree changes).
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}.{}", self.epoch, self.number)

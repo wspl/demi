@@ -46,7 +46,7 @@ export function windowEdges<B extends Held>(
 }
 
 /**
- * Where the page next to `window` on `side` is read from (`web-api.md`
+ * Where the page next to `window` on `side` is read from (`web-api-conversations.md`
  * § Pages): the index of the window's item at that edge and its id, which
  * the page must still hold there; none where the window reaches the
  * transcript's start or end.

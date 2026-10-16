@@ -349,7 +349,7 @@ again: not a job's end, not a reconnect, not a timer.
 A plugin's page shows [work panel](../product/web-application.md#work-panel)
 tabs of kinds it declares, and the manifest names the kinds whose tabs the
 backend keeps, such as `plugin-browser`'s `browser`. The backend keeps each
-conversation's tabs ([Work panel state](../product/web-api.md#work-panel-state))
+conversation's tabs ([Work panel state](../product/web-api-conversations.md#work-panel-state))
 and lets the plugin that names a kind take part in its tabs:
 
 - **The user's changes reach the plugin.** When the user creates or removes a
@@ -362,7 +362,7 @@ and lets the plugin that names a kind take part in its tabs:
 - **The plugin changes its own tabs.** Through the port, the plugin lists,
   creates, updates and removes the tabs of its kinds in the request's
   conversation, as the page does, with ids that are used once
-  ([Work panel state](../product/web-api.md#work-panel-state)). For example,
+  ([Work panel state](../product/web-api-conversations.md#work-panel-state)). For example,
   the browser plugin writes the browser's tab id into the tab it opened, and
   adds a tab for each tab the agent opened.
 
@@ -695,16 +695,16 @@ manifest, and each marked changed on its own, through the port:
 
 | Scope | Holds, for example | Reaches the pages |
 | --- | --- | --- |
-| User | The user's skill sources | In the product state, on the synchronization channel: the snapshot holds it, and each change sends the new state to every page of the user ([Page synchronization](../product/web-api.md#page-synchronization)) |
-| Conversation | The conversation browser's tab list | By revision, as a draft does: the conversation's summary carries the revision of each plugin's conversation state, and a page that shows the conversation reads the state when the revision is higher than the one it holds ([Conversation state of plugins](../product/web-api.md#conversation-state-of-plugins)) |
+| User | The user's skill sources | In the product state, on the synchronization channel: the snapshot holds it, and each change sends the new state to every page of the user ([Page synchronization](../product/web-api-sync.md#page-synchronization)) |
+| Conversation | The conversation browser's tab list | By revision, as a draft does: the conversation's summary carries the revision of each plugin's conversation state, and a page that shows the conversation reads the state when the revision is higher than the one it holds ([Conversation state of plugins](../product/web-api-sync.md#conversation-state-of-plugins)) |
 
 The plugin host answers a read of either scope with a `page_state` request
 for that scope, and counts the revision of each conversation's state in
-memory ([Revisions counted in memory](../product/web-api.md#revisions-counted-in-memory)). A page
+memory ([Revisions counted in memory](../product/web-api-sync.md#revisions-counted-in-memory)). A page
 call is `POST /api/plugins/:plugin/calls/:method` for a method of the user
 scope, or `POST /api/conversations/:id/plugins/:plugin/calls/:method` for one
 of the conversation scope, with the parameters as its JSON body
-([Web API](../product/web-api.md#plugin-calls)). The edge authenticates the
+([Web API](../product/web-api-sync.md#plugin-calls)). The edge authenticates the
 session, the plugin host validates the parameters against the method's
 declared schema, as a command's arguments are validated
 ([Contracts](contracts.md#validation-at-entry)), and the user's instance

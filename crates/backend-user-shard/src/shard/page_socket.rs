@@ -1,7 +1,7 @@
 //! A socket to a page: the synchronization channel and the conversation
 //! sockets, which the shard serves (`backend.md` § Page synchronization), and
 //! the file watch, the direct channel's signaling and the user streams, which
-//! the edge serves (`web-api.md` § File watch, § User streams). Each sends its
+//! the edge serves (`web-api-hosts.md` § File watch, § User streams). Each sends its
 //! protocol's heartbeat once it has sent nothing else for the heartbeat
 //! interval, so that the page can tell a quiet socket from one that died
 //! without a close (`web-application.md` § Liveness and reconnection), and

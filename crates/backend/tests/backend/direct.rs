@@ -1,4 +1,4 @@
-//! A direct channel's signaling socket (`web-api.md` § Direct channel):
+//! A direct channel's signaling socket (`web-api-hosts.md` § Direct channel):
 //! the backend introduces a page to its paired device's real runner, which
 //! answers the page's offer; the page's probes and candidates do not wait
 //! behind that answer; the socket's close closes the runner's peer;

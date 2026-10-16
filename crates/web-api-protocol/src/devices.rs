@@ -1,4 +1,4 @@
-//! Devices: the list, pairing, and a Host's log (`web-api.md` § Workspaces,
+//! Devices: the list, pairing, and a Host's log (`web-api-hosts.md` § Workspaces,
 //! devices, and attached hosts, § Device log).
 
 use demi_runner_protocol::direct::CANDIDATE_CHARS;
@@ -153,7 +153,7 @@ pub struct DeviceDto {
 
 /// The commands that install and start the runner on a computer of each
 /// system, which the Add Device dialog and `demi host install-command` show
-/// as they are (`web-api.md` § Workspaces, devices, and attached hosts).
+/// as they are (`web-api-hosts.md` § Workspaces, devices, and attached hosts).
 /// They hold no credential.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct InstallCommands {
@@ -197,7 +197,7 @@ pub struct DeviceAnswer {
 }
 
 /// `{ removed }`: the answer of a revocation, the ids of the workspaces
-/// that went with the device (`web-api.md` § Workspaces, devices, and
+/// that went with the device (`web-api-hosts.md` § Workspaces, devices, and
 /// attached hosts).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct RevokedDevice {
@@ -301,7 +301,7 @@ impl TryFrom<String> for LogSource {
 }
 
 /// A message the page sends on a device's direct channel signaling socket,
-/// `WS /devices/:deviceId/direct` (`web-api.md` § Direct channel).
+/// `WS /devices/:deviceId/direct` (`web-api-hosts.md` § Direct channel).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum DirectRequest {

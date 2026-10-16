@@ -775,7 +775,7 @@ Providers once it has two accounts:
 against the vendor's terms.** Adding a second account to an entry, and
 choosing In Order or Balanced, first shows a dialog saying so, with Cancel
 and Continue; Continue stores that the user was told
-(`multiAccountWarned`, [User preferences](../product/web-api.md#user-preferences))
+(`multiAccountWarned`, [User preferences](../product/web-api-settings.md#user-preferences))
 and no dialog shows again, for any entry. Cancel leaves the account
 unadded or the rotation as it was.
 
@@ -940,7 +940,7 @@ the user to add one before it infers again. A request already running
 finishes with the account it started with. Deleting a provider
 deletes its accounts in the same transaction. Public provider responses expose
 configuration metadata, account metadata and usage, never token material. The
-routes are listed in [Web API](../product/web-api.md#subscription-accounts).
+routes are listed in [Web API](../product/web-api-settings.md#subscription-accounts).
 
 ## Usage and quota
 

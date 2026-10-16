@@ -20,9 +20,9 @@ import {
   type VendorCatalog,
 } from '../api/generated/web-api'
 
-/** The close code of a channel whose session ended (`web-api.md` § Page synchronization). */
+/** The close code of a channel whose session ended (`web-api-sync.md` § Page synchronization). */
 const SESSION_ENDED = 4002
-/** The close of a channel whose backend shuts down, and will be back (`web-api.md` § Page synchronization). */
+/** The close of a channel whose backend shuts down, and will be back (`web-api-sync.md` § Page synchronization). */
 const BACKEND_CLOSING = 1001
 /** The close the web browser reports for a socket that ended without a close frame, as one that could not connect. */
 const ABNORMAL_CLOSURE = 1006

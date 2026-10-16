@@ -1,4 +1,4 @@
-//! A conversation's permission requests (`web-api.md` § Conversation
+//! A conversation's permission requests (`web-api-conversations.md` § Conversation
 //! permissions, `permissions.md`): what a page reads to show the card above
 //! the composer, and the decision it sends.
 

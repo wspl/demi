@@ -12,7 +12,7 @@ export type WorkflowChoice =
   | { type: 'none' }
   | { type: 'workflow'; id: string }
 
-/** A workflow file of the project, as the backend lists it (`web-api.md` § Workflows of a directory). */
+/** A workflow file of the project, as the backend lists it (`web-api-conversations.md` § Workflows of a directory). */
 export interface WorkflowOption {
   /** The file's name without `.yaml`. */
   id: string

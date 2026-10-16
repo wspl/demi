@@ -204,7 +204,7 @@ impl Shard {
     }
 
     /// Deletes the user's project `id` as one transition (`conversations.md`
-    /// § Conversations and projects, `web-api.md` § Workspaces, devices,
+    /// § Conversations and projects, `web-api-hosts.md` § Workspaces, devices,
     /// and attached hosts): every conversation in it is held as its archive
     /// holds it, released on its Hosts, and archived in the transaction
     /// that deletes the workspace. A conversation of it whose work runs

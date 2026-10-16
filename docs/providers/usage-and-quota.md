@@ -236,7 +236,7 @@ Two paths fill a snapshot:
   inference. That matters most when the limit is reached: a request is then
   refused, and a probe that needed a request could not say why. Demi never
   runs a probe that would cost an inference request
-  ([Web API](../product/web-api.md#model-configuration-and-provider-inspection)).
+  ([Web API](../product/web-api-settings.md#model-configuration-and-provider-inspection)).
 - An **observation** reads the quota a vendor reports alongside a live
   inference response, in the response's headers or in the lines of the Claude
   Code CLI's output. It costs nothing extra, so it keeps snapshots current
@@ -330,7 +330,7 @@ for one:
   never probes and never runs inference.
 - `POST /api/providers/:id/quota` probes one account: the one it names, or the
   active one
-  ([Web API](../product/web-api.md#model-configuration-and-provider-inspection)).
+  ([Web API](../product/web-api-settings.md#model-configuration-and-provider-inspection)).
 
 The web app decides when to ask:
 

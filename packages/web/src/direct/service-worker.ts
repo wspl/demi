@@ -10,7 +10,7 @@
 
 declare const self: ServiceWorkerGlobalScope
 
-/** The raw file route of a conversation (`web-api.md` § File text and working tree changes). */
+/** The raw file route of a conversation (`web-api-hosts.md` § File text and working tree changes). */
 const RAW_ROUTE = /^\/api\/conversations\/[^/]+\/fs\/raw$/
 
 /** What the page answers first: that it does not serve the request, or the answer's status and headers. */

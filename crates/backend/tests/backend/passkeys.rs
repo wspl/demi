@@ -1,4 +1,4 @@
-//! Passkeys at the edge (`web-api.md` § Account API, `backend.md`
+//! Passkeys at the edge (`web-api-settings.md` § Account API, `backend.md`
 //! § Authentication and ownership), against a software authenticator and
 //! WebAuthn client of the kind a password manager is: adding one takes the
 //! password, a sign-in names no email, a synced passkey signs in, a removed
@@ -409,7 +409,7 @@ async fn a_development_page_on_another_port_adds_a_passkey() {
     assert_eq!(elsewhere.refusal(), (StatusCode::FORBIDDEN, ErrorCode::ForbiddenOrigin));
 }
 
-/// Verifying a session for a handoff code (`web-api.md` § Account API)
+/// Verifying a session for a handoff code (`web-api-settings.md` § Account API)
 /// takes a passkey of the session's own account: another account's is
 /// refused without its id, which the page would tell the browser to forget.
 #[tokio::test]

@@ -6,7 +6,7 @@ import { useProduct } from '../state/product'
 
 /**
  * The user's personal instructions as the Instructions section saves them
- * (`web-api.md` § Instructions). A save's answer goes into the product state
+ * (`web-api-settings.md` § Instructions). A save's answer goes into the product state
  * at once; the channel brings the same part to every other page.
  */
 export const useInstructionSettings = defineStore('instruction-settings', () => {

@@ -1,6 +1,6 @@
 /**
  * A revision the backend counts in memory, with the run of the backend that
- * counted it (`web-api.md` § Revisions counted in memory): a count compares
+ * counted it (`web-api-sync.md` § Revisions counted in memory): a count compares
  * only with counts of the same run.
  */
 export interface RunRevision {

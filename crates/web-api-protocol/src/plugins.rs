@@ -1,4 +1,4 @@
-//! A user's plugins (`web-api.md` § A user's plugins): the backend's
+//! A user's plugins (`web-api-sync.md` § A user's plugins): the backend's
 //! plugins as the settings page lists them, the switch that turns one on
 //! or off for the user, and a plugin's state for one conversation.
 
@@ -29,7 +29,7 @@ pub struct PluginSwitch {
     pub enabled: bool,
 }
 
-/// `GET /conversations/:id/plugins/:plugin/state` (`web-api.md`
+/// `GET /conversations/:id/plugins/:plugin/state` (`web-api-sync.md`
 /// § Conversation state of plugins): the plugin's state for the
 /// conversation, valid against the plugin's declared schema, and the
 /// revision it was read at.

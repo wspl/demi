@@ -137,7 +137,7 @@ These are the points where values enter, and what a failure does:
 | A runner message, at either end | `runner-protocol`'s codec | The connection closes ([Runner](../execution/runner.md)) |
 | Invocation metadata and records between a runner and a command program | `command-protocol` | [Validation and flow control](../execution/native-runtime.md#validation-and-flow-control) |
 | A command's arguments | The declaration's JSON Schema, at the dispatcher and again in a native handler before work | One usage error that names every field that failed |
-| A plugin's page call parameters | The method's JSON Schema from the plugin's manifest, at the plugin host; the plugin decodes them into its type | 400 `invalid_body`, naming the field ([Plugin calls](../product/web-api.md#plugin-calls)) |
+| A plugin's page call parameters | The method's JSON Schema from the plugin's manifest, at the plugin host; the plugin decodes them into its type | 400 `invalid_body`, naming the field ([Plugin calls](../product/web-api-sync.md#plugin-calls)) |
 | A plugin's page state or call result, at the page | The plugin package's generated schemas | The plugin's client reports the field path and keeps the state it held |
 | A machine-manager request or response | `machine-manager-protocol` | A malformed line or an unknown operation drops the connection; an invalid device id is that operation's error ([Managed Cloud hosts](../cloud/managed-hosts.md)) |
 | The managed boot file | `runner-protocol`'s `ManagedBoot` | The runner fails; it never falls back to pairing ([Runner](../execution/runner.md#managed-guests-and-verification)) |

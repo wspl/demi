@@ -319,7 +319,7 @@ export const useResources = defineStore('resources', () => {
 
   /**
    * Saves `choice`, made in a conversation of the project `id`, as what the
-   * project's next conversation starts with (`web-api.md` § User
+   * project's next conversation starts with (`web-api-settings.md` § User
    * preferences): it shows at once, the write follows the project's earlier
    * ones, and the channel brings it to the user's other pages.
    */

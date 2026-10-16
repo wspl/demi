@@ -450,7 +450,7 @@ pub enum PortRefusal {
     #[error("the conversation's Host is not running")]
     NotRunning,
     /// A change of the work panel was refused, as its routes would refuse
-    /// it, such as `panel_full` (`web-api.md` § Work panel state).
+    /// it, such as `panel_full` (`web-api-conversations.md` § Work panel state).
     #[error("{message}")]
     Panel { code: ErrorCode, message: String },
     /// An outbound request, or a step of an OAuth sign-in that reaches the

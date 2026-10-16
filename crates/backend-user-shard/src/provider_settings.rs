@@ -1,4 +1,4 @@
-//! The changes of the provider entries in a user's scope (`web-api.md`
+//! The changes of the provider entries in a user's scope (`web-api-settings.md`
 //! § Model configuration and provider inspection), and the model search
 //! that fills a configured model (`models.md` § Adding a model from
 //! models.dev): one path, with its checks and its words, for the settings
