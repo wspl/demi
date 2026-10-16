@@ -177,15 +177,22 @@ pub fn run(options: Options) -> Result<(), Error> {
 
     stages.time("Build on GitHub", || {
         // Its exit status is not the verdict: the run's conclusion is,
-        // which is read either way.
-        let _: ExitStatus = Command::new("gh")
-            .args(["run", "watch", &run.id.to_string(), "--compact", "--interval", WATCH_INTERVAL])
-            .current_dir(crate::repository())
-            .status()?;
-        let ended: Run = gh_json(
-            "reading the workflow run",
-            &["api", &format!("repos/{{owner}}/{{repo}}/actions/runs/{}", run.id)],
-        )?;
+        // which is read either way. A watch also ends when its connection
+        // to GitHub breaks, while the run goes on, so it is watched again
+        // until the run has ended.
+        let ended = loop {
+            let _: ExitStatus = Command::new("gh")
+                .args(["run", "watch", &run.id.to_string(), "--compact", "--interval", WATCH_INTERVAL])
+                .current_dir(crate::repository())
+                .status()?;
+            let read: Run = gh_json(
+                "reading the workflow run",
+                &["api", &format!("repos/{{owner}}/{{repo}}/actions/runs/{}", run.id)],
+            )?;
+            if read.status == "completed" {
+                break read;
+            }
+        };
         if ended.conclusion.as_deref() == Some("success") {
             return Ok(());
         }
@@ -262,6 +269,7 @@ struct Run {
     id: u64,
     head_sha: String,
     html_url: String,
+    status: String,
     conclusion: Option<String>,
 }
 
@@ -292,6 +300,7 @@ struct Jobs {
 pub struct Job {
     name: String,
     html_url: String,
+    status: String,
     conclusion: Option<String>,
 }
 
