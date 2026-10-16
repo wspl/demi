@@ -1,4 +1,5 @@
-# Checks each pull request and each push to main on a stock Linux runner
+# Checks each pull request and each push to main or feat/demi-next, the
+# development trunk, on a stock Linux runner
 # (docs/delivery/testing.md): the workspace's one Cargo selection, checked
 # and tested; the web app's suites and type checks; the public registry
 # check; and gitleaks over the commits. The suites that need Chrome, a real
@@ -9,7 +10,7 @@ name: CI
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, feat/demi-next]
 
 permissions:
   contents: read
