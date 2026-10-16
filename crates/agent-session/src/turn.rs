@@ -432,6 +432,11 @@ async fn read(
     request_cancel: &CancellationToken,
 ) -> Result<Result<Option<Trigger>, ProviderFailure>, TurnError> {
     let mut reached = None;
+    // The frames of an answered response are held until the turn goes on;
+    // more of the run after it is the turn going on, as when Claude Code
+    // answers two messages of one run in turns of their own (`rendering.md`
+    // § Order and delivery).
+    let mut holding = false;
     let mut cut = std::pin::pin!(sent_now(s));
     loop {
         let event = tokio::select! {
@@ -458,6 +463,9 @@ async fn read(
                 s.update(|core| core.keep_entries(of, entries));
             }
             event => {
+                if std::mem::take(&mut holding) {
+                    s.release_events();
+                }
                 // The response's end, without a call to run, ends the turn
                 // unless the turn goes on: its text completes, and the
                 // closing save follows before the phase goes idle. The
@@ -468,6 +476,7 @@ async fn read(
                     && s.read(|core| core.transcript.pending_tool_calls().is_empty());
                 if answered {
                     s.hold_events();
+                    holding = true;
                 }
                 let completes_text = !matches!(
                     event,

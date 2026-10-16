@@ -5,7 +5,8 @@
 //! the system prompt and tools of the request rather than those the session
 //! recorded; the request's model, system prompt and effort; the thinking
 //! display; stream-json in
-//! and out with partial messages; the account's directory as its
+//! and out with partial messages, each user message printed back as the CLI
+//! takes it; the account's directory as its
 //! configuration directory, where the CLI reads and renews the sign-in
 //! itself, and a directory of its own there for its session; the CLI's
 //! updater and automatic compaction off; and the input a session ends with
@@ -112,6 +113,10 @@ pub(crate) fn args(request: &InferenceRequest, session: &str) -> Vec<String> {
         "--input-format",
         "stream-json",
         "--include-partial-messages",
+        // Each user message is printed back as the CLI takes it into a
+        // turn, so a run knows which `result` answers its last one
+        // (`claude-code.md` § Which `result` ends a run).
+        "--replay-user-messages",
         "--resume",
         session,
         "--session-mirror",
