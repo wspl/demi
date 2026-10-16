@@ -72,7 +72,7 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 ### 随时随地，任意机器
 
 - **浏览器即用**：电脑、平板、手机均可使用，无需安装任何软件。
-- **后台运行**：关掉网页后，任务仍在服务器上继续执行；服务器重启后也会自动接着做。
+- **后台运行**：关掉网页后，任务仍在服务器上继续执行。
 - **对话集中管理**：对话统一保存在服务器上，不会散落在 Agent 工作过的各台机器里。在笔记本上开始，在手机上继续，实时同步。
 - **扫码与 Passkey 登录**：手机扫码即可登录，也支持 Touch ID、Face ID 和 Windows Hello。
 - **专属云端沙箱**：每个用户在你的服务器上拥有独立的 Linux 沙箱，基于 gVisor 隔离。
@@ -86,7 +86,7 @@ curl -fsSL https://demi.sh/install.sh | sudo bash
 - **多 Agent 协作**：Demi 会把大任务拆给一组并行工作的 Agent，最后汇总它们的结果。
 - **Agent Profile**：定义各司其职的专家 Agent，比如调研员、审查员，分别设置模型、思考强度、指令和命令。
 - **工作流**：把一组 Agent Profile 和工作指令打包成预设，放在项目的 `.demi/workflows/` 中，在输入框里一键选用，并随仓库与团队共享。
-- **Skills 与指令**：安装 Skill，让 Demi 学会新的任务。项目里已有的 `AGENTS.md`、`CLAUDE.md` 和 Skill 直接可用。
+- **Skills**：安装 Skill，让 Demi 学会新的任务。
 - **安全的凭据管理**：API 密钥和密码通过安全表单索取，不会出现在对话中。
 
 ### 模型与团队
