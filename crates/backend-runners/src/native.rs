@@ -25,17 +25,26 @@ use demi_command_protocol::{
 };
 use demi_runner_protocol::manifest::ManifestError;
 use demi_backend_database::control::ControlService;
-use demi_runner_protocol::release::{RUNNER, compressed_file};
+use demi_runner_protocol::release::{RUNNER, RunnerRelease, SERVER_RELEASE, ServerRelease, compressed_file};
 use demi_runner_protocol::wire::RunnerPlatform;
 use futures_util::future::LocalBoxFuture;
 use object_store::signer::Signer;
-use object_store::{GetResult, ObjectStoreExt as _};
+use object_store::{GetOptions, GetRange, GetResult, ObjectStore as _, ObjectStoreExt as _};
 use tokio_util::sync::CancellationToken;
 
 use crate::install::read_runner_release;
+use crate::prefetch::NextRelease;
 use crate::public_url::PublicUrl;
 use crate::publication::blob;
 use crate::sourcing::{ReleaseArtifact, Sourcing};
+
+/// A runner executable's compressed copy from the byte a download asked
+/// for: the stored bytes, or none when the download asked for a byte past
+/// the copy's `size`.
+pub enum RunnerBytes {
+    Stored(GetResult),
+    Beyond { size: u64 },
+}
 
 /// Where a local store's artifacts download from, at the root of the
 /// backend's public URL.
@@ -232,26 +241,75 @@ impl NativeCatalog {
     }
 
     /// The stored runner executable `artifact` of `target`, its compressed
-    /// copy in the content coding, sourced first when the store lacks it,
-    /// for a runner's update or an installer's download.
+    /// copy in the content coding, from its byte `from` on, sourced first
+    /// when the store lacks it: from this backend's release, or from the
+    /// files of the `next` release an upgrade announced (`native-runtime.md`
+    /// § Runner releases). For a runner's update or download ahead, which
+    /// resumes from the bytes it has, or an installer's download.
     pub async fn runner_executable(
         &self,
         target: &str,
         artifact: &PackageArtifact,
+        next: Option<&NextRelease>,
+        from: u64,
         cancel: &CancellationToken,
-    ) -> Result<GetResult, String> {
-        self.source_runner(target, artifact, cancel).await?;
+    ) -> Result<RunnerBytes, String> {
         let artifacts = self
             .artifacts
             .as_ref()
             .ok_or("this backend loaded no server release")?;
+        let sourcing = next.map_or(&artifacts.sourcing, |next| &next.sourcing);
+        let wanted = ReleaseArtifact {
+            file: compressed_file(RUNNER, target),
+            artifact: artifact.clone(),
+            encoded: true,
+        };
+        sourcing.ensure(&wanted, cancel).await?;
         let key = blob(&artifact.sha256).map_err(|error| error.to_string())?;
-        artifacts
-            .sourcing
-            .store()
-            .get(&key)
+        let store = sourcing.store();
+        if from > 0 {
+            let size = store.head(&key).await.map_err(|error| error.to_string())?.size;
+            if from >= size {
+                return Ok(RunnerBytes::Beyond { size });
+            }
+        }
+        let options = GetOptions {
+            range: (from > 0).then_some(GetRange::Offset(from)),
+            ..GetOptions::default()
+        };
+        store
+            .get_opts(&key, options)
             .await
+            .map(RunnerBytes::Stored)
             .map_err(|error| error.to_string())
+    }
+
+    /// The runner release `release` of the server release whose root is
+    /// `root`, which an upgrade announced as next (`upgrades.md`
+    /// § Prepare): its record from the root's `runners/`, and its
+    /// executables sourced into this backend's store from the files the
+    /// root's `release.json` names.
+    pub async fn next_release(&self, release: &str, root: &Path) -> Result<NextRelease, String> {
+        let artifacts = self
+            .artifacts
+            .as_ref()
+            .ok_or("this backend loaded no server release")?;
+        let record = root.join("runners").join(release).join("manifest.json");
+        // The next release may speak other protocols: only its integrity counts.
+        let record = read_runner_release(&record, RunnerRelease::decode_intact)
+            .await?
+            .filter(|record| record.release == release)
+            .ok_or_else(|| format!("{} holds no runner release {release}", root.display()))?;
+        let server = root.join(SERVER_RELEASE);
+        let server = tokio::fs::read(&server)
+            .await
+            .map_err(|error| format!("{}: {error}", server.display()))
+            .and_then(|bytes| {
+                ServerRelease::decode(&bytes).map_err(|error| format!("{}: {error}", server.display()))
+            })?;
+        let sourcing = Sourcing::new(artifacts.sourcing.store().clone(), server.location())
+            .map_err(|error| error.to_string())?;
+        Ok(NextRelease::new(record, sourcing))
     }
 
     /// Stores ahead the package executables of each of `targets` that was
@@ -361,7 +419,7 @@ impl NativeCatalog {
         control: &ControlService,
         cancel: &CancellationToken,
     ) {
-        let release = match read_runner_release(&runners.join("manifest.json")).await {
+        let release = match read_runner_release(&runners.join("manifest.json"), RunnerRelease::decode).await {
             Ok(Some(release)) => release,
             Ok(None) => return,
             Err(error) => {

@@ -95,14 +95,14 @@ const files = galleryConversationFiles(workspace.source, ({ path, line }) => {
 
 const devices: HostDeviceOption[] = shownAmong([
   { id: 'mac', name: 'MacBook Pro', state: 'online', path: 'thisComputer', mark: GALLERY_MARKS.mac },
-  { id: 'studio', name: 'Studio PC', state: 'updating', path: 'localNetwork', mark: GALLERY_MARKS.windows },
+  { id: 'studio', name: 'Studio PC', state: 'updating', downloadPercent: 26, path: 'localNetwork', mark: GALLERY_MARKS.windows },
   { id: 'old', name: 'Old Laptop', state: 'offline', mark: GALLERY_MARKS.debian },
 ])
 /** The title sheet's scene runs on a Host that is updating, which the title's dot says. */
 const primaryId = scene === 'title' ? 'studio' : 'mac'
 const primaryHost = computed<HostMenuHost>(() => {
   const device = devices.find((item) => item.id === primaryId)!
-  return { id: device.id, name: device.name, kind: 'device', state: device.state, mark: device.mark }
+  return { id: device.id, name: device.name, kind: 'device', state: device.state, downloadPercent: device.downloadPercent, mark: device.mark }
 })
 
 /** The passkey offer after a handoff, which the scene of that name shows: the whole screen. */

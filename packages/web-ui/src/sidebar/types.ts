@@ -49,7 +49,7 @@ export interface SidebarConversation {
 
 /** A device as a row's mark shows it: by name, state and mark (`shownMark`), or as one since removed. */
 export type SidebarDevice =
-  | { kind: 'paired'; name: string; state: DeviceState; mark: DeviceMark | null }
+  | { kind: 'paired'; name: string; state: DeviceState; downloadPercent?: number | null; mark: DeviceMark | null }
   | { kind: 'removed' }
 
 /** The signed-in account the sidebar's foot shows. */

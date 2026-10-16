@@ -1148,9 +1148,13 @@ instead of 38.8 MB for macOS's. The size and SHA-256 are the decompressed
 executable's.
 
 `GET /runner-artifacts/<release>/<target>/<file>.zst` answers the compressed
-file from the object store, sourcing it first when the store lacks it; a
-paired device's runner downloads its updates from it and decompresses them
-as it does any artifact ([Runner updates](runner.md#runner-updates)).
+file from the object store, sourcing it first when the store lacks it, or,
+for the release an upgrade announced, from the directory it names; it
+answers a Range request with 206 and the bytes asked for, so a broken
+download resumes. A paired device's runner downloads its updates from it,
+with its device token in `Demi-Runner-Token` so the backend counts its
+progress, and decompresses them as it does any artifact
+([Runner updates](runner.md#runner-updates)).
 `GET /runner-artifacts/<release>/<target>/<file>` answers the same file
 decompressed as it streams, for the installers, which know only the backend
 and have no zstd. Both stream from S3 as from the data directory.

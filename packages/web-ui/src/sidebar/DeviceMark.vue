@@ -6,7 +6,7 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { hostIcon } from '@demicodes/web-ui/hosts/icons'
-import { DEVICE_STATE_LABEL } from '@demicodes/web-ui/devices/state'
+import { deviceStatusLabel } from '@demicodes/web-ui/devices/state'
 import type { SidebarDevice } from './types'
 
 /**
@@ -28,7 +28,7 @@ const label = computed(() => {
   if (host.kind === 'cloud') {
     return t('device.cloud')
   }
-  return host.kind === 'paired' ? `${host.name} · ${DEVICE_STATE_LABEL[host.state]}` : t('device.removed')
+  return host.kind === 'paired' ? `${host.name} · ${deviceStatusLabel(host)}` : t('device.removed')
 })
 </script>
 

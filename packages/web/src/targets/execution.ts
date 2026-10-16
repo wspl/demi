@@ -32,6 +32,8 @@ export function executionFor(conversation: Pick<Conversation, 'target' | 'cwd'>)
     workspaceName: workspace?.name ?? null,
     /** Whether the Host's runner serves it: a paired device's, or a running Cloud's. */
     state: device?.state ?? ('offline' as const),
+    /** How much of its next runner the device has downloaded, while that download moves. */
+    downloadPercent: device?.downloadPercent ?? null,
     /** The device's mark; null for the Cloud and a device the account no longer lists. */
     mark: deviceMarkOf(device, snapshot?.devices ?? []),
   }
@@ -60,6 +62,7 @@ export function primaryHostOf(execution: ReturnType<typeof executionFor>): HostM
     name: execution.name,
     kind: execution.kind,
     state: execution.state,
+    downloadPercent: execution.downloadPercent,
     mark: execution.mark,
   }
 }
@@ -74,6 +77,7 @@ export function hostDeviceOptions(devices: readonly Device[]): HostDeviceOption[
     id: device.id,
     name: device.name,
     state: device.state,
+    downloadPercent: device.downloadPercent,
     mark: device.mark,
     path: directPath(device.id),
     lastPath: lastDirectPath(device.id),

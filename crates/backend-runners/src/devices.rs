@@ -9,7 +9,7 @@
 //! a conversation's against a lease of its file gate, device access while
 //! the runner is connected, and machine access under the Cloud's admission.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::Arc;
@@ -122,6 +122,8 @@ impl Returning {
 #[derive(Default)]
 pub struct Devices {
     slots: RefCell<HashMap<DeviceId, Rc<DeviceSlot>>>,
+    /// The number of the last download of a runner executable served.
+    downloads: Cell<u64>,
     /// The devices the backend's last shutdown disconnected.
     returning: Arc<Returning>,
 }
@@ -137,27 +139,52 @@ struct DeviceSlot {
     /// The update the device's runner was last sent to, until its next
     /// hello.
     updating: RefCell<Option<Updating>>,
+    /// The download of a runner executable this backend serves the device
+    /// now, by the number of its request.
+    download: Cell<Option<(u64, Download)>>,
     /// The installation directory its runner reported when it last
     /// connected; none before it ever did since the backend started, or
     /// when its runner reported none.
     installation: RefCell<Option<String>>,
+    /// The target its runner reported when it last connected, whose
+    /// executables it runs; none before it ever did since the backend
+    /// started, or when its runner reported none.
+    target: RefCell<Option<String>>,
 }
 
 /// A runner's update as the backend shows it (`runner.md` § Runner
-/// updates): until `until`, unless the device's next hello comes first.
+/// updates): until `until`, which each byte of its download served moves
+/// on, unless the device's next hello comes first.
 pub struct Updating {
-    until: Instant,
+    until: Cell<Instant>,
     /// Ends the window for the device's pages; dropped, it stops.
-    _expiry: AbortOnDropHandle<()>,
+    expiry: RefCell<AbortOnDropHandle<()>>,
 }
 
 impl Updating {
     /// An update shown until `until`, whose end `expiry` announces.
     pub fn new(until: Instant, expiry: AbortOnDropHandle<()>) -> Self {
         Self {
-            until,
-            _expiry: expiry,
+            until: Cell::new(until),
+            expiry: RefCell::new(expiry),
         }
+    }
+}
+
+/// How much of a runner executable's compressed copy the backend has
+/// served a device: `served` of its `size` bytes, counting those the
+/// device had when its download resumed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct Download {
+    pub served: u64,
+    pub size: u64,
+}
+
+impl Download {
+    /// The share served, in whole percent.
+    pub fn percent(&self) -> u8 {
+        let percent = self.served.saturating_mul(100) / self.size.max(1);
+        u8::try_from(percent.min(100)).expect("at most 100")
     }
 }
 
@@ -168,7 +195,9 @@ impl DeviceSlot {
             jobs: DeviceJobs::default(),
             revoked: RefCell::new(None),
             updating: RefCell::new(None),
+            download: Cell::new(None),
             installation: RefCell::new(None),
+            target: RefCell::new(None),
         })
     }
 
@@ -220,6 +249,7 @@ impl Devices {
     pub fn new(returning: Arc<Returning>) -> Self {
         Self {
             slots: RefCell::default(),
+            downloads: Cell::new(0),
             returning,
         }
     }
@@ -252,12 +282,9 @@ impl Devices {
         if self.online(device) {
             return DeviceState::Online;
         }
-        let updating = self.slots.borrow().get(device).is_some_and(|slot| {
-            slot.updating
-                .borrow()
-                .as_ref()
-                .is_some_and(|updating| Instant::now() < updating.until)
-        });
+        let updating = self
+            .update_until(device)
+            .is_some_and(|until| Instant::now() < until);
         if updating {
             DeviceState::Updating
         } else {
@@ -287,7 +314,72 @@ impl Devices {
             .borrow()
             .get(device)
             .and_then(|slot| slot.updating.take());
-        ended.is_some_and(|updating| Instant::now() < updating.until)
+        ended.is_some_and(|updating| Instant::now() < updating.until.get())
+    }
+
+    /// When the update the device's runner was sent to stops showing,
+    /// unless more of its download is served first; none without one since
+    /// its last hello.
+    pub fn update_until(&self, device: &DeviceId) -> Option<Instant> {
+        let slots = self.slots.borrow();
+        let updating = slots.get(device)?.updating.borrow();
+        updating.as_ref().map(|updating| updating.until.get())
+    }
+
+    /// The backend served the device more of a runner executable, as
+    /// request `request`, now `download`: an update it was sent to shows
+    /// until `until`, and one whose window had ended shows again, its end
+    /// announced by the new `expiry`. Whether the device's state changed.
+    pub fn download_moved(
+        &self,
+        device: &DeviceId,
+        request: u64,
+        download: Download,
+        until: Instant,
+        expiry: impl FnOnce() -> AbortOnDropHandle<()>,
+    ) -> bool {
+        let slot = self.slot(device);
+        slot.download.set(Some((request, download)));
+        let updating = slot.updating.borrow();
+        let Some(updating) = updating.as_ref() else {
+            return false;
+        };
+        let shows_again = Instant::now() >= updating.until.get() && !self.online(device);
+        updating.until.set(until);
+        if shows_again {
+            *updating.expiry.borrow_mut() = expiry();
+        }
+        shows_again
+    }
+
+    /// The target the device's runner reported when it last connected.
+    pub fn target(&self, device: &DeviceId) -> Option<String> {
+        let slots = self.slots.borrow();
+        slots.get(device)?.target.borrow().clone()
+    }
+
+    /// A number for a new download of a runner executable, which its
+    /// progress names.
+    pub fn download_request(&self) -> u64 {
+        self.downloads.set(self.downloads.get() + 1);
+        self.downloads.get()
+    }
+
+    /// Request `request`'s download ended; the device shows no download
+    /// unless another request serves it one.
+    pub fn download_ended(&self, device: &DeviceId, request: u64) {
+        if let Some(slot) = self.slots.borrow().get(device)
+            && slot.download.get().is_some_and(|(current, _)| current == request)
+        {
+            slot.download.set(None);
+        }
+    }
+
+    /// The download of a runner executable the backend serves the device
+    /// now, if any.
+    pub fn download(&self, device: &DeviceId) -> Option<Download> {
+        let slots = self.slots.borrow();
+        slots.get(device)?.download.get().map(|(_, download)| download)
     }
 
     /// Resolves once a live connection serves the device, as a Cloud's
@@ -397,9 +489,11 @@ impl Devices {
         driver: LinkDriver,
         seen: DeviceRecorder,
         installation: Option<String>,
+        target: Option<String>,
     ) -> Serving {
         let slot = self.slot(device);
         slot.installation.replace(installation);
+        slot.target.replace(target);
         slot.link.send_replace(DeviceLink::Online(link.clone()));
         tracing::info!(device = %device, "runner connected");
         Serving {
@@ -439,6 +533,7 @@ impl Devices {
         DeviceDto {
             mark,
             state: self.state(&device.id),
+            download_percent: self.download(&device.id).map(|download| download.percent()),
             home: self.home(&device.id),
             installed: device.installed,
             id: device.id,
@@ -702,7 +797,7 @@ mod tests {
 
     use super::*;
 
-    const WINDOW: Duration = Duration::from_secs(5 * 60);
+    const WINDOW: Duration = Duration::from_secs(2 * 60);
 
     /// An update shown from now for the window, whose expiry does nothing.
     fn updating() -> Updating {
@@ -712,12 +807,14 @@ mod tests {
 
     /// A device whose update keeps failing shows as updating for the window
     /// from the first 409, whatever its retries, and then as offline until
-    /// its next hello; after the hello an update shows again
-    /// (`runner.md` § Runner updates).
+    /// its next hello; a download served to it moves the window on, and
+    /// shows a device whose window ended as updating again; after the hello
+    /// an update shows again (`runner.md` § Runner updates).
     #[tokio::test(start_paused = true)]
-    async fn an_update_shows_from_its_first_409_for_the_window_and_retries_do_not_extend_it() {
+    async fn an_update_shows_from_its_first_409_while_its_download_moves() {
         let devices = Devices::default();
         let device = DeviceId::try_from("6a50f29f-4ac3-4121-acac-b4200f48f915").unwrap();
+        let expiry = || AbortOnDropHandle::new(tokio::spawn(std::future::pending::<()>()));
         assert_eq!(devices.state(&device), DeviceState::Offline);
         assert!(devices.begin_update(&device, updating));
         assert_eq!(devices.state(&device), DeviceState::Updating);
@@ -729,8 +826,23 @@ mod tests {
         assert_eq!(devices.state(&device), DeviceState::Offline);
         assert!(!devices.begin_update(&device, updating));
         assert_eq!(devices.state(&device), DeviceState::Offline);
+        // A byte served shows it again, for a window from that byte.
+        let download = Download { served: 1, size: 4 };
+        let until = Instant::now() + WINDOW;
+        assert!(devices.download_moved(&device, 1, download, until, expiry));
+        assert_eq!(devices.state(&device), DeviceState::Updating);
+        assert_eq!(devices.download(&device), Some(download));
+        tokio::time::advance(WINDOW - Duration::from_secs(1)).await;
+        let download = Download { served: 2, size: 4 };
+        let until = Instant::now() + WINDOW;
+        assert!(!devices.download_moved(&device, 1, download, until, expiry));
+        tokio::time::advance(WINDOW - Duration::from_secs(1)).await;
+        assert_eq!(devices.state(&device), DeviceState::Updating);
+        devices.download_ended(&device, 1);
+        assert_eq!(devices.download(&device), None);
         // The next hello ends the update; a later 409 shows a new one.
-        assert!(!devices.hello(&device));
+        assert!(devices.hello(&device));
+        assert_eq!(devices.state(&device), DeviceState::Offline);
         assert!(devices.begin_update(&device, updating));
         assert_eq!(devices.state(&device), DeviceState::Updating);
         assert!(devices.hello(&device));

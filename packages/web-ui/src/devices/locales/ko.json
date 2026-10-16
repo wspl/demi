@@ -2,7 +2,9 @@
   "state": {
     "online": "온라인",
     "updating": "업데이트 중",
-    "offline": "오프라인"
+    "offline": "오프라인",
+    "downloading": "업데이트 다운로드 중 · {percent}%",
+    "updatingPercent": "업데이트 중 · {percent}%"
   },
   "route": {
     "automatic": "자동",

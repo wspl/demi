@@ -300,6 +300,25 @@ impl ControlService {
         .await
     }
 
+    /// The users who paired a device, each once.
+    pub async fn paired_owners(&self) -> Result<Vec<UserId>, StorageError> {
+        self.call(move |connection, _| {
+            let mut statement = connection
+                .prepare_cached("SELECT DISTINCT user_id FROM devices WHERE kind = 'user'")?;
+            let mut rows = statement.query([])?;
+            let mut users = Vec::new();
+            while let Some(row) = rows.next()? {
+                users.push(decode(
+                    "devices",
+                    "user_id",
+                    UserId::try_from(row.get::<_, String>("user_id")?),
+                )?);
+            }
+            Ok(users)
+        })
+        .await
+    }
+
     /// The systems of every user's paired devices, each once: the systems
     /// whose runners this backend serves, and whose targets the commands it
     /// stores ahead are for.

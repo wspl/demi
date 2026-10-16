@@ -298,6 +298,8 @@ pub struct Harness {
     /// a real manager mounts into its Clouds (`managed-hosts.md` § Backend
     /// socket).
     pub runner_socket: Option<PathBuf>,
+    /// The management socket an upgrade names the next runner release on.
+    pub manage_socket: Option<PathBuf>,
     /// The root of a server release whose command packages the backends
     /// publish (`native-runtime.md` § Backend deployment configuration),
     /// instead of a package the workspace built.
@@ -365,6 +367,7 @@ impl Harness {
             manager: ScriptedManager::start(),
             machines: None,
             runner_socket: None,
+            manage_socket: None,
             server_release: None,
             objects: None,
             skill_repos: None,
@@ -642,6 +645,7 @@ impl Harness {
         config.pages = self.pages;
         config.public_url = self.public_url.clone();
         config.runner_socket = self.runner_socket.clone();
+        config.manage_socket = self.manage_socket.clone();
         config.object_counts = self.objects.clone();
         assert!(
             self.release.is_none() || self.server_release.is_none(),

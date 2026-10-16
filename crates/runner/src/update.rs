@@ -9,21 +9,30 @@ use std::{
     io,
     path::{Path, PathBuf},
     process::Command,
+    time::Duration,
 };
 
 use demi_command_protocol::host_target;
 use demi_runner_protocol::{
-    release::{COMPRESSED_SUFFIX, RELEASE_ENV, RUNNER, RunnerUpdate},
-    values::BackendUrl,
+    release::{COMPRESSED_SUFFIX, RELEASE_ENV, RUNNER, RunnerUpdate, TOKEN_HEADER},
+    values::{BackendUrl, DeviceToken},
 };
 use demi_shared_artifacts::{Digest, Mode, Permissions, Publication};
 use tokio_util::sync::CancellationToken;
+
+/// How long a download of a runner executable waits for its next byte
+/// before it gives that connection up and resumes on a new one
+/// (`runner.md` § Runner updates).
+pub const DOWNLOAD_STALL: Duration = Duration::from_secs(30);
 
 /// An installation that an installer made, whose runner this process is:
 /// its executable is `<root>/releases/<release>/demi-runner`.
 pub struct Installed {
     root: PathBuf,
     release: String,
+    /// How long a download waits for its next byte: [`DOWNLOAD_STALL`],
+    /// shorter in a test.
+    stall: Duration,
 }
 
 /// The runner that takes this one's place.
@@ -35,8 +44,14 @@ pub struct Successor {
 impl Installed {
     /// The installation at `root` when `executable` is its runner of
     /// `release`; none for a runner started otherwise, such as a managed
-    /// guest's or one a developer runs from a build.
-    pub fn of(root: &Path, release: Option<&str>, executable: &Path) -> Option<Self> {
+    /// guest's or one a developer runs from a build. Its downloads give a
+    /// connection up after `stall` without a byte.
+    pub fn of(
+        root: &Path,
+        release: Option<&str>,
+        executable: &Path,
+        stall: Duration,
+    ) -> Option<Self> {
         let release = release?;
         let installed = root
             .join("releases")
@@ -48,23 +63,43 @@ impl Installed {
         (installed == running).then(|| Self {
             root: root.to_owned(),
             release: release.to_owned(),
+            stall,
         })
     }
 
+    /// Puts the executable of `release`, whose decompressed copy `expected`
+    /// describes, in place ahead of an update, downloaded from `backend`
+    /// while this runner goes on serving (`runner.md` § Runner updates).
+    pub async fn prefetch(
+        &self,
+        backend: &BackendUrl,
+        token: Option<&DeviceToken>,
+        release: &str,
+        expected: &Digest,
+        cancel: &CancellationToken,
+    ) -> io::Result<()> {
+        let _lock = InstallerLock::take(&self.root)?;
+        self.place(backend, token, release, expected, cancel)
+            .await
+            .map(drop)
+    }
+
     /// Puts the executable `update` names in place, downloaded from
-    /// `backend`, and makes it the installation's release. Every release
-    /// directory but the new one and this runner's goes.
+    /// `backend` unless a download ahead put it there, and makes it the
+    /// installation's release. Every release directory but the new one and
+    /// this runner's goes.
     pub async fn update(
         &self,
         backend: &BackendUrl,
+        token: Option<&DeviceToken>,
         update: &RunnerUpdate,
         cancel: &CancellationToken,
     ) -> io::Result<Successor> {
-        let target = host_target();
         let Some(executable) = &update.executable else {
             return Err(io::Error::other(format!(
-                "the backend's runner release {} has no runner for {target}",
-                update.release
+                "the backend's runner release {} has no runner for {}",
+                update.release,
+                host_target()
             )));
         };
         let expected = Digest {
@@ -72,45 +107,9 @@ impl Installed {
             sha256: executable.sha256.clone(),
         };
         let _lock = InstallerLock::take(&self.root)?;
-        let releases = self.root.join("releases");
-        let directory = releases.join(&update.release);
-        let name = file_name();
-        let path = directory.join(&name);
-        if directory.exists() {
-            let found = demi_shared_artifacts::digest(&path, expected.size, cancel)
-                .await
-                .map_err(io::Error::other)?;
-            if found != expected {
-                return Err(io::Error::other(format!(
-                    "the installed runner of release {} does not match its release",
-                    update.release
-                )));
-            }
-        } else {
-            // The compressed copy, which the download decodes as it checks it
-            // (`native-runtime.md` § Runner releases).
-            let url = backend
-                .url()
-                .join(&format!(
-                    "/runner-artifacts/{}/{target}/{name}{COMPRESSED_SUFFIX}",
-                    update.release
-                ))
-                .map_err(io::Error::other)?;
-            let stage = releases.join(format!(".download-{}", uuid::Uuid::new_v4().simple()));
-            let downloaded = download(url.as_str(), &stage.join(&name), &expected, cancel).await;
-            let placed = match downloaded {
-                Ok(()) => demi_shared_artifacts::publish_directory(&stage, &directory)
-                    .await
-                    .map_err(io::Error::other),
-                Err(error) => Err(error),
-            };
-            if let Err(error) = placed {
-                // The stage holds nothing anyone needs; the update's own
-                // error is the one to report.
-                let _ = tokio::fs::remove_dir_all(&stage).await;
-                return Err(error);
-            }
-        }
+        let path = self
+            .place(backend, token, &update.release, &expected, cancel)
+            .await?;
         demi_shared_artifacts::publish_bytes(
             &self.root.join("release-id"),
             format!("{}\n", update.release).as_bytes(),
@@ -122,11 +121,87 @@ impl Installed {
         )
         .await
         .map_err(io::Error::other)?;
-        self.prune(&releases, &update.release).await;
+        self.prune(&self.root.join("releases"), &update.release).await;
         Ok(Successor {
             executable: path,
             release: update.release.clone(),
         })
+    }
+
+    /// The executable of `release` in place in `releases/<release>/`,
+    /// checked against `expected`: the one there, or one downloaded from
+    /// `backend` as its compressed copy (`native-runtime.md` § Runner
+    /// releases). The download keeps its bytes in
+    /// `releases/.download-<release>/` across attempts and resumes from
+    /// them; it is decompressed and checked once complete, and bytes that
+    /// fail the check are removed. The caller holds the install lock.
+    async fn place(
+        &self,
+        backend: &BackendUrl,
+        token: Option<&DeviceToken>,
+        release: &str,
+        expected: &Digest,
+        cancel: &CancellationToken,
+    ) -> io::Result<PathBuf> {
+        let releases = self.root.join("releases");
+        let directory = releases.join(release);
+        let name = file_name();
+        let path = directory.join(&name);
+        if directory.exists() {
+            let found = demi_shared_artifacts::digest(&path, expected.size, cancel)
+                .await
+                .map_err(io::Error::other)?;
+            if found != *expected {
+                return Err(io::Error::other(format!(
+                    "the installed runner of release {release} does not match its release"
+                )));
+            }
+            return Ok(path);
+        }
+        let url = backend
+            .url()
+            .join(&format!(
+                "/runner-artifacts/{release}/{}/{name}{COMPRESSED_SUFFIX}",
+                host_target()
+            ))
+            .map_err(io::Error::other)?;
+        let download = releases.join(format!(".download-{release}"));
+        tokio::fs::create_dir_all(&download).await?;
+        let compressed = download.join(format!("{name}{COMPRESSED_SUFFIX}"));
+        // The digest came from the backend this runner trusts, as an
+        // installer's does, so the transport cannot change what is kept; the
+        // token lets the backend count the device's progress.
+        let client =
+            demi_shared_artifacts::client_resuming(self.stall).map_err(io::Error::other)?;
+        let headers: Vec<(&str, &str)> = token
+            .map(|token| (TOKEN_HEADER, token.expose()))
+            .into_iter()
+            .collect();
+        demi_shared_artifacts::download_resumed(&client, url.as_str(), &headers, &compressed, cancel)
+            .await
+            .map_err(io::Error::other)?;
+        let stage = download.join("release");
+        match tokio::fs::remove_dir_all(&stage).await {
+            Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error),
+            _ => {}
+        }
+        tokio::fs::create_dir(&stage).await?;
+        if let Err(error) = decode(&compressed, &stage.join(&name), expected, cancel).await {
+            // Bytes that fail the check are no start for the next attempt;
+            // a cancelled check says nothing of them.
+            if !matches!(error, demi_shared_artifacts::Error::Cancelled) {
+                tokio::fs::remove_file(&compressed).await?;
+            }
+            return Err(io::Error::other(error));
+        }
+        demi_shared_artifacts::publish_directory(&stage, &directory)
+            .await
+            .map_err(io::Error::other)?;
+        // The release is in place; its download holds nothing anyone needs.
+        if let Err(error) = tokio::fs::remove_dir_all(&download).await {
+            tracing::warn!("the download {} stays: {error}", download.display());
+        }
+        Ok(path)
     }
 
     /// Removes every release directory but `kept`'s and this runner's.
@@ -187,18 +262,14 @@ fn file_name() -> String {
     }
 }
 
-/// Downloads `url` into a new executable file at `path`, checking its size
-/// and SHA-256.
-async fn download(
-    url: &str,
+/// Decodes the downloaded compressed copy at `compressed` into a new
+/// executable file at `path`, checking its size and SHA-256.
+async fn decode(
+    compressed: &Path,
     path: &Path,
     expected: &Digest,
     cancel: &CancellationToken,
-) -> io::Result<()> {
-    tokio::fs::create_dir_all(path.parent().expect("the file lies in the stage")).await?;
-    // The digest came from the backend this runner trusts, as an installer's
-    // does, so the transport cannot change what is kept.
-    let client = demi_shared_artifacts::client_allowing_http().map_err(io::Error::other)?;
+) -> Result<(), demi_shared_artifacts::Error> {
     let mut staged = demi_shared_artifacts::Staged::new(
         path,
         Publication {
@@ -207,12 +278,9 @@ async fn download(
             durable: true,
         },
     )
-    .await
-    .map_err(io::Error::other)?;
-    demi_shared_artifacts::download(&client, url, expected, staged.file(), cancel)
-        .await
-        .map_err(io::Error::other)?;
-    staged.publish().await.map_err(io::Error::other)
+    .await?;
+    demi_shared_artifacts::decode_file(compressed, expected, staged.file(), cancel).await?;
+    staged.publish().await
 }
 
 /// The lock the installers take on an installation: a directory on Unix,

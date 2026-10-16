@@ -46,13 +46,13 @@ import GallerySection from '../components/GallerySection.vue'
 import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
-import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '@demicodes/web-ui/devices/state'
+import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE, deviceStatusLabel } from '@demicodes/web-ui/devices/state'
 
 const { view } = useGalleryView()
 
 const hostDevices: HostDeviceOption[] = shownAmong([
   { id: 'mac', name: 'alex-mbp', state: 'online', mark: GALLERY_MARKS.mac },
-  { id: 'build', name: 'build-01', state: 'updating', mark: GALLERY_MARKS.ubuntu },
+  { id: 'build', name: 'build-01', state: 'updating', downloadPercent: 26, mark: GALLERY_MARKS.ubuntu },
   { id: 'studio', name: 'studio', state: 'offline', mark: GALLERY_MARKS.windows },
 ])
 const hostStatusItems = hostDevices.map((device) => ({
@@ -60,7 +60,7 @@ const hostStatusItems = hostDevices.map((device) => ({
   label: device.name,
   indicator: DEVICE_STATE_TONE[device.state],
   indicatorLabel: DEVICE_STATE_LABEL[device.state],
-  value: device.state === 'online' ? undefined : DEVICE_STATE_LABEL[device.state],
+  value: device.state === 'online' ? undefined : deviceStatusLabel(device),
 }))
 /**
  * The devices the host menu specimens list: one for each path this page
@@ -76,6 +76,10 @@ const menuDevices: HostDeviceOption[] = shownAmong([
   // Reached by relay yesterday, not yet this session: the path is faint.
   { id: 'pc', name: 'Gaming PC', state: 'online', path: null, lastPath: 'relay', mark: GALLERY_MARKS.windows },
   { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'online', mark: GALLERY_MARKS.fedora },
+  // Downloads its server's next runner while it serves.
+  { id: 'hk', name: 'hk-server', state: 'online', path: 'relay', downloadPercent: 40, mark: GALLERY_MARKS.debian },
+  // Its server switched; it downloads the new runner, then restarts.
+  { id: 'nas', name: 'home-nas', state: 'updating', downloadPercent: 26, mark: GALLERY_MARKS.ubuntu },
   { id: 'old', name: 'Old Laptop', state: 'offline', mark: GALLERY_MARKS.debian },
 ])
 const askedMove = useMoveQuestion()
@@ -544,6 +548,12 @@ function openSharedMenu(row: string, event: MouseEvent): void {
         </GallerySpecimen>
         <GallerySpecimen variant="host menu · a name longer than the button, whole on hover">
           <GalleryHostMenu :devices="menuDevices" primary-id="lab" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="host menu · on a device downloading its next runner while it serves">
+          <GalleryHostMenu :devices="menuDevices" primary-id="hk" has-messages />
+        </GallerySpecimen>
+        <GallerySpecimen variant="host menu · on a device updating after its server switched">
+          <GalleryHostMenu :devices="menuDevices" primary-id="nas" has-messages />
         </GallerySpecimen>
         <GallerySpecimen variant="move dialog">
           <div class="flex gap-2">

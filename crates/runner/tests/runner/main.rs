@@ -8,6 +8,7 @@ mod connection;
 mod host;
 mod host_log;
 mod jobs;
+mod prefetch;
 mod registration;
 
 use std::{
@@ -45,6 +46,20 @@ impl Host {
     /// Starts a runner whose environment is the test's with `env` added, as
     /// the device the backend already paired, and takes its `hello`.
     pub async fn start(env: BTreeMap<String, String>) -> Self {
+        Self::start_with(RunnerProcessOptions {
+            env: SpawnEnv::Overlay(
+                env.into_iter()
+                    .map(|(name, value)| (name, Some(value)))
+                    .collect(),
+            ),
+            ..RunnerProcessOptions::default()
+        })
+        .await
+    }
+
+    /// [`Host::start`] with the runner's `options`, as the device the
+    /// backend already paired.
+    pub async fn start_with(options: RunnerProcessOptions) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0")
             .await
             .expect("a local port");
@@ -55,13 +70,8 @@ impl Host {
         let process = RunnerProcess::start(
             &backend,
             RunnerProcessOptions {
-                env: SpawnEnv::Overlay(
-                    env.into_iter()
-                        .map(|(name, value)| (name, Some(value)))
-                        .collect(),
-                ),
-                token: Some("test-token".into()),
-                ..RunnerProcessOptions::default()
+                token: Some(TOKEN.into()),
+                ..options
             },
         );
         let (socket, hello) = accept(&listener, &process).await;
@@ -199,6 +209,9 @@ async fn next(socket: &mut WebSocketStream<TcpStream>, process: &RunnerProcess) 
         }
     }
 }
+
+/// The device token of the tests' runners.
+const TOKEN: &str = "test-token";
 
 /// The conversation the tests' jobs belong to.
 const CONVERSATION: &str = "conversation";

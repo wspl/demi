@@ -2,7 +2,9 @@
   "state": {
     "online": "上線",
     "updating": "更新中",
-    "offline": "離線"
+    "offline": "離線",
+    "downloading": "正在下載更新 · {percent}%",
+    "updatingPercent": "更新中 · {percent}%"
   },
   "route": {
     "automatic": "自動",

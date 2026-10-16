@@ -25,7 +25,7 @@ const sockets: WatchSocket[] = []
 const laptop = {
   id: LAPTOP, kind: 'user' as const, name: 'laptop', platform: 'linux' as const,
   claimedAt: '2026-09-10T00:00:00.000Z', lastSeenAt: null, state: 'online' as const, home: '/home/ada',
-  installed: [], startCommand: null, os: null, runnerVersion: null, mark: { logo: 'tux' as const, number: 1 }, route: 'automatic' as const,
+  installed: [], startCommand: null, os: null, runnerVersion: null, downloadPercent: null, mark: { logo: 'tux' as const, number: 1 }, route: 'automatic' as const,
 }
 
 /** A watch socket the page opened, which the test plays as the backend would. */

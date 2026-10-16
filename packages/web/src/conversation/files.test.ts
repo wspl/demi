@@ -36,7 +36,7 @@ function laptop(name: string) {
     installed: [],
     startCommand: null,
     os: null,
-    runnerVersion: null,
+    runnerVersion: null, downloadPercent: null,
     mark: { logo: 'tux' as const, number: 1 },
     route: 'automatic' as const,
   }

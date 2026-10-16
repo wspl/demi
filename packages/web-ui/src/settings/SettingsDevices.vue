@@ -13,7 +13,7 @@ import { connectedVia, type DeviceRoute } from '../devices/direct'
 import type { DeviceInstallCommands } from '../devices/installation'
 import { useDevicePairing, type PairingResult } from '../devices/pairing'
 import DeviceIcon from '../devices/DeviceIcon.vue'
-import { DEVICE_STATE_LABEL } from '../devices/state'
+import { deviceStatusLabel } from '../devices/state'
 import type { OverlayStore } from '../overlay/overlayStore'
 import SettingsDevicePage from './SettingsDevicePage.vue'
 import SettingsGroup from './SettingsGroup.vue'
@@ -62,8 +62,8 @@ const emit = defineEmits<{
 
 /** A device's state in its row: how this page reaches it while it is online; the reason waits on its page. */
 function reachedAs(device: SettingsDevice): SentenceText {
-  if (device.state !== 'online') {
-    return DEVICE_STATE_LABEL[device.state]
+  if (device.state !== 'online' || device.downloadPercent != null) {
+    return deviceStatusLabel(device)
   }
   return connectedVia(device.direct)
 }

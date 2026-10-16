@@ -50,6 +50,11 @@ pub struct RunnerProcessOptions {
     /// Whether the runner says it is a managed host, as a Cloud's runner
     /// does.
     pub managed: bool,
+    /// The release of the installation the runner runs in, as an
+    /// installer's launcher starts it: its executable lies in the state's
+    /// `releases/<release>/`, so it downloads releases ahead and updates
+    /// itself. None runs it as a build.
+    pub release: Option<String>,
 }
 
 impl Default for RunnerProcessOptions {
@@ -59,6 +64,7 @@ impl Default for RunnerProcessOptions {
             env: SpawnEnv::Inherit,
             token: None,
             managed: false,
+            release: None,
         }
     }
 }
@@ -101,6 +107,15 @@ impl RunnerProcess {
             .expect("a temporary directory for the runner");
         if let Some(token) = &options.token {
             write_token(state.path(), token);
+        }
+        if let Some(release) = &options.release {
+            let directory = state.path().join("releases").join(release);
+            std::fs::create_dir_all(&directory).expect("the release's directory");
+            let installed = directory.join(program.file_name().expect("the program has a name"));
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&program, installed).expect("the installed runner");
+            #[cfg(windows)]
+            std::fs::hard_link(&program, installed).expect("the installed runner");
         }
         let mut process = Self {
             program,
@@ -371,6 +386,9 @@ fn runner_command(
         .env("DEMI_RUNNER_NAME", &options.name)
         .stdin(Stdio::null())
         .kill_on_drop(true);
+    if let Some(release) = &options.release {
+        command.env(demi_runner_protocol::release::RELEASE_ENV, release);
+    }
     if options.managed {
         command.env("DEMI_RUNNER_MANAGED", "1");
     } else {

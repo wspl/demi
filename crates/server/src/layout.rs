@@ -67,6 +67,12 @@ impl Layout {
         self.at("/opt/demi/server")
     }
 
+    /// The backend's management socket where the configuration names
+    /// none.
+    pub fn manage_socket(&self) -> PathBuf {
+        self.at(demi_runner_protocol::release::MANAGE_SOCKET)
+    }
+
     pub fn journal(&self) -> PathBuf {
         self.state().join("upgrade.json")
     }

@@ -13,7 +13,7 @@
 use std::path::Path;
 
 use demi_runner_protocol::console::{PAIRED, PAIRING_CODE, REMOVAL};
-use demi_runner_protocol::release::RunnerRelease;
+use demi_runner_protocol::release::{ReleaseError, RunnerRelease};
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::devices::InstallCommands;
 use sha2::{Digest, Sha256};
@@ -163,7 +163,7 @@ impl RunnerReleases {
             return Ok(None);
         };
         let path = root.join("manifest.json");
-        match read_runner_release(&path).await? {
+        match read_runner_release(&path, RunnerRelease::decode).await? {
             Some(release) => Ok(Some(release)),
             None => Err(format!("{} is missing", path.display())),
         }
@@ -171,15 +171,19 @@ impl RunnerReleases {
 }
 
 /// The runner release record at `path`, a release's or the top-level
-/// `manifest.json` of a server release's `runners/`, when there is one; a
+/// `manifest.json` of a server release's `runners/`, when there is one,
+/// read by `decode` ([`RunnerRelease::decode`] for one this build runs); a
 /// record that does not decode is the deployment's fault.
-pub async fn read_runner_release(path: &Path) -> Result<Option<RunnerRelease>, String> {
+pub async fn read_runner_release(
+    path: &Path,
+    decode: fn(&[u8]) -> Result<RunnerRelease, ReleaseError>,
+) -> Result<Option<RunnerRelease>, String> {
     let bytes = match tokio::fs::read(path).await {
         Ok(bytes) => bytes,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => return Err(format!("{}: {error}", path.display())),
     };
-    RunnerRelease::decode(&bytes)
+    decode(&bytes)
         .map(Some)
         .map_err(|error| format!("{}: {error}", path.display()))
 }
