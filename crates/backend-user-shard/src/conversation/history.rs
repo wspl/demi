@@ -13,7 +13,7 @@ use std::ops::{Range, RangeInclusive};
 use std::rc::{Rc, Weak};
 
 use demi_agent_tools::duration;
-use demi_backend_database::search::{SearchKind, occurrences, searchable_text};
+use demi_backend_database::search::{HistoryBound, HistoryQuery, SearchKind, occurrences, searchable_text};
 use demi_backend_database::tree::{self, Transcript};
 use demi_backend_host_access::host_commands::conversation_of;
 use demi_backend_host_access::{HostShard, root_of};
@@ -25,6 +25,7 @@ use demi_shared_types::{
     ToolView, UserContentBlock,
 };
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use schemars::JsonSchema;
 use serde::Deserialize;
@@ -42,11 +43,29 @@ const BATCH: usize = 64;
 
 const GROUP_SUMMARY: &str = "This agent's own transcript, which keeps every block, also what a compaction summarized: search it, read a range of it, open a command, a thinking block, a subagent's report or an attachment it names. A block is named by its index, such as 4213.";
 
-const SEARCH_SUMMARY: &str = "Find your messages, your user's or parent's messages and steers, your texts and the titles of the commands you ran that hold every word, or any with --any; a word matches anywhere in a text, in any language, case aside. The newest come first, five to a page, each its index, who wrote it and when, then the matching text with the message before and after it, cut around the words, which are marked **like this**. Thinking, scripts and command output are not searched.";
+const SEARCH_SUMMARY: &str = "Find your messages, your user's or parent's messages and steers, your texts and the titles of the commands you ran that hold every word, or any with --any; a word matches anywhere in a text, in any language, case aside. The newest come first, five to a page, each its index, who wrote it and when, then the matching text with the message before and after it, cut around the words, which are marked **like this**. Thinking, scripts and command output are not searched. Filters narrow the search, so a common word does not bury what was asked: --from user keeps your user's or parent's messages and steers, --from agent your texts and commands; --after and --before keep what lies after or before a block, 4213, or a day, 2026-10-14, in the user's time zone, and both may be given; --oldest lists the oldest first. For example, search --from user --before 2026-10-15 README finds what the user asked of the README in the days before.";
 
-const READ_SUMMARY: &str = "Print the transcript in a range of block indices, 4213..4260, 4213.. or ..4260: each message and each of your texts whole, every other block as one line saying what it is and how to open it, such as [4214 command: Run the tests · exit 0 · 3s]; thinking and context blocks are left out. A read stops at about 8,000 characters, at a block's end, and its last line says where to go on.";
+const READ_SUMMARY: &str = "Print the transcript in a range of block indices, 4213..4260, 4213.. or ..4260: each message and each of your texts whole, every other block as one line saying what it is and how to open it, such as [4214 command: Run the tests · exit 0 · 3s]; thinking and context blocks are left out. With --from user only your user's or parent's messages are printed, with --from agent only your texts and command lines, as search --from counts them. A read stops at about 8,000 characters, at a block's end, and its last line says where to go on.";
 
 const OPEN_SUMMARY: &str = "Print what a read names in one line, by its index: a command's script, exit code, duration and output, the output a page at a time as demi shell output pages it; a thinking block's text; a subagent's report; a compaction's summary. An attachment or an image of a message, such as 4213/a1, is saved under $DEMI_SCRATCH and its path printed, for demi file view or the ordinary tools. --page <n> takes the next page.";
+
+/// Whose texts a search or a read keeps: the agent's user's or parent's,
+/// or the agent's own.
+#[derive(Clone, Copy, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+enum Side {
+    User,
+    Agent,
+}
+
+impl Side {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::User => "user",
+            Self::Agent => "agent",
+        }
+    }
+}
 
 /// The input of `demi conversation history search`.
 #[derive(Deserialize, JsonSchema)]
@@ -57,6 +76,17 @@ struct SearchArgs {
     words: Vec<String>,
     /// Find the texts that hold any of the words, not only every one
     any: Option<bool>,
+    /// Keep the messages of your user or parent, user, or your own texts
+    /// and commands, agent
+    from: Option<Side>,
+    /// Keep what lies after a block, such as 4213, or a day, such as
+    /// 2026-10-14, in the user's time zone
+    after: Option<String>,
+    /// Keep what lies before a block, such as 4213, or a day, such as
+    /// 2026-10-14, in the user's time zone
+    before: Option<String>,
+    /// List the oldest first
+    oldest: Option<bool>,
     /// The page of hits, from 1
     #[schemars(range(min = 1))]
     page: Option<u64>,
@@ -68,6 +98,9 @@ struct SearchArgs {
 struct ReadArgs {
     /// The blocks to read, by index: 4213..4260, 4213.. or ..4260
     range: String,
+    /// Print only the messages of your user or parent, user, or only your
+    /// own texts and command lines, agent
+    from: Option<Side>,
 }
 
 /// The input of `demi conversation history open`.
@@ -149,6 +182,21 @@ impl Reader {
         if self.root { "user" } else { "parent" }
     }
 
+    /// The bound `text` names of a search, `after` or before it: a block's
+    /// index, or a day in the user's time zone, which a search after it
+    /// keeps from the next day's start on and before it up to its own
+    /// start.
+    fn bound(&self, text: &str, after: bool) -> Result<(When, HistoryBound), RpcError> {
+        if let Some(at) = index(text) {
+            return Ok((When::Index(at), HistoryBound::Index(at)));
+        }
+        let invalid = || failed(format!("{text}: a block's index, such as 4213, or a day, such as 2026-10-14"));
+        let day: Date = text.parse().map_err(|_| invalid())?;
+        let start = if after { day.tomorrow().map_err(|_| invalid())? } else { day };
+        let moment = start.to_zoned(self.zone.clone()).map_err(|_| invalid())?.timestamp();
+        Ok((When::Day(day), HistoryBound::Time(Timestamp::truncate(moment))))
+    }
+
     /// A time as the conversation shows it: "Oct 14, 3:02 PM", with the
     /// year when it is not this year, "Oct 14, 2025, 3:02 PM".
     fn when(&self, time: Timestamp) -> String {
@@ -180,6 +228,21 @@ impl Reader {
     }
 }
 
+/// A bound of a search as its options name it again.
+enum When {
+    Index(usize),
+    Day(Date),
+}
+
+impl std::fmt::Display for When {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Index(at) => write!(formatter, "{at}"),
+            Self::Day(day) => write!(formatter, "{day}"),
+        }
+    }
+}
+
 /// How many hits a page of a search shows.
 const HITS_PER_PAGE: usize = 5;
 
@@ -204,6 +267,38 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
         return Err(failed("no words to find"));
     }
     let any = call.args.any == Some(true);
+    let oldest = call.args.oldest == Some(true);
+    let after = call.args.after.as_deref().map(|text| reader.bound(text, true)).transpose()?;
+    let before = call.args.before.as_deref().map(|text| reader.bound(text, false)).transpose()?;
+    // The options as the search's lines name them again, but for the page.
+    let mut options = Vec::new();
+    if any {
+        options.push("--any".to_owned());
+    }
+    if let Some(side) = call.args.from {
+        options.push(format!("--from {}", side.as_str()));
+    }
+    if let Some((when, _)) = &after {
+        options.push(format!("--after {when}"));
+    }
+    if let Some((when, _)) = &before {
+        options.push(format!("--before {when}"));
+    }
+    if oldest {
+        options.push("--oldest".to_owned());
+    }
+    let query = HistoryQuery {
+        words: words.clone(),
+        any,
+        kinds: match call.args.from {
+            None => Vec::new(),
+            Some(Side::User) => vec![SearchKind::Message],
+            Some(Side::Agent) => vec![SearchKind::Answer, SearchKind::Command],
+        },
+        after: after.map(|(_, bound)| bound),
+        before: before.map(|(_, bound)| bound),
+        oldest,
+    };
     let node = reader.node.clone();
     let agent = shard
         .services()
@@ -216,13 +311,17 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
     let hits = shard
         .services()
         .search
-        .find_in(shard.user(), &reader.conversation, agent, words.clone(), any)
+        .find_in(shard.user(), &reader.conversation, agent, query)
         .await
         .map_err(failed)?;
     if hits.is_empty() {
         let which = if any { "any" } else { "every one" };
-        port.stdout(format!("Nothing of this transcript holds {which} of: {}\n", words.join(" ")))
-            .await?;
+        let mut nothing = format!("Nothing of this transcript holds {which} of: {}", words.join(" "));
+        let filters: Vec<&str> = options.iter().map(String::as_str).filter(|option| *option != "--any").collect();
+        if !filters.is_empty() {
+            nothing.push_str(&format!(", with {}", filters.join(" ")));
+        }
+        port.stdout(nothing + "\n").await?;
         return Ok(0);
     }
     let pages = hits.len().div_ceil(HITS_PER_PAGE);
@@ -265,10 +364,10 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
         // The options first, then `--`, so a word such as `--release` is
         // read as a word.
         let quoted: Vec<String> = words.iter().map(|word| shell_word(word)).collect();
-        let any = if any { " --any" } else { "" };
+        options.push(format!("--page {}", page + 1));
         footer.push_str(&format!(
-            " · next: demi conversation history search{any} --page {} -- {}",
-            page + 1,
+            " · next: demi conversation history search {} -- {}",
+            options.join(" "),
             quoted.join(" ")
         ));
     }
@@ -289,6 +388,16 @@ fn said(reader: &Reader, block: &Block) -> Option<(&'static str, String)> {
         (SearchKind::Command, Block::ToolCall(call)) => ("command", command(call)?),
         (SearchKind::Command, _) => return None,
     })
+}
+
+/// Whose a block a read with `--from` prints is, as a search with `--from`
+/// counts it: a message or a steer is the user's or parent's, a text or a
+/// command the agent's; none for any other block.
+fn side_of(block: &Block) -> Option<Side> {
+    match searchable_text(block)?.kind {
+        SearchKind::Message => Some(Side::User),
+        SearchKind::Answer | SearchKind::Command => Some(Side::Agent),
+    }
 }
 
 /// Which part of a text a hit shows.
@@ -388,6 +497,7 @@ async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u
         )));
     }
     let end = to.map_or(length - 1, |to| to.min(length - 1));
+    let from_side = call.args.from;
     let mut printed = Vec::new();
     let mut used = 0;
     let mut stopped = None;
@@ -395,7 +505,8 @@ async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u
     let mut at = from;
     'reading: loop {
         for block in &blocks {
-            if let Some(shown) = item(&reader, at, block) {
+            let kept = from_side.is_none_or(|side| side_of(block) == Some(side));
+            if let Some(shown) = item(&reader, at, block).filter(|_| kept) {
                 let text = shown.text();
                 let cost = text.chars().count() + 1;
                 if used + cost > BUDGET {
@@ -421,13 +532,16 @@ async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u
         blocks = reader.blocks(&shard, at..=end.min(at + BATCH - 1)).await?.0;
     }
     if printed.is_empty() {
-        printed.push(format!(
-            "Nothing to show in {from}..{end}: thinking and context blocks only."
-        ));
+        printed.push(match from_side {
+            None => format!("Nothing to show in {from}..{end}: thinking and context blocks only."),
+            Some(Side::User) => format!("No message of the {} in {from}..{end}.", reader.author()),
+            Some(Side::Agent) => format!("No text or command of the agent in {from}..{end}."),
+        });
     }
+    let option = from_side.map_or_else(String::new, |side| format!("--from {} ", side.as_str()));
     let next = |at: usize| match to {
-        Some(_) => format!("demi conversation history read {}..{end}", at + 1),
-        None => format!("demi conversation history read {}..", at + 1),
+        Some(_) => format!("demi conversation history read {option}{}..{end}", at + 1),
+        None => format!("demi conversation history read {option}{}..", at + 1),
     };
     if let Some(at) = stopped {
         printed.push(format!("Stopped at {at} · next: {}", next(at)));
