@@ -109,7 +109,10 @@ pub enum DeviceState {
 }
 
 /// A device as the web app sees it. `platform` is the one its runner
-/// reported; `state` says whether its runner serves it now; `home` is
+/// reported; `state` says whether its runner serves it now;
+/// `download_percent` is how much of a runner executable this backend has
+/// served it, while it serves one, as a device downloads its next runner
+/// ahead or updates (`runner.md` § Runner updates), null otherwise; `home` is
 /// the home directory it reported when it last connected, null until then
 /// (the backend keeps it in memory only); `installed` is what its runner
 /// last reported its artifact cache holds, kept while it is offline
@@ -132,6 +135,9 @@ pub struct DeviceDto {
     #[schemars(with = "Nullable<Timestamp>")]
     pub last_seen_at: Option<Timestamp>,
     pub state: DeviceState,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<u8>")]
+    pub download_percent: Option<u8>,
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub home: Option<String>,

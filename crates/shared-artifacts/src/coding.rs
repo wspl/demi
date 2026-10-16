@@ -98,3 +98,18 @@ where
     let decoder = async_compression::tokio::bufread::ZstdDecoder::new(reader);
     tokio_util::io::ReaderStream::new(decoder)
 }
+
+/// Decodes the file at `encoded`, bytes in the content coding, into
+/// `output`, checking what it decodes to against `expected`, as a download
+/// kept in its coding is checked once it is complete.
+pub async fn decode_file(
+    encoded: &std::path::Path,
+    expected: &Digest,
+    output: &mut (impl tokio::io::AsyncWrite + Unpin),
+    cancel: &tokio_util::sync::CancellationToken,
+) -> Result<(), Error> {
+    let file = tokio::fs::File::open(encoded).await?;
+    let mut decoder =
+        async_compression::tokio::bufread::ZstdDecoder::new(tokio::io::BufReader::new(file));
+    crate::copy(&mut decoder, expected, output, cancel).await
+}

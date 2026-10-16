@@ -36,7 +36,7 @@ import {
   type DirectPermission,
 } from '../devices/direct'
 import { RUNNER_STATE_LABEL, runnerState, systemName, type DeviceReport } from '../devices/report'
-import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
+import { DEVICE_STATE_TONE, deviceStatusLabel } from '../devices/state'
 import { hostIcon } from '../hosts/icons'
 import DeviceIcon from '../devices/DeviceIcon.vue'
 import type { OverlayStore } from '../overlay/overlayStore'
@@ -102,8 +102,8 @@ const status = computed<{ tone: StatusDotTone; words: SentenceText }>(() => {
     return { tone: 'muted', words: t('connected.relay') }
   }
   const tone = DEVICE_STATE_TONE[shown.state]
-  if (shown.state !== 'online') {
-    return { tone, words: DEVICE_STATE_LABEL[shown.state] }
+  if (shown.state !== 'online' || shown.downloadPercent != null) {
+    return { tone, words: deviceStatusLabel(shown) }
   }
   return { tone, words: direct.value ? connectedVia(direct.value) : t('connected.relay') }
 })

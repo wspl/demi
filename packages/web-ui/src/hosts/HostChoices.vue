@@ -5,7 +5,7 @@ import MenuItem from '../ui/MenuItem.vue'
 import type { SentenceText } from '../ui/ui-text'
 import { deviceGlyph } from '../devices/device-glyphs'
 import { hostIcon } from './icons'
-import { DEVICE_STATE_LABEL } from '../devices/state'
+import { deviceStatusLabel } from '../devices/state'
 import { DEVICE_PATH_LABEL } from '../devices/direct'
 import type { HostChoice, HostDeviceOption, HostMenuHost } from './types'
 
@@ -49,11 +49,12 @@ function choiceLabel(device: HostDeviceOption): string {
 
 /**
  * The end of a device's row: the path this page reaches it by while it is
- * online, or the one this browser found last time; otherwise its state.
+ * online, or the one this browser found last time; otherwise its state, and
+ * a download of its next runner while one moves.
  */
 function deviceNote(device: HostDeviceOption): string | undefined {
-  if (device.state !== 'online')
-    return DEVICE_STATE_LABEL[device.state]
+  if (device.state !== 'online' || device.downloadPercent != null)
+    return deviceStatusLabel(device)
   const path = device.path ?? device.lastPath
   return path ? DEVICE_PATH_LABEL[path] : undefined
 }

@@ -501,6 +501,7 @@ async fn handle(shared: &Arc<Shared>, call: MachineCall) -> Result<serde_json::V
                         env,
                         token: Some(token),
                         managed: true,
+                        release: None,
                     };
                     Some(RunnerProcess::start_program(program, &backend, options))
                 }

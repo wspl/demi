@@ -119,6 +119,8 @@ export interface Device extends DeviceReport {
   kind: DeviceKind
   name: string
   state: DeviceState
+  /** How much of its next runner it has downloaded, while that download moves (`DeviceStatus`). */
+  downloadPercent: number | null
   platform: FileBrowserPlatform
   home: string | null
   seen?: string

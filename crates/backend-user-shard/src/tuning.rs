@@ -100,7 +100,8 @@ pub struct RunnerTuning {
     /// when a new hello for the device arrives, before it gives way.
     pub probe: Duration,
     /// How long a device shows as updating after the 409 that sent its
-    /// runner to an update, unless a hello comes first.
+    /// runner to an update, or after the last byte of its download served,
+    /// unless a hello comes first.
     pub updating: Duration,
 }
 
@@ -112,7 +113,7 @@ impl Default for RunnerTuning {
             claims_per_minute: 10,
             ping: Some(demi_backend_remote_host::PING_INTERVAL),
             probe: Duration::from_secs(5),
-            updating: Duration::from_secs(5 * 60),
+            updating: Duration::from_secs(2 * 60),
         }
     }
 }

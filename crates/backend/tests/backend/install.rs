@@ -13,13 +13,15 @@ use demi_backend_remote_host::testing::runner_binary;
 use demi_command_protocol::{TARGETS, VERSION, host_target};
 use demi_provider_common::testing::MockVendor;
 use demi_runner_protocol::release::{
-    RELEASE_HEADER, RUNNER, TARGET_HEADER, TOKEN_HEADER, compressed_file,
+    DevicePrefetch, PrefetchAnswer, PrefetchProgress, PrefetchRequest, PrefetchState,
+    COMPRESSED_SUFFIX, RELEASE_HEADER, RUNNER, TARGET_HEADER, TOKEN_HEADER, compressed_file,
 };
 use demi_runner_protocol::{
     console::{PAIRED, PAIRING_CODE, REMOVAL},
     wire,
 };
 use demi_web_api_protocol::devices::DeviceState;
+use demi_web_api_protocol::state::SyncEvent;
 use reqwest::{Method, StatusCode};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -87,6 +89,12 @@ impl Releases {
 
     /// Publishes a release of `targets` alone, each naming `artifact`.
     fn publish_for(&self, name: &str, artifact: &Value, targets: &[&str]) -> String {
+        self.publish_speaking(name, artifact, targets, wire::VERSION)
+    }
+
+    /// Publishes a release of `targets` alone, each naming `artifact`, that
+    /// speaks wire version `wire`.
+    fn publish_speaking(&self, name: &str, artifact: &Value, targets: &[&str], wire: u32) -> String {
         let release = sha(name.as_bytes());
         let files = self.directory.path().join("files");
         std::fs::create_dir_all(&files).unwrap();
@@ -106,7 +114,7 @@ impl Releases {
             .collect();
         let manifest = json!({
             "release": release,
-            "wire": wire::VERSION,
+            "wire": wire,
             "commandProtocol": VERSION,
             "targets": targets,
         })
@@ -1148,6 +1156,187 @@ async fn a_runner_sent_to_an_update_shows_its_device_updating_until_its_next_hel
         device_state().await == DeviceState::Offline
     })
     .await;
+    drop(installations);
+    backend.close().await;
+}
+
+/// Names `release` of the release at `root` as next on the backend's
+/// management socket at `socket`, as an upgrade's `demi-server` does, and
+/// answers the devices' progress once none is downloading.
+async fn prefetch(socket: &Path, release: &str, root: &Path) -> PrefetchProgress {
+    use tokio::io::{AsyncBufReadExt as _, AsyncWriteExt as _};
+    let mut stream = tokio::net::UnixStream::connect(socket).await.unwrap();
+    let request = PrefetchRequest {
+        release: release.to_owned(),
+        root: root.to_owned(),
+    };
+    let mut line = serde_json::to_vec(&request).unwrap();
+    line.push(b'\n');
+    stream.write_all(&line).await.unwrap();
+    let mut answers = tokio::io::BufReader::new(stream).lines();
+    loop {
+        let line = answers.next_line().await.unwrap().expect("the backend answers until done");
+        match serde_json::from_str(&line).unwrap() {
+            PrefetchAnswer::Progress(progress) if progress.finished() => return progress,
+            PrefetchAnswer::Progress(_) => {}
+            PrefetchAnswer::Refused { error } => panic!("the backend refused: {error}"),
+        }
+    }
+}
+
+/// An upgrade names the next runner release while the current one serves,
+/// one that speaks a wire version this backend does not: the paired
+/// device's runner downloads it ahead, connected throughout, and once the
+/// server switches, its update finds the executable in place and downloads
+/// nothing (`runner.md` § Runner updates).
+// Several seconds: the installer downloads this build's runner (170 MB)
+// and starts it, the runner downloads it again ahead, and the updated
+// runner starts.
+#[tokio::test]
+async fn a_runner_downloads_the_next_release_ahead_and_its_update_downloads_nothing() {
+    let releases = Releases::new(runner_binary());
+    releases.publish("initial");
+    let sockets = tempfile::tempdir().unwrap();
+    let socket = sockets.path().join("manage.sock");
+    let mut harness = Harness::new().with_runner_releases(releases.path());
+    harness.manage_socket = Some(socket.clone());
+    let (backend, master) = harness.start_set_up().await;
+    let address = backend.address();
+    let installations = Installations::new();
+    let state = installations.state(&format!("{}/", backend.url));
+    installations.install(&backend, &master).await;
+    let devices = backend.devices(&master).await;
+    let [device] = devices.as_slice() else {
+        panic!("one paired device: {devices:?}");
+    };
+    let id = device.id.clone();
+    backend.until_online(&master, id.as_str(), true).await;
+
+    // The next server release lies beside the current one, and changes the
+    // protocol.
+    let upcoming = Releases::new(runner_binary());
+    let next = upcoming.publish_speaking("next", &upcoming.artifact.clone(), &TARGETS, wire::VERSION + 1);
+    let progress = prefetch(&socket, &next, &upcoming.path()).await;
+    assert_eq!(
+        progress.devices,
+        vec![DevicePrefetch {
+            name: DEVICE.into(),
+            state: PrefetchState::Done,
+        }]
+    );
+    assert!(backend.online(&master, id.as_str()).await);
+    let placed = state.join("releases").join(&next).join(RUNNER);
+    assert_eq!(std::fs::read(&placed).unwrap(), std::fs::read(runner_binary()).unwrap());
+
+    // The server switches to it, and neither its files nor its store hold
+    // the executable any more: an update that downloaded would fail.
+    backend.close().await;
+    releases.publish("next");
+    for file in std::fs::read_dir(releases.directory.path().join("files")).unwrap() {
+        std::fs::remove_file(file.unwrap().path()).unwrap();
+    }
+    let program = sha(&std::fs::read(runner_binary()).unwrap());
+    std::fs::remove_file(harness.data_dir().join("native/blobs").join(program)).unwrap();
+    let backend = harness.start_at(address).await;
+    while_updating("the runner of the next release is active", &state, || async {
+        active_release(&state) == Some(json!(next))
+    })
+    .await;
+    backend.until_online(&master, id.as_str(), true).await;
+    drop(installations);
+    backend.close().await;
+}
+
+/// The device whose runner downloads an update shows as updating, never
+/// offline, for as long as its download moves, however long past the
+/// window that ends an update without one; its pages hear its progress on
+/// the synchronization channel; once its bytes stop, the window passes and
+/// it shows as offline (`runner.md` § Runner updates).
+// Several seconds: the installer downloads this build's runner (170 MB)
+// and starts it, the download is read at a slow link's pace past the
+// window, and the window passes once.
+#[tokio::test]
+async fn a_device_whose_update_downloads_shows_updating_with_its_progress_while_bytes_move() {
+    let releases = Releases::new(runner_binary());
+    let initial = releases.publish("initial");
+    let mut harness = Harness::new().with_runner_releases(releases.path());
+    let window = std::time::Duration::from_millis(1500);
+    harness.runners.updating = window;
+    let (backend, master) = harness.start_set_up().await;
+    let installations = Installations::new();
+    let state = installations.state(&format!("{}/", backend.url));
+    installations.install(&backend, &master).await;
+    let devices = backend.devices(&master).await;
+    let [device] = devices.as_slice() else {
+        panic!("one paired device: {devices:?}");
+    };
+    let id = device.id.clone();
+    backend.until_online(&master, id.as_str(), true).await;
+    let token = std::fs::read_to_string(state.join("runner-token")).unwrap();
+    let token = token.trim().to_owned();
+    let drained = std::process::Command::new(state.join("run"))
+        .arg("drain")
+        .output()
+        .unwrap();
+    assert!(drained.status.success(), "{drained:?}");
+    backend.until_online(&master, id.as_str(), false).await;
+    let upgraded = releases.publish("upgraded");
+    let mut page = backend.sync(&master).await;
+    page.snapshot().await;
+    let shown = |event: &SyncEvent| match event {
+        SyncEvent::Devices { devices } => devices
+            .iter()
+            .find(|device| device.id == id)
+            .map(|device| (device.state, device.download_percent)),
+        _ => None,
+    };
+
+    // The device's runner is sent to the update and downloads it, slowly.
+    assert_eq!(ask_socket(&backend, &initial, Some(&token)).await.0, StatusCode::CONFLICT);
+    let asked = tokio::time::Instant::now();
+    let client = reqwest::Client::builder().no_zstd().build().unwrap();
+    let mut download = client
+        .get(format!(
+            "{}/runner-artifacts/{upgraded}/{}/{RUNNER}{COMPRESSED_SUFFIX}",
+            backend.url,
+            host_target(),
+        ))
+        .header(TOKEN_HEADER, &token)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(download.status(), StatusCode::OK);
+    // Its bytes come from the backend as they are counted: no cache keeps
+    // them, and no proxy in front buffers them.
+    assert_eq!(download.headers()["cache-control"], "private, no-store");
+    assert_eq!(download.headers()["x-accel-buffering"], "no");
+    download.chunk().await.unwrap().expect("a first chunk");
+    let heard = page
+        .until(|event| matches!(shown(event), Some((DeviceState::Updating, Some(_)))))
+        .await;
+    let Some((_, Some(first))) = heard.last().and_then(shown) else {
+        unreachable!()
+    };
+    // A slow link: the test reads at its pace, past the window.
+    while asked.elapsed() < window * 2 {
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        download.chunk().await.unwrap().expect("the download goes on");
+        let listed = backend.devices(&master).await;
+        let listed = listed.iter().find(|device| device.id == id).unwrap();
+        assert_eq!(listed.state, DeviceState::Updating, "after {:?}", asked.elapsed());
+    }
+    let heard = page
+        .until(|event| matches!(shown(event), Some((DeviceState::Updating, Some(percent))) if percent > first))
+        .await;
+    assert!(heard.last().and_then(shown).is_some());
+
+    // The bytes stop: the download ends, and the window after its last
+    // byte passes.
+    drop(download);
+    let stopped = tokio::time::Instant::now();
+    page.until(|event| matches!(shown(event), Some((DeviceState::Offline, None))))
+        .await;
+    assert!(stopped.elapsed() + std::time::Duration::from_millis(100) >= window, "{:?}", stopped.elapsed());
     drop(installations);
     backend.close().await;
 }

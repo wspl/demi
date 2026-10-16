@@ -17,6 +17,7 @@ use crate::{
     gvisor,
     journal::{Data, Journal, Step},
     layout::{Layout, UNITS},
+    runners,
     services::Services,
     settings::Settings,
 };
@@ -101,6 +102,7 @@ fn prepare(
         }
         run(settings.command(&manager).arg("--import"))?;
         let restore = data::snapshot(&backend, to).exists();
+        prefetch(layout, settings, to)?;
         return Ok(if restore { Data::Restore } else { Data::Keep });
     }
     if format.is_some_and(|format| format < STATE_FORMAT) {
@@ -108,17 +110,29 @@ fn prepare(
     }
     run(settings.command(&manager).arg("--import"))?;
     let migrating = data::migrating(&backend)?;
-    if migrating.is_empty() {
-        return Ok(Data::Keep);
-    }
-    let size = data::size(&backend, &migrating)?;
-    if !data::room(&backend, size)? {
-        return Err(io::Error::other(format!(
-            "{} has no room for the {size} bytes of the databases {to} migrates",
-            backend.display()
-        )));
-    }
-    Ok(Data::Snapshot)
+    let data = if migrating.is_empty() {
+        Data::Keep
+    } else {
+        let size = data::size(&backend, &migrating)?;
+        if !data::room(&backend, size)? {
+            return Err(io::Error::other(format!(
+                "{} has no room for the {size} bytes of the databases {to} migrates",
+                backend.display()
+            )));
+        }
+        Data::Snapshot
+    };
+    prefetch(layout, settings, to)?;
+    Ok(data)
+}
+
+/// The last step of the preparation: the paired devices download `to`'s
+/// runner while the current release serves.
+fn prefetch(layout: &Layout, settings: &Settings, to: &Version) -> io::Result<()> {
+    let socket = settings
+        .manage_socket()
+        .unwrap_or_else(|| layout.manage_socket());
+    runners::prefetch(&socket, &layout.release(to), runners::WAIT, &mut io::stdout())
 }
 
 /// The format the manager's state directory records, if any.

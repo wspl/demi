@@ -418,3 +418,127 @@ fn setup_refuses_a_server_that_is_set_up_and_an_address_for_a_domain() {
     assert!(refused.unwrap_err().to_string().contains("no domain"));
     assert!(services.calls.borrow().is_empty());
 }
+
+/// A release root whose `runners/` names one runner release, and the
+/// management socket of a backend, both in `directory`; the backend's
+/// side of each connection is `script`'s, run on a thread of its own with
+/// the request it read.
+fn runners_step(
+    directory: &Path,
+    script: impl FnOnce(String, std::os::unix::net::UnixStream) + Send + 'static,
+) -> (PathBuf, PathBuf, std::thread::JoinHandle<()>) {
+    use std::io::BufRead as _;
+    let root = directory.join("root");
+    std::fs::create_dir_all(root.join("runners")).unwrap();
+    let record = serde_json::json!({
+        "release": "3".repeat(64),
+        "wire": demi_runner_protocol::wire::VERSION,
+        "commandProtocol": demi_command_protocol::VERSION,
+        "targets": { "x86_64-unknown-linux-musl": { "sha256": "4".repeat(64), "size": 1 } },
+    });
+    std::fs::write(root.join("runners/manifest.json"), record.to_string()).unwrap();
+    let socket = directory.join("manage.sock");
+    let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+    let backend = std::thread::spawn(move || {
+        let (stream, _) = listener.accept().unwrap();
+        let mut request = String::new();
+        std::io::BufReader::new(&stream).read_line(&mut request).unwrap();
+        script(request, stream);
+    });
+    (root, socket, backend)
+}
+
+/// Writes each of `lines`, a backend's answer, to `stream`.
+fn answer(mut stream: &std::os::unix::net::UnixStream, lines: &[serde_json::Value]) {
+    use std::io::Write as _;
+    for line in lines {
+        writeln!(stream, "{line}").unwrap();
+    }
+}
+
+/// The runners step names the next runner release and its root to the
+/// running backend, prints how many devices have it as they finish, and
+/// goes on once none is downloading, naming those that will download
+/// after the switch (`upgrades.md` § Prepare).
+#[test]
+fn the_runners_step_waits_for_the_devices_and_says_how_many_have_the_new_runner() {
+    let directory = tempfile::tempdir().unwrap();
+    let (root, socket, backend) = runners_step(directory.path(), |request, stream| {
+        let request: serde_json::Value = serde_json::from_str(&request).unwrap();
+        assert_eq!(request["release"], "3".repeat(64));
+        answer(&stream, &[
+            serde_json::json!({ "devices": [
+                { "name": "laptop", "state": "downloading" },
+                { "name": "hk-server", "state": "downloading" },
+            ] }),
+            serde_json::json!({ "devices": [
+                { "name": "laptop", "state": "done" },
+                { "name": "hk-server", "state": "downloading" },
+            ] }),
+            serde_json::json!({ "devices": [
+                { "name": "laptop", "state": "done" },
+                { "name": "hk-server", "state": "failed", "reason": "the connection ended" },
+            ] }),
+        ]);
+    });
+    let mut out = Vec::new();
+    crate::runners::prefetch(&socket, &root, crate::runners::WAIT, &mut out).unwrap();
+    backend.join().unwrap();
+    assert_eq!(
+        String::from_utf8(out).unwrap(),
+        "0 of 2 devices have the new runner\n\
+         1 of 2 devices have the new runner\n\
+         hk-server downloads the new runner after the switch: the connection ended\n"
+    );
+}
+
+/// The runners step waits no longer than its limit: it goes on, naming the
+/// devices still downloading, which download after the switch.
+#[test]
+fn the_runners_step_goes_on_at_its_limit() {
+    let directory = tempfile::tempdir().unwrap();
+    let (gone_on, going_on) = std::sync::mpsc::channel::<()>();
+    let (root, socket, backend) = runners_step(directory.path(), move |_, stream| {
+        answer(&stream, &[serde_json::json!({ "devices": [
+            { "name": "laptop", "state": "done" },
+            { "name": "hk-server", "state": "downloading" },
+        ] })]);
+        // The download goes on until the step went on.
+        let _ = going_on.recv();
+    });
+    let mut out = Vec::new();
+    let limit = std::time::Duration::from_millis(300);
+    let started = std::time::Instant::now();
+    crate::runners::prefetch(&socket, &root, limit, &mut out).unwrap();
+    assert!(started.elapsed() >= limit, "{:?}", started.elapsed());
+    drop(gone_on);
+    backend.join().unwrap();
+    assert_eq!(
+        String::from_utf8(out).unwrap(),
+        "1 of 2 devices have the new runner\n\
+         hk-server has not finished and downloads the new runner after the switch\n"
+    );
+}
+
+/// A backend of a release without the management socket is told nothing.
+#[test]
+fn the_runners_step_tells_a_backend_without_the_socket_nothing() {
+    let directory = tempfile::tempdir().unwrap();
+    let root = directory.path().join("root");
+    std::fs::create_dir_all(root.join("runners")).unwrap();
+    std::fs::write(
+        root.join("runners/manifest.json"),
+        serde_json::json!({
+            "release": "3".repeat(64),
+            "wire": demi_runner_protocol::wire::VERSION,
+            "commandProtocol": demi_command_protocol::VERSION,
+            "targets": { "x86_64-unknown-linux-musl": { "sha256": "4".repeat(64), "size": 1 } },
+        })
+        .to_string(),
+    )
+    .unwrap();
+    let mut out = Vec::new();
+    let socket = directory.path().join("manage.sock");
+    crate::runners::prefetch(&socket, &root, crate::runners::WAIT, &mut out).unwrap();
+    assert!(out.is_empty());
+}

@@ -119,7 +119,7 @@ const day = minutes(24 * 60)
  * nothing.
  */
 function demoDevice(
-  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'seen' | 'start' | 'home' | 'mark'> & { os: SettingsDevice['os']; runnerVersion: string | null },
+  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'downloadPercent' | 'seen' | 'start' | 'home' | 'mark'> & { os: SettingsDevice['os']; runnerVersion: string | null },
   scenario: DirectScenario,
   paired: number,
 ): GalleryDevice {
@@ -148,12 +148,14 @@ export function galleryDevices(): GalleryDevice[] {
       90 * day,
     ),
     demoDevice(
-      { id: 'studio', name: 'studio-pc', state: 'online', seen: ago(0), mark: { logo: 'windows', number: 1 }, ...demoDeviceReport('windows', 'an-older-release') },
+      // It downloads its server's next runner while it serves.
+      { id: 'studio', name: 'studio-pc', state: 'online', downloadPercent: 40, seen: ago(0), mark: { logo: 'windows', number: 1 }, ...demoDeviceReport('windows', 'an-older-release') },
       'unreachable',
       12 * day,
     ),
     demoDevice(
-      { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'updating', seen: ago(minutes(2)), mark: { logo: 'ubuntu', number: 2 }, ...current('linux') },
+      // Its server switched: it downloads the new runner, a quarter so far.
+      { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'updating', downloadPercent: 26, seen: ago(minutes(2)), mark: { logo: 'ubuntu', number: 2 }, ...current('linux') },
       'notOffered',
       2 * day,
     ),

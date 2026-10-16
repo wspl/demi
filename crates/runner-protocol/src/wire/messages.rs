@@ -68,6 +68,19 @@ pub enum Inbound {
         projects: Vec<String>,
     },
     Ping {},
+    /// The runner release the backend moves to next, and its executable
+    /// for the runner's target as a 409 would name it: a paired device's
+    /// runner downloads it into its installation while it serves, and
+    /// answers `prefetched` or `prefetch_failed` (`runner.md` § Runner
+    /// updates).
+    Prefetch {
+        #[garde(custom(digest))]
+        release: String,
+        #[garde(custom(digest))]
+        sha256: String,
+        #[garde(range(min = 1))]
+        size: u64,
+    },
     /// Flush writable filesystems before the guest is stopped; `sync_done`
     /// answers.
     Sync {
@@ -876,6 +889,19 @@ pub enum Outbound {
     /// Liveness, with the count of running jobs the idle rule reads.
     Pong {
         jobs: u64,
+    },
+    /// The executable of the runner release a `prefetch` named is in
+    /// place in the installation.
+    Prefetched {
+        #[garde(custom(digest))]
+        release: String,
+    },
+    /// A `prefetch` failed, for `reason`; the update after the switch
+    /// downloads what is missing.
+    PrefetchFailed {
+        #[garde(custom(digest))]
+        release: String,
+        reason: String,
     },
     SyncDone {
         id: String,

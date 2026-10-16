@@ -166,12 +166,17 @@ impl CloudImageManifest {
         Ok(manifest)
     }
 
-    /// Checks the manifest's values, then that its runner release names the
+    /// Checks the manifest's values and that its runner speaks this build's
+    /// protocols, then that its runner release names the
     /// embedded runner and that each command package's artifact for the
     /// image's target is embedded under its content-addressed path.
     pub fn validate(&self) -> Result<(), ManifestError> {
         garde::Validate::validate(self)
             .map_err(|report| ManifestError::Invalid(report.to_string().trim_end().to_owned()))?;
+        // The image's runner runs against this build.
+        self.runner
+            .compatible()
+            .map_err(|error| ManifestError::Invalid(error.to_string()))?;
         let target = self.architecture.target();
         let runner = self.runner.targets.get(target);
         let embedded = self.executables.get(RUNNER_PATH);

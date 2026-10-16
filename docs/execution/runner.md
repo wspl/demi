@@ -140,13 +140,17 @@ for a runner, and a sender waits for room instead of buffering without limit.
 
 A runner always runs the runner release of the backend it serves, and
 follows it when the backend moves to another release
-([Upgrades](../delivery/upgrades.md)). For example, a laptop's runner of
-release `a1b2…` reconnects after its server was upgraded. The backend now
-installs release `c3d4…`, so it answers the connection with 409 and the
-executable of `c3d4…` for the laptop's target. The runner downloads it,
-checks it, starts it in its own place, and the new runner connects. The
+([Upgrades](../delivery/upgrades.md)). For example, a server is upgraded
+from release `a1b2…` to `c3d4…`. While `a1b2…` still serves, the laptop's
+runner is told that `c3d4…` is coming and downloads its executable in the
+background, its device online throughout and the page showing *Downloading
+update · 40%*. The server switches; the runner reconnects, is answered with
+409 and `c3d4…`, finds the executable already in place, starts it, and the
 laptop is back online seconds after the backend, and nobody ran the
-installer.
+installer. A device on a slow link no longer looks dead: before, a server
+in Hong Kong reached the backend at 7 KB/s, downloaded its update after the
+switch, showed offline for seven minutes, and its first download broke off
+after six of them while a new connection took 12 seconds.
 
 The runner opens its socket at `/api/runner` with three headers:
 `Demi-Runner-Release`, the release it was installed from,
@@ -177,9 +181,9 @@ A paired device's runner that receives an executable updates itself:
 
 1. It takes the installation's install lock, the one the installers take,
    so that no installer runs meanwhile.
-2. It downloads the executable from
-   `/runner-artifacts/<release>/<target>/<file>` on its backend, checks its
-   size and SHA-256 against the answer, and puts it in place in
+2. It downloads the executable, unless it downloaded it ahead (below),
+   from `/runner-artifacts/<release>/<target>/<file>` on its backend, checks
+   its size and SHA-256 against the answer, and puts it in place in
    `releases/<release>/` through a staging directory, as the installers do.
 3. It records the new release in its installation state, `release-id`,
    which the installation's launcher reads, and removes every release
@@ -193,15 +197,47 @@ A paired device's runner that receives an executable updates itself:
    the new release: on Linux and macOS in its own process, on Windows beside
    it, and then it exits. The new runner connects.
 
-An update takes as long as one compressed executable's download, about
-10 MB, from a backend that already holds it. While a runner updates, the
-backend shows its device as updating rather than offline, from the 409 that
-named the executable to the device the request's token names until the
-device's next hello or 5 minutes after the first such 409, whichever comes
-first: the retries of an update that keeps failing do not extend it, and the
-device then shows as offline. A runner of a
-release before 0.1.14 sends no token, so its device shows as offline during
-that one update.
+**Downloading ahead.** While the old release still serves, an upgrade
+tells its backend which runner release comes next
+([Prepare](../delivery/upgrades.md#prepare)), and the backend sends each
+connected paired device's runner `prefetch`, with the release and its
+executable for the runner's target as the 409 names them. The runner
+downloads it into `releases/<release>/` as step 2 does, under the install
+lock, while it goes on serving; a runner that already holds that release
+answers at once. It reports `prefetched` with the release, or `prefetch
+failed` with the reason, which the Host log also keeps; a failure is
+harmless, since the update after the switch downloads what is missing. The
+backend serves the next release's executables from the directory the
+upgrade names, and keeps no state of a prefetch past its connection.
+
+**One download, resumed.** Every download of a runner executable, ahead or
+in an update, keeps its compressed bytes in a staging file named by the
+release, `releases/.download-<release>/`, and continues a broken one with an
+HTTP Range request from the bytes it has, instead of starting again; it
+decompresses and checks the whole once it is complete, and a staging file
+that fails the check is removed. A download that receives nothing for 30
+seconds gives that connection up and opens a new one at once, resumed, since
+a new connection often takes a better path than one that stalled. The
+artifact route answers Range requests on the compressed file
+([Runner releases](native-runtime.md#runner-releases)). An executable is
+about 10 MB compressed.
+
+**What the page shows.** The backend counts the bytes it serves of a runner
+executable to the device whose token the request carries, and the device's
+state carries the download's progress, announced as it moves on the page's
+synchronization channel at most once a second:
+
+| While | The device shows |
+| --- | --- |
+| A prefetch downloads, the runner online | Online, with *Downloading update · 40%* |
+| After the switch, the runner downloading or restarting | *Updating*, with its percent while a download moves |
+| No byte served to it for 2 minutes since the 409, and no hello | Offline |
+
+A device is updating from the 409 that named the executable until its next
+hello, for as long as its download moves, so a slow link that keeps
+receiving shows *Updating · 26%*, never offline. A runner of a release
+before 0.1.14 sends no token, so its device shows as offline during that
+one update.
 
 An update that fails, such as a download that breaks off or an executable
 whose SHA-256 differs, leaves the runner on its release. It writes the

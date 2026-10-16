@@ -52,6 +52,7 @@ use crate::{
     host_log::{self, HostLogReader},
     management::{Management, Phase, Revocation},
     state::{RunnerConfig, RunnerState},
+    update,
 };
 
 /// How a connection ended.
@@ -67,6 +68,10 @@ pub enum End {
 /// What each connection takes from its registration.
 pub struct Registered {
     pub backend: Backend,
+    /// The installation an installer made, which downloads its backend's
+    /// next runner release ahead and updates itself to it; none for a
+    /// runner started otherwise.
+    pub installed: Option<Arc<update::Installed>>,
     pub runner: wire::RunnerInfo,
     pub state: Arc<RunnerState>,
     pub token: watch::Sender<Option<DeviceToken>>,
@@ -428,6 +433,55 @@ impl Owner<'_> {
         Ok(None)
     }
 
+    /// Downloads runner release `release`, whose executable `expected`
+    /// describes, into the installation while the runner serves, and tells
+    /// the backend how it went; the Host log keeps a failure (`runner.md`
+    /// § Runner updates). A connection that ends stops the download, whose
+    /// bytes the next download resumes from.
+    fn prefetch(&mut self, release: String, expected: demi_shared_artifacts::Digest) {
+        let installed = self.registered.installed.clone();
+        let backend = self.registered.backend.url().clone();
+        let token = self.registered.token.borrow().clone();
+        let control = self.live.control.clone();
+        let closed = self.live.closed.clone();
+        self.work.spawn(async move {
+            let placed = match &installed {
+                Some(installed) => {
+                    installed
+                        .prefetch(&backend, token.as_ref(), &release, &expected, &closed)
+                        .await
+                }
+                None => Err(io::Error::other(
+                    "this runner was not installed by an installer, so it does not update itself",
+                )),
+            };
+            if closed.is_cancelled() {
+                return Work::Done;
+            }
+            let reply = match placed {
+                Ok(()) => {
+                    tracing::info!("runner release {release} is downloaded ahead");
+                    wire::Outbound::Prefetched { release }
+                }
+                Err(error) => {
+                    tracing::warn!("runner release {release} was not downloaded ahead: {error}");
+                    wire::Outbound::PrefetchFailed {
+                        release,
+                        reason: error.to_string(),
+                    }
+                }
+            };
+            match wire::encode(&reply) {
+                Ok(reply) => {
+                    // A backend that went away needs no answer.
+                    let _ = control.send(reply).await;
+                }
+                Err(error) => tracing::warn!("invalid prefetch answer: {error}"),
+            }
+            Work::Done
+        });
+    }
+
     async fn message(&mut self, message: Inbound) -> io::Result<()> {
         match message {
             Inbound::ConversationRelease {
@@ -458,6 +512,11 @@ impl Owner<'_> {
                     Work::Done
                 });
             }
+            Inbound::Prefetch {
+                release,
+                sha256,
+                size,
+            } => self.prefetch(release, demi_shared_artifacts::Digest { size, sha256 }),
             Inbound::Manifest { manifest } => {
                 let installing = self.manifests.install(
                     manifest,
