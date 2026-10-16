@@ -12,7 +12,8 @@ import type { HostChoice, HostDeviceOption, HostMenuHost } from './types'
 /**
  * The Hosts a conversation can run on, as Run On lists them
  * (`product.md` § Where a conversation runs): the Cloud, then each paired
- * device, an online one with the path this page reaches it by, the primary
+ * device, an online one with the path this page reaches it by, or fainter
+ * the path this browser found last time before the page reached it, the primary
  * Host checked. In a project, choosing a device other than the checked one
  * opens its directory picker first, which an ellipsis marks. The header's
  * host menu lists every device, an offline one unavailable; an offline
@@ -46,11 +47,20 @@ function choiceLabel(device: HostDeviceOption): string {
   return opensPicker ? `${device.name}…` : device.name
 }
 
-/** The end of a device's row: the path this page reaches it by while it is online, otherwise its state. */
+/**
+ * The end of a device's row: the path this page reaches it by while it is
+ * online, or the one this browser found last time; otherwise its state.
+ */
 function deviceNote(device: HostDeviceOption): string | undefined {
   if (device.state !== 'online')
     return DEVICE_STATE_LABEL[device.state]
-  return device.path ? DEVICE_PATH_LABEL[device.path] : undefined
+  const path = device.path ?? device.lastPath
+  return path ? DEVICE_PATH_LABEL[path] : undefined
+}
+
+/** Whether the row's path is the one found last time, which may be out of date. */
+function lastPathShown(device: HostDeviceOption): boolean {
+  return device.state === 'online' && !device.path && !!device.lastPath
 }
 </script>
 
@@ -71,6 +81,7 @@ function deviceNote(device: HostDeviceOption): string | undefined {
       :icon="deviceGlyph(device.state, device.mark)"
       :label="choiceLabel(device)"
       :value="deviceNote(device)"
+      :value-faint="lastPathShown(device)"
       choice
       :is-selected="deviceChecked(device.id)"
       :disabled="!!locked || device.state !== 'online'"

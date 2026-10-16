@@ -261,10 +261,12 @@ export function addressWithPort(inUse: { address: string; port: number }): strin
   return inUse.address.includes(':') ? `[${inUse.address}]:${inUse.port}` : `${inUse.address}:${inUse.port}`
 }
 
-/** The kind of path a P2P connection runs on (`direct-channel.md` § What the user sees). */
-export type PathKind = 'thisComputer' | 'localNetwork' | 'internet'
+/** The paths the page can use for a device: a P2P one of each kind, or the relay. */
+export const DEVICE_PATHS = ['thisComputer', 'localNetwork', 'internet', 'relay'] as const
 /** The path the page uses for a device: a P2P one of its kind, or the relay. */
-export type DevicePath = PathKind | 'relay'
+export type DevicePath = (typeof DEVICE_PATHS)[number]
+/** The kind of path a P2P connection runs on (`direct-channel.md` § What the user sees). */
+export type PathKind = Exclude<DevicePath, 'relay'>
 
 /** Each path as its label names it, wherever the path is named: "Connected via LAN". */
 export const DEVICE_PATH_LABEL: Record<DevicePath, TitleText> = {
@@ -352,13 +354,16 @@ export function pathSentence(address: string): SentenceText {
 }
 
 /** The kind of the connected peer's path, from its address in use; null without a peer. */
-function peerKind(status: DirectStatus): PathKind | null {
+function peerKind(status: PathStatus): PathKind | null {
   const inUse = status.attempt?.inUse
   return status.peer && inUse ? pathKind(inUse.address) : null
 }
 
+/** What of a device's status decides the path the page uses. */
+export type PathStatus = Pick<DirectStatus, 'peer' | 'chosen' | 'attempt'>
+
 /** The path a page reaching a device with `status` uses: its peer's kind while it uses the peer, the relay otherwise. */
-export function statusPath(status: DirectStatus): DevicePath {
+export function statusPath(status: PathStatus): DevicePath {
   return (status.chosen && peerKind(status)) || 'relay'
 }
 
