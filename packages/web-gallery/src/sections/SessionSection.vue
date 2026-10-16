@@ -1152,6 +1152,7 @@ const formattedBubble: UserContentBlock[] = [
 /** The composer's drafts: the Markdown with a mark where each capsule stands, beside their files in that order. */
 const composerDrafts = {
   ready: `The spec is ${ATTACHMENT_MARK}, the screenshot from CI is ${ATTACHMENT_MARK} and the manifest on my laptop is ${ATTACHMENT_MARK}.`,
+  picture: `${ATTACHMENT_MARK} Why is this off?`,
   uploading: `Wait for ${ATTACHMENT_MARK} and ${ATTACHMENT_MARK} to arrive.`,
   attaching: `Compare ${ATTACHMENT_MARK} with ${ATTACHMENT_MARK}, pasted from another conversation.`,
   failed: `The capture ${ATTACHMENT_MARK} did not upload; the log ${ATTACHMENT_MARK} did.`,
@@ -1397,7 +1398,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'composer'">
       <GallerySection
         title="Composer"
-        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, through its upload phases, a failed upload with Retry, and a remote host file naming its device; and queue. Enter on a message that cannot go shows the send button’s reason where the pointer would. A message opens the composer as soon as it needs more than the line it is on, whether it holds lines of its own or its text outgrows the width, and closes it again when it fits; nothing is ever cut off at the line’s end. One send; while the agent works, Enter steers the running turn or queues the message, as Settings › General chooses, and ⌘⏎ outside a code block, or a ⌘-click on the send button, sends it the other way, which the button’s tooltip names; Stop stays beside it for the whole turn. Here a steer or a queued message is a toast naming what the product would do; the sessions below take them. When a later save replaced a version of the draft, a row above the input offers it by its first line: Restore exchanges it with the draft, which the row then offers, and × dismisses it. When the user’s plugins changed since the conversation opened, a row above the input offers Reload, and goes once the conversation opened again. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure Models or Restore Conversation on the right. A conversation its Cloud holds during a reset uses that snackbar with a spinner and no action, and the input returns with its draft when the reset ends. The model chip and the context ring stand in a row under the box, at its right edge, model first; loading and a failed load show there too. The narrow composer resizes from its corner."
+        note="Idle through Fast Mode; text formatted as it is typed; each file a capsule where it was put, as tall as a line of its text whether the message stands on one line or the composer is open, through its upload phases, a failed upload with Retry, and a remote host file naming its device; and queue. Enter on a message that cannot go shows the send button’s reason where the pointer would. A message opens the composer as soon as it needs more than the line it is on, whether it holds lines of its own or its text outgrows the width, and closes it again when it fits; nothing is ever cut off at the line’s end. One send; while the agent works, Enter steers the running turn or queues the message, as Settings › General chooses, and ⌘⏎ outside a code block, or a ⌘-click on the send button, sends it the other way, which the button’s tooltip names; Stop stays beside it for the whole turn. Here a steer or a queued message is a toast naming what the product would do; the sessions below take them. When a later save replaced a version of the draft, a row above the input offers it by its first line: Restore exchanges it with the draft, which the row then offers, and × dismisses it. When the user’s plugins changed since the conversation opened, a row above the input offers Reload, and goes once the conversation opened again. An unavailable last model keeps the chip, warns, and blocks send. No usable model and an archived conversation both replace the input with the same snackbar: a line on the left, Configure Models or Restore Conversation on the right. A conversation its Cloud holds during a reset uses that snackbar with a spinner and no action, and the input returns with its draft when the reset ends. The model chip and the context ring stand in a row under the box, at its right edge, model first; loading and a failed load show there too. The narrow composer resizes from its corner."
       >
         <div class="specimen-stack specimen-stack-loose">
           <GallerySpecimen
@@ -1537,6 +1538,12 @@ onBeforeUnmount(() => {
                   path: '/Users/alex/Projects/shop/package.json',
                 },
               ]"
+            />
+          </GallerySpecimen>
+          <GallerySpecimen variant="attachments · a picture on one line">
+            <GalleryComposer
+              :draft="composerDrafts.picture"
+              :attachments="[{ id: 'png', name: 'IMG_7325.png', src: demoImageUrl, phase: 'ready' }]"
             />
           </GallerySpecimen>
           <GallerySpecimen

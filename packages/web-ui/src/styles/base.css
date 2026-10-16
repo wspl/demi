@@ -1039,9 +1039,12 @@ html[data-theme="light"] .file-pill {
   );
 }
 
+/* On a phone the message is typed at 16px at least (below), so its line is
+   at least that size's. */
 @media (max-width: 767px) {
   .composer-frame {
     --composer-shell-height: 52px;
+    --composer-line: calc(max(16px, var(--agent-text)) * var(--agent-leading));
   }
 }
 
@@ -1147,15 +1150,22 @@ html[data-theme="light"] .file-pill {
   margin-inline-start: calc(var(--composer-attach-gap) - 0.25rem);
 }
 
-/* One line: the text runs on sideways, its capsules sit on the line. */
+/* One line: the text runs on sideways, its capsules sit on the line. The
+   line is as tall as in the open shell, centred in the chip's height by
+   padding, so the editor still takes a tap anywhere in that height: a
+   capsule fits its line (`.message-capsule-line`), so it keeps one size
+   when the shell opens. Were the line the chip's height, the capsule would
+   change size with the shell, and iOS Safari does not always update it: it
+   kept a capsule sized for a phone's 40px chip on the open shell's 24px line. */
 .composer-shell-capsule .composer-editor .message-editor {
   width: 100%;
 }
 
 .composer-shell-capsule .composer-editor .ProseMirror {
   overflow: hidden;
+  padding-block: max(0px, calc((var(--composer-chip) - var(--composer-line)) / 2));
   font-size: var(--agent-text);
-  line-height: var(--composer-chip);
+  line-height: var(--composer-line);
   white-space: pre;
 }
 
@@ -1178,10 +1188,6 @@ html[data-theme="light"] .file-pill {
   .composer-shell-capsule .composer-editor .ProseMirror,
   .composer-shell-expanded .composer-editor .ProseMirror {
     font-size: max(16px, var(--agent-text));
-  }
-
-  .composer-shell-expanded .composer-editor .ProseMirror {
-    line-height: max(calc(16px * var(--agent-leading)), var(--composer-line));
   }
 }
 
