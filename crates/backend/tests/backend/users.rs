@@ -2,7 +2,8 @@
 //! system): the master and admins manage only roles below their own; an
 //! account an administrator made or reset chooses its own password before
 //! anything else opens; a disabled account signs in no way and is signed out
-//! at once; a sign-in code signs a phone in and names its issuer.
+//! at once; a sign-in code signs a phone in and names its issuer; an
+//! administrator sets the Cloud storage of lower accounts and its own.
 
 use jiff::SignedDuration;
 use reqwest::StatusCode;
@@ -120,10 +121,13 @@ async fn every_route_acts_only_on_a_role_below_the_callers() {
                 assert_eq!(answered.refusal(), FORBIDDEN, "{action}");
             }
         }
+        // An administrator's own account takes one change, its Cloud
+        // storage, so its body is read.
+        let own = actor.user.id.as_str() == target.as_str();
         let unchecked = change(&backend, actor, target, json!({ "nonsense": 1 })).await;
         assert_eq!(
             unchecked.refusal(),
-            if allowed { (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody) } else { FORBIDDEN }
+            if allowed || own { (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody) } else { FORBIDDEN }
         );
     }
     assert_eq!(
@@ -158,6 +162,60 @@ async fn every_route_acts_only_on_a_role_below_the_callers() {
         StatusCode::NO_CONTENT
     );
     assert_eq!(change(&backend, &ana, &ana_id, json!({ "disabled": true })).await.refusal(), FORBIDDEN);
+    backend.close().await;
+}
+
+/// Cost: one backend with a few accounts; a second or two of password hashing.
+#[tokio::test]
+async fn an_administrator_sets_the_cloud_storage_of_lower_accounts_and_its_own() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let ana = backend.make_user(&master, "ana@example.test", "admin").await;
+    let mei = backend.make_user(&master, "mei@example.test", "admin").await;
+    let bo = backend.make_user(&master, "bo@example.test", "user").await;
+    let storage = |system: u16, home: u16| json!({ "cloudStorage": { "systemGb": system, "homeGb": home } });
+    let sizes = |users: &Users, email: &str| {
+        let storage = account(&users.users, email).cloud_storage;
+        (storage.system_gb, storage.home_gb)
+    };
+
+    // Every account has 16 GB each until an administrator changes it.
+    let before = listed(&backend, &master).await;
+    for user in &before.users {
+        assert_eq!((user.cloud_storage.system_gb, user.cloud_storage.home_gb), (16, 16));
+    }
+
+    // An admin sets a user's and its own; the master every account's, its
+    // own included.
+    for (actor, target, system, home) in [
+        (&ana, &bo, 16, 64),
+        (&ana, &ana, 32, 16),
+        (&master, &mei, 8, 8),
+        (&master, &master, 100, 200),
+    ] {
+        let answered = change(&backend, actor, target.user.id.as_str(), storage(system, home)).await;
+        assert_eq!(answered.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&answered.body));
+    }
+    let after = listed(&backend, &ana).await;
+    assert_eq!(sizes(&after, "bo@example.test"), (16, 64));
+    assert_eq!(sizes(&after, "ana@example.test"), (32, 16));
+    assert_eq!(sizes(&after, "mei@example.test"), (8, 8));
+    assert_eq!(sizes(&after, master.user.email.as_str()), (100, 200));
+
+    // No one sets a peer's or a higher account's, and a user not even its own.
+    assert_eq!(change(&backend, &ana, mei.user.id.as_str(), storage(1, 1)).await.refusal(), FORBIDDEN);
+    assert_eq!(change(&backend, &ana, master.user.id.as_str(), storage(1, 1)).await.refusal(), FORBIDDEN);
+    assert_eq!(change(&backend, &bo, bo.user.id.as_str(), storage(1, 1)).await.refusal(), FORBIDDEN);
+    // On its own account an administrator changes nothing else.
+    assert_eq!(change(&backend, &ana, ana.user.id.as_str(), json!({ "role": "user" })).await.refusal(), FORBIDDEN);
+    // Each size is a whole number of GB from 1 to 1024.
+    for body in [storage(0, 16), storage(16, 1025), json!({ "cloudStorage": { "systemGb": 16 } })] {
+        assert_eq!(
+            change(&backend, &ana, bo.user.id.as_str(), body).await.refusal(),
+            (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody)
+        );
+    }
+    assert_eq!(listed(&backend, &master).await, after);
     backend.close().await;
 }
 

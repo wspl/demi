@@ -152,7 +152,7 @@ owns its allocation, wake, shared-device admission and reset;
 conversation selects it. A workspace on the Cloud is a directory on that
 device, not a machine of its own.
 
-`GET /api/cloud` returns `{ device, state, operation, error, volumes, limits, newerImage }`,
+`GET /api/cloud` returns `{ device, state, operation, error, volumes, newerImage }`,
 and the product state carries the same object as `cloud`:
 
 | Field | Meaning |
@@ -162,7 +162,6 @@ and the product state carries the same object as `cloud`:
 | `operation` | The latest reset, `{ id, phase, error }`, with `phase` one of `stopping`, `saving`, `rebuilding`, `booting`, `ready` and `failed`; null before the first |
 | `error` | Why the Cloud's last boot, save or reset failed; null once a boot succeeds |
 | `volumes` | The capacities of its system and home filesystems, `{ systemBytes, homeBytes }`; null until its first boot made them, or while the machine manager does not answer |
-| `limits` | The most each may grow to, in the same shape |
 | `newerImage` | Whether the server runs another Cloud image than the one the Cloud's system is on, which a reset moves it to ([Demi's programs in a Cloud](../cloud/managed-hosts.md#demis-programs-in-a-cloud)); false before the first boot and while the machine manager does not answer |
 
 The fields describe one moment: a reset reads `ready` only once `state` reads

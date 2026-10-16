@@ -1,6 +1,6 @@
 //! The Cloud's status as the page reads it (`web-api-hosts.md` § Cloud): the
 //! device, its lifecycle state, its latest reset, why it last failed, its
-//! filesystems' capacities and their limits, and whether its system is on
+//! filesystems' capacities, and whether its system is on
 //! another image than the configured one. Reading it never wakes the Cloud.
 
 use demi_backend_database::StorageError;
@@ -14,11 +14,6 @@ use crate::CloudShard;
 
 impl dyn CloudShard {
     pub async fn cloud_status(&self) -> Result<CloudStatus, StorageError> {
-        let tuning = &self.cloud_services().tuning;
-        let limits = CloudVolumes {
-            system_bytes: tuning.system_quota,
-            home_bytes: tuning.home_quota,
-        };
         let Some(device) = self.control().managed_device(self.user().clone()).await? else {
             return Ok(CloudStatus {
                 device: None,
@@ -26,7 +21,6 @@ impl dyn CloudShard {
                 operation: None,
                 error: None,
                 volumes: None,
-                limits,
                 newer_image: false,
             });
         };
@@ -67,7 +61,6 @@ impl dyn CloudShard {
             operation: machine.operation.borrow().as_ref().map(operation_dto),
             error: machine.error.borrow().clone(),
             volumes,
-            limits,
             newer_image,
         })
     }

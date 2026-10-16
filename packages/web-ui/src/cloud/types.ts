@@ -15,10 +15,8 @@ export interface CloudState {
   phase: 'stopping' | 'saving' | 'rebuilding' | 'booting' | 'ready' | 'failed' | null
   /** Why the Cloud's last boot, save or reset failed. */
   error: string | null
-  /** The filesystems' current capacities; null until the Cloud's first start made them. */
+  /** The filesystems' capacities; null until the Cloud's first start made them. */
   volumes: CloudVolumes | null
-  /** The most each filesystem may grow to. */
-  limits: CloudVolumes
   /** The server runs a newer Cloud image than the Cloud's system is on, which a reset moves it to. */
   newerImage: boolean
   /** The Cloud's device, whose page its row opens; null before its first use made it. */

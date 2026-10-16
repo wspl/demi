@@ -21,8 +21,7 @@ mod linux {
     use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
     use demi_machine_manager_protocol::{
-        BaseVersion, CheckpointParams, CurrentBaseVersionParams, DeviceId, GrowVolumeParams,
-        HibernateParams, ImageStateParams, MachineCall, Operation, ReconcileParams, Reconciled,
+        BaseVersion, CheckpointParams, CurrentBaseVersionParams, DeviceId, HibernateParams, ImageStateParams, MachineCall, Operation, ReconcileParams, Reconciled,
         ResetParams, RuntimeState, RuntimeStateParams, WakeParams,
     };
     use tokio::{
@@ -248,7 +247,12 @@ mod linux {
                 }
                 MachineCall::Wake(params) => {
                     let device = DeviceId::parse(params.device_id)?;
-                    self.run(&device, DeviceOp::Wake(params.boot, params.machine)).await?;
+                    let op = DeviceOp::Wake {
+                        boot: params.boot,
+                        machine: params.machine,
+                        capacity: params.capacity,
+                    };
+                    self.run(&device, op).await?;
                     Ok(reply::<WakeParams>(()))
                 }
                 MachineCall::Hibernate(params) => {
@@ -261,18 +265,13 @@ mod linux {
                     self.run(&device, DeviceOp::Checkpoint).await?;
                     Ok(reply::<CheckpointParams>(()))
                 }
-                MachineCall::GrowVolume(params) => {
-                    let device = DeviceId::parse(params.device_id)?;
-                    self.run(&device, DeviceOp::Grow(params.volume, params.bytes))
-                        .await?;
-                    Ok(reply::<GrowVolumeParams>(()))
-                }
                 MachineCall::Reset(params) => {
                     let device = DeviceId::parse(params.device_id)?;
                     let base = BaseVersion::parse(params.base_version)?;
                     let op = DeviceOp::Reset {
                         operation: params.operation_id,
                         base,
+                        capacity: params.capacity,
                     };
                     self.run(&device, op).await?;
                     Ok(reply::<ResetParams>(()))

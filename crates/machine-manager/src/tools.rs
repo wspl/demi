@@ -178,6 +178,21 @@ impl Tools {
         }
     }
 
+    /// These programs with `program` in place of `tool`, for a test that
+    /// stands in for it.
+    #[cfg(all(test, target_os = "linux"))]
+    pub(crate) fn with(mut self, tool: Tool, program: PathBuf) -> Self {
+        match tool {
+            Tool::Runsc => self.runsc = program,
+            Tool::Mke2fs => self.mke2fs = program,
+            Tool::E2fsck => self.e2fsck = program,
+            Tool::Resize2fs => self.resize2fs = program,
+            Tool::Bsdtar => self.bsdtar = program,
+            Tool::Nft => self.nft = program,
+        }
+        self
+    }
+
     pub fn path(&self, tool: Tool) -> &Path {
         match tool {
             Tool::Runsc => &self.runsc,

@@ -16,7 +16,7 @@ use demi_provider_common::quota::ProbeCost;
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use demi_shared_types::AuthState;
 use demi_web_api_protocol::auth::Role;
-use demi_web_api_protocol::cloud::{CloudState, CloudStatus, CloudVolumes};
+use demi_web_api_protocol::cloud::{CloudState, CloudStatus};
 use demi_web_api_protocol::conversations::{ConversationStatus, ConversationSummary};
 use demi_web_api_protocol::devices::InstallCommands;
 use demi_web_api_protocol::error::ErrorCode;
@@ -192,10 +192,6 @@ async fn the_snapshot_is_the_users_product_state() {
                 operation: None,
                 error: None,
                 volumes: None,
-                limits: CloudVolumes {
-                    system_bytes: 16 << 30,
-                    home_bytes: 32 << 30,
-                },
                 newer_image: false,
             },
             // A new user has subagents on, at most 10 live and 1 level

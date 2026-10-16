@@ -12,8 +12,7 @@
   },
   "storage": {
     "title": "儲存空間",
-    "line": "系統 {system} · 主目錄 {home}",
-    "max": "{size} 上限"
+    "line": "系統 {system} · 主目錄 {home}"
   },
   "reset": {
     "title": "重設雲端環境",

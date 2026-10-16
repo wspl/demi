@@ -18,7 +18,7 @@ pub use messages::{
     HelloErrorCode, HostArtifact, HostIdentity, Inbound, JobArtifactOwner, JobFileChange, JobPathChange, KeptEnd, KeptJob, Kernel, LinkTarget, LogLine,
     LookPath, Looked, MAX_INSTALLED, SymbolicLink, OperatingSystem, Outbound, OutputLengths, OutputStream, PipeRef,
     RunnerInfo, RunnerPlatform, ServiceErrorCode, Signal, SpawnError, SpawnErrorKind,
-    StreamArtifactOwner, VolumeName, WriteExists,
+    StreamArtifactOwner, WriteExists,
 };
 pub use demi_shared_types::ReadAt;
 pub use pipe_frames::{
@@ -33,7 +33,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 50;
+pub const VERSION: u32 = 51;
 /// How long a runner keeps its jobs and services without a connection
 /// before it stops them (`runner.md` § Command lifetime).
 pub const UNREACHED_GRACE: Duration = Duration::from_secs(10 * 60);

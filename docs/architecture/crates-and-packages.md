@@ -1097,7 +1097,7 @@ demi-backend (executable: configuration, composition)
 #### `backend-cloud`
 
 - **Owns:** each user's Cloud: policy and capacity across users, the machine
-  transitions, wake, hibernate, checkpoint, reset, growth, recovery and
+  transitions, wake, hibernate, checkpoint, reset, recovery and
   maintenance, the machine manager's client, and machine access
   ([Managed hosts](../cloud/managed-hosts.md)), with its times and limits
   (`CloudTuning`); and `CloudShard`, what the Cloud needs of its user's

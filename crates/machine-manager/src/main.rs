@@ -95,7 +95,6 @@ mod service {
     /// its name as it passes, and the first that fails ends the run.
     async fn check_host(config: Config) -> Result<(), Failure> {
         blocking::run(preflight::require_private_namespace).await?;
-        blocking::run(preflight::require_sys_resource).await?;
         println!("ok: privileges");
         let runsc = config.runsc.clone();
         let tools = blocking::run(move |_| Tools::resolve(&runsc)).await?;

@@ -19,12 +19,7 @@ OverlayFS, ext4, loop devices, filesystem freeze, and nftables. With the
 manager's [resource limits](managed-hosts.md#resource-limits) on, the default,
 it also needs cgroup v2 with the CPU, memory, and PID controllers; a host
 without them runs the manager with `DEMI_MANAGED_LIMITS=off`, and its Clouds
-then have no CPU, memory, or PID limits. The manager runs as root with
-`CAP_SYS_RESOURCE`, which the kernel requires to grow a mounted ext4
-filesystem. Some container platforms drop that capability even for root; on
-such a host a Cloud's disks cannot grow, and each
-[growth](managed-hosts.md#lifecycle-and-capacity) fails with an error that
-names the capability. An ordinary hardware-virtualized VPS can provide these
+then have no CPU, memory, or PID limits. The manager runs as root. An ordinary hardware-virtualized VPS can provide these
 facilities without exposing KVM. A restricted container sold as a VPS may not;
 check the facilities instead of relying on the provider's product name.
 
@@ -90,7 +85,6 @@ fail configuration. Counts and MiB sizes are positive decimal integers.
 | `DEMI_MANAGED_DNS` | The IPv4 resolvers a Cloud uses. Optional: the host's own upstream resolvers otherwise (below). |
 | `DEMI_MANAGED_LIMITS` | `on` (default) or `off`: whether sandboxes run under the cgroup v2 CPU, memory, and PID limits ([Resource limits](managed-hosts.md#resource-limits)). |
 | `DEMI_MANAGED_CPUS`, `DEMI_MANAGED_MEM_MIB` | Per-sandbox CPU budget and total memory limit, with the limits on; either one with `DEMI_MANAGED_LIMITS=off` fails configuration. |
-| `DEMI_MANAGED_SYSTEM_MIB`, `DEMI_MANAGED_HOME_MIB` | Initial writable filesystem capacities. |
 | `DEMI_MANAGED_SUBNET`, `DEMI_MANAGED_SLOTS` | Non-overlapping IPv4 address pool and maximum network slots. |
 
 The sizing defaults and limits live in

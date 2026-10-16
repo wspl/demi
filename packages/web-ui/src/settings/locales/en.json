@@ -282,6 +282,16 @@
     "current": "{name}’s role is {role}.",
     "role": "Role"
   },
+  "cloudStorage": {
+    "title": "Cloud Storage",
+    "account": "The size of {name}’s Cloud disks.",
+    "system": "System",
+    "systemDescription": "Installed packages and system settings.",
+    "home": "Home",
+    "homeDescription": "Files and Cloud projects.",
+    "note": "The sizes apply the next time the Cloud starts. A disk that’s already larger keeps its size.",
+    "problem": "Enter a whole number of GB from 1 to {max}."
+  },
   "addPasskey": {
     "title": "Add Passkey",
     "hint": "Enter your password. Your browser saves a passkey for signing in.",
@@ -311,6 +321,7 @@
     "action": {
       "resetPassword": "Reset Password…",
       "changeRole": "Change Role…",
+      "cloudStorage": "Cloud Storage…",
       "signInCode": "Sign-In Code…",
       "signOutEverywhere": "Sign Out Everywhere…",
       "disable": "Disable Account…",

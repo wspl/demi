@@ -3,7 +3,7 @@
 //! released in reverse by [`Sandbox::close`], which tolerates every absence,
 //! so it also cleans up a failed start and a boot recovery found.
 
-use std::{io, num::NonZeroU64, path::Path, time::Duration};
+use std::{io, path::Path, time::Duration};
 
 use demi_machine_manager_protocol::{SandboxMachine, Volume};
 use demi_runner_protocol::boot::ManagedBoot;
@@ -48,8 +48,6 @@ pub enum SandboxError {
     NeedsRecovery(Volume, String),
     #[error("Cannot signal Cloud sandbox: {0}")]
     Signal(String),
-    #[error("Cloud volume growth needs the running sandbox's loop devices")]
-    NotGrowable,
     #[error(transparent)]
     Io(#[from] io::Error),
     #[error(transparent)]
@@ -73,8 +71,6 @@ pub struct Sandbox {
     /// The slot's lease; a boot recovery found holds none.
     _lease: Option<SlotLease>,
     directory: RuntimeDirectory,
-    /// The loop device numbers of the mounted images, for growth.
-    loops: Option<ImagePair<u32>>,
     /// `runsc wait`, which ends when the sandbox exits.
     waiter: Option<JoinHandle<Result<(), ToolError>>>,
 }
@@ -98,7 +94,6 @@ impl Sandbox {
             slot: lease.slot().clone(),
             _lease: Some(lease),
             record,
-            loops: None,
             waiter: None,
         }
     }
@@ -110,7 +105,6 @@ impl Sandbox {
             slot: core.slots.slot(record.slot),
             _lease: None,
             record,
-            loops: None,
             waiter: None,
         }
     }
@@ -171,23 +165,17 @@ impl Sandbox {
             Ok(())
         })
         .await?;
-        let mut loops = [0; 2];
-        for (volume, number) in Volume::ALL.into_iter().zip(&mut loops) {
+        for volume in Volume::ALL {
             let image = working.images().get(volume).clone();
             check(&core.tools, volume, &image).await?;
             let target = self.directory.volume(volume);
-            *number = blocking::run(move |off| -> io::Result<u32> {
+            blocking::run(move |off| -> io::Result<()> {
                 let device = loopdev::attach(off, &image)?;
-                mount::ext4(off, &device.path(), &target)?;
-                Ok(device.number())
+                mount::ext4(off, &device.path(), &target)
             })
             .await?;
             fault::point("volume-mounted");
         }
-        self.loops = Some(ImagePair {
-            system: loops[0],
-            home: loops[1],
-        });
         let directory = self.directory.clone();
         let credentials = boot.clone();
         let dns = core.config.dns.clone();
@@ -291,42 +279,6 @@ impl Sandbox {
             }
         })
         .await
-    }
-
-    /// Grows `volume`'s filesystem to at least `bytes`: extends the image
-    /// (never shrinks it), refreshes the loop device the sandbox holds and
-    /// grows the mounted filesystem. Returns the filesystem's capacity.
-    pub async fn grow(
-        &self,
-        core: &Core,
-        working: &WorkingPair,
-        volume: Volume,
-        bytes: NonZeroU64,
-    ) -> Result<NonZeroU64, SandboxError> {
-        let number = *self
-            .loops
-            .as_ref()
-            .ok_or(SandboxError::NotGrowable)?
-            .get(volume);
-        let image = working.images().get(volume).clone();
-        let extended = image.clone();
-        blocking::run(move |off| -> io::Result<()> {
-            let file = fs_err::OpenOptions::new().write(true).open(&extended)?;
-            if file.metadata()?.len() < bytes.get() {
-                file.set_len(bytes.get())?;
-            }
-            fault::point("image-extended");
-            loopdev::refresh_capacity(off, number)
-        })
-        .await?;
-        fault::point("capacity-refreshed");
-        ext4::grow_mounted(&core.tools, &loopdev::path(number)).await?;
-        let capacity = blocking::run(move |off| -> Result<NonZeroU64, ext4::Ext4Error> {
-            sync(off, &image)?;
-            ext4::capacity(off, &image)
-        })
-        .await?;
-        Ok(capacity)
     }
 
     /// Stops the boot and releases everything it holds, in reverse order of

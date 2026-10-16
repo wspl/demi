@@ -4,7 +4,6 @@ mod fs;
 mod git;
 mod load;
 mod nofollow;
-mod volumes;
 mod watch;
 
 // Each test's whole-body timeout is a hang guard of 60 s, not a latency

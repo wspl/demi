@@ -559,6 +559,14 @@ export interface SettingsUser {
   choosesPassword: boolean
   /** The latest activity of any of its sessions, as an ISO 8601 timestamp; null before it first signed in. */
   lastActiveAt: string | null
+  /** The size of its Cloud disks, which its Cloud's next start takes. */
+  cloudStorage: SettingsCloudStorage
+}
+
+/** The size of an account's Cloud disks in whole GB, each from 1 to 1024. */
+export interface SettingsCloudStorage {
+  systemGb: number
+  homeGb: number
 }
 
 /** What Add User… asks: the server makes the first password. */
@@ -602,6 +610,8 @@ export interface SettingsUsersHost extends VerificationHost {
   setRole: (id: string, role: Exclude<UserRole, 'master'>) => Promise<void>
   signOutEverywhere: (id: string) => Promise<void>
   setDisabled: (id: string, disabled: boolean) => Promise<void>
+  /** Sets the size of the account's Cloud disks, the viewer's own included. */
+  setCloudStorage: (id: string, storage: SettingsCloudStorage) => Promise<void>
   /** The sign-in codes of the account `id` (`users.md` § User system): good for ten minutes and once; the dialog asks the confirmation itself. */
   signInCode: (id: string) => HandoffHost
 }

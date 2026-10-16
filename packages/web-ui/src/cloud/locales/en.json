@@ -12,8 +12,7 @@
   },
   "storage": {
     "title": "Storage",
-    "line": "System {system} · Home {home}",
-    "max": "{size} max"
+    "line": "System {system} · Home {home}"
   },
   "reset": {
     "title": "Reset Cloud Environment",

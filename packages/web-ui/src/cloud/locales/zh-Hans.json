@@ -12,8 +12,7 @@
   },
   "storage": {
     "title": "存储",
-    "line": "系统 {system} · 主文件夹 {home}",
-    "max": "最大 {size}"
+    "line": "系统 {system} · 主文件夹 {home}"
   },
   "reset": {
     "title": "重置云端环境",

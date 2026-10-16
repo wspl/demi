@@ -5,6 +5,7 @@ import { shownError, reportError } from '@demicodes/web-ui/infra/errors'
 import type { HandoffHost } from '@demicodes/web-ui/auth/handoff'
 import type {
   NewPasswordOutcome,
+  SettingsCloudStorage,
   SettingsNewUser,
   SettingsUser,
   SettingsUsersHost,
@@ -34,6 +35,7 @@ function row(user: ListedUser): SettingsUser {
     disabled: user.disabled,
     choosesPassword: user.choosesPassword,
     lastActiveAt: user.lastActiveAt ?? null,
+    cloudStorage: user.cloudStorage,
   }
 }
 
@@ -105,6 +107,10 @@ export const useUserSettings = defineStore('user-settings', () => {
     await change(id, { disabled }, disabled ? t('users.disableFailed') : t('users.enableFailed'))
   }
 
+  async function setCloudStorage(id: string, cloudStorage: SettingsCloudStorage): Promise<void> {
+    await change(id, { cloudStorage }, t('users.cloudStorageFailed'))
+  }
+
   async function signOutEverywhere(id: string): Promise<void> {
     try {
       await apiRequest(`/users/${encodeURIComponent(id)}/sign-out`, { method: 'POST' })
@@ -139,6 +145,7 @@ export const useUserSettings = defineStore('user-settings', () => {
           setRole,
           signOutEverywhere,
           setDisabled,
+          setCloudStorage,
           signInCode,
           ...confirmation(),
         }

@@ -282,6 +282,16 @@
     "current": "{name} 当前的角色是{role}。",
     "role": "角色"
   },
+  "cloudStorage": {
+    "title": "云端存储",
+    "account": "{name} 的云端磁盘大小。",
+    "system": "系统",
+    "systemDescription": "已安装的软件包和系统设置。",
+    "home": "主文件夹",
+    "homeDescription": "文件和云端项目。",
+    "note": "大小会在云端下次启动时生效。已经更大的磁盘会保持原来的大小。",
+    "problem": "请输入 1 到 {max} 之间的整数（单位 GB）。"
+  },
   "addPasskey": {
     "title": "添加通行密钥",
     "hint": "输入你的密码。浏览器会保存一个用于登录的通行密钥。",
@@ -311,6 +321,7 @@
     "action": {
       "resetPassword": "重置密码…",
       "changeRole": "更改角色…",
+      "cloudStorage": "云端存储…",
       "signInCode": "登录代码…",
       "signOutEverywhere": "在所有位置退出登录…",
       "disable": "禁用账户…",

@@ -58,8 +58,8 @@ pub struct CloudDevice {
     pub name: String,
 }
 
-/// The capacities of a Cloud's two writable filesystems in bytes, or the
-/// most each may grow to: the capacity, not what is used.
+/// The capacities of a Cloud's two writable filesystems in bytes: the
+/// capacity, not what is used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudVolumes {
@@ -72,8 +72,8 @@ pub struct CloudVolumes {
 /// `GET /cloud`, and the `cloud` of the product state: the device, its
 /// lifecycle state, its latest reset, why its last boot, save or reset
 /// failed, the capacities of its filesystems once its first boot made them,
-/// the most they may grow to, and whether a reset would move its system to a
-/// newer image. Reading it never wakes the Cloud.
+/// and whether a reset would move its system to a newer image. Reading it
+/// never wakes the Cloud.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudStatus {
@@ -90,7 +90,6 @@ pub struct CloudStatus {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<CloudVolumes>")]
     pub volumes: Option<CloudVolumes>,
-    pub limits: CloudVolumes,
     /// The server runs another Cloud image than the one the Cloud's system
     /// is on, which a reset moves it to (`managed-hosts.md` § Demi's
     /// programs in a Cloud).

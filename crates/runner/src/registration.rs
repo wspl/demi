@@ -12,7 +12,6 @@ use crate::{
     state::{ActiveRunner, RunnerConfig, RunnerState},
 };
 use demi_runner_command_packages::ServiceRegistry;
-use demi_runner_host::volumes::ManagedVolume;
 use demi_runner_jobs::scratch::Scratch;
 use demi_runner_jobs::commands::{
     contexts::{ContextPaths, Contexts},
@@ -54,7 +53,9 @@ pub struct Options {
     pub env: BTreeMap<String, String>,
     pub runner: wire::RunnerInfo,
     pub token: Option<DeviceToken>,
-    pub volumes: Vec<ManagedVolume>,
+    /// A managed guest's writable filesystems, which a `sync` flushes;
+    /// none on a paired device.
+    pub volumes: Vec<PathBuf>,
     /// Runs the jobs' scripts (`concurrency.md` § Runner).
     pub shell: Arc<dyn JobShell>,
     /// The installation an installer made, which updates itself to its
