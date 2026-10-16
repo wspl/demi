@@ -23,7 +23,8 @@ const METRICS = [
   { control: 'An answer’s actions: Copy, Fork, Share, Regenerate, the version switcher', face: '36 px, 8 px apart', icon: '18 px', text: 'time 13 px' },
   { control: 'A small icon button, such as a tab’s Close', face: '28 px', icon: '16 px', text: '—' },
   { control: 'Buttons with a label', face: '36 px (small), 40 px, 44 px (large)', icon: '16 px', text: '15 px' },
-  { control: 'Work rows, the work panel’s, Agents’ and Running’s tabs, Settings’ rows and list items', face: '44 px', icon: '18 px', text: '15 px; Settings 17 px' },
+  { control: 'Work rows, Settings’ rows and list items', face: '44 px', icon: '18 px', text: '15 px; Settings 17 px' },
+  { control: 'The work panel’s, Agents’ and Running’s tabs, in a 44 px bar', face: '36 px, 4 px above and below', icon: '18 px', text: '15 px' },
   { control: 'Chips under the composer: the model, the workflow, Running, Agents', face: '32 px', icon: '16 px', text: '15 px' },
   { control: 'File-change pills under a work row', face: '28 px, 8 px apart', icon: '16 px', text: '13 px' },
   { control: 'Segmented controls', face: '36 px', icon: '18 px', text: '15 px' },
@@ -93,7 +94,7 @@ const PANES = [
     </GallerySection>
     <GallerySection
       title="Panels and Windows"
-      note="The work panel opens full screen over the conversation, sliding in from the right, under its own bar: Conversation, which goes back to the conversation where it was, the tabs as a strip that scrolls sideways, 44 px tall, each tab, Change and File too, as wide as its title up to 160 px, and the selected one scrolled into view, and the strip’s controls; in the File view the tree covers the file’s whole width, its rows 44 px, and slides away when a file is picked. A file a message names opens there the same way. The Agents and Running windows rise as full-screen sheets with their tabs and Close; their tabs narrow to their icons, each with its status dot, 44 px wide at least and 44 px tall, and only the selected tab adds its name, cut short, so five agents fit across the screen as they would not by name (a child that failed keeps its tab while it is selected, as the phone after Running shows; a command that was stopped shows alone); a long press opens a tab’s menu and the strip scrolls sideways with the selected tab in view. Back closes each, as it closes a sheet. Settings fills the screen as iOS Settings does, its sections 44 px rows."
+      note="The work panel opens full screen over the conversation, sliding in from the right, under its own bar: Conversation, which goes back to the conversation where it was, the tabs as a strip that scrolls sideways, each tab, Change and File too, 36 px tall with room above and below it in the 44 px bar, as on the desktop, as wide as its title up to 160 px, and the selected one scrolled into view, and the strip’s controls; in the File view the tree covers the file’s whole width, its rows 44 px, and slides away when a file is picked. A file a message names opens there the same way. The Agents and Running windows rise as full-screen sheets with their tabs and Close; their tabs narrow to their icons, each with its status dot, 44 px wide at least, and only the selected tab adds its name, cut short, so five agents fit across the screen as they would not by name (a child that failed keeps its tab while it is selected, as the phone after Running shows; a command that was stopped shows alone); a long press opens a tab’s menu and the strip scrolls sideways with the selected tab in view. Back closes each, as it closes a sheet. Settings fills the screen as iOS Settings does, its sections 44 px rows."
     >
       <div class="flex flex-wrap gap-8">
         <GalleryPhoneFrame

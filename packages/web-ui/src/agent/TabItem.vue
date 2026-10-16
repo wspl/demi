@@ -33,7 +33,8 @@ import { iconTabsKey } from './tab-strip'
  *
  * In a window whose tabs narrow to their icons (`iconTabsKey`) a phone shows each tab other than the selected one
  * as its mark with its status dot, 44px wide at least, its name left to assistive technology; the selected tab adds
- * its name, cut short.
+ * its name, cut short. A tab is shorter than its bar (`--spacing-tab`), on a phone too, so the selected one stands
+ * inside the strip with room above and below rather than running into the view under it.
  */
 const props = withDefaults(defineProps<{
   title: string
@@ -100,7 +101,7 @@ function onMenuKey(event: KeyboardEvent): void {
     role="tab"
     :aria-selected="isActive"
     tabindex="0"
-    class="group relative flex h-(--tab-h) w-max [--surface-current:var(--fill-color)] [--tab-h:var(--spacing-row)] min-w-[min(--spacing(22),var(--tab-room,--spacing(22)))] max-w-[min(--spacing(40),var(--tab-room,--spacing(40)))] shrink phone:shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
+    class="group relative flex h-(--tab-h) w-max [--surface-current:var(--fill-color)] [--tab-h:var(--spacing-tab)] min-w-[min(--spacing(22),var(--tab-room,--spacing(22)))] max-w-[min(--spacing(40),var(--tab-room,--spacing(40)))] shrink phone:shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
     :class="[iconOnly ? 'phone:w-11 phone:min-w-11' : '', isActive
       ? 'bg-(--tab-active) text-fg-emphasis after:opacity-0 [--fill-color:var(--tab-active)]'
       : 'text-fg-subtle hover:bg-(--tab-hover) hover:text-fg-body hover:[--fill-color:var(--tab-hover)]']"
