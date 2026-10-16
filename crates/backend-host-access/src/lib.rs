@@ -11,6 +11,7 @@
 
 pub mod access;
 pub mod attachment_commands;
+pub mod directories;
 pub mod file_watch;
 pub mod host_commands;
 pub mod kept;

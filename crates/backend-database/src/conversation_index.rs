@@ -19,6 +19,8 @@ use super::StorageError;
 use super::columns::{decode, instant, json, to_json, workflow_choice, workflow_columns};
 use super::control::ControlService;
 use super::devices::CLOUD_NAME;
+use super::selection::{Selected, Selection, Unselectable, execution_target, select};
+use super::workspaces::WorkspaceRecord;
 
 /// A conversation as the index holds it.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,7 +36,8 @@ pub struct ConversationRecord {
     /// The output revision the user last acknowledged; it only moves
     /// forward.
     pub read_revision: u64,
-    pub target: ConversationTarget,
+    /// Where it runs (`sessions-and-targets.md` § Resolve a target).
+    pub target: Selection,
     /// Advanced by every change of the conversation's execution context,
     /// such as a target switch or a Host attached.
     pub context_version: u64,
@@ -216,6 +219,8 @@ pub enum Creation {
     Existing(ConversationRecord),
     /// Another user's conversation holds the id, or a Fork reserved it.
     Unavailable,
+    /// What it was to start in selects nothing, and it was not created.
+    Unselectable(Unselectable),
 }
 
 /// The sidebar's order within the active or the archived conversations:
@@ -231,7 +236,7 @@ const CONVERSATION_COLUMNS: &str = "id, user_id, title, title_origin, archived, 
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL) AS permission_requests,
      (SELECT count(*) FROM permission_requests WHERE conversation_id = conversations.id AND decision IS NULL AND NOT read) AS unread_permission_requests";
 
-/// A target as its typed columns: the kind and what the kind names.
+/// A selection as its typed columns: the kind and what the kind names.
 pub struct TargetColumns {
     pub kind: &'static str,
     pub device: Option<String>,
@@ -240,7 +245,50 @@ pub struct TargetColumns {
 }
 
 impl TargetColumns {
-    pub fn of(target: &ConversationTarget) -> Self {
+    pub fn of(selection: &Selection) -> Self {
+        match selection {
+            Selection::Cloud { path } => Self {
+                kind: "cloud",
+                device: None,
+                path: path.clone(),
+                workspace: None,
+            },
+            Selection::Home { device_id } => Self {
+                kind: "home",
+                device: Some(device_id.as_str().to_owned()),
+                path: None,
+                workspace: None,
+            },
+            Selection::Workspace {
+                workspace_id,
+                device_id,
+                path,
+            } => Self {
+                kind: "workspace",
+                device: Some(device_id.as_str().to_owned()),
+                path: Some(path.clone()),
+                workspace: Some(workspace_id.as_str().to_owned()),
+            },
+            Selection::Directory { device_id, path } => Self {
+                kind: "device",
+                device: Some(device_id.as_str().to_owned()),
+                path: Some(path.clone()),
+                workspace: None,
+            },
+        }
+    }
+}
+
+/// A destination as the pending move's typed columns hold it.
+struct DestinationColumns {
+    kind: &'static str,
+    device: Option<String>,
+    path: Option<String>,
+    workspace: Option<String>,
+}
+
+impl DestinationColumns {
+    fn of(target: &ConversationTarget) -> Self {
         match target {
             ConversationTarget::Cloud { path } => Self {
                 kind: "cloud",
@@ -276,6 +324,17 @@ impl ControlService {
         id: ConversationId,
         start: ConversationStart,
     ) -> Result<Creation, StorageError> {
+        Ok(self.create_conversation_selecting(owner, id, start).await?.0)
+    }
+
+    /// [`create_conversation`](Self::create_conversation), with the
+    /// workspace its directory's selection made, if it did.
+    pub async fn create_conversation_selecting(
+        &self,
+        owner: UserId,
+        id: ConversationId,
+        start: ConversationStart,
+    ) -> Result<(Creation, Option<WorkspaceRecord>), StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
             // A Fork's destination, and a conversation whose deletion is
@@ -290,8 +349,16 @@ impl ControlService {
                 .optional()?
                 .is_some();
             if reserved {
-                return Ok(Creation::Unavailable);
+                return Ok((Creation::Unavailable, None));
             }
+            if let Some(record) = conversation_by_id(&transaction, &id)? {
+                let found = if record.owner == owner { Creation::Existing(record) } else { Creation::Unavailable };
+                return Ok((found, None));
+            }
+            let Selected { selection, made } = match select(&transaction, &owner, &id, &start.target, now)? {
+                Ok(selected) => selected,
+                Err(reason) => return Ok((Creation::Unselectable(reason), None)),
+            };
             let inserted = insert_conversation(
                 &transaction,
                 &NewConversation {
@@ -299,7 +366,7 @@ impl ControlService {
                     owner: &owner,
                     title: start.title.as_deref(),
                     pinned: start.pinned,
-                    target: &start.target,
+                    target: &selection,
                     model: start.model.as_ref(),
                     workflow: &start.workflow,
                     context_version: 0,
@@ -314,11 +381,11 @@ impl ControlService {
                 })?;
             transaction.commit()?;
             Ok(if record.owner != owner {
-                Creation::Unavailable
+                (Creation::Unavailable, None)
             } else if inserted == 1 {
-                Creation::Created(record)
+                (Creation::Created(record), made)
             } else {
-                Creation::Existing(record)
+                (Creation::Existing(record), None)
             })
         })
         .await
@@ -466,25 +533,11 @@ impl ControlService {
                     // as well (`sessions-and-targets.md` § Switch the primary
                     // target).
                     if *archived {
-                        transaction.execute(
-                            "UPDATE conversation_hosts SET detaching = 0 WHERE conversation_id = ?1",
-                            [id.as_str()],
-                        )?;
-                        transaction.execute(
-                            "DELETE FROM permission_requests WHERE conversation_id = ?1",
-                            [id.as_str()],
-                        )?;
-                        transaction.execute(
-                            "UPDATE conversations SET pending_id = NULL, pending_kind = NULL,
-                               pending_device_id = NULL, pending_path = NULL, pending_workspace_id = NULL
-                             WHERE id = ?1",
-                            [id.as_str()],
-                        )?;
+                        archive_in(&transaction, &id)?;
+                    } else {
+                        restore_in(&transaction, &id, now)?;
                     }
-                    transaction.execute(
-                        "UPDATE conversations SET archived = ?2 WHERE id = ?1",
-                        params![id.as_str(), archived],
-                    )?
+                    1
                 }
                 RecordChange::Title(title) => transaction.execute(
                     "UPDATE conversations SET title = ?2, title_origin = 'user' WHERE id = ?1 AND title <> ?2",
@@ -535,6 +588,36 @@ impl ControlService {
             Ok(ChangeOutcome::Applied)
         })
         .await
+    }
+
+    /// The selection `to` names for `owner`'s conversation `id`, as a move
+    /// there would make it, without making anything: a workspace it would
+    /// make is not one the conversation's selection can equal.
+    pub async fn selection_for(
+        &self,
+        owner: UserId,
+        id: ConversationId,
+        to: ConversationTarget,
+    ) -> Result<Result<Selection, Unselectable>, StorageError> {
+        self.call(move |connection, now| {
+            // Dropped without a commit: it rolls back.
+            let transaction = connection.transaction()?;
+            Ok(select(&transaction, &owner, &id, &to, now)?.map(|selected| selected.selection))
+        })
+        .await
+    }
+
+    /// What `owner`'s conversation `id` with `selection` resolves to: its
+    /// device and the directory its work starts in. Resolving never starts
+    /// a machine.
+    pub async fn execution_target(
+        &self,
+        owner: UserId,
+        id: ConversationId,
+        selection: Selection,
+    ) -> Result<ExecutionTarget, StorageError> {
+        self.call(move |connection, _| execution_target(connection, &owner, &id, &selection))
+            .await
     }
 
     /// Makes `title`, from the first message, the conversation's while its
@@ -614,7 +697,7 @@ pub struct NewConversation<'a> {
     /// The user's title, origin `user`; none for the placeholder.
     pub title: Option<&'a str>,
     pub pinned: bool,
-    pub target: &'a ConversationTarget,
+    pub target: &'a Selection,
     pub model: Option<&'a ModelSelection>,
     pub workflow: &'a WorkflowChoice,
     /// The execution-context revision it starts at: 0, or a Fork's source's
@@ -772,32 +855,39 @@ fn conversation_row(row: &Row<'_>) -> Result<ConversationRecord, StorageError> {
     })
 }
 
-/// The target a row's typed columns hold.
-fn target_row(row: &Row<'_>) -> Result<ConversationTarget, StorageError> {
+/// The selection a row's typed columns hold.
+fn target_row(row: &Row<'_>) -> Result<Selection, StorageError> {
     const TABLE: &str = "conversations";
     let kind: String = row.get("target_kind")?;
     let path: Option<String> = row.get("target_path")?;
-    let target = match kind.as_str() {
-        "cloud" => ConversationTarget::Cloud { path },
-        "device" => {
-            let device: Option<String> = row.get("target_device_id")?;
-            ConversationTarget::Device {
-                device_id: decode(
-                    TABLE,
-                    "target_device_id",
-                    DeviceId::try_from(device.unwrap_or_default()),
-                )?,
-                path: path.unwrap_or_default(),
-            }
-        }
+    let device = || -> Result<DeviceId, StorageError> {
+        let device: Option<String> = row.get("target_device_id")?;
+        decode(TABLE, "target_device_id", DeviceId::try_from(device.unwrap_or_default()))
+    };
+    let path_of = |path: Option<String>| -> Result<String, StorageError> {
+        path.filter(|path| !path.is_empty()).ok_or_else(|| StorageError::Corrupt {
+            table: TABLE,
+            column: "target_path",
+            reason: "a directory selection without its directory".into(),
+        })
+    };
+    Ok(match kind.as_str() {
+        "cloud" => Selection::Cloud { path },
+        "home" => Selection::Home { device_id: device()? },
+        "device" => Selection::Directory {
+            device_id: device()?,
+            path: path_of(path)?,
+        },
         "workspace" => {
             let workspace: Option<String> = row.get("target_workspace_id")?;
-            ConversationTarget::Workspace {
+            Selection::Workspace {
                 workspace_id: decode(
                     TABLE,
                     "target_workspace_id",
                     WorkspaceId::try_from(workspace.unwrap_or_default()),
                 )?,
+                device_id: device()?,
+                path: path_of(path)?,
             }
         }
         other => {
@@ -807,9 +897,7 @@ fn target_row(row: &Row<'_>) -> Result<ConversationTarget, StorageError> {
                 reason: format!("unknown target kind {other}"),
             });
         }
-    };
-    decode(TABLE, "target_path", target.validate())?;
-    Ok(target)
+    })
 }
 
 /// A device attached to a conversation (`sessions-and-targets.md`
@@ -884,26 +972,64 @@ pub struct SwitchEnds {
     pub arriving: Option<DeviceId>,
 }
 
+/// What a target switch's write did.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SwitchWrite {
+    /// The switch is made: where it went from and to, the execution-context
+    /// revision it made, and the workspace its destination's selection
+    /// made, if it did.
+    Switched {
+        switch: TargetSwitch,
+        revision: u64,
+        made: Option<WorkspaceRecord>,
+    },
+    /// The destination selects what the conversation has: nothing changed.
+    Unchanged,
+    /// The selection is no longer the one the switch started from.
+    Conflict,
+    Unselectable(Unselectable),
+}
+
 impl ControlService {
-    /// The target switch's write, against the target the switch started
-    /// from: none, writing nothing, when the target is no longer
-    /// `expected`, so of two switches from one target exactly one wins. The
-    /// winner records `switch` for every node's next context block and
-    /// advances the execution-context revision, which it answers; when it
-    /// makes the pending move `pending`, it clears it.
+    /// The target switch's write, against `expected`, the selection the
+    /// switch started from, and `from`, what it resolved to: it selects
+    /// `to`'s directory, which makes its workspace when the user has none
+    /// (`sessions-and-targets.md` § Resolve a target), all in one
+    /// transaction, so of two switches from one selection exactly one
+    /// wins. The winner records the switch for every node's next context
+    /// block and advances the execution-context revision, which it
+    /// answers; when it makes the pending move `pending`, it clears it.
     pub async fn switch_conversation_target(
         &self,
         id: ConversationId,
-        expected: ConversationTarget,
+        expected: Selection,
+        from: ExecutionTarget,
         to: ConversationTarget,
-        switch: TargetSwitch,
         ends: SwitchEnds,
         pending: Option<String>,
-    ) -> Result<Option<u64>, StorageError> {
+    ) -> Result<SwitchWrite, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            let from = TargetColumns::of(&expected);
-            let target = TargetColumns::of(&to);
+            let owner: Option<String> = transaction
+                .query_row("SELECT user_id FROM conversations WHERE id = ?1", [id.as_str()], |row| row.get(0))
+                .optional()?;
+            let Some(owner) = owner else {
+                return Ok(SwitchWrite::Conflict);
+            };
+            let owner = decode("conversations", "user_id", UserId::try_from(owner))?;
+            let Selected { selection, made } = match select(&transaction, &owner, &id, &to, now)? {
+                Ok(selected) => selected,
+                Err(reason) => return Ok(SwitchWrite::Unselectable(reason)),
+            };
+            if selection == expected {
+                return Ok(SwitchWrite::Unchanged);
+            }
+            let switch = TargetSwitch {
+                from,
+                to: execution_target(&transaction, &owner, &id, &selection)?,
+            };
+            let before = TargetColumns::of(&expected);
+            let target = TargetColumns::of(&selection);
             // `IS` compares NULL as equal to NULL, which `=` does not.
             let revision: Option<i64> = transaction.query_row(
                 "UPDATE conversations SET target_kind = ?2, target_device_id = ?3, target_path = ?4,
@@ -920,15 +1046,15 @@ impl ControlService {
                     target.workspace,
                     to_json(&switch),
                     now.as_millisecond(),
-                    from.kind,
-                    from.device,
-                    from.path,
-                    from.workspace
+                    before.kind,
+                    before.device,
+                    before.path,
+                    before.workspace
                 ],
                 |row| row.get(0),
             ).optional()?;
             let Some(revision) = revision else {
-                return Ok(None);
+                return Ok(SwitchWrite::Conflict);
             };
             let revision = decode("conversations", "context_version", u64::try_from(revision))?;
             if let Some(arriving) = &ends.arriving {
@@ -963,10 +1089,52 @@ impl ControlService {
                 clear_pending_move(&transaction, &id, pending)?;
             }
             transaction.commit()?;
-            Ok(Some(revision))
+            Ok(SwitchWrite::Switched { switch, revision, made })
         })
         .await
     }
+}
+
+/// Archives the conversation `id`. An archive withdraws the permission
+/// requests, decided ones whose message was not delivered among them, and
+/// keeps the grants (`permissions.md` § Requests); it drops the move and
+/// the detaches an agent asked for as well (`sessions-and-targets.md`
+/// § Switch the primary target).
+pub(crate) fn archive_in(connection: &Connection, id: &ConversationId) -> Result<(), StorageError> {
+    connection.execute(
+        "UPDATE conversation_hosts SET detaching = 0 WHERE conversation_id = ?1",
+        [id.as_str()],
+    )?;
+    connection.execute("DELETE FROM permission_requests WHERE conversation_id = ?1", [id.as_str()])?;
+    connection.execute(
+        "UPDATE conversations SET archived = 1, pending_id = NULL, pending_kind = NULL,
+           pending_device_id = NULL, pending_path = NULL, pending_workspace_id = NULL
+         WHERE id = ?1",
+        [id.as_str()],
+    )?;
+    Ok(())
+}
+
+/// Restores the conversation `id`. One whose project was deleted while it
+/// was archived moves back to its directory, into that directory's
+/// workspace, made again (`sessions-and-targets.md` § Resolve a target);
+/// one whose device was revoked meanwhile keeps its directory there.
+fn restore_in(connection: &Connection, id: &ConversationId, now: Timestamp) -> Result<(), StorageError> {
+    connection.execute("UPDATE conversations SET archived = 0 WHERE id = ?1", [id.as_str()])?;
+    let Some(record) = conversation_by_id(connection, id)? else {
+        return Ok(());
+    };
+    let Selection::Workspace { workspace_id, device_id, path } = &record.target else {
+        return Ok(());
+    };
+    if super::workspaces::workspace_in(connection, workspace_id)?.is_some() {
+        return Ok(());
+    }
+    let Some(device) = super::devices::device_in(connection, device_id)? else {
+        return Ok(());
+    };
+    let selected = super::selection::project_of(connection, &device, path, now)?;
+    super::devices::set_selection(connection, id, &selected.selection)
 }
 
 /// A move an agent asked for, which waits for its conversation's tree to be
@@ -1001,7 +1169,7 @@ impl ControlService {
     ) -> Result<Result<String, ChangeOutcome>, StorageError> {
         self.call(move |connection, _| {
             let pending = uuid::Uuid::new_v4().to_string();
-            let columns = TargetColumns::of(&target);
+            let columns = DestinationColumns::of(&target);
             let set = connection.execute(
                 "UPDATE conversations SET pending_id = ?2, pending_kind = ?3, pending_device_id = ?4,
                    pending_path = ?5, pending_workspace_id = ?6
@@ -1187,11 +1355,10 @@ fn attached_rows(
     const TABLE: &str = "conversation_hosts";
     let primary: Option<String> = connection
         .prepare_cached(
-            "SELECT CASE conversation.target_kind
-               WHEN 'cloud' THEN ?2
-               WHEN 'device' THEN (SELECT name FROM devices WHERE id = conversation.target_device_id)
-               ELSE (SELECT device.name FROM workspaces workspace JOIN devices device ON device.id = workspace.device_id
-                     WHERE workspace.id = conversation.target_workspace_id)
+            "SELECT CASE
+               WHEN conversation.target_kind = 'cloud' THEN ?2
+               ELSE (SELECT CASE device.kind WHEN 'managed' THEN ?2 ELSE device.name END
+                     FROM devices device WHERE device.id = conversation.target_device_id)
              END
              FROM conversations conversation WHERE conversation.id = ?1",
         )?
@@ -1290,7 +1457,6 @@ pub fn may_reach(
              OR EXISTS (
                SELECT 1 FROM conversations c WHERE c.id = ?1 AND (
                  c.target_device_id = ?2
-                 OR EXISTS (SELECT 1 FROM workspaces w WHERE w.id = c.target_workspace_id AND w.device_id = ?2)
                  OR (c.target_kind = 'cloud' AND EXISTS (
                    SELECT 1 FROM devices d WHERE d.id = ?2 AND d.kind = 'managed' AND d.machine = 'cloud' AND d.user_id = c.user_id))))",
         params![conversation.as_str(), device.as_str()],
@@ -1370,7 +1536,7 @@ mod tests {
             ),
             (
                 None,
-                &ConversationTarget::Cloud { path: None },
+                &Selection::Cloud { path: None },
                 None,
                 0
             )
@@ -1587,6 +1753,7 @@ mod tests {
                 .create_device(master.clone(), name.into(), RunnerPlatform::Linux, hash)
                 .await
                 .unwrap();
+            testing::report_home(&control, &device.id, "/home/ana").await;
             devices.push(device.id);
         }
         let on_laptop = ConversationTarget::Device {
@@ -1631,23 +1798,17 @@ mod tests {
         assert_eq!(names(&in_cloud).await, ["Cloud-2"]);
 
         let before = control.conversation(id.clone()).await.unwrap().unwrap();
-        let switch = TargetSwitch {
-            from: ExecutionTarget::Device {
-                device_id: devices[0].clone(),
-                path: "/work".into(),
-            },
-            to: ExecutionTarget::Cloud {
-                device_id: None,
-                path: "/home/demi".into(),
-            },
+        let from = ExecutionTarget::Device {
+            device_id: devices[0].clone(),
+            path: "/work".into(),
         };
         let to = ConversationTarget::Cloud { path: Some("/home/demi".into()) };
         let ends = SwitchEnds { departed: None, arriving: None };
-        control
-            .switch_conversation_target(id.clone(), on_laptop, to, switch, ends, None)
+        let switched = control
+            .switch_conversation_target(id.clone(), before.target.clone(), from, to, ends, None)
             .await
-            .unwrap()
-            .expect("the switch wins");
+            .unwrap();
+        assert!(matches!(switched, SwitchWrite::Switched { .. }), "the switch wins");
         assert_eq!(names(&id).await, ["laptop"]);
         let after = control.conversation(id.clone()).await.unwrap().unwrap();
         assert_eq!(after.hosts_revision, before.hosts_revision + 1);
@@ -1678,7 +1839,8 @@ mod tests {
             .await
             .unwrap()
             .id;
-        let cloud = ConversationTarget::Cloud { path: None };
+        testing::report_home(&control, &laptop, "/home/ana").await;
+        let cloud = Selection::Cloud { path: None };
         let from = ExecutionTarget::Cloud {
             device_id: None,
             path: format!("/home/demi/sessions/{id}"),
@@ -1688,32 +1850,23 @@ mod tests {
                 device_id: laptop.clone(),
                 path: path.into(),
             };
-            let switch = TargetSwitch {
-                from: from.clone(),
-                to: ExecutionTarget::Device {
-                    device_id: laptop.clone(),
-                    path: path.into(),
-                },
-            };
             let ends = SwitchEnds {
                 departed: None,
                 arriving: Some(laptop.clone()),
             };
-            control.switch_conversation_target(id.clone(), cloud.clone(), to, switch, ends, None)
+            control.switch_conversation_target(id.clone(), cloud.clone(), from.clone(), to, ends, None)
         };
         let (first, second) = tokio::join!(switch_to("/first"), switch_to("/second"));
-        assert_eq!((first.unwrap(), second.unwrap()), (Some(1), None));
+        let revisions = [first.unwrap(), second.unwrap()].map(|write| match write {
+            SwitchWrite::Switched { revision, .. } => Some(revision),
+            _ => None,
+        });
+        assert_eq!(revisions, [Some(1), None]);
         let record = control.conversation(id.clone()).await.unwrap().unwrap();
-        assert_eq!(
-            (record.target, record.context_version),
-            (
-                ConversationTarget::Device {
-                    device_id: laptop.clone(),
-                    path: "/first".into()
-                },
-                1
-            )
-        );
+        let Selection::Workspace { path, .. } = &record.target else {
+            panic!("the switch to /first selects its project, not {:?}", record.target);
+        };
+        assert_eq!((path.as_str(), record.context_version), ("/first", 1));
         // The winner's announcement is the one every node reads.
         let announced: String = control
             .call(move |connection, _| {
@@ -1726,13 +1879,7 @@ mod tests {
             .await
             .unwrap();
         let announced: TargetSwitch = serde_json::from_str(&announced).unwrap();
-        assert_eq!(
-            announced.to,
-            ExecutionTarget::Device {
-                device_id: laptop,
-                path: "/first".into()
-            }
-        );
+        assert_eq!((announced.to.device(), announced.to.path()), (Some(&laptop), "/first"));
         control.close().await.unwrap();
     }
 

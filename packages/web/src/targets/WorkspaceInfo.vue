@@ -32,13 +32,10 @@ const conversations = useConversations()
 const directory = ref<InstanceType<typeof WorkspaceDirectoryMenu>>()
 const execution = computed(() => executionFor(props.conversation))
 const locked = computed(() => moveLock(props.conversation, conversations.pendingChanges))
-const recentDirectories = computed(() =>
-  resources.recentProjectIds
-    .flatMap(
-      (id) => resources.projects.find((project) => project.id === id) ?? [],
-    )
+/** The projects on the Host the conversation runs on, which the directory menu lists. */
+const hostProjects = computed(() =>
+  resources.projects
     .filter((project) => project.deviceId === execution.value.deviceId)
-    .slice(0, 8)
     .map((project) => ({
       id: project.id,
       path: project.path,
@@ -142,26 +139,20 @@ function choose(host: HostChoice) {
   void move({ kind: 'device', deviceId: host.id, path: home })
 }
 
-async function selectRecent(id: string) {
-  if (await move({ kind: 'workspace', workspaceId: id })) {
-    resources.rememberProject(id)
-  }
+function selectProject(id: string) {
+  void move({ kind: 'workspace', workspaceId: id })
 }
 
 /** A directory chosen in the picker: the project whose directory it is, or the directory itself. */
-async function selectFolder(deviceId: string, path: string): Promise<boolean> {
+function selectFolder(deviceId: string, path: string): Promise<boolean> {
   const project = resources.projects.find(
     (project) => project.deviceId === deviceId && project.path === path,
   )
-  const moved = await move(
+  return move(
     project
       ? { kind: 'workspace', workspaceId: project.id }
       : { kind: 'device', deviceId, path },
   )
-  if (moved && project) {
-    resources.rememberProject(project.id)
-  }
-  return moved
 }
 
 defineExpose({ choose })
@@ -176,10 +167,10 @@ defineExpose({ choose })
     :device-id="execution.deviceId"
     :locked="locked !== undefined"
     :browse-enabled="execution.kind !== 'cloud'"
-    :recent-directories="recentDirectories"
+    :projects="hostProjects"
     :hosts="hosts"
     :select-folder="selectFolder"
-    @select-recent="selectRecent"
+    @select-project="selectProject"
   >
     <HostMenu
       :conversation="conversation"

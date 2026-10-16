@@ -3,7 +3,7 @@
 //! machine access (`sessions-and-targets.md` § Every way to a Host), which
 //! wakes a stopped Cloud.
 
-use demi_backend_database::workspaces::{WorkspaceRecord, new_workspace_id};
+use demi_backend_database::workspaces::{WorkspaceCreation, WorkspaceRecord, new_workspace_id};
 use demi_host_interface::{Host as _, HostFs, MkdirOptions};
 
 use crate::shard::Shard;
@@ -24,7 +24,8 @@ impl Shard {
             .paths
             .join(&access.home, &format!("projects/{id}"));
         HostFs::mkdir(&access.host, &path, MkdirOptions { recursive: true }).await?;
-        self.services()
+        match self
+            .services()
             .control
             .create_workspace(
                 id,
@@ -34,6 +35,12 @@ impl Shard {
                 name,
             )
             .await?
-            .ok_or_else(|| Refusal::DeviceGone.into())
+        {
+            WorkspaceCreation::Created(workspace) => Ok(workspace),
+            // The directory is new, so neither its project nor its home.
+            WorkspaceCreation::DeviceNotFound | WorkspaceCreation::Exists(_) | WorkspaceCreation::Home => {
+                Err(Refusal::DeviceGone.into())
+            }
+        }
     }
 }

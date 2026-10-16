@@ -39,6 +39,10 @@ pub struct ErrorBody {
     /// holds the entry, which the page opens rather than a second one.
     #[serde(default, rename = "loginId", skip_serializing_if = "Option::is_none")]
     pub login_id: Option<LoginId>,
+    /// With `workspace_exists`, the user's workspace of the device and
+    /// directory, which the page opens rather than a second one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace: Option<crate::workspaces::WorkspaceDto>,
     /// The request the answer is of, as its `X-Request-Id` names it.
     #[serde(rename = "requestId")]
     pub request_id: RequestId,
@@ -302,8 +306,17 @@ pub enum ErrorCode {
     TurnInFlight,
     /// The caller owns no workspace of that id.
     WorkspaceNotFound,
-    /// Conversations still target the workspace, which therefore stays.
-    WorkspaceInUse,
+    /// The user has a workspace of that device and directory already, which
+    /// the answer carries as `workspace`.
+    WorkspaceExists,
+    /// The directory is the device's home, which holds the conversations
+    /// outside projects and is never a project (`product.md`
+    /// § Conversations and projects).
+    WorkspaceIsHome,
+    /// A move names a directory on a device whose runner never reported its
+    /// home, so whether the directory is a project's is unknown
+    /// (`sessions-and-targets.md` § Resolve a target).
+    DeviceHomeUnknown,
     /// A sidebar move leaves its row's project or pin partition.
     InvalidOrder,
     /// No account has that id.

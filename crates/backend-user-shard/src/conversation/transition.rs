@@ -15,7 +15,8 @@
 //! the idle tree; host access holds the rest and runs the transition's steps
 //! (`demi_backend_host_access::transition`).
 
-use demi_backend_database::StorageError;
+use demi_backend_database::workspaces::WorkspaceDeletion;
+use demi_backend_database::{Selection, StorageError};
 use demi_backend_database::conversation_index::{
     ConversationChange, ConversationRecord, RecordChange, SettingsChange,
 };
@@ -28,7 +29,7 @@ use demi_web_api_protocol::conversations::{
     ConversationPatch, ConversationUpdate, FieldResult, PatchField,
 };
 use demi_web_api_protocol::devices::DeviceKind;
-use demi_web_api_protocol::ids::{ConversationId, DeviceId};
+use demi_web_api_protocol::ids::{ConversationId, DeviceId, WorkspaceId};
 
 use crate::shard::Shard;
 
@@ -90,11 +91,17 @@ impl Shard {
         {
             return Err(ChangeRefusal::Archived);
         }
-        match &change {
-            // The conversation's own target is no change.
-            ConversationChange::Target(to) if record.target == *to => return Ok(None),
-            ConversationChange::Target(to) => host.check_destination(&record.owner, to).await?,
-            _ => {}
+        // A destination's directory is the one its Host names, and a
+        // destination that selects the conversation's own target is no
+        // change.
+        let change = match change {
+            ConversationChange::Target(to) => ConversationChange::Target(host.resolved_destination(to).await?),
+            change => change,
+        };
+        if let ConversationChange::Target(to) = &change
+            && host.selection_for(&record, to).await? == record.target
+        {
+            return Ok(None);
         }
         let change = match change {
             ConversationChange::Settings(change) => {
@@ -140,23 +147,39 @@ impl Shard {
         let committed = match change {
             ConversationChange::Target(to) => {
                 let switched = host.switch_target(&record, to, None).await;
-                if switched.is_ok() {
+                if let Ok(Some(switched)) = &switched {
+                    if switched.made.is_some() {
+                        self.mark(Part::Workspaces);
+                    }
                     self.switched(&record.id).await;
                 }
-                switched.map(Some)
+                switched
             }
             ConversationChange::Record(RecordChange::Archived(true)) => {
                 let archived = host.archive(&record).await;
-                // An archived conversation's title request and idle watch
-                // end, and its requests are withdrawn: a command that
-                // waits for a credential request's answer returns.
                 if archived.is_ok() {
-                    self.titles().abort(&record.id);
-                    self.stop_idle(&record.id);
-                    demi_backend_permissions::changed(self.permission_shard(), &record.id);
-                    demi_backend_permissions::withdrawn(self.permission_shard(), &record.id);
+                    self.archived(&record.id);
                 }
                 archived.map(|()| None)
+            }
+            ConversationChange::Record(RecordChange::Archived(false)) => {
+                // A conversation whose project was deleted while it was
+                // archived makes it again (`sessions-and-targets.md`
+                // § Resolve a target).
+                let remakes = match &record.target {
+                    Selection::Workspace { workspace_id, .. } => self
+                        .services()
+                        .control
+                        .workspace(workspace_id.clone())
+                        .await?
+                        .is_none(),
+                    _ => false,
+                };
+                let restored = host.commit(&record.id, RecordChange::Archived(false)).await;
+                if restored.is_ok() && remakes {
+                    self.mark(Part::Workspaces);
+                }
+                restored.map(|()| None)
             }
             ConversationChange::Record(RecordChange::Detach(device)) => {
                 host.detach(&record, device).await.map(|()| None)
@@ -168,6 +191,68 @@ impl Shard {
         };
         drop(hold);
         committed
+    }
+
+    /// What follows the archive of the conversation `id`: its title
+    /// request and idle watch end, and its requests are withdrawn, so a
+    /// command that waits for a credential request's answer returns.
+    fn archived(&self, id: &ConversationId) {
+        self.titles().abort(id);
+        self.stop_idle(id);
+        demi_backend_permissions::changed(self.permission_shard(), id);
+        demi_backend_permissions::withdrawn(self.permission_shard(), id);
+    }
+
+    /// Deletes the user's project `id` as one transition (`product.md`
+    /// § Conversations and projects, `web-api.md` § Workspaces, devices,
+    /// and attached hosts): every conversation in it is held as its archive
+    /// holds it, released on its Hosts, and archived in the transaction
+    /// that deletes the workspace. A conversation of it whose work runs
+    /// refuses the deletion, as it refuses its archive, and nothing
+    /// changes; so does one that moved in or was created meanwhile.
+    pub async fn delete_project(&self, id: &WorkspaceId) -> Result<(), ChangeRefusal> {
+        let control = &self.services().control;
+        let host = self.host_shard();
+        let owned = control
+            .workspace(id.clone())
+            .await?
+            .is_some_and(|workspace| workspace.user == *self.user());
+        if !owned {
+            return Err(ChangeRefusal::WorkspaceNotFound);
+        }
+        let conversations = control
+            .workspace_conversations(self.user().clone(), id.clone())
+            .await?;
+        let mut records = Vec::new();
+        let mut holds = Vec::new();
+        for conversation in &conversations {
+            let record = control
+                .conversation(conversation.clone())
+                .await?
+                .ok_or(ChangeRefusal::NotFound)?;
+            let tree = self.reserve_idle_tree(conversation, false)?;
+            holds.push(host.hold_for_transition(conversation, tree).await?);
+            records.push(record);
+        }
+        for record in &records {
+            host.release_everywhere(record).await?;
+        }
+        let deleted = control
+            .delete_workspace(self.user().clone(), id.clone(), conversations.clone())
+            .await?;
+        drop(holds);
+        match deleted {
+            WorkspaceDeletion::Deleted => {}
+            WorkspaceDeletion::Missing => return Err(ChangeRefusal::WorkspaceNotFound),
+            WorkspaceDeletion::Changed => return Err(ChangeRefusal::TurnInFlight),
+        }
+        for conversation in &conversations {
+            self.archived(conversation);
+            self.mark(Part::Conversation(conversation.clone()));
+        }
+        self.mark(Part::ConversationOrder);
+        self.mark(Part::Workspaces);
+        Ok(())
     }
 
     /// What follows a switch the conversation `id` made, under its hold: its
@@ -423,6 +508,10 @@ mod tests {
             .shards()
             .of(&owner)
             .call(move |shard, _| async move {
+                // Its runner is connected, so the move's directory resolves.
+                let _runner = shard
+                    .play_runner_for_tests(&laptop, "/home/ana", |_| Box::pin(async {}))
+                    .await;
                 let slot = shard.conversations().slot(&id);
                 let to = ConversationTarget::Device {
                     device_id: laptop.clone(),
@@ -491,19 +580,101 @@ mod tests {
         pool.close().await;
     }
 
+    /// A directory is the one its Host names (`sessions-and-targets.md`
+    /// § Resolve a target): on Windows `C:/Users/ana/site/` and
+    /// `c:\users\ana\site` are the one project `C:\Users\ana\site`, and a
+    /// link to the home is the home.
+    /// Planted defect this catches: a move that selects by the spelling it
+    /// was given, which makes two projects of one directory and a project
+    /// of the home.
+    #[tokio::test(flavor = "local")]
+    async fn two_spellings_of_a_directory_select_one_project_and_a_link_to_the_home_is_the_home() {
+        let data = tempfile::tempdir().unwrap();
+        let services = Services::start_for_tests(data.path()).await;
+        let control = services.control.clone();
+        let owner: UserId = testing::master(&control).await.id;
+        let first = ConversationId::try_from(ID).unwrap();
+        let second = ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a02").unwrap();
+        for id in [&first, &second] {
+            control
+                .create_conversation(owner.clone(), id.clone(), demi_backend_database::conversation_index::ConversationStart::default())
+                .await
+                .unwrap();
+        }
+        let desktop = control
+            .create_device(owner.clone(), "desktop".into(), RunnerPlatform::Win32, TokenHash::of("desktop"))
+            .await
+            .unwrap()
+            .id;
+        let pool = ShardPool::start(ShardPlacement::Inline, services).await.unwrap();
+        let (targets, workspaces) = pool
+            .shards()
+            .of(&owner)
+            .call({
+                let (first, second, desktop, control, owner) =
+                    (first.clone(), second.clone(), desktop.clone(), control.clone(), owner.clone());
+                move |shard, _| async move {
+                    // The system names a directory in its own case, with
+                    // its separators, through `D:\Links\ana`, a link to the
+                    // home.
+                    let host = crate::shard::PlayedHost {
+                        platform: RunnerPlatform::Win32,
+                        home: r"C:\Users\ana".into(),
+                        resolve: Box::new(|path| {
+                            let spelled = path.to_lowercase().replace('/', r"\");
+                            match spelled.trim_end_matches('\\') {
+                                r"c:\users\ana\site" => Some(r"C:\Users\ana\site".to_owned()),
+                                r"c:\users\ana" | r"d:\links\ana" => Some(r"C:\Users\ana".to_owned()),
+                                _ => None,
+                            }
+                        }),
+                    };
+                    let _runner = shard.play_host_for_tests(&desktop, host, |_| Box::pin(async {})).await;
+                    let mut targets = Vec::new();
+                    for (id, path) in [
+                        (&first, "C:/Users/ana/site/"),
+                        (&second, r"c:\users\ana\site"),
+                        (&first, r"D:\Links\ana"),
+                    ] {
+                        let to = ConversationTarget::Device {
+                            device_id: desktop.clone(),
+                            path: path.into(),
+                        };
+                        shard.transition(id, ConversationChange::Target(to)).await.unwrap();
+                        targets.push(control.conversation(id.clone()).await.unwrap().unwrap().target);
+                    }
+                    (targets, control.workspaces(owner).await.unwrap())
+                }
+            })
+            .await
+            .unwrap();
+        let [workspace] = workspaces.as_slice() else {
+            panic!("one project, not {workspaces:?}");
+        };
+        assert_eq!(workspace.path, r"C:\Users\ana\site");
+        let project = Selection::Workspace {
+            workspace_id: workspace.id.clone(),
+            device_id: desktop.clone(),
+            path: r"C:\Users\ana\site".into(),
+        };
+        assert_eq!(targets, [project.clone(), project, Selection::Home { device_id: desktop }]);
+        pool.close().await;
+    }
+
     /// A conversation release as a device's runner received it, with the
     /// conversation's binding at that moment.
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct Released {
         device: DeviceId,
-        target: ConversationTarget,
+        /// Where the conversation ran then: its device and directory.
+        target: (Option<DeviceId>, String),
         attached: Vec<DeviceId>,
         archived: bool,
     }
 
     /// Connects `device` through a runner the test plays, which answers
     /// every conversation release and writes it to `log`.
-    fn runner(shard: &Rc<Shard>, device: &DeviceId, log: &Rc<RefCell<Vec<Released>>>) {
+    async fn runner(shard: &Rc<Shard>, device: &DeviceId, log: &Rc<RefCell<Vec<Released>>>) {
         let control = shard.services().control.clone();
         let device_id = device.clone();
         let log = log.clone();
@@ -516,14 +687,19 @@ mod tests {
                     .unwrap()
                     .unwrap();
                 let attached = control.attached_hosts(conversation).await.unwrap();
+                let resolved = control
+                    .execution_target(record.owner, record.id, record.target)
+                    .await
+                    .unwrap();
                 log.borrow_mut().push(Released {
                     device,
-                    target: record.target,
+                    target: (resolved.device().cloned(), resolved.path().to_owned()),
                     attached: attached.into_iter().map(|host| host.device).collect(),
                     archived: record.archived,
                 });
             })
-        });
+        })
+        .await;
     }
 
     #[tokio::test(flavor = "local")]
@@ -562,8 +738,8 @@ mod tests {
             .call(move |shard, _| async move {
                 let log = Rc::new(RefCell::new(Vec::new()));
                 let [one, two] = [devices[0].clone(), devices[1].clone()];
-                runner(&shard, &one, &log);
-                runner(&shard, &two, &log);
+                runner(&shard, &one, &log).await;
+                runner(&shard, &two, &log).await;
                 let on = |device: &DeviceId| ConversationTarget::Device {
                     device_id: device.clone(),
                     path: "/work".into(),
@@ -579,7 +755,10 @@ mod tests {
                                 attached: &[DeviceId],
                                 archived| Released {
                     device: device.clone(),
-                    target,
+                    target: match target {
+                        ConversationTarget::Device { device_id, path } => (Some(device_id), path),
+                        other => panic!("the test moves to device directories, not {other:?}"),
+                    },
                     attached: attached.to_vec(),
                     archived,
                 };

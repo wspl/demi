@@ -55,7 +55,7 @@
     "fold": "收合",
     "unfold": "展開",
     "select": "選取對話",
-    "remove": "移除專案"
+    "delete": "刪除專案…"
   },
   "delete": {
     "title": "刪除「{title}」？",
@@ -64,6 +64,11 @@
     "many": "它們的訊息和檔案將被刪除。此操作無法復原。",
     "filesOne": "它變更過的檔案會保留在專案中。",
     "filesMany": "它們變更過的檔案會保留在各自的專案中。"
+  },
+  "deleteProject": {
+    "title": "刪除「{name}」？",
+    "archived": "它的 {count} 個對話將被封存。",
+    "files": "{host} 上的檔案不會被刪除。"
   },
   "archivedToast": {
     "title": "已封存 {count} 個對話",

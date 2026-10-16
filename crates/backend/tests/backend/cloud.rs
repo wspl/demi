@@ -1484,9 +1484,9 @@ async fn a_backend_that_stopped_in_the_middle_of_a_reset_finishes_its_disk_step_
     assert!(calls[started + 1..].is_empty(), "{calls:?}");
 
     // A retry of the same reset starts the Cloud, and its announcement,
-    // made at the recovery, advances the conversation's context no further.
-    // The runner's report does, once: the restarted backend forgot the
-    // home, a temporary directory here, and named `/home/demi` until then.
+    // made at the recovery, advances the conversation's context no further;
+    // nor does the runner's report, of the home the backend kept, a
+    // temporary directory here.
     reset(&backend, &master, RESET).await;
     until_status(&backend, &master, "the retried reset is ready", |status| {
         status
@@ -1496,7 +1496,7 @@ async fn a_backend_that_stopped_in_the_middle_of_a_reset_finishes_its_disk_step_
     })
     .await;
     assert_eq!(harness.manager.count(&format!("wake:{device}")), 2);
-    assert_eq!(context(), context_before + 2);
+    assert_eq!(context(), context_before + 1);
     backend.close().await;
 }
 
@@ -1606,28 +1606,7 @@ async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_
     let seen = b.turn(vec![shell("b1", &read, 20_000), say("read")]).await;
     assert!(seen.received[0].contains("shared"), "{}", seen.received[0]);
 
-    // A project a conversation targets stays; once none does, it goes and
-    // its files stay.
-    let in_use = backend
-        .delete(&format!("/api/workspaces/{}", first.id), &master)
-        .await;
-    assert_eq!(
-        in_use.refusal(),
-        (StatusCode::CONFLICT, ErrorCode::WorkspaceInUse)
-    );
-    let away = backend
-        .patch(
-            &format!("/api/conversations/{FIRST}"),
-            &master,
-            json!({ "target": { "kind": "cloud" } }),
-        )
-        .await;
-    assert_eq!(
-        away.status,
-        StatusCode::OK,
-        "{}",
-        String::from_utf8_lossy(&away.body)
-    );
+    // Deleting a project archives its conversation and keeps its files.
     let deleted = backend
         .delete(&format!("/api/workspaces/{}", first.id), &master)
         .await;
@@ -1637,6 +1616,11 @@ async fn cloud_projects_share_the_users_one_machine_and_a_deleted_project_keeps_
         "{}",
         String::from_utf8_lossy(&deleted.body)
     );
+    let archived: bool = harness
+        .control_database()
+        .query_row("SELECT archived FROM conversations WHERE id = ?1", [FIRST], |row| row.get(0))
+        .unwrap();
+    assert!(archived);
     let kept = b
         .turn(vec![shell("b2", &read, 20_000), say("still there")])
         .await;

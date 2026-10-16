@@ -162,25 +162,29 @@ impl Shard {
     /// what a switch checks, not whether the device is online. The error is
     /// why, as the agent reads it and the page words it.
     async fn make_move(&self, record: &ConversationRecord, moving: &PendingMove) -> Result<(), MoveFailure> {
-        let host = self.host_shard();
-        if record.target == moving.target {
-            self.services()
+        let switched = self
+            .host_shard()
+            .switch_target(record, moving.target.clone(), Some(moving.id.clone()))
+            .await
+            .map_err(|refusal| MoveFailure::of(&refusal))?;
+        match switched {
+            Some(switched) => {
+                if switched.made.is_some() {
+                    self.mark(Part::Workspaces);
+                }
+                self.switched(&record.id).await;
+            }
+            // A move to where it runs is made as nothing.
+            None => self
+                .services()
                 .control
                 .drop_pending_move(record.id.clone(), moving.id.clone())
                 .await
                 .map_err(|error| MoveFailure {
                     reason: error.to_string(),
                     code: None,
-                })?;
-            return Ok(());
+                })?,
         }
-        host.check_destination(&record.owner, &moving.target)
-            .await
-            .map_err(|refusal| MoveFailure::of(&refusal))?;
-        host.switch_target(record, moving.target.clone(), Some(moving.id.clone()))
-            .await
-            .map_err(|refusal| MoveFailure::of(&refusal))?;
-        self.switched(&record.id).await;
         Ok(())
     }
 

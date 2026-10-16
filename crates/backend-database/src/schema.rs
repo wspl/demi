@@ -220,13 +220,38 @@ pub(crate) const CONTROL: Schema = Schema {
         },
         Shipped {
             sql: include_str!("schema/control-0.1.22-dev.20261016T043704Z.sql"),
-            migration: Migration::Sql(CONTROL_FROM_0_1_22_DEV_20261016T043704Z),
+            migration: Migration::Code(control_from_0_1_22_dev_20261016t043704z),
         },
     ],
 };
 
 /// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
-/// data of, to the one whose usage ledger keeps a row per vendor call with
+/// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
+/// data of, to the current one, in two steps. First the usage ledger keeps
+/// a row per vendor call (`usage-and-quota.md` § Usage ledger), a managed
+/// device says which managed machine it is, and a Claude Code account may
+/// hold no secret, [`CONTROL_FROM_0_1_22_DEV_20261016T043704Z`]. Then where a
+/// conversation runs decides its project (`upgrades.md` § What crosses
+/// releases): a device keeps the home its runner last reported, none until
+/// its runner's next hello; a Cloud workspace's directory loses a trailing
+/// separator, and the user has one workspace per device and directory, of
+/// several the oldest, which the others' conversations and pending moves
+/// move to; a Cloud workspace at the Cloud's home goes, its conversations
+/// running in the home; a workspace selection keeps its device and
+/// directory; a Cloud conversation in a directory of its own choosing moves
+/// to the Cloud's home, `/home/demi`, a conversation's directory under
+/// `/home/demi/sessions`, or else the workspace of its directory, made when
+/// there is none; and a permission request of a category and a host at
+/// once, which only the removed `demi conversation move` raised, goes. A
+/// paired device's workspaces and conversations wait for its runner to
+/// resolve their directories when it first reports its home (`devices.rs`).
+fn control_from_0_1_22_dev_20261016t043704z(transaction: &Transaction<'_>, blobs: &dyn ReadBlob) -> rusqlite::Result<()> {
+    transaction.execute_batch(CONTROL_FROM_0_1_22_DEV_20261016T043704Z)?;
+    control_by_directory(transaction, blobs)
+}
+
+/// The usage ledger's step of [`control_from_0_1_22_dev_20261016t043704z`],
+/// to the ledger that keeps a row per vendor call with
 /// its agent, turn, purpose, account, ids, outcome, observed quota and
 /// times (`usage-and-quota.md` § Usage ledger). A row written before keeps
 /// null for what it lacked; its `created_at`, written as its response
@@ -299,6 +324,99 @@ ALTER TABLE provider_credentials_new RENAME TO provider_credentials;
 CREATE UNIQUE INDEX provider_credentials_identity ON provider_credentials (provider_id, identity_key)
   WHERE identity_key IS NOT NULL;
 ";
+
+/// The projects-by-directory step of
+/// [`control_from_0_1_22_dev_20261016t043704z`].
+fn control_by_directory(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    transaction.execute_batch(
+        "
+ALTER TABLE devices ADD COLUMN home TEXT;
+-- A Cloud's directory as its Host names it, without a trailing separator; a
+-- paired device's waits for its runner (devices.rs, settle_first_home).
+UPDATE workspaces SET path = CASE WHEN rtrim(path, '/') = '' THEN '/' ELSE rtrim(path, '/') END
+  WHERE device_id IN (SELECT id FROM devices WHERE kind = 'managed');
+-- Workspaces of one directory become the oldest of them.
+CREATE TEMP TABLE kept_workspaces AS
+  SELECT w.id AS id, (SELECT k.id FROM workspaces k
+      WHERE k.user_id = w.user_id AND k.device_id = w.device_id AND k.path = w.path
+      ORDER BY k.created_at, k.id LIMIT 1) AS kept
+  FROM workspaces w;
+UPDATE conversations SET target_workspace_id = (SELECT kept FROM kept_workspaces WHERE id = target_workspace_id)
+  WHERE target_workspace_id IS NOT NULL;
+UPDATE conversations SET pending_workspace_id = (SELECT kept FROM kept_workspaces WHERE id = pending_workspace_id)
+  WHERE pending_workspace_id IS NOT NULL;
+DELETE FROM workspaces WHERE id IN (SELECT id FROM kept_workspaces WHERE kept <> id);
+DROP TABLE kept_workspaces;
+CREATE UNIQUE INDEX workspaces_directory ON workspaces (user_id, device_id, path);
+",
+    )?;
+    // The table's CHECK changes. Making the table again would drop the
+    // table every conversation's rows name, which cascades while foreign
+    // keys are on, as they are in a migration's transaction; its columns
+    // stay as they are, so its text changes in place, the procedure SQLite
+    // gives for a change of constraints alone (lang_altertable.html § 7),
+    // to the current schema's own text. The rows the new CHECK refuses are
+    // rewritten next, and the integrity check, which tests CHECK
+    // constraints, proves none is left.
+    let start = CONTROL_V1
+        .find("CREATE TABLE conversations (")
+        .expect("the control schema makes the conversations table");
+    let end = start + CONTROL_V1[start..].find(") STRICT;").expect("the table ends") + ") STRICT".len();
+    let version: i64 = transaction.pragma_query_value(None, "schema_version", |row| row.get(0))?;
+    transaction.pragma_update(None, "writable_schema", true)?;
+    transaction.execute(
+        "UPDATE sqlite_schema SET sql = ?1 WHERE type = 'table' AND name = 'conversations'",
+        [&CONTROL_V1[start..end]],
+    )?;
+    transaction.pragma_update(None, "schema_version", version + 1)?;
+    transaction.pragma_update(None, "writable_schema", false)?;
+    transaction.execute_batch(
+        "
+UPDATE conversations SET
+    target_device_id = (SELECT device_id FROM workspaces WHERE id = target_workspace_id),
+    target_path = (SELECT path FROM workspaces WHERE id = target_workspace_id)
+  WHERE target_kind = 'workspace';
+-- A Cloud workspace at the Cloud's home goes: its conversations run in the
+-- home, outside projects, and a move into it waits as a move to the home.
+CREATE TEMP TABLE cloud_homes AS
+  SELECT w.id AS id, w.device_id AS device_id FROM workspaces w JOIN devices d ON d.id = w.device_id
+  WHERE d.kind = 'managed' AND w.path = '/home/demi';
+UPDATE conversations SET target_kind = 'home', target_path = NULL, target_workspace_id = NULL
+  WHERE target_workspace_id IN (SELECT id FROM cloud_homes);
+UPDATE conversations SET pending_kind = 'cloud', pending_path = '/home/demi', pending_workspace_id = NULL
+  WHERE pending_workspace_id IN (SELECT id FROM cloud_homes);
+DELETE FROM workspaces WHERE id IN (SELECT id FROM cloud_homes);
+DROP TABLE cloud_homes;
+-- A permission request asks for one category or one host now. Only
+-- `demi conversation move`, which this release removes, asked for a
+-- category and a host at once; such a request goes, as the command did.
+DELETE FROM permission_requests WHERE kind = 'permission'
+  AND json_array_length(categories) + (host_device_id IS NOT NULL) + (pairing_code IS NOT NULL) <> 1;
+",
+    )?;
+    let moving = transaction
+        .prepare("SELECT id, user_id, target_path FROM conversations WHERE target_kind = 'cloud' AND target_path IS NOT NULL")?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)))?
+        .collect::<rusqlite::Result<Vec<_>>>()?;
+    let now = Timestamp::truncate(jiff::Timestamp::now());
+    for (id, owner, path) in moving {
+        let id = demi_web_api_protocol::ids::ConversationId::try_from(id.as_str()).map_err(corrupt)?;
+        let owner = demi_web_api_protocol::ids::UserId::try_from(owner).map_err(corrupt)?;
+        let cloud = crate::devices::cloud_device_in(transaction, &owner, now).map_err(storage)?;
+        let selected = crate::selection::select_directory(transaction, &id, &cloud, &path, now)
+            .map_err(storage)?
+            .map_err(|reason| corrupt_text(&format!("a Cloud directory is unselectable: {reason:?}")))?;
+        crate::devices::set_selection(transaction, &id, &selected.selection).map_err(storage)?;
+    }
+    let problems: Vec<String> = transaction
+        .prepare("PRAGMA integrity_check")?
+        .query_map([], |row| row.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    if problems != ["ok"] {
+        return Err(corrupt_text(&format!("the conversations' targets fail their check: {problems:?}")));
+    }
+    Ok(())
+}
 
 /// From 0.1.22-dev.20261015T105826Z's control schema, which a server keeps
 /// data of, to the one in which a workspace keeps what its project's next
@@ -1990,6 +2108,14 @@ fn corrupt(error: impl std::error::Error + Send + Sync + 'static) -> rusqlite::E
     rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, Box::new(error))
 }
 
+/// A storage step's failure inside a migration.
+fn storage(error: StorageError) -> rusqlite::Error {
+    match error {
+        StorageError::Sqlite(error) => error,
+        other => corrupt(other),
+    }
+}
+
 /// Stored data that is not what its format says, in words.
 fn corrupt_text(message: &str) -> rusqlite::Error {
     corrupt(std::io::Error::other(message.to_owned()))
@@ -2712,7 +2838,11 @@ CREATE TABLE devices (
   -- Which managed machine a managed device is: the user's Cloud, or the
   -- Claude Code machine, which only the instance's master holds
   -- (managed-hosts.md § The Claude Code machine); none for a paired device.
-  machine      TEXT CHECK (machine IN ('cloud', 'claude_code'))
+  machine      TEXT CHECK (machine IN ('cloud', 'claude_code')),
+  -- The home its runner last reported (sessions-and-targets.md § Resolve a
+  -- target); none before its runner first reported one since the release
+  -- that began keeping it.
+  home TEXT
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_machine ON devices (user_id, machine) WHERE kind = 'managed';
 
@@ -2735,6 +2865,7 @@ CREATE TABLE workspaces (
     CHECK ((last_workflow_kind IS 'workflow') = (last_workflow_id IS NOT NULL))
 ) STRICT;
 CREATE INDEX workspaces_order ON workspaces (user_id, sort_order);
+CREATE UNIQUE INDEX workspaces_directory ON workspaces (user_id, device_id, path);
 
 -- Each choice a user made about a plugin (`plugins.md` § A user's plugins):
 -- a plugin with no row is on.
@@ -2833,7 +2964,13 @@ CREATE TABLE conversations (
   pinned              INTEGER NOT NULL CHECK (pinned IN (0, 1)),
   sort_order          INTEGER NOT NULL,
   read_revision       INTEGER NOT NULL,
-  target_kind         TEXT NOT NULL CHECK (target_kind IN ('cloud', 'device', 'workspace')),
+  -- target: where it runs (sessions-and-targets.md § Resolve a target): the
+  -- Cloud's directory of a conversation, its own without a path; a Host's
+  -- home, by its device; a workspace, with the device and directory it
+  -- names; or a device's directory as a release before projects by
+  -- directory kept it, until that device's runner first reports its home,
+  -- and of a conversation whose device was revoked.
+  target_kind         TEXT NOT NULL CHECK (target_kind IN ('cloud', 'home', 'workspace', 'device')),
   target_device_id    TEXT,
   target_path         TEXT,
   target_workspace_id TEXT,
@@ -2877,10 +3014,12 @@ CREATE TABLE conversations (
   CHECK (
     (target_kind = 'cloud'
       AND target_device_id IS NULL AND target_workspace_id IS NULL)
+    OR (target_kind = 'home'
+      AND target_device_id IS NOT NULL AND target_path IS NULL AND target_workspace_id IS NULL)
     OR (target_kind = 'device'
       AND target_device_id IS NOT NULL AND target_path IS NOT NULL AND target_workspace_id IS NULL)
     OR (target_kind = 'workspace'
-      AND target_workspace_id IS NOT NULL AND target_device_id IS NULL AND target_path IS NULL)
+      AND target_workspace_id IS NOT NULL AND target_device_id IS NOT NULL AND target_path IS NOT NULL)
   )
 ) STRICT;
 CREATE INDEX conversations_sidebar ON conversations (user_id, archived, pinned, sort_order);
@@ -5948,5 +6087,112 @@ mod tests {
             assert_eq!(version_of(development), version);
             assert!(schema.history.iter().any(|shipped| shipped.sql == development));
         }
+    }
+
+    /// The control migration to projects by directory (`upgrades.md`
+    /// § What crosses releases): a Cloud conversation in a directory of its
+    /// own choosing moves to the Cloud's home, a conversation's directory
+    /// under `/home/demi/sessions` or the workspace of its directory, made
+    /// when there is none; one in its own directory, a project's and a
+    /// paired device's stay; workspaces of one directory, a Cloud's in two
+    /// spellings included, become the oldest, with the others'
+    /// conversations; a Cloud workspace at the home goes, its conversations
+    /// running in the home; every device's home is unknown until its next
+    /// hello.
+    /// Planted defect this catches: a Cloud directory left outside
+    /// projects, or a workspace selection that loses its directory.
+    /// One small database, milliseconds.
+    #[test]
+    fn the_migration_puts_each_cloud_conversation_where_its_directory_says() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.22-dev.20261016T043704Z.sql"));
+        let own = "0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a01";
+        connection
+            .execute_batch(&format!(
+                "
+INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+  VALUES ('u', 'u@example.test', 'U', 'x', 'master', 1);
+INSERT INTO devices (id, user_id, kind, name, platform, claimed_at)
+  VALUES ('cloud', 'u', 'managed', 'Cloud', 'linux', 1), ('laptop', 'u', 'user', 'laptop', 'darwin', 1);
+INSERT INTO workspaces (id, user_id, device_id, path, name, sort_order, created_at)
+  VALUES ('w1', 'u', 'laptop', '/Users/u/site', 'site', 0, 1),
+         ('w2', 'u', 'laptop', '/Users/u/site', 'site again', 1, 1),
+         ('w3', 'u', 'cloud', '/home/demi/app', 'app', 2, 1),
+         ('w4', 'u', 'cloud', '/home/demi/app/', 'app too', 3, 2),
+         ('w5', 'u', 'cloud', '/home/demi/', 'home', 4, 1);
+INSERT INTO conversations (id, user_id, title, title_origin, archived, pinned, sort_order, read_revision,
+    target_kind, target_device_id, target_path, target_workspace_id, context_version, created_at, updated_at)
+  VALUES ('{own}', 'u', '', 'placeholder', 0, 0, 0, 0, 'cloud', NULL, '/home/demi/sessions/{own}', NULL, 0, 1, 1),
+         ('0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b00', 'u', '', 'placeholder', 0, 0, 1, 0, 'cloud', NULL, NULL, NULL, 0, 1, 1),
+         ('0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b01', 'u', '', 'placeholder', 0, 0, 2, 0, 'cloud', NULL, '/home/demi', NULL, 0, 1, 1),
+         ('0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b02', 'u', '', 'placeholder', 0, 0, 3, 0, 'cloud', NULL, '/home/demi/sessions/{own}', NULL, 0, 1, 1),
+         ('0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b03', 'u', '', 'placeholder', 0, 0, 4, 0, 'cloud', NULL, '/home/demi/app', NULL, 0, 1, 1),
+         ('0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b04', 'u', '', 'placeholder', 0, 0, 5, 0, 'cloud', NULL, '/home/demi/docs/', NULL, 0, 1, 1),
+         ('0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b05', 'u', '', 'placeholder', 0, 0, 6, 0, 'workspace', NULL, NULL, 'w2', 0, 1, 1),
+         ('0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b06', 'u', '', 'placeholder', 0, 0, 7, 0, 'device', 'laptop', '/Users/u/notes', NULL, 0, 1, 1),
+         ('0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b07', 'u', '', 'placeholder', 0, 0, 8, 0, 'workspace', NULL, NULL, 'w4', 0, 1, 1),
+         ('0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b08', 'u', '', 'placeholder', 0, 0, 9, 0, 'workspace', NULL, NULL, 'w5', 0, 1, 1);
+"
+            ))
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let target = |id: &str| -> (String, Option<String>, Option<String>, Option<String>) {
+            connection
+                .query_row(
+                    "SELECT target_kind, target_device_id, target_path, target_workspace_id FROM conversations WHERE id = ?1",
+                    [id],
+                    |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+                )
+                .unwrap()
+        };
+        let some = |text: &str| Some(text.to_owned());
+        assert_eq!(target(own), ("cloud".into(), None, None, None));
+        assert_eq!(target("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b00"), ("cloud".into(), None, None, None));
+        assert_eq!(target("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b01"), ("home".into(), some("cloud"), None, None));
+        assert_eq!(
+            target("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b02"),
+            ("cloud".into(), None, some(&format!("/home/demi/sessions/{own}")), None)
+        );
+        assert_eq!(
+            target("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b03"),
+            ("workspace".into(), some("cloud"), some("/home/demi/app"), some("w3"))
+        );
+        assert_eq!(
+            target("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b05"),
+            ("workspace".into(), some("laptop"), some("/Users/u/site"), some("w1"))
+        );
+        assert_eq!(
+            target("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b06"),
+            ("device".into(), some("laptop"), some("/Users/u/notes"), None)
+        );
+        // `/home/demi/app/` is `/home/demi/app`, whose oldest project keeps
+        // its conversations; a Cloud project at the home goes.
+        assert_eq!(
+            target("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b07"),
+            ("workspace".into(), some("cloud"), some("/home/demi/app"), some("w3"))
+        );
+        assert_eq!(target("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b08"), ("home".into(), some("cloud"), None, None));
+        let (kind, device, path, workspace) = target("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4b04");
+        assert_eq!((kind.as_str(), device.as_deref(), path.as_deref()), ("workspace", Some("cloud"), Some("/home/demi/docs")));
+        let made: (String, String) = connection
+            .query_row(
+                "SELECT name, path FROM workspaces WHERE id = ?1",
+                [workspace.unwrap()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(made, ("docs".to_owned(), "/home/demi/docs".to_owned()));
+        let workspaces: Vec<String> = connection
+            .prepare("SELECT id FROM workspaces WHERE id IN ('w1', 'w2', 'w3', 'w4', 'w5') ORDER BY id")
+            .unwrap()
+            .query_map([], |row| row.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(workspaces, ["w1", "w3"]);
+        let homes: i64 = connection
+            .query_row("SELECT count(*) FROM devices WHERE home IS NOT NULL", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(homes, 0);
     }
 }

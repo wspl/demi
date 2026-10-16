@@ -78,14 +78,6 @@ pub struct BroughtHost {
     pub name: String,
     /// Whether it is the user's Cloud.
     pub cloud: bool,
-    /// The project the argument named, whose host it is; none for a host
-    /// named as itself.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    pub project: Option<String>,
 }
 
 /// The ids of a call's relayed pipes.

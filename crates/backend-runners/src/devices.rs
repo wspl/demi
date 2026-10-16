@@ -18,7 +18,7 @@ use std::time::Duration;
 use axum::extract::ws::{Message, WebSocket};
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
-use demi_backend_database::devices::DeviceRecord;
+use demi_backend_database::devices::{DeviceRecord, FirstHome};
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_backend_remote_host::{
     Admission, DeviceJobs, DeviceLink, Link, LinkDriver, LinkEnd, RemoteHost, close_frame,
@@ -620,30 +620,60 @@ impl DeviceRecorder {
     }
 
     /// Records what `device`'s runner said in its hello: its operating
-    /// system, its release and its instance, and that it was connected just
-    /// now; advances the execution contexts the report changes, of which
-    /// `home_changed` says whether the home they named did.
+    /// system, its release, its instance and its home, and that it was
+    /// connected just now, and advances the execution contexts the report
+    /// changes (`sessions-and-targets.md` § Resolve a target). Answers the
+    /// directories the runner resolves before a paired device's first home
+    /// is recorded, when an earlier release left any (`upgrades.md` § What
+    /// crosses releases).
     pub async fn hello(
         &self,
         device: DeviceId,
         os: OperatingSystem,
         version: String,
         instance: u64,
-        home_changed: bool,
-    ) {
-        if let Err(error) = self
+        home: String,
+    ) -> Option<FirstHome> {
+        let first = match self
             .control
-            .set_device_runner(device.clone(), os, version, instance, home_changed)
+            .set_device_runner(device.clone(), os, version, instance, home)
             .await
         {
+            Ok(first) => first,
+            Err(error) => {
             // The agent's context block names the Host without its system,
             // or with the one recorded before, and Settings shows the device
             // without them, until the next hello records them; a node that
             // read the context before reads no new block until another
             // change advances it.
             tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "operating system and runner release not recorded");
-        }
+                None
+            }
+        };
         self.touch(device).await;
+        first
+    }
+
+    /// Records `first`'s home as `device`'s once its runner resolved each
+    /// of `first`'s directories, `resolved`, and shows the pages the
+    /// conversations and projects that moved.
+    pub async fn settle_first_home(&self, device: DeviceId, first: FirstHome, resolved: HashMap<String, String>) {
+        match self.control.settle_first_home(device.clone(), first.home, resolved).await {
+            Ok(settled) => {
+                if settled.projects_changed {
+                    self.marks.mark(Part::Workspaces);
+                }
+                for conversation in settled.moved {
+                    self.marks.mark(Part::Conversation(conversation));
+                }
+                self.marks.mark(Part::Devices);
+            }
+            // The home stays unrecorded, so the runner's next hello settles
+            // it again.
+            Err(error) => {
+                tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "first home not recorded");
+            }
+        }
     }
 
     /// Records that `device`'s runner was connected just now.

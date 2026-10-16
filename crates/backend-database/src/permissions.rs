@@ -7,12 +7,12 @@
 //! asking agent's checkpoint. And what the decisions record: the grants,
 //! one per conversation and category, and the allowances, one per
 //! conversation and credential, each kept for the conversation's life. A
-//! permission request names the categories its call lacked, sorted, so that
-//! the same categories compare equal, and the host it asks to reach, if any
-//! (`permissions.md` § Hosts): an allow puts a device on the list of hosts
-//! the conversation may reach, or lets it pair a computer's code once. Each
-//! change reads and writes in one transaction, so a check and a decision
-//! never interleave.
+//! permission request names the category its call lacked or the host it
+//! asks to reach (`permissions.md` § Hosts): an allow of a host puts a
+//! device on the list of hosts the conversation may reach, or lets it pair
+//! a computer's code once. Each change reads and writes in one transaction,
+//! so a check and a decision never interleave. A permission request asks for one thing: a category,
+//! or a host (`permissions.md` § Hosts).
 
 use std::collections::BTreeMap;
 
@@ -37,11 +37,19 @@ const REQUESTS: &str = "permission_requests";
 
 const REQUEST_COLUMNS: &str = "id, conversation_id, kind, categories, credential_name, credential_id, ask, command, node_id, agent_number, agent_description, created_at, decision, decided_at, host_device_id, pairing_code";
 
-/// A request's categories as its column holds them: their ids, sorted; none
-/// when the request asks for a host alone.
+/// A request's categories as its column holds them: the one it asks for,
+/// or none when it asks for a host.
 #[derive(Debug, Serialize, Deserialize, Validate)]
 #[garde(transparent)]
 struct Categories(#[garde(inner(length(min = 1)))] Vec<String>);
+
+/// What a call needs and its conversation may lack: one category's grant,
+/// or one host to reach; no command needs both (`permissions.md` § Hosts).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Needed {
+    Category(String),
+    Host(AskedHost),
+}
 
 /// The host a call brings into its conversation (`permissions.md` § Hosts).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -79,12 +87,8 @@ pub struct CredentialAsk {
 /// What a request asks of the user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StoredAsk {
-    /// The ids of the categories the call lacked, sorted, and the host it
-    /// asks to reach; at least one of the two.
-    Permission {
-        categories: Vec<String>,
-        host: Option<AskedHost>,
-    },
+    /// The category the call lacked, or the host it asks to reach.
+    Permission(Needed),
     /// A credential of this name to save.
     Credential { name: String, ask: CredentialAsk },
     /// The use of the credential `credential`, none once it was removed.
@@ -120,15 +124,10 @@ pub struct Decision {
 pub enum Checked {
     /// The conversation has every grant: the call is dispatched.
     Granted,
-    /// A grant or a host is missing: the request was recorded for the
-    /// categories `lacking`, sorted, and the host `host`, in place of the
-    /// undecided one of the same categories and host from the same agent,
-    /// if any.
-    Raised {
-        id: PermissionRequestId,
-        lacking: Vec<String>,
-        host: Option<AskedHost>,
-    },
+    /// The grant or the host is missing: the request was recorded, in
+    /// place of the undecided one of the same need from the same agent, if
+    /// any.
+    Raised { id: PermissionRequestId },
 }
 
 /// Why a decision changed nothing.
@@ -199,33 +198,22 @@ pub struct Undelivered {
 
 impl ControlService {
     /// The check of one call (`permissions.md` § The check): whether the
-    /// conversation has the grant of each of `categories` and may reach
-    /// `host`, and when it lacks any, the request recorded for `command`
-    /// with what it lacks, which replaces the undecided request of the same
-    /// categories and host from the same agent. A pairing code the user let
-    /// the conversation pair is used up by the call it passes.
+    /// conversation has the grant `needed` names or may reach its host, and
+    /// when it lacks it, the request recorded for `command`, which replaces
+    /// the undecided request of the same need from the same agent. A
+    /// pairing code the user let the conversation pair is used up by the
+    /// call it passes.
     pub async fn check_permission(
         &self,
         conversation: ConversationId,
-        categories: Vec<String>,
-        host: Option<AskedHost>,
+        needed: Needed,
         command: String,
         agent: AskingAgent,
     ) -> Result<Checked, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
-            let mut lacking = Vec::new();
-            for category in categories {
-                if granted_at(&transaction, &conversation, &category)?.is_none() {
-                    lacking.push(category);
-                }
-            }
-            let reached = match &host {
-                Some(host) => reaches(&transaction, &conversation, host)?,
-                None => true,
-            };
-            if lacking.is_empty() && reached {
-                if let Some(AskedHost::Pairing(code)) = &host {
+            if has(&transaction, &conversation, &needed)? {
+                if let Needed::Host(AskedHost::Pairing(code)) = &needed {
                     transaction.execute(
                         "DELETE FROM pairing_passes WHERE conversation_id = ?1 AND code = ?2",
                         params![conversation.as_str(), code],
@@ -234,11 +222,7 @@ impl ControlService {
                 }
                 return Ok(Checked::Granted);
             }
-            let host = host.filter(|_| !reached);
-            lacking.sort();
-            lacking.dedup();
-            let stored = to_json(&lacking);
-            let (device, code) = host_columns(host.as_ref());
+            let (stored, device, code) = need_columns(&needed);
             transaction.execute(
                 "DELETE FROM permission_requests
                  WHERE conversation_id = ?1 AND kind = 'permission' AND categories = ?2 AND node_id = ?3
@@ -262,7 +246,7 @@ impl ControlService {
                 now,
             )?;
             transaction.commit()?;
-            Ok(Checked::Raised { id, lacking, host })
+            Ok(Checked::Raised { id })
         })
         .await
     }
@@ -308,10 +292,10 @@ impl ControlService {
 
     /// Decides the undecided request `request` (`permissions.md`
     /// § Requests). An allow of a permission request records the grant of
-    /// each of its categories, puts its device on the conversation's list
-    /// or lets the conversation pair its code once, and decides it with
-    /// every undecided permission request of the conversation whose
-    /// categories are now all granted and whose host it may reach; an
+    /// its category, or puts its device on the conversation's list or lets
+    /// the conversation pair its code once, and decides it with every
+    /// undecided permission request of the conversation that is now
+    /// complete; an
     /// allow of an allowance request records the allowance and decides
     /// every undecided request of the conversation to use that credential;
     /// a deny decides the request alone, and forgets a credential request,
@@ -343,26 +327,25 @@ impl ControlService {
                         transaction.commit()?;
                         return Ok(Ok(vec![stored]));
                     }
-                    (StoredAsk::Permission { categories, host }, PermissionOutcome::Allowed) => {
-                        for category in categories {
-                            transaction.execute(
-                                "INSERT OR IGNORE INTO permission_grants (conversation_id, category, granted_at)
-                                 VALUES (?1, ?2, ?3)",
-                                params![conversation.as_str(), category, now.as_millisecond()],
-                            )?;
-                        }
-                        match host {
-                            Some(AskedHost::Device(device)) => {
+                    (StoredAsk::Permission(needed), PermissionOutcome::Allowed) => {
+                        match needed {
+                            Needed::Category(category) => {
+                                transaction.execute(
+                                    "INSERT OR IGNORE INTO permission_grants (conversation_id, category, granted_at)
+                                     VALUES (?1, ?2, ?3)",
+                                    params![conversation.as_str(), category, now.as_millisecond()],
+                                )?;
+                            }
+                            Needed::Host(AskedHost::Device(device)) => {
                                 add_reachable_host(&transaction, &conversation, device, now)?;
                             }
-                            Some(AskedHost::Pairing(code)) => {
+                            Needed::Host(AskedHost::Pairing(code)) => {
                                 transaction.execute(
                                     "INSERT OR IGNORE INTO pairing_passes (conversation_id, code, allowed_at)
                                      VALUES (?1, ?2, ?3)",
                                     params![conversation.as_str(), code, now.as_millisecond()],
                                 )?;
                             }
-                            None => {}
                         }
                         let undecided: Vec<String> = transaction
                             .prepare_cached(
@@ -381,17 +364,10 @@ impl ControlService {
                                 [&id],
                                 |row| Ok(ask_row(row)),
                             )??;
-                            let StoredAsk::Permission { categories, host } = other else {
+                            let StoredAsk::Permission(needed) = other else {
                                 continue;
                             };
-                            let mut granted = true;
-                            for category in &categories {
-                                granted &= granted_at(&transaction, &conversation, category)?.is_some();
-                            }
-                            if let Some(host) = &host {
-                                granted &= reaches(&transaction, &conversation, host)?;
-                            }
-                            if granted {
+                            if has(&transaction, &conversation, &needed)? {
                                 complete.push(id);
                             }
                         }
@@ -704,6 +680,27 @@ struct Columns {
 }
 
 /// The `host_device_id` and `pairing_code` columns of `host`.
+/// Whether the conversation has what `needed` names: the category's grant,
+/// or the host to reach.
+fn has(connection: &Connection, conversation: &ConversationId, needed: &Needed) -> Result<bool, StorageError> {
+    match needed {
+        Needed::Category(category) => Ok(granted_at(connection, conversation, category)?.is_some()),
+        Needed::Host(host) => reaches(connection, conversation, host),
+    }
+}
+
+/// The columns a permission request of `needed` is stored in: its
+/// categories, and its host's device or pairing code.
+fn need_columns(needed: &Needed) -> (String, Option<&str>, Option<&str>) {
+    match needed {
+        Needed::Category(category) => (to_json(&[category]), None, None),
+        Needed::Host(host) => {
+            let (device, code) = host_columns(Some(host));
+            (to_json(&Vec::<String>::new()), device, code)
+        }
+    }
+}
+
 fn host_columns(host: Option<&AskedHost>) -> (Option<&str>, Option<&str>) {
     match host {
         None => (None, None),
@@ -913,7 +910,7 @@ fn ask_row(row: &Row<'_>) -> Result<StoredAsk, StorageError> {
         "permission" => {
             let stored: Option<String> = row.get("categories")?;
             let stored = stored.ok_or_else(|| shape("without categories"))?;
-            let categories = categories(&stored)?;
+            let mut categories = categories(&stored)?;
             let device: Option<String> = row.get("host_device_id")?;
             let code: Option<String> = row.get("pairing_code")?;
             let host = match (device, code) {
@@ -926,10 +923,11 @@ fn ask_row(row: &Row<'_>) -> Result<StoredAsk, StorageError> {
                 (None, None) => None,
                 (Some(_), Some(_)) => return Err(shape("with a device and a pairing code")),
             };
-            if categories.is_empty() && host.is_none() {
-                return Err(shape("of neither a category nor a host"));
+            match (categories.len(), host) {
+                (1, None) => Ok(StoredAsk::Permission(Needed::Category(categories.remove(0)))),
+                (0, Some(host)) => Ok(StoredAsk::Permission(Needed::Host(host))),
+                _ => Err(shape("of other than one category or one host")),
             }
-            Ok(StoredAsk::Permission { categories, host })
         }
         "credential" => {
             let stored: Option<String> = row.get("ask")?;

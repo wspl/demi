@@ -15,13 +15,37 @@ device's runner connection, and a shell environment on that Host.
 | Selection | Device | Initial directory |
 | --- | --- | --- |
 | Cloud, the default | The user's unique managed device | `<home>/sessions/<conversationId>`: `/home/demi/sessions/<conversationId>` on a Cloud |
-| Paired device | The selected device | The selected directory or reported home |
+| A Host's home | The selected device, or the Cloud | Its home: the reported home, `/home/demi` on a Cloud |
 | Workspace | The workspace's device | The workspace path |
 
+These three are the only selections, and which one a destination is follows
+from its directory ([Conversations and projects](../product/product.md#conversations-and-projects)):
+a move to a Host and directory, the user's or an agent's, selects the
+Cloud's directory of a conversation (any directory directly under
+`/home/demi/sessions`, so a Fork stays outside projects in its source's) or
+the Host's home when it names one of those, and
+otherwise the workspace of that device and directory, made in the move's
+transaction when the user has none. A directory is known by its
+canonical path on its Host, as the Host resolves it when the move checks
+the directory: symbolic links followed, no trailing separator, and the
+spelling the file system keeps, so on Windows `C:/Users/alex/` and
+`c:\users\alex` are the one directory `C:\Users\alex`. The runner reports
+its home the same way, and a workspace's path is stored so; two spellings
+of one directory are never two projects, and a home reached through a link
+is still the home. A move names a directory, never a
+selection kind, so no conversation runs outside a project in a project's
+directory or in a project in its Host's home. A move to a device whose home
+the backend has never heard is refused, `device_home_unknown`; it cannot
+happen through the product, since a move needs the device online, which
+reports its home. The only selections whose home is unknown are those the
+[upgrade](../delivery/upgrades.md#what-crosses-releases) left, which keep the
+earlier release's device-directory kind until their device's first report
+resolves them by the same rule; no move writes that kind.
+
 A reported home is the one the device's runner sent when it last connected.
-The backend keeps it in memory only, so after a backend restart the home is
-unknown until the runner connects again; no operation reaches the device before
-then. The Cloud's directory is under the home its runner reports, which is
+The backend keeps the last one with the device's record, so it knows which
+directory is a device's home while the device is offline; a later report
+replaces it. No operation reaches the device before its runner connects. The Cloud's directory is under the home its runner reports, which is
 `/home/demi` on every Cloud; until its runner has reported, as before the
 Cloud's first wake, the backend names `/home/demi` without having heard it. A
 development Cloud, a runner on the developer's machine, reports a temporary
@@ -31,10 +55,15 @@ advances, as an attachment change does, so each node's next inference names
 the directory its shells really start in: an agent never hands on a path that
 does not exist on its Host.
 
-A workspace is a named `(user, device, path)` record. It groups conversations but
+A workspace is a named `(user, device, path)` record, one per device and
+directory. It groups conversations but
 does not own a sandbox or restrict filesystem access. Revoking its device
 removes the workspace but not its files; its conversations stay outside any
-project and cannot run there any more ([Web API](../product/web-api.md)). Default Cloud project paths are
+project and cannot run there any more ([Web API](../product/web-api.md)).
+Deleting a workspace archives its conversations
+([Conversations and projects](../product/product.md#conversations-and-projects));
+restoring one moves it back to its directory by the rule above, which makes
+the workspace again. Default Cloud project paths are
 `/home/demi/projects/<workspaceId>`. A user can also select an existing directory.
 All of a user's Cloud directories share one machine; different users have separate
 managed devices and writable disks.
@@ -305,10 +334,7 @@ hosts it reaches:
 | --- | --- | --- |
 | `demi conversation rename "<title>"` | Renames this conversation ([Conversation titles](../product/product.md#conversation-titles)) | `conversation.organize` |
 | `demi conversation projects` | Lists the user's projects: name, Host, directory | `conversation.organize` |
-| `demi conversation move <project>` | Moves this conversation into a project, by name or id | `conversation.organize`, and the project's host when the conversation may not reach it |
-| `demi conversation move --out` | Moves it out of its project, to the same directory on the same Host | `conversation.organize` |
-| `demi conversation create-project <name> [<directory>]` | Makes a project of a directory on the primary Host, its shell's directory by default, and moves this conversation into it | `conversation.organize` |
-| `demi host move <host> <directory>` | Makes `<host>` where this conversation runs, in `<directory>`, an absolute path there; the primary Host it leaves is attached. The command checks the directory at once and fails, with nothing pending, when the host is offline or the path is no directory there (`/srv/x is not a directory on build-box`) | The host, when the conversation may not reach it |
+| `demi host move <host> <directory>` | Makes `<host>` where this conversation runs, in `<directory>`, an absolute path there, and so puts it in that directory's project, or among Conversations for the Host's home ([Resolve a target](#resolve-a-target)); the primary Host it leaves is attached. The command checks the directory at once and fails, with nothing pending, when the host is offline or the path is no directory there (`/srv/x is not a directory on build-box`) | The host, when the conversation may not reach it |
 | `demi host devices` | Lists the user's paired devices and the Cloud, with their states | none |
 | `demi host install-command [--system linux\|macos\|windows]` | Prints the command that installs the runner on a computer, as Add Device shows it; it holds no credential | none |
 | `demi host pair <code>` | Pairs the computer whose installer shows `<code>` with the user's account and attaches it to this conversation ([Installation, pairing and removal](runner.md#installation-pairing-and-removal)) | The new host, every time |
@@ -322,10 +348,10 @@ permission ([Reading the earlier history](../agent/compaction.md#reading-the-ear
 
 | Id | Action | Description |
 | --- | --- | --- |
-| `conversation.organize` | organize conversations | Organize Conversations lets the agents of this conversation rename it, list your projects, make a project of a directory, and move this conversation into or out of one. Projects show in your sidebar on every device. |
+| `conversation.organize` | organize conversations | Organize Conversations lets the agents of this conversation rename it and list your projects. |
 
-`move`, `create-project` and `host move` change where the conversation
-runs, and make a [pending move](#switch-the-primary-target) that applies
+`host move` changes where the conversation
+runs, and makes a [pending move](#switch-the-primary-target) that applies
 when the tree is next idle; they print that the move applies when this
 conversation's work ends.
 `detach` is a transition too, which the command's own job and its working

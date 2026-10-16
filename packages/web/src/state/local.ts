@@ -3,7 +3,6 @@ import { TAB_HISTORY } from '@demicodes/web-ui/agent/tab-close'
 import { SIDEBAR_GROUPS } from '@demicodes/web-ui/sidebar/list-model'
 
 const localStateSchema = z.object({
-  recentProjects: z.array(z.string()),
   foldedProjects: z.array(z.string()),
   /** The sidebar's groups folded under their label; absent until the reader folds one. */
   foldedGroups: z.array(z.enum(SIDEBAR_GROUPS)).optional(),
@@ -33,7 +32,6 @@ export type LocalState = z.infer<typeof localStateSchema>
 
 export function emptyLocalState(): LocalState {
   return {
-    recentProjects: [],
     foldedProjects: [],
   }
 }

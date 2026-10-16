@@ -9,13 +9,13 @@
 //! fails). The shard's `transition` is the one entry every change of a
 //! conversation goes through.
 
-use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{
-    ChangeOutcome, ConversationRecord, RecordChange, SwitchEnds, TargetSwitch,
+    ChangeOutcome, ConversationRecord, RecordChange, SwitchEnds, SwitchWrite, TargetSwitch,
 };
+use demi_backend_database::workspaces::WorkspaceRecord;
+use demi_backend_database::{Selection, StorageError, Unselectable};
 use demi_shared_gates::Reservation;
 use demi_web_api_protocol::conversations::ConversationTarget;
-use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 
@@ -51,6 +51,21 @@ pub enum ChangeRefusal {
     /// The destination names a device the user did not pair.
     #[error("No such device")]
     DeviceNotFound,
+    /// The destination is on a device whose runner never reported its
+    /// home, so whether it is a project's directory is unknown
+    /// (`sessions-and-targets.md` § Resolve a target).
+    #[error("The device has not connected yet; connect it, then move the conversation there")]
+    DeviceHomeUnknown,
+    /// The destination's device is not connected, so its directory cannot
+    /// be resolved (`sessions-and-targets.md` § Resolve a target).
+    #[error("{0}")]
+    DeviceOffline(String),
+    /// The destination names no directory on its Host.
+    #[error("{0}")]
+    NotADirectory(String),
+    /// The destination's Host failed to resolve its directory.
+    #[error("{0}")]
+    HostFailed(String),
     /// Another switch changed the target first.
     #[error("Another target change came first")]
     Conflict,
@@ -74,6 +89,10 @@ impl ChangeRefusal {
             Self::ModelNotSelected => (ErrorCode::ModelNotSelected, 409),
             Self::WorkspaceNotFound => (ErrorCode::WorkspaceNotFound, 404),
             Self::DeviceNotFound => (ErrorCode::DeviceNotFound, 404),
+            Self::DeviceHomeUnknown => (ErrorCode::DeviceHomeUnknown, 409),
+            Self::DeviceOffline(_) => (ErrorCode::DeviceOffline, 409),
+            Self::NotADirectory(_) => (ErrorCode::FsNotFound, 404),
+            Self::HostFailed(_) => (ErrorCode::HostOperationFailed, 502),
             Self::Conflict => (ErrorCode::TargetConflict, 409),
             Self::HostIsPrimary => (ErrorCode::HostIsPrimary, 409),
             Self::Runtime(_) | Self::Storage(_) => (ErrorCode::OperationFailed, 500),
@@ -81,12 +100,23 @@ impl ChangeRefusal {
     }
 }
 
-/// A target switch made: where it went from and to, and the
-/// execution-context revision it made.
+impl From<Unselectable> for ChangeRefusal {
+    fn from(reason: Unselectable) -> Self {
+        match reason {
+            Unselectable::WorkspaceNotFound => Self::WorkspaceNotFound,
+            Unselectable::DeviceNotFound => Self::DeviceNotFound,
+            Unselectable::HomeUnknown => Self::DeviceHomeUnknown,
+        }
+    }
+}
+
+/// A target switch made: where it went from and to, the execution-context
+/// revision it made, and the workspace its destination made, if it did.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Switched {
     pub switch: TargetSwitch,
     pub revision: u64,
+    pub made: Option<WorkspaceRecord>,
 }
 
 /// A conversation held for a transition. Its fields drop in order: the file
@@ -158,47 +188,59 @@ impl dyn HostShard + '_ {
         }
     }
 
-    /// Whether the user has what `to` names: a workspace of theirs, or a
-    /// device they paired.
-    pub async fn check_destination(
+    /// The selection `to` names for the conversation `record`, as its
+    /// switch would make it, without making anything: the conversation's
+    /// own selection when the switch would change nothing.
+    pub async fn selection_for(
+        &self,
+        record: &ConversationRecord,
+        to: &ConversationTarget,
+    ) -> Result<Selection, ChangeRefusal> {
+        Ok(self
+            .control()
+            .selection_for(record.owner.clone(), record.id.clone(), to.clone())
+            .await??)
+    }
+
+    /// The device a switch to `to` reaches, which hears no release; none for
+    /// the Cloud before its first use made its device.
+    async fn destination_device(
         &self,
         owner: &UserId,
         to: &ConversationTarget,
-    ) -> Result<(), ChangeRefusal> {
+    ) -> Result<Option<DeviceId>, ChangeRefusal> {
         let control = self.control();
-        match to {
-            ConversationTarget::Workspace { workspace_id } => {
-                let workspace = control.workspace(workspace_id.clone()).await?;
-                if !workspace.is_some_and(|workspace| workspace.user == *owner) {
-                    return Err(ChangeRefusal::WorkspaceNotFound);
-                }
-            }
-            ConversationTarget::Device { device_id, .. } => {
-                let device = control.device(device_id.clone()).await?;
-                let paired = device.is_some_and(|device| {
-                    device.user == *owner && device.kind == DeviceKind::User
-                });
-                if !paired {
-                    return Err(ChangeRefusal::DeviceNotFound);
-                }
-            }
-            ConversationTarget::Cloud { .. } => {}
-        }
-        Ok(())
+        Ok(match to {
+            ConversationTarget::Cloud { .. } => control
+                .managed_device(owner.clone())
+                .await?
+                .map(|device| device.id),
+            ConversationTarget::Device { device_id, .. } => Some(device_id.clone()),
+            ConversationTarget::Workspace { workspace_id } => Some(
+                control
+                    .workspace(workspace_id.clone())
+                    .await?
+                    .filter(|workspace| workspace.user == *owner)
+                    .ok_or(ChangeRefusal::WorkspaceNotFound)?
+                    .device,
+            ),
+        })
     }
 
-    /// The held switch's steps 4 to 6 (§ Switch the primary target): the device
-    /// it leaves hears the conversation release and stays attached where it
-    /// was left, the device it reaches is primary alone, and the commit is
-    /// against the target the switch started from. A switch that makes the
-    /// pending move `pending` clears it in its commit. Answers where the
-    /// switch went from and to, and the execution-context revision it made.
+    /// The held switch's steps 4 to 6 (§ Switch the primary target): the
+    /// device it leaves hears the conversation release and stays attached
+    /// where it was left, the device it reaches is primary alone, and the
+    /// commit selects `to`'s directory against the selection the switch
+    /// started from (§ Resolve a target). A switch that makes the pending
+    /// move `pending` clears it in its commit. Answers where the switch
+    /// went from and to and the execution-context revision it made; none
+    /// when `to` selects what the conversation has.
     pub async fn switch_target(
         &self,
         expected: &ConversationRecord,
         to: ConversationTarget,
         pending: Option<String>,
-    ) -> Result<Switched, ChangeRefusal> {
+    ) -> Result<Option<Switched>, ChangeRefusal> {
         let control = self.control();
         let current = control
             .conversation(expected.id.clone())
@@ -208,37 +250,26 @@ impl dyn HostShard + '_ {
             return Err(ChangeRefusal::Archived);
         }
         let from = self.resolve_target(expected).await?;
-        let reaching = ConversationRecord {
-            target: to.clone(),
-            ..expected.clone()
-        };
-        let destination = self.resolve_target(&reaching).await?;
+        let arriving = self.destination_device(&expected.owner, &to).await?;
         let departed = from.device().cloned();
         if let Some(device) = &departed
-            && Some(device) != destination.device()
+            && Some(device) != arriving.as_ref()
         {
             self.release_on(expected.id.as_str(), device).await;
         }
         let ends = SwitchEnds {
             departed: departed.map(|device| (device, from.path().to_owned())),
-            arriving: destination.device().cloned(),
+            arriving,
         };
-        let switch = TargetSwitch {
-            from,
-            to: destination,
-        };
-        let revision = control
-            .switch_conversation_target(
-                expected.id.clone(),
-                expected.target.clone(),
-                to,
-                switch.clone(),
-                ends,
-                pending,
-            )
+        match control
+            .switch_conversation_target(expected.id.clone(), expected.target.clone(), from, to, ends, pending)
             .await?
-            .ok_or(ChangeRefusal::Conflict)?;
-        Ok(Switched { switch, revision })
+        {
+            SwitchWrite::Switched { switch, revision, made } => Ok(Some(Switched { switch, revision, made })),
+            SwitchWrite::Unchanged => Ok(None),
+            SwitchWrite::Conflict => Err(ChangeRefusal::Conflict),
+            SwitchWrite::Unselectable(reason) => Err(reason.into()),
+        }
     }
 
     /// The held archive: the conversation release on every Host the
