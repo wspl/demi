@@ -12,6 +12,8 @@
     "changeContextLimit": "コンテキストの上限を変更できませんでした",
     "readPermissionRequests": "通知の権限リクエストを読み取れませんでした",
     "updateTimeZoneLanguage": "タイムゾーンと言語を更新できませんでした",
-    "readSync": "同期チャネルのメッセージを読み取れませんでした"
+    "readSync": "同期チャネルのメッセージを読み取れませんでした",
+    "keepOffline": "オフライン用のコピーを保存できませんでした",
+    "readOffline": "オフライン用のコピーを読み込めませんでした"
   }
 }

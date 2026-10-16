@@ -161,6 +161,7 @@
     "loading": "正在載入對話…",
     "loadFailed": "無法載入此對話。",
     "notFound": "找不到對話",
+    "unavailableOffline": "此對話無法離線使用。",
     "noneOpen": "沒有開啟的對話",
     "empty": "沒有訊息",
     "start": "開始對話",

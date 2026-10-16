@@ -1,4 +1,5 @@
 import { createApp, shallowRef, watch } from 'vue'
+import { until } from '@vueuse/core'
 import { createPinia, disposePinia } from 'pinia'
 import { createRouter, createWebHistory } from 'vue-router'
 import {
@@ -21,7 +22,8 @@ import { closeDraftStorage } from './conversation/drafts'
 import { useResources } from './state/resources'
 import { useProduct } from './state/product'
 import { followDirect } from './direct'
-import { startRawBridge } from './direct/raw-bridge'
+import { startServiceWorker } from './offline/page'
+import { startAccountCache } from './state/offline'
 import { usePreferences } from './state/preferences'
 import { useNotifications } from './state/notifications'
 import { onSessionExpired } from './api/client'
@@ -96,10 +98,10 @@ const stopReports = reportPageErrorsWith(sendPageErrorReport)
 // (`web-application.md` § Requests for one action); a page the check finds
 // signed out has no channel.
 product.start()
-// The page answers its service worker's raw file requests over its direct
-// channels for its lifetime (`direct-channel.md` § Bytes the browser
-// fetches itself).
-startRawBridge()
+// The page's service worker answers the raw file requests over the page's
+// direct channels and keeps the page for opening offline, for its lifetime
+// (`direct-channel.md` § Bytes the browser fetches itself).
+startServiceWorker()
 // The page makes the peer of the device a conversation it shows runs on, and
 // follows what changes its paths, for its lifetime.
 followDirect()
@@ -110,7 +112,11 @@ function stopUnlessSignedIn(): void {
     product.stop()
   }
 }
-const restored = session.restore(startup.signal).then(stopUnlessSignedIn).catch((error) => {
+// The account's cache for opening offline (`web-application.md` § Installing
+// and opening offline): shown at once for the account the session names,
+// and signed in as when the backend cannot be reached.
+const accountCache = startAccountCache(session, product)
+const restored = session.restore(startup.signal, accountCache.signInOffline).then(stopUnlessSignedIn).catch((error) => {
   // Hot replacement can dispose this composition root before startup finishes.
   if (!startup.signal.aborted) {
     throw error
@@ -185,7 +191,10 @@ const stopRetry = watch(
   },
 )
 router.beforeEach(async (to) => {
-  await restored
+  // The session has a state once its check answers, or once the page signs
+  // in as the account it kept for opening offline while the check waits for
+  // the backend (`web-application.md` § Installing and opening offline).
+  await Promise.race([restored, until(() => session.current.status).not.toBe('checking')])
   if (startup.signal.aborted) {
     return false
   }
@@ -267,6 +276,7 @@ const saveDrafts = () => {
   conversations.flushDrafts(true)
   conversations.keepLastWords()
   conversations.saveDrafts()
+  void conversations.keepCopies()
   closeDraftStorage()
 }
 window.addEventListener('pagehide', saveDrafts)
@@ -290,6 +300,7 @@ const refreshVisible = () => {
     // pause.
     void preferences.flush()
     conversations.flushDrafts()
+    void conversations.keepCopies()
     return
   }
   if (document.visibilityState !== 'visible' || !session.signedIn) {
@@ -311,6 +322,7 @@ if (import.meta.hot) {
     startup.abort()
     stopReports()
     stopIdentity()
+    accountCache.stop()
     stopRetry()
     stopExpiry()
     stopChoice()

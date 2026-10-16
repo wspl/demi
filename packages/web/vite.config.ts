@@ -17,6 +17,12 @@ function webBuild(): Plugin {
     name: 'demi-web-build',
     apply: 'build',
     config: () => ({ define: { 'import.meta.env.DEMI_WEB_BUILD': JSON.stringify(build) } }),
+    // The app's page names its build too, so the service worker keeps it
+    // under that build (`web-application.md` § Installing and opening offline).
+    transformIndexHtml: (html, context) =>
+      context.filename.endsWith('/index.html')
+        ? html.replace('</head>', `  <meta name="demi-build" content="${build}" />\n  </head>`)
+        : html,
     generateBundle() {
       this.emitFile({ type: 'asset', fileName: 'build.json', source: JSON.stringify({ build }) })
     },
@@ -43,24 +49,25 @@ function workspaceVersion(): string {
 }
 
 /**
- * The direct channel's service worker (`direct-channel.md` § Bytes the
- * browser fetches itself), served from the root so that its scope is the
- * whole origin: the development server transforms it on request, and the
- * build emits it beside the page under its fixed name.
+ * The page's one service worker (`direct-channel.md` § Bytes the browser
+ * fetches itself, `web-application.md` § Installing and opening offline),
+ * served from the root so that its scope is the whole origin: the
+ * development server transforms it on request, and the build emits it
+ * beside the page under its fixed name.
  */
-function directServiceWorker(): Plugin {
-  const source = resolve(import.meta.dirname, 'src/direct/service-worker.ts')
-  const url = '/direct-sw.js'
+function serviceWorker(): Plugin {
+  const source = resolve(import.meta.dirname, 'src/offline/service-worker.ts')
+  const url = '/service-worker.js'
   let building = false
   return {
-    name: 'demi-direct-service-worker',
+    name: 'demi-service-worker',
     configResolved(config) {
       building = config.command === 'build'
     },
     configureServer(server) {
       server.middlewares.use(url, (_request, response, next) => {
         server
-          .transformRequest('/src/direct/service-worker.ts')
+          .transformRequest('/src/offline/service-worker.ts')
           .then((result) => {
             if (!result) {
               next()
@@ -119,7 +126,7 @@ function sharedPage(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [vue(), tailwindcss(), webBuild(), directServiceWorker(), directHotUpdates(), sharedPage()],
+  plugins: [vue(), tailwindcss(), webBuild(), serviceWorker(), directHotUpdates(), sharedPage()],
   // The repository's `.env` carries the local development account
   // (`DEMI_DEV_EMAIL`, `DEMI_DEV_PASSWORD`); the sign-in page fills it in
   // during development only.

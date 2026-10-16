@@ -22,8 +22,11 @@ export type ListLoad = 'ready' | 'loading' | 'failed'
  * - `reconnecting`: an open session whose connection was lost; what it showed
  *   stays while it is tried again.
  * - `failed`: the opening failed, or the session refused to open.
+ * - `offline`: the opening cannot reach the backend and the page keeps no
+ *   copy of the conversation for opening offline (`web-application.md`
+ *   § Installing and opening offline); it opens once the backend answers.
  */
-export type SessionLoad = ListLoad | 'opening' | 'connecting' | 'reconnecting'
+export type SessionLoad = ListLoad | 'opening' | 'connecting' | 'reconnecting' | 'offline'
 
 /**
  * Whether the session has told the conversation's turn, which the Resume
@@ -41,21 +44,22 @@ export function sessionShown(load: SessionLoad): boolean {
  * two steps), unless its opening failed.
  */
 export function transcriptShown(load: SessionLoad): boolean {
-  return load !== 'loading' && load !== 'failed'
+  return load !== 'loading' && load !== 'failed' && load !== 'offline'
 }
 
 /** Whether the conversation is still opening for the first time: what joins it now is not new. */
 export function isOpening(load: SessionLoad): boolean {
-  return load === 'loading' || load === 'opening' || load === 'connecting'
+  return load === 'loading' || load === 'opening' || load === 'connecting' || load === 'offline'
 }
 
 /**
  * What the session pane shows instead of the transcript. `empty` is an open
  * conversation with no messages yet: the composer under it is the way in.
  * `none` is the chat route with no conversation open at all, so the pane
- * itself offers to start one.
+ * itself offers to start one. `offline` is a conversation the page cannot
+ * read while the backend cannot be reached and keeps no copy of.
  */
-export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing' | 'none'
+export type SessionStatusKind = 'loading' | 'failed' | 'empty' | 'missing' | 'none' | 'offline'
 
 /**
  * The pane that replaces the transcript. `loading` always wins so a restore
@@ -70,6 +74,9 @@ export function sessionPaneStatus(
 ): SessionStatusKind | null {
   if (load === 'loading') {
     return 'loading'
+  }
+  if (load === 'offline') {
+    return 'offline'
   }
   if (load === 'failed') {
     return hasTranscript ? null : 'failed'
@@ -153,6 +160,9 @@ export function sessionStatusCopy(kind: SessionStatusKind): {
       label: t('session.noneOpen'),
       action: 'create',
     }
+  }
+  if (kind === 'offline') {
+    return { label: t('session.unavailableOffline') }
   }
   return { label: t('session.empty') }
 }

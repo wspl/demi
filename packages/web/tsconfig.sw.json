@@ -11,6 +11,6 @@
   },
   "exclude": [],
   "include": [
-    "src/direct/service-worker.ts"
+    "src/offline/service-worker.ts"
   ]
 }

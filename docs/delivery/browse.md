@@ -93,6 +93,11 @@ conversation no longer runs, its subagents and background jobs included.
   on `localhost`, the one name besides a real domain for which browsers
   make passkeys, so a check can add and use passkeys with Chrome's virtual
   authenticator through the page's CDP session.
+  `demi.up('web', { built: true })` serves a production `vite build` of the
+  web app instead of the development server, for a check of what only a
+  build has, such as the service worker and opening offline.
+  `demi.net.offline()` cuts the network of the Chromium context only, not
+  that of a `demi.webkit()` page.
   `up` copies the user's `.env` into the slot for the backend and `down`
   deletes it. That `.env` names the development model with the file types
   it reads (`DEMI_DEV_PROVIDER_ACCEPTED_EXTENSIONS`), so a check that shows

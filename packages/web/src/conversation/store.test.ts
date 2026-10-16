@@ -3118,7 +3118,7 @@ test('opening a conversation sends its reads at once and shows the transcript be
 // connection banner, never a failure about the connection, and loads once
 // the page reaches the backend again (`web-application.md` § A page of
 // another build). Cost: one opening, no timer.
-test('a conversation opened while the backend is away loads once it is back, without failing', async () => {
+test('a conversation opened while the backend is away, kept for opening offline nowhere, loads once it is back, without failing', async () => {
   const store = useConversations()
   const first = store.items.find((item) => item.id === FIRST)!
   let away = true
@@ -3138,7 +3138,9 @@ test('a conversation opened while the backend is away loads once it is back, wit
     expect(useProduct().connection).toBe('restarting')
     const opened = store.activate(FIRST)
     await waitFor(() => refused === 1, () => 'no transcript request')
-    expect(first.load).toBe('loading')
+    // This web browser keeps no copy of it (`web-application.md` § Installing
+    // and opening offline): it says so meanwhile, and fails nothing.
+    await waitFor(() => first.load === 'offline', () => `the conversation is ${first.load}`)
     expect(first.lastError).toBeNull()
     away = false
     await pageReturned()
