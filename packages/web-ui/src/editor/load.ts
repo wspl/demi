@@ -1,5 +1,5 @@
 import { defineAsyncComponent } from 'vue'
-import { reportError } from '../infra/errors'
+import { chunkLoadFailure, reportError } from '../infra/errors'
 import { lazyChunk } from '../infra/lazy'
 import { t } from './locales/text'
 
@@ -31,7 +31,11 @@ export const DiffEditor = defineAsyncComponent(() => loadEditor().then((editor) 
  */
 export const useEditor = editorChunk.use
 
-/** Tells that a language's syntax colors could not load, as the editor and a message's code blocks both do. */
+/**
+ * Tells that a language's syntax colors could not load, as the editor and a
+ * message's code blocks both do: a language that did not download is the
+ * environment's failure, one that threw a defect.
+ */
 export function reportSyntaxColorsUnavailable(error: unknown): void {
-  reportError(t('syntaxColorsUnavailable'), error)
+  reportError(t('syntaxColorsUnavailable'), chunkLoadFailure(error))
 }

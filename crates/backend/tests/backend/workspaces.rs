@@ -477,6 +477,27 @@ async fn the_sidebar_keeps_the_users_order_within_each_partition_through_patches
         refused.refusal(),
         (StatusCode::CONFLICT, ErrorCode::InvalidOrder)
     );
+    // A move that names a row another page deleted meanwhile lost a race,
+    // which the page keeps quiet about, unlike an order out of partition.
+    // Planted defect: a missing row answered `invalid_order`, as before.
+    let gone = create_conversation(&backend, &master).await;
+    let deleted = backend
+        .delete(&format!("/api/conversations/{gone}"), &master)
+        .await;
+    assert_eq!(deleted.status, StatusCode::NO_CONTENT);
+    for (id, before) in [(gone.as_str(), Some(c.as_str())), (c.as_str(), Some(gone.as_str()))] {
+        let refused = backend
+            .post(
+                "/api/sidebar/reorder",
+                Some(&master),
+                json!({ "kind": "conversation", "id": id, "beforeId": before }),
+            )
+            .await;
+        assert_eq!(
+            refused.refusal(),
+            (StatusCode::NOT_FOUND, ErrorCode::ConversationNotFound)
+        );
+    }
     let unknown = json!({ "kind": "project", "id": a, "beforeId": null });
     let unknown = backend
         .post("/api/sidebar/reorder", Some(&master), unknown)
@@ -499,6 +520,18 @@ async fn the_sidebar_keeps_the_users_order_within_each_partition_through_patches
         StatusCode::NO_CONTENT
     );
     assert_eq!(workspace_names(&backend, &master).await, ["site", "notes"]);
+    let gone = uuid::Uuid::new_v4().to_string();
+    let refused = backend
+        .post(
+            "/api/sidebar/reorder",
+            Some(&master),
+            json!({ "kind": "workspace", "id": site, "beforeId": gone }),
+        )
+        .await;
+    assert_eq!(
+        refused.refusal(),
+        (StatusCode::NOT_FOUND, ErrorCode::WorkspaceNotFound)
+    );
 
     // The order is a record: it outlives the process. The backend comes back
     // on a port of its own; the laptop's runner stops first, since it would

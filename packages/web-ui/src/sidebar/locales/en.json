@@ -77,6 +77,8 @@
   "refused": {
     "quote": "“{name}”",
     "line": "{name}: {reasons}",
+    "deleteProject": "Could Not Delete the Project",
+    "reorderProjects": "Could Not Reorder Projects",
     "archive": {
       "one": "Could Not Archive {name}",
       "many": "Could Not Archive {count} Conversations"

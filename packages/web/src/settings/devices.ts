@@ -4,7 +4,7 @@ import { useSession } from '../auth/session'
 import { computed, onScopeDispose, ref, watch } from 'vue'
 import { SerialQueue } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
-import { reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
+import { errorCode, reportError, shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { useProduct } from '../state/product'
 import { cloudDeviceIn } from '../state/hosts'
 import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
@@ -58,7 +58,8 @@ export const useDeviceSettings = defineStore('device-settings', () => {
       // without them.
       await readResponse(response, revokedDeviceSchema)
     } catch (error) {
-      if (!current.signal.aborted) {
+      // A device another page revoked meanwhile is revoked: that is done.
+      if (!current.signal.aborted && errorCode(error) !== 'device_not_found') {
         reportError(t('devices.revokeFailed'), error, { userVisible: true })
       }
     }

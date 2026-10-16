@@ -6,7 +6,7 @@ import type { ClientContent } from '@demicodes/protocol'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
 import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
-import { ConversationRuntime, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
+import { ConversationRuntime, RemovalRefusedError, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
 import {
   regenerateMessage,
   restoreMessageEdit,
@@ -15,7 +15,7 @@ import {
   type MessageEditHost,
   type MessageEditRequest,
 } from '@demicodes/web-ui/agent/message-editing'
-import { coded, errorMessage, reportError, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
+import { coded, errorCode, errorMessage, reportError, shownError, type ReportErrorOptions } from '@demicodes/web-ui/infra/errors'
 import { t as shared } from '@demicodes/web-ui/locales/text'
 import { ConversationSocketError } from '@demicodes/web-ui/transport/conversation-socket'
 import { transcriptShown } from '@demicodes/web-ui/agent/session-status'
@@ -58,7 +58,7 @@ import { showRecalled } from '@demicodes/web-ui/agent/recalled-toast'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '@demicodes/web-ui/markdown/user-markdown'
 import { connectConversationClient, takeConnection } from '@demicodes/web-ui/transport/conversation-socket'
 import { loadDraft } from '../api/drafts'
-import { ApiError, REQUEST_ID_HEADER, apiRequest, jsonBody, readResponse } from '../api/client'
+import { REQUEST_ID_HEADER, apiRequest, jsonBody, readResponse } from '../api/client'
 import {
   attachedHostsSchema,
   batchAnswerSchema,
@@ -1597,7 +1597,11 @@ export const useConversations = defineStore('conversations', () => {
             const title = listed ? conversationTitle(listed.title) : item.id
             if (item.status === 'refused') {
               change?.drop()
-              refusals.push({ title, reasons: [item.message], requestId })
+              // A conversation another page deleted meanwhile has nothing
+              // left to change, and the channel takes its row away.
+              if (item.code !== 'conversation_not_found') {
+                refusals.push({ title, reasons: [item.message], requestId })
+              }
               continue
             }
             const answer = { type: 'conversation', conversation: item.conversation } as const
@@ -1704,6 +1708,12 @@ export const useConversations = defineStore('conversations', () => {
           } catch (error) {
             if (signal.aborted) {
               throw error
+            }
+            // One another page deleted meanwhile is deleted: that is done.
+            if (errorCode(error) === 'conversation_not_found') {
+              removal.land()
+              forget(id)
+              continue
             }
             removal.drop()
             const { message, requestId } = shownError(error)
@@ -1876,7 +1886,10 @@ export const useConversations = defineStore('conversations', () => {
       })
       .catch((error) => {
         change.drop()
-        report(t('failures.renameConversation'), error)
+        // A conversation another page deleted meanwhile has no title to change.
+        if (errorCode(error) !== 'conversation_not_found') {
+          report(t('failures.renameConversation'), error)
+        }
       })
   }
 
@@ -1931,7 +1944,11 @@ export const useConversations = defineStore('conversations', () => {
       })
       .catch((error) => {
         change.drop()
-        report(t('failures.reorderConversations'), error)
+        // A move naming a conversation another page deleted meanwhile has
+        // nothing to say; the channel brings the order there is.
+        if (errorCode(error) !== 'conversation_not_found') {
+          report(t('failures.reorderConversations'), error)
+        }
       })
   }
 
@@ -1971,7 +1988,7 @@ export const useConversations = defineStore('conversations', () => {
         change.drop()
         // A conversation deleted meanwhile, by this page or another, has
         // nothing left to acknowledge.
-        if (error instanceof ApiError && error.code === 'conversation_not_found') {
+        if (errorCode(error) === 'conversation_not_found') {
           return
         }
         report(t('failures.updateReadStatus'), error)
@@ -1990,7 +2007,10 @@ export const useConversations = defineStore('conversations', () => {
         { method: 'POST', signal: lifetime.signal },
       )
     } catch (error) {
-      report(t('failures.reloadConversation'), error)
+      // A conversation another page deleted meanwhile has nothing to reload.
+      if (errorCode(error) !== 'conversation_not_found') {
+        report(t('failures.reloadConversation'), error)
+      }
     }
   }
 
@@ -2019,7 +2039,10 @@ export const useConversations = defineStore('conversations', () => {
         value: (hosts) => hosts.filter((host) => host.deviceId !== deviceId),
       })
     } catch (error) {
-      report(t('failures.detachDevice'), error)
+      // A conversation another page deleted meanwhile has no device attached.
+      if (errorCode(error) !== 'conversation_not_found') {
+        report(t('failures.detachDevice'), error)
+      }
     }
   }
 
@@ -2570,10 +2593,11 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Takes back the message `id` the session holds: the message goes back to
-   * the user at once (`takeBack`), and its removal follows. A refusal, as
-   * when the agent read the steer meanwhile, brings its row back where it
-   * was, which is the transcript then, takes back what `takeBack` did, and a
-   * toast says why.
+   * the user at once (`takeBack`), and its removal follows. A removal that
+   * fails takes back what `takeBack` did. One the agent beat, as when it read
+   * the steer meanwhile, is no failure: the message shows where the agent
+   * took it, with no toast (`turns.md` § Steer or queue); any other failure
+   * brings the row back with a toast.
    */
   function carryOutRecall(conversation: Conversation, id: string): void {
     const steer = conversation.pendingSteers.find((each) => each.id === id)
@@ -2585,7 +2609,9 @@ export const useConversations = defineStore('conversations', () => {
         if (back) {
           giveBack(conversation, back)
         }
-        report(t('failures.recallMessage'), error)
+        if (!(error instanceof RemovalRefusedError)) {
+          report(t('failures.recallMessage'), error)
+        }
       })
       .finally(() => stopRemoving(conversation, id))
   }
@@ -2599,7 +2625,7 @@ export const useConversations = defineStore('conversations', () => {
    */
   function takeBack(conversation: Conversation, copy: CopiedMessage, way: 'steer' | 'queue', removal: Promise<void>): TakenBack {
     if (!isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
-      // A refused removal has its own toast, and dismisses this one.
+      // A removal that fails dismisses this one.
       const toast = showRecalled(() => void removal.then(() => resend(conversation, copy, way), () => {}))
       return { kind: 'recalled', toast }
     }

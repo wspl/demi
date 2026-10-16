@@ -541,7 +541,10 @@ conversation.
 beforeId: string | null }`; null appends, and a success answers 204.
 Conversation moves stay within the same project and pin partition, and a
 workspace moves among the user's workspaces; a move out of them, or of a row
-that is archived or the caller does not have, answers 409 `invalid_order`.
+that is archived, answers 409 `invalid_order`. A move that names, as the row or
+as the one it goes before, a conversation or a workspace the caller does not
+have, as one another page deleted meanwhile, answers 404
+`conversation_not_found` or `workspace_not_found`.
 [Storage](../backend/storage.md#control-records) owns persistent ordering.
 Activity timestamps never reorder rows.
 

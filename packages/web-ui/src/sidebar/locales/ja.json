@@ -77,6 +77,8 @@
   "refused": {
     "quote": "「{name}」",
     "line": "{name}: {reasons}",
+    "deleteProject": "プロジェクトを削除できませんでした",
+    "reorderProjects": "プロジェクトを並べ替えられませんでした",
     "archive": {
       "one": "{name}をアーカイブできませんでした",
       "many": "{count} 件のチャットをアーカイブできませんでした"

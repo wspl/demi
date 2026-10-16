@@ -116,6 +116,15 @@ backend refused the archive, because the conversation had started running
 in another tab, the row would come back where it was and a toast would say
 why.
 
+An outcome already reached is no failure. An action whose object is already
+gone, or whose result is already there, loses a race with another page or
+with the agent, and the page shows what is there with no toast and reports
+nothing: Delete, Archive, Rename or a move of a conversation another tab
+deleted, Revoke of a device or Stop Sharing that is already done, Stop,
+Resume or Compact of a turn that just ended, Recall or Send Now of a message
+the agent already took. A removal answered with a `*_not_found` code is the
+removal done, as the synchronization channel shows anyway.
+
 - **The page's state is what it last read, with its own changes on top.**
   Every piece of state the page reads from the backend is a *slot*: the
   value it last read, the revision that value carries, and the changes the
