@@ -1,4 +1,4 @@
-import { reactive, watch } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 import {
   openIntent,
@@ -9,6 +9,7 @@ import {
 } from '@demicodes/web-ui/agent/panel-tabs'
 import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
 import { selectTab } from '@demicodes/web-ui/agent/tab-close'
+import { usePhone } from '@demicodes/web-ui/ui/phone'
 import { intentKind } from '@demicodes/web-ui/plugins/page'
 import type { IntentName, IntentRequest } from '@demicodes/web-ui/plugins/intents'
 import { panelBackend } from '../api/panel'
@@ -26,6 +27,12 @@ import { useConversations } from './store'
  * this page's changes over them.
  */
 export interface WorkState {
+  /**
+   * Whether the panel is open beside the conversation: on the desktop the
+   * account's saved choice; on a phone, where it covers the conversation,
+   * only while the user opened it there and stays on it (`web-application.md`
+   * § The phone layout).
+   */
   open: boolean
   /** The tabs' and pinned kinds' ids this page selected, the newest last. */
   history: readonly string[]
@@ -51,6 +58,21 @@ export const useWorkPanel = defineStore('work-panel', () => {
   const states = reactive(new Map<string, WorkState>())
   /** Each conversation's tabs; reactive on their own, so they stand beside the states, not in them. */
   const panels = new Map<string, PanelTabs>()
+  const phone = usePhone()
+  /** The conversation the page shows, as the frame tells it (`shown`). */
+  let shownId: string | null = null
+  /**
+   * On a phone, the conversation whose panel the user opened while on it;
+   * leaving it closes the panel, and the saved per-conversation choice stays
+   * the desktop's, which a phone neither reads nor writes.
+   */
+  const phoneOpen = ref<string | null>(null)
+  /**
+   * The panel revision of the shown conversation the page last read, null
+   * until it reads one after the conversation came on screen: a show the
+   * page reads past it came while the user looked at that conversation.
+   */
+  let seenRevision: number | null = null
 
   /** The conversation's tabs, made the first time they are asked for. */
   function tabsOf(conversationId: string): PanelTabs {
@@ -61,7 +83,7 @@ export const useWorkPanel = defineStore('work-panel', () => {
       })
       panels.set(conversationId, created)
       // A tab whose kind asks that the user see it opens the panel, open or closed (`web-application.md` § Work panel).
-      watch(() => created.tabs.value, (current) => applyShows(conversationId, current))
+      watch(() => created.tabs.value, (current) => applyShows(conversationId, created.revision, current))
       tabs = created
     }
     return tabs
@@ -70,8 +92,18 @@ export const useWorkPanel = defineStore('work-panel', () => {
   /**
    * Opens the panel on each tab whose kind counts more showings than this
    * page applied, once, and records the counts beside the selection history.
+   * On a phone only a show read while the user looks at the conversation
+   * opens it; one that came while the user was elsewhere, read before the
+   * conversation came on screen or by the first read after, is selected in
+   * the strip with the panel left closed (`web-application.md` § The phone
+   * layout). `revision` is the panel's that `tabs` came with.
    */
-  function applyShows(conversationId: string, tabs: readonly PanelTab[]): void {
+  function applyShows(conversationId: string, revision: number, tabs: readonly PanelTab[]): void {
+    const looking = conversationId === shownId
+    const whileLooking = looking && seenRevision !== null && revision > seenRevision
+    if (looking && revision >= 0) {
+      seenRevision = Math.max(seenRevision ?? -1, revision)
+    }
     const applied = resources.local.workPanelShown?.[conversationId] ?? {}
     const pending = pendingShows(tabs, PLUGIN_PAGES, enabled, applied)
     if (!pending) {
@@ -83,7 +115,21 @@ export const useWorkPanel = defineStore('work-panel', () => {
     for (const id of pending.shown) {
       state.history = selectTab(state.history, id)
     }
-    state.open = true
+    if (!phone.value || whileLooking) {
+      state.open = true
+    }
+  }
+
+  /**
+   * The frame shows `conversationId` now, or no conversation: on a phone it
+   * comes up without its panel, and only what its panel shows from here on
+   * opens it.
+   */
+  function shown(conversationId: string | null): void {
+    shownId = conversationId
+    phoneOpen.value = null
+    const revision = conversationId === null ? -1 : (panels.get(conversationId)?.revision ?? -1)
+    seenRevision = revision >= 0 ? revision : null
   }
 
   function stateFor(conversationId: string): WorkState {
@@ -91,9 +137,20 @@ export const useWorkPanel = defineStore('work-panel', () => {
       const tabs = tabsOf(conversationId)
       states.set(conversationId, {
         get open(): boolean {
+          if (phone.value) {
+            return phoneOpen.value === conversationId
+          }
           return resources.local.workPanelOpen?.[conversationId] ?? false
         },
         set open(open: boolean) {
+          if (phone.value) {
+            if (open) {
+              phoneOpen.value = conversationId
+            } else if (phoneOpen.value === conversationId) {
+              phoneOpen.value = null
+            }
+            return
+          }
           resources.local.workPanelOpen ??= {}
           resources.local.workPanelOpen[conversationId] = open
         },
@@ -219,5 +276,5 @@ export const useWorkPanel = defineStore('work-panel', () => {
     return intentKind(PLUGIN_PAGES, enabled, intent) !== null
   }
 
-  return { stateFor, recorded, setOpen, load, select, add, move, update, closeTabs, updatePinned, openIn, canOpen }
+  return { stateFor, recorded, shown, setOpen, load, select, add, move, update, closeTabs, updatePinned, openIn, canOpen }
 })
