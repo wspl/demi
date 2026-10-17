@@ -1,11 +1,12 @@
 # Image generation
 
 The agent makes and edits images with the `demi image` group, through the
-user's ChatGPT or Grok subscription. For example, a user asks for an icon
+user's ChatGPT or Grok subscription or an OpenAI, xAI or Google API key.
+For example, a user asks for an icon
 for their app: the agent runs
-`demi image generate "a flat red fox head icon" --transparent > fox.png`,
+`demi image generate "a flat red fox head icon" --model gpt-image-2 --transparent > fox.png`,
 looks at it with `demi file view fox.png`, then
-`demi image edit "make the ears rounder" fox.png > fox-2.png`, and attaches
+`demi image edit "make the ears rounder" fox.png --model gpt-image-2 > fox-2.png`, and attaches
 the one the user wants.
 
 The group is the built-in `image` plugin's (`plugin-image`), as `demi web`
@@ -21,8 +22,8 @@ user's own subscription, as the agent's turns do.
 ## Commands
 
 ```text
-demi image generate <prompt> [--model <id>] [--aspect <W:H>] [--transparent] [--format png|jpeg|webp]
-demi image edit <prompt> <image>... [--model <id>] [--aspect <W:H>] [--transparent] [--format png|jpeg|webp]
+demi image generate <prompt> --model <id> [--aspect <W:H>] [--transparent] [--format png|jpeg|webp]
+demi image edit <prompt> <image>... --model <id> [--aspect <W:H>] [--transparent] [--format png|jpeg|webp]
 demi image models
 ```
 
@@ -43,19 +44,23 @@ demi image models
   ([Reading a conversation's files](../architecture/plugins.md#reading-a-conversations-files)).
   A file that is not PNG, JPEG or WebP, or is over 16 MiB, fails the call,
   naming it.
-- **`--model`** names an image model that `demi image models` lists, and
-  with it the provider entry that makes it. Without it, the call takes the
-  first entry, in the order of Settings › Providers, that makes images, and
-  that entry's default model.
+- **`--model`**, required, names an image model that `demi image models`
+  lists, and with it its vendor, OpenAI, Google or xAI: the agent always
+  chooses the model, so no image comes from a model nobody named. Which of
+  the vendor's entries makes it is the user's setting
+  ([Which entry makes an image](#which-entry-makes-an-image)).
 - **`--aspect`** asks for a shape, such as `16:9`; **`--transparent`** asks
   for a transparent background, which needs PNG or WebP. A vendor that
   refuses a shape answers with the shapes it takes, and the call fails
   saying so, in the vendor's words and not from a list of Demi's, so a
   vendor that adds shapes needs no change: `demi image generate: Grok takes
   no 4:5 (it takes 1:1, 3:4, 4:3, 9:16, 16:9, …)`.
-- `models` prints one line per image model of the user's entries, the
-  entry's name beside it, grouped by entry, each entry's newest first by the vendor's release date, which
-  each line shows, the default marked *default*, and what the vendor says the
+- `models` lists the image models of the user's entries grouped by
+  vendor, each group headed by the entry its models go through now,
+  `OpenAI, through ChatGPT (alex@example.com)`; a model only another entry
+  of the vendor offers names that entry on its line. Each group is newest
+  first by the vendor's release date, which each line shows when the
+  vendor publishes one, and each line says what the vendor says the
   model is for, *newest, highest quality*, *faster and cheaper*, or *dated
   snapshot of gpt-image-2.5-sunburst*, and what it takes: its sizes or
   shapes, such as any `W×H` up to 3840 on the long edge for `gpt-image-2`
@@ -93,6 +98,41 @@ demi image generate: warning: asked for a transparent background, got an opaque 
 A background is transparent when a pixel of the decoded image is, not when
 its format merely has an alpha channel.
 
+## Which entry makes an image
+
+A vendor's model can be made through more than one entry: `gpt-image-2`
+through a ChatGPT subscription or an OpenAI API key, `grok-imagine-image`
+through a Grok subscription or an xAI key. Settings › Agent › Image
+Generation, under Small Model, has one row for each vendor an entry of the
+user makes images for, OpenAI, Google and xAI, each with a menu of
+**Automatic**, the default, and that vendor's image-making entries; beside
+Automatic the row shows the entry it resolves to, *Automatic (ChatGPT ·
+alex@example.com)*, as Small Model does: the first entry Automatic would
+try, judged by all but the model, its switch, its sign-in or key and its
+limit, as the row names no model.
+
+- **Automatic** takes the vendor's subscription entries first, then its
+  API-key entries, each kind in the order of Settings › Providers, and
+  uses the first that can make the model now: its Image Generation is on,
+  it is signed in or has its key, it offers the model, and an account of
+  it is not used up. A subscription's images come with its plan, while a
+  key pays for each image, so a key is used only when no subscription
+  can.
+- **A chosen entry** is used while it can make the model; when it cannot,
+  the call resolves as Automatic.
+- **Used up during a call.** When the entry's last account reaches its
+  limit, the call goes on at once with the next entry Automatic takes, as
+  it goes on with another account within an entry
+  ([Accounts and failures](#accounts-and-failures)). For example, Alex has
+  a ChatGPT subscription and an OpenAI key: once ChatGPT's limit is
+  reached, his images are made, and paid for, through the key; turning
+  the key's Image Generation off makes the call fail with the limit
+  instead.
+
+The choice is the user's, kept in the preferences as `imageEntries`
+([User preferences](../product/web-api-settings.md#user-preferences)),
+so each user of a shared instance chooses among the entries they use.
+
 The model is the one thing the result cannot show: no vendor names the model
 that made an image. The ChatGPT backend accepts any model name, an invented
 one included, and returns the same image, so a `--model` there is a request,
@@ -100,13 +140,15 @@ not a guarantee; Grok refuses a model it does not have.
 
 ## Vendors
 
+The subscriptions:
+
 | | ChatGPT (Codex sign-in) | Grok (Grok Build sign-in) |
 | --- | --- | --- |
 | Endpoints | `POST https://chatgpt.com/backend-api/codex/images/generations` and `/images/edits` | `POST https://cli-chat-proxy.grok.com/v1/images/generations` and `/images/edits` |
 | Headers | The account's headers the provider sends for inference | The access token as `Authorization: Bearer` |
 | Generate body | `prompt`, `model`, `background` (`transparent` or `opaque`), `quality: "auto"`, `size` (`auto`, or a size of the asked aspect) | `prompt`, `model`, `aspect_ratio` when asked, `response_format: "b64_json"` |
 | Edit body | The same, with `images: [{ image_url: "data:<type>;base64,…" }]` | The same, with `images: [{ url: "data:<type>;base64,…", type: "image_url" }]` |
-| Models (default first here; listed newest first by release date) | `gpt-image-2`, `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`, `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`, `gpt-image-2.5-flare-2026-09-08`, `gpt-image-1.5`, `gpt-image-1.5-2025-12-16`, `gpt-image-1`, `gpt-image-1-mini`, `chatgpt-image-latest` | `grok-imagine-image`, `grok-imagine-image-2026-03-02`, `grok-imagine-image-2.0`, `grok-imagine-image-quality`, `grok-imagine-image-quality-20260403`, `grok-imagine-image-quality-latest`, `grok-imagine-image-pro` |
+| Models | `gpt-image-2`, `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`, `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`, `gpt-image-2.5-flare-2026-09-08`, `gpt-image-1.5`, `gpt-image-1.5-2025-12-16`, `gpt-image-1`, `gpt-image-1-mini`, `chatgpt-image-latest` | `grok-imagine-image`, `grok-imagine-image-2026-03-02`, `grok-imagine-image-2.0`, `grok-imagine-image-quality`, `grok-imagine-image-quality-20260403`, `grok-imagine-image-quality-latest`, `grok-imagine-image-pro` |
 | Result | `data[0].b64_json`, PNG | `data[0].b64_json`, PNG or JPEG |
 
 Each provider that makes images states its models, each with the vendor's
@@ -116,13 +158,33 @@ its image models with the subscription's token (Grok's
 every listing route), so each provider's list is the vendor's published IDs,
 dated snapshots and aliases included, each with the release date the
 vendor publishes (an alias such as `chatgpt-image-latest` takes that of the
-model it names at the time of the list), and changes with a Demi release. The
-ChatGPT default is the one Codex itself sends, and Grok's the first its
-subscription answers by default; Grok's models are those the subscription
-accepted, each tried once; the retired `dall-e-*` and
+model it names at the time of the list), and changes with a Demi release.
+Grok's models are those the subscription accepted, each tried once; the retired `dall-e-*` and
 `grok-2-image*` are left out. A Grok answer by URL is never used: the URL
 refused an immediate download. These request shapes are those of the
 vendors' own CLIs, checked against both subscriptions in October 2026.
+
+The API keys, as each vendor's API reference documents them in October
+2026; none was tried with a key yet:
+
+| | OpenAI | xAI | Google (Gemini API) |
+| --- | --- | --- | --- |
+| Endpoints | `POST https://api.openai.com/v1/images/generations` and `/images/edits` | `POST https://api.x.ai/v1/images/generations` and `/images/edits` | `POST https://generativelanguage.googleapis.com/v1beta/models/<model>:generateContent` |
+| Headers | `Authorization: Bearer <key>` | `Authorization: Bearer <key>` | `x-goog-api-key: <key>` |
+| Generate body | `prompt`, `model`, `size` (`auto`, or a size of the asked aspect), `background` (`transparent` or `opaque`), `output_format: "png"`, `quality: "auto"` | `prompt`, `model`, `aspect_ratio` when asked, `response_format: "b64_json"` | `contents: [{ parts: [{ text }] }]`, `generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio } }`, the ratio when asked |
+| Edit body | The same, with `images: [{ image_url: "data:<type>;base64,…" }]` | The same, with `image: { url: "data:…", type: "image_url" }` for one image and `images: [...]` for several | The same, with an `inline_data: { mime_type, data }` part for each image |
+| Models | `GET /v1/models`: those whose ID starts with `gpt-image-` or `chatgpt-image-`; `created` is the release date | `GET /v1/image-generation-models`, every one, with its `aliases`; `created` is the release date | `GET /v1beta/models`, every page: those whose ID has the word `image` or `banana`, as `gemini-3-pro-image` and `gemini-nano-banana-2.1`, and that list `generateContent`; `description` is the vendor's line, and no date is given |
+| Result | `data[0].b64_json` | `data[0].b64_json`, with `mime_type` | The first `inlineData` part of `candidates[0].content.parts`; a block is `promptFeedback.blockReason` or the candidate's `finishReason` |
+
+A key's models are those its vendor lists for it, read when the list is
+asked for, so a model the vendor adds needs no Demi release. What Demi
+knows of a vendor's models, the one-line description, the release date
+and the sizes or shapes, is one table per vendor, which its subscription
+and its key both read; a listed model the table does not know is shown
+with what the listing says. Google's Gemini API is reached through
+`generateContent`, not the newer Interactions API, because only its
+answer's shape is documented for images; Google's Imagen models are shut
+down.
 
 ## Accounts and failures
 
@@ -132,7 +194,13 @@ In Order, the one with the most room with Balanced
 ([Account rotation](../providers/providers.md#account-rotation)). An account
 that fails with `usage_limit` is used up, as for a turn; with In Order or
 Balanced the call goes on at once with another account, and when none is
-left, or with Manual, it fails. Each call writes a row of the
+left, or with Manual, the entry is used up and the call goes on with the
+next entry Automatic takes, or fails when there is none. A key fails as
+its vendor reads its failures for text
+([Failures](../providers/providers.md#failures)): a usage or billing limit
+is `usage_limit`, a refused key fails the call naming it, and a policy
+block is a refusal in the vendor's words; a failure the provider does not
+recognise prints the vendor's own message. Each call writes a row of the
 [usage ledger](../providers/usage-and-quota.md#usage-ledger), with the
 purpose `image`, the account, the model asked and the counts the vendor
 reported. The quota a response reports, as the ChatGPT backend's `x-codex-*`
@@ -145,11 +213,13 @@ The words a failure prints, on stderr with exit status 1:
 
 | Cause | Words |
 | --- | --- |
-| No entry makes images | `demi image generate: no provider makes images; sign in to ChatGPT or Grok in Settings › Providers` |
+| No entry makes images | `demi image generate: no provider makes images; sign in to ChatGPT or Grok, or add an OpenAI, xAI or Google key, in Settings › Providers` |
+| No `--model` | `demi image generate: --model is required; demi image models lists them` |
+| The key was refused | `demi image generate: OpenAI refused the API key; check it in Settings › Providers`; for a user of a shared instance's entries, `ask your administrator to check it` |
 | Every entry that could has Image Generation off | `demi image generate: image generation is off for ChatGPT and Grok; turn it on in Settings › Providers` |
 | `--model` names a model of an entry with Image Generation off | `demi image generate: "gpt-image-2" is ChatGPT's, whose image generation is off in Settings › Providers` |
 | `--model` names no listed model | `demi image generate: no provider makes "<id>"; demi image models lists them` |
-| Every account is used up | `demi image generate: ChatGPT's usage limit is reached, resetting at 9:00 PM` |
+| Every entry that could make the model is used up | `demi image generate: ChatGPT's usage limit is reached, resetting at 9:00 PM` |
 | The vendor refused the prompt or an image | `demi image generate: ChatGPT refused the request: <vendor's message>` |
 | The sign-in expired and cannot be renewed | `demi image generate: the ChatGPT sign-in for alex@example.com has expired; sign in again in Settings › Providers`; for a user of a shared instance's entries, `the ChatGPT sign-in has expired; ask your administrator to sign in again` |
 | The vendor failed or did not answer in 120 s | `demi image generate: ChatGPT did not answer: <cause>` |

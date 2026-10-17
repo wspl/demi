@@ -21,7 +21,7 @@
     },
     "agent": {
       "title": "智慧體",
-      "description": "輕量模型和訊息。",
+      "description": "輕量模型、影像生成和訊息。",
       "smallModel": "輕量模型",
       "model": "模型",
       "modelDescription": "用於撰寫對話標題。「自動」會從你的供應商中選擇一款快速模型。",
@@ -29,6 +29,8 @@
       "automaticResolved": "自動（{model}）",
       "sameProvider": "僅用對話的供應商",
       "sameProviderDescription": "輕量請求只傳送到對話所用的供應商。",
+      "imageGeneration": "影像生成",
+      "imageGenerationDescription": "「自動」會優先使用訂閱，只有在訂閱無法使用時才使用 API 金鑰。",
       "messages": "訊息",
       "sendWhileRunning": "智慧體執行時按 Enter",
       "sendWhileRunningDescription": "「引導」會將訊息傳送給進行中的輪次，「加入佇列」會等它結束。{keys} 則使用另一種方式。",

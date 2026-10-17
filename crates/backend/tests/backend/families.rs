@@ -21,7 +21,9 @@ use demi_provider_common::quota::{
     Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError, QuotaSource,
 };
 use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
-use demi_provider_common::images::{ImageAnswer, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, MadeImage};
+use demi_provider_common::images::{
+    ImageAnswer, ImageFacts, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, MadeImage,
+};
 use demi_provider_common::{
     Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError,
 };
@@ -97,7 +99,12 @@ pub struct ScriptedKey {
     /// Whether its provider says it runs a process on a Host, which the
     /// user's Cloud then is.
     pub process_host: bool,
+    /// The images its key makes, as the account [`KEY`] of the script.
+    pub images: Option<Arc<ImageScript>>,
 }
+
+/// The account a key's image calls are scripted under.
+pub const KEY: &str = "key";
 
 impl ProviderFamily for ScriptedKey {
     fn credential(&self) -> CredentialKind {
@@ -119,7 +126,10 @@ impl ProviderFamily for ScriptedKey {
             account: None,
             process_host: self.process_host,
             runs: None,
-            images: None,
+            images: self.images.clone().map(|script| ScriptedImages {
+                script,
+                account: KEY.to_owned(),
+            }),
         }))
     }
 
@@ -210,14 +220,22 @@ pub struct ScriptedSubscription {
     pub images: Option<Arc<ImageScript>>,
 }
 
-/// A scripted image role: its models, the image every call answers, the
-/// accounts whose calls fail as used up, and the calls it was sent.
+/// A scripted image role: who answers and whose models it makes, its
+/// models, the image every call answers, the accounts whose calls fail as
+/// used up, and the calls it was sent.
 pub struct ImageScript {
-    pub models: &'static [ImageModelInfo],
+    pub name: &'static str,
+    pub vendor: ImageVendor,
+    pub models: &'static [ImageFacts],
     pub image: Mutex<bytes::Bytes>,
     pub used_up: Mutex<Vec<String>>,
     /// Whether a call waits, never answering, until it is dropped.
     pub hold: std::sync::atomic::AtomicBool,
+    /// Holds the next call until the test sends on it, then answers as the
+    /// script says then.
+    pub gate: Mutex<Option<tokio::sync::oneshot::Receiver<()>>>,
+    /// The vendor's words of a refusal every call answers, when set.
+    pub refusal: Mutex<Option<String>>,
     calls: Mutex<Vec<(String, ImageRequest)>>,
     /// How many calls were asked, and how many held calls were dropped.
     pub counts: watch::Sender<(usize, usize)>,
@@ -233,15 +251,26 @@ impl Drop for Dropped {
 }
 
 impl ImageScript {
-    pub fn new(models: &'static [ImageModelInfo], image: bytes::Bytes) -> Self {
+    /// OpenAI's images, answered as `Scripted`.
+    pub fn new(models: &'static [ImageFacts], image: bytes::Bytes) -> Self {
         Self {
+            name: "Scripted",
+            vendor: ImageVendor::OpenAi,
             models,
             image: Mutex::new(image),
             used_up: Mutex::default(),
             hold: std::sync::atomic::AtomicBool::new(false),
+            gate: Mutex::default(),
+            refusal: Mutex::default(),
             calls: Mutex::default(),
             counts: watch::Sender::new((0, 0)),
         }
+    }
+
+    /// The script answering as `name`.
+    pub fn named(mut self, name: &'static str) -> Self {
+        self.name = name;
+        self
     }
 
     /// Each call's account, by its ID, and request, in order.
@@ -257,16 +286,16 @@ struct ScriptedImages {
 }
 
 impl ImageMaker for ScriptedImages {
-    fn vendor(&self) -> &'static str {
-        "Scripted"
+    fn name(&self) -> &'static str {
+        self.script.name
     }
 
-    fn models(&self) -> &'static [ImageModelInfo] {
-        self.script.models
+    fn vendor(&self) -> ImageVendor {
+        self.script.vendor
     }
 
-    fn default_model(&self) -> &'static str {
-        self.script.models[0].id
+    fn models<'a>(&'a self, _: &'a reqwest::Client) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
+        Box::pin(std::future::ready(Ok(self.script.models.iter().map(ImageModelInfo::from).collect())))
     }
 
     fn confirms_model(&self) -> bool {
@@ -288,25 +317,33 @@ impl ImageMaker for ScriptedImages {
                 std::future::pending().await
             });
         }
-        let answer = if self.script.used_up.lock().unwrap().contains(&self.account) {
-            Err(ImageFailure::UsageLimit { retry_at: None })
-        } else {
-            Ok(MadeImage {
-                bytes: self.script.image.lock().unwrap().clone(),
-                usage: Some(TokenUsage {
-                    input_tokens: 25,
-                    output_tokens: 515,
-                    cache_read_tokens: 0,
-                    cache_write_tokens: 0,
-                }),
-                vendor_id: Some(format!("gen-{}", calls.len())),
-            })
-        };
-        let answer = ImageAnswer {
-            result: answer,
-            observed: Vec::new(),
-        };
-        Box::pin(std::future::ready(answer))
+        let count = calls.len();
+        drop(calls);
+        let gate = self.script.gate.lock().unwrap().take();
+        Box::pin(async move {
+            if let Some(gate) = gate {
+                // A dropped sender releases the call as well.
+                let _ = gate.await;
+            }
+            let script = &self.script;
+            let result = if let Some(message) = script.refusal.lock().unwrap().clone() {
+                Err(ImageFailure::Refused { message, code: None })
+            } else if script.used_up.lock().unwrap().contains(&self.account) {
+                Err(ImageFailure::UsageLimit { retry_at: None })
+            } else {
+                Ok(MadeImage {
+                    bytes: script.image.lock().unwrap().clone(),
+                    usage: Some(TokenUsage {
+                        input_tokens: 25,
+                        output_tokens: 515,
+                        cache_read_tokens: 0,
+                        cache_write_tokens: 0,
+                    }),
+                    vendor_id: Some(format!("gen-{count}")),
+                })
+            };
+            ImageAnswer { result, observed: Vec::new() }
+        })
     }
 }
 

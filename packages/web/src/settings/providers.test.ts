@@ -92,7 +92,7 @@ beforeEach(async () => {
     }
     if (path.startsWith('/api/models')) {
       catalogReads.push(path)
-      return Response.json({ providers: catalogProviders, smallModel: null })
+      return Response.json({ providers: catalogProviders, smallModel: null, imageEntries: {} })
     }
     if (path === '/api/providers' && init?.method === 'POST') {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>
@@ -618,7 +618,7 @@ test('a switch that fails to save returns to the backend\'s value with a toast, 
     quota: null,
     quotaCapability: { type: 'none' },
     cliPackage: null,
-    makesImages: true,
+    imageVendor: 'openai',
   }
   channels.last().send({ type: 'providers', providers: state.providers })
   const settings = useProviderSettings()
@@ -695,7 +695,7 @@ test('Activate moves the Active mark at once, and a refused switch moves it back
       active: 'a',
       quota: null,
       quotaCapability: { type: 'none' },
-      cliPackage: null, makesImages: false,
+      cliPackage: null, imageVendor: null,
     },
   })
   channels.last().send({ type: 'providers', providers: state.providers })
@@ -890,7 +890,7 @@ test('an account whose sign-in the vendor refused reads as signed out, and Sign 
       active: 'first',
       quota: null,
       quotaCapability: { type: 'none' as const },
-      cliPackage: null, makesImages: false,
+      cliPackage: null, imageVendor: null,
     },
   })
   channels.last().send({ type: 'providers', providers: state.providers })
@@ -925,7 +925,7 @@ test('a completed sign-in says done the moment the page learns it, and an accoun
       active: 'first',
       quota: null,
       quotaCapability: { type: 'none' as const },
-      cliPackage: null, makesImages: false,
+      cliPackage: null, imageVendor: null,
     },
   })
   state.providers.push(entry(['first']))

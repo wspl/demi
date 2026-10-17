@@ -21,7 +21,7 @@
     },
     "agent": {
       "title": "エージェント",
-      "description": "軽量モデルとメッセージ。",
+      "description": "軽量モデル、画像生成、メッセージ。",
       "smallModel": "軽量モデル",
       "model": "モデル",
       "modelDescription": "会話のタイトルを作成します。「自動」はプロバイダーから高速なモデルを選びます。",
@@ -29,6 +29,8 @@
       "automaticResolved": "自動（{model}）",
       "sameProvider": "会話のプロバイダーのみ",
       "sameProviderDescription": "軽量リクエストを、会話で使っているプロバイダーにだけ送ります。",
+      "imageGeneration": "画像生成",
+      "imageGenerationDescription": "「自動」はサブスクリプションを優先し、使えない場合にのみ API キーを使います。",
       "messages": "メッセージ",
       "sendWhileRunning": "エージェントの作業中に Enter を押したとき",
       "sendWhileRunningDescription": "「今すぐ反映」は実行中のターンにメッセージを送ります。「キューに追加」はターンの終了を待ちます。{keys} でもう一方になります。",

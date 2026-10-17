@@ -128,10 +128,11 @@ impl<'a> ResponsesTool<'a> {
 
 /// How a vendor's Responses endpoint wants a transcript replayed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ResponsesDialect {
-    /// The prefix the provider puts on the reasoning items it receives; a
-    /// thinking block signed by another vendor is not replayed.
-    pub signature_tag: &'static str,
+pub struct ResponsesDialect<'a> {
+    /// The prefix the provider puts on the reasoning items it receives,
+    /// which names its vendor; a thinking block signed by another vendor is
+    /// not replayed.
+    pub signature_tag: &'a str,
     pub assistant: AssistantReplay,
     pub reasoning: ReasoningReplay,
     pub tool_media: ToolMedia,
@@ -256,7 +257,7 @@ pub enum InputPart<'a> {
 /// The transcript as a Responses request's `input`, in `dialect`.
 pub fn responses_input<'a>(
     items: &'a [InferenceItem],
-    dialect: &ResponsesDialect,
+    dialect: &ResponsesDialect<'_>,
 ) -> Vec<InputItem<'a>> {
     let mut input = Vec::with_capacity(items.len());
     for (index, item) in items.iter().enumerate() {

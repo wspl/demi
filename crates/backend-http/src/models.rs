@@ -39,11 +39,18 @@ pub(super) async fn models(
 ) -> Result<Json<ModelCatalog>, ApiError> {
     let owner = services.vault.owner_for(&user.id).await?;
     let entries = services.vault.entries(owner).await?;
+    let image_entries = services.automatic_image_entries(&user.id).await.unwrap_or_else(|error| {
+        // The rows then show Automatic alone, as Small Model's does when it
+        // resolves none; a call still resolves its entry itself.
+        tracing::warn!(error = &error as &dyn std::error::Error, "the image entries Automatic takes were not read");
+        Default::default()
+    });
     let preferences = services.control.preferences(user.id).await?;
     let providers = services.assembly.model_catalog(&entries, refresh.0).await;
     let small_model = automatic_small_model(&providers, &preferences);
     Ok(Json(ModelCatalog {
         providers,
         small_model,
+        image_entries,
     }))
 }

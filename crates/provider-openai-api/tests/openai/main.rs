@@ -1,10 +1,11 @@
 //! The OpenAI API provider at its boundaries: the requests it sends to a
 //! scripted vendor over both wires and the answers it reads back, its
-//! failures, its cancellation and what it says about itself. No test calls
-//! the real vendor.
+//! failures, its cancellation, what it says about itself, and an OpenAI or
+//! xAI key's images. No test calls the real vendor.
 
 mod cancellation;
 mod failures;
+mod images;
 mod request;
 
 use std::sync::Arc;
@@ -28,11 +29,24 @@ pub(crate) fn provider_at(
     wire: WireApi,
     policy: VendorPolicy,
 ) -> OpenAiProvider {
+    provider_of(vendor, base, wire, policy, Some("openai"))
+}
+
+/// A provider of an entry added from vendor `vendor_id`, none for a
+/// compatible API, whose endpoint is `base` on the scripted vendor.
+pub(crate) fn provider_of(
+    vendor: &MockVendor,
+    base: &str,
+    wire: WireApi,
+    policy: VendorPolicy,
+    vendor_id: Option<&str>,
+) -> OpenAiProvider {
     let config = OpenAiConfig {
         api_key: Some(Secret::try_from("sk-test".to_owned()).unwrap()),
         base_url: Some(vendor.url(base).parse().unwrap()),
         wire,
         policy,
+        vendor_id: vendor_id.map(str::to_owned),
     };
     OpenAiProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }

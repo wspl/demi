@@ -6,7 +6,7 @@
 use bytes::Bytes;
 use demi_provider_common::{
     Provider,
-    images::{Aspect, ImageFailure, ImageRequest, InputImage},
+    images::{Aspect, ImageFailure, ImageRequest, ImageVendor, InputImage},
     testing::MockVendor,
 };
 use demi_shared_types::B64Bytes;
@@ -38,8 +38,7 @@ async fn a_generation_and_an_edit_send_the_asked_shape_and_take_the_image_as_bas
     let pool = pool_with(secret(&vendor, json!({}))).await;
     let provider = provider(&vendor, &pool, Some(ACCOUNT));
     let maker = provider.images().expect("Grok Build makes images");
-    assert_eq!(maker.vendor(), "Grok");
-    assert_eq!((maker.default_model(), maker.confirms_model()), ("grok-imagine-image", true));
+    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("Grok", ImageVendor::Xai, true));
     let http = reqwest::Client::new();
 
     let made = maker.make(&http, request("grok-imagine-image-2.0", Vec::new())).await.result.unwrap();

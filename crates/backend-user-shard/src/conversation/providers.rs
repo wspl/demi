@@ -493,7 +493,6 @@ impl ConversationRuntime {
         self.scope
             .services
             .assembly
-            .rotation()
             .mark_used_up(&entry.id, &used_up, until);
         Some((used_up, moment, window))
     }
