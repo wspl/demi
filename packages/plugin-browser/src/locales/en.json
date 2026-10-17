@@ -52,7 +52,6 @@
     "unreadable": "The server’s answer couldn’t be read.",
     "refused": "The server couldn’t do that ({status})."
   },
-  "noBrowser": "No browser on this Host. Ask the agent to install one.",
   "starting": {
     "connecting": "Connecting…",
     "cloud": "Starting Cloud…",
@@ -79,7 +78,6 @@
     "waiting": "Waiting for the Host…"
   },
   "menu": {
-    "openLink": "Open Link in New Tab",
     "copyLink": "Copy Link Address",
     "cut": "Cut",
     "copy": "Copy",
@@ -114,9 +112,5 @@
     "cancel": "Cancel",
     "ok": "OK"
   },
-  "browserInput": "Browser input",
-  "tab": {
-    "new": "New Tab",
-    "createInBrowser": "New Tab in the Conversation’s Browser"
-  }
+  "browserInput": "Browser input"
 }

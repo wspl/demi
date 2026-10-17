@@ -52,7 +52,6 @@
     "unreadable": "無法讀取伺服器的回應。",
     "refused": "伺服器無法完成該操作（{status}）。"
   },
-  "noBrowser": "此主機上沒有瀏覽器。請讓智慧體安裝一個。",
   "starting": {
     "connecting": "正在連線…",
     "cloud": "正在啟動雲端…",
@@ -79,7 +78,6 @@
     "waiting": "正在等待主機…"
   },
   "menu": {
-    "openLink": "在新分頁中開啟連結",
     "copyLink": "複製連結位址",
     "cut": "剪下",
     "copy": "複製",
@@ -114,9 +112,5 @@
     "cancel": "取消",
     "ok": "確定"
   },
-  "browserInput": "瀏覽器輸入",
-  "tab": {
-    "new": "新分頁",
-    "createInBrowser": "在對話的瀏覽器中新增分頁"
-  }
+  "browserInput": "瀏覽器輸入"
 }

@@ -1,6 +1,8 @@
 //! The `browser` kind's tabs on the backend (`live-view.md` § A browser tab
-//! in the panel): a browser tab opened for each panel tab its user creates,
-//! closed with the panel tab, the agent's tabs added and gone ones marked.
+//! in the panel): a panel tab added for each tab the agent opens and each
+//! tab a page opens, beside its opener; a browser tab opened again for a
+//! panel tab whose browser lost it, or that failed to open, once its content
+//! asks; the browser's tab closed with its panel tab, and gone ones marked.
 //! One conversation's work runs one piece at a time, so a change is never
 //! based on what was read before an earlier change of the same
 //! conversation.
@@ -42,9 +44,8 @@ struct TabData {
     /// wrote it; absent while it never did.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     shows: Option<u64>,
-    /// The panel tab whose page opened it: by Open Link in New Tab, which
-    /// the page writes, or by a link or script of the page, which the plugin
-    /// writes when it adds the tab.
+    /// The panel tab whose page opened it, by a link or script of the page,
+    /// which the plugin writes when it adds the tab.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     opened_by: Option<String>,
 }
@@ -87,14 +88,13 @@ impl Work {
             .clone()
     }
 
-    /// Opens a browser tab for the panel tab `id`, unless it shows one: the
-    /// tab its user created, one that failed to open, which Retry opens
-    /// again, and one whose browser tab the browser lost, shown again.
+    /// Opens a browser tab for the panel tab `id`, unless it shows one: one
+    /// that failed to open, which Retry opens again, and one whose browser
+    /// tab the browser lost, shown again.
     /// Answers the browser tab the panel tab shows now; none when the panel
     /// no longer has it or it could not open one, which its data says: any
     /// step that fails is the tab's `failure`, which its content shows with
-    /// Retry (`live-view.md` § A browser tab in the panel), since nobody waits
-    /// for the answer to the change that created the tab.
+    /// Retry (`live-view.md` § A browser tab in the panel).
     pub async fn bind(
         &self,
         conversation: &ConversationId,
@@ -282,9 +282,7 @@ fn opener_of(order: &[Placed], tab: &BrowserTab) -> Option<usize> {
 
 /// Where a tab the panel tab at `at` opened goes: right after it, behind the
 /// tabs it opened before that still stand right after it, as Chrome places
-/// the tabs a link opens (`live-view.md` § A browser tab in the panel). The
-/// page places Open Link in New Tab by the same rule, from the same
-/// `openedBy`.
+/// the tabs a link opens (`live-view.md` § A browser tab in the panel).
 fn after_opened(order: &[Placed], at: usize) -> usize {
     let opener = order[at].id.as_str();
     let run = order[at + 1..]

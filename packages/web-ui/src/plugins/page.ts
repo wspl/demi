@@ -31,7 +31,7 @@ import type { SidebarEntry } from '../sidebar/types'
 import type { IntentName, IntentPayloads, IntentRequest } from './intents'
 import type { OpenUserStream } from './streams'
 import type { Operation } from '../ui/operations'
-import type { HeadlineText, SentenceText, TitleText } from '../ui/ui-text'
+import type { HeadlineText, SentenceText } from '../ui/ui-text'
 
 /**
  * A plugin's page (`plugin-pages.md`): the object it declares with
@@ -175,13 +175,6 @@ export interface PageHost {
     /** The `data` of the panel's tabs of `kind`, as saved. */
     tabs(conversation: string, kind: string): unknown[]
     /**
-     * Adds a tab of `kind`; `select` selects it and opens the panel. A tab
-     * whose kind names the tab that opened it (`openedBy`) goes where
-     * `openedTabIndex` places it, as a web browser places the tabs a link
-     * opens; any other after the others.
-     */
-    add(conversation: string, kind: string, data: unknown, options?: { select: boolean }): void
-    /**
      * Selects the tab `id` of `kind` and opens the panel, as a browser
      * selects the tab a click opened; a tab the panel does not have yet is
      * selected once it arrives.
@@ -304,17 +297,6 @@ export interface PanelKind<Data, Session = undefined> {
    */
   content: Component
   /**
-   * The kind is offered on the strip's new-tab control; `data` is a new
-   * tab's. While `unavailable` gives a reason, read reactively, the control
-   * is disabled and says it.
-   */
-  create?: {
-    label: TitleText
-    icon: Component
-    data(): Data
-    unavailable?(tab: KindTab<Session>): SentenceText | null
-  }
-  /**
    * The kind has one tab in every conversation's panel, ahead of the user's
    * tabs, which is never created, closed or saved; its data starts here and
    * lives in the page's memory. Its id is the kind's id.
@@ -326,26 +308,12 @@ export interface PanelKind<Data, Session = undefined> {
    */
   commands?(data: Data, tab: KindTab<Session>, id: string): readonly TabCommand[]
   /**
-   * The data of a copy of a tab, which its menu's Duplicate opens right
-   * after it, selected, as a web browser duplicates a tab; without it the
-   * menu offers no Duplicate.
-   */
-  duplicate?(data: Data): Data
-  /**
    * How many times something asked that the user see the tab, from its
    * data. When the count rises above the one the page last applied for the
    * tab, the panel opens and selects it, open or closed before
    * (`plugin-pages.md` § Work panel kinds).
    */
   shows?(data: Data): number
-  /**
-   * The id of the tab that opened this one, from its data, such as the
-   * browser tab whose link it opened. A tab added with one goes right after
-   * that tab, behind the tabs it opened before that still stand right after
-   * it (`openedTabIndex`); the data keeps it, so the order holds across
-   * reloads and pages.
-   */
-  openedBy?(data: Data): string | undefined
   /** What the strip shows after a pinned tab's title, such as its counts. Props: `conversation`, `data`. */
   badge?: Component
   /** The intents it opens: for each, the data its tab shows next, from the payload and what it shows now. */
@@ -635,10 +603,6 @@ export function pageContext(host: PageHost, page: AnyPluginPage): PageContext {
         own(kind)
         return host.panel.tabs(conversation, kind)
       },
-      add(conversation, kind, data, options) {
-        own(kind)
-        host.panel.add(conversation, kind, data, options)
-      },
       select(conversation, kind, id) {
         own(kind)
         host.panel.select(conversation, kind, id)
@@ -744,7 +708,7 @@ function bindKind(
         })
     },
   })
-  const { badge, icon, busy, commands, duplicate } = kind
+  const { badge, icon, busy, commands } = kind
   return {
     kind: kind.kind,
     schema: kind.schema,
@@ -753,10 +717,8 @@ function bindKind(
     icon: icon && ((data, id) => icon(data, tab, id)),
     busy: busy && ((data, id) => busy(data, tab, id)),
     content,
-    create: kind.create && bindCreate(kind.create, tab),
     pinned: kind.pinned,
     commands: commands && ((data, id) => commands(data, tab, id)),
-    duplicate: duplicate && ((data) => duplicate(data)),
     badge: badge
       ? defineComponent({
           props: { data: { required: true } },
@@ -766,20 +728,6 @@ function bindKind(
           },
         })
       : undefined,
-  }
-}
-
-/** `create` as the panel offers it for one conversation: its reason bound to the conversation's tab. */
-function bindCreate(
-  create: NonNullable<PanelKind<unknown, PanelSession | undefined>['create']>,
-  tab: KindTab<PanelSession | undefined>,
-): NonNullable<PanelTabKind['create']> {
-  const { unavailable } = create
-  return {
-    label: create.label,
-    icon: create.icon,
-    data: () => create.data(),
-    unavailable: unavailable && (() => unavailable(tab)),
   }
 }
 

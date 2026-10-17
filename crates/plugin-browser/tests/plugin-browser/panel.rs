@@ -1,6 +1,6 @@
 //! The `browser` kind's tabs on the backend (`live-view.md` § A browser tab
-//! in the panel): a tab its user creates opens a browser tab on the address
-//! the user asked for last, a tab its user closes closes it, and the
+//! in the panel): a tab reopened, or retried, opens a browser tab on the
+//! address the user asked for last, a tab its user closes closes it, and the
 //! agent's tabs are added once and never again once their user closed them.
 
 use std::cell::{Cell, RefCell};
@@ -9,7 +9,7 @@ use std::rc::{Rc, Weak};
 use demi_command_declarations::NativeOperation;
 use demi_plugin_browser::Browser;
 use demi_plugin_interface::{
-    CallKind, PanelTabChange, Plugin, PluginFactory, PortFailure, PortRefusal, Reply, Request,
+    CallKind, Plugin, PluginFactory, PortFailure, PortRefusal, Reply, Request,
     testing::{TestDemi, loopback},
 };
 use demi_web_api_protocol::error::ErrorCode;
@@ -42,7 +42,7 @@ fn data(value: Value) -> Map<String, Value> {
     data
 }
 
-/// The tab the user creates, as the page creates it.
+/// A tab in the panel, as the plugin or an earlier page left it.
 fn created(demi: &TestDemi, id: &str, value: Value) -> PanelTab {
     let create = CreatePanelTab {
         id: id.into(),
@@ -55,12 +55,11 @@ fn created(demi: &TestDemi, id: &str, value: Value) -> PanelTab {
         .expect("the panel has the tab it created")
 }
 
-/// The backend telling the plugin what the user did to `tab`.
-async fn told(plugin: &Rc<dyn Plugin>, demi: &Rc<TestDemi>, change: PanelTabChange, tab: PanelTab) {
+/// The backend telling the plugin that the user removed `tab`.
+async fn removed(plugin: &Rc<dyn Plugin>, demi: &Rc<TestDemi>, tab: PanelTab) {
     let request = Request::PanelTab {
         user: UserId::try_from("u1").unwrap(),
         conversation: conversation(),
-        change,
         tab,
     };
     assert_eq!(plugin.call(request, demi.port()).await, Ok(Reply::Done));
@@ -99,8 +98,13 @@ fn tab_data(demi: &TestDemi, id: &str) -> Value {
     Value::Object(demi.panel_tab(id).expect("the panel has the tab").data)
 }
 
+/// A tab whose browser tab the browser lost, as after a restart, shown again.
+fn lost(demi: &TestDemi, id: &str) -> PanelTab {
+    created(demi, id, json!({ "url": "https://lost.test/", "tab": "t0", "closed": true }))
+}
+
 #[tokio::test(flavor = "local")]
-async fn a_tab_its_user_created_opens_on_the_address_the_user_asked_for_last() {
+async fn a_lost_tab_reopens_on_the_address_the_user_asked_for_last() {
     let (plugin, demi) = world(Box::new(|demi, operation, _| match operation {
         "browser.open" => {
             // The user types an address while the tab opens.
@@ -108,13 +112,16 @@ async fn a_tab_its_user_created_opens_on_the_address_the_user_asked_for_last() {
                 id: "a".into(),
                 data: data(json!({ "url": "https://example.test/" })),
             });
-            Ok(json!({ "tab": "t1", "url": "about:blank" }))
+            Ok(json!({ "tab": "t1", "url": "https://lost.test/" }))
         }
         "browser.goto" => Ok(json!({ "tab": "t1", "url": "https://example.test/", "list": 3 })),
         _ => Ok(json!({})),
     }));
-    let tab = created(&demi, "a", json!({ "url": "about:blank" }));
-    told(&plugin, &demi, PanelTabChange::Created, tab).await;
+    lost(&demi, "a");
+    assert_eq!(
+        call(&plugin, &demi, "bind", json!({ "panelTab": "a" })).await,
+        Ok(json!({ "tab": "t1" }))
+    );
 
     assert_eq!(
         tab_data(&demi, "a"),
@@ -126,7 +133,7 @@ async fn a_tab_its_user_created_opens_on_the_address_the_user_asked_for_last() {
             (
                 "browser.open".to_owned(),
                 CallKind::Starts,
-                json!("about:blank")
+                json!("https://lost.test/")
             ),
             ("browser.goto".to_owned(), CallKind::Operates, json!("t1")),
         ]
@@ -140,16 +147,19 @@ async fn a_tab_its_user_created_opens_on_the_address_the_user_asked_for_last() {
 }
 
 #[tokio::test(flavor = "local")]
-async fn a_tab_its_user_closed_while_it_opened_closes_the_browser_tab() {
+async fn a_tab_its_user_closed_while_it_reopened_closes_the_browser_tab() {
     let (plugin, demi) = world(Box::new(|demi, operation, _| match operation {
         "browser.open" => {
             demi.change_panel(PanelChange::Remove { id: "a".into() });
-            Ok(json!({ "tab": "t1", "url": "about:blank" }))
+            Ok(json!({ "tab": "t1", "url": "https://lost.test/" }))
         }
         _ => Ok(json!({})),
     }));
-    let tab = created(&demi, "a", json!({ "url": "about:blank" }));
-    told(&plugin, &demi, PanelTabChange::Created, tab).await;
+    lost(&demi, "a");
+    assert_eq!(
+        call(&plugin, &demi, "bind", json!({ "panelTab": "a" })).await,
+        Ok(json!({ "tab": null }))
+    );
 
     assert_eq!(demi.panel().tabs, []);
     assert_eq!(
@@ -158,7 +168,7 @@ async fn a_tab_its_user_closed_while_it_opened_closes_the_browser_tab() {
             (
                 "browser.open".to_owned(),
                 CallKind::Starts,
-                json!("about:blank")
+                json!("https://lost.test/")
             ),
             ("browser.close".to_owned(), CallKind::Operates, json!("t1")),
         ]
@@ -179,16 +189,21 @@ async fn a_tab_that_could_not_open_says_why_and_opens_when_its_user_retries() {
                     message: "The device is offline".into(),
                 }));
             }
-            Ok(json!({ "tab": "t2", "url": "about:blank" }))
+            Ok(json!({ "tab": "t2", "url": "https://lost.test/" }))
         }
         _ => Ok(json!({})),
     }));
-    let tab = created(&demi, "a", json!({ "url": "about:blank" }));
-    told(&plugin, &demi, PanelTabChange::Created, tab).await;
+    lost(&demi, "a");
+    assert_eq!(
+        call(&plugin, &demi, "bind", json!({ "panelTab": "a" })).await,
+        Ok(json!({ "tab": null }))
+    );
     assert_eq!(
         tab_data(&demi, "a"),
         json!({
-            "url": "about:blank",
+            "url": "https://lost.test/",
+            "tab": "t0",
+            "closed": true,
             "failure": { "code": "device_offline", "message": "The device is offline" },
         })
     );
@@ -199,7 +214,7 @@ async fn a_tab_that_could_not_open_says_why_and_opens_when_its_user_retries() {
     );
     assert_eq!(
         tab_data(&demi, "a"),
-        json!({ "url": "about:blank", "tab": "t2" })
+        json!({ "url": "https://lost.test/", "tab": "t2" })
     );
     assert_eq!(opens.get(), 2);
 }
@@ -216,7 +231,7 @@ async fn a_tab_whose_address_could_not_load_once_it_opened_says_why_and_loads_it
                 id: "a".into(),
                 data: data(json!({ "url": "https://example.test/" })),
             });
-            Ok(json!({ "tab": "t1", "url": "about:blank" }))
+            Ok(json!({ "tab": "t1", "url": "https://lost.test/" }))
         }
         "browser.goto" => {
             counted.set(counted.get() + 1);
@@ -232,8 +247,11 @@ async fn a_tab_whose_address_could_not_load_once_it_opened_says_why_and_loads_it
         }
         _ => Ok(json!({})),
     }));
-    let tab = created(&demi, "a", json!({ "url": "about:blank" }));
-    told(&plugin, &demi, PanelTabChange::Created, tab).await;
+    lost(&demi, "a");
+    assert_eq!(
+        call(&plugin, &demi, "bind", json!({ "panelTab": "a" })).await,
+        Ok(json!({ "tab": null }))
+    );
     assert_eq!(
         tab_data(&demi, "a"),
         json!({
@@ -262,7 +280,7 @@ async fn a_tab_whose_address_could_not_load_once_it_opened_says_why_and_loads_it
             (
                 "browser.open".to_owned(),
                 CallKind::Starts,
-                json!("about:blank")
+                json!("https://lost.test/")
             ),
             ("browser.goto".to_owned(), CallKind::Operates, json!("t1")),
             ("browser.goto".to_owned(), CallKind::Operates, json!("t1")),
@@ -277,7 +295,7 @@ async fn a_tab_its_user_removed_closes_its_browser_tab() {
     let unbound = created(&demi, "b", json!({ "url": "about:blank" }));
     for tab in [bound, unbound] {
         demi.change_panel(PanelChange::Remove { id: tab.id.clone() });
-        told(&plugin, &demi, PanelTabChange::Removed, tab).await;
+        removed(&plugin, &demi, tab).await;
     }
     assert_eq!(
         calls(&demi),
@@ -436,8 +454,7 @@ async fn a_tab_the_agent_showed_carries_the_count_into_its_panel_tab() {
 }
 
 /// A tab a page opened stands right after its opener's, behind the ones the
-/// same opener opened before it, whether its page opened them or the user's
-/// Open Link in New Tab did, as Chrome places the tabs a link opens; the
+/// same opener opened before it, as Chrome places the tabs a link opens; the
 /// panel keeps which tab opened which, so the order holds across reads and
 /// reloads. The agent's tabs, and one whose opener the panel does not show,
 /// go after the others (`live-view.md` § A browser tab in the panel).
@@ -451,13 +468,6 @@ async fn a_tab_a_page_opened_stands_beside_its_opener() {
     }));
     created(&demi, "a", json!({ "url": "https://a.test/", "tab": "t1" }));
     created(&demi, "b", json!({ "url": "https://b.test/", "tab": "t2" }));
-    // Open Link in New Tab on `a`, as the page places it: right after `a`.
-    demi.change_panel(PanelChange::Create(CreatePanelTab {
-        id: "link".into(),
-        kind: "browser".into(),
-        data: data(json!({ "url": "https://link.test/", "openedBy": "a" })),
-        index: Some(1),
-    }));
     let tab = |id: &str, by: Value| json!({ "id": id, "title": id, "url": format!("https://{id}.test/"), "createdBy": by, "loading": false, "canGoBack": false, "canGoForward": false, "shows": 0 });
     let by_page = |opener: &str| json!({ "kind": "page", "opener": opener });
     let ids = |demi: &TestDemi| -> Vec<String> {
@@ -478,7 +488,7 @@ async fn a_tab_a_page_opened_stands_beside_its_opener() {
     tabs_changed(&plugin, &demi).await;
     assert_eq!(
         ids(&demi),
-        ["a", "link", "browser-t3", "browser-t4", "b", "browser-t5", "browser-t6", "browser-t7"]
+        ["a", "browser-t3", "browser-t4", "b", "browser-t5", "browser-t6", "browser-t7"]
     );
     assert_eq!(tab_data(&demi, "browser-t3")["openedBy"], json!("a"));
     assert_eq!(tab_data(&demi, "browser-t7").get("openedBy"), None);
@@ -489,7 +499,7 @@ async fn a_tab_a_page_opened_stands_beside_its_opener() {
     tabs_changed(&plugin, &demi).await;
     assert_eq!(
         ids(&demi),
-        ["a", "link", "browser-t3", "browser-t4", "browser-t8", "b", "browser-t5", "browser-t6", "browser-t7"]
+        ["a", "browser-t3", "browser-t4", "browser-t8", "b", "browser-t5", "browser-t6", "browser-t7"]
     );
 }
 
