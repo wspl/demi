@@ -32,8 +32,6 @@
       "messages": "Messages",
       "sendWhileRunning": "Enter while the agent works",
       "sendWhileRunningDescription": "Steer sends to the running turn. Queue waits for it to end. {keys} does the other.",
-      "resumeWhenHostBack": "Resume when a device is back online",
-      "resumeWhenHostBackDescription": "Continues a turn that stopped because its device went offline, once the device is back.",
       "resumeAfterRestart": "Resume after Demi restarts",
       "resumeAfterRestartDescription": "Continues a turn that stopped because Demi restarted, such as for an update.",
       "resumeAtRetry": "Resume after a usage limit resets",

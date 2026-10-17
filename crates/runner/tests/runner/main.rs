@@ -143,6 +143,16 @@ impl Host {
         self.hello = hello;
     }
 
+    /// Accepts the runner's next connection and drops it before its
+    /// welcome, as a backend still out of reach would: the runner tries
+    /// again on its own.
+    pub async fn drop_next(&mut self) {
+        let (mut socket, hello) = accept(&self.listener, &self.process).await;
+        assert!(matches!(hello, Outbound::Hello { .. }), "{hello:?}");
+        // A runner that already went sees the connection end all the same.
+        let _ = socket.close(None).await;
+    }
+
     /// Drops the connection without a close frame, as a network that went
     /// away does; the runner connects again on its own.
     pub async fn cut(&mut self) {

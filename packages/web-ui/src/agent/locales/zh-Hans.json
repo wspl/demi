@@ -35,6 +35,7 @@
       "failed": "失败",
       "stopped": "已停止",
       "stopping": "正在停止…",
+      "waiting": "正在等待 {host}",
       "lost": "已丢失",
       "exitCode": "退出代码 {code}"
     },
@@ -42,6 +43,7 @@
       "lost": "已丢失",
       "lostWhy": "已丢失：{reason}",
       "stopping": "正在停止…",
+      "waiting": "正在等待 {host}",
       "running": "已运行 {span}",
       "exited": "{span} 后退出",
       "exitedZero": "{span} 后退出，退出代码 0",
@@ -203,7 +205,6 @@
     "scrollToBottom": "滚动到底部",
     "resume": "恢复",
     "continue": "继续",
-    "stillOffline": "{name} 仍然离线",
     "continueWith": "改用 {label} 继续",
     "openProviders": "打开供应商"
   },

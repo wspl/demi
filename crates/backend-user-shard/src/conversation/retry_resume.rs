@@ -142,8 +142,8 @@ impl Shard {
     /// would: the conversation's tree opens if it is closed, the backend
     /// prepares the Resume as it prepares the user's, and the root resumes
     /// only while it rests with a last turn whose record `ended` accepts.
-    /// `reason`, when given, is what the resume tells the model in place of
-    /// the reason the user's Resume would carry. Answers whether the turn
+    /// `reason`, when given, is what the resume tells the model before
+    /// "Continue from where you left off.". Answers whether the turn
     /// resumed; false when the backend would refuse the user's Resume, as
     /// for an archived conversation, or the last turn did not end as
     /// `ended` expects.
@@ -160,11 +160,11 @@ impl Shard {
             .file_gate()
             .enter(Purpose::Demand)
             .await;
-        let prepared = match self.resume_frame_reason(conversation).await {
-            Ok(Some(prepared)) => prepared,
-            Ok(None) => return Ok(false),
+        match self.resume_admitted(conversation).await {
+            Ok(true) => {}
+            Ok(false) => return Ok(false),
             Err(error) => return Err(format!("the resume was not prepared: {error}")),
-        };
+        }
         let Some(tree) = self.agent().tree(&root_of(conversation)) else {
             return Ok(false);
         };
@@ -179,7 +179,7 @@ impl Shard {
         // The action reports its course to the conversation's pages as
         // events; a refusal means the session is closing.
         session
-            .resume(reason.or(prepared.as_deref()))
+            .resume(reason)
             .map_err(|refusal| refusal.to_string())?;
         Ok(true)
     }

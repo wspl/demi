@@ -148,13 +148,19 @@ impl Shard {
             last_release: device.runner_version.clone(),
             last_instance: device.runner_instance,
             managed: device.kind == DeviceKind::Managed,
-            recorded: recorded.iter().map(|(job, _)| job.clone()).collect(),
+            // A job whose start waits for the device was never sent: its
+            // agent sends it once it takes it up.
+            recorded: recorded
+                .iter()
+                .filter(|recorded| recorded.sent)
+                .map(|recorded| recorded.job.clone())
+                .collect(),
         };
         // A closing shard takes no runner; dropping the socket closes it.
         let Some((serving, reported)) = self.bind(&device.id, runner, hello) else {
             return;
         };
-        self.take_up(recorded.into_iter().map(|(_, conversation)| conversation));
+        self.take_up(recorded.into_iter().map(|recorded| recorded.conversation));
         if started_anew {
             let shard = self.clone();
             let device = device.id.clone();
@@ -169,9 +175,6 @@ impl Shard {
         if let Some(settle) = reported.await {
             self.tasks().spawn_local(settle);
         }
-        // The turns the device's absence left resume
-        // (`failures-and-recovery.md` § The unfinished turn).
-        self.host_back(&device.id);
         // A runner that went away before its welcome ends its connection at
         // once, as the connection reads its socket. What the connection
         // queued meanwhile leaves after the welcome.
@@ -292,7 +295,7 @@ impl Shard {
     /// (`sessions-and-targets.md` § Recovery and persistence).
     pub async fn take_up_stopped_cloud(self: Rc<Self>, device: DeviceId) {
         match self.services().control.running_jobs(device.clone()).await {
-            Ok(recorded) => self.take_up(recorded.into_iter().map(|(_, conversation)| conversation)),
+            Ok(recorded) => self.take_up(recorded.into_iter().map(|recorded| recorded.conversation)),
             Err(error) => {
                 tracing::warn!(device = %device, error = &error as &dyn std::error::Error, "the stopped Cloud's running jobs could not be read");
             }

@@ -195,6 +195,7 @@ mod host_commands {
 mod shells {
     use std::cell::Cell;
 
+    use demi_backend_host_access::access::{DeviceWait, ShowWait};
     use demi_host_interface::{Host as _, HostErrorKind};
     use demi_web_api_protocol::ids::{ConversationId, UserId};
     use futures_util::future::LocalBoxFuture;
@@ -254,13 +255,21 @@ mod shells {
                 let host = shard.host_shard().conversation_host(&id).await.unwrap();
                 assert_eq!(host.default_cwd(), "/work");
                 let ran = Cell::new(0);
+                // The device is online: the job never waits.
+                struct Unshown;
+                impl ShowWait for Unshown {
+                    fn shown(&self, _: Option<String>) -> LocalBoxFuture<'_, ()> {
+                        unreachable!("an online device's job never waits")
+                    }
+                }
+                let wait = DeviceWait { shown: &Unshown };
                 let job = || {
                     let ran = &ran;
                     Box::pin(async move { ran.set(ran.get() + 1) }) as LocalBoxFuture<'_, ()>
                 };
                 let first = shard
                     .host_shard()
-                    .run_job(&id, &host.key(), &CancellationToken::new(), job())
+                    .run_job(&id, &host.key(), &CancellationToken::new(), wait, job())
                     .await;
                 // The conversation moves to another directory of the device:
                 // its old Host runs nothing more.
@@ -272,7 +281,7 @@ mod shells {
                 .await;
                 let second = shard
                     .host_shard()
-                    .run_job(&id, &host.key(), &CancellationToken::new(), job())
+                    .run_job(&id, &host.key(), &CancellationToken::new(), wait, job())
                     .await;
                 (first, second.map_err(|error| error.kind), ran.get())
             })

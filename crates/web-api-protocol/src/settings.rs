@@ -429,17 +429,6 @@ pub struct Preferences {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub resume_after_restart: Option<bool>,
-    /// Whether a turn its offline Host left goes on by itself once the
-    /// device's runner connects again, once for each time the Host left it
-    /// (`failures-and-recovery.md` § The unfinished turn). Absent means yes.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "bool")]
-    #[garde(skip)]
-    pub resume_when_host_back: Option<bool>,
     /// Whether the user went on past the dialog about using several
     /// subscription accounts (`providers.md` § Account rotation), which then
     /// never shows again. Absent means no.
@@ -682,17 +671,6 @@ pub struct PreferencesPatch {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub resume_after_restart: Option<bool>,
-    /// Whether a turn its offline Host left goes on by itself once the
-    /// device's runner connects again, once for each time the Host left it
-    /// (`failures-and-recovery.md` § The unfinished turn). Absent means yes.
-    #[serde(
-        default,
-        skip_serializing_if = "Option::is_none",
-        with = "unwrap_or_skip"
-    )]
-    #[schemars(with = "bool")]
-    #[garde(skip)]
-    pub resume_when_host_back: Option<bool>,
     /// Whether the user went on past the dialog about using several
     /// subscription accounts (`providers.md` § Account rotation), which then
     /// never shows again. Absent means no.

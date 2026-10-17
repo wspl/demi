@@ -9,7 +9,7 @@ use std::{cell::RefCell, rc::Rc, sync::Arc, time::Duration};
 
 use bytes::Bytes;
 use demi_shared_types::{TurnId, 
-    BinaryStdout, CommandId, EditedFile, ErrorDevice, NodeId, OutputView, PathChange, Sequence, StreamKind,
+    BinaryStdout, CommandId, EditedFile, NodeId, OutputView, PathChange, Sequence, StreamKind,
     StreamView,
 };
 use demi_command_protocol::Viewable;
@@ -105,6 +105,12 @@ pub trait ShellEnvironment {
     /// Forgets a command, stopping it first when it runs; false when unknown.
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool>;
 
+    /// Ends each of its commands whose start still waits for its Host, as
+    /// the user's Stop does, whatever turn started it: none of them ever
+    /// runs (`sessions-and-targets.md` § Host operations). A command that
+    /// started runs on.
+    fn stop_waiting(&self) -> LocalBoxFuture<'_, ()>;
+
     /// Takes up `taken`, a command that still ran when the backend last
     /// knew it (`sessions-and-targets.md` § Recovery and persistence).
     fn adopt(&self, taken: TakenUp);
@@ -189,7 +195,6 @@ pub struct JobCaller {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Unreachable {
     pub away_ms: u64,
-    pub grace_ms: u64,
 }
 
 /// A command an environment takes up again: the call `caller` names,
@@ -202,8 +207,29 @@ pub struct TakenUp {
     pub job: String,
     pub caller: JobCaller,
     pub title: String,
+    /// How often it reports while it runs, or only its end when none.
+    pub interval_ms: Option<u32>,
     pub running: Duration,
     pub seen: Seen,
+    /// What it was asked to start, while its start still waits for its
+    /// Host and was never sent (`sessions-and-targets.md` § Host
+    /// operations): it waits again, and is sent once its runner connects.
+    pub unsent: Option<UnsentStart>,
+}
+
+/// What a command whose start waits for its Host, a paired device whose
+/// runner is away, was asked to run, which its record keeps until the start
+/// is sent, so a backend that starts again sends it once the runner
+/// connects (`sessions-and-targets.md` § Host operations).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UnsentStart {
+    #[garde(skip)]
+    pub script: String,
+    #[garde(skip)]
+    pub cwd: Option<String>,
+    #[garde(dive)]
+    pub viewable: Viewable,
 }
 
 /// A command's status and its output since the last look.
@@ -309,8 +335,4 @@ pub enum ShellError {
     EmptyStdin,
     #[error(transparent)]
     Host(#[from] HostError),
-    /// The command ran nothing: its Host, `device`, has no live runner
-    /// (`sessions-and-targets.md` § Host operations).
-    #[error("{message}")]
-    HostOffline { device: ErrorDevice, message: String },
 }

@@ -185,20 +185,6 @@ impl<H: HostResolver> Connection<H> {
         }
     }
 
-    /// Handles the user's Resume as [`handle`](Self::handle) does a
-    /// `resume` frame, with the reason the backend composed for it: where
-    /// a turn its offline Host left unfinished now runs
-    /// (`failures-and-recovery.md` § The unfinished turn).
-    pub async fn resume(&self, reason: Option<String>) {
-        match self.attached() {
-            Some(tree) => {
-                self.recover(tree.root().session(), ClientFrameKind::Resume, reason.as_deref())
-                    .await;
-            }
-            None => self.refuse(ClientFrame::Resume {}),
-        }
-    }
-
     /// Detaches the connection from its tree, when the socket is gone.
     pub fn detach(&self) {
         if let Some(tree) = self.server.tree(&self.root) {
@@ -415,6 +401,11 @@ impl<H: HostResolver> Connection<H> {
             }
             ClientFrame::Abort {} => {
                 let result = session.abort().await;
+                // Every command of the conversation whose start waits for
+                // its Host ends and never runs, whichever turn left it,
+                // though started commands run on (`sessions-and-targets.md`
+                // § Host operations).
+                tree.stop_waiting().await;
                 self.send(ServerFrame::AbortResult { result });
             }
             ClientFrame::SyncTranscript { from, edge } => {
@@ -431,13 +422,13 @@ impl<H: HostResolver> Connection<H> {
                 }
             }
             ClientFrame::Retry {} | ClientFrame::Resume {} => {
-                self.recover(session, kind, None).await;
+                self.recover(session, kind).await;
             }
             // A subagent's context card compacts that child, the root's the root.
             ClientFrame::Compact { node } => match node {
-                None => self.recover(session, kind, None).await,
+                None => self.recover(session, kind).await,
                 Some(id) => match tree.node(&id) {
-                    Some(node) => self.recover(node.session(), kind, None).await,
+                    Some(node) => self.recover(node.session(), kind).await,
                     None => self.reject(kind, agent_ended()),
                 },
             },
@@ -495,7 +486,7 @@ impl<H: HostResolver> Connection<H> {
 impl<H: HostResolver> Connection<H> {
     /// Retries or resumes the root's session, or compacts a node's,
     /// refusing while it is busy; a resume carries `reason` to the model.
-    async fn recover(&self, session: &AgentSession, kind: ClientFrameKind, reason: Option<&str>) {
+    async fn recover(&self, session: &AgentSession, kind: ClientFrameKind) {
         if let Some(refusal) = busy(session) {
             self.reject(kind, refusal);
             return;
@@ -516,7 +507,7 @@ impl<H: HostResolver> Connection<H> {
         }
         let admitted = match kind {
             ClientFrameKind::Retry => session.retry(),
-            ClientFrameKind::Resume => session.resume(reason),
+            ClientFrameKind::Resume => session.resume(None),
             _ => session.compact(),
         };
         if let Err(error) = admitted {

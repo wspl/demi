@@ -86,8 +86,7 @@ or a subagent ends, the work it waits for wakes it.
 - **A Host that is away.** A command whose Host's connection is away sends
   no interval report: the node could do nothing with one, and its silence
   is the connection's, not the command's. Its reports resume when the
-  runner is back, and its end, or its loss when the 10 minutes pass, is
-  reported as any end ([Command lifetime](../execution/runner.md#command-lifetime)).
+  runner is back, and its end is reported as any end ([Command lifetime](../execution/runner.md#command-lifetime)).
   A look at it with `demi shell status` from another Host says that its
   Host is unreachable, and since when.
 - **Across a restart.** A command's start time and each node's place in its
@@ -274,7 +273,7 @@ the command did with the answer.
 
 | Command | What it does |
 | --- | --- |
-| `demi shell status <commandId>…` | Prints each command's status, its exit code once it has ended, how long it has run and printed nothing, and its output since the node's last look at it, as a result shows it ([Results and previews](#results-and-previews)), also of a command that was stopped or lost: `status: stopped` or `status: lost: <reason>`, then the output; it shows the media's lines and attaches none ([What a result attaches](#what-a-result-attaches)). A command whose Host's connection is away, looked at from another Host, says so: `status: running, as far as Demi knows; its Host has been unreachable for 40 seconds, and its runner keeps it for up to 10 minutes`. `--wait <duration>` waits up to that long for the commands to end first; the `shell` call that runs it watches as any call does. `--interval <duration>` or `--resident` changes how the node hears from the commands from then on ([Command reports](#command-reports)). |
+| `demi shell status <commandId>…` | Prints each command's status, its exit code once it has ended, how long it has run and printed nothing, and its output since the node's last look at it, as a result shows it ([Results and previews](#results-and-previews)), also of a command that was stopped or lost: `status: stopped` or `status: lost: <reason>`, then the output; it shows the media's lines and attaches none ([What a result attaches](#what-a-result-attaches)). A command whose Host's connection is away, looked at from another Host, says so: `status: running, as far as Demi knows; its Host has been unreachable for 40 seconds, and its runner keeps it running`. `--wait <duration>` waits up to that long for the commands to end first; the `shell` call that runs it watches as any call does. `--interval <duration>` or `--resident` changes how the node hears from the commands from then on ([Command reports](#command-reports)). |
 | `demi shell input <commandId>` | Writes its stdin to the command's input, such as an answer to a prompt, and prints nothing; input for a command that is not running fails. A command that still acquires its Host, as while a Cloud wakes, takes the input once it starts. |
 | `demi shell output <commandId>` | Prints the command's whole output ([The whole output](#the-whole-output)). |
 | `demi shell stop <commandId>…` | Stops each command, below. |

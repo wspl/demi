@@ -10,7 +10,7 @@ use std::{
 use bytes::Bytes;
 use demi_backend_remote_host::{
     Admission, ArtifactResolver, CommandCatalog, CommandKeeper, END_GRACE, EnvironmentOptions, JobOrigin,
-    JobStart, LinkEnd, LinkPolicy, RemoteHost, RemoteShellEnvironment,
+    JobStart, KeptStart, LinkEnd, LinkPolicy, RemoteHost, RemoteShellEnvironment,
     testing::{CommandPolicy, TEST_DEVICE, TestDevice, TestLink},
 };
 use demi_command_declarations::NativeOperation;
@@ -21,7 +21,7 @@ use demi_command_protocol::{
 use demi_host_interface::{
     Call, CommandSet, CommandState, GroupBuilder, HostError, HostErrorKind,
     HostProcess, JobCaller, LeafBuilder, OutputRecord, PageState, Process,
-    ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment, SpawnEnv,
+    ProcessEnd, RpcError, RpcInvocation, RpcPort, Seen, ShellEnvironment, SpawnEnv, UnsentStart,
     SpawnRequest, Streams, TypedRpc, WholeOutput,
     testing::{CountingNumbers, TestPages, test_command_context},
 };
@@ -1539,13 +1539,16 @@ struct Publisher {
 }
 
 impl CommandKeeper for Publisher {
-    fn started<'a>(
+    fn started<'a>(&'a self, _: &'a CommandId, _: &'a str, _: &'a KeptStart) -> LocalBoxFuture<'a, ()> {
+        Box::pin(async {})
+    }
+
+    fn waiting<'a>(
         &'a self,
         _: &'a CommandId,
-        _: &'a JobCaller,
         _: &'a str,
-        _: Option<u32>,
-        _: &'a str,
+        _: &'a KeptStart,
+        _: &'a UnsentStart,
     ) -> LocalBoxFuture<'a, ()> {
         Box::pin(async {})
     }
@@ -2422,7 +2425,6 @@ fn kept_job(job: &str, stdout_bytes: u64, ended: bool) -> demi_runner_protocol::
         ended: ended.then(|| demi_runner_protocol::wire::KeptEnd {
             exit_code: Some(0),
             signal: None,
-            unreached: false,
         }),
         output: OutputLengths {
             stdout_bytes,
@@ -2845,7 +2847,6 @@ async fn a_job_the_backend_has_no_command_for_is_stopped_and_released() {
     let ended = demi_runner_protocol::wire::KeptEnd {
         exit_code: Some(0),
         signal: None,
-        unreached: false,
     };
     let mut link = device.connect_hello(
         None,

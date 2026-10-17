@@ -36,7 +36,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{Notify, watch};
 use tokio_util::task::AbortOnDropHandle;
 
-use super::{StoppingShells, Tree, cut_path, unended_views};
+use super::{StoppingShells, Tree, cut_path, note_activity, unended_views};
 use super::profiles::Limits;
 use crate::{
     Node,
@@ -900,8 +900,10 @@ impl<H: HostResolver> Tree<H> {
                 let clock = self.clock.clone();
                 let id = node.id().clone();
                 let paths = self.paths.clone();
+                let activity = self.activity.clone();
                 move |event| {
                     cut_path(&paths, event);
+                    note_activity(&activity, event);
                     match event {
                         SessionEvent::TranscriptChanged { patches, revision } => {
                             if let Some(child) = child.upgrade() {

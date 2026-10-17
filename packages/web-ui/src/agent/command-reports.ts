@@ -64,8 +64,11 @@ export function useCommandRevealer(): CommandRevealer {
   return inject(commandRevealerKey, () => undefined)
 }
 
-/** The tag a report row carries, as a shell row marks its command's end: only what went wrong. */
-export function reportMark(report: CommandReport): CommandEndMark | null {
+/**
+ * The tag a report row carries, as a shell row marks its command's end: only
+ * what went wrong. A report never finds its command waiting for its Host.
+ */
+export function reportMark(report: CommandReport): Exclude<CommandEndMark, { kind: 'waiting' }> | null {
   const event = report.event
   switch (event.kind) {
     case 'running':

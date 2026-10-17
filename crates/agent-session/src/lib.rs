@@ -66,7 +66,6 @@ pub use editing::{
     EditCheck, EditContent, EditError, EditSubmission, accepted, edit_digest, fork_seed, regenerate_digest,
 };
 pub use retry::RetryPolicy;
-pub use worker::left_by_offline_host;
 pub use runtime::{
     CallCommand, CommandLook, InputArrival, NewContext, PromptLayer, RunningWork, SeenContext, SessionRuntime, StartedCommand, SystemPrompt,
     StepOutcomes, ToolEffect, ToolFailure, ToolInvocation, ToolOutcome, WindowEnd,
@@ -872,11 +871,9 @@ impl AgentSession {
     }
 
     /// Unwinds the unfinished turn to its resume point and continues it.
-    /// `reason`, when given, is what the model reads before it goes on: the
-    /// backend's for the user's Resume of a turn its offline Host left
-    /// unfinished, such as "MacBook Pro is back online.", or Demi's own for
-    /// a resume of its own, such as a subagent's after a backend restart
-    /// (`failures-and-recovery.md` § The unfinished turn).
+    /// `reason`, when given, is what the model reads before it goes on:
+    /// Demi's own for a resume of its own, such as a subagent's after a
+    /// backend restart (`failures-and-recovery.md` § The unfinished turn).
     pub fn resume(&self, reason: Option<&str>) -> Result<ActionHandle, AdmissionError> {
         self.shared.update(|core| {
             core.admit(ActionKind::Resume {
@@ -1048,6 +1045,23 @@ impl AgentSession {
                 }
                 _ => None,
             })
+        })
+    }
+
+    /// The tool-use IDs of the calls still executing, the calls of the
+    /// model's response that run at the same time.
+    pub fn executing_calls(&self) -> Vec<String> {
+        self.shared.read(|core| {
+            core.transcript
+                .blocks()
+                .iter()
+                .filter_map(|block| match block {
+                    Block::ToolCall(call) if call.status == demi_shared_types::ToolCallStatus::Executing => {
+                        Some(call.tool_use_id.clone())
+                    }
+                    _ => None,
+                })
+                .collect()
         })
     }
 

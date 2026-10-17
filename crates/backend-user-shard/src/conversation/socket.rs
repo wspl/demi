@@ -296,7 +296,6 @@ impl Shard {
             .await
         {
             Ok(Prepared::Deliver) => {}
-            Ok(Prepared::Resume(_)) => unreachable!("an open is prepared as an open"),
             Ok(Prepared::Refused(code, message)) => return Err(format!("{code}: {message}")),
             Err(error) => return Err(error.to_string()),
         }
@@ -306,17 +305,12 @@ impl Shard {
             .map_err(|error| error.to_string())
     }
 
-    /// The reason the user's Resume of the conversation carries, when the
-    /// backend would deliver one; none when it would refuse it, as for an
-    /// archived conversation.
-    pub(crate) async fn resume_frame_reason(
-        &self,
-        conversation: &ConversationId,
-    ) -> Result<Option<Option<String>>, StorageError> {
-        match self.prepare_frame(conversation, &ClientFrame::Resume {}).await? {
-            Prepared::Resume(reason) => Ok(Some(reason)),
-            Prepared::Deliver | Prepared::Refused(..) => Ok(None),
-        }
+    /// Whether the backend would deliver the user's Resume of the
+    /// conversation; it refuses it, for example, for an archived
+    /// conversation.
+    pub(crate) async fn resume_admitted(&self, conversation: &ConversationId) -> Result<bool, StorageError> {
+        let prepared = self.prepare_frame(conversation, &ClientFrame::Resume {}).await?;
+        Ok(matches!(prepared, Prepared::Deliver))
     }
 
     /// Decodes one message and hands the frame to the conversation's agent
@@ -427,10 +421,6 @@ impl Shard {
             _ => None,
         };
         let handled = match self.prepare_frame(conversation, &frame).await {
-            Ok(Prepared::Resume(reason)) => {
-                connection.resume(reason).await;
-                Handled::Replies(Vec::new())
-            }
             Ok(Prepared::Deliver) => {
                 let taken = connection.handle(frame).await;
                 if let (true, Some((id, turn))) = (taken, saved) {
@@ -509,12 +499,6 @@ impl Shard {
                     .touch_conversation(record.id.clone())
                     .await?;
                 self.mark(Part::Conversation(record.id));
-            }
-            // The user's Resume carries where the turn now runs, which only
-            // the backend knows (`failures-and-recovery.md` § The unfinished
-            // turn).
-            ClientFrame::Resume {} => {
-                return Ok(Prepared::Resume(self.resume_reason(&record).await?));
             }
             _ => {}
         }
@@ -643,8 +627,6 @@ impl Shard {
 /// What the backend decided about a frame before the agent sees it.
 enum Prepared {
     Deliver,
-    /// Deliver the user's Resume with the reason the backend composed.
-    Resume(Option<String>),
     Refused(ErrorCode, String),
 }
 

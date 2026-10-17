@@ -13,7 +13,7 @@ use std::{
 use demi_provider_common::{RequestLimits, ResultPart, ToolDefinition};
 use demi_shared_gates::{GateLease, Reservation};
 use demi_shared_types::{
-    CommandId, CommandReport, ErrorDevice, InstructionEntry, ModelSelection, ShellToolView,
+    CommandId, CommandReport, InstructionEntry, ModelSelection, ShellToolView,
     ToolView, TurnId,
 };
 use futures_util::{future::LocalBoxFuture, stream::LocalBoxStream};
@@ -443,10 +443,6 @@ pub enum ToolEffect {
         interval_ms: Option<u32>,
         ran: Duration,
     },
-    /// The call ran nothing because its Host, `device`, was offline: unless
-    /// a later call of the turn runs there, a root's turn that ends after it
-    /// is unfinished (`failures-and-recovery.md` § The unfinished turn).
-    HostOffline(ErrorDevice),
 }
 
 /// A tool that failed; its call completes as `Tool failed: <message>`.

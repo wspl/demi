@@ -11,7 +11,8 @@ import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import type { ConnectionProblem } from '@demicodes/web-ui/transport/connection'
 import type { Block } from '@demicodes/protocol'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
-import { accountSwitchBlocks, generationErrorBlock, hostOfflineErrorBlock, shortTranscriptBlocks, signedOutErrorBlock, usageLimitErrorBlock } from '../fixtures/blocks'
+import { accountSwitchBlocks, generationErrorBlock, shortTranscriptBlocks, signedOutErrorBlock, usageLimitErrorBlock, WAITING_SHELL_SCRIPT, waitingShellCall } from '../fixtures/blocks'
+import { ago } from '../fixtures/time'
 import { galleryMessages } from '../fixtures/send-while-running'
 import {
   compactedAfterFailedTurnTranscript,
@@ -75,10 +76,65 @@ function offlineCard(primary: HostMenuHost | undefined): OfflineHost | null {
   }
 }
 
-/** The offline card moved the conversation: it runs on the chosen Host now, online. */
+/**
+ * The offline card moved the conversation: it runs on the chosen Host now,
+ * online, and each command that waited for the device it left ends without
+ * having run, saying where the conversation runs now.
+ */
 function move(item: SessionCase, host: HostChoice, name: string): void {
-  if (item.primary) {
-    Object.assign(item.primary, { id: host.kind === 'cloud' ? 'cloud' : host.id, kind: host.kind, name, state: 'online' })
+  if (!item.primary) {
+    return
+  }
+  const left = item.primary.name
+  for (const terminal of item.session.terminals) {
+    if (terminal.waitingFor !== undefined) {
+      delete terminal.waitingFor
+      Object.assign(terminal, {
+        phase: 'exited',
+        exitCode: 127,
+        endedAt: new Date().toISOString(),
+        output: `This conversation now runs on ${name}; this command did not run, since ${left} was offline.\n`,
+      })
+    }
+  }
+  Object.assign(item.primary, { id: host.kind === 'cloud' ? 'cloud' : host.id, kind: host.kind, name, state: 'online' })
+}
+
+/**
+ * The user's Stop of the specimen's running turn: a command that waited for
+ * the device ends stopped without having run, and its call with it, as the
+ * product records the stop.
+ */
+function stopTurn(item: SessionCase): void {
+  for (const terminal of item.session.terminals) {
+    if (terminal.waitingFor !== undefined) {
+      delete terminal.waitingFor
+      Object.assign(terminal, { phase: 'aborted', endedAt: new Date().toISOString() })
+    }
+  }
+  for (const window of item.session.history.windows) {
+    for (const block of window.blocks) {
+      if (block.type === 'tool_call' && block.status === 'executing') {
+        Object.assign(block, { status: 'error', endedAt: new Date().toISOString() })
+      }
+    }
+  }
+  item.session.phase = 'idle'
+}
+
+/**
+ * The specimen's runner connected or disconnected: a command that waited for
+ * the device starts once its runner is back.
+ */
+function toggleRunner(item: SessionCase): void {
+  if (!item.primary) {
+    return
+  }
+  item.primary.state = item.primary.state === 'online' ? 'offline' : 'online'
+  if (item.primary.state === 'online') {
+    for (const terminal of item.session.terminals) {
+      delete terminal.waitingFor
+    }
   }
 }
 
@@ -213,10 +269,21 @@ const cases: SessionCase[] = [
     composer: 'default',
   },
   {
-    variant: 'Host went offline · Resume waits for the device',
-    note: 'A call failed because the conversation’s device was offline, and the agent ended its turn with work left undone. Demi’s record says so and leaves the turn unfinished; Resume continues the turn where the conversation runs now: it stays disabled, saying the device is still offline, until its runner is back or Move to Another Host… takes the conversation elsewhere. The device’s offline card stands above the chips, which sit directly on the input.',
+    variant: 'Host went offline · the agent waits for the device',
+    note: 'Not a failure. The conversation’s device went offline while the agent was about to run its tests: the command waits for the device, its row saying Waiting for MacBook Pro, and the turn stays running. Connect Runner starts the command, which then runs as any command does. Move to Another Host… on the device’s offline card moves the conversation at once: the waiting command never ran, it ends saying where the conversation runs now, and the agent goes on there. Stop ends the wait.',
     session: state('host-offline', {
-      blocks: [...shortTranscriptBlocks(), hostOfflineErrorBlock()],
+      blocks: [...shortTranscriptBlocks(), waitingShellCall()],
+      phase: 'running',
+      terminals: [{
+        id: 'term-waiting',
+        title: 'Run the tests',
+        script: WAITING_SHELL_SCRIPT,
+        phase: 'running',
+        startedAt: ago(20_000),
+        output: '',
+        toolUseId: waitingShellCall().toolUseId,
+        waitingFor: 'MacBook Pro',
+      }],
     }),
     primary: reactive<HostMenuHost>({ id: 'mac', name: 'MacBook Pro', kind: 'device', state: 'offline', mark: GALLERY_MARKS.mac }),
     composer: 'default',
@@ -317,6 +384,8 @@ const cases: SessionCase[] = [
                     :models="item.composer === 'noModels' ? {} : undefined"
                     :archived="item.composer === 'archived'"
                     :offline-host="offlineCard(item.primary)"
+                    :running="item.session.phase === 'running'"
+                    @stop="stopTurn(item)"
                     @moved="(host, name) => move(item, host, name)"
                   />
                 </template>
@@ -326,7 +395,7 @@ const cases: SessionCase[] = [
               v-if="item.primary"
               size="sm"
               variant="ghost"
-              @click="item.primary.state = item.primary.state === 'online' ? 'offline' : 'online'"
+              @click="toggleRunner(item)"
             >
               {{ item.primary.state === 'online' ? 'Disconnect Runner' : 'Connect Runner' }}
             </Button>

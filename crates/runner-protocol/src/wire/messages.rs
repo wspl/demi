@@ -1944,9 +1944,6 @@ pub struct KeptEnd {
         with = "unwrap_or_skip"
     )]
     pub signal: Option<String>,
-    /// The runner stopped it after the connection stayed away for
-    /// `UNREACHED_GRACE`.
-    pub unreached: bool,
 }
 
 /// A file a job changed: its edit record entry and its line counts.

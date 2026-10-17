@@ -69,7 +69,6 @@ async fn run_turn(
     // The turn's first request follows its new input; each later one
     // continues the running turn.
     let mut continues = false;
-    s.update(|core| core.offline_host = None);
     loop {
         cancel.check()?;
         // The turn needs the model's next answer from here: after its input,
@@ -136,30 +135,9 @@ async fn run_turn(
             continue;
         }
         if !executed {
-            end_offline_turn(s).await?;
             return Ok(());
         }
     }
-}
-
-/// Leaves a root's turn that ends after a call found its Host offline, with
-/// no later call run there, unfinished: an error of Demi's own after the
-/// agent's last words offers Resume (`failures-and-recovery.md` § The
-/// unfinished turn).
-async fn end_offline_turn(s: &SessionShared) -> Result<(), TurnError> {
-    if !s.runtime.user_recovers_turns() {
-        return Ok(());
-    }
-    let ended = s.update(|core| {
-        let device = core.offline_host.take()?;
-        let model = core.model.clone();
-        core.transcript.push_host_offline(&model, device);
-        Some(())
-    });
-    if ended.is_some() {
-        persist::flush(s).await?;
-    }
-    Ok(())
 }
 
 /// The estimate of the next request of the current model over the replayed
@@ -701,8 +679,7 @@ async fn record_result(
     started_in: Option<&str>,
 ) {
     let (output, held) = media::store_result(outcome.output, s.store.blobs()).await;
-    // A call that ran a command ran on the turn's Host: the Host an earlier
-    // call found offline is back.
+    // A call that ran a command lists what later calls changed.
     let ran = matches!(outcome.view, Some(ToolView::Shell(_)));
     let view = match outcome.view {
         Some(ToolView::Shell(view)) => {
@@ -714,9 +691,6 @@ async fn record_result(
     s.update(|core| {
         core.media.absorb(held);
         core.complete_tool_call(&call.tool_use_id, output, outcome.is_error, view);
-        if ran {
-            core.offline_host = None;
-        }
     });
     if ran {
         relist_later_calls(s, &call.tool_use_id).await;
@@ -729,9 +703,6 @@ async fn record_result(
         }) => {
             s.update(|core| core.watch_command(command.clone(), interval_ms));
             reports::start_watch(s, &command, ran);
-        }
-        Some(ToolEffect::HostOffline(device)) => {
-            s.update(|core| core.offline_host = Some(device));
         }
         None => {}
     }

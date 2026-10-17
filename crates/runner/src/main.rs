@@ -196,11 +196,6 @@ enum Action {
         /// runner the installer or `start` starts in the background does.
         #[arg(long, hide = true)]
         log: bool,
-        /// How long a test's runner keeps its jobs without a connection, in
-        /// milliseconds, in place of `UNREACHED_GRACE`.
-        #[cfg(feature = "test-fixtures")]
-        #[arg(long, env = "DEMI_UNREACHED_GRACE_MS", hide = true)]
-        unreached_grace_ms: Option<u64>,
         /// How long a test's runner waits for a download's next byte, in
         /// milliseconds, in place of `DOWNLOAD_STALL`.
         #[cfg(feature = "test-fixtures")]
@@ -258,11 +253,6 @@ struct Installation {
 }
 
 async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
-    // Only a test's runner may shorten it.
-    #[cfg(feature = "test-fixtures")]
-    let mut unreached_grace = wire::UNREACHED_GRACE;
-    #[cfg(not(feature = "test-fixtures"))]
-    let unreached_grace = wire::UNREACHED_GRACE;
     #[cfg(feature = "test-fixtures")]
     let mut download_stall = update::DOWNLOAD_STALL;
     #[cfg(not(feature = "test-fixtures"))]
@@ -276,14 +266,8 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             artifacts,
             log,
             #[cfg(feature = "test-fixtures")]
-            unreached_grace_ms,
-            #[cfg(feature = "test-fixtures")]
             download_stall_ms,
         } => {
-            #[cfg(feature = "test-fixtures")]
-            if let Some(grace) = unreached_grace_ms {
-                unreached_grace = std::time::Duration::from_millis(grace);
-            }
             #[cfg(feature = "test-fixtures")]
             if let Some(stall) = download_stall_ms {
                 download_stall = std::time::Duration::from_millis(stall);
@@ -517,7 +501,6 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         installed: installed.filter(|_| !removing),
         removal,
         removing,
-        unreached_grace,
     };
     let stop = CancellationToken::new();
     let running = registration::run(options, stop.clone());

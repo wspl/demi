@@ -7,7 +7,7 @@
 
 use std::{
     cell::{Cell, RefCell},
-    collections::BTreeSet,
+    collections::{BTreeMap, BTreeSet, HashSet},
     rc::{Rc, Weak},
     time::Duration,
 };
@@ -38,6 +38,10 @@ pub(crate) struct LiveOutput {
     /// The commands that run, in every node of the tree, whether or not a
     /// connection is attached.
     running: watch::Sender<BTreeSet<CommandId>>,
+    /// The commands whose start waits for their Host, each with its node,
+    /// none for the root, and the call that started it
+    /// (`sessions-and-targets.md` § Host operations).
+    held: watch::Sender<BTreeMap<CommandId, (Option<NodeId>, String)>>,
 }
 
 /// A command whose new output waits: its view is read when it is sent.
@@ -56,12 +60,30 @@ impl LiveOutput {
             sent: Cell::new(None),
             wake: Notify::new(),
             running: watch::Sender::new(BTreeSet::new()),
+            held: watch::Sender::new(BTreeMap::new()),
         })
     }
 
     /// Whether a command of the tree runs.
     pub(crate) fn runs_commands(&self) -> bool {
         !self.running.borrow().is_empty()
+    }
+
+    /// The calls of the node `subagent`, the root when none, whose command's
+    /// start waits for its Host.
+    pub(crate) fn held_calls(&self, subagent: Option<&NodeId>) -> HashSet<String> {
+        self.held
+            .borrow()
+            .values()
+            .filter(|(node, _)| node.as_ref() == subagent)
+            .map(|(_, call)| call.clone())
+            .collect()
+    }
+
+    /// Changes whenever a command's start begins or stops waiting for its
+    /// Host.
+    pub(crate) fn watch_held(&self) -> watch::Receiver<BTreeMap<CommandId, (Option<NodeId>, String)>> {
+        self.held.subscribe()
     }
 
     /// Changes whenever a command of the tree starts or ends.
@@ -82,10 +104,17 @@ impl LiveOutput {
     /// end goes at once, with nothing of the command after it. Without an
     /// attached connection nothing is sent or kept.
     fn changed(&self, subagent: &Option<NodeId>, record: &Rc<RefCell<CommandRecord>>) {
-        let (command, running) = {
+        let (command, running, held) = {
             let record = record.borrow();
-            (record.command_id().clone(), record.is_running())
+            let held = record
+                .is_waiting()
+                .then(|| (subagent.clone(), record.tool_use_id().to_owned()));
+            (record.command_id().clone(), record.is_running(), held)
         };
+        self.held.send_if_modified(|commands| match held {
+            Some(held) => commands.insert(command.clone(), held.clone()).as_ref() != Some(&held),
+            None => commands.remove(&command).is_some(),
+        });
         self.running.send_if_modified(|commands| {
             if running {
                 commands.insert(command.clone())
