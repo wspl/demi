@@ -34,7 +34,9 @@ import type { PixelSize } from './thumbnail'
  * fitted picture fitted and a zoomed one at its zoom; another picture opens
  * fitted. Transparency shows over a checkerboard. On a phone a tap toggles
  * and a drag moves the picture the same way, and a pinch zooms it about the
- * fingers, which the page itself never does (`phone-page.ts`).
+ * fingers, which the page itself never does (`phone-page.ts`). With
+ * `dismissible`, as the phone's full screen shows it, a tap beside the
+ * picture, outside the box it is drawn in, asks to close it instead.
  *
  * With `steps` given, a finger swiped sideways across the picture at its
  * fitted size steps to the neighbour (`swipe-step.ts`): the picture follows
@@ -54,6 +56,8 @@ const props = defineProps<{
   steps?: StepReach
   /** The side a swipe brought this picture from, 1 the right and -1 the left, 0 when it did not slide in. */
   from?: -1 | 0 | 1
+  /** A tap beside the picture closes it rather than toggling its size, where the picture covers the screen. */
+  dismissible?: boolean
 }>()
 const emit = defineEmits<{
   size: [width: number, height: number]
@@ -62,6 +66,8 @@ const emit = defineEmits<{
   failed: []
   /** A swipe stepped to the next (1) or the previous (-1) picture; `slid` when this one slid out, so the next slides in. */
   step: [direction: -1 | 1, slid: boolean]
+  /** A tap landed beside the picture of a `dismissible` preview. */
+  dismiss: []
 }>()
 
 const image = ref<HTMLImageElement | null>(null)
@@ -164,6 +170,16 @@ function loaded(): void {
   emit('size', width, height)
 }
 
+/** Whether the frame's point `at` lies on the picture as it is drawn. */
+function onPicture(at: FramePoint): boolean {
+  const size = natural.value
+  const shown = view.value
+  if (!size || !shown)
+    return false
+  return at.x >= shown.x && at.x <= shown.x + size.width * shown.scale
+    && at.y >= shown.y && at.y <= shown.y + size.height * shown.scale
+}
+
 /** Where `event` is in the frame. */
 function framePoint(event: MouseEvent): FramePoint {
   const box = frame.value?.getBoundingClientRect()
@@ -243,10 +259,14 @@ function onPress(event: PointerEvent): void {
   const size = natural.value
   const start = view.value
   const reach = props.steps
-  if (event.button !== 0 || stopPress || leaving || !size || !start || !room.value)
+  if (event.button !== 0)
     return
-  // No text selection, and no dragging of the picture out of the page, starts under the press.
+  // No text selection, and no dragging of the picture out of the page, starts under the press; and
+  // every press on the frame is the picture's, a pinch's second finger included, so nothing around
+  // it takes the press for a tap on empty space (`MediaViewer`).
   event.preventDefault()
+  if (stopPress || leaving || !size || !start || !room.value)
+    return
   // A press during a spring back takes the picture where the finger finds it.
   sliding?.cancel()
   sliding = null
@@ -289,6 +309,8 @@ function onPress(event: PointerEvent): void {
         return
       if (cancelled)
         view.value = start
+      else if (!dragged && props.dismissible && !onPicture(at))
+        emit('dismiss')
       else if (!dragged && room.value)
         view.value = toggledView(view.value ?? start, at, size, room.value)
     },
