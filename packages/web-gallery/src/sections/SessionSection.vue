@@ -953,17 +953,18 @@ function toggleRunningRun(): void {
   if (command.phase === 'running') {
     const endedAt = new Date().toISOString()
     Object.assign(command, { phase: 'exited', exitCode: 0, endedAt })
-    runningRun.blocks[index] = {
+    // The list is replaced, as the page's store replaces it, never changed in place.
+    runningRun.blocks = runningRun.blocks.with(index, {
       ...call,
       status: 'completed',
       view: shellView({ commandId: '62', runningMs: Date.parse(endedAt) - Date.parse(command.startedAt), chunks: [{ stream: 'stdout', text: command.output }] }),
-    }
+    })
     return
   }
   Object.assign(command, { phase: 'running', startedAt: new Date().toISOString() })
   delete command.exitCode
   delete command.endedAt
-  runningRun.blocks[index] = { ...call, status: 'executing', view: null }
+  runningRun.blocks = runningRun.blocks.with(index, { ...call, status: 'executing', view: null })
 }
 /**
  * A run stepped through what the transcript shows while it goes: Next Step

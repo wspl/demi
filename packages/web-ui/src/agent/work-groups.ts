@@ -108,6 +108,48 @@ function isEmptyThinking(block: MessageListBlock): boolean {
  * taking its place (`succeedKeys`).
  */
 export function groupWork(blocks: readonly MessageListBlock[], running: boolean): MessageListBlock[] {
+  return groupRuns(blocks, running, new Map(), new Map())
+}
+
+/**
+ * `groupWork` for a transcript that changes a little at a time, as a turn
+ * that streams changes its last blocks many times a second: each call
+ * groups the blocks it is given, and a run whose blocks, the block after
+ * it and whether it is live are the ones the last call grouped keeps the
+ * rows it had then, the same objects. A change at the end then regroups
+ * only the run it is in, and the list redraws none of the rows above it.
+ * A block that changes is replaced, never changed in place
+ * (`applyTranscriptPatches`), so the same block is the same content.
+ */
+export function workGrouping(): (blocks: readonly MessageListBlock[], running: boolean) => MessageListBlock[] {
+  let last = new Map<MessageListBlock, GroupedRun>()
+  return (blocks, running) => {
+    const next = new Map<MessageListBlock, GroupedRun>()
+    const rows = groupRuns(blocks, running, last, next)
+    last = next
+    return rows
+  }
+}
+
+/** The rows a run of steps was grouped into, and what they were grouped from. */
+interface GroupedRun {
+  blocks: readonly MessageListBlock[]
+  /** The block after the run, whose start is when its last step ended; none at the transcript's end. */
+  next: MessageListBlock | undefined
+  live: boolean
+  rows: readonly MessageListBlock[]
+}
+
+/**
+ * `blocks` grouped, each run's rows taken from `last`, by the run's first
+ * block, when it was grouped from the same blocks, and kept in `kept`.
+ */
+function groupRuns(
+  blocks: readonly MessageListBlock[],
+  running: boolean,
+  last: ReadonlyMap<MessageListBlock, GroupedRun>,
+  kept: Map<MessageListBlock, GroupedRun>,
+): MessageListBlock[] {
   const rows: MessageListBlock[] = []
   let index = 0
   while (index < blocks.length) {
@@ -127,23 +169,54 @@ export function groupWork(blocks: readonly MessageListBlock[], running: boolean)
     }
     const next = blocks[end]
     const live = running && next === undefined
-    const steps = joinThinking(blocks.slice(index, end).filter((step, at, run): step is WorkStep =>
-      isWorkStep(step) && !(isEmptyThinking(step) && !(live && at === run.length - 1))))
-    const runs = (step: WorkStep, at: number) => stepRuns(step, live, at === steps.length - 1)
-    const ended = steps.filter((step, at) => !runs(step, at))
-    const runningSteps = steps.filter(runs)
-    // Thinking alone is one step once joined, so every ended run that shows anything is a row.
-    if (ended.length > 0 && !((live || runningSteps.length > 0) && ended.every((step) => step.type === 'thinking'))) {
-      rows.push({
-        type: 'work_group',
-        id: runRowId(runOf(ended[0]!) ?? stepKey(ended[0]!)),
-        steps: ended,
-        ends: ended.map((step) => startAfter(blocks, step)),
-      })
-    }
-    rows.push(...runningSteps)
+    const before = last.get(block)
+    const grouped = before && sameRun(before, blocks, index, end, next, live)
+      ? before
+      : { blocks: blocks.slice(index, end), next, live, rows: runRows(blocks.slice(index, end), next, live) }
+    kept.set(block, grouped)
+    rows.push(...grouped.rows)
     index = end
   }
+  return rows
+}
+
+/** Whether `grouped` was grouped from the run `blocks[index..end]`, followed by `next`. */
+function sameRun(
+  grouped: GroupedRun,
+  blocks: readonly MessageListBlock[],
+  index: number,
+  end: number,
+  next: MessageListBlock | undefined,
+  live: boolean,
+): boolean {
+  if (grouped.next !== next || grouped.live !== live || grouped.blocks.length !== end - index)
+    return false
+  return grouped.blocks.every((block, offset) => block === blocks[index + offset])
+}
+
+/**
+ * The rows of one run, `blocks`, followed by `next`: the row of the steps
+ * that ended, then each step that still runs.
+ */
+function runRows(blocks: readonly MessageListBlock[], next: MessageListBlock | undefined, live: boolean): MessageListBlock[] {
+  const rows: MessageListBlock[] = []
+  const steps = joinThinking(blocks.filter((step, at, run): step is WorkStep =>
+    isWorkStep(step) && !(isEmptyThinking(step) && !(live && at === run.length - 1))))
+  const runs = (step: WorkStep, at: number) => stepRuns(step, live, at === steps.length - 1)
+  const ended = steps.filter((step, at) => !runs(step, at))
+  const runningSteps = steps.filter(runs)
+  // Thinking alone is one step once joined, so every ended run that shows anything is a row.
+  if (ended.length > 0 && !((live || runningSteps.length > 0) && ended.every((step) => step.type === 'thinking'))) {
+    // Where each block stands in the run, so each step finds the block after it at once.
+    const positions = new Map(blocks.map((block, at) => [block.id, at]))
+    rows.push({
+      type: 'work_group',
+      id: runRowId(runOf(ended[0]!) ?? stepKey(ended[0]!)),
+      steps: ended,
+      ends: ended.map((step) => startOf(blocks[positions.get(followedBlockId(step))! + 1] ?? next)),
+    })
+  }
+  rows.push(...runningSteps)
   return rows
 }
 
@@ -157,11 +230,9 @@ export function followedBlockId(row: MessageListBlock): string {
   return row.type === 'thinking' && 'parts' in row && Array.isArray(row.parts) ? row.parts.at(-1)!.id : row.id
 }
 
-/** The start of the block after `step` in `blocks`: when the step, if thinking, ended. */
-function startAfter(blocks: readonly MessageListBlock[], step: WorkStep): string | null {
-  const last = followedBlockId(step)
-  const next = blocks[blocks.findIndex((block) => block.id === last) + 1]
-  return next && 'createdAt' in next ? next.createdAt : null
+/** When `block`, the block after a step, started, which is when the step, if thinking, ended. */
+function startOf(block: MessageListBlock | undefined): string | null {
+  return block && 'createdAt' in block ? block.createdAt : null
 }
 
 /**

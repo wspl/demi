@@ -60,7 +60,19 @@ export interface HeldTranscript<B extends Held = HeldBlock> {
   windows: readonly TranscriptWindow<B>[]
 }
 
-export const EMPTY_TRANSCRIPT: HeldTranscript = { length: 0, windows: [] }
+/**
+ * A transcript as the page holds it, frozen: it is replaced at each change,
+ * never changed in place, so whoever holds it follows the one reference.
+ * A frozen object is also one a reactive store keeps as it is rather than
+ * behind a proxy (Vue makes no proxy of an object that cannot be extended),
+ * so reading a long transcript at each streamed piece costs plain reads, not
+ * a tracked read of every field.
+ */
+export function heldTranscript<B extends Held>(length: number, windows: readonly TranscriptWindow<B>[]): HeldTranscript<B> {
+  return Object.freeze({ length, windows })
+}
+
+export const EMPTY_TRANSCRIPT: HeldTranscript = heldTranscript(0, [])
 
 /** The index just past a window's last block. */
 export function windowEnd<B extends Held>(window: TranscriptWindow<B>): number {
@@ -161,10 +173,7 @@ export function resetTranscript(
 ): HeldTranscript {
   const rewritten = asked !== undefined && reset.start !== asked
   const kept = rewritten ? [] : truncated(held.windows, reset.start)
-  return {
-    length: reset.length,
-    windows: joined(kept, { start: reset.start, blocks: withVersions(reset.blocks, reset.versions) }, 'incoming'),
-  }
+  return heldTranscript(reset.length, joined(kept, { start: reset.start, blocks: withVersions(reset.blocks, reset.versions) }, 'incoming'))
 }
 
 /**
@@ -192,26 +201,20 @@ export function addWindow<B extends Held>(
   page: { start: number; length: number; blocks: B[] },
   live: boolean,
 ): HeldTranscript<B> {
-  return {
-    length: live ? held.length : page.length,
-    windows: joined(held.windows, { start: page.start, blocks: page.blocks }, 'held'),
-  }
+  return heldTranscript(live ? held.length : page.length, joined(held.windows, { start: page.start, blocks: page.blocks }, 'held'))
 }
 
 /** The transcript with `block` whole in place of the held one of its id. */
 export function withWholeBlock(held: HeldTranscript, block: Block): HeldTranscript {
-  return {
-    length: held.length,
-    windows: held.windows.map((window) => {
-      const offset = window.blocks.findIndex((candidate) => candidate.id === block.id)
-      if (offset < 0) {
-        return window
-      }
-      const blocks = [...window.blocks]
-      blocks[offset] = block
-      return { start: window.start, blocks }
-    }),
-  }
+  return heldTranscript(held.length, held.windows.map((window) => {
+    const offset = window.blocks.findIndex((candidate) => candidate.id === block.id)
+    if (offset < 0) {
+      return window
+    }
+    const blocks = [...window.blocks]
+    blocks[offset] = block
+    return { start: window.start, blocks }
+  }))
 }
 
 /** `windows` without the blocks from `length` on. */
@@ -293,5 +296,5 @@ export function applyTranscriptPatches(
         break
     }
   }
-  return { length, windows }
+  return heldTranscript(length, windows)
 }
