@@ -111,7 +111,10 @@ test.each([
 
 // Each language says a date and a time as Intl says them in it, and the
 // compact forms Intl has no words for from its catalogue
-// (`localization.md` § Where the text lives).
+// (`localization.md` § Where the text lives). Intl's own wording is compared
+// without a space between a number and a CJK word: the ICU of macOS writes
+// "5分鐘前" and the ICU of Linux "5 分鐘前", the same wording.
+const intl = (text: string) => text.replace(/(\d) (?=[\u3040-\u30ff\u4e00-\u9fff\uac00-\ud7af])/g, '$1')
 test.each<{ language: Language; age: string; day: string; past: string; reset: string; span: string }>([
   { language: 'en', age: '2h', day: 'October 7, 2026', past: '5 minutes ago', reset: 'Resets in 3h 42m', span: '2m 14s' },
   { language: 'zh-Hans', age: '2小时前', day: '2026年10月7日', past: '5分钟前', reset: '3 小时 42 分钟后重置', span: '2 分 14 秒' },
@@ -122,7 +125,7 @@ test.each<{ language: Language; age: string; day: string; past: string; reset: s
   createPageI18n(language)
   expect(formatAge(inMs(-2 * HOUR - MINUTE), now)).toBe(age)
   expect(formatDay(at(2026, 9, 7, 14, 0))).toBe(day)
-  expect(formatPast(inMs(-5 * MINUTE), now)).toBe(past)
+  expect(intl(formatPast(inMs(-5 * MINUTE), now))).toBe(intl(past))
   expect(formatReset(inMs(3 * HOUR + 42 * MINUTE), now)).toBe(reset)
   expect(formatSpan(134_900)).toBe(span)
 })
