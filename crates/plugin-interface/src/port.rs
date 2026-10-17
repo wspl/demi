@@ -12,7 +12,10 @@ use demi_shared_types::{B64Bytes, BlobRef};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::panel::{CreatePanelTab, WorkPanel};
 
-use crate::{PluginId, Scope, SecretName, StoredSecret, WebFailure, WebRequest, WebResponse};
+use crate::{
+    ImageAsk, ImageModel, ImageRefusal, MadeImage, PluginId, Scope, SecretName, StoredSecret, WebFailure,
+    WebRequest, WebResponse,
+};
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -128,6 +131,13 @@ pub enum PortMessage {
     /// Revokes the user's sign-in at the vendor when it offers revocation,
     /// and forgets it either way.
     OauthSignOut,
+    /// The image models of the user's provider entries, the default first.
+    ImageModels,
+    /// Makes one image through an entry's account, for the request's
+    /// conversation and the agent that called the command.
+    MakeImage {
+        ask: ImageAsk,
+    },
 }
 
 /// The answer to one [`PortMessage`].
@@ -198,6 +208,12 @@ pub enum PortAnswer {
     AccessToken {
         token: String,
     },
+    ImageModels {
+        models: Vec<ImageModel>,
+    },
+    Image {
+        image: MadeImage,
+    },
     Refused {
         refusal: PortRefusal,
     },
@@ -222,6 +238,8 @@ impl PortAnswer {
             Self::Response { .. } => "response",
             Self::AuthorizationUrl { .. } => "authorization_url",
             Self::AccessToken { .. } => "access_token",
+            Self::ImageModels { .. } => "image_models",
+            Self::Image { .. } => "image",
             Self::Refused { .. } => "refused",
         }
     }
@@ -328,8 +346,9 @@ pub struct DirectoryPath {
     pub path: String,
 }
 
-/// One path a plugin reads on a Host: absolute, as the Host names it, and
-/// the most bytes of a file to answer.
+/// One path a plugin reads on a Host, as the Host names it, and the most
+/// bytes of a file to answer: absolute, or, for a command, relative to its
+/// job's directory, which the Host's own rules resolve.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct HostRead {
@@ -462,6 +481,9 @@ pub enum PortRefusal {
     /// forgot.
     #[error("the user is not signed in")]
     SignedOut,
+    /// No image was made.
+    #[error("{refusal}")]
+    Image { refusal: ImageRefusal },
 }
 
 /// Why a typed port operation did not answer.
@@ -753,6 +775,23 @@ impl PluginPort {
     /// revocation, and the host forgets them either way.
     pub async fn oauth_sign_out(&self) -> Result<(), PortFailure> {
         self.done("oauth_sign_out", PortMessage::OauthSignOut).await
+    }
+
+    /// The image models of the user's provider entries, the default first.
+    pub async fn image_models(&self) -> Result<Vec<ImageModel>, PortFailure> {
+        match self.ask(PortMessage::ImageModels).await? {
+            PortAnswer::ImageModels { models } => Ok(models),
+            answer => Err(unexpected("image_models", &answer)),
+        }
+    }
+
+    /// Makes the image `ask` names; [`PortRefusal::Image`] when none was
+    /// made.
+    pub async fn make_image(&self, ask: ImageAsk) -> Result<MadeImage, PortFailure> {
+        match self.ask(PortMessage::MakeImage { ask }).await? {
+            PortAnswer::Image { image } => Ok(image),
+            answer => Err(unexpected("make_image", &answer)),
+        }
     }
 
     async fn panel_change(

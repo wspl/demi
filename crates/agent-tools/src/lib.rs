@@ -310,6 +310,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             caller: JobCaller {
                 node: self.node.clone(),
                 tool_use_id: call.tool_use_id,
+                turn: Some(call.turn),
             },
             title: input.description.0.clone(),
             interval_ms,
@@ -410,6 +411,7 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
             caller: JobCaller {
                 node: self.node.clone(),
                 tool_use_id: running.tool_use_id.clone(),
+                turn: running.turn.clone(),
             },
             title: running.title.clone(),
             running: ran,

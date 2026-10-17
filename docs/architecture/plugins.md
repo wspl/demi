@@ -417,13 +417,14 @@ conversation's operations need a request about a conversation: a `command`, a
 | Storage | Values: read, list, conditional write, conditional removal | Every request | The plugin's own values for the user, each a JSON document with a revision ([Storage](../backend/storage.md#control-records)) |
 | | Blobs: put, get | Every request | Bytes in the user's blob namespace, by SHA-256 |
 | Hosts | Set directories | Every request | Replace the user's set of [Host directories](#host-directories); the reply is each directory's path on a Host |
-| | Read files | A conversation's | Several paths on the conversation's primary Host, if it is running ([Reading a conversation's files](#reading-a-conversations-files)) |
+| | Read files | A conversation's | Several paths on the conversation's primary Host, if it is running; for a `command`, on the Host its job runs on, a relative path resolved against the job's directory as that Host resolves it ([Reading a conversation's files](#reading-a-conversations-files)) |
 | | Call a package | A conversation's | One operation of a package the manifest names, waking the Host or not ([Calling its command package](#calling-its-command-package)) |
 | Pages | Changed | Every request | Mark one scope of the plugin's page state, the user's or one conversation's, as changed, so the pages that show it read it again ([The page](#the-page)) |
 | Panel | List, create, update, remove | A conversation's | The conversation's work panel tabs of the plugin's own [panel kinds](#panel-kinds); a change answers the panel's revision |
 | Secrets | Read, conditional write, removal | Every request | The plugin's own [secrets](#secrets) for the user, sealed at rest |
 | Web | Send a request | Every request | One outbound HTTPS request through the backend's shared client, with a deadline and a body limit the plugin names ([Outbound requests](#outbound-requests)) |
 | | OAuth: start, token, sign out | Every request | The user's sign-in to a vendor the manifest names ([OAuth sign-in](#oauth-sign-in)) |
+| Providers | Image models, make an image | Every request | The image models of the user's provider entries, and one image from a prompt and images through an entry's account, which the backend chooses, rotates and records in the usage ledger; no token reaches the plugin ([Image generation](../agent/images.md)) |
 | Request | Cancellation | Every request | Whether, and when, the request was cancelled |
 
 A product service a plugin may use is one service of the port and its
@@ -668,6 +669,7 @@ not use.
 | `browser` | Browser | `plugin-browser` | The `demi browser` group, bound to `demi.browser`; the `browser` user stream; package calls; conversation state, the conversation browser's tabs, following `calls`, with methods to open, close, navigate and go back | `@demicodes/plugin-browser`: the `browser` work panel kind with the live view | [Conversation browser](../browser/browser.md#command-contract), [Live view](../browser/live-view.md) |
 | `skills` | Skills | `plugin-skills` | A context source; the `demi skills` group and the category Manage skills; values and blobs; Host directories; Host file reads; user state and six methods | `@demicodes/plugin-skills`: a settings section with its sidebar entry | [Skills](../agent/skills.md) |
 | `web` | Web | `plugin-web` | The `demi web` group: `search`, an rpc leaf, and `fetch`, bound to `demi.fetch`; secrets, outbound requests and an OAuth sign-in to Exa; user state and methods to sign in, sign out, save and remove a key | `@demicodes/plugin-web`: the Web Search settings section with its sidebar entry | [Web search and fetch](../agent/web.md) |
+| `image` | Image Generation | `plugin-image` | The `demi image` group, rpc leaves; Host file reads; the Providers service | None | [Image generation](../agent/images.md) |
 | `changes` | Changes | `plugin-changes` | Its identity and its page package | `@demicodes/plugin-changes`: the pinned `change` kind, the Change view | [Changes](../product/file-previews.md#changes), [Edit tracking](../execution/edit-tracking.md) |
 | `file-browser` | File Browser | `plugin-file-browser` | Its identity and its page package | `@demicodes/plugin-file-browser`: the pinned `file` kind, the File view | [File previews](../product/file-previews.md) |
 

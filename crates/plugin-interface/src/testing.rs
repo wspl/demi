@@ -18,6 +18,7 @@ use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
+    ImageAsk, ImageModel, MadeImage,
     CallKind, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile, HostRead, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
     PortRefusal, Reply, Request, SecretName, StoredSecret, StoredValue, WebRequest, WebResponse,
@@ -80,6 +81,9 @@ pub type PackageCalls =
 /// refusal.
 pub type WebRequests = Box<dyn Fn(&WebRequest) -> Result<WebResponse, PortRefusal>>;
 
+/// How a test answers a request for an image: the image made, or a refusal.
+pub type ImageRequests = Box<dyn Fn(&ImageAsk) -> Result<MadeImage, PortRefusal>>;
+
 /// A package call a plugin made.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackageCall {
@@ -93,7 +97,8 @@ pub struct PackageCall {
 /// Host directories, the files of the conversation's primary Host, the
 /// package calls a test answers, how often the plugin marked its state
 /// as changed, the conversation's work panel, the plugin's secrets, the
-/// outbound requests a test answers and the user's sign-in.
+/// outbound requests a test answers, the user's sign-in, and the image
+/// models and images of the user's provider entries a test answers.
 pub struct TestDemi {
     /// The plugin whose port this is, which names its directories' paths.
     pub plugin: RefCell<PluginId>,
@@ -107,6 +112,9 @@ pub struct TestDemi {
     /// The files of the conversation's primary Host by absolute path, its
     /// directories being their parents; none while the Host is not running.
     pub host_files: RefCell<Option<BTreeMap<String, Vec<u8>>>>,
+    /// The directory a command's job runs in, which a relative read is
+    /// read against, as the backend reads it for a command.
+    pub job_directory: RefCell<String>,
     pub package_calls: RefCell<Option<PackageCalls>>,
     /// Each package call the plugin made.
     pub called: RefCell<Vec<PackageCall>>,
@@ -120,6 +128,11 @@ pub struct TestDemi {
     pub sent: RefCell<Vec<WebRequest>>,
     /// The access token of the user's sign-in; none while signed out.
     pub access_token: RefCell<Option<String>>,
+    /// The image models of the user's provider entries.
+    pub image_models: RefCell<Vec<ImageModel>>,
+    pub image_requests: RefCell<Option<ImageRequests>>,
+    /// Each image the plugin asked for.
+    pub images_asked: RefCell<Vec<ImageAsk>>,
     /// Woken at each port message the plugin sends.
     answered: tokio::sync::Notify,
 }
@@ -142,6 +155,7 @@ impl TestDemi {
             blobs: RefCell::default(),
             directories: RefCell::default(),
             host_files: RefCell::default(),
+            job_directory: RefCell::new("/".to_owned()),
             package_calls: RefCell::default(),
             called: RefCell::default(),
             changed: Cell::new(0),
@@ -150,6 +164,9 @@ impl TestDemi {
             web_requests: RefCell::default(),
             sent: RefCell::default(),
             access_token: RefCell::default(),
+            image_models: RefCell::default(),
+            image_requests: RefCell::default(),
+            images_asked: RefCell::default(),
             answered: tokio::sync::Notify::new(),
         }
     }
@@ -320,7 +337,17 @@ impl TestDemi {
                 let files = self.host_files.borrow();
                 let files = files.as_ref().ok_or(PortRefusal::NotRunning)?;
                 PortAnswer::HostFiles {
-                    files: reads.iter().map(|read| host_file(files, read)).collect(),
+                    files: reads
+                        .iter()
+                        .map(|read| {
+                            let mut read = read.clone();
+                            if !read.path.starts_with('/') {
+                                let directory = self.job_directory.borrow();
+                                read.path = format!("{}/{}", directory.trim_end_matches('/'), read.path);
+                            }
+                            host_file(files, &read)
+                        })
+                        .collect(),
                 }
             }
             PortMessage::Changed { .. } => {
@@ -382,6 +409,16 @@ impl TestDemi {
             PortMessage::OauthSignOut => {
                 self.access_token.replace(None);
                 PortAnswer::Done
+            }
+            PortMessage::ImageModels => PortAnswer::ImageModels {
+                models: self.image_models.borrow().clone(),
+            },
+            PortMessage::MakeImage { ask } => {
+                let requests = self.image_requests.borrow();
+                let answer = requests.as_ref().expect("the test answers image requests");
+                let answer = answer(&ask);
+                self.images_asked.borrow_mut().push(ask);
+                PortAnswer::Image { image: answer? }
             }
         };
         Ok(answer)

@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 /// How account failures name the family.
-const FAMILY: &str = "Grok";
+pub(crate) const FAMILY: &str = "Grok";
 
 /// How long before its expiry a token is refreshed.
 const EXPIRY_SKEW: Duration = Duration::from_secs(5 * 60);

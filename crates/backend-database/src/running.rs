@@ -10,7 +10,7 @@
 use std::collections::BTreeMap;
 
 use demi_host_interface::Seen;
-use demi_shared_types::{CommandId, NodeId, Timestamp};
+use demi_shared_types::{CommandId, NodeId, Timestamp, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,9 @@ pub struct RunningCommand {
     pub job: String,
     /// The `shell` call that started it.
     pub tool_use_id: String,
+    /// The turn that call belongs to; none for a command recorded before
+    /// records kept it.
+    pub turn: Option<TurnId>,
     /// That call's title, which the command's reports name; empty for a
     /// command recorded before records kept it.
     pub title: String,
@@ -43,7 +46,7 @@ pub struct RunningCommand {
     pub places: BTreeMap<NodeId, Seen>,
 }
 
-const COLUMNS: &str = "command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title, interval_ms";
+const COLUMNS: &str = "command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title, interval_ms, turn_id";
 
 /// How far one node has seen a running command's output, as the `places`
 /// column stores it (command places format 1): any count of bytes is one.
@@ -93,7 +96,7 @@ impl StoredPlaces {
 pub fn insert(connection: &Connection, running: &RunningCommand) -> Result<(), StorageError> {
     connection
         .prepare_cached(&format!(
-            "INSERT INTO running_commands ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+            "INSERT INTO running_commands ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
              ON CONFLICT (command_id) DO NOTHING"
         ))?
         .execute(params![
@@ -106,6 +109,7 @@ pub fn insert(connection: &Connection, running: &RunningCommand) -> Result<(), S
             to_json(&StoredPlaces::of(&running.places)),
             running.title,
             running.interval_ms,
+            running.turn.as_ref().map(TurnId::as_str),
         ])?;
     Ok(())
 }
@@ -187,6 +191,10 @@ fn decode_row(row: &Row<'_>) -> Result<RunningCommand, StorageError> {
         tool_use_id: row.get(4)?,
         title: row.get(7)?,
         interval_ms: row.get(8)?,
+        turn: row
+            .get::<_, Option<String>>(9)?
+            .map(|turn| decode(table, "turn_id", TurnId::try_from(turn)))
+            .transpose()?,
         started: instant(row, table, "started_at")?,
         places: json::<StoredPlaces>(table, "places", &row.get::<_, String>(6)?)?.places(),
     })

@@ -46,6 +46,7 @@ pub(crate) fn caller() -> JobCaller {
     JobCaller {
         node: NodeId::try_from("test-session").unwrap(),
         tool_use_id: "call".into(),
+        turn: None,
     }
 }
 

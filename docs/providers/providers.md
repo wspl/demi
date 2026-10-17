@@ -177,6 +177,7 @@ provider   shared by every user and request of one entry and account
   model directory, read fresh on each call
   reading its vendor's failure records
   quota, and the accounts of a subscription family
+  images: its image models, and one image for one account (Codex, Grok Build)
   build a runtime ------------------------------------+
                                                       v
 runtime    one per session, on the user's shard

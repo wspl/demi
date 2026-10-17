@@ -4,6 +4,7 @@
 //! vendor.
 
 mod auth;
+mod images;
 mod login;
 mod models;
 mod quota;

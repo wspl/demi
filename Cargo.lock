@@ -1855,6 +1855,7 @@ dependencies = [
  "demi-plugin-changes",
  "demi-plugin-file",
  "demi-plugin-file-browser",
+ "demi-plugin-image",
  "demi-plugin-interface",
  "demi-plugin-skills",
  "demi-plugin-web",
@@ -2718,6 +2719,24 @@ name = "demi-plugin-file-browser"
 version = "0.1.22"
 dependencies = [
  "demi-plugin-interface",
+]
+
+[[package]]
+name = "demi-plugin-image"
+version = "0.1.22"
+dependencies = [
+ "demi-command-declarations",
+ "demi-host-interface",
+ "demi-plugin-interface",
+ "demi-shared-types",
+ "demi-web-api-protocol",
+ "futures-util",
+ "image",
+ "jiff",
+ "schemars",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

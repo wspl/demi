@@ -5,9 +5,10 @@
 //! OIDC tokens by the one protocol of `providers.md` § Token refresh, reads
 //! the model catalog from `/v1/models`, and keeps the account's quota from a
 //! free billing and subscription probe and the rate-limit headers of every
-//! chat response.
+//! chat response. It makes images through the proxy's image endpoints.
 
 mod auth;
+mod images;
 mod login;
 mod models;
 mod quota;
@@ -20,6 +21,7 @@ use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError,
     credentials::{Accounts, CredentialPool, SubscriptionAccounts},
+    images::ImageMaker,
     endpoint_url,
     quota::{ProviderQuota, QuotaSnapshotStore},
     read_http_failure,
@@ -76,6 +78,8 @@ pub struct GrokProvider {
 struct Shared {
     chat_url: Url,
     models_url: Url,
+    image_generations_url: Url,
+    image_edits_url: Url,
     auth: Arc<GrokAuth>,
     quota: ProviderQuota,
     accounts: Accounts<GrokKit>,
@@ -116,6 +120,8 @@ impl GrokProvider {
             shared: Arc::new(Shared {
                 chat_url: endpoint_url(&config.proxy_url, "/chat/completions"),
                 models_url: endpoint_url(&config.proxy_url, "/models"),
+                image_generations_url: endpoint_url(&config.proxy_url, "/images/generations"),
+                image_edits_url: endpoint_url(&config.proxy_url, "/images/edits"),
                 auth,
                 quota: ProviderQuota::new(Box::new(source), snapshots, clock.clone()),
                 accounts: Accounts::new(pool, kit, clock.clone()),
@@ -168,6 +174,10 @@ impl Provider for GrokProvider {
 
     fn accounts(&self) -> Option<&dyn SubscriptionAccounts> {
         Some(&self.shared.accounts)
+    }
+
+    fn images(&self) -> Option<&dyn ImageMaker> {
+        Some(self)
     }
 
     fn runtime(&self, env: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {
