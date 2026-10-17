@@ -2,8 +2,9 @@ import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, expect, test } from 'bun:test'
 
 // Settings › Agent's Image Generation rows (`images.md` § Which entry
-// makes an image): a row for each vendor the backend names, showing the
-// entry Automatic takes beside it, and a choice of the vendor's entries
+// makes an image): a row for each of the three vendors, naming the entry
+// Automatic takes after Automatic, by its name alone, each entry's account
+// after its name in the menu, and a choice of the vendor's entries
 // told to the host as the `imageEntries` it saves. The Settings page of
 // web-ui on a page of happy-dom. Tens of milliseconds.
 
@@ -44,12 +45,21 @@ const chatgpt = entry({
 const key = entry({ id: 'openai', name: 'OpenAI', kind: 'api_key', imageVendor: 'openai', imageGeneration: true })
 const grok = entry({ id: 'grok', name: 'Grok', kind: 'subscription', imageVendor: 'xai', imageGeneration: false })
 
-// Planted defects: the row without Automatic's entry beside it; a choice
+/** What `element` reads: its name, then the detail after it in secondary text when it has one. */
+function parts(element: HTMLElement): string[] {
+  const text = element.textContent!.trim()
+  const detail = element.querySelector('[data-detail]')?.textContent?.trim()
+  return detail ? [text.slice(0, text.length - detail.length).trim(), detail] : [text]
+}
+
+// Planted defects: the row without Automatic's entry after it, or with its account; a choice
 // not told to the host, or told without the other vendors' choices; an
-// entry whose Image Generation is off offered in the menu.
+// entry whose Image Generation is off offered in the menu; a vendor with
+// no entry left out, or not offering Add Provider….
 test('an Image Generation row shows the entry Automatic takes and tells the host the entry chosen', async () => {
   const chosen = ref<ImageEntryChoices>({ xai: 'grok' })
   const told: ImageEntryChoices[] = []
+  let addProvider = 0
   const element = document.createElement('div')
   document.body.append(element)
   const app = createApp({
@@ -71,6 +81,9 @@ test('an Image Generation row shows the entry Automatic takes and tells the host
           told.push(next)
           chosen.value = next
         },
+        onAddProvider: () => {
+          addProvider += 1
+        },
       }),
   })
   app.mount(element)
@@ -78,25 +91,35 @@ test('an Image Generation row shows the entry Automatic takes and tells the host
   const items = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')]
   try {
     await until(() => trigger('OpenAI') !== undefined, 'the rows show')
-    expect(trigger('OpenAI')!.textContent?.trim()).toBe('Automatic (ChatGPT · alex@example.com)')
-    // xAI's only entry is off: its row is Automatic alone, whatever was chosen.
-    expect(trigger('xAI')!.textContent?.trim()).toBe('Automatic')
+    expect(parts(trigger('OpenAI')!)).toEqual(['Automatic', '(ChatGPT)'])
+    // xAI's only entry is off and Google has none: each says Automatic is not available, whatever was chosen.
+    expect(parts(trigger('xAI')!)).toEqual(['Automatic', '(Not available)'])
+    expect(parts(trigger('Google')!)).toEqual(['Automatic', '(Not available)'])
 
     trigger('OpenAI')!.click()
     await until(() => items().length > 0, 'the menu opens')
-    expect(items().map((item) => item.textContent?.trim())).toEqual([
-      'Automatic (ChatGPT · alex@example.com)', 'ChatGPT · alex@example.com', 'OpenAI',
+    expect(items().map(parts)).toEqual([
+      ['Automatic', '(ChatGPT)'], ['ChatGPT', 'alex@example.com'], ['OpenAI'],
     ])
-    items()[2]!.click()
+    items()[1]!.click()
     await until(() => told.length === 1, 'the choice is told')
-    expect(told).toEqual([{ xai: 'grok', openai: 'openai' }])
-    await until(() => trigger('OpenAI')!.textContent?.trim() === 'OpenAI', 'the choice shows')
+    expect(told).toEqual([{ xai: 'grok', openai: 'codex' }])
+    await until(() => parts(trigger('OpenAI')!)[0] === 'ChatGPT', 'the choice shows')
+    // A chosen entry's trigger is its name alone.
+    expect(parts(trigger('OpenAI')!)).toEqual(['ChatGPT'])
 
     trigger('OpenAI')!.click()
     await until(() => items().length > 0, 'the menu opens again')
     items()[0]!.click()
     await until(() => told.length === 2, 'Automatic is told')
     expect(told[1]).toEqual({ xai: 'grok' })
+
+    await until(() => items().length === 0, 'the menu closes')
+    trigger('Google')!.click()
+    await until(() => items().length > 0, 'the menu of a vendor without entries opens')
+    expect(items().map(parts)).toEqual([['Automatic', '(Not available)'], ['Add Provider…']])
+    items()[1]!.click()
+    await until(() => addProvider === 1, 'Add Provider… is told')
   } finally {
     app.unmount()
   }

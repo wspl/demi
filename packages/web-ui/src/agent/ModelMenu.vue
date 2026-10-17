@@ -5,6 +5,7 @@ import { Brain, Cpu, Layers, Zap } from '@lucide/vue'
 import type { Component } from 'vue'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import type { TitleText } from '../ui/ui-text'
+import type { InlineDetailText } from '../ui/inline-detail'
 import type { ContextLimitChange } from './context-limit'
 import { modelSwitch, type ModelSettings, type ModelSettingsChange } from './model-selection'
 import { modelMenuRows } from './model-menu'
@@ -27,9 +28,9 @@ const props = defineProps<{
    * Offers a choice of no model of its own at the top, chosen while
    * `settings` is none: Parent's Model for a subagent profile, whose
    * children may infer with their parent's model, or Automatic for the
-   * small model.
+   * small model, with what it resolves to as its detail when that is known.
    */
-  standIn?: { label: TitleText; icon: Component }
+  standIn?: { label: TitleText; icon: Component; detail?: InlineDetailText }
   /**
    * Leaves out the Context row, the user's limit, as a subagent profile's
    * editor does, whose Context is the profile's own.
@@ -89,6 +90,7 @@ function selectStandIn() {
       <MenuItem
         :icon="standIn.icon"
         :label="standIn.label"
+        :detail="standIn.detail"
         choice
         :is-selected="rows.standIn.selected"
         @select="selectStandIn"

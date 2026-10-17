@@ -3,6 +3,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsAgent from '@demicodes/web-ui/settings/SettingsAgent.vue'
 import { imageVendorRows } from '@demicodes/web-ui/settings/image-entries'
 import { computed } from 'vue'
+import { useSettingsAddress } from './address'
 import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useResources } from '../state/resources'
@@ -15,6 +16,7 @@ import { useResources } from '../state/resources'
 const product = useProduct()
 const preferences = usePreferences()
 const resources = useResources()
+const settingsAddress = useSettingsAddress()
 const imageVendors = computed(() => imageVendorRows(resources.providers, product.automaticImageEntries))
 </script>
 
@@ -38,5 +40,6 @@ const imageVendors = computed(() => imageVendorRows(resources.providers, product
     :image-vendors="imageVendors"
     :image-entries="preferences.imageEntries"
     @update:image-entries="preferences.update({ imageEntries: $event })"
+    @add-provider="settingsAddress.show('models')"
   />
 </template>
