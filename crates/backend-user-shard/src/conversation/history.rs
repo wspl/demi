@@ -865,8 +865,8 @@ fn next_line(at: usize, page: u64, pages: u64) -> String {
     )
 }
 
-/// Saves a message's file in the conversation's scratch directory on the
-/// Host the calling job runs on, which the Host's runner names
+/// Saves a message's file in the calling agent's scratch directory on the
+/// Host the calling job runs on, inside the one the Host's runner names
 /// (`runner.md` § Scratch directory), as `<name>-<file name>` or the first
 /// free name after it, and answers the path. A call stopped before the file
 /// is written, `cancel`, writes nothing.
@@ -908,9 +908,12 @@ async fn save<A>(
             if identity.scratch_root.is_empty() {
                 return Err("the Host has not named its scratch directory".to_owned());
             }
-            // The directory the runner makes for the conversation, named as
-            // the job's command context names it.
-            let scratch = identity.paths.join(&identity.scratch_root, &invocation.context.conversation);
+            // The directory the runner makes for the calling agent, named
+            // as the job's command context names it, which its job made.
+            let mut scratch = identity.paths.join(&identity.scratch_root, &invocation.context.conversation);
+            if let Some(folder) = invocation.context.caller.scratch_folder() {
+                scratch = identity.paths.join(&scratch, &folder);
+            }
             let options = WriteOptions { exists: WhenExists::Rename };
             let path = identity.paths.join(&scratch, &file);
             // The admission ends with a stopped call; one stopped since

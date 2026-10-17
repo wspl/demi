@@ -228,6 +228,7 @@ fn start(table: &mut JobTable, root: &Path, script: &str) {
             command: TaskCommand::Shell {
                 script: script.into(),
                 conversation: "conversation".into(),
+                caller: demi_command_protocol::CommandCaller::agent(1),
                 stdin: None,
                 stdout: None,
                 commands: None,

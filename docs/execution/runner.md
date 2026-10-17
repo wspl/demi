@@ -1063,8 +1063,13 @@ promise, since a system may clear it.
 
 - **Where:** `<DEMI_HOME>/scratch/<conversation id>/`, which the runner
   creates at the conversation's first job on that Host; on Windows under
-  `%USERPROFILE%\.demi`. Every agent of the conversation shares it.
-- **`DEMI_SCRATCH`** names it in every job of the conversation, on the
+  `%USERPROFILE%\.demi`. The root agent's is that directory; each subagent
+  gets its own folder inside it, `agent-<number>/`, by the number `demi
+  agent` gives it, so two subagents that both save `shots/before.png`
+  overwrite nothing of each other's, and the parent still reads what a
+  child saved by the path the child reports, since the child's folder is
+  inside its own.
+- **`DEMI_SCRATCH`** names the agent's own one in every job, on the
   primary Host and on attached ones, so the commands a job runs find it in
   their environment.
 - **The backend knows it too:** the runner's hello names its scratch root,
