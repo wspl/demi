@@ -57,6 +57,41 @@ export {
   type ReconnectWait,
   type SilenceWatch,
 } from '@demicodes/web-ui/transport/liveness'
+// The live view (`mobile.md` § The live view): its frames, the decoder that
+// shows its pictures, and the viewer's input in the picture's coordinates,
+// which every source's view shares.
+export * from '@demicodes/web-ui/live/protocol'
+export {
+  LiveFrameReader,
+  encodeControl,
+  encodeVideo,
+  framed,
+  type LiveRawFrame,
+  type LiveVideoFrame,
+} from '@demicodes/web-ui/live/frames'
+export {
+  CanvasPictures,
+  picturesSupported,
+  type LivePictureStream,
+  type PictureHandlers,
+  type PictureSink,
+} from '@demicodes/web-ui/live/pictures'
+export {
+  ALT,
+  CONTROL,
+  ClickCount,
+  META,
+  SHIFT,
+  keyInput,
+  modifiers,
+  pointerInput,
+  touchInput,
+  wheelInput,
+  type KeyInput,
+  type ModifierState,
+  type PointerInput,
+  type WheelInput,
+} from '@demicodes/web-ui/live/input'
 // Composables.
 // A field that takes the focus as its surface opens, as a phone allows (`web-application.md` § The phone layout).
 export { useAutofocus } from '@demicodes/web-ui/ui/autofocus'

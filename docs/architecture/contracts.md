@@ -34,7 +34,8 @@ names each crate's items.
 | Managed boot record | `runner-protocol` | Backend and machine manager; the runner in a Cloud sandbox reads it |
 | Command invocations between a runner and a command program | `command-protocol` | Runner; `demi-file`, `demi-browser`, `demi-claude-code` |
 | `demi.file` operations | `command-package-file-protocol` | `plugin-file` declarations; `demi-file` |
-| `demi.browser` operations, live view messages, capture extension events | `command-package-browser-protocol` | `plugin-browser` declarations, the backend and the conversation browser's crates; the page reads live view messages through `@demicodes/plugin-browser` |
+| A live view's frames, pacing messages and viewer input, for any source | `live-view-protocol` | The `live-view` library and each source's module; pages read them through `@demicodes/protocol`, a plugin page through `@demicodes/plugin-sdk`, which re-exports them |
+| `demi.browser` operations, the browser view's own messages, capture extension events | `command-package-browser-protocol` | `plugin-browser` declarations, the backend and the conversation browser's crates; the page reads the browser view's messages through `@demicodes/plugin-browser` |
 | `demi.claude-code` operations and the Claude Code release record | `command-package-claude-code-protocol` | Backend; `demi-claude-code` |
 | Plugin manifests, requests, replies and port messages | `plugin-interface` | The plugin host; every plugin, in process today and over a process's stdio with the TypeScript SDK ([Plugins](plugins.md#the-contract)) |
 | A plugin's page state, page call parameters and results | The plugin's crate, such as `plugin-skills` | The plugin; its page package, through generated TypeScript |
@@ -161,7 +162,7 @@ xtask contracts: the emitter, which fails on anything outside its subset
    v
 Zod source and z.infer types
    -> packages/protocol/src/generated/   @demicodes/protocol: core, conversation-socket-protocol,
-                                          command-package-browser-protocol types the page reads
+                                          live-view-protocol; command-package-browser-protocol types the page reads
    -> packages/web/src/api/generated/    web: the web-api-protocol REST types
    -> packages/plugin-<name>/src/generated/
                                          a plugin package: its plugin's page state,
@@ -177,14 +178,16 @@ Zod source and z.infer types
   `xtask`, each with what the web app does with it: receives it or sends it.
   Every type a root refers to is emitted with it. The roots of
   `@demicodes/protocol` are core's types, the socket's frames and the live
-  view's messages; its schemas and types are in `generated/contracts.ts` and
+  view's shared messages and frame constants (`live-view-protocol`); its schemas and types are in `generated/contracts.ts` and
   its tables in `generated/tables.ts`, which the package's entry re-exports.
   The roots of `web` are the web-api request and response bodies; its
   `src/api/generated/web-api.ts` imports the schemas it shares with
   `@demicodes/protocol` from there. The roots of a plugin package are its
   plugin's page state, which the page receives, and each method's parameters,
   which it sends, and result, which it receives; its `src/generated/` imports
-  shared schemas from `@demicodes/protocol` the same way. A new body type is
+  shared schemas from `@demicodes/plugin-sdk`, which re-exports
+  `@demicodes/protocol`'s, since a plugin page uses nothing else of the
+  workspace ([Plugin pages](plugin-pages.md)). A new body type is
   added to the roots with its direction.
 - **One constraint definition.** A garde attribute drives both the Rust check
   and the emitted schema: schemars reads garde's attributes, including

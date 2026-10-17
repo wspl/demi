@@ -2,7 +2,7 @@
 //! stream): one invocation of `browser.live`, from the page's `hello` until
 //! either side ends it.
 
-use std::{collections::VecDeque, future::Future, sync::Arc, time::Duration};
+use std::{future::Future, sync::Arc, time::Duration};
 
 use chromiumoxide::cdp::browser_protocol::page::EventJavascriptDialogOpening;
 use tokio::{
@@ -15,7 +15,11 @@ use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Result as BrowserR
 use crate::tabs::{environment::BrowserEnvironment, tab::BrowserTab};
 use demi_command_package_browser_protocol::live::{
     CursorRegion, EndReason, LiveControl, LiveDialog, LiveDownload, LiveMenu, LiveModuleMessage,
-    LiveTab, LiveViewerMessage, Platform, PointerAction, STALL_MS, ViewerMode,
+    LiveTab, LiveViewerMessage, ViewerMode,
+};
+use demi_live_view::{delivery::Delivery, input::Item};
+use demi_live_view_protocol::{
+    LiveAck, LiveHello, LiveKeyframe, LiveRelease, Platform, PointerAction, SourceId, ViewerInput,
 };
 use demi_command_protocol::{CommandError, Completion};
 use demi_command_sdk::{Input as ServiceInput, InvocationContext, ServiceError};
@@ -25,9 +29,8 @@ use crate::live::{
     commands::{self, Command},
     frames::{self, Inbound},
     hub::{Hub, Membership, Panel},
-    input::{Input, Item},
+    input::{BrowserInput, Input},
     observers::Observed,
-    rate::{Rate, Sample},
     stream::{Event, StreamView},
     uploads,
     writer::Writer,
@@ -183,7 +186,9 @@ impl<B: ViewedBrowser> Viewer<B> {
 
     async fn run(&mut self) -> Result<(), Failure> {
         match self.next().await? {
-            Some(LiveViewerMessage::Hello { platform }) => self.mac = platform == Platform::Mac,
+            Some(LiveViewerMessage::Hello(LiveHello { platform })) => {
+                self.mac = platform == Platform::Mac;
+            }
             Some(_) => return Err(Failure::Protocol("a view starts with hello".into())),
             None => return Ok(()),
         }
@@ -269,8 +274,7 @@ impl<B: ViewedBrowser> Viewer<B> {
         let (input, input_task) = Input::start(
             environment.tasks(),
             environment.ended().clone(),
-            self.writer.clone(),
-            self.mac,
+            BrowserInput::new(self.writer.until(environment.ended()), self.mac),
         );
         let commands = commands::start(
             &environment,
@@ -375,6 +379,8 @@ fn panel(message: &LiveViewerMessage) -> Option<Panel> {
 /// The tab a viewer watches and what the viewer hears of it.
 struct Watched {
     tab: BrowserTab,
+    /// The tab as its pictures name it.
+    source: SourceId,
     /// Its pictures and the pacing they follow; none once its stream ended.
     stream: Option<StreamView>,
     dialog: watch::Receiver<Option<Arc<EventJavascriptDialogOpening>>>,
@@ -513,62 +519,6 @@ fn stream(watched: &Option<Watched>) -> Option<&StreamView> {
     watched.as_ref().and_then(|watched| watched.stream.as_ref())
 }
 
-/// The frames a viewer's page has, and the path they take.
-struct Delivery {
-    /// Counts the picture sequences the page was told about.
-    generation: u32,
-    /// The capture the current sequence comes from.
-    epoch: u32,
-    awaiting_key: bool,
-    /// The newest capture sequence seen.
-    last: u32,
-    /// Frames the page has not acknowledged: sequence, when sent, bytes.
-    flight: VecDeque<(u32, Instant, usize)>,
-    rate: Rate,
-    applied: Option<(u32, u32, f64)>,
-    started: Instant,
-    ticked: Instant,
-    last_ack: Instant,
-    round_trip: f64,
-    decode_queue: u64,
-    frames: u32,
-    bytes: usize,
-    acknowledged: usize,
-    dropped: bool,
-}
-
-impl Delivery {
-    fn new() -> Self {
-        let now = Instant::now();
-        Self {
-            generation: 0,
-            epoch: 0,
-            awaiting_key: true,
-            last: 0,
-            flight: VecDeque::new(),
-            rate: Rate::new(1280 * 720),
-            applied: None,
-            started: now,
-            ticked: now,
-            last_ack: now,
-            round_trip: 0.0,
-            decode_queue: 0,
-            frames: 0,
-            bytes: 0,
-            acknowledged: 0,
-            dropped: false,
-        }
-    }
-
-    /// Frames up to the floor are shown or will never be: the capture may
-    /// run `window` frames past it.
-    fn floor(&self) -> u32 {
-        self.flight
-            .front()
-            .map_or(self.last, |(sequence, _, _)| sequence.saturating_sub(1))
-    }
-}
-
 struct Session<'a> {
     environment: &'a BrowserEnvironment,
     live: &'a Arc<Hub>,
@@ -645,14 +595,14 @@ impl Session<'_> {
         }
         let stream = self.membership.watch(tab.as_ref()).await;
         // The encoding follows the viewer's path, whichever tab it watches.
-        if let (Some(stream), Some((bitrate, fps, scale))) = (&stream, self.delivery.applied) {
+        if let (Some(stream), Some((bitrate, fps, scale))) = (&stream, self.delivery.applied()) {
             stream.encoding(bitrate, fps, scale);
         }
         self.input.control(Item::Watch(tab.clone())).await;
-        self.delivery.awaiting_key = true;
-        self.delivery.flight.clear();
-        self.delivery.last = 0;
+        self.delivery.rewatch();
         self.watched = tab.map(|tab| Watched {
+            source: SourceId::try_from(tab.id().as_str())
+                .expect("a tab's ID fits a picture's source"),
             dialog: tab.state().dialog.watch(),
             starting: Some(start_observer(self.live, &tab)),
             tab,
@@ -695,33 +645,32 @@ impl Session<'_> {
                     commands::answer(watched.tab.clone(), accept, text, self.writer.clone());
                 }
             }
-            LiveViewerMessage::Ack {
+            LiveViewerMessage::Ack(LiveAck {
                 generation,
                 sequence,
                 decode_queue,
-            } => self.acknowledged(generation, sequence, decode_queue),
-            LiveViewerMessage::Keyframe { generation } => {
-                if self.delivery.generation == generation {
-                    self.delivery.awaiting_key = true;
-                    if let Some(stream) = stream(&self.watched) {
-                        stream.key_frame();
-                    }
-                }
+            }) => self.delivery.acknowledged(
+                generation,
+                sequence,
+                decode_queue,
+                stream(&self.watched),
+            ),
+            LiveViewerMessage::Keyframe(LiveKeyframe { generation }) => {
+                self.delivery.key_frame(generation, stream(&self.watched));
             }
-            LiveViewerMessage::Release {} => self.input.control(Item::Release).await,
+            LiveViewerMessage::Release(LiveRelease {}) => self.input.control(Item::Release).await,
             LiveViewerMessage::Recapture {} => self.environment.captures().retry().await,
-            message @ (LiveViewerMessage::Pointer { .. }
-            | LiveViewerMessage::Wheel { .. }
-            | LiveViewerMessage::Key { .. }
-            | LiveViewerMessage::Text { .. }
-            | LiveViewerMessage::Composition { .. }
+            message @ (LiveViewerMessage::Input { .. }
             | LiveViewerMessage::Paste { .. }
             | LiveViewerMessage::Choice { .. }) => {
                 if let LiveViewerMessage::Paste { text, .. } = &message {
                     self.pasted = Some(text.clone());
                 }
                 // A new document resolves its cursor where the pointer is.
-                if let LiveViewerMessage::Pointer { tab, x, y, .. } = &message
+                if let LiveViewerMessage::Input {
+                    tab,
+                    input: ViewerInput::Pointer { x, y, .. },
+                } = &message
                     && let Some(Watched {
                         tab: watched,
                         observed: Some(observing),
@@ -734,17 +683,20 @@ impl Session<'_> {
                 // Moving the pointer is not operating.
                 if !matches!(
                     &message,
-                    LiveViewerMessage::Pointer {
-                        action: PointerAction::Move,
+                    LiveViewerMessage::Input {
+                        input: ViewerInput::Pointer {
+                            action: PointerAction::Move,
+                            ..
+                        },
                         ..
                     }
                 ) {
                     self.operated = Some(Instant::now());
                     self.membership.operated();
                 }
-                self.input.send(Item::Message(message));
+                self.input.send(message);
             }
-            LiveViewerMessage::Hello { .. }
+            LiveViewerMessage::Hello(_)
             | LiveViewerMessage::Panel { .. }
             | LiveViewerMessage::Upload { .. } => {}
         }
@@ -764,20 +716,14 @@ impl Session<'_> {
                 epoch,
                 width,
                 height,
-                viewport,
+                layout: viewport,
                 scale,
             }) => {
-                let delivery = &mut self.delivery;
-                delivery.generation += 1;
-                delivery.epoch = epoch;
-                delivery.awaiting_key = true;
-                delivery.last = 0;
-                delivery.flight.clear();
-                delivery.rate.resize(u64::from(width) * u64::from(height));
+                let generation = self.delivery.restart(epoch, width, height);
                 self.writer
                     .control(&LiveModuleMessage::Stream {
                         tab,
-                        generation: delivery.generation,
+                        generation,
                         width,
                         height,
                         viewport,
@@ -786,43 +732,9 @@ impl Session<'_> {
                     .await;
             }
             Update::Picture(Event::Frame(frame)) => {
-                let delivery = &mut self.delivery;
-                if frame.sequence <= delivery.last {
-                    return;
-                }
-                // A frame the viewer never had breaks the pictures after it.
-                if delivery.last != 0 && frame.sequence != delivery.last + 1 && !frame.key {
-                    delivery.awaiting_key = true;
-                    if let Some(stream) = stream(&self.watched) {
-                        stream.key_frame();
-                    }
-                }
-                delivery.last = frame.sequence;
-                if delivery.awaiting_key && !frame.key {
-                    if let Some(stream) = stream(&self.watched) {
-                        stream.pace(delivery.epoch, delivery.floor(), delivery.rate.window);
-                    }
-                    return;
-                }
-                let bytes = frames::video(&tab, delivery.generation, frame.sequence, &frame);
-                let length = bytes.len();
-                if self.writer.video(bytes) {
-                    delivery.awaiting_key = false;
-                    delivery
-                        .flight
-                        .push_back((frame.sequence, Instant::now(), length));
-                    delivery.frames += 1;
-                    delivery.bytes += length;
-                } else {
-                    delivery.dropped = true;
-                    delivery.awaiting_key = true;
-                    if let Some(stream) = stream(&self.watched) {
-                        stream.key_frame();
-                    }
-                }
-                if let Some(stream) = stream(&self.watched) {
-                    stream.pace(delivery.epoch, delivery.floor(), delivery.rate.window);
-                }
+                let stream = watched.stream.as_ref();
+                self.delivery
+                    .frame(&watched.source, &frame, self.writer, stream);
             }
             Update::Picture(Event::Unavailable(reason)) => {
                 self.writer
@@ -963,99 +875,9 @@ impl Session<'_> {
         }
     }
 
-    fn acknowledged(&mut self, generation: u32, sequence: u32, decode_queue: u32) {
-        let delivery = &mut self.delivery;
-        if delivery.generation != generation {
-            return;
-        }
-        let now = Instant::now();
-        while let Some(&(sent, at, length)) = delivery.flight.front()
-            && sent <= sequence
-        {
-            delivery.flight.pop_front();
-            delivery.acknowledged += length;
-            if sent == sequence {
-                let round_trip = (now - at).as_secs_f64() * 1000.0;
-                delivery.rate.acknowledged(round_trip);
-                delivery.round_trip = round_trip;
-            }
-        }
-        delivery.decode_queue = u64::from(decode_queue);
-        delivery.last_ack = now;
-        if let Some(stream) = stream(&self.watched) {
-            stream.pace(delivery.epoch, delivery.floor(), delivery.rate.window);
-        }
-    }
-
     /// Adapts the picture to the path once a second.
     fn tick(&mut self) {
-        let delivery = &mut self.delivery;
-        let now = Instant::now();
-        let elapsed = now - delivery.ticked;
-        delivery.ticked = now;
-        let stall = Duration::from_millis(STALL_MS);
-        let oldest = delivery.flight.front().map(|(_, sent, _)| *sent);
-        // A Host pause, or a page that acknowledges nothing, is a stall, not
-        // congestion: the budget stays. Frames the page has not acknowledged
-        // for long never hold back the capture; the page resumes from a key
-        // frame.
-        let stalled = elapsed > 3 * Duration::from_secs(1)
-            || oldest.is_some_and(|sent| now - sent > stall && delivery.last_ack < sent);
-        if stalled {
-            if oldest.is_some_and(|sent| now - sent > 2 * stall) {
-                delivery.flight.clear();
-                delivery.awaiting_key = true;
-                if let Some(stream) = stream(&self.watched) {
-                    stream.pace(delivery.epoch, delivery.floor(), delivery.rate.window);
-                }
-            }
-        } else {
-            let seconds = elapsed.as_secs_f64().max(0.001);
-            let sample = Sample {
-                now: (now - delivery.started).as_secs_f64() * 1000.0,
-                buffered_bytes: self.writer.queued(),
-                ack_age: oldest.map_or(0.0, |sent| (now - sent).as_secs_f64() * 1000.0),
-                round_trip: if delivery.frames > 0 {
-                    delivery.round_trip
-                } else {
-                    0.0
-                },
-                decode_queue: delivery.decode_queue,
-                active_frames: delivery.frames,
-                congested: delivery.dropped,
-                encoded_bitrate: delivery.bytes as f64 * 8.0 / seconds,
-                delivered_bitrate: delivery.acknowledged as f64 * 8.0 / seconds,
-            };
-            if let Some(cause) = delivery.rate.update(&sample) {
-                // Why a picture lost quality is found in the Host's log, not guessed.
-                tracing::info!(
-                    "live view rate fell to {} bps, {} fps, scale {} after {cause}: {} bytes waiting, oldest frame {:.0} ms, round trip {:.0} ms, decode queue {}, sent {:.0} bps, acknowledged {:.0} bps",
-                    delivery.rate.bitrate(),
-                    delivery.rate.fps(),
-                    delivery.rate.scale(),
-                    sample.buffered_bytes,
-                    sample.ack_age,
-                    sample.round_trip,
-                    sample.decode_queue,
-                    sample.encoded_bitrate,
-                    sample.delivered_bitrate,
-                );
-            }
-            let encoding = (
-                delivery.rate.bitrate(),
-                delivery.rate.fps(),
-                delivery.rate.scale(),
-            );
-            if delivery.applied != Some(encoding) {
-                delivery.applied = Some(encoding);
-                if let Some(stream) = stream(&self.watched) {
-                    stream.encoding(encoding.0, encoding.1, encoding.2);
-                }
-            }
-        }
-        delivery.frames = 0;
-        delivery.bytes = 0;
-        delivery.acknowledged = 0;
-        delivery.dropped = false;
+        self.delivery
+            .tick(self.writer.queued(), stream(&self.watched));
     }
 }

@@ -1,21 +1,35 @@
 /**
- * The pictures of a watched tab on a canvas (`live-view.md` §
- * Delivery): WebCodecs decodes the Host's H.264, the page shows the newest
- * frame it has, and tells the module what it showed.
+ * A live view's pictures on a canvas (`live-view.md` § Delivery,
+ * `mobile.md` § The live view): WebCodecs decodes the Host's H.264, the
+ * page shows the newest frame it has, and tells the Host what it showed.
+ * Whatever the source, a browser tab or a simulator, its pictures come so.
  */
-import { LIVE_VIDEO_CODEC } from '../generated/plugin'
+import { LIVE_VIDEO_CODEC } from '@demicodes/protocol'
 import type { LiveVideoFrame } from './frames'
-import type { LiveStream, PictureSink } from './session'
 
-/** The live protocol's codec, as the Host's extension encodes it, decoded with the least delay. */
+/** The live protocol's codec, as every source encodes it, decoded with the least delay. */
 const DECODER: VideoDecoderConfig = { codec: LIVE_VIDEO_CODEC, optimizeForLatency: true }
 /** Beyond this the page is behind: it drops the stream and asks for a key frame. */
 const DECODE_QUEUE = 12
 
-export interface PictureHandlers {
+/** A generation of pictures, as the Host announced it. */
+export interface LivePictureStream {
+  generation: number
+}
+
+/** What shows the pictures: a decoder in the page, or the gallery's canvas. */
+export interface PictureSink<S extends LivePictureStream = LivePictureStream> {
+  /** Frames of this generation follow. */
+  start(stream: S): void
+  show(frame: LiveVideoFrame): void
+  /** Nothing is watched any more. */
+  stop(): void
+}
+
+export interface PictureHandlers<S extends LivePictureStream> {
   /** The page painted this frame of `stream`'s generation. */
-  shown(stream: LiveStream, sequence: number, decodeQueue: number): void
-  /** The stream cannot continue; the module must send a key frame. */
+  shown(stream: S, sequence: number, decodeQueue: number): void
+  /** The stream cannot continue; the Host must send a key frame. */
   lost(): void
 }
 
@@ -38,17 +52,17 @@ export async function picturesSupported(defect: (message: string, error: unknown
   }
 }
 
-export class CanvasPictures implements PictureSink {
+export class CanvasPictures<S extends LivePictureStream> implements PictureSink<S> {
   private decoder: VideoDecoder | null = null
   /** The generation whose frames follow; none before the first. */
-  private stream: LiveStream | null = null
+  private stream: S | null = null
   private latest: { frame: VideoFrame; sequence: number; generation: number } | null = null
   private readonly pending = new Map<number, { sequence: number; generation: number }>()
   private painting: number | null = null
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly handlers: PictureHandlers,
+    private readonly handlers: PictureHandlers<S>,
   ) {}
 
   /**
@@ -56,7 +70,7 @@ export class CanvasPictures implements PictureSink {
    * first of them is painted, which also gives it their size: sizing or
    * clearing it here would show a black frame between two pictures.
    */
-  start(stream: LiveStream): void {
+  start(stream: S): void {
     this.stream = stream
     this.release()
   }

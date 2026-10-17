@@ -27,6 +27,8 @@ chromiumoxide = "=0.9.1"
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
+demi-live-view = { path = "../live-view" }
+demi-live-view-protocol = { path = "../live-view-protocol" }
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-shared-types = { path = "../shared-types" }
 futures-util.workspace = true
