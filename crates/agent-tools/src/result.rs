@@ -252,9 +252,8 @@ fn result_text(status: &CommandStatus, text: &OutputText, look: Look<'_>) -> Str
 fn status_line(state: &CommandState, unreachable: Option<Unreachable>) -> String {
     match (state, unreachable) {
         (CommandState::Running { .. }, Some(unreachable)) => format!(
-            "status: running, as far as Demi knows; its Host has been unreachable for {}, and its runner keeps it for up to {}",
+            "status: running, as far as Demi knows; its Host has been unreachable for {}, and its runner keeps it running",
             super::duration(unreachable.away_ms),
-            super::duration(unreachable.grace_ms)
         ),
         (CommandState::Running { .. }, None) => "status: running".to_owned(),
         (CommandState::Exited { .. }, _) => "status: exited".to_owned(),

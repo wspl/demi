@@ -137,7 +137,7 @@ pub async fn running_hint(
 
 /// Runs one call on the connection that serves and returns its exit code;
 /// while the runner is away, the call waits for its next connection, and
-/// fails once the runner stopped waiting (`runner.md` § Command lifetime).
+/// fails once the runner ends (`runner.md` § Command lifetime).
 pub async fn invoke(
     pipes: &PipeClient,
     request: Request,

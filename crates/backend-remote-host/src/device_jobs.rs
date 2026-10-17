@@ -37,10 +37,6 @@ pub const RUNNER_RESTARTED: &str = "the Host's runner started anew after it ende
 /// received, when the backend cannot send it again: it sent it again once
 /// already, or a restarted backend knows it only from its records.
 pub const NEVER_RECEIVED: &str = "its Host's runner never received it";
-/// Why a job is lost that the runner stopped once its connection stayed
-/// away for the grace.
-pub const UNREACHED: &str =
-    "the Host's runner stopped it after 10 minutes without a connection to Demi";
 
 /// A device's jobs. Cloning it is cheap; the clones share the table.
 #[derive(Clone, Default)]
@@ -82,9 +78,6 @@ pub(crate) struct JobEntry {
     /// While its kept output is read after a new connection, what arrives
     /// meanwhile, which follows what the read delivers.
     resyncing: Option<Resync>,
-    /// The runner stopped it once its connection stayed away: its end is a
-    /// loss, with its output kept.
-    unreached: bool,
     /// A restarted backend knows it only from its records: it stays, ended
     /// or not, until the agent that ran it takes it up.
     parked: bool,
@@ -274,7 +267,6 @@ impl DeviceJobs {
                 head: [0; 2],
                 seen: [0; 2],
                 resyncing: None,
-                unreached: false,
                 parked: false,
                 claimed: watch::Sender::new(true),
                 sent_to: None,
@@ -333,7 +325,6 @@ impl DeviceJobs {
             head: [0; 2],
             seen: [0; 2],
             resyncing: None,
-            unreached: false,
             parked: false,
             claimed: watch::Sender::new(false),
             sent_to: None,
@@ -415,14 +406,11 @@ impl DeviceJobs {
     /// the output a read of its kept output in progress delivers, and it
     /// leaves the table then, unless it is parked, when it waits there for
     /// the agent that takes it up. False when the device does not know it.
-    pub(crate) fn exited(&self, id: &str, mut end: JobEnd) -> bool {
+    pub(crate) fn exited(&self, id: &str, end: JobEnd) -> bool {
         let mut table = self.0.borrow_mut();
         let Some(job) = table.jobs.get_mut(id) else {
             return false;
         };
-        if job.unreached {
-            end.lost = Some(UNREACHED.to_owned());
-        }
         match &mut job.resyncing {
             Some(resync) => resync.end = Some(end),
             None => settle(&mut table, id, end),
@@ -506,7 +494,6 @@ impl DeviceJobs {
             // The runner has it: its start never goes again.
             job.start = None;
             job.resending = false;
-            job.unreached = kept.ended.as_ref().is_some_and(|end| end.unreached);
             // A restarted backend, or one whose connection missed a
             // `job_outliving`, learns from the hello what keeps the job
             // running after its script.
@@ -638,7 +625,6 @@ impl JobEntry {
             head: [0; 2],
             seen: [0; 2],
             resyncing: None,
-            unreached: false,
             parked: true,
             claimed: watch::Sender::new(false),
             sent_to: None,

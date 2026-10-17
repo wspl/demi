@@ -638,7 +638,7 @@ serde_plain::derive_display_from_serialize!(JobPhase);
 serde_plain::derive_fromstr_from_deserialize!(JobPhase);
 
 /// Where a command is, with the pages' view of it: running, and whether a
-/// stop waits for its runner's word, exited with its code, stopped, or lost
+/// stop waits for its runner's word or its start for its Host, exited with its code, stopped, or lost
 /// with why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
@@ -657,6 +657,12 @@ pub enum ShellStatus {
         #[serde(default, skip_serializing_if = "std::ops::Not::not")]
         #[garde(skip)]
         stopping: bool,
+        /// The name of the paired device whose runner its start waits for
+        /// (`sessions-and-targets.md` § Host operations): the pages show
+        /// *Waiting for MacBook Pro*. Present only then.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[garde(skip)]
+        waiting_for: Option<String>,
     },
     Exited {
         #[serde(flatten)]

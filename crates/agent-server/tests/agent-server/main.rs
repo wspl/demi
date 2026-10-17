@@ -11,4 +11,5 @@ mod subagents;
 mod support;
 mod title;
 mod turns;
+mod waiting;
 mod workflows;

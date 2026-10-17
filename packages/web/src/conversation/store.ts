@@ -350,6 +350,7 @@ export const useConversations = defineStore('conversations', () => {
       | 'unread'
       | 'cwd'
       | 'pluginsChanged'
+      | 'onlyWaitsForHost'
       | 'shares'
       | 'unreadPermissionRequests'
       | 'createdAt'
@@ -369,6 +370,7 @@ export const useConversations = defineStore('conversations', () => {
       readRevision: record.readRevision,
       unread: record.unread,
       pluginsChanged: record.pluginsChanged,
+      onlyWaitsForHost: record.onlyWaitsForHost,
       shares: record.shares,
       // The sidebar's mark settles once the request is read, though it still waits.
       needsYou: record.unreadPermissionRequests > 0,
@@ -741,6 +743,7 @@ export const useConversations = defineStore('conversations', () => {
           ...draft.local.conversation,
           model: null,
           pluginsChanged: false,
+          onlyWaitsForHost: false,
           draftRevision: 0,
           saved: 0,
           savedRevision: 0,
@@ -1778,6 +1781,7 @@ export const useConversations = defineStore('conversations', () => {
       unread: false,
       workflow: starting.workflow,
       pluginsChanged: false,
+      onlyWaitsForHost: false,
       draftRevision: 0,
       saved: 0,
       savedRevision: 0,

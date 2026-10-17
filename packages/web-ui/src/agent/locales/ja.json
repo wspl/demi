@@ -35,6 +35,7 @@
       "failed": "失敗",
       "stopped": "停止済み",
       "stopping": "停止中…",
+      "waiting": "{host} を待機中",
       "lost": "不明",
       "exitCode": "終了コード {code}"
     },
@@ -42,6 +43,7 @@
       "lost": "不明",
       "lostWhy": "不明: {reason}",
       "stopping": "停止中…",
+      "waiting": "{host} を待機中",
       "running": "{span} 実行中",
       "exited": "{span} 後に終了",
       "exitedZero": "{span} 後に終了コード 0 で終了",
@@ -203,7 +205,6 @@
     "scrollToBottom": "一番下までスクロール",
     "resume": "再開",
     "continue": "続ける",
-    "stillOffline": "{name} はまだオフラインです",
     "continueWith": "{label} で続ける",
     "openProviders": "プロバイダーを開く"
   },

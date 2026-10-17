@@ -1,6 +1,6 @@
 //! The records of commands that run (`storage.md` § Command outputs): the
 //! conversation's `running_commands` row of each, written when its job
-//! starts and deleted in the transaction that writes its `command_outputs`
+//! starts, or as not yet sent while its start waits for its Host, and deleted in the transaction that writes its `command_outputs`
 //! row, and the control database's `running_jobs` index of their jobs by
 //! device, written before each job starts and deleted with its command's
 //! end. A backend that starts again reads them to take the commands up when
@@ -9,7 +9,7 @@
 
 use std::collections::BTreeMap;
 
-use demi_host_interface::Seen;
+use demi_host_interface::{Seen, UnsentStart};
 use demi_shared_types::{CommandId, NodeId, Timestamp, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use rusqlite::{Connection, OptionalExtension, Row, params};
@@ -44,9 +44,13 @@ pub struct RunningCommand {
     /// How far each node that looked at it has seen its output, which a
     /// look or a report moves.
     pub places: BTreeMap<NodeId, Seen>,
+    /// What it starts once its Host is back, while its start waits for it
+    /// and was never sent (`sessions-and-targets.md` § Host operations).
+    pub unsent: Option<UnsentStart>,
 }
 
-const COLUMNS: &str = "command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title, interval_ms, turn_id";
+const COLUMNS: &str =
+    "command_id, node_id, device_id, job_id, tool_use_id, started_at, places, title, interval_ms, turn_id, unsent";
 
 /// How far one node has seen a running command's output, as the `places`
 /// column stores it (command places format 1): any count of bytes is one.
@@ -92,12 +96,14 @@ impl StoredPlaces {
     }
 }
 
-/// Records `running`; a command recorded already keeps its row.
-pub fn insert(connection: &Connection, running: &RunningCommand) -> Result<(), StorageError> {
+/// Records `running`. A command recorded already keeps its row, except
+/// that one recorded as not yet sent becomes one recorded as `running`
+/// says, sent once its job starts.
+pub fn record(connection: &Connection, running: &RunningCommand) -> Result<(), StorageError> {
     connection
         .prepare_cached(&format!(
-            "INSERT INTO running_commands ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
-             ON CONFLICT (command_id) DO NOTHING"
+            "INSERT INTO running_commands ({COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+             ON CONFLICT (command_id) DO UPDATE SET unsent = excluded.unsent"
         ))?
         .execute(params![
             running.command.as_str(),
@@ -110,6 +116,7 @@ pub fn insert(connection: &Connection, running: &RunningCommand) -> Result<(), S
             running.title,
             running.interval_ms,
             running.turn.as_ref().map(TurnId::as_str),
+            running.unsent.as_ref().map(to_json),
         ])?;
     Ok(())
 }
@@ -197,23 +204,39 @@ fn decode_row(row: &Row<'_>) -> Result<RunningCommand, StorageError> {
             .transpose()?,
         started: instant(row, table, "started_at")?,
         places: json::<StoredPlaces>(table, "places", &row.get::<_, String>(6)?)?.places(),
+        unsent: row
+            .get::<_, Option<String>>(10)?
+            .map(|unsent| json::<UnsentStart>(table, "unsent", &unsent))
+            .transpose()?,
     })
+}
+
+/// A job the control database records running on a device.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RecordedJob {
+    pub job: String,
+    /// The conversation whose command it is.
+    pub conversation: ConversationId,
+    /// Whether its start was sent; one not sent waits for its device.
+    pub sent: bool,
 }
 
 impl ControlService {
     /// Records that the job `job` of a command of `conversation` runs on
-    /// `device`, before it starts.
+    /// `device`, before it starts, or, while it is not `sent`, that it waits
+    /// to start there (`sessions-and-targets.md` § Host operations).
     pub async fn record_running_job(
         &self,
         job: String,
         device: DeviceId,
         conversation: ConversationId,
+        sent: bool,
     ) -> Result<(), StorageError> {
         self.call(move |connection, _| {
             connection.execute(
-                "INSERT INTO running_jobs (job_id, device_id, conversation_id) VALUES (?1, ?2, ?3)
-                 ON CONFLICT (job_id) DO NOTHING",
-                params![job, device.as_str(), conversation.as_str()],
+                "INSERT INTO running_jobs (job_id, device_id, conversation_id, sent) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (job_id) DO UPDATE SET sent = excluded.sent",
+                params![job, device.as_str(), conversation.as_str(), sent],
             )?;
             Ok(())
         })
@@ -249,14 +272,15 @@ impl ControlService {
         .await
     }
 
-    /// The jobs recorded running on `device`, each with its conversation.
+    /// The jobs recorded running on `device`, each with its conversation
+    /// and whether it was sent; one that was not waits to start there.
     pub async fn running_jobs(
         &self,
         device: DeviceId,
-    ) -> Result<Vec<(String, ConversationId)>, StorageError> {
+    ) -> Result<Vec<RecordedJob>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(
-                "SELECT job_id, conversation_id FROM running_jobs WHERE device_id = ?1",
+                "SELECT job_id, conversation_id, sent FROM running_jobs WHERE device_id = ?1",
             )?;
             let mut rows = statement.query([device.as_str()])?;
             let mut jobs = Vec::new();
@@ -266,7 +290,11 @@ impl ControlService {
                     "conversation_id",
                     ConversationId::try_from(row.get::<_, String>(1)?),
                 )?;
-                jobs.push((row.get(0)?, conversation));
+                jobs.push(RecordedJob {
+                    job: row.get(0)?,
+                    conversation,
+                    sent: row.get(2)?,
+                });
             }
             Ok(jobs)
         })

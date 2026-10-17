@@ -1442,6 +1442,7 @@ async fn restore_after_a_crash_during_a_tool_completes_the_call_as_interrupted_w
         interval_ms: None,
         started: Timestamp::UNIX_EPOCH,
         place: Default::default(),
+        unsent: None,
     }];
     let (restored, continuation) =
         AgentSession::restore(checkpoint, root(), Box::new(later.clone()), deps, &running)

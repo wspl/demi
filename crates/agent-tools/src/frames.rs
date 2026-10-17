@@ -21,10 +21,17 @@ pub fn shell_output(subagent: Option<NodeId>, view: PageView) -> ServerFrame {
         PageState::Running => ShellStatus::Running {
             command,
             stopping: false,
+            waiting_for: None,
+        },
+        PageState::Waiting { host } => ShellStatus::Running {
+            command,
+            stopping: false,
+            waiting_for: Some(host),
         },
         PageState::Stopping => ShellStatus::Running {
             command,
             stopping: true,
+            waiting_for: None,
         },
         PageState::Exited { exit_code } => ShellStatus::Exited { command, exit_code },
         PageState::Aborted => ShellStatus::Aborted { command },

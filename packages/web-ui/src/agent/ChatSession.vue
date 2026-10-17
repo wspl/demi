@@ -61,7 +61,7 @@ import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
-import { continueWithOffer, endsWithErrorRecord, signedOutOffer, resumeWaitsFor, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
+import { continueWithOffer, endsWithErrorRecord, signedOutOffer, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
@@ -353,16 +353,8 @@ const recovery = computed(() =>
     ? turnRecovery(props.conversation.phase, getVisibleBlocks(latest.value))
     : null,
 )
-/** The primary Host Resume waits for while it is offline, which the disabled chip names. */
-const resumeWait = computed(() =>
-  recovery.value === 'resume'
-    ? resumeWaitsFor(getVisibleBlocks(latest.value), props.primaryHost ?? null)
-    : null,
-)
 function recover(): void {
-  if (!resumeWait.value) {
-    emit('retry')
-  }
+  emit('retry')
 }
 /**
  * The account a usage limit of an entry without rotation offers to go on
@@ -724,17 +716,10 @@ watch(
             </template>
             <template #chips>
               <!-- The transcript says what happened; the one recovery control is here, over the input. -->
-              <Tooltip
-                v-if="recovery"
-                :content="resumeWait ? t('dock.stillOffline', { name: resumeWait }) : undefined"
-                :disabled="resumeWait === null"
-                class="inline-flex"
-              >
-                <SessionDockChip :disabled="resumeWait !== null" @click="recover">
-                  <Play :size="ICON_PX.in28" />
-                  {{ recovery === 'resume' ? t('dock.resume') : t('dock.continue') }}
-                </SessionDockChip>
-              </Tooltip>
+              <SessionDockChip v-if="recovery" @click="recover">
+                <Play :size="ICON_PX.in28" />
+                {{ recovery === 'resume' ? t('dock.resume') : t('dock.continue') }}
+              </SessionDockChip>
               <SessionDockChip
                 v-if="continueWith"
                 @click="emit('continueWith', continueWith.providerId, continueWith.credentialId)"

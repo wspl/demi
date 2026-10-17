@@ -13,12 +13,10 @@ import { DEFAULT_SEND_WHILE_RUNNING, type SendWhileRunning } from '@demicodes/we
  */
 export const galleryMessages = reactive<{
   sendWhileRunning: SendWhileRunning
-  resumeWhenHostBack: boolean
   resumeAfterRestart: boolean
   resumeAtRetry: boolean
 }>({
   sendWhileRunning: DEFAULT_SEND_WHILE_RUNNING,
-  resumeWhenHostBack: true,
   resumeAfterRestart: true,
   resumeAtRetry: false,
 })

@@ -112,11 +112,6 @@ export const usePreferences = defineStore('preferences', () => {
    */
   const resumeAfterRestart = computed(() => product.snapshot?.preferences.resumeAfterRestart ?? true)
   /**
-   * Whether a turn its offline Host left goes on by itself once that Host is
-   * back (`web-api-settings.md` § User preferences); absent means yes.
-   */
-  const resumeWhenHostBack = computed(() => product.snapshot?.preferences.resumeWhenHostBack ?? true)
-  /**
    * Whether the user went on past the warning about several subscription
    * accounts, which then never shows again (`providers.md` § Account
    * rotation); absent means no.
@@ -376,7 +371,6 @@ export const usePreferences = defineStore('preferences', () => {
     sendWhileRunning,
     resumeAtRetry,
     resumeAfterRestart,
-    resumeWhenHostBack,
     multiAccountWarned,
     smallModel,
     smallModelSameProvider,

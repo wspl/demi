@@ -372,6 +372,7 @@ impl AgentTreeStore for SqliteTreeStore {
                     title: row.title,
                     interval_ms: row.interval_ms,
                     started: row.started,
+                    unsent: row.unsent,
                 })
                 .collect())
         })

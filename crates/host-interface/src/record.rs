@@ -96,6 +96,10 @@ pub struct PageView {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PageState {
     Running,
+    /// It waits to start until its Host, the paired device `host` names,
+    /// is back (`sessions-and-targets.md` § Host operations): the pages show
+    /// *Waiting for MacBook Pro*, and it counts as running.
+    Waiting { host: String },
     /// It runs while a stop waits for its runner to say that it ended
     /// (`runner.md` § Cancellation and completion): the pages tag it
     /// *Stopping…*, and it still counts as running.
@@ -110,6 +114,8 @@ pub enum PageState {
 #[derive(Debug)]
 enum Phase {
     Running,
+    /// Running, while its start waits for its Host, the device `host` names.
+    Waiting { host: String },
     /// Running, while a stop waits for the runner's word of the end.
     Stopping,
     Exited {
@@ -194,14 +200,24 @@ impl CommandRecord {
         &self.command_id
     }
 
+    /// The `shell` call that started the command.
+    pub fn tool_use_id(&self) -> &str {
+        &self.tool_use_id
+    }
+
     /// The title of the call that started the command; empty when that
     /// call had none.
     pub fn title(&self) -> &str {
         &self.title
     }
 
+    /// Whether it runs while its start waits for its Host.
+    pub fn is_waiting(&self) -> bool {
+        matches!(self.phase, Phase::Waiting { .. })
+    }
+
     pub fn is_running(&self) -> bool {
-        matches!(self.phase, Phase::Running | Phase::Stopping)
+        matches!(self.phase, Phase::Running | Phase::Waiting { .. } | Phase::Stopping)
     }
 
     /// How long the command has printed nothing (`shell-tool.md` § Results and
@@ -215,14 +231,14 @@ impl CommandRecord {
     pub fn media(&self) -> &[CommandMedium] {
         match &self.phase {
             Phase::Exited { media, .. } | Phase::Lost { media, .. } => media,
-            Phase::Running | Phase::Stopping | Phase::Aborted => &[],
+            Phase::Running | Phase::Waiting { .. } | Phase::Stopping | Phase::Aborted => &[],
         }
     }
 
     /// How the command ended; none while it runs.
     pub fn ending(&self) -> Option<Ending> {
         match &self.phase {
-            Phase::Running | Phase::Stopping => None,
+            Phase::Running | Phase::Waiting { .. } | Phase::Stopping => None,
             Phase::Exited { exit_code, .. } => Some(Ending::Exited(*exit_code)),
             Phase::Aborted => Some(Ending::Aborted),
             Phase::Lost { reason, .. } => Some(Ending::Lost(reason.clone())),
@@ -340,8 +356,22 @@ impl CommandRecord {
     /// Marks a running command as being stopped: it runs until its runner
     /// says that it ended (`runner.md` § Cancellation and completion). True
     /// when the pages' view changed.
+    /// Shows the command waiting for its Host, the device `host` names,
+    /// while its start waits for that device's runner, or running again
+    /// once it does not, with `None`. Whether the view changed.
+    pub fn mark_waiting(&mut self, host: Option<String>) -> bool {
+        let phase = match (&self.phase, host) {
+            (Phase::Running, Some(host)) => Phase::Waiting { host },
+            (Phase::Waiting { host: shown }, Some(host)) if *shown != host => Phase::Waiting { host },
+            (Phase::Waiting { .. }, None) => Phase::Running,
+            _ => return false,
+        };
+        self.phase = phase;
+        true
+    }
+
     pub fn mark_stopping(&mut self) -> bool {
-        let running = matches!(self.phase, Phase::Running);
+        let running = matches!(self.phase, Phase::Running | Phase::Waiting { .. });
         if running {
             self.phase = Phase::Stopping;
         }
@@ -397,7 +427,7 @@ impl CommandRecord {
         );
         let now = Instant::now();
         let state = match &self.phase {
-            Phase::Running | Phase::Stopping => CommandState::Running { hint, outliving },
+            Phase::Running | Phase::Waiting { .. } | Phase::Stopping => CommandState::Running { hint, outliving },
             Phase::Exited {
                 exit_code,
                 binary_stdout,
@@ -435,6 +465,7 @@ impl CommandRecord {
             tool_use_id: self.tool_use_id.clone(),
             state: match &self.phase {
                 Phase::Running => PageState::Running,
+                Phase::Waiting { host } => PageState::Waiting { host: host.clone() },
                 Phase::Stopping => PageState::Stopping,
                 Phase::Exited { exit_code, .. } => PageState::Exited {
                     exit_code: *exit_code,

@@ -112,14 +112,17 @@ than delegating product authorization to the generic Host adapter.
 
 Switching requires an unarchived conversation with an idle agent tree and no
 conflicting conversation file operation. A running child counts as active even
-when the root is idle and the child is waiting for a provider.
+when the root is idle and the child is waiting for a provider. A tree whose
+every running node waits only for its offline primary device counts as idle:
+the switch fails those waiting operations, which were never sent, and the
+nodes go on on the new Host ([Host operations](#host-operations)).
 
 Commands still running on an offline device do not block a switch away
 from it: their jobs hold the conversation's file gate on that Host, which
 the switch leaves, so it takes the gate on the Hosts it keeps and leaves
 those jobs to the runner that keeps them, and they report when it is back.
-For example, the user's laptop goes offline with a build running, the agent
-says it cannot reach the laptop and ends its turn, and the user moves the
+For example, the user's laptop goes offline with a build running while the
+agent waits to run its next command there, and the user moves the
 conversation to the Cloud from the offline card
 ([Where a conversation runs](../product/hosts.md#where-a-conversation-runs)),
 telling the agent.
@@ -382,20 +385,38 @@ longer exists, such as a revoked device, is refused the same way. For normal dem
 for every kind of target: it resolves the target, refuses an archived
 conversation, wakes a stopped Cloud and holds it for the operation, and takes
 the conversation's file gate so the operation excludes an archive or a target
-switch. A paired device without a live runner fails the operation at once
-with the runner's offline error, whether it is the primary Host or an
-attached one. A `shell` call gets it as its result, worded for the model so
-it can decide what to do, retry later, end its turn and wait, or tell the
-user: `MacBook Pro is offline: its runner has been disconnected for 40s, so
-nothing can run there now; commands already running there are kept for up
-to 10m and report when it is back; the user can resume this turn once it
-is back.` The last clause comes only on a primary Host's `shell` result,
-the one case that leaves a turn unfinished
-([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
-an attached device's text, a page's answer and a user stream's stop short of
-it. In a product check, a model told only
-`runner disconnected` pinged the device seven times; told what the absence
-means, it can choose. An operation of the user's, such as a page's file
+switch. An agent's operation on the conversation's primary Host waits while that
+Host is a paired device without a live runner, however long it takes, as an
+operation waits for a held conversation: the operation is sent when the
+runner connects, and the agent sees a command that is slow, never one that
+failed for the device's absence. For example, the laptop's lid closes while
+the agent is about to run `cargo test`: the call shows as running, the
+`shell` result after its minute says it went on in the background, and
+when the lid opens an hour later the tests run and report as any command
+does. A waiting command is a background command that has not started: a
+turn that ends leaves it waiting, as it leaves a started one running, and it
+reports when it runs. The user's Stop, which leaves started commands
+running, ends every waiting command of the conversation, and they never
+run, since the user who stops expects nothing to start later; so does
+`demi shell stop`, or End Command, for one. While
+it waits it is recorded as a running command is, marked not yet sent, so a
+restart of the backend keeps it waiting and sends it once the runner
+connects; it sends no interval report, as a command whose Host is away
+sends none ([Interval reports](../agent/shell-tool.md)). The backend says
+on the conversation's summary when every running node of the tree waits
+only for the primary device, which is when the move below needs no stop;
+the page reads it there and infers nothing. A move of
+the conversation to another Host fails the waiting operations, never sent,
+with `This conversation now runs on Cloud; this command did not run, since
+MacBook Pro was offline.`, and the agent goes on there
+([Switch the primary target](#switch-the-primary-target)). An operation on an
+attached device fails at once with the runner's offline error, worded for
+the model so it can decide what to do, retry later or work without it:
+`MacBook Pro is offline: its runner has been disconnected for 40s, so
+nothing can run there now; commands already running there keep running and
+report when it is back.` In a product check, a model told only `runner
+disconnected` pinged the device seven times; told what the absence means,
+it can choose. An operation of the user's, such as a page's file
 read, the Changes panel or an upload a message names, fails the same way,
 and the page shows the device offline. There is no second way to a conversation's Host; the
 two ways to a device that touch no conversation's files are named in
@@ -678,7 +699,7 @@ these cases:
 | --- | --- |
 | Result recorded | Preserve the result. |
 | Dispatched, result absent | Record an unknown outcome; do not automatically replay side effects. |
-| Not dispatched | Continue through the normal resume path. |
+| Not dispatched | A command waiting for its device waits again, and is sent once its runner connects; any other operation continues through the normal resume path. |
 
 A command outlives a connection loss and a backend restart, but not its
 runner ([Command lifetime](runner.md#command-lifetime)). The conversation's
@@ -690,7 +711,7 @@ those records:
 | The runner lists the job as | The command |
 | --- | --- |
 | Running | Goes on: the backend follows it again where a page shows it, reads the output it missed from the kept output, which comes before what the job prints from then on and before its end, and the command's handle works again for `demi shell status` and `demi shell stop`. A connection lost again before that read answered leaves the command as it was at the first loss: its end, if it came meanwhile, waits with the output behind it for the next connection within the grace, whose read completes it, and only the grace's end stores what arrived with a note that the rest is missing. The backend holds at most the first 8 KiB of each stream and the latest 8 KiB after them while it waits, since the kept output on the Host holds the rest |
-| Ended | Ends with the status the runner kept, and its whole output is read as for any end; a job the runner stopped after 10 minutes without a connection is lost with that reason, its output kept |
+| Ended | Ends with the status the runner kept, and its whole output is read as for any end; a job the runner stopped because the backend refused it is lost with that reason, its output kept |
 | Not listed, by the same runner | Never reached the Host: the runner, the same process since before the job was sent, lists every job it received until the backend has read its end, so a job it does not list never ran. The backend sends it again on the new connection, once, under the same job id, and the command starts then, as a command whose start was slow. The runner starts a job id once in its life and answers a second start of it with the job it has, so nothing runs twice even if the first start arrives after all. A job whose start carries pipes, as `demi host shell` streams its stdin and stdout through, is lost as before, since its pipes ended with the call that opened them. For example, a command sent into a connection that had already dropped starts 14 seconds late instead of being lost |
 | Not listed, by another runner | Is lost, with the reason the backend can tell from what it knows of the device: Demi was upgraded and the runner replaced itself, the Cloud restarted, or the runner started anew after it ended; whether the job ran is unknown, so it is never sent again |
 

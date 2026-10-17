@@ -951,17 +951,19 @@ impl HostResolver for LiveHosts {
     }
 }
 
-/// One node's environment: its one command runs until the test ends it, and
+/// One node's environment: its command runs until the test ends it, and
 /// prints what the test hands it, which it reports to the node's feed. Like
 /// a runner that has not answered yet, a stop only marks the command
 /// stopping: it ends when the test says (`runner.md` § Cancellation and
-/// completion).
+/// completion). Commands started while one runs, as the parallel calls of
+/// one response, run beside it, numbered after it.
 pub struct ScriptedShell {
     /// The directory each of its jobs started in, in order; none for one
     /// that starts where the Host starts its work.
     pub started_in: RefCell<Vec<Option<String>>>,
     feed: Rc<dyn PageFeed>,
-    command: RefCell<Option<Rc<RefCell<CommandRecord>>>>,
+    /// Its commands, the first being the one the helpers below act on.
+    commands: RefCell<Vec<Rc<RefCell<CommandRecord>>>>,
     /// Changes when the command ends.
     ends: watch::Sender<()>,
     /// Set once the environment let go of its command, which then runs on
@@ -971,16 +973,56 @@ pub struct ScriptedShell {
 
 impl ScriptedShell {
     fn record(&self, command: &CommandId) -> Result<Rc<RefCell<CommandRecord>>, ShellError> {
-        self.command
+        self.commands
             .borrow()
-            .clone()
-            .filter(|record| record.borrow().command_id() == command)
+            .iter()
+            .find(|record| record.borrow().command_id() == command)
+            .cloned()
             .ok_or_else(|| ShellError::UnknownCommand(command.clone()))
+    }
+
+    /// The command the helpers act on: the first one started.
+    fn first(&self) -> Rc<RefCell<CommandRecord>> {
+        self.commands.borrow().first().cloned().expect("the command started")
+    }
+
+    /// Holds `record`: beside the commands that run, or in place of those
+    /// that ended.
+    fn hold(&self, record: &Rc<RefCell<CommandRecord>>) {
+        let running = self.commands.borrow().iter().any(|command| command.borrow().is_running());
+        if !running {
+            self.commands.borrow_mut().clear();
+        }
+        self.commands.borrow_mut().push(record.clone());
+        self.feed.changed(record);
+    }
+
+    /// The command `command`'s start waits for its Host, the device `host`
+    /// names, whose runner is away; with none, it no longer waits.
+    pub fn wait_for(&self, command: &str, host: Option<&str>) {
+        let record = self
+            .record(&CommandId::try_from(command).unwrap())
+            .expect("the command started");
+        if record.borrow_mut().mark_waiting(host.map(str::to_owned)) {
+            self.feed.changed(&record);
+        }
+    }
+
+    /// The command `command` exits.
+    pub fn exit(&self, command: &str) {
+        let record = self
+            .record(&CommandId::try_from(command).unwrap())
+            .expect("the command started");
+        record
+            .borrow_mut()
+            .settle(Ending::Exited(0), Arc::new(WholeOutput::default()), None, Vec::new(), "");
+        self.feed.changed(&record);
+        self.ends.send_replace(());
     }
 
     /// The running command prints `text`.
     pub fn print(&self, text: &str) {
-        let record = self.command.borrow().clone().expect("the command started");
+        let record = self.first();
         record.borrow_mut().append_output(StreamKind::Stdout, text);
         self.feed.changed(&record);
     }
@@ -988,7 +1030,7 @@ impl ScriptedShell {
     /// The running command exits, having changed `files`, as its runner
     /// reports a job's exit with its edit report.
     pub fn exit_with(&self, files: Vec<demi_shared_types::EditedFile>) {
-        let record = self.command.borrow().clone().expect("the command started");
+        let record = self.first();
         let mut command = record.borrow_mut();
         command.set_files(demi_host_interface::EditedFiles {
             files,
@@ -1003,7 +1045,7 @@ impl ScriptedShell {
 
     /// The running command is lost, as when its runner started anew.
     pub fn lose(&self) {
-        let record = self.command.borrow().clone().expect("the command started");
+        let record = self.first();
         record.borrow_mut().settle(
             Ending::Lost("the Host's runner started anew".to_owned()),
             Arc::new(WholeOutput::default()),
@@ -1018,7 +1060,7 @@ impl ScriptedShell {
     /// The running command ends, as its runner reports a stop's end.
     pub fn end(&self) {
         assert!(!self.detached.get(), "the environment let go of its command");
-        let record = self.command.borrow().clone().expect("the command started");
+        let record = self.first();
         record.borrow_mut().settle(
             Ending::Aborted,
             Arc::new(WholeOutput::default()),
@@ -1038,14 +1080,14 @@ impl ShellEnvironment for ScriptedShell {
         _cancel: CancellationToken,
     ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
         self.started_in.borrow_mut().push(request.cwd.clone());
-        let command = CommandId::try_from("1").unwrap();
+        let running = self.commands.borrow().iter().filter(|command| command.borrow().is_running()).count();
+        let command = CommandId::try_from((running + 1).to_string()).unwrap();
         let record = Rc::new(RefCell::new(CommandRecord::new(
             command.clone(),
             request.caller.tool_use_id,
             request.title,
         )));
-        self.command.replace(Some(record.clone()));
-        self.feed.changed(&record);
+        self.hold(&record);
         Box::pin(async move { Ok(command) })
     }
 
@@ -1135,8 +1177,8 @@ impl ShellEnvironment for ScriptedShell {
     }
 
     fn page_views(&self) -> Vec<PageView> {
-        let command = self.command.borrow();
-        command
+        self.commands
+            .borrow()
             .iter()
             .map(|record| record.borrow().page_view())
             .collect()
@@ -1144,6 +1186,25 @@ impl ShellEnvironment for ScriptedShell {
 
     fn release_command<'a>(&'a self, _command: &'a CommandId) -> LocalBoxFuture<'a, bool> {
         Box::pin(async { false })
+    }
+
+    /// Ends its commands whose start waits, never sent.
+    fn stop_waiting(&self) -> LocalBoxFuture<'_, ()> {
+        let waiting: Vec<Rc<RefCell<CommandRecord>>> = self
+            .commands
+            .borrow()
+            .iter()
+            .filter(|record| record.borrow().is_waiting())
+            .cloned()
+            .collect();
+        for record in waiting {
+            record
+                .borrow_mut()
+                .settle(Ending::Aborted, Arc::new(WholeOutput::default()), None, Vec::new(), "");
+            self.feed.changed(&record);
+            self.ends.send_replace(());
+        }
+        Box::pin(async {})
     }
 
     /// Takes up the command a restore names, as a runner that kept it.
@@ -1155,8 +1216,7 @@ impl ShellEnvironment for ScriptedShell {
             taken.running,
             taken.seen,
         )));
-        self.command.replace(Some(record.clone()));
-        self.feed.changed(&record);
+        self.hold(&record);
     }
 
     fn detach_all(&self) -> LocalBoxFuture<'_, ()> {
@@ -1167,13 +1227,14 @@ impl ShellEnvironment for ScriptedShell {
     /// Stops the command and waits for its end, as a real environment does.
     fn dispose_all(&self) -> LocalBoxFuture<'_, ()> {
         Box::pin(async move {
-            let command = self
-                .command
+            let commands: Vec<CommandId> = self
+                .commands
                 .borrow()
-                .as_ref()
-                .map(|record| record.borrow().command_id().clone());
-            if let Some(command) = command {
-                // It holds the command it names.
+                .iter()
+                .map(|record| record.borrow().command_id().clone())
+                .collect();
+            for command in commands {
+                // It holds the commands it names.
                 let _ = self.abort(&command).await;
                 let _ = self.ended(&command).await;
             }
@@ -1203,6 +1264,18 @@ pub fn scripted_host_server_in(
     store: Rc<MemoryTreeStore>,
     hosts: Rc<LiveHosts>,
 ) -> Rc<AgentServer<LiveHosts>> {
+    scripted_host_server_telling(providers, shells, store, hosts, Rc::new(|_| {}))
+}
+
+/// [`scripted_host_server_in`], which tells `status_changed` of each change
+/// the product hears of a tree's work.
+pub fn scripted_host_server_telling(
+    providers: Rc<ScriptedProviders>,
+    shells: Rc<ScriptedShells>,
+    store: Rc<MemoryTreeStore>,
+    hosts: Rc<LiveHosts>,
+    status_changed: Rc<dyn Fn(&NodeId)>,
+) -> Rc<AgentServer<LiveHosts>> {
     AgentServer::new(ServerDeps {
         toolsets: Rc::new(Toolset {
             commands: Rc::new(CommandSet::new()),
@@ -1224,7 +1297,7 @@ pub fn scripted_host_server_in(
         clock: Arc::new(FixedClock(start())),
         ids: Rc::new(SequentialIds::new("id")),
         config: ServerConfig::default(),
-        status_changed: Rc::new(|_| {}),
+        status_changed,
     })
 }
 
@@ -1250,7 +1323,7 @@ impl ShellEnvironmentFactory<ScriptedHost> for ScriptedShells {
         let shell = Rc::new(ScriptedShell {
             started_in: RefCell::default(),
             feed: scope.feed.clone(),
-            command: RefCell::default(),
+            commands: RefCell::default(),
             ends: watch::Sender::new(()),
             detached: Cell::new(false),
         });

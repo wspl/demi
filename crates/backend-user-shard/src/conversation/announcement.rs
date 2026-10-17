@@ -10,15 +10,11 @@
 //! is the context blocks of its own transcript: each block names the
 //! revision it describes, and a switch and a reset are each announced to a
 //! node once.
-//!
-//! The reason a user's Resume carries is composed here too, from the same
-//! primary Host: where a turn its offline Host left unfinished now runs.
 
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::{
-    AttachedHost, ConversationRecord, ExecutionTarget, TargetSwitch,
+    AttachedHost, ExecutionTarget, TargetSwitch,
 };
-use demi_agent_session::left_by_offline_host;
 use demi_backend_database::devices::{CLOUD_NAME, DeviceRecord};
 use demi_agent_store::Placement;
 use demi_backend_database::tree;
@@ -140,34 +136,9 @@ impl Shard {
         Ok(Some(lines.join("\n")))
     }
 
-    /// What the model reads as the user resumes `record`'s turn its
-    /// offline Host left unfinished (`failures-and-recovery.md`
-    /// § The unfinished turn): "alpha is back online." when the
-    /// conversation still runs on that device, or "This conversation now
-    /// runs on beta." after a move. None for any other resume, and while
-    /// the conversation's tree is not open, when the resume is refused.
-    pub(crate) async fn resume_reason(
-        &self,
-        record: &ConversationRecord,
-    ) -> Result<Option<String>, StorageError> {
-        let Some(tree) = self.agent().tree(&root_of(&record.id)) else {
-            return Ok(None);
-        };
-        let blocks = tree.root().session().transcript().blocks;
-        let Some(away) = left_by_offline_host(&blocks) else {
-            return Ok(None);
-        };
-        let primary = self.host_shard().resolve_target(record).await?;
-        if primary.device().is_some_and(|device| device.as_str() == away.id) {
-            return Ok(Some(format!("{} is back online.", away.name)));
-        }
-        let (_, name) = self.primary_host(&primary).await?;
-        Ok(Some(format!("This conversation now runs on {name}.")))
-    }
-
     /// The primary Host's device record, when it has one, and its name as
     /// the model reads it: the device's, or Cloud for a Cloud not made yet.
-    async fn primary_host(
+    pub(crate) async fn primary_host(
         &self,
         target: &ExecutionTarget,
     ) -> Result<(Option<DeviceRecord>, String), StorageError> {

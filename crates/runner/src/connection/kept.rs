@@ -1,9 +1,10 @@
 //! What the runner keeps through a connection loss (`runner.md` § Command
 //! lifetime): its jobs with their directories and execution contexts, and
 //! the requests its jobs' commands make of the backend. A connection serves
-//! them while it lasts; without one, the jobs run on, their messages go
-//! nowhere, and after `UNREACHED_GRACE` the runner stops them and its
-//! services, keeping their ends for the next connection.
+//! them while it lasts; without one, the jobs run on however long it takes,
+//! their messages go nowhere, and their commands' requests wait for the next
+//! connection. Only the runner's end stops them, as when the backend refuses
+//! it.
 
 use std::sync::Arc;
 
@@ -17,7 +18,7 @@ use demi_runner_protocol::wire;
 use tokio::{
     sync::{mpsc, watch},
     task::JoinSet,
-    time::{Duration, Instant},
+    time::Instant,
 };
 use tokio_util::task::AbortOnDropHandle;
 
@@ -41,12 +42,6 @@ pub struct Kept {
     output: watch::Sender<Option<mpsc::Sender<wire::Frame>>>,
     /// Passes the jobs' messages on to that connection.
     _forwarder: AbortOnDropHandle<()>,
-    /// When the connection was lost, while the runner waits for the next.
-    lost: Option<Instant>,
-    /// When the jobs stopped after the grace are killed, if they still run.
-    kill_at: Option<Instant>,
-    /// How long the runner keeps its jobs without a connection.
-    grace: Duration,
 }
 
 /// What happened to what the registration keeps.
@@ -54,17 +49,12 @@ pub enum Event {
     Request(Request),
     Finished(WorkId),
     Watch(Ended),
-    /// The connection stayed away for `UNREACHED_GRACE`.
-    Unreached,
-    /// Jobs stopped with `TERM` had their time to end.
-    Kill,
 }
 
 impl Kept {
     /// The registration's jobs, none yet, under its job root, whose
     /// directories a runner that ended left are removed.
-    /// They are kept `grace` without a connection.
-    pub async fn open(registered: &Registered, grace: Duration) -> Self {
+    pub async fn open(registered: &Registered) -> Self {
         let directories = JobDirectories::open(registered.jobs.clone()).await;
         let (reach, reaching) = watch::channel(Reach::Away);
         let (handle, requests) = ConnectionHandle::new(reaching);
@@ -97,9 +87,6 @@ impl Kept {
             reach,
             output,
             _forwarder: AbortOnDropHandle::new(forwarder),
-            lost: None,
-            kill_at: None,
-            grace,
         }
     }
 
@@ -113,36 +100,28 @@ impl Kept {
     /// of the jobs not released: their media's announcements and the exits
     /// of those that ended.
     pub fn connected(&mut self, live: Live, output: mpsc::Sender<wire::Frame>) -> Vec<wire::Frame> {
-        self.lost = None;
         self.output.send_replace(Some(output));
         self.reach.send_replace(Reach::Connected(live));
         self.directories.announcements()
     }
 
     /// The connection ended: the jobs run on, and their commands' calls in
-    /// flight end with it. The grace starts when the connection served.
+    /// flight end with it.
     pub fn disconnected(&mut self) {
         self.output.send_replace(None);
         // Calls in flight end: their events go nowhere any more.
         self.relay = Relay::default();
-        let served = self.reach.send_if_modified(|reach| {
+        self.reach.send_if_modified(|reach| {
             if matches!(reach, Reach::Connected(_)) {
                 *reach = Reach::Away;
                 return true;
             }
             false
         });
-        // A connection that never served, such as one refused, starts no
-        // grace again.
-        if served {
-            self.lost = Some(Instant::now());
-        }
     }
 
     /// The next thing that happened; cancel-safe.
     pub async fn next(&mut self) -> Event {
-        let unreached = self.lost.map(|lost| lost + self.grace);
-        let kill_at = self.kill_at;
         tokio::select! {
             biased;
             Some(request) = self.requests.recv() => Event::Request(request),
@@ -150,8 +129,6 @@ impl Kept {
             Some(ended) = self.watches.join_next() => {
                 Event::Watch(ended.expect("relay watches do not panic"))
             }
-            () = sleep_until(unreached), if unreached.is_some() => Event::Unreached,
-            () = sleep_until(kill_at), if kill_at.is_some() => Event::Kill,
         }
     }
 
@@ -199,21 +176,6 @@ impl Kept {
                 registered.management.set_jobs(self.jobs.job_count());
             }
             Event::Watch(ended) => self.relay.ended(ended),
-            Event::Unreached => {
-                tracing::warn!(
-                    "the backend stayed away for {} seconds; stopping the jobs and services",
-                    self.grace.as_secs()
-                );
-                self.lost = None;
-                self.reach.send_replace(Reach::Unreached);
-                self.jobs.stop_jobs(true);
-                self.kill_at = Some(Instant::now() + wire::STOP_GRACE);
-                registered.services.stop_all().await;
-            }
-            Event::Kill => {
-                self.kill_at = None;
-                self.jobs.kill_jobs();
-            }
         }
     }
 
@@ -222,7 +184,7 @@ impl Kept {
     /// killed job ends a second later whatever its in-process work does
     /// (§ Cancellation and completion), so the update never waits on one.
     pub async fn stop_jobs(&mut self, registered: &Registered) {
-        self.jobs.stop_jobs(false);
+        self.jobs.stop_jobs();
         // `KILL` goes once: a deadline that has passed would be ready again
         // at every turn of the loop.
         let mut kill_at = Some(Instant::now() + wire::STOP_GRACE);

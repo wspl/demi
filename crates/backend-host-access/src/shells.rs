@@ -19,7 +19,7 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::conversations::ConversationDb;
 use demi_backend_database::running::{self, RunningCommand};
 use demi_backend_remote_host::{
-    CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteHost,
+    CommandCatalog, CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, JobWaiting, KeptStart, RemoteHost,
     RemoteShellEnvironment, edited_file, encode_output,
 };
 use demi_backend_runners::command_context::command_context;
@@ -28,17 +28,16 @@ use demi_backend_runners::host_key::device_of;
 use demi_backend_runners::router::CommandRegistration;
 use demi_command_protocol::{CommandCaller, EDIT_FILE_BYTES};
 use demi_host_interface::{
-    CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey, JobCaller,
-    PageView, Seen, ShellEnvironment, ShellError, TakenUp, Unreachable, WholeOutput,
+    CommandMedium, CommandStatus, Ending, ExecRequest, Host, HostError, HostErrorKind, HostKey,
+    PageView, Seen, ShellEnvironment, ShellError, TakenUp, Unreachable, UnsentStart, WholeOutput,
 };
 use demi_runner_protocol::wire::JobFileChange;
-use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, ErrorDevice, NodeId};
-use demi_web_api_protocol::devices::DeviceKind;
+use demi_shared_types::{BlobRef, Clock, CommandEnd, CommandId, EditCopies, EditedFile, NodeId};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
-use crate::access::{HostAccessError, Refusal, Waits};
+use crate::access::{DeviceWait, HostAccessError, Refusal, ShowWait, Waits};
 use crate::{HostShard, conversation_of};
 
 impl dyn HostShard + '_ {
@@ -57,15 +56,19 @@ impl dyn HostShard + '_ {
         Ok(Rc::new(host))
     }
 
-    /// Runs `job`, a shell job the conversation's agent started on `host`,
-    /// inside the conversation's host access: it holds what the Host needs
-    /// until the job ended, and it is refused once `host` is not the Host
-    /// the conversation reaches on that device, as after a target switch.
+    /// Runs `job`, a shell job of the conversation's agent started on
+    /// `host`, inside the conversation's host access: it holds
+    /// what the Host needs until the job ended, and it is refused once
+    /// `host` is not the Host the conversation reaches on that device, as
+    /// after a target switch. While the conversation's primary Host is a
+    /// paired device without a live runner, the job waits for it as `wait`
+    /// says (`sessions-and-targets.md` § Host operations).
     pub async fn run_job(
         &self,
         id: &ConversationId,
         host: &HostKey,
         cancel: &CancellationToken,
+        wait: DeviceWait<'_>,
         job: LocalBoxFuture<'_, ()>,
     ) -> Result<(), HostError> {
         let device = device_of(host)
@@ -77,7 +80,7 @@ impl dyn HostShard + '_ {
                 )
             })?;
         let admitted = self
-            .admit_host(id, Some(&device), Waits::request(cancel))
+            .admit_host(id, Some(&device), Waits::job(cancel, wait))
             .await?;
         if admitted.host.host.key() != *host {
             return Err(HostError::new(
@@ -184,7 +187,7 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
             options.keeper = Some(Rc::new(Keeper {
                 conversation: conversation.clone(),
                 node: scope.node.clone(),
-                device: device.clone(),
+                device,
                 host: host.clone(),
                 db: shard.conversation_db(&conversation),
                 control: shard.control().clone(),
@@ -205,11 +208,6 @@ impl ShellEnvironmentFactory<RemoteHost> for ShardShellEnvironments {
             );
             Ok(Rc::new(Registered {
                 environment,
-                host,
-                offline: Offline {
-                    shard: self.shard.clone(),
-                    device,
-                },
                 _registration: registration,
             }) as Rc<dyn ShellEnvironment>)
         })
@@ -227,6 +225,7 @@ impl HostAccess for JobAccess {
         &'a self,
         host: &'a HostKey,
         cancel: CancellationToken,
+        waiting: JobWaiting<'a>,
         job: LocalBoxFuture<'a, ()>,
     ) -> LocalBoxFuture<'a, Result<(), HostError>> {
         Box::pin(async move {
@@ -234,8 +233,19 @@ impl HostAccess for JobAccess {
                 .shard
                 .upgrade()
                 .ok_or_else(|| HostError::offline("the backend is shutting down"))?;
-            shard.run_job(&self.conversation, host, &cancel, job).await
+            let shown = Shown(waiting);
+            let wait = DeviceWait { shown: &shown };
+            shard.run_job(&self.conversation, host, &cancel, wait, job).await
         })
+    }
+}
+
+/// How a job's environment shows it waiting for its device.
+struct Shown<'a>(JobWaiting<'a>);
+
+impl ShowWait for Shown<'_> {
+    fn shown(&self, host: Option<String>) -> LocalBoxFuture<'_, ()> {
+        (self.0.shown)(host)
     }
 }
 
@@ -258,6 +268,44 @@ struct Keeper {
 }
 
 impl Keeper {
+    /// Records `command`, which runs as the job `job`, and while `unsent`
+    /// waits to start: the job first, by its device, so a runner's hello
+    /// finds its conversation, then the command in the conversation's
+    /// database (`storage.md` § Command outputs). A command recorded as
+    /// waiting is recorded again as sent once its job starts.
+    async fn record(&self, command: &CommandId, job: &str, start: &KeptStart, unsent: Option<&UnsentStart>) {
+        let indexed = self
+            .control
+            .record_running_job(job.to_owned(), self.device.clone(), self.conversation.clone(), unsent.is_none())
+            .await;
+        if let Err(error) = indexed {
+            // The command runs all the same; a backend that starts again
+            // does not take it up.
+            tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running job was not recorded");
+            return;
+        }
+        let running = RunningCommand {
+            command: command.clone(),
+            node: self.node.clone(),
+            device: self.device.clone(),
+            job: job.to_owned(),
+            tool_use_id: start.caller.tool_use_id.clone(),
+            turn: start.caller.turn.clone(),
+            title: start.title.clone(),
+            interval_ms: start.interval_ms,
+            started: self.clock.now(),
+            places: Default::default(),
+            unsent: unsent.cloned(),
+        };
+        let recorded = self
+            .db
+            .call(move |connection| running::record(connection, &running))
+            .await;
+        if let Err(error) = recorded {
+            tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running command was not recorded");
+        }
+    }
+
     /// Stores `output` as a blob, in the kept output's records.
     async fn put(&self, output: &WholeOutput) -> Result<demi_shared_types::BlobRef, String> {
         let output = output.clone();
@@ -324,45 +372,18 @@ impl CommandKeeper for Keeper {
     /// Records the job in the control database first, by its device, so a
     /// runner's hello finds its conversation, then the command in the
     /// conversation's (`storage.md` § Command outputs).
-    fn started<'a>(
+    fn started<'a>(&'a self, command: &'a CommandId, job: &'a str, start: &'a KeptStart) -> LocalBoxFuture<'a, ()> {
+        Box::pin(self.record(command, job, start, None))
+    }
+
+    fn waiting<'a>(
         &'a self,
         command: &'a CommandId,
-        caller: &'a JobCaller,
-        title: &'a str,
-        interval_ms: Option<u32>,
         job: &'a str,
+        start: &'a KeptStart,
+        unsent: &'a UnsentStart,
     ) -> LocalBoxFuture<'a, ()> {
-        Box::pin(async move {
-            let indexed = self
-                .control
-                .record_running_job(job.to_owned(), self.device.clone(), self.conversation.clone())
-                .await;
-            if let Err(error) = indexed {
-                // The command runs all the same; a backend that starts again
-                // does not take it up.
-                tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running job was not recorded");
-                return;
-            }
-            let running = RunningCommand {
-                command: command.clone(),
-                node: self.node.clone(),
-                device: self.device.clone(),
-                job: job.to_owned(),
-                tool_use_id: caller.tool_use_id.clone(),
-                turn: caller.turn.clone(),
-                title: title.to_owned(),
-                interval_ms,
-                started: self.clock.now(),
-                places: Default::default(),
-            };
-            let recorded = self
-                .db
-                .call(move |connection| running::insert(connection, &running))
-                .await;
-            if let Err(error) = recorded {
-                tracing::warn!(conversation = %self.conversation, %command, error = &error as &dyn std::error::Error, "a running command was not recorded");
-            }
-        })
+        Box::pin(self.record(command, job, start, Some(unsent)))
     }
 
     fn retain<'a>(
@@ -502,68 +523,19 @@ impl CommandKeeper for Keeper {
 /// calls with the node's commands while it lives.
 struct Registered {
     environment: RemoteShellEnvironment,
-    /// The Host its commands run on.
-    host: Rc<RemoteHost>,
-    offline: Offline,
     _registration: CommandRegistration,
 }
 
-/// What a command started on a paired device without a live runner fails
-/// with.
-struct Offline {
-    shard: Weak<dyn HostShard>,
-    device: DeviceId,
-}
-
-impl Offline {
-    /// The device's offline error, as its record says it now, which tells
-    /// the model that the user can resume the turn once the device is back
-    /// (`sessions-and-targets.md` § Host operations); none for a Cloud,
-    /// which the job's admission wakes.
-    async fn error(&self) -> Option<ShellError> {
-        let Some(shard) = self.shard.upgrade() else {
-            return Some(HostError::offline("the backend is shutting down").into());
-        };
-        match shard.control().device(self.device.clone()).await {
-            Ok(Some(record)) if record.kind == DeviceKind::Managed => None,
-            Ok(Some(record)) => Some(ShellError::HostOffline {
-                message: format!(
-                    "{}; the user can resume this turn once it is back.",
-                    shard.offline_reason(&record)
-                ),
-                device: ErrorDevice {
-                    id: record.id.to_string(),
-                    name: record.name,
-                },
-            }),
-            Ok(None) => Some(HostError::offline("the device was removed").into()),
-            Err(error) => Some(
-                HostError::offline(format!(
-                    "the device is offline, and its record could not be read: {error}"
-                ))
-                .into(),
-            ),
-        }
-    }
-}
-
 impl ShellEnvironment for Registered {
-    /// Starts nothing on a device without a live runner: the call shows
-    /// its offline error, worded for the model (`sessions-and-targets.md`
+    /// Starts the command; a job whose Host is the conversation's offline
+    /// device waits for it in its admission (`sessions-and-targets.md`
     /// § Host operations).
     fn start(
         &self,
         request: ExecRequest,
         cancel: CancellationToken,
     ) -> LocalBoxFuture<'_, Result<CommandId, ShellError>> {
-        Box::pin(async move {
-            if !self.host.online()
-                && let Some(error) = self.offline.error().await
-            {
-                return Err(error);
-            }
-            self.environment.start(request, cancel).await
-        })
+        self.environment.start(request, cancel)
     }
 
     fn ended<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, Result<Ending, ShellError>> {
@@ -619,6 +591,10 @@ impl ShellEnvironment for Registered {
 
     fn release_command<'a>(&'a self, command: &'a CommandId) -> LocalBoxFuture<'a, bool> {
         self.environment.release_command(command)
+    }
+
+    fn stop_waiting(&self) -> LocalBoxFuture<'_, ()> {
+        self.environment.stop_waiting()
     }
 
     fn adopt(&self, taken: TakenUp) {

@@ -274,22 +274,3 @@ export function endsWithErrorRecord(blocks: readonly RecordCandidate[]): boolean
 function isLateInput(block: RecordCandidate): boolean {
   return block.type === 'agent_message' || (block.type === 'wakeup' && block.placement === 'steer')
 }
-
-/**
- * The Host the dock's Resume waits for (`turns.md` § Recovering an
- * unfinished turn): the turn ended unfinished because a device was offline,
- * and the conversation's current primary Host, where the resume runs, is a
- * device that is not online; that is the device the record names unless the
- * conversation moved since. A stopped Cloud wakes for the resume, so it holds
- * nothing back. Null when Resume may go.
- */
-export function resumeWaitsFor(
-  blocks: readonly RecordCandidate[],
-  primary: HostMenuHost | null,
-): string | null {
-  const end = turnRecord(blocks)
-  if (end?.type !== 'error' || end.code !== 'host_offline' || !primary) {
-    return null
-  }
-  return primary.kind === 'device' && primary.state !== 'online' ? primary.name : null
-}

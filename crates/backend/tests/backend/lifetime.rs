@@ -14,7 +14,6 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use demi_agent_tools::testing::{field, shown_output};
 use demi_conversation_socket_protocol::ServerFrame;
-use demi_host_interface::SpawnEnv;
 use demi_provider_common::testing::MockVendor;
 use demi_shared_types::{Block, ReportEvent, SessionPhase};
 use reqwest::StatusCode;
@@ -372,51 +371,6 @@ async fn a_command_another_runner_does_not_list_is_lost_and_never_sent_again() {
     );
     told_at_the_next_turn(&mut work, &harness, FIRST, &vendor, &report).await;
     assert!(!home.join("runs").exists(), "the command never ran");
-    backend.close().await;
-}
-
-// About four seconds: a real device pairs, its job is a login shell, the
-// call that starts it waits for two quiet seconds, and its runner keeps the
-// job 300 ms instead of 10 minutes.
-#[tokio::test]
-async fn a_connection_that_stays_away_past_the_grace_loses_the_command_and_says_why() {
-    let vendor = MockVendor::start().await;
-    let harness = Harness::new();
-    let (backend, master) = harness.start_set_up().await;
-    let network = Network::start(backend.address()).await;
-    let grace = SpawnEnv::Overlay([("DEMI_UNREACHED_GRACE_MS".to_owned(), Some("300".to_owned()))].into());
-    let alpha = backend.pair_with(&master, "alpha", &network.url, grace).await;
-    let mut work = on_device(&backend, &master, &vendor, &alpha).await;
-    let home = alpha.runner.home_dir().to_owned();
-    let command = started(&mut work, "t1", "sh -c 'echo $$ > pid; exec sleep 60'").await;
-    until_exists(&home.join("pid")).await;
-    let pid = std::fs::read_to_string(home.join("pid")).unwrap().trim().to_owned();
-    let alive = |pid: &str| {
-        std::process::Command::new("kill")
-            .args(["-0", pid])
-            .stderr(std::process::Stdio::null())
-            .status()
-            .unwrap()
-            .success()
-    };
-
-    network.cut();
-    eventually("the runner stopped its job", || {
-        let alive = alive(&pid);
-        async move { !alive }
-    })
-    .await;
-    network.open();
-
-    let report = format!("Command {command} (t1) was lost: {}. Start it again", demi_backend_remote_host::UNREACHED);
-    told_at_the_next_turn(&mut work, &harness, FIRST, &vendor, &report).await;
-    let look = format!("demi shell status {command}");
-    let shown = work.turn(vec![shell("t2", &look, 10_000), say("looked")]).await;
-    assert!(
-        shown.received[0].contains(&format!("status: lost: {}", demi_backend_remote_host::UNREACHED)),
-        "{}",
-        shown.received[0]
-    );
     backend.close().await;
 }
 

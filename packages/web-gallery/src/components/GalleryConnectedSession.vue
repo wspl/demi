@@ -102,7 +102,8 @@ const moveQuestion = useMoveQuestion()
  */
 async function moveTo(deviceId: string, path: string): Promise<boolean> {
   const host = hosts.find((candidate) => candidate.id === deviceId)
-  const stops = workToStop(session)
+  // The specimen's Host is always online: its agent never only waits for it.
+  const stops = workToStop({ ...session, onlyWaitsForHost: false })
   const move = async () => {
     flow.abortSubagents()
     for (const terminal of session.terminals) {

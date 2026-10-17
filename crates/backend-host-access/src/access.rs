@@ -4,10 +4,11 @@
 //! or a target switch; the target is resolved, and an archived conversation
 //! or a device that is not bound is refused; in the grace after the
 //! backend starts, a device its last shutdown disconnected is waited for
-//! (§ Recovery and persistence), and after it an attached device without a
-//! live runner is refused with its offline error; a Cloud's admission is
-//! taken; the file gate is let go while either waits; then the operation
-//! runs once. Each
+//! (§ Recovery and persistence), and after it an agent's job on the primary
+//! Host waits for its device's runner however long it takes, while an
+//! attached device without a live runner is refused with its offline error;
+//! a Cloud's admission is taken; the file gate is let go while any of them
+//! waits; then the operation runs once. Each
 //! conversation has one slot in its user's shard, with its file gate, its
 //! open transfers and the gate its open user streams hold.
 
@@ -26,10 +27,10 @@ use demi_backend_remote_host::{Admission, RemoteHost};
 use demi_backend_runners::file_gate::{FileGate, FileLease};
 use demi_host_interface::{HostError, HostErrorKind, HostFs, MkdirOptions};
 use demi_runner_protocol::files::FsFailure;
-use demi_runner_protocol::wire::UNREACHED_GRACE;
 use demi_shared_gates::{ActivityGate, GateLease, Purpose, SerialGate};
 use demi_web_api_protocol::devices::DeviceKind;
 use demi_web_api_protocol::error::ErrorCode;
+use futures_util::future::LocalBoxFuture;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::join_all;
 use tokio_util::sync::CancellationToken;
@@ -72,6 +73,47 @@ pub struct ConversationSlot {
     /// The admissions its running shell jobs hold, each with its job's
     /// device.
     jobs: RefCell<Vec<Rc<JobAdmission>>>,
+    /// The agent's jobs whose start waits for the conversation's primary
+    /// device to come back (§ Host operations).
+    waiting: RefCell<Vec<Rc<WaitingJob>>>,
+}
+
+/// A job whose start waits for its offline primary device, `device`, and
+/// why it will never start, once a move of the conversation decided that
+/// (§ Switch the primary target).
+struct WaitingJob {
+    device: DeviceId,
+    failed: RefCell<Option<String>>,
+    /// Cancelled once `failed` is set.
+    ended: CancellationToken,
+}
+
+/// A job's registration as waiting for its device, until it drops.
+struct HeldWait {
+    slot: Rc<ConversationSlot>,
+    entry: Rc<WaitingJob>,
+}
+
+impl HeldWait {
+    /// Why the job will never start, once a move decided it.
+    fn failed(&self) -> Option<String> {
+        self.entry.failed.borrow().clone()
+    }
+
+    /// Resolves with why the job will never start, once a move decides it.
+    async fn until_failed(&self) -> String {
+        self.entry.ended.cancelled().await;
+        self.failed().unwrap_or_default()
+    }
+}
+
+impl Drop for HeldWait {
+    fn drop(&mut self) {
+        self.slot
+            .waiting
+            .borrow_mut()
+            .retain(|entry| !Rc::ptr_eq(entry, &self.entry));
+    }
 }
 
 /// A running job's admission, held until the job ends, unless a move away
@@ -126,6 +168,30 @@ impl ConversationSlot {
         drop(left);
     }
 
+    /// Registers a job as waiting for `device`, the conversation's offline
+    /// primary device.
+    fn wait_for_device(self: &Rc<Self>, device: DeviceId) -> HeldWait {
+        let entry = Rc::new(WaitingJob {
+            device,
+            failed: RefCell::new(None),
+            ended: CancellationToken::new(),
+        });
+        self.waiting.borrow_mut().push(entry.clone());
+        HeldWait {
+            slot: self.clone(),
+            entry,
+        }
+    }
+
+    /// Fails the jobs that wait for `device`, which a move left: none of
+    /// them was sent, and each ends with `reason`.
+    pub fn fail_waiting_for(&self, device: &DeviceId, reason: &str) {
+        for entry in self.waiting.borrow().iter().filter(|entry| entry.device == *device) {
+            entry.failed.replace(Some(reason.to_owned()));
+            entry.ended.cancel();
+        }
+    }
+
     /// The conversation's file gate, which a transition reserves, an idle
     /// watch reads, and work that holds the conversation without reaching
     /// its Host, such as a frame of its socket, enters. A lease of it names
@@ -148,6 +214,7 @@ impl Conversations {
                     settings: SerialGate::new(),
                     saved: SerialGate::new(),
                     jobs: RefCell::default(),
+                    waiting: RefCell::default(),
                 })
             })
             .clone()
@@ -297,11 +364,28 @@ pub(crate) struct StreamAccess {
 }
 
 /// What ends an admission's waits: the requester leaving, and, for a file
-/// transfer, a transition that ends the conversation's transfers.
+/// transfer, a transition that ends the conversation's transfers. An agent's
+/// job also says how it waits for an offline primary device, `device`.
 #[derive(Clone, Copy)]
 pub struct Waits<'a> {
     pub cancel: &'a CancellationToken,
     pub ended: Option<&'a CancellationToken>,
+    pub device: Option<DeviceWait<'a>>,
+}
+
+/// How an agent's job waits while the conversation's primary Host is a
+/// paired device without a live runner (§ Host operations): what shows the
+/// job waiting for the device it names, or no longer waiting with `None`,
+/// which the wait awaits before it goes on.
+#[derive(Clone, Copy)]
+pub struct DeviceWait<'a> {
+    pub shown: &'a dyn ShowWait,
+}
+
+/// Shows a job waiting for the device `host` names, or no longer waiting
+/// with `None`.
+pub trait ShowWait {
+    fn shown(&self, host: Option<String>) -> LocalBoxFuture<'_, ()>;
 }
 
 impl<'a> Waits<'a> {
@@ -309,6 +393,17 @@ impl<'a> Waits<'a> {
         Self {
             cancel,
             ended: None,
+            device: None,
+        }
+    }
+
+    /// The waits of an agent's job, which waits for its offline primary
+    /// device as `device` says.
+    pub fn job(cancel: &'a CancellationToken, device: DeviceWait<'a>) -> Self {
+        Self {
+            cancel,
+            ended: None,
+            device: Some(device),
         }
     }
 
@@ -318,6 +413,7 @@ impl<'a> Waits<'a> {
         Self {
             cancel,
             ended: Some(ended),
+            device: None,
         }
     }
 
@@ -346,9 +442,10 @@ struct Selected {
     /// Whether the directory is made before the operation, as a Cloud
     /// session directory is.
     prepare: bool,
-    /// Whether it is the conversation's primary Host. Its operations are
-    /// admitted while its runner is away, as a command taken up again is,
-    /// and the Host answers them offline; an attached Host is refused.
+    /// Whether it is the conversation's primary Host. An agent's job waits
+    /// for it while its runner is away, and its other operations are
+    /// admitted, as a command taken up again is, and the Host answers them
+    /// offline; an attached Host is refused.
     primary: bool,
 }
 
@@ -414,8 +511,15 @@ impl dyn HostShard + '_ {
         let slot = self.conversations().slot(&record.id);
         let mut cloud: Option<CloudAdmission> = None;
         let mut waited_for_return = false;
+        // Registered while an agent's job waits for its device, and kept
+        // until the admission ends, so that a move decided while the job
+        // came back to the file gate still fails it.
+        let mut waiting: Option<HeldWait> = None;
         loop {
             let files = waits.wait(slot.files.enter(Purpose::Demand)).await?;
+            if let Some(reason) = waiting.as_ref().and_then(HeldWait::failed) {
+                return Err(HostError::new(HostErrorKind::Unavailable, reason).into());
+            }
             let selected = self.select_host(&record.id, device, true).await?;
             let away = selected.device.kind == DeviceKind::User
                 && !self.devices().online(&selected.device.id);
@@ -426,9 +530,30 @@ impl dyn HostShard + '_ {
                 waits.wait(self.devices().returned(&selected.device.id, rest)).await?;
                 continue;
             }
-            // An attached device without a live runner is refused with its
-            // offline error; an operation on the primary Host is admitted,
-            // and its Host answers it offline at once (§ Host operations).
+            // An agent's job waits for its primary device however long it
+            // takes, holding no file lease, so a move can fail it; an
+            // attached device without a live runner is refused with its
+            // offline error; any other operation on the primary Host is
+            // admitted, and its Host answers it offline at once (§ Host
+            // operations).
+            if away && selected.primary && let Some(wait) = waits.device {
+                drop(files);
+                let held = waiting.get_or_insert_with(|| slot.wait_for_device(selected.device.id.clone()));
+                wait.shown.shown(Some(selected.device.name.clone())).await;
+                let woke = waits
+                    .wait(async {
+                        tokio::select! {
+                            () = self.devices().until_online(&selected.device.id) => None,
+                            reason = held.until_failed() => Some(reason),
+                        }
+                    })
+                    .await;
+                wait.shown.shown(None).await;
+                if let Some(reason) = woke? {
+                    return Err(HostError::new(HostErrorKind::Unavailable, reason).into());
+                }
+                continue;
+            }
             if away && !selected.primary {
                 return Err(self.offline(&selected.device).into());
             }
@@ -532,22 +657,14 @@ impl dyn HostShard + '_ {
     /// since its record last saw it, and what becomes of the commands
     /// running there.
     pub fn offline(&self, device: &DeviceRecord) -> HostError {
-        HostError::offline(format!("{}.", self.offline_reason(device)))
-    }
-
-    /// The offline error's text without its full stop, which a `shell`
-    /// call's result continues with what the user can do.
-    pub fn offline_reason(&self, device: &DeviceRecord) -> String {
         // A device never seen has been away as long as it has been known.
         let since = device.last_seen_at.unwrap_or(device.claimed_at).as_millisecond();
         let away = u64::try_from(self.clock().now().as_millisecond() - since).unwrap_or(0);
-        let grace = u64::try_from(UNREACHED_GRACE.as_millis()).unwrap_or(u64::MAX);
-        format!(
-            "{} is offline: its runner has been disconnected for {}, so nothing can run there now; commands already running there are kept for up to {} and report when it is back",
+        HostError::offline(format!(
+            "{} is offline: its runner has been disconnected for {}, so nothing can run there now; commands already running there keep running and report when it is back.",
             device.name,
             duration(away),
-            duration(grace),
-        )
+        ))
     }
 
     /// How long an operation on `device` waits for its runner first: the

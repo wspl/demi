@@ -191,6 +191,12 @@ pub struct ConversationSummary {
     /// user has since turned on or off, so a reload would change them
     /// (`plugins.md` § A user's plugins).
     pub plugins_changed: bool,
+    /// Whether the conversation's agent works only by waiting for its
+    /// primary Host, a paired device whose runner is away: every running
+    /// agent's remaining work is a command whose start waits for it. A move
+    /// then stops nothing (`sessions-and-targets.md` § Switch the primary
+    /// target).
+    pub only_waits_for_host: bool,
     /// The revision of the conversation's draft, 0 before its first save
     /// (`web-api-conversations.md` § Conversation drafts): a page reads the draft only when
     /// this is higher than the revision it holds.
