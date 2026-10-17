@@ -74,6 +74,8 @@ export function settingsSections(): SettingsNavGroup[] {
             { label: t('notifications.when.turnFinishes'), keywords: words(t('sections.notifications.finishesKeywords')) },
             { label: t('notifications.when.turnFails'), keywords: words(t('sections.notifications.failsKeywords')) },
             { label: t('notifications.when.needsPermission'), keywords: words(t('sections.notifications.permissionKeywords')) },
+            { label: t('notifications.when.agentNotifies'), keywords: words(t('sections.notifications.agentKeywords')) },
+            { label: t('notifications.homeScreen.row'), keywords: words(t('sections.notifications.homeScreenKeywords')) },
           ],
         },
       ],

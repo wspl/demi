@@ -1,5 +1,7 @@
 import { findText, pageLanguage } from '../i18n/text'
+import en from './locales/en.json'
 import { find, t } from './locales/text'
+import { categoryKey, requestTitleIn, type RequestTitleWords } from './title-words'
 
 /**
  * Conversation requests as the page shows them (`permissions.md` § What the
@@ -119,7 +121,7 @@ export const KEEP_OPTIONS: readonly { value: CredentialKeep; label: string }[] =
  * words, which shows the command set's English.
  */
 function categoryText(id: string, field: 'action' | 'description'): string | null {
-  const key = id.replaceAll('.', '_')
+  const key = categoryKey(id)
   const plugin = id.split('.')[0]
   return find(`categories.${key}.${field}`) ?? findText(`plugins.${plugin}.permissions.${key}.${field}`)
 }
@@ -161,14 +163,36 @@ export function hostDescription(host: PermissionHostView): string {
   return host.kind === 'device' ? t('host.description', { host: host.name }) : t('host.pairingDescription')
 }
 
+/**
+ * The words of the cards' titles, with the actions of `categories`; of
+ * every category this package's catalogue words when none are given.
+ */
+export function requestTitleWords(categories?: readonly Pick<PermissionCategoryView, 'id' | 'action'>[]): RequestTitleWords {
+  const actions: Record<string, string> = {}
+  if (categories) {
+    for (const category of categories) {
+      actions[categoryKey(category.id)] = categoryAction(category)
+    }
+  } else {
+    for (const key of Object.keys(en.categories)) {
+      const action = find(`categories.${key}.action`)
+      if (action !== null) {
+        actions[key] = action
+      }
+    }
+  }
+  return {
+    allow: t('request.allowTitle', { action: '{action}' }),
+    reach: t('host.allowTitle', { host: '{host}' }),
+    pairing: t('host.allowPairingTitle'),
+    useCredential: t('request.allowCredentialTitle', { name: '{name}' }),
+    actions,
+  }
+}
+
 /** The card's title: a host's asks to reach it, a category's to do its action. */
 export function requestTitle(request: Pick<PermissionRequestView, 'categories' | 'host'>): string {
-  if (request.host) {
-    return request.host.kind === 'device'
-      ? t('host.allowTitle', { host: request.host.name })
-      : t('host.allowPairingTitle')
-  }
-  return t('request.allowTitle', { action: requestAction(request) })
+  return requestTitleIn(requestTitleWords(request.categories), request)
 }
 
 /** What a request to use the saved credential `name` lets the conversation do. */

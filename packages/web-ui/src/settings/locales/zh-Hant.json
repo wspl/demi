@@ -97,7 +97,7 @@
       "title": "瀏覽器",
       "label": "瀏覽器通知",
       "blocked": "已在此瀏覽器的網站設定中封鎖。",
-      "thisBrowser": "僅限此瀏覽器。",
+      "thisBrowser": "僅限此瀏覽器。即使關閉 Demi 也會收到。",
       "unsupported": "此瀏覽器不支援通知。"
     },
     "when": {
@@ -105,7 +105,17 @@
       "turnFinishes": "輪次完成",
       "turnFails": "輪次失敗",
       "needsPermission": "Demi 需要權限",
-      "turnOnFirst": "請先開啟瀏覽器通知。"
+      "turnOnFirst": "請先開啟瀏覽器通知。",
+      "agentNotifies": "智慧體傳送通知給你"
+    },
+    "homeScreen": {
+      "title": "若要在 iPhone 上接收通知，請將 Demi 加入主畫面",
+      "share": "點一下 Safari 工具列中的「分享」。",
+      "add": "選擇「加入主畫面」。",
+      "open": "從主畫面打開 Demi，並在其中開啟通知。",
+      "ok": "好",
+      "row": "將 Demi 加入主畫面以接收通知",
+      "howTo": "加入方式"
     }
   },
   "passkeys": {
@@ -213,7 +223,9 @@
       "browserKeywords": "通知",
       "finishesKeywords": "完成,結束",
       "failsKeywords": "錯誤,出錯",
-      "permissionKeywords": "權限請求,請求許可"
+      "permissionKeywords": "權限請求,請求許可",
+      "agentKeywords": "demi notify,智慧體通知,推播",
+      "homeScreenKeywords": "主畫面,iPhone,iPad,加入主畫面"
     },
     "agentPage": {
       "keywords": "輕量模型,標題,快速模型,haiku,flash,輪次",

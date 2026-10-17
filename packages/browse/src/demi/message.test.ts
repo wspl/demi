@@ -26,8 +26,8 @@ const DRAFTED = '00000000-0000-4000-8000-000000000006'
 
 /** What the backend holds: a conversation is there once its message was delivered. */
 const conversations: ConversationSummary[] = [
-  conversationSummary(HELPING, 'Helping', { revision: 1, lastTurn: { id: 'block-1', outcome: 'finished', answerStart: 'Hi' } }),
-  conversationSummary(ON_ITS_WAY, 'On its way', { revision: 1, lastTurn: { id: 'block-1', outcome: 'finished', answerStart: 'Hi' } }),
+  conversationSummary(HELPING, 'Helping', { revision: 1, lastTurn: { id: 'block-1', outcome: 'finished' } }),
+  conversationSummary(ON_ITS_WAY, 'On its way', { revision: 1, lastTurn: { id: 'block-1', outcome: 'finished' } }),
 ]
 
 /**
@@ -126,7 +126,7 @@ const server = Bun.serve({
       // The message's turn ran and ended by the time its delivery reached the page.
       conversations[1] = conversationSummary(ON_ITS_WAY, 'On its way', {
         revision: 2,
-        lastTurn: { id: 'block-2', outcome: 'finished', answerStart: 'Done' },
+        lastTurn: { id: 'block-2', outcome: 'finished' },
       })
       return new Response('')
     }
@@ -137,7 +137,7 @@ const server = Bun.serve({
     if (path === `/chat/${FAILING}/send`) {
       conversations.push(conversationSummary(FAILING, 'Failing', {
         revision: 1,
-        lastTurn: { id: 'block-1', outcome: 'failed', answerStart: null },
+        lastTurn: { id: 'block-1', outcome: 'failed' },
       }))
       return new Response(notice('プロバイダがエラーを返しました。', 'Rate limit exceeded', 'レポートをコピー'))
     }
@@ -155,7 +155,7 @@ const server = Bun.serve({
       conversations[0] = conversationSummary(HELPING, 'Helping', {
         status: 'running',
         revision: 2,
-        lastTurn: { id: 'block-2', outcome: 'finished', answerStart: 'A subagent looks into it' },
+        lastTurn: { id: 'block-2', outcome: 'finished' },
       })
       return new Response('')
     }

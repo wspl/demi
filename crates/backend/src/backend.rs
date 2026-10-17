@@ -253,6 +253,7 @@ impl Backend {
         let keys = ServiceKeys {
             vault: secret.vault_key(),
             email_codes: secret.email_code_key(),
+            push: secret.push_key(),
         };
         let web_build = config
             .web_directory
@@ -274,6 +275,8 @@ impl Backend {
             lifecycle: config.lifecycle,
             #[cfg(feature = "testing")]
             web_roots: config.web_roots,
+            #[cfg(feature = "testing")]
+            push_transport: config.push_transport,
         };
         let services = Services::start(storage.clone(), keys, providers, settings);
         let services = Arc::new(services.await?);

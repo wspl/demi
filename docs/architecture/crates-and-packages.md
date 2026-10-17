@@ -1050,13 +1050,15 @@ demi-backend (executable: configuration, composition)
 #### `backend-accounts`
 
 - **Owns:** accounts, password hashing, web sessions, login lockout and
-  email-change delivery, and each user's preferences and subagent settings,
+  email-change delivery, push subscriptions and sending push notifications, and each user's preferences and subagent settings,
   the Subagent switch and the profile records with their name and text rules
   ([Authentication and ownership](../backend/backend.md#authentication-and-ownership),
   [User preferences](../product/web-api-settings.md#user-preferences),
   [Subagents](../product/web-api-settings.md#subagents)).
 - **Public boundary:** the account, session, preference and subagent settings services. The key
-  that email codes are derived from is given to it; it does not derive keys.
+  that email codes are derived from, and the VAPID key, each derived from
+  the instance secret under its own label, are given to it; it does not
+  derive keys.
 - **Must not:** know conversations, devices or providers.
 
 #### `backend-providers`

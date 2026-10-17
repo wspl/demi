@@ -47,6 +47,7 @@ pub(super) async fn channel(
         )
     })?;
     let session = ChannelSession {
+        id: session.id,
         token,
         user: session.user,
         expires_at: session.expires_at,

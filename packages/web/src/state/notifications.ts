@@ -1,20 +1,36 @@
 import { defineStore } from 'pinia'
 import { ref, watch } from 'vue'
 import { z } from 'zod'
-import { truncate } from '@demicodes/utils'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import { markdownPlainText } from '@demicodes/web-ui/markdown/plain-text'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
-import { requestTitle } from '@demicodes/web-ui/permissions/types'
+import { pageLanguage } from '@demicodes/web-ui/i18n/text'
+import { requestTitleWords } from '@demicodes/web-ui/permissions/types'
 import { t } from './locales/text'
-import { readPermissions } from '../api/permissions'
-import type { ConversationSummary, LastTurn, PermissionRequest } from '../api/generated/web-api'
+import { ApiError, apiRequest, jsonBody, readResponse } from '../api/client'
+import {
+  pushKeySchema,
+  pushSubscriptionKeysSchema,
+  type PushEvents,
+  type PushSubscriptionBody,
+} from '../api/generated/web-api'
+import { OPEN_CONVERSATION, WORDS_CACHE, WORDS_KEY, type NotificationWords } from '../offline/notifications'
 import { useProduct } from './product'
 
 /**
- * Notifications (`turns.md` § Notifications): the browser's own, shown
- * while a conversation is not in front, of what the page's synchronization
- * channel tells about it.
+ * Notifications (`turns.md` § Notifications): push notifications, which the
+ * browser's push service brings to the page's service worker whether or not
+ * a page is open. This browser's settings live in its storage; while they
+ * are on and the browser allows them, the page keeps the browser
+ * subscribed for its session, with the events it chose, tells the backend
+ * on its synchronization channel which conversation it shows, focused and
+ * visible, so that conversation is not notified to this browser, and leaves
+ * the service worker the words it says notifications in. A click on a
+ * notification opens its conversation.
+ *
+ * A browser's subscription serves one session: signing out unsubscribes the
+ * browser, and a session that finds it subscribed by another makes a new
+ * subscription before it sends one, so nothing queued for the account
+ * signed out before shows after another signs in.
  */
 
 const settingsSchema = z.object({
@@ -23,6 +39,7 @@ const settingsSchema = z.object({
   turnFinishes: z.boolean(),
   turnFails: z.boolean(),
   needsPermission: z.boolean(),
+  agentNotifies: z.boolean(),
 })
 export type NotificationSettings = z.infer<typeof settingsSchema>
 
@@ -32,13 +49,11 @@ const DEFAULT_SETTINGS: NotificationSettings = {
   turnFinishes: true,
   turnFails: true,
   needsPermission: true,
+  agentNotifies: true,
 }
 
 /** The setting belongs to the browser, not the account, so one key holds it for every user of the browser. */
 const STORAGE_KEY = 'demi.notifications'
-
-/** How much of the answer a notification says. */
-const ANSWER_START_CHARS = 120
 
 function readSettings(): NotificationSettings {
   try {
@@ -61,126 +76,167 @@ function writeSettings(settings: NotificationSettings): void {
   }
 }
 
-/** What the browser allows this site; `unsupported` for one without notifications. */
+/** Which session made the browser's subscription, which belongs to the browser too. */
+const MAKER_KEY = 'demi.notifications.session'
+
+function subscriptionMaker(): string | null {
+  try {
+    return localStorage.getItem(MAKER_KEY)
+  } catch (error) {
+    // Without storage, the page cannot tell: it makes a new subscription.
+    console.warn('Could not read which session subscribed the browser', error)
+    return null
+  }
+}
+
+function rememberMaker(session: string | null): void {
+  try {
+    if (session === null) {
+      localStorage.removeItem(MAKER_KEY)
+    } else {
+      localStorage.setItem(MAKER_KEY, session)
+    }
+  } catch (error) {
+    // The next session then finds no maker and makes a subscription of its own.
+    console.warn('Could not save which session subscribed the browser', error)
+  }
+}
+
+/** What the browser allows this site; `unsupported` for one that cannot push. */
 export type BrowserPermission = NotificationPermission | 'unsupported'
 
 function browserPermission(): BrowserPermission {
-  return typeof Notification === 'undefined' ? 'unsupported' : Notification.permission
-}
-
-/** What a change of a conversation's summary notifies of. */
-export type NotificationCause =
-  | { kind: 'turnFinished'; turn: LastTurn }
-  | { kind: 'turnFailed'; turn: LastTurn }
-  | { kind: 'permission' }
-
-/**
- * What the page holds of a conversation it follows: its latest summary, and
- * the ended turn it has accounted for, notified or not.
- */
-export interface Followed {
-  summary: ConversationSummary
-  endedTurn: string | null
+  const canPush = typeof Notification !== 'undefined'
+    && typeof PushManager !== 'undefined'
+    && typeof navigator !== 'undefined'
+    && 'serviceWorker' in navigator
+  return canPush ? Notification.permission : 'unsupported'
 }
 
 /**
- * The page's next hold of a conversation, from what it held before and the
- * conversation's `next` summary, and what that summary notifies of under
- * `settings`, while `front` is the conversation in front of the user, or
- * null when the page is hidden or not focused.
- *
- * A turn notifies once its conversation's work has settled and the summary
- * names an ended turn other than the one the page accounted for, so a turn
- * that starts and ends between two summaries still notifies. While the
- * conversation runs, its latest ended turn may be an older one, as a retry
- * or an edit cuts the last one from the history, so the page waits for the
- * work to settle. A turn that ended with an answer or an error notifies; one
- * the user stopped does not. A change of the permission requests that leaves
- * some undecided asks for a read of them, to tell the new ones. A
- * conversation the page has not followed before has no change to tell.
+ * Safari on an iPhone or iPad outside the Home Screen, which pushes only to
+ * Demi added there: its `navigator.standalone`, a property of Safari's
+ * alone, is false; true in the app the Home Screen opens.
  */
-export function follow(
-  previous: Followed | undefined,
-  next: ConversationSummary,
-  settings: NotificationSettings,
-  front: string | null,
-): { followed: Followed; causes: NotificationCause[] } {
-  const turn = next.lastTurn
-  if (!previous) {
-    return { followed: { summary: next, endedTurn: turn?.id ?? null }, causes: [] }
+export function needsHomeScreen(browser: object): boolean {
+  return Reflect.get(browser, 'standalone') === false
+}
+
+/** The events `settings` chose. */
+function eventsOf(settings: NotificationSettings): PushEvents {
+  return {
+    turnFinishes: settings.turnFinishes,
+    turnFails: settings.turnFails,
+    needsPermission: settings.needsPermission,
+    agentNotifies: settings.agentNotifies,
   }
-  const settled = next.status !== 'running' && next.status !== 'compacting'
-  const followed = { summary: next, endedTurn: settled ? (turn?.id ?? null) : previous.endedTurn }
-  if (!settings.enabled || next.id === front) {
-    return { followed, causes: [] }
+}
+
+/** The words notifications are said in, in the page's language, for the service worker. */
+function notificationWords(): NotificationWords {
+  return {
+    untitled: conversationTitle(null),
+    turnStopped: t('notifications.turnStopped'),
+    saveCredential: t('notifications.saveCredential', { name: '{name}' }),
+    ...requestTitleWords(),
   }
-  const causes: NotificationCause[] = []
-  if (settled && turn && turn.id !== previous.endedTurn) {
-    if (turn.outcome === 'finished' && settings.turnFinishes) {
-      causes.push({ kind: 'turnFinished', turn })
+}
+
+/** Leaves the service worker the words notifications are said in. */
+async function leaveWords(): Promise<void> {
+  const cache = await caches.open(WORDS_CACHE)
+  await cache.put(WORDS_KEY, new Response(JSON.stringify(notificationWords()), { headers: { 'content-type': 'application/json' } }))
+}
+
+/** A subscription's endpoint and keys, as the backend keeps them. */
+function subscriptionBody(subscription: PushSubscription, events: PushEvents): PushSubscriptionBody {
+  return {
+    endpoint: subscription.endpoint,
+    keys: pushSubscriptionKeysSchema.parse(subscription.toJSON().keys),
+    events,
+  }
+}
+
+/** A browser's subscription, as keeping it for a session needs it. */
+export interface BrowserSubscription {
+  readonly endpoint: string
+  unsubscribe(): Promise<boolean>
+}
+
+/** What keeping the browser subscribed for a session takes. */
+export interface Subscribing<S extends BrowserSubscription> {
+  /** The browser's subscription, if it has one. */
+  current(): Promise<S | null>
+  /** Makes a new subscription of the browser. */
+  make(): Promise<S>
+  /** Sends it to the backend for the session. */
+  put(subscription: S): Promise<void>
+  /** Which session made the browser's subscription, as the page remembers it. */
+  maker(): string | null
+  remember(session: string): void
+}
+
+/**
+ * Keeps the browser subscribed for `session`: a subscription another
+ * session made, or one another live session holds, is replaced by a new
+ * one before it is sent, so it serves this session alone.
+ */
+export async function subscribeFor<S extends BrowserSubscription>(session: string, browser: Subscribing<S>): Promise<S> {
+  let subscription = await browser.current()
+  if (subscription && browser.maker() !== session) {
+    await subscription.unsubscribe()
+    subscription = null
+  }
+  for (let fresh = false; ; fresh = true) {
+    if (!subscription) {
+      subscription = await browser.make()
+      browser.remember(session)
     }
-    if (turn.outcome === 'failed' && settings.turnFails) {
-      causes.push({ kind: 'turnFailed', turn })
+    try {
+      await browser.put(subscription)
+      return subscription
+    } catch (error) {
+      if (fresh || !(error instanceof ApiError && error.code === 'push_endpoint_taken')) {
+        throw error
+      }
+      await subscription.unsubscribe()
+      subscription = null
     }
   }
-  if (
-    settings.needsPermission &&
-    next.permissionRequests > 0 &&
-    next.permissionsRevision !== previous.summary.permissionsRevision
-  ) {
-    causes.push({ kind: 'permission' })
-  }
-  return { followed, causes }
 }
 
 /**
- * The start of a finished turn's answer as a notification says it: in plain
- * text, cut to 120 characters; empty for a turn that ended without one.
+ * Unsubscribes the browser as its session signs out: the backend forgets
+ * the session's subscription, and the push service the browser's, so
+ * nothing queued for the account reaches it. A failure is logged: signing
+ * out goes on, and the session's end removes its subscription anyway.
  */
-/** What a request asks the user, as its card's title asks it. */
-function requestQuestion(request: PermissionRequest): string {
-  switch (request.kind) {
-    case 'permission':
-      return requestTitle({
-        categories: request.categories.map((category) => ({
-          id: category.id,
-          action: category.action ?? null,
-          description: null,
-        })),
-        host: request.host,
-      })
-    case 'credential':
-      return t('notifications.saveCredential', { name: request.name })
-    case 'allowance':
-      return t('notifications.allowUse', { name: request.name })
+export async function unsubscribeOnSignOut(): Promise<void> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator) || typeof PushManager === 'undefined') {
+    return
+  }
+  try {
+    const registration = await navigator.serviceWorker.getRegistration()
+    const subscription = await registration?.pushManager.getSubscription()
+    rememberMaker(null)
+    await apiRequest('/push/subscription', { method: 'DELETE', waits: false })
+    await subscription?.unsubscribe()
+  } catch (error) {
+    console.warn('Could not unsubscribe the browser from notifications', error)
   }
 }
 
-export function answerStart(turn: LastTurn): string {
-  return turn.answerStart === null ? '' : truncate(markdownPlainText(turn.answerStart), ANSWER_START_CHARS)
-}
-
-/** The tag of a turn's notification: the same on every page of the browser, which shows it once. */
-function turnTag(conversationId: string, turn: LastTurn): string {
-  return `turn:${conversationId}:${turn.id}`
-}
-
-/**
- * This browser's notification settings and what the browser allows, and,
- * from `start` to `stop`, the notifications themselves: each change of a
- * conversation's summary that the settings ask for, while the conversation
- * is not in front, becomes the browser's notification, and a click on it
- * brings the page forward with the conversation open.
- */
 export const useNotifications = defineStore('notifications', () => {
   const product = useProduct()
   const settings = ref(readSettings())
   watch(settings, writeSettings, { deep: true })
   const permission = ref<BrowserPermission>(browserPermission())
+  /** Safari outside the Home Screen: turning notifications on shows how to add Demi there. */
+  const homeScreen = typeof navigator !== 'undefined' && needsHomeScreen(navigator)
 
   /** Asks the browser for permission to notify; a browser that blocks the site answers without asking. */
   async function requestPermission(): Promise<NotificationPermission> {
-    if (typeof Notification === 'undefined') {
+    if (permission.value === 'unsupported') {
       return 'denied'
     }
     const answer = await Notification.requestPermission()
@@ -190,11 +246,10 @@ export const useNotifications = defineStore('notifications', () => {
 
   /** Set from `start` to `stop`. */
   let lifetime: AbortController | null = null
-  let stopFollowing: (() => void) | null = null
-  /** The notifications shown and not yet closed, which `stop` closes. */
-  const shown = new Set<Notification>()
-  /** The undecided permission requests already notified, by conversation. */
-  const notifiedRequests = new Map<string, Set<string>>()
+  /** The browser's subscription as the backend keeps it, while it does. */
+  let subscribed: PushSubscription | null = null
+  /** The change of the subscription under way, which the next waits for. */
+  let changing: Promise<void> = Promise.resolve()
 
   /** The conversation in front of the user; none while the page is hidden or not focused. */
   function front(): string | null {
@@ -203,111 +258,124 @@ export const useNotifications = defineStore('notifications', () => {
       : null
   }
 
-  function show(conversationId: string, title: string, body: string, tag: string, open: (id: string) => void): void {
-    if (!lifetime || !settings.value.enabled || browserPermission() !== 'granted' || front() === conversationId) {
+  /**
+   * Keeps the browser subscribed with the events it chose while
+   * notifications are on and allowed, and unsubscribed otherwise; one
+   * change at a time, in order.
+   */
+  function follow(signal: AbortSignal, session: string | undefined): void {
+    const wanted = settings.value.enabled && permission.value === 'granted'
+    const events = eventsOf(settings.value)
+    if (wanted && session === undefined) {
+      // The session is known once the state arrives, which follows again.
       return
     }
-    let notification: Notification
-    try {
-      notification = new Notification(title, { body, tag })
-    } catch (error) {
-      // A browser that shows notifications only through a service worker,
-      // such as Chrome on Android, refuses the constructor; the page
-      // registers none for them, so it shows nothing there.
-      console.warn('Could not show a notification', error)
-      return
-    }
-    shown.add(notification)
-    notification.addEventListener('close', () => shown.delete(notification), { once: true })
-    notification.addEventListener('click', () => {
-      window.focus()
-      open(conversationId)
-      notification.close()
-    }, { once: true })
-  }
-
-  async function notify(cause: NotificationCause, summary: ConversationSummary, open: (id: string) => void): Promise<void> {
-    const signal = lifetime?.signal
-    if (!signal) {
-      return
-    }
-    switch (cause.kind) {
-      case 'turnFinished':
-        show(summary.id, conversationTitle(summary.title), answerStart(cause.turn), turnTag(summary.id, cause.turn), open)
-        return
-      case 'turnFailed':
-        show(summary.id, conversationTitle(summary.title), t('notifications.turnStopped'), turnTag(summary.id, cause.turn), open)
-        return
-      case 'permission': {
-        let requests
-        try {
-          requests = (await readPermissions(summary.id)).requests
-        } catch (error) {
-          if (!signal.aborted) {
-            reportError(t('failures.readPermissionRequests'), error)
-          }
-          return
-        }
-        if (signal.aborted || !settings.value.needsPermission) {
-          return
-        }
-        const notified = notifiedRequests.get(summary.id) ?? new Set<string>()
-        // Only the requests still undecided are remembered.
-        notifiedRequests.set(summary.id, new Set(requests.map((request) => request.id)))
-        for (const request of requests) {
-          if (!notified.has(request.id)) {
-            show(summary.id, conversationTitle(summary.title), requestQuestion(request), `permission:${request.id}`, open)
-          }
-        }
+    changing = changing.then(async () => {
+      if (signal.aborted) {
         return
       }
+      try {
+        if (wanted && session !== undefined) {
+          await subscribe(session, events, signal)
+        } else {
+          await unsubscribe(signal)
+        }
+      } catch (error) {
+        if (!signal.aborted) {
+          reportError(wanted ? t('failures.turnOnNotifications') : t('failures.turnOffNotifications'), error)
+        }
+      }
+    })
+  }
+
+  async function subscribe(session: string, events: PushEvents, signal: AbortSignal): Promise<void> {
+    const registration = await navigator.serviceWorker.ready
+    subscribed = await subscribeFor(session, {
+      current: () => registration.pushManager.getSubscription(),
+      make: async () => {
+        const { publicKey } = await readResponse(await apiRequest('/push/key', { signal }), pushKeySchema)
+        return registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publicKey })
+      },
+      put: async (subscription) => {
+        await apiRequest('/push/subscription', { method: 'PUT', signal, ...jsonBody(subscriptionBody(subscription, events)) })
+      },
+      maker: subscriptionMaker,
+      remember: rememberMaker,
+    })
+    await leaveWords()
+  }
+
+  async function unsubscribe(signal: AbortSignal): Promise<void> {
+    subscribed = null
+    const registration = await navigator.serviceWorker.ready
+    const subscription = await registration.pushManager.getSubscription()
+    if (!subscription) {
+      return
     }
+    await apiRequest('/push/subscription', { method: 'DELETE', signal })
+    rememberMaker(null)
+    await subscription.unsubscribe()
+  }
+
+  /** Tells the backend, on the synchronization channel, the conversation this page shows, focused and visible. */
+  function reportShowing(): void {
+    product.show(front())
   }
 
   /** Notifies from now on, until `stop`; a click on a notification calls `open` with its conversation. */
   function start(open: (id: string) => void): void {
-    if (lifetime) {
+    if (lifetime || permission.value === 'unsupported') {
       return
     }
     const current = new AbortController()
     lifetime = current
+    const { signal } = current
     // The user may allow or block the site in the browser's settings while the page is open.
     void navigator.permissions?.query({ name: 'notifications' }).then((status) => {
-      if (!current.signal.aborted) {
-        status.addEventListener('change', () => { permission.value = browserPermission() }, { signal: current.signal })
+      if (!signal.aborted) {
+        status.addEventListener('change', () => { permission.value = browserPermission() }, { signal })
       }
     }, (error: unknown) => {
       // A browser without the query keeps the permission it was asked for.
       console.warn('Could not follow the notification permission', error)
     })
-    let following = new Map<string, Followed>()
-    const followAll = (summaries: readonly ConversationSummary[] | undefined) => {
-      const inFront = front()
-      const next = new Map<string, Followed>()
-      for (const summary of summaries ?? []) {
-        const { followed, causes } = follow(following.get(summary.id), summary, settings.value, inFront)
-        next.set(summary.id, followed)
-        for (const cause of causes) {
-          void notify(cause, summary, open)
+    navigator.serviceWorker.addEventListener('message', (event: MessageEvent<unknown>) => {
+      const data = event.data
+      if (typeof data === 'object' && data !== null && Reflect.get(data, 'type') === OPEN_CONVERSATION) {
+        const id = Reflect.get(data, 'conversationId')
+        if (typeof id === 'string') {
+          open(id)
         }
       }
-      following = next
-    }
-    followAll(product.snapshot?.conversations)
-    stopFollowing = watch(() => product.snapshot?.conversations, followAll)
+    }, { signal })
+    const session = () => product.snapshot?.sessions.find((candidate) => candidate.current)?.id
+    const stopFollowing = watch(
+      () => [settings.value.enabled, permission.value, session(), ...Object.values(eventsOf(settings.value))],
+      () => follow(signal, session()),
+      { immediate: true },
+    )
+    const stopWords = watch(pageLanguage, () => {
+      if (subscribed) {
+        void leaveWords().catch((error: unknown) => console.warn('Could not leave the notification words', error))
+      }
+    })
+    const stopShowing = watch(() => product.activeConversationId, reportShowing, { immediate: true })
+    window.addEventListener('focus', reportShowing, { signal })
+    window.addEventListener('blur', reportShowing, { signal })
+    document.addEventListener('visibilitychange', reportShowing, { signal })
+    signal.addEventListener('abort', () => {
+      stopFollowing()
+      stopWords()
+      stopShowing()
+    }, { once: true })
   }
 
+  /** Stops following the page; the browser stays subscribed, as notifications come with no page open. */
   function stop(): void {
     lifetime?.abort()
     lifetime = null
-    stopFollowing?.()
-    stopFollowing = null
-    for (const notification of shown) {
-      notification.close()
-    }
-    shown.clear()
-    notifiedRequests.clear()
+    subscribed = null
   }
 
-  return { settings, permission, requestPermission, start, stop }
+  return { settings, permission, homeScreen, requestPermission, start, stop }
 })

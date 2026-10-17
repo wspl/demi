@@ -224,6 +224,47 @@ fn is_late_input(block: &Block) -> bool {
     }
 }
 
+/// The block that ended the latest ended turn, as a conversation's summary
+/// names it (`tree::summary` in the backend's storage): the last `response`,
+/// `error` or `abort` but an error that ended no turn and a stop a Resume
+/// continued.
+pub fn ended_turn(blocks: &[Block]) -> Option<&Block> {
+    blocks.iter().rev().find(|block| match block {
+        Block::Response(_) => true,
+        Block::Error(error) => !error.outside_turn,
+        Block::Abort(abort) => !abort.is_resumed,
+        _ => false,
+    })
+}
+
+/// The latest ended turn: the block that ended it, as [`ended_turn`] finds
+/// it, and its last text that is not blank, the answer a conversation's
+/// summary names. A text belongs to the turn when it comes after one of
+/// that turn's input blocks and before the end.
+pub fn ended_turn_answer(blocks: &[Block]) -> Option<(&Block, Option<&TextBlock>)> {
+    let end = ended_turn(blocks)?;
+    let at = blocks.iter().rposition(|block| std::ptr::eq(block, end))?;
+    let mut turn: Option<&TurnId> = None;
+    let mut answer = None;
+    for block in blocks[..at].iter().rev() {
+        if let Some(input) = turn_of(block) {
+            match turn {
+                Some(turn) if turn != input => break,
+                _ => turn = Some(input),
+            }
+            continue;
+        }
+        if answer.is_none()
+            && let Block::Text(text) = block
+            && !is_blank(&text.text)
+        {
+            answer = Some(text);
+        }
+    }
+    // A text with no input of the turn before it belongs to none.
+    Some((end, answer.filter(|_| turn.is_some())))
+}
+
 /// The turn the last block of a turn's input belongs to: the last turn.
 pub fn last_turn(blocks: &[Block]) -> Option<&TurnId> {
     blocks.iter().rev().find_map(turn_of)

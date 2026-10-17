@@ -320,6 +320,9 @@ pub struct Harness {
     /// default threads. [`ShardPlacement::Inline`] runs them on the test's
     /// own runtime, a `local` one, so its paused clock reaches their timers.
     pub shards: Option<ShardPlacement>,
+    /// Where the backends send push messages instead of the internet's
+    /// push services.
+    push_transport: Option<Arc<dyn demi_backend_accounts::push::PushTransport>>,
 }
 
 impl Harness {
@@ -374,6 +377,7 @@ impl Harness {
             panel_fixture: false,
             sign_in_fixture: None,
             shards: None,
+            push_transport: None,
         }
     }
 
@@ -492,6 +496,12 @@ impl Harness {
     /// The provider families the backend assembles entries with.
     pub fn with_families(mut self, families: FamilyRegistry) -> Self {
         self.families = families;
+        self
+    }
+
+    /// Sends the backends' push messages through `transport`.
+    pub fn with_push_transport(mut self, transport: Arc<dyn demi_backend_accounts::push::PushTransport>) -> Self {
+        self.push_transport = Some(transport);
         self
     }
 
@@ -647,6 +657,7 @@ impl Harness {
         config.runner_socket = self.runner_socket.clone();
         config.manage_socket = self.manage_socket.clone();
         config.object_counts = self.objects.clone();
+        config.push_transport = self.push_transport.clone();
         assert!(
             self.release.is_none() || self.server_release.is_none(),
             "a harness loads a workspace package or a server release, not both"
@@ -741,6 +752,13 @@ impl SyncChannel {
                 other => panic!("the channel ended: {other:?}"),
             }
         }
+    }
+
+    /// Says, as the page does, that it shows `conversation`, focused and
+    /// visible, or none.
+    pub async fn show(&mut self, conversation: Option<&str>) {
+        let message = serde_json::json!({ "showing": conversation }).to_string();
+        self.socket.send(Message::Text(message.into())).await.unwrap();
     }
 
     /// The product state, the channel's first message.

@@ -10,6 +10,7 @@ use bytes::Bytes;
 use demi_backend_accounts::email_change::{AccountMail, CodeKey, EmailChanges};
 use demi_backend_accounts::login_limiter::LoginLimiter;
 use demi_backend_accounts::passwords::{HashError, PasswordHasher};
+use demi_backend_accounts::push::{PublicPushTransport, PushKey, PushTransport, Pusher};
 use demi_backend_accounts::sessions::WebSessions;
 use demi_backend_blobs::blobs::BlobStores;
 use demi_backend_cloud::CloudServices;
@@ -71,6 +72,8 @@ pub struct Services {
     pub sessions: WebSessions,
     pub limiter: LoginLimiter,
     pub email: EmailChanges,
+    /// The users' push subscriptions, and the sending to them.
+    pub push: Pusher,
     pub vault: Vault,
     pub assembly: Arc<ProviderAssembly>,
     /// The vendor's Claude Code releases, which the CLI on the Claude Code machine follows.
@@ -160,6 +163,8 @@ pub struct ServiceKeys {
     pub vault: VaultKey,
     /// The key email-change codes are hashed under.
     pub email_codes: CodeKey,
+    /// The VAPID key push messages are signed with.
+    pub push: PushKey,
 }
 
 /// What the services are configured with besides storage, the keys and the
@@ -183,6 +188,10 @@ pub struct ServiceSettings {
     /// system's, for a test's HTTPS servers.
     #[cfg(feature = "testing")]
     pub web_roots: Vec<reqwest::Certificate>,
+    /// Where push messages go instead of the internet's push services, for
+    /// a test's stand-in.
+    #[cfg(feature = "testing")]
+    pub push_transport: Option<Arc<dyn PushTransport>>,
 }
 
 /// Why the services did not start.
@@ -344,6 +353,17 @@ impl Services {
             .build()
             .map_err(ServicesError::Http)?;
         let sync = SyncRegistry::default();
+        let public_push = || -> Result<Arc<dyn PushTransport>, ServicesError> {
+            Ok(Arc::new(PublicPushTransport::new().map_err(ServicesError::Http)?))
+        };
+        #[cfg(feature = "testing")]
+        let push_transport = match settings.push_transport {
+            Some(transport) => transport,
+            None => public_push()?,
+        };
+        #[cfg(not(feature = "testing"))]
+        let push_transport = public_push()?;
+        let push = Pusher::new(control.clone(), keys.push, push_transport);
         let vault = Vault::new(control.clone(), keys.vault, settings.mode, sync.clone());
         let models_dev = ModelsDevClient::new(
             http.clone(),
@@ -381,6 +401,7 @@ impl Services {
                 settings.mail,
                 keys.email_codes,
             ),
+            push,
             hasher,
             control,
             conversations,
@@ -456,6 +477,7 @@ impl Services {
         let keys = ServiceKeys {
             vault: VaultKey::new(rand::random()),
             email_codes: CodeKey::new(rand::random()),
+            push: PushKey::new(rand::random()).expect("a random scalar is a P-256 key"),
         };
         let storage = Storage::open(data, clock.clone(), objects, keys.vault.clone()).await.unwrap();
         let providers = ProviderSetup {
@@ -485,6 +507,8 @@ impl Services {
             lifecycle,
             #[cfg(feature = "testing")]
             web_roots: Vec::new(),
+            #[cfg(feature = "testing")]
+            push_transport: None,
         };
         let services = Self::start(storage, keys, providers, settings).await;
         Arc::new(services.unwrap())

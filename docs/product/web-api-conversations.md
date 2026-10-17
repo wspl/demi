@@ -582,18 +582,14 @@ plugin's [conversation state](web-api-sync.md#conversation-state-of-plugins), as
 order, so turning a plugin on or off changes no summary. What changes in the
 conversation's files is not in the summary: the Host reports it on the
 [file watch](web-api-hosts.md#file-watch).
-`lastTurn` is the root's latest ended turn, `{ id, outcome, answerStart }`,
-or null before the first: `id` is the block that ended it, so a turn that
-Resume or Regenerate takes up and that ends again is a new end; `outcome` is
-`finished`, `failed` or `stopped`; and `answerStart` is the first 400
-characters of its last answer's Markdown, or null when it gave none. A failed
-compaction ends no turn. A page [notifies](turns.md#notifications) when a
-conversation that no longer runs names a `lastTurn` the page has not seen
-end, so a turn that starts and ends between two summaries the page receives
-still notifies, and the page needs no transcript to say how the answer
-starts. It waits until the conversation no longer runs because a turn taken
-up again leaves the history, and `lastTurn` names the turn before it, until
-it ends.
+`lastTurn` is the root's latest ended turn, `{ id, outcome }`, or null
+before the first: `id` is the block that ended it, so a turn that Resume or
+Regenerate takes up and that ends again is a new end; `outcome` is
+`finished`, `failed` or `stopped`. A failed compaction ends no turn. The
+backend [notifies](turns.md#notifications) from it: when the tree comes to
+rest naming a `lastTurn` that ended after the tree started working, it
+pushes that turn's end, so a turn that Resume takes up notifies once, when
+it ends again.
 `permissionRequests` counts the conversation's undecided
 [permission requests](#conversation-permissions), which the conversation's
 card and the Running window follow, `unreadPermissionRequests` those of them

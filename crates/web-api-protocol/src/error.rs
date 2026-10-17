@@ -358,6 +358,8 @@ pub enum ErrorCode {
     InvalidForkTarget,
     /// The caller has no upload of that id.
     UploadNotFound,
+    /// Another live session's push subscription has that endpoint.
+    PushEndpointTaken,
     /// The draft's replaced version is not the one the request names any
     /// more: a save or another page's action changed it.
     DraftChanged,

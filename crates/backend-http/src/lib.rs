@@ -34,6 +34,7 @@ mod listener;
 mod models;
 mod oauth;
 mod passkeys;
+mod push;
 mod page_client;
 mod panel;
 mod permissions;
@@ -397,6 +398,11 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/plugins/{plugin}/oauth/callback", get(oauth::callback))
         .route("/plugins/{plugin}", put(plugins::switch))
         .route("/instructions", put(instructions::replace))
+        .route("/push/key", get(push::key))
+        .route(
+            "/push/subscription",
+            put(push::subscribe).delete(push::unsubscribe),
+        )
         .route("/credentials", get(credentials::list).post(credentials::create))
         .route("/credentials/{id}/values", get(credentials::values))
         .route(

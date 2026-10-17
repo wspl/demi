@@ -181,8 +181,7 @@ pub struct ConversationSummary {
     /// never with the user's input alone.
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub revision: u64,
-    /// The root's latest ended turn; null before the first. A page notifies
-    /// of a turn it has not seen end (`turns.md` § Notifications).
+    /// The root's latest ended turn; null before the first.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<LastTurn>")]
     pub last_turn: Option<LastTurn>,
@@ -260,15 +259,7 @@ pub struct LastTurn {
     /// ends anew.
     pub id: BlockId,
     pub outcome: TurnOutcome,
-    /// The first [`ANSWER_START_CHARS`] characters (Unicode scalar values) of
-    /// its last answer's Markdown; null when it gave none.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<String>")]
-    pub answer_start: Option<String>,
 }
-
-/// How much of a turn's last answer [`LastTurn`] carries.
-pub const ANSWER_START_CHARS: usize = 400;
 
 /// How a turn ended: with an answer, with an error, or stopped by the user.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]

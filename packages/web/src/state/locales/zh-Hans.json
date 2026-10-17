@@ -1,16 +1,16 @@
 {
   "notifications": {
     "turnStopped": "轮次因错误而停止。",
-    "saveCredential": "保存凭据“{name}”？",
-    "allowUse": "允许此对话使用“{name}”吗？"
+    "saveCredential": "保存凭据“{name}”？"
   },
   "hosts": {
     "unavailableDevice": "不可用的设备"
   },
   "failures": {
+    "turnOnNotifications": "无法开启通知",
+    "turnOffNotifications": "无法关闭通知",
     "updateSettings": "无法更新设置",
     "changeContextLimit": "无法更改上下文上限",
-    "readPermissionRequests": "无法读取通知的权限请求",
     "updateTimeZoneLanguage": "无法更新时区和语言",
     "readSync": "无法读取同步通道的消息",
     "keepOffline": "无法保存离线副本",

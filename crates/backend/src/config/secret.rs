@@ -14,11 +14,13 @@ use hkdf::Hkdf;
 use sha2::Sha256;
 
 use demi_backend_accounts::email_change::CodeKey;
+use demi_backend_accounts::push::PushKey;
 use demi_backend_providers::vault::seal::VaultKey;
 
 const FILE: &str = "instance-secret";
 const EMAIL_CODE_LABEL: &[u8] = b"demi email-change code";
 const VAULT_LABEL: &[u8] = b"demi provider vault";
+const PUSH_LABEL: &str = "demi web push vapid";
 
 /// The instance secret. `Debug` never shows it.
 #[derive(Clone)]
@@ -91,6 +93,22 @@ impl InstanceSecret {
     /// The key provider credentials are sealed under.
     pub(crate) fn vault_key(&self) -> VaultKey {
         VaultKey::new(self.subkey(VAULT_LABEL))
+    }
+
+    /// The VAPID key push messages are signed with (`turns.md`
+    /// § Notifications): the same for as long as the secret is, so the
+    /// browsers' subscriptions outlive a restart. A subkey that is no P-256
+    /// scalar, one in about four billion, gives way to the next label's.
+    pub(crate) fn push_key(&self) -> PushKey {
+        (0u32..)
+            .find_map(|attempt| {
+                let label = match attempt {
+                    0 => PUSH_LABEL.to_owned(),
+                    n => format!("{PUSH_LABEL} {n}"),
+                };
+                PushKey::new(self.subkey(label.as_bytes()))
+            })
+            .expect("some subkey is a P-256 scalar")
     }
 
     /// The HKDF-SHA256 subkey under `label`, which no other label shares.
