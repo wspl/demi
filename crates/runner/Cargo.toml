@@ -53,10 +53,17 @@ uuid = { version = "1", features = ["v4"] }
 rustix = { version = "1", features = ["process", "stdio", "system"] }
 # A runner in the background resets the signals its starter ignored.
 libc = "0.2"
+# The account's login shell and name, from the user database.
+uzers = "0.12"
 
-# The standard handles a runner in the background points at its log.
+# The user's region, which a runner's `LANG` names.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFPreferences", "CFPropertyList", "CFString"] }
+
+# The standard handles a runner in the background points at its log, and
+# the `Run` value that starts it at logon.
 [target.'cfg(windows)'.dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Console"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Console", "Win32_System_Registry"] }
 
 # sha2's ARM hardware backend is opt-in; artifact verification must not use
 # its unoptimized software fallback on supported Unix ARM hosts.

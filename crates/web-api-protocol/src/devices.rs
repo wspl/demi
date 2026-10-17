@@ -4,7 +4,7 @@
 use demi_runner_protocol::direct::CANDIDATE_CHARS;
 /// The STUN servers' URLs, which the product state names to the page.
 pub use demi_runner_protocol::direct::{NotAStunUrl, StunUrl};
-use demi_runner_protocol::wire::{HostArtifact, OperatingSystem, RunnerPlatform};
+use demi_runner_protocol::wire::{AutostartUnavailable, HostArtifact, OperatingSystem, RunnerPlatform};
 use demi_shared_types::{MAX_SAFE_INTEGER, Nullable, Timestamp};
 use garde::Validate;
 use schemars::JsonSchema;
@@ -122,7 +122,11 @@ pub enum DeviceState {
 /// null for the Cloud; `direct` is whether
 /// `route` is how pages reach it (`direct-channel.md` § Choosing the
 /// path); `start_command` is what a person types in a terminal on a
-/// paired device to start its runner again, null for the Cloud.
+/// paired device to start its runner again, null for the Cloud;
+/// `autostart_unavailable` is why the device will not start its runner by
+/// itself after a restart, as its runner last reported it, null when it
+/// does or before its runner first said (`runner.md` § Starting with
+/// the computer).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct DeviceDto {
@@ -155,6 +159,9 @@ pub struct DeviceDto {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub start_command: Option<String>,
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<AutostartUnavailable>")]
+    pub autostart_unavailable: Option<AutostartUnavailable>,
 }
 
 /// The commands that install and start the runner on a computer of each

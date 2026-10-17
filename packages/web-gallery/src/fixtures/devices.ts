@@ -119,7 +119,7 @@ const day = minutes(24 * 60)
  * nothing.
  */
 function demoDevice(
-  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'downloadPercent' | 'seen' | 'start' | 'home' | 'mark'> & { os: SettingsDevice['os']; runnerVersion: string | null },
+  device: Pick<SettingsDevice, 'id' | 'name' | 'state' | 'downloadPercent' | 'seen' | 'start' | 'autostartUnavailable' | 'home' | 'mark'> & { os: SettingsDevice['os']; runnerVersion: string | null },
   scenario: DirectScenario,
   paired: number,
 ): GalleryDevice {
@@ -143,7 +143,7 @@ export function galleryDevices(): GalleryDevice[] {
   return [
     demoDevice({ id: 'mac', name: 'alex-mbp', state: 'online', seen: ago(0), home: '/Users/alex', mark: { logo: 'apple', number: 1 }, ...current('macos') }, 'connected', 40 * day),
     demoDevice(
-      { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * day), start: demoDeviceStart('linux'), mark: { logo: 'ubuntu', number: 1 }, ...current('linux') },
+      { id: 'build', name: 'build-01', state: 'offline', seen: ago(3 * day), start: demoDeviceStart('linux'), autostartUnavailable: { cause: 'lingerOff', user: 'alex' }, mark: { logo: 'ubuntu', number: 1 }, ...current('linux') },
       'unreachable',
       90 * day,
     ),
@@ -155,7 +155,8 @@ export function galleryDevices(): GalleryDevice[] {
     ),
     demoDevice(
       // Its server switched: it downloads the new runner, a quarter so far.
-      { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'updating', downloadPercent: 26, seen: ago(minutes(2)), mark: { logo: 'ubuntu', number: 2 }, ...current('linux') },
+      // It runs no systemd, so it will not start Demi by itself.
+      { id: 'lab', name: 'lab-workstation-with-a-long-hostname', state: 'updating', downloadPercent: 26, seen: ago(minutes(2)), autostartUnavailable: { cause: 'noSystemd' }, mark: { logo: 'ubuntu', number: 2 }, ...current('linux') },
       'notOffered',
       2 * day,
     ),

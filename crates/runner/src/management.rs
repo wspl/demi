@@ -4,7 +4,7 @@
 use demi_command_protocol::{Completion, LocalInvocation};
 use demi_command_sdk::{Handler, InvocationContext, ServiceError};
 use demi_runner_jobs::commands::dispatch::{Dispatcher, RUNNER, completed, reported};
-use demi_runner_protocol::console::{PAIRED, PAIRING_CODE, REMOVAL};
+use demi_runner_protocol::console::{NO_AUTOSTART, PAIRED, PAIRING_CODE, REMOVAL};
 use serde::{Deserialize, Serialize};
 use std::{
     fmt::Display,
@@ -57,7 +57,8 @@ pub enum Revocation {
     /// The backend revoked the device, and the projects of these names went
     /// with it; their files stay.
     Revoked { projects: Vec<String> },
-    /// The runner was never paired, so there was no device to revoke.
+    /// The runner was never paired, or its backend no longer knows its
+    /// device, so there was no device to revoke.
     Unpaired,
     /// The backend could not be asked in time: it lists the device until the
     /// user revokes it.
@@ -80,6 +81,8 @@ pub struct Status {
 /// ends the code, which the backend then no longer holds.
 #[derive(Default)]
 struct Told {
+    /// Why the device will not start the runner by itself after a restart.
+    no_autostart: Option<String>,
     paired: Option<String>,
     code: Option<String>,
     failure: Option<String>,
@@ -130,6 +133,14 @@ impl Management {
         change(&mut self.told.lock().unwrap_or_else(PoisonError::into_inner))
     }
 
+    /// Tells the person at the console why the device will not start the
+    /// runner by itself after a restart; an installer shows it.
+    pub fn tell_no_autostart(&self, reason: &str) {
+        let line = format!("{NO_AUTOSTART}{reason}");
+        self.told(|told| told.no_autostart = Some(line.clone()));
+        crate::console::line(line);
+    }
+
     /// Tells the person at the console the pairing code the runner waits
     /// with; the code goes nowhere else, and the host log only says that one
     /// is waiting.
@@ -168,11 +179,12 @@ impl Management {
     }
 
     /// Writes the lines of the runner's pairing state to its console again,
-    /// as one write: the device it is paired as, the code it waits with, and
-    /// why it cannot connect, whichever it has.
+    /// as one write: why the device will not start it by itself, the device
+    /// it is paired as, the code it waits with, and why it cannot connect,
+    /// whichever it has.
     pub fn tell_again(&self) {
         let lines = self.told(|told| {
-            [&told.paired, &told.code, &told.failure]
+            [&told.no_autostart, &told.paired, &told.code, &told.failure]
                 .into_iter()
                 .flatten()
                 .cloned()
