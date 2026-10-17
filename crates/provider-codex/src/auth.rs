@@ -10,7 +10,7 @@ use demi_provider_common::{
         AccountDocument, AccountLabel, AuthFailure, AuthReason, CredentialPool, SecretDocument,
         read_secret, renew,
     },
-    oauth::{decode_json_response, jwt_claims},
+    oauth::{TokenRefusal, decode_json_response, jwt_claims},
     wire::{Reported, ReportedString},
 };
 use demi_shared_types::{Clock, Timestamp};
@@ -242,36 +242,54 @@ impl CodexAuth {
             let still_refused = refused.is_some_and(|token| secret.access_token == *token);
             still_refused || secret.due(self.clock.now())
         };
-        let renewed = renew(&*doc, needs_refresh, |secret| self.refresh(http, secret)).await;
+        let refresh = Refresh {
+            http: http.clone(),
+            token_url: self.token_url.clone(),
+            clock: self.clock.clone(),
+        };
+        let renewed = renew(doc.into(), needs_refresh, |secret| refresh.run(secret)).await;
         renewed
             .map(|secret| secret.credentials())
             .map_err(|error| AuthFailure::of_renewal(FAMILY, error))
     }
+}
 
+/// A refresh of a Codex sign-in, which owns what it needs, so that it runs
+/// to its end apart from the request that asked for it.
+struct Refresh {
+    http: reqwest::Client,
+    token_url: Url,
+    clock: Arc<dyn Clock>,
+}
+
+impl Refresh {
     /// Asks the sign-in service for new tokens. A refreshed sign-in keeps
     /// the tokens the answer does not replace and the account it acts for.
-    async fn refresh(
-        &self,
-        http: &reqwest::Client,
-        secret: CodexSecret,
-    ) -> Result<CodexSecret, String> {
+    async fn run(self, secret: CodexSecret) -> Result<CodexSecret, String> {
         let body = serde_json::json!({
             "client_id": CLIENT_ID,
             "grant_type": "refresh_token",
             "refresh_token": secret.refresh_token.expose(),
         });
-        let response = http
-            .post(self.token_url.clone())
+        let response = self
+            .http
+            .post(self.token_url)
             .header(CONTENT_TYPE, "application/json")
             .body(body.to_string())
             .send()
             .await
             .map_err(|error| format!("Codex token refresh failed: {}", error.without_url()))?;
+        let status = response.status().as_u16();
         if !response.status().is_success() {
-            return Err(format!(
-                "Codex token refresh failed with HTTP {}",
-                response.status().as_u16()
-            ));
+            // The refusal's code, never its description, which may quote
+            // a token.
+            let refusal = TokenRefusal::of(&response.bytes().await.unwrap_or_default());
+            tracing::warn!(
+                status,
+                error = refusal.named(),
+                "Codex refused a token refresh"
+            );
+            return Err(format!("Codex token refresh failed with HTTP {status}"));
         }
         let tokens: RefreshedTokens = decode_json_response(response)
             .await

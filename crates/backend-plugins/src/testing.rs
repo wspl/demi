@@ -116,6 +116,9 @@ struct Server {
     /// The lifetime of each access token issued, in seconds.
     expires_in: u64,
     refuse_refreshes: bool,
+    /// What every refresh is answered while set: a status and a body,
+    /// without spending the refresh token.
+    failing_refreshes: Option<(StatusCode, String)>,
     /// Whether a refresh token stays good after it was used, as at a
     /// vendor that does not rotate them.
     reusable_refresh_tokens: bool,
@@ -226,6 +229,14 @@ impl AuthorizationServer {
     /// Every refresh from now on is refused.
     pub fn refuse_refreshes(&self) {
         self.server().refuse_refreshes = true;
+    }
+
+    /// Every refresh from now on is answered `status` with `body`, and
+    /// spends nothing, until this is called with `None`.
+    pub fn fail_refreshes(&self, answer: Option<(u16, &str)>) {
+        self.server().failing_refreshes = answer.map(|(status, body)| {
+            (StatusCode::from_u16(status).unwrap(), body.to_owned())
+        });
     }
 
     /// A refresh token stays good after it was used from now on, as at a
@@ -339,6 +350,9 @@ async fn token(
             issue(&mut server, &client_id)
         }
         "refresh_token" => {
+            if let Some((status, body)) = server.failing_refreshes.clone() {
+                return (status, body).into_response();
+            }
             let refuse = server.refuse_refreshes;
             let reusable = server.reusable_refresh_tokens;
             let Some((owner, spent)) = server.refresh_tokens.get_mut(&form["refresh_token"]) else {

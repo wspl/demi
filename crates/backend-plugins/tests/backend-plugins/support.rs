@@ -423,6 +423,11 @@ impl ProductPort for TestProduct {
     fn now(&self) -> demi_shared_types::Timestamp {
         demi_shared_types::Clock::now(&self.clock)
     }
+
+    fn spawn(&self, work: LocalBoxFuture<'static, ()>) {
+        // The scenarios run on a local runtime, which owns the work.
+        tokio::task::spawn_local(work);
+    }
 }
 
 /// Runs a scenario, failing it when it does not end within a minute.

@@ -111,7 +111,7 @@ async fn a_due_secret_is_refreshed_and_stored_over_the_version_read() {
     let pool = pool_with("a", &tokens("old", "r1")).await;
     let before = pool.document("a").read().await.unwrap().unwrap().version;
     let renewed = renew(
-        &*pool.document("a"),
+        pool.document("a").into(),
         |_: &Tokens| true,
         |secret: Tokens| async move {
             assert_eq!(secret.refresh, "r1");
@@ -150,8 +150,8 @@ async fn a_refresher_that_waited_uses_the_tokens_it_finds_unless_its_rule_still_
     let due = |secret: &Tokens| secret.access == "old";
     let (one, two) = (pool.document("a"), pool.document("a"));
     let (first, second) = tokio::join!(
-        renew(&*one, due, vendor(&spent)),
-        renew(&*two, due, vendor(&spent)),
+        renew(one.into(), due, vendor(&spent)),
+        renew(two.into(), due, vendor(&spent)),
     );
     assert_eq!(
         (first.unwrap().access, second.unwrap().access),
@@ -166,8 +166,8 @@ async fn a_refresher_that_waited_uses_the_tokens_it_finds_unless_its_rule_still_
     let always = |_: &Tokens| true;
     let (one, two) = (pool.document("a"), pool.document("a"));
     let (first, second) = tokio::join!(
-        renew(&*one, always, vendor(&spent)),
-        renew(&*two, always, vendor(&spent)),
+        renew(one.into(), always, vendor(&spent)),
+        renew(two.into(), always, vendor(&spent)),
     );
     assert!(first.is_ok() && second.is_ok());
     assert_eq!(*spent.lock().unwrap(), ["r1", "after-r1"]);
@@ -178,7 +178,7 @@ async fn a_refresher_that_waited_uses_the_tokens_it_finds_unless_its_rule_still_
 async fn a_refusal_uses_the_tokens_another_writer_stored_and_fails_when_nobody_did() {
     let pool = pool_with("a", &tokens("old", "r1")).await;
     let raced = renew(
-        &*pool.document("a"),
+        pool.document("a").into(),
         |_: &Tokens| true,
         |_| {
             let pool = pool.clone();
@@ -195,7 +195,7 @@ async fn a_refusal_uses_the_tokens_another_writer_stored_and_fails_when_nobody_d
     assert_eq!(raced, Ok(tokens("winner", "rw")));
 
     let alone = renew(
-        &*pool.document("a"),
+        pool.document("a").into(),
         |_: &Tokens| true,
         |_| async { Err::<Tokens, _>("refresh token revoked".to_owned()) },
     )
@@ -210,7 +210,7 @@ async fn a_refusal_uses_the_tokens_another_writer_stored_and_fails_when_nobody_d
 async fn a_refreshed_secret_whose_replace_loses_gives_way_to_the_winner() {
     let pool = pool_with("a", &tokens("old", "r1")).await;
     let renewed = renew(
-        &*pool.document("a"),
+        pool.document("a").into(),
         |_: &Tokens| true,
         |_| {
             let pool = pool.clone();
