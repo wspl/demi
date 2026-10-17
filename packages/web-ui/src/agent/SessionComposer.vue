@@ -719,7 +719,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           />
         </template>
         <template #below>
-          <div :inert="!!shownEdit && !edit.editable.value">
+          <div class="min-w-0" :inert="!!shownEdit && !edit.editable.value">
             <ModelSelector
               :load="modelLoad"
               @retry="emit('retryModels')"
