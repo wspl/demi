@@ -95,3 +95,60 @@ export function useVerification(host: () => VerificationHost, verified: () => vo
 
   return { password, passwordProblem, error, withPassword, withPasskey, reset, submitPassword, usePasskey }
 }
+
+/**
+ * An action that asks Confirm It’s You (`VerifyDialog.vue`) only when its
+ * host answers `needsVerification`, as the backend does for a browser not
+ * confirmed in the last five minutes: the page shows the dialog while
+ * `message` is set, and settles it with the dialog's answer.
+ */
+export interface Confirmation {
+  /** What the open dialog asks the confirmation for; null while it asks none. */
+  message: Ref<string | null>
+  /**
+   * Runs `run`, and again once the user confirmed it is them each time its
+   * answer says that is needed; null when they did not.
+   */
+  confirmed<T extends { kind: string }>(
+    run: () => Promise<T>,
+    message: string,
+  ): Promise<Exclude<T, { kind: 'needsVerification' }> | null>
+  /** The dialog's answer: `verified` once the host confirmed, else the dialog closed. */
+  settle(confirmed: boolean): void
+}
+
+export function useConfirmation(): Confirmation {
+  const message = ref<string | null>(null)
+  let pending: ((confirmed: boolean) => void) | null = null
+
+  function ask(asked: string): Promise<boolean> {
+    return new Promise((done) => {
+      pending = done
+      message.value = asked
+    })
+  }
+
+  function settle(confirmed: boolean): void {
+    const done = pending
+    pending = null
+    message.value = null
+    done?.(confirmed)
+  }
+
+  async function confirmed<T extends { kind: string }>(
+    run: () => Promise<T>,
+    asked: string,
+  ): Promise<Exclude<T, { kind: 'needsVerification' }> | null> {
+    let outcome = await run()
+    while (outcome.kind === 'needsVerification') {
+      if (!(await ask(asked))) {
+        return null
+      }
+      outcome = await run()
+    }
+    // TypeScript does not narrow a generic union by a loop's condition.
+    return outcome as Exclude<T, { kind: 'needsVerification' }>
+  }
+
+  return { message, confirmed, settle }
+}

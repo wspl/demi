@@ -1,6 +1,35 @@
 import { ref } from 'vue'
 import type { HandoffCodeView, HandoffHost } from '@demicodes/web-ui/auth/handoff'
+import type { VerificationHost } from '@demicodes/web-ui/auth/verification'
 import { productWould } from '../product-would'
+
+/**
+ * Confirming it is the user as the product's backend would answer, for one
+ * specimen: the password `wrong` is refused, any other confirms, as Use
+ * Passkey does after the browser's prompt would have been answered; a
+ * confirmation holds five minutes. `verified` says whether one holds now;
+ * `confirmed` starts the specimen with one.
+ */
+export function galleryVerification(confirmed = false): { host: VerificationHost; verified: () => boolean } {
+  let verifiedUntil = confirmed ? Date.now() + 5 * 60_000 : 0
+  const host: VerificationHost = {
+    verifyPassword: async (password) => {
+      await new Promise((resolve) => setTimeout(resolve, 500))
+      if (password === 'wrong') {
+        return { kind: 'wrongPassword', message: 'That is not your password.' }
+      }
+      verifiedUntil = Date.now() + 5 * 60_000
+      return { kind: 'verified' }
+    },
+    verifyPasskey: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 900))
+      productWould('Ask the Browser for a Passkey of This Account')
+      verifiedUntil = Date.now() + 5 * 60_000
+      return { kind: 'verified' }
+    },
+  }
+  return { host, verified: () => Date.now() < verifiedUntil }
+}
 
 /** How a specimen's dialog opens: on the confirmation, on a code, on an expired code, or handed off to the phone. */
 export type HandoffSpecimenStart = 'verify' | 'code' | 'expired' | 'handedOff'
@@ -10,14 +39,13 @@ const PHONE = 'Safari on iPhone'
 
 /**
  * A host of Hand Off to Your Phone as the product's would answer, for one
- * specimen: the password `wrong` is refused, any other confirms, as Use
- * Passkey does after the browser's prompt would have been answered; a code
- * lasts ten minutes, and the confirmation five, so asking again within them
- * shows a code at once. `phoneScans` stands in for the phone's camera.
+ * specimen: it confirms as `galleryVerification` does; a code lasts ten
+ * minutes, and the confirmation five, so asking again within them shows a
+ * code at once. `phoneScans` stands in for the phone's camera.
  */
 export function galleryHandoff(start: HandoffSpecimenStart): { host: HandoffHost; phoneScans: () => void } {
-  /** When the specimen's confirmation holds until; the pinned code states start confirmed. */
-  let verifiedUntil = start === 'verify' ? 0 : Date.now() + 5 * 60_000
+  // The pinned code states start confirmed.
+  const verification = galleryVerification(start !== 'verify')
   let first = true
   let codes = 0
   const handedOff = ref<string | null>(null)
@@ -36,7 +64,7 @@ export function galleryHandoff(start: HandoffSpecimenStart): { host: HandoffHost
   const host: HandoffHost = {
     makeCode: async () => {
       await new Promise((resolve) => setTimeout(resolve, 300))
-      if (Date.now() >= verifiedUntil) {
+      if (!verification.verified()) {
         return { kind: 'verify' }
       }
       const opening = first
@@ -52,20 +80,7 @@ export function galleryHandoff(start: HandoffSpecimenStart): { host: HandoffHost
       }
       return { kind: 'code', code: made }
     },
-    verifyPassword: async (password) => {
-      await new Promise((resolve) => setTimeout(resolve, 500))
-      if (password === 'wrong') {
-        return { kind: 'wrongPassword', message: 'Wrong password' }
-      }
-      verifiedUntil = Date.now() + 5 * 60_000
-      return { kind: 'verified' }
-    },
-    verifyPasskey: async () => {
-      await new Promise((resolve) => setTimeout(resolve, 900))
-      productWould('Ask the Browser for a Passkey of This Account')
-      verifiedUntil = Date.now() + 5 * 60_000
-      return { kind: 'verified' }
-    },
+    ...verification.host,
     handedOffTo: (id) => (handedOffCode.value === id ? handedOff.value : null),
   }
 

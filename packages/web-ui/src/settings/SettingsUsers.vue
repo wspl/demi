@@ -8,6 +8,7 @@ import { accountDisplayName } from '../auth/account-display'
 import HandoffDialog from '../auth/HandoffDialog.vue'
 import { signInCodeWording, userReadyWording, type HandoffHost, type HandoffWording } from '../auth/handoff'
 import VerifyDialog from '../auth/VerifyDialog.vue'
+import { useConfirmation } from '../auth/verification'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Avatar from '../ui/Avatar.vue'
 import Button from '../ui/Button.vue'
@@ -82,37 +83,8 @@ const ready = ref<{
 const readyOpen = ref(false)
 
 /** The administrator's confirmation, which an action that answered it needs asks for in a dialog of its own. */
-const confirming = ref<{ done: (confirmed: boolean) => void; message: string } | null>(null)
-
-function confirmIt(message: string): Promise<boolean> {
-  return new Promise((done) => {
-    confirming.value = { done, message }
-  })
-}
-
-function settleConfirmation(confirmed: boolean): void {
-  const pending = confirming.value
-  confirming.value = null
-  pending?.done(confirmed)
-}
-
-/**
- * Runs `run`, and again after the administrator confirmed it is them when
- * its answer says that is needed; null when they did not.
- */
-async function confirmed<T extends { kind: string }>(
-  run: () => Promise<T>,
-  message: string,
-): Promise<Exclude<T, { kind: 'needsVerification' }> | null> {
-  let outcome = await run()
-  while (outcome.kind === 'needsVerification') {
-    if (!(await confirmIt(message))) {
-      return null
-    }
-    outcome = await run()
-  }
-  return outcome as Exclude<T, { kind: 'needsVerification' }>
-}
+const confirmation = useConfirmation()
+const confirmed = confirmation.confirmed
 
 /** The account by its nickname, or by its email until it has one. */
 function nameOf(user: SettingsUser): string {
@@ -436,13 +408,13 @@ function closeDialog(): void {
     </template>
   </HandoffDialog>
   <VerifyDialog
-    :is-open="confirming !== null"
+    :is-open="confirmation.message.value !== null"
     :overlay-store="overlayStore"
     :host="host"
     :email="viewer?.email ?? ''"
-    :message="confirming?.message ?? ''"
-    @close="settleConfirmation(false)"
-    @verified="settleConfirmation(true)"
+    :message="confirmation.message.value ?? ''"
+    @close="confirmation.settle(false)"
+    @verified="confirmation.settle(true)"
   />
   <ConfirmDialog
     :is-open="open === 'signOut'"

@@ -389,6 +389,7 @@
     "visible": "Visible",
     "show": "Show {label}",
     "hide": "Hide {label}",
+    "confirmShow": "Confirm it’s you to show a secret.",
     "keptUntil": "Kept until",
     "always": "Always",
     "lastUsed": "Last used",

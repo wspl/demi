@@ -389,6 +389,7 @@
     "visible": "表示",
     "show": "「{label}」を表示",
     "hide": "「{label}」を非表示",
+    "confirmShow": "シークレットを表示するには、本人確認が必要です。",
     "keptUntil": "保持期限",
     "always": "常に",
     "lastUsed": "最終使用",

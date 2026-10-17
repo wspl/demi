@@ -47,7 +47,14 @@ The user's credentials are the user's, not a conversation's: one kept *Always*
 serves every conversation the user allows it in. They are listed, created,
 edited and removed in **Settings › Credentials**, by name, with each field's
 label and kind, *Kept until* and *Last used*; a secret field shows dots and an
-eye that reveals its value to the user. An agent never removes a credential
+eye that reveals its value to the user, once the user confirmed it is them,
+as Safari's and Chrome's password managers ask before showing a password:
+the eye asks for the password, or a passkey when the account has one,
+unless the browser confirmed in the last five minutes, and a confirmation
+then lets every eye and copy of that browser through for those five minutes,
+the same confirmation Hand Off to Phone and adding a passkey take
+([Confirming it is the user](../product/users.md#user-system)). Changing a
+secret field's value, which replaces it unseen, asks nothing. An agent never removes a credential
 the user did not ask it to: `remove` needs the user's permission.
 
 ## Using a credential
