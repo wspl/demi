@@ -292,10 +292,12 @@ async fn a_start_that_arrives_twice_runs_the_job_once() {
 async fn a_job_runs_on_through_a_connection_loss_until_the_backend_refuses_the_runner() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let mut host = Host::start(BTreeMap::new()).await.online().await;
+        // The shell creates `pid` before it writes the number, so the job
+        // renames it into place: once `pid` exists, it holds the number.
         start_job(
             &mut host,
             "long",
-            "sh -c 'echo $$ > pid; exec sleep 60'",
+            "sh -c 'echo $$ > pid.new; mv pid.new pid; exec sleep 60'",
         )
         .await;
         let pid = host.home().join("pid");
@@ -321,7 +323,7 @@ async fn a_job_runs_on_through_a_connection_loss_until_the_backend_refuses_the_r
             panic!("{kept:?}");
         };
         assert_eq!((job.job_id.as_str(), &job.ended), ("long", &None));
-        assert!(alive(&pid), "the job runs on");
+        assert!(alive(&pid), "the job {pid:?} runs on");
 
         // The backend refuses the runner: the runner stops its jobs.
         host.send(Inbound::HelloError {
