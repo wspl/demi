@@ -16,7 +16,17 @@ import { onBeforeUnmount, watch, type WatchSource } from 'vue'
  * the app starts at that moment, such as a row that opens a conversation
  * and closes the drawer, waits for the removal first (`historySettled`,
  * which the app's router awaits before each navigation): pushed before, the
- * new page would land under the entry about to be taken off.
+ * new page would land under the entry about to be taken off. A layer that
+ * opens at that moment, such as the dialog a menu's row opens as the menu
+ * closes, adds its entry after the removal for the same reason.
+ *
+ * Every layer the user closes stands here on a phone, the overlay store's
+ * menus, popovers and dialogs (`useOverlay`) as well as the sheets, the
+ * drawer and the work panel, so Back closes the one opened last, which is
+ * the one on top, and leaves the page only once none is open. A layer that
+ * closed another way while one above it was still open keeps its entry
+ * until Back comes down to it, which then takes it off too, so one Back is
+ * never spent on a layer already gone.
  *
  * A page shown inside another, as the gallery's phone frames are, adds no
  * entry: the browser's history and its Back belong to the page around it.
@@ -82,6 +92,8 @@ function onPopState(event: PopStateEvent): void {
     layer.open = false
     layer.close()
   }
+  // Back came down to the entries of layers that closed under the one it closed.
+  takeOffClosed()
 }
 
 function listen(): void {
@@ -140,6 +152,20 @@ export function useBackClose(isOpen: WatchSource<boolean>, close: () => void, en
     takeOffClosed()
   }
 
+  /** Adds the layer's entry, after the removal of closed layers' entries under way, if any. */
+  function enter(opening: Layer): void {
+    if (takingOff) {
+      void takingOff.done.then(() => {
+        // It closed while it waited, and has no entry to take off.
+        if (layer === opening)
+          enter(opening)
+      })
+      return
+    }
+    pushed.push(opening)
+    history.pushState({ ...(history.state as object | null), [LAYER_KEY]: opening.token }, '')
+  }
+
   watch([isOpen, enabled], ([open, on]) => {
     if (open && on && !layer) {
       listen()
@@ -147,8 +173,7 @@ export function useBackClose(isOpen: WatchSource<boolean>, close: () => void, en
         layer = null
         close()
       } }
-      pushed.push(layer)
-      history.pushState({ ...(history.state as object | null), [LAYER_KEY]: layer.token }, '')
+      enter(layer)
     } else if (!(open && on)) {
       closed()
     }

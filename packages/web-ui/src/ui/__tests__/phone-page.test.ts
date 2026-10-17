@@ -136,3 +136,62 @@ test('the viewport tag stays as the page shipped it when a script rewrites, remo
   tag.remove()
   other.remove()
 })
+
+/** A touch event with one finger at `x`, on `target`, as Safari sends it. */
+function finger(target: Element, type: string, x: number, y = 400): TouchEvent {
+  const touch = new Touch({ identifier: 0, target, clientX: x, clientY: y })
+  const event = new TouchEvent(type, {
+    bubbles: true,
+    cancelable: true,
+    touches: type === 'touchend' ? [] : [touch],
+    changedTouches: [touch],
+  })
+  target.dispatchEvent(event)
+  return event
+}
+
+// Safari on iOS and the installed app go back or forward when a swipe starts
+// at a screen edge (`web-application.md` § The phone layout, "The edges are
+// the app's"): the page prevents such a touch's start, here at 1024 px, the
+// width happy-dom gives the page.
+test('a touch that starts at either screen edge is kept from the browser, one anywhere else and on a desktop is not', () => {
+  stop = installPhonePage()
+  const page = document.createElement('div')
+  document.body.append(page)
+  const prevented = (x: number) => {
+    const start = finger(page, 'touchstart', x)
+    finger(page, 'touchend', x)
+    return start.defaultPrevented
+  }
+  expect([prevented(4), prevented(16), prevented(17), prevented(512), prevented(1007), prevented(1020)])
+    .toEqual([true, true, false, false, false, true])
+  width.turn(false)
+  expect(prevented(4)).toBe(false)
+  page.remove()
+})
+
+test('a tap at an edge still clicks what it touched and focuses a field there; a drag from the edge clicks nothing', () => {
+  stop = installPhonePage()
+  const button = document.createElement('button')
+  const field = document.createElement('input')
+  document.body.append(button, field)
+  let clicks = 0
+  button.addEventListener('click', () => {
+    clicks += 1
+  })
+
+  finger(button, 'touchstart', 6)
+  finger(button, 'touchend', 6)
+  expect(clicks).toBe(1)
+
+  finger(button, 'touchstart', 6)
+  finger(button, 'touchmove', 80)
+  finger(button, 'touchend', 80)
+  expect(clicks).toBe(1)
+
+  finger(field, 'touchstart', 1018)
+  finger(field, 'touchend', 1018)
+  expect(document.activeElement).toBe(field)
+  button.remove()
+  field.remove()
+})

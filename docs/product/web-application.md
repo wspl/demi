@@ -423,6 +423,16 @@ conversation; the panel button covers the screen with the work panel, and
   desktop's, a show that came while the user was elsewhere waits in the
   strip, and nothing a conversation remembers brings the panel up as it
   opens.
+- **The edges are the app's.** A touch that starts within 16 pixels of the
+  screen's left or right edge never takes the browser back or forward,
+  which in Safari and the installed app would slide to the previous
+  conversation under the page's own controls. From the left edge a
+  rightward drag opens the sidebar drawer instead, following the finger as
+  its closing drag does and settling by the same rule, as ChatGPT's and
+  Slack's iPhone apps open theirs. Android's own Back, which no page can
+  stop, closes the topmost thing first, a menu, a sheet, a dialog, the
+  drawer, then the work panel, and goes to the previous page only when
+  none is open.
 - **One phone scale.** Every control on a phone is drawn at the phone's
   size, not the desktop's with a larger invisible target: a button, an
   icon, a row, a tab, a switch and their text take the phone metrics
