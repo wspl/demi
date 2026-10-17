@@ -175,6 +175,8 @@ async fn the_snapshot_is_the_users_product_state() {
             conversations: Vec::new(),
             logins: Vec::new(),
             credentials: Vec::new(),
+            automations: Vec::new(),
+            automations_unread: 0,
             // A new user has no passkeys; the handle is the bytes of the
             // user's id.
             passkeys: PasskeyList {

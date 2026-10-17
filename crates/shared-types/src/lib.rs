@@ -40,7 +40,7 @@ pub use agent_message::{
     PermissionOutcome, Sender,
 };
 pub use block::{
-    AbortBlock, AccountSwitchBlock, AgentMessageBlock, Block, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock,
+    AbortBlock, AccountSwitchBlock, AgentMessageBlock, AutomationMark, Block, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock,
     ContextBlock, ErrorBlock, ErrorDevice, EXECUTION_SOURCE, SKILLS_SOURCE, INSTRUCTIONS_SOURCE, InstructionEntry, KeptMessage, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, ShellCommand, SteerBlock, StoppedBy,
     WORKING_DIRECTORY_SOURCE,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
@@ -67,7 +67,8 @@ pub use file_types::{
 #[doc(hidden)]
 pub use ids::__private;
 pub use ids::{
-    BlockId, CommandId, EmptyId, NodeId, OperationId, RequestId, Sequence, TurnId,
+    AutomationId, AutomationRunId, BlockId, CommandId, EmptyId, NodeId, OperationId, RequestId,
+    Sequence, TurnId,
 };
 pub use media::{
     MODEL_MEDIA_TYPES, ModelMediaKind, ModelMediaType, model_accepts_media_type,

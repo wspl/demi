@@ -73,7 +73,8 @@
       "sendNow": "지금 보내기",
       "recall": "회수",
       "recalled": "메시지 회수됨",
-      "notDelivered": "이 메시지를 전달하지 못했습니다."
+      "notDelivered": "이 메시지를 전달하지 못했습니다.",
+      "fromAutomation": "자동화"
     },
     "assistant": {
       "fork": "포크",

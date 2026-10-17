@@ -16,7 +16,8 @@
     "settings": "設定",
     "markdown": "Markdown",
     "phone": "スマートフォン",
-    "roadmap": "ロードマップ"
+    "roadmap": "ロードマップ",
+    "automations": "オートメーション"
   },
   "views": {
     "errors": {
@@ -68,7 +69,11 @@
       "skills": "スキル",
       "search": "検索"
     },
-    "page": "ページ"
+    "page": "ページ",
+    "automations": {
+      "app": "アプリ",
+      "phone": "スマートフォン"
+    }
   },
   "chrome": {
     "mode": "モード",

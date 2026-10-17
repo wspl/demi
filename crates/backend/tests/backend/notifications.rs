@@ -27,6 +27,7 @@ use demi_conversation_socket_protocol::{ClientFrame, ServerFrame, TranscriptPatc
 use demi_shared_types::Block;
 use demi_provider_common::testing::event;
 use demi_web_api_protocol::push::{PushAsk, PushEndpoint, PushKey, PushMessage};
+use demi_web_api_protocol::state::SyncEvent;
 use futures_util::future::BoxFuture;
 use reqwest::{Method, StatusCode};
 use serde_json::json;
@@ -194,6 +195,21 @@ fn names(each: &[(String, PushMessage)]) -> Vec<&str> {
     each.iter().map(|(browser, _)| browser.as_str()).collect()
 }
 
+/// Waits until the sessions part, as `page` is sent it, says `count`
+/// sessions' browsers have notifications on, and answers that list.
+async fn notifying(page: &mut crate::support::SyncChannel, count: usize) -> Vec<demi_web_api_protocol::sessions::SessionDto> {
+    let on = |sessions: &Vec<demi_web_api_protocol::sessions::SessionDto>| {
+        sessions.iter().filter(|session| session.notifications).count() == count
+    };
+    let received = page
+        .until(|event| matches!(event, SyncEvent::Sessions { sessions } if on(sessions)))
+        .await;
+    match received.into_iter().last() {
+        Some(SyncEvent::Sessions { sessions }) => sessions,
+        other => unreachable!("{other:?}"),
+    }
+}
+
 fn all_events() -> serde_json::Value {
     json!({ "turnFinishes": true, "turnFails": true, "needsPermission": true, "agentNotifies": true })
 }
@@ -215,7 +231,13 @@ async fn notifications_reach_each_session_that_chose_them_but_one_whose_page_sho
     let gone_session = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     let quiet_session = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
     let shared_session = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
+    // Each session says whether its browser has notifications on, and the
+    // sessions part announces each change to a page of another session.
+    let viewer = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
+    let mut page = backend.sync(&viewer).await;
     watching.subscribe(&backend, &master, all_events()).await;
+    let sessions = notifying(&mut page, 1).await;
+    assert!(sessions.iter().all(|session| !session.current || !session.notifications), "{sessions:?}");
     gone.subscribe(&backend, &gone_session, all_events()).await;
     quiet
         .subscribe(
@@ -224,6 +246,20 @@ async fn notifications_reach_each_session_that_chose_them_but_one_whose_page_sho
             json!({ "turnFinishes": true, "turnFails": true, "needsPermission": true, "agentNotifies": false }),
         )
         .await;
+    notifying(&mut page, 3).await;
+    let ended = backend
+        .send(Method::DELETE, "/api/push/subscription", Some(&quiet_session.cookie), None)
+        .await;
+    assert_eq!(ended.status, StatusCode::NO_CONTENT);
+    notifying(&mut page, 2).await;
+    quiet
+        .subscribe(
+            &backend,
+            &quiet_session,
+            json!({ "turnFinishes": true, "turnFails": true, "needsPermission": true, "agentNotifies": false }),
+        )
+        .await;
+    notifying(&mut page, 3).await;
 
     // No session reaches another's subscription: an endpoint another live
     // session holds is refused, and a session's DELETE removes its own.
@@ -290,6 +326,9 @@ async fn notifications_reach_each_session_that_chose_them_but_one_whose_page_sho
     }
     ends.sort_by(|left, right| left.0.cmp(&right.0));
     assert_eq!(names(&ends), ["quiet", "watching"]);
+    // The removed one's session no longer has notifications on: of the
+    // four browsers, the shared one signed out and the gone one is gone.
+    notifying(&mut page, 2).await;
     for (browser, message) in &ends {
         let PushMessage::TurnFinished { conversation_id, answer_start, .. } = message else {
             panic!("{browser} was sent {message:?}");

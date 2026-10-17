@@ -111,7 +111,7 @@ fn calls_notices_and_receipts_are_one_run_until_what_the_reader_reads() {
     // more: one run. A report of progress alone, a context block and a
     // request's usage pass through it.
     let mut log = log();
-    log.push_user(turn(), &test_model(), text("Fix the tests"), None);
+    log.push_user(turn(), &test_model(), text("Fix the tests"), None, None);
     log.open_thinking(&test_model(), "Plan.".into());
     call(&mut log, "a");
     call(&mut log, "b");
@@ -138,7 +138,7 @@ fn calls_notices_and_receipts_are_one_run_until_what_the_reader_reads() {
 #[test]
 fn text_the_users_words_and_decisions_end_a_run() {
     let mut log = log();
-    log.push_user(turn(), &test_model(), text("Go"), None);
+    log.push_user(turn(), &test_model(), text("Go"), None, None);
     call(&mut log, "a");
     log.append_text(&test_model(), "Checked.");
     call(&mut log, "b");
@@ -170,7 +170,7 @@ fn redacted_reasoning_is_a_step_of_its_run() {
     // The model's reasoning arrives redacted, then it thinks and runs a
     // command: one run, named after the redacted reasoning that opened it.
     let mut log = log();
-    log.push_user(turn(), &test_model(), text("Go"), None);
+    log.push_user(turn(), &test_model(), text("Go"), None, None);
     log.push_redacted_thinking(&test_model(), "opaque".into());
     log.open_thinking(&test_model(), "Plan.".into());
     call(&mut log, "a");
@@ -182,7 +182,7 @@ fn the_steps_after_the_systems_resume_join_the_run_before_it() {
     // A deploy command is lost when the backend restarts, the turn
     // resumes, and the agent runs four more commands: one run.
     let mut log = log();
-    log.push_user(turn(), &test_model(), text("Deploy"), None);
+    log.push_user(turn(), &test_model(), text("Deploy"), None, None);
     call(&mut log, "deploy");
     log.push_resume(turn(), &test_model(), Some("The backend restarted.".into()));
     report(&mut log, "progress", false);
@@ -202,7 +202,7 @@ fn the_steps_after_a_continued_stop_join_the_run_before_it() {
     // call joins the run, and after a Stop the user did not continue, a
     // command's end that arrives starts a run of its own.
     let mut log = log();
-    log.push_user(turn(), &test_model(), text("Go"), None);
+    log.push_user(turn(), &test_model(), text("Go"), None, None);
     call(&mut log, "a");
     log.push_abort(&test_model());
     log.mark_latest_abort_resumed();

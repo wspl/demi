@@ -19,7 +19,8 @@ use super::control::{ControlService, USER_COLUMNS, later, user_row};
 const SESSIONS: &str = "web_sessions";
 const HANDOFFS: &str = "handoff_codes";
 const COLUMNS: &str = "s.token_hash, s.id, s.name, s.created_at, s.last_active_at, s.handoff_id,
-     COALESCE(NULLIF(issuer.nickname, ''), issuer.email) AS issued_by_name";
+     COALESCE(NULLIF(issuer.nickname, ''), issuer.email) AS issued_by_name,
+     EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.session_id = s.id) AS notifications";
 
 /// A session to open: its token's hash, its user, the browser and system it
 /// signs in from, and the handoff code that makes it, if one does, with the
@@ -42,6 +43,8 @@ pub struct SessionRecord {
     /// The nickname of the administrator whose sign-in code made it, or
     /// their email while they have none.
     pub issued_by: Option<String>,
+    /// Its browser has notifications on: it keeps a push subscription.
+    pub notifications: bool,
 }
 
 impl SessionRecord {
@@ -55,6 +58,7 @@ impl SessionRecord {
             current: self.token == *reader,
             handoff_id: self.handoff.clone(),
             issued_by: self.issued_by.clone(),
+            notifications: self.notifications,
         }
     }
 }
@@ -362,6 +366,7 @@ fn session_row(row: &Row<'_>) -> Result<SessionRecord, StorageError> {
             .map(|id| decode(SESSIONS, "handoff_id", HandoffId::try_from(id)))
             .transpose()?,
         issued_by: row.get("issued_by_name")?,
+        notifications: row.get("notifications")?,
     })
 }
 

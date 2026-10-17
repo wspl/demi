@@ -2,7 +2,9 @@
   "nav": {
     "new": "새 대화",
     "search": "검색",
-    "archived": "보관됨"
+    "archived": "보관됨",
+    "automations": "자동화",
+    "unreadRuns": "읽지 않음 {count}개"
   },
   "groups": {
     "conversations": "대화",

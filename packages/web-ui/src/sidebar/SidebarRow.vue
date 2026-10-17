@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from './locales/text'
 import { computed } from 'vue'
-import { Archive, Pin, PinOff } from '@lucide/vue'
+import { Archive, Pin, PinOff, Zap } from '@lucide/vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TitleInput from '@demicodes/web-ui/ui/TitleInput.vue'
@@ -11,6 +11,7 @@ import { usePhone } from '@demicodes/web-ui/ui/phone'
 import type { SidebarConversation } from './types'
 import ConversationDot from './ConversationDot.vue'
 import DeviceMark from './DeviceMark.vue'
+import { t as automationText } from '../automations/locales/text'
 import { conversationTitle } from '../agent/conversation-title'
 
 const props = defineProps<{
@@ -108,13 +109,22 @@ const rowClass = computed(() => [
     >{{ shownTitle }}</Tooltip>
     <!-- The pin's glyph and the device's mark end the row, in the flow, so the title never reaches
          them. The mark stays on hover; the pin gives its place to Archive. -->
-    <span v-if="!renaming && (conversation.pinned || conversation.device)" class="flex shrink-0 items-center gap-0.5">
+    <span v-if="!renaming && (conversation.pinned || conversation.device || conversation.automations?.length)" class="flex shrink-0 items-center gap-0.5">
       <span
         v-if="conversation.pinned"
         class="pointer-events-none flex size-6 items-center justify-center text-fg-faint transition-opacity phone:size-8"
         :class="pinClass"
       >
         <Pin :size="phone ? ICON_PX.in32 : ICON_PX.in20" />
+      </span>
+      <!-- The bolt before the device's mark says automations wake the conversation; a mark only, the row opens the conversation. -->
+      <span
+        v-if="conversation.automations?.length"
+        role="img"
+        :aria-label="automationText('mark.bolt')"
+        class="flex size-hit-sm shrink-0 items-center justify-center text-fg-subtle phone:size-8"
+      >
+        <Zap :size="phone ? ICON_PX.in32 : ICON_PX.in20" />
       </span>
       <DeviceMark v-if="conversation.device" :host="conversation.device" />
     </span>
@@ -124,7 +134,9 @@ const rowClass = computed(() => [
       v-if="!renaming && !phone"
       class="on-fill absolute inset-y-0 flex items-center gap-0.5 transition-opacity"
       :class="[
-        conversation.device ? 'right-[calc(var(--spacing-hit-sm)+4px)]' : 'right-0.5',
+        conversation.device && conversation.automations?.length
+          ? 'right-[calc(2*var(--spacing-hit-sm)+6px)]'
+          : conversation.device || conversation.automations?.length ? 'right-[calc(var(--spacing-hit-sm)+4px)]' : 'right-0.5',
         menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100',
       ]"
     >

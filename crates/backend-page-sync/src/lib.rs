@@ -38,6 +38,8 @@ pub enum Part {
     Instructions,
     /// The user's credentials, without their values.
     Credentials,
+    /// The user's automations with their latest runs.
+    Automations,
     /// The user's passkeys.
     Passkeys,
     /// The user's sessions, the signed-in browsers.

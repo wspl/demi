@@ -166,6 +166,7 @@ pub(crate) fn conversation_parts(
                 let conversation = conversation_of(root);
                 if let Some(shard) = shard.upgrade() {
                     shard.poke_pending(&conversation);
+                    shard.follow_runs(&conversation);
                     shard.follow_failed_turn(&conversation);
                     shard.follow_turn_end(&conversation);
                     // A conversation no longer loaded keeps no project files.

@@ -87,11 +87,19 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
         .take(&conversation, now)
         .map_err(failed)?;
     let message = PushMessage::Agent {
-        conversation_id: conversation,
+        conversation_id: conversation.clone(),
         id: uuid::Uuid::new_v4().to_string(),
         title,
         body: body.map(|body| body.trim().to_owned()).unwrap_or_default(),
     };
+    // The run whose message this turn works for notified (`automations.md`
+    // § Runs): it ends Notified, and stays unread until the user opens the
+    // conversation.
+    if let Some((mark, _)) = shard.automation_input(&conversation)
+        && shard.services().control.notify_run(mark.run_id).await.map_err(failed)?
+    {
+        shard.mark(demi_backend_page_sync::Part::Automations);
+    }
     // Counted now, so the agent is told at once; delivery goes on in the
     // background, and a browser its push service no longer knows is
     // dropped then.

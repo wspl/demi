@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
 use demi_conversation_socket_protocol::{TranscriptPatch, TranscriptVersion, Versions};
 use demi_provider_common::{AccountSwitch, ToolCall};
-use demi_shared_types::{
+use demi_shared_types::{AutomationMark, 
     AbortBlock, AccountSwitchBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
     CompactionMarkerBlock, ContextBlock, ErrorBlock, InstructionEntry, KeptMessage, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
@@ -102,6 +102,7 @@ impl TranscriptLog {
         model: &ModelSelection,
         content: Vec<UserContentBlock>,
         preamble: Option<String>,
+        automation: Option<AutomationMark>,
     ) {
         let (id, created_at) = self.stamp();
         self.append(Block::User(UserBlock {
@@ -111,6 +112,7 @@ impl TranscriptLog {
             model: model.clone(),
             content,
             preamble,
+            automation,
             entries: Vec::new(),
         }));
     }

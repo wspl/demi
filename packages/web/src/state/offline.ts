@@ -89,6 +89,12 @@ function stored(value: unknown): unknown {
   return JSON.parse(JSON.stringify(value))
 }
 
+/** Whether `value` is a record this build wrote, read before its shape, which is that build's. */
+function ofThisBuild(value: unknown): boolean {
+  const record = z.object({ build: z.string() }).safeParse(value)
+  return record.success && record.data.build === cacheBuild()
+}
+
 /**
  * The account's copy this build wrote; none when there is none, or the
  * cache is another build's or does not read, which is then dropped whole.
@@ -98,9 +104,12 @@ export async function readAccountCopy(): Promise<AccountCopy | null> {
   if (value === undefined) {
     return null
   }
-  const record = accountRecordSchema.safeParse(value)
-  if (!record.success || record.data.build !== cacheBuild()) {
-    if (!record.success) {
+  // Another build's copy is dropped before its shape is read, which may
+  // be that build's own: only a copy of this build that does not read is a
+  // defect.
+  const record = ofThisBuild(value) ? accountRecordSchema.safeParse(value) : null
+  if (record === null || !record.success) {
+    if (record !== null) {
       reportError(t('failures.readOffline'), schemaRefusal(record.error))
     }
     await deleteAccountCache()
@@ -128,9 +137,9 @@ async function readConversation(userId: string, id: string): Promise<Conversatio
   if (value === undefined) {
     return null
   }
-  const record = conversationRecordSchema.safeParse(value)
-  if (!record.success || record.data.build !== cacheBuild() || record.data.userId !== userId) {
-    if (!record.success) {
+  const record = ofThisBuild(value) ? conversationRecordSchema.safeParse(value) : null
+  if (record === null || !record.success || record.data.userId !== userId) {
+    if (record !== null && !record.success) {
       reportError(t('failures.readOffline'), schemaRefusal(record.error))
     }
     await database.transaction(CONVERSATIONS, 'readwrite', (store) => store.delete(id))

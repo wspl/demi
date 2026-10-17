@@ -29,6 +29,7 @@ use demi_provider_common::{
     ProviderRuntime, RequestBlock, RequestLimits, ToolDefinition,
 };
 use demi_shared_types::{
+    AutomationMark,
     AgentAccount, AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, FailureSource, ReportEvent,
     ModelSelection, NodeId, PendingCall, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
     ShellToolView, ShellViewStatus, Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
@@ -259,6 +260,8 @@ pub(super) enum ActionKind {
     /// A message: appends a `user` block and runs a turn.
     Send {
         content: Vec<UserContentBlock>,
+        /// The automation's run that sent it, which its `user` block keeps.
+        automation: Option<AutomationMark>,
     },
     /// Input that arrived while nothing ran, command reports or agent
     /// messages: it opens a turn of its own, never shown in the queue.
@@ -637,14 +640,14 @@ impl SessionCore {
     /// acknowledged without a second turn.
     pub(super) fn admit_send(
         &mut self,
-        id: TurnId,
-        content: Vec<UserContentBlock>,
+        message: QueuedMessage,
     ) -> Result<ActionHandle, AdmissionError> {
         self.refuse_admission()?;
+        let QueuedMessage { id, content, automation } = message;
         if self.knows_turn(&id) {
             return Ok(ActionHandle::ended(ActionEnd::Duplicate));
         }
-        Ok(self.push_action(ActionKind::Send { content }, id))
+        Ok(self.push_action(ActionKind::Send { content, automation }, id))
     }
 
     /// Admits a retry, a resume or a compaction pass.
@@ -705,7 +708,7 @@ impl SessionCore {
         let cancel = TurnCancel::new();
         self.held = false;
         let unwritten_media = match &kind {
-            ActionKind::Send { content } => media::content_references(content).cloned().collect(),
+            ActionKind::Send { content, .. } => media::content_references(content).cloned().collect(),
             _ => Vec::new(),
         };
         // A turn waits for the model's answer from its start, through the
@@ -868,9 +871,9 @@ impl SessionCore {
         self.reject_edit(EditError::Closed);
         if began {
             self.record_stop(CancelReason::Shutdown);
-        } else if let ActionKind::Send { content } = kind {
+        } else if let ActionKind::Send { content, automation } = kind {
             self.pending.push_front(PendingAction {
-                kind: ActionKind::Send { content },
+                kind: ActionKind::Send { content, automation },
                 turn: turn.clone(),
                 reply: None,
             });
@@ -1148,9 +1151,10 @@ impl SessionCore {
         self.pending
             .iter()
             .filter_map(|action| match &action.kind {
-                ActionKind::Send { content } => Some(QueuedMessage {
+                ActionKind::Send { content, automation } => Some(QueuedMessage {
                     id: action.turn.clone(),
                     content: content.clone(),
+                    automation: automation.clone(),
                 }),
                 _ => None,
             })
@@ -1496,9 +1500,10 @@ impl SessionCore {
         turn: TurnId,
         content: Vec<UserContentBlock>,
         preamble: Option<String>,
+        automation: Option<AutomationMark>,
     ) {
         self.transcript
-            .push_user(turn, &self.model, content, preamble);
+            .push_user(turn, &self.model, content, preamble, automation);
         if let Activity::Running(run) = &mut self.activity {
             run.unwritten_media.clear();
         }
@@ -1985,7 +1990,7 @@ impl SessionCore {
             .cloned()
             .collect();
         for action in &self.pending {
-            if let ActionKind::Send { content } = &action.kind {
+            if let ActionKind::Send { content, .. } = &action.kind {
                 referenced.extend(media::content_references(content).cloned());
             }
         }

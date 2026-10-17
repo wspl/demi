@@ -281,10 +281,14 @@ impl Shard {
                 tracing::error!("a notification came before the backend listened");
                 return;
             };
-            services
+            let removed = services
                 .push
                 .deliver(this.user(), &message, &recipients, contact.as_str())
                 .await;
+            // Each session says whether its browser has notifications on.
+            if removed {
+                this.mark(demi_backend_page_sync::Part::Sessions);
+            }
         });
     }
 }

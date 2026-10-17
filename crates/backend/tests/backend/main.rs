@@ -19,6 +19,7 @@ mod accounts;
 mod agent_profiles;
 mod attachments;
 mod auth;
+mod automations;
 mod blobs;
 mod browser;
 mod builtin_families;

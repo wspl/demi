@@ -2,7 +2,9 @@
   "nav": {
     "new": "New",
     "search": "Search",
-    "archived": "Archived"
+    "archived": "Archived",
+    "automations": "Automations",
+    "unreadRuns": "{count} unread"
   },
   "groups": {
     "conversations": "Conversations",

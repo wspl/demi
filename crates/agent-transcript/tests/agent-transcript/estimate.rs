@@ -25,6 +25,7 @@ fn user(id: &str, text: &str) -> Block {
         model: test_model(),
         content: vec![UserContentBlock::Text { text: text.into() }],
         preamble: Some("not counted".into()),
+        automation: None,
     })
 }
 
@@ -159,6 +160,7 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
             },
         ],
         preamble: None,
+        automation: None,
     });
     let call = Block::ToolCall(ToolCallBlock {
         run: None,

@@ -384,6 +384,17 @@ impl Backend {
                 "the turns the last shutdown interrupted cannot be listed"
             );
         }
+        // Each user's automations fire what a backend that was down missed
+        // and wait for their next times (`automations.md` § Records). A
+        // failure does not stop the start: a user's next call starts them.
+        if let Err(error) =
+            demi_backend_user_shard::automations::start_schedulers(&services.control, &shards.shards()).await
+        {
+            tracing::error!(
+                error = &error as &dyn std::error::Error,
+                "the users with automations cannot be listed"
+            );
+        }
         // Each user's search index catches up with the conversations, in the
         // background (`storage.md` § Search index). A failure does not stop
         // the start: a conversation not indexed here is indexed by its next

@@ -93,6 +93,7 @@ test('the dialog learns of the phone from the session its code made', () => {
     lastActiveAt: '2026-10-13T08:00:00.000Z',
     current: true,
     handoffId: null,
+    notifications: false,
   }
   product.start()
   channels.last().connect(productState({ sessions: [laptop] }))
@@ -116,6 +117,7 @@ test('signing out a browser that is already signed out is done: its row leaves, 
     lastActiveAt: '2026-10-13T08:00:00.000Z',
     current: true,
     handoffId: null,
+    notifications: false,
   }
   const phone = { ...laptop, id: 'session-2', name: 'Safari on iPhone', current: false }
   product.start()

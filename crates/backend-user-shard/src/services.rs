@@ -89,6 +89,9 @@ pub struct Services {
     /// The page error reports each session sent within the last minute, at
     /// most thirty (`backend.md` § Request IDs and the server log).
     pub page_errors: RateWindow<SessionId>,
+    /// The calls the automations' URLs took this minute
+    /// (`automations.md` § Triggers).
+    pub hook_limits: crate::automations::HookLimits,
     pub runners: RunnerTuning,
     pub conversation_tuning: ConversationTuning,
     /// How the sockets to a page are timed.
@@ -416,6 +419,7 @@ impl Services {
             logins,
             claims: PendingClaims::new(settings.runners.claims_per_minute),
             page_errors: RateWindow::new(PAGE_ERRORS_PER_MINUTE, Duration::from_secs(60)),
+            hook_limits: crate::automations::HookLimits::default(),
             runners: settings.runners,
             conversation_tuning: settings.conversations,
             pages: settings.pages,

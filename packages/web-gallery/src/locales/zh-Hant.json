@@ -16,7 +16,8 @@
     "settings": "設定",
     "markdown": "Markdown",
     "phone": "手機",
-    "roadmap": "路線圖"
+    "roadmap": "路線圖",
+    "automations": "自動化"
   },
   "views": {
     "errors": {
@@ -68,7 +69,11 @@
       "skills": "技能",
       "search": "搜尋"
     },
-    "page": "頁面"
+    "page": "頁面",
+    "automations": {
+      "app": "App",
+      "phone": "手機"
+    }
   },
   "chrome": {
     "mode": "模式",
