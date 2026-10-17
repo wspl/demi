@@ -121,9 +121,10 @@ async fn a_workspace_points_at_a_directory_of_the_users_device_and_its_deletion_
         assert_eq!(again.refusal(), (StatusCode::CONFLICT, ErrorCode::WorkspaceExists), "{spelled}");
         assert_eq!(again.json::<Value>()["workspace"]["id"], json!(notes));
     }
-    let linked_home = laptop.runner.linked_home().to_str().unwrap().to_owned();
-    assert_ne!(linked_home, home, "the temporary home is reached through a link");
-    for spelled in [home.clone(), linked_home] {
+    let outside = tempfile::tempdir().unwrap();
+    let linked_home = outside.path().join("home-link");
+    std::os::unix::fs::symlink(&home, &linked_home).unwrap();
+    for spelled in [home.clone(), linked_home.to_str().unwrap().to_owned()] {
         let at_home = backend
             .post(
                 "/api/workspaces",
@@ -431,7 +432,7 @@ async fn the_sidebar_keeps_the_users_order_within_each_partition_through_patches
     );
     // So is a workspace, and an archived row is in none.
     let mut laptop = backend.pair(&master, "laptop").await;
-    let home = format!("{}/notes", laptop.runner.linked_home().to_str().unwrap());
+    let home = format!("{}/notes", laptop.runner.home());
     std::fs::create_dir_all(format!("{home}/site")).unwrap();
     let notes = create_workspace(
         &backend,
