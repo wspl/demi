@@ -541,6 +541,16 @@ impl Backend {
         self.services.retries.hold(step)
     }
 
+    /// Holds every change watch's check at `step` from now on, until the
+    /// hold is released.
+    #[cfg(feature = "testing")]
+    pub fn hold_watches(
+        &self,
+        step: demi_backend_user_shard::holds::WatchStep,
+    ) -> demi_backend_user_shard::holds::StepHold {
+        self.services.watches.hold(step)
+    }
+
     /// Holds every page's synchronization channel at `step` from now on,
     /// until the hold is released.
     #[cfg(feature = "testing")]
