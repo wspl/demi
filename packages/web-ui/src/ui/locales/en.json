@@ -18,7 +18,8 @@
   },
   "requestId": "Request ID: {id}",
   "errorNotice": {
-    "providerResponse": "Provider Response"
+    "providerResponse": "Provider Response",
+    "headers": "Headers"
   },
   "updateFailed": {
     "title": "This Page Could Not Be Updated",

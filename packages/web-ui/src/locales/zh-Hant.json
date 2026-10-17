@@ -273,6 +273,7 @@
     "request_too_large": "請求過大，供應商無法處理。",
     "incomplete": "回覆在完成前結束。",
     "auth_expired": "供應商的登入已過期或遭拒。",
+    "permission_denied": "供應商拒絕了此請求。",
     "auth_missing": "供應商沒有憑證。",
     "auth_invalid": "無法讀取供應商的憑證。",
     "auth_unsupported": "供應商不接受此類憑證。",

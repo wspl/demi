@@ -4,6 +4,7 @@ import { t as shared } from '../locales/text'
 import type { ShownError } from '../infra/errors'
 import { provideEditSelection, provideFilePills, type EditSelectionHandler } from './edit-selection'
 import { provideResumeAtRetry } from './resume-at-retry'
+import { provideCredentialKinds, type CredentialKinds } from './credential-kinds'
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
@@ -143,6 +144,11 @@ const props = withDefaults(defineProps<{
    */
   usageLimits?: (providerId: string, account: string | null) => UsageLimits | null
   /**
+   * What each provider entry holds, which a failure's record names, as *The
+   * provider refused the API key*; absent, records read their code's words.
+   */
+  credentialKinds?: CredentialKinds
+  /**
    * The host's connection banner says the backend is away
    * (`web-application.md` § A page of another build): the transcript adds no
    * Connecting row of its own while the conversation's socket waits for it.
@@ -243,6 +249,7 @@ provideResumeAtRetry(() => props.resumeAtRetry === undefined
   ? undefined
   : { on: props.resumeAtRetry, set: (on) => emit('update:resumeAtRetry', on) })
 provideBlockReader(() => props.readBlock)
+provideCredentialKinds(() => props.credentialKinds)
 // A running call shows its command's output under it; once the call
 // returned, a command that still runs is the dock's (`rendering.md`
 // § Rendering boundary).

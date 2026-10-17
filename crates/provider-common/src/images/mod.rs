@@ -285,8 +285,9 @@ pub enum ImageFailure {
     UsageLimit { retry_at: Option<Timestamp> },
     /// The account's sign-in could not be used or renewed.
     SignIn(AuthFailure),
-    /// The vendor refused the entry's API key, in its own words.
-    KeyRefused { message: String },
+    /// The vendor refused the entry's API key, in its own words; `code` is
+    /// the failure's, `auth_expired` or `permission_denied`.
+    KeyRefused { message: String, code: ErrorCode },
     /// The vendor refused the prompt or an image, in its own words.
     Refused { message: String, code: Option<ErrorCode> },
     /// The vendor refused the shape asked for, naming the shapes it takes,
@@ -302,7 +303,7 @@ impl ImageFailure {
         let code = match self {
             Self::UsageLimit { .. } => Some(ErrorCode::UsageLimit),
             Self::SignIn(failure) => failure.failure().code,
-            Self::KeyRefused { .. } => Some(ErrorCode::AuthExpired),
+            Self::KeyRefused { code, .. } => Some(code.clone()),
             Self::Refused { code, .. } | Self::Shape { code, .. } | Self::Unanswered { code, .. } => code.clone(),
         };
         code.map_or_else(|| "failed".to_owned(), |code| code.as_str().to_owned())
@@ -436,7 +437,14 @@ impl ImageCall<'_> {
             }
             ImageCredential::Key { refused } if refused(status, &body) => {
                 let message = said.unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-                return ImageFailure::KeyRefused { message };
+                // A 401 or a 403 has the code its status gives; a vendor's
+                // own sign of a key it does not know, as Google's 400
+                // `API_KEY_INVALID`, is a refused credential.
+                let code = failure
+                    .code
+                    .filter(|code| matches!(code, ErrorCode::AuthExpired | ErrorCode::PermissionDenied))
+                    .unwrap_or(ErrorCode::AuthExpired);
+                return ImageFailure::KeyRefused { message, code };
             }
             _ => {}
         }

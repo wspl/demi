@@ -110,6 +110,7 @@
     "stepsNotShared": "{count} 個步驟未分享",
     "turnFailed": "輪次失敗。",
     "failureResets": "{failure}{reset}。",
+    "apiKeyRefused": "供應商拒絕了 API 金鑰。",
     "signedOut": "{provider} 已將 {account} 登出。請在「設定 › 供應商」中重新登入。",
     "work": {
       "ran": "執行了 {count} 個指令",

@@ -242,7 +242,7 @@ async fn a_refused_request_fails_with_the_vendor_record() {
 }
 
 /// Grok Build's signs of a used-up account, as the Grok CLI reads them, are
-/// usage limits; any other 403 is a refused credential and a 429 throttles.
+/// usage limits; any other 403 is a refused request and a 429 throttles.
 /// One mock vendor per case, about 10 ms each.
 #[tokio::test]
 async fn a_used_up_account_is_a_usage_limit_and_a_429_throttles() {
@@ -250,7 +250,7 @@ async fn a_used_up_account_is_a_usage_limit_and_a_429_throttles() {
         (402, "Grok Build usage balance exhausted", ErrorCode::UsageLimit),
         (402, "", ErrorCode::UsageLimit),
         (403, "status 403: Run out of credits", ErrorCode::UsageLimit),
-        (403, "Forbidden", ErrorCode::AuthExpired),
+        (403, "Forbidden", ErrorCode::PermissionDenied),
         (429, "slow down", ErrorCode::RateLimit),
     ];
     for (status, body, code) in cases {

@@ -273,6 +273,7 @@
     "request_too_large": "The request is too large for the provider.",
     "incomplete": "The reply ended before it was complete.",
     "auth_expired": "The provider’s sign-in expired or was refused.",
+    "permission_denied": "The provider refused this request.",
     "auth_missing": "The provider has no credential.",
     "auth_invalid": "The provider’s credential can’t be read.",
     "auth_unsupported": "The provider doesn’t accept this kind of credential.",

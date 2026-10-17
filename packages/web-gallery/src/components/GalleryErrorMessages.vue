@@ -9,6 +9,7 @@ import { joinMessageContent } from '@demicodes/web-ui/agent/message-input/messag
 import type { Block, UserContentBlock } from '@demicodes/protocol'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import { useTurnFlow } from '../turn-flow'
+import { provideCredentialKinds } from '@demicodes/web-ui/agent/credential-kinds'
 import { demoModel, errorTool } from '../fixtures/blocks'
 import { galleryBlobs, galleryBlobUrl } from '../fixtures/blobs'
 import { sweepUpload } from '../fixtures/upload-sweep'
@@ -26,23 +27,45 @@ import GallerySpecimen from './GallerySpecimen.vue'
  * upload failed keeps its capsule with Retry. A sent message whose upload
  * failed is undelivered, in the transcript flow.
  *
- * Each record is named by its normalized code, which is also its id.
+ * Each record is named by its normalized code, which is also its id, and
+ * runs on a subscription; a record given `onKey`, its name, ran on an API
+ * key entry, whose `auth_expired` names its key, never a sign-in. Each
+ * carries the `http` record a provider stores: the status, the response's
+ * headers, and the body, the vendor's part of `message`.
  */
 function errorRecord(
   code: string,
   httpStatus: number,
   message: string,
+  onKey?: string,
 ): Block {
   return {
     type: 'error',
-    id: code,
+    id: onKey ?? code,
     createdAt: '2026-09-11T12:00:00Z',
-    model: demoModel,
+    model: onKey === undefined ? demoModel : { ...demoModel, providerId: KEY_ENTRY },
     message,
     code,
-    diagnostics: { source: 'http', httpStatus, clientRequestId: 'req_01J8Y3Q6ZKX4' },
+    diagnostics: {
+      source: 'http',
+      httpStatus,
+      clientRequestId: 'req_01J8Y3Q6ZKX4',
+      upstream: JSON.stringify({
+        status: httpStatus,
+        headers: [
+          ['cf-ray', 'a4c1c9a578b78e6c-PDX'],
+          ['content-type', 'application/json'],
+          ['date', 'Fri, 11 Sep 2026 12:00:00 GMT'],
+          ['server', 'cloudflare'],
+        ],
+        body: /HTTP \d+: (.*)$/s.exec(message)?.[1] ?? message,
+      }),
+    },
   }
 }
+/** The Compatible API entry the key records ran on; every other entry is a subscription. */
+const KEY_ENTRY = 'compatible-api'
+provideCredentialKinds(() => (providerId) => providerId === KEY_ENTRY ? 'api_key' : 'subscription')
 const records: Block[] = [
   errorRecord('usage_limit', 429, 'The usage limit has been reached'),
   errorRecord(
@@ -52,6 +75,18 @@ const records: Block[] = [
   ),
   errorRecord('overloaded', 529, 'Overloaded. The provider could not accept the request.'),
   errorRecord('auth_expired', 401, 'The access token has expired. Sign in to the provider again.'),
+  errorRecord(
+    'auth_expired',
+    401,
+    'OpenAI API request failed with HTTP 401: {"error":{"message":"Incorrect API key provided: sk-…a1b2.","type":"invalid_request_error","code":"invalid_api_key"}}',
+    'auth_expired · API key',
+  ),
+  errorRecord(
+    'permission_denied',
+    403,
+    'OpenAI API request failed with HTTP 403: {"error":{"message":"Your Go plan doesn\'t include API access. Upgrade to Provider or higher at https://commandcode.ai/billing to use these endpoints.","type":"permission_error","code":"upgrade_required"}}',
+    'permission_denied · API key',
+  ),
   errorRecord('auth_missing', 401, 'No credentials are configured for this provider.'),
   errorRecord(
     'context_length_exceeded',

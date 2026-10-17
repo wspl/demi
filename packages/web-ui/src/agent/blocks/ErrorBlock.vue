@@ -5,8 +5,8 @@ import ErrorNotice from '@demicodes/web-ui/ui/ErrorNotice.vue'
 import Checkbox from '../../ui/Checkbox.vue'
 import { useClock } from '../../composables/useClock'
 import { useTranscript } from '../edit-selection'
-import { errorReportText, failureHeadline, failureSource } from '../error-detail'
-import { t } from '../locales/text'
+import { useCredentialKinds } from '../credential-kinds'
+import { errorReportText, failureSource, recordHeadline } from '../error-detail'
 import { resumeAtLabel, useResumeAtRetry } from '../resume-at-retry'
 
 /**
@@ -24,6 +24,8 @@ const props = defineProps<{
   message: string
   code?: string | null
   diagnostics?: ProviderErrorDiagnostics
+  /** The entry the block's model selection names, whose credential the headline names. */
+  providerId?: string
   /** When the provider says the request can succeed again, as the backend read it. */
   retryAt?: string | null
   /** The account the vendor signed out, while it still is, which the record names instead of the code's words. */
@@ -38,10 +40,17 @@ const reportText = computed(() =>
 const resumeAtRetry = useResumeAtRetry()
 const transcript = useTranscript()
 const now = useClock()
+const credentialKinds = useCredentialKinds()
 const label = computed(() =>
-  props.signedOut
-    ? t('transcript.signedOut', { provider: props.signedOut.provider, account: props.signedOut.account })
-    : failureHeadline(props.code, props.retryAt ?? null, new Date(now.value)),
+  recordHeadline(
+    props.code,
+    {
+      retryAt: props.retryAt ?? null,
+      signedOut: props.signedOut ?? null,
+      credential: props.providerId === undefined ? null : credentialKinds()?.(props.providerId) ?? null,
+    },
+    new Date(now.value),
+  ),
 )
 const ownAgent = transcript === null || transcript.node === null
 /** The preference this record offers, until its time has passed. */
@@ -57,6 +66,7 @@ const resume = computed(() => {
     :label="label"
     :detail="source.detail"
     :raw="source.raw"
+    :raw-headers="source.headers"
     :copy-text="reportText"
   >
     <Checkbox

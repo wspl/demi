@@ -127,8 +127,8 @@ pub(crate) fn run(
 /// `failure` with the code `usage_limit` when its answer is Grok Build's
 /// sign of a used-up account (`failures-and-recovery.md`), as the Grok CLI
 /// reads it: a 402, whatever its body, or a 403 whose text says the account
-/// ran out of credits. Any other 403 stays a refused credential, and a 429
-/// only throttles.
+/// ran out of credits. Any other 403 stays a refused request
+/// (`permission_denied`), and a 429 only throttles.
 pub(crate) fn with_usage_limit(mut failure: ProviderFailure) -> ProviderFailure {
     let used_up = failure
         .diagnostics
