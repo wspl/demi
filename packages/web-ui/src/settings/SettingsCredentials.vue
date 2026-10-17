@@ -4,6 +4,8 @@ import { t } from './locales/text'
 import { formError, type ShownError } from '../infra/errors'
 import { computed, ref } from 'vue'
 import { Eye, EyeOff } from '@lucide/vue'
+import VerifyDialog from '../auth/VerifyDialog.vue'
+import { useConfirmation, type VerificationHost } from '../auth/verification'
 import type { OverlayStore } from '../overlay/overlayStore'
 import Button from '../ui/Button.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
@@ -16,7 +18,12 @@ import { answerInDialog } from './dialog-work'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import type { SettingsCredential, SettingsCredentialDraft, SettingsCredentialField } from './types'
+import type {
+  CredentialRevealOutcome,
+  SettingsCredential,
+  SettingsCredentialDraft,
+  SettingsCredentialField,
+} from './types'
 
 /**
  * The Credentials section (`credentials.md` § A credential): the user's
@@ -25,7 +32,10 @@ import type { SettingsCredential, SettingsCredentialDraft, SettingsCredentialFie
  * as text, as the list carries it. A secret field shows dots and an eye that
  * reads its value from the host and shows it to the user; that value goes
  * again as the pointer or the focus leaves the row, and is not kept anywhere
- * else. The host saves and deletes; the next read of an agent uses a change.
+ * else. The host answers the read only for a browser the user confirmed in
+ * the last five minutes; otherwise the eye asks Confirm It’s You first, and
+ * reads again once the user confirmed. The host saves and deletes; the next
+ * read of an agent uses a change.
  */
 const props = defineProps<{
   credentials: SettingsCredential[]
@@ -33,12 +43,15 @@ const props = defineProps<{
   /** Creates a credential when `id` is null, else changes that one; a refusal is thrown for the editor to show. */
   saveCredential: (id: string | null, draft: SettingsCredentialDraft) => Promise<void>
   deleteCredential: (id: string) => Promise<void>
-  /**
-   * The values of a credential's fields by name, for the eye of a secret
-   * field; null when they could not be read, which the host has told the user.
-   */
-  revealCredential: (id: string) => Promise<Record<string, string> | null>
+  /** The values of a credential's fields by name, for the eye of a secret field. */
+  revealCredential: (id: string) => Promise<CredentialRevealOutcome>
+  /** How the user confirms it is them before a reveal: the password, and a passkey where the account has one. */
+  verification: VerificationHost
+  /** The account's email, which the password manager files the password under. */
+  email: string
 }>()
+
+const confirmation = useConfirmation()
 
 interface Editor {
   /** The credential edited; null for a new one. */
@@ -107,9 +120,9 @@ async function toggle(credential: SettingsCredential, field: string): Promise<vo
     held.shown.add(field)
     return
   }
-  const values = await props.revealCredential(credential.id)
-  if (values) {
-    revealed.value = new Map(revealed.value).set(credential.id, { values, shown: new Set([field]) })
+  const outcome = await confirmation.confirmed(() => props.revealCredential(credential.id), t('credentials.confirmShow'))
+  if (outcome?.kind === 'revealed') {
+    revealed.value = new Map(revealed.value).set(credential.id, { values: outcome.values, shown: new Set([field]) })
   }
 }
 
@@ -240,5 +253,14 @@ const empty = computed(() => props.credentials.length === 0)
     >
       <p>{{ t('credentials.deleteBody') }}</p>
     </ConfirmDialog>
+    <VerifyDialog
+      :is-open="confirmation.message.value !== null"
+      :overlay-store="overlayStore"
+      :host="verification"
+      :email="email"
+      :message="confirmation.message.value ?? ''"
+      @close="confirmation.settle(false)"
+      @verified="confirmation.settle(true)"
+    />
   </SettingsPage>
 </template>

@@ -2,8 +2,12 @@ import { t } from './locales/text'
 import { computed } from 'vue'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
-import type { SettingsCredential, SettingsCredentialDraft } from '@demicodes/web-ui/settings/types'
-import { apiRequest, jsonBody, readResponse } from '../api/client'
+import type {
+  CredentialRevealOutcome,
+  SettingsCredential,
+  SettingsCredentialDraft,
+} from '@demicodes/web-ui/settings/types'
+import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
 import {
   credentialAnswerSchema,
   credentialValuesSchema,
@@ -30,7 +34,8 @@ function credentialsAnswer(next: (current: CredentialDto[]) => CredentialDto[]):
  * answer, and the synchronization channel's `credentials` part brings the
  * same to every other page, each visible field with its value and never a
  * secret one's. A secret value comes only from the reveal, which the page
- * shows and does not keep.
+ * shows and does not keep, and which the backend answers only for a browser
+ * the user confirmed in the last five minutes.
  */
 export const useCredentialSettings = defineStore('credential-settings', () => {
   const product = useProduct()
@@ -77,14 +82,21 @@ export const useCredentialSettings = defineStore('credential-settings', () => {
     product.answered(at, credentialsAnswer((current) => current.filter((credential) => credential.id !== id)))
   }
 
-  /** The values of the credential's fields by name, for the eye of a secret field; null, after telling the user, when they could not be read. */
-  async function revealCredential(id: string): Promise<Record<string, string> | null> {
+  /**
+   * The values of the credential's fields by name, for the eye of a secret
+   * field; the confirmation first when the backend wants it; a failure the
+   * user is told of.
+   */
+  async function revealCredential(id: string): Promise<CredentialRevealOutcome> {
     try {
       const response = await apiRequest(`/credentials/${encodeURIComponent(id)}/values`)
-      return (await readResponse(response, credentialValuesSchema)).values
+      return { kind: 'revealed', values: (await readResponse(response, credentialValuesSchema)).values }
     } catch (error) {
+      if (error instanceof ApiError && error.code === 'verification_required') {
+        return { kind: 'needsVerification' }
+      }
       reportError(t('credentials.showFailed'), error, { userVisible: true })
-      return null
+      return { kind: 'failed' }
     }
   }
 
