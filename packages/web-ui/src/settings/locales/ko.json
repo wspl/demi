@@ -389,6 +389,7 @@
     "visible": "표시됨",
     "show": "“{label}” 표시",
     "hide": "“{label}” 숨기기",
+    "confirmShow": "비밀 값을 표시하려면 본인 확인이 필요합니다.",
     "keptUntil": "저장 기간",
     "always": "항상",
     "lastUsed": "마지막 사용",

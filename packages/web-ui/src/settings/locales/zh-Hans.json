@@ -389,6 +389,7 @@
     "visible": "可见",
     "show": "显示“{label}”",
     "hide": "隐藏“{label}”",
+    "confirmShow": "请确认是你本人，以显示机密。",
     "keptUntil": "保留至",
     "always": "始终",
     "lastUsed": "上次使用",

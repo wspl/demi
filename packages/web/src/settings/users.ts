@@ -20,9 +20,8 @@ import {
   type ListedUser,
   type UserChange,
 } from '../api/generated/web-api'
-import { makeSignInCode, verifyWithPassword, verifyWithPasskey } from '../auth/handoff'
+import { confirmationHost, makeSignInCode } from '../auth/handoff'
 import { useSession } from '../auth/session'
-import { browserHasPasskeys } from '../auth/webauthn'
 import { useProduct } from '../state/product'
 
 /** A listed account as Settings › Users shows it; one without a nickname is named by its email there. */
@@ -123,16 +122,9 @@ export const useUserSettings = defineStore('user-settings', () => {
   function signInCode(id: string): HandoffHost {
     return {
       makeCode: () => makeSignInCode(id),
-      ...confirmation(),
+      ...confirmationHost(),
       handedOffTo: () => null,
     }
-  }
-
-  /** The administrator's confirmation: the password, and a passkey where the account has one. */
-  function confirmation(): Pick<HandoffHost, 'verifyPassword' | 'verifyPasskey'> {
-    const state = product.snapshot
-    const passkeys = state?.passkeyRpId && state.passkeys.passkeys.length > 0 && browserHasPasskeys()
-    return { verifyPassword: verifyWithPassword, verifyPasskey: passkeys ? verifyWithPasskey : undefined }
   }
 
   const host = computed<SettingsUsersHost | null>(() =>
@@ -147,7 +139,7 @@ export const useUserSettings = defineStore('user-settings', () => {
           setDisabled,
           setCloudStorage,
           signInCode,
-          ...confirmation(),
+          ...confirmationHost(),
         }
       : null,
   )

@@ -97,7 +97,8 @@ pub(super) async fn verify_passkey(
 
 /// The session's verification must hold: it signed in, or was verified, in
 /// the last five minutes. What needs the user's confirmation (a handoff
-/// code, adding a passkey) is gated by this, and by nothing else.
+/// code, adding a passkey, revealing a credential's values) is gated by
+/// this, and by nothing else.
 pub(super) fn require_verification(services: &Services, session: &CurrentSession) -> Result<(), ApiError> {
     if services.sessions.verification_holds(session.verified_at) {
         return Ok(());
