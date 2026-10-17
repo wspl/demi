@@ -27,8 +27,8 @@ afterEach(() => {
 })
 
 /** The drawer open on a phone; `open` is the frame's model, `drawer` the element a finger touches. */
-async function openDrawer() {
-  const open = ref(true)
+async function openDrawer(isOpen = true) {
+  const open = ref(isOpen)
   const host = document.createElement('div')
   document.body.append(host)
   const app = createApp(defineComponent(() => () => h(SidebarLayout, {
@@ -42,7 +42,7 @@ async function openDrawer() {
   await nextTick()
   const drawer = host.querySelector<HTMLElement>('[data-region]')!
   Object.defineProperty(drawer, 'offsetWidth', { value: DRAWER_WIDTH, configurable: true })
-  return { open, drawer }
+  return { open, drawer, page: host.querySelector<HTMLElement>('main')! }
 }
 
 /** A touch event at `t` ms with the fingers at `points`, as Safari sends them. */
@@ -153,6 +153,73 @@ test('a second finger or the system taking the touch springs the drawer back, an
   await nextTick()
   expect(cancelled.open.value).toBe(true)
   expect(drawerAt(cancelled.drawer)).toEqual({ pull: null, held: false })
+})
+
+// From the screen's left edge a rightward swipe opens the closed drawer
+// (`web-application.md` § The phone layout, "The edges are the app's"),
+// following the finger and settling by the closing swipe's rule.
+
+/** A finger down on the conversation at x 4, the screen's edge, that moves to each of `points`, 16 ms apart from t 0. */
+function drawIn(page: HTMLElement, ...points: [x: number, y: number][]): number {
+  touch(page, 'touchstart', 0, [4, 400])
+  let t = 0
+  for (const point of points) {
+    t += 16
+    touch(page, 'touchmove', t, point)
+  }
+  return t
+}
+
+/** Whether the drawer is on the screen, which a closed one is not. */
+function shown(drawer: HTMLElement): boolean {
+  return drawer.style.display !== 'none'
+}
+
+test('a swipe right from the left edge draws the drawer in after the finger, with the scrim, and a lift past 30% opens it', async () => {
+  const { open, drawer, page } = await openDrawer(false)
+  expect(shown(drawer)).toBe(false)
+  const t = drawIn(page, [14, 400], [60, 402], [140, 404])
+  await nextTick()
+  // Its right edge is 136 px out, where the finger has moved it from its first touch.
+  expect({ shown: shown(drawer), ...drawerAt(drawer) }).toEqual({ shown: true, pull: -184, held: true })
+  expect(document.querySelector<HTMLElement>('.frame-scrim')?.style.getPropertyValue('--scrim-shade')).toBe(String(1 - 184 / DRAWER_WIDTH))
+  touch(page, 'touchend', t + 200)
+  await nextTick()
+  expect(open.value).toBe(true)
+  // It goes on into its place, eased, from where the finger left it.
+  expect(drawerAt(drawer)).toEqual({ pull: null, held: false })
+})
+
+test('a short pull from the edge slides the drawer back out, and a flick of one opens it', async () => {
+  const short = await openDrawer(false)
+  const t = drawIn(short.page, [20, 400], [60, 400])
+  touch(short.page, 'touchend', t + 200)
+  await nextTick()
+  expect(short.open.value).toBe(false)
+  expect(shown(short.drawer)).toBe(false)
+  unmount?.()
+
+  const flicked = await openDrawer(false)
+  touch(flicked.page, 'touchstart', 0, [4, 400])
+  touch(flicked.page, 'touchmove', 16, [64, 400])
+  touch(flicked.page, 'touchend', 20)
+  await nextTick()
+  expect(flicked.open.value).toBe(true)
+})
+
+test('a move down from the edge, or a swipe right away from it, draws no drawer', async () => {
+  const { open, drawer, page } = await openDrawer(false)
+  const down = drawIn(page, [6, 420], [10, 500])
+  touch(page, 'touchmove', down + 16, [200, 500])
+  touch(page, 'touchend', down + 20)
+  await nextTick()
+  expect([open.value, shown(drawer)]).toEqual([false, false])
+
+  touch(page, 'touchstart', 0, [40, 400])
+  touch(page, 'touchmove', 16, [200, 400])
+  touch(page, 'touchend', 20)
+  await nextTick()
+  expect([open.value, shown(drawer)]).toEqual([false, false])
 })
 
 test('a finger dragged along a row never reorders the list, while a mouse does', async () => {

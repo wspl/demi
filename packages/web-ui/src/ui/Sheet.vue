@@ -61,7 +61,8 @@ useBackClose(() => props.open, close)
 
 if (props.overlayStore) {
   const store = props.overlayStore
-  const id = useOverlay(store, () => props.open, close)
+  // The sheet takes Back itself, store or not.
+  const id = useOverlay(store, () => props.open, close, 'exclusive', 'popover', undefined, () => false)
   // A menu or dropdown inside the sheet is a layer on it: Escape closes it first, and the sheet stays.
   provide(overlayFamilyKey, createOverlayFamily())
   provide(overlayOwnerKey, id)
