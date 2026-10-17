@@ -145,7 +145,8 @@ mod host_commands {
             (
                 Ok(0),
                 format!(
-                    "laptop  {laptop}  online  /work  (primary)\nci  {ci}  offline  ?  (attached)\n"
+                    "NAME    ID{pad}  STATUS   ROLE      DIRECTORY\nlaptop  {laptop}  online   primary   /work\nci      {ci}  offline  attached  -\n",
+                    pad = " ".repeat(laptop.len() - 2)
                 ),
                 String::new()
             )
@@ -154,7 +155,7 @@ mod host_commands {
             answers[1],
             (
                 Ok(0),
-                format!("host: machine \"laptop\" ({laptop}, online) — /work\n"),
+                format!("Name: laptop\nID: {laptop}\nStatus: online\nProject: -\nDirectory: /work\n"),
                 String::new()
             )
         );

@@ -23,12 +23,13 @@ use demi_host_interface::{
 use demi_shared_types::{
     AgentMessageEvent, Block, DocumentSource, MediaSource, NodeId, ShellViewStatus, Timestamp, ToolCallBlock,
     ToolView, UserContentBlock,
+    output::{self, Cell, Table},
 };
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use jiff::civil::Date;
 use jiff::tz::TimeZone;
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use super::organize::{failed, verb};
@@ -43,7 +44,7 @@ const BATCH: usize = 64;
 
 const GROUP_SUMMARY: &str = "This agent's own transcript, which keeps every block, also what a compaction summarized: search it, read a range of it, open a command, a thinking block, a subagent's report or an attachment it names. A block is named by its index, such as 4213.";
 
-const SEARCH_SUMMARY: &str = "Find your messages, your user's or parent's messages and steers, your texts and the titles of the commands you ran that hold every word, or any with --any; a word matches anywhere in a text, in any language, case aside. The newest come first, five to a page, each its index, who wrote it and when, then the matching text with the message before and after it, cut around the words, which are marked **like this**. Thinking, scripts and command output are not searched. Filters narrow the search, so a common word does not bury what was asked: --from user keeps your user's or parent's messages and steers, --from agent your texts and commands; --after and --before keep what lies after or before a block, 4213, or a day, 2026-10-14, in the user's time zone, and both may be given; --oldest lists the oldest first. For example, search --from user --before 2026-10-15 README finds what the user asked of the README in the days before.";
+const SEARCH_SUMMARY: &str = "Find your messages, your user's or parent's messages and steers, your texts and the titles of the commands you ran that hold every word, or any with --any; a word matches anywhere in a text, in any language, case aside. The newest come first, five to a page, each a row with its index, who wrote it, when and its text cut around the words, which are marked **like this**, between rows of the message before and after it; stderr names the page and the search of the next. Thinking, scripts and command output are not searched. Filters narrow the search, so a common word does not bury what was asked: --from user keeps your user's or parent's messages and steers, --from agent your texts and commands; --after and --before keep what lies after or before a block, 4213, or a day, 2026-10-14, in the user's time zone, and both may be given; --oldest lists the oldest first. For example, search --from user --before 2026-10-15 README finds what the user asked of the README in the days before.";
 
 const READ_SUMMARY: &str = "Print the transcript in a range of block indices, 4213..4260, 4213.. or ..4260: each message and each of your texts whole, every other block as one line saying what it is and how to open it, such as [4214 command: Run the tests · exit 0 · 3s]; thinking and context blocks are left out. With --from user only your user's or parent's messages are printed, with --from agent only your texts and command lines, as search --from counts them. A read stops at about 8,000 characters, at a block's end, and its last line says where to go on.";
 
@@ -123,8 +124,8 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
             LeafBuilder::rpc("search", SEARCH_SUMMARY)
                 .input::<SearchArgs>()
                 .positionals(["words"])
-                .success_output("the page's hits, each a line \"<index> · <who> · <when>\" and its text with the message before and after it, then \"Page <n> of <pages>\" and the search of the next page; a line that says so when nothing matches")
-                .failure_output("\"demi conversation history search: <reason>\" on stderr, exit 1")
+                .success_output("a table of the page's hits, each with the message before and after it; on stderr, the page and the search of the next page")
+                .json_output::<Vec<SearchRow>>()
                 .bind(TypedRpc::new(verb(shard.clone(), search))),
         )
         .leaf(
@@ -132,7 +133,6 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<ReadArgs>()
                 .positionals(["range"])
                 .success_output("the blocks of the range as plain text; when it stopped early, a last line \"Stopped at <index> · next: <the read that goes on>\"")
-                .failure_output("\"demi conversation history read: <reason>\" on stderr, exit 1")
                 .bind(TypedRpc::new(verb(shard.clone(), read))),
         )
         .leaf(
@@ -140,7 +140,6 @@ pub(crate) fn history_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<OpenArgs>()
                 .positionals(["item"])
                 .success_output("what the item holds, or the path an attachment was saved to; when more pages follow, a last line naming the next")
-                .failure_output("\"demi conversation history open: <reason>\" on stderr, exit 1")
                 .bind(TypedRpc::new(verb(shard, open))),
         )
 }
@@ -153,12 +152,10 @@ struct Reader {
     /// is its parent.
     root: bool,
     zone: TimeZone,
-    /// The year it is now in `zone`, which a time of another year names.
-    year: i16,
 }
 
 impl Reader {
-    fn of<A>(shard: &Shard, call: &Call<A>) -> Result<Self, RpcError> {
+    fn of<A>(call: &Call<A>) -> Result<Self, RpcError> {
         let conversation = conversation_of(&call.invocation)?;
         let caller = call
             .invocation
@@ -168,13 +165,11 @@ impl Reader {
         // A zone the user's page reported that this build does not know
         // shows the times in UTC rather than refusing the read.
         let zone = TimeZone::get(&call.invocation.context.locale.time_zone).unwrap_or(TimeZone::UTC);
-        let year = shard.services().clock.now().to_jiff().to_zoned(zone.clone()).year();
         Ok(Self {
             root: caller.node == root_of(&conversation),
             node: caller.node.clone(),
             conversation,
             zone,
-            year,
         })
     }
 
@@ -197,12 +192,10 @@ impl Reader {
         Ok((When::Day(day), HistoryBound::Time(Timestamp::truncate(moment))))
     }
 
-    /// A time as the conversation shows it: "Oct 14, 3:02 PM", with the
-    /// year when it is not this year, "Oct 14, 2025, 3:02 PM".
+    /// A time as a read shows it: an instant in UTC, as every command
+    /// prints one (`commands.md` § Output).
     fn when(&self, time: Timestamp) -> String {
-        let zoned = time.to_jiff().to_zoned(self.zone.clone());
-        let format = if zoned.year() == self.year { "%b %-d, %-I:%M %p" } else { "%b %-d, %Y, %-I:%M %p" };
-        zoned.strftime(format).to_string()
+        output::instant(time)
     }
 
     /// The blocks `range` names of the transcript, and how many it has;
@@ -256,7 +249,7 @@ const HIT_CHARS: usize = 400;
 const BESIDE_CHARS: usize = 100;
 
 async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let reader = Reader::of(&shard, &call)?;
+    let reader = Reader::of(&call)?;
     let mut words: Vec<String> = Vec::new();
     for word in call.args.words.iter().flat_map(|words| words.split_whitespace()) {
         if !words.iter().any(|seen| seen == word) {
@@ -314,22 +307,13 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
         .find_in(shard.user(), &reader.conversation, agent, query)
         .await
         .map_err(failed)?;
-    if hits.is_empty() {
-        let which = if any { "any" } else { "every one" };
-        let mut nothing = format!("Nothing of this transcript holds {which} of: {}", words.join(" "));
-        let filters: Vec<&str> = options.iter().map(String::as_str).filter(|option| *option != "--any").collect();
-        if !filters.is_empty() {
-            nothing.push_str(&format!(", with {}", filters.join(" ")));
-        }
-        port.stdout(nothing + "\n").await?;
-        return Ok(0);
-    }
-    let pages = hits.len().div_ceil(HITS_PER_PAGE);
+    let command = call.invocation.path.join(" ");
+    let pages = hits.len().div_ceil(HITS_PER_PAGE).max(1);
     let page = usize::try_from(call.args.page.unwrap_or(1)).unwrap_or(usize::MAX);
     if page > pages {
         return Err(failed(format!("the search has {pages} pages")));
     }
-    let mut printed = Vec::new();
+    let mut rows = Vec::new();
     for &at in hits.iter().skip((page - 1) * HITS_PER_PAGE).take(HITS_PER_PAGE) {
         let (blocks, _) = reader.blocks(&shard, at.saturating_sub(AROUND)..=at + AROUND).await?;
         let first = at.saturating_sub(AROUND);
@@ -341,39 +325,79 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
         let Some((who, text)) = said(&reader, hit) else {
             continue;
         };
+        let row = |index: usize, block: &Block, who: &str, text: String, hit: bool| SearchRow {
+            index,
+            hit,
+            author: who.to_owned(),
+            created_at: block.created_at(),
+            text,
+        };
         let before = blocks[..at - first]
             .iter()
             .enumerate()
             .rev()
-            .find_map(|(offset, block)| Some((first + offset, said(&reader, block)?)));
+            .find_map(|(offset, block)| Some((first + offset, block, said(&reader, block)?)));
         let after = blocks[at - first + 1..]
             .iter()
             .enumerate()
-            .find_map(|(offset, block)| Some((at + 1 + offset, said(&reader, block)?)));
-        printed.push(format!("{at} · {who} · {}", reader.when(hit.created_at())));
-        if let Some((index, (who, text))) = before {
-            printed.push(format!("  [{index} {who}] {}", excerpt(&text, &words, Cut::Tail)));
+            .find_map(|(offset, block)| Some((at + 1 + offset, block, said(&reader, block)?)));
+        if let Some((index, block, (who, text))) = before {
+            rows.push(row(index, block, who, excerpt(&text, &words, Cut::Tail), false));
         }
-        printed.push(format!("  [{at} {who}] {}", excerpt(&text, &words, Cut::AroundMatch)));
-        if let Some((index, (who, text))) = after {
-            printed.push(format!("  [{index} {who}] {}", excerpt(&text, &words, Cut::Head)));
+        rows.push(row(at, hit, who, excerpt(&text, &words, Cut::AroundMatch), true));
+        if let Some((index, block, (who, text))) = after {
+            rows.push(row(index, block, who, excerpt(&text, &words, Cut::Head), false));
         }
     }
-    let mut footer = format!("Page {page} of {pages}");
-    if page < pages {
-        // The options first, then `--`, so a word such as `--release` is
-        // read as a word.
-        let quoted: Vec<String> = words.iter().map(|word| shell_word(word)).collect();
-        options.push(format!("--page {}", page + 1));
-        footer.push_str(&format!(
-            " · next: demi conversation history search {} -- {}",
-            options.join(" "),
-            quoted.join(" ")
-        ));
+    if !hits.is_empty() {
+        let mut note = format!("page {page} of {pages}");
+        if page < pages {
+            // The options first, then `--`, so a word such as `--release` is
+            // read as a word.
+            let quoted: Vec<String> = words.iter().map(|word| shell_word(word)).collect();
+            options.push(format!("--page {}", page + 1));
+            note.push_str(&format!(
+                "; next: demi conversation history search {} -- {}",
+                options.join(" "),
+                quoted.join(" ")
+            ));
+        }
+        port.stderr(output::note(&command, &note)).await?;
     }
-    printed.push(footer);
-    port.stdout(printed.join("\n") + "\n").await?;
+    if call.invocation.json {
+        let text = serde_json::to_string(&rows).map_err(failed)?;
+        port.stdout(text + "\n").await?;
+        return Ok(0);
+    }
+    let mut table = Table::new(["index", "hit", "author", "time", "text"]);
+    for row in &rows {
+        table.row::<Cell>([
+            row.index.into(),
+            row.hit.into(),
+            row.author.as_str().into(),
+            row.created_at.into(),
+            row.text.as_str().into(),
+        ]);
+    }
+    port.stdout(table.render()).await?;
     Ok(0)
+}
+
+/// A row of `demi conversation history search`: a hit, or the message
+/// before or after it.
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct SearchRow {
+    /// The block's index.
+    index: usize,
+    /// Whether the block holds the words; the others are the messages
+    /// beside it.
+    hit: bool,
+    /// `user`, `parent`, `agent` or `command`.
+    author: String,
+    created_at: Timestamp,
+    /// Its text cut around the words, which are marked **like this**.
+    text: String,
 }
 
 /// Who wrote a block a search finds, and its text as a hit shows it: a
@@ -478,7 +502,7 @@ fn range(text: &str) -> Option<(usize, Option<usize>)> {
 }
 
 async fn read(shard: Rc<Shard>, call: Call<ReadArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let reader = Reader::of(&shard, &call)?;
+    let reader = Reader::of(&call)?;
     let Some((from, to)) = range(&call.args.range) else {
         return Err(failed(format!(
             "{}: a range is <from>..<to>, <from>.. or ..<to>, block indices such as 4213..4260",
@@ -752,7 +776,7 @@ fn open_item(text: &str) -> Option<Item> {
 }
 
 async fn open(shard: Rc<Shard>, call: Call<OpenArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let reader = Reader::of(&shard, &call)?;
+    let reader = Reader::of(&call)?;
     let Some(named) = open_item(&call.args.item) else {
         return Err(failed(format!(
             "{}: an item is a block index, such as 4214, or a file of a message, such as 4213/a1",

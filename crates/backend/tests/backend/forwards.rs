@@ -319,7 +319,8 @@ async fn adding_and_removing_a_forward_from_a_conversation_needs_manage_port_for
     );
     socket.chat("m1", "Forward the echo server").await;
     let ran = scripts.asked(|session| session == FIRST).pop().unwrap();
-    assert!(ran.contains("No port forwards."), "listing needs no permission: {ran}");
+    // An empty list is its header row; listing needs no permission.
+    assert!(ran.contains("output:\\nID  NAME  LISTEN  CONNECT  STATE\\n"), "listing needs no permission: {ran}");
     assert!(ran.contains(&format!("demi host forward remove: {REFUSED}")), "{ran}");
     assert!(ran.contains(&format!("demi host forward add: {REFUSED}")), "{ran}");
     assert!(!ran.contains("exit=0"), "{ran}");
@@ -335,7 +336,10 @@ async fn adding_and_removing_a_forward_from_a_conversation_needs_manage_port_for
     scripts.root(
         FIRST,
         vec![
-            shell("t2", &format!("{add} && demi host forward list && demi host forward remove echo")),
+            shell(
+                "t2",
+                &format!("{add} && demi host forward list && demi host forward list --json && demi host forward remove echo"),
+            ),
             say("done"),
         ],
     );
@@ -343,8 +347,22 @@ async fn adding_and_removing_a_forward_from_a_conversation_needs_manage_port_for
     assert_eq!(allowed.status, StatusCode::NO_CONTENT);
     socket.until_idle().await;
     let ran = scripts.asked(|session| session == FIRST).pop().unwrap();
-    assert!(ran.contains(&format!("Added echo: a program on")), "{ran}");
-    assert!(ran.contains(&format!("echo  {}:{port} → ", device.device.name)), "{ran}");
+    // The new forward as labelled lines, then a row of the list and its
+    // JSON, each Host by its name.
+    let (id, name) = (device.id(), &device.device.name);
+    let connect = format!("{name}:127.0.0.1:{}", target.port());
+    let added = format!("Name: echo\\nListen: {name}:{port}\\nConnect: {connect}\\nEnabled: yes\\nState: ");
+    assert!(ran.contains(&added), "{ran}");
+    let forward = ran.split("\\nID: ").nth(1).and_then(|rest| rest.split("\\n").next()).expect(&ran);
+    assert!(ran.contains("\\nID  NAME  LISTEN  "), "{ran}");
+    assert!(ran.contains(&format!("\\n{forward}  echo  {name}:{port}  {connect}  ")), "{ran}");
+    assert!(
+        ran.contains(&format!(
+            r#"[{{\"id\":\"{forward}\",\"name\":\"echo\",\"listenHost\":\"{name}\",\"listenDevice\":\"{id}\",\"listenPort\":{port},\"connectHost\":\"{name}\",\"connectDevice\":\"{id}\",\"connectAddress\":\"127.0.0.1:{}\",\"enabled\":true,\"state\":"#,
+            target.port()
+        )),
+        "{ran}"
+    );
     assert!(ran.contains("Removed echo."), "{ran}");
     let forwards = backend.get("/api/port-forwards", Some(&master)).await;
     assert_eq!(forwards.json::<serde_json::Value>()["forwards"], json!([]));

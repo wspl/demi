@@ -78,7 +78,8 @@ fn every_operation_has_a_command_that_takes_each_operand_from_one_source() {
         ),
         serde_json::json!(["https://example.test/"])
     );
-    assert!(help(&root, &["browser"]).contains("demi browser probe"));
+    let group = help(&root, &["browser"]);
+    assert!(group.contains("\n  probe  "), "{group}");
 }
 
 /// A find by target flags leaves stdin to the calling process, so a job's
@@ -99,9 +100,8 @@ fn find_reads_stdin_only_with_query() {
     }
     let tree = r#"{"match":{"role":"radio"}}"#;
     assert_eq!(find(&["--query"], Some(tree)).unwrap().values["body"], tree);
-    assert!(
-        help(&root, &["browser", "find"]).contains("Stdin body: body, read only with --query")
-    );
+    let help = help(&root, &["browser", "find"]);
+    assert!(help.contains("Stdin:\n  <body>  ") && help.contains("read only with --query"), "{help}");
 }
 
 /// The `--json` results the model reads name no tab list number: only the
@@ -153,9 +153,8 @@ fn a_reference_after_the_tab_is_the_element_and_key_takes_its_key_positionally()
         values(&["open", "--show", "https://example.test/"]),
         serde_json::json!({"url": "https://example.test/", "show": true})
     );
-    assert!(
-        help(&root, &["browser", "key"]).contains("  demi browser key <tab> [<ref>] <key> ")
-    );
+    let key = help(&root, &["browser", "key"]);
+    assert!(key.starts_with("Usage: demi browser key <tab> [<ref>] <key> "), "{key}");
     let refused = |line: &[&str]| {
         let mut argv = vec!["browser"];
         argv.extend(line);
@@ -214,6 +213,6 @@ fn eval_takes_its_expression_as_the_last_positional_or_from_stdin() {
             .starts_with("error: \"tab1\" is not a tab ID, such as t1\n"),
     );
     let help = help(&root, &["browser", "eval"]);
-    assert!(help.contains("  demi browser eval <tab> [<ref>] [<expression>] "), "{help}");
-    assert!(help.contains("Stdin body: expression, not read when given as <expression>"), "{help}");
+    assert!(help.starts_with("Usage: demi browser eval <tab> [<ref>] [<expression>] "), "{help}");
+    assert!(help.contains("Stdin:\n  <expression>  ") && help.contains("not read when given as <expression>"), "{help}");
 }

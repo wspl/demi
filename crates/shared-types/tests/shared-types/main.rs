@@ -6,6 +6,7 @@
 mod blocks;
 mod encodings;
 mod lookups;
+mod output;
 mod provider;
 mod schemas;
 mod selection;

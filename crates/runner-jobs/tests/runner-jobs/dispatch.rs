@@ -128,11 +128,8 @@ async fn help_never_reads_declared_stdin_or_calls_backend() {
         .await
         .unwrap();
         assert_eq!(result.exit_code, 0);
-        assert!(
-            String::from_utf8(stdout)
-                .unwrap()
-                .starts_with("fixture: Test callback.")
-        );
+        let help = String::from_utf8(stdout).unwrap();
+        assert!(help.starts_with("Usage: fixture") && help.contains("\n\nTest callback."), "{help}");
         assert!(fixture.dispatch.outgoing.try_recv().is_err());
         fixture.close().await;
     })

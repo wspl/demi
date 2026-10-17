@@ -20,7 +20,7 @@ use demi_plugin_interface::{
 };
 use futures_util::future::LocalBoxFuture;
 
-pub use search::{SearchArgs, SearchResults, SearchedPage};
+pub use search::{SearchArgs, SearchedPage};
 pub use settings::{
     Account, InUse, RemoveKey, SaveKey, SavedKey, SignIn, SignInStarted, SignOut, WebReason,
     WebState,

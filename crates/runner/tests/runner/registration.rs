@@ -107,7 +107,7 @@ async fn backend_job_invokes_a_declared_builtin_and_drain_releases_installation(
             }
         }
         let stdout = String::from_utf8(stdout).unwrap();
-        assert!(stdout.contains("fixture: Remote declaration"), "{stdout}");
+        assert!(stdout.starts_with("Usage: fixture ") && stdout.contains("\n\nRemote declaration\n"), "{stdout}");
         assert!(stdout.ends_with("done"), "{stdout}");
 
         let state = host.state();

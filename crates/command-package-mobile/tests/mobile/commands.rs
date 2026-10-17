@@ -69,6 +69,20 @@ async fn every_command_acts_in_screenshot_pixels() {
         listed["unavailable"][0]["reason"],
         "Android emulators aren’t available yet in this version of Demi"
     );
+    // As text, a row per simulator, its id first as open takes it, its name
+    // last; why Android has none is a warning.
+    let text = mobile.run_text(CHAT, "list", json!({})).await;
+    let table = String::from_utf8(text.stdout).unwrap();
+    assert_eq!(
+        table,
+        "ID           PLATFORM  OS        STATE      HANDLE  MODEL          NAME\n\
+         UDID-BOOTED  ios       iOS 26.5  booted     -       iPhone 17 Pro  iPhone 17 Pro\n\
+         UDID-1       ios       iOS 26.5  shut down  -       iPhone 17      iPhone 17\n\
+         UDID-2       ios       iOS 26.5  shut down  -       iPhone 16e     iPhone 16e\n\
+         UDID-3       ios       iOS 26.5  shut down  -       iPhone Air     iPhone Air\n\
+         UDID-4       ios       iOS 26.5  shut down  -       iPad Air       iPad Air\n"
+    );
+    assert_eq!(text.stderr, "demi mobile list: warning: Android emulators aren’t available yet in this version of Demi\n");
 
     // open: boots a simulator that was shut down; the screenshot's long side is 1568.
     let opened = mobile.run(CHAT, "open", json!({ "device": "iPhone 17" })).await.json();

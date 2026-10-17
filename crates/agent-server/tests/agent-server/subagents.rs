@@ -574,12 +574,13 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         json!({ "id": 1, "message": "again" }),
     )
     .await;
-    let listed = agent(&fixture.server, &gamma, "list", json!({})).await;
+    let listed_current = agent(&fixture.server, &gamma, "list", json!({})).await;
+    let listed = agent(&fixture.server, &gamma, "list", json!({ "all": true })).await;
     let listed_json = agent_call(
         &fixture.server,
         &gamma,
         "list",
-        json!({}),
+        json!({ "all": true }),
         true,
         CancellationToken::new(),
     )
@@ -644,37 +645,33 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
         refused(&resume_foreign),
         "demi agent resume: no archived subagent 1 (see `demi agent list`)\n"
     );
-    let live = |number: u64, name: &str, execution: &str, activity: &str| {
-        format!(
-            "{number}  running  up 0s  last-event 0s ago  profile=(inherit)  \"{name}\"  .  execution={execution}  activity={activity}"
-        )
+    // A table from the root down, each node's children after it, its
+    // archived ones only with --all (`commands.md` § Output).
+    let rows = |text: &str| -> Vec<Vec<String>> {
+        text.lines()
+            .map(|line| line.split_whitespace().map(str::to_owned).collect())
+            .collect()
     };
-    assert_eq!(
-        listed.stdout,
-        [
-            "● 0  (root session)".to_owned(),
-            // Alpha's own child runs: it waits.
-            format!("├─● {}", live(2, "alpha", "waiting", "waiting")),
-            format!(
-                "│ └─● {} ← you",
-                live(4, "gamma", "provider_streaming", "streaming")
-            ),
-            format!("├─● {}", live(3, "beta", "provider_streaming", "streaming")),
-            // Each child's directory follows its description: the
-            // conversation's own here.
-            "└─○ 1  archived (completed 0s ago)  \"delta\"  .".to_owned(),
-        ]
-        .join("\n")
-            + "\n"
-    );
+    let header = ["ID", "PARENT", "STATUS", "PROFILE", "EXECUTION", "ELAPSED", "(S)", "IDLE", "(S)", "DESCRIPTION"];
+    let expected = [
+        &header[..],
+        &["0", "-", "-", "-", "-", "-", "-", "-"],
+        // Alpha's own child runs: it waits.
+        &["2", "0", "running", "-", "waiting", "0", "0", "alpha"],
+        &["4", "2", "running", "-", "provider_streaming", "0", "0", "gamma"],
+        &["3", "0", "running", "-", "provider_streaming", "0", "0", "beta"],
+        &["1", "0", "completed", "-", "-", "-", "-", "delta"],
+    ];
+    assert_eq!(rows(&listed.stdout), expected, "{}", listed.stdout);
+    assert_eq!(rows(&listed_current.stdout), expected[..5], "{}", listed_current.stdout);
     let entries: Value = serde_json::from_str(&listed_json.stdout).unwrap();
-    let entries = entries["tree"].as_array().unwrap();
+    let entries = entries.as_array().unwrap();
     let flat: Vec<(u64, Option<u64>, &str, bool)> = entries
         .iter()
         .map(|entry| {
             (
-                entry["subagentId"].as_u64().unwrap(),
-                entry["parentSessionId"].as_u64(),
+                entry["id"].as_u64().unwrap(),
+                entry["parent"].as_u64(),
                 entry["kind"].as_str().unwrap(),
                 entry["self"].as_bool().unwrap(),
             )
@@ -690,25 +687,44 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             (1, Some(0), "archived", false),
         ]
     );
-    assert_eq!(entries[4]["phase"], "completed");
-    assert_eq!(entries[4]["closedAgoMs"], 0);
+    // The JSON holds the live facts the table shows and more.
+    assert_eq!(entries[2]["execution"], "provider_streaming");
+    assert_eq!(entries[2]["activity"], "streaming");
+    assert_eq!(entries[2]["idleMs"], 0);
+    assert_eq!(entries[2]["cwd"], ".");
+    assert_eq!(entries[4]["status"], "completed");
+    assert!(entries[4]["closedAt"].as_str().unwrap().ends_with('Z'));
+    // One agent as labelled lines; an instant is RFC 3339 in UTC.
+    let instants = |text: &str| -> (Vec<String>, Vec<String>) {
+        text.lines().map(str::to_owned).partition(|line| {
+            ["Started: ", "Last event: ", "Closed: "].iter().any(|key| line.starts_with(key))
+        })
+    };
+    let (times, lines) = instants(&shown.stdout);
+    assert_eq!(times.len(), 2, "{}", shown.stdout);
+    for time in &times {
+        let (_, instant) = time.split_once(": ").unwrap();
+        assert!(instant.parse::<demi_shared_types::Timestamp>().is_ok() && instant.ends_with('Z'), "{time}");
+    }
     assert_eq!(
-        shown.stdout,
+        lines,
         [
-            "id: 3".to_owned(),
-            "parent: 0".into(),
-            "description: beta".into(),
-            "profile: (inherit)".into(),
-            "phase: running".into(),
-            "elapsed: 0s".into(),
-            "execution: provider_streaming (for 0s)".into(),
-            "last-event: 0s ago".into(),
-            "activity: streaming".into(),
-            "cwd: /workspace".into(),
-            "last assistant text: (none yet)".into(),
+            "ID: 3",
+            "Parent: 0",
+            "Status: running",
+            "Profile: -",
+            "Description: beta",
+            "Directory: /workspace",
+            "Elapsed (s): 0",
+            "Execution: provider_streaming",
+            "Execution for (s): 0",
+            "Idle (s): 0",
+            "Activity: streaming",
+            "Recent tool calls:",
+            "  STATUS  STARTED  DURATION (S)  ENDED  TITLE",
+            "Last assistant text at: -",
+            "Last assistant text: -",
         ]
-        .join("\n")
-            + "\n"
     );
     assert_eq!(refused(&show_root), "demi agent show: 0: no such subagent\n");
     assert_eq!(refused(&show_missing), "demi agent show: 9: no such subagent\n");
@@ -719,30 +735,35 @@ async fn messages_reach_any_live_agent_while_lifecycle_stays_with_the_spawner() 
             format!("{}{}", shown.stdout, show_archived.stdout)
         )
     );
-    // An archived child shows how it closed and its result.
+    // An archived child shows how and when it closed, and its result.
+    let (times, lines) = instants(&show_archived.stdout);
+    assert_eq!(times.len(), 2, "{}", show_archived.stdout);
     assert_eq!(
-        show_archived.stdout,
+        lines,
         [
-            "id: 1",
-            "parent: 0",
-            "description: delta",
-            "phase: archived (completed 0s ago)",
-            "cwd: /workspace",
-            "result:",
-            "delta done",
+            "ID: 1",
+            "Parent: 0",
+            "Status: completed",
+            "Profile: -",
+            "Description: delta",
+            "Directory: /workspace",
+            "Result:",
+            "  delta done",
         ]
-        .join("\n")
-            + "\n"
     );
-    let archived: Value = serde_json::from_str(&show_archived_json.stdout).unwrap();
+    let mut archived: Value = serde_json::from_str(&show_archived_json.stdout).unwrap();
+    let object = archived.as_object_mut().unwrap();
+    for key in ["startedAt", "closedAt"] {
+        assert!(object.remove(key).unwrap().as_str().unwrap().ends_with('Z'));
+    }
     assert_eq!(
-        archived["agent"],
+        archived,
         json!({
-            "subagentId": 1,
-            "parentSessionId": 0,
+            "id": 1,
+            "parent": 0,
             "description": "delta",
-            "phase": "completed",
-            "closedAgoMs": 0,
+            "profile": null,
+            "status": "completed",
             "result": "delta done",
             "cwd": "/workspace",
         })
@@ -901,7 +922,7 @@ pub(crate) async fn wait_for_execution(server: &Rc<demi_agent_server::AgentServe
     let mut shown = String::new();
     for _ in 0..100 {
         shown = agent(server, &root(), "show", json!({ "id": [1] })).await.stdout;
-        if shown.contains(&format!("execution: {execution}")) {
+        if shown.contains(&format!("\nExecution: {execution}\n")) {
             return;
         }
         tokio::time::sleep(Duration::from_secs(1)).await;
@@ -981,6 +1002,14 @@ async fn an_abort_closes_the_child_at_once_while_its_command_still_stops() {
     assert!(frames.iter().any(is_closed(&child)), "{frames:?}");
     let status = shell_command(&server, &root(), "status", json!({ "id": ["1"] })).await;
     assert!(status.stdout.contains("status: running"), "{status:?}");
+    // Options that do not go together are a usage error, exit 2.
+    let both = json!({ "id": ["1"], "interval": "2s", "resident": true });
+    let refused = shell_command(&server, &root(), "status", both).await;
+    assert_eq!(refused.code, 2, "{refused:?}");
+    assert!(
+        refused.stderr.starts_with("error: --interval and --resident do not go together\nUsage: demi shell status "),
+        "{refused:?}"
+    );
 
     // The page's terminal input and End Command reach it where it stays.
     let command = CommandId::try_from("1").unwrap();
@@ -1702,10 +1731,16 @@ async fn a_detached_tree_with_a_live_child_is_not_evicted_and_one_without_is() {
 
     let reopened = fixture.client();
     reopened.send(open()).await;
-    let listed = agent(&fixture.server, &root(), "list", json!({})).await;
+    let listed = agent(&fixture.server, &root(), "list", json!({ "all": true })).await;
+    let rows: Vec<Vec<&str>> = listed.stdout.lines().skip(1).map(|line| line.split_whitespace().collect()).collect();
     assert_eq!(
-        listed.stdout,
-        "● 0  (root session) ← you\n└─○ 1  archived (completed 0s ago)  (no description)  .\n"
+        rows,
+        [
+            ["0", "-", "-", "-", "-", "-", "-", "-"],
+            ["1", "0", "completed", "-", "-", "-", "-", "-"],
+        ],
+        "{}",
+        listed.stdout
     );
     assert_eq!(root_receipts(&fixture).len(), 1);
 }

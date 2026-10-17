@@ -4,7 +4,7 @@
 //! and prints what changed. Without the grant no command reaches the plugin,
 //! which the backend's permission scenarios cover.
 
-use demi_plugin_skills::SkillsState;
+use demi_plugin_skills::{SkillsState, SourceState};
 use demi_plugin_skills::testing::{Repos, skill_md};
 
 use crate::support::{Plugged, local};
@@ -107,15 +107,20 @@ async fn list_update_switch_and_remove_act_as_the_page_does_and_print_what_chang
         let (code, _, err) = plugged.run(&["skills", "add", "acme/tools"]).await;
         assert_eq!(code, 0, "{err}");
 
+        // A table of the skills under its header, one row each
+        // (`commands.md` § Output); --json gives the sources with them.
         let (_, listed, _) = plugged.run(&["skills", "list"]).await;
-        assert!(listed.starts_with("acme/tools, at "), "{listed}");
-        assert!(
-            listed.contains("  on   review — The review skill.\n"),
-            "{listed}"
+        let mut lines = listed.lines().map(|line| line.split_whitespace().collect::<Vec<_>>());
+        assert_eq!(
+            lines.next().unwrap(),
+            ["NAME", "SOURCE", "COMMIT", "ENABLED", "TAKEN", "BY", "DESCRIPTION"]
         );
+        let review = lines.find(|cells| cells[0] == "review").expect(&listed);
+        assert_eq!(review[1], "acme/tools");
+        assert_eq!(review[3..], ["yes", "-", "The", "review", "skill."]);
         let (_, json, _) = plugged.run(&["skills", "list", "--json"]).await;
-        let json: SkillsState = serde_json::from_str(&json).unwrap();
-        assert_eq!(json, plugged.state().await);
+        let json: Vec<SourceState> = serde_json::from_str(&json).unwrap();
+        assert_eq!(json, plugged.state().await.sources);
 
         // At its newest commit: the same commit, and nothing changed.
         let (code, out, _) = plugged.run(&["skills", "update", "acme/tools"]).await;
@@ -148,7 +153,7 @@ async fn list_update_switch_and_remove_act_as_the_page_does_and_print_what_chang
         let (_, out, _) = plugged.run(&["skills", "remove", "acme/tools"]).await;
         assert_eq!(out, "Removed acme/tools and its skills: format, review.\n");
         let (_, listed, _) = plugged.run(&["skills", "list"]).await;
-        assert_eq!(listed, "No skill sources.\n");
+        assert_eq!(listed, "NAME  SOURCE  COMMIT  ENABLED  TAKEN BY  DESCRIPTION\n");
         let (code, _, err) = plugged.run(&["skills", "update", "acme/tools"]).await;
         assert_eq!(code, 1);
         assert!(err.contains("No skill source"), "{err}");

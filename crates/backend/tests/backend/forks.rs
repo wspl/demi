@@ -481,6 +481,6 @@ async fn a_fork_keeps_the_attachments_of_its_source_and_numbers_on_from_them() {
     vendor.respond(answer(&["Again."], 1, 1));
     socket.chat("m2", "Once more").await;
     let again = tool_result(&vendor.requests()[requests + 1].json(), "toolu_again");
-    assert!(again.contains("a2  shot.png  "), "{again}");
+    assert!(again.contains("\na2  image/png  ") && again.contains("  shot.png"), "{again}");
     backend.close().await;
 }

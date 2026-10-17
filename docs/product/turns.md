@@ -364,10 +364,11 @@ capability of the agent is:
   it goes to, *Sending to 2 browsers.*; delivery goes on in the
   background, and a browser the push service no longer knows is dropped
   then.
-- `demi notify status` says whether a notification would reach the user:
-  how many of the user's browsers have notifications on, and whether the
-  agent's notifications are among the events they chose; with none, it
-  says that the user turns them on in Settings › Notifications.
+- `demi notify status` says whether a notification would reach the user,
+  as labelled lines: *Reachable*, how many of the user's browsers have
+  notifications on, and how many of them chose the agent's notifications;
+  with none, a warning on stderr says that the user turns them on in
+  Settings › Notifications.
 
 The agent uses `send` when the user should know something while away; a
 turn that ends while the user watches needs none. It reads `status` before

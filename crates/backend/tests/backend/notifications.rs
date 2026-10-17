@@ -364,7 +364,7 @@ async fn notifications_reach_each_session_that_chose_them_but_one_whose_page_sho
     scripts.root(FIRST, vec![shell("t2", "demi notify status"), say("Checked.")]);
     socket.chat("m3", "Status?").await;
     let asked = scripts.asked(|session| session == FIRST).pop().unwrap();
-    assert!(asked.contains("Notifications are on in 1 of the user's browsers; 1 of them take the agent's notifications."), "{asked}");
+    assert!(asked.contains("Reachable: yes\\nBrowsers: 1\\nAgent notifications: 1"), "{asked}");
     let (browser, _, message) = next(&mut received, &browsers).await;
     assert_eq!(browser, "watching");
     assert!(matches!(&message, PushMessage::TurnFinished { answer_start, .. } if answer_start.as_deref() == Some("Checked.")), "{message:?}");
@@ -487,6 +487,10 @@ async fn the_agent_sends_at_most_three_notifications_a_minute() {
     );
     // With no browser subscribed, `send` says so and `status` says where
     // the user turns notifications on.
-    assert!(asked.contains("No browser of the user takes the agent's notifications now"), "{asked}");
-    assert!(asked.contains("The user turns them on in Settings › Notifications."), "{asked}");
+    assert!(asked.contains("demi notify send: warning: no browser of the user takes the agent's notifications now"), "{asked}");
+    assert!(asked.contains("Reachable: no\\nBrowsers: 0\\nAgent notifications: 0"), "{asked}");
+    assert!(
+        asked.contains("demi notify status: warning: notifications are off in every browser of the user; the user turns them on in Settings › Notifications"),
+        "{asked}"
+    );
 }

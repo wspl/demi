@@ -5,6 +5,8 @@
 
 use std::fmt::Write;
 
+use demi_shared_types::output::{Cell, Table};
+
 use demi_command_package_mobile_protocol::mobile::{
     Element, ElementSummary, Frame, InspectResult, ListResult, Orientation, MobilePlatform, PowerState,
     Simulator,
@@ -25,12 +27,13 @@ pub fn orientation(orientation: Orientation) -> &'static str {
     }
 }
 
-fn state(simulator: &Simulator) -> String {
-    if let Some(handle) = &simulator.open {
-        return format!("open here as {handle}");
+/// A simulator's state as `list` prints it.
+fn state(simulator: &Simulator) -> &'static str {
+    if simulator.open.is_some() {
+        return "open";
     }
     if simulator.elsewhere {
-        return "open in another conversation".into();
+        return "open elsewhere";
     }
     match simulator.state {
         PowerState::ShutDown => "shut down",
@@ -38,40 +41,32 @@ fn state(simulator: &Simulator) -> String {
         PowerState::Booted => "booted",
         PowerState::ShuttingDown => "shutting down",
     }
-    .into()
 }
 
-fn native_id(platform: MobilePlatform, id: &str) -> String {
+fn platform(platform: MobilePlatform) -> &'static str {
     match platform {
-        MobilePlatform::Ios => format!("simctl id {id}"),
-        MobilePlatform::Android => format!("AVD {id}"),
+        MobilePlatform::Ios => "ios",
+        MobilePlatform::Android => "android",
     }
 }
 
+/// `list`: a row per simulator, its `simctl` id or AVD name first, as
+/// `open` takes it, and its name last; the handle while this conversation
+/// has it open. Why a platform has none goes to standard error.
 pub fn list(result: &ListResult) -> String {
-    let mut text = String::new();
+    let mut table = Table::new(["id", "platform", "os", "state", "handle", "model", "name"]);
     for simulator in &result.devices {
-        let model = if simulator.model == simulator.name || simulator.model.is_empty() {
-            String::new()
-        } else {
-            format!(" ({})", simulator.model)
-        };
-        let _ = writeln!(
-            text,
-            "{}{model} · {} · {} · {}",
-            simulator.name,
-            simulator.os,
-            state(simulator),
-            native_id(simulator.platform, &simulator.native_id)
-        );
+        table.row::<Cell>([
+            simulator.native_id.as_str().into(),
+            platform(simulator.platform).into(),
+            simulator.os.as_str().into(),
+            state(simulator).into(),
+            simulator.open.as_ref().map(ToString::to_string).into(),
+            Some(simulator.model.as_str()).filter(|model| !model.is_empty()).into(),
+            simulator.name.as_str().into(),
+        ]);
     }
-    if result.devices.is_empty() {
-        text.push_str("No simulators on this Host.\n");
-    }
-    for unavailable in &result.unavailable {
-        let _ = writeln!(text, "{}", unavailable.reason);
-    }
-    text
+    table.render()
 }
 
 fn frame(frame: &Frame) -> String {

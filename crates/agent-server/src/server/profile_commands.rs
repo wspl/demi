@@ -7,14 +7,14 @@ use std::rc::Weak;
 
 use demi_agent_tools::{HostResolver, ModelChoice, ModelEdit, NewProfileDraft, ProfileEdit};
 use demi_host_interface::{GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
-use demi_shared_types::{ContextChoice, trim};
+use demi_shared_types::{ContextChoice, output::warning, trim};
 use schemars::JsonSchema;
 use serde::Deserialize;
 
 use super::{
     AgentServer,
     commands::{Invoked, fail, json, out, verb},
-    tree::{Deleted, ProfileAnswer, ProfileListing},
+    tree::{Deleted, ListedProfile, ProfileAnswer},
 };
 
 /// The permission category the profile changes need, which the `agent`
@@ -32,11 +32,11 @@ const PARENT: &str = "parent";
 
 const PROFILES_GROUP: &str = "The user's subagent profiles: list them, show one, and create, edit or delete them; a change needs the user's permission and reaches every conversation.";
 
-const LIST_SUMMARY: &str = "List the user's enabled subagent profiles with when to use each, as the user's settings say now; an unavailable one says what is missing, and a line says so when the user turned subagents off. A read, not a wait.";
+const LIST_SUMMARY: &str = "List the profiles this conversation's agents may spawn with, as they are now: the chosen workflow's, or the user's enabled ones, each with its source (the workflow's name or user), the model and effort its children run (inherited for the parent's), and when to use it. profiles show tells what an unavailable one is missing; a warning on stderr says when subagents are off. A read, not a wait.";
 
-const SHOW_SUMMARY: &str = "Show every field of one profile, enabled or not: name, description, model (parent's, or provider entry, model, effort and tier), context, spawning, enabled, and its instructions in full. A read.";
+const SHOW_SUMMARY: &str = "Show every field of one profile profiles list lists, or of one of the user's, enabled or not: name, source (the workflow's name or user), description, status, model (- for the parent's, or the model with its provider entry, effort and tier), context, spawning, enabled, and its instructions in full. A read.";
 
-const CREATE_SUMMARY: &str = "Create a subagent profile, enabled unless --disabled. Without --model it inherits the parent's model. Its instructions, added to a child's system prompt, are stdin when given, else none. Needs the user's permission.";
+const CREATE_SUMMARY: &str = "Create a subagent profile, enabled unless --disabled. Without --model it inherits the parent's model. Its instructions, added to a child's system prompt, are stdin when given, else none. While this conversation runs a workflow, a spawn here takes only the workflow's profiles, and a warning says so. Needs the user's permission.";
 
 const EDIT_SUMMARY: &str = "Change the fields the options name and keep the others. --model parent inherits the parent's model again; --effort or --tier alone change those of the profile's own model. Stdin replaces the instructions; --no-instructions removes them. Needs the user's permission.";
 
@@ -44,11 +44,11 @@ const DELETE_SUMMARY: &str = "Delete a subagent profile; a child already running
 
 const NAME: &str = "The profile's name, the --profile value of spawn: 1 to 40 lowercase letters, digits and hyphens, starting with a letter; not default.";
 const DESCRIPTION: &str = "When an agent should use the profile: one line of 1 to 500 characters, which `demi agent profiles list` shows.";
-const MODEL: &str = "A model id `demi providers list` lists.";
+const MODEL: &str = "A model id of an entry `demi providers show` shows.";
 const PROVIDER: &str = "The provider entry offering --model, by its name or id; needed only when more than one entry offers that id.";
 const EFFORT: &str = "An effort the model lists, or off to turn thinking off; without it the model's default effort.";
 const TIER: &str = "A service tier the model offers, such as fast, or default for the vendor's default tier.";
-const CONTEXT: &str = "The context window the profile's children use: full, 500K, 300K or 200K, as the model offers them (`demi providers list` gives each model's window), or default for the user's context limit on the model. Needs a model of the profile's own.";
+const CONTEXT: &str = "The context window the profile's children use: full, 500K, 300K or 200K, as the model offers them (`demi providers show` gives each model's window), or default for the user's context limit on the model. Needs a model of the profile's own.";
 const INSTRUCTIONS: &str = "Text added to a child's system prompt after Demi's, which it never replaces: what this kind of subagent is for and how it works.";
 
 /// The input of `demi agent profiles list`, which takes none.
@@ -118,7 +118,7 @@ pub(super) fn profiles_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> G
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<ListArgs>()
-                .json_output::<ProfileListing>()
+                .json_output::<Vec<ListedProfile>>()
                 .bind(TypedRpc::new(verb(server.clone(), list))),
         )
         .leaf(
@@ -183,8 +183,14 @@ async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
         Ok(listing) => listing,
         Err(error) => return fail(&error),
     };
+    if let Some(note) = listing.note() {
+        port.stderr(warning(&call.command, &note)).await?;
+    }
+    for unavailable in listing.unavailable() {
+        port.stderr(warning(&call.command, unavailable)).await?;
+    }
     if call.json {
-        return json(&port, &listing).await;
+        return json(&port, &listing.profiles()).await;
     }
     out(&port, listing.render()).await
 }
@@ -223,7 +229,15 @@ async fn create<H: HostResolver>(
         can_spawn: args.no_spawning != Some(true),
         enabled: args.disabled != Some(true),
     };
-    let created = call.tree.create_profile(draft).await;
+    let created = match call.tree.create_profile(draft).await {
+        Ok((created, warned)) => {
+            if let Some(warned) = warned {
+                port.stderr(warning(&call.command, &warned)).await?;
+            }
+            Ok(created)
+        }
+        Err(error) => Err(error),
+    };
     answered(&port, call.json, created).await
 }
 
