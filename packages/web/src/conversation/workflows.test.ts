@@ -231,3 +231,48 @@ test('a watch that went live after the list was read reads it once more, after i
   expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-c', 2).workflows })
   scope.stop()
 })
+
+test('a conversation whose Host does not run offers no workflows and reads them once its watch goes live', async () => {
+  // The backend holds no search while the Host does not run: no workflows,
+  // no number, and the working directory to watch. Once the Host runs, the
+  // watch goes live and the page asks for an answer read after it.
+  const other = '8c3f4e5d-6071-4c8d-8e9f-1a2b3c4d5e6f'
+  channels.last().send({ type: 'conversation', conversation: conversationSummary(other, 'Asleep', {
+    cwd: '/home/ada/repo-d',
+    target: { kind: 'device', deviceId: LAPTOP, path: '/home/ada/repo-d' },
+  }) })
+  const asked: string[] = []
+  globalThis.fetch = (async (input) => {
+    const url = new URL(String(input), 'http://backend')
+    if (url.pathname !== `/api/conversations/${other}/workflows`)
+      throw new Error(`Unexpected request: ${url}`)
+    asked.push(url.search)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const after = url.searchParams.get('readAfter')
+    if (after === null) {
+      return Response.json({
+        directory: null,
+        unavailable: null,
+        workflows: [],
+        watch: [{ kind: 'folder_names', path: '/home/ada/repo-d' }],
+      })
+    }
+    return Response.json(workflowsOf('/home/ada/repo-d', asked.length), { headers: { 'x-demi-read-at': after } })
+  }) as typeof fetch
+  const store = useConversations()
+  const scope = effectScope()
+  const list = scope.run(() => createApp({}).runWithContext(() =>
+    useConversationWorkflows(() => store.items.find((item) => item.id === other)!)))!
+  await until(() => list.value.state === 'read')
+  expect(list.value).toEqual({ state: 'read', workflows: [] })
+  await until(() => sockets.length > 0)
+  sockets[0]!.dispatchEvent(new Event('open'))
+  await until(() => sockets[0]!.sent.some((message) => message.subscriptions?.some((subscription) => subscription.path === '/home/ada/repo-d')))
+  const key = sockets[0]!.sent.flatMap((message) => message.subscriptions ?? [])
+    .find((subscription) => subscription.path === '/home/ada/repo-d')!.key
+  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'live', key, since: 3, epoch: 'e' }) }))
+  await until(() => asked.length > 2)
+  expect(asked).toEqual(['', '?readAfter=e.3'])
+  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-d', 2).workflows })
+  scope.stop()
+})

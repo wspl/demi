@@ -31,6 +31,7 @@ use tokio::sync::{Notify, watch};
 use tokio::task::AbortHandle;
 use tokio::time::Instant;
 
+use crate::access::HostAccessError;
 use crate::plugin_files::ReadFilesError;
 
 /// How long the first search of a directory holds the requests that wait
@@ -56,6 +57,10 @@ pub enum SearchError {
     /// asked of: nothing it found is kept.
     #[error("the conversation works on another Host now")]
     Moved,
+    /// The conversation's host access refused the search, or the Host
+    /// failed it: a caller that answers for it answers this.
+    #[error(transparent)]
+    Access(Rc<HostAccessError>),
     #[error("{0}")]
     Failed(String),
 }
@@ -65,7 +70,7 @@ impl From<ReadFilesError> for SearchError {
         match error {
             ReadFilesError::NotRunning => Self::NotRunning,
             ReadFilesError::Moved => Self::Moved,
-            ReadFilesError::Access(error) => Self::Failed(error.to_string()),
+            ReadFilesError::Access(error) => Self::Access(Rc::new(error)),
         }
     }
 }
@@ -133,6 +138,9 @@ struct State<T> {
     /// The loaded conversations that use it.
     users: RefCell<BTreeSet<ConversationId>>,
     held: RefCell<Option<T>>,
+    /// Why the last search found nothing, while nothing is held: the
+    /// conversation's host access refused it or the Host failed it.
+    refused: RefCell<Option<Rc<HostAccessError>>>,
     /// How many searches began, as `ended` counts them.
     begun: Cell<u64>,
     /// How many searches ended, found something or not.
@@ -168,7 +176,8 @@ where
     /// it until [`Kept::release`]; one that is not loaded takes what is held,
     /// or searches once without keeping anything. Only a first search holds
     /// the call, for at most [`FIRST_SEARCH_HOLD`] from its start; none while
-    /// nothing was found.
+    /// nothing was found, as on a Host that is not running, and the refusal
+    /// when the last search was refused or failed and nothing is held.
     pub async fn get(
         &self,
         conversation: &ConversationId,
@@ -176,7 +185,7 @@ where
         key: K,
         loaded: bool,
         wait: Wait,
-    ) -> Option<T> {
+    ) -> Result<Option<T>, Rc<HostAccessError>> {
         let state = if loaded {
             Some(self.use_entry(conversation, device, key.clone()))
         } else {
@@ -186,11 +195,15 @@ where
         let Some(state) = state else {
             let search = (self.0.search)(conversation.clone(), device.clone(), key);
             return match tokio::time::timeout(FIRST_SEARCH_HOLD, search).await {
-                Ok(Ok(found)) => Some(found.value),
-                Ok(Err(SearchError::NotRunning | SearchError::Moved)) | Err(_) => None,
+                Ok(Ok(found)) => Ok(Some(found.value)),
+                Ok(Err(SearchError::NotRunning | SearchError::Moved)) | Err(_) => Ok(None),
+                Ok(Err(SearchError::Access(error))) => {
+                    tracing::warn!(what = self.0.what, %conversation, %error, "a project search failed");
+                    Err(error)
+                }
                 Ok(Err(SearchError::Failed(message))) => {
                     tracing::warn!(what = self.0.what, %conversation, %message, "a project search failed");
-                    None
+                    Ok(None)
                 }
             };
         };
@@ -203,7 +216,10 @@ where
         if let Wait::After(after) = &wait {
             self.search_after(&state, after).await;
         }
-        state.held.borrow().clone()
+        match (state.held.borrow().clone(), state.refused.borrow().clone()) {
+            (None, Some(refused)) => Err(refused),
+            (held, _) => Ok(held),
+        }
     }
 
     /// Has what `state` holds read at `after` or later: a search on its way
@@ -296,6 +312,7 @@ where
             let state = Rc::new(State {
                 users: RefCell::default(),
                 held: RefCell::default(),
+                refused: RefCell::default(),
                 begun: Cell::new(0),
                 ended: watch::Sender::new(0),
                 stale: Cell::new(false),
@@ -362,7 +379,16 @@ where
                     }
                     continue;
                 }
-                Err(SearchError::NotRunning | SearchError::Moved) => {}
+                Err(SearchError::NotRunning) => {
+                    state.refused.replace(None);
+                }
+                Err(SearchError::Moved) => {}
+                // Nothing is searched until the Host comes online again:
+                // while nothing is held, a caller answers the refusal.
+                Err(SearchError::Access(error)) => {
+                    tracing::warn!(what, %device, %error, "a project search could not subscribe; it waits for the Host to come online again");
+                    state.refused.replace(Some(error));
+                }
                 Err(SearchError::Failed(message)) => {
                     tracing::warn!(what, %device, %message, "a project search could not subscribe; it waits for the Host to come online again");
                 }
@@ -388,11 +414,18 @@ where
                     }
                     watched = wanted;
                     *state.held.borrow_mut() = Some(found.value);
+                    state.refused.replace(None);
                 }
                 // The Host stopped meanwhile: its coming online searches again.
-                Err(SearchError::NotRunning) => {}
+                Err(SearchError::NotRunning) => {
+                    state.refused.replace(None);
+                }
                 // The conversation moved, which releases what it used here.
                 Err(SearchError::Moved) => {}
+                Err(SearchError::Access(error)) => {
+                    tracing::warn!(what, %device, %error, "a project search failed; the last result is kept");
+                    state.refused.replace(Some(error));
+                }
                 Err(SearchError::Failed(message)) => {
                     tracing::warn!(what, %device, %message, "a project search failed; the last result is kept");
                 }
@@ -513,8 +546,8 @@ mod tests {
         let first = ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap();
         let second = ConversationId::try_from("1c7e8f4f-9a4b-4d2f-8e3c-8b2d3f4a5b6c").unwrap();
 
-        assert_eq!(kept.get(&first, &device, path.clone(), true, Wait::First).await.as_deref(), Some("one"));
-        assert_eq!(kept.get(&second, &device, path.clone(), true, Wait::First).await.as_deref(), Some("one"));
+        assert_eq!(kept.get(&first, &device, path.clone(), true, Wait::First).await.unwrap().as_deref(), Some("one"));
+        assert_eq!(kept.get(&second, &device, path.clone(), true, Wait::First).await.unwrap().as_deref(), Some("one"));
         let link = fixture.link().await;
         assert_eq!(link.subscribed(), [subject.clone()]);
 
@@ -522,14 +555,14 @@ mod tests {
         // before the Host watched the file.
         std::fs::write(&path, "two").unwrap();
         let deadline = Instant::now() + Duration::from_secs(20);
-        while kept.get(&first, &device, path.clone(), true, Wait::Current).await.as_deref() != Some("two") {
+        while kept.get(&first, &device, path.clone(), true, Wait::Current).await.unwrap().as_deref() != Some("two") {
             assert!(Instant::now() < deadline, "the edit was never searched");
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
         // Taking what is held asks the Host nothing.
         let searched = searches.get();
         for conversation in [&first, &second, &first] {
-            let held = kept.get(conversation, &device, path.clone(), true, Wait::First).await;
+            let held = kept.get(conversation, &device, path.clone(), true, Wait::First).await.unwrap();
             assert_eq!(held.as_deref(), Some("two"));
         }
         assert_eq!(searches.get(), searched);
@@ -590,7 +623,10 @@ mod tests {
         };
         let kept = Kept::new("the workflows", search, |read_at| Some(read_at), subscribe);
         let conversation = ConversationId::try_from("0b6f7f3e-8f3a-4c1e-9d2b-7a1c2e3f4a5b").unwrap();
-        let get = |wait| kept.get(&conversation, &device, "/p".to_owned(), true, wait);
+        let get = |wait| {
+            let (kept, conversation, device) = (&kept, &conversation, &device);
+            async move { kept.get(conversation, device, "/p".to_owned(), true, wait).await.unwrap() }
+        };
 
         assert_eq!(get(Wait::Current).await, Some(at(10)));
         // Read at the number asked for: what is kept, without a search.

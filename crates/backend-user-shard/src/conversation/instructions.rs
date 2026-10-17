@@ -20,6 +20,7 @@ use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
+use super::project_files::KeptWorkflows;
 use crate::shard::Shard;
 
 /// The names read in each directory, the first that is a file taken.
@@ -66,7 +67,8 @@ impl Instructions {
 /// shard holds its workflows; none when it has none or cannot be used.
 async fn workflow_text(shard: &Shard, conversation: &ConversationId, id: &str) -> Option<WorkflowText> {
     let found = match shard.kept_workflows(conversation, Wait::First).await {
-        Ok(found) => found?,
+        Ok(KeptWorkflows::Found(found)) => found,
+        Ok(KeptWorkflows::None { .. }) => return None,
         Err(error) => {
             tracing::warn!(%conversation, %error, "the project's workflows were not taken");
             return None;

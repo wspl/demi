@@ -485,3 +485,57 @@ async fn with_a_workflow_chosen_the_first_request_waits_one_hold_for_both_search
     assert!(waited < std::time::Duration::from_secs(8), "{waited:?}");
     backend.close().await;
 }
+
+/// The menu's list of `FIRST` when no search of its directory is held: no
+/// workflows, read at no number, with the working directory to watch.
+async fn assert_nothing_held(backend: &TestBackend, master: &Session, directory: &str) {
+    let listed = backend.get(&format!("/api/conversations/{FIRST}/workflows"), Some(master)).await;
+    assert_eq!(listed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&listed.body));
+    assert!(!listed.headers.contains_key("x-demi-read-at"));
+    assert_eq!(
+        serde_json::to_value(listed.json::<ConversationWorkflows>()).unwrap(),
+        json!({
+            "directory": null,
+            "unavailable": null,
+            "workflows": [],
+            "watch": [{ "kind": "folder_names", "path": directory }],
+        }),
+    );
+}
+
+// About three seconds: a real runner on a paired device, stopped midway.
+//
+// Planted defect it catches: a Host that does not run answering 409
+// host_stopped, as it did, and a refused search answering that too.
+#[tokio::test]
+async fn a_host_that_does_not_run_lists_no_workflows_and_a_refused_search_answers_its_refusal() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+
+    // On the Cloud, which is not made yet.
+    create(&backend, &master, FIRST).await;
+    assert_nothing_held(&backend, &master, &format!("/home/demi/sessions/{FIRST}")).await;
+
+    // On a paired device whose runner is gone.
+    let mut alpha = backend.pair(&master, "alpha").await;
+    let repo = alpha.runner.home_dir().join("repo");
+    std::fs::create_dir_all(&repo).unwrap();
+    let directory = repo.to_str().unwrap().to_owned();
+    let moved = backend
+        .patch(
+            &format!("/api/conversations/{FIRST}"),
+            &master,
+            json!({ "target": { "kind": "device", "deviceId": alpha.id(), "path": directory }, "notifyAgent": false }),
+        )
+        .await;
+    assert_eq!(moved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&moved.body));
+    alpha.runner.stop().await;
+    assert_nothing_held(&backend, &master, &directory).await;
+
+    // Archived: the search is refused, and the answer says why.
+    let archived = backend.patch(&format!("/api/conversations/{FIRST}"), &master, json!({ "archived": true })).await;
+    assert_eq!(archived.status, StatusCode::OK, "{}", String::from_utf8_lossy(&archived.body));
+    let refused = backend.get(&format!("/api/conversations/{FIRST}/workflows"), Some(&master)).await;
+    assert_eq!(refused.refusal(), (StatusCode::CONFLICT, ErrorCode::ConversationArchived));
+    backend.close().await;
+}
