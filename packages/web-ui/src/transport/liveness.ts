@@ -16,7 +16,7 @@
  * The page reports why it replaced a socket through its error reports.
  */
 import { readonly, ref } from 'vue'
-import { defaultDocument, defaultNavigator, defaultWindow, useEventListener } from '@vueuse/core'
+import { defaultDocument, defaultNavigator, defaultWindow, useDocumentVisibility, useEventListener } from '@vueuse/core'
 import { reportError } from '../infra/errors'
 import { t } from './locales/text'
 
@@ -359,6 +359,13 @@ export function browserCameOnline(): void {
   online.value = true
   void pageReturned()
 }
+
+/**
+ * Whether the page is visible or hidden, for the page's lifetime: a view
+ * nobody can see lets go of what it watches. Without a document, as in a
+ * test, the page counts as visible.
+ */
+export const pageVisibility = readonly(useDocumentVisibility())
 
 // For the page's lifetime; without a document, as in a test, there is no
 // return to follow, and the test calls these in the browser's place.

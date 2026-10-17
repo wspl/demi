@@ -8,6 +8,7 @@ publish.workspace = true
 [dependencies]
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
+demi-command-package-mobile-protocol = { path = "../command-package-mobile-protocol" }
 demi-live-view-protocol = { path = "../live-view-protocol" }
 demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
 demi-command-package-fetch-protocol = { path = "../command-package-fetch-protocol" }

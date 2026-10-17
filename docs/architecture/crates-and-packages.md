@@ -140,7 +140,11 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   - the identities blocks and frames name (`BlockId`, `TurnId`, `NodeId`,
     `CommandId`, `OperationId`), and the macro every
     crate declares a checked identity with (`id!`): a string newtype that
-    serializes as itself and holds only the strings its check accepts;
+    serializes as itself and holds only the strings its check accepts; the
+    macros of a closed set of names (`closed_set!`), an enum that
+    serializes as its names, and of a numbered handle (`numbered!`), a
+    letter and a number such as `t3` or `m1`, which the browser's and the
+    simulators' protocols declare theirs with;
   - the file-type table the product previews by (`preview_media_type`,
     `shows_in_place`), and the media types a model accepts, each with its
     kind and catalog extension (`MODEL_MEDIA_TYPES`, `model_media_type_for`);
@@ -277,6 +281,22 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   importing each other's implementations.
 - **Must not:** implement operations, transport, components, Host access,
   process management or conversation persistence.
+
+#### `command-package-mobile-protocol`
+
+- **Owns:** the `demi.mobile` package's id (`PACKAGE`) and operations
+  (`Operation`): the arguments and results of `mobile.*`
+  ([Commands](../mobile/mobile.md#commands)), the device and element
+  handles, the failure codes, the limits (four devices a conversation, the
+  screenshot's long side), the simulators' live view messages, which carry
+  the live view's own (`live-view-protocol`), and the message that tells
+  the plugin a conversation's devices changed.
+- **Public boundary:** the types above. `plugin-mobile` declares the
+  commands from these types and uses them for the panel's methods,
+  `command-package-mobile` decodes invocations with them, and the page reads
+  the live view's messages through `@demicodes/plugin-mobile`.
+- **Must not:** implement operations, transport, components, Host access or
+  process management.
 
 #### `live-view-protocol`
 
@@ -869,6 +889,21 @@ or on another plugin.
   types into.
 - **Must not:** implement a browser operation or hold browser state; the
   conversation browser's crates do.
+
+#### `plugin-mobile`
+
+- **Owns:** the `demi mobile` group, declared from
+  `command-package-mobile-protocol` types, every leaf bound to a
+  `demi.mobile` operation; the `mobile` user stream, bound to `mobile.live`;
+  and the `mobile` work panel kind's tabs, one for each device the agent
+  opens on the conversation's own Host, and the panel's methods, each of
+  which calls the operation of the command that does the same as a package
+  call ([The live view](../mobile/mobile.md#the-live-view)).
+- **Public boundary:** its factory, whose manifest names its page package,
+  `@demicodes/plugin-mobile`, which `xtask contracts` generates the page's
+  types into.
+- **Must not:** implement a device operation or hold device state; the
+  `demi.mobile` program does.
 
 #### `plugin-skills`
 
@@ -1514,6 +1549,24 @@ demi-backend (executable: configuration, composition)
 - **Must not:** host a runner connection, define the agent's command tree,
   store conversations or be linked into the runner.
 
+#### `command-package-mobile` (`demi-mobile`)
+
+- **Owns:** the independently released `demi.mobile` resident program: the
+  Host's open devices, at most four a conversation and each in one
+  conversation, their lifetime, refs and settled pictures, behind one
+  platform-neutral driver interface (`driver`), with the iOS Simulator's
+  driver (`ios`), whose launch starts the `demi-ios-sim` helper it embeds on
+  macOS, one per conversation, and which the tests drive through a scripted
+  helper; the device's frame for the view (`frame`): the one the driver
+  draws, or the outline's corner radius and button marks; and the live view
+  of a device as a source of `live-view`
+  ([Mobile simulators](../mobile/mobile.md)). Its `testing` feature is a
+  driver the tests script.
+- **Public boundary:** the executable. Behavior:
+  [Mobile simulators](../mobile/mobile.md).
+- **Must not:** host a runner connection, define the agent's command tree,
+  store conversations or be linked into the runner.
+
 #### `command-package-claude-code` (`demi-claude-code`)
 
 - **Owns:** the independently released `demi.claude-code` package, which installs
@@ -1618,8 +1671,14 @@ under `packages/`.
   [Liveness and reconnection](../product/web-application.md#liveness-and-reconnection));
   and the live view's page side where it is not about its source
   (`live/`, [Mobile simulators](../mobile/mobile.md#the-live-view)): its
-  frames, the decoder that shows its pictures on a canvas, and the viewer's
-  input in the picture's coordinates.
+  frames, the stream's lifecycle that every source's view runs on
+  (`LiveLink`: opening, silence and stalls, reconnect waits, pictures of
+  the watched generation, acknowledgements and key frames), the decoder
+  that shows its pictures on a canvas, the viewer's input in the picture's
+  coordinates, the overlay of the agent's activity (`LiveActivityOverlay`):
+  the note that the agent is using the source and the mark where it acted,
+  and the wireframe frame a view draws around a device whose own frame is
+  not installed (`LiveDeviceOutline`).
   It consumes an injected `ConversationClient` and injected plugin
   services, and ships no control-plane transport of its own.
 - **Public boundary:** source-path exports (`./*`) consumed by `web`,
@@ -1720,6 +1779,7 @@ Each plugin page package is **private** and has the same boundary:
 | Package | Owns |
 | --- | --- |
 | `@demicodes/plugin-browser` | The `browser` work panel kind and the live view of its tabs ([Live view](../browser/live-view.md#responsibilities)): the browser's messages, tabs, clipboard, dialogs and controls over the SDK's live view, with the plugin's page types and the browser's live view messages generated into `src/generated/` |
+| `@demicodes/plugin-mobile` | The `mobile` work panel kind and the live view of the conversation's simulators ([The live view](../mobile/mobile.md#the-live-view)): the device tabs and their toolbar, the device's frame, touches and keys over the SDK's live view, with the plugin's page types and the simulators' live view messages generated into `src/generated/` |
 | `@demicodes/plugin-skills` | The Skills settings section with its dialogs and its sidebar entry ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-web` | The Web Search settings section with its sidebar entry ([Settings › Web Search](../agent/web.md#settings--web-search)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service ([Changes](../product/file-previews.md#changes)) |
@@ -1762,6 +1822,7 @@ command-declarations -> none
 command-package-file-protocol -> shared-types
 command-package-fetch-protocol -> shared-types
 command-package-browser-protocol -> shared-types, live-view-protocol
+command-package-mobile-protocol -> shared-types, live-view-protocol
 live-view-protocol -> shared-types
 command-package-claude-code-protocol -> none
 runner-protocol -> command-protocol, command-declarations, shared-types
@@ -1786,6 +1847,7 @@ agent-server -> conversation-socket-protocol, agent-session, agent-store, agent-
 plugin-interface -> command-declarations, shared-types, host-interface, web-api-protocol
 plugin-file -> plugin-interface, command-declarations, command-package-file-protocol, host-interface
 plugin-browser -> plugin-interface, command-declarations, command-package-browser-protocol, host-interface, web-api-protocol
+plugin-mobile -> plugin-interface, command-declarations, command-package-mobile-protocol, host-interface, live-view-protocol, web-api-protocol
 plugin-skills -> plugin-interface, host-interface, shared-types
 plugin-web -> plugin-interface, command-declarations, command-package-fetch-protocol, host-interface
 plugin-image -> plugin-interface, host-interface, shared-types
@@ -1813,7 +1875,7 @@ backend-permissions -> command-declarations, shared-types, host-interface, backe
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
-backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-mobile, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 server -> backend-database, machine-manager-protocol, runner-protocol, shared-artifacts, shared-cli
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli
@@ -1821,7 +1883,8 @@ command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-
 command-package-fetch -> command-protocol, command-sdk, command-package-fetch-protocol, shared-cli, shared-types
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk, shared-cli
-xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, live-view-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-interface
+command-package-mobile -> command-package-mobile-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-cli, shared-types
+xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-mobile-protocol, live-view-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-interface
 ```
 
 ### TypeScript packages
@@ -1835,13 +1898,14 @@ conversation-client -> protocol, utils
 web-ui -> conversation-client, protocol, utils
 plugin-sdk -> web-ui
 plugin-browser -> plugin-sdk, utils
+plugin-mobile -> plugin-sdk, utils
 plugin-changes -> plugin-sdk
 plugin-file-browser -> plugin-sdk
 plugin-skills -> plugin-sdk
 plugin-web -> plugin-sdk
-web -> conversation-client, plugin-browser, plugin-changes, plugin-file-browser, plugin-sdk, plugin-skills, plugin-web, protocol, utils, web-ui
+web -> conversation-client, plugin-browser, plugin-changes, plugin-file-browser, plugin-mobile, plugin-sdk, plugin-skills, plugin-web, protocol, utils, web-ui
 browse -> web
-web-gallery -> conversation-client, plugin-browser, plugin-changes, plugin-file-browser, plugin-sdk, plugin-skills, plugin-web, protocol, utils, web-ui
+web-gallery -> conversation-client, plugin-browser, plugin-changes, plugin-file-browser, plugin-mobile, plugin-sdk, plugin-skills, plugin-web, protocol, utils, web-ui
 ```
 
 ## Module layout

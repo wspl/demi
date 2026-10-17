@@ -1,0 +1,62 @@
+{
+  "toolbar": {
+    "rotateLeft": "向左旋转",
+    "rotateRight": "向右旋转",
+    "appearance": "切换外观",
+    "home": "主屏幕",
+    "lock": "锁定",
+    "volumeUp": "调高音量",
+    "volumeDown": "调低音量",
+    "back": "返回",
+    "screenshot": "截屏",
+    "record": "录制",
+    "stopRecording": "停止录制"
+  },
+  "activity": "智能体正在使用这台设备",
+  "keyboard": "模拟器键盘",
+  "region": {
+    "connecting": "正在连接模拟器…",
+    "waiting": "正在等待设备…",
+    "couldntShow": "无法显示模拟器",
+    "unsupported": "此浏览器无法显示实时视频。"
+  },
+  "failures": {
+    "control": "模拟器无法执行此操作",
+    "save": "无法存储文件",
+    "hostFilesUnreachable": "目前无法访问设备上的文件。"
+  },
+  "reasons": {
+    "invalid_input": "模拟器无法接受此操作。",
+    "device_not_found": "这台设备上已没有该模拟器。",
+    "ambiguous_device": "有多个模拟器使用该名称。",
+    "device_busy": "另一个对话正在使用该模拟器。请先在那里关闭它。",
+    "too_many_devices": "此对话已在这台设备上打开 4 个模拟器。请先关闭一个。",
+    "stale_ref": "模拟器执行操作前屏幕已发生变化。",
+    "timeout": "模拟器未及时响应。",
+    "unavailable": "这台设备不能使用模拟器。",
+    "not_recording": "模拟器没有在录制。",
+    "recording": "模拟器已在录制。",
+    "output_exists": "已存在同名文件。",
+    "io_error": "无法在设备上写入文件。",
+    "driver_error": "模拟器无法执行此操作。",
+    "device_lost": "模拟器已停止。",
+    "cancelled": "请求已取消。",
+    "mobile_unavailable": "无法在这台设备上启动模拟器。",
+    "capture_failed": "无法显示模拟器屏幕。",
+    "capture_unavailable": "这台设备无法显示模拟器屏幕。",
+    "input_failed": "你的输入未送达模拟器。",
+    "conversation_not_found": "此对话已不存在。",
+    "conversation_archived": "此对话已归档。",
+    "conversation_busy": "对话正忙。请稍后再试。",
+    "host_stopped": "设备已停止。",
+    "device_offline": "设备已离线。",
+    "cloud_unavailable": "云端目前不可用。",
+    "cloud_resetting": "云端正在重置。",
+    "cloud_capacity": "云端目前没有空闲容量。",
+    "cloud_crash_loop": "云端不断停止。",
+    "host_operation_failed": "设备无法执行此操作。",
+    "unknown_plugin_method": "此页面已过期。请重新载入。",
+    "plugin_disabled": "模拟器已关闭。"
+  },
+  "status": "设备以状态 {status} 响应。"
+}

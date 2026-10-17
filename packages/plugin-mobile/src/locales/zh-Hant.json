@@ -1,0 +1,62 @@
+{
+  "toolbar": {
+    "rotateLeft": "向左旋轉",
+    "rotateRight": "向右旋轉",
+    "appearance": "切換外觀",
+    "home": "主畫面",
+    "lock": "鎖定",
+    "volumeUp": "調高音量",
+    "volumeDown": "調低音量",
+    "back": "返回",
+    "screenshot": "截圖",
+    "record": "錄製",
+    "stopRecording": "停止錄製"
+  },
+  "activity": "智慧代理正在使用這部裝置",
+  "keyboard": "模擬器鍵盤",
+  "region": {
+    "connecting": "正在連接模擬器⋯",
+    "waiting": "正在等待裝置⋯",
+    "couldntShow": "無法顯示模擬器",
+    "unsupported": "此瀏覽器無法顯示即時影片。"
+  },
+  "failures": {
+    "control": "模擬器無法執行此操作",
+    "save": "無法儲存檔案",
+    "hostFilesUnreachable": "目前無法取用裝置上的檔案。"
+  },
+  "reasons": {
+    "invalid_input": "模擬器無法接受此操作。",
+    "device_not_found": "這部裝置上已沒有該模擬器。",
+    "ambiguous_device": "有多個模擬器使用該名稱。",
+    "device_busy": "另一個對話正在使用該模擬器。請先在那裡關閉它。",
+    "too_many_devices": "此對話已在這部裝置上打開 4 個模擬器。請先關閉一個。",
+    "stale_ref": "模擬器執行操作前畫面已改變。",
+    "timeout": "模擬器未及時回應。",
+    "unavailable": "這部裝置無法使用模擬器。",
+    "not_recording": "模擬器沒有在錄製。",
+    "recording": "模擬器已在錄製。",
+    "output_exists": "已有同名檔案。",
+    "io_error": "無法在裝置上寫入檔案。",
+    "driver_error": "模擬器無法執行此操作。",
+    "device_lost": "模擬器已停止。",
+    "cancelled": "要求已取消。",
+    "mobile_unavailable": "無法在這部裝置上啟動模擬器。",
+    "capture_failed": "無法顯示模擬器畫面。",
+    "capture_unavailable": "這部裝置無法顯示模擬器畫面。",
+    "input_failed": "你的輸入未送達模擬器。",
+    "conversation_not_found": "此對話已不存在。",
+    "conversation_archived": "此對話已封存。",
+    "conversation_busy": "對話正忙碌。請稍後再試。",
+    "host_stopped": "裝置已停止。",
+    "device_offline": "裝置已離線。",
+    "cloud_unavailable": "雲端目前無法使用。",
+    "cloud_resetting": "雲端正在重置。",
+    "cloud_capacity": "雲端目前沒有空間。",
+    "cloud_crash_loop": "雲端持續停止。",
+    "host_operation_failed": "裝置無法執行此操作。",
+    "unknown_plugin_method": "此頁面已過期。請重新載入。",
+    "plugin_disabled": "模擬器已關閉。"
+  },
+  "status": "裝置以狀態 {status} 回應。"
+}

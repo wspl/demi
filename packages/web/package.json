@@ -11,6 +11,7 @@
   "dependencies": {
     "@demicodes/conversation-client": "workspace:^",
     "@demicodes/plugin-browser": "workspace:^",
+    "@demicodes/plugin-mobile": "workspace:^",
     "@demicodes/plugin-changes": "workspace:^",
     "@demicodes/plugin-file-browser": "workspace:^",
     "@demicodes/plugin-sdk": "workspace:^",

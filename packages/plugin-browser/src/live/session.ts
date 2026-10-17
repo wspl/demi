@@ -10,8 +10,8 @@
 import { liveViewerMessageSchema, panelReasonSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveDownload, type LiveMenu, type LiveTab, type LiveViewerMessage, type PanelReason } from '../generated/plugin'
 import { LIVE_CAPTURE_FAILED, LIVE_CAPTURE_STOPPED, LIVE_CAPTURE_UNAVAILABLE, LIVE_FILE_CHUNK_BYTES } from '../generated/plugin'
 import { reactive } from 'vue'
-import { LIVE_STALL_MS, waitToReconnect, watchSilence, type LiveVideoFrame, type PictureSink as LivePictureSink, type ReconnectWait, type SilenceWatch } from '@demicodes/plugin-sdk'
-import type { OpenUserStream, StreamBytes, UserStream } from '@demicodes/plugin-sdk'
+import { LiveLink, type LiveConnection, type LiveVideoFrame, type PictureSink as LivePictureSink } from '@demicodes/plugin-sdk'
+import type { OpenUserStream } from '@demicodes/plugin-sdk'
 import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame } from './frames'
 import type { PanelSize } from './view'
 
@@ -32,13 +32,7 @@ export interface LiveStream {
 /** What shows the pictures: a decoder in the page, or the gallery's canvas. */
 export type PictureSink = LivePictureSink<LiveStream>
 
-/** Why the page ended a view whose module sent a frame the protocol refuses. */
-export const REFUSED_FRAME = 'invalid_frame'
-
-/** Why the page ended a view whose stream brought nothing, heartbeats included, for as long as a page socket may. */
-export const SILENT_STREAM = 'silent'
-
-export type LiveConnection = 'opening' | 'live' | 'stalled' | 'ended'
+export { REFUSED_FRAME, SILENT_STREAM, type LiveConnection } from '@demicodes/plugin-sdk'
 
 /**
  * The reasons of the notices that leave the watched tab without a picture,
@@ -137,37 +131,51 @@ export class LiveSession {
     ended: null,
   })
 
-  private stream: UserStream | null = null
-  /** The watch over the stream's silence, while there is a stream. */
-  private silence: SilenceWatch | null = null
-  private pictures: PictureSink | null = null
-  /** The pictures the stream sends now; none before its first. */
-  private video: LiveStream | null = null
+  private readonly link: LiveLink<LiveFrame, LiveStream>
   private uploads = 0
-  private received: number
-  /** When the page last asked for a key frame; never, at first. */
-  private resynced = Number.NEGATIVE_INFINITY
-  /** Views that ended in a row since one last worked. */
-  private failures = 0
-  private reopening: ReconnectWait | null = null
   /** The viewer's last press, a button or a key, in the tab it watched, and when. */
   private pressed: { tab: string; at: number } | null = null
 
   constructor(private readonly options: LiveSessionOptions) {
-    this.received = this.time()
+    this.link = new LiveLink(this.state, {
+      open: options.open,
+      frames: () => new LiveFrameReader(),
+      // The panel comes before the tab, so the module sizes the tab before it
+      // captures it (`live-view.md` § Delivery); a view that opens again takes
+      // up where the page left off.
+      opened: () => {
+        this.send({ type: 'hello', platform: options.platform })
+        this.panel()
+        if (this.state.watched) {
+          this.send({ type: 'watch', tab: this.state.watched })
+        }
+      },
+      received: (frame) => this.receive(frame),
+      ended: (reason) => {
+        this.state.dialog = null
+        this.state.menu = null
+        this.state.pictureless = null
+        this.state.controls = []
+        this.state.regions = []
+        this.state.running = false
+        this.state.tabs = []
+        options.onEnded?.(reason)
+      },
+      stalled: () => this.release(),
+      watching: (stream) => stream.tab === this.state.watched,
+      acknowledge: (stream, sequence, decodeQueue) => {
+        this.send({ type: 'ack', generation: stream.generation, sequence, decodeQueue })
+        options.onPicture?.(stream.tab)
+      },
+      keyframe: (stream) => this.send({ type: 'keyframe', generation: stream.generation }),
+      defect: options.defect,
+      now: options.now,
+    })
   }
 
   /** What shows this view's pictures, once the view has a canvas. */
   attach(pictures: PictureSink): void {
-    this.pictures?.stop()
-    this.pictures = pictures
-    // A canvas that comes after its stream started missed the generation's key frame, and a still page
-    // sends no other: it starts on the generation, from a key frame it asks for. Pictures of a tab the
-    // view no longer watches are not this canvas's.
-    if (this.video && this.video.tab === this.state.watched) {
-      pictures.start(this.video)
-      this.resync()
-    }
+    this.link.attach(pictures)
   }
 
   private time(): number {
@@ -175,35 +183,7 @@ export class LiveSession {
   }
 
   start(): void {
-    this.received = this.time()
-    // Each view reads its own stream from the first byte.
-    const reader = new LiveFrameReader()
-    // A view ends once: the module's `ended` and the socket's close both say so, and a
-    // stream this session already left says nothing about the one that followed it.
-    const stream = this.options.open({
-      data: (bytes) => {
-        if (this.stream === stream) {
-          this.receive(reader, bytes)
-        }
-      },
-      closed: (reason) => {
-        if (this.stream === stream) {
-          this.end(reason)
-        }
-      },
-    })
-    this.stream = stream
-    // The module speaks at least every quarter second, so the page's rule
-    // for a silent socket holds for the view as for the page's other sockets.
-    this.silence = watchSilence('live view', () => this.end(SILENT_STREAM))
-    this.send({ type: 'hello', platform: this.options.platform })
-    // The panel comes before the tab, so the module sizes the tab before it
-    // captures it (`live-view.md` § Delivery); a view that opens again takes
-    // up where the page left off.
-    this.panel()
-    if (this.state.watched) {
-      this.send({ type: 'watch', tab: this.state.watched })
-    }
+    this.link.start()
   }
 
   /**
@@ -212,51 +192,12 @@ export class LiveSession {
    * now (`live-view.md` § A browser tab in the panel).
    */
   reconnect(): void {
-    if (this.reopening === null) {
-      return
-    }
-    this.reopening.cancel()
-    this.reopening = null
-    this.failures = 0
-    this.start()
+    this.link.reconnect()
   }
 
   /** The page is done with the view: nothing reopens it, and it has nothing to tell. */
   close(): void {
-    this.reopening?.cancel()
-    this.reopening = null
-    this.dropStream()
-    this.state.connection = 'ended'
-  }
-
-  /** Lets the stream go, with its watch and its pictures: nothing it says afterwards reaches the view. */
-  private dropStream(): void {
-    this.silence?.stop()
-    this.silence = null
-    this.pictures?.stop()
-    this.video = null
-    const stream = this.stream
-    this.stream = null
-    stream?.close()
-  }
-
-  private end(reason: string): void {
-    this.dropStream()
-    this.state.ended = reason
-    this.state.dialog = null
-    this.state.menu = null
-    this.state.pictureless = null
-    this.state.controls = []
-    this.state.regions = []
-    this.options.onEnded?.(reason)
-    this.failures += 1
-    this.state.connection = 'opening'
-    this.state.running = false
-    this.state.tabs = []
-    this.reopening = waitToReconnect(this.failures, () => {
-      this.reopening = null
-      this.start()
-    })
+    this.link.close()
   }
 
   /**
@@ -270,7 +211,7 @@ export class LiveSession {
       this.options.defect(`The live view built an invalid ${message.type} message`, checked.error)
       return
     }
-    this.stream?.send(encodeMessage(checked.data))
+    this.link.send(encodeMessage(checked.data))
   }
 
   /** Input the page discards rather than queueing while the stream stalls. */
@@ -281,132 +222,97 @@ export class LiveSession {
     this.send(message)
   }
 
-  private receive(reader: LiveFrameReader, bytes: Uint8Array): void {
-    this.received = this.time()
-    this.silence?.heard()
-    if (this.state.connection === 'stalled') {
-      this.state.connection = 'live'
-      // What the decoder missed while nothing arrived starts again.
-      this.resync()
-    }
-    let frames: LiveFrame[]
-    try {
-      frames = reader.read(bytes)
-    } catch (error) {
-      // The module ships with this page, so a frame the protocol refuses is its defect.
-      this.options.defect('The live view received a frame the protocol refuses', error)
-      this.end(REFUSED_FRAME)
+  private receive(frame: LiveFrame): void {
+    if (frame.kind === 'video') {
+      if (this.link.show(frame.frame)) {
+        // A picture of the watched tab is the capture working again.
+        this.state.pictureless = null
+      }
       return
     }
-    for (const frame of frames) {
-      if (frame.kind === 'video') {
-        this.picture(frame.frame)
-        continue
-      }
-      const message = frame.message
-      switch (message.type) {
-        case 'state':
-          this.failures = 0
-          this.state.ended = null
-          this.state.connection = this.state.connection === 'opening' ? 'live' : this.state.connection
-          this.state.running = message.running
-          this.state.tabs = message.tabs
-          this.options.onTabs?.(message.tabs, message.list)
-          // The page decides what it watches. The module says otherwise when
-          // the tab went away, or when its answer crossed a newer wish on the
-          // way: a tab that is still there is asked for again.
-          if (this.state.watched !== message.watched) {
-            this.state.controls = []
-            this.state.regions = []
-            const wanted = this.state.watched
-            if (wanted !== null && message.tabs.some((tab) => tab.id === wanted)) {
-              this.send({ type: 'watch', tab: wanted })
-            } else {
-              this.state.watched = message.watched
-            }
-          }
-          break
-        case 'stream':
-          this.video = {
-            tab: message.tab,
-            generation: message.generation,
-            width: message.width,
-            height: message.height,
-            viewport: message.viewport,
-            scale: message.scale,
-          }
-          // Video generations change independently of the watched document's controls.
-          this.pictures?.start(this.video)
-          break
-        case 'heartbeat':
-          break
-        case 'cursors':
-          this.state.regions = message.tab === this.state.watched ? message.regions : []
-          break
-        case 'cursor':
-          this.state.cursor = { cursor: message.cursor, editable: message.editable }
-          break
-        case 'controls':
-          this.state.controls = message.tab === this.state.watched ? message.controls : []
-          break
-        case 'clipboard':
-          this.options.onClipboard?.(message.text)
-          break
-        case 'dialog':
-          this.state.dialog = message.dialog ? { tab: message.tab, dialog: message.dialog } : null
-          break
-        case 'menu':
-          this.state.menu = message.tab === this.state.watched ? { tab: message.tab, menu: message.menu } : null
-          break
-        case 'downloads':
-          this.options.onDownloads?.(message.tab, message.downloads)
-          break
-        case 'choice':
-          break
-        case 'notice': {
-          const reason = panelReasonSchema.safeParse(message.code)
-          if (!reason.success) {
-            // The module ships with this page, so a notice of a reason the page has no words for is its defect.
-            this.options.defect('The live view sent a notice of a reason the page does not know', reason.error)
-          } else if (isPictureless(reason.data)) {
-            this.state.pictureless = reason.data
+    const message = frame.message
+    switch (message.type) {
+      case 'state':
+        this.link.live()
+        this.state.running = message.running
+        this.state.tabs = message.tabs
+        this.options.onTabs?.(message.tabs, message.list)
+        // The page decides what it watches. The module says otherwise when
+        // the tab went away, or when its answer crossed a newer wish on the
+        // way: a tab that is still there is asked for again.
+        if (this.state.watched !== message.watched) {
+          this.state.controls = []
+          this.state.regions = []
+          const wanted = this.state.watched
+          if (wanted !== null && message.tabs.some((tab) => tab.id === wanted)) {
+            this.send({ type: 'watch', tab: wanted })
           } else {
-            this.options.onNotice?.(reason.data)
+            this.state.watched = message.watched
           }
-          break
         }
-        case 'ended':
-          this.end(message.reason)
-          break
+        break
+      case 'stream':
+        // Video generations change independently of the watched document's controls.
+        this.link.generation({
+          tab: message.tab,
+          generation: message.generation,
+          width: message.width,
+          height: message.height,
+          viewport: message.viewport,
+          scale: message.scale,
+        })
+        break
+      case 'heartbeat':
+        break
+      case 'cursors':
+        this.state.regions = message.tab === this.state.watched ? message.regions : []
+        break
+      case 'cursor':
+        this.state.cursor = { cursor: message.cursor, editable: message.editable }
+        break
+      case 'controls':
+        this.state.controls = message.tab === this.state.watched ? message.controls : []
+        break
+      case 'clipboard':
+        this.options.onClipboard?.(message.text)
+        break
+      case 'dialog':
+        this.state.dialog = message.dialog ? { tab: message.tab, dialog: message.dialog } : null
+        break
+      case 'menu':
+        this.state.menu = message.tab === this.state.watched ? { tab: message.tab, menu: message.menu } : null
+        break
+      case 'downloads':
+        this.options.onDownloads?.(message.tab, message.downloads)
+        break
+      case 'choice':
+        break
+      case 'notice': {
+        const reason = panelReasonSchema.safeParse(message.code)
+        if (!reason.success) {
+          // The module ships with this page, so a notice of a reason the page has no words for is its defect.
+          this.options.defect('The live view sent a notice of a reason the page does not know', reason.error)
+        } else if (isPictureless(reason.data)) {
+          this.state.pictureless = reason.data
+        } else {
+          this.options.onNotice?.(reason.data)
+        }
+        break
       }
+      case 'ended':
+        this.link.end(message.reason)
+        break
     }
-  }
-
-  private picture(frame: LiveVideoFrame): void {
-    if (frame.generation !== this.video?.generation) {
-      return
-    }
-    this.pictures?.show(frame)
-    // A picture of the watched tab is the capture working again.
-    this.state.pictureless = null
   }
 
   /** The page showed a frame; the module paces itself by these. */
   showed(generation: number, sequence: number, decodeQueue: number): void {
-    if (generation === this.video?.generation) {
-      this.send({ type: 'ack', generation, sequence, decodeQueue })
-      this.options.onPicture?.(this.video.tab)
-    }
+    this.link.showed(generation, sequence, decodeQueue)
   }
 
   /** The decoder lost the stream: the next frame must be a key frame. */
   resync(): void {
-    const now = this.time()
-    if (!this.video || now - this.resynced < 1000) {
-      return
-    }
-    this.resynced = now
-    this.send({ type: 'keyframe', generation: this.video.generation })
+    this.link.resync()
   }
 
   /**
@@ -414,10 +320,7 @@ export class LiveSession {
    * input is discarded rather than delivered all at once later.
    */
   tick(): void {
-    if (this.state.connection === 'live' && this.time() - this.received > LIVE_STALL_MS) {
-      this.state.connection = 'stalled'
-      this.release()
-    }
+    this.link.tick()
   }
 
   /** Tells the module the page's panel, as the page last measured it. */
@@ -447,7 +350,7 @@ export class LiveSession {
     this.state.menu = null
     // The module says again whether it can capture the tab now watched.
     this.state.pictureless = null
-    this.pictures?.stop()
+    this.link.unwatched()
     this.send({ type: 'watch', tab })
   }
 
@@ -538,11 +441,11 @@ export class LiveSession {
       const reader = file.stream().getReader()
       for (;;) {
         const { value, done } = await reader.read()
-        if (done || !this.stream) {
+        if (done || !this.link.connected) {
           break
         }
         for (let start = 0; start < value.length; start += LIVE_FILE_CHUNK_BYTES) {
-          this.stream.send(encodeFile(pending.upload, index, value.subarray(start, start + LIVE_FILE_CHUNK_BYTES)))
+          this.link.send(encodeFile(pending.upload, index, value.subarray(start, start + LIVE_FILE_CHUNK_BYTES)))
         }
       }
     }

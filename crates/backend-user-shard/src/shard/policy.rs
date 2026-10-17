@@ -198,6 +198,7 @@ impl LinkPolicy for ShardPolicy {
             let conversation = reaching(&shard, &conversation, &device).await?;
             let sequence = match sequence {
                 ServiceSequence::Tab => Sequence::Tab,
+                ServiceSequence::Device => Sequence::Device,
             };
             shard
                 .services()

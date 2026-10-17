@@ -67,10 +67,16 @@ Each executable is built for the targets where it runs:
 | Executable | Targets | Reason |
 | --- | --- | --- |
 | `demi-runner` | All six | Paired devices run macOS, Linux, or Windows on arm64 or x86_64, and the Cloud guest runs Linux |
-| `demi-file`, `demi-browser`, `demi-claude-code`, `demi-fetch` | All six | A released command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
+| `demi-file`, `demi-browser`, `demi-claude-code`, `demi-fetch`, `demi-mobile` | All six | A released command package supplies its operations on every target ([Publish a complete release](../execution/native-runtime.md#publish-a-complete-release)) |
 | `demi-backend` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl`; `aarch64-apple-darwin`, `x86_64-apple-darwin` in development only | Servers run Linux, and a release carries the Linux targets; a developer may also run the backend on a Mac, with the Cloud in a Lima VM ([Develop on a Mac with Lima](../guides/mac-development.md)) |
 | `demi-machine-manager` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | The machine manager drives gVisor, Linux namespaces, cgroups, loop devices, and nftables, which exist only on Linux |
 | `demi-server` | `aarch64-unknown-linux-musl`, `x86_64-unknown-linux-musl` | It installs, upgrades and rolls back a server, which runs Linux ([Upgrades](upgrades.md)) |
+
+On `aarch64-apple-darwin`, `demi-mobile`'s build script also builds its iOS
+helper with the machine's Xcode ([iOS](../mobile/mobile.md#ios)), keeping
+the downloads and builds in the target directory's `ios-sim/`; without
+Xcode it builds none and warns, which `xtask native build` makes an error,
+so no release ships without it.
 
 Linux executables link musl statically, so one file runs on any distribution
 and inside the Cloud guest, whatever C library the host has. Windows
@@ -490,9 +496,11 @@ Demi License, which covers the server and the web app) and `NOTICE` from the
 repository's root and
 `THIRD-PARTY-NOTICES`, which the release step generates from what the
 release really contains: for each Rust crate linked into a shipped program,
-the vendored ones included, and each npm package bundled into `web/`, its
-name, version, license text and copyright lines, MPL-2.0 packages also
-naming where their source is. `bun xtask notices` writes the file
+the vendored ones included, each npm package bundled into `web/`, and each
+library a program carries that is neither, such as Meta's idb in
+`demi-mobile`'s iOS helper, whose notice is committed beside the helper's
+source: its name, version, license text and copyright lines, MPL-2.0
+packages also naming where their source is. `bun xtask notices` writes the file
 into the built web app as `third-party-notices.txt`, from cargo-about's
 reading of each shipped program's crates and from Vite's list of the
 packages its bundle holds; the server release's root holds `LICENSE`,

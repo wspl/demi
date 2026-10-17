@@ -163,6 +163,12 @@ impl Release {
                     .map(String::from)
                     .collect(),
             },
+            Executable::Mobile => Self::Package {
+                id: demi_command_package_mobile_protocol::PACKAGE,
+                operations: demi_command_package_mobile_protocol::Operation::names()
+                    .map(String::from)
+                    .collect(),
+            },
             Executable::Claude => Self::Package {
                 id: demi_command_package_claude_code_protocol::PACKAGE,
                 operations: demi_command_package_claude_code_protocol::Operation::ALL
