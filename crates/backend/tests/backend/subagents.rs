@@ -63,10 +63,13 @@ pub(crate) struct Scripts {
 #[derive(Default)]
 struct ScriptState {
     roots: HashMap<String, VecDeque<Answer>>,
-    /// The scripts of the children that have not asked yet.
-    unclaimed: VecDeque<VecDeque<Answer>>,
+    /// The scripts of the children that have not asked yet, each with what
+    /// holds its first answer, if anything does.
+    unclaimed: VecDeque<(VecDeque<Answer>, Option<Arc<Notify>>)>,
     /// The scripts of the children that have asked, by session.
     children: HashMap<String, VecDeque<Answer>>,
+    /// What holds the next answer of a session, until it is notified.
+    gates: HashMap<String, Arc<Notify>>,
     /// Every request: its session, and its model, thinking, system prompt
     /// and items.
     asked: Vec<(String, String)>,
@@ -87,7 +90,20 @@ impl Scripts {
             .lock()
             .unwrap()
             .unclaimed
-            .push_back(answers.into());
+            .push_back((answers.into(), None));
+    }
+
+    /// The script of the next child, whose first answer is held until what
+    /// this answers is notified, as a slow child's would be: a test that
+    /// needs its parent to answer first releases it then.
+    pub(crate) fn child_held(&self, answers: Vec<Answer>) -> Arc<Notify> {
+        let release = Arc::new(Notify::new());
+        self.state
+            .lock()
+            .unwrap()
+            .unclaimed
+            .push_back((answers.into(), Some(release.clone())));
+        release
     }
 
     /// More answers for the one child that has asked, such as for its
@@ -119,29 +135,33 @@ impl Scripts {
             .collect()
     }
 
-    fn answer(&self, request: &InferenceRequest) -> Answer {
+    /// The next answer of the request's session, and what holds it, if
+    /// anything does.
+    fn answer(&self, request: &InferenceRequest) -> (Answer, Option<Arc<Notify>>) {
         let mut guard = self.state.lock().unwrap();
-        let state = &mut *guard;
+        let ScriptState { roots, unclaimed, children, gates, asked } = &mut *guard;
         let session = request.session_id.clone();
         let carried = format!(
             "model={} thinking={:?} system={:?} items={:?}",
             request.model_id, request.thinking, request.system_prompt, request.items
         );
-        state.asked.push((session.clone(), carried));
-        let script = match state.roots.get_mut(&session) {
+        asked.push((session.clone(), carried));
+        let script = match roots.get_mut(&session) {
             Some(script) => script,
-            None => {
-                let unclaimed = &mut state.unclaimed;
-                state.children.entry(session.clone()).or_insert_with(|| {
-                    unclaimed
-                        .pop_front()
-                        .unwrap_or_else(|| panic!("no script for the child {session}"))
-                })
-            }
+            None => children.entry(session.clone()).or_insert_with(|| {
+                let (script, gate) = unclaimed
+                    .pop_front()
+                    .unwrap_or_else(|| panic!("no script for the child {session}"));
+                if let Some(gate) = gate {
+                    gates.insert(session.clone(), gate);
+                }
+                script
+            }),
         };
-        script
+        let answer = script
             .pop_front()
-            .unwrap_or_else(|| panic!("no answer scripted for {session}"))
+            .unwrap_or_else(|| panic!("no answer scripted for {session}"));
+        (answer, gates.remove(&session))
     }
 }
 
@@ -248,12 +268,18 @@ struct TreeRuntime(Arc<Scripts>);
 
 impl ProviderRuntime for TreeRuntime {
     fn run(&mut self, request: InferenceRequest) -> ProviderRun<'_> {
-        let answer = self.0.answer(&request);
+        let (answer, gate) = self.0.answer(&request);
         let cancelled = request.cancel.cancelled_owned();
         if answer.is_empty() {
             return stream::pending().take_until(cancelled).boxed_local();
         }
-        stream::iter(answer).take_until(cancelled).boxed_local()
+        let held = async move {
+            if let Some(gate) = gate {
+                gate.notified().await;
+            }
+            stream::iter(answer)
+        };
+        stream::once(held).flatten().take_until(cancelled).boxed_local()
     }
 
     fn fresh(&self) -> Box<dyn ProviderRuntime> {
