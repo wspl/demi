@@ -59,6 +59,7 @@ const kinds = computed<PanelTabKind[]>(() => bound.value?.kinds ?? [])
 <template>
   <WorkPanel
     :panel="state.panel"
+    :tabs-read="state.tabsRead"
     :pinned="state.pinned"
     :kinds="kinds"
     :before-first-message="!recorded"

@@ -73,7 +73,10 @@ const props = withDefaults(defineProps<{
   onReorder?: (from: number, to: number) => void
   /**
    * Tabs come and go at once, with no motion, while this holds: as when a
-   * menu replaces the tab shown with another, so nothing opened or closed.
+   * menu replaces the tab shown with another, or the strip shows another
+   * conversation's tabs, so nothing opened or closed. Nothing of a tab is
+   * measured or locked then; the strip reveals its selected tab once, after
+   * the change.
    */
   still?: boolean
 }>(), {
@@ -267,13 +270,57 @@ function onWheel(event: WheelEvent): void {
   strip.scrollLeft += delta
 }
 
+/**
+ * The tabs whose entrance or exit started, which alone end one: a tab that
+ * comes or goes while the strip is still has no motion, and its hooks do
+ * nothing. Each ending hook reads the strip's layout, so one per tab of a
+ * whole strip replaced at once would lay the strip out once per tab; the
+ * mutation observer reveals the selected tab once for all of them instead.
+ */
+const moving = new WeakSet<Element>()
+
+// Each hook takes the element alone, so Vue ends a transition without CSS at once.
+function onBeforeEnter(el: Element): void {
+  if (props.still) {
+    return
+  }
+  moving.add(el)
+  beforeEnterTab(el)
+}
+
+function onEnter(el: Element): void {
+  if (moving.has(el)) {
+    enterTab(el)
+  }
+}
+
 // The strip's extent settles only after the motion; reveal again then.
 function onAfterEnter(el: Element): void {
+  if (!moving.delete(el)) {
+    return
+  }
   afterEnterTab(el)
   revealActive()
 }
 
+function onBeforeLeave(el: Element): void {
+  if (props.still) {
+    return
+  }
+  moving.add(el)
+  beforeLeaveTab(el)
+}
+
+function onLeave(el: Element): void {
+  if (moving.has(el)) {
+    leaveTab(el)
+  }
+}
+
 function onAfterLeave(el: Element): void {
+  if (!moving.delete(el)) {
+    return
+  }
   afterLeaveTab(el)
   revealActive()
 }
@@ -524,12 +571,12 @@ defineExpose({ el })
       @pointermove="onPointermove"
       @pointerup="onPointerup"
       @pointercancel="cancelDrag"
-      @before-enter="beforeEnterTab"
-      @enter="enterTab"
+      @before-enter="onBeforeEnter"
+      @enter="onEnter"
       @after-enter="onAfterEnter"
       @enter-cancelled="onAfterEnter"
-      @before-leave="beforeLeaveTab"
-      @leave="leaveTab"
+      @before-leave="onBeforeLeave"
+      @leave="onLeave"
       @after-leave="onAfterLeave"
       @leave-cancelled="onAfterLeave"
     >
