@@ -3,6 +3,7 @@
 //! that open them, as a resident command service, with a driver per
 //! platform behind one interface (`mobile.md` § Drivers).
 
+pub mod android;
 mod booted;
 pub mod devices;
 pub mod driver;
@@ -26,7 +27,7 @@ use bytes::Bytes;
 
 use demi_command_package_mobile_protocol::{
     Operation, OperationError,
-    mobile::{FailureDocument, MobileFailure, MobilePlatform},
+    mobile::{FailureDocument, MobileFailure},
 };
 use demi_command_protocol::{CommandError, Completion, ConversationRequest, ConversationStatus, Invocation};
 use demi_command_sdk::{ConversationContext, Handler, InvocationContext, Messages, Numbers, ServiceError};
@@ -51,7 +52,7 @@ impl DemiMobile {
         // The installation's `mobile/`, where the simulators Demi booted
         // are kept across the program's ends (`mobile.md` § Lifetime).
         let home = std::env::var_os("DEMI_HOME").map(std::path::PathBuf::from);
-        Self::with_drivers(host_drivers(), home.as_deref())
+        Self::with_drivers(host_drivers(home.as_deref()), home.as_deref())
     }
 
     /// The service with `drivers`, such as a test's, in the installation
@@ -87,21 +88,19 @@ impl Default for DemiMobile {
     }
 }
 
-/// The drivers this Host has: iOS on a Mac; Android, which comes later,
-/// says so.
-fn host_drivers() -> Vec<Arc<dyn Driver>> {
+/// The drivers this Host has: iOS on a Mac, Android where its SDK is. An
+/// emulator Demi boots writes its log into the installation's
+/// `mobile/android`, which keeps Cisco's OpenH264 too.
+fn host_drivers(home: Option<&std::path::Path>) -> Vec<Arc<dyn Driver>> {
     vec![
         #[cfg(target_os = "macos")]
         Arc::new(ios::Ios::new()),
         #[cfg(not(target_os = "macos"))]
         Arc::new(driver::Absent {
-            platform: MobilePlatform::Ios,
+            platform: demi_command_package_mobile_protocol::mobile::MobilePlatform::Ios,
             reason: "iOS simulators need a Mac".into(),
         }),
-        Arc::new(driver::Absent {
-            platform: MobilePlatform::Android,
-            reason: "Android emulators aren’t available yet in this version of Demi".into(),
-        }),
+        Arc::new(android::Android::new(home.map(|home| home.join("mobile").join("android")))),
     ]
 }
 

@@ -7,11 +7,19 @@
 import { ref, watch, type Ref } from 'vue'
 import { clientPlatform } from '@demicodes/utils'
 import { pageVisibility, picturesSupported, type HeadlineText } from '@demicodes/plugin-sdk'
-import type { PanelReason } from '../generated/plugin'
+import { LIVE_NO_FOCUSED_FIELD, type PanelReason } from '../generated/plugin'
 import { MobileError, type MobileApi } from '../devices'
 import { MobileSession } from './session'
 import type { DeviceCall } from './controls'
 import { t } from '../locales/text'
+
+/**
+ * A view notice's words: the reason's own, quoting the viewer's text the
+ * notice carries where the reason is about it; never the Host's error text.
+ */
+export function noticeText(reason: PanelReason, message: string): string {
+  return reason === LIVE_NO_FOCUSED_FIELD ? t(`reasons.${reason}`, { text: message }) : t(`reasons.${reason}`)
+}
 
 /** How often the view checks that its stream still speaks. */
 const TICK_MS = 250
@@ -42,7 +50,8 @@ export class MobileDevicesController {
     this.session = new MobileSession({
       open: api.stream,
       platform: options.platform ?? clientPlatform(navigator),
-      onNotice: (reason: PanelReason) => errors.report(t('failures.control'), new MobileError(reason, null, t(`reasons.${reason}`))),
+      onNotice: (reason: PanelReason, message: string) =>
+        errors.report(t('failures.control'), new MobileError(reason, null, noticeText(reason, message))),
       defect: (message, error) => errors.defect(message, error),
     })
     const supported = options.pictures ?? (() => picturesSupported((message, error) => errors.defect(message, error)))

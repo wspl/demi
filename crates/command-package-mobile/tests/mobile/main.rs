@@ -6,6 +6,7 @@ mod commands;
 mod ios;
 mod live;
 mod lifetime;
+mod android;
 
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -37,7 +38,8 @@ pub fn simulators() -> Vec<Simulator> {
     ]
 }
 
-/// The service with a scripted iOS driver and, as on a Mac, no Android yet.
+/// The service with a scripted iOS driver and, as on a Mac without the
+/// Android SDK, no Android.
 pub struct Mobile {
     pub driver: Arc<FakeDriver>,
     pub service: Arc<DemiMobile>,
@@ -96,6 +98,16 @@ impl Mobile {
         Self::start_over(ios, FakeDriver::ios(Vec::new()), &mobile, Some(home)).await
     }
 
+    /// The service over a scripted iOS driver with `simulators` and the
+    /// Android driver over `sdk`, as on a Mac with Xcode and the Android SDK.
+    pub async fn start_android(simulators: Vec<Simulator>, sdk: Arc<dyn demi_mobile::android::Sdk>) -> Self {
+        let home = tempfile::tempdir().unwrap();
+        let mobile = home.path().join("mobile");
+        let ios = FakeDriver::ios(simulators);
+        let drivers: Vec<Arc<dyn Driver>> = vec![ios.clone(), Arc::new(demi_mobile::android::Android::with_sdk(sdk, Arc::new(demi_mobile::testing::BuiltOpenH264)))];
+        Self::start_with(drivers, ios, &mobile, Some(home)).await
+    }
+
     async fn start_over(
         ios: Arc<dyn Driver>,
         driver: Arc<FakeDriver>,
@@ -106,9 +118,18 @@ impl Mobile {
             ios,
             Arc::new(Absent {
                 platform: MobilePlatform::Android,
-                reason: "Android emulators aren’t available yet in this version of Demi".into(),
+                reason: "no Android SDK; install Android Studio, or set ANDROID_HOME to the SDK's directory".into(),
             }),
         ];
+        Self::start_with(drivers, driver, mobile, home).await
+    }
+
+    async fn start_with(
+        drivers: Vec<Arc<dyn Driver>>,
+        driver: Arc<FakeDriver>,
+        mobile: &std::path::Path,
+        home: Option<tempfile::TempDir>,
+    ) -> Self {
         let (client_io, server_io) = tokio::io::duplex(256 * 1024);
         let service = Arc::new(DemiMobile::with_drivers(drivers, mobile.parent()));
         let server = AbortOnDropHandle::new(tokio::spawn(serve(server_io, service.clone())));

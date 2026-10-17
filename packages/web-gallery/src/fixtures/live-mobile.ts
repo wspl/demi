@@ -17,6 +17,7 @@ import {
   type LiveFrame,
   type LiveModuleMessage,
   type LiveViewerMessage,
+  type MobilePlatform,
   type Orientation,
   mobileTabDataSchema,
 } from '@demicodes/plugin-mobile'
@@ -37,6 +38,7 @@ const decoder = new TextDecoder()
 /** A simulator of the gallery's Mac: its screen upright in points, its corners and its buttons upright. */
 interface GallerySimulator {
   name: string
+  platform: MobilePlatform
   os: string
   nativeId: string
   points: { width: number; height: number }
@@ -58,10 +60,11 @@ interface OpenDevice {
   recording: boolean
 }
 
-/** The simulators the agent opens, in turn: a phone, then a tablet, as `demi mobile open` would. */
+/** The simulators the agent opens, in turn: an iPhone, an iPad, then an Android emulator, as `demi mobile open` would. */
 const SIMULATORS: readonly GallerySimulator[] = [
   {
     name: 'iPhone 17 Pro',
+    platform: 'ios',
     os: 'iOS 26.5',
     nativeId: '5F1C2B3A-7D44-4E2B-9C11-0A1B2C3D4E5F',
     points: { width: 402, height: 874 },
@@ -75,6 +78,7 @@ const SIMULATORS: readonly GallerySimulator[] = [
   },
   {
     name: 'iPad Air 13-inch (M3)',
+    platform: 'ios',
     os: 'iOS 26.5',
     nativeId: '247C3132-2366-4D6C-A4B9-9051A0EE8EAC',
     points: { width: 1032, height: 1376 },
@@ -83,6 +87,18 @@ const SIMULATORS: readonly GallerySimulator[] = [
       { side: 'top', start: 0.78, length: 0.08 },
       { side: 'right', start: 0.1, length: 0.05 },
       { side: 'right', start: 0.17, length: 0.05 },
+    ],
+  },
+  {
+    name: 'Pixel 8 API 36',
+    platform: 'android',
+    os: 'Android 16',
+    nativeId: 'Pixel_8_API_36',
+    points: { width: 411, height: 914 },
+    cornerRadius: 24,
+    buttons: [
+      { side: 'right', start: 0.2, length: 0.06 },
+      { side: 'right', start: 0.3, length: 0.13 },
     ],
   },
 ]
@@ -230,6 +246,9 @@ export function galleryMobile(panel: GalleryPanel): GalleryMobile {
         const shown = device(id)
         if (button === 'home') {
           shown.screen = 'home'
+        } else if (button === 'back') {
+          // Android's Back leaves Settings for the home screen.
+          shown.screen = 'home'
         } else if (button === 'lock') {
           shown.screen = shown.screen === 'locked' ? 'home' : 'locked'
         } else {
@@ -368,7 +387,7 @@ class MobileView {
       devices: this.devices().map((each) => ({
         id: each.id,
         name: each.simulator.name,
-        platform: 'ios',
+        platform: each.simulator.platform,
         os: each.simulator.os,
         recording: each.recording,
       })),

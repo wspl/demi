@@ -45,6 +45,7 @@
     "capture_failed": "시뮬레이터 화면을 표시할 수 없었습니다.",
     "capture_unavailable": "이 기기에서는 시뮬레이터 화면을 표시할 수 없습니다.",
     "input_failed": "입력이 시뮬레이터에 전달되지 않았습니다.",
+    "no_focused_field": "“{text}”을(를) 입력할 텍스트 필드가 선택되어 있지 않습니다.",
     "conversation_not_found": "이 대화가 더 이상 존재하지 않습니다.",
     "conversation_archived": "이 대화는 보관되었습니다.",
     "conversation_busy": "대화가 사용 중입니다. 잠시 후 다시 시도하십시오.",

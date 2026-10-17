@@ -15,6 +15,13 @@
 //! A Mac without Xcode or its iOS SDK builds no helper and says why; then
 //! `demi mobile list` says iOS needs Xcode. A release build sets
 //! `DEMI_MOBILE_IOS_HELPER=required`, which makes that an error.
+//!
+//! On every target it also compiles the part of the Android Emulator's
+//! gRPC interface the Android driver uses (`android/`), with protox, so no
+//! `protoc` is needed, and fetches the Android helper, openatx's `u2.jar`
+//! (MIT), pinned by its SHA-256, which the program carries as it is
+//! (`mobile.md` § Android). A build that cannot fetch it carries none and
+//! says why; `DEMI_MOBILE_ANDROID_HELPER=required` makes that an error.
 
 use std::{
     env, fs,
@@ -48,6 +55,16 @@ const XCODEGEN: Pinned = Pinned {
 /// beside the helper.
 const BRIDGE: &str = "SimulatorFrameworkBridge-iOS";
 
+/// What a release build sets so a build without the Android helper fails.
+const ANDROID_REQUIRED: &str = "DEMI_MOBILE_ANDROID_HELPER";
+/// openatx's UI automation server, run inside an emulator with
+/// `app_process`.
+const U2_JAR: Pinned = Pinned {
+    url: "https://github.com/openatx/android-uiautomator-server-jar/releases/download/0.4.0/u2.jar",
+    file: "u2-0.4.0.jar",
+    sha256: "0b74e83c55f443539a9f76f5ce023a51466b764b1100e4097a897053fdfc0eb6",
+};
+
 /// A download the build trusts by its SHA-256.
 struct Pinned {
     url: &'static str,
@@ -57,9 +74,13 @@ struct Pinned {
 
 fn main() {
     println!("cargo::rustc-check-cfg=cfg(demi_ios_helper)");
+    println!("cargo::rustc-check-cfg=cfg(demi_android_helper)");
     println!("cargo::rerun-if-changed=build.rs");
     println!("cargo::rerun-if-changed=ios-sim");
+    println!("cargo::rerun-if-changed=android");
     println!("cargo::rerun-if-env-changed={REQUIRED}");
+    println!("cargo::rerun-if-env-changed={ANDROID_REQUIRED}");
+    android();
     if env::var("TARGET").ok().as_deref() != Some(TARGET) {
         return;
     }
@@ -80,6 +101,39 @@ fn main() {
     fs::write(out.join("demi-ios-sim.tar.zst"), &archive).expect("the archive is written");
     println!("cargo::rustc-env=DEMI_IOS_SIM_SHA256={digest}");
     println!("cargo::rustc-cfg=demi_ios_helper");
+}
+
+/// The emulator's gRPC client and server, and the Android helper.
+fn android() {
+    let out = PathBuf::from(env::var_os("OUT_DIR").expect("cargo sets OUT_DIR"));
+    let manifest = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").expect("cargo sets CARGO_MANIFEST_DIR"));
+    let proto = manifest.join("android");
+    let descriptors = protox::compile([proto.join("emulator_controller.proto")], [&proto])
+        .unwrap_or_else(|error| panic!("the emulator's interface does not compile: {error}"));
+    tonic_prost_build::configure()
+        .build_client(true)
+        // Pictures arrive as `Bytes`, which the encoder and the
+        // screenshot take without a copy.
+        .bytes(".")
+        // The tests' stub emulator serves it.
+        .build_server(true)
+        .server_mod_attribute("android.emulation.control", "#[cfg(feature = \"testing\")]")
+        .compile_fds(descriptors)
+        .unwrap_or_else(|error| panic!("the emulator's interface was not generated: {error}"));
+    let cache = target_directory(&out).join("android-helper");
+    let required = env::var(ANDROID_REQUIRED).is_ok_and(|value| value == "required");
+    let fetched = fs::create_dir_all(&cache)
+        .map_err(Failure::from)
+        .and_then(|()| fetch(&cache, &U2_JAR));
+    match fetched {
+        Ok(jar) => {
+            fs::copy(&jar, out.join("u2.jar")).expect("the Android helper is copied");
+            println!("cargo::rustc-env=DEMI_U2_JAR_SHA256={}", U2_JAR.sha256);
+            println!("cargo::rustc-cfg=demi_android_helper");
+        }
+        Err(error) if required => panic!("the Android helper was not fetched: {error}"),
+        Err(error) => println!("cargo::warning=demi-mobile carries no Android helper: {error}"),
+    }
 }
 
 /// Why this Mac cannot build the helper: no Xcode, or no iOS SDK in it.
@@ -192,14 +246,16 @@ fn xcode(mut command: Command) -> Command {
 }
 
 /// The pinned download in `cache`, fetched when it is not there or is not
-/// the pinned file. curl is part of macOS, the one system this runs on.
+/// the pinned file, with curl, which macOS, Windows 10 and later and every
+/// Linux build machine have.
 fn fetch(cache: &Path, pinned: &Pinned) -> Result<PathBuf, Failure> {
     let path = cache.join(pinned.file);
     if fs::read(&path).is_ok_and(|bytes| sha256(&bytes) == pinned.sha256) {
         return Ok(path);
     }
     let partial = cache.join(format!("{}.part", pinned.file));
-    run(Command::new("/usr/bin/curl")
+    let curl = if cfg!(target_os = "macos") { "/usr/bin/curl" } else { "curl" };
+    run(Command::new(curl)
         .args(["--fail", "--location", "--silent", "--show-error", "--retry", "5", "--retry-all-errors"])
         .arg("--output")
         .arg(&partial)

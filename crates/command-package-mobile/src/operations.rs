@@ -24,6 +24,7 @@ use crate::{
     devices::{Devices, OpenDevice},
     driver::{Button, KeyPress, Points},
     error::MobileError,
+    keys,
     refs::Listed,
     scale::Scale,
     text, tree,
@@ -297,9 +298,9 @@ pub async fn run(
                     Some((_, listed)) => {
                         let at = listed.frame.centre();
                         acting(&open, call, at, open.device.tap(at, 0.0)).await?;
-                        open.device.text(&input.text).await?;
+                        keys::enter(&open.device, &input.text).await?;
                     }
-                    None => open.device.text(&input.text).await?,
+                    None => keys::enter(&open.device, &input.text).await?,
                 }
                 let element = target.map(|(reference, listed)| summary(reference, &listed));
                 let verb = if replace { "Set" } else { "Typed" };
@@ -457,9 +458,11 @@ async fn open_device(devices: &Arc<Devices>, call: &Call<'_>, query: &str) -> Re
     }
     let screen = *open.device.screen().borrow();
     let scale = Scale::of(&screen);
-    let native = match open.platform {
-        MobilePlatform::Ios => format!("simctl id {}", open.native_id),
-        MobilePlatform::Android => format!("AVD {}", open.native_id),
+    let serial = open.device.serial();
+    let native = match (open.platform, &serial) {
+        (MobilePlatform::Ios, _) => format!("simctl id {}", open.native_id),
+        (MobilePlatform::Android, Some(serial)) => format!("AVD {} · adb serial {serial}", open.native_id),
+        (MobilePlatform::Android, None) => format!("AVD {}", open.native_id),
     };
     let text = format!(
         "{}  {} · {} · {}×{} · {native}\n",
@@ -472,6 +475,7 @@ async fn open_device(devices: &Arc<Devices>, call: &Call<'_>, query: &str) -> Re
             platform: open.platform,
             os: open.os.clone(),
             native_id: open.native_id.clone(),
+            serial,
             orientation: screen.orientation,
             width: scale.width,
             height: scale.height,

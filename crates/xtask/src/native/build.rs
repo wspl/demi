@@ -349,12 +349,18 @@ impl Build<'_> {
 
     /// The settings of the pinned inputs, the same here and in the
     /// container.
-    fn pins(&self, target: &str) -> Vec<(&'static str, &'static str)> {
+    fn pins(&self, target: &str, executables: &[Executable]) -> Vec<(&'static str, &'static str)> {
         let mut pins = vec![
             ("XWIN_SDK_VERSION", WINDOWS_SDK_VERSION),
             ("XWIN_CRT_VERSION", WINDOWS_CRT_VERSION),
             ("MACOSX_DEPLOYMENT_TARGET", MACOS_MINIMUM),
         ];
+        // demi-mobile carries the Android helper on every target, and a
+        // release never ships without it (`mobile.md` § Android): a fetch
+        // that fails fails the build.
+        if executables.contains(&Executable::Mobile) {
+            pins.push(("DEMI_MOBILE_ANDROID_HELPER", "required"));
+        }
         if windows(target) {
             match Tool::of(self.host, target) {
                 // aws-lc-sys, rustls's provider, compiles C with
@@ -416,7 +422,7 @@ impl Build<'_> {
         command
             .args(self.arguments(target, executables))
             .current_dir(self.repository)
-            .envs(self.pins(target))
+            .envs(self.pins(target, executables))
             .envs(Self::profile(target).iter().copied())
             .env("CARGO_TARGET_DIR", self.artifacts)
             .env("XWIN_CACHE_DIR", Self::xwin_cache(self.repository));
@@ -446,7 +452,7 @@ impl Build<'_> {
         std::fs::create_dir_all(&git)?;
         let checkout = Path::new(CONTAINER_CHECKOUT);
         let mut environment: Vec<(&str, OsString)> = self
-            .pins(target)
+            .pins(target, executables)
             .into_iter()
             .chain(Self::profile(target).iter().copied())
             .map(|(name, value)| (name, value.into()))
@@ -550,6 +556,26 @@ mod tests {
             "{xcrun_older:?}"
         );
         assert!(matches!(apple_sdk(None, none), Err(Error::NoSdk)));
+    }
+
+    /// A release of demi-mobile never ships without the Android helper:
+    /// each target's build of it makes a failed fetch fail the build, on
+    /// this computer or in the container. Planted defect this catches: the
+    /// requirement set only for the iOS helper's target. Milliseconds.
+    #[test]
+    fn every_build_of_demi_mobile_requires_the_android_helper() {
+        let root = tempfile::tempdir().unwrap();
+        let build = Build {
+            repository: root.path(),
+            artifacts: root.path(),
+            sdk: None,
+            host: Platform::Mac,
+        };
+        let required = ("DEMI_MOBILE_ANDROID_HELPER", "required");
+        for target in ["aarch64-apple-darwin", "x86_64-apple-darwin", "x86_64-unknown-linux-musl", "aarch64-pc-windows-msvc"] {
+            assert!(build.pins(target, &[Executable::Mobile]).contains(&required), "{target}");
+        }
+        assert!(!build.pins("x86_64-unknown-linux-musl", &[Executable::Runner]).contains(&required));
     }
 
     #[test]

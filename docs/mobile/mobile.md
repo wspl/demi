@@ -92,7 +92,8 @@ that uses `demi browser` already knows them.
   names the one it means. It boots the
   device when it is shut down, without a window, attaches it to the
   conversation and opens it in the panel. It answers the handle, `m1`, the
-  screen size and the native id. Handles are the conversation's, across
+  screen size and the native id, and for an Android emulator its adb serial,
+  `adb serial emulator-5554`, which the agent's own `adb -s` takes. Handles are the conversation's, across
   its Hosts, so `m2` may be an Android emulator on a Linux workstation while
   `m1` is an iPhone on the Mac. A conversation has at most four devices
   open on each Host, the most a computer runs well beside its work; a
@@ -118,7 +119,15 @@ that uses `demi browser` already knows them.
   device took the input; they do not wait for the screen to change. An
   element is a reference from the last `inspect`, resolved to the centre of
   its frame. `type --replace` sets a field's text at once, as the
-  accessibility interface does, where typing would add to it.
+  accessibility interface does, where typing would add to it. Text a US
+  keyboard cannot type, such as *Grüße 東京*, the user's own typing in the
+  view included, an input method's Chinese too, goes in as each platform
+  allows: on Android at the cursor through the emulator's clipboard and a
+  paste, the clipboard put back as it was; on iOS the focused field's value
+  becomes its value with the text added at its end, through the
+  accessibility interface `--replace` uses, since a simulator from Xcode
+  26.3 on takes no text into its pasteboard from outside (`simctl pbcopy`
+  leaves it empty).
 - **`wait`** waits until text or an element appears or an element is gone,
   re-reading the tree, 30 s by default, as `demi browser wait` does; it is
   how the agent knows that something it started has finished, such as a
@@ -279,9 +288,27 @@ its standard input and output.
   emulator Demi starts runs without a window, `-no-window -gpu host`, with
   JWT authentication, which also keeps the interface on localhost; without
   it the interface is open to every network the computer is on. The Host
-  encodes the frames, VideoToolbox on a Mac and OpenH264 elsewhere,
-  measured at 171 and 78 fps for a 1080 × 2400 screen.
-- **The UI tree, text and keys** come from a helper Demi runs inside the
+  encodes the frames with OpenH264 on every system, Mac included, Cisco's
+  own build of it, which the runner downloads from Cisco the first time an
+  Android view opens and checks against its pinned hash, as Firefox does:
+  Cisco pays the H.264 patent royalties for its binary only, not for a
+  build Demi would make and ship from the source; measured
+  at 78 fps for a 1080 × 2400 screen, more than the 60 the emulator sends:
+  the iOS helper's VideoToolbox encoder takes its pictures inside the
+  helper, which needs Xcode, so a Mac with only Android Studio could not
+  use it, and a second VideoToolbox encoder for Android alone would be the
+  same thing written twice.
+- **Typing and keys** go as a hardware keyboard's, the emulator's gRPC key
+  events with USB HID usages, as on iOS, so text lands at the cursor and the
+  emulator's clipboard is never touched; `type --replace` sets the focused
+  field's text through the helper below. A touch goes to the emulator in
+  its panel's own portrait coordinates, as a finger on the glass does,
+  whatever the display shows: a point on the picture is turned back by the
+  picture's rotation. An element's box, which the helper gives in the
+  display's coordinates, is first turned into the picture's by the
+  display's rotation, read from the helper as the command runs; an element
+  tap whose rotation cannot be read fails and sends nothing.
+- **The UI tree** comes from a helper Demi runs inside the
   emulator, as a shell process started over adb, `app_process`, not an
   installed app: it holds one UI automation connection and reads every
   window, the keyboard and system UI included, in about 55 ms, where
@@ -289,8 +316,10 @@ its standard input and output.
   is openatx's `u2.jar` (MIT, from `openatx/android-uiautomator-server-jar`),
   pinned to a version and shipped with the
   runner. One UI automation connection exists at a time, so a test runner
-  such as Appium started on the same emulator replaces it; the next command
-  says so.
+  such as Appium started on the same emulator replaces it; while it holds
+  it, a command that needs the tree or the display's rotation fails saying
+  so and sends nothing, and Demi takes the connection back only when the
+  other client has let it go.
 - **Coexistence.** The agent's own `adb`, `emulator` and Gradle commands
   work on the same emulator at the same time, as measured.
 

@@ -20,7 +20,7 @@ test = false
 [features]
 # A driver the tests script (`testing`), and the iOS helper's framing for
 # a test that plays the helper.
-testing = []
+testing = ["tonic/server", "tonic/router", "openh264/source"]
 
 [dependencies]
 bytes.workspace = true
@@ -42,10 +42,37 @@ tokio.workspace = true
 tokio-util.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
-
-[target.'cfg(target_os = "macos")'.dependencies]
-# The macOS version the iOS helper needs (`mobile.md` § iOS).
+# The Android driver (`mobile.md` § Android): the emulator's gRPC interface,
+# its JWT signed with ES256, the UI tree's XML, and Cisco's OpenH264 for its
+# frames, loaded at run time once downloaded from Cisco and checked; the
+# tests build OpenH264 from its source instead (`testing`).
+aws-lc-rs = "1"
+bzip2 = "0.6"
+openh264 = { version = "0.9", default-features = false, features = ["libloading"] }
+reqwest = { workspace = true, features = ["rustls"] }
+prost = "0.14"
+http.workspace = true
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "client"] }
+hyper-util = { version = "0.1", features = ["tokio"] }
+notify = "8.2"
+roxmltree = "0.21"
+tonic = { version = "0.14", default-features = false, features = ["codegen", "channel"] }
+tonic-prost = "0.14"
+# The macOS version the iOS helper needs (`mobile.md` § iOS), and the
+# emulators' processes: whether one runs, and since when.
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+
+# The end of an emulator's process, which is not this program's child, as
+# the system announces it (`mobile.md` § Android).
+[target.'cfg(target_os = "macos")'.dependencies]
+kqueue = "1.1"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+rustix = { version = "1", features = ["process"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_System_Threading"] }
 
 [build-dependencies]
 # The iOS helper's build: its downloads' digests, idb's source archive, and
@@ -54,8 +81,12 @@ flate2 = "1"
 sha2 = "0.10"
 tar = { version = "0.4", default-features = false }
 zstd = { version = "0.13", default-features = false }
+# The emulator's gRPC interface, compiled without protoc.
+protox = "0.10"
+tonic-prost-build = "0.14"
 
 [dev-dependencies]
+bzip2 = "0.6"
 demi-command-package-mobile-protocol = { path = "../command-package-mobile-protocol" }
 demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
 demi-mobile = { path = ".", features = ["testing"] }

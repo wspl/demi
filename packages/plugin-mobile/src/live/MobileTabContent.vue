@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { IconButton, Tooltip, downloadUrl, usePage } from '@demicodes/plugin-sdk'
 import DeviceView from './DeviceView.vue'
 import type { MobileDevicesController } from './controller'
-import { DEVICE_CONTROLS, type DeviceControl } from './controls'
+import { deviceControls, type DeviceControl } from './controls'
 import type { MobileTabData } from './kind'
 import { t } from '../locales/text'
 
@@ -25,6 +25,8 @@ const props = defineProps<{
 const { files, errors } = usePage()
 /** Whether the device records, as the device says, whoever started it. */
 const recording = computed(() => props.session.session.recording(props.data.device))
+/** The controls of the device's platform: Back on Android alone. */
+const controls = computed(() => deviceControls(props.session.session.platform(props.data.device)))
 
 /** The file a control left on the Host goes to the user's computer, as a download does. */
 function save(path: string | null): void {
@@ -55,7 +57,7 @@ async function act(control: DeviceControl): Promise<void> {
         <span class="h-10 w-0" />
         <span class="whitespace-nowrap px-2 text-[13px] leading-10 text-fg-body">{{ data.name }}</span>
       </div>
-      <template v-for="(control, index) in DEVICE_CONTROLS" :key="index">
+      <template v-for="(control, index) in controls" :key="index">
         <div v-if="control.group" class="mx-1 h-4 w-px flex-none bg-line" />
         <Tooltip :content="t(control.label({ recording }))">
           <IconButton

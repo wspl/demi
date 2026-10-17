@@ -71,13 +71,30 @@ struct Library {
 }
 
 /// idb's libraries and guest bridge, in demi-mobile's iOS helper
-/// (`mobile.md` § iOS).
-const LIBRARIES: [Library; 1] = [Library {
-    name: "idb",
-    version: "1.7.6",
-    license: "MIT",
-    notice: "crates/command-package-mobile/ios-sim/LICENSE-idb",
-}];
+/// (`mobile.md` § iOS); openatx's UI automation server, demi-mobile's
+/// Android helper, and Cisco's OpenH264 binary, which demi-mobile downloads
+/// for the Android view and whose binary license asks the product to credit
+/// it (`mobile.md` § Android).
+const LIBRARIES: [Library; 3] = [
+    Library {
+        name: "idb",
+        version: "1.7.6",
+        license: "MIT",
+        notice: "crates/command-package-mobile/ios-sim/LICENSE-idb",
+    },
+    Library {
+        name: "android-uiautomator-server-jar",
+        version: "0.4.0",
+        license: "MIT",
+        notice: "crates/command-package-mobile/android/LICENSE-u2",
+    },
+    Library {
+        name: "OpenH264",
+        version: "2.6.0",
+        license: "BSD-2-Clause",
+        notice: "crates/command-package-mobile/android/LICENSE-openh264",
+    },
+];
 
 #[derive(clap::Args)]
 pub struct Options {
@@ -414,6 +431,18 @@ mod tests {
         std::fs::create_dir_all(web.path().join(".vite")).unwrap();
         std::fs::write(web.path().join(BUNDLED), packages.to_string()).unwrap();
         web
+    }
+
+    /// The notices credit Cisco's OpenH264 as its binary license asks,
+    /// with that license's link, though the binary is downloaded at run
+    /// time rather than shipped. Planted defect this catches: OpenH264 left
+    /// out of the notices. Milliseconds.
+    #[test]
+    fn the_notices_credit_ciscos_openh264() {
+        let notices = render(&[], &[], &libraries(&crate::repository()).unwrap());
+        assert!(notices.contains("OpenH264 2.6.0"), "{notices}");
+        assert!(notices.contains("OpenH264 Video Codec provided by Cisco Systems, Inc."));
+        assert!(notices.contains("https://www.openh264.org/BINARY_LICENSE.txt"));
     }
 
     #[test]

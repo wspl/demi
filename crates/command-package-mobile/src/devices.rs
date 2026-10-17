@@ -273,7 +273,8 @@ impl Devices {
             Ok(listed) => listed
                 .into_iter()
                 .find(|simulator| simulator.native_id == entry.native_id)
-                .filter(|simulator| simulator.state == PowerState::Booted)
+                // One still booting, or hung there, is in its boot as well.
+                .filter(|simulator| matches!(simulator.state, PowerState::Booting | PowerState::Booted))
                 .and_then(|simulator| simulator.boot),
             Err(error) => {
                 tracing::warn!("{} could not be listed: {error}", entry.native_id);
@@ -416,18 +417,16 @@ impl Devices {
         let booting = simulator.state != PowerState::Booted;
         let booted = booting || self.booted.holds(driver.platform(), &simulator.native_id, simulator.boot);
         if booting {
-            driver
-                .boot(&simulator.native_id)
-                .await
-                .map_err(MobileError::Driver)?;
-            let entry = Entry {
+            let recorded = Recorded {
+                booted: &self.booted,
                 platform: driver.platform(),
-                native_id: simulator.native_id.clone(),
-                boot: 0,
+                native_id: &simulator.native_id,
             };
-            match self.current_boot(&entry).await {
-                Some(boot) => self.booted.add(Entry { boot, ..entry }),
-                None => tracing::warn!("{}'s boot has no mark; it is not kept past this program", simulator.name),
+            if let Err(error) = driver.boot(&simulator.native_id, &recorded).await {
+                // A boot that began and was not undone leaves the simulator
+                // Demi's, for the hour from now.
+                self.later(driver.platform(), &simulator.native_id);
+                return Err(MobileError::Driver(error));
             }
         }
         let attached = driver.attach(conversation, &simulator.native_id).await;
@@ -607,12 +606,12 @@ impl Devices {
         }
         let driver = self.driver(open.platform);
         let shut_down = open.booted && !matches!(why, Closing::Lost | Closing::Ending);
-        let failure = if why == Closing::Lost {
+        if why == Closing::Lost {
             tracing::info!("{} ({}) went away", open.handle, open.name);
-            None
-        } else {
-            self.let_go(&driver, &open.device, &open.native_id, shut_down, &open.name).await
-        };
+        }
+        // A device that went away is let go as any other, so what attaching
+        // started inside it ends; it is never shut down for going away.
+        let failure = self.let_go(&driver, &open.device, &open.native_id, shut_down, &open.name).await;
         if why == Closing::Lost {
             // A device that went away may still be booted, as when its
             // helper ended: it stays Demi's until it is shut down.
@@ -824,5 +823,27 @@ impl Announcer {
 impl From<DriverError> for MobileError {
     fn from(error: DriverError) -> Self {
         Self::Driver(error)
+    }
+}
+
+/// A boot `open` started, recorded in the simulators Demi booted as it
+/// begins and taken out again once the driver undid a failed one.
+struct Recorded<'a> {
+    booted: &'a Booted,
+    platform: MobilePlatform,
+    native_id: &'a str,
+}
+
+impl crate::driver::Booting for Recorded<'_> {
+    fn began(&self, boot: u64) {
+        self.booted.add(Entry {
+            platform: self.platform,
+            native_id: self.native_id.to_owned(),
+            boot,
+        });
+    }
+
+    fn undone(&self) {
+        self.booted.remove(self.platform, self.native_id);
     }
 }

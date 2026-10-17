@@ -24,7 +24,7 @@ use demi_live_view::stream::CaptureEvent;
 
 use crate::{
     driver::{
-        Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, KeyPress, PixelRect, Png, Points,
+        Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, KeyPress, PixelRect, Png, Points,
         RawElement, Rect, Recording, Result, Screen, Simulator, TouchPhase,
     },
     keys,
@@ -261,8 +261,17 @@ impl Driver for Ios {
         })
     }
 
-    fn boot<'a>(&'a self, native_id: &'a str) -> BoxFuture<'a, Result<()>> {
-        Box::pin(async move { self.once::<Value>(&["boot", native_id]).await.map(drop) })
+    fn boot<'a>(&'a self, native_id: &'a str, booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            // simctl's boot is one step: the simulator is booted, or not,
+            // when it answers.
+            self.once::<Value>(&["boot", native_id]).await?;
+            match self.launch.boots().get(native_id) {
+                Some(boot) => booting.began(*boot),
+                None => tracing::warn!("{native_id}'s boot has no mark; it is not kept past this program"),
+            }
+            Ok(())
+        })
     }
 
     fn shutdown<'a>(&'a self, native_id: &'a str) -> BoxFuture<'a, Result<()>> {
@@ -526,18 +535,25 @@ impl Device for IosDevice {
         Box::pin(self.done("key", json!({ "usage": key.usage, "down": key.down })))
     }
 
-    fn text<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>> {
+    fn type_keys<'a>(&'a self, keys: &'a [keys::Typed]) -> BoxFuture<'a, Result<()>> {
+        // The helper sends the keys as one event, each key released in it.
+        Box::pin(self.done("type", json!({ "keys": keys })))
+    }
+
+    fn insert<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
-            let mut presses = Vec::new();
-            for character in text.chars() {
-                let (usage, shift) = keys::typed(character).ok_or_else(|| {
-                    DriverError::Failed(format!(
-                        "{character:?} has no key on a US keyboard; set such text with type --into <element> --replace"
-                    ))
-                })?;
-                presses.push(json!([usage, shift]));
+            // A simulator takes no text into its pasteboard from outside
+            // (`mobile.md` § Commands): the focused field's value becomes
+            // its value with the text at its end, through accessibility.
+            let tree = self.tree().await?;
+            let Some(field) = focused_field(&tree) else {
+                return Err(DriverError::NoFocusedField(text.to_owned()));
+            };
+            if field.secure {
+                return Err(DriverError::Failed(format!("{text:?} has no keys on a US keyboard, and the focused field is a password field, whose text cannot be read to add it to")));
             }
-            self.done("type", json!({ "keys": presses })).await
+            let value = field.value.clone().unwrap_or_default();
+            self.set_value(field.frame.centre(), &format!("{value}{text}")).await
         })
     }
 
@@ -711,4 +727,16 @@ impl Drop for IosCapture {
         self.helper.forget(self.capture);
         self.tell("captureStop", json!({}));
     }
+}
+
+/// The focused element in `elements`, at any depth: the field the
+/// keyboard types into.
+fn focused_field(elements: &[RawElement]) -> Option<&RawElement> {
+    elements.iter().find_map(|element| {
+        if element.focused == Some(true) {
+            Some(element)
+        } else {
+            focused_field(&element.children)
+        }
+    })
 }

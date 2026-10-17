@@ -28,6 +28,7 @@ import {
   type LiveFrame,
   type LiveModuleMessage,
   type LiveViewerMessage,
+  type MobilePlatform,
   type Orientation,
   type PanelReason,
 } from '../generated/plugin'
@@ -75,8 +76,12 @@ export interface LiveState {
 export interface MobileSessionOptions {
   open: OpenUserStream
   platform: 'mac' | 'windows' | 'linux' | 'other'
-  /** A notice the picture still shows through, such as input that did not arrive. */
-  onNotice?: (reason: PanelReason) => void
+  /**
+   * A notice the picture still shows through, such as input that did not
+   * arrive, with the notice's message, which only a reason the page quotes
+   * from, such as the viewer's own text, is meant for.
+   */
+  onNotice?: (reason: PanelReason, message: string) => void
   defect: (message: string, error: unknown) => void
   now?: () => number
 }
@@ -155,6 +160,11 @@ export class MobileSession {
       defect: options.defect,
       now: options.now,
     })
+  }
+
+  /** The platform of `device`, while it is open. */
+  platform(device: string): MobilePlatform | null {
+    return this.state.devices.find((listed) => listed.id === device)?.platform ?? null
   }
 
   /** Whether `device` records now, as the device says, whoever started it. */
@@ -244,7 +254,7 @@ export class MobileSession {
         } else if (reason.data === LIVE_CAPTURE_FAILED || reason.data === LIVE_CAPTURE_UNAVAILABLE) {
           this.state.pictureless = reason.data
         } else {
-          this.options.onNotice?.(reason.data)
+          this.options.onNotice?.(reason.data, message.message)
         }
         break
       }

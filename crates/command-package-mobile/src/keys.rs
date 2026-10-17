@@ -1,7 +1,13 @@
 //! A hardware keyboard's keys as USB HID usages (HID Usage Tables § 10,
 //! Keyboard/Keypad Page), which a simulator takes: the viewer's keys by
 //! their `KeyboardEvent.code`, and the characters `type` types on a US
-//! layout, with Shift where the character needs it.
+//! layout, with Shift where the character needs it. Text a US keyboard
+//! cannot type goes in as the device's platform allows (`mobile.md`
+//! § Commands), the agent's and the viewer's alike.
+
+use std::sync::Arc;
+
+use crate::driver::{Device, Result};
 
 /// The usage of Left Shift.
 pub const SHIFT: u32 = 0xe1;
@@ -107,4 +113,43 @@ pub fn typed(character: char) -> Option<(u32, bool)> {
         '?' => (0x38, true),
         _ => return None,
     })
+}
+
+/// A key a US keyboard types a character with: its usage, and whether
+/// Shift is held for it.
+pub type Typed = (u32, bool);
+
+/// A stretch of text as it goes in: typed, or inserted otherwise.
+#[derive(Debug, PartialEq)]
+pub enum Run {
+    Keys(Vec<Typed>),
+    Inserted(String),
+}
+
+/// `text` as it goes in: each stretch a US keyboard types as its keys, each
+/// other stretch inserted as the platform allows.
+pub fn runs(text: &str) -> Vec<Run> {
+    let mut runs: Vec<Run> = Vec::new();
+    for character in text.chars() {
+        match (typed(character), runs.last_mut()) {
+            (Some(key), Some(Run::Keys(keys))) => keys.push(key),
+            (Some(key), _) => runs.push(Run::Keys(vec![key])),
+            (None, Some(Run::Inserted(inserted))) => inserted.push(character),
+            (None, _) => runs.push(Run::Inserted(character.into())),
+        }
+    }
+    runs
+}
+
+/// Enters `text` at the cursor of `device`: typed where a US keyboard has
+/// the keys, the rest as the device's platform allows (`mobile.md`
+/// § Commands).
+pub async fn enter(device: &Arc<dyn Device>, text: &str) -> Result<()> {
+    for run in runs(text) {
+        match run {
+            Run::Keys(keys) => device.type_keys(&keys).await?,
+            Run::Inserted(text) => device.insert(&text).await?,
+        }
+    }
+    Ok(())
 }

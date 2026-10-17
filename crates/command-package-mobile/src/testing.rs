@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use demi_command_package_mobile_protocol::mobile::{Appearance, Orientation, MobilePlatform, PowerState};
 
 use crate::driver::{
-    Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, KeyPress, Png, Points, RawElement,
+    Booting, Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, KeyPress, Png, Points, RawElement,
     Recording, Result, Screen, Simulator, TouchPhase,
 };
 
@@ -134,10 +134,14 @@ impl Driver for FakeDriver {
         Box::pin(async { Ok(self.simulators.lock().unwrap().clone()) })
     }
 
-    fn boot<'a>(&'a self, native_id: &'a str) -> BoxFuture<'a, Result<()>> {
+    fn boot<'a>(&'a self, native_id: &'a str, booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>> {
         Box::pin(async move {
             self.log(format!("boot {native_id}"));
             self.set_state(native_id, PowerState::Booted);
+            let boot = self.simulators.lock().unwrap().iter().find(|simulator| simulator.native_id == native_id).and_then(|simulator| simulator.boot);
+            if let Some(boot) = boot {
+                booting.began(boot);
+            }
             let held = self.held.lock().unwrap().clone();
             if let Some(held) = held {
                 held.started.notify_one();
@@ -301,9 +305,23 @@ impl Device for FakeDevice {
         })
     }
 
-    fn text<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>> {
+    fn type_keys<'a>(&'a self, keys: &'a [crate::keys::Typed]) -> BoxFuture<'a, Result<()>> {
+        // The log says the characters the keys type on a US keyboard.
+        let text: String = keys
+            .iter()
+            .filter_map(|key| (' '..='~').chain(['\n', '\t']).find(|character| crate::keys::typed(*character) == Some(*key)))
+            .collect();
         Box::pin(async move {
             self.log(format!("text {text:?}"));
+            Ok(())
+        })
+    }
+
+    fn insert<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>> {
+        Box::pin(async move {
+            self.log(format!("insert {text:?}"));
+            // The field draws the inserted text.
+            self.draw();
             Ok(())
         })
     }
@@ -388,6 +406,18 @@ impl Device for FakeDevice {
         Box::pin(async {
             self.log("detach".into());
             Ok(())
+        })
+    }
+}
+
+/// OpenH264 built from its source, which the tests encode with instead of
+/// downloading Cisco's build.
+pub struct BuiltOpenH264;
+
+impl crate::android::Codec for BuiltOpenH264 {
+    fn library(&self) -> BoxFuture<'_, Result<crate::android::Load>> {
+        Box::pin(async {
+            Ok(std::sync::Arc::new(|| Ok(openh264::OpenH264API::from_source())) as crate::android::Load)
         })
     }
 }
