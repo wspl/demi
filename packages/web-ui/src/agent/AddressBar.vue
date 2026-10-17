@@ -145,6 +145,7 @@ defineExpose({
       ref="field"
       class="ml-2 min-w-0 flex-1"
       :focused="focused"
+      asked
       :model-value="draft ?? address"
       :placeholder="t('address.placeholder')"
       :aria-label="t('address.label')"

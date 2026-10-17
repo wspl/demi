@@ -4,6 +4,7 @@ import type { LiveDialog } from '../generated/plugin'
 import { Button } from '@demicodes/plugin-sdk'
 import { ScrollArea } from '@demicodes/plugin-sdk'
 import { TextInput } from '@demicodes/plugin-sdk'
+import { useAutofocus } from '@demicodes/plugin-sdk'
 import { dialogTitle, keyAnswer } from './dialogs'
 import { t } from '../locales/text'
 
@@ -27,11 +28,16 @@ const text = ref(props.dialog.defaultText)
 const panel = ref<HTMLElement | null>(null)
 const field = ref<InstanceType<typeof TextInput> | null>(null)
 
-/** The dialog, or a prompt's field, takes the focus, so Enter and Escape reach the dialog. */
+const autofocus = useAutofocus()
+
+/**
+ * The dialog, or a prompt's field, takes the focus, so Enter and Escape reach
+ * the dialog. The page opened it, not the user: on a phone the field waits
+ * for a tap (`useAutofocus`) and the dialog holds the focus meanwhile.
+ */
 async function takeFocus(): Promise<void> {
   await nextTick()
-  if (props.dialog.type === 'prompt') {
-    field.value?.focus()
+  if (props.dialog.type === 'prompt' && autofocus(field.value?.el)) {
     field.value?.select()
     return
   }

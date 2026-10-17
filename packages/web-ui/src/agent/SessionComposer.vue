@@ -47,7 +47,6 @@ import MenuItem from '../ui/MenuItem.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import type { Action } from '../ui/operations'
 import type { PlaceholderText } from '../ui/ui-text'
-import { usePhone } from '../ui/phone'
 import {
   DEFAULT_SEND_WHILE_RUNNING,
   sendWayLabel,
@@ -89,8 +88,8 @@ const props = withDefaults(
     /**
      * The draft takes the focus as the composer shows, so a new or opened
      * conversation is typed into at once (`conversations.md` § Conversations and
-     * projects); not on a phone, where it would raise the on-screen
-     * keyboard, nor while another field holds the focus.
+     * projects); not on a phone, where the keyboard waits for a tap
+     * (`useAutofocus`), nor while another field holds the focus.
      */
     focusOnShow?: boolean
     attachOpen?: boolean
@@ -231,8 +230,7 @@ const editLast = computed(() => props.disabled ? undefined : editLastMessage())
  */
 const dockCards = inject(dockCardsKey, () => ref<HTMLElement>(), true)
 /** Read once, as the composer shows: the focus it finds then decides. */
-const phone = usePhone()
-const takesFocus = props.focusOnShow && !phone.value && !isFocusedElementEditable()
+const takesFocus = props.focusOnShow && !isFocusedElementEditable()
 /** The editor shown: the edit's, or the draft's. */
 const editor = ref<InstanceType<typeof MessageEditor>>()
 const focused = ref(false)
@@ -525,12 +523,10 @@ defineExpose({
   },
   /**
    * The user asked for this draft again, as New does on the draft it
-   * shows: the message takes the focus, except on a phone.
+   * shows: the message takes the focus, except on a phone (`useAutofocus`).
    */
   focusDraft(): void {
-    if (!phone.value) {
-      editor.value?.focus()
-    }
+    editor.value?.takeFocus()
   },
 })
 
@@ -619,6 +615,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             composer
             cancelable
             autofocus
+            asked
             :line-width="line"
             :disabled="!edit.editable.value"
             :markdown="edit.markdown.value"
