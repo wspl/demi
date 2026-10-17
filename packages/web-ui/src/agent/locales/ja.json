@@ -130,7 +130,10 @@
         "stopped": "{count} 個のエージェントが停止"
       },
       "heard": "{count} 個のエージェントから連絡"
-    }
+    },
+    "copyMessage": "メッセージをコピー",
+    "sendToConversation": "チャットに送る",
+    "sendToNew": "新しいチャット"
   },
   "subagents": {
     "mainAgent": "メインエージェント",

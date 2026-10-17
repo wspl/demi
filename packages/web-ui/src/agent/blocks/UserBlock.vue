@@ -3,7 +3,11 @@ import { t } from '../locales/text'
 import { computed, ref } from 'vue'
 import type { Component } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { Pencil, Zap } from '@lucide/vue'
+import { Copy, Pencil, Zap } from '@lucide/vue'
+import { useCopy } from '../../composables/useCopy'
+import { vContextMenu, type ContextMenuDeclaration } from '../../ui/context-menu'
+import { sendEntry, textWords, useSendTargets } from '../send-to-conversation'
+import { contentCopy } from '../message-input/copied-message'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import CopyButton from '@demicodes/web-ui/ui/CopyButton.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -112,6 +116,35 @@ const actions = computed<BubbleAction[]>(() => {
   return [{ key: 'edit', hint: t('transcript.user.edit'), icon: Pencil, emit: () => emit('edit') }]
 })
 
+const { copy } = useCopy(copySource)
+
+const targets = useSendTargets()
+/** Whether the message is the user's own, which Send to Conversation takes elsewhere; a child's brief is not. */
+const own = computed(() => typeof props.brief !== 'string')
+
+/**
+ * The message's menu: what its controls offer, Copy and, where it can be
+ * edited, Edit, then Send to Conversation, which takes it with its files;
+ * a message not yet read, its Send Now and Recall.
+ */
+const menu: ContextMenuDeclaration = {
+  entries: () => {
+    if (props.pending) {
+      return [[
+        { label: t('transcript.user.sendNow'), run: () => emit('sendNow') },
+        { label: t('transcript.user.recall'), run: () => emit('recall') },
+      ]]
+    }
+    return [[
+      { icon: Copy, label: t('transcript.copyMessage'), run: copy },
+      ...actions.value.map((action) => ({ icon: action.icon, label: action.hint, run: action.emit })),
+      ...(targets && own.value ? [sendEntry(targets, () => contentCopy(props.content))] : []),
+    ]]
+  },
+  selectionEntries: (text) => (targets && own.value && !props.pending ? [sendEntry(targets, () => textWords(text))] : []),
+  text: true,
+}
+
 const textClass = computed(() => (props.pending ? 'text-fg-subtle' : 'text-fg-body'))
 
 /**
@@ -183,6 +216,7 @@ useResizeObserver(bodyRef, measure)
 
 <template>
   <div
+    v-context-menu="menu"
     class="group/user relative z-10 flex flex-col items-end bg-surface px-[var(--agent-pad-x,2rem)] pb-2 pt-1.5"
     :class="forceStuck ? 'user-sticky' : ''"
   >

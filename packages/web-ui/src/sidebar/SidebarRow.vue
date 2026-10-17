@@ -29,7 +29,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   click: [event: MouseEvent]
-  contextmenu: [event: MouseEvent]
   archive: []
   /** A double-click on the title: the row names itself in place, as Rename in its menu does. */
   renameStart: []
@@ -83,7 +82,6 @@ const rowClass = computed(() => [
     :class="rowClass"
     :aria-selected="selected"
     @click="emit('click', $event)"
-    @contextmenu.prevent="emit('contextmenu', $event)"
   >
     <ConversationDot :conversation="conversation" />
     <TitleInput

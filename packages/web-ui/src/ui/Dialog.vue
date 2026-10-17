@@ -7,6 +7,8 @@ import ScrollArea from './ScrollArea.vue'
 import { useEscapeClose } from '../composables/useEscapeClose'
 import { provideRowTarget } from './operations'
 import { createOverlayFamily, overlayFamilyKey, overlayOwnerKey } from '../overlay/overlayFamily'
+// A context menu opened in the dialog reads its layer from its element and stands on it (`context-menu.ts`).
+import { overlayLayerAttributes } from './context-menu'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { overlayInlineKey, useOverlayTarget } from '../overlay/overlayContainer'
 import { dialogNestingKey } from '../overlay/dialogNesting'
@@ -196,6 +198,7 @@ useEscapeClose(() => props.isOpen && !pinned.value && props.overlayStore.isTop(i
           ? 'dialog-scrim relative grid'
           : ['dialog-scrim dialog-host fixed inset-0 z-50 grid bg-black/40', anchor === 'top' ? 'items-start justify-items-center pt-[12vh]' : 'place-items-center']"
         :style="inline || depth === 0 ? undefined : { zIndex: LAYER_Z + depth }"
+        v-bind="overlayLayerAttributes(id, LAYER_Z + depth)"
         @click.self="!inline && emit('close')"
       >
         <!-- The panel is a region (`ui/region.ts`): a menu opened in it grows toward its inside. -->

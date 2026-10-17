@@ -4,9 +4,8 @@ import { conversationTitle } from '../agent/conversation-title'
 import { computed, nextTick, ref, useId, watch } from 'vue'
 import { Archive, FolderPlus, Search, Settings, Smartphone, SquarePen, Zap } from '@lucide/vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
+import { closeContextMenu, shownContextMenu, vContextMenu, type ContextMenuDeclaration } from '@demicodes/web-ui/ui/context-menu'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
-import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
 import type { Action } from '@demicodes/web-ui/ui/operations'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import RegionStatus from '@demicodes/web-ui/ui/RegionStatus.vue'
@@ -35,9 +34,8 @@ import SidebarGroupLabel from './SidebarGroupLabel.vue'
 import SidebarNavItem from './SidebarNavItem.vue'
 import SidebarProjectHeader from './SidebarProjectHeader.vue'
 import { projectHostName, projectsNamingTheirHost } from './project-hosts'
-import SidebarProjectMenu from './SidebarProjectMenu.vue'
+import { projectEntries, selectionEntries } from './selection-menu'
 import SidebarRow from './SidebarRow.vue'
-import SidebarSelectionMenu from './SidebarSelectionMenu.vue'
 import { useRevealOpen } from './reveal-open'
 import ConversationDeleteDialog from './ConversationDeleteDialog.vue'
 import ProjectDeleteDialog from './ProjectDeleteDialog.vue'
@@ -322,22 +320,42 @@ watch(() => props.activeId, (id) => {
 }, { immediate: true })
 watch(entries, list.prune)
 
-// One context menu for rows and one for project headers, anchored where the pointer opened them.
-const rowMenu = useContextMenuOwner()
-const projectMenu = useContextMenuOwner()
+// A row's menu acts on the selection, which a right-click on a row outside it makes that row alone;
+// the rows it acts on show it while it is open.
 const menuTargets = ref<SidebarConversation[]>([])
-const menuProject = ref<SidebarProject | null>(null)
 
-function openRowMenu(id: string, event: MouseEvent): void {
-  list.onRowContextMenu(id)
-  menuTargets.value = conversationsOf(list.targetIds(id))
-  rowMenu.open(event, listRef.value)
+function rowMenu(id: string): ContextMenuDeclaration {
+  return {
+    opened: () => {
+      list.onRowContextMenu(id)
+      menuTargets.value = conversationsOf(list.targetIds(id))
+    },
+    entries: () => selectionEntries(menuTargets.value, {
+      open: (target) => emit('select', target),
+      rename: (target) => (renamingId.value = target),
+      copyId: (target) => void copyId(target),
+      pin: (ids, pinned) => emit('pin', ids, pinned),
+      archive: (ids) => emit('archive', ids),
+      delete: (ids) => askDelete(ids),
+    }),
+    closed: () => {
+      menuTargets.value = []
+    },
+  }
 }
 
-function openProjectMenu(project: SidebarProject, event: MouseEvent): void {
-  list.focusedId.value = project.id
-  menuProject.value = project
-  projectMenu.open(event, listRef.value)
+function projectMenu(project: SidebarProject): ContextMenuDeclaration {
+  return {
+    opened: () => {
+      list.focusedId.value = project.id
+    },
+    entries: () => projectEntries({ folded: isFolded(project.id), count: projectCount(project) }, {
+      create: () => emit('create', project.id),
+      toggleFold: () => setFolded(project.id, !isFolded(project.id)),
+      selectAll: () => selectProjectConversations(project),
+      delete: () => askDeleteProject(project),
+    }),
+  }
 }
 
 // The list's active row, named for `aria-activedescendant`: the row wears the ring, the list keeps the focus.
@@ -354,7 +372,7 @@ function onListFocusout(event: FocusEvent): void {
   const next = event.relatedTarget
   if (next instanceof Node && listRef.value?.contains(next))
     return
-  if (rowMenu.isOpen.value || projectMenu.isOpen.value)
+  if (shownContextMenu.value)
     return
   list.keyboardNav.value = false
 }
@@ -401,9 +419,8 @@ function onListKeydown(event: KeyboardEvent): void {
     }
     return
   }
-  if (rowMenu.isOpen.value || projectMenu.isOpen.value) {
-    rowMenu.close()
-    projectMenu.close()
+  if (shownContextMenu.value) {
+    closeContextMenu()
     if (event.key === 'Escape') {
       event.preventDefault()
       return
@@ -486,7 +503,7 @@ function projectCount(project: SidebarProject): number {
 }
 
 function rowMenuOpenFor(id: string): boolean {
-  return rowMenu.isOpen.value && menuTargets.value.some((target) => target.id === id)
+  return menuTargets.value.some((target) => target.id === id)
 }
 
 function submitRename(id: string, title: string): void {
@@ -680,8 +697,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 :focused="list.keyboardNav.value && list.focusedId.value === entry.id"
                 @toggle="list.onProjectClick(entry.id)"
                 @create="emit('create', entry.id)"
-                data-touch-menu
-                @contextmenu="(event) => openProjectMenu(projectById.get(entry.id)!, event)"
+                v-context-menu="projectMenu(projectById.get(entry.id)!)"
               />
               <SidebarRow
                 v-else
@@ -693,8 +709,7 @@ function selectProjectConversations(project: SidebarProject): void {
                 :menu-open="rowMenuOpenFor(entry.id)"
                 :renaming="renamingId === entry.id"
                 @click="(event) => list.onRowClick(entry.id, event)"
-                data-touch-menu
-                @contextmenu="(event) => openRowMenu(entry.id, event)"
+                v-context-menu="rowMenu(entry.id)"
                 @archive="emit('archive', [entry.id])"
                 @rename-start="renamingId = entry.id"
                 @rename-submit="(title) => submitRename(entry.id, title)"
@@ -747,19 +762,6 @@ function selectProjectConversations(project: SidebarProject): void {
       </Tooltip>
     </div>
 
-    <ContextMenu :overlay-store="appOverlayStore" :owner="rowMenu">
-      <template #menu>
-        <SidebarSelectionMenu
-          :targets="menuTargets"
-          @open="(id) => emit('select', id)"
-          @rename="(id) => (renamingId = id)"
-          @copy-id="(id) => void copyId(id)"
-          @pin="(ids, pinned) => emit('pin', ids, pinned)"
-          @archive="(ids) => emit('archive', ids)"
-          @delete="(ids) => askDelete(ids)"
-        />
-      </template>
-    </ContextMenu>
     <ConversationDeleteDialog
       :is-open="deleteOpen"
       :overlay-store="appOverlayStore"
@@ -767,20 +769,6 @@ function selectProjectConversations(project: SidebarProject): void {
       @close="deleteOpen = false"
       @delete="confirmDelete"
     />
-    <ContextMenu :overlay-store="appOverlayStore" :owner="projectMenu">
-      <template #menu>
-        <SidebarProjectMenu
-          v-if="menuProject"
-          :project="menuProject"
-          :folded="isFolded(menuProject.id)"
-          :count="projectCount(menuProject)"
-          @create="emit('create', menuProject.id)"
-          @toggle-fold="setFolded(menuProject.id, !isFolded(menuProject.id))"
-          @select-all="selectProjectConversations(menuProject)"
-          @delete="askDeleteProject(menuProject)"
-        />
-      </template>
-    </ContextMenu>
     <ProjectDeleteDialog
       v-if="deletingProject"
       :is-open="projectDeleteOpen"

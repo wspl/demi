@@ -130,7 +130,10 @@
         "stopped": "{count} agent stopped | {count} agents stopped"
       },
       "heard": "heard from {count} agent | heard from {count} agents"
-    }
+    },
+    "copyMessage": "Copy Message",
+    "sendToConversation": "Send to Conversation",
+    "sendToNew": "New Conversation"
   },
   "subagents": {
     "mainAgent": "Main agent",
