@@ -26,8 +26,9 @@ use demi_plugin_interface::{
 use demi_provider_common::Provider;
 use demi_provider_common::credentials::AuthReason;
 use demi_provider_common::images::{
-    Aspect, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, InputImage, facts,
+    Aspect, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, InputImage, knows,
 };
+use demi_provider_common::media_catalog::Catalog;
 use demi_host_interface::{JobCaller, PortError};
 use demi_shared_types::{Model, Rotation, Timestamp, TurnId};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
@@ -248,6 +249,7 @@ pub(crate) async fn image_models(shard: &Shard) -> Result<Vec<ImageVendorModels>
     }
     let manages = manages(shard).await?;
     let http = shard.http();
+    let catalog = shard.services().media.current();
     let mut groups = Vec::new();
     for vendor in ImageVendor::ALL {
         let candidates = makers.candidates(vendor, preferences.image_entries.get(&vendor));
@@ -259,7 +261,7 @@ pub(crate) async fn image_models(shard: &Shard) -> Result<Vec<ImageVendorModels>
         let mut listed: Vec<(&Maker, Vec<ImageModelInfo>, bool)> = Vec::new();
         let mut unlisted = Vec::new();
         for maker in candidates.iter().copied() {
-            match maker.images().models(http).await {
+            match maker.images().models(http, &catalog).await {
                 Ok(models) => {
                     let spent = match models.first() {
                         Some(model) => used_up(shard.services(), maker, &model.id).await.map_err(failed)?,
@@ -319,10 +321,16 @@ pub(crate) async fn image_models(shard: &Shard) -> Result<Vec<ImageVendorModels>
     Ok(groups)
 }
 
-/// Whether `maker` offers `model`, by its list; a list that could not be
-/// read is kept in `unread` and offers nothing.
-async fn offers(shard: &Shard, maker: &Maker, model: &str, unread: &mut Option<(String, ImageFailure)>) -> bool {
-    match maker.images().models(shard.http()).await {
+/// Whether `maker` offers `model`, by its list as `catalog` tells it; a
+/// list that could not be read is kept in `unread` and offers nothing.
+async fn offers(
+    shard: &Shard,
+    catalog: &Catalog,
+    maker: &Maker,
+    model: &str,
+    unread: &mut Option<(String, ImageFailure)>,
+) -> bool {
+    match maker.images().models(shard.http(), catalog).await {
         Ok(models) => models.iter().any(|offered| offered.id == model),
         Err(failure) => {
             unread.get_or_insert((maker.images().name().to_owned(), failure));
@@ -378,16 +386,17 @@ async fn make(
         Some(node.record().number)
     });
     let manages = manages(shard).await?;
-    // The vendor whose table names the model is tried first: a model is
-    // one vendor's, and the others' keys need not be listed.
+    // The vendor whose catalog entries name the model is tried first: a
+    // model is one vendor's, and the others' keys need not be listed.
+    let catalog = shard.services().media.current();
     let mut vendors = ImageVendor::ALL;
-    vendors.sort_by_key(|vendor| !facts(*vendor).iter().any(|known| known.id == model));
+    vendors.sort_by_key(|vendor| !knows(&catalog, *vendor, &model));
     let mut spent: Option<PortFailure> = None;
     let mut unread = None;
     for vendor in vendors {
         let mut found = false;
         for candidate in makers.candidates(vendor, preferences.image_entries.get(&vendor)) {
-            if !offers(shard, candidate, &model, &mut unread).await {
+            if !offers(shard, &catalog, candidate, &model, &mut unread).await {
                 continue;
             }
             found = true;
@@ -399,6 +408,7 @@ async fn make(
             };
             let making = Making {
                 shard,
+                catalog: &catalog,
                 manages,
                 turn: caller.and_then(|caller| caller.turn.clone()),
                 maker: &maker,
@@ -425,7 +435,7 @@ async fn make(
     }
     let mut unread_off = None;
     for maker in &makers.off {
-        if offers(shard, maker, &model, &mut unread_off).await {
+        if offers(shard, &catalog, maker, &model, &mut unread_off).await {
             return Err(refused(ImageRefusal::Off {
                 model,
                 provider: maker.entry.label.clone(),
@@ -446,6 +456,8 @@ async fn make(
 /// has no account.
 struct Making<'a> {
     shard: &'a Shard,
+    /// What the model takes, as the call's catalog says.
+    catalog: &'a Catalog,
     maker: &'a Maker,
     request: &'a ImageRequest,
     /// The calling agent's number, which the ledger rows name.
@@ -614,7 +626,7 @@ impl Making<'_> {
             self.shard,
         );
         let answer = maker
-            .make(self.shard.http(), self.request.clone())
+            .make(self.shard.http(), self.catalog, self.request.clone())
             .instrument(span.clone())
             .await;
         let made = answer.result;

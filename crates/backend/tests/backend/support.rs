@@ -4,6 +4,7 @@
 //! the backend's local store serves its runners, and an HTTP client that
 //! sends a session's cookie.
 
+use demi_provider_common::media_catalog::Catalog;
 use std::future::Future;
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -57,6 +58,22 @@ use tokio_tungstenite::tungstenite::client::IntoClientRequest as _;
 use tokio_util::sync::CancellationToken;
 
 use crate::machines::ScriptedManager;
+
+/// The media catalog of every test backend: what it states of the scripted
+/// families' image models (`images.rs`), with a field no backend knows.
+pub const MEDIA_CATALOG: &str = r#"{
+  "updated": "2026-09-01T00:00:00Z",
+  "models": [
+    { "vendor": "openai", "id": "picture-1", "kind": "image", "name": "Picture 1",
+      "description": "Best pictures", "released": "2026-01-05",
+      "image": { "aspectRatios": ["1:1", "16:9"], "edits": true } },
+    { "vendor": "openai", "id": "picture-2", "kind": "image", "name": "Picture 2",
+      "description": "Faster pictures", "released": "2026-06-01", "image": { "aspectRatios": ["1:1"] } },
+    { "vendor": "openai", "id": "drawing-1", "kind": "image", "name": "Drawing 1",
+      "description": "Line drawings", "released": "2026-02-01", "image": { "aspectRatios": ["1:1"] },
+      "brushes": ["pencil"] }
+  ]
+}"#;
 
 /// Where a scenario that serves no models.dev document finds none: a port
 /// nothing listens on. No scenario reaches the public models.dev; one that
@@ -691,6 +708,10 @@ impl Harness {
                 .expect("the backend has the skills plugin");
             *skills = Box::new(repos.skills());
         }
+        // No test downloads the media catalog: each reads the scripted
+        // image models' instead of the release's.
+        config.media_catalog_url = None;
+        config.media_catalog = Arc::new(Catalog::decode(MEDIA_CATALOG.as_bytes()).unwrap());
         config.models_dev_url = self
             .models_dev_url
             .as_deref()

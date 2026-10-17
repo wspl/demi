@@ -4,6 +4,7 @@
 //! quota every family shares, and makes images as the test scripts. No
 //! test calls a real vendor.
 
+use demi_provider_common::media_catalog::Catalog;
 use std::collections::VecDeque;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -22,7 +23,7 @@ use demi_provider_common::quota::{
 };
 use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
 use demi_provider_common::images::{
-    ImageAnswer, ImageFacts, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, MadeImage,
+    ImageAnswer, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, MadeImage, listed,
 };
 use demi_provider_common::{
     Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError,
@@ -226,7 +227,9 @@ pub struct ScriptedSubscription {
 pub struct ImageScript {
     pub name: &'static str,
     pub vendor: ImageVendor,
-    pub models: &'static [ImageFacts],
+    /// The IDs of its models, which it lists as a key's listing names
+    /// them, told as the backend's catalog states them.
+    pub models: &'static [&'static str],
     pub image: Mutex<bytes::Bytes>,
     pub used_up: Mutex<Vec<String>>,
     /// Whether a call waits, never answering, until it is dropped.
@@ -252,7 +255,7 @@ impl Drop for Dropped {
 
 impl ImageScript {
     /// OpenAI's images, answered as `Scripted`.
-    pub fn new(models: &'static [ImageFacts], image: bytes::Bytes) -> Self {
+    pub fn new(models: &'static [&'static str], image: bytes::Bytes) -> Self {
         Self {
             name: "Scripted",
             vendor: ImageVendor::OpenAi,
@@ -294,8 +297,14 @@ impl ImageMaker for ScriptedImages {
         self.script.vendor
     }
 
-    fn models<'a>(&'a self, _: &'a reqwest::Client) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
-        Box::pin(std::future::ready(Ok(self.script.models.iter().map(ImageModelInfo::from).collect())))
+    fn models<'a>(
+        &'a self,
+        _: &'a reqwest::Client,
+        catalog: &'a Catalog,
+    ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
+        let vendor = self.script.vendor;
+        let models = self.script.models.iter().map(|id| listed(catalog, vendor, id, None, None)).collect();
+        Box::pin(std::future::ready(Ok(models)))
     }
 
     fn confirms_model(&self) -> bool {
@@ -305,6 +314,7 @@ impl ImageMaker for ScriptedImages {
     fn make<'a>(
         &'a self,
         _: &'a reqwest::Client,
+        _: &'a Catalog,
         request: ImageRequest,
     ) -> BoxFuture<'a, ImageAnswer> {
         let mut calls = self.script.calls.lock().unwrap();

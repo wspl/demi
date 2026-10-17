@@ -9,6 +9,7 @@ use demi_command_package_fetch_protocol::{
     FetchArgs, Fetched, FetchedFile, FetchedPage, MAX_TIMEOUT_MS,
 };
 use demi_command_protocol::{CommandError, Completion, sniff_media_type};
+use demi_shared_types::thousands;
 use demi_command_sdk::{InvocationContext, ServiceError, errors::reason};
 use reqwest::{StatusCode, Url};
 
@@ -281,18 +282,6 @@ fn redirected(url: &str, final_url: &str) -> String {
     }
 }
 
-/// `value` with its thousands separated by commas, as `48,213`.
-fn thousands(value: u64) -> String {
-    let digits = value.to_string();
-    let mut grouped = String::new();
-    for (index, digit) in digits.chars().enumerate() {
-        if index > 0 && (digits.len() - index) % 3 == 0 {
-            grouped.push(',');
-        }
-        grouped.push(digit);
-    }
-    grouped
-}
 
 fn json(value: &Fetched) -> String {
     let mut text = serde_json::to_string(value).expect("a result serializes");
