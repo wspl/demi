@@ -1,0 +1,21 @@
+# Every program Cargo runs, each test binary above all, starts with its soft
+# open-file limit raised as far as the system allows, as the runner raises its
+# own (`process::raise_open_file_limit`): to the hard limit, and on macOS to at
+# most the kernel's per-process maximum, a number, never macOS's unlimited
+# hard limit. A shell that starts with macOS's default of 256 otherwise fails
+# hundreds of backend scenarios with "Too many open files". A raise the system
+# refuses is skipped: the program then runs with the limit it was started with.
+[target.'cfg(unix)']
+runner = [
+  "sh",
+  "-c",
+  '''
+  limit=$(ulimit -Hn)
+  most=$(sysctl -n kern.maxfilesperproc 2>/dev/null)
+  if [ -n "$most" ] && { [ "$limit" = unlimited ] || [ "$limit" -gt "$most" ]; }; then
+    limit=$most
+  fi
+  ulimit -Sn "$limit" 2>/dev/null
+  exec "$0" "$@"
+  ''',
+]

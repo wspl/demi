@@ -265,6 +265,10 @@ async fn ulimit_limits_the_jobs_own_processes_only() {
     assert_eq!(rlimit::getrlimit(rlimit::Resource::NOFILE).unwrap(), runner);
     let (_, output, _) = job(root.path(), "ulimit -n; /bin/sh -c 'ulimit -n'").await;
     let (soft, _) = demi_runner_process::process::child_limit(rlimit::Resource::NOFILE).unwrap();
+    let soft = match soft {
+        rlimit::INFINITY => "unlimited".to_owned(),
+        soft => soft.to_string(),
+    };
     assert_eq!(output, format!("{soft}\n{soft}\n"));
 }
 
