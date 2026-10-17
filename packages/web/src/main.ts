@@ -12,6 +12,7 @@ import {
   applyThemeToDocument,
   setThemeChoice,
 } from '@demicodes/web-ui/theme/appTheme'
+import { followThemeColor } from '@demicodes/web-ui/theme/themeColor'
 import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
 import { createPageI18n, setPageLanguage } from '@demicodes/web-ui/i18n/text'
 import { keepShownLanguage, lastShownLanguage, resolveLanguage } from '@demicodes/web-ui/i18n/languages'
@@ -240,6 +241,7 @@ const stopAppearance = watch(
   { immediate: true },
 )
 const stopTheme = applyThemeToDocument()
+const stopThemeColor = followThemeColor()
 // The page speaks the language the user chose, or with System the first of
 // the browser's that Demi speaks; a change of either, the choice made on
 // another page included, applies at once (`localization.md` § Choosing the
@@ -328,6 +330,7 @@ if (import.meta.hot) {
     stopChoice()
     stopAppearance()
     stopTheme()
+    stopThemeColor()
     stopLanguage()
     stopLocale()
     notifications.stop()
