@@ -683,7 +683,9 @@ async fn a_url_runs_reads_ask_in_every_turn_it_leads_to_until_the_user_writes() 
 
     // Approved, the agent goes on in the turn the decision wakes, the run
     // shown Done: the allowance covers its first read, and its second asks
-    // again.
+    // again. The page is open before the decision, to see that turn end.
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
     scripts.root(
         FIRST,
         vec![
@@ -693,13 +695,15 @@ async fn a_url_runs_reads_ask_in_every_turn_it_leads_to_until_the_user_writes() 
     );
     let allowed = crate::permissions::decide(&backend, &master, FIRST, request.id().as_str(), "allow").await;
     assert_eq!(allowed.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&allowed.body));
+    socket.until_idle().await;
     let second = asked_with(&scripts, "second=").await;
     assert!(second.contains("second=1"), "{second}");
     assert!(second.contains("needs the user's permission to use the credential"), "{second}");
 
-    // Once the user writes, the conversation's grants apply again.
-    let mut socket = Socket::connect(&backend, &master, FIRST).await;
-    socket.open().await;
+    // Once the user writes, the conversation's grants apply again. The woken
+    // turn has ended: a message sent while it ran would wait in the queue and
+    // start the next turn with no phase change between, and `chat`, which
+    // waits for a running phase after its message, would wait in vain.
     scripts.root(FIRST, vec![shell("t3", "demi credentials read Key key | wc -c; echo third=$?"), say("read")]);
     socket.chat("m1", "Read it again").await;
     let third = asked_with(&scripts, "third=").await;
