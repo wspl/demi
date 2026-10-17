@@ -220,6 +220,7 @@
       "modelKeywords": "タイトルのモデル,haiku,flash,自動",
       "sameProviderKeywords": "プライバシー,同じプロバイダー",
       "sendKeywords": "ステア,キュー,Enter",
+      "hostBackKeywords": "オフライン,オンライン,デバイス,続行",
       "restartKeywords": "再起動,アップデート,続行",
       "retryKeywords": "使用量の上限,クォータ,リセット"
     },

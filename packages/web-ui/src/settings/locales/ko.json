@@ -220,6 +220,7 @@
       "modelKeywords": "제목 모델,haiku,flash,자동",
       "sameProviderKeywords": "개인정보,같은 제공업체",
       "sendKeywords": "조정,대기열,Enter",
+      "hostBackKeywords": "오프라인,온라인,기기,계속",
       "restartKeywords": "재시작,업데이트,계속",
       "retryKeywords": "사용량 한도,할당량,재설정"
     },

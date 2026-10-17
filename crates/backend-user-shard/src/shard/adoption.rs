@@ -169,6 +169,9 @@ impl Shard {
         if let Some(settle) = reported.await {
             self.tasks().spawn_local(settle);
         }
+        // The turns the device's absence left resume
+        // (`failures-and-recovery.md` § The unfinished turn).
+        self.host_back(&device.id);
         // A runner that went away before its welcome ends its connection at
         // once, as the connection reads its socket. What the connection
         // queued meanwhile leaves after the welcome.
