@@ -2,8 +2,7 @@
 import { t } from './locales/text'
 import { computed } from 'vue'
 import { CircleStop, X } from '@lucide/vue'
-import MenuDivider from '../ui/MenuDivider.vue'
-import MenuItem from '../ui/MenuItem.vue'
+import { vContextMenu, type ContextMenuGroup } from '../ui/context-menu'
 import SessionOverlay from './SessionOverlay.vue'
 import TabItem from './TabItem.vue'
 import TerminalView from './TerminalView.vue'
@@ -38,6 +37,14 @@ function terminalOf(id: string): TerminalRecord | undefined {
 }
 
 // An ended command's tab puts it away; a running one's stays until the command is ended.
+/** A tab's menu: end its command, close its tab once the command has ended. */
+function tabMenu(id: string): () => ContextMenuGroup[] {
+  return () => [
+    [{ icon: CircleStop, label: t('terminals.endCommand'), disabled: terminalOf(id)?.phase !== 'running' || terminalOf(id)?.stopping === true, run: () => emit('abort', id) }],
+    [{ icon: X, label: t('terminals.closeTab'), disabled: terminalOf(id)?.phase === 'running', run: () => closeTab(id) }],
+  ]
+}
+
 function closeTab(id: string): void {
   activeId.value = tabs.value.filter((tab) => tab.id !== id).at(-1)?.id ?? null
 }
@@ -48,7 +55,7 @@ function closeTab(id: string): void {
     :open="tabs.length > 0"
     @close="closePanel"
   >
-    <template #tabs="{ openTabMenu }">
+    <template #tabs>
       <TabItem
         v-for="terminal in tabs"
         :key="terminal.id"
@@ -59,22 +66,7 @@ function closeTab(id: string): void {
         :busy="terminal.stopping === true"
         :closable="false"
         @select="activate(terminal.id)"
-        @contextmenu="openTabMenu($event, terminal.id)"
-      />
-    </template>
-    <template #tabMenu="{ id }">
-      <MenuItem
-        :icon="CircleStop"
-        :label="t('terminals.endCommand')"
-        :disabled="terminalOf(id)?.phase !== 'running' || terminalOf(id)?.stopping === true"
-        @select="emit('abort', id)"
-      />
-      <MenuDivider />
-      <MenuItem
-        :icon="X"
-        :label="t('terminals.closeTab')"
-        :disabled="terminalOf(id)?.phase === 'running'"
-        @select="closeTab(id)"
+        v-context-menu="tabMenu(terminal.id)"
       />
     </template>
     <TerminalView

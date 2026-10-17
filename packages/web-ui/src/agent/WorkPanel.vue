@@ -8,11 +8,7 @@ import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
-import MenuDivider from '../ui/MenuDivider.vue'
-import MenuItem from '../ui/MenuItem.vue'
-import ContextMenu from '../ui/ContextMenu.vue'
-import { useContextMenuOwner } from '../composables/useContextMenuOwner'
-import { appOverlayStore } from '../overlay/appOverlay'
+import { vContextMenu, type ContextMenuEntry, type ContextMenuGroup } from '../ui/context-menu'
 import { usePhone } from '../ui/phone'
 import { isKeptStartCut } from '../ui/truncation'
 import type { TitleText } from '../ui/ui-text'
@@ -95,15 +91,6 @@ const creatable = computed(() => props.kinds.filter((kind) => kind.create))
 function unavailable(kind: PanelTabKind): string | null {
   return kind.create?.unavailable?.() ?? null
 }
-const menuId = ref<string | null>(null)
-const menu = useContextMenuOwner(() => {
-  menuId.value = null
-})
-
-function openMenu(event: MouseEvent, id: string): void {
-  menuId.value = id
-  menu.open(event)
-}
 
 /** The tab menu's commands that close several tabs at once. */
 const closeManyItems = computed<readonly { scope: Exclude<TabCloseScope, 'self'>; label: TitleText; icon: Component }[]>(() => [
@@ -112,10 +99,8 @@ const closeManyItems = computed<readonly { scope: Exclude<TabCloseScope, 'self'>
   { scope: 'left', label: t('panel.closeLeft'), icon: ArrowLeftToLine },
 ])
 
-function closeScope(scope: TabCloseScope): void {
-  if (menuId.value) {
-    emit('closeTabs', tabsToClose(props.panel.tabs, menuId.value, scope))
-  }
+function closeScope(id: string, scope: TabCloseScope): void {
+  emit('closeTabs', tabsToClose(props.panel.tabs, id, scope))
 }
 
 /** Whether a pinned tab, by its element, shows less than its whole title. */
@@ -124,20 +109,37 @@ function pinnedTitleCut(tab: HTMLElement): boolean {
   return title !== null && isKeptStartCut(title)
 }
 
-/** The tab the menu is open on, with its kind. */
-const menuTab = computed(() => tabs.value.find((item) => item.tab.id === menuId.value) ?? null)
-/** What the menu's tab kind offers before the Close commands. */
-const menuCommands = computed(() => {
-  const item = menuTab.value
-  return item?.kind?.commands?.(item.data, item.tab.id) ?? []
-})
-
-/** A copy of the menu's tab right after it, selected, as a web browser's Duplicate. */
-function duplicate(): void {
-  const item = menuTab.value
-  if (item?.kind?.duplicate) {
-    const at = props.panel.tabs.findIndex((tab) => tab.id === item.tab.id)
-    emit('addTab', item.kind.kind, item.kind.duplicate(item.data), at + 1)
+/**
+ * A tab's menu: what its kind offers, and Duplicate where it makes a copy,
+ * then the Close commands, as a web browser's tab menu.
+ */
+function tabMenu(id: string): () => ContextMenuGroup[] {
+  return () => {
+    const item = tabs.value.find((each) => each.tab.id === id)
+    const kind = item?.kind
+    const own: ContextMenuEntry[] = (item ? kind?.commands?.(item.data, item.tab.id) ?? [] : [])
+      .map((command) => ({ icon: command.icon, label: command.label, disabled: command.disabled, run: () => command.run() }))
+    const duplicate = kind?.duplicate
+    if (item && duplicate) {
+      own.push({
+        icon: Copy,
+        label: t('panel.duplicate'),
+        // A copy of the tab right after it, selected, as a web browser's Duplicate.
+        run: () => emit('addTab', kind.kind, duplicate(item.data), props.panel.tabs.findIndex((tab) => tab.id === id) + 1),
+      })
+    }
+    return [
+      own,
+      [
+        { icon: X, label: shared('common.close'), run: () => closeScope(id, 'self') },
+        ...closeManyItems.value.map((close) => ({
+          icon: close.icon,
+          label: close.label,
+          disabled: tabsToClose(props.panel.tabs, id, close.scope).length === 0,
+          run: () => closeScope(id, close.scope),
+        })),
+      ],
+    ]
   }
 }
 
@@ -170,7 +172,6 @@ function reorder(from: number, to: number): void {
       </button>
       <TabStrip
         class="min-w-0 grow"
-        data-touch-menu
         surface="raised"
         @reorder="reorder"
       >
@@ -215,7 +216,7 @@ function reorder(from: number, to: number): void {
           :busy="item.kind?.busy?.(item.data, item.tab.id) ?? false"
           :icon="item.kind?.icon?.(item.data, item.tab.id) ?? null"
           @select="emit('select', item.tab.id)"
-          @contextmenu="openMenu($event, item.tab.id)"
+          v-context-menu="tabMenu(item.tab.id)"
           @close="emit('closeTabs', [item.tab.id])"
         >
           <template v-if="item.kind" #mark><component :is="item.kind.mark" :data="item.data" /></template>
@@ -280,30 +281,5 @@ function reorder(from: number, to: number): void {
       </template>
       </slot>
     </div>
-    <ContextMenu :overlay-store="appOverlayStore" :owner="menu">
-      <template #menu>
-        <template v-if="menuCommands.length > 0 || menuTab?.kind?.duplicate">
-          <MenuItem
-            v-for="command in menuCommands"
-            :key="command.label"
-            :icon="command.icon"
-            :label="command.label"
-            :disabled="command.disabled"
-            @select="command.run()"
-          />
-          <MenuItem v-if="menuTab?.kind?.duplicate" :icon="Copy" :label="t('panel.duplicate')" @select="duplicate" />
-          <MenuDivider />
-        </template>
-        <MenuItem :icon="X" :label="shared('common.close')" @select="closeScope('self')" />
-        <MenuItem
-          v-for="item in closeManyItems"
-          :key="item.scope"
-          :icon="item.icon"
-          :label="item.label"
-          :disabled="!menuId || tabsToClose(panel.tabs, menuId, item.scope).length === 0"
-          @select="closeScope(item.scope)"
-        />
-      </template>
-    </ContextMenu>
   </aside>
 </template>

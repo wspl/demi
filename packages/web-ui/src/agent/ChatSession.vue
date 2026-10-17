@@ -52,7 +52,8 @@ import Dropdown from '../ui/Dropdown.vue'
 import Menu from '../ui/Menu.vue'
 import MenuDivider from '../ui/MenuDivider.vue'
 import MenuItem from '../ui/MenuItem.vue'
-import SidebarSelectionMenu from '../sidebar/SidebarSelectionMenu.vue'
+import MenuEntries from '../ui/MenuEntries.vue'
+import { selectionEntries } from '../sidebar/selection-menu'
 import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
 import { copyId } from './copy-id'
 import StatusDot from '../ui/StatusDot.vue'
@@ -304,6 +305,18 @@ function fromTitleSheet(then: () => void): void {
 /** Delete… from the title sheet asks first, as the sidebar's does. */
 const deleteAsked = ref(false)
 
+/** The conversation's commands in the title sheet: the sidebar row's, but Open, since it is the one shown. */
+function titleSheetEntries(listed: { pinned: boolean }) {
+  return selectionEntries([{ id: props.conversation.id, pinned: listed.pinned }], {
+    open: () => undefined,
+    rename: () => fromTitleSheet(() => (renaming.value = true)),
+    copyId: () => fromTitleSheet(() => void copyId(props.conversation.id)),
+    pin: (_ids, pinned) => fromTitleSheet(() => emit('pin', pinned)),
+    archive: () => fromTitleSheet(() => emit('archive')),
+    delete: () => fromTitleSheet(() => (deleteAsked.value = true)),
+  }, true)
+}
+
 /** The Rename button, or a double-click on the title, names it in place. */
 function beginRename(): void {
   if (!props.conversation.archived) {
@@ -548,15 +561,9 @@ watch(
             />
             <MenuDivider v-if="listed" />
           </template>
-          <SidebarSelectionMenu
+          <MenuEntries
             v-if="listed"
-            :targets="[{ id: conversation.id, pinned: listed.pinned }]"
-            shown
-            @rename="fromTitleSheet(() => (renaming = true))"
-            @copy-id="fromTitleSheet(() => void copyId(conversation.id))"
-            @pin="(_ids, pinned) => fromTitleSheet(() => emit('pin', pinned))"
-            @archive="fromTitleSheet(() => emit('archive'))"
-            @delete="fromTitleSheet(() => (deleteAsked = true))"
+            :groups="titleSheetEntries(listed)"
           />
         </Menu>
         <!-- Where the conversation runs, as the desktop's header shows it beside the title. -->

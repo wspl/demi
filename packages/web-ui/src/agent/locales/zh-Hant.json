@@ -130,7 +130,10 @@
         "stopped": "{count} 個智慧體已停止"
       },
       "heard": "收到 {count} 個智慧體的訊息"
-    }
+    },
+    "copyMessage": "複製訊息",
+    "sendToConversation": "傳送到對話",
+    "sendToNew": "新對話"
   },
   "subagents": {
     "mainAgent": "主智慧體",

@@ -32,7 +32,6 @@ const icons = useIconPx()
 const emit = defineEmits<{
   create: []
   toggle: []
-  contextmenu: [event: MouseEvent]
 }>()
 </script>
 
@@ -43,7 +42,6 @@ const emit = defineEmits<{
     class="group/project relative flex h-7 cursor-default select-none items-center gap-2 rounded-md pl-2.5 pr-0.5 text-chrome text-fg transition-colors duration-200 ease-out phone:h-11 phone:gap-3 phone:rounded-lg phone:pl-3 phone:text-[16px]"
     :class="[focused ? 'focus-ring-shown' : '']"
     @click="emit('toggle')"
-    @contextmenu.prevent="emit('contextmenu', $event)"
   >
     <component
       :is="collapsed ? Folder : FolderOpen"

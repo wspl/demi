@@ -130,7 +130,10 @@
         "stopped": "에이전트 {count}개 중지됨"
       },
       "heard": "에이전트 {count}개로부터 메시지 받음"
-    }
+    },
+    "copyMessage": "메시지 복사",
+    "sendToConversation": "대화로 보내기",
+    "sendToNew": "새 대화"
   },
   "subagents": {
     "mainAgent": "메인 에이전트",

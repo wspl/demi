@@ -38,5 +38,13 @@
   },
   "rowSpinner": {
     "working": "正在處理"
+  },
+  "contextMenu": {
+    "open": "開啟",
+    "openLink": "開啟連結",
+    "copyLink": "複製連結",
+    "copyImage": "複製圖片",
+    "saveImage": "儲存圖片",
+    "copyCode": "複製代碼"
   }
 }

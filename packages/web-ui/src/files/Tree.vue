@@ -20,6 +20,7 @@ import {
   type TreeRow as Row
 } from './tree'
 import type { SentenceText } from '../ui/ui-text'
+import { vContextMenu, type ContextMenuValue } from '../ui/context-menu'
 
 /**
  * A tree of rows laid out by its host: a caption, then the rows, on the
@@ -31,9 +32,9 @@ import type { SentenceText } from '../ui/ui-text'
  * directory acts as its row, and once it folds its row rests where the
  * pinned copy was. The rows are dressed through the slots `mark`, `name`
  * and `trailing`, given the row; `tooltip` covers a row with a hint;
- * `empty` fills the tree while it has no rows. A right-click asks the host
- * for a menu (`menu`), on a row or, given no row, on the tree's empty space;
- * a host with nothing to offer leaves the web browser's own.
+ * `empty` fills the tree while it has no rows. Each row declares the
+ * context menu the host gives it (`rowMenu`), and the tree's empty space
+ * the one the host gives no row.
  *
  * Where a drag would drop (`dropTarget`) lights under a dashed line: a
  * directory row with the rows it holds, its pinned copies too, or the whole
@@ -60,11 +61,12 @@ const props = defineProps<{
   /** What a drag over the tree would drop into, lit while it is there. */
   dropTarget?: TreeDropTarget | null
   tooltip?: (row: R) => string
+  /** A row's context menu, and given no row the menu of the tree's empty space. */
+  rowMenu?: (row: R | null) => ContextMenuValue
 }>()
 
 const emit = defineEmits<{
   activate: [row: R]
-  menu: [row: R | null, event: MouseEvent]
 }>()
 
 defineSlots<{
@@ -303,7 +305,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
     class="h-full min-h-0 bg-surface-editor"
     viewport-class="p-1"
     @scroll="layout"
-    @contextmenu="emit('menu', null, $event)"
+    v-context-menu="rowMenu?.(null)"
   >
     <!-- The pinned stack: the caption stays put; the directories under it
          slide up beneath the caption as the tree scrolls past them. -->
@@ -337,7 +339,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
             :menu-open="row.path === menuRow"
             :tooltip="tooltip?.(row)"
             @activate="activatePinned(row)"
-            @contextmenu.stop="emit('menu', row, $event)"
+            v-context-menu="rowMenu?.(row)"
           >
             <template #mark><slot name="mark" :row="row" /></template>
             <template #name><slot name="name" :row="row" :highlight="undefined" /></template>
@@ -374,7 +376,7 @@ defineExpose({ scrollToRow, revealRow, scrollBy, rowAt })
         :highlight="highlightOf(row)"
         :tooltip="tooltip?.(row)"
         @activate="activateRow(row)"
-        @contextmenu.stop="emit('menu', row, $event)"
+        v-context-menu="rowMenu?.(row)"
       >
         <template #mark><slot name="mark" :row="row" /></template>
         <template #name><slot name="name" :row="row" :highlight="highlightOf(row)" /></template>

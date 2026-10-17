@@ -188,7 +188,8 @@ export const useConversations = defineStore('conversations', () => {
    * (`web-application.md` § Responding to the user).
    */
   const writes = new SerialQueue()
-  const restored = new Set<string>()
+  // Reactive: words sent to a conversation wait for its draft to be restored (`appendToDraft`).
+  const restored = reactive(new Set<string>())
   /** Each conversation's draft as this page last saved or restored it, in the shape `changedDraft` compares. */
   const savedDrafts = new Map<string, string>()
   const uploads = createConversationUploads(saveDrafts, (error) =>
@@ -2647,12 +2648,24 @@ export const useConversations = defineStore('conversations', () => {
       const toast = showRecalled(() => void removal.then(() => resend(conversation, copy, way), () => {}))
       return { kind: 'recalled', toast }
     }
+    return { kind: 'refilled', ...pasteAtEnd(conversation, copy) }
+  }
+
+  /**
+   * Pastes the copied message at the end of the draft, as a paste there
+   * adds it: after the draft's text, as a paragraph of its own, its files
+   * coming back as a paste brings them, without their bytes; a file the
+   * paste cannot use stands as its name, and a toast names it. The composer
+   * shows the draft anew, in focus when it shows.
+   */
+  function pasteAtEnd(conversation: Conversation, copy: CopiedMessage): { text: string; fileIds: string[] } {
     const pasted = pasteMessage(copy, null, pasteHost(conversation))
-    const fileIds = pasted.capsules.map((capsule) => capsule.id)
+    const fileIds = [...conversation.attachmentIds, ...pasted.capsules.map((capsule) => capsule.id)]
+    const draft = conversation.draft.trimEnd()
+    const joined = draft === '' ? pasted.markdown : `${draft}\n\n${pasted.markdown}`
     // As the editor writes the message out, so that a refusal finds it unchanged.
-    const text = serializeUserMarkdown(parseUserMarkdown(pasted.markdown, fileIds)).markdown
+    const text = serializeUserMarkdown(parseUserMarkdown(joined, fileIds)).markdown
     refill(conversation, text, fileIds)
-    // A file the paste cannot use stands as its name, as in a paste.
     for (const { id, kept } of pasted.attaching) {
       void kept.then((stays) => {
         const file = conversation.files.find((each) => each.id === id)
@@ -2665,7 +2678,43 @@ export const useConversations = defineStore('conversations', () => {
     if (missing) {
       showToast({ ...missing, tone: 'danger' })
     }
-    return { kind: 'refilled', text, fileIds }
+    return { text, fileIds }
+  }
+
+  /**
+   * Send to Conversation's end (`web-application.md` § Context menus): the
+   * words go to the end of the conversation's draft as pasting them there
+   * would add them, and nothing is sent. A conversation just opened takes
+   * them once its draft is the one to change: restored from this web
+   * browser and, for one the backend has, read from it, so they never land
+   * on a draft that the read then replaces; one that fails to open, or a
+   * sign-out, drops them.
+   */
+  function appendToDraft(conversation: Conversation, words: CopiedMessage): void {
+    const known = () =>
+      restored.has(conversation.id) && (conversation.persistence !== 'synced' || conversation.record.revision('draft') >= 0)
+    if (known()) {
+      pasteAtEnd(conversation, words)
+      return
+    }
+    const signal = lifetime.signal
+    const stop = watch(
+      () => (known() ? 'known' : conversation.load === 'failed' ? 'failed' : 'waiting'),
+      (state) => {
+        if (state === 'waiting') {
+          return
+        }
+        release()
+        if (state === 'known') {
+          pasteAtEnd(conversation, words)
+        }
+      },
+    )
+    const release = () => {
+      stop()
+      signal.removeEventListener('abort', release)
+    }
+    signal.addEventListener('abort', release)
   }
 
   /** The empty composer holds the message `text` with the files `fileIds`, the caret at its end, in focus when it shows. */
@@ -2877,6 +2926,7 @@ export const useConversations = defineStore('conversations', () => {
     deleted,
     listStatus,
     composerFocusRequests,
+    appendToDraft,
     reveal,
     history,
     activate,

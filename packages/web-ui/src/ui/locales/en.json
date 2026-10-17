@@ -38,5 +38,13 @@
   },
   "rowSpinner": {
     "working": "Working"
+  },
+  "contextMenu": {
+    "open": "Open",
+    "openLink": "Open Link",
+    "copyLink": "Copy Link",
+    "copyImage": "Copy Image",
+    "saveImage": "Save Image",
+    "copyCode": "Copy Code"
   }
 }
