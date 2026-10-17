@@ -144,12 +144,6 @@ impl RunnerProcess {
         Path::new(&self.home_path)
     }
 
-    /// The runner's home as the system's temporary folder spells it, which
-    /// on macOS is a link to [`RunnerProcess::home_dir`].
-    pub fn linked_home(&self) -> &Path {
-        self.home.path()
-    }
-
     /// The runner's installation state, which holds its device token.
     pub fn state_dir(&self) -> &Path {
         self.state.path()
