@@ -47,6 +47,7 @@ demi-backend-runners = { path = "../backend-runners" }
 demi-backend-user-shard = { path = "../backend-user-shard" }
 demi-backend-database = { path = "../backend-database" }
 demi-plugin-browser = { path = "../plugin-browser" }
+demi-plugin-mobile = { path = "../plugin-mobile" }
 demi-plugin-file = { path = "../plugin-file" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-plugin-skills = { path = "../plugin-skills" }

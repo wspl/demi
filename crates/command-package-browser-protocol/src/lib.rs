@@ -9,28 +9,9 @@
 /// agent's commands and the backend's `browser` user stream bind to.
 pub const PACKAGE: &str = "demi.browser";
 
-/// Declares a closed set of wire names as an enum that displays and parses
-/// each value as the wire spells it.
-macro_rules! closed_set {
-    (
-        $(#[$meta:meta])*
-        pub enum $name:ident {
-            $($(#[$variant_meta:meta])* $variant:ident = $wire:literal,)*
-        }
-    ) => {
-        $(#[$meta])*
-        #[derive(
-            Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize,
-            schemars::JsonSchema,
-        )]
-        pub enum $name {
-            $($(#[$variant_meta])* #[serde(rename = $wire)] $variant,)*
-        }
-
-        serde_plain::derive_display_from_serialize!($name);
-        serde_plain::derive_fromstr_from_deserialize!($name);
-    };
-}
+// The wire-name macros every contract crate shares.
+#[macro_use]
+extern crate demi_shared_types;
 
 pub mod browser;
 pub mod capture;

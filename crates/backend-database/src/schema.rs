@@ -1268,10 +1268,14 @@ pub(crate) const CONVERSATION: Schema = Schema {
             sql: include_str!("schema/conversation-0.1.22.sql"),
             migration: Migration::Sql(CONVERSATION_FROM_0_1_22),
         },
+        Shipped {
+            sql: include_str!("schema/conversation-0.1.27.sql"),
+            migration: Migration::Sql(CONVERSATION_FROM_0_1_27),
+        },
     ],
 };
 
-/// From 0.1.22's conversation schema to the current one: a running
+/// From 0.1.22's conversation schema to 0.1.27's: a running
 /// command keeps the turn
 /// whose shell call started it, which a command's call's usage ledger row
 /// names (`usage-and-quota.md` § Usage ledger); one recorded before keeps
@@ -1284,6 +1288,19 @@ pub(crate) const CONVERSATION: Schema = Schema {
 const CONVERSATION_FROM_0_1_22: &str = "
 ALTER TABLE running_commands ADD COLUMN turn_id TEXT;
 ALTER TABLE running_commands ADD COLUMN unsent TEXT;
+";
+
+/// From 0.1.27's conversation schema to the current one: the sequences
+/// gain `device`, which numbers the conversation's simulators
+/// (`mobile.md` § Commands); every sequence keeps its next number.
+const CONVERSATION_FROM_0_1_27: &str = "
+CREATE TABLE sequences_next (
+  name TEXT PRIMARY KEY CHECK (name IN ('command', 'agent', 'tab', 'attachment', 'device')),
+  next INTEGER NOT NULL CHECK (next >= 1)
+) STRICT;
+INSERT INTO sequences_next (name, next) SELECT name, next FROM sequences;
+DROP TABLE sequences;
+ALTER TABLE sequences_next RENAME TO sequences;
 ";
 
 /// From 0.1.22-dev.20261015T134426Z's control schema, which a server keeps
@@ -3730,7 +3747,7 @@ CREATE INDEX nodes_children ON nodes (parent_id, number);
 -- number is advanced past in its own transaction before it is given out,
 -- so a crash leaves a gap and never gives a number twice.
 CREATE TABLE sequences (
-  name TEXT PRIMARY KEY CHECK (name IN ('command', 'agent', 'tab', 'attachment')),
+  name TEXT PRIMARY KEY CHECK (name IN ('command', 'agent', 'tab', 'attachment', 'device')),
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
@@ -4135,7 +4152,7 @@ mod tests {
     }
 
     /// 0.1.11's rows of a conversation keep their values through the
-    /// rebuilt tables, and the attachment sequence counts in it; an output
+    /// rebuilt tables, and the attachment and device sequences count in it; an output
     /// 0.1.11 removed, which has no state now, stops the migration and
     /// leaves the database as it was.
     #[test]
@@ -4196,6 +4213,8 @@ mod tests {
             vec![(Sequence::Command, 7), (Sequence::Tab, 3)]
         );
         assert_eq!(sequences::next(&connection, Sequence::Attachment).unwrap(), 1);
+        // The simulators' sequence, which no shipped schema allowed.
+        assert_eq!(sequences::next(&connection, Sequence::Device).unwrap(), 1);
 
         let (_removed_directory, removed_path, mut removed) = database(shipped);
         removed
@@ -5542,6 +5561,29 @@ mod tests {
             intervals,
             [("1".to_owned(), Some(30_000)), ("2".to_owned(), None), ("3".to_owned(), Some(15_000))]
         );
+    }
+
+    /// A conversation of 0.1.27 keeps the next number of each sequence,
+    /// and its simulators are numbered from m1, which 0.1.27's schema
+    /// refused. Planted defect this catches: a rebuild of the sequences
+    /// that drops their rows, so a conversation numbers its commands from 1
+    /// again. One small database, milliseconds.
+    #[test]
+    fn a_conversation_of_0_1_27_keeps_its_sequences_and_numbers_its_devices() {
+        use demi_shared_types::Sequence;
+
+        use crate::sequences;
+
+        let (_directory, path, mut connection) = database(include_str!("schema/conversation-0.1.27.sql"));
+        connection
+            .execute_batch("INSERT INTO sequences (name, next) VALUES ('command', 7), ('tab', 3), ('attachment', 2);")
+            .unwrap();
+        CONVERSATION.apply(&mut connection, &path, &NoBlobs).unwrap();
+        assert_eq!(
+            sequences::all(&connection).unwrap(),
+            vec![(Sequence::Attachment, 2), (Sequence::Command, 7), (Sequence::Tab, 3)]
+        );
+        assert_eq!(sequences::next(&connection, Sequence::Device).unwrap(), 1);
     }
 
     /// A command running when 0.1.22 stopped keeps its record, its title

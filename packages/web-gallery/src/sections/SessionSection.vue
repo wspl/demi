@@ -703,6 +703,8 @@ function exhibitAgentOpens() {
   productWould('The Agent Opens a Page and Shows It')
   void exhibitWork.agentOpens('https://example.test/orders', true)
 }
+/** The simulators specimen: a strip with no browser tab, where the agent opens devices. */
+const mobileWork = useWorkTabs('file', { browser: galleryBrowser([]) })
 const editWork = useWorkTabs('change')
 // The gallery's own conversation browser stands behind every specimen's `browser`
 // kind, which lists its tabs as it is made.
@@ -3717,6 +3719,22 @@ onBeforeUnmount(() => {
             </div>
           </GallerySpecimen>
         </div>
+      </GallerySection>
+      <GallerySection
+        title="Simulators"
+        note="The conversation’s simulators in the work panel, the mobile plugin’s `mobile` kind (`mobile.md` § The live view). The panel opens no device of its own: Open a Simulator as the Agent opens one as demi mobile open does, an iPhone first and then an iPad, and its tab joins the strip. A device’s tab shows its toolbar: the device’s name where the whole name fits, left out where it does not and on a phone, whose tab names the device; Rotate Left, Rotate Right and Toggle Appearance turn and recolour the screen; Home and Lock press the buttons; Volume Up and Down press theirs, which the gallery’s screen does not draw, so a toast says what the simulator would show; Screenshot and Record save on this computer, as a download does. Record shows Stop Recording while the device records, whoever started it: Record as the Agent starts or stops the agent’s recording of the first device, and the toolbar follows. Each control runs the operation of the command that does the same. The picture sits in the device’s frame; this Host has no frame installed, so the view draws the wireframe outline with the screen’s corner radius and its buttons as short marks, which turns with the device. A click on the screen is a tap, a drag a swipe; tapping the home screen’s upper half opens Settings, Home returns. While the agent uses the device, from its first command until three seconds after its last, the view says The agent is using this device, and rings where it tapped; the panel’s own controls are the user’s and show neither. Closing a device’s tab closes the device."
+      >
+        <GallerySpecimen variant="tabs · the conversation’s simulators · live" wide>
+          <div class="gallery-frame flex h-[34rem] overflow-hidden">
+            <GalleryWorkPanel class="w-full" :work="mobileWork" @close="productWould('The work panel closes.')" />
+          </div>
+          <div class="mt-2 flex flex-wrap items-center gap-2 text-[12px] text-fg-muted">
+            <Button size="sm" @click="mobileWork.mobile.agentOpens()">Open a Simulator as the Agent</Button>
+            <Button size="sm" @click="mobileWork.mobile.agentTaps()">Tap as the Agent</Button>
+            <Button size="sm" @click="mobileWork.mobile.agentRecords()">Record as the Agent</Button>
+            <span>The agent’s tap shows its note and ring on the device it uses, the note for three seconds after.</span>
+          </div>
+        </GallerySpecimen>
       </GallerySection>
       <GallerySection
         title="File View"

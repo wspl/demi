@@ -84,6 +84,10 @@ pub enum Error {
         target: &'static str,
         path: PathBuf,
     },
+    #[error(
+        "demi-mobile for aarch64-apple-darwin carries the iOS helper, which only a Mac with Xcode builds; build that target on a Mac, outside the container"
+    )]
+    IosHelperNeedsMac,
     #[error("the release record is invalid: {0}")]
     Record(String),
     #[error("{} holds another file of that name: the files directory belongs to another build", .0.display())]
@@ -108,6 +112,8 @@ pub enum Executable {
     Browser,
     #[value(name = "demi-claude-code")]
     Claude,
+    #[value(name = "demi-mobile")]
+    Mobile,
     #[value(name = "demi-backend")]
     Backend,
     #[value(name = "demi-machine-manager")]
@@ -119,15 +125,22 @@ pub enum Executable {
 impl Executable {
     /// The executables a build makes unless named: the runner and the
     /// command programs.
-    pub const DEFAULT: [Self; 5] = [
+    pub const DEFAULT: [Self; 6] = [
         Self::Runner,
         Self::File,
         Self::Fetch,
         Self::Browser,
         Self::Claude,
+        Self::Mobile,
     ];
     /// The command programs, each the program of a command package.
-    pub const COMMANDS: [Self; 4] = [Self::File, Self::Fetch, Self::Browser, Self::Claude];
+    pub const COMMANDS: [Self; 5] = [
+        Self::File,
+        Self::Fetch,
+        Self::Browser,
+        Self::Claude,
+        Self::Mobile,
+    ];
 
     /// The Cargo package, which is also the executable's name.
     pub fn name(self) -> &'static str {
@@ -137,6 +150,7 @@ impl Executable {
             Self::Fetch => "demi-fetch",
             Self::Browser => "demi-browser",
             Self::Claude => "demi-claude-code",
+            Self::Mobile => "demi-mobile",
             Self::Backend => "demi-backend",
             Self::Machines => "demi-machine-manager",
             Self::Server => "demi-server",
@@ -148,7 +162,12 @@ impl Executable {
     /// (`builds-and-releases.md` § Memory allocator).
     pub(crate) fn runs_on_host(self) -> bool {
         match self {
-            Self::Runner | Self::File | Self::Fetch | Self::Browser | Self::Claude => true,
+            Self::Runner
+            | Self::File
+            | Self::Fetch
+            | Self::Browser
+            | Self::Claude
+            | Self::Mobile => true,
             Self::Backend | Self::Machines | Self::Server => false,
         }
     }
@@ -156,7 +175,12 @@ impl Executable {
     /// The targets it runs on, in the order of the release matrix.
     pub(crate) fn targets(self) -> &'static [&'static str] {
         match self {
-            Self::Runner | Self::File | Self::Fetch | Self::Browser | Self::Claude => TARGETS,
+            Self::Runner
+            | Self::File
+            | Self::Fetch
+            | Self::Browser
+            | Self::Claude
+            | Self::Mobile => TARGETS,
             // Servers run Linux; a developer may also run the backend on a
             // Mac, with the Cloud in a Lima VM.
             Self::Backend => &[

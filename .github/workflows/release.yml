@@ -102,7 +102,9 @@ jobs:
           - group: runner
             packages: --package demi-runner
           - group: commands
-            packages: --package demi-file --package demi-fetch --package demi-browser --package demi-claude-code
+            # demi-mobile's iOS helper is built on the aarch64-apple-darwin
+            # job, with that runner's Xcode (`mobile.md` § iOS).
+            packages: --package demi-file --package demi-fetch --package demi-browser --package demi-claude-code --package demi-mobile
     defaults:
       run:
         shell: bash

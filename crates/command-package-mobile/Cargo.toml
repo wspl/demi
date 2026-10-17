@@ -1,0 +1,63 @@
+[package]
+name = "demi-mobile"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# One test binary, the integration tests' (`crates-and-packages.md`
+# § Module layout); no doc examples.
+test = false
+doctest = false
+bench = false
+
+[[bin]]
+name = "demi-mobile"
+path = "src/main.rs"
+test = false
+
+[features]
+# A driver the tests script (`testing`), and the iOS helper's framing for
+# a test that plays the helper.
+testing = []
+
+[dependencies]
+bytes.workspace = true
+demi-command-package-mobile-protocol = { path = "../command-package-mobile-protocol" }
+demi-command-protocol = { path = "../command-protocol" }
+demi-command-sdk = { path = "../command-sdk" }
+demi-live-view = { path = "../live-view" }
+demi-live-view-protocol = { path = "../live-view-protocol" }
+demi-shared-artifacts = { path = "../shared-artifacts" }
+demi-shared-cli = { path = "../shared-cli", features = ["host-allocator"] }
+demi-shared-types = { path = "../shared-types" }
+base64.workspace = true
+futures-util.workspace = true
+garde.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[target.'cfg(target_os = "macos")'.dependencies]
+# The macOS version the iOS helper needs (`mobile.md` § iOS).
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+
+[build-dependencies]
+# The iOS helper's build: its downloads' digests, idb's source archive, and
+# the archive the program carries (`mobile.md` § iOS).
+flate2 = "1"
+sha2 = "0.10"
+tar = { version = "0.4", default-features = false }
+zstd = { version = "0.13", default-features = false }
+
+[dev-dependencies]
+demi-command-package-mobile-protocol = { path = "../command-package-mobile-protocol" }
+demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
+demi-mobile = { path = ".", features = ["testing"] }
+tempfile = "3"
+tokio = { workspace = true, features = ["test-util"] }
