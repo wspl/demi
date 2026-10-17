@@ -235,7 +235,7 @@ fn kept(keep_until: Option<Timestamp>) -> String {
     }
 }
 
-async fn print_json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
+pub(crate) async fn print_json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
     let text = serde_json::to_string(value).map_err(failed)?;
     port.stdout(format!("{text}\n")).await?;
     Ok(0)

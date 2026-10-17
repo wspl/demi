@@ -15,7 +15,7 @@ use demi_backend_host_access::root_of;
 use demi_backend_page_sync::UserMarks;
 use demi_backend_permissions::{PermissionShard, Revisions, Waits, deliver};
 use demi_command_declarations::{Category, Node};
-use demi_shared_types::{AgentMessage, NodeId};
+use demi_shared_types::{AgentMessage, NodeId, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use demi_web_api_protocol::permissions::{PermissionRequestId, RequestingAgent};
 use demi_web_api_protocol::push::PushAsk;
@@ -27,6 +27,10 @@ use crate::conversation::product::ShardToolsets;
 impl PermissionShard for Shard {
     fn control(&self) -> &ControlService {
         &self.services().control
+    }
+
+    fn url_message_since<'a>(&'a self, conversation: &'a ConversationId) -> LocalBoxFuture<'a, Option<Timestamp>> {
+        Box::pin(async move { self.url_message_at(conversation).await })
     }
 
     fn marks(&self) -> UserMarks {

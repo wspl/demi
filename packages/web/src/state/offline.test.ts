@@ -278,6 +278,41 @@ test('a page of another build drops the cache an earlier build wrote', async () 
   }
 })
 
+test('a copy another build wrote in its own shape is dropped without a word, and only a copy of this build that does not read is reported', async () => {
+  const errors = spyOn(console, 'error')
+  /** What the page reported of a copy it could not read. */
+  const unreadable = () =>
+    errors.mock.calls.filter((call) => String(call[0]).includes('Could Not Read the Copy for Offline Use')).length
+  // The records are written in a shape this build's schema refuses, as an
+  // earlier build's own shape would be.
+  const put = IDBObjectStore.prototype.put
+  const puts = spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+    const older = this.name === 'account' ? { state: 'an earlier shape' } : { transcript: 'an earlier shape' }
+    return put.call(this, { ...(value as object), ...older }, key)
+  })
+  process.env.DEMI_WEB_BUILD = 'b1'
+  try {
+    await readOnline([FIRST])
+    closePage()
+    process.env.DEMI_WEB_BUILD = 'b2'
+    expect(await readConversationCopy(USER.id, FIRST)).toBeNull()
+    expect(await readAccountCopy()).toBeNull()
+    expect(unreadable()).toBe(0)
+
+    // The same shape from this build is a defect, and says so, once a copy.
+    process.env.DEMI_WEB_BUILD = 'b1'
+    await readOnline([FIRST])
+    closePage()
+    expect(await readConversationCopy(USER.id, FIRST)).toBeNull()
+    expect(await readAccountCopy()).toBeNull()
+    expect(unreadable()).toBe(2)
+  } finally {
+    delete process.env.DEMI_WEB_BUILD
+    puts.mockRestore()
+    errors.mockRestore()
+  }
+})
+
 test('when the web browser refuses a copy for lack of room, the conversations opened longest ago go', async () => {
   // Room for two conversations' copies, as a browser's quota allows.
   const held = new Set<IDBValidKey>()

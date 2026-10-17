@@ -6,6 +6,7 @@
 //! conversation permissions and the plugin host need of it (`CloudShard`,
 //! `HostShard`, `PermissionShard`, `PluginShard`).
 
+pub mod automations;
 pub mod conversation;
 #[cfg(feature = "testing")]
 pub mod holds;

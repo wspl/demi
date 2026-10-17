@@ -16,7 +16,8 @@
     "settings": "设置",
     "markdown": "Markdown",
     "phone": "手机",
-    "roadmap": "路线图"
+    "roadmap": "路线图",
+    "automations": "自动化"
   },
   "views": {
     "errors": {
@@ -68,7 +69,11 @@
       "skills": "技能",
       "search": "搜索"
     },
-    "page": "页面"
+    "page": "页面",
+    "automations": {
+      "app": "应用",
+      "phone": "手机"
+    }
   },
   "chrome": {
     "mode": "模式",

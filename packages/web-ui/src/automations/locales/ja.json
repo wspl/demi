@@ -1,0 +1,168 @@
+{
+  "page": {
+    "title": "オートメーション",
+    "description": "決まった時刻、コマンドの出力が変わったとき、または URL が呼ばれたときにエージェントを開始します。",
+    "new": "新規オートメーション",
+    "newName": "新規オートメーション",
+    "empty": "オートメーションはありません",
+    "emptyHint": "どの会話でもエージェントに頼むか、「新規オートメーション」をクリックしてください。",
+    "paused": "一時停止中",
+    "unread": "通知済み、まだ開いていません",
+    "failed": "前回の実行は失敗しました",
+    "openSidebar": "サイドバーを表示"
+  },
+  "editor": {
+    "rename": "名前を変更",
+    "name": "名前",
+    "on": "オン",
+    "pausedHint": "一時停止中です。オンにするまでは「今すぐ実行」でのみ実行されます。",
+    "runNow": "今すぐ実行",
+    "delete": "オートメーションを削除…",
+    "deleteTitle": "“{name}”を削除しますか？",
+    "deleteBody": "実行で作られた会話は残り、サイドバーに入ります。",
+    "deleteAction": "削除",
+    "next": "次回の実行：{when}",
+    "pausedBecause": {
+      "conversation_archived": "対象の会話がアーカイブされたため一時停止しています。",
+      "conversation_deleted": "対象の会話が削除されたため一時停止しています。"
+    }
+  },
+  "trigger": {
+    "title": "トリガー",
+    "kind": "開始",
+    "time": "決まった時刻",
+    "change": "出力が変わったとき",
+    "url": "URL が呼ばれたとき",
+    "repeat": "繰り返し",
+    "once": "1 回",
+    "repeating": "間隔",
+    "cron": "Cron",
+    "moment": "日時",
+    "momentHint": "2026-10-18 08:00 の形式で。",
+    "momentInvalid": "日時を 2026-10-18 08:00 の形式で入力してください。",
+    "interval": "間隔",
+    "intervalInvalid": "1 以上の整数を入力してください。",
+    "units": {
+      "minutes": "分",
+      "hours": "時間",
+      "days": "日"
+    },
+    "expression": "Cron 式",
+    "expressionHint": "分、時、日、月、曜日：{words}。",
+    "expressionInvalid": "0 9 * * 1-5 のように 5 つのフィールドを入力してください。",
+    "timeZone": "時間帯",
+    "command": "コマンド",
+    "commandHint": "ターゲットのディレクトリで実行します。出力か終了ステータスが変わると実行が始まります。最初のチェックは記録だけです。",
+    "checkEvery": "チェック間隔",
+    "cloudCost": "チェックのたびにクラウドで実行してクラウドを起こすため、頻繁にチェックするとクラウドが動き続けます。",
+    "address": "アドレス",
+    "secret": "シークレット",
+    "secretHidden": "シークレット（非表示）",
+    "regenerate": "シークレットを再生成",
+    "regenerateTitle": "シークレットを再生成しますか？",
+    "regenerateBody": "以降、現在のシークレットによる呼び出しは拒否されます。",
+    "regenerateAction": "再生成",
+    "stripe": "Stripe の署名シークレット",
+    "stripeHint": "Stripe は独自のシークレットを使います。ここにペーストすると、Stripe が署名したイベントを受け付けます。",
+    "daily": "毎日",
+    "dailyTime": "時刻",
+    "days": "曜日",
+    "clockInvalid": "09:00 の形式で時刻を入力してください。",
+    "limit": "1日の実行回数",
+    "limitHint": "上限に達すると、深夜0時まで以降の変化や呼び出しでは実行されません。",
+    "noLimit": "制限なし",
+    "limitInvalid": "1以上の整数を入力するか、空欄にしてください。",
+    "addressHint": "他のシステムがこのアドレスに POST すると実行が始まります。",
+    "secretHint": "Authorization: Bearer <secret> として送るか、GitHub の Webhook の Secret 欄にペーストします。",
+    "show": "シークレットを表示",
+    "hide": "シークレットを隠す",
+    "stripePaste": "シークレットをペースト"
+  },
+  "target": {
+    "title": "ターゲット",
+    "host": "デバイス",
+    "project": "プロジェクト",
+    "noProject": "なし",
+    "conversation": "会話",
+    "new": "実行ごとに新しい会話",
+    "existing": "既存の会話",
+    "newHint": "実行ごとに空の会話が始まり、プロンプトに書かれたことだけを知っています。",
+    "existingHint": "実行ごとにメッセージで起こし、それまでの内容をすべて引き継いで続けます。",
+    "pick": "会話を選択",
+    "noConversations": "{host} に会話はありません",
+    "offline": "オフライン"
+  },
+  "prompt": {
+    "title": "プロンプト",
+    "hint": "実行ごとに送る内容です。エージェントに書くように書いてください。",
+    "placeholder": "昨日失敗した支払いを確認し、あれば通知してください。"
+  },
+  "model": {
+    "label": "モデル",
+    "hint": "新しい会話はこのモデルで始まります。既存の会話は自身のモデルを使い続けます。",
+    "choose": "モデルを選択",
+    "missing": "新しい会話を始めるにはモデルが必要です。"
+  },
+  "runs": {
+    "title": "実行履歴",
+    "none": "まだ実行されていません。",
+    "never": "未実行",
+    "last": "{when}に{status}",
+    "open": "会話を開く",
+    "moved": "会話に移動済み",
+    "status": {
+      "running": "実行中",
+      "done": "完了",
+      "notified": "通知済み",
+      "skipped": "スキップ",
+      "failed": "失敗"
+    },
+    "note": {
+      "offline": "{device} がオフラインでした",
+      "limit": "1日 {limit} 回の上限に達しました。その後の呼び出し {calls} 回",
+      "targetGone": "対象の会話がアーカイブまたは削除されました",
+      "timedOut": "コマンドが 60 秒を超えました",
+      "commandFailed": "コマンドが失敗しました：{message}",
+      "noModel": "モデルが選択されていません"
+    }
+  },
+  "notify": {
+    "off": "実行の結果は通知で知らせますが、すべてのブラウザーで通知がオフになっています。",
+    "turnOn": "通知をオンにする"
+  },
+  "words": {
+    "interval": {
+      "minutes": "毎分 | {count} 分ごと",
+      "hours": "毎時 | {count} 時間ごと",
+      "days": "毎日 | {count} 日ごと"
+    },
+    "daily": "毎日 {time}",
+    "weekdays": "平日 {time}",
+    "weekly": "毎週{day} {time}",
+    "onChange": "{interval}、変化時",
+    "url": "URL",
+    "newConversation": "新しい会話",
+    "existing": "“{title}”",
+    "days": "{days} {time}",
+    "existingGone": "削除された会話"
+  },
+  "bar": {
+    "label": "オートメーションの実行",
+    "automation": "オートメーション",
+    "move": "会話に移動",
+    "moveShort": "移動"
+  },
+  "mark": {
+    "chip": "オートメーション {count} 件 | オートメーション {count} 件",
+    "bolt": "オートメーションがこの会話を起動します"
+  },
+  "failed": {
+    "create": "オートメーションを作成できませんでした",
+    "save": "オートメーションを保存できませんでした",
+    "run": "オートメーションを実行できませんでした",
+    "delete": "オートメーションを削除できませんでした",
+    "secret": "シークレットを表示できませんでした",
+    "regenerate": "シークレットを再生成できませんでした",
+    "move": "会話を移動できませんでした"
+  }
+}

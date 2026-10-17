@@ -2535,7 +2535,7 @@ test('Retry after a refused opening shows nothing of the earlier attempt while i
   const store = useConversations()
   const { conversation, sockets, opening } = await startOpening(FIRST, { subagents: [child('reader', 1, 'running')] })
   await openSent(sockets)
-  sockets[0]!.receive({ type: 'error', message: 'Choose a model for the conversation before opening it', code: 'model_not_selected', requestId: 'req_socket0000000001' })
+  sockets[0]!.receive({ type: 'error', message: 'The provider is no longer available', code: 'provider_not_found', requestId: 'req_socket0000000001' })
   await opening
   expect(shownStep(conversation)).toMatchObject({ load: 'failed', transcript: ['shown'], agents: ['reader running'] })
 
@@ -2674,6 +2674,42 @@ test('a conversation that opens no session shows its transcript with its agents 
     })
   } finally {
     restoreFetch()
+  }
+})
+
+// A conversation the backend made without a model, such as an automation's
+// run's: production showed it as "Couldn't load this conversation" when the
+// backend refused its session. It opens to its transcript and waits for a
+// model, which the composer's choice writes. Cost: one opening.
+test('a conversation whose record holds no model opens to its transcript, not as failed', async () => {
+  records.find((item) => item.id === FIRST)!.model = null
+  await changed(FIRST)
+  addStubProvider()
+  const answering = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
+    if (path.endsWith('/transcript')) return Response.json({ start: 0, length: 1, blocks: [shownBlock], instructions: [], summaries: [] })
+    return answering(input, init)
+  }) as typeof fetch
+  try {
+    const sockets = playPageSockets()
+    await useProduct().loadModels(true)
+    const store = useConversations()
+    const opening = store.activate(FIRST)
+    // A socket the page opened anyway is refused, as the backend refuses it.
+    void openSent(sockets).then(() => sockets[0]!.receive({
+      type: 'error', message: 'Choose a model for the conversation before opening it', code: 'model_not_selected', requestId: 'req_socket0000000001',
+    }), () => {})
+    await opening.catch(() => {})
+    const conversation = store.items.find((item) => item.id === FIRST)!
+    expect(conversation.load).toBe('ready')
+    expect(conversation.lastError).toBeNull()
+    expect(shownStep(conversation).transcript).toEqual(['shown'])
+  } finally {
+    globalThis.fetch = answering
   }
 })
 

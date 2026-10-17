@@ -88,6 +88,7 @@ reqwest = { workspace = true, features = ["rustls"], optional = true }
 axum = "0.8"
 base64.workspace = true
 web-push-native = "0.5"
+hmac = "0.12"
 demi-agent-server = { path = "../agent-server", features = ["testing"] }
 demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-agent-store = { path = "../agent-store", features = ["testing"] }

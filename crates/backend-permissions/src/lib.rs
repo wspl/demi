@@ -19,6 +19,7 @@ use std::future::Future;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use demi_shared_types::Timestamp;
 use demi_backend_database::StorageError;
 use demi_backend_database::control::ControlService;
 use demi_backend_database::credentials::{CredentialSeal, StoredCredential};
@@ -95,6 +96,12 @@ pub trait PermissionShard {
     /// The name the user knows the device by: Cloud for the user's Cloud,
     /// a paired device's own name.
     fn host_name<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, String>;
+
+    /// When the message of a run a URL started came, while every turn of
+    /// the conversation works for it, until the user next writes to it
+    /// (`automations.md` § What a run sends): each credential read since
+    /// asks. None while the user's own message is the latest.
+    fn url_message_since<'a>(&'a self, conversation: &'a ConversationId) -> LocalBoxFuture<'a, Option<Timestamp>>;
 
     /// The conversation asks the user what `ask` says, by the request
     /// `request`, which the user's browsers are notified of (`turns.md`
@@ -399,6 +406,7 @@ pub async fn read_credential(
         agent,
         command,
     } = asking(shard, invocation)?;
+    let asks_since = shard.url_message_since(&conversation).await;
     let read = shard
         .control()
         .read_credential(
@@ -407,6 +415,7 @@ pub async fn read_credential(
             field.clone(),
             command,
             agent,
+            asks_since,
             shard.credential_seal(),
         )
         .await

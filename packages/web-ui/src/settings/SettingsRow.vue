@@ -79,6 +79,8 @@ const topAligned = computed(() => slots['detail'] !== undefined || below.value)
 // stretched flex item's width from its height, so the row is measured.
 const rowElement = ref<HTMLElement>()
 const { height: rowHeight } = useElementSize(rowElement, undefined, { box: 'border-box' })
+/** A one-line row's height, `min-h-14`: the accessory's square is never wider. */
+const ACCESSORY_MAX_PX = 56
 
 const emit = defineEmits<{
   click: []
@@ -181,12 +183,13 @@ const working = provideRowTarget(() => props.target)
         <slot name="below" />
       </div>
     </div>
-    <!-- A square as tall as the row: its mark is as far from the row's end as from its top and bottom. -->
+    <!-- A square as tall as a one-line row: its mark is as far from the row's end as from its top and
+         bottom, and stays at the end of a row whose text wraps to several lines. -->
     <div
       v-if="accessory"
       class="flex shrink-0 items-center justify-center text-fg-subtle"
       :class="faded ? 'opacity-60' : ''"
-      :style="{ width: `${rowHeight}px` }"
+      :style="{ width: `${Math.min(rowHeight, ACCESSORY_MAX_PX)}px` }"
     >
       <slot name="accessory">
         <ChevronRight :size="ICON_PX.in28" aria-hidden="true" />

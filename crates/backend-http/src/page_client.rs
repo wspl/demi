@@ -57,16 +57,10 @@ impl<S: Send + Sync> FromRequestParts<S> for PageClient {
             .cloned()
             .ok_or_else(|| ApiError::internal_message("the request reached a socket without its ID"))?;
         let headers = &parts.headers;
-        // An address a proxy passes that does not read as one is not taken.
-        let passed = header(headers, CF_CONNECTING_IP).and_then(|address| address.parse().ok());
-        let peer = parts
-            .extensions
-            .get::<ConnectInfo<Peer>>()
-            .and_then(|ConnectInfo(peer)| peer.address);
         Ok(Self {
             request,
             ray: header(headers, CF_RAY),
-            client: passed.or(peer),
+            client: client_address(parts),
             user_agent: header(headers, USER_AGENT.as_str()),
         })
     }
@@ -74,6 +68,18 @@ impl<S: Send + Sync> FromRequestParts<S> for PageClient {
 
 /// A header's value, when it is there and visible ASCII, which a log line
 /// can carry as it is.
+/// The address the request came from: the one the proxy in front passes,
+/// else the connection's.
+pub(crate) fn client_address(parts: &axum::http::request::Parts) -> Option<std::net::IpAddr> {
+    // An address a proxy passes that does not read as one is not taken.
+    let passed = header(&parts.headers, CF_CONNECTING_IP).and_then(|address| address.parse().ok());
+    let peer = parts
+        .extensions
+        .get::<ConnectInfo<Peer>>()
+        .and_then(|ConnectInfo(peer)| peer.address);
+    passed.or(peer)
+}
+
 fn header(headers: &HeaderMap, name: &str) -> Option<String> {
     headers
         .get(name)

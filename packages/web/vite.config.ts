@@ -183,6 +183,10 @@ export default defineConfig({
         target: process.env.DEMI_BACKEND_URL ?? 'http://127.0.0.1:3271',
         ws: true,
       },
+      // An automation's URL, which other systems call (`automations.md` § Triggers).
+      '/hooks': {
+        target: process.env.DEMI_BACKEND_URL ?? 'http://127.0.0.1:3271',
+      },
     },
   },
 })

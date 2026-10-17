@@ -918,6 +918,7 @@ pub mod store_contract {
         QueuedMessage {
             id: TurnId::try_from(turn).expect("a test turn id is not empty"),
             content: text("brief"),
+            automation: None,
         }
     }
 
@@ -1191,6 +1192,7 @@ pub mod store_contract {
             model: test_model(),
             content: text("brief"),
             preamble: None,
+            automation: None,
         });
         let child = store.session_store(&id("child"));
         child

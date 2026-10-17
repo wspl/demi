@@ -45,6 +45,24 @@ pub async fn provider_context(
     .await
 }
 
+/// The context of `user`'s work for the automation `automation` that
+/// belongs to no conversation, such as a change watch's command for a new
+/// conversation each run (`automations.md` § An automation): it names the
+/// automation.
+pub async fn automation_context(
+    control: &ControlService,
+    user: &UserId,
+    automation: &str,
+) -> Result<CommandContext, StorageError> {
+    context(
+        control,
+        user,
+        format!("automation-{automation}"),
+        CommandCaller::User {},
+    )
+    .await
+}
+
 async fn context(
     control: &ControlService,
     user: &UserId,

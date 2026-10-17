@@ -195,11 +195,11 @@ async fn execute(
         // The input is written before a recorded switch lands, so a switch
         // that fails or is stopped ends a turn that holds it
         // (`failures-and-recovery.md` § The unfinished turn).
-        ActionKind::Send { content } => {
+        ActionKind::Send { content, automation } => {
             let preamble = cancel.guard(s.runtime.preamble()).await?;
             s.update(|core| {
                 let turn = core.turn();
-                core.push_user(turn, content.clone(), preamble);
+                core.push_user(turn, content.clone(), preamble, automation.clone());
             });
             turn::apply_switch(s, cancel).await?;
             compaction::preflight(s, cancel).await?;

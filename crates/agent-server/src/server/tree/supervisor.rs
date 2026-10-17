@@ -650,6 +650,7 @@ impl<H: HostResolver> Tree<H> {
         QueuedMessage {
             id: TurnId::try_from(self.ids.next_id()).expect("an id source never gives an empty id"),
             content: vec![UserContentBlock::Text { text }],
+            automation: None,
         }
     }
 

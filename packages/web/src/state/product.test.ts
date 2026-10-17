@@ -90,6 +90,7 @@ test('the channel\'s snapshot is the page\'s copy, and each later message replac
     lastActiveAt: '2026-10-13T08:00:00.000Z',
     current: false,
     handoffId: 'handoff-1',
+    notifications: false,
   }
   channel.send({ type: 'sessions', sessions: [phone] })
   expect(product.snapshot?.sessions).toEqual([phone])

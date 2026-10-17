@@ -73,7 +73,8 @@
       "sendNow": "Send Now",
       "recall": "Recall",
       "recalled": "Message Recalled",
-      "notDelivered": "This message was not delivered."
+      "notDelivered": "This message was not delivered.",
+      "fromAutomation": "Automation"
     },
     "assistant": {
       "fork": "Fork",

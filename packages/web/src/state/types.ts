@@ -21,7 +21,7 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
-import type { AttachedHost, ConversationShare, ConversationTarget, DeviceKind, WorkflowChoice } from '../api/generated/web-api'
+import type { AttachedHost, ConversationShare, ConversationTarget, DeviceKind, FiledRun, WorkflowChoice } from '../api/generated/web-api'
 import type { NotSaved, RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
@@ -41,6 +41,11 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   revision: number
   readRevision: number
   archived: boolean
+  /**
+   * The automation's run it is filed under, out of the sidebar until the
+   * user answers it or moves it (`automations.md` § Runs); null otherwise.
+   */
+  filed: FiledRun | null
   /** The open tree runs with commands of plugins since turned on or off; a reload would change it. */
   pluginsChanged: boolean
   /** The backend says the agent only waits for the conversation's offline device: a move stops nothing. */

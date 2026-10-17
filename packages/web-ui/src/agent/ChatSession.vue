@@ -56,6 +56,8 @@ import SidebarSelectionMenu from '../sidebar/SidebarSelectionMenu.vue'
 import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
 import { copyId } from './copy-id'
 import StatusDot from '../ui/StatusDot.vue'
+import AutomationsChip from '../automations/AutomationsChip.vue'
+import type { AutomationLink } from '../automations/types'
 import { usePhone } from '../ui/phone'
 import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
@@ -101,6 +103,11 @@ const props = withDefaults(defineProps<{
    * saved yet or archived, the sheet offers only where it runs.
    */
   listed?: { pinned: boolean }
+  /**
+   * The automations that wake the conversation (`automations.md` § Where the
+   * user sees them): a chip above the composer lists them.
+   */
+  automations?: readonly AutomationLink[]
   /** The conversation's Host files its messages name; absent, their paths stay text. */
   files?: ConversationFiles
   /**
@@ -165,6 +172,8 @@ const sharing = useShare(() => props.share, () => props.shares ?? [])
 const shareConversation = { kind: 'conversation' } as const
 
 const emit = defineEmits<{
+  /** Open an automation that wakes the conversation, from its mark. */
+  openAutomation: [id: string]
   /** The dock windows' share settled: a drag ended, a key or a double-click applied. */
   dockWindowResizeEnd: [share: number]
   /** A failure's record turned the preference to resume at its time on or off. */
@@ -649,6 +658,8 @@ watch(
         </Tooltip>
       </div>
     </header>
+    <!-- A bar about where the conversation belongs, under the header: an automation's run's. -->
+    <slot name="bar" />
     <div class="relative min-h-0 flex-1 overflow-hidden">
       <SessionSurface
         ref="surface"
@@ -740,6 +751,11 @@ watch(
                 :agents="shownAgents"
                 :open="agentsOpen"
                 @open="toggleAgents"
+              />
+              <AutomationsChip
+                v-if="automations?.length"
+                :automations="automations"
+                @open="(id) => emit('openAutomation', id)"
               />
             </template>
             <!-- With the transcript: a message sent while the session opens goes once it has. -->
