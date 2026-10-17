@@ -167,6 +167,8 @@ export function providerView(
     keyConfigured: entry.hasApiKey,
     vendorId: entry.vendorId,
     compatible: entry.compatible,
+    // The `media` family's entries make media alone (`providers.md` § Media-only vendors).
+    makesText: entry.providerType !== 'media',
     baseUrl: entry.endpoint ?? '',
     wireApi: wireApi(entry.providerType, entry.wireApi),
     apiKey: '',
@@ -184,7 +186,8 @@ export function providerView(
         : healthMessage(entry.details.auth) ?? healthMessage(entry.details.runtime),
     enabled: !hidden.provider(entry.id),
     // The catalog lists the text models; a compatible API's models of other
-    // kinds are its own list's, each only its ID and name.
+    // kinds are its own list's, each only its ID and name, an audio model
+    // with the kinds the catalog's audio models say it makes.
     models: [
       ...catalog?.models.map((model) =>
         settingsModel(model, !hidden.model(entry.id, model.id)),
@@ -200,6 +203,9 @@ export function providerView(
             extensions: null,
             fastTier: null,
             enabled: true,
+            ...(model.kind === 'audio'
+              ? { kinds: catalog?.audioModels.find((listed) => listed.id === model.id)?.kinds ?? [] }
+              : {}),
           }]
         : []),
     ],
@@ -230,6 +236,7 @@ export function providerView(
     media: {
       image: { ...entry.media.image, models: entry.compatible ? undefined : catalog?.imageModels ?? [] },
       video: { ...entry.media.video, models: entry.compatible ? undefined : catalog?.videoModels ?? [] },
+      audio: { ...entry.media.audio, models: entry.compatible ? undefined : catalog?.audioModels ?? [] },
     },
     autoRefreshUsage: details?.quotaCapability.type === 'supported'
       && details.quotaCapability.probe === 'free',

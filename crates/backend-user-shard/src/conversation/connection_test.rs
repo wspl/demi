@@ -14,6 +14,8 @@ use demi_backend_providers::vault::entries::ProviderEntry;
 use demi_provider_common::{
     ErrorCode, InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RequestPurpose, RuntimeEnv, UserPart,
 };
+use demi_provider_common::media::MediaFailure;
+use demi_shared_types::MediaKind;
 use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::providers::TestResult;
 use futures_util::StreamExt;
@@ -24,6 +26,40 @@ use crate::shard::exposed_ports::endpoint_device;
 use crate::shard::Shard;
 
 impl Shard {
+    /// Tests the key of an entry of media alone, which makes no text, by
+    /// reading its vendor's list of its media models, as ElevenLabs'
+    /// `GET /v1/models` checks a key (`providers.md` § Media-only vendors).
+    /// It needs only the key: a passed test names the first model the
+    /// listing holds, or the entry when it holds none, and a refused key
+    /// fails in the vendor's words.
+    async fn test_media_key(&self, entry: &ProviderEntry, provider: &Arc<dyn Provider>, cancel: CancellationToken) -> TestResult {
+        let services = self.services();
+        let assembly = &services.assembly;
+        let shapes = assembly.media_shapes(entry);
+        let maker = MediaKind::ALL
+            .into_iter()
+            .filter(|kind| shapes.makes(*kind))
+            .find_map(|kind| assembly.maker(entry, provider, kind));
+        let Some(maker) = maker else {
+            return TestResult::Failed { message: "This provider makes nothing yet".into(), model: None, not_exposed: None };
+        };
+        let http = assembly.http_for(entry, self.http().clone());
+        let catalog = services.media.current();
+        let listing = tokio::select! {
+            () = cancel.cancelled() => {
+                return TestResult::Failed { message: "The test was cancelled".into(), model: None, not_exposed: None };
+            }
+            listing = maker.media().models(&http, &catalog) => listing,
+        };
+        match listing {
+            Ok(models) => {
+                let first = models.into_iter().next().map(|model| model.name.unwrap_or(model.id));
+                TestResult::Passed { model: first.unwrap_or_else(|| entry.label.clone()) }
+            }
+            Err(failure) => TestResult::Failed { message: failure_words(&failure), model: None, not_exposed: None },
+        }
+    }
+
     /// Tests `provider`, the entry's provider for `account` or for its
     /// active account without one, with the entry's model `model_id`. A
     /// provider that runs a process runs it on the Claude Code machine. `cancel`
@@ -33,10 +69,16 @@ impl Shard {
         entry: ProviderEntry,
         provider: Arc<dyn Provider>,
         account: Option<CredentialId>,
-        model_id: String,
+        model_id: Option<String>,
         cancel: CancellationToken,
     ) -> TestResult {
         let assembly = &self.services().assembly;
+        if !assembly.makes_text(&entry) {
+            return self.test_media_key(&entry, &provider, cancel).await;
+        }
+        let Some(model_id) = model_id else {
+            return TestResult::Failed { message: "Name a text model to test".into(), model: None, not_exposed: None };
+        };
         let catalog = assembly
             .entry_catalog(&entry, &Ok(provider.clone()), false)
             .await;
@@ -152,5 +194,17 @@ impl Shard {
             }
             Some(Some(_)) => TestResult::Passed { model: name },
         }
+    }
+}
+
+/// What a media request's failure says, as a test shows it: the vendor's
+/// own words where it gave some.
+fn failure_words(failure: &MediaFailure) -> String {
+    match failure {
+        MediaFailure::UsageLimit { .. } => "The usage limit is reached".to_owned(),
+        MediaFailure::SignIn(failure) => failure.message(),
+        MediaFailure::KeyRefused { message, .. } | MediaFailure::Refused { message, .. } => message.clone(),
+        MediaFailure::Shape { takes, .. } => format!("It takes only {}", takes.join(", ")),
+        MediaFailure::Unanswered { cause, .. } => cause.clone(),
     }
 }

@@ -17,8 +17,8 @@ use futures_util::{
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ErrorCode, ProviderFailure, credentials::SubscriptionAccounts, images::ImageMaker, quota::ProviderQuota,
-    videos::VideoMaker,
+    ErrorCode, ProviderFailure, audio::AudioMaker, credentials::SubscriptionAccounts, images::ImageMaker,
+    quota::ProviderQuota, videos::VideoMaker,
 };
 
 /// One provider entry and account, shared by every user and request of the
@@ -90,6 +90,11 @@ pub trait Provider: Send + Sync + 'static {
         None
     }
 
+    /// The audio role of a provider that makes audio (`audio.md`).
+    fn audio(&self) -> Option<&dyn AudioMaker> {
+        None
+    }
+
     /// Builds a runtime for one session. The backend calls it on the shard
     /// that will own the runtime.
     fn runtime(&self, env: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError>;
@@ -119,6 +124,9 @@ pub enum RuntimeError {
     /// start it on.
     #[error("{provider} needs a Host that runs processes")]
     ProcessHostRequired { provider: String },
+    /// The provider makes media and no text, so it runs no session.
+    #[error("{provider} makes no text")]
+    NoText { provider: String },
 }
 
 /// Why a provider's model directory could not be read. The backend shows the

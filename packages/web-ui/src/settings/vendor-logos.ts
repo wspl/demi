@@ -1,5 +1,6 @@
 /**
- * The vendors' marks, monochrome SVGs (models.dev's, and Claude's own) that
+ * The vendors' marks, monochrome SVGs (models.dev's, Claude's own, and
+ * Simple Icons' for ElevenLabs, a vendor of media models.dev lacks) that
  * `VendorMark` paints in the text's color: one for each models.dev vendor Demi
  * has a mark for, and each subscription wears its vendor's. A vendor without a
  * mark here shows its initial.
@@ -11,6 +12,7 @@ import azure from './logos/azure.svg?url'
 import cerebras from './logos/cerebras.svg?url'
 import claude from './logos/claude.svg?url'
 import deepseek from './logos/deepseek.svg?url'
+import elevenlabs from './logos/elevenlabs.svg?url'
 import fireworksAi from './logos/fireworks-ai.svg?url'
 import google from './logos/google.svg?url'
 import googleVertex from './logos/google-vertex.svg?url'
@@ -32,6 +34,7 @@ const VENDOR_LOGOS: Record<string, string> = {
   azure,
   cerebras,
   deepseek,
+  elevenlabs,
   'fireworks-ai': fireworksAi,
   google,
   'google-vertex': googleVertex,

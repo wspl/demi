@@ -171,7 +171,7 @@ function attachmentFile(attachment: MessageAttachment): CopiedStoredFile {
 /**
  * A link that opens an attachment: an image or a video large in the page's
  * viewer, where a video plays, and any other file as a download under its
- * name. One that opens the viewer is the viewer's control: a press on it
+ * name; an audio file is its inline player instead (`attachmentAudio`). One that opens the viewer is the viewer's control: a press on it
  * does not close the viewer, which shows the medium in place of the one it
  * shows (`KEEPS_WINDOWS`).
  */
@@ -207,6 +207,19 @@ function attachmentVideo(attachment: MessageAttachment, alt: string, title: stri
   if (openLinks > 0)
     return `<span${wrapper}>${video}${mark}</span>`
   return `${attachmentLink(attachment, wrapper)}${video}${mark}</a>`
+}
+
+/** The attribute of an audio attachment's place, which holds its address, where `AudioPlayer` plays it. */
+export const ATTACHMENT_AUDIO_ATTRIBUTE = 'data-attachment-audio'
+
+/**
+ * An audio attachment as the place of its inline player, which plays it
+ * where it is, as a voice message plays in Messages (`file-previews.md`
+ * § Files named in messages); `AudioPlayer` fills it once the render is in
+ * the page.
+ */
+function attachmentAudio(attachment: MessageAttachment): string {
+  return `<span class="message-audio" ${ATTACHMENT_AUDIO_ATTRIBUTE}="${escapeHtml(attachment.url)}" data-audio-name="${escapeHtml(attachment.name)}"></span>`
 }
 
 /**
@@ -259,6 +272,8 @@ function attachmentMedium(attachment: MessageAttachment, token: Tokens.Image): s
   const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
   if (attachment.mediaType.startsWith('video/'))
     return attachmentVideo(attachment, alt, title)
+  if (attachment.mediaType.startsWith('audio/'))
+    return openLinks > 0 ? alt : attachmentAudio(attachment)
   if (!attachment.mediaType.startsWith('image/'))
     return openLinks > 0 ? alt : iconLink((attributes) => attachmentLink(attachment, attributes), fileIcon(attachment.name), alt, false)
   const image = `<img src="${escapeHtml(attachment.url)}" alt="${alt}"${title}${sizeAttributes(declaredSize(attachment))} />`
@@ -309,7 +324,10 @@ const messageRenderer: RendererObject = {
       return link((attributes) => webLink(token.href, attributes), linkIcon('data-link-icon'))
     const attachment = attachmentId(token.href)
     if (attachment !== null)
-      return attachmentTarget(attachment, body, (found) => link((attributes) => attachmentLink(found, attributes), fileIcon(found.name)))
+      return attachmentTarget(attachment, body, (found) =>
+        found.mediaType.startsWith('audio/') && openLinks === 0
+          ? attachmentAudio(found)
+          : link((attributes) => attachmentLink(found, attributes), fileIcon(found.name)))
     const agent = linkedAgent(token.href)
     if (agent !== null)
       return agentLink(agent, body, tight)

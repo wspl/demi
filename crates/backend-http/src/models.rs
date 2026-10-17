@@ -44,9 +44,11 @@ pub(super) async fn models(
     let mut providers = services.assembly.model_catalog(&entries, refresh.0).await;
     let mut images = services.entry_media_models(&user.id, MediaKind::Image).await?;
     let mut videos = services.entry_media_models(&user.id, MediaKind::Video).await?;
+    let mut audio = services.entry_media_models(&user.id, MediaKind::Audio).await?;
     for provider in &mut providers {
         provider.image_models = images.remove(provider.provider_id.as_str()).unwrap_or_default();
         provider.video_models = videos.remove(provider.provider_id.as_str()).unwrap_or_default();
+        provider.audio_models = audio.remove(provider.provider_id.as_str()).unwrap_or_default();
     }
     let small_model = automatic_small_model(&providers, &preferences);
     Ok(Json(ModelCatalog {

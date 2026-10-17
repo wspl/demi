@@ -281,6 +281,7 @@ mod tests {
         CatalogProvider {
             image_models: Vec::new(),
             video_models: Vec::new(),
+            audio_models: Vec::new(),
             provider_id: ProviderId::try_from(id).unwrap(),
             display_name: id.into(),
             cli_package: None,

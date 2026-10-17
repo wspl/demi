@@ -82,8 +82,7 @@ impl VendorCatalog {
     pub async fn vendors(&self) -> Result<Vec<Vendor>, ModelsDevError> {
         let snapshot = self.models_dev.current().await?;
         let mut vendors: Vec<Vendor> = snapshot.vendors().filter_map(offered).collect();
-        let collator = root_collator();
-        vendors.sort_by(|left, right| collator.compare(&left.name, &right.name));
+        sort_by_name(&mut vendors);
         Ok(vendors)
     }
 
@@ -186,6 +185,12 @@ fn official_base_url(vendor_id: &str) -> Option<String> {
         "xai" => Some(XAI_BASE_URL.to_owned()),
         _ => None,
     }
+}
+
+/// `vendors` by name, as the web app sorts names.
+pub fn sort_by_name(vendors: &mut [Vendor]) {
+    let collator = root_collator();
+    vendors.sort_by(|left, right| collator.compare(&left.name, &right.name));
 }
 
 /// The root locale's collation, which orders names as a web browser's

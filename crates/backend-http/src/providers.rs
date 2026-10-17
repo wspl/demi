@@ -132,8 +132,7 @@ pub(super) async fn catalog(
         })
         .collect();
     let vendors = assembly
-        .vendors()
-        .vendors()
+        .offered_vendors()
         .await
         .map_err(catalog_unavailable)?;
     Ok(Json(VendorCatalog {

@@ -48,6 +48,8 @@ export const galleryBlobs = {
    * as when its header was not read: 16:9 until its first frame arrives.
    */
   unsizedRecording: fixture('b8'.repeat(32), '/fixtures/preview/demo.mp4'),
+  /** A three-second voice-over as MP3, as `demi audio speech` makes one. */
+  voiceOver: fixture('d5'.repeat(32), '/fixtures/preview/welcome.mp3'),
   /** A one-page PDF, for the documents a message carries. */
   guide: fixture('c4'.repeat(32), '/fixtures/preview/guide.pdf'),
 }

@@ -11,6 +11,7 @@
 mod chat_completions;
 mod credentials;
 mod failures;
+mod media;
 mod media_catalog;
 mod models_dev;
 mod oauth;

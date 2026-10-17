@@ -19,7 +19,8 @@ use demi_backend_remote_host::ServiceCallError;
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{HostErrorKind, JobCaller, PortError};
 use demi_plugin_interface::{
-    AskedVideo, CallKind, HostFile, HostRead, ImageAsk, MediaListing, MadeImage, PortFailure, PortRefusal, VideoAsk,
+    AskedVideo, AudioAsk, AudioVoices, CallKind, HostFile, HostRead, ImageAsk, MadeAudio, MediaListing, MadeImage,
+    PortFailure, PortRefusal, VideoAsk,
 };
 use demi_shared_types::{B64Bytes, BlobRef, MediaKind, Timestamp};
 use demi_web_api_protocol::error::ErrorCode;
@@ -148,6 +149,32 @@ impl ProductPort for ShardPort {
         Box::pin(async move {
             let shard = self.shard()?;
             super::media::make_video(&shard, conversation, caller, ask, cancel).await
+        })
+    }
+
+    fn make_audio<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        caller: Option<&'a JobCaller>,
+        ask: AudioAsk,
+        cancel: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<MadeAudio, PortFailure>> {
+        Box::pin(async move {
+            let shard = self.shard()?;
+            super::media::make_audio(&shard, conversation, caller, ask, cancel).await
+        })
+    }
+
+    fn audio_voices<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        model: String,
+        search: Option<String>,
+        cancel: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<AudioVoices, PortFailure>> {
+        Box::pin(async move {
+            let shard = self.shard()?;
+            super::media::audio_voices(&shard, conversation, model, search, cancel).await
         })
     }
 

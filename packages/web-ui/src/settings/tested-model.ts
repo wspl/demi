@@ -10,6 +10,16 @@ export function testedModel(provider: SettingsProviderEntry): SettingsProviderMo
   return provider.models.find((model) => (model.kind ?? 'text') === 'text' && model.enabled)
 }
 
+/**
+ * Whether Test Connection has something to test: a text model to send its
+ * message to, or the key of an entry of media alone, which its vendor's
+ * list of models checks with no model named, whether that list could be
+ * read yet or not (`providers.md` § Media-only vendors).
+ */
+export function canTest(provider: SettingsProviderEntry): boolean {
+  return provider.makesText === false || testedModel(provider) !== undefined
+}
+
 /** Whether the entry has a text model at all, enabled or not. */
 export function hasTextModel(provider: SettingsProviderEntry): boolean {
   return provider.models.some((model) => (model.kind ?? 'text') === 'text')

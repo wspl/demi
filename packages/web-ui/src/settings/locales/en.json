@@ -548,7 +548,16 @@
       "videoGeneration": "Video Generation",
       "videos": "Videos",
       "addVideo": "Add Video Model",
-      "noVideos": "No video models yet"
+      "noVideos": "No video models yet",
+      "audio": "Audio",
+      "audioGeneration": "Audio Generation",
+      "addAudio": "Add Audio Model",
+      "noAudio": "No audio models yet",
+      "kinds": {
+        "speech": "Speech",
+        "music": "Music",
+        "effect": "Sound Effects"
+      }
     },
     "state": {
       "setup": "Not set up",
@@ -587,6 +596,7 @@
       "keyPaste": "Paste your API key",
       "test": "Test connection",
       "testDescription": "Sends one short chat message to the first enabled text model.",
+      "testMediaDescription": "Reads the vendor’s list of models with the API key.",
       "testing": "Testing…",
       "connected": "Connected",
       "failed": "Failed",

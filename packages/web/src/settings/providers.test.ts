@@ -54,7 +54,7 @@ beforeEach(async () => {
         compatible: false,
         endpoint: null,
         hasApiKey: true,
-        rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
+        rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
         models: null,
         createdAt: '2026-09-10T00:00:00.000Z',
         details: { type: 'failed', message: 'Not read in this test' },
@@ -112,7 +112,7 @@ beforeEach(async () => {
         compatible: body.source === 'compatible',
         endpoint: null,
         hasApiKey: false,
-        rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
+        rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
         models: null,
         createdAt: '2026-09-11T00:00:00.000Z',
       }
@@ -230,7 +230,7 @@ test('a model Custom adds is saved at once without a context window, and a reloa
     const models = body.models as { id: string; displayName: string; contextWindow: number | null }[]
     state.providers[0]!.models = models as never
     catalogProviders = [{
-      providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', imageModels: [], videoModels: [], stale: false,
+      providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', imageModels: [], videoModels: [], audioModels: [], stale: false,
       warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
       availability: { type: 'available' },
       models: models.map((model) => ({
@@ -303,7 +303,7 @@ test('the page shows an entry’s kind and effective endpoint as the read model 
     compatible,
     endpoint,
     hasApiKey: true,
-    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
+    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
     models: null,
     createdAt: '2026-09-10T00:00:00.000Z',
     details: { type: 'failed' as const, message: 'Not read in this test' },
@@ -325,7 +325,7 @@ test('the page shows an entry’s kind and effective endpoint as the read model 
 test('an incomplete entry is in the setup state, from its availability; a complete one is not', async () => {
   const settings = useProviderSettings()
   catalogProviders = [{
-    providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', imageModels: [], videoModels: [], stale: false,
+    providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', imageModels: [], videoModels: [], audioModels: [], stale: false,
     warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
     availability: { type: 'unavailable', reason: 'setup', message: 'Finish setting up this provider in Settings', missing: ['apiKey', 'models'] },
     models: [],
@@ -629,7 +629,7 @@ test('a switch that fails to save returns to the backend\'s value with a toast, 
     quotaCapability: { type: 'none' },
     cliPackage: null,
   }
-  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' }
+  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' }
   channels.last().send({ type: 'providers', providers: state.providers })
   const settings = useProviderSettings()
   const entry = () => settings.providers.find((candidate) => candidate.id === 'configured')!
@@ -639,7 +639,7 @@ test('a switch that fails to save returns to the backend\'s value with a toast, 
     bodies.push(body)
     return answer.promise
   }
-  settings.change(entry(), { media: { image: { shape: 'openai-images', enabled: false }, video: { shape: null, enabled: true } } })
+  settings.change(entry(), { media: { image: { shape: 'openai-images', enabled: false }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } } })
   expect(entry().media.image.enabled).toBe(false)
 
   answer.resolve(
@@ -708,7 +708,7 @@ test('a saved change is not read back: the catalog follows the channel\'s entry,
 test('a newer media catalog on the channel reads the catalog again, and the Images section shows its models', async () => {
   const settings = useProviderSettings()
   const entry = () => settings.providers.find((candidate) => candidate.id === 'configured')!
-  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' }
+  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' }
   channels.last().send({ type: 'providers', providers: state.providers })
   await useProduct().loadModels()
   catalogReads = []
@@ -716,12 +716,12 @@ test('a newer media catalog on the channel reads the catalog again, and the Imag
     providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
     warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
     availability: { type: 'available' }, models: [],
-    imageModels: [{ id: 'gpt-image-3', name: 'GPT-Image-3', released: '2026-09-30' }], videoModels: [],
+    imageModels: [{ id: 'gpt-image-3', name: 'GPT-Image-3', released: '2026-09-30', kinds: [] }], videoModels: [], audioModels: [],
   }]
-  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, catalog: '2026-10-01T00:00:00.000Z' }
+  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-10-01T00:00:00.000Z' }
   channels.last().send({ type: 'providers', providers: state.providers })
   await waitFor(() => entry().media.image.models?.length === 1)
-  expect(entry().media.image.models).toEqual([{ id: 'gpt-image-3', name: 'GPT-Image-3', released: '2026-09-30' }])
+  expect(entry().media.image.models).toEqual([{ id: 'gpt-image-3', name: 'GPT-Image-3', released: '2026-09-30', kinds: [] }])
   expect(catalogReads).toEqual(['/api/models'])
 })
 
@@ -749,7 +749,7 @@ test('Activate moves the Active mark at once, and a refused switch moves it back
     compatible: false,
     endpoint: null,
     hasApiKey: false,
-    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
+    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
     models: null,
     createdAt: '2026-09-10T00:00:00.000Z',
     details: {
@@ -840,7 +840,7 @@ test('a start the entry’s running sign-in holds opens that sign-in, whose fail
     providerType: 'codex',
     label: 'Codex',
     hasApiKey: false,
-    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
+    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
   }
   state.providers.push(entry)
   // Another page of the user's started it.
@@ -946,7 +946,7 @@ test('an account whose sign-in the vendor refused reads as signed out, and Sign 
     providerType: 'claude-code',
     label: 'Claude',
     hasApiKey: false,
-    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
+    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
     details: {
       type: 'read' as const,
       auth: { status: 'authenticated' as const },
@@ -981,7 +981,7 @@ test('a completed sign-in says done the moment the page learns it, and an accoun
     providerType: 'codex',
     label: 'Codex',
     hasApiKey: false,
-    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
+    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
     details: {
       type: 'read' as const,
       auth: { status: 'authenticated' as const },
@@ -1028,4 +1028,53 @@ test('a sign-in cancelled on another page closes the dialog here, with nothing s
   })
   await waitFor(() => settings.login === null)
   expect(cancelled).toEqual([])
+})
+
+// An entry of media alone tests its key with no model named, before its
+// models could be read, and a compatible API's audio model names the kinds
+// the catalog's audio models give it (`providers.md` § Media-only vendors,
+// `audio.md` § Vendors). Planted defects: Test Connection of an entry of
+// media alone waiting for a listed model; a compatible audio model's row
+// without its kind. Cost: a stubbed backend, a few milliseconds.
+test('an entry of media alone tests its key with no model, and a compatible audio model names its kinds', async () => {
+  const settings = useProviderSettings()
+  const entry = (id: string, fields: Record<string, unknown>) => ({
+    ...state.providers[0]!,
+    id,
+    details: { type: 'failed' as const, message: 'Not read in this test' },
+    ...fields,
+  })
+  state.providers.push(
+    entry('voices', { providerType: 'media', label: 'ElevenLabs', vendorId: 'elevenlabs', wireApi: null,
+      media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: 'elevenlabs', enabled: true }, catalog: '2026-09-01T00:00:00.000Z' } }),
+    entry('local', { label: 'Local', compatible: true, endpoint: 'http://127.0.0.1:8091/v1', hasApiKey: false,
+      media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: 'openai-speech', enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
+      models: [{ kind: 'audio', id: 'qwen3-tts', displayName: 'Qwen3 TTS', contextWindow: null, outputLimit: null, thinkingEfforts: [], acceptedExtensions: null, fastTier: null }] }),
+  )
+  catalogProviders = [{
+    providerId: 'local', displayName: 'Local', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
+    warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
+    availability: { type: 'available' }, models: [], imageModels: [], videoModels: [],
+    audioModels: [{ id: 'qwen3-tts', name: 'Qwen3 TTS', released: null, kinds: ['speech'] }],
+  }]
+  channels.last().send({ type: 'providers', providers: state.providers })
+  await useProduct().loadModels()
+  const shown = (id: string) => settings.providers.find((candidate) => candidate.id === id)!
+  await waitFor(() => shown('local').models.length === 1)
+  expect(shown('local').models[0]!.kinds).toEqual(['speech'])
+
+  // ElevenLabs' models are not read, and its test goes with the key alone.
+  expect(shown('voices').media.audio.models).toEqual([])
+  const sent: string[] = []
+  const plainFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    if (String(input) === '/api/providers/voices/test') {
+      sent.push(String(init?.body))
+      return Response.json({ type: 'failed', message: 'Invalid API key' })
+    }
+    return plainFetch(input, init)
+  }) as typeof fetch
+  settings.test(shown('voices'))
+  await waitFor(() => shown('voices').detail === 'Invalid API key')
+  expect(sent).toEqual(['{}'])
 })

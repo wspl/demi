@@ -94,6 +94,22 @@ as OpenAI's, earlier reasoning replayed encrypted rather than stored on
 xAI's servers. Other mappings are not offered. `github-copilot` is excluded because its
 credential scheme is not the API-key scheme of these families.
 
+### Media-only vendors
+
+ElevenLabs and Stability AI make media and no text, so models.dev, a
+catalog of text models, lists neither. The backend offers them beside
+models.dev's vendors, as the vendors of the
+[media catalog](media-models.md) that models.dev does not list, each with
+the endpoint the catalog names, `https://api.elevenlabs.io` for ElevenLabs.
+Add Provider lists them with the others, by name and logo, and adding one
+creates an API-key entry, as for any vendor, whose page has its key, no
+Models section and the media sections its vendor makes: Audio for
+ElevenLabs. Its family is `media`, which makes no text request, so the
+entry is never in the model menu, and its key is checked by its vendor's
+media model list rather than a chat message. For example, Alex adds
+ElevenLabs, pastes his key, and `demi audio models` lists `eleven_v4`,
+`music_v2` and `eleven_text_to_sound_v2` through it.
+
 A vendor's request requirements are typed settings of the backend's vendor
 policy. The policy applies them to every model of that vendor and passes them
 to the provider with the entry's configuration. For example, DeepSeek's Chat
@@ -1006,7 +1022,7 @@ shows no status until it is tested or used.
 
 An entry's page keeps its connection settings, its endpoint, protocol and
 key, at the top, then its text models under **Models**, then one section
-for each kind of media it can make, **Images**, **Videos** and later
+for each kind of media it can make, **Images**, **Videos** and
 **Audio**, below the models, each laid out as Images is, so the media an entry makes are read with its
 models rather than with its connection
 ([Which entries make which media](../agent/media.md#which-entries-make-which-media)).

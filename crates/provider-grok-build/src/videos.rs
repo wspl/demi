@@ -8,7 +8,7 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_provider_common::{
     endpoint_url,
-    media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, subscription_models},
+    media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, subscription_models},
     media_catalog::{Catalog, MediaKind, Subscription},
     videos::{self, Done, JobState, VideoMaker, VideoRequest, xai},
 };
@@ -65,7 +65,7 @@ impl VideoMaker for GrokVideos {
             let url = endpoint_url(&shared.proxy_url, &format!("/videos/{job}"));
             shared
                 .media_call()
-                .send(|headers| http.get(url.clone()).headers(headers), |refused| shared.media_headers(http, refused))
+                .send(http, Ask::get(&url), Holding::Json, |refused| shared.media_headers(http, refused))
                 .await
                 .and_then(|answered| xai::read_state(&answered.body))
         })

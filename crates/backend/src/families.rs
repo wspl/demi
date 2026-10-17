@@ -5,8 +5,9 @@
 use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
+use demi_backend_providers::llm::assembly::MEDIA_FAMILY;
 use demi_backend_providers::llm::families::{
-    AccountBinding, CompatibleImagesArgs, CompatibleVideosArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry,
+    AccountBinding, CompatibleAudioArgs, CompatibleImagesArgs, CompatibleVideosArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry,
     ProviderFamily,
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
@@ -14,11 +15,13 @@ use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider, Placement}
 use demi_provider_codex::{CodexConfig, CodexProvider, CodexReleases};
 use demi_provider_common::credentials::SubscriptionAccounts;
 use demi_provider_common::quota::{MemorySnapshots, QuotaSnapshotStore};
+use demi_provider_common::media::MediaVendor;
 use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
+use demi_provider_elevenlabs::{ElevenLabsConfig, ElevenLabsProvider};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
-use demi_shared_types::{ImageShape, VideoShape, WireApi};
+use demi_shared_types::{AudioShape, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 
 /// The families built into the backend.
@@ -30,11 +33,15 @@ pub fn builtin() -> FamilyRegistry {
         .with_compatible_videos(Arc::new(|args: CompatibleVideosArgs| {
             demi_provider_openai_api::compatible_videos(args.name, args.shape, args.key, &args.base, args.models, args.clock)
         }))
+        .with_compatible_audio(Arc::new(|args: CompatibleAudioArgs| {
+            demi_provider_openai_api::compatible_audio(args.name, args.key, &args.base, args.models, args.clock)
+        }))
         .with("anthropic", AnthropicFamily)
         .with("claude-code", ClaudeCodeFamily)
         .with("codex", CodexFamily::default())
         .with("google", GoogleFamily)
         .with("grok-build", GrokBuildFamily)
+        .with(MEDIA_FAMILY, MediaFamily)
         .with("openai", OpenAiFamily)
 }
 
@@ -93,6 +100,7 @@ impl ProviderFamily for OpenAiFamily {
             vendor_id: settings.vendor_id,
             makes_images: settings.image_shape == Some(ImageShape::OpenaiImages),
             makes_videos: settings.video_shape == Some(VideoShape::XaiVideos),
+            makes_audio: settings.audio_shape == Some(AudioShape::OpenaiSpeech),
         };
         Ok(Arc::new(OpenAiProvider::new(config, args.clock)))
     }
@@ -107,6 +115,12 @@ impl ProviderFamily for OpenAiFamily {
     /// down (`videos.md` § Vendors).
     fn video_shape(&self, vendor_id: Option<&str>) -> Option<VideoShape> {
         (vendor_id == Some("xai")).then_some(VideoShape::XaiVideos)
+    }
+
+    /// An OpenAI key makes speech; xAI's speech comes later (`audio.md`
+    /// § Vendors).
+    fn audio_shape(&self, vendor_id: Option<&str>) -> Option<AudioShape> {
+        (vendor_id == Some("openai")).then_some(AudioShape::OpenaiSpeech)
     }
 }
 
@@ -131,6 +145,7 @@ impl ProviderFamily for GoogleFamily {
             base_url: settings.base_url,
             makes_images: settings.image_shape == Some(ImageShape::Gemini),
             makes_videos: settings.video_shape == Some(VideoShape::Veo),
+            makes_audio: settings.audio_shape == Some(AudioShape::Gemini),
         };
         Ok(Arc::new(GoogleProvider::new(config, args.clock)))
     }
@@ -143,6 +158,48 @@ impl ProviderFamily for GoogleFamily {
     /// A Gemini API key makes videos with Veo.
     fn video_shape(&self, vendor_id: Option<&str>) -> Option<VideoShape> {
         (vendor_id == Some("google")).then_some(VideoShape::Veo)
+    }
+
+    /// A Gemini API key makes speech and, with Lyria, music.
+    fn audio_shape(&self, vendor_id: Option<&str>) -> Option<AudioShape> {
+        (vendor_id == Some("google")).then_some(AudioShape::Gemini)
+    }
+}
+
+/// The `media` family (`providers.md` § Media-only vendors): an API-key
+/// entry of a vendor that makes media and no text, such as ElevenLabs,
+/// built by its vendor's crate. A vendor whose shapes are not built yet,
+/// Stability AI, has none here, so it is not offered.
+struct MediaFamily;
+
+impl ProviderFamily for MediaFamily {
+    fn credential(&self) -> CredentialKind {
+        CredentialKind::ApiKey
+    }
+
+    fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
+        let FamilyCredential::ApiKey(settings) = args.credential else {
+            return Err(FamilyError::WrongCredential);
+        };
+        match settings.vendor_id.as_deref().and_then(MediaVendor::from_id) {
+            Some(MediaVendor::Elevenlabs) => {
+                let config = ElevenLabsConfig { api_key: settings.api_key, base_url: settings.base_url };
+                Ok(Arc::new(ElevenLabsProvider::new(config, args.clock)))
+            }
+            _ => Err(FamilyError::Invalid(format!(
+                "the media family makes nothing for vendor {}",
+                settings.vendor_id.as_deref().unwrap_or("none")
+            ))),
+        }
+    }
+
+    fn makes_text(&self) -> bool {
+        false
+    }
+
+    /// An ElevenLabs key makes speech, music and sound effects.
+    fn audio_shape(&self, vendor_id: Option<&str>) -> Option<AudioShape> {
+        (vendor_id == Some(MediaVendor::Elevenlabs.id())).then_some(AudioShape::Elevenlabs)
     }
 }
 

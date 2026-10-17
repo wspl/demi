@@ -123,7 +123,7 @@ const results = computed(() =>
                 >
                   <HighlightText :text="v.id" :query="query" /> </span
               ></span>
-              <Tag>{{ WIRE_API_LABELS[v.wireApi] }}</Tag>
+              <Tag v-if="v.wireApi">{{ WIRE_API_LABELS[v.wireApi] }}</Tag>
             </span>
           </button>
         </div>

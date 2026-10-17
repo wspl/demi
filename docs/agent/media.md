@@ -13,7 +13,7 @@ and attaches the file.
 This document holds what the three groups share: which entries make which
 media, how a call chooses its entry, and what the agent is told. Each
 group's own commands and vendors are in [Images](images.md),
-[Videos](videos.md) and, as it is built, Audio.
+[Videos](videos.md) and [Audio](audio.md).
 
 ## Who does what
 

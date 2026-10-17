@@ -9,7 +9,7 @@ import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refres
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
-import { testedModel } from '@demicodes/web-ui/settings/tested-model'
+import { canTest, testedModel } from '@demicodes/web-ui/settings/tested-model'
 import { providerOperation, providerTarget } from '@demicodes/web-ui/settings/provider-operations'
 import { operations } from '@demicodes/web-ui/ui/operations'
 import {
@@ -213,7 +213,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       catalogFetched: null,
       state: 'setup',
       enabled: true,
-      media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true } },
+      media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
       models: [],
       accounts: [],
       // A subscription not yet configured goes by its type; an added vendor's draft takes its mark below.
@@ -463,15 +463,15 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   /**
-   * Tests with the first text model the user keeps enabled; the page offers
-   * no test without one. A subscription names the account to test, in use or
-   * not.
+   * Tests with the first text model the user keeps enabled, or for an entry
+   * of media alone with its key alone; the page offers no test without one
+   * of them. A subscription names the account to test, in use or not.
    */
   function test(provider: SettingsProviderEntry, accountId?: string): void {
-    const model = testedModel(provider)
-    if (!model) {
+    if (!canTest(provider)) {
       return
     }
+    const model = provider.makesText === false ? undefined : testedModel(provider)
     const operation = accountId
       ? { kind: 'account' as const, accountId, action: 'test' as const }
       : { kind: 'testing' as const }
@@ -482,7 +482,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
           {
             method: 'POST',
             signal,
-            ...jsonBody({ modelId: model.id, ...(accountId ? { credentialId: accountId } : {}) } satisfies TestRequest),
+            ...jsonBody({ ...(model ? { modelId: model.id } : {}), ...(accountId ? { credentialId: accountId } : {}) } satisfies TestRequest),
           },
         )
         const result = await readResponse(response, testResultSchema)

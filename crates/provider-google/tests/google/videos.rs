@@ -32,6 +32,7 @@ fn provider(vendor: &MockVendor) -> GoogleProvider {
         base_url: Some(vendor.url("/v1beta").parse().unwrap()),
         makes_images: false,
         makes_videos: true,
+        makes_audio: false,
     };
     GoogleProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }

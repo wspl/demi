@@ -449,8 +449,8 @@ async fn an_entry_with_image_generation_off_is_never_chosen_and_says_why() {
         let provider = catalog.providers.iter().find(|provider| provider.provider_id.as_str() == id);
         serde_json::to_value(&provider.expect("the entry is in the catalog").image_models).unwrap()
     };
-    assert_eq!(listed(first.id.as_str()), json!([{ "id": "picture-1", "name": "Picture 1", "released": "2026-01-05" }]));
-    assert_eq!(listed(second.as_str()), json!([{ "id": "drawing-1", "name": "Drawing 1", "released": "2026-02-01" }]));
+    assert_eq!(listed(first.id.as_str()), json!([{ "id": "picture-1", "name": "Picture 1", "released": "2026-01-05", "kinds": [] }]));
+    assert_eq!(listed(second.as_str()), json!([{ "id": "drawing-1", "name": "Drawing 1", "released": "2026-02-01", "kinds": [] }]));
     assert_eq!(listed(tree.as_str()), json!([]));
     backend.close().await;
 }

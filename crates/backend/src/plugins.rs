@@ -2,6 +2,7 @@
 //! plugins), in their order of registration: the list the composition root
 //! registers. A plugin leaves a deployment by leaving this list.
 
+use demi_plugin_audio::Audio;
 use demi_plugin_browser::Browser;
 use demi_plugin_changes::Changes;
 use demi_plugin_file::File;
@@ -23,6 +24,7 @@ pub fn builtin() -> Vec<Box<dyn PluginFactory>> {
         Box::new(Web::new()),
         Box::new(Image::new()),
         Box::new(Video::new()),
+        Box::new(Audio::new()),
         Box::new(Changes::new()),
         Box::new(FileBrowser::new()),
     ]

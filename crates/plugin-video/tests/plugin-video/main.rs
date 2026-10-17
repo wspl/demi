@@ -252,6 +252,7 @@ fn a_video_model_shows_its_durations_resolutions_frames_and_prices_per_second() 
             alias_of: None,
             aliases: Vec::new(),
             image: None,
+            audio: None,
             video: Some(VideoFacts {
                 durations: None,
                 min_duration: Some(1.0),

@@ -12,7 +12,7 @@ use demi_backend_providers::llm::families::{ProviderFamily, family_name};
 use demi_backend_providers::vault::entries::{ApiKeyConfig, EntryCredential, ProviderEntry};
 use demi_backend_providers::vault::operations::OperationGuard;
 use demi_provider_common::{Secret, SecretError};
-use demi_shared_types::{ImageShape, MediaKind, MediaShapes, VideoShape, WireApi};
+use demi_shared_types::{AudioShape, ImageShape, MediaKind, MediaShapes, VideoShape, WireApi};
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::ids::{ProviderId, UserId};
 use demi_web_api_protocol::providers::{
@@ -76,7 +76,7 @@ pub enum ProviderRefusal {
     #[error("{0} makes media as its vendor does; its shapes can’t be changed.")]
     ShapeFixed(String),
     /// A model of a kind the entry makes none of.
-    #[error("models: {model} is {} {kind} model, but {entry} makes no {kind}s; choose {} {kind} shape first", article(*kind), article(*kind))]
+    #[error("models: {model} is {} {kind} model, but {entry} makes no {}; choose {} {kind} shape first", article(*kind), plural(*kind), article(*kind))]
     UnmadeKind { entry: String, model: String, kind: ModelKind },
     /// A list of entries for an order that does not name each of the
     /// scope's once.
@@ -89,11 +89,23 @@ pub enum ProviderRefusal {
     Storage(#[from] StorageError),
 }
 
-/// The article before a kind of model: an image model, a video model.
+/// The article before a kind of model: an image model, a video model, an
+/// audio model.
 fn article(kind: ModelKind) -> &'static str {
     match kind {
-        ModelKind::Image => "an",
+        ModelKind::Image | ModelKind::Audio => "an",
         ModelKind::Text | ModelKind::Video => "a",
+    }
+}
+
+/// What an entry makes of a kind of model, as a sentence names it: images,
+/// videos, audio.
+fn plural(kind: ModelKind) -> &'static str {
+    match kind {
+        ModelKind::Text => "text",
+        ModelKind::Image => "images",
+        ModelKind::Video => "videos",
+        ModelKind::Audio => "audio",
     }
 }
 
@@ -148,8 +160,7 @@ impl Services {
             } => {
                 let vendor = self
                     .assembly
-                    .vendors()
-                    .vendor(&vendor_id)
+                    .offered_vendor(&vendor_id)
                     .await
                     .map_err(|error| ProviderRefusal::CatalogUnavailable(error.to_string()))?
                     .ok_or(ProviderRefusal::UnknownVendor(vendor_id))?;
@@ -173,6 +184,7 @@ impl Services {
                     models,
                     image_shape: None,
                     video_shape: None,
+                    audio_shape: None,
                 };
                 (vendor.provider_type, label, config)
             }
@@ -194,6 +206,7 @@ impl Services {
                     models,
                     image_shape: None,
                     video_shape: None,
+                    audio_shape: None,
                 };
                 (provider_type, label, config)
             }
@@ -216,6 +229,7 @@ impl Services {
                     models,
                     image_shape: None,
                     video_shape: None,
+                    audio_shape: None,
                 };
                 (provider_type, label, config)
             }
@@ -251,7 +265,8 @@ impl Services {
         let protocol = patch.provider_type.is_some() || patch.wire_api.is_some();
         let image_shape = patch.media.as_ref().and_then(|media| media.image.as_ref()).and_then(|image| image.shape);
         let video_shape = patch.media.as_ref().and_then(|media| media.video.as_ref()).and_then(|video| video.shape);
-        let shaped = image_shape.is_some() || video_shape.is_some();
+        let audio_shape = patch.media.as_ref().and_then(|media| media.audio.as_ref()).and_then(|audio| audio.shape);
+        let shaped = image_shape.is_some() || video_shape.is_some() || audio_shape.is_some();
         let lists = patch.models.is_some();
         let reconfigures = patch.api_key.is_some()
             || patch.base_url.is_some()
@@ -314,6 +329,15 @@ impl Services {
                 }
                 config.video_shape = shape;
             }
+            if let Some(shape) = audio_shape {
+                if !config.is_compatible() {
+                    return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
+                }
+                if shape.is_some_and(|shape| !AudioShape::CHOSEN.contains(&shape)) {
+                    return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
+                }
+                config.audio_shape = shape;
+            }
             // A model added of a kind the entry does not make is no model of
             // it: only a compatible entry with a shape for the kind lists
             // one. One kept from before the shape was set to None stays,
@@ -323,6 +347,7 @@ impl Services {
             let shapes = MediaShapes {
                 image: config.image_shape.filter(|_| config.is_compatible()),
                 video: config.video_shape.filter(|_| config.is_compatible()),
+                audio: config.audio_shape.filter(|_| config.is_compatible()),
             };
             let kept = |model: &ConfiguredModel| {
                 stored.iter().flat_map(|models| &models.0).any(|before| before.id == model.id && before.kind == model.kind)
@@ -360,11 +385,13 @@ impl Services {
         let switches = MediaSwitches {
             image: switch(MediaKind::Image),
             video: switch(MediaKind::Video),
+            audio: switch(MediaKind::Audio),
         };
         let shapes = match &config {
             Some(config) if config.is_compatible() => MediaShapes {
                 image: config.image_shape,
                 video: config.video_shape,
+                audio: config.audio_shape,
             },
             _ => self.assembly.media_shapes(&entry),
         };

@@ -18,6 +18,7 @@ import {
 import {
   isIncomplete,
   mockVendors,
+  elevenLabsAudio,
   provider,
   searchMockModels,
   type MockProvider,
@@ -75,17 +76,25 @@ function select(id: string) {
 /** A vendor is picked alone: the entry joins the list at once, selected, with the vendor's own endpoint and catalog. */
 function addProvider(vendor: SettingsVendor) {
   const id = `p-${Date.now()}`
+  // A vendor of media alone, ElevenLabs here, makes no text: its entry has its Audio and no Models.
+  const mediaOnly = vendor.wireApi === null
   join(provider({
     id,
     name: vendor.name,
     kind: 'api_key',
-    family: vendor.id,
+    family: mediaOnly ? 'media' : vendor.id,
     vendorId: vendor.id,
     baseUrl: vendor.baseUrl ?? '',
-    wireApi: vendor.wireApi,
+    wireApi: vendor.wireApi ?? 'openai-responses',
     modelSource: 'catalog',
     catalogFetched: new Date().toISOString(),
     logo: vendor.logo,
+    ...(mediaOnly
+      ? {
+          makesText: false,
+          media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: elevenLabsAudio },
+        }
+      : {}),
   }))
 }
 
@@ -329,7 +338,10 @@ async function saveModel(
       mock.models = mock.models.filter((m) => m.id !== draft.id)
     }
     mock.modelSource = 'manual'
-    mock.models = [...mock.models, { ...draft, tools: true, enabled: original?.enabled ?? true }]
+    // As the backend answers: an audio model of an entry whose audio shape
+    // is OpenAI Speech makes speech, which its row names.
+    const kinds = draft.kind === 'audio' && p.media.audio.shape === 'openai-speech' ? { kinds: ['speech' as const] } : {}
+    mock.models = [...mock.models, { ...draft, tools: true, enabled: original?.enabled ?? true, ...kinds }]
   }
   settle(p)
 }

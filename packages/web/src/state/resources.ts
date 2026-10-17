@@ -231,7 +231,8 @@ export const useResources = defineStore('resources', () => {
       id: vendor.id,
       name: vendor.name,
       baseUrl: vendor.baseUrl,
-      wireApi: wireApi(vendor.providerType, vendor.wireApi),
+      // A vendor of media alone speaks its own API, which no protocol names.
+      wireApi: vendor.providerType === 'media' ? null : wireApi(vendor.providerType, vendor.wireApi),
       logo: vendorLogo(vendor.id),
     })),
   )

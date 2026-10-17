@@ -13,7 +13,7 @@ use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::panel::{CreatePanelTab, WorkPanel};
 
 use crate::{
-    AskedVideo, ImageAsk, MadeImage, MediaListing, MediaRefusal, PluginId, Scope, SecretName, StoredSecret,
+    AskedVideo, AudioAsk, AudioVoices, ImageAsk, MadeAudio, MadeImage, MediaListing, MediaRefusal, PluginId, Scope, SecretName, StoredSecret,
     VideoAsk, VideoStep, WebFailure, WebRequest, WebResponse,
 };
 use futures_util::future::LocalBoxFuture;
@@ -152,6 +152,18 @@ pub enum PortMessage {
     },
     /// Waits for the request's job's next state, or its video.
     VideoProgress,
+    /// Makes one audio file through an entry's key, for the request's
+    /// conversation and the agent that called the command.
+    MakeAudio {
+        ask: AudioAsk,
+    },
+    /// The voices speech model `model` speaks in, as the entry a call of it
+    /// takes now lists them, `search` narrowing them where given.
+    AudioVoices {
+        model: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        search: Option<String>,
+    },
 }
 
 /// The answer to one [`PortMessage`].
@@ -234,6 +246,12 @@ pub enum PortAnswer {
     VideoProgress {
         step: VideoStep,
     },
+    Audio {
+        audio: MadeAudio,
+    },
+    AudioVoices {
+        voices: AudioVoices,
+    },
     Refused {
         refusal: PortRefusal,
     },
@@ -262,6 +280,8 @@ impl PortAnswer {
             Self::Image { .. } => "image",
             Self::VideoAsked { .. } => "video_asked",
             Self::VideoProgress { .. } => "video_progress",
+            Self::Audio { .. } => "audio",
+            Self::AudioVoices { .. } => "audio_voices",
             Self::Refused { .. } => "refused",
         }
     }
@@ -503,7 +523,7 @@ pub enum PortRefusal {
     /// forgot.
     #[error("the user is not signed in")]
     SignedOut,
-    /// No image or video was made.
+    /// No image, video or audio was made.
     #[error("{refusal}")]
     Media { refusal: MediaRefusal },
 }
@@ -832,6 +852,24 @@ impl PluginPort {
         match self.ask(PortMessage::VideoProgress).await? {
             PortAnswer::VideoProgress { step } => Ok(step),
             answer => Err(unexpected("video_progress", &answer)),
+        }
+    }
+
+    /// Makes the audio `ask` names; [`PortRefusal::Media`] when none was
+    /// made.
+    pub async fn make_audio(&self, ask: AudioAsk) -> Result<MadeAudio, PortFailure> {
+        match self.ask(PortMessage::MakeAudio { ask }).await? {
+            PortAnswer::Audio { audio } => Ok(audio),
+            answer => Err(unexpected("make_audio", &answer)),
+        }
+    }
+
+    /// The voices of speech model `model`, narrowed by `search`;
+    /// [`PortRefusal::Media`] when no entry can list them.
+    pub async fn audio_voices(&self, model: String, search: Option<String>) -> Result<AudioVoices, PortFailure> {
+        match self.ask(PortMessage::AudioVoices { model, search }).await? {
+            PortAnswer::AudioVoices { voices } => Ok(voices),
+            answer => Err(unexpected("audio_voices", &answer)),
         }
     }
 

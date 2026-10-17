@@ -50,6 +50,7 @@ fn provider(vendor: &MockVendor, images: Option<MediaVendor>) -> OpenAiProvider 
         vendor_id: images.map(|vendor| vendor.id().to_owned()),
         makes_images: images.is_some(),
         makes_videos: false,
+        makes_audio: false,
     };
     OpenAiProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }

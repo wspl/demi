@@ -118,6 +118,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     that a picture decodes whole (`whole_image::decode`), which
     `demi file view` and `demi image` both run: a JPEG is read by its
     markers up to its end, since the decoder fills a cut scan with gray;
+  - behind the `audio` feature, with the `symphonia` crate's probes, the
+    one reader of an audio file's format and length (`audio::read`),
+    which `demi audio` checks its result with and the backend writes the
+    seconds to the usage ledger from;
   - behind the `mp4` feature, with the `mp4parse` crate, the one reader of
     an MP4's duration, picture size and whether it has a sound track
     (`mp4::read`), which `demi video` checks its result with and the
@@ -596,6 +600,7 @@ Each crate implements the provider contract for one vendor family.
 | `provider-anthropic-api` | The Anthropic Messages API: request and stream mapping, model metadata and failure reading |
 | `provider-openai-api` | The OpenAI Responses API, and the Chat Completions wire for OpenAI-compatible endpoints with their reasoning deltas and the opt-in replay of thinking as `reasoning_content`; model metadata; and an OpenAI or xAI key's image models, read from the vendor, with the image endpoints' requests and their failures |
 | `provider-google` | The Gemini `generateContent` API, the native wire rather than the OpenAI-compatible one: request and stream mapping, including thought summaries, thought signatures and tool-returned media as inline parts; model metadata; and a Gemini API key's image models, read from Google, with the image requests and their failures |
+| `provider-elevenlabs` | An ElevenLabs entry's media through its key, the `media` family's provider for that vendor: speech, music and sound effects, its voices and its model list, which also checks the key, and their failures |
 | `provider-codex` | The Codex Responses transport over server-sent events and WebSocket, device login, token refresh, reading its failure records (usage-limit reset fields), the quota from its usage probe and the `x-codex-*` headers, the model catalog, and its image models with the image endpoints' requests |
 | `provider-grok-build` | RFC 8628 device login against `auth.x.ai`, OIDC token refresh, the Chat Completions transport to the Grok Build proxy, the model catalog from `/v1/models`, the quota from the billing and subscription probe and the rate-limit headers, and its image models with the image endpoints' requests |
 
@@ -954,6 +959,16 @@ or on another plugin.
 - **Owns:** [image generation](../agent/images.md)'s commands: the `demi
   image` group with its help and words, the image written to stdout, and
   the checks of the result's shape and transparency.
+- **Public boundary:** its factory.
+- **Must not:** hold an HTTP client or a credential, or choose a provider
+  entry or an account; the port's Providers service does.
+
+#### `plugin-audio`
+
+- **Owns:** [audio generation](../agent/audio.md)'s commands: the `demi
+  audio` group with its help and words, the audio written to stdout, a
+  vendor's raw PCM wrapped as WAV, and the check of the file it reads with
+  `shared-types`' audio reader.
 - **Public boundary:** its factory.
 - **Must not:** hold an HTTP client or a credential, or choose a provider
   entry or an account; the port's Providers service does.
@@ -1868,6 +1883,7 @@ provider-common -> shared-types, shared-gates
 provider-anthropic-api -> shared-types, provider-common
 provider-openai-api -> shared-types, provider-common
 provider-google -> shared-types, provider-common
+provider-elevenlabs -> shared-types, provider-common
 provider-codex -> shared-types, provider-common, shared-artifacts
 provider-grok-build -> shared-types, provider-common
 provider-claude-code -> shared-types, provider-common, host-interface, shared-artifacts
@@ -1886,6 +1902,7 @@ plugin-web -> plugin-interface, command-declarations, command-package-fetch-prot
 plugin-media -> plugin-interface, host-interface, shared-types
 plugin-image -> plugin-media, plugin-interface, host-interface, shared-types
 plugin-video -> plugin-media, plugin-interface, host-interface, shared-types
+plugin-audio -> plugin-media, plugin-interface, host-interface, shared-types
 plugin-changes -> plugin-interface
 plugin-file-browser -> plugin-interface
 backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
@@ -1910,7 +1927,7 @@ backend-permissions -> command-declarations, shared-types, host-interface, backe
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
-backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-mobile, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image, plugin-video
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-mobile, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-elevenlabs, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image, plugin-video, plugin-audio
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 server -> backend-database, machine-manager-protocol, runner-protocol, shared-artifacts, shared-cli
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli

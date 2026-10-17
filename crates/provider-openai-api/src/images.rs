@@ -53,7 +53,7 @@ impl KeyImages {
     pub(crate) fn new(vendor: MediaVendor, key: Secret, base: &Url, clock: Arc<dyn Clock>) -> Self {
         let flavor = match vendor {
             MediaVendor::Xai => Flavor::Xai,
-            MediaVendor::OpenAi | MediaVendor::Google => Flavor::OpenAi,
+            MediaVendor::OpenAi | MediaVendor::Google | MediaVendor::Elevenlabs => Flavor::OpenAi,
         };
         Self::of(flavor, Some(key), base, clock)
     }
@@ -97,19 +97,13 @@ impl KeyImages {
         if let Flavor::Compatible { models, .. } = &self.flavor {
             return Ok(models.clone());
         }
-        let text = self.call().get(http, &self.models, self.headers()).await?;
         match self.flavor {
-            Flavor::Xai => xai_listing(&text),
+            Flavor::Xai => xai_listing(&self.call().get(http, &self.models, self.headers()).await?),
             Flavor::OpenAi | Flavor::Compatible { .. } => {
-                let listing: OpenAiListing = serde_json::from_slice(&text).map_err(unread)?;
-                Ok(listing
-                    .data
+                let listed = openai_models(&self.call(), http, &self.models, self.headers()).await?;
+                Ok(listed
                     .into_iter()
                     .filter(|model| model.id.starts_with("gpt-image-") || model.id.starts_with("chatgpt-image-"))
-                    .map(|model| MediaModelInfo {
-                        released: model.created.and_then(created_date),
-                        ..MediaModelInfo::id(&model.id)
-                    })
                     .collect())
             }
         }
@@ -317,6 +311,24 @@ struct XaiImage {
 /// How an OpenAI-shaped request with a key is sent and its failures read:
 /// as xAI reads them when `xai`, else as OpenAI does, which a compatible
 /// endpoint is taken to follow.
+/// Every model OpenAI's `GET …/models` at `url` lists for the key, each
+/// with the date it was made: the one reader of that listing, which each
+/// kind's role narrows to its own models.
+pub(crate) async fn openai_models(
+    call: &MediaCall<'_>,
+    http: &demi_provider_common::ProviderHttp,
+    url: &Url,
+    headers: HeaderMap,
+) -> Result<Vec<MediaModelInfo>, MediaFailure> {
+    let text = call.get(http, url, headers).await?;
+    let listing: OpenAiListing = serde_json::from_slice(&text).map_err(unread)?;
+    Ok(listing
+        .data
+        .into_iter()
+        .map(|model| MediaModelInfo { released: model.created.and_then(created_date), ..MediaModelInfo::id(&model.id) })
+        .collect())
+}
+
 pub(crate) fn key_call(xai: bool, clock: &dyn Clock) -> MediaCall<'_> {
     MediaCall {
         label: if xai { "xAI" } else { "OpenAI" },

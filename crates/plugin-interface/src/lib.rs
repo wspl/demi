@@ -32,7 +32,8 @@ pub use port::{
     StoredValue,
 };
 pub use providers::{
-    AskedVideo, CustomSizeRule, EntryStatus, ImageAsk, ImageAspect, ImageFacts, ImageInput, ImageKind, MadeImage,
+    AskedVideo, AudioAsk, AudioFacts, AudioFileFormat, AudioOption, AudioVoices, MadeAudio, PcmShape, VoiceInfo,
+    CustomSizeRule, EntryStatus, ImageAsk, ImageAspect, ImageFacts, ImageInput, ImageKind, MadeImage,
     MadeVideo, MediaListing, MediaModel, MediaPrice, MediaRefusal, MediaUnlisted, ModelEntry, PriceRate, Unable,
     VideoAsk, VideoFacts, VideoOption, VideoResolution, VideoStep,
 };

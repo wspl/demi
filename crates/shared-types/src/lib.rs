@@ -15,6 +15,7 @@
 
 mod account;
 mod agent_message;
+pub mod audio;
 mod block;
 mod bytes;
 mod catalog;
@@ -88,7 +89,8 @@ pub use model::{
     file_extension_support, model_accepts_video,
 };
 pub use provider_state::{
-    AccountInfo, AuthState, ImageShape, LoginPending, LoginStage, MediaKind, MediaShapes, RefusedCode, RuntimeState, VideoShape, WireApi,
+    AccountInfo, AudioKind, AudioShape, AuthState, ImageShape, LoginPending, LoginStage, MediaKind, MediaShapes, RefusedCode,
+    RuntimeState, VideoShape, WireApi,
 };
 pub use quota::{
     QuotaKind, QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, QuotaWindowName,

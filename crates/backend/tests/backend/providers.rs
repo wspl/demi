@@ -436,7 +436,9 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
     // Only vendors a family speaks to, by name: Bedrock's package has no
     // family, and Copilot is excluded by name. A vendor that names no
     // endpoint and has no official one starts without; xAI's is the one
-    // xAI documents, on its preferred Responses API.
+    // xAI documents, on its preferred Responses API. ElevenLabs, a vendor
+    // of media alone, comes from the media catalog with the endpoint it
+    // names; Stability AI, whose shape no family builds, is not offered.
     let offered = backend
         .get("/api/providers/catalog", Some(&master))
         .await
@@ -451,6 +453,8 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
         [
             json!({ "id": "deepseek", "name": "DeepSeek", "providerType": "openai", "wireApi": "chat-completions",
                     "baseUrl": "https://api.deepseek.com", "doc": "https://api-docs.deepseek.com" }),
+            json!({ "id": "elevenlabs", "name": "ElevenLabs", "providerType": "media",
+                    "baseUrl": "https://api.elevenlabs.io", "doc": "https://elevenlabs.io/docs/api-reference" }),
             json!({ "id": "minimax", "name": "MiniMax", "providerType": "anthropic",
                     "baseUrl": "https://api.minimax.io/anthropic/v1", "doc": null }),
             json!({ "id": "xai", "name": "xAI", "providerType": "openai", "wireApi": "responses",

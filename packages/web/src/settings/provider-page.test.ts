@@ -43,7 +43,7 @@ const proxy: SettingsProviderEntry = {
   baseUrl: 'https://proxy.example/v1', wireApi: 'openai-chat', apiKey: '', keyConfigured: false, configured: true,
   modelSource: 'manual', catalogFetched: null, state: 'ready', enabled: true,
   models: [model('gemini-3.8-flash'), model('other')], accounts: [], logo: null,
-  media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true } },
+  media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
 }
 
 const flash: SettingsModelDraft = {
@@ -294,7 +294,7 @@ const subscription = (accounts: string[]): SettingsProviderEntry => ({
   baseUrl: '', wireApi: 'anthropic-messages', apiKey: '', configured: true,
   modelSource: 'catalog', catalogFetched: null, state: 'ready', enabled: true, models: [],
   accounts: accounts.map((label, index) => ({ id: `a${index}`, label, plan: '', active: index === 0, quota: [] })),
-  rotation: 'manual', logo: null, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true } },
+  rotation: 'manual', logo: null, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
 })
 
 // Adding a second account and choosing In Order or Balanced first warn
@@ -375,7 +375,7 @@ test('the warning about several accounts asks before the second account and a ro
 test('the Image Generation switch shows only for an entry that makes images and tells the host its new value', async () => {
   const changes: Partial<SettingsProviderEntry>[] = []
   const providers = shallowRef<SettingsProviderEntry[]>([
-    { ...subscription([]), media: { image: { shape: 'chatgpt', enabled: true }, video: { shape: null, enabled: true } } },
+    { ...subscription([]), media: { image: { shape: 'chatgpt', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } } },
   ])
   const element = document.createElement('div')
   document.body.append(element)
@@ -399,7 +399,7 @@ test('the Image Generation switch shows only for an entry that makes images and 
     expect(imageSwitch()!.getAttribute('aria-checked')).toBe('true')
     imageSwitch()!.click()
     await until(() => changes.length === 1, 'the change is told')
-    expect(changes).toEqual([{ media: { image: { shape: 'chatgpt', enabled: false }, video: { shape: null, enabled: true } } }])
+    expect(changes).toEqual([{ media: { image: { shape: 'chatgpt', enabled: false }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } } }])
 
     providers.value = [subscription([])]
     await until(() => imageSwitch() === undefined, 'the switch goes')
@@ -458,12 +458,12 @@ test('a compatible API chooses its image shape below its models and adds image m
     expect(menuItems().map((item) => item.textContent!.trim())).toEqual(['None', 'OpenAI Images'])
     menuItems()[1]!.click()
     await until(() => told.changes.length === 1, 'the shape is told')
-    expect(told.changes).toEqual([{ media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true } } }])
+    expect(told.changes).toEqual([{ media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } } }])
     await until(() => menuItems().length === 0, 'the shapes close')
 
     // With a shape and no model yet, the list says so, its Add beside its
     // filter as Models has them.
-    providers.value = [{ ...proxy, media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true } } }]
+    providers.value = [{ ...proxy, media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } } }]
     await until(() => button('Add Image Model') !== undefined, 'the list shows')
     expect(document.body.textContent).toContain('No image models yet')
     const header = button('Add Image Model')!.closest('div.flex')!
@@ -471,7 +471,7 @@ test('a compatible API chooses its image shape below its models and adds image m
 
     providers.value = [{
       ...proxy,
-      media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true } },
+      media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
       models: [model('other'), { ...model('picture'), kind: 'image', name: 'Picture', contextWindow: null }],
     }]
     await until(() => imageSwitch() !== null, 'the switch shows')
@@ -498,7 +498,7 @@ test('a vendor entry’s Images section lists its vendor’s models newest first
     media: { image: { shape: 'chatgpt', enabled: false, models: [
       { id: 'gpt-image-2', name: 'GPT-Image-2', released: '2026-04-21' },
       { id: 'gpt-image-1', name: 'GPT-Image-1', released: null },
-    ] }, video: { shape: null, enabled: true } },
+    ] }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
   }])
   const app = mountTold(providers, 'claude', told)
   try {
@@ -538,13 +538,13 @@ test('a compatible API chooses its video shape and adds video models, and a vend
     menuItems()[3]!.click()
     await until(() => told.changes.length === 1, 'the shape is told')
     expect(told.changes).toEqual([
-      { media: { image: { shape: null, enabled: true }, video: { shape: 'openrouter-videos', enabled: true } } },
+      { media: { image: { shape: null, enabled: true }, video: { shape: 'openrouter-videos', enabled: true }, audio: { shape: null, enabled: true } } },
     ])
     await until(() => menuItems().length === 0, 'the shapes close')
 
     providers.value = [{
       ...proxy,
-      media: { image: { shape: null, enabled: true }, video: { shape: 'openrouter-videos', enabled: true } },
+      media: { image: { shape: null, enabled: true }, video: { shape: 'openrouter-videos', enabled: true }, audio: { shape: null, enabled: true } },
       models: [model('other'), { ...model('wan'), kind: 'video', name: 'Wan 2.2', contextWindow: null }],
     }]
     await until(() => videoSwitch() !== null, 'the switch shows')
@@ -558,7 +558,7 @@ test('a compatible API chooses its video shape and adds video models, and a vend
       media: { image: { shape: null, enabled: true }, video: { shape: 'grok', enabled: true, models: [
         { id: 'grok-imagine-video-1.5', name: 'Grok Imagine Video 1.5', released: '2026-05-30' },
         { id: 'grok-imagine-video', name: 'Grok Imagine Video', released: null },
-      ] } },
+      ] }, audio: { shape: null, enabled: true } },
     }]
     app.unmount()
   } catch (error) {
@@ -621,7 +621,7 @@ test('an entry with image models alone offers no Test Connection and says it has
   const picture = { ...model('picture'), kind: 'image' as const, name: 'Picture', contextWindow: null }
   const providers = shallowRef<SettingsProviderEntry[]>([{
     ...proxy,
-    media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true } },
+    media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
     models: [picture],
   }])
   const app = mountTold(providers, 'proxy', told)
@@ -640,5 +640,63 @@ test('an entry with image models alone offers no Test Connection and says it has
     await until(() => !disabled(testButton()!), 'the test is offered')
   } finally {
     app.unmount()
+  }
+})
+
+// Audio is the section below Videos (`audio.md` § Accounts, `providers.md`
+// § Media-only vendors): a compatible API chooses None or OpenAI Speech
+// there; an entry of media alone, ElevenLabs, has no Models, lists its
+// audio models with their kinds, and offers Test Connection, which names
+// its first media model rather than a text model it does not have.
+// Planted defects: Models shown for an entry that makes no text; Test
+// Connection refused for want of a text model, or of a listed media model; the kinds left off the
+// rows; the audio shapes missing from the compatible menu. Tens of
+// milliseconds.
+test('a compatible API chooses OpenAI Speech and an entry of media alone shows its audio models and tests without text', async () => {
+  const told = { changes: [] as Partial<SettingsProviderEntry>[], orders: [] as string[][] }
+  const providers = shallowRef<SettingsProviderEntry[]>([proxy])
+  const app = mountTold(providers, 'proxy', told)
+  const shapeTrigger = () => document.querySelector<HTMLElement>('[aria-label="Audio"]') ?? undefined
+  try {
+    await until(() => shapeTrigger() !== undefined, 'the Audio section shows')
+    expect(document.querySelector('[role="switch"][aria-label="Audio Generation"]')).toBeNull()
+    shapeTrigger()!.click()
+    await until(() => menuItems().length > 0, 'the shapes open')
+    expect(menuItems().map((item) => item.textContent!.trim())).toEqual(['None', 'OpenAI Speech'])
+    menuItems()[1]!.click()
+    await until(() => told.changes.length === 1, 'the shape is told')
+    expect(told.changes[0]!.media!.audio).toEqual({ shape: 'openai-speech', enabled: true })
+  } finally {
+    app.unmount()
+  }
+
+  const elevenlabs: SettingsProviderEntry = {
+    ...proxy, id: 'elevenlabs', name: 'ElevenLabs', vendorId: 'elevenlabs', compatible: false, makesText: false,
+    baseUrl: 'https://api.elevenlabs.io', keyConfigured: true, modelSource: 'catalog', models: [],
+    media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: 'elevenlabs', enabled: true, models: [
+      { id: 'eleven_v4', name: 'Eleven v4', released: null, kinds: ['speech'] },
+      { id: 'music_v2', name: 'Eleven Music v2', released: null, kinds: ['music'] },
+    ] } },
+  }
+  const vendor = mountTold(shallowRef([elevenlabs]), 'elevenlabs', told)
+  const testButton = () => document.querySelector<HTMLElement>('[aria-label="Test connection"]') ?? undefined
+  try {
+    await until(() => document.body.textContent!.includes('Eleven Music v2'), 'the audio models show')
+    expect([...document.querySelectorAll('h3')].map((title) => title.textContent!.trim())).not.toContain('Models')
+    expect(document.body.textContent).toContain('Speech')
+    expect(document.body.textContent).toContain('Music')
+    expect(document.body.textContent).toContain('Reads the vendor’s list of models with the API key.')
+    expect(disabled(testButton()!)).toBe(false)
+  } finally {
+    vendor.unmount()
+  }
+  // Its models not read, as when its key is wrong, it still offers the test,
+  // which is how the user learns why.
+  const unread = mountTold(shallowRef([{ ...elevenlabs, media: { ...elevenlabs.media, audio: { shape: 'elevenlabs', enabled: true } } }]), 'elevenlabs', told)
+  try {
+    await until(() => testButton() !== undefined, 'the test shows')
+    expect(disabled(testButton()!)).toBe(false)
+  } finally {
+    unread.unmount()
   }
 })

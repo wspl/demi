@@ -210,5 +210,10 @@
       "warning": "警告",
       "caution": "注意"
     }
+  },
+  "audioPlayer": {
+    "play": "播放 {name}",
+    "pause": "暂停 {name}",
+    "seek": "{name} 的播放位置"
   }
 }

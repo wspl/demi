@@ -1,5 +1,25 @@
 {
   "updated": "2026-10-17T22:00:00Z",
+  "vendors": [
+    {
+      "id": "elevenlabs",
+      "name": "ElevenLabs",
+      "endpoint": "https://api.elevenlabs.io",
+      "doc": "https://elevenlabs.io/docs/api-reference",
+      "sources": [
+        "https://elevenlabs.io/docs/api-reference/text-to-speech/convert"
+      ]
+    },
+    {
+      "id": "stability",
+      "name": "Stability AI",
+      "endpoint": "https://api.stability.ai",
+      "doc": "https://platform.stability.ai/docs/api-reference",
+      "sources": [
+        "https://platform.stability.ai/docs/api-reference"
+      ]
+    }
+  ],
   "models": [
     {
       "vendor": "openai",
@@ -1589,6 +1609,7 @@
           "Welsh"
         ],
         "instructions": true,
+        "maxCharacters": 4096,
         "formats": [
           "mp3",
           "opus",
@@ -1602,7 +1623,8 @@
         "https://developers.openai.com/api/docs/models/gpt-4o-mini-tts",
         "https://developers.openai.com/api/docs/guides/text-to-speech",
         "https://developers.openai.com/api/docs/changelog",
-        "https://developers.openai.com/api/docs/pricing"
+        "https://developers.openai.com/api/docs/pricing",
+        "https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create"
       ],
       "price": {
         "rates": [
@@ -1690,6 +1712,7 @@
           "Vietnamese",
           "Welsh"
         ],
+        "maxCharacters": 4096,
         "formats": [
           "mp3",
           "opus",
@@ -1702,7 +1725,8 @@
       "sources": [
         "https://developers.openai.com/api/docs/models/gpt-4o-mini-tts",
         "https://developers.openai.com/api/docs/guides/text-to-speech",
-        "https://developers.openai.com/api/docs/changelog"
+        "https://developers.openai.com/api/docs/changelog",
+        "https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create"
       ]
     },
     {
@@ -1785,6 +1809,7 @@
           "Vietnamese",
           "Welsh"
         ],
+        "maxCharacters": 4096,
         "formats": [
           "mp3",
           "opus",
@@ -1807,7 +1832,8 @@
       "sources": [
         "https://developers.openai.com/api/docs/models/tts-1-hd",
         "https://developers.openai.com/api/docs/guides/text-to-speech",
-        "https://developers.openai.com/api/docs/pricing"
+        "https://developers.openai.com/api/docs/pricing",
+        "https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create"
       ]
     },
     {
@@ -1890,6 +1916,7 @@
           "Vietnamese",
           "Welsh"
         ],
+        "maxCharacters": 4096,
         "formats": [
           "mp3",
           "opus",
@@ -1912,7 +1939,8 @@
       "sources": [
         "https://developers.openai.com/api/docs/models/tts-1",
         "https://developers.openai.com/api/docs/guides/text-to-speech",
-        "https://developers.openai.com/api/docs/pricing"
+        "https://developers.openai.com/api/docs/pricing",
+        "https://developers.openai.com/api/reference/resources/audio/subresources/speech/methods/create"
       ]
     },
     {
@@ -3806,6 +3834,7 @@
           "yo"
         ],
         "instructions": true,
+        "maxCharacters": 10000,
         "formats": [
           "mp3",
           "opus",
@@ -3828,7 +3857,8 @@
       "sources": [
         "https://elevenlabs.io/docs/overview/models",
         "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
-        "https://elevenlabs.io/pricing/api"
+        "https://elevenlabs.io/pricing/api",
+        "https://elevenlabs.io/docs/overview/models#character-limits"
       ]
     },
     {
@@ -4051,6 +4081,7 @@
           "cy",
           "yo"
         ],
+        "maxCharacters": 5000,
         "formats": [
           "mp3",
           "opus",
@@ -4073,7 +4104,8 @@
       "sources": [
         "https://elevenlabs.io/docs/overview/models",
         "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
-        "https://elevenlabs.io/pricing/api"
+        "https://elevenlabs.io/pricing/api",
+        "https://elevenlabs.io/docs/overview/models#character-limits"
       ]
     },
     {
@@ -4241,6 +4273,7 @@
           "uk",
           "ru"
         ],
+        "maxCharacters": 10000,
         "formats": [
           "mp3",
           "opus",
@@ -4263,7 +4296,8 @@
       "sources": [
         "https://elevenlabs.io/docs/overview/models",
         "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
-        "https://elevenlabs.io/pricing/api"
+        "https://elevenlabs.io/pricing/api",
+        "https://elevenlabs.io/docs/overview/models#character-limits"
       ]
     },
     {
@@ -4311,6 +4345,7 @@
           "no",
           "vi"
         ],
+        "maxCharacters": 40000,
         "formats": [
           "mp3",
           "opus",
@@ -4333,7 +4368,8 @@
       "sources": [
         "https://elevenlabs.io/docs/overview/models",
         "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
-        "https://elevenlabs.io/pricing/api"
+        "https://elevenlabs.io/pricing/api",
+        "https://elevenlabs.io/docs/overview/models#character-limits"
       ]
     },
     {
@@ -4350,6 +4386,7 @@
         "languages": [
           "en"
         ],
+        "maxCharacters": 30000,
         "formats": [
           "mp3",
           "opus",
@@ -4372,7 +4409,8 @@
       "sources": [
         "https://elevenlabs.io/docs/overview/models",
         "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
-        "https://elevenlabs.io/pricing/api"
+        "https://elevenlabs.io/pricing/api",
+        "https://elevenlabs.io/docs/overview/models#character-limits"
       ]
     },
     {

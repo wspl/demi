@@ -72,6 +72,8 @@ pub struct ProviderRow {
     pub image_generation: bool,
     /// Whether the entry makes videos when its provider can.
     pub video_generation: bool,
+    /// Whether the entry makes audio when its provider can.
+    pub audio_generation: bool,
 }
 
 /// The media switches a change of an entry sets, each kind's when given
@@ -80,6 +82,7 @@ pub struct ProviderRow {
 pub struct MediaSwitches {
     pub image: Option<bool>,
     pub video: Option<bool>,
+    pub audio: Option<bool>,
 }
 
 /// An entry as it is first stored, with manual rotation.
@@ -125,7 +128,7 @@ pub struct CredentialWrite {
     pub secret: Option<Vec<u8>>,
 }
 
-const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation, video_generation";
+const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation, video_generation, audio_generation";
 /// The columns a new entry stores; its rotation is the default, manual, its
 /// Image Generation is on, and it joins the end of its owner's list.
 const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, position";
@@ -259,6 +262,12 @@ impl ControlService {
             if let Some(on) = switches.video {
                 transaction.execute(
                     "UPDATE providers SET video_generation = ?1 WHERE id = ?2",
+                    params![on, id.as_str()],
+                )?;
+            }
+            if let Some(on) = switches.audio {
+                transaction.execute(
+                    "UPDATE providers SET audio_generation = ?1 WHERE id = ?2",
                     params![on, id.as_str()],
                 )?;
             }
@@ -670,6 +679,7 @@ fn provider_row(row: &Row<'_>) -> Result<ProviderRow, StorageError> {
         )?,
         image_generation: row.get("image_generation")?,
         video_generation: row.get("video_generation")?,
+        audio_generation: row.get("audio_generation")?,
     })
 }
 

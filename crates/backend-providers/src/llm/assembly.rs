@@ -14,20 +14,26 @@ use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
 use demi_provider_common::images::ImageMaker;
 use demi_provider_common::media::{MediaMaker, MediaModelInfo};
+use demi_provider_common::audio::AudioMaker;
 use demi_provider_common::videos::VideoMaker;
 use demi_provider_common::{DeviceRoute, Provider, ProviderHttp, ProviderRuntime, RuntimeEnv};
-use demi_shared_types::{Clock, ImageShape, MediaKind, MediaShapes, Model, Rotation};
+use demi_shared_types::{AudioShape, Clock, ImageShape, MediaKind, MediaShapes, Model, Rotation};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
-use demi_web_api_protocol::providers::{ModelKind, ProviderDto, SETUP_MESSAGE};
+use demi_provider_common::models_dev::ModelsDevError;
+use demi_web_api_protocol::providers::{ModelKind, ProviderDto, SETUP_MESSAGE, Vendor};
 use demi_web_api_protocol::text::EndpointUrl;
 
 use super::catalog_cache::ModelCatalogCache;
 use super::rotation::{AccountRotation, Candidate, Choice};
 use super::families::{
-    AccountBinding, ApiKeyArgs, CompatibleImagesArgs, CompatibleVideosArgs, FamilyArgs, FamilyCredential, FamilyError,
+    AccountBinding, ApiKeyArgs, CompatibleAudioArgs, CompatibleImagesArgs, CompatibleVideosArgs, FamilyArgs, FamilyCredential, FamilyError,
     FamilyRegistry, ProviderFamily, SubscriptionArgs,
 };
-use super::vendors::VendorCatalog;
+use super::vendors::{VendorCatalog, sort_by_name};
+
+/// The family of the vendors that make media and no text (`providers.md`
+/// § Media-only vendors).
+pub const MEDIA_FAMILY: &str = "media";
 use crate::vault::entries::{EntryCredential, ProviderEntry, Vault};
 use crate::vault::quotas::AccountQuotas;
 
@@ -197,6 +203,62 @@ impl ProviderAssembly {
 
     pub fn vendors(&self) -> &VendorCatalog {
         &self.vendors
+    }
+
+    /// The vendors an entry can be added from, by name: models.dev's, and
+    /// the media catalog's vendors of media alone whose shapes the `media`
+    /// family builds, each with the endpoint the catalog names
+    /// (`providers.md` § Media-only vendors); one whose shapes are not
+    /// built yet, such as Stability AI's, is not offered.
+    pub async fn offered_vendors(&self) -> Result<Vec<Vendor>, ModelsDevError> {
+        let mut vendors = self.vendors.vendors().await?;
+        for vendor in self.media_vendors() {
+            if !vendors.iter().any(|known| known.id == vendor.id) {
+                vendors.push(vendor);
+            }
+        }
+        sort_by_name(&mut vendors);
+        Ok(vendors)
+    }
+
+    /// The vendor `vendor_id`, when one is offered.
+    pub async fn offered_vendor(&self, vendor_id: &str) -> Result<Option<Vendor>, ModelsDevError> {
+        if let Some(vendor) = self.media_vendors().into_iter().find(|vendor| vendor.id == vendor_id) {
+            return Ok(Some(vendor));
+        }
+        self.vendors.vendor(vendor_id).await
+    }
+
+    /// The media catalog's vendors that the `media` family makes something
+    /// for.
+    fn media_vendors(&self) -> Vec<Vendor> {
+        let Some(family) = self.families.get(MEDIA_FAMILY) else {
+            return Vec::new();
+        };
+        self.media
+            .current()
+            .vendors
+            .iter()
+            .filter(|vendor| {
+                let id = Some(vendor.id.as_str());
+                family.image_shape(id).is_some() || family.video_shape(id).is_some() || family.audio_shape(id).is_some()
+            })
+            .map(|vendor| Vendor {
+                id: vendor.id.clone(),
+                name: vendor.name.clone(),
+                provider_type: MEDIA_FAMILY.to_owned(),
+                wire_api: None,
+                base_url: Some(vendor.endpoint.clone()),
+                doc: vendor.doc.clone(),
+            })
+            .collect()
+    }
+
+    /// Whether `entry` makes text, as every family but `media` does: an
+    /// entry of media alone has no text models and is never in the model
+    /// menu (`providers.md` § Media-only vendors).
+    pub fn makes_text(&self, entry: &ProviderEntry) -> bool {
+        self.families.get(&entry.family).is_none_or(|family| family.makes_text())
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<BuiltKey, Built>> {
@@ -425,7 +487,7 @@ impl ProviderAssembly {
     pub fn media_shapes(&self, entry: &ProviderEntry) -> MediaShapes {
         let vendor = match &entry.credential {
             EntryCredential::ApiKey(config) if config.is_compatible() => {
-                return MediaShapes { image: config.image_shape, video: config.video_shape };
+                return MediaShapes { image: config.image_shape, video: config.video_shape, audio: config.audio_shape };
             }
             EntryCredential::ApiKey(config) => config.vendor_id.as_deref(),
             EntryCredential::Subscription { .. } => None,
@@ -434,6 +496,7 @@ impl ProviderAssembly {
         MediaShapes {
             image: family.and_then(|family| family.image_shape(vendor)),
             video: family.and_then(|family| family.video_shape(vendor)),
+            audio: family.and_then(|family| family.audio_shape(vendor)),
         }
     }
 
@@ -485,6 +548,19 @@ impl ProviderAssembly {
                     key: config.api_key.clone(),
                     base,
                     models: added(ModelKind::Video),
+                    clock: self.clock.clone(),
+                })))
+            }
+            MediaKind::Audio => {
+                if config.audio_shape != Some(AudioShape::OpenaiSpeech) {
+                    return None;
+                }
+                let make = self.families.compatible_audio()?;
+                Some(MakerOf::Audio(make(CompatibleAudioArgs {
+                    name: entry.label.clone(),
+                    key: config.api_key.clone(),
+                    base,
+                    models: added(ModelKind::Audio),
                     clock: self.clock.clone(),
                 })))
             }
@@ -541,6 +617,7 @@ impl ProviderAssembly {
                     vendor_id: config.vendor_id.clone(),
                     image_shape: self.media_shapes(entry).image.filter(|_| !config.is_compatible()),
                     video_shape: self.media_shapes(entry).video.filter(|_| !config.is_compatible()),
+                    audio_shape: self.media_shapes(entry).audio.filter(|_| !config.is_compatible()),
                 })
             }
             EntryCredential::Subscription { .. } => {
@@ -592,6 +669,7 @@ pub enum MakerOf {
     Provider(Arc<dyn Provider>, MediaKind),
     Images(Arc<dyn ImageMaker>),
     Videos(Arc<dyn VideoMaker>),
+    Audio(Arc<dyn AudioMaker>),
 }
 
 impl MakerOf {
@@ -600,6 +678,7 @@ impl MakerOf {
         let makes = match kind {
             MediaKind::Image => provider.images().is_some(),
             MediaKind::Video => provider.videos().is_some(),
+            MediaKind::Audio => provider.audio().is_some(),
         };
         makes.then(|| Self::Provider(provider.clone(), kind))
     }
@@ -609,8 +688,10 @@ impl MakerOf {
         match self {
             Self::Provider(provider, MediaKind::Image) => provider.images().expect("a maker's provider makes images"),
             Self::Provider(provider, MediaKind::Video) => provider.videos().expect("a maker's provider makes videos"),
+            Self::Provider(provider, MediaKind::Audio) => provider.audio().expect("a maker's provider makes audio"),
             Self::Images(maker) => maker.as_ref(),
             Self::Videos(maker) => maker.as_ref(),
+            Self::Audio(maker) => maker.as_ref(),
         }
     }
 
@@ -619,7 +700,7 @@ impl MakerOf {
         match self {
             Self::Provider(provider, MediaKind::Image) => provider.images(),
             Self::Images(maker) => Some(maker.as_ref()),
-            Self::Provider(_, MediaKind::Video) | Self::Videos(_) => None,
+            Self::Provider(_, MediaKind::Video | MediaKind::Audio) | Self::Videos(_) | Self::Audio(_) => None,
         }
     }
 
@@ -628,7 +709,16 @@ impl MakerOf {
         match self {
             Self::Provider(provider, MediaKind::Video) => provider.videos(),
             Self::Videos(maker) => Some(maker.as_ref()),
-            Self::Provider(_, MediaKind::Image) | Self::Images(_) => None,
+            Self::Provider(_, MediaKind::Image | MediaKind::Audio) | Self::Images(_) | Self::Audio(_) => None,
+        }
+    }
+
+    /// The audio role, for a maker of audio.
+    pub fn audio(&self) -> Option<&dyn AudioMaker> {
+        match self {
+            Self::Provider(provider, MediaKind::Audio) => provider.audio(),
+            Self::Audio(maker) => Some(maker.as_ref()),
+            Self::Provider(_, MediaKind::Image | MediaKind::Video) | Self::Images(_) | Self::Videos(_) => None,
         }
     }
 }

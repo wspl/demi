@@ -340,6 +340,7 @@ fn model(id: &str, vendor: Option<&str>, released: Option<&str>, name: Option<&s
         aliases: Vec::new(),
         image: None,
         video: None,
+        audio: None,
         price: None,
         entries,
     }

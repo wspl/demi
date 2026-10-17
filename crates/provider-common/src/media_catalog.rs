@@ -50,12 +50,32 @@ pub fn branch_url(branch: Option<&str>) -> Option<Url> {
     Some(url)
 }
 
-/// The catalog: when it was last changed and its models, in the file's
-/// order.
+/// The catalog: when it was last changed, the vendors it names that
+/// models.dev does not list, and its models, in the file's order.
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Catalog {
     pub updated: Timestamp,
+    /// The vendors that make media and no text, which models.dev, a
+    /// catalog of text models, does not list (`providers.md` § Media-only
+    /// vendors).
+    #[serde(default)]
+    pub vendors: Vec<CatalogVendor>,
     pub models: Vec<MediaModel>,
+}
+
+/// A vendor of media alone, as Add Provider offers it.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+pub struct CatalogVendor {
+    /// Its id, which its models' `vendor` names.
+    pub id: String,
+    pub name: String,
+    /// The API's address an entry of it starts with.
+    pub endpoint: String,
+    /// The vendor's API reference.
+    pub doc: Option<String>,
+    /// The vendor's pages the entry was checked against.
+    #[serde(default)]
+    pub sources: Vec<String>,
 }
 
 /// One model a vendor publishes.
@@ -106,6 +126,7 @@ impl From<demi_shared_types::MediaKind> for MediaKind {
         match kind {
             demi_shared_types::MediaKind::Image => Self::Image,
             demi_shared_types::MediaKind::Video => Self::Video,
+            demi_shared_types::MediaKind::Audio => Self::Audio,
         }
     }
 }
@@ -221,6 +242,9 @@ pub struct AudioCapabilities {
     /// For speech, whether it takes instructions on the delivery, such as
     /// a tone or an accent.
     pub instructions: Option<bool>,
+    /// For speech, the longest text one request takes, in characters, as
+    /// the vendor states it, such as OpenAI's 4,096.
+    pub max_characters: Option<u32>,
     /// For music and effects, the only durations it makes, in seconds.
     pub durations: Option<Vec<u32>>,
     /// For music and effects, the range of durations it makes.
