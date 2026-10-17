@@ -8,6 +8,7 @@ use std::rc::{Rc, Weak};
 
 use demi_backend_host_access::host_commands::conversation_of;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
+use demi_shared_types::output::{Fields, warning};
 use demi_web_api_protocol::push::PushMessage;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -27,7 +28,7 @@ const ENTRY: &str = "Sends the user a notification from this conversation, which
 
 const SEND_SUMMARY: &str = "Send the user a notification: its title and body show in the system's notifications, and a click opens this conversation. At most 3 a minute and 30 an hour per conversation.";
 
-const STATUS_SUMMARY: &str = "Say whether a notification would reach the user: how many of the user's browsers have notifications on, and how many of them take the agent's notifications. The user chooses this in Settings › Notifications; no command changes it.";
+const STATUS_SUMMARY: &str = "Say whether a notification would reach the user: how many of the user's browsers have notifications on, and how many of them take the agent's notifications, with a warning on stderr when none does. The user chooses this in Settings › Notifications; no command changes it.";
 
 /// The input of `send`.
 #[derive(Deserialize, JsonSchema)]
@@ -48,6 +49,9 @@ struct NoArgs {}
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct Status {
+    /// Whether a notification would reach the user: some browser takes the
+    /// agent's notifications.
+    reachable: bool,
     /// The user's browsers with notifications on.
     browsers: usize,
     /// Those of them that take the agent's notifications.
@@ -104,15 +108,16 @@ async fn send(shard: Rc<Shard>, call: Call<SendArgs>, port: RpcPort) -> Result<u
     // background, and a browser its push service no longer knows is
     // dropped then.
     let recipients = shard.recipients(&message).await.map_err(failed)?;
-    let said = match recipients.len() {
-        0 => "No browser of the user takes the agent's notifications now; `demi notify status` says why.\n".to_owned(),
-        1 => "Sending to 1 browser.\n".to_owned(),
-        n => format!("Sending to {n} browsers.\n"),
-    };
-    if !recipients.is_empty() {
-        shard.push(message, Some(recipients));
+    match recipients.len() {
+        0 => {
+            let what = "no browser of the user takes the agent's notifications now; `demi notify status` says why";
+            port.stderr(warning(&call.invocation.path.join(" "), what)).await?;
+            return Ok(0);
+        }
+        1 => port.stdout("Sending to 1 browser.\n").await?,
+        n => port.stdout(format!("Sending to {n} browsers.\n")).await?,
     }
-    port.stdout(said).await?;
+    shard.push(message, Some(recipients));
     Ok(0)
 }
 
@@ -123,27 +128,34 @@ async fn status(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u
         .subscriptions(shard.user().clone())
         .await
         .map_err(failed)?;
+    let agent_notifies = subscriptions
+        .iter()
+        .filter(|subscription| subscription.events.agent_notifies)
+        .count();
     let status = Status {
+        reachable: agent_notifies > 0,
         browsers: subscriptions.len(),
-        agent_notifies: subscriptions
-            .iter()
-            .filter(|subscription| subscription.events.agent_notifies)
-            .count(),
+        agent_notifies,
     };
+    let command = call.invocation.path.join(" ");
+    let advice = match (status.browsers, status.agent_notifies) {
+        (0, _) => Some("notifications are off in every browser of the user; the user turns them on in Settings › Notifications"),
+        (_, 0) => Some("no browser of the user takes the agent's notifications; the user turns on The agent notifies in Settings › Notifications"),
+        _ => None,
+    };
+    if let Some(advice) = advice {
+        port.stderr(warning(&command, advice)).await?;
+    }
     if call.invocation.json {
         let text = serde_json::to_string(&status).map_err(failed)?;
         port.stdout(format!("{text}\n")).await?;
         return Ok(0);
     }
-    let said = match (status.browsers, status.agent_notifies) {
-        (0, _) => "Notifications are off in every browser of the user, so none reaches them. The user turns them on in Settings › Notifications.".to_owned(),
-        (browsers, 0) => format!(
-            "Notifications are on in {browsers} of the user's browsers, but none of them takes the agent's notifications. The user turns on The agent notifies in Settings › Notifications."
-        ),
-        (browsers, agent) => format!(
-            "Notifications are on in {browsers} of the user's browsers; {agent} of them take the agent's notifications."
-        ),
-    };
-    port.stdout(format!("{said}\n")).await?;
+    let mut fields = Fields::new();
+    fields
+        .field("Reachable", status.reachable)
+        .field("Browsers", status.browsers)
+        .field("Agent notifications", status.agent_notifies);
+    port.stdout(fields.render()).await?;
     Ok(0)
 }

@@ -105,8 +105,10 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
     );
     socket.chat("m1", "Add Google").await;
     let asked = last_root(&scripts);
-    assert_shows(&asked, "Tree · API key · Ready\n* m  M");
-    assert_shows(&asked, "Claude Code · subscription · Ready\n");
+    // A row per entry under the header, aligned across them.
+    assert_shows(&asked, "  NAME         KIND          MODELS  HIDDEN  STATUS\n");
+    assert_shows(&asked, "  Tree         API key       2       no      Ready\n");
+    assert_shows(&asked, "  Claude Code  subscription  ");
     assert_shows(
         &asked,
         "demi providers add: this conversation needs the user's permission to manage providers; the request was sent to the user, and you will be told when the user decides",
@@ -155,10 +157,12 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
     socket.until_idle().await;
     let asked = last_root(&scripts);
     for shown in [
-        "state     Needs an API key\n",
-        "google/gemini-3.8-flash  Gemini 3.8 Flash  1M  out 65.5K  low* medium high  png jpg jpeg gif webp pdf\n",
-        "Google now keeps its own list of 2 models; it no longer follows models.dev.\nAdded to Google: gemini-3.8-flash  Gemini 3.8 Flash  1M  out 65.5K  low* medium high  png jpg jpeg gif webp pdf\n",
-        "key       saved\nstate     Ready\n",
+        "Status: Needs an API key\n",
+        // A search match's numbers are exact, never 1M or 65.5K.
+        "google/gemini-3.8-flash  1048576           65536            low             low,medium,high  png,jpg,jpeg,gif,webp,pdf  Gemini 3.8 Flash\n",
+        "demi providers models add: warning: Google now keeps its own list of 2 models; it no longer follows models.dev\n",
+        "ID: gemini-3.8-flash\nName: Gemini 3.8 Flash\nContext (tokens): 1048576\nOutput (tokens): 65536\nDefault effort: low\nEfforts: low,medium,high\nFiles: png,jpg,jpeg,gif,webp,pdf\nFast tier: -\n",
+        "Key saved: yes\nStatus: Ready\n",
         "\"keySaved\":true",
         "demi providers models add: Claude Code lists its own models; its list cannot be edited.",
         "demi providers edit: apiKey: the credential contains a control character",

@@ -5,6 +5,7 @@
 //! result.
 
 use demi_command_protocol::ArtifactProgress;
+use demi_shared_types::output::Table;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
@@ -184,33 +185,14 @@ fn dialog(dialog: &Dialog) -> String {
     format!("Dialog: {} {}\n", dialog.r#type, quoted(&dialog.message))
 }
 
-/// Rows whose columns line up; the first row is the header.
-fn table(rows: &[Vec<String>]) -> String {
-    let columns = rows.first().map_or(0, Vec::len);
-    let widths: Vec<usize> = (0..columns)
-        .map(|column| {
-            rows.iter()
-                .map(|row| row[column].chars().count())
-                .max()
-                .unwrap_or(0)
-        })
-        .collect();
-    let mut text = String::new();
+/// Rows whose columns line up under the header row `columns`, as every
+/// command's lists print (`commands.md` § Output).
+fn table<const N: usize>(columns: [&str; N], rows: impl IntoIterator<Item = [String; N]>) -> String {
+    let mut table = Table::new(columns);
     for row in rows {
-        let mut line = String::new();
-        for (column, cell) in row.iter().enumerate() {
-            if column + 1 == columns {
-                line.push_str(cell);
-            } else {
-                let padding = widths[column] - cell.chars().count() + 2;
-                line.push_str(cell);
-                line.push_str(&" ".repeat(padding));
-            }
-        }
-        text.push_str(line.trim_end());
-        text.push('\n');
+        table.row(row);
     }
-    text
+    table.render()
 }
 
 fn truncated(text: &mut String, truncated: bool) {
@@ -240,31 +222,19 @@ fn created_by(created_by: &BrowserCreatedBy) -> String {
 }
 
 fn tabs(result: &TabsResult) -> String {
-    if result.tabs.is_empty() {
-        return "No tabs.\n".to_owned();
-    }
-    let mut rows = vec![vec![
-        "Tab".to_owned(),
-        "Title".to_owned(),
-        "Created by".to_owned(),
-        "URL".to_owned(),
-    ]];
-    rows.extend(result.tabs.iter().map(|tab| {
-        vec![
-            tab.id.to_string(),
-            plain(&tab.title),
-            created_by(&tab.created_by),
-            plain(&tab.url),
-        ]
-    }));
-    let mut text = table(&rows);
+    let mut text = table(
+        ["tab", "created by", "url", "title"],
+        result.tabs.iter().map(|tab| {
+            [tab.id.to_string(), created_by(&tab.created_by), plain(&tab.url), plain(&tab.title)]
+        }),
+    );
     truncated(&mut text, result.truncated);
     text
 }
 
 fn info(result: &InfoResult) -> String {
     let mut text = format!(
-        "Tab: {} · {}\nURL: {}\nViewport: {}\n",
+        "Tab: {}\nTitle: {}\nURL: {}\nViewport: {}\n",
         result.tab,
         plain(&result.title),
         plain(&result.url),
@@ -272,7 +242,7 @@ fn info(result: &InfoResult) -> String {
     );
     match &result.dialog {
         Some(shown) => text.push_str(&dialog(shown)),
-        None => text.push_str("Dialog: none\n"),
+        None => text.push_str("Dialog: -\n"),
     }
     text
 }
@@ -286,23 +256,17 @@ fn navigation(verb: &str, result: &NavigationResult) -> String {
 }
 
 fn history(result: &HistoryResult) -> String {
-    let rows: Vec<Vec<String>> = result
-        .entries
-        .iter()
-        .map(|entry| {
-            let marker = if entry.current { "*" } else { " " };
-            vec![
-                format!("{marker} {}", entry.index),
-                plain(&entry.title),
+    let mut text = table(
+        ["index", "current", "url", "title"],
+        result.entries.iter().map(|entry| {
+            [
+                entry.index.to_string(),
+                if entry.current { "yes" } else { "no" }.to_owned(),
                 plain(&entry.url),
+                plain(&entry.title),
             ]
-        })
-        .collect();
-    let mut text = if rows.is_empty() {
-        "No history entries.\n".to_owned()
-    } else {
-        table(&rows)
-    };
+        }),
+    );
     truncated(&mut text, result.truncated);
     text
 }
@@ -697,18 +661,13 @@ fn logs(result: &LogsResult) -> String {
 }
 
 fn cdp_targets(result: &CdpTargetsResult) -> String {
-    let mut rows = vec![vec![
-        "Target".to_owned(),
-        "Kind".to_owned(),
-        "URL".to_owned(),
-    ]];
-    rows.extend(
+    let mut text = table(
+        ["target", "kind", "url"],
         result
             .targets
             .iter()
-            .map(|target| vec![plain(&target.id), plain(&target.kind), plain(&target.url)]),
+            .map(|target| [plain(&target.id), plain(&target.kind), plain(&target.url)]),
     );
-    let mut text = table(&rows);
     truncated(&mut text, result.truncated);
     text
 }
@@ -792,27 +751,16 @@ fn content_fetch(result: &ContentFetchResult) -> String {
 }
 
 fn assets_list(result: &AssetsListResult) -> String {
-    let mut text = format!("Inventory: {}\n", plain(&result.inventory));
-    let rows: Vec<Vec<String>> = result
+    let mut text = format!("Inventory: {}\n\n", plain(&result.inventory));
+    let assets = result
         .assets
         .iter()
-        .map(|asset| {
-            vec![
-                format!(" {}", plain(&asset.id)),
-                asset.kind.to_string(),
-                plain(&asset.url),
-            ]
-        })
-        .collect();
-    if !rows.is_empty() {
-        text.push_str(&table(&rows));
-    }
-    for svg in &result.inline_svgs {
-        text.push_str(&format!(" {}  inline svg\n", plain(&svg.id)));
-    }
-    if result.assets.is_empty() && result.inline_svgs.is_empty() {
-        text.push_str("No assets.\n");
-    }
+        .map(|asset| [plain(&asset.id), asset.kind.to_string(), plain(&asset.url)]);
+    let svgs = result
+        .inline_svgs
+        .iter()
+        .map(|svg| [plain(&svg.id), "inline svg".to_owned(), String::new()]);
+    text.push_str(&table(["id", "kind", "url"], assets.chain(svgs)));
     truncated(&mut text, result.truncated);
     text
 }
@@ -871,29 +819,16 @@ fn install(result: &InstallResult) -> String {
 }
 
 fn capabilities(result: &CapabilitiesResult) -> String {
-    let mut available = String::new();
-    let mut unavailable = String::new();
-    for capability in &result.capabilities {
-        if capability.available {
-            available.push_str(&format!("  {}\n", plain(&capability.id)));
-        } else {
-            unavailable.push_str(&format!("  {}", plain(&capability.id)));
-            if let Some(reason) = &capability.reason {
-                unavailable.push_str(&format!(" — {}", plain(reason)));
-            }
-            unavailable.push('\n');
-        }
-    }
-    let mut text = String::new();
-    if !available.is_empty() {
-        text.push_str("Available:\n");
-        text.push_str(&available);
-    }
-    if !unavailable.is_empty() {
-        text.push_str("Unavailable:\n");
-        text.push_str(&unavailable);
-    }
-    text
+    table(
+        ["capability", "available", "reason"],
+        result.capabilities.iter().map(|capability| {
+            [
+                plain(&capability.id),
+                if capability.available { "yes" } else { "no" }.to_owned(),
+                capability.reason.as_deref().map(plain).unwrap_or_default(),
+            ]
+        }),
+    )
 }
 
 fn webmcp_list(result: &WebmcpListResult) -> String {
@@ -976,9 +911,9 @@ mod tests {
                     {"id": "t2", "title": "Admin", "url": "http://localhost:3000/admin", "createdBy": {"kind": "page", "opener": "t1"}, "loading": true, "canGoBack": true, "canGoForward": false, "shows": 1},
                 ], "truncated": false}),
                 vec![
-                    "Tab  Title    Created by  URL\n",
-                    "t1  Sign in  agent 0  http://localhost:3000/login\n",
-                    "t2  Admin    page t1    http://localhost:3000/admin\n",
+                    "TAB CREATED BY URL TITLE\n",
+                    "t1 agent 0 http://localhost:3000/login Sign in\n",
+                    "t2 page t1 http://localhost:3000/admin Admin\n",
                 ],
             ),
             (
@@ -986,9 +921,9 @@ mod tests {
                 tab.clone(),
                 json!({"tab": "t1", "url": "http://localhost:3000/login", "title": "Sign in", "viewport": viewport}),
                 vec![
-                    "Tab: t1 · Sign in\n",
+                    "Tab: t1\nTitle: Sign in\n",
                     "Viewport: 390 × 844 CSS px, device pixel ratio 1, custom\n",
-                    "Dialog: none\n",
+                    "Dialog: -\n",
                 ],
             ),
             (
@@ -1014,8 +949,9 @@ mod tests {
                     {"index": 1, "url": "http://localhost:3000/products", "title": "Products", "current": true},
                 ], "truncated": false}),
                 vec![
-                    "  0  Sign in   http://localhost:3000/login\n",
-                    "* 1  Products  http://localhost:3000/products\n",
+                    "INDEX CURRENT URL TITLE\n",
+                    "0 no http://localhost:3000/login Sign in\n",
+                    "1 yes http://localhost:3000/products Products\n",
                 ],
             ),
             (
@@ -1246,7 +1182,7 @@ mod tests {
                 tab.clone(),
                 json!({"targets": [{"id": "main", "kind": "page", "url": "http://localhost:3000/orders"}], "truncated": false}),
                 vec![
-                    "Target  Kind  URL\n",
+                    "TARGET  KIND  URL\n",
                     "main    page  http://localhost:3000/orders\n",
                 ],
             ),
@@ -1289,8 +1225,8 @@ mod tests {
                 tab.clone(),
                 json!({"inventory": "assets_1", "assets": [{"id": "a1", "kind": "image", "url": "http://localhost:3000/logo.png"}], "inlineSvgs": [], "truncated": false}),
                 vec![
-                    "Inventory: assets_1\n",
-                    " a1  image  http://localhost:3000/logo.png\n",
+                    "Inventory: assets_1\n\nID KIND URL\n",
+                    "a1 image http://localhost:3000/logo.png\n",
                 ],
             ),
             (
@@ -1304,8 +1240,9 @@ mod tests {
                 tab.clone(),
                 json!({"capabilities": [{"id": "dom", "available": true}, {"id": "clipboard", "available": false, "reason": "shared with the Host user"}]}),
                 vec![
-                    "Available:\n  dom\n",
-                    "Unavailable:\n  clipboard — shared with the Host user\n",
+                    "CAPABILITY AVAILABLE REASON\n",
+                    "dom yes -\n",
+                    "clipboard no shared with the Host user\n",
                 ],
             ),
             (

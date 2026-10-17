@@ -33,14 +33,17 @@ use demi_host_interface::{
     BroughtHost, RpcInvocation, RpcPort, TypedRpc,
 };
 use demi_web_api_protocol::conversations::ConversationTarget;
-use demi_shared_types::StreamKind;
+use demi_shared_types::{
+    StreamKind,
+    output::{Cell, Fields, Table, warning},
+};
 use demi_backend_runners::claims::ClaimRefusal;
 use demi_backend_runners::install::install_commands;
 use demi_web_api_protocol::devices::{DeviceKind, DeviceState};
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use crate::HostShard;
@@ -61,7 +64,7 @@ const PAIR_PATH: [&str; 3] = [DEMI_ROOT, "host", "pair"];
 
 const MOVE_SUMMARY: &str = "Make another host where this conversation runs, or another directory there: `demi host move <host> <directory>`, the host by name or id from `demi host devices` (`Cloud` for the user's Cloud), the directory an absolute path that exists there. The move applies when this conversation's work ends, and the host it leaves stays attached.";
 
-const DEVICES_SUMMARY: &str = "The user's paired devices and the Cloud, with their states and what each is to this conversation.";
+const DEVICES_SUMMARY: &str = "List the user's paired devices and the Cloud: name, id, kind, status (a stopped Cloud wakes for work), and what each is to this conversation, with the name it reaches it by.";
 
 const ATTACH_SUMMARY: &str = "Attach one of the user's paired devices to this conversation, by name or id from `demi host devices`, so `demi host shell --host` reaches it.";
 
@@ -71,9 +74,9 @@ const PAIR_SUMMARY: &str = "Pair the computer whose installer shows `<code>` wit
 
 const DETACH_SUMMARY: &str = "Detach an attached host, by name or id from `demi host list`, once this conversation's work ends.";
 
-const LIST_SUMMARY: &str = "Hosts this conversation can reach with `demi host shell --host`: name, id, online, the directory commands start in; the primary one marked.";
+const LIST_SUMMARY: &str = "List the Hosts this conversation can reach with `demi host shell --host`: name, id, status, role (primary or attached) and the directory commands start in.";
 
-const CURRENT_SUMMARY: &str = "The primary host: where the shell tool's commands run.";
+const CURRENT_SUMMARY: &str = "Show the primary host, where the shell tool's commands run: its name, id, status, project and directory.";
 
 const SHELL_SUMMARY: &str = "Run a script in another host's bash, as ssh does: `demi host shell --host <name|id> <script>`, or without the script argument, the script on stdin, so one with quotes of its own needs no escaping (`demi host shell --host ci <<'EOF'` … `EOF`). The script starts in that host's directory, which `demi host list` shows and no `cd` changes. With a script argument, this command's stdin and stdout are the script's, byte-faithfully and streaming, so archives pipe cleanly both ways (`demi host shell --host ci \"tar c -C /work .\" | tar x`, `tar c . | demi host shell --host ci \"tar x -C /work\"`); a script read from stdin has no stdin of its own. stderr and the exit code pass through.";
 
@@ -163,11 +166,13 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()
+                .json_output::<Vec<ListedHost>>()
                 .bind(TypedRpc::new(verb(shard.clone(), list))),
         )
         .leaf(
             LeafBuilder::rpc("current", CURRENT_SUMMARY)
                 .input::<NoArgs>()
+                .json_output::<CurrentHost>()
                 .bind(TypedRpc::new(verb(shard.clone(), current))),
         )
         .leaf(
@@ -180,6 +185,7 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
         .leaf(
             LeafBuilder::rpc("devices", DEVICES_SUMMARY)
                 .input::<NoArgs>()
+                .json_output::<Vec<ListedDevice>>()
                 .bind(TypedRpc::new(verb(shard.clone(), devices))),
         )
         .leaf(
@@ -394,34 +400,66 @@ fn online(shard: &dyn HostShard, host: &ReachableHost) -> &'static str {
     }
 }
 
+/// A Host as `demi host list` lists it.
+#[derive(Serialize, JsonSchema)]
+struct ListedHost {
+    /// The name `--host` takes.
+    name: String,
+    /// Its device's id, which `--host` takes too.
+    id: String,
+    /// `online` or `offline`.
+    status: &'static str,
+    /// `primary` or `attached`.
+    role: &'static str,
+    /// Where a shell there starts; null when it is not known yet.
+    directory: Option<String>,
+}
+
+fn role_word(role: HostRole) -> &'static str {
+    match role {
+        HostRole::Primary => "primary",
+        HostRole::Attached => "attached",
+    }
+}
+
 async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let conversation = conversation_of(&call.invocation)?;
     let hosts = reachable(&*shard, &conversation).await?;
     if hosts.is_empty() {
-        port.stdout("Cloud has not been allocated\n").await?;
-        return Ok(0);
+        port.stderr(warning(&call.invocation.path.join(" "), "the Cloud has not been allocated"))
+            .await?;
     }
-    let lines: Vec<String> = hosts
+    let listed: Vec<ListedHost> = hosts
         .iter()
-        .map(|host| {
-            let path = if host.path.is_empty() {
-                "?"
-            } else {
-                &host.path
-            };
-            let role = match host.role {
-                HostRole::Primary => "primary",
-                HostRole::Attached => "attached",
-            };
-            format!(
-                "{}  {}  {}  {path}  ({role})",
-                host.name,
-                host.device,
-                online(&*shard, host)
-            )
+        .map(|host| ListedHost {
+            name: host.name.clone(),
+            id: host.device.to_string(),
+            status: online(&*shard, host),
+            role: role_word(host.role),
+            directory: Some(host.path.clone()).filter(|path| !path.is_empty()),
         })
         .collect();
-    port.stdout(format!("{}\n", lines.join("\n"))).await?;
+    if call.invocation.json {
+        return print_json(&port, &listed).await;
+    }
+    let mut table = Table::new(["name", "id", "status", "role", "directory"]);
+    for host in &listed {
+        table.row::<Cell>([
+            host.name.as_str().into(),
+            host.id.as_str().into(),
+            host.status.into(),
+            host.role.into(),
+            host.directory.as_deref().into(),
+        ]);
+    }
+    port.stdout(table.render()).await?;
+    Ok(0)
+}
+
+/// Prints `value` as one JSON value.
+async fn print_json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
+    let text = serde_json::to_string(value).map_err(|error| RpcError::Failed(error.to_string()))?;
+    port.stdout(format!("{text}\n")).await?;
     Ok(0)
 }
 
@@ -431,7 +469,7 @@ fn device_state(kind: DeviceKind, state: DeviceState) -> &'static str {
     match (kind, state) {
         (_, DeviceState::Online) => "online",
         (_, DeviceState::Updating) => "updating",
-        (DeviceKind::Managed, DeviceState::Offline) => "stopped, wakes for work",
+        (DeviceKind::Managed, DeviceState::Offline) => "stopped",
         (DeviceKind::User, DeviceState::Offline) => "offline",
     }
 }
@@ -453,25 +491,65 @@ async fn devices(
         .paired_devices(shard.user().clone())
         .await
         .map_err(failed)?;
-    let mut lines = Vec::new();
     if cloud.is_none() {
-        lines.push("Cloud  (not created yet; it is made when a conversation first runs there)".to_owned());
+        let note = "the Cloud is not created yet; it is made when a conversation first runs there";
+        port.stderr(warning(&call.invocation.path.join(" "), note)).await?;
     }
-    for device in cloud.iter().chain(&paired) {
-        let name = match device.kind {
-            DeviceKind::Managed => "Cloud",
-            DeviceKind::User => device.name.as_str(),
-        };
-        let state = device_state(device.kind, shard.devices().state(&device.id));
-        let role = match hosts.iter().find(|host| host.device == device.id) {
-            Some(host) if host.role == HostRole::Primary => "  (primary)".to_owned(),
-            Some(host) => format!("  (attached as {})", host.name),
-            None => String::new(),
-        };
-        lines.push(format!("{name}  {}  {state}{role}", device.id));
+    let listed: Vec<ListedDevice> = cloud
+        .iter()
+        .chain(&paired)
+        .map(|device| {
+            let host = hosts.iter().find(|host| host.device == device.id);
+            ListedDevice {
+                name: match device.kind {
+                    DeviceKind::Managed => "Cloud".to_owned(),
+                    DeviceKind::User => device.name.clone(),
+                },
+                id: device.id.to_string(),
+                kind: match device.kind {
+                    DeviceKind::Managed => "cloud",
+                    DeviceKind::User => "paired",
+                },
+                status: device_state(device.kind, shard.devices().state(&device.id)),
+                role: host.map(|host| role_word(host.role)),
+                host: host.map(|host| host.name.clone()),
+            }
+        })
+        .collect();
+    if call.invocation.json {
+        return print_json(&port, &listed).await;
     }
-    port.stdout(format!("{}\n", lines.join("\n"))).await?;
+    let mut table = Table::new(["name", "id", "kind", "status", "role", "host"]);
+    for device in &listed {
+        table.row::<Cell>([
+            device.name.as_str().into(),
+            device.id.as_str().into(),
+            device.kind.into(),
+            device.status.into(),
+            device.role.into(),
+            device.host.as_deref().into(),
+        ]);
+    }
+    port.stdout(table.render()).await?;
     Ok(0)
+}
+
+/// A device as `demi host devices` lists it.
+#[derive(Serialize, JsonSchema)]
+struct ListedDevice {
+    /// The name `--host` and `attach` take: `Cloud` for the Cloud.
+    name: String,
+    id: String,
+    /// `cloud` or `paired`.
+    kind: &'static str,
+    /// `online`, `updating`, `offline`, or `stopped` for a Cloud that wakes
+    /// for work.
+    status: &'static str,
+    /// What it is to this conversation, `primary` or `attached`; null for
+    /// neither.
+    role: Option<&'static str>,
+    /// The name this conversation reaches it by; null when it does not.
+    host: Option<String>,
 }
 
 async fn attach(
@@ -717,43 +795,66 @@ async fn current(
         .resolve_target(&record)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
-    let Some(device) = target.device() else {
-        port.stdout(format!(
-            "host: Cloud (not allocated), directory {}\n",
-            target.path()
-        ))
-        .await?;
-        return Ok(0);
-    };
-    let name = control
-        .device(device.clone())
-        .await
-        .map_err(|error| RpcError::Failed(error.to_string()))?
-        .map_or_else(|| device.to_string(), |device| device.name);
-    let state = if shard.devices().online(device) {
-        "online"
-    } else {
-        "offline"
-    };
-    let line = match &target {
-        ExecutionTarget::Workspace { workspace_id, .. } => {
-            let workspace = control
-                .workspace(workspace_id.clone())
+    let directory = Some(target.path().to_owned()).filter(|path| !path.is_empty());
+    let shown = match target.device() {
+        None => CurrentHost {
+            name: "Cloud".to_owned(),
+            id: None,
+            status: "not allocated",
+            project: None,
+            directory,
+        },
+        Some(device) => {
+            let name = control
+                .device(device.clone())
                 .await
                 .map_err(|error| RpcError::Failed(error.to_string()))?
-                .map_or_else(|| workspace_id.to_string(), |workspace| workspace.name);
-            format!(
-                "host: workspace \"{workspace}\" — {} on device \"{name}\" ({state})\n",
-                target.path()
-            )
-        }
-        ExecutionTarget::Cloud { path, .. } | ExecutionTarget::Device { path, .. } => {
-            let path = if path.is_empty() { "home" } else { path };
-            format!("host: machine \"{name}\" ({device}, {state}) — {path}\n")
+                .map_or_else(|| device.to_string(), |device| device.name);
+            let project = match &target {
+                ExecutionTarget::Workspace { workspace_id, .. } => Some(
+                    control
+                        .workspace(workspace_id.clone())
+                        .await
+                        .map_err(|error| RpcError::Failed(error.to_string()))?
+                        .map_or_else(|| workspace_id.to_string(), |workspace| workspace.name),
+                ),
+                ExecutionTarget::Cloud { .. } | ExecutionTarget::Device { .. } => None,
+            };
+            CurrentHost {
+                name,
+                id: Some(device.to_string()),
+                status: if shard.devices().online(device) { "online" } else { "offline" },
+                project,
+                directory,
+            }
         }
     };
-    port.stdout(line).await?;
+    if call.invocation.json {
+        return print_json(&port, &shown).await;
+    }
+    let mut fields = Fields::new();
+    fields
+        .field("Name", shown.name.as_str())
+        .field("ID", shown.id.as_deref())
+        .field("Status", shown.status)
+        .field("Project", shown.project.as_deref())
+        .field("Directory", shown.directory.as_deref());
+    port.stdout(fields.render()).await?;
     Ok(0)
+}
+
+/// `demi host current`: the primary Host.
+#[derive(Serialize, JsonSchema)]
+struct CurrentHost {
+    name: String,
+    /// Its device's id; null for a Cloud not allocated yet.
+    id: Option<String>,
+    /// `online`, `offline` or `not allocated`.
+    status: &'static str,
+    /// The project the conversation is in; null for none.
+    project: Option<String>,
+    /// Where its commands start; null for the home directory.
+    directory: Option<String>,
 }
 
 async fn shell(

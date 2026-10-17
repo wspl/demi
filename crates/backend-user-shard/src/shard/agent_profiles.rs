@@ -286,12 +286,12 @@ fn offering_entry(
             if !listing.is_empty() {
                 let entries: Vec<String> = listing.iter().map(|catalog| label(catalog)).collect();
                 return Err(format!(
-                    "model \"{model}\" is offered only by provider entries that cannot run now: {}; `demi providers list` lists the models the user can use",
+                    "model \"{model}\" is offered only by provider entries that cannot run now: {}; `demi providers show` shows the models of each entry the user can use",
                     entries.join(", ")
                 ));
             }
             Err(format!(
-                "no provider entry offers the model \"{model}\"; `demi providers list` lists the models the user can use"
+                "no provider entry offers the model \"{model}\"; `demi providers show` shows the models of each entry the user can use"
             ))
         }
         several => {
@@ -313,13 +313,13 @@ fn offering_entry(
 /// Why a profile cannot take a model of an entry the user turned off.
 fn hidden_entry(entry: &str) -> String {
     format!(
-        "the provider entry \"{entry}\" is turned off in Settings > Providers; choose a model `demi providers list` lists, or ask the user to turn the entry on"
+        "the provider entry \"{entry}\" is turned off in Settings > Providers; choose a model `demi providers show` shows, or ask the user to turn the entry on"
     )
 }
 
 /// Why a profile cannot take a model the user turned off.
 fn hidden_model(model: &str, entry: &str) -> String {
     format!(
-        "the model \"{model}\" of \"{entry}\" is turned off in Settings > Providers; choose a model `demi providers list` lists, or ask the user to turn it on"
+        "the model \"{model}\" of \"{entry}\" is turned off in Settings > Providers; choose a model `demi providers show` shows, or ask the user to turn it on"
     )
 }

@@ -26,8 +26,9 @@ use demi_provider_common::ProviderRuntime;
 use demi_shared_gates::Purpose;
 use demi_shared_types::{
     AgentMessage, AgentMessageEvent, Block, BlockId, CommandId, CompletionId, CompletionOutcome,
-    ModelSelection, NodeId, QueuedMessage, Sender, Sequence, ToolCallBlock, ToolCallStatus, TurnId,
-    UserContentBlock,
+    ModelSelection, NodeId, QueuedMessage, Sender, Sequence, Timestamp, ToolCallBlock,
+    ToolCallStatus, TurnId, UserContentBlock,
+    output::{self, Fields, Table, seconds},
 };
 use demi_host_interface::{ShellEnvironment, relative_to};
 use futures_util::future::{LocalBoxFuture, join_all};
@@ -49,7 +50,6 @@ use crate::{
 const RESULT_MAX_BYTES: usize = 32 * 1024;
 /// The most recent tool calls `show` lists.
 const SHOW_RECENT_TOOLS: usize = 8;
-const INHERIT_LABEL: &str = "(inherit)";
 /// Why the root's directory does not change (`subagents.md` § Working
 /// directory).
 const ROOT_CWD: &str = "The main agent works in the conversation's directory; move the conversation with `demi host move` to work elsewhere.";
@@ -1600,9 +1600,10 @@ impl<H: HostResolver> Tree<H> {
                 let close = record.closed.as_ref().expect("an archived child is closed");
                 children.push(ListNode {
                     kind: EntryKind::Archived,
-                    phase: close.phase.job_phase(),
-                    closed_ago_ms: Some(age(now, close.at.as_millisecond())),
-                    line: None,
+                    phase: Some(close.phase.job_phase()),
+                    started_at: Some(record.started_at),
+                    closed_at: Some(close.at),
+                    live: None,
                     children: Vec::new(),
                     number: record.number,
                     parent: Some(number),
@@ -1622,13 +1623,11 @@ impl<H: HostResolver> Tree<H> {
                         kind: EntryKind::Live,
                         description: record.description.clone(),
                         profile: record.profile.clone(),
-                        phase: JobPhase::Running,
-                        closed_ago_ms: None,
+                        phase: Some(JobPhase::Running),
+                        started_at: Some(record.started_at),
+                        closed_at: None,
                         place: Some(place(placement, record.cwd.as_ref().expect("a child's record names its directory"))),
-                        line: Some(list_line(
-                            &self.snapshot(&child, parent, now, placement),
-                            &place(placement, record.cwd.as_ref().expect("a child's record names its directory")),
-                        )),
+                        live: Some(self.snapshot(&child, parent, now, placement)),
                         children,
                     }
                 }
@@ -1639,10 +1638,11 @@ impl<H: HostResolver> Tree<H> {
                     kind: EntryKind::Root,
                     description: String::new(),
                     profile: None,
-                    phase: JobPhase::Running,
-                    closed_ago_ms: None,
+                    phase: None,
+                    started_at: None,
+                    closed_at: None,
                     place: None,
-                    line: None,
+                    live: None,
                     children,
                 },
             })
@@ -1676,11 +1676,13 @@ impl<H: HostResolver> Tree<H> {
             ClosePhase::Aborted => (None, None),
         };
         let archived = ArchivedSnapshot {
-            subagent_id: record.number,
-            parent_session_id: parent,
+            id: record.number,
+            parent,
             description: record.description,
-            phase: close.phase.job_phase(),
-            closed_ago_ms: age(now, close.at.as_millisecond()),
+            profile: record.profile,
+            status: close.phase.job_phase(),
+            started_at: record.started_at,
+            closed_at: close.at,
             result,
             failure,
             cwd: record
@@ -2075,24 +2077,10 @@ fn age(now: i64, then: i64) -> u64 {
     u64::try_from(now.saturating_sub(then)).unwrap_or(0)
 }
 
-/// A duration as `list` and `show` print it: `45s`, `4m`, `1m5s`, `2h` or
-/// `1h3m`, rounded to the nearest second.
-fn duration(ms: u64) -> String {
-    let seconds = (ms + 500) / 1000;
-    if seconds < 60 {
-        return format!("{seconds}s");
-    }
-    let minutes = seconds / 60;
-    if minutes < 60 {
-        return match seconds % 60 {
-            0 => format!("{minutes}m"),
-            rest => format!("{minutes}m{rest}s"),
-        };
-    }
-    match minutes % 60 {
-        0 => format!("{}h", minutes / 60),
-        rest => format!("{}h{rest}m", minutes / 60),
-    }
+/// The instant `millisecond`, a time the tree's clock gave.
+fn at(millisecond: i64) -> Timestamp {
+    // The clock's own times are inside the range of times.
+    Timestamp::from_millisecond(millisecond).unwrap_or(Timestamp::UNIX_EPOCH)
 }
 
 /// One node of `demi agent list`.
@@ -2104,13 +2092,15 @@ struct ListNode {
     kind: EntryKind,
     description: String,
     profile: Option<String>,
-    phase: JobPhase,
-    closed_ago_ms: Option<u64>,
+    /// A child's phase, how an archived one closed; none for the root.
+    phase: Option<JobPhase>,
+    started_at: Option<Timestamp>,
+    closed_at: Option<Timestamp>,
     /// A child's working directory as the listing names it
     /// ([`place`]); none for the root.
     place: Option<String>,
-    /// A live child's status line.
-    line: Option<String>,
+    /// A live child's snapshot.
+    live: Option<AgentSnapshot>,
     children: Vec<ListNode>,
 }
 
@@ -2122,51 +2112,71 @@ enum EntryKind {
     Archived,
 }
 
-/// `demi agent list`'s tree, rendered for one caller.
+/// `demi agent list`'s tree.
 pub(crate) struct Listing {
     root: ListNode,
 }
 
-/// One node of `demi agent list --json`.
+/// One agent of `demi agent list --json`: the table's row and more.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct TreeEntry {
-    subagent_id: u64,
-    parent_session_id: Option<u64>,
+    id: u64,
+    /// Null for the root.
+    parent: Option<u64>,
     kind: EntryKind,
-    description: String,
+    /// A child's phase, how an archived one closed; null for the root.
+    status: Option<JobPhase>,
+    /// Null for the parent's.
     profile: Option<String>,
-    phase: JobPhase,
-    closed_ago_ms: Option<u64>,
+    description: String,
     /// A child's working directory, relative to the conversation's when
     /// inside it; null for the root.
     cwd: Option<String>,
+    /// Null for the root.
+    started_at: Option<Timestamp>,
+    /// A live child's facts; null otherwise.
+    execution: Option<Execution>,
+    activity: Option<String>,
+    elapsed_ms: Option<u64>,
+    last_event_at: Option<Timestamp>,
+    /// Milliseconds since the last event.
+    idle_ms: Option<u64>,
+    execution_for_ms: Option<u64>,
+    /// An archived child's close; null otherwise.
+    closed_at: Option<Timestamp>,
+    /// Whether it is the caller.
     #[serde(rename = "self")]
     is_caller: bool,
 }
 
 impl Listing {
-    /// The tree as lines, the caller's marked.
-    pub(crate) fn render(&self, caller: &NodeId) -> String {
-        let mut lines = Vec::new();
-        render_node(&self.root, "", true, caller, &mut lines);
-        lines.join("\n")
-    }
-
-    /// The same nodes as a flat list, in the same order.
-    pub(crate) fn entries(&self, caller: &NodeId) -> Vec<TreeEntry> {
+    /// The nodes from the root down, each node's archived children after
+    /// its live ones; the archived only with `all`.
+    pub(crate) fn entries(&self, caller: &NodeId, all: bool) -> Vec<TreeEntry> {
         let mut entries = Vec::new();
         let mut stack = vec![&self.root];
         while let Some(node) = stack.pop() {
+            if node.kind == EntryKind::Archived && !all {
+                continue;
+            }
+            let live = node.live.as_ref();
             entries.push(TreeEntry {
-                subagent_id: node.number,
-                parent_session_id: node.parent,
+                id: node.number,
+                parent: node.parent,
                 kind: node.kind,
-                description: node.description.clone(),
+                status: node.phase,
                 profile: node.profile.clone(),
-                phase: node.phase,
-                closed_ago_ms: node.closed_ago_ms,
+                description: node.description.clone(),
                 cwd: node.place.clone(),
+                started_at: node.started_at,
+                execution: live.map(|live| live.execution),
+                activity: live.map(|live| live.activity.clone()),
+                elapsed_ms: live.map(|live| live.elapsed_ms),
+                last_event_at: live.map(|live| live.last_event_at),
+                idle_ms: live.map(|live| live.idle_ms),
+                execution_for_ms: live.map(|live| live.execution_for_ms),
+                closed_at: node.closed_at,
                 is_caller: &node.id == caller,
             });
             stack.extend(node.children.iter().rev());
@@ -2175,109 +2185,61 @@ impl Listing {
     }
 }
 
-fn render_node(
-    node: &ListNode,
-    prefix: &str,
-    last: bool,
-    caller: &NodeId,
-    lines: &mut Vec<String>,
-) {
-    let marker = if &node.id == caller { " ← you" } else { "" };
-    let body = match node.kind {
-        EntryKind::Root => format!("● {}  (root session){marker}", node.number),
-        EntryKind::Archived => {
-            let ago = node
-                .closed_ago_ms
-                .map(|ago| format!(" {} ago", duration(ago)))
-                .unwrap_or_default();
-            format!(
-                "○ {}  archived ({}{ago})  {}  {}",
-                node.number,
-                node.phase,
-                quoted(&node.description),
-                node.place.as_deref().expect("a child has a directory")
-            )
-        }
-        EntryKind::Live => format!(
-            "● {}{marker}",
-            node.line.as_deref().expect("a live node has a line")
-        ),
-    };
-    let child_prefix = match node.kind {
-        EntryKind::Root => {
-            lines.push(body);
-            String::new()
-        }
-        _ => {
-            let branch = if last { "└─" } else { "├─" };
-            lines.push(format!("{prefix}{branch}{body}"));
-            format!("{prefix}{}", if last { "  " } else { "│ " })
-        }
-    };
-    for (index, child) in node.children.iter().enumerate() {
-        render_node(
-            child,
-            &child_prefix,
-            index + 1 == node.children.len(),
-            caller,
-            lines,
-        );
+/// `demi agent list`'s table of `entries`.
+pub(crate) fn list_text(entries: &[TreeEntry]) -> String {
+    let mut table = Table::new([
+        "id",
+        "parent",
+        "status",
+        "profile",
+        "execution",
+        "elapsed (s)",
+        "idle (s)",
+        "description",
+    ]);
+    for entry in entries {
+        table.row::<output::Cell>([
+            entry.id.into(),
+            entry.parent.into(),
+            entry.status.map(|phase| phase.to_string()).into(),
+            entry.profile.as_deref().into(),
+            entry.execution.map(Execution::as_str).into(),
+            entry.elapsed_ms.map(seconds).into(),
+            entry.idle_ms.map(seconds).into(),
+            entry.description.as_str().into(),
+        ]);
     }
+    table.render()
 }
 
-fn quoted(description: &str) -> String {
-    if description.is_empty() {
-        "(no description)".to_owned()
-    } else {
-        format!("\"{description}\"")
-    }
-}
-
-/// A live child's line in `demi agent list`, from its snapshot.
-/// `place` is where the listing says it works.
-fn list_line(snapshot: &AgentSnapshot, place: &str) -> String {
-    [
-        snapshot.subagent_id.to_string(),
-        snapshot.phase.to_string(),
-        format!("up {}", duration(snapshot.elapsed_ms)),
-        format!("last-event {} ago", duration(snapshot.last_event_ms)),
-        format!(
-            "profile={}",
-            snapshot.profile.as_deref().unwrap_or(INHERIT_LABEL)
-        ),
-        quoted(&snapshot.description),
-        place.to_owned(),
-        format!("execution={}", snapshot.execution.as_str()),
-        format!("activity={}", snapshot.activity),
-    ]
-    .join("  ")
-}
-
-/// `demi agent show --json`'s agent: every duration in milliseconds before
-/// the query.
+/// `demi agent show --json`'s agent: its instants, and its spans in
+/// milliseconds up to the query.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AgentSnapshot {
-    subagent_id: u64,
-    parent_session_id: u64,
+    id: u64,
+    parent: u64,
     description: String,
     profile: Option<String>,
-    phase: JobPhase,
+    status: JobPhase,
+    started_at: Timestamp,
     elapsed_ms: u64,
-    last_event_ms: u64,
+    last_event_at: Timestamp,
+    /// Milliseconds since the last event.
+    idle_ms: u64,
     execution: Execution,
     activity: String,
     /// How long the current execution state has lasted.
     execution_for_ms: u64,
     tools: Vec<ToolSnapshot>,
     last_assistant_text: String,
-    last_assistant_text_ago_ms: Option<u64>,
+    last_assistant_text_at: Option<Timestamp>,
     /// Its working directory on the primary Host.
     cwd: String,
 }
 
 /// `demi agent show --json`'s agent: a live child's snapshot, or what an
-/// archived child closed with; an archived child's phase is how it closed.
+/// archived child closed with; an archived child's status is how it closed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(untagged)]
 pub(crate) enum ShownAgent {
@@ -2285,17 +2247,19 @@ pub(crate) enum ShownAgent {
     Archived(ArchivedSnapshot),
 }
 
-/// An archived child as `demi agent show --json` gives it: how it closed,
-/// how long ago, and its result or failure with the bound of a completion.
+/// An archived child as `demi agent show --json` gives it: how and when it
+/// closed, and its result or failure with the bound of a completion.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ArchivedSnapshot {
-    subagent_id: u64,
-    parent_session_id: u64,
+    id: u64,
+    parent: u64,
     description: String,
+    profile: Option<String>,
     /// How it closed: `completed`, `error` or `aborted`.
-    phase: JobPhase,
-    closed_ago_ms: u64,
+    status: JobPhase,
+    started_at: Timestamp,
+    closed_at: Timestamp,
     #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -2309,8 +2273,10 @@ pub(crate) struct ArchivedSnapshot {
 struct ToolSnapshot {
     title: String,
     status: ToolStatus,
+    started_at: Timestamp,
     duration_ms: u64,
-    ended_ago_ms: Option<u64>,
+    /// Null while it runs.
+    ended_at: Option<Timestamp>,
 }
 
 impl<H: HostResolver> Tree<H> {
@@ -2348,13 +2314,15 @@ fn snapshot<H: HostResolver>(
         _ => telemetry.last_event_at,
     };
     AgentSnapshot {
-        subagent_id: record.number,
-        parent_session_id: parent,
+        id: record.number,
+        parent,
         description: record.description.clone(),
         profile: record.profile.clone(),
-        phase: JobPhase::Running,
+        status: JobPhase::Running,
+        started_at: record.started_at,
         elapsed_ms: age(now, record.started_at.as_millisecond()),
-        last_event_ms: age(now, telemetry.last_event_at),
+        last_event_at: at(telemetry.last_event_at),
+        idle_ms: age(now, telemetry.last_event_at),
         execution,
         activity,
         execution_for_ms: age(now, execution_since),
@@ -2364,13 +2332,14 @@ fn snapshot<H: HostResolver>(
             .map(|tool| ToolSnapshot {
                 title: tool.title.clone(),
                 status: tool.status,
+                started_at: at(tool.started_at),
                 duration_ms: age(tool.ended_at.unwrap_or(now), tool.started_at),
-                ended_ago_ms: tool.ended_at.map(|ended| age(now, ended)),
+                ended_at: tool.ended_at.map(at),
             })
             .collect(),
         last_assistant_text: bounded(session.last_answer().as_ref().map_or("", |(_, text)| text))
             .to_owned(),
-        last_assistant_text_ago_ms: telemetry.last_text_at.map(|at| age(now, at)),
+        last_assistant_text_at: telemetry.last_text_at.map(at),
         cwd: record
             .cwd
             .as_ref()
@@ -2380,86 +2349,58 @@ fn snapshot<H: HostResolver>(
     }
 }
 
-/// `demi agent show`'s text.
+/// `demi agent show`'s text of a live child.
 fn show_text(snapshot: &AgentSnapshot) -> String {
-    let mut lines = vec![
-        format!("id: {}", snapshot.subagent_id),
-        format!("parent: {}", snapshot.parent_session_id),
-        format!("description: {}", description_text(&snapshot.description)),
-        format!(
-            "profile: {}",
-            snapshot.profile.as_deref().unwrap_or(INHERIT_LABEL)
-        ),
-        format!("phase: {}", snapshot.phase),
-        format!("elapsed: {}", duration(snapshot.elapsed_ms)),
-        format!(
-            "execution: {} (for {})",
-            snapshot.execution.as_str(),
-            duration(snapshot.execution_for_ms)
-        ),
-        format!("last-event: {} ago", duration(snapshot.last_event_ms)),
-        format!("activity: {}", snapshot.activity),
-        format!("cwd: {}", snapshot.cwd),
-    ];
-    if !snapshot.tools.is_empty() {
-        lines.push(format!(
-            "recent tool calls (last {}):",
-            snapshot.tools.len()
-        ));
-        for tool in &snapshot.tools {
-            lines.push(match tool.ended_ago_ms {
-                None => format!(
-                    "  [executing for {}] {}",
-                    duration(tool.duration_ms),
-                    tool.title
-                ),
-                Some(ended) => format!(
-                    "  [{} in {}, ended {} ago] {}",
-                    tool.status.as_str(),
-                    duration(tool.duration_ms),
-                    duration(ended),
-                    tool.title
-                ),
-            });
-        }
+    let mut fields = Fields::new();
+    fields
+        .field("ID", snapshot.id)
+        .field("Parent", snapshot.parent)
+        .field("Status", snapshot.status.to_string())
+        .field("Profile", snapshot.profile.as_deref())
+        .field("Description", snapshot.description.as_str())
+        .field("Directory", snapshot.cwd.as_str())
+        .field("Started", snapshot.started_at)
+        .field("Elapsed (s)", seconds(snapshot.elapsed_ms))
+        .field("Execution", snapshot.execution.as_str())
+        .field("Execution for (s)", seconds(snapshot.execution_for_ms))
+        .field("Last event", snapshot.last_event_at)
+        .field("Idle (s)", seconds(snapshot.idle_ms))
+        .field("Activity", snapshot.activity.as_str());
+    let mut tools = Table::new(["status", "started", "duration (s)", "ended", "title"]);
+    for tool in &snapshot.tools {
+        tools.row::<output::Cell>([
+            tool.status.as_str().into(),
+            tool.started_at.into(),
+            seconds(tool.duration_ms).into(),
+            tool.ended_at.into(),
+            tool.title.as_str().into(),
+        ]);
     }
-    match snapshot.last_assistant_text_ago_ms {
-        Some(ago) if !snapshot.last_assistant_text.is_empty() => {
-            lines.push(format!("last assistant text ({} ago):", duration(ago)));
-            lines.push(snapshot.last_assistant_text.clone());
-        }
-        _ => lines.push("last assistant text: (none yet)".to_owned()),
-    }
-    format!("{}\n", lines.join("\n"))
+    fields
+        .table("Recent tool calls", &tools)
+        .field("Last assistant text at", snapshot.last_assistant_text_at)
+        .text("Last assistant text", &snapshot.last_assistant_text);
+    fields.render()
 }
 
-/// `demi agent show`'s text of an archived child; its phase line reads as
-/// `list`'s line of it.
+/// `demi agent show`'s text of an archived child.
 fn archived_text(archived: &ArchivedSnapshot) -> String {
-    let mut lines = vec![
-        format!("id: {}", archived.subagent_id),
-        format!("parent: {}", archived.parent_session_id),
-        format!("description: {}", description_text(&archived.description)),
-        format!(
-            "phase: archived ({} {} ago)",
-            archived.phase,
-            duration(archived.closed_ago_ms)
-        ),
-        format!("cwd: {}", archived.cwd),
-    ];
+    let mut fields = Fields::new();
+    fields
+        .field("ID", archived.id)
+        .field("Parent", archived.parent)
+        .field("Status", archived.status.to_string())
+        .field("Profile", archived.profile.as_deref())
+        .field("Description", archived.description.as_str())
+        .field("Directory", archived.cwd.as_str())
+        .field("Started", archived.started_at)
+        .field("Closed", archived.closed_at);
     match (&archived.result, &archived.failure) {
-        (Some(result), _) if result.is_empty() => lines.push("result: (none)".to_owned()),
-        (Some(result), _) => {
-            lines.push("result:".to_owned());
-            lines.push(result.clone());
-        }
-        (None, Some(failure)) => {
-            lines.push("failure:".to_owned());
-            lines.push(failure.clone());
-        }
-        (None, None) => {}
-    }
-    format!("{}\n", lines.join("\n"))
+        (Some(result), _) => fields.text("Result", result),
+        (None, Some(failure)) => fields.text("Failure", failure),
+        (None, None) => &mut fields,
+    };
+    fields.render()
 }
 
 /// A child's working directory as `list` names it while the conversation
@@ -2468,15 +2409,6 @@ fn archived_text(archived: &ArchivedSnapshot) -> String {
 fn place(placement: &Placement, own: &ChildDirectory) -> String {
     let cwd = own.effective(placement);
     relative_to(&placement.directory, cwd).unwrap_or_else(|| cwd.to_owned())
-}
-
-/// A description as `show` prints it.
-fn description_text(description: &str) -> &str {
-    if description.is_empty() {
-        "(none)"
-    } else {
-        description
-    }
 }
 
 impl ToolStatus {

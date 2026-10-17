@@ -118,6 +118,11 @@ demi host forward add --listen Cloud:11434 --connect "MacBook Pro:localhost:1143
 demi host forward remove ollama
 ```
 
+`list` prints a table, `ID  NAME  LISTEN  CONNECT  STATE`, the listen
+side as `Cloud:11434`, the connect side as `MacBook Pro:localhost:11434`, a
+Host not chosen yet as `-` ([Output](commands.md#output)); `add` prints the
+new forward as labelled lines; `--json` is an array or the forward.
+
 `list` needs no permission. `add` and `remove` need **Manage Port
 Forwards** (`host.forward`), asked as any category is
 ([Permissions](../agent/permissions.md)): "Allow this conversation to manage

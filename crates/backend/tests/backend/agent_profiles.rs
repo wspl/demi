@@ -1,7 +1,8 @@
 //! An agent's view and changes of the user's subagent profiles
 //! (`subagents.md` § Managing profiles): `demi providers list` lists the
-//! models the user has on, an entry or a model the user turned off left
-//! out unless `--all`, and marks the model the agent runs on; a profile change asks
+//! entries the user has on and `show` their models, an entry or a model the
+//! user turned off left out of the list unless `--all`, the model the agent
+//! runs on marked; a profile change asks
 //! the user's permission first, then goes through the settings page's
 //! checks with their words and reaches the settings page at once; and the
 //! next spawn with a profile just created runs on its model. The model is
@@ -86,16 +87,16 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     scripts.root(
         FIRST,
         vec![
-            shell("t1", &format!("demi providers list; {create} <<< 'You only report.'")),
+            shell("t1", &format!("demi providers list; demi providers show Tree; {create} <<< 'You only report.'")),
             say("asked"),
         ],
     );
     socket.chat("m1", "Make an explore profile on n").await;
     let asked = last_root(&scripts);
-    assert_shows(
-        &asked,
-        "Tree · API key · Ready\n* m  M  100K                 -\n  n  N  100K  low* high off  -\n* the model this agent runs on; an effort with * is the model's default\n",
-    );
+    // The list names each entry, exactly; show lists its models, the one
+    // the agent runs on marked.
+    assert_shows(&asked, &format!("{provider}  Tree  API key  2       no      Ready\n"));
+    assert_shows(&asked, "Models:\n  ID  CONTEXT (TOKENS)  OUTPUT (TOKENS)  DEFAULT EFFORT  EFFORTS       TIERS  FILES  CURRENT  HIDDEN  NAME\n  m   100000            -                -               -             -      -      yes      no      M\n  n   100000            -                low             low,high,off  -      -      no       no      N\n");
     assert!(!asked.contains("Spare"), "{asked}");
     assert_shows(
         &asked,
@@ -219,7 +220,7 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     let shown = &scripts.asked(|session| session == FIRST)[5];
     assert_shows(
         shown,
-        "name          explore\ndescription   Finds code; it changes nothing.\nmodel         n from Tree, effort high, tier default\ncontext       default\nspawning      no\nenabled       yes\ninstructions\nYou only report.\n",
+        "Name: explore\nSource: user\nDescription: Finds code; it changes nothing.\nStatus: available\nUnavailable: -\nModel: n\nProvider: Tree\nEffort: high\nTier: -\nContext (tokens): -\nSpawning: no\nEnabled: yes\nInstructions:\n  You only report.\n",
     );
     let child = scripts
         .asked(|session| session != FIRST)
@@ -238,9 +239,11 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     );
     socket.chat("m3", "Delete it").await;
     let asked = last_root(&scripts);
+    assert_shows(&asked, "deleted profile explore\n");
+    assert_shows(&asked, "NAME  SOURCE  MODEL  EFFORT  DESCRIPTION");
     assert_shows(
         &asked,
-        "deleted profile explore\nThe user has no enabled subagent profile; demi agent spawn without --profile inherits the parent.",
+        "demi agent profiles list: warning: the user has no enabled subagent profile; demi agent spawn without --profile inherits the parent\n",
     );
     assert!(synced(&mut page).await.profiles.is_empty());
 
@@ -258,17 +261,21 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
         vec![
             shell(
                 "t5",
-                "demi providers list; demi providers list --all; demi agent profiles create e5 --description x --model n </dev/null",
+                "demi providers list; demi providers list --all; demi providers show Tree; demi agent profiles create e5 --description x --model n </dev/null",
             ),
             say("refused"),
         ],
     );
     socket.chat("m4", "Use n").await;
     let asked = last_root(&scripts);
-    assert_shows(
-        &asked,
-        "Tree · API key · Ready\n* m  M  100K  -\n* the model this agent runs on; an effort with * is the model's default\nTree · API key · Ready\n* m  M  100K                 -\n  n  N  100K  low* high off  -  turned off\nSpare · API key · Ready · turned off\n  n  N  100K  low* high off  -\n* the model this agent runs on; an effort with * is the model's default\ndemi agent profiles create: the model \"n\" of \"Tree\" is turned off in Settings > Providers",
-    );
+    for listed in [
+        format!("{provider}  Tree  API key  1       no      Ready\n"),
+        format!("{provider}  Tree   API key  2       no      Ready\n{spare}  Spare  API key  1       yes     Ready\n"),
+        "Models:\n  ID  CONTEXT (TOKENS)  OUTPUT (TOKENS)  DEFAULT EFFORT  EFFORTS       TIERS  FILES  CURRENT  HIDDEN  NAME\n  m   100000            -                -               -             -      -      yes      no      M\n  n   100000            -                low             low,high,off  -      -      no       yes     N\n".to_owned(),
+        "demi agent profiles create: the model \"n\" of \"Tree\" is turned off in Settings > Providers".to_owned(),
+    ] {
+        assert_shows(&asked, &listed);
+    }
 
     // A model of 1M offers a Context: chosen, changed to the full window and
     // back to default; default is accepted without a model of its own.
@@ -306,10 +313,10 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     socket.chat("m-context", "Give it a Context").await;
     let asked = last_root(&scripts);
     for shown in [
-        "model         wide from Wide, tier default\ncontext       500K\n",
-        "model         wide from Wide, tier default\ncontext       full\n",
-        "model         wide from Wide, tier default\ncontext       default\n",
-        "name          plain\ndescription   x\nmodel         parent's\ncontext       default\n",
+        "Model: wide\nProvider: Wide\nEffort: -\nTier: -\nContext (tokens): 500000\n",
+        "Model: wide\nProvider: Wide\nEffort: -\nTier: -\nContext (tokens): 1000000\n",
+        "Model: wide\nProvider: Wide\nEffort: -\nTier: -\nContext (tokens): -\n",
+        "Name: plain\nSource: user\nDescription: x\nStatus: available\nUnavailable: -\nModel: -\nProvider: -\nEffort: -\nTier: -\nContext (tokens): -\n",
         "deleted profile plain",
     ] {
         assert_shows(&asked, shown);

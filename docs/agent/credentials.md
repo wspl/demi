@@ -21,7 +21,12 @@ key*, with an eye to show what was typed, and under it *Kept for 1 hour*.
 The user pastes the key and presses **Save**. The command returns:
 
 ```text
-Saved credential "Google API key" (key: secret), kept for 1 hour.
+Name: Google API key
+Keep until: 2026-10-17T10:00:00Z
+Allowed: yes
+Fields:
+  NAME  KIND    VALUE  LABEL
+  key   secret  -      API key
 ```
 
 The agent then passes the key on without seeing it:
@@ -106,8 +111,10 @@ prints it.
 | `read <name> <field>` | One field's value on standard output |
 | `remove <name>` | Removes it; needs the permission `credentials.manage` |
 
-`--json` returns `{ credentials }`, `{ credential }` or `{ saved }`, never a
-secret value.
+`list` prints a table of the credentials, and `show` and `request` one
+credential as labelled lines with its fields as a table, a secret's value
+always `-` ([Output](../execution/commands.md#output)). `--json` returns
+the same, an array or the credential, never a secret value.
 
 ## Requests and routes
 

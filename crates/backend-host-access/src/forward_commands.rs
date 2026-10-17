@@ -14,7 +14,9 @@ use demi_web_api_protocol::port_forwards::{ForwardAddress, PortForwardDto, PortF
 use demi_web_api_protocol::text::Trimmed;
 use garde::Validate;
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+
+use demi_shared_types::output::{Cell, Fields, MISSING, Table};
 
 use crate::HostShard;
 use crate::host_commands::{NoArgs, conversation_of, resolve_host, verb};
@@ -28,9 +30,9 @@ pub const MANAGE_DESCRIPTION: &str = "Add and remove the user's port forwards. A
 
 const SUMMARY: &str = "The user's port forwards between their Hosts, as ssh -L makes one: list, add and remove them.";
 
-const LIST_SUMMARY: &str = "The user's port forwards: name, where it listens, where it connects, and what it is doing.";
+const LIST_SUMMARY: &str = "The user's port forwards: id, name, where it listens (<host>:<port>), where it connects (<host>:<address>, - for a Host not chosen yet), and what it is doing.";
 
-const ADD_SUMMARY: &str = "Add a port forward: a program on the --listen Host that connects to 127.0.0.1:<port> reaches <address> as the --connect Host reaches it, such as `demi host forward add --listen Cloud:11434 --connect \"MacBook Pro:localhost:11434\" --name ollama`. It runs whenever its listening Host's runner runs, until it is removed.";
+const ADD_SUMMARY: &str = "Add a port forward: a program on the --listen Host that connects to 127.0.0.1:<port> reaches <address> as the --connect Host reaches it, such as `demi host forward add --listen Cloud:11434 --connect \"MacBook Pro:localhost:11434\" --name ollama`. It runs whenever its listening Host's runner runs, until it is removed. Prints the new forward as list shows it, as labelled lines.";
 
 const REMOVE_SUMMARY: &str = "Remove a port forward by its name: its listener closes and its connections end.";
 
@@ -66,11 +68,13 @@ pub fn forward_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()
+                .json_output::<Vec<ListedForward>>()
                 .bind(TypedRpc::new(verb(shard.clone(), list))),
         )
         .leaf(
             LeafBuilder::rpc("add", ADD_SUMMARY)
                 .input::<AddArgs>()
+                .json_output::<ListedForward>()
                 .permission(MANAGE)
                 .bind(TypedRpc::new(verb(shard.clone(), add))),
         )
@@ -118,12 +122,41 @@ fn state_words(forward: &PortForwardDto, name_of: &dyn Fn(&DeviceId) -> (String,
     }
 }
 
-async fn list(shard: Rc<dyn HostShard>, _: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
-    let forwards = shard.port_forwards().await.map_err(RpcError::Failed)?;
-    if forwards.is_empty() {
-        port.stdout("No port forwards.\n".to_owned()).await?;
-        return Ok(0);
+/// A forward as `list` and `add` print it, and their `--json`.
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct ListedForward {
+    id: String,
+    name: String,
+    /// The Host that listens, by its name: `Cloud` for the Cloud.
+    listen_host: String,
+    listen_device: String,
+    /// The port it listens on, on 127.0.0.1.
+    listen_port: u16,
+    /// The Host that connects; null while none is chosen.
+    connect_host: Option<String>,
+    connect_device: Option<String>,
+    /// The host:port it connects to, as that Host reaches it.
+    connect_address: String,
+    enabled: bool,
+    /// What it is doing, in the words of its row in Settings.
+    state: String,
+}
+
+impl ListedForward {
+    /// `<host>:<port>`.
+    fn listen(&self) -> String {
+        format!("{}:{}", self.listen_host, self.listen_port)
     }
+
+    /// `<host>:<address>`, the Host `-` while none is chosen.
+    fn connect(&self) -> String {
+        format!("{}:{}", self.connect_host.as_deref().unwrap_or(MISSING), self.connect_address)
+    }
+}
+
+/// The user's forwards as `list` prints them, each Host by its name.
+async fn listed(shard: &dyn HostShard, forwards: &[PortForwardDto]) -> Result<Vec<ListedForward>, RpcError> {
     let control = shard.control();
     let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
     let mut devices = control.paired_devices(shard.user().clone()).await.map_err(failed)?;
@@ -139,16 +172,46 @@ async fn list(shard: Rc<dyn HostShard>, _: Call<NoArgs>, port: RpcPort) -> Resul
             .unwrap_or_else(|| id.to_string());
         (name, shard.devices().state(id) == DeviceState::Online)
     };
-    let mut lines = Vec::new();
-    for forward in &forwards {
-        let listen = format!("{}:{}", name_of(&forward.listen_device).0, forward.listen_port);
-        let connect = match &forward.connect_device {
-            Some(device) => format!("{}:{}", name_of(device).0, forward.connect_address),
-            None => format!("(no Host):{}", forward.connect_address),
-        };
-        lines.push(format!("{}  {listen} → {connect}  {}", forward.name, state_words(forward, &name_of)));
+    Ok(forwards
+        .iter()
+        .map(|forward| ListedForward {
+            id: forward.id.to_string(),
+            name: forward.name.clone(),
+            listen_host: name_of(&forward.listen_device).0,
+            listen_device: forward.listen_device.to_string(),
+            listen_port: forward.listen_port,
+            connect_host: forward.connect_device.as_ref().map(|device| name_of(device).0),
+            connect_device: forward.connect_device.as_ref().map(ToString::to_string),
+            connect_address: forward.connect_address.to_string(),
+            enabled: forward.enabled,
+            state: state_words(forward, &name_of),
+        })
+        .collect())
+}
+
+async fn print_json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
+    let text = serde_json::to_string(value).map_err(|error| RpcError::Failed(error.to_string()))?;
+    port.stdout(format!("{text}\n")).await?;
+    Ok(0)
+}
+
+async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let forwards = shard.port_forwards().await.map_err(RpcError::Failed)?;
+    let listed = listed(&*shard, &forwards).await?;
+    if call.invocation.json {
+        return print_json(&port, &listed).await;
     }
-    port.stdout(format!("{}\n", lines.join("\n"))).await?;
+    let mut table = Table::new(["id", "name", "listen", "connect", "state"]);
+    for forward in &listed {
+        table.row::<Cell>([
+            forward.id.as_str().into(),
+            forward.name.as_str().into(),
+            forward.listen().into(),
+            forward.connect().into(),
+            forward.state.as_str().into(),
+        ]);
+    }
+    port.stdout(table.render()).await?;
     Ok(0)
 }
 
@@ -191,11 +254,22 @@ async fn add(shard: Rc<dyn HostShard>, call: Call<AddArgs>, port: RpcPort) -> Re
         .validate()
         .map_err(|report| RpcError::Failed(demi_web_api_protocol::port_forwards::refusal(&report)))?;
     let forward = shard.add_port_forward(patch).await.map_err(RpcError::Failed)?;
-    port.stdout(format!(
-        "Added {}: a program on {} that connects to 127.0.0.1:{} reaches {} on {}.\n",
-        forward.name, listen.name, forward.listen_port, forward.connect_address, connect.name
-    ))
-    .await?;
+    let added = listed(&*shard, std::slice::from_ref(&forward))
+        .await?
+        .pop()
+        .expect("a forward is listed");
+    if call.invocation.json {
+        return print_json(&port, &added).await;
+    }
+    let mut fields = Fields::new();
+    fields
+        .field("ID", added.id.as_str())
+        .field("Name", added.name.as_str())
+        .field("Listen", added.listen())
+        .field("Connect", added.connect())
+        .field("Enabled", added.enabled)
+        .field("State", added.state.as_str());
+    port.stdout(fields.render()).await?;
     Ok(0)
 }
 

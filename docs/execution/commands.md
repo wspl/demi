@@ -253,8 +253,10 @@ Every `--help` and the model's capability index come from one renderer over
 the declarations ([System prompt](../agent/system-prompt.md#capability-index)).
 A group's declaration carries its index entry, at most 600 characters,
 refused at registration when longer. The index opens with one paragraph of
-defaults that every command follows unless its own help says otherwise: success prints raw text on
-stdout; failure writes an error message to stderr and exits non-zero; `--help`
+defaults that every command follows unless its own help says otherwise: success prints its data on
+stdout, a list as a table and one object as labelled lines, and `--json`
+the same as JSON ([Output](#output)); warnings and errors go to stderr, and
+a failure exits 1, a usage error 2; `--help`
 works at any level; usage writes `<placeholders>` for values and `[brackets]`
 for optional arguments; values containing spaces are quoted; stdin bodies use a
 quoted heredoc, pipe, or input redirection and have no option;
@@ -281,6 +283,71 @@ EOF
 
 Angle brackets identify placeholders; square brackets identify optional
 arguments. The agent substitutes actual values and quotes shell arguments.
+
+### Output
+
+Every command prints as the command-line tools agents and people already
+read do, `kubectl get`, `docker ps`, `gh`: a list as a table, one object as
+labelled lines, and the same data as JSON on request. For example:
+
+```text
+$ demi agent list
+ID   PARENT  STATUS   PROFILE    STARTED               DESCRIPTION
+533  0       running  implement  2026-10-17T12:58:04Z  iOS simulators in demi mobile
+544  0       running  implement  2026-10-17T14:02:11Z  Image and video model catalog
+
+$ demi agent show 544
+ID: 544
+Parent: 0
+Status: running
+Profile: implement
+Started: 2026-10-17T14:02:11Z
+Description: Image and video model catalog
+```
+
+- **Stdout holds the data, stderr the rest.** Notes, warnings and progress
+  go to stderr, a warning as `demi <command>: warning: <what>`, so a pipe
+  receives only the data. An error is one line on stderr,
+  `demi <command>: <what failed>: <why>`, with exit status 1, or 2 for a
+  usage error, and nothing on stdout.
+- **A list is a table.** Its first row names the columns in capitals; each
+  following row is one object; columns are aligned by the terminal width
+  of their text, a CJK character counting two, and separated by two
+  spaces. The first column is the ID the group's `show` takes, and every ID
+  a list prints, `show` finds. A cell holds one value: no glyphs, no
+  `key=value`, no prose; a missing value is `-`. A column of free text, such
+  as a description, comes last and is not cut. Nested data, such as a
+  provider's models, is not a list's column: `show` prints it.
+- **A list shows what is current.** Objects kept only as history, such as
+  archived agents, are listed with `--all`. An empty list prints its
+  header row alone and exits 0.
+- **One object is labelled lines.** `Key: value`, one per line, the keys in
+  sentence case and the same words as the list's column names; a nested
+  list follows as a table under its key, indented by two spaces; a block of
+  free text, such as an agent's result, comes last under its key.
+- **Values are exact.** A number is the number, with its unit in the column
+  name or key, `CONTEXT (TOKENS)`, never rounded to `272K`; an instant is
+  RFC 3339 in UTC, `2026-10-17T14:02:11Z`; a date is `2026-10-17`; a
+  duration is in its unit, `ELAPSED (S)`. Relative times, *11s ago*, are
+  for the web app, not the command line.
+- **`--json` prints the same objects** for every command that prints data,
+  a list as a JSON array and one object as an object, with every field the
+  text shows and more, in camelCase, as one JSON value
+  ([Deliver IO](#deliver-io-and-release-an-invocation)).
+- **Help is conventional.** `Usage:` first, then one sentence of what the
+  command does, then `Arguments:` and `Options:`, each with its meaning,
+  default and unit. What every command shares is said once, in the index's
+  paragraph of defaults above, never repeated in each help.
+
+The output is the same in a terminal and a pipe, without colour, so what
+the agent reads is what the user sees.
+
+Tables and labelled lines are for Demi's own objects: agents, providers,
+credentials, Hosts. A command that prints content keeps the content's own
+form, a page as Markdown, a file's text, search results as numbered blocks
+under the untrusted-content line, and `demi shell status` prints a command's
+result in the shell tool's own format, which every shell call returns
+([The shell tool](../agent/shell-tool.md)).
 
 ### Demi command inputs
 
@@ -795,8 +862,8 @@ The sign-in page works again:
   with a line on stderr that names the path and why; the command goes on with
   the next path and exits with status 1, and the files it stored keep their
   numbers and lines. A size is a count of bytes, as a medium's line gives it.
-  `--json` prints `{ attachments: [{ id, path, mediaType,
-  size }] }`.
+  The stored files print as a table, `ID  MEDIA TYPE  SIZE (BYTES)  PATH`,
+  and `--json` as an array of `{ id, path, mediaType, size }`.
 - **No medium.** The command prints the numbers and returns no medium: the
   attachment is for the user, and the model views a file with
   `demi file view` when it needs to see it.

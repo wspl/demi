@@ -760,7 +760,8 @@ cancellation remove partial files. File effects use
 Default UTF-8 output is concise and readable, with page hierarchy preserved:
 
 ```text
-Tab: t1 · Sign in
+Tab: t1
+Title: Sign in
 URL: http://localhost:3000/login
 
 - main:
@@ -781,7 +782,11 @@ characters, newlines inside values, and terminal sequences so page content
 cannot forge a result header or command status. Observation of a password field
 shows `[protected]`; filling it does not echo its value.
 
-Text column widths and line numbers are not a parsing contract. Scripts use
+The lists, `tabs`, `history`, `cdp targets`, `assets` and `capabilities`,
+are tables under a header row, aligned by display width so that a title in
+Chinese lines up ([Output](../execution/commands.md#output)); a page's
+tree, text and acknowledgements are content and keep the form above. Text
+column widths and line numbers are not a parsing contract. Scripts use
 structured results. Default output labels are English regardless of the page's
 language; page content remains in its original language.
 
