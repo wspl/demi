@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@codemirror/state": "6.6.0",
+    "@demicodes/conversation-client": "workspace:^",
     "@demicodes/plugin-browser": "workspace:^",
     "@demicodes/plugin-changes": "workspace:^",
     "@demicodes/plugin-file-browser": "workspace:^",

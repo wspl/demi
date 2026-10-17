@@ -9,6 +9,7 @@
     "typecheck": "bun ../../scripts/typecheck-vue.ts tsconfig.app.json tsconfig.sw.json"
   },
   "dependencies": {
+    "@demicodes/conversation-client": "workspace:^",
     "@demicodes/plugin-browser": "workspace:^",
     "@demicodes/plugin-changes": "workspace:^",
     "@demicodes/plugin-file-browser": "workspace:^",
