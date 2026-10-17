@@ -32,6 +32,8 @@
       "messages": "訊息",
       "sendWhileRunning": "智慧體執行時按 Enter",
       "sendWhileRunningDescription": "「引導」會將訊息傳送給進行中的輪次，「加入佇列」會等它結束。{keys} 則使用另一種方式。",
+      "resumeWhenHostBack": "裝置重新上線後繼續",
+      "resumeWhenHostBackDescription": "輪次因裝置離線而停止時，在裝置重新上線後繼續。",
       "resumeAfterRestart": "Demi 重新啟動後繼續",
       "resumeAfterRestartDescription": "輪次因 Demi 重新啟動（例如更新）而停止時，在重新啟動後繼續。",
       "resumeAtRetry": "使用上限重設後繼續",

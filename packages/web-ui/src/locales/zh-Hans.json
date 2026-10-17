@@ -32,6 +32,8 @@
       "messages": "消息",
       "sendWhileRunning": "智能体工作时按 Enter",
       "sendWhileRunningDescription": "“引导”会把消息发送给正在进行的轮次，“添加到队列”会等它结束。{keys} 则用另一种方式。",
+      "resumeWhenHostBack": "设备重新上线后继续",
+      "resumeWhenHostBackDescription": "轮次因设备离线而停止时，在设备重新上线后继续。",
       "resumeAfterRestart": "Demi 重新启动后继续",
       "resumeAfterRestartDescription": "轮次因 Demi 重新启动（例如更新）而停止时，在重新启动后继续。",
       "resumeAtRetry": "用量限额重置后继续",

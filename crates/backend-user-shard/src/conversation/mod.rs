@@ -21,6 +21,7 @@ pub(crate) mod organize;
 pub(crate) mod pending;
 pub(crate) mod product;
 mod providers;
+pub(crate) mod host_back_resume;
 pub(crate) mod restart_resume;
 pub(crate) mod retry_resume;
 mod runs_on;
@@ -166,6 +167,7 @@ pub(crate) fn conversation_parts(
                 if let Some(shard) = shard.upgrade() {
                     shard.poke_pending(&conversation);
                     shard.follow_failed_turn(&conversation);
+                    shard.follow_host_back(&conversation);
                     // A conversation no longer loaded keeps no project files.
                     if shard.agent().tree(root).is_none() {
                         shard.project_files().release(&conversation);
