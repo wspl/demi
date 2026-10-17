@@ -40,6 +40,16 @@ impl CommandCaller {
             Self::User {} => None,
         }
     }
+
+    /// The folder inside the conversation's scratch directory that is the
+    /// caller's own, `agent-<number>` for a subagent; none for the root
+    /// agent and the user, whose scratch directory is the conversation's
+    /// (`runner.md` § Scratch directory).
+    pub fn scratch_folder(&self) -> Option<String> {
+        self.agent_number()
+            .filter(|number| *number != 0)
+            .map(|number| format!("agent-{number}"))
+    }
 }
 
 /// An IANA time zone and BCP 47 language tags in preference order. The
