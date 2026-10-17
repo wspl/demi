@@ -209,6 +209,8 @@ async fn a_failure_keeps_the_frame_as_its_record_and_takes_the_wait_from_the_pro
             retry_at: Some(later),
             continue_with: None,
             signed_out: None,
+            not_exposed: None,
+            device_offline: None,
         }
     };
     let failure = failure_of(events_with(&[Value::String(frame.into())], in_a_minute).await);

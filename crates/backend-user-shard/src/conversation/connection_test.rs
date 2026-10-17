@@ -12,7 +12,7 @@ use std::sync::Arc;
 use demi_backend_providers::llm::catalog::configured_selection;
 use demi_backend_providers::vault::entries::ProviderEntry;
 use demi_provider_common::{
-    InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RequestPurpose, RuntimeEnv, UserPart,
+    ErrorCode, InferenceItem, InferenceRequest, PromptCache, Provider, ProviderEvent, RequestPurpose, RuntimeEnv, UserPart,
 };
 use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::providers::TestResult;
@@ -20,6 +20,7 @@ use futures_util::StreamExt;
 use tokio_util::sync::CancellationToken;
 
 use super::claude_cli::{CrossPlacement, ProcessWork};
+use crate::shard::exposed_ports::endpoint_device;
 use crate::shard::Shard;
 
 impl Shard {
@@ -47,12 +48,14 @@ impl Shard {
             return TestResult::Failed {
                 message: format!("This provider lists no model {model_id}"),
                 model: None,
+                not_exposed: None,
             };
         };
         let name = model.display_name.clone();
         let failed = |message: String| TestResult::Failed {
             message,
             model: Some(name.clone()),
+            not_exposed: None,
         };
         // The model the catalog lists is also the configured one, when the
         // entry configures its list.
@@ -66,7 +69,7 @@ impl Shard {
             let placement = CrossPlacement::placement(Rc::downgrade(&self.this()), work);
             let account = account.as_ref().or(entry.active());
             let env = RuntimeEnv {
-                http: self.http().clone(),
+                http: assembly.http_for(&entry, self.http().clone()),
             };
             assembly
                 .process_runtime(&entry, account, env, placement)
@@ -74,7 +77,7 @@ impl Shard {
                 .map_err(|error| error.to_string())
         } else {
             let env = RuntimeEnv {
-                http: self.http().clone(),
+                http: assembly.http_for(&entry, self.http().clone()),
             };
             provider.runtime(env).map_err(|error| error.to_string())
         };
@@ -133,7 +136,20 @@ impl Shard {
         match first {
             None => failed("The test was cancelled".into()),
             Some(None) => failed("The provider returned no events".into()),
-            Some(Some(ProviderEvent::Error(failure))) => failed(failure.message),
+            Some(Some(ProviderEvent::Error(failure))) => {
+                let not_exposed = match failure.code {
+                    // Only the owner's device can be exposed by the one who tests.
+                    Some(ErrorCode::PortNotExposed) if entry.owner == *self.user() => {
+                        endpoint_device(&self.services().control, &entry).await
+                    }
+                    _ => None,
+                };
+                TestResult::Failed {
+                    message: failure.message,
+                    model: Some(name),
+                    not_exposed,
+                }
+            }
             Some(Some(_)) => TestResult::Passed { model: name },
         }
     }

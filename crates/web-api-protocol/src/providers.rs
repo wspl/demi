@@ -527,6 +527,16 @@ pub enum TestResult {
         )]
         #[schemars(with = "String")]
         model: Option<String>,
+        /// For a request to a port of the entry's device that the device
+        /// has not exposed, that port, which the page offers to expose
+        /// with Expose Port before testing again (`port-exposure.md`).
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[schemars(with = "demi_shared_types::NotExposedPort")]
+        not_exposed: Option<demi_shared_types::NotExposedPort>,
     },
 }
 

@@ -9,11 +9,14 @@ import { useResources } from '../state/resources'
 import { usePreferences } from '../state/preferences'
 import { useProduct } from '../state/product'
 import { useProviderSettings } from './providers'
+import { useExposedPortSettings } from './exposed-ports'
+import type { SettingsProviderEntry } from '@demicodes/web-ui/settings/types'
 
 const resources = useResources()
 const preferences = usePreferences()
 const product = useProduct()
 const settings = useProviderSettings()
+const exposedPorts = useExposedPortSettings()
 const { providers, login } = storeToRefs(settings)
 const {
   report,
@@ -38,6 +41,13 @@ const {
   checkCli,
   installCli,
 } = settings
+
+/** Expose Port on a failed test: the port is exposed, then the test runs again. */
+async function exposeAndTest(provider: SettingsProviderEntry, deviceId: string, port: number): Promise<void> {
+  if (await exposedPorts.expose(deviceId, port)) {
+    test(provider)
+  }
+}
 
 // The vendor catalog's failure is the page's region state, with its own Retry.
 function loadVendors(): void {
@@ -101,6 +111,9 @@ watch(
     @remove="removeProvider"
     @sign-in="beginLogin"
     @test="test"
+    @expose-port="exposeAndTest"
+    :is-exposed="exposedPorts.isExposed"
+    :shared-device="exposedPorts.sharedDevice"
     @refresh="refresh"
     @refresh-usage="refreshUsage"
     @check-cli="checkCli"

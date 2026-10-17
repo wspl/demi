@@ -6,6 +6,7 @@
 pub mod boot;
 pub mod console;
 pub mod direct;
+pub mod exposure;
 pub mod files;
 pub mod forward;
 pub mod image;

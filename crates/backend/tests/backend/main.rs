@@ -34,6 +34,7 @@ mod direct;
 mod drafts;
 mod edge;
 mod editing;
+mod exposure;
 mod failed_turns;
 mod families;
 mod files;

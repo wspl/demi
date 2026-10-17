@@ -571,7 +571,7 @@ impl Shard {
                 versions,
                 ..
             } => {
-                let failures = failure_facts(assembly, &blocks).await;
+                let failures = failure_facts(assembly, self.user(), &blocks).await;
                 ServerFrame::TranscriptReset {
                     start,
                     length,
@@ -584,7 +584,7 @@ impl Shard {
             ServerFrame::TranscriptPatch {
                 patches, revision, ..
             } => {
-                let failures = failure_facts(assembly, &blocks_added(&patches)).await;
+                let failures = failure_facts(assembly, self.user(), &blocks_added(&patches)).await;
                 ServerFrame::TranscriptPatch {
                     patches,
                     revision,
@@ -599,7 +599,7 @@ impl Shard {
                 revision,
                 ..
             } => {
-                let failures = failure_facts(assembly, &blocks).await;
+                let failures = failure_facts(assembly, self.user(), &blocks).await;
                 ServerFrame::SubagentTranscriptReset {
                     subagent_id,
                     start,
@@ -615,7 +615,7 @@ impl Shard {
                 revision,
                 ..
             } => {
-                let failures = failure_facts(assembly, &blocks_added(&patches)).await;
+                let failures = failure_facts(assembly, self.user(), &blocks_added(&patches)).await;
                 ServerFrame::SubagentTranscriptPatch {
                     subagent_id,
                     patches,

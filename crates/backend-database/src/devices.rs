@@ -357,7 +357,7 @@ impl ControlService {
     }
 
     /// Deletes the device with its attachments to conversations, its
-    /// workspaces and the port forwards it is an end of, one transaction. The workspaces' conversations first move
+    /// workspaces, the port forwards it is an end of and its exposed ports, one transaction. The workspaces' conversations first move
     /// off them, each to its workspace's directory
     /// on the device as a direct device target, which no longer runs
     /// (`web-api-hosts.md` § Workspaces, devices, and attached hosts). A
@@ -423,11 +423,13 @@ impl ControlService {
                     conversations.push(conversation);
                 }
             }
-            // A forward of which the device was an end goes with it.
+            // A forward of which the device was an end goes with it, and
+            // so do its exposed ports.
             transaction.execute(
                 "DELETE FROM port_forwards WHERE listen_device_id = ?1 OR connect_device_id = ?1",
                 [device.as_str()],
             )?;
+            transaction.execute("DELETE FROM exposed_ports WHERE device_id = ?1", [device.as_str()])?;
             transaction.execute("DELETE FROM devices WHERE id = ?1", [device.as_str()])?;
             transaction.commit()?;
             Ok(DeviceRemoval {

@@ -57,6 +57,12 @@ impl Route {
         self.maker.images()
     }
 
+    /// The client the entry's calls go through on `client`, the shard's or
+    /// the shared services'.
+    fn http(&self, services: &Services, client: &reqwest::Client) -> demi_provider_common::ProviderHttp {
+        services.assembly.http_for(&self.entry, client.clone())
+    }
+
     fn subscription(&self) -> bool {
         matches!(self.entry.credential, EntryCredential::Subscription { .. })
     }
@@ -212,8 +218,9 @@ pub async fn entry_image_models(
 ) -> Result<std::collections::HashMap<String, Vec<EntryImageModel>>, AssemblyError> {
     let routes = routes(services, user).await?;
     let catalog = services.media.current();
-    let http = services.assembly.http();
-    let listings = futures_util::future::join_all(routes.iter().map(|route| route.images().models(http, &catalog))).await;
+    let https: Vec<_> = routes.iter().map(|route| route.http(services, services.assembly.http())).collect();
+    let listings =
+        futures_util::future::join_all(routes.iter().zip(&https).map(|(route, http)| route.images().models(http, &catalog))).await;
     let mut entries = std::collections::HashMap::new();
     for (route, listing) in routes.iter().zip(listings) {
         let listed = listing.unwrap_or_default();
@@ -268,7 +275,7 @@ async fn offerings(
     let mut unlisted = Vec::new();
     let mut first_failure = None;
     for route in routes {
-        match route.images().models(shard.http(), catalog).await {
+        match route.images().models(&route.http(shard.services(), shard.http()), catalog).await {
             Ok(models) => offered.push(models),
             Err(failure) => {
                 let vendor = route.images().name().to_owned();
@@ -894,7 +901,7 @@ impl Making<'_> {
             self.shard,
         );
         let answer = maker
-            .make(self.shard.http(), self.catalog, self.request.clone())
+            .make(&self.route.http(services, self.shard.http()), self.catalog, self.request.clone())
             .instrument(span.clone())
             .await;
         let made = answer.result;

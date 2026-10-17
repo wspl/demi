@@ -497,8 +497,10 @@ impl Shard {
             .map(|workspace| workspace.name.clone())
             .collect();
         self.devices().revoke(&device, projects);
-        // The forwards it was an end of went with it.
+        // The forwards it was an end of went with it, and its exposed
+        // ports.
         self.forwards_changed().await;
+        self.mark(Part::ExposedPorts);
         Ok(removal)
     }
 

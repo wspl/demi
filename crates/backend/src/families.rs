@@ -168,7 +168,7 @@ impl ProviderFamily for CodexFamily {
         };
         let (account, quota) = bound(subscription.account);
         let releases = self.releases.get_or_init(|| {
-            CodexReleases::new(self.releases_url.clone(), args.http.clone(), args.clock.clone())
+            CodexReleases::new(self.releases_url.clone(), args.services_http.clone(), args.clock.clone())
         });
         let config = CodexConfig::new(account, releases.clone());
         let provider = CodexProvider::new(config, subscription.pool, quota, args.http, args.clock);

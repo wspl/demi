@@ -198,6 +198,10 @@ pub enum ErrorCode {
     PortForwardNotFound,
     /// Another of the caller's port forwards has the name.
     PortForwardNameTaken,
+    /// The caller has no exposed port of that id.
+    ExposedPortNotFound,
+    /// Another row of the device exposes the port.
+    ExposedPortTaken,
     /// A credential of the requested name is saved with other fields: its
     /// new values would not fit them.
     CredentialFieldsDiffer,

@@ -128,7 +128,7 @@ pub fn read_http_failure(
 ) -> ProviderFailureFacts {
     let retry_at = HttpFailureRecord::read(diagnostics)
         .and_then(|record| retry_at(record.header("retry-after")?, received_at));
-    ProviderFailureFacts { retry_at, continue_with: None, signed_out: None }
+    ProviderFailureFacts { retry_at, continue_with: None, signed_out: None, not_exposed: None, device_offline: None }
 }
 
 /// The moment a `Retry-After` value names (RFC 9110 § 10.2.3): a number of

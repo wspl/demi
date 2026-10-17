@@ -20,6 +20,13 @@ const props = defineProps<{
    * gives the field back its committed value.
    */
   validate?: (value: string) => SentenceText | null
+  /**
+   * Saves a committed value and answers why it was refused, said as the
+   * fix ("Port 18910 is already exposed."), or null once saved. A refused
+   * value stays in the field to correct, reported through `problem` as a
+   * value `validate` refuses is; without it, `commit` alone saves.
+   */
+  save?: (value: string) => Promise<SentenceText | null>
 }>()
 const emit = defineEmits<{
   commit: [value: string]
@@ -70,9 +77,27 @@ function commit(): void {
   if (problem !== null) {
     return
   }
-  draft.value = props.modelValue
-  if (value !== props.modelValue || removed) {
-    emit('commit', value)
+  if (value === props.modelValue && !removed) {
+    draft.value = props.modelValue
+    return
+  }
+  emit('commit', value)
+  if (props.save) {
+    void saved(props.save, value)
+  } else {
+    draft.value = props.modelValue
+  }
+}
+
+/** The value stays in the field while it saves, and after, when refused, until edited again. */
+async function saved(save: (value: string) => Promise<SentenceText | null>, value: string): Promise<void> {
+  const refusal = await save(value)
+  if (focused.value || draft.value !== value) {
+    return
+  }
+  emit('problem', refusal)
+  if (refusal === null) {
+    draft.value = props.modelValue
   }
 }
 

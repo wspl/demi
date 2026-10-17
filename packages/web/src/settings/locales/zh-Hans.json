@@ -18,6 +18,11 @@
     "removeFailed": "无法移除转发",
     "retryFailed": "无法重试"
   },
+  "exposedPorts": {
+    "exposeFailed": "无法公开端口",
+    "saveFailed": "无法更改已公开的端口",
+    "removeFailed": "无法移除已公开的端口"
+  },
   "plugins": {
     "turnOnFailed": "无法开启插件",
     "turnOffFailed": "无法关闭插件"

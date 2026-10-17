@@ -13,7 +13,7 @@ use demi_backend_database::StorageError;
 use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
 use demi_provider_common::images::{ImageMaker, ImageModelInfo};
-use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
+use demi_provider_common::{DeviceRoute, Provider, ProviderHttp, ProviderRuntime, RuntimeEnv};
 use demi_shared_types::{Clock, ImageShape, MediaShapes, Model, Rotation};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use demi_web_api_protocol::providers::{ModelKind, ProviderDto, SETUP_MESSAGE};
@@ -96,6 +96,9 @@ pub struct ProviderAssembly {
     machine: OnceLock<Arc<dyn AccountMachine>>,
     /// The media catalog, whose time each entry's media carry.
     media: MediaCatalog,
+    /// The way to the users' devices, set once the backend's shards
+    /// started, which hold their connections (`port-exposure.md`).
+    devices: OnceLock<Arc<dyn DeviceRoute>>,
 }
 
 impl ProviderAssembly {
@@ -121,6 +124,7 @@ impl ProviderAssembly {
             built: Mutex::default(),
             rotation: AccountRotation::new(),
             machine: OnceLock::new(),
+            devices: OnceLock::new(),
         }
     }
 
@@ -130,6 +134,29 @@ impl ProviderAssembly {
     pub fn set_machine(&self, machine: Arc<dyn AccountMachine>) {
         if self.machine.set(machine).is_err() {
             tracing::error!("the Claude Code machine was set twice; the first is kept");
+        }
+    }
+
+    /// Sets the way to the users' devices, once, as the backend's shards
+    /// start; a second setting is refused and the first kept.
+    pub fn set_devices(&self, route: Arc<dyn DeviceRoute>) {
+        if self.devices.set(route).is_err() {
+            tracing::error!("the way to the devices was set twice; the first is kept");
+        }
+    }
+
+    /// The client `entry`'s requests go through on `client`, the shard's or
+    /// the shared services': an address naming one of the entry owner's
+    /// devices reaches that device's exposed port (`port-exposure.md`
+    /// § Exposed ports).
+    pub fn http_for(&self, entry: &ProviderEntry, client: reqwest::Client) -> ProviderHttp {
+        self.http_of(Some(entry.owner.as_str()), client)
+    }
+
+    fn http_of(&self, owner: Option<&str>, client: reqwest::Client) -> ProviderHttp {
+        match (owner, self.devices.get()) {
+            (Some(owner), Some(route)) => ProviderHttp::with_devices(client, route.clone(), owner),
+            _ => ProviderHttp::new(client),
         }
     }
 
@@ -324,7 +351,9 @@ impl ProviderAssembly {
                 pool: pool.clone(),
                 account: None,
             });
-            self.args(id.to_owned(), label.to_owned(), credential)
+            // The entry does not exist yet: it has no owner whose devices
+            // its requests could name.
+            self.args(id.to_owned(), label.to_owned(), None, credential)
         };
         match registered.login_accounts(args()) {
             Some(accounts) => Ok(LoginAccounts::Machine(accounts?)),
@@ -512,16 +541,18 @@ impl ProviderAssembly {
         Ok(self.args(
             entry.id.as_str().to_owned(),
             entry.label.clone(),
+            Some(entry.owner.as_str()),
             credential,
         ))
     }
 
-    fn args(&self, entry_id: String, label: String, credential: FamilyCredential) -> FamilyArgs {
+    fn args(&self, entry_id: String, label: String, owner: Option<&str>, credential: FamilyCredential) -> FamilyArgs {
         FamilyArgs {
             entry_id,
             label,
             credential,
-            http: self.http.clone(),
+            http: self.http_of(owner, self.http.clone()),
+            services_http: self.http.clone(),
             clock: self.clock.clone(),
             models_dev: self.vendors.models_dev().clone(),
             machine: self.machine.get().cloned(),

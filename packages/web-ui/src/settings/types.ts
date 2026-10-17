@@ -364,6 +364,11 @@ export interface SettingsProviderEntry {
   testPassed?: boolean
   /** The model the last test asked: a plan can cover some models and refuse others. */
   testedWith?: string
+  /**
+   * The port of the user's device the last test named and the device has not
+   * exposed, which the test's result offers to expose (`port-exposure.md`).
+   */
+  notExposed?: { deviceId: string; device: string; port: number }
   enabled: boolean
   models: SettingsProviderModel[]
   /** In the order In Order follows, which the user changes by dragging. */

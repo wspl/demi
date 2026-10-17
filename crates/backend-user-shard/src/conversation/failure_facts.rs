@@ -6,7 +6,9 @@
 //! several accounts is read against them too (`providers.md` § Account
 //! rotation): under rotation its moment is the earliest one among the
 //! accounts once every one is used up, and without rotation the dock
-//! offers the account with the most room now.
+//! offers the account with the most room now. A request to a port its
+//! device had not exposed names the port, which the page offers to expose
+//! or to try again, and one to an offline device names the device.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,17 +17,20 @@ use demi_conversation_socket_protocol::Failures;
 use demi_provider_common::Provider;
 use demi_provider_common::ErrorCode;
 use demi_shared_types::{
-    Block, ContinueWith, ErrorBlock, ProviderFailureFacts, Rotation, SignedOutAccount, Timestamp,
+    Block, ContinueWith, ErrorBlock, OfflineDevice, ProviderFailureFacts, Rotation, SignedOutAccount, Timestamp,
 };
-use demi_web_api_protocol::ids::{CredentialId, ProviderId};
+use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
 
 use demi_backend_providers::llm::assembly::ProviderAssembly;
 use demi_backend_providers::vault::entries::ProviderEntry;
 
-/// The facts of the error blocks among `blocks`, by block id; none when no
-/// block yields one. A block whose provider entry is gone, or cannot be
-/// read, shows without facts.
-pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Option<Failures> {
+use crate::shard::exposed_ports::endpoint_device;
+
+/// The facts of the error blocks among `blocks`, by block id, as `viewer`
+/// reads them; none when no block yields one. A block whose provider entry
+/// is gone, or cannot be read, shows without facts. A port to expose is a
+/// fact only for the entry's owner, whose device it is.
+pub async fn failure_facts(assembly: &ProviderAssembly, viewer: &UserId, blocks: &[Block]) -> Option<Failures> {
     let mut failures = Failures::new();
     let mut readers: HashMap<String, Option<Reader>> = HashMap::new();
     for block in blocks {
@@ -38,7 +43,9 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
             .filter(|diagnostics| diagnostics.upstream.is_some());
         let used_up = error.code.as_deref() == Some(ErrorCode::UsageLimit.as_str());
         let refused = error.code.as_deref() == Some(ErrorCode::AuthExpired.as_str());
-        if upstream.is_none() && !used_up && !refused {
+        let unexposed = error.code.as_deref() == Some(ErrorCode::PortNotExposed.as_str());
+        let offline = error.code.as_deref() == Some(ErrorCode::DeviceOffline.as_str());
+        if upstream.is_none() && !used_up && !refused && !unexposed && !offline {
             continue;
         }
         let provider = &error.model.provider_id;
@@ -55,6 +62,8 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
                 retry_at: None,
                 continue_with: None,
                 signed_out: None,
+                not_exposed: None,
+                device_offline: None,
             },
         };
         if used_up {
@@ -66,7 +75,23 @@ pub async fn failure_facts(assembly: &ProviderAssembly, blocks: &[Block]) -> Opt
         if refused {
             facts.signed_out = signed_out(assembly, &reader.entry, error).await;
         }
-        if facts.retry_at.is_some() || facts.continue_with.is_some() || facts.signed_out.is_some() {
+        if unexposed && reader.entry.owner == *viewer {
+            facts.not_exposed = endpoint_device(assembly.vault().control(), &reader.entry).await;
+        }
+        if offline {
+            facts.device_offline = endpoint_device(assembly.vault().control(), &reader.entry)
+                .await
+                .map(|named| OfflineDevice {
+                    device_id: named.device_id,
+                    device: named.device,
+                });
+        }
+        if facts.retry_at.is_some()
+            || facts.continue_with.is_some()
+            || facts.signed_out.is_some()
+            || facts.not_exposed.is_some()
+            || facts.device_offline.is_some()
+        {
             failures.insert(error.id.clone(), facts);
         }
     }

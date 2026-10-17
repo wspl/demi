@@ -58,7 +58,7 @@ pub use content::{
     xml_escaped,
 };
 pub use failure::{
-    ContinueWith, FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, SignedOutAccount,
+    ContinueWith, FailureSource, NotExposedPort, OfflineDevice, ProviderErrorDiagnostics, ProviderFailureFacts, SignedOutAccount,
 };
 pub use context_limit::{
     CONTEXT_LIMIT_STEPS, ContextChoice, ContextLimitStep, ContextWordError, applied_context_limit,

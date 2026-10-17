@@ -112,6 +112,8 @@
     "failureResets": "{failure} {reset}됩니다.",
     "apiKeyRefused": "제공업체가 API 키를 거부했습니다.",
     "signedOut": "{provider}에서 {account} 계정을 로그아웃했습니다. 설정 › 제공업체에서 다시 로그인하세요.",
+    "notExposed": "{device}의 포트 {port}이(가) 공개되어 있지 않습니다.",
+    "deviceOffline": "{device}이(가) 오프라인 상태입니다.",
     "work": {
       "ran": "명령 {count}개 실행",
       "checked": "명령 {count}개 확인",
@@ -211,7 +213,8 @@
     "resume": "재개",
     "continue": "계속",
     "continueWith": "다음으로 계속: {label}",
-    "openProviders": "제공업체 열기"
+    "openProviders": "제공업체 열기",
+    "exposePort": "포트 공개"
   },
   "notices": {
     "hostOffline": "{name} 호스트가 오프라인입니다.",

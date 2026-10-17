@@ -806,7 +806,7 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
         )
         .await
         .json::<TestResult>();
-    let TestResult::Failed { message, model } = refused else {
+    let TestResult::Failed { message, model, .. } = refused else {
         panic!("the vendor refused the key: {refused:?}");
     };
     assert!(
@@ -837,7 +837,8 @@ async fn the_provider_test_sends_one_real_request_through_the_entrys_family() {
         unknown,
         TestResult::Failed {
             message: "This provider lists no model no-such-model".into(),
-            model: None
+            model: None,
+            not_exposed: None,
         }
     );
     let account = backend

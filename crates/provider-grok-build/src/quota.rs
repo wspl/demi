@@ -25,7 +25,7 @@ const WEEKLY_PERIOD: &str = "USAGE_PERIOD_TYPE_WEEKLY";
 /// The quota source of one Grok Build account.
 pub(crate) struct GrokQuota {
     pub(crate) auth: Arc<GrokAuth>,
-    pub(crate) http: reqwest::Client,
+    pub(crate) http: demi_provider_common::ProviderHttp,
     pub(crate) user_url: Url,
     pub(crate) billing_url: Url,
 }
@@ -64,7 +64,7 @@ impl QuotaSource for GrokQuota {
 
 impl GrokQuota {
     async fn fetch(&self, url: &Url, headers: &HeaderMap) -> Result<String, QuotaError> {
-        let failed = |error: reqwest::Error| {
+        let failed = |error: demi_provider_common::SendError| {
             QuotaError::Unavailable(format!(
                 "Grok quota request failed: {}",
                 error.without_url()
@@ -78,7 +78,7 @@ impl GrokQuota {
             .await
             .map_err(failed)?;
         let status = response.status();
-        let body = response.text().await.map_err(failed)?;
+        let body = response.text().await.map_err(|error| failed(error.into()))?;
         if !status.is_success() {
             let body: String = body.chars().take(200).collect();
             return Err(QuotaError::Unavailable(format!(

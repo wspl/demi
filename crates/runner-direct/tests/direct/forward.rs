@@ -355,27 +355,27 @@ async fn a_connection_whose_channel_did_not_open_is_counted_once_on_the_relay() 
     assert_eq!(closed - ended, PEER_IDLE);
 }
 
-// No time: the clock is paused, and nothing answers 192.0.2.1, an address
-// kept for documentation, which no network routes back.
+// No time: the clock is paused, and the connection never completes, as
+// one to a target that does not accept; no network is asked, since a
+// machine behind a proxy that answers every address would connect.
 #[tokio::test(start_paused = true)]
 async fn a_target_that_does_not_accept_in_ten_seconds_or_whose_forward_ended_is_given_up() {
+    let never = || std::future::pending::<std::io::Result<()>>();
     let ended = tokio_util::sync::CancellationToken::new();
     let started = Instant::now();
-    let refused = demi_runner_direct::connect_target("192.0.2.1:9", &ended).await.unwrap_err();
-    if refused.kind() == std::io::ErrorKind::TimedOut {
-        assert_eq!(started.elapsed(), demi_runner_protocol::forward::DEADLINE);
-    } else {
-        // A computer with no route at all refuses at once.
-        assert_eq!(started.elapsed(), Duration::ZERO, "{refused}");
-    }
+    let refused = demi_runner_direct::give_up_on(never(), &ended).await.unwrap_err();
+    assert_eq!(
+        (refused.kind(), started.elapsed()),
+        (std::io::ErrorKind::TimedOut, demi_runner_protocol::forward::DEADLINE)
+    );
 
     let connecting = tokio::spawn({
         let ended = ended.clone();
-        async move { demi_runner_direct::connect_target("192.0.2.1:9", &ended).await }
+        async move { demi_runner_direct::give_up_on(never(), &ended).await }
     });
     tokio::task::yield_now().await;
     let cancelled = Instant::now();
     ended.cancel();
     let refused = connecting.await.unwrap().unwrap_err();
-    assert_eq!(cancelled.elapsed(), Duration::ZERO, "{refused}");
+    assert_eq!((refused.kind(), cancelled.elapsed()), (std::io::ErrorKind::Interrupted, Duration::ZERO));
 }

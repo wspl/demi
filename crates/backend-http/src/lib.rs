@@ -24,6 +24,7 @@ mod diagnostics;
 mod direct;
 mod drafts;
 mod error;
+mod exposed_ports;
 mod file_watch;
 mod files;
 mod gate;
@@ -426,6 +427,11 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             patch(port_forwards::patch).delete(port_forwards::delete),
         )
         .route("/port-forwards/{id}/retry", post(port_forwards::retry))
+        .route("/exposed-ports", get(exposed_ports::list).post(exposed_ports::create))
+        .route(
+            "/exposed-ports/{id}",
+            patch(exposed_ports::patch).delete(exposed_ports::delete),
+        )
         .route("/credentials", get(credentials::list).post(credentials::create))
         .route("/credentials/{id}/values", get(credentials::values))
         .route(

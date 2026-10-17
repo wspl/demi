@@ -8,7 +8,7 @@
 //! user (`users.md` § User system), as a handoff code does.
 
 use axum::Json;
-use axum::extract::{FromRequest, Path, Request, State};
+use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use demi_backend_database::credentials::CredentialRefusal;
 use demi_backend_user_shard::shard::credentials::CredentialError;
@@ -17,29 +17,22 @@ use demi_web_api_protocol::credentials::{
 };
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::UserCredentialId;
-use garde::Validate;
-use serde::de::DeserializeOwned;
 
 use super::AppState;
-use super::body::{decode_worded, read};
+use super::body::{Worded, WordedBody};
 use super::error::ApiError;
 use super::gate::{AuthUser, CurrentSession};
 use super::sessions::require_verification;
 
-/// A credential body, read as a JSON body is, whose broken rules are refused
-/// in the user's words.
-pub(super) struct CredentialBody<T>(T);
+impl Worded for NewCredential {
+    fn refusal(report: &garde::Report) -> String {
+        refusal(report)
+    }
+}
 
-impl<S, T> FromRequest<S> for CredentialBody<T>
-where
-    S: Send + Sync,
-    T: DeserializeOwned + Validate<Context = ()>,
-{
-    type Rejection = ApiError;
-
-    async fn from_request(request: Request, state: &S) -> Result<Self, ApiError> {
-        let bytes = read(request, state).await?;
-        Ok(Self(decode_worded(&bytes, refusal)?))
+impl Worded for CredentialPatch {
+    fn refusal(report: &garde::Report) -> String {
+        refusal(report)
     }
 }
 
@@ -79,7 +72,7 @@ pub(super) async fn values(
 pub(super) async fn create(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
-    CredentialBody(credential): CredentialBody<NewCredential>,
+    WordedBody(credential): WordedBody<NewCredential>,
 ) -> Result<(StatusCode, Json<CredentialAnswer>), ApiError> {
     let credential = state
         .shards
@@ -95,7 +88,7 @@ pub(super) async fn patch(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
     Path(id): Path<String>,
-    CredentialBody(patch): CredentialBody<CredentialPatch>,
+    WordedBody(patch): WordedBody<CredentialPatch>,
 ) -> Result<Json<CredentialAnswer>, ApiError> {
     let id = credential_id(id)?;
     let credential = state

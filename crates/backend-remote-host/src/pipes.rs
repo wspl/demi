@@ -577,7 +577,8 @@ enum Abandoned {
     /// A reader in this process that stops early drained the pipe, as a
     /// closed pipe would.
     Drain,
-    /// A device's response cut short fails the pipe.
+    /// A device's response cut short, or a reader whose caller went away,
+    /// fails the pipe.
     Fail(&'static str),
 }
 
@@ -617,6 +618,14 @@ impl PipeReader {
                 }
             },
         }
+    }
+
+    /// A reader whose drop before the end fails the pipe with `reason`
+    /// rather than draining it: the source then learns that nobody waits
+    /// for the rest, even while it sends nothing.
+    pub fn failing_when_dropped(mut self, reason: &'static str) -> Self {
+        self.abandoned = Abandoned::Fail(reason);
+        self
     }
 
     /// Ends reading: the pipe fails with `reason` unless it is over.

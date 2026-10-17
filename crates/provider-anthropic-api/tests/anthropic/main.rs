@@ -51,7 +51,7 @@ pub(crate) fn runtime(vendor: &MockVendor) -> Box<dyn ProviderRuntime> {
 pub(crate) fn runtime_with(vendor: &MockVendor, policy: VendorPolicy) -> Box<dyn ProviderRuntime> {
     provider_with(vendor, "/v1", policy)
         .runtime(RuntimeEnv {
-            http: reqwest::Client::new(),
+            http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
         })
         .unwrap()
 }

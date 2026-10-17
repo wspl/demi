@@ -9,12 +9,12 @@ use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// How long a pair's peer stays once the last connection between the pair
-/// ended (`port-forwarding.md` § The path of a connection).
 /// How long a forwarded connection's target has to accept it, and its two
 /// relay pipes to both open, before the connection is closed as a refused
 /// one is (`port-forwarding.md` § A port forward).
 pub const DEADLINE: Duration = Duration::from_secs(10);
+/// How long a pair's peer stays once the last connection between the pair
+/// ended (`port-forwarding.md` § The path of a connection).
 pub const PEER_IDLE: Duration = Duration::from_secs(60);
 
 /// The waits before each new attempt at a direct peer while a pair is on

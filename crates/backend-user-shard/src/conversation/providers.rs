@@ -583,7 +583,7 @@ impl ConversationRuntime {
                 let work = ProcessWork::Conversation(scope.conversation.clone());
                 let placement = CrossPlacement::placement(scope.shard.clone(), work);
                 let env = RuntimeEnv {
-                    http: scope.http.clone(),
+                    http: assembly.http_for(entry, scope.http.clone()),
                 };
                 assembly
                     .process_runtime(entry, account.or(entry.active()), env, placement)
@@ -592,7 +592,7 @@ impl ConversationRuntime {
             } else {
                 provider
                     .runtime(RuntimeEnv {
-                        http: scope.http.clone(),
+                        http: assembly.http_for(entry, scope.http.clone()),
                     })
                     .map_err(|error| refused(error.to_string(), None))?
             };

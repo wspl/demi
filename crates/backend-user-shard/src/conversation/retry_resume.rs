@@ -107,7 +107,7 @@ impl Shard {
     async fn retry_at(&self, error: ErrorBlock) -> Option<Timestamp> {
         let id = error.id.clone();
         let blocks = [Block::Error(error)];
-        let facts = failure_facts(&self.services().assembly, &blocks).await?;
+        let facts = failure_facts(&self.services().assembly, self.user(), &blocks).await?;
         facts.get(&id)?.retry_at
     }
 

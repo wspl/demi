@@ -60,7 +60,7 @@ pub(crate) struct Refusal {
 /// once for [`WEBSOCKET_RETRY_AFTER`].
 pub(crate) async fn open(
     shared: &Shared,
-    http: &reqwest::Client,
+    http: &demi_provider_common::ProviderHttp,
     headers: &HeaderMap,
     body: &Encoded,
     cancel: &CancellationToken,
@@ -125,7 +125,7 @@ fn unreachable_until(shared: &Shared) -> std::sync::MutexGuard<'_, Option<Timest
 /// within the header timeout; dropping the stream stops the download.
 async fn sse(
     shared: &Shared,
-    http: &reqwest::Client,
+    http: &demi_provider_common::ProviderHttp,
     headers: &HeaderMap,
     body: &Encoded,
     cancel: &CancellationToken,

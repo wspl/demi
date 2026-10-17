@@ -18,6 +18,11 @@
     "removeFailed": "Could Not Remove the Forward",
     "retryFailed": "Could Not Try Again"
   },
+  "exposedPorts": {
+    "exposeFailed": "Could Not Expose the Port",
+    "saveFailed": "Could Not Change the Exposed Port",
+    "removeFailed": "Could Not Remove the Exposed Port"
+  },
   "plugins": {
     "turnOnFailed": "Could Not Turn the Plugin On",
     "turnOffFailed": "Could Not Turn the Plugin Off"

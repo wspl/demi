@@ -243,6 +243,31 @@ export function signedOutOffer(
   return end?.type === 'error' && !!end.id && !!failures[end.id]?.signedOut
 }
 
+/**
+ * The port that the unfinished turn's request named on the user's device
+ * while the device had not exposed it, which the dock offers to expose
+ * before the turn resumes (`port-exposure.md` § Exposed ports, Recovery):
+ * none once `exposed` says the port is exposed by now, from Settings or
+ * another tab, when Resume alone tries again. Null while running, and for
+ * any other end.
+ */
+export function notExposedOffer(
+  phase: 'idle' | string,
+  blocks: readonly (RecordCandidate & { id?: string })[],
+  failures: Readonly<Record<string, { notExposed?: { deviceId: string; device: string; port: number } | null }>>,
+  exposed: (deviceId: string, port: number) => boolean,
+): { deviceId: string; device: string; port: number } | null {
+  if (phase !== 'idle') {
+    return null
+  }
+  const end = turnRecord(blocks)
+  if (end?.type !== 'error' || end.code !== 'port_not_exposed' || !end.id) {
+    return null
+  }
+  const named = failures[end.id]?.notExposed ?? null
+  return named && !exposed(named.deviceId, named.port) ? named : null
+}
+
 /** What `turnRecovery` reads of a block. */
 interface RecordCandidate {
   type: string

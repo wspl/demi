@@ -587,7 +587,10 @@
       "connected": "已連線",
       "failed": "失敗",
       "enableModel": "請先啟用一個模型",
-      "noTextModel": "測試會傳送一則聊天訊息，但此供應商沒有文字模型"
+      "noTextModel": "測試會傳送一則聊天訊息，但此供應商沒有文字模型",
+      "exposePort": "公開連接埠",
+      "tryAgain": "再試一次",
+      "sharedDevice": "使用此供應商的所有人都會透過此端點連線到 {device}。"
     },
     "cli": {
       "title": "命令列工具",

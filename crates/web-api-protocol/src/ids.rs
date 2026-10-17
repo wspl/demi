@@ -28,6 +28,12 @@ demi_shared_types::id!(
 );
 
 demi_shared_types::id!(
+    /// One of a user's exposed ports (`port-exposure.md`), which the
+    /// backend assigns.
+    ExposedPortId
+);
+
+demi_shared_types::id!(
     /// One of a user's port forwards (`port-forwarding.md`), which the
     /// backend assigns and its name can change under.
     PortForwardId

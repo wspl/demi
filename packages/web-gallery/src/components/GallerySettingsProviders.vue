@@ -27,6 +27,7 @@ import { slow } from '../fixtures/slow'
 import { operations } from '@demicodes/web-ui/ui/operations'
 import { providerOperation } from '@demicodes/web-ui/settings/provider-operations'
 import { DAY, HOUR, MINUTE, ahead } from '../fixtures/time'
+import { macPortOf, useGalleryExposedPorts } from '../fixtures/exposed-ports'
 import { HOUR_SECONDS, WEEK_SECONDS, windowNamed } from '../fixtures/usage-limits'
 
 /**
@@ -134,16 +135,31 @@ async function removeProvider(id: string) {
   }
 }
 
+/** The gallery's exposed ports, which a device's page and Expose Port on a failed test change. */
+const exposedPorts = useGalleryExposedPorts()
+
+/** The gallery is a shared instance whose master is Alex: an endpoint naming alex-mbp serves every user. */
+function sharedDevice(endpoint: string): string | null {
+  return macPortOf(endpoint) === null ? null : 'alex-mbp'
+}
+
 /**
  * The mock judges a connection by its inputs: no key is rejected, localhost
- * is unreachable. The test is the provider's operation, as the product's
- * store starts it (`provider-operations.ts`).
+ * is unreachable, and a port of alex-mbp its id names is refused until it is
+ * exposed. The test is the provider's operation, as the product's store
+ * starts it (`provider-operations.ts`).
  */
 function test(p: SettingsProviderEntry, accountId?: string) {
   void operations.start(
     providerOperation(p.id, accountId ? { kind: 'account', accountId, action: 'test' } : { kind: 'testing' }),
     () => slow(1200).then(() => {
-      if (p.vendorId && !p.apiKey && !p.keyConfigured) {
+      const port = macPortOf(p.baseUrl)
+      p.notExposed = undefined
+      if (port !== null && !exposedPorts.isExposed('mac', port)) {
+        p.state = 'error'
+        p.detail = `Port ${port} of alex-mbp isn’t exposed.`
+        p.notExposed = { deviceId: 'mac', device: 'alex-mbp', port }
+      } else if (p.vendorId && !p.apiKey && !p.keyConfigured) {
         p.state = 'error'
         p.detail = '401 · No API key provided'
       } else if (/localhost|127\.0\.0\.1/.test(p.baseUrl)) {
@@ -156,6 +172,12 @@ function test(p: SettingsProviderEntry, accountId?: string) {
       }
     }),
   )
+}
+
+/** Expose Port on a failed test: the port is exposed, as Settings › Devices then shows it, and the test runs again. */
+async function exposePort(p: SettingsProviderEntry, deviceId: string, port: number) {
+  await exposedPorts.expose(deviceId, port)
+  test(p)
 }
 
 function refresh(p: SettingsProviderEntry) {
@@ -504,6 +526,9 @@ function closeLogin() {
     @remove="removeProvider"
     @sign-in="beginLogin"
     @test="test"
+    @expose-port="exposePort"
+    :is-exposed="exposedPorts.isExposed"
+    :shared-device="sharedDevice"
     @refresh="refresh"
     @refresh-usage="refreshUsage"
     @check-cli="checkCli"

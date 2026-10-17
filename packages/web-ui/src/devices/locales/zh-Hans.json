@@ -156,5 +156,21 @@
     "refused": "Windows 拒绝了计划任务和启动项：{error}",
     "unusableName": "安装文件夹的名称“{name}”无法用作启动项的名称。",
     "unknownAccount": "系统无法识别此用户账户。"
+  },
+  "exposed": {
+    "title": "已公开的端口",
+    "description": "Demi 为你发出的请求（例如提供商的请求）可以通过这些地址访问设备上的这些端口。",
+    "expose": "公开端口",
+    "none": "没有已公开的端口",
+    "missing": "请输入要公开的端口。",
+    "edit": "编辑…",
+    "copy": "拷贝地址",
+    "editTitle": "已公开的端口",
+    "port": "端口",
+    "portDescription": "Demi 的请求在设备上通过 127.0.0.1 访问它。",
+    "portProblem": "请输入 1 到 65535 之间的端口。",
+    "label": "标签",
+    "labelPlaceholder": "Ollama",
+    "address": "地址"
   }
 }

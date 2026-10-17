@@ -18,6 +18,11 @@
     "removeFailed": "전달을 제거할 수 없습니다",
     "retryFailed": "다시 시도할 수 없습니다"
   },
+  "exposedPorts": {
+    "exposeFailed": "포트를 공개할 수 없음",
+    "saveFailed": "공개된 포트를 변경할 수 없음",
+    "removeFailed": "공개된 포트를 제거할 수 없음"
+  },
   "plugins": {
     "turnOnFailed": "플러그인을 켤 수 없습니다",
     "turnOffFailed": "플러그인을 끌 수 없습니다"

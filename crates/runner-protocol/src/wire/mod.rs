@@ -33,7 +33,7 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 /// The wire's version, which a runner's hello names.
-pub const VERSION: u32 = 53;
+pub const VERSION: u32 = 54;
 /// How long a stopped job has after `TERM` before a stop sends `KILL`, the
 /// backend's stop and the runner's own alike (`runner.md` § Cancellation
 /// and completion).

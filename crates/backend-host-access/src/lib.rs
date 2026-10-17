@@ -12,6 +12,7 @@
 pub mod access;
 pub mod attachment_commands;
 pub mod directories;
+pub mod expose_commands;
 pub mod file_watch;
 pub mod forward_commands;
 pub mod host_commands;
@@ -117,6 +118,20 @@ pub trait HostShard {
     fn remove_port_forward(
         &self,
         id: demi_web_api_protocol::ids::PortForwardId,
+    ) -> LocalBoxFuture<'_, Result<(), String>>;
+    /// The user's exposed ports, as `demi host expose list` names them.
+    fn exposed_ports(
+        &self,
+    ) -> LocalBoxFuture<'_, Result<Vec<demi_web_api_protocol::exposed_ports::ExposedPortDto>, String>>;
+    /// Exposes a port of one of the user's devices.
+    fn add_exposed_port(
+        &self,
+        new: demi_web_api_protocol::exposed_ports::NewExposedPort,
+    ) -> LocalBoxFuture<'_, Result<demi_web_api_protocol::exposed_ports::ExposedPortDto, String>>;
+    /// Stops exposing the exposed port `id`.
+    fn remove_exposed_port(
+        &self,
+        id: demi_web_api_protocol::ids::ExposedPortId,
     ) -> LocalBoxFuture<'_, Result<(), String>>;
 }
 

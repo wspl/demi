@@ -18,6 +18,11 @@
     "removeFailed": "転送を削除できませんでした",
     "retryFailed": "再試行できませんでした"
   },
+  "exposedPorts": {
+    "exposeFailed": "ポートを公開できませんでした",
+    "saveFailed": "公開ポートを変更できませんでした",
+    "removeFailed": "公開ポートを削除できませんでした"
+  },
   "plugins": {
     "turnOnFailed": "プラグインをオンにできませんでした",
     "turnOffFailed": "プラグインをオフにできませんでした"

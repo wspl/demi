@@ -52,11 +52,11 @@ use crate::access::{HostRole, ReachableHost};
 use crate::transition::ChangeRefusal;
 
 const SUMMARY: &str =
-    "The hosts this conversation reaches: list them, show the primary one, run a command on another, pair a computer, attach or detach the user's devices, move this conversation to another host, forward a port from one host to another.";
+    "The hosts this conversation reaches: list them, show the primary one, run a command on another, pair a computer, attach or detach the user's devices, move this conversation to another host, forward a port from one host to another, expose a device's port to the backend's requests.";
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Lists the computers this conversation can reach, its primary Host and the devices attached to it, and runs a command on another one; lists the user's devices and attaches or detaches one; moves this conversation to another host and directory; pairs a computer you can run commands on with the user's account; forwards a port of one Host to another, as ssh -L does. Use it when a task involves a second machine: fetching a file from the user's laptop, checking a server, running something where a particular device is, or reaching a service on another Host.";
+const ENTRY: &str = "Lists the computers this conversation can reach, its primary Host and the devices attached to it, and runs a command on another one; lists the user's devices and attaches or detaches one; moves this conversation to another host and directory; pairs a computer you can run commands on with the user's account; forwards a port between Hosts, as ssh -L does; exposes a device's port, such as Ollama's, to a provider entry. Use it when a task involves a second machine: fetching a file from the user's laptop, checking a server, or reaching a service on another Host.";
 
 /// The path of `demi host pair`, which always brings a host the
 /// conversation may not reach (`permissions.md` § Hosts).
@@ -163,6 +163,12 @@ pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
             crate::forward_commands::MANAGE_DESCRIPTION,
         )
         .group(crate::forward_commands::forward_group(shard.clone()))
+        .permission(
+            crate::expose_commands::MANAGE,
+            crate::expose_commands::MANAGE_ACTION,
+            crate::expose_commands::MANAGE_DESCRIPTION,
+        )
+        .group(crate::expose_commands::expose_group(shard.clone()))
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()
@@ -364,6 +370,33 @@ where
 }
 
 /// The conversation the invoking job belongs to.
+/// The user's Hosts, each by the name `demi host devices` gives it.
+pub(crate) struct HostNames(Vec<demi_backend_database::devices::DeviceRecord>);
+
+impl HostNames {
+    /// The name of Host `id`: `Cloud` for the Cloud, the id for a Host the
+    /// user no longer has.
+    pub(crate) fn name(&self, id: &DeviceId) -> String {
+        self.0
+            .iter()
+            .find(|device| device.id == *id)
+            .map(|device| match device.kind {
+                DeviceKind::Managed => "Cloud".to_owned(),
+                DeviceKind::User => device.name.clone(),
+            })
+            .unwrap_or_else(|| id.to_string())
+    }
+}
+
+/// The user's Hosts, paired devices and the Cloud, for naming them.
+pub(crate) async fn host_names(shard: &dyn HostShard) -> Result<HostNames, RpcError> {
+    let control = shard.control();
+    let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
+    let mut devices = control.paired_devices(shard.user().clone()).await.map_err(failed)?;
+    devices.extend(control.managed_device(shard.user().clone()).await.map_err(failed)?);
+    Ok(HostNames(devices))
+}
+
 pub fn conversation_of(invocation: &RpcInvocation) -> Result<ConversationId, RpcError> {
     ConversationId::try_from(invocation.context.conversation.as_str())
         .map_err(|_| RpcError::Failed("this session has no conversation".into()))
@@ -457,7 +490,7 @@ async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Re
 }
 
 /// Prints `value` as one JSON value.
-async fn print_json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
+pub(crate) async fn print_json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
     let text = serde_json::to_string(value).map_err(|error| RpcError::Failed(error.to_string()))?;
     port.stdout(format!("{text}\n")).await?;
     Ok(0)

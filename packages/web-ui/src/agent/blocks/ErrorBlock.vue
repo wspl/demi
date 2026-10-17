@@ -30,6 +30,10 @@ const props = defineProps<{
   retryAt?: string | null
   /** The account the vendor signed out, while it still is, which the record names instead of the code's words. */
   signedOut?: { provider: string; account: string } | null
+  /** The device's port the request named, while it is still not exposed, which the record names instead of the code's words. */
+  notExposed?: { device: string; port: number } | null
+  /** The device the request named while it was offline, which the record names. */
+  deviceOffline?: { device: string } | null
 }>()
 
 const source = computed(() => failureSource(props.message, props.code, props.diagnostics))
@@ -47,6 +51,8 @@ const label = computed(() =>
     {
       retryAt: props.retryAt ?? null,
       signedOut: props.signedOut ?? null,
+      notExposed: props.notExposed ?? null,
+      deviceOffline: props.deviceOffline ?? null,
       credential: props.providerId === undefined ? null : credentialKinds()?.(props.providerId) ?? null,
     },
     new Date(now.value),

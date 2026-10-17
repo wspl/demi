@@ -59,6 +59,7 @@ layout and interaction; these documents do not repeat it.
 - [Resource lifecycle](execution/resource-lifecycle.md): activity, the idle window and the conversation release.
 - [System prompt](agent/system-prompt.md): what a node's model reads before the conversation: identity, harness guide, tool rules, the capability index each command group writes, and the model's own name; details on demand with `--help`.
 - [Port forwarding](execution/port-forwarding.md): port forwards between the user's Hosts, direct or through the backend.
+- [Port exposure](execution/port-exposure.md): a device's ports the backend's own requests, such as a provider entry's, reach by the device's id.
 - [Direct channel](execution/direct-channel.md): how a page and a paired device's runner talk without the backend in the middle, over WebRTC data channels the backend introduces, and how the page moves between that and the relay.
 - [Runner](execution/runner.md): registration, Host operations, the Host log, [load](execution/runner.md#load), shell jobs, pipes and managed guests.
 - [Commands](execution/commands.md): declarations, input and help, dispatch surfaces and manifests, rpc calls, [external command clients](execution/commands.md#external-command-clients), IO, and the file commands.

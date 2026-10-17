@@ -131,9 +131,32 @@ fn decode<T: DeserializeOwned + Validate<Context = ()>>(bytes: &[u8]) -> Result<
     decode_worded(bytes, problems)
 }
 
+/// A body whose broken rules are refused in words for the user, which the
+/// page shows as they are, such as a port forward's or a credential's.
+pub(super) trait Worded {
+    /// The words for what `report` found broken.
+    fn refusal(report: &garde::Report) -> String;
+}
+
+/// A [`Worded`] body, read as a JSON body is.
+pub(super) struct WordedBody<T>(pub T);
+
+impl<S, T> axum::extract::FromRequest<S> for WordedBody<T>
+where
+    S: Send + Sync,
+    T: DeserializeOwned + Validate<Context = ()> + Worded,
+{
+    type Rejection = ApiError;
+
+    async fn from_request(request: axum::extract::Request, state: &S) -> Result<Self, ApiError> {
+        let bytes = read(request, state).await?;
+        Ok(Self(decode_worded(&bytes, T::refusal)?))
+    }
+}
+
 /// `bytes` as `T`, checked by its rules; a broken rule is refused in the
 /// words `words` gives it.
-pub(super) fn decode_worded<T: DeserializeOwned + Validate<Context = ()>>(
+fn decode_worded<T: DeserializeOwned + Validate<Context = ()>>(
     bytes: &[u8],
     words: fn(&garde::Report) -> String,
 ) -> Result<T, ApiError> {

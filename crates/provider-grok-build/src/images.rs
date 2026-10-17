@@ -63,7 +63,7 @@ impl ImageMaker for GrokProvider {
     /// proxy's listing answers 404.
     fn models<'a>(
         &'a self,
-        _: &'a reqwest::Client,
+        _: &'a demi_provider_common::ProviderHttp,
         catalog: &'a Catalog,
     ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
         Box::pin(std::future::ready(Ok(subscription_models(catalog, Subscription::Grok))))
@@ -77,7 +77,7 @@ impl ImageMaker for GrokProvider {
 
     fn make<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        http: &'a demi_provider_common::ProviderHttp,
         _: &'a Catalog,
         request: ImageRequest,
     ) -> BoxFuture<'a, ImageAnswer> {

@@ -135,7 +135,7 @@ struct Shared {
     accounts: Accounts<CodexKit>,
     /// The client of the provider's own requests: catalogs, probes,
     /// refreshes outside a run and logins.
-    http: reqwest::Client,
+    http: demi_provider_common::ProviderHttp,
     clock: Arc<dyn Clock>,
 }
 
@@ -146,7 +146,7 @@ impl CodexProvider {
         config: CodexConfig,
         pool: Arc<dyn CredentialPool>,
         snapshots: Arc<dyn QuotaSnapshotStore>,
-        http: reqwest::Client,
+        http: demi_provider_common::ProviderHttp,
         clock: Arc<dyn Clock>,
     ) -> Self {
         let user_agent = format!(
@@ -288,7 +288,7 @@ impl Provider for CodexProvider {
 /// A session's runtime: it holds nothing between runs.
 struct CodexRuntime {
     shared: Arc<Shared>,
-    http: reqwest::Client,
+    http: demi_provider_common::ProviderHttp,
 }
 
 impl ProviderRuntime for CodexRuntime {

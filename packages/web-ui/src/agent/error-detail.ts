@@ -34,7 +34,10 @@ export function failureHeadline(
 /**
  * The headline of a failure's record in the transcript: while the vendor
  * has the account the request used signed out, the record says so in its
- * own words, and the dock offers Open Providers; otherwise the code's
+ * own words, and the dock offers Open Providers; while the device's port
+ * the request named is still not exposed, it names the port and the
+ * device, and the dock offers Expose Port; for a device that was offline,
+ * it names the device; otherwise the code's
  * headline, worded by the credential the entry holds (`credential`, null
  * when the page does not know the entry).
  */
@@ -43,12 +46,20 @@ export function recordHeadline(
   facts: {
     retryAt: string | null
     signedOut: { provider: string; account: string } | null
+    notExposed: { device: string; port: number } | null
+    deviceOffline: { device: string } | null
     credential: CredentialKind | null
   },
   now: Date,
 ): SentenceText {
-  return facts.signedOut
-    ? t('transcript.signedOut', { provider: facts.signedOut.provider, account: facts.signedOut.account })
+  if (facts.signedOut) {
+    return t('transcript.signedOut', { provider: facts.signedOut.provider, account: facts.signedOut.account })
+  }
+  if (facts.notExposed) {
+    return t('transcript.notExposed', { port: facts.notExposed.port, device: facts.notExposed.device })
+  }
+  return facts.deviceOffline
+    ? t('transcript.deviceOffline', { device: facts.deviceOffline.device })
     : failureHeadline(code, facts.retryAt, now, facts.credential)
 }
 

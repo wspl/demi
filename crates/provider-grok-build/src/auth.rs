@@ -243,7 +243,7 @@ impl GrokAuth {
     /// without a refresh token is used as it is.
     pub(crate) async fn credentials(
         &self,
-        http: &reqwest::Client,
+        http: &demi_provider_common::ProviderHttp,
         refused: Option<&Secret>,
     ) -> Result<Credentials, AuthFailure> {
         let doc = self.document()?;
@@ -265,7 +265,7 @@ impl GrokAuth {
 /// A refresh of a Grok sign-in, which owns what it needs, so that it runs
 /// to its end apart from the request that asked for it.
 struct Refresh {
-    http: reqwest::Client,
+    http: demi_provider_common::ProviderHttp,
     clock: Arc<dyn Clock>,
 }
 

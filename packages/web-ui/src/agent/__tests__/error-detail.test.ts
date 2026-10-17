@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test'
 import { createPageI18n } from '../../i18n/text'
 import { errorReportText, failureHeadline, failureSource, prettyUpstream, recordHeadline } from '../error-detail'
-import { signedOutOffer } from '../session-status'
+import { notExposedOffer, signedOutOffer } from '../session-status'
 
 // A failed turn's headline is the page's, worded from the failure's code
 // and the moment the provider says it works again (`localization.md` § Text
@@ -60,7 +60,7 @@ test('an http record shows its status and the vendor’s reason first, and its h
 // § Failure codes); the vendor's own words stay under Provider Response.
 test('a key entry’s 403 is a refused request and its 401 a refused key, with the vendor’s text below', () => {
   const now = new Date(2026, 9, 17, 21, 42)
-  const onKey = { retryAt: null, signedOut: null, credential: 'api_key' } as const
+  const onKey = { retryAt: null, signedOut: null, notExposed: null, deviceOffline: null, credential: 'api_key' } as const
   const plan = 'OpenAI API request failed with HTTP 403: {"error":{"message":"Your Go plan doesn\'t include API access.","code":"upgrade_required"}}'
   expect(recordHeadline('permission_denied', onKey, now)).toBe('The provider refused this request.')
   expect(failureSource(plan, 'permission_denied', { source: 'http', httpStatus: 403 }).raw).toBe(plan)
@@ -77,12 +77,36 @@ test('a key entry’s 403 is a refused request and its 401 a refused key, with t
 test('a subscription’s refused sign-in names the signed-out account, and the dock offers Open Providers', () => {
   const now = new Date(2026, 9, 17, 21, 42)
   const signedOut = { provider: 'Claude Code', account: 'alex@example.com' }
-  expect(recordHeadline('auth_expired', { retryAt: null, signedOut, credential: 'subscription' }, now))
+  expect(recordHeadline('auth_expired', { retryAt: null, signedOut, notExposed: null, deviceOffline: null, credential: 'subscription' }, now))
     .toBe('Claude Code signed alex@example.com out. Sign it in again in Settings › Providers.')
   expect(signedOutOffer('idle', [{ type: 'error', id: 'e1', code: 'auth_expired' }], { e1: { signedOut } })).toBe(true)
   // Signed in again since, it reads as the sign-in failure, never a key's.
-  expect(recordHeadline('auth_expired', { retryAt: null, signedOut: null, credential: 'subscription' }, now))
+  expect(recordHeadline('auth_expired', { retryAt: null, signedOut: null, notExposed: null, deviceOffline: null, credential: 'subscription' }, now))
     .toBe('The provider’s sign-in expired or was refused.')
+})
+
+test('a request to a port the device has not exposed names the port and the device while it still is not', () => {
+  const now = new Date(2026, 9, 17, 21, 42)
+  const notExposed = { device: 'alex-mbp', port: 11434 }
+  expect(recordHeadline('port_not_exposed', { retryAt: null, signedOut: null, notExposed, deviceOffline: null, credential: 'api_key' }, now))
+    .toBe('Port 11434 of alex-mbp isn’t exposed.')
+  // Exposed since, the record keeps the code's own words.
+  expect(recordHeadline('port_not_exposed', { retryAt: null, signedOut: null, notExposed: null, deviceOffline: null, credential: 'api_key' }, now))
+    .toBe('The device’s port wasn’t exposed.')
+})
+
+test('a port exposed since the failure, from Settings or another tab, is no longer offered to expose', () => {
+  const blocks = [{ type: 'error', id: 'e1', code: 'port_not_exposed' }]
+  const named = { deviceId: 'mac', device: 'alex-mbp', port: 11434 }
+  const failures = { e1: { notExposed: named } }
+  expect(notExposedOffer('idle', blocks, failures, () => false)).toEqual(named)
+  expect(notExposedOffer('idle', blocks, failures, (device, port) => device === 'mac' && port === 11434)).toBeNull()
+})
+
+test('a request to a device that was offline names the device', () => {
+  const now = new Date(2026, 9, 17, 21, 42)
+  const facts = { retryAt: null, signedOut: null, notExposed: null, deviceOffline: { device: 'alex-mbp' }, credential: 'api_key' } as const
+  expect(recordHeadline('device_offline', facts, now)).toBe('alex-mbp is offline.')
 })
 
 test('the report is the upstream message followed by every diagnostic', () => {

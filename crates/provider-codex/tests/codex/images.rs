@@ -74,7 +74,7 @@ async fn a_generation_sends_the_asked_options_with_the_accounts_headers_and_read
     let maker = provider.images().expect("Codex makes images");
     assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("ChatGPT", Some(ImageVendor::OpenAi), false));
     // The catalog's image models of a ChatGPT subscription, in its order.
-    let models = maker.models(&reqwest::Client::new(), &catalog()).await.unwrap();
+    let models = maker.models(&demi_provider_common::ProviderHttp::new(reqwest::Client::new()), &catalog()).await.unwrap();
     let offered: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
     assert_eq!(offered, ["gpt-image-2", "gpt-image-1"]);
 
@@ -83,7 +83,7 @@ async fn a_generation_sends_the_asked_options_with_the_accounts_headers_and_read
         transparent: true,
         ..request(Vec::new())
     };
-    let made = maker.make(&reqwest::Client::new(), &catalog(), asked).await.result.unwrap();
+    let made = maker.make(&demi_provider_common::ProviderHttp::new(reqwest::Client::new()), &catalog(), asked).await.result.unwrap();
     assert_eq!(made.bytes, Bytes::from_static(IMAGE));
     assert_eq!(made.vendor_id.as_deref(), Some("gen_1"));
     assert_eq!(
@@ -111,7 +111,7 @@ async fn an_edit_sends_each_image_as_a_data_url() {
         InputImage { media_type: "image/png", bytes: Bytes::from_static(b"png bytes") },
         InputImage { media_type: "image/jpeg", bytes: Bytes::from_static(b"jpeg bytes") },
     ];
-    provider.images().unwrap().make(&reqwest::Client::new(), &catalog(), request(images)).await.result.unwrap();
+    provider.images().unwrap().make(&demi_provider_common::ProviderHttp::new(reqwest::Client::new()), &catalog(), request(images)).await.result.unwrap();
     let sent = &vendor.requests()[0];
     assert_eq!(sent.uri.path(), EDITS);
     assert_eq!(
@@ -142,7 +142,7 @@ async fn a_failed_call_says_whether_the_account_is_used_up_the_vendor_refused_or
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
     let provider = provider(&vendor, &pool, TransportMode::Sse);
     let maker = provider.images().unwrap();
-    let http = reqwest::Client::new();
+    let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
     let failure = maker.make(&http, &catalog(), request(Vec::new())).await.result.unwrap_err();
     let lifts = demi_shared_types::Timestamp::from_millisecond((NOW_SECONDS + 3_600) * 1000).unwrap();
@@ -188,11 +188,11 @@ async fn the_quota_an_image_answer_or_refusal_reports_updates_the_accounts_snaps
         snapshot.windows.iter().map(|window| window.used_percent).collect::<Vec<_>>()
     };
 
-    let refused = maker.make(&reqwest::Client::new(), &catalog(), request(Vec::new())).await;
+    let refused = maker.make(&demi_provider_common::ProviderHttp::new(reqwest::Client::new()), &catalog(), request(Vec::new())).await;
     assert!(refused.result.is_err());
     assert_eq!(refused.observed.len(), 1);
     assert_eq!(used(), [Some(42.0)]);
-    let answered = maker.make(&reqwest::Client::new(), &catalog(), request(Vec::new())).await;
+    let answered = maker.make(&demi_provider_common::ProviderHttp::new(reqwest::Client::new()), &catalog(), request(Vec::new())).await;
     assert!(answered.result.is_ok());
     assert_eq!(used(), [Some(43.0)]);
 }
@@ -208,7 +208,7 @@ async fn a_refusal_whose_body_never_ends_fails_at_the_deadline() {
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
     let provider = provider(&vendor, &pool, TransportMode::Sse);
     let started = tokio::time::Instant::now();
-    let http = reqwest::Client::new();
+    let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
     let catalog = catalog();
     let call = provider.images().unwrap().make(&http, &catalog, request(Vec::new()));
     // Well past the deadline, so a call that ignores it fails here.

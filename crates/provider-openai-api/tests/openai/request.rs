@@ -143,7 +143,7 @@ async fn a_run_posts_to_its_wires_endpoint_with_the_key_and_reads_the_answer_as_
         vendor.respond(response);
         let mut runtime = provider_at(&vendor, base, wire, NO_POLICY)
             .runtime(RuntimeEnv {
-                http: reqwest::Client::new(),
+                http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
             })
             .unwrap();
         let events = run(runtime.as_mut(), inference_request()).await;
@@ -629,7 +629,7 @@ async fn openai_and_xai_each_stamp_their_reasoning_and_replay_only_their_own() {
         vendor.respond(MockResponse::event_stream(streamed.clone()));
         vendor.respond(MockResponse::event_stream(streamed.clone()));
         let provider = provider_of(&vendor, "/v1", WireApi::Responses, NO_POLICY, Some(own));
-        let mut runtime = provider.runtime(RuntimeEnv { http: reqwest::Client::new() }).unwrap();
+        let mut runtime = provider.runtime(RuntimeEnv { http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()) }).unwrap();
         let events = run(runtime.as_mut(), inference_request()).await;
         let stamped: Vec<&String> = events
             .iter()

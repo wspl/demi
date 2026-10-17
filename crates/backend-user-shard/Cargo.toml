@@ -55,6 +55,7 @@ base64.workspace = true
 bytes.workspace = true
 async-stream = "0.3"
 futures-util.workspace = true
+http.workspace = true
 garde.workspace = true
 object_store.workspace = true
 rand = "0.9"

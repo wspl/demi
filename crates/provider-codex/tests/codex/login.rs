@@ -24,7 +24,7 @@ fn staged(vendor: &MockVendor, pool: &MemoryCredentialPool) -> CodexProvider {
         config,
         Arc::new(pool.clone()),
         Arc::new(MemorySnapshots::new()),
-        reqwest::Client::new(),
+        demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
         clock,
     )
 }

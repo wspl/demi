@@ -56,7 +56,7 @@ async fn a_run_streams_from_the_models_endpoint_with_the_key() {
         vendor.respond(chunks(&[json!({ "candidates": [{ "finishReason": "STOP" }] })]));
         let mut runtime = provider_at(&vendor, base)
             .runtime(RuntimeEnv {
-                http: reqwest::Client::new(),
+                http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
             })
             .unwrap();
         let mut request = inference_request();

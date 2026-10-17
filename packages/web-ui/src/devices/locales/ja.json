@@ -156,5 +156,21 @@
     "refused": "Windows がスケジュールされたタスクとスタートアップ項目の両方を拒否しました：{error}",
     "unusableName": "インストールフォルダの名前「{name}」は、スタートアップ項目の名前に使用できません。",
     "unknownAccount": "システムがこのユーザアカウントを認識できません。"
+  },
+  "exposed": {
+    "title": "公開ポート",
+    "description": "プロバイダーなど、Demi があなたのために送るリクエストは、このアドレスでデバイスのこれらのポートに届きます。",
+    "expose": "ポートを公開",
+    "none": "公開ポートはありません",
+    "missing": "公開するポートを入力してください。",
+    "edit": "編集…",
+    "copy": "アドレスをコピー",
+    "editTitle": "公開ポート",
+    "port": "ポート",
+    "portDescription": "Demi のリクエストはデバイスの 127.0.0.1 でこのポートに届きます。",
+    "portProblem": "1〜65535 のポートを入力してください。",
+    "label": "ラベル",
+    "labelPlaceholder": "Ollama",
+    "address": "アドレス"
   }
 }

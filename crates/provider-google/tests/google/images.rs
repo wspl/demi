@@ -100,7 +100,7 @@ async fn a_gemini_key_lists_every_page_and_sends_generations_and_edits_as_docume
     let provider = provider(&vendor, true);
     let maker = provider.images().expect("a Gemini key makes images");
     assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("Google", Some(ImageVendor::Google), true));
-    let http = reqwest::Client::new();
+    let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
     let models = maker.models(&http, &catalog()).await.unwrap();
     let listed: Vec<(&str, Option<&str>, &str)> = models
@@ -186,7 +186,7 @@ async fn a_gemini_keys_failures_read_as_a_block_a_spent_quota_a_refused_key_or_g
     );
     let provider = provider(&vendor, true);
     let maker = provider.images().unwrap();
-    let http = reqwest::Client::new();
+    let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
     let fail = async || maker.make(&http, &catalog(), request(None, Vec::new())).await.result.unwrap_err();
 
     match fail().await {

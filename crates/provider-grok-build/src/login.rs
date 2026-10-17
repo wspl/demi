@@ -40,7 +40,7 @@ const SLOW_DOWN: Duration = Duration::from_secs(5);
 
 /// What Grok Build adds to the account operations: its device login.
 pub(crate) struct GrokKit {
-    pub(crate) http: reqwest::Client,
+    pub(crate) http: demi_provider_common::ProviderHttp,
     /// The sign-in issuer, such as `https://auth.x.ai`.
     pub(crate) issuer: Url,
     /// The chat proxy, whose `/user` names the signed-in user.
@@ -280,10 +280,10 @@ impl GrokKit {
     }
 }
 
-fn transport(error: reqwest::Error) -> LoginError {
+fn transport(error: impl Into<demi_provider_common::SendError>) -> LoginError {
     LoginError::Failed(format!(
         "Grok sign-in request failed: {}",
-        error.without_url()
+        error.into().without_url()
     ))
 }
 
