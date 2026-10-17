@@ -232,6 +232,35 @@ async fn concurrent_requests_refresh_one_account_once() {
     }
 }
 
+/// The run that asked for a refresh is dropped while the vendor answers
+/// it: the refresh runs to its end and stores the new tokens, which the next
+/// request uses without refreshing again with the spent refresh token.
+#[tokio::test]
+async fn a_refresh_whose_run_went_away_still_stores_the_new_tokens() {
+    let vendor = MockVendor::start().await;
+    let (answer, held) = tokio::sync::watch::channel(false);
+    vendor.respond_at(
+        "/oauth/token",
+        refreshed("new-access", "refresh-2").held(held),
+    );
+    vendor.respond_at(RESPONSES, completed());
+    let pool = pool_with(secret(&access_token(NOW_SECONDS + 60), "refresh-1", NOW)).await;
+    let provider = provider(&vendor, &pool, TransportMode::Sse);
+    let mut first = runtime_of(&provider);
+    tokio::select! {
+        events = run(first.as_mut(), inference_request()) => panic!("a held refresh answered {events:?}"),
+        () = vendor.received(1) => {}
+    }
+    drop(first);
+    answer.send_replace(true);
+    let events = run(runtime_of(&provider).as_mut(), inference_request()).await;
+    assert!(matches!(events.last(), Some(ProviderEvent::Response(_))), "{events:?}");
+    let requests = vendor.requests();
+    let paths: Vec<&str> = requests.iter().map(|request| request.uri.path()).collect();
+    assert_eq!(paths, ["/oauth/token", RESPONSES]);
+    assert_eq!(requests[1].header("authorization"), Some("Bearer new-access"));
+}
+
 #[tokio::test]
 async fn a_refused_refresh_fails_the_run_as_a_failed_refresh() {
     let vendor = MockVendor::start().await;

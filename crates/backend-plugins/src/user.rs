@@ -111,6 +111,12 @@ pub trait ProductPort {
 
     /// The wall clock.
     fn now(&self) -> Timestamp;
+
+    /// Runs `work` as a task of the user's shard, which the shard's close
+    /// waits for: work that runs to its end though whoever started it went
+    /// away, such as a token renewal that asked its vendor. A shard already
+    /// gone drops `work` unstarted.
+    fn spawn(&self, work: LocalBoxFuture<'static, ()>);
 }
 
 /// Where a request's reads of files go (`plugins.md` § The contract).

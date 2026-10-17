@@ -714,6 +714,9 @@ impl Backend {
             failures.push(ShutdownError::Edge(error));
         }
         self.services.assembly.close().await;
+        // A refresh that asked its vendor stores the answer before the
+        // database closes (`providers.md` § Token refresh).
+        self.services.vault.gates().close().await;
         failures.extend(
             self.storage
                 .close()

@@ -2313,6 +2313,7 @@ dependencies = [
  "tokio",
  "tokio-util",
  "tracing",
+ "tracing-subscriber",
  "url",
 ]
 
@@ -3158,6 +3159,7 @@ dependencies = [
  "serde_json",
  "serde_with",
  "tokio",
+ "tracing",
 ]
 
 [[package]]

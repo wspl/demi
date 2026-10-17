@@ -11,7 +11,7 @@ use demi_provider_common::{
         AccountDocument, AccountLabel, AuthFailure, AuthReason, CredentialPool, SecretDocument,
         read_secret, renew,
     },
-    oauth::{Lifetime, decode_json_response, jwt_claims},
+    oauth::{Lifetime, TokenRefusal, decode_json_response, jwt_claims},
     quota::unix_seconds,
     wire::{Reported, ReportedString},
 };
@@ -251,20 +251,29 @@ impl GrokAuth {
             let still_refused = refused.is_some_and(|token| secret.access_token == *token);
             secret.refresh_token.is_some() && (still_refused || secret.expiring(self.clock.now()))
         };
-        let renewed = renew(&*doc, needs_refresh, |secret| self.refresh(http, secret)).await;
+        let refresh = Refresh {
+            http: http.clone(),
+            clock: self.clock.clone(),
+        };
+        let renewed = renew(doc.into(), needs_refresh, |secret| refresh.run(secret)).await;
         renewed
             .map(|secret| secret.credentials())
             .map_err(|error| AuthFailure::of_renewal(FAMILY, error))
     }
+}
 
+/// A refresh of a Grok sign-in, which owns what it needs, so that it runs
+/// to its end apart from the request that asked for it.
+struct Refresh {
+    http: reqwest::Client,
+    clock: Arc<dyn Clock>,
+}
+
+impl Refresh {
     /// Asks the issuer for new tokens, for the principal the tokens act for.
     /// A refreshed sign-in keeps the refresh token the answer does not
     /// replace; its expiry comes from the answer, else from the new token.
-    async fn refresh(
-        &self,
-        http: &reqwest::Client,
-        secret: GrokSecret,
-    ) -> Result<GrokSecret, String> {
+    async fn run(self, secret: GrokSecret) -> Result<GrokSecret, String> {
         let Some(refresh_token) = &secret.refresh_token else {
             return Err("The Grok sign-in has no refresh token".into());
         };
@@ -277,7 +286,8 @@ impl GrokAuth {
             form.push(("principal_type", principal.kind.as_str()));
             form.push(("principal_id", principal.id.as_str()));
         }
-        let response = http
+        let response = self
+            .http
             .post(demi_provider_common::endpoint_url(
                 &secret.issuer.0,
                 "/oauth2/token",
@@ -287,11 +297,17 @@ impl GrokAuth {
             .send()
             .await
             .map_err(|error| format!("Grok token refresh failed: {}", error.without_url()))?;
+        let status = response.status().as_u16();
         if !response.status().is_success() {
-            return Err(format!(
-                "Grok token refresh failed with HTTP {}",
-                response.status().as_u16()
-            ));
+            // The refusal's code, never its description, which may quote
+            // a token.
+            let refusal = TokenRefusal::of(&response.bytes().await.unwrap_or_default());
+            tracing::warn!(
+                status,
+                error = refusal.named(),
+                "Grok refused a token refresh"
+            );
+            return Err(format!("Grok token refresh failed with HTTP {status}"));
         }
         let tokens: RefreshedTokens = decode_json_response(response)
             .await
