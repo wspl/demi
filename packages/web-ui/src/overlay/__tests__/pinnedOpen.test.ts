@@ -1,12 +1,17 @@
+import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { expect, test } from 'bun:test'
 import { effectScope, nextTick, ref } from 'vue'
-import { useOverlay } from '../../composables/useOverlay'
-import { createOverlayStore } from '../overlayStore'
-import { usePinnedOpen } from '../pinnedOpen'
 
 // A dialog or popover in a catalog host joins the overlay store (and so answers
 // Escape as the top layer) unless it is pinned open as the host renders.
-// Reactive state and an effect scope only; milliseconds.
+// Reactive state and an effect scope, on a happy-dom page, since a layer reads
+// the page's width and history (`useOverlay`); milliseconds, besides the start
+// of the page every happy-dom test pays.
+
+GlobalRegistrator.register({ url: 'https://demi.test/' })
+const { useOverlay } = await import('../../composables/useOverlay')
+const { createOverlayStore } = await import('../overlayStore')
+const { usePinnedOpen } = await import('../pinnedOpen')
 
 /** A dialog's or popover's layer wiring, the way Dialog.vue and Popover.vue do it. */
 function surface(options: { host: 'none' | 'mounting' | 'mounted'; open: boolean }) {
