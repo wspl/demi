@@ -1,11 +1,16 @@
 <script setup lang="ts">
 import CodeText from './CodeText.vue'
 import CopyButton from './CopyButton.vue'
+import { usePhone } from './phone'
 
 defineProps<{
   code: string
   copyLabel?: string
 }>()
+
+// On a phone Copy fills the box's whole height, so a bordered face would sit
+// on the box's own border: it is drawn plain there, as a code block's is.
+const phone = usePhone()
 </script>
 
 <template>
@@ -15,7 +20,7 @@ defineProps<{
       class="copy-code-text min-w-0 flex-1 select-text font-mono text-[12px] text-fg-body"
     />
     <span class="copy-code-action">
-      <CopyButton :source="code" :label="copyLabel" variant="default" />
+      <CopyButton :source="code" :label="copyLabel" :variant="phone ? 'ghost' : 'default'" />
     </span>
   </div>
 </template>
