@@ -426,7 +426,17 @@ same answer and number back and ask again without end. The device route wakes
 nothing and answers 409 `device_offline` while the device's runner is not
 connected; a directory that is not an absolute path answers 400
 `invalid_body`, one that does not exist 404 `fs_not_found`, and another Host
-error 400 `fs_error`. `POST
+error 400 `fs_error`. The conversation route wakes nothing either: while the
+backend holds no search of the directory, as when the conversation's Cloud
+is stopped or not made yet, its device is offline, or its first search has
+not finished, it answers 200 with `{ directory: null, unavailable: null,
+workflows: [], watch: [<the working directory>] }` and no
+`X-Demi-Read-At`, so the menu offers Global Workflow and No Subagents, as for
+a new conversation whose device is offline; the page follows the working
+directory on the conversation's file watch, and the watch going live, the
+Host's own announcement that it runs, makes that answer out of date, so the
+page reads again with that watch's `since`. A search that failed for another
+reason answers its own error, never one that names a stopped Cloud. `POST
 /api/conversations` takes an optional `workflow`, the new conversation's
 choice, absent for Global Workflow, and the conversation's PATCH takes `workflow` to
 change it.
