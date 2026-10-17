@@ -348,3 +348,22 @@ describe('the time a run took', () => {
     expect(label(run('a', timed(call('a'), 0, 0.3), timed(call('b'), 1, 1.2)), false)).toBe('Ran 2 commands')
   })
 })
+
+// A fixed bug of complexity: each step of a run looked for its block from the
+// start of the transcript, so grouping read the transcript's ids as many times
+// as it had steps, two million reads for 2,000 blocks, at every change of a
+// streaming turn. The reads are counted, not timed.
+test('grouping a long transcript reads each block\'s id a few times, however long the transcript is', () => {
+  let reads = 0
+  const counted = (block: Block): Block => {
+    const { id, ...rest } = block
+    return Object.defineProperty(rest, 'id', { enumerable: true, get: () => (reads += 1, id) }) as Block
+  }
+  const transcript = Array.from({ length: 400 }, (_, turn) => [
+    ...run(`a${turn}`, call(`a${turn}`), call(`b${turn}`), call(`c${turn}`), call(`d${turn}`), call(`e${turn}`)),
+    text(`r${turn}`),
+  ]).flat().map(counted)
+  const grouped = groupWork(transcript, false)
+  expect(grouped).toHaveLength(800)
+  expect(reads).toBeLessThan(4 * transcript.length)
+})

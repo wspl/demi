@@ -84,9 +84,40 @@ export interface AccountCopy {
 export type ConversationCopy = Omit<z.infer<typeof conversationRecordSchema>, 'build' | 'userId'>
 export type AgentCopy = z.infer<typeof agentCopySchema>
 
-/** `value` as the database keeps it: plain data, whatever reactive proxy holds it. */
+/**
+ * `value` as the database keeps it: the plain data under the reactive
+ * proxies that hold it, which the database's copy of a record cannot read.
+ * Only an array or object that holds a proxy is copied, with the plain
+ * data in its place; the rest is the data itself. A long transcript then
+ * costs a walk, not a serialization of every field through its proxy,
+ * which took the page a tenth of a second; the database copies the record
+ * itself, as the browser's own structured clone.
+ */
 function stored(value: unknown): unknown {
-  return JSON.parse(JSON.stringify(value))
+  const raw: unknown = toRaw(value)
+  if (Array.isArray(raw)) {
+    let copy: unknown[] | null = null
+    raw.forEach((item: unknown, index) => {
+      const plain = stored(item)
+      if (plain !== item) {
+        copy ??= [...raw]
+        copy[index] = plain
+      }
+    })
+    return copy ?? raw
+  }
+  if (raw !== null && typeof raw === 'object') {
+    let copy: Record<string, unknown> | null = null
+    for (const [key, item] of Object.entries(raw)) {
+      const plain = stored(item)
+      if (plain !== item) {
+        copy ??= { ...raw }
+        copy[key] = plain
+      }
+    }
+    return copy ?? raw
+  }
+  return raw
 }
 
 /** Whether `value` is a record this build wrote, read before its shape, which is that build's. */

@@ -6,7 +6,7 @@ import { provideEditSelection, provideFilePills, type EditSelectionHandler } fro
 import { provideResumeAtRetry } from './resume-at-retry'
 import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, toRaw, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
 import { ArrowRightLeft, ChevronDown, Ellipsis, PanelLeft, PanelRight, Play, Settings2, Share, TextCursorInput } from '@lucide/vue'
 import type { InstructionEntry, TranscriptVersion } from '@demicodes/protocol'
@@ -259,8 +259,16 @@ const terminals = useDockTerminals(() => props.conversation)
 const shown = computed(() => shownWindow(props.conversation.history, props.conversation.shownAt))
 const shownEdges = computed(() => windowEdges(props.conversation.history, shown.value))
 const shownLatest = computed(() => shown.value === latestWindow(props.conversation.history) || shownEdges.value.atEnd)
-/** The blocks at the transcript's end, which a turn, its recovery and the message offered to edit read. */
-const latest = computed(() => latestBlocks(props.conversation.history))
+/**
+ * The blocks at the transcript's end, which a turn, its recovery and the
+ * message offered to edit read, as plain data: a block that changes is
+ * replaced, never changed in place, so the window's new list is the change
+ * to follow, and reading every block through its proxy at each streamed
+ * piece would track every field of a long transcript.
+ */
+const latest = computed(() => toRaw(latestBlocks(props.conversation.history)).map(toRaw))
+/** The blocks at the transcript's end the reader sees. */
+const latestVisible = computed(() => getVisibleBlocks(latest.value))
 // Relative paths resolve against the directory the conversation works in.
 provideMessageFiles(() => props.files && { ...props.files, cwd: props.conversation.cwd })
 const surface = ref<{ dockHeight: number }>()
@@ -348,7 +356,7 @@ const canRecover = computed(
 // the status pane that already replaced the transcript, never under an error
 // record that already says it, also when receipts arrived behind it.
 const failureNotice = computed(() => {
-  const visible = getVisibleBlocks(latest.value)
+  const visible = latestVisible.value
   return sessionFailureNotice(
     props.conversation.load,
     props.conversation.lastError,
@@ -359,7 +367,7 @@ const failureNotice = computed(() => {
 // One control in the dock: Resume after an error, Continue after the user's Stop.
 const recovery = computed(() =>
   canRecover.value
-    ? turnRecovery(props.conversation.phase, getVisibleBlocks(latest.value))
+    ? turnRecovery(props.conversation.phase, latestVisible.value)
     : null,
 )
 function recover(): void {
@@ -372,12 +380,12 @@ function recover(): void {
  */
 const continueWith = computed(() =>
   canRecover.value
-    ? continueWithOffer(props.conversation.phase, getVisibleBlocks(latest.value), props.conversation.failures)
+    ? continueWithOffer(props.conversation.phase, latestVisible.value, props.conversation.failures)
     : null,
 )
 /** Whether the turn ended because the vendor signed its account out, which the dock answers with Open Providers. */
 const signedOut = computed(() =>
-  canRecover.value && signedOutOffer(props.conversation.phase, getVisibleBlocks(latest.value), props.conversation.failures),
+  canRecover.value && signedOutOffer(props.conversation.phase, latestVisible.value, props.conversation.failures),
 )
 const canEdit = computed(() => !!props.editVersion && !props.messageEdit
   && !props.pendingSubmissions?.length

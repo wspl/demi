@@ -769,3 +769,35 @@ test('a run stays the same open row as parallel calls return out of order, and R
   expect(opened.runs.isOpen(ran)).toBe(true)
   second.stop()
 })
+
+test('a turn that streams leaves the rows of the runs before it the same rows, which the list then does not draw again', async () => {
+  const state = answered()
+  state.blocks = [
+    ...state.blocks,
+    userBlock('u-2', 'm-2', 'Run the tests.'),
+    call('c-1', 'completed'),
+    call('c-2', 'completed', 'c-1'),
+    text('a-2', 'They pass.'),
+    userBlock('u-3', 'm-3', 'Now the linter.'),
+    call('c-3', 'executing'),
+  ]
+  state.phase = 'running'
+  const scope = effectScope()
+  const list = scope.run(() => useMessageRows(() => state))!
+  const runOf = (first: string) => list.rows.value.find((row) => row.type === 'work_group' && row.steps[0]!.id === first)
+  const earlier = runOf('c-1')
+  expect(earlier).toBeDefined()
+  const changes: Change[] = [
+    ['the call returns', replace('c-3', call('c-3', 'completed'))],
+    ['the answer starts', append(text('a-3', 'Lin'))],
+    ['the answer streams', replace('a-3', text('a-3', 'Linted, no findings.'))],
+  ]
+  for (const [name, change] of changes) {
+    change(state)
+    await nextTick()
+    expect({ name, same: runOf('c-1') === earlier }).toEqual({ name, same: true })
+  }
+  expect(runOf('c-3')).toBeDefined()
+  expect(list.rows.value.at(-1)!.id).toBe('a-3')
+  scope.stop()
+})
