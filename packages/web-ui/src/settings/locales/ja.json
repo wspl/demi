@@ -97,7 +97,7 @@
       "title": "ブラウザー",
       "label": "ブラウザー通知",
       "blocked": "このブラウザーのサイト設定でブロックされています。",
-      "thisBrowser": "このブラウザーのみ。",
+      "thisBrowser": "このブラウザーのみ。Demi を閉じていても届きます。",
       "unsupported": "このブラウザーは通知に対応していません。"
     },
     "when": {
@@ -105,7 +105,17 @@
       "turnFinishes": "ターンが完了したとき",
       "turnFails": "ターンが失敗したとき",
       "needsPermission": "Demi が許可を求めたとき",
-      "turnOnFirst": "先にブラウザー通知をオンにしてください。"
+      "turnOnFirst": "先にブラウザー通知をオンにしてください。",
+      "agentNotifies": "エージェントが通知を送ったとき"
+    },
+    "homeScreen": {
+      "title": "iPhone で通知を受け取るには、Demi をホーム画面に追加してください",
+      "share": "Safari のツールバーで共有をタップします。",
+      "add": "「ホーム画面に追加」を選びます。",
+      "open": "ホーム画面から Demi を開き、そこで通知をオンにします。",
+      "ok": "OK",
+      "row": "通知を受け取るには Demi をホーム画面に追加してください",
+      "howTo": "追加方法"
     }
   },
   "passkeys": {
@@ -213,7 +223,9 @@
       "browserKeywords": "通知",
       "finishesKeywords": "完了,終了",
       "failsKeywords": "エラー",
-      "permissionKeywords": "許可のリクエスト"
+      "permissionKeywords": "許可のリクエスト",
+      "agentKeywords": "demi notify,エージェントの通知,プッシュ",
+      "homeScreenKeywords": "ホーム画面,iPhone,iPad,ホーム画面に追加"
     },
     "agentPage": {
       "keywords": "軽量モデル,タイトル,高速モデル,haiku,flash,ターン",

@@ -23,6 +23,8 @@ pub enum SyncStep {
     Changes,
     /// Once it has read the providers, in the product state or as a part.
     Providers,
+    /// Once it has noted what its page says it shows.
+    Showing,
 }
 
 impl Shard {

@@ -99,6 +99,18 @@ pub struct ProductState {
     pub run: String,
 }
 
+/// The one message a page sends on its synchronization channel: the
+/// conversation it shows while it is focused and visible, or null, each time
+/// that changes; no push notification of it reaches the session's browser
+/// while it does (`web-api-sync.md` § Page synchronization).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct PageShowing {
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "demi_shared_types::Nullable<ConversationId>")]
+    pub showing: Option<ConversationId>,
+}
+
 /// A message of the page's synchronization channel, `WS /sync`: the whole
 /// product state first, then the current value of each part of it that
 /// changed, each part's in the order of its changes.

@@ -51,6 +51,7 @@ const PANES = [
   { scene: 'running', label: 'Running' },
   { scene: 'agents-failed', label: 'Agents · a failed child selected' },
   { scene: 'settings', label: 'Settings' },
+  { scene: 'notifications', label: 'Settings › Notifications in Safari on iPhone' },
 ]
 </script>
 

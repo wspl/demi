@@ -97,7 +97,7 @@
       "title": "브라우저",
       "label": "브라우저 알림",
       "blocked": "이 브라우저의 사이트 설정에서 차단되었습니다.",
-      "thisBrowser": "이 브라우저에서만 적용됩니다.",
+      "thisBrowser": "이 브라우저에서만 적용됩니다. Demi를 닫아도 받습니다.",
       "unsupported": "이 브라우저는 알림을 지원하지 않습니다."
     },
     "when": {
@@ -105,7 +105,17 @@
       "turnFinishes": "턴이 끝날 때",
       "turnFails": "턴이 실패할 때",
       "needsPermission": "Demi가 권한을 요청할 때",
-      "turnOnFirst": "먼저 브라우저 알림을 켜십시오."
+      "turnOnFirst": "먼저 브라우저 알림을 켜십시오.",
+      "agentNotifies": "에이전트가 알림을 보낼 때"
+    },
+    "homeScreen": {
+      "title": "iPhone에서 알림을 받으려면 Demi를 홈 화면에 추가하십시오",
+      "share": "Safari 도구 막대에서 공유를 탭하십시오.",
+      "add": "홈 화면에 추가를 선택하십시오.",
+      "open": "홈 화면에서 Demi를 열고 알림을 켜십시오.",
+      "ok": "확인",
+      "row": "알림을 받으려면 Demi를 홈 화면에 추가하십시오",
+      "howTo": "추가 방법"
     }
   },
   "passkeys": {
@@ -213,7 +223,9 @@
       "browserKeywords": "알림",
       "finishesKeywords": "완료,끝",
       "failsKeywords": "오류",
-      "permissionKeywords": "권한 요청"
+      "permissionKeywords": "권한 요청",
+      "agentKeywords": "demi notify,에이전트 알림,푸시",
+      "homeScreenKeywords": "홈 화면,iPhone,iPad,홈 화면에 추가"
     },
     "agentPage": {
       "keywords": "경량 모델,제목,빠른 모델,haiku,flash,턴",

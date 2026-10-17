@@ -100,6 +100,24 @@ test('the channel\'s snapshot is the page\'s copy, and each later message replac
   expect(titles()).toEqual(['Only'])
 })
 
+test('the channel tells the backend which conversation the page shows as it changes, and each new connection tells it again', () => {
+  jest.useFakeTimers()
+  const product = started()
+  const channel = channels.last()
+  product.show(FIRST)
+  product.show(FIRST)
+  product.show(null)
+  expect(channel.fromPage).toEqual([{ showing: FIRST }, { showing: null }])
+  product.show(SECOND)
+  // The backend forgets it with the connection; the next one says it again.
+  channel.end()
+  jest.advanceTimersByTime(30_000)
+  const next = channels.last()
+  expect(next).not.toBe(channel)
+  next.connect(productState())
+  expect(next.fromPage).toEqual([{ showing: SECOND }])
+})
+
 test('a plugin turned off leaves the page with its state, and one turned on again brings its state afresh', () => {
   const product = started()
   const channel = channels.last()

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { APP_ICON } from '@demicodes/web-ui/assets/app-icon'
 import { t } from './locales/text'
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
@@ -58,6 +59,8 @@ const resources = useResources()
 const product = useProduct()
 const preferences = usePreferences()
 const notifications = useNotifications()
+/** Demi's Home Screen icon, which the steps to add Demi to the Home Screen show. */
+const homeScreenIcon = APP_ICON
 const session = useSession()
 const passkeys = usePasskeys()
 const sessions = useSessions()
@@ -437,8 +440,11 @@ function resetShortcuts(): void {
       v-model:turn-finishes="notifications.settings.turnFinishes"
       v-model:turn-fails="notifications.settings.turnFails"
       v-model:needs-permission="notifications.settings.needsPermission"
+      v-model:agent-notifies="notifications.settings.agentNotifies"
       :permission="notifications.permission"
       :request-permission="notifications.requestPermission"
+      :home-screen-icon="notifications.homeScreen ? homeScreenIcon : undefined"
+      :overlay-store="appOverlayStore"
     />
     <AgentPanel v-else-if="section === 'agent'" />
     <ProvidersPanel v-else-if="section === 'models' && resources.canConfigure" />

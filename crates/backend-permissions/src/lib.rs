@@ -36,6 +36,7 @@ use demi_web_api_protocol::permissions::{
     ConversationPermissions, PermissionCategory, PermissionDecision, PermissionHost,
     PermissionRequest, PermissionRequestId,
 };
+use demi_web_api_protocol::push::PushAsk;
 use futures_util::future::LocalBoxFuture;
 use tokio::sync::oneshot;
 
@@ -94,6 +95,11 @@ pub trait PermissionShard {
     /// The name the user knows the device by: Cloud for the user's Cloud,
     /// a paired device's own name.
     fn host_name<'a>(&'a self, device: &'a DeviceId) -> LocalBoxFuture<'a, String>;
+
+    /// The conversation asks the user what `ask` says, by the request
+    /// `request`, which the user's browsers are notified of (`turns.md`
+    /// § Notifications).
+    fn asked(&self, conversation: &ConversationId, request: PermissionRequestId, ask: PushAsk);
 }
 
 /// How a credential request was answered, which its waiting command
@@ -225,11 +231,32 @@ pub async fn check(shard: &dyn PermissionShard, invocation: &RpcInvocation, need
         agent,
         command,
     } = asking(shard, invocation)?;
-    let (needed, action) = match need {
-        Need::Category(category) => (Needed::Category(category.id.clone()), category.action.clone()),
+    let (needed, action, ask) = match need {
+        Need::Category(category) => {
+            let ask = PushAsk::Permission {
+                categories: vec![PermissionCategory {
+                    id: category.id.clone(),
+                    action: Some(category.action.clone()),
+                    description: None,
+                }],
+                host: None,
+            };
+            (Needed::Category(category.id.clone()), category.action.clone(), ask)
+        }
         Need::Host(host) => {
             let action = host_action(shard, &host).await;
-            (Needed::Host(host), action)
+            let shown = match &host {
+                AskedHost::Device(device) => PermissionHost::Device {
+                    device_id: device.clone(),
+                    name: shard.host_name(device).await,
+                },
+                AskedHost::Pairing(_) => PermissionHost::Pairing {},
+            };
+            let ask = PushAsk::Permission {
+                categories: Vec::new(),
+                host: Some(shown),
+            };
+            (Needed::Host(host), action, ask)
         }
     };
     let checked = shard
@@ -239,8 +266,9 @@ pub async fn check(shard: &dyn PermissionShard, invocation: &RpcInvocation, need
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     match checked {
         Checked::Granted => Ok(()),
-        Checked::Raised { .. } => {
+        Checked::Raised { id } => {
             changed(shard, &conversation);
+            shard.asked(&conversation, id, ask);
             Err(RpcError::Failed(format!(
                 "this conversation needs the user's permission to {action}; the request was sent to the user, and you will be told when the user decides"
             )))
@@ -318,7 +346,7 @@ pub async fn ask_credential(
     };
     let asked = shard
         .control()
-        .ask_credential(conversation.clone(), request, name.clone(), ask, command, agent)
+        .ask_credential(conversation.clone(), request.clone(), name.clone(), ask, command, agent)
         .await
         .map_err(|error| RpcError::Failed(error.to_string()))?;
     if let Asked::FieldsDiffer(fields) = asked {
@@ -332,6 +360,7 @@ pub async fn ask_credential(
         )));
     }
     changed(shard, &conversation);
+    shard.asked(&conversation, request, PushAsk::Credential { name });
     tokio::select! {
         // The sender goes only with the answer or a withdrawal.
         answer = answered => Ok(answer.unwrap_or(Answer::Withdrawn)),
@@ -398,11 +427,12 @@ pub async fn read_credential(
                 .collect::<Vec<_>>()
                 .join(", ")
         ))),
-        CredentialRead::Raised(saved) => {
+        CredentialRead::Raised { id, name: saved } => {
             changed(shard, &conversation);
+            let action = use_action(&saved);
+            shard.asked(&conversation, id, PushAsk::Allowance { name: saved });
             Err(RpcError::Failed(format!(
-                "this conversation needs the user's permission to {}; the request was sent to the user, and you will be told when the user decides",
-                use_action(&saved)
+                "this conversation needs the user's permission to {action}; the request was sent to the user, and you will be told when the user decides"
             )))
         }
     }

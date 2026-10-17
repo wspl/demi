@@ -26,6 +26,7 @@ pub mod passkeys;
 pub mod permissions;
 pub mod plugins;
 pub mod providers;
+pub mod push;
 pub mod query;
 pub mod saved;
 pub mod search;

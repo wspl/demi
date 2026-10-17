@@ -36,6 +36,7 @@ import GallerySubagents from './GallerySubagents.vue'
 import GalleryAgent from './GalleryAgent.vue'
 import GalleryAbout from './GalleryAbout.vue'
 import { slow } from '../fixtures/slow'
+import { APP_ICON } from '@demicodes/web-ui/assets/app-icon'
 
 /** One page of the full mock, chosen by the dialog's tab. All state lives in the fixture; timers stand in for the server. */
 const props = defineProps<{
@@ -325,8 +326,11 @@ function resetShortcuts() {
     v-model:turn-finishes="s.notifications.turnFinishes"
     v-model:turn-fails="s.notifications.turnFails"
     v-model:needs-permission="s.notifications.needsPermission"
-    :permission="s.notifications.permission"
+    v-model:agent-notifies="s.notifications.agentNotifies"
+    :permission="s.notifications.iphone ? 'unsupported' : s.notifications.permission"
     :request-permission="askBrowser"
+    :home-screen-icon="s.notifications.iphone ? APP_ICON : undefined"
+    :overlay-store="appOverlayStore"
   />
 
   <GalleryAgent v-else-if="tab === 'agent'" :state="s.smallModel" />
