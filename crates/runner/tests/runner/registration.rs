@@ -8,7 +8,7 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
-use demi_backend_remote_host::testing::runner_binary;
+use demi_backend_remote_host::testing::{DetachedRunners, runner_binary};
 use demi_runner_protocol::{
     manifest::Manifest,
     wire::{self, Inbound, Outbound},
@@ -443,6 +443,8 @@ async fn start_appends_to_the_log_reads_it_from_where_it_ended_and_starts_it_aga
     tokio::time::timeout(Duration::from_secs(60), async {
         let installation = tempfile::tempdir().unwrap();
         let installation = installation.path();
+        let runners = DetachedRunners::new();
+        runners.watch(installation);
         let log = installation.join("runner.log");
         let start = || async {
             // A runner never paired, whose backend's port takes no
@@ -502,7 +504,8 @@ async fn a_runner_with_a_log_started_in_a_terminals_foreground_leaves_the_termin
     tokio::time::timeout(Duration::from_secs(60), async {
         let installation = tempfile::tempdir().unwrap();
         let installation = installation.path();
-        let _drained = Drained(installation);
+        let runners = DetachedRunners::new();
+        runners.watch(installation);
         let mut runner = tokio::process::Command::new(runner_binary());
         runner
             .args(["run", "--log", "--backend", "http://127.0.0.1:9/", "--home"])
@@ -550,16 +553,3 @@ async fn a_runner_with_a_log_started_in_a_terminals_foreground_leaves_the_termin
     .unwrap();
 }
 
-/// Drains the installation in its directory when the test ends, however it
-/// ends.
-struct Drained<'a>(&'a std::path::Path);
-
-impl Drop for Drained<'_> {
-    fn drop(&mut self) {
-        // A runner that never started has nothing to drain.
-        let _ = std::process::Command::new(runner_binary())
-            .arg("drain")
-            .env("DEMI_HOME", self.0)
-            .output();
-    }
-}
