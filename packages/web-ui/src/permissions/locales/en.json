@@ -17,7 +17,12 @@
     "save": "Save",
     "updateCredential": "Update the Credential",
     "saveCredential": "Save a Credential",
-    "keepUntil": "Keep until",
+    "kept": {
+      "1h": "Kept for 1 hour",
+      "1d": "Kept for 1 day",
+      "30d": "Kept for 30 days",
+      "always": "Kept until you remove it"
+    },
     "needsValues": "Every field needs a value of up to 64 KiB.",
     "allowCredentialTitle": "Allow this conversation to use the credential “{name}”?",
     "removed": "Removed",

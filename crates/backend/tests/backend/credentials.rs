@@ -99,7 +99,7 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
         vec![
             shell(
                 "t1",
-                "demi credentials request 'Deploy key' --field key:secret:'API key' --field user:visible:User --reason 'To deploy the site' && demi credentials read 'Deploy key' key > key.txt; echo exit=$?",
+                "demi credentials request 'Deploy key' --field key:secret:'API key' --field user:visible:User --reason 'To deploy the site' --keep 1d && demi credentials read 'Deploy key' key > key.txt; echo exit=$?",
             ),
             say("saved"),
         ],
@@ -129,7 +129,7 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
     };
     assert_eq!(name, "Deploy key");
     assert_eq!(reason, "To deploy the site");
-    assert_eq!(*keep, Keep::Hour);
+    assert_eq!(*keep, Keep::Day);
     assert!(!renewal, "no credential of the name is saved yet");
     assert_eq!(*agent, None);
     assert!(command.starts_with("demi credentials request 'Deploy key'"), "{command}");
@@ -148,7 +148,7 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
         &backend,
         &master,
         id,
-        json!({ "decision": "allow", "credential": { "values": { "key": SECRET }, "keep": "1h" } }),
+        json!({ "decision": "allow", "credential": { "values": { "key": SECRET } } }),
     )
     .await;
     assert_eq!(short.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidAnswer));
@@ -156,14 +156,15 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
     // its label.
     assert_eq!(short.error().message, "Enter a value for \u{201c}User\u{201d}.");
 
-    // The user's answer saves it, and the command returns and reads it.
+    // The user's answer, its values alone, saves it for the day the agent
+    // chose, and the command returns and reads it.
     let answered = decide(
         &backend,
         &master,
         id,
         json!({
             "decision": "allow",
-            "credential": { "values": { "key": SECRET, "user": "alex" }, "keep": "1h" }
+            "credential": { "values": { "key": SECRET, "user": "alex" } }
         }),
     )
     .await;
@@ -172,7 +173,7 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
     let returned = last_asked(&scripts, FIRST);
     assert!(
         returned.contains(
-            "Saved credential \u{201c}Deploy key\u{201d} (key: secret, user: visible), kept for 1 hour."
+            "Saved credential \u{201c}Deploy key\u{201d} (key: secret, user: visible), kept for 1 day."
         ),
         "{returned}"
     );
@@ -183,6 +184,12 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
     let stored = credentials(&backend, &master).await.credentials;
     assert_eq!(stored.len(), 1, "{stored:?}");
     assert_eq!(stored[0].note, "To deploy the site");
+    let kept = stored[0]
+        .keep_until
+        .expect("kept for a day")
+        .to_jiff()
+        .duration_since(stored[0].created_at.to_jiff());
+    assert_eq!(kept, jiff::SignedDuration::from_hours(24));
     assert!(stored[0].last_used_at.is_some());
 
     // `list` and `show` print the visible value and never the secret one.

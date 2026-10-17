@@ -353,12 +353,12 @@ POST /api/conversations/c_81/permissions/requests/pr_3k9
 | Route | Body | Does |
 | --- | --- | --- |
 | `GET /api/conversations/:id/permissions` | None | Returns `{ revision, requests }`: the undecided requests, oldest first, each with its categories, one or none, and `host`, the host it asks to reach (a request holds one or the other) as `{ kind: "device", deviceId, name }` or `{ kind: "pairing" }` for a pairing, or null ([Hosts](../agent/permissions.md#hosts)), and its agent as null for the root or `{ number, description }`; a category no longer in the user's command set has its `id` alone |
-| `POST /api/conversations/:id/permissions/requests/:request` | `{ decision: "allow" \| "deny" }`, and for a credential request `credential: { values, keep }` with an allow | Decides the request ([Requests](../agent/permissions.md#requests)), sends its message to the agent, and answers 204 |
+| `POST /api/conversations/:id/permissions/requests/:request` | `{ decision: "allow" \| "deny" }`, and for a credential request `credential: { values }` with an allow | Decides the request ([Requests](../agent/permissions.md#requests)), sends its message to the agent, and answers 204 |
 
 Each request carries its `kind`: `permission`, with its categories as above;
 `credential`, a [credential](../agent/credentials.md) the agent asks the
 user to save, with its name, reason, fields `{ name, label, kind }`, the
-keep it proposes and `renewal`, true when it asks new values for a saved
+`keep` the agent chose and `renewal`, true when it asks new values for a saved
 credential; or `allowance`, a stored credential the conversation asks
 to use, with its name. `keep` is `1h`, `1d`, `30d` or `always`; `values` maps
 each field's name to its value, every field required.

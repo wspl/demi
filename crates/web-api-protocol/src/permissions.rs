@@ -104,7 +104,8 @@ pub enum PermissionRequest {
         reason: String,
         #[garde(dive)]
         fields: Vec<CredentialField>,
-        /// How long the card offers to keep it at first.
+        /// How long the credential is kept once saved, as the agent
+        /// decided; the card says it.
         #[garde(skip)]
         keep: Keep,
         /// It asks new values for a saved credential of its name, whatever
@@ -193,8 +194,7 @@ pub enum PermissionDecision {
 }
 
 /// `POST /conversations/:id/permissions/requests/:request`: the decision,
-/// and an allow of a credential request carries the credential's values
-/// and how long to keep it.
+/// and an allow of a credential request carries the credential's values.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(deny_unknown_fields)]
 pub struct DecidePermission {

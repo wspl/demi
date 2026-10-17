@@ -84,7 +84,7 @@ export function queuedRequests(): PermissionRequestView[] {
   ]
 }
 
-/** The design's example: an API key to add Google as a provider, one hidden field, kept for an hour unless the user says otherwise. */
+/** The design's example: an API key to add Google as a provider, one hidden field, kept for an hour. */
 export function googleKeyRequest(): CredentialRequestView {
   return {
     kind: 'credential',
@@ -97,7 +97,7 @@ export function googleKeyRequest(): CredentialRequestView {
   }
 }
 
-/** A sign-in: a visible user name and a hidden password, the agent proposing 30 days. */
+/** A sign-in: a visible user name and a hidden password, kept for 30 days. */
 export function signInRequest(): CredentialRequestView {
   return {
     kind: 'credential',
@@ -109,6 +109,19 @@ export function signInRequest(): CredentialRequestView {
       { name: 'password', label: 'Password', kind: 'secret' },
     ],
     keep: '30d',
+    renewal: false,
+  }
+}
+
+/** A deploy token the user asked the agent to keep using: kept until the user removes it. */
+export function deployTokenRequest(): CredentialRequestView {
+  return {
+    kind: 'credential',
+    id: 'cr-deploy',
+    name: 'GitHub token for deploys',
+    reason: 'To deploy the site whenever you ask',
+    fields: [{ name: 'token', label: 'Personal access token', kind: 'secret' }],
+    keep: 'always',
     renewal: false,
   }
 }

@@ -1,28 +1,23 @@
 <script setup lang="ts">
 import { t } from './locales/text'
 import type { ShownError } from '../infra/errors'
-import { computed, reactive, ref, useId } from 'vue'
+import { computed, reactive, useId } from 'vue'
 import { KeyRound } from '@lucide/vue'
 import Button from '../ui/Button.vue'
 import InlineError from '../ui/InlineError.vue'
-import Segmented from '../ui/Segmented.vue'
 import TextInput from '../ui/TextInput.vue'
 import { valueProblem } from '../settings/credential-fields'
 import RequestFrame from './RequestFrame.vue'
-import {
-  KEEP_OPTIONS,
-  type CredentialAnswer,
-  type CredentialKeep,
-  type CredentialRequestView,
-  type PermissionDecision,
-} from './types'
+import type { CredentialAnswer, CredentialRequestView, PermissionDecision } from './types'
 
 /**
  * The body of a credential request's card (`credentials.md` § Requests and
  * routes): the credential's name, the agent's reason, one input per field
- * under its label, a secret one typed hidden with an eye, and *Keep until*,
- * the agent's proposal first. Save waits until every field has a value and
- * sends the values once; Decline answers the agent that the user declined.
+ * under its label, a secret one typed hidden with an eye, and how long it
+ * is kept, *Kept for 1 hour*, which the agent decided and the card only
+ * says (`credentials.md` § A credential). Save waits until every field has
+ * a value and sends the values once; Decline answers the agent that the
+ * user declined.
  * A renewal of a saved credential asks for its fields again, empty. A value
  * over the 64 KiB a field holds is said under it and keeps Save off. A
  * refusal of the values shows under the form, and the typed values stay.
@@ -43,7 +38,6 @@ const emit = defineEmits<{
 
 const title = computed(() => (props.request.renewal ? t('request.updateCredential') : t('request.saveCredential')))
 const values = reactive<Record<string, string>>(Object.fromEntries(props.request.fields.map((field) => [field.name, ''])))
-const keep = ref<CredentialKeep>(props.request.keep)
 const formId = useId()
 
 /** What is wrong with a value that is too large, said under its field; an empty one is not yet a problem. */
@@ -60,7 +54,7 @@ function save(): void {
   if (!complete.value || props.deciding) {
     return
   }
-  emit('decide', props.request.id, 'allow', { values: { ...values }, keep: keep.value })
+  emit('decide', props.request.id, 'allow', { values: { ...values } })
 }
 </script>
 
@@ -85,10 +79,7 @@ function save(): void {
           <InlineError v-if="tooLarge(field.name)" :message="tooLarge(field.name)!" />
         </div>
       </div>
-      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <span class="text-detail leading-4 text-fg-muted">{{ t('request.keepUntil') }}</span>
-        <Segmented v-model="keep" :options="KEEP_OPTIONS" size="sm" :disabled="deciding" />
-      </div>
+      <p class="text-detail leading-4 text-fg-muted">{{ t(`request.kept.${request.keep}`) }}</p>
       <InlineError v-if="error" :message="error.message" :request-id="error.requestId" />
     </form>
     <template #footer>

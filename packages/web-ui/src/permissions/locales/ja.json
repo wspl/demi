@@ -17,7 +17,12 @@
     "save": "保存",
     "updateCredential": "認証情報を更新",
     "saveCredential": "認証情報を保存",
-    "keepUntil": "保持期限",
+    "kept": {
+      "1h": "1 時間保持",
+      "1d": "1 日間保持",
+      "30d": "30 日間保持",
+      "always": "削除するまで保持"
+    },
     "needsValues": "すべての項目に 64 KiB 以内の値が必要です。",
     "allowCredentialTitle": "このチャットに認証情報「{name}」の使用を許可しますか？",
     "removed": "削除済み",
