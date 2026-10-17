@@ -10,7 +10,7 @@ use std::io::Cursor;
 use demi_host_interface::RpcInvocation;
 use demi_host_interface::text::table;
 use demi_plugin_interface::{
-    HostFile, HostRead, ImageAsk, ImageAspect, ImageInput, ImageKind, ImageRefusal, PluginError,
+    HostFile, HostRead, ImageAsk, ImageAspect, ImageEntry, ImageInput, ImageKind, ImageRefusal, PluginError,
     PluginPort, PortFailure, PortRefusal,
 };
 use demi_shared_types::Timestamp;
@@ -20,7 +20,7 @@ use jiff::tz::TimeZone;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::commands::{EditArgs, Format, GenerateArgs, ListedModel, Listing, ModelsArgs};
+use crate::commands::{EditArgs, Format, GenerateArgs, ListedEntry, ListedModel, ListedUnlisted, ListedVendor, Listing, ModelsArgs};
 
 /// The largest image an edit sends.
 const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
@@ -31,7 +31,10 @@ const MAX_DECODE_BYTES: u64 = 512 * 1024 * 1024;
 /// The largest prompt read from stdin.
 const MAX_PROMPT_BYTES: usize = 1024 * 1024;
 
-const NO_PROVIDER: &str = "no provider makes images; sign in to ChatGPT or Grok in Settings › Providers";
+const NO_PROVIDER: &str =
+    "no provider makes images; sign in to ChatGPT or Grok, or add an OpenAI, xAI or Google key, in Settings › Providers";
+
+const NO_MODEL: &str = "--model is required; demi image models lists them";
 
 /// Runs the leaf `invocation` names.
 pub(crate) async fn run(invocation: RpcInvocation, port: &PluginPort) -> Result<u8, PluginError> {
@@ -68,6 +71,9 @@ async fn ask(
     aspect: Option<String>,
     transparent: Option<bool>,
 ) -> Result<ImageAsk, PluginError> {
+    // The agent always names the model, so no image comes from a model
+    // nobody chose (`images.md` § Commands).
+    let model = model.filter(|model| !model.trim().is_empty()).ok_or_else(|| PluginError::failed(NO_MODEL))?;
     let prompt = if prompt == "-" { stdin_text(port).await? } else { prompt };
     if prompt.trim().is_empty() {
         return Err(PluginError::failed("the prompt is empty"));
@@ -289,61 +295,101 @@ fn format_name(format: Format) -> &'static str {
 }
 
 async fn models(invocation: &RpcInvocation, port: &PluginPort) -> Result<u8, PluginError> {
-    let models = match port.image_models().await {
-        Ok(models) => models,
+    let vendors = match port.image_models().await {
+        Ok(vendors) => vendors,
         Err(PortFailure::Refused(PortRefusal::Image { refusal })) => {
             return Err(PluginError::failed(words(&refusal, None, invocation)));
         }
         Err(failure) => return Err(failure.into()),
     };
-    let listed: Vec<ListedModel> = models
+    let entry = |entry: ImageEntry| ListedEntry {
+        provider: entry.provider,
+        provider_id: entry.provider_id,
+        account: entry.account,
+        confirmed: entry.confirmed,
+    };
+    let listed: Vec<ListedVendor> = vendors
         .into_iter()
-        .map(|model| ListedModel {
-            id: model.id,
-            provider: model.provider,
-            provider_id: model.provider_id,
-            released: model.released,
-            description: model.description,
-            takes: model.takes,
-            confirmed: model.confirmed,
-            default: model.default,
+        .map(|group| ListedVendor {
+            vendor: group.vendor,
+            vendor_id: group.vendor_id,
+            through: entry(group.through),
+            models: group
+                .models
+                .into_iter()
+                .map(|model| ListedModel {
+                    id: model.id,
+                    released: model.released,
+                    description: model.description,
+                    takes: model.takes,
+                    through: model.through.map(entry),
+                })
+                .collect(),
+            unlisted: group
+                .unlisted
+                .into_iter()
+                .map(|unlisted| ListedUnlisted {
+                    message: words(&unlisted.refusal, None, invocation),
+                    provider: unlisted.provider,
+                })
+                .collect(),
         })
         .collect();
     let rpc = port.rpc();
     if invocation.json {
-        let text = serde_json::to_string(&Listing { models: listed }).expect("a listing encodes as JSON");
+        let text = serde_json::to_string(&Listing { vendors: listed }).expect("a listing encodes as JSON");
         rpc.stdout(format!("{text}\n")).await?;
         return Ok(0);
     }
     if listed.is_empty() {
         return Err(PluginError::failed(NO_PROVIDER));
     }
-    let rows: Vec<[String; 5]> = listed
-        .iter()
-        .map(|model| {
-            [
-                model.id.clone(),
-                model.provider.clone(),
-                model.released.clone(),
-                if model.default { "default".to_owned() } else { String::new() },
-                format!("{}; takes {}", model.description, model.takes),
-            ]
-        })
-        .collect();
-    // An entry whose vendor cannot confirm the model that answered says so
-    // once, under its last model.
     let mut text = String::new();
-    for (index, line) in table(&rows).lines().enumerate() {
-        text.push_str(line);
-        text.push('\n');
-        let model = &listed[index];
-        let last = listed.get(index + 1).is_none_or(|next| next.provider_id != model.provider_id);
-        if last && !model.confirmed {
-            text.push_str(&format!("  {} does not confirm which of these models answers a call\n", model.provider));
+    for group in &listed {
+        text.push_str(&format!("{}, through {}\n", group.vendor, entry_name(&group.through)));
+        let rows: Vec<[String; 3]> = group
+            .models
+            .iter()
+            .map(|model| {
+                let mut said: Vec<String> = Vec::new();
+                if !model.description.is_empty() {
+                    said.push(model.description.clone());
+                }
+                if let Some(takes) = &model.takes {
+                    said.push(format!("takes {takes}"));
+                }
+                if let Some(through) = &model.through {
+                    said.push(format!("through {}", entry_name(through)));
+                }
+                [format!("  {}", model.id), model.released.clone().unwrap_or_default(), said.join("; ")]
+            })
+            .collect();
+        text.push_str(&table(&rows));
+        // An entry whose vendor cannot confirm the model that answered says
+        // so once, under its group.
+        let mut unconfirmed: Vec<&str> = Vec::new();
+        let entries = std::iter::once(&group.through).chain(group.models.iter().filter_map(|model| model.through.as_ref()));
+        for listed in entries {
+            if !listed.confirmed && !unconfirmed.contains(&listed.provider.as_str()) {
+                unconfirmed.push(&listed.provider);
+                text.push_str(&format!("  {} does not confirm which of these models answers a call\n", listed.provider));
+            }
+        }
+        for unlisted in &group.unlisted {
+            text.push_str(&format!("  {}'s models could not be listed: {}\n", unlisted.provider, unlisted.message));
         }
     }
     rpc.stdout(text).await?;
     Ok(0)
+}
+
+/// An entry as a listing names it: `ChatGPT (alex@example.com)`, or its
+/// name alone.
+fn entry_name(entry: &ListedEntry) -> String {
+    match &entry.account {
+        Some(account) => format!("{} ({account})", entry.provider),
+        None => entry.provider.clone(),
+    }
 }
 
 /// The words of a refusal (`images.md` § Accounts and failures); a refused
@@ -365,6 +411,12 @@ fn words(refusal: &ImageRefusal, aspect: Option<ImageAspect>, invocation: &RpcIn
             format!("{vendor}'s usage limit is reached, resetting at {}", clock_time(*moment, &zone))
         }
         ImageRefusal::UsedUp { vendor, resets_at: None } => format!("{vendor}'s usage limit is reached"),
+        ImageRefusal::KeyRefused { vendor, manages: true } => {
+            format!("{vendor} refused the API key; check it in Settings › Providers")
+        }
+        ImageRefusal::KeyRefused { vendor, manages: false } => {
+            format!("{vendor} refused the API key; ask your administrator to check it")
+        }
         ImageRefusal::Refused { vendor, message } => format!("{vendor} refused the request: {message}"),
         ImageRefusal::Shape { vendor, takes } => {
             let asked = aspect.map_or_else(|| "shape asked for".to_owned(), |aspect| format!("{}:{}", aspect.width, aspect.height));

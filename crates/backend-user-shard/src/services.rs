@@ -333,6 +333,19 @@ impl Storage {
 }
 
 impl Services {
+    /// The entry Automatic takes now for each vendor an entry of `user`
+    /// makes images for, or none when none can (`images.md` § Which entry
+    /// makes an image).
+    pub async fn automatic_image_entries(
+        &self,
+        user: &demi_web_api_protocol::ids::UserId,
+    ) -> Result<
+        std::collections::BTreeMap<demi_shared_types::ImageVendor, Option<demi_web_api_protocol::ids::ProviderId>>,
+        demi_backend_providers::llm::assembly::AssemblyError,
+    > {
+        crate::shard::images::automatic_entries(self, user).await
+    }
+
     /// Starts the services on the edge's runtime, which the ones that spawn
     /// work of their own run it on.
     pub async fn start(
@@ -383,7 +396,7 @@ impl Services {
         let assembly = Arc::new(ProviderAssembly::new(
             vault.clone(),
             providers.families,
-            AccountQuotas::new(vault.clone(), edge.clone()),
+            AccountQuotas::new(vault.clone(), edge.clone(), providers.clock.clone()),
             ModelCatalogCache::new(control.clone(), providers.clock.clone(), edge),
             VendorCatalog::new(models_dev),
             http,

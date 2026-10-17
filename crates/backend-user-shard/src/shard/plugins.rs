@@ -19,7 +19,7 @@ use demi_backend_remote_host::ServiceCallError;
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{HostErrorKind, JobCaller, PortError};
 use demi_plugin_interface::{
-    CallKind, HostFile, HostRead, ImageAsk, ImageModel, MadeImage, PortFailure, PortRefusal,
+    CallKind, HostFile, HostRead, ImageAsk, ImageVendorModels, MadeImage, PortFailure, PortRefusal,
 };
 use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
 use demi_web_api_protocol::error::ErrorCode;
@@ -121,7 +121,7 @@ impl ProductPort for ShardPort {
         })
     }
 
-    fn image_models(&self) -> LocalBoxFuture<'_, Result<Vec<ImageModel>, PortFailure>> {
+    fn image_models(&self) -> LocalBoxFuture<'_, Result<Vec<ImageVendorModels>, PortFailure>> {
         Box::pin(async move { super::images::image_models(&*self.shard()?).await })
     }
 

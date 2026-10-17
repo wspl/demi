@@ -17,12 +17,13 @@ use serde::Serialize;
 
 use demi_provider_common::VendorPolicy;
 
-use crate::SIGNATURE_TAG;
 
 /// The JSON body of a Responses request.
-pub(crate) fn responses(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
+/// `signature_tag` names the entry's vendor, whose reasoning alone is
+/// replayed.
+pub(crate) fn responses(request: &InferenceRequest, policy: VendorPolicy, signature_tag: &str) -> Vec<u8> {
     let dialect = ResponsesDialect {
-        signature_tag: SIGNATURE_TAG,
+        signature_tag,
         assistant: if policy.replay_assistant_status {
             AssistantReplay::Completed
         } else {

@@ -23,7 +23,7 @@ beforeEach(() => {
   setActivePinia(pinia)
   saved = { appearance: {}, shortcuts: {} }
   patches = []
-  catalog = { providers: [], smallModel: null }
+  catalog = { providers: [], smallModel: null, imageEntries: {} }
   Object.defineProperty(navigator, 'languages', {
     configurable: true,
     get: () => ['zh-cn', 'en', 'zh-CN'],
@@ -138,7 +138,7 @@ test("a model or an entry the user turns off is saved in the user's preferences,
     providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
     warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
     availability: { type: 'available' }, models: [catalogModel('a'), catalogModel('b')],
-  }], smallModel: null }
+  }], smallModel: null, imageEntries: {} }
   useProduct().start()
   channels.last().connect(productState({ preferences: saved, providers: [stub] }))
   const preferences = usePreferences()
@@ -241,7 +241,7 @@ test('Settings › Agent names Automatic’s model from the catalog, read again 
     thinking: null,
     serviceTierId: null,
   }
-  catalog = { providers: [], smallModel: haiku }
+  catalog = { providers: [], smallModel: haiku, imageEntries: {} }
   const fetchAsBefore = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -280,8 +280,25 @@ test('Settings › Agent names Automatic’s model from the catalog, read again 
   // kept on the conversation's provider, from another page, read the
   // catalog again, which then names no model.
   channels.last().send({ type: 'preferences', preferences: { ...saved, sendWhileRunning: 'queue' } })
-  catalog = { providers: [], smallModel: null }
+  catalog = { providers: [], smallModel: null, imageEntries: {} }
   channels.last().send({ type: 'preferences', preferences: { ...saved, smallModelSameProvider: true } })
   await waitFor(() => product.automaticSmallModel === null)
   expect(modelReads).toBe(2)
+})
+
+// Planted defects: the catalog's image entries left unread, so each row
+// shows Automatic alone; a choice not saved as `imageEntries`.
+test('Settings › Agent reads the entry each vendor’s Automatic takes from the catalog and saves a choice as imageEntries', async () => {
+  catalog = { providers: [], smallModel: null, imageEntries: { openai: 'p1', xai: null } }
+  const product = useProduct()
+  product.start()
+  channels.last().connect(productState({ preferences: saved }))
+  const preferences = usePreferences()
+  await waitFor(() => product.automaticImageEntries.openai === 'p1')
+  expect(product.automaticImageEntries).toEqual({ openai: 'p1', xai: null })
+
+  preferences.update({ imageEntries: { openai: 'p2' } })
+  expect(preferences.imageEntries).toEqual({ openai: 'p2' })
+  await waitFor(() => patches.length === 1)
+  expect(patches).toEqual([{ imageEntries: { openai: 'p2' } }])
 })

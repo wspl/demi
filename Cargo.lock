@@ -3028,6 +3028,7 @@ version = "0.1.25"
 dependencies = [
  "async-stream",
  "base64 0.22.1",
+ "bytes",
  "demi-provider-common",
  "demi-shared-types",
  "futures-util",
@@ -3060,6 +3061,7 @@ name = "demi-provider-openai-api"
 version = "0.1.25"
 dependencies = [
  "async-stream",
+ "bytes",
  "demi-provider-common",
  "demi-shared-types",
  "futures-util",

@@ -3,8 +3,10 @@
 //! native `generateContent` API rather than its OpenAI-compatible one, so a
 //! video is a real inline part and thought summaries, thought signatures and
 //! thinking token counts arrive as fields of their own. It reads its
-//! failure records by the standard reading.
+//! failure records by the standard reading. The key of a Gemini API vendor
+//! entry also makes images.
 
+mod images;
 mod request;
 mod stream;
 
@@ -13,6 +15,7 @@ use std::sync::Arc;
 use demi_provider_common::{
     Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, read_http_failure,
+    images::ImageMaker,
 };
 use demi_shared_types::{
     AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts,
@@ -38,6 +41,9 @@ pub struct GoogleConfig {
     /// `https://generativelanguage.googleapis.com/v1beta`; `None` for that
     /// default.
     pub base_url: Option<Url>,
+    /// Whether the key makes images: an entry of the Gemini API vendor,
+    /// not another vendor that speaks its protocol.
+    pub makes_images: bool,
 }
 
 impl GoogleConfig {
@@ -48,6 +54,8 @@ impl GoogleConfig {
 /// A `google` entry, shared by every user and request of the entry.
 pub struct GoogleProvider {
     shared: Arc<Shared>,
+    /// The key's image role, for a Gemini API entry with its key.
+    images: Option<images::KeyImages>,
 }
 
 /// What the provider and all its runtimes share.
@@ -77,12 +85,18 @@ impl GoogleProvider {
         let base_url = config.base_url.unwrap_or_else(|| {
             Url::parse(GoogleConfig::DEFAULT_BASE_URL).expect("the default base URL parses")
         });
+        let images = config
+            .api_key
+            .clone()
+            .filter(|_| config.makes_images)
+            .map(|key| images::KeyImages::new(key, base_url.clone(), clock.clone()));
         Self {
             shared: Arc::new(Shared {
                 api_key: config.api_key.as_ref().map(Secret::header_value),
                 base_url,
                 clock,
             }),
+            images,
         }
     }
 }
@@ -108,6 +122,10 @@ impl Provider for GoogleProvider {
         }
     }
 
+
+    fn images(&self) -> Option<&dyn ImageMaker> {
+        self.images.as_ref().map(|images| images as &dyn ImageMaker)
+    }
 
     fn read_failure(
         &self,

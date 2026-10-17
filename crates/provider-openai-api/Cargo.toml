@@ -22,6 +22,7 @@ testing = []
 demi-shared-types = { path = "../shared-types" }
 demi-provider-common = { path = "../provider-common" }
 async-stream = "0.3"
+bytes.workspace = true
 futures-util.workspace = true
 reqwest = { workspace = true, features = ["rustls", "stream"] }
 serde.workspace = true

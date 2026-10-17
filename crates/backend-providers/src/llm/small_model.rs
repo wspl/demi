@@ -8,6 +8,8 @@
 
 use std::cmp::Reverse;
 
+use demi_provider_common::model_words;
+
 use demi_shared_types::{Model, ModelSelection, ProviderModel, THINKING_OFF, ThinkingCapability, ThinkingConfig};
 use demi_web_api_protocol::providers::{Availability, CatalogProvider};
 use demi_web_api_protocol::settings::Preferences;
@@ -186,19 +188,10 @@ fn effort_rank(effort: &str) -> usize {
         .unwrap_or(EFFORT_ORDER.len())
 }
 
-/// The lowercase words of `text`, split at `-`, `_`, `.`, `/` and spaces.
-fn words(text: &str) -> Vec<String> {
-    text.to_lowercase()
-        .split(['-', '_', '.', '/', ' '])
-        .filter(|word| !word.is_empty())
-        .map(str::to_owned)
-        .collect()
-}
-
 /// Whether the ID or the name of `model` holds every word of `tier`.
 fn matches_tier(model: &ProviderModel, tier: &[&str]) -> bool {
     [&model.id, &model.display_name].into_iter().any(|text| {
-        let words = words(text);
+        let words = model_words(text);
         tier.iter().all(|wanted| words.iter().any(|word| word == wanted))
     })
 }
@@ -206,7 +199,7 @@ fn matches_tier(model: &ProviderModel, tier: &[&str]) -> bool {
 fn unreleased(model: &ProviderModel) -> bool {
     [&model.id, &model.display_name]
         .into_iter()
-        .flat_map(|text| words(text))
+        .flat_map(|text| model_words(text))
         .any(|word| UNRELEASED.contains(&word.as_str()))
 }
 

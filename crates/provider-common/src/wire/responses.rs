@@ -7,7 +7,10 @@
 //! every other field, because it is sent back to the vendor with the
 //! transcript.
 
-use std::{collections::HashMap, sync::LazyLock};
+use std::{
+    collections::HashMap,
+    sync::{Arc, LazyLock},
+};
 
 use bytes::Bytes;
 use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, TokenUsage};
@@ -378,7 +381,7 @@ where
 pub fn map_events<'a, S>(
     events: S,
     vendor: Vendor,
-    signature_tag: &'static str,
+    signature_tag: Arc<str>,
     cancel: CancellationToken,
 ) -> impl Stream<Item = ProviderEvent> + 'a
 where
@@ -423,7 +426,7 @@ where
 /// no delta carried it.
 struct Mapper {
     vendor: Vendor,
-    signature_tag: &'static str,
+    signature_tag: Arc<str>,
     /// The function call in flight, for argument deltas without an item id.
     current_call: Option<String>,
     /// Streamed arguments, by item id.
@@ -440,7 +443,7 @@ struct Mapper {
 }
 
 impl Mapper {
-    fn new(vendor: Vendor, signature_tag: &'static str) -> Self {
+    fn new(vendor: Vendor, signature_tag: Arc<str>) -> Self {
         Self {
             vendor,
             signature_tag,
@@ -602,7 +605,7 @@ impl Mapper {
                 let json = serde_json::to_string(&item).expect("a reasoning item serializes");
                 out.push(ProviderEvent::ThinkingSignature(format!(
                     "{}{json}",
-                    self.signature_tag
+                    &*self.signature_tag
                 )));
                 self.reasoning_streamed = false;
             }

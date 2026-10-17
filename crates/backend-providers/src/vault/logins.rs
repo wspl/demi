@@ -1169,7 +1169,7 @@ mod tests {
         let assembly = Arc::new(ProviderAssembly::new(
             vault.clone(),
             families,
-            AccountQuotas::new(vault.clone(), edge.clone()),
+            AccountQuotas::new(vault.clone(), edge.clone(), clock.clone()),
             ModelCatalogCache::new(control.clone(), clock.clone(), edge),
             VendorCatalog::new(models_dev),
             reqwest::Client::new(),

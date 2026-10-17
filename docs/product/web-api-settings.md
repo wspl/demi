@@ -168,7 +168,7 @@ into its own network.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastWorkflow?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, multiAccountWarned?, hiddenProviders?, hiddenModels?, smallModel?, smallModelSameProvider? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastWorkflow?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, multiAccountWarned?, hiddenProviders?, hiddenModels?, smallModel?, smallModelSameProvider?, imageEntries? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
@@ -187,7 +187,7 @@ past the dialog about using several subscription accounts
 then never shows again. Settings › Agent shows `sendWhileRunning`, `resumeAfterRestart` as *Resume after Demi
 restarts* and `resumeAtRetry` as *Resume after a usage
 limit resets*, and so does the error record of such a failure, as *Resume at
-09:00* ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)). `smallModel` is the model settings Settings › Agent chose for small jobs, `{ providerId, modelId, thinkingEffort }`, absent for Automatic, and `smallModelSameProvider` whether small requests stay on the conversation's provider, absent means `false` ([Small model](../providers/models.md#small-model)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
+09:00* ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)). `smallModel` is the model settings Settings › Agent chose for small jobs, `{ providerId, modelId, thinkingEffort }`, absent for Automatic, and `smallModelSameProvider` whether small requests stay on the conversation's provider, absent means `false` ([Small model](../providers/models.md#small-model)). `imageEntries` maps a vendor, `openai`, `google` or `xai`, to the provider entry id Settings › Agent chose to make its images, a vendor absent for Automatic ([Which entry makes an image](../agent/images.md#which-entry-makes-an-image)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
 `{ providerId, modelId }` pairs, are the switches of Settings › Providers that
 take an entry or a model out of the model menu without deleting it; a patch
 replaces the list it names. They are the user's, not a browser's: every
@@ -420,7 +420,12 @@ successful inference test. Beside the providers, `smallModel` is the selection A
 to for the [small model](../providers/models.md#small-model), as for a
 conversation on the first entry with the user's hidden entries and models
 left out, or null when Only the Conversation's Provider is on or no tier
-matches; Settings › Agent shows it beside *Automatic*.
+matches; Settings › Agent shows it beside *Automatic*. `imageEntries` maps
+each vendor an entry of the user makes images for to the entry id
+Automatic takes for it now, by the backend's one order
+([Which entry makes an image](../agent/images.md#which-entry-makes-an-image)),
+or null when none can; Settings › Agent shows it beside each row's
+*Automatic*.
 
 `GET /api/models/search?q=<query>&entry=<id>` answers `{ results }`, the
 models.dev models the query matches, filled from `entry`'s vendor where it
@@ -496,7 +501,7 @@ once, in the order In Order uses and the list shows. `PATCH
 with fewer than two accounts keeps `manual` (400 `rotation_needs_accounts`). It also takes `imageGeneration`,
 a boolean, the entry's Image Generation switch, for an entry whose provider
 makes images (400 otherwise); each entry carries `imageGeneration` and its
-provider's details `makesImages`
+provider's details `imageVendor`, `openai`, `google` or `xai`, the vendor its images are of, null for an entry whose provider makes none
 ([Provider management](../providers/providers.md#provider-management)).
 `DELETE …/accounts/:credentialId` removes any account, the active one
 included, and answers `{ active }`, the account now active or null when the

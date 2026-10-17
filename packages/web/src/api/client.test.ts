@@ -49,7 +49,7 @@ beforeEach(() => {
     const request = `${init?.method ?? 'GET'} ${String(input)}`
     if (request.startsWith('GET /api/models')) {
       // The catalog each snapshot loads, which these tests do not follow.
-      return Response.json({ providers: [], smallModel: null })
+      return Response.json({ providers: [], smallModel: null, imageEntries: {} })
     }
     if (away) {
       refused.push(request)

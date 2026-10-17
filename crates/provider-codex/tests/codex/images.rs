@@ -7,7 +7,7 @@ use bytes::Bytes;
 use demi_provider_codex::TransportMode;
 use demi_provider_common::{
     Provider,
-    images::{Aspect, ImageFailure, ImageRequest, InputImage},
+    images::{Aspect, ImageFailure, ImageRequest, ImageVendor, InputImage},
     testing::{MockResponse, MockVendor},
 };
 use demi_shared_types::{B64Bytes, TokenUsage};
@@ -56,7 +56,8 @@ async fn a_generation_sends_the_asked_options_with_the_accounts_headers_and_read
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
     let provider = provider(&vendor, &pool, TransportMode::Sse);
     let maker = provider.images().expect("Codex makes images");
-    assert_eq!((maker.vendor(), maker.default_model(), maker.models().len(), maker.confirms_model()), ("ChatGPT", "gpt-image-2", 11, false));
+    let models = maker.models(&reqwest::Client::new()).await.unwrap();
+    assert_eq!((maker.name(), maker.vendor(), models.len(), maker.confirms_model()), ("ChatGPT", ImageVendor::OpenAi, 11, false));
 
     let asked = ImageRequest {
         aspect: Some(Aspect { width: 16, height: 9 }),

@@ -130,8 +130,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     catalog model into a selection (`ProviderModel::selection`, with the
     attachment types it derives, `ATTACHMENT_FILE_EXTENSIONS`); the wire
     format an `openai` entry speaks (`WireApi`), which its configuration names
-    and its provider sends; its authentication and runtime states
-    (`AuthState`, `RuntimeState`); its subscription accounts as the web app
+    and its provider sends; the vendor whose images it makes (`ImageVendor`),
+    which its details and the preference `imageEntries` name; its
+    authentication and runtime states (`AuthState`, `RuntimeState`); its subscription accounts as the web app
     sees them (`AccountInfo`, `LoginPending`); and an account's quota snapshot
     (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);
   - the identities blocks and frames name (`BlockId`, `TurnId`, `NodeId`,
@@ -499,9 +500,14 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     account could not be used (`AuthFailure`); quota (`ProviderQuota`), token
     accounting, and the models.dev client (`provider_common::models_dev`: the one
     copy of the document a backend keeps, `ModelsDevClient`, and its vendors
-    and models as catalog models); the image role (`provider_common::images`:
-    `ImageMaker`, one image for one account, the request and answer every
-    vendor's image endpoint shares, and how a refused call reads); the
+    and models as catalog models); the words of a model's ID or name, which
+    the small model's tiers and a key's image models match whole
+    (`model_words`); the image role (`provider_common::images`: `ImageMaker`,
+    one image for one account or key and its vendor's models, the request
+    and the OpenAI-shaped answer the vendors' image endpoints share, how a
+    refused call or a refused key reads, and what each vendor publishes of
+    its image models, one table per vendor that its subscription and its
+    key both read); the
     catalog, state, account and quota
     shapes they return are `shared-types`'s, because the web app receives them.
 - **Public boundary:** the items above; `provider_common::testing` supplies scripted
@@ -524,8 +530,8 @@ Each crate implements the provider contract for one vendor family.
 | Crate | Owns |
 |---|---|
 | `provider-anthropic-api` | The Anthropic Messages API: request and stream mapping, model metadata and failure reading |
-| `provider-openai-api` | The OpenAI Responses API, and the Chat Completions wire for OpenAI-compatible endpoints with their reasoning deltas and the opt-in replay of thinking as `reasoning_content`; model metadata |
-| `provider-google` | The Gemini `generateContent` API, the native wire rather than the OpenAI-compatible one: request and stream mapping, including thought summaries, thought signatures and tool-returned media as inline parts; model metadata |
+| `provider-openai-api` | The OpenAI Responses API, and the Chat Completions wire for OpenAI-compatible endpoints with their reasoning deltas and the opt-in replay of thinking as `reasoning_content`; model metadata; and an OpenAI or xAI key's image models, read from the vendor, with the image endpoints' requests and their failures |
+| `provider-google` | The Gemini `generateContent` API, the native wire rather than the OpenAI-compatible one: request and stream mapping, including thought summaries, thought signatures and tool-returned media as inline parts; model metadata; and a Gemini API key's image models, read from Google, with the image requests and their failures |
 | `provider-codex` | The Codex Responses transport over server-sent events and WebSocket, device login, token refresh, reading its failure records (usage-limit reset fields), the quota from its usage probe and the `x-codex-*` headers, the model catalog, and its image models with the image endpoints' requests |
 | `provider-grok-build` | RFC 8628 device login against `auth.x.ai`, OIDC token refresh, the Chat Completions transport to the Grok Build proxy, the model catalog from `/v1/models`, the quota from the billing and subscription probe and the rate-limit headers, and its image models with the image endpoints' requests |
 
