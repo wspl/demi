@@ -407,7 +407,9 @@ conversation; the panel button covers the screen with the work panel, and
   icon, a row, a tab, a switch and their text take the phone metrics
   web-ui owns, one set every component reads, as iOS's own apps draw theirs
   (the gallery's Phone section lists them). A target is the control as it
-  is drawn, so neighbors never share one.
+  is drawn, so neighbors never share one. A notice's sentence wraps, never
+  cut short, and its button moves under it when both do not fit one line;
+  a code box's Copy has no border of its own, as a code block's has none.
 - **One bar.** The sidebar button; the conversation's title, centered, one
   line, with a chevron, and a status dot before it while the Host is not
   online; the panel button. A tap on the title opens a sheet with the
