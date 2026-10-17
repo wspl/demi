@@ -25,6 +25,7 @@ import TitleInput from '../ui/TitleInput.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
 import { ICON_PX } from '../ui/icon-metrics'
+import { hostGlyph } from '../devices/device-glyphs'
 import { t } from './locales/text'
 import {
   WEEKDAYS,
@@ -587,13 +588,21 @@ function runText(run: AutomationRun): string {
 
     <SettingsGroup :title="t('target.title')">
       <SettingsRow :label="t('target.host')">
-        <Dropdown :overlay-store="overlayStore" variant="field" size="sm" width="shrink" :trigger-label="t('target.host')">
-          <template #trigger>{{ host?.name ?? '' }}</template>
+        <Dropdown
+          :overlay-store="overlayStore"
+          variant="field"
+          size="sm"
+          width="shrink"
+          :trigger-label="t('target.host')"
+          :icon="host ? hostGlyph(host) : undefined"
+        >
+          <template #trigger><span class="min-w-0 truncate">{{ host?.name ?? '' }}</span></template>
           <template #content="{ close }">
             <Menu>
               <MenuItem
                 v-for="each in hosts"
                 :key="each.id"
+                :icon="hostGlyph(each)"
                 :label="each.name"
                 :value="each.state === 'online' ? undefined : t('target.offline')"
                 choice

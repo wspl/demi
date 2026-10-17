@@ -22,7 +22,7 @@ import {
   type AutomationTarget as TargetDto,
   type ConversationTarget,
 } from '../api/generated/web-api'
-import { cloudDeviceIn, hostKindOf, hostLabel } from '../state/hosts'
+import { cloudDeviceIn, deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
 import { useProduct } from '../state/product'
 
 /** The Host a target names before the first use made the Cloud a device. */
@@ -113,6 +113,7 @@ export const useAutomations = defineStore('automations', () => {
       name: hostLabel(hostKindOf(device), device),
       kind: hostKindOf(device),
       state: device.state,
+      mark: deviceMarkOf(device, devices.value),
       projects: workspaces.value
         .filter((workspace) => workspace.deviceId === device.id)
         .map((workspace) => ({ id: workspace.id, name: workspace.name })),
@@ -121,7 +122,7 @@ export const useAutomations = defineStore('automations', () => {
     const others = listed.filter((host) => host.kind !== 'cloud')
     return cloud.length > 0
       ? [...cloud, ...others]
-      : [{ id: CLOUD, name: hostLabel('cloud', null), kind: 'cloud', state: 'online', projects: [] }, ...others]
+      : [{ id: CLOUD, name: hostLabel('cloud', null), kind: 'cloud', state: 'online', mark: null, projects: [] }, ...others]
   })
 
   /** The conversations an automation can wake: the sidebar's, with their Hosts. */
