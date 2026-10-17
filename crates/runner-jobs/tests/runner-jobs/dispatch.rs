@@ -45,11 +45,19 @@ impl Fixture {
 
     /// A fixture whose pipes go to the backend at `url`.
     async fn with_backend(url: &str) -> Self {
+        Self::with_command(
+            url,
+            json!({
+                "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
+                "input": {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, "stdinField": "body"
+            }),
+        )
+        .await
+    }
+
+    /// A fixture whose one command is `tree`, with its pipes at `url`.
+    async fn with_command(url: &str, tree: Value) -> Self {
         let directory = tempfile::tempdir().unwrap();
-        let tree = json!({
-            "name": "fixture", "summary": "Test callback.", "kind": "rpc", "runningHint": "Working",
-            "input": {"type": "object", "properties": {"body": {"type": "string"}}, "required": ["body"]}, "stdinField": "body"
-        });
         let manifest = demi_runner_protocol::manifest::Manifest::build(
             [serde_json::from_value(tree).unwrap()],
             [],
@@ -72,6 +80,11 @@ impl Fixture {
         self.dispatch.context("job", command_context()).await
     }
     fn request(&self, id: String, argv: Vec<String>) -> LocalInvocation {
+        self.request_with_input(id, argv, true)
+    }
+    /// A request whose process has a terminal for its input when `live`,
+    /// and a finite stdin otherwise.
+    fn request_with_input(&self, id: String, argv: Vec<String>, live: bool) -> LocalInvocation {
         LocalInvocation {
             operation: "raw".into(),
             invocation_id: "invocation".into(),
@@ -79,7 +92,7 @@ impl Fixture {
                 context: id,
                 root: "fixture".into(),
                 argv,
-                live: true,
+                live,
             })
             .unwrap(),
             cwd: self.directory.path().to_string_lossy().into_owned(),
@@ -307,6 +320,148 @@ async fn a_relayed_stdout_that_breaks_ends_the_call_with_its_cause() {
             .await;
         let (code, stdout, stderr) = running.await.unwrap();
         assert_eq!((code, stdout.as_slice(), stderr.as_str()), (1, &b""[..], cause));
+        fixture.close().await;
+    })
+    .await
+    .unwrap();
+}
+
+/// A backend whose pipe `out` answers a `GET` with `stdout` in data frames
+/// and its end, and whose pipe `in` refuses a `PUT`, as the backend answers
+/// the upload of a call's input once the call ended. `serving` hears once
+/// the `GET` arrived.
+async fn slow_call_pipes(stdout: Vec<u8>, serving: tokio::sync::oneshot::Sender<()>) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let mut frames = bytes::BytesMut::new();
+    demi_runner_protocol::wire::encode_data(&stdout, &mut frames);
+    frames.extend_from_slice(&demi_runner_protocol::wire::end_frame(&Ok(())));
+    let frames = frames.freeze();
+    tokio::spawn(async move {
+        let mut serving = Some(serving);
+        for _ in 0..2 {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut head = Vec::new();
+            while !head.ends_with(b"\r\n\r\n") {
+                let mut byte = [0];
+                socket.read_exact(&mut byte).await.unwrap();
+                head.push(byte[0]);
+            }
+            if head.starts_with(b"GET /api/pipes/out ") {
+                let frames = frames.clone();
+                let serving = serving.take().unwrap();
+                tokio::spawn(async move {
+                    let answer = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/octet-stream\r\n\
+                         content-length: {}\r\n\r\n",
+                        frames.len()
+                    );
+                    socket.write_all(answer.as_bytes()).await.unwrap();
+                    serving.send(()).unwrap();
+                    // A call that ends before it read the body closes the
+                    // connection; the test's assertions say what arrived.
+                    let _ = socket.write_all(&frames).await;
+                });
+            } else {
+                assert!(head.starts_with(b"PUT /api/pipes/in "));
+                let refusal = "pipe failed: rpc call ended";
+                let answer = format!(
+                    "HTTP/1.1 409 Conflict\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{refusal}",
+                    refusal.len()
+                );
+                socket.write_all(answer.as_bytes()).await.unwrap();
+            }
+        }
+    });
+    format!("http://{address}/")
+}
+
+/// A call's stdout reaches a process that reads it slowly whole, and the
+/// call exits with the backend's code, after its unused input's upload was
+/// refused as the backend refuses it once the call ended (`commands.md`
+/// § Handle an rpc call). Before, the refused upload gave the rest of the
+/// call 15 seconds: `demi image generate … > fox.png` to a slow disk was
+/// cut at a multiple of 64 KiB with `rpc call ended`. The clock is paused
+/// while the process reads nothing, so those seconds pass at once. Costs
+/// about a second: 8 MiB through the local pipes.
+#[tokio::test]
+async fn a_calls_stdout_reaches_a_slow_process_whole_once_its_input_ended() {
+    use tokio::io::AsyncReadExt;
+    tokio::time::timeout(Duration::from_secs(60), async {
+        let image: Vec<u8> = (0..8 << 20).map(|index: u32| (index % 251) as u8).collect();
+        let (serving, served) = tokio::sync::oneshot::channel();
+        let backend = slow_call_pipes(image.clone(), serving).await;
+        let mut fixture = Fixture::with_command(
+            &backend,
+            json!({"name": "fixture", "summary": "Test callback.", "kind": "rpc"}),
+        )
+        .await;
+        let (context, _lease) = fixture.context().await;
+        let request = fixture.request_with_input(context.id.clone(), vec![], false);
+        let endpoint = fixture.dispatch.server.endpoint().to_owned();
+        let (mut process, stdout) = tokio::io::duplex(64 * 1024);
+        let running = tokio::spawn(async move {
+            let mut stderr = Vec::new();
+            let result = forward(
+                &endpoint,
+                &request,
+                Stdio {
+                    stdin: tokio::io::empty(),
+                    stdout,
+                    stderr: &mut stderr,
+                },
+                CancellationToken::new(),
+            )
+            .await
+            .unwrap();
+            (result.exit_code, String::from_utf8(stderr).unwrap())
+        });
+        let call = fixture.message().await;
+        assert_eq!(call["type"], "rpc_call");
+        assert_eq!(call["stdin"], true);
+        let call_id = call["callId"].as_str().unwrap().to_owned();
+        assert_eq!(fixture.message().await["type"], "rpc_stdin_end");
+        fixture
+            .dispatch
+            .deliver(Inbound::RpcPipes {
+                call_id: call_id.clone(),
+                stdin: Some(demi_runner_protocol::wire::PipeRef {
+                    id: "in".into(),
+                    url: "/api/pipes/in".into(),
+                }),
+                stdout: demi_runner_protocol::wire::PipeRef {
+                    id: "out".into(),
+                    url: "/api/pipes/out".into(),
+                },
+            })
+            .await;
+        let refused = fixture.message().await;
+        assert_eq!(
+            (&refused["type"], &refused["pipeId"], &refused["ok"]),
+            (&json!("pipe_done"), &json!("in"), &json!(false))
+        );
+        fixture
+            .dispatch
+            .deliver(Inbound::RpcExit {
+                call_id,
+                exit_code: 0,
+            })
+            .await;
+        served.await.unwrap();
+        tokio::time::pause();
+        tokio::time::advance(Duration::from_secs(20)).await;
+        tokio::time::resume();
+        let mut written = Vec::new();
+        process.read_to_end(&mut written).await.unwrap();
+        let (code, stderr) = running.await.unwrap();
+        assert_eq!((code, stderr.as_str()), (0, ""));
+        assert!(written == image, "{} of {} bytes arrived", written.len(), image.len());
+        let done = fixture.message().await;
+        assert_eq!(
+            (&done["type"], &done["pipeId"], &done["ok"]),
+            (&json!("pipe_done"), &json!("out"), &json!(true))
+        );
         fixture.close().await;
     })
     .await

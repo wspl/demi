@@ -14,12 +14,7 @@ use demi_command_sdk::{Input, ServiceError};
 use demi_runner_process::pipes::PipeClient;
 use demi_runner_protocol::wire::{self, PipeRef};
 use futures_util::StreamExt;
-use std::{
-    collections::BTreeMap,
-    io,
-    sync::Arc,
-    time::Duration,
-};
+use std::{collections::BTreeMap, io, sync::Arc};
 use tokio::sync::{mpsc, oneshot};
 use tokio_util::sync::CancellationToken;
 
@@ -291,19 +286,17 @@ async fn exchange(
         let (code, ()) = tokio::try_join!(control, download)?;
         Ok(code)
     };
+    // The call's exit and its whole stdout own its lifetime: its input
+    // ending, read or unread, ends nothing else, however long the stdout
+    // takes to reach a slow process (`commands.md` § Handle an rpc call).
+    // Only an input that cannot be read or sent ends the call early.
     tokio::pin!(complete);
     tokio::select! {
+        biased;
         result = &mut complete => result,
         result = input => {
-            match result {
-                Ok(()) => complete.await,
-                Err(error) => {
-                    // A callback may finish successfully without consuming its
-                    // finite pipe; the broker then closes that unused upload.
-                    // Give its ordered exit a bounded opportunity to arrive.
-                    tokio::time::timeout(Duration::from_secs(15), complete).await.unwrap_or(Err(error))
-                }
-            }
+            result?;
+            complete.await
         }
     }
 }
@@ -391,8 +384,11 @@ async fn send_input(
             }
         });
         let result = pipes.put(&reference.url, body, stop).await;
+        // A failed upload ends nothing here: the backend hears of it from
+        // the report, which fails a pipe still open and with it the call,
+        // whose exit carries the cause; a pipe already over, as the input of
+        // a call that ended is, stays as it ended.
         report(connection, &reference, &result, stop).await?;
-        result.map_err(ServiceError::failed)?;
     }
     Ok(())
 }
