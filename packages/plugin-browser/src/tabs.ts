@@ -87,7 +87,6 @@ export function browserTabsApi(plugin: ConversationPlugin, select: (panelTab: st
     history: (tab, action) => move('history', { tab, action } satisfies TabHistory),
     stop: (tab) => move('stop', { tab } satisfies StopTab),
     stream: plugin.stream('browser'),
-    installed: () => plugin.installed.value,
     hostStarting: () => plugin.hostStarting.value,
   }
 }

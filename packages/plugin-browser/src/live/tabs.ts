@@ -12,15 +12,18 @@ import { clientPlatform } from '@demicodes/utils'
 import { useDocumentVisibility, useDebounceFn } from '@vueuse/core'
 import { computed, shallowReactive, shallowRef, watch, type ComputedRef, type Ref, type ShallowRef } from 'vue'
 import { z } from 'zod'
-import { panelReasonSchema, type BrowserTab, type LiveDownload, type LiveTab, type NeededBrowser, type PanelReason } from '../generated/plugin'
+import { panelReasonSchema, type BrowserTabs, type LiveDownload, type LiveTab, type PanelReason } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
 import { picturesSupported } from '@demicodes/plugin-sdk'
-import type { HostArtifact, OpenUserStream, PageContext, SentenceText } from '@demicodes/plugin-sdk'
+import type { OpenUserStream, PageContext, SentenceText } from '@demicodes/plugin-sdk'
 import { LiveSession, type PanelReport } from './session'
 import { t } from '../locales/text'
 
-/** What a new tab shows before the user goes anywhere. */
-export const NEW_TAB_URL = 'about:blank'
+/**
+ * The address of a blank page: what a tab shows once its user stopped it
+ * before the browser had it (`live-view.md` § A browser tab in the panel).
+ */
+export const BLANK_URL = 'about:blank'
 
 /**
  * The id of the panel tab the plugin adds for the browser's tab `tab`, one
@@ -38,7 +41,7 @@ export function addedPanelTab(tab: string): string {
 const OPENED_BY_USER_MS = 5000
 
 export const browserTabDataSchema = z.object({
-  /** The address the tab shows, or the one its user last asked for while it has no browser tab. */
+  /** The address the tab shows, or the one its user last asked for while the browser does not have it. */
   url: z.string(),
   /** The conversation browser's tab it shows, once the plugin opened one. */
   tab: z.string().optional(),
@@ -58,24 +61,16 @@ export const browserTabDataSchema = z.object({
   /** How many times the agent showed the browser tab; absent while it never did (`live-view.md` § Showing a tab). */
   shows: z.number().int().min(1).optional(),
   /**
-   * The panel tab whose page opened it: by Open Link in New Tab, or by a link
-   * or script of the page, which the plugin writes as it adds the tab
+   * The panel tab whose page opened it, by a link or script of the page,
+   * which the plugin writes as it adds the tab
    * (`live-view.md` § A browser tab in the panel).
    */
   openedBy: z.string().optional(),
 })
 export type BrowserTabData = z.infer<typeof browserTabDataSchema>
 
-export interface BrowserTabList {
-  tabs: BrowserTab[]
-  /** The browser a tab needs on the Host, as its installed artifacts name it. */
-  browser: NeededBrowser
-}
-
-/** Why the strip cannot make a browser tab: the Host lacks the browser, which only the agent installs. */
-export function noBrowser(): SentenceText {
-  return t('noBrowser')
-}
+/** The plugin's conversation state: the conversation browser's tabs. */
+export type BrowserTabList = BrowserTabs
 
 /** Why the plugin could not open a browser tab for a panel tab, as its data keeps it. */
 export type TabFailure = NonNullable<BrowserTabData['failure']>
@@ -172,8 +167,6 @@ export interface BrowserTabsApi {
   /** Stops loading the tab's page; answers as `navigate` does. */
   stop(tab: string): Promise<number>
   stream: OpenUserStream
-  /** What the Host holds of the browser's package, read reactively. */
-  installed(): readonly HostArtifact[]
   /** Whether the Host is a Cloud that does not run yet, read reactively. */
   hostStarting(): boolean
 }
@@ -244,12 +237,6 @@ export class BrowserTabsController {
   readonly list: ComputedRef<BrowserTabList | null>
   /** Why the last list could not be read, until one is. */
   readonly listError: ComputedRef<BrowserTabsError | null>
-  /**
-   * Why a new browser tab cannot be made: the Host lacks the browser the
-   * list names (`live-view.md` § A browser tab in the panel). Null while it
-   * has it, and until the first list says which browser that is.
-   */
-  readonly unavailable: ComputedRef<SentenceText | null>
   readonly session: ShallowRef<LiveSession | null> = shallowRef(null)
   /**
    * Whether this web browser can show the pictures, asked once. One that
@@ -300,16 +287,6 @@ export class BrowserTabsController {
     this.visibility = options.visibility ?? pageVisibility
     this.list = computed(() => api.tabs.value.value)
     this.listError = computed(() => api.tabs.error.value)
-    this.unavailable = computed(() => {
-      const needed = this.list.value?.browser
-      if (!needed) {
-        return null
-      }
-      const held = api
-        .installed()
-        .some((artifact) => artifact.name === needed.name && artifact.version === needed.version)
-      return held ? null : noBrowser()
-    })
     // The watchers stop with the panel session's effect scope.
     watch(this.visibility, (state) => this.visibilityChanged(state), { flush: 'sync' })
     // A view the stopped Cloud refused connects at once once the Cloud runs, so the Host knows the panel's
@@ -371,7 +348,7 @@ export class BrowserTabsController {
     if (tab !== undefined && tab !== this.shownTab.value) {
       return this.list.value?.tabs.find((candidate) => candidate.id === tab)?.loading ?? false
     }
-    return url !== NEW_TAB_URL
+    return url !== BLANK_URL
   }
 
   /**
@@ -435,7 +412,7 @@ export class BrowserTabsController {
    * does; and a shown tab that has no picture yet loads until its first
    * picture, unless none can come. A tab that could not open, or whose
    * browser tab the browser lost and no one opened again yet, does not, nor
-   * does a new tab nobody sent anywhere yet, which loads nothing.
+   * does a blank one, which loads nothing.
    */
   busy(panelTab: string, data: BrowserTabData): boolean {
     const blank = this.blank(data)
@@ -452,15 +429,15 @@ export class BrowserTabsController {
   }
 
   /**
-   * Whether the panel tab with `data` is a new tab nobody sent anywhere yet:
-   * its address is the new tab's and no request of the user's is under way on
-   * its browser tab. It loads nothing, so it shows the blank New Tab, not
-   * what Demi waits for, while the browser opens its tab unseen; only the
-   * browser's own word that its page loads shows it loading
-   * (`live-view.md` § A browser tab in the panel).
+   * Whether the panel tab with `data` is blank: its address is the blank
+   * page's, as after its user stopped it before the browser had it, and no
+   * request of the user's is under way on its browser tab. It loads nothing,
+   * so it shows a blank page, not what Demi waits for; only the browser's own
+   * word that its page loads shows it loading (`live-view.md` § A browser tab
+   * in the panel).
    */
   private blank(data: BrowserTabData): boolean {
-    return data.url === NEW_TAB_URL && !this.requested(data.tab)
+    return data.url === BLANK_URL && !this.requested(data.tab)
   }
 
   /**
@@ -485,7 +462,7 @@ export class BrowserTabsController {
    * view nor the plugin's list has said what the conversation's browser
    * holds; then the browser starting, while it has no tabs; then the browser
    * opening the tab. Null once the list names the tab, for a tab that could
-   * not open and was not retried, and for a new tab nobody sent anywhere yet,
+   * not open and was not retried, and for a blank tab,
    * which waits for nothing the user asked for.
    */
   startingPhase(panelTab: string, data: BrowserTabData): StartingPhase | null {

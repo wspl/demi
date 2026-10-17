@@ -35,10 +35,8 @@ const props = withDefaults(
     canReload?: boolean
     /** The page loads: Reload is Stop meanwhile. */
     loading?: boolean
-    /** Take focus on mount, the address selected: a new tab waits for where to go. */
-    focused?: boolean
   }>(),
-  { backReason: null, forwardReason: null, canReload: true, loading: false, focused: false },
+  { backReason: null, forwardReason: null, canReload: true, loading: false },
 )
 
 const emit = defineEmits<{
@@ -144,7 +142,6 @@ defineExpose({
     <TextInput
       ref="field"
       class="ml-2 min-w-0 flex-1"
-      :focused="focused"
       asked
       :model-value="draft ?? address"
       :placeholder="t('address.placeholder')"

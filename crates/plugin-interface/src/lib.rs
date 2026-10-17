@@ -35,7 +35,7 @@ pub use providers::{
     ImageAsk, ImageAspect, ImageEntry, ImageInput, ImageKind, ImageModel, ImageRefusal, ImageUnlisted,
     ImageVendorModels, MadeImage,
 };
-pub use request::{PanelTabChange, PluginError, Reply, Request};
+pub use request::{PluginError, Reply, Request};
 /// What a project search names to watch (`Reply::Project`).
 pub use demi_web_api_protocol::files::SubscriptionKind;
 pub use demi_web_api_protocol::workflows::WatchSubject;

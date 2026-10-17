@@ -25,7 +25,7 @@ use demi_command_declarations::NativeOperation;
 use demi_host_interface::{CommandSet, GroupBuilder, JobCaller, PortError, RpcPort};
 use demi_plugin_interface::{
     ImageAsk, ImageVendorModels, MadeImage,
-    CallKind, DirectoryPath, HostDirectory, HostFile, HostRead, PanelTabChange, Plugin,
+    CallKind, DirectoryPath, HostDirectory, HostFile, HostRead, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
     PortRefusal, Reply, Request, Scope, StoredValue,
 };
@@ -343,19 +343,19 @@ impl Shared {
         }
     }
 
-    /// Tells the plugin that owns the kind of the tab the user created or
-    /// removed, if the user has it on, after the change is answered: the
-    /// page never waits for the plugin's work, which may wake a Host.
+    /// Tells the plugin that owns the kind of the tab the user removed, if
+    /// the user has it on, after the change is answered: the page never
+    /// waits for the plugin's work, which may wake a Host. A tab the user
+    /// created is none of the plugin's business: the user creates tabs of
+    /// the kinds no plugin owns, such as a file's, and the plugin its own.
     fn tell_owner(
         self: &Rc<Self>,
         conversation: ConversationId,
         effect: PanelEffect,
         enabled: &[bool],
     ) {
-        let (change, tab) = match effect {
-            PanelEffect::Created(tab) => (PanelTabChange::Created, tab),
-            PanelEffect::Removed(tab) => (PanelTabChange::Removed, tab),
-            PanelEffect::Updated | PanelEffect::Moved => return,
+        let PanelEffect::Removed(tab) = effect else {
+            return;
         };
         let Some(owner) = self
             .registry
@@ -367,7 +367,6 @@ impl Shared {
         let request = Request::PanelTab {
             user: self.user.clone(),
             conversation: conversation.clone(),
-            change,
             tab,
         };
         self.spawn_request(owner, request, conversation);

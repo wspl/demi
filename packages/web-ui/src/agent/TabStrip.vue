@@ -46,9 +46,7 @@ const FADE_PX = 24
  * The `leading` slot holds tabs that stand ahead of them and never scroll,
  * such as the work panel's pinned tabs: elements of `role="tab"` like the
  * children, in the same tab list, which give way before the strip's own tabs,
- * their titles truncating down to what their own minimum width keeps. The
- * `trailing` slot (a New tab control) follows the last tab while the
- * tabs fit, and stays at the strip's right edge once they scroll.
+ * their titles truncating down to what their own minimum width keeps.
  *
  * `surface` is what the row sits on. On the base surface the active tab is
  * raised to the surface color; on a raised surface it is pressed to the base
@@ -96,8 +94,6 @@ const colors = computed(() =>
 )
 const phone = usePhone()
 const root = ref<HTMLElement | null>(null)
-/** The box the row shows in, which the edge fades lie over on a phone, where the row scrolls inside it. */
-const view = ref<HTMLElement | null>(null)
 const list = ref<HTMLElement | null>(null)
 const leading = ref<HTMLElement | null>(null)
 const el = ref<HTMLElement | null>(null)
@@ -210,21 +206,15 @@ function leadingMinimum(): number {
   return width + stripGap(list.value)
 }
 
-/** The width a tab may take: the strip's own, less the leading tabs at their least and what follows the tabs, such as the New tab control. */
+/** The width a tab may take: the strip's own, less the leading tabs at their least. */
 function measureRoom(): void {
   const strip = root.value
   if (!strip) {
     return
   }
-  let trailing = 0
-  for (const child of strip.children) {
-    if (child !== view.value && child instanceof HTMLElement) {
-      trailing += child.offsetWidth + Number.parseFloat(getComputedStyle(child).marginLeft || '0')
-    }
-  }
   // On a phone the leading tabs scroll away with the rest, so a tab may take the whole view.
   const leadingTabs = phone.value ? 0 : leadingMinimum()
-  const room = `${Math.max(0, strip.clientWidth - trailing - leadingTabs)}px`
+  const room = `${Math.max(0, strip.clientWidth - leadingTabs)}px`
   // Unchanged, it is not written again: writing it resizes the tabs, which the observer reports.
   if (strip.style.getPropertyValue('--tab-room') !== room) {
     strip.style.setProperty('--tab-room', room)
@@ -501,7 +491,7 @@ defineExpose({ el })
   <div ref="root" class="flex min-w-0 items-center" :style="colors">
     <!-- On a phone the fades' frame: the whole tab list scrolls inside it, so the fades stay put
          over the row's ends. -->
-    <div ref="view" class="flex min-w-0 shrink phone:relative phone:isolate">
+    <div class="flex min-w-0 shrink phone:relative phone:isolate">
     <!-- One tab list holds the leading tabs and the strip's own, so the keyboard and assistive
          technology meet them as one row of tabs. On a phone it is what scrolls. -->
     <div
@@ -558,7 +548,6 @@ defineExpose({ el })
     </div>
     </div>
     </div>
-    <slot name="trailing" />
   </div>
 </template>
 

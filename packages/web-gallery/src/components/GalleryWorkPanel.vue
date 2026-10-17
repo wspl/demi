@@ -14,7 +14,6 @@ const emit = defineEmits<{ close: [] }>()
     :kinds="work.kinds"
     :before-first-message="beforeFirstMessage"
     @select="work.select"
-    @add-tab="(kind, data, index) => work.add(kind, data, { select: true, index })"
     @move-tab="work.move"
     @update-tab="work.update"
     @update-pinned="work.updatePinned"

@@ -15,15 +15,13 @@ import type { LiveDownload } from '../generated/plugin'
 import LiveView from './LiveView.vue'
 import { t } from '../locales/text'
 import { browserShortcut } from './input'
-import { NEW_TAB_URL, failureSentence, startingLabel, type BrowserTabData, type BrowserTabsController } from './tabs'
+import { BLANK_URL, failureSentence, startingLabel, type BrowserTabData, type BrowserTabsController } from './tabs'
 import { BLANK_PAGE, deviceSnap, panelSize, viewportChoices, type PanelSize, type ViewportChoice } from './view'
 
 /**
  * A `browser` tab's content (`live-view.md` § A browser tab in the panel).
  * It shows at once what the tab's data says, and what the Host sends
- * replaces it when it arrives: a new tab nobody sent anywhere is a blank
- * page at once, as a browser's new tab is, while the browser opens its tab
- * unseen; before the browser has a tab the user sent somewhere, the panel's
+ * replaces it when it arrives: before the browser has the tab, the panel's
  * own background, which says at once what Demi is doing; then a blank page
  * until the browser tab's first picture; an
  * address the user submits shows at once, with the page loading over the
@@ -44,13 +42,9 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{ update: [data: BrowserTabData] }>()
 
-/** A tab the user just made has nowhere to be yet: its address takes the focus. */
-const fresh = props.data.tab === undefined && props.data.url === NEW_TAB_URL
 const addressBar = ref<InstanceType<typeof AddressBar> | null>(null)
-/** The address the bar shows: a new tab's is empty, waiting for where to go, as in a browser. */
-const address = computed(() => (props.data.url === NEW_TAB_URL ? '' : props.data.url))
 
-const { overlays, errors, files, intents, panel } = usePage()
+const { overlays, errors, files, intents } = usePage()
 const platform = clientPlatform(navigator)
 /** The plugin opens a browser tab for this panel tab again. */
 const opening = computed(() => props.session.opening(props.tabId, props.data))
@@ -142,8 +136,7 @@ onBeforeUnmount(() => {
 })
 
 // The tab saves where the page went, with the page's title for the strip. A blank page the browser first
-// reports while the tab asks for an address is a browser tab that has not started on it yet, as one opened
-// before its user typed. A title names the address the tab asks for only: a page the user is leaving keeps
+// reports while the tab asks for an address is a browser tab that has not started on it yet. A title names the address the tab asks for only: a page the user is leaving keeps
 // its title to itself.
 watch(
   [() => live.value?.url, () => live.value?.title],
@@ -152,7 +145,7 @@ watch(
       return
     }
     const moved = url !== props.data.url
-    if (moved && (url === before || (before === undefined && url === NEW_TAB_URL))) {
+    if (moved && (url === before || (before === undefined && url === BLANK_URL))) {
       return
     }
     if (!moved && (title ?? '') === (props.data.title ?? '')) {
@@ -225,15 +218,6 @@ function shortcut(event: KeyboardEvent): void {
   }
 }
 
-/**
- * A link the browser's menu opens in a new tab, not selected, opened by this
- * one, which places it beside this one as a browser does.
- */
-function openLink(url: string): void {
-  const data: BrowserTabData = { url, openedBy: props.tabId }
-  panel.add(props.conversation, 'browser', data, { select: false })
-}
-
 /** The downloads the user started in this tab, the newest first, as a browser's bubble lists them. */
 const downloads = computed(() => [...props.session.downloadsOf(bound.value)].reverse())
 const bubble = ref(false)
@@ -284,7 +268,7 @@ function showInFiles(download: LiveDownload): void {
 function stop(): void {
   if (phase.value !== null) {
     const { title: _left, ...data } = props.data
-    emit('update', { ...data, url: NEW_TAB_URL })
+    emit('update', { ...data, url: BLANK_URL })
     return
   }
   if (bound.value !== undefined) {
@@ -318,12 +302,11 @@ watch(
   <div class="flex min-h-0 flex-1 flex-col" @keydown.capture="shortcut" @keyup.capture="shortcut">
     <AddressBar
       ref="addressBar"
-      :address="address"
+      :address="data.url"
       :back-reason="backReason"
       :forward-reason="forwardReason"
       :can-reload="bound !== undefined"
       :loading="busy"
-      :focused="fresh"
       @submit="submit"
       @back="history('back')"
       @forward="history('forward')"
@@ -450,10 +433,8 @@ watch(
         :panel="measured"
         :snap="snap"
         @history="history"
-        @open-link="openLink"
       />
-      <!-- What a tab shows before its picture, and a new tab nobody sent anywhere while the browser opens its tab
-           unseen: a blank page, as the browser's new tab is. -->
+      <!-- What a tab shows before its picture, and a blank tab: a blank page. -->
       <div
         v-else
         class="min-h-0 flex-1"

@@ -97,33 +97,15 @@ panel's tabs ([Work panel state](../product/web-api-conversations.md#work-panel-
 
 ```text
 page                         backend (panel, plugin-browser)            Host
- create { url } ───────────▶ panel: the tab, at once
-                             plugin: open on the latest url ──────────▶ browser.open
-                             panel: { tab: "t3" } ◀──────────────────── t3
+ (agent) demi browser open ─▶ plugin: the tab, with its browser tab ◀── browser.open: t3
  view: watch t3 ◀═══════════════════ browser user stream ═════════════▶ pictures, tab list
 ```
 
-- **Availability.** A browser tab needs the browser on the conversation's
-  Host. The plugin compares the Host's installed artifacts
-  ([Installed artifacts](../execution/native-runtime.md#installed-artifacts))
-  with the version its package pins. When the Host lacks it, the strip's
-  control to create a browser tab is disabled and says why: `No browser on
-  this Host. Ask the agent to run demi browser install.` The user cannot
-  install it from the page; the agent installs it
-  ([Browser distribution](browser.md#browser-distribution)). Tabs already
-  open stay as they are.
-- **Opening.** The strip's control creates a tab with `url: 'about:blank'`
-  and selects it. Its content shows at once what a new tab is in any browser:
-  the strip names it New Tab, the address bar is empty with the focus in it,
-  and the page is blank
-  ([Responding to the user](../product/web-application.md#responding-to-the-user)).
-  The backend tells the plugin, which opens a browser tab on the tab's `url`
-  as it is when the open starts, starting the environment when needed and
-  waking a stopped Cloud as the agent's first `open` does, and writes the
-  browser's tab id into `tab`. If the user asked for another address
-  meanwhile, the plugin then loads the address the user last asked for. If
-  the user closed the panel tab meanwhile, the plugin closes the browser's
-  tab. The first picture replaces the blank page.
+- **Opening.** The panel opens no browser tab of its own: a tab appears
+  when the agent opens one, or when a page in a tab opens one
+  ([Tabs a page opens](#tabs-a-page-opens)), as a device does
+  ([The live view](../mobile/mobile.md#the-live-view)). The agent knows
+  what the task needs a browser for; the user acts in the tabs it opened.
 - **Before the browser has the tab.** Opening a tab, or reopening one lost
   with the browser, can first need the Host and its browser started, which
   takes seconds on a stopped Cloud or a slow device. Until the browser has
@@ -138,14 +120,9 @@ page                         backend (panel, plugin-browser)            Host
   | The browser starts on the Host: the conversation's browser has no tabs yet | Starting the browser… |
   | The browser opens the tab | Opening the page… |
 
-  A new tab with no address yet is not loading anything, so it shows none of
-  this: it is the blank New Tab at once, with the focus in the address bar
-  and no spinner, Stop or progress line, as a browser's new tab is, while the
-  browser opens its tab unseen. A blank page, here and under the progress
-  line, has the color Chrome paints an empty page in the color scheme the
-  tab is shown with, white or dark, so the first picture does not flash from
-  one to the other. Once the user enters an address before the
-  browser has the tab, the tab loads and says what it waits for.
+  A blank page, under the progress line, has the color Chrome paints an
+  empty page in the color scheme the tab is shown with, white or dark, so
+  the first picture does not flash from one to the other.
   The words appear in the same frame as the Enter or the click that opens the
   tab, since the page already knows which of these it waits for; an empty
   area would read as Demi doing nothing, and on a running browser the words
@@ -218,7 +195,7 @@ page                         backend (panel, plugin-browser)            Host
   and Forward, and ⌘R reloads, as in a browser.
 - **The page's own menus and dialogs.** A right click on the page opens the
   menu a browser gives there, built by the page: Back, Forward and Reload; on
-  a link, Open Link in New Tab and Copy Link Address; on a selection, Copy;
+  a link, Copy Link Address; on a selection, Copy;
   in a field, Cut, Copy and Paste. A JavaScript dialog is titled with the
   page's host, "localhost:8000 says", takes the focus on its default button,
   and answers Enter and Escape.
@@ -234,7 +211,7 @@ page                         backend (panel, plugin-browser)            Host
   any browser. The browser's message reaches the plugin within the
   module's state delay, and the plugin adds it right after the tab that opened it, behind the tabs
   that tab opened before, as Chrome places them; the agent's tabs still go
-  at the end. Open Link in New Tab places its tab by the same rule. Which tab
+  at the end. Which tab
   opened which is the plugin's, kept in each panel tab's data (`openedBy`),
   so both ways agree and a reload keeps the order. A tab opened by the
   user's own click or key in the tab they watch is selected, as a browser
@@ -312,8 +289,7 @@ keeps looking at `t3`.
   the browser's tab list. Nothing else changes in the browser.
 - **The panel tab.** When the plugin reads the list after the browser's message, it adds the
   agent's new tabs as before, and writes each tab's count into `shows` of the
-  panel tab bound to it when the count is higher. A tab the user created is
-  shown the same way.
+  panel tab bound to it when the count is higher.
 - **Each page shows it once.** The `browser` kind's `shows` is the tab's
   `data.shows` ([Work panel kinds](../architecture/plugin-pages.md#work-panel-kinds)),
   and the panel applies it whether it is open or closed: when a tab's count is
@@ -886,7 +862,7 @@ crate and package; for the live view:
 | `command-package-browser-chrome`'s `tabs` | Each tab's viewport, dialog, whether it loads its top-level page, and the upload directory the viewers' files go to. |
 | `demi-browser` | Starting the live hub of each browser it runs, and the conversation browser that the viewer trait reaches. |
 | `command-protocol`, `command-sdk`, the runner's crates, `runner-protocol`, `backend-remote-host` | [User streams](../execution/native-runtime.md#user-streams) and [service streams](../execution/runner.md#service-streams), with no browser knowledge. |
-| `plugin-browser` | Declaring `viewport set --scale` with the other `demi browser` commands; declaring the `browser` user stream and the `browser` panel kind; its conversation state, the tab list, read again on its package's messages; the [tab methods](#the-tab-methods); and its kind's tabs: opening and closing browser tabs for the panel tabs its user creates and closes, adding the agent's tabs and marking gone ones, one conversation's work at a time. It calls the browser's own operations and holds no browser logic. |
+| `plugin-browser` | Declaring `viewport set --scale` with the other `demi browser` commands; declaring the `browser` user stream and the `browser` panel kind; its conversation state, the tab list, read again on its package's messages; the [tab methods](#the-tab-methods); and its kind's tabs: closing browser tabs for the panel tabs its user closes, adding the agent's tabs and the tabs pages open and marking gone ones, one conversation's work at a time. It calls the browser's own operations and holds no browser logic. |
 | `backend` | The user stream route, where the user's shard admits and ends the stream and the edge relays its bytes with backpressure; the plugin call routes and the conversation state route. None names the browser. |
 | `@demicodes/plugin-browser` | The `browser` tab kind: its panel session, which follows the plugin's conversation state for the tabs' titles and keeps the page's one view; and its content, the live view over the plugin's `browser` user stream: video, input, native control overlays, clipboard, dialogs, the viewport menu, and what it shows while a tab opens or loads, is gone or out of reach, or in a user's browser that cannot decode the pictures. The live protocol's schemas are generated into the package. It is built from the plugin SDK's primitives ([Plugin pages](../architecture/plugin-pages.md)). |
 | `web`, `web-gallery` | The product's page context over the plugin call routes, the conversation state route and the user stream route; a gallery client that encodes its own picture, keeps its own tab list and speaks the protocol, so the kind shows without a Host. |

@@ -2,7 +2,7 @@
 import { t } from './locales/text'
 import { t as shared } from '../locales/text'
 import { computed, ref, shallowRef, watch, type Component } from 'vue'
-import { ArrowLeftToLine, ArrowRightToLine, ChevronLeft, Copy, CopyX, PanelRightClose, Plus, X } from '@lucide/vue'
+import { ArrowLeftToLine, ArrowRightToLine, ChevronLeft, CopyX, PanelRightClose, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
@@ -42,8 +42,6 @@ const props = defineProps<{
 }>()
 const emit = defineEmits<{
   select: [selection: string]
-  /** A new tab, selected; at `index` among the tabs when given, else after them. */
-  addTab: [kind: string, data: unknown, index?: number]
   /** The tab `id` moved to `index` among the others, as the user dragged it. */
   moveTab: [id: string, index: number]
   updateTab: [id: string, data: unknown]
@@ -84,14 +82,6 @@ const contents = computed(() => kept.value.flatMap((id) => {
   const tab = tabs.value.find((item) => item.tab.id === id)
   return tab?.kind ? [{ id, kind: tab.kind, data: tab.data, pinned: false }] : []
 }))
-/** The kinds the strip's new-tab control offers. */
-const creatable = computed(() => props.kinds.filter((kind) => kind.create))
-
-/** Why the strip cannot make a tab of `kind` now, or null when it can. */
-function unavailable(kind: PanelTabKind): string | null {
-  return kind.create?.unavailable?.() ?? null
-}
-
 /** The tab menu's commands that close several tabs at once. */
 const closeManyItems = computed<readonly { scope: Exclude<TabCloseScope, 'self'>; label: TitleText; icon: Component }[]>(() => [
   { scope: 'others', label: t('panel.closeOthers'), icon: CopyX },
@@ -110,24 +100,14 @@ function pinnedTitleCut(tab: HTMLElement): boolean {
 }
 
 /**
- * A tab's menu: what its kind offers, and Duplicate where it makes a copy,
- * then the Close commands, as a web browser's tab menu.
+ * A tab's menu: what its kind offers, then the Close commands, as a web
+ * browser's tab menu.
  */
 function tabMenu(id: string): () => ContextMenuGroup[] {
   return () => {
     const item = tabs.value.find((each) => each.tab.id === id)
-    const kind = item?.kind
-    const own: ContextMenuEntry[] = (item ? kind?.commands?.(item.data, item.tab.id) ?? [] : [])
+    const own: ContextMenuEntry[] = (item ? item.kind?.commands?.(item.data, item.tab.id) ?? [] : [])
       .map((command) => ({ icon: command.icon, label: command.label, disabled: command.disabled, run: () => command.run() }))
-    const duplicate = kind?.duplicate
-    if (item && duplicate) {
-      own.push({
-        icon: Copy,
-        label: t('panel.duplicate'),
-        // A copy of the tab right after it, selected, as a web browser's Duplicate.
-        run: () => emit('addTab', kind.kind, duplicate(item.data), props.panel.tabs.findIndex((tab) => tab.id === id) + 1),
-      })
-    }
     return [
       own,
       [
@@ -221,25 +201,6 @@ function reorder(from: number, to: number): void {
         >
           <template v-if="item.kind" #mark><component :is="item.kind.mark" :data="item.data" /></template>
         </TabItem>
-        <!-- A plain plus says enough beside tabs of the one kind it makes; otherwise each kind shows its own icon. -->
-        <template v-if="creatable.length > 0" #trailing>
-          <!-- One tip: why the kind cannot be made now, else what the control makes. -->
-          <Tooltip
-            v-for="kind in creatable"
-            :key="kind.kind"
-            :content="unavailable(kind) ?? kind.create!.label"
-            class="ml-1 shrink-0"
-          >
-            <IconButton
-              :icon="tabs.length > 0 && creatable.length === 1 ? Plus : kind.create!.icon"
-              size="sm"
-              variant="ghost"
-              :aria-label="kind.create!.label"
-              :disabled="unavailable(kind) !== null"
-              @click="emit('addTab', kind.kind, kind.create!.data())"
-            />
-          </Tooltip>
-        </template>
       </TabStrip>
       <Tooltip v-if="!phone" :content="t('session.closePanel')" class="shrink-0">
         <IconButton :icon="PanelRightClose" variant="ghost" :aria-label="t('session.closePanel')" @click="emit('close')" />

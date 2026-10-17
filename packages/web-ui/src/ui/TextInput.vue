@@ -20,7 +20,7 @@ const props = withDefaults(defineProps<{
   focused?: boolean
   /**
    * With `focused`: typing here is the whole of what the user just chose
-   * (Search, a new tab's address, a filter), so the field takes the focus on
+   * (Search, a filter), so the field takes the focus on
    * a phone too, where any other waits for a tap (`useAutofocus`).
    */
   asked?: boolean

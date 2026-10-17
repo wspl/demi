@@ -7,8 +7,7 @@
 import { BrowserTabsError, addedPanelTab, browserTabDataSchema, type BrowserTabData, type TabFailure } from '@demicodes/plugin-browser/live/tabs'
 import { SERVER_FAILED } from './plugins'
 import { applyPanelChange, type PanelAnswer, type PanelBackend, type PanelChange, type PanelRead } from '@demicodes/web-ui/agent/panel-changes'
-import { openedTabIndex, type PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
-import type { AnyPluginPage } from '@demicodes/web-ui/plugins/page'
+import type { PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { BrowserTab } from '@demicodes/plugin-browser/generated/plugin'
 import type { GalleryBrowser } from './live-browser'
 
@@ -19,16 +18,17 @@ function beat(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, CHANGE_MS))
 }
 
-/** What a change did to a tab, for the kind's plugin. */
-type Told = { change: 'created' | 'removed'; tab: PanelTab }
 
 export class GalleryPanel implements PanelBackend {
   private revision = 0
   private tabs: PanelTab[] = []
   /** Every id the panel had, which is never used again. */
   private readonly retired = new Set<string>()
-  /** Told of a tab its user created or removed, once the change is answered, as a kind's plugin is. */
-  told: ((told: Told) => void) | null = null
+  /**
+   * Told of a tab its user removed, once the change is answered, as a kind's
+   * plugin is; a tab the user created is none of the plugin's business.
+   */
+  removed: ((tab: PanelTab) => void) | null = null
   /** Each change, the plugin's included, with the panel's revision, as the page's summary carries it. */
   changed: ((revision: number) => void) | null = null
 
@@ -39,37 +39,36 @@ export class GalleryPanel implements PanelBackend {
 
   /**
    * A page's changes, as one change of the panel: the kind's plugin hears
-   * of each tab its user created or removed.
+   * of each tab its user removed.
    */
   async send(changes: readonly PanelChange[]): Promise<PanelAnswer> {
     await beat()
     const before = this.revision
-    const told = changes.flatMap((change) => this.change(change) ?? [])
+    const removed = changes.flatMap((change) => this.change(change) ?? [])
     if (this.revision > before) {
       // The request counts as one change, however many it made.
       this.revision = before + 1
       const revision = this.revision
       queueMicrotask(() => this.changed?.(revision))
     }
-    for (const each of told) {
-      queueMicrotask(() => this.told?.(each))
+    for (const tab of removed) {
+      queueMicrotask(() => this.removed?.(tab))
     }
     return { revision: this.revision, changed: this.revision > before }
   }
 
-  /** Applies the plugin's `change`; answers what it did to a tab. */
-  apply(change: PanelChange): Told | null {
+  /** Applies the plugin's `change`, which no plugin is told of. */
+  apply(change: PanelChange): void {
     const before = this.revision
-    const told = this.change(change)
+    this.change(change)
     if (this.revision > before) {
       const revision = this.revision
       queueMicrotask(() => this.changed?.(revision))
     }
-    return told
   }
 
-  /** Applies `change`, counting it in the revision when it changes the tabs; answers what it did to a tab. */
-  private change(change: PanelChange): Told | null {
+  /** Applies `change`, counting it in the revision when it changes the tabs; answers the tab it removed, if any. */
+  private change(change: PanelChange): PanelTab | null {
     if (change.type === 'create' && (this.retired.has(change.tab.id) || this.tab(change.tab.id))) {
       return null
     }
@@ -80,14 +79,10 @@ export class GalleryPanel implements PanelBackend {
     }
     this.tabs = next
     this.revision += 1
-    if (change.type === 'create') {
-      return { change: 'created', tab: change.tab }
-    }
     if (removed) {
       this.retired.add(removed.id)
-      return { change: 'removed', tab: removed }
     }
-    return null
+    return removed
   }
 
   tab(id: string): PanelTab | null {
@@ -125,6 +120,25 @@ function openerFor(panel: GalleryPanel, tab: BrowserTab): string | undefined {
   })?.id
 }
 
+/**
+ * Where a tab `opener` opened goes: right after it, behind the tabs it opened
+ * before that still stand right after it, as Chrome places the tabs a link
+ * opens and the backend's plugin places them; after the others (undefined)
+ * when the panel no longer has the opener.
+ */
+function openedIndex(panel: GalleryPanel, opener: string): number | undefined {
+  const tabs = panel.all
+  const at = tabs.findIndex((tab) => tab.id === opener)
+  if (at < 0) {
+    return undefined
+  }
+  let end = at + 1
+  while (end < tabs.length && browserData(tabs[end]!)?.openedBy === opener) {
+    end += 1
+  }
+  return end
+}
+
 /** The browser plugin's part in the panel's `browser` tabs, as the backend's plugin does it. */
 export interface GalleryBrowserPlugin {
   /** Opens a browser tab for the panel tab, unless it shows one; answers the tab it shows then, as the plugin does. */
@@ -140,12 +154,7 @@ export interface GalleryBrowserPlugin {
   settled(): Promise<void>
 }
 
-/** `pages` are the panel's, whose kinds say which tab opened which. */
-export function galleryBrowserPlugin(
-  browser: GalleryBrowser,
-  panel: GalleryPanel,
-  pages: readonly AnyPluginPage[],
-): GalleryBrowserPlugin {
+export function galleryBrowserPlugin(browser: GalleryBrowser, panel: GalleryPanel): GalleryBrowserPlugin {
   // One piece of the conversation's work at a time, as the plugin does it.
   let turn: Promise<void> = Promise.resolve()
   function inTurn<T>(work: () => Promise<T>): Promise<T> {
@@ -213,8 +222,8 @@ export function galleryBrowserPlugin(
           if (opener !== undefined) {
             data.openedBy = opener
           }
-          // Beside its opener, as the backend's plugin places it, by the rule the page places Open Link in New Tab.
-          const index = openedTabIndex(panel.all, pages, 'browser', data)
+          // Beside its opener, as the backend's plugin places it.
+          const index = opener === undefined ? undefined : openedIndex(panel, opener)
           panel.apply({ type: 'create', tab: { id: addedPanelTab(tab.id), kind: 'browser', data }, index })
         }
       }
