@@ -50,6 +50,7 @@ function productDevice(device: DeviceDto, devices: readonly DeviceDto[]): Device
     seen: device.lastSeenAt ?? undefined,
     platform,
     start: device.startCommand ? { command: device.startCommand, system: platform } : null,
+    autostartUnavailable: device.autostartUnavailable,
     os: device.os,
     runnerVersion: device.runnerVersion,
     mark: deviceMarkOf(device, devices),

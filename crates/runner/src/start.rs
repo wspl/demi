@@ -1,7 +1,9 @@
 //! `run start` (`runner.md` § Installation, pairing and removal): starts the
 //! installation's runner in the background again, as the installer does,
 //! and returns once it is connected or has said why it cannot connect. A
-//! runner already running is left as it is.
+//! runner already running is left as it is. An installation registered with
+//! the system's service manager has the manager start it, so the runner is
+//! the manager's (`runner.md` § Starting with the computer).
 
 use std::{
     io,
@@ -10,20 +12,42 @@ use std::{
     time::Duration,
 };
 
-use demi_runner_protocol::console::PAIRING_CODE;
+use demi_runner_protocol::console::{HANDED_OVER, PAIRING_CODE};
 use tokio::io::{AsyncReadExt as _, AsyncSeekExt as _};
 
-use crate::{console, management, state::RunnerState};
+use crate::{autostart::Registration, console, management, state::RunnerState};
 
 /// How often the start looks at the runner it started.
 const POLL: Duration = Duration::from_millis(100);
 
-/// The lines the runner writes to its output when an attempt to connect
-/// fails, each followed by why.
-const FAILURES: [&str; 2] = [
-    "demi-runner: connection ended: ",
-    "demi-runner: registration refused ",
-];
+/// How long a runner the service manager starts may take to take the
+/// installation's lock: a manager that took the request and started
+/// nothing, or a runner that ended before it took the lock, is otherwise
+/// never seen, since the manager tells this process nothing.
+const MANAGER_START: Duration = Duration::from_secs(15);
+
+/// The runner this start waits for.
+enum Started {
+    /// The process it started itself.
+    Child(tokio::process::Child),
+    /// The one it asked the service manager for, once it holds the lock.
+    Manager {
+        held: bool,
+        asked: tokio::time::Instant,
+    },
+    /// The one it found running.
+    Running,
+}
+
+/// The line the runner writes to its output when an attempt to connect
+/// fails, followed by why; it tries again.
+const FAILURE: &str = "demi-runner: connection ended: ";
+
+/// The line the runner writes when its backend refused its hello, followed
+/// by the code and why; it ends, unless the code says the device is
+/// connected already, which it waits out.
+const REFUSAL: &str = "demi-runner: registration refused ";
+const ALREADY_CONNECTED: &str = "(already_connected)";
 
 /// Starts the runner of the installation in `directory` with `arguments`,
 /// the ones `run` takes, and says how it went: 0 once it is connected, 1
@@ -34,25 +58,66 @@ pub async fn start(directory: &Path, arguments: Vec<String>) -> io::Result<u8> {
     let state = RunnerState::open(directory.to_owned()).await?;
     let lease = state.try_lock()?;
     let mut log = Follower::new(directory).await?;
-    let mut child = match lease {
+    let mut started = match lease {
         Some(lease) => {
             lease.release()?;
-            Some(spawn(directory, arguments)?)
+            if by_manager(directory).await {
+                Started::Manager {
+                    held: false,
+                    asked: tokio::time::Instant::now(),
+                }
+            } else {
+                Started::Child(spawn(directory, arguments)?)
+            }
         }
         // The active runner holds the installation's lock.
         None => {
             println!("The runner is running already.");
             // A runner that ends meanwhile says so below.
             let _ = crate::manage(&state, management::Action::Announce, None, tokio::io::sink()).await;
-            None
+            Started::Running
         }
     };
     loop {
-        let lines = log.lines().await?;
-        let stopped = match &mut child {
-            Some(child) => child.try_wait()?.map(|status| format!(" ({status})")),
-            // A runner it found running released the lock as it ended.
-            None => match state.try_lock()? {
+        let mut lines = log.lines().await?;
+        // The runner this start started hands over to the service manager's
+        // once its registration works (`runner.md` § Starting with the
+        // computer), which this start then waits for as for one it asked
+        // the manager for; it may have done so after the log was read.
+        if let Started::Child(child) = &mut started {
+            if child.try_wait()?.is_some() {
+                lines.push_str(&log.lines().await?);
+            }
+            if lines.lines().any(|line| line == HANDED_OVER) {
+                started = Started::Manager {
+                    held: false,
+                    asked: tokio::time::Instant::now(),
+                };
+            }
+        }
+        let stopped = match &mut started {
+            Started::Child(child) => child.try_wait()?.map(|status| format!(" ({status})")),
+            // A runner released the lock as it ended.
+            Started::Manager { held, asked } => match state.try_lock()? {
+                Some(lease) => {
+                    lease.release()?;
+                    if *held {
+                        Some(String::new())
+                    } else if asked.elapsed() > MANAGER_START {
+                        Some(format!(
+                            " (the service manager started none in {} s)",
+                            MANAGER_START.as_secs()
+                        ))
+                    } else {
+                        None
+                    }
+                }
+                None => {
+                    *held = true;
+                    None
+                }
+            },
+            Started::Running => match state.try_lock()? {
                 Some(lease) => {
                     lease.release()?;
                     Some(String::new())
@@ -70,7 +135,16 @@ pub async fn start(directory: &Path, arguments: Vec<String>) -> io::Result<u8> {
                 println!("The runner is not paired; enter this pairing code in Add Device: {code}");
                 return Ok(1);
             }
-            if let Some(reason) = FAILURES.iter().find_map(|prefix| line.strip_prefix(prefix)) {
+            if let Some(reason) = line.strip_prefix(REFUSAL)
+                && !reason.starts_with(ALREADY_CONNECTED)
+            {
+                println!("The backend refused the runner, which stopped: {reason}");
+                return Ok(1);
+            }
+            if let Some(reason) = line
+                .strip_prefix(FAILURE)
+                .or_else(|| line.strip_prefix(REFUSAL))
+            {
                 println!("The runner cannot connect: {reason}");
                 println!("It keeps trying in the background.");
                 return Ok(1);
@@ -183,6 +257,28 @@ async fn connected(state: &RunnerState) -> bool {
     }
     serde_json::from_slice::<management::Status>(&answer)
         .is_ok_and(|status| status.phase == management::Phase::Online)
+}
+
+/// Asks the service manager to start the runner of the installation in
+/// `directory` when the installation is registered with it; whether it
+/// took the request. One that refuses leaves the start to this process.
+async fn by_manager(directory: &Path) -> bool {
+    let Some(home) = std::env::home_dir() else {
+        return false;
+    };
+    let Ok(registration) = Registration::of(directory, &home) else {
+        return false;
+    };
+    if !registration.exists().await {
+        return false;
+    }
+    match registration.start().await {
+        Ok(()) => true,
+        Err(error) => {
+            println!("The service manager did not start the runner, so this command starts it: {error}");
+            false
+        }
+    }
 }
 
 /// Starts the runner with `arguments` apart from this process; it writes

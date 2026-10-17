@@ -235,12 +235,18 @@ impl Successor {
     }
 
     /// Starts the successor beside this process, which then exits; with
-    /// this process's arguments, it writes the log this one wrote.
+    /// this process's arguments, it writes the log this one wrote. It is no
+    /// runner the service manager started, whose task ends with this
+    /// process, so it hands the installation over to the manager once it
+    /// holds it (`runner.md` § Starting with the computer).
     #[cfg(windows)]
     pub fn start(self) -> io::Result<()> {
         use std::os::windows::process::CommandExt as _;
         const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-        self.command().creation_flags(CREATE_NO_WINDOW).spawn()?;
+        self.command()
+            .env_remove(demi_runner_protocol::SUPERVISED)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()?;
         Ok(())
     }
 

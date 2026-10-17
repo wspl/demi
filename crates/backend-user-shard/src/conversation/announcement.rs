@@ -647,7 +647,7 @@ mod tests {
             arch: "x86_64".into(),
         };
         control
-            .set_device_runner(desktop.clone(), os, "0".into(), 1, r"C:\Users\ana".into())
+            .set_device_runner(desktop.clone(), os, "0".into(), 1, r"C:\Users\ana".into(), None)
             .await
             .unwrap();
         testing::execute(

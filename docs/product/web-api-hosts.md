@@ -54,7 +54,12 @@ runner.
 A device in `GET /devices` and in the product state carries, besides its
 name and online state, `os`, the operating system and architecture its runner
 last reported, and `runnerVersion`, the runner release it last reported, such
-as `0.1.16`; both are null before its runner first connected; `mark`, the
+as `0.1.16`; both are null before its runner first connected;
+`autostartUnavailable`, the reason its runner last reported for not
+starting by itself after a restart, as the hello carries it
+([Connection and identity](../execution/runner.md)), kept on the device
+record and shown on the device's page, null when it does or before it
+first connected; `mark`, the
 logo and number of its [mark](conversations.md#conversations-and-projects), null for the Cloud:
 `{ logo, number }`, where `logo` is `apple`, `windows`, `ubuntu`, `debian`,
 `fedora`, `arch`, `centos`, `redhat`, `mint` or `tux`, which the backend

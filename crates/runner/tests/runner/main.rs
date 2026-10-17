@@ -4,6 +4,7 @@
 //! Only the open-file test keeps a binary of its own (`tests/open_files.rs`):
 //! it lowers the process's open-file limit and holds every descriptor left.
 
+mod autostart;
 mod connection;
 mod host;
 mod host_log;

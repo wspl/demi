@@ -2,6 +2,7 @@ import type { Block, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPh
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
+import type { AutostartUnavailable } from '@demicodes/web-ui/devices/autostart'
 import type { DeviceMark } from '@demicodes/web-ui/devices/mark'
 import type { DeviceState } from '@demicodes/web-ui/devices/state'
 import type { DeviceReport } from '@demicodes/web-ui/devices/report'
@@ -133,6 +134,8 @@ export interface Device extends DeviceReport {
   seen?: string
   /** How to start a paired device's runner again; null for the Cloud. */
   start: DeviceStart | null
+  /** Why a paired device will not start its runner by itself after a restart; null when it does. */
+  autostartUnavailable: AutostartUnavailable | null
   /** Its mark, with the number it shows (`deviceMarkOf`); null for the Cloud. */
   mark: DeviceMark | null
 }

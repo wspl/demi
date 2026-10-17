@@ -13,7 +13,7 @@ use demi_command_protocol::ServiceSequence;
 use demi_conversation_socket_protocol::ClientFrame;
 use demi_runner_protocol::values::DeviceToken;
 use demi_runner_protocol::wire::{
-    self, ArtifactOwner, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo,
+    self, ArtifactOwner, AutostartUnavailable, HelloErrorCode, HostIdentity, Inbound, Outbound, RunnerInfo,
     RunnerPlatform, StreamArtifactOwner,
 };
 use demi_web_api_protocol::devices::{
@@ -28,7 +28,9 @@ use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::protocol::frame::coding::CloseCode;
 
 use crate::conversations::{FIRST, Socket, create};
-use crate::support::{Harness, Session, TestBackend, elapse, eventually, stored_token};
+use crate::support::{
+    Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend, elapse, eventually, stored_token,
+};
 
 #[tokio::test(flavor = "multi_thread")]
 async fn a_claimed_runner_reconnects_with_its_token_until_its_device_is_revoked() {
@@ -244,6 +246,7 @@ pub(crate) fn hello(protocol: u32, token: Option<&str>, managed: Option<bool>) -
             shell: None,
             managed,
             installation: None,
+            autostart_unavailable: None,
         },
         instance: 1,
         jobs: Vec::new(),
@@ -449,6 +452,56 @@ async fn a_held_connection_that_does_not_answer_its_ping_gives_way_to_the_device
     drop(returning);
     backend.until_online(&master, laptop.id(), false).await;
     backend.close().await;
+}
+
+/// A device whose runner cannot register with its system's service manager
+/// shows why, so the user learns it before a restart, and goes on showing
+/// it after the backend's own restart, until a runner that registered says
+/// nothing (`runner.md` § Starting with the computer).
+/// Planted defect this catches: a reason kept only in memory, which a
+/// backend's restart forgets.
+#[tokio::test(flavor = "multi_thread")]
+async fn a_device_shows_why_it_will_not_start_its_runner_by_itself() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let mut laptop = backend.pair(&master, "laptop").await;
+    let token = laptop.token().await;
+    let id = laptop.id().to_owned();
+    laptop.runner.stop().await;
+    backend.until_online(&master, &id, false).await;
+    let reason = AutostartUnavailable::LingerOff { user: "alex".into() };
+
+    let mut unregistered = hello(wire::VERSION, Some(&token), None);
+    if let Outbound::Hello { runner, .. } = &mut unregistered {
+        runner.autostart_unavailable = Some(reason.clone());
+    }
+    let mut runner = RawRunner::connect(&backend).await;
+    runner.send(&unregistered).await;
+    assert!(matches!(runner.next().await, Some(Inbound::HelloOk { .. })));
+    assert_eq!(shown(&backend, &master).await, Some(reason.clone()));
+    drop(runner);
+    backend.until_online(&master, &id, false).await;
+
+    backend.close().await;
+    let backend = harness.start().await;
+    let master = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
+    assert_eq!(shown(&backend, &master).await, Some(reason));
+
+    let mut runner = RawRunner::connect(&backend).await;
+    runner.send(&hello(wire::VERSION, Some(&token), None)).await;
+    assert!(matches!(runner.next().await, Some(Inbound::HelloOk { .. })));
+    assert_eq!(shown(&backend, &master).await, None);
+    drop(runner);
+    backend.close().await;
+}
+
+/// Why the one device the user has will not start its runner by itself.
+async fn shown(backend: &TestBackend, session: &Session) -> Option<AutostartUnavailable> {
+    let devices = backend.devices(session).await;
+    let [device] = devices.as_slice() else {
+        panic!("one device: {devices:?}");
+    };
+    device.autostart_unavailable.clone()
 }
 
 /// Revoking a device tells its connected runner, which then removes itself

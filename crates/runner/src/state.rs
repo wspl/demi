@@ -96,11 +96,6 @@ impl RunnerState {
         Ok(Self { root })
     }
 
-    pub fn lock(&self) -> io::Result<StateLease> {
-        self.try_lock()?
-            .ok_or_else(|| io::Error::other("runner already active for this installation"))
-    }
-
     pub fn try_lock(&self) -> io::Result<Option<StateLease>> {
         let mut options = std::fs::OpenOptions::new();
         // Windows file locking requires read or write access, not append alone.

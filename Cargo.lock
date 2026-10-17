@@ -3130,6 +3130,7 @@ dependencies = [
  "futures-util",
  "hostname",
  "libc",
+ "objc2-core-foundation",
  "rustix",
  "serde",
  "serde_json",
@@ -3146,6 +3147,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "uuid",
+ "uzers",
  "windows-sys 0.61.2",
 ]
 

@@ -1389,6 +1389,107 @@ pub struct RunnerInfo {
     )]
     #[garde(inner(length(chars, min = 1, max = 4096)))]
     pub installation: Option<String>,
+    /// Why the device will not start its runner by itself after a restart,
+    /// such as a Linux without a systemd user manager; none when its
+    /// registration with the system's service manager is in place
+    /// (`runner.md` § Starting with the computer).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[garde(dive)]
+    pub autostart_unavailable: Option<AutostartUnavailable>,
+}
+
+/// Why a device will not start its runner by itself after a restart
+/// (`runner.md` § Starting with the computer): its cause, with what the
+/// system said, so that Devices says it in the user's language and the
+/// runner's log and installer in English ([`AutostartUnavailable::sentence`]).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(
+    tag = "cause",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum AutostartUnavailable {
+    /// The system does not run systemd, as most containers and WSL
+    /// without it.
+    NoSystemd,
+    /// systemd's user manager does not answer, as without the user's
+    /// session; `error` is what `systemctl` said.
+    NoUserManager {
+        #[garde(length(chars, max = 4096))]
+        error: String,
+    },
+    /// The file that registers the runner, at `path`, could not be
+    /// written; `error` is the system's reason.
+    NotWritten {
+        #[garde(length(chars, min = 1, max = 4096))]
+        path: String,
+        #[garde(length(chars, max = 4096))]
+        error: String,
+    },
+    /// Lingering is off for `user` and the system refused to turn it on,
+    /// so the runner starts only once the user logs in.
+    LingerOff {
+        #[garde(length(chars, min = 1, max = 256))]
+        user: String,
+    },
+    /// Windows refused the scheduled task and the `Run` value; `error` is
+    /// what it said.
+    Refused {
+        #[garde(length(chars, max = 4096))]
+        error: String,
+    },
+    /// The installation's directory name, `name`, cannot name a
+    /// registration.
+    UnusableName {
+        #[garde(length(chars, min = 1, max = 256))]
+        name: String,
+    },
+    /// The user database does not name the account the runner runs as.
+    UnknownAccount,
+}
+
+impl AutostartUnavailable {
+    /// The cause in English, as the runner's log and the installers say it
+    /// after [`crate::console::NO_AUTOSTART`]; a path under `home` is
+    /// written from `~`.
+    pub fn sentence(&self, home: &str) -> String {
+        match self {
+            Self::NoSystemd => "this system does not run systemd".into(),
+            Self::NoUserManager { error } => {
+                format!("systemd's user manager does not answer ({error})")
+            }
+            Self::NotWritten { path, error } => format!(
+                "the file that registers it, {}, could not be written ({error})",
+                from_home(path, home)
+            ),
+            Self::LingerOff { user } => format!(
+                "it starts only once {user} logs in; to start it at boot, run: sudo loginctl enable-linger {user}"
+            ),
+            Self::Refused { error } => {
+                format!("Windows refused its scheduled task and its startup entry ({error})")
+            }
+            Self::UnusableName { name } => {
+                format!("the installation's directory name {name} cannot name a registration")
+            }
+            Self::UnknownAccount => "the user database does not name this account".into(),
+        }
+    }
+}
+
+/// `path` written from `~` when it lies in `home`.
+fn from_home(path: &str, home: &str) -> String {
+    let home = home.trim_end_matches(['/', '\\']);
+    match path.strip_prefix(home) {
+        Some(rest) if !home.is_empty() && (rest.starts_with('/') || rest.starts_with('\\')) => {
+            format!("~{rest}")
+        }
+        _ => path.to_owned(),
+    }
 }
 
 /// The operating system a runner runs on, named as Node's
