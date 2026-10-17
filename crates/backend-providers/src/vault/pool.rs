@@ -298,6 +298,65 @@ mod tests {
 
     impl SecretDocument for Tokens {}
 
+    /// A backend shuts down while a vendor still holds its answer to a
+    /// refresh whose caller went away: the shutdown waits, and the new
+    /// tokens are stored before the database closes.
+    #[tokio::test]
+    async fn a_shutdown_waits_for_a_refresh_under_way_to_store_its_answer() {
+        let data = tempfile::tempdir().unwrap();
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            Arc::new(demi_shared_types::SystemClock),
+            std::sync::Arc::new(demi_backend_database::providers::NoSealedConfigs),
+        )
+        .await
+        .unwrap();
+        let master = testing::master(&control).await;
+        let vault = Vault::new(
+            control.clone(),
+            VaultKey::new([3; 32]),
+            InstanceMode::Isolated,
+            demi_backend_page_sync::SyncRegistry::default(),
+        );
+        let entry = vault
+            .create_subscription(
+                master.id.clone(),
+                "codex".into(),
+                "Codex".into(),
+                &MemoryCredentialPool::new(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        let pool = vault.pool(entry.id.clone());
+        pool.write(account("a"), Some(r#"{"refresh":"one"}"#.into()))
+            .await
+            .unwrap();
+        let (asked, vendor_asked) = tokio::sync::oneshot::channel();
+        let (answer, held) = tokio::sync::oneshot::channel::<()>();
+        let refresh = move |_: Tokens| async move {
+            let _ = asked.send(());
+            held.await.unwrap();
+            Ok::<_, String>(Tokens {
+                refresh: "two".into(),
+            })
+        };
+        let caller = renew::<Tokens, String, _, _>(pool.document("a").into(), |_| true, refresh);
+        tokio::select! {
+            renewed = caller => panic!("a held refresh answered {renewed:?}"),
+            asked = vendor_asked => asked.unwrap(),
+        }
+        let gates = vault.gates();
+        let mut closing = std::pin::pin!(gates.close());
+        assert!(futures_util::poll!(closing.as_mut()).is_pending());
+        answer.send(()).unwrap();
+        closing.await;
+        assert_eq!(
+            pool.document("a").read().await.unwrap().unwrap().text,
+            r#"{"refresh":"two"}"#
+        );
+    }
+
     #[tokio::test]
     async fn an_account_is_a_sealed_record_refreshed_only_over_the_version_it_was_read_at() {
         let data = tempfile::tempdir().unwrap();
@@ -356,9 +415,9 @@ mod tests {
 
         // Concurrent renewals of one account ask the vendor once, and the
         // second uses what the first stored.
-        let asked = AtomicUsize::new(0);
+        let asked = Arc::new(AtomicUsize::new(0));
         let refresh = |tokens: Tokens| {
-            let asked = &asked;
+            let asked = asked.clone();
             async move {
                 asked.fetch_add(1, Ordering::SeqCst);
                 tokio::task::yield_now().await;
@@ -370,8 +429,8 @@ mod tests {
         let still_due = |tokens: &Tokens| tokens.refresh == "two";
         let (one, another) = (pool.document("a"), pool.document("a"));
         let (left, right) = tokio::join!(
-            renew::<Tokens, String, _, _>(&*one, still_due, refresh),
-            renew::<Tokens, String, _, _>(&*another, still_due, refresh),
+            renew::<Tokens, String, _, _>(one.into(), still_due, refresh),
+            renew::<Tokens, String, _, _>(another.into(), still_due, refresh),
         );
         assert_eq!(
             (left.unwrap().refresh, right.unwrap().refresh),

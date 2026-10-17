@@ -12,7 +12,7 @@ use demi_provider_common::{
         AccountKit, AccountsCapability, LoginError, LoginIo, LoginKind, NewAccount,
         SecretDocument,
     },
-    oauth::{Lifetime, PollInterval, ResponseError, decode_json_response},
+    oauth::{Lifetime, PollInterval, ResponseError, TokenRefusal, decode_json_response},
     wire::{NonEmpty, Reported},
 };
 use demi_shared_types::{Clock, LoginPending, Timestamp};
@@ -172,8 +172,10 @@ impl GrokKit {
             }
             // An error the answer does not state still ends the login, named
             // by its status.
-            let refusal: TokenRefusal = decode_json_response(response).await.unwrap_or_default();
-            match refusal.error.into_inner().as_deref() {
+            // An error that is not OAuth's reads as none, so no vendor text
+            // reaches the message.
+            let refusal = TokenRefusal::of(&response.bytes().await.unwrap_or_default());
+            match refusal.code() {
                 Some("slow_down") => interval += SLOW_DOWN,
                 Some("authorization_pending") => {}
                 Some(error) => {
@@ -364,13 +366,6 @@ struct Tokens {
     expires_in: Lifetime,
     #[serde(default)]
     id_token: Option<Secret>,
-}
-
-/// A poll the server refused, with its error when it states one.
-#[derive(Default, Deserialize)]
-struct TokenRefusal {
-    #[serde(default)]
-    error: Reported<String>,
 }
 
 /// The proxy's `/user`, which spells its fields in camel and snake case; a

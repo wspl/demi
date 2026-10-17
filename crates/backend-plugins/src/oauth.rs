@@ -11,6 +11,8 @@
 //! server's metadata (RFC 8414). A plugin sees only the access token.
 
 use std::collections::HashMap;
+use std::rc::Rc;
+use std::sync::Arc;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -22,7 +24,7 @@ use demi_plugin_interface::{
 };
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::decode_secret;
-use demi_provider_common::oauth::Lifetime;
+use demi_provider_common::oauth::{Lifetime, TokenRefusal};
 use demi_shared_types::Timestamp;
 use jiff::SignedDuration;
 use serde::de::DeserializeOwned;
@@ -54,15 +56,16 @@ pub(crate) struct SignIns {
     pending: std::cell::RefCell<HashMap<String, Pending>>,
     /// Each plugin's turn, by its index: its renewals, sign-outs and stores
     /// of new tokens take turns within the shard, so two token calls spend
-    /// a refresh token once.
-    turns: Vec<tokio::sync::Mutex<()>>,
+    /// a refresh token once. A renewal holds its turn to its end, apart
+    /// from the call that started it.
+    turns: Vec<Arc<tokio::sync::Mutex<()>>>,
 }
 
 impl SignIns {
     pub(crate) fn new(plugins: usize) -> Self {
         Self {
             pending: std::cell::RefCell::default(),
-            turns: (0..plugins).map(|_| tokio::sync::Mutex::new(())).collect(),
+            turns: (0..plugins).map(|_| Arc::default()).collect(),
         }
     }
 }
@@ -122,12 +125,6 @@ struct Issued {
     expires_in: Lifetime,
 }
 
-/// A token endpoint's refusal (RFC 6749 § 5.2).
-#[derive(Deserialize)]
-struct Refusal {
-    error: String,
-}
-
 /// What the browser brings back to the callback (RFC 6749 § 4.1.2). No
 /// `Debug`: the code is a credential until it is exchanged.
 #[derive(Clone, Default, Deserialize)]
@@ -163,9 +160,13 @@ pub enum CallbackError {
 /// What a token endpoint answered.
 enum Exchanged {
     Issued(Issued),
-    /// A refusal of the grant or of the client (HTTP 400 or 401); whether
-    /// the vendor no longer knows the client.
-    Refused { unknown_client: bool },
+    /// Any other HTTP status, with the OAuth refusal its body states.
+    Refused { status: u16, refusal: TokenRefusal },
+}
+
+/// Whether `refusal` says the vendor no longer knows the client.
+fn unknown_client(refusal: &TokenRefusal) -> bool {
+    refusal.is("invalid_client")
 }
 
 impl Shared {
@@ -409,11 +410,13 @@ impl Shared {
             .map_err(failed)?
         {
             Exchanged::Issued(issued) => issued,
-            Exchanged::Refused { unknown_client } => {
-                if unknown_client {
+            Exchanged::Refused { status, refusal } => {
+                if unknown_client(&refusal) {
                     self.forget_client(plugin, oauth, &pending.client_id).await;
                 }
-                return Err(failed(vendor("the vendor refused the code".into())));
+                return Err(failed(vendor(format!(
+                    "the vendor refused the code with HTTP {status}"
+                ))));
             }
         };
         let tokens = self.tokens(pending.client_id, issued, None);
@@ -438,61 +441,147 @@ impl Shared {
     /// A live access token of the user's sign-in to plugin `plugin`'s
     /// vendor, renewed first when it expires within a minute.
     pub(crate) async fn oauth_token(
-        &self,
+        self: &Rc<Self>,
         plugin: usize,
         cancel: &CancellationToken,
     ) -> Result<String, PortFailure> {
-        let oauth = self.oauth(plugin)?;
-        let _turn = self.sign_ins.turns[plugin].lock().await;
+        self.oauth(plugin)?;
+        let turn = self.sign_ins.turns[plugin].clone().lock_owned().await;
         let Some((tokens, revision)) = self.stored_tokens(plugin).await? else {
             return Err(PortFailure::Refused(PortRefusal::SignedOut));
         };
         if !self.due(&tokens) {
             return Ok(tokens.access_token.expose().to_owned());
         }
-        let Some(refresh) = &tokens.refresh_token else {
+        let Some(refresh) = tokens.refresh_token.clone() else {
             return self.signed_out(plugin, revision).await;
         };
+        // From here the renewal is the shard's: it holds the turn and stores
+        // the vendor's answer whether or not this call still waits, since
+        // the vendor may spend the refresh token the moment it answers
+        // (`providers.md` § Token refresh).
+        let (answer, answered) = tokio::sync::oneshot::channel();
+        let shared = self.clone();
+        self.product.spawn(Box::pin(async move {
+            let renewed = shared.renew(plugin, tokens, &refresh, revision).await;
+            drop(turn);
+            // A call that went away needs no answer: the tokens are stored.
+            let _ = answer.send(renewed);
+        }));
+        tokio::select! {
+            renewed = answered => renewed.unwrap_or_else(|_| {
+                Err(PortFailure::Port(PortError::Ended(
+                    "the backend is shutting down".into(),
+                )))
+            }),
+            () = cancel.cancelled() => Err(PortFailure::Refused(PortRefusal::Web {
+                failure: WebFailure::Unreachable {
+                    message: "the request was cancelled".into(),
+                },
+            })),
+        }
+    }
+
+    /// Renews `tokens`, stored at `revision`, at plugin `plugin`'s vendor
+    /// and stores what it answers. Only the vendor's `invalid_grant`
+    /// forgets the tokens and answers *signed out*; any other failure keeps
+    /// them, so the next call renews again.
+    async fn renew(
+        &self,
+        plugin: usize,
+        tokens: Tokens,
+        refresh: &Secret,
+        revision: u64,
+    ) -> Result<String, PortFailure> {
+        let oauth = self.oauth(plugin)?;
+        // Nothing cancels a renewal: each call to the vendor ends by its
+        // deadline.
+        let cancel = CancellationToken::new();
+        let asked = self
+            .ask_renewal(plugin, oauth, &tokens.client_id, refresh, &cancel)
+            .await;
+        let refused = match asked {
+            Ok(Exchanged::Issued(issued)) => {
+                return self.store_renewal(plugin, tokens, issued, revision).await;
+            }
+            Ok(Exchanged::Refused { status, refusal }) => {
+                // The code names the refusal; the description may quote a
+                // token and is never read.
+                tracing::warn!(
+                    plugin = self.plugin_id(plugin),
+                    status,
+                    error = refusal.named(),
+                    "the vendor refused to renew a sign-in"
+                );
+                Ok((status, refusal))
+            }
+            Err(failure) => Err(failure),
+        };
+        // Another worker may have spent the refresh token and stored what
+        // it got.
+        if let Some((stored, moved)) = self.stored_tokens(plugin).await?
+            && moved != revision
+        {
+            return Ok(stored.access_token.expose().to_owned());
+        }
+        let (status, refusal) = refused?;
+        // Only a refusal of the refresh token itself says it is dead.
+        if matches!(status, 400 | 401) && refusal.is("invalid_grant") {
+            return self.signed_out(plugin, revision).await;
+        }
+        if unknown_client(&refusal) {
+            self.forget_client(plugin, oauth, &tokens.client_id).await;
+        }
+        Err(vendor(format!(
+            "the authorization server did not renew the sign-in (HTTP {status}, {})",
+            refusal.named()
+        )))
+    }
+
+    /// Asks plugin `plugin`'s vendor for new tokens for `refresh`, issued
+    /// to `client_id`.
+    async fn ask_renewal(
+        &self,
+        plugin: usize,
+        oauth: &OAuth,
+        client_id: &str,
+        refresh: &Secret,
+        cancel: &CancellationToken,
+    ) -> Result<Exchanged, PortFailure> {
         let metadata = self.metadata(plugin, oauth, cancel).await?;
         let form = [
             ("grant_type", "refresh_token"),
             ("refresh_token", refresh.expose()),
-            ("client_id", tokens.client_id.as_str()),
+            ("client_id", client_id),
             ("resource", oauth.resource.as_str()),
         ];
-        match self.token_endpoint(plugin, &metadata, &form, cancel).await? {
-            Exchanged::Issued(issued) => {
-                let renewed = self.tokens(tokens.client_id, issued, tokens.refresh_token);
-                let access = renewed.access_token.expose().to_owned();
-                match self
-                    .write_secret(plugin, TOKENS, &sealed(&renewed), Some(revision))
-                    .await
-                {
-                    Ok(_) => Ok(access),
-                    // Another worker stored tokens first: they are the live
-                    // ones.
-                    Err(PortFailure::Refused(PortRefusal::Conflict)) => {
-                        match self.stored_tokens(plugin).await? {
-                            Some((stored, _)) => Ok(stored.access_token.expose().to_owned()),
-                            None => Err(PortFailure::Refused(PortRefusal::SignedOut)),
-                        }
-                    }
-                    Err(failure) => Err(failure),
+        self.token_endpoint(plugin, &metadata, &form, cancel).await
+    }
+
+    /// Stores the tokens the vendor `issued` for `tokens`, stored at
+    /// `revision`, and answers the live access token.
+    async fn store_renewal(
+        &self,
+        plugin: usize,
+        tokens: Tokens,
+        issued: Issued,
+        revision: u64,
+    ) -> Result<String, PortFailure> {
+        let renewed = self.tokens(tokens.client_id, issued, tokens.refresh_token);
+        let access = renewed.access_token.expose().to_owned();
+        match self
+            .write_secret(plugin, TOKENS, &sealed(&renewed), Some(revision))
+            .await
+        {
+            Ok(_) => Ok(access),
+            // Another worker stored tokens first: they are the live ones.
+            Err(PortFailure::Refused(PortRefusal::Conflict)) => {
+                match self.stored_tokens(plugin).await? {
+                    Some((stored, _)) => Ok(stored.access_token.expose().to_owned()),
+                    None => Err(PortFailure::Refused(PortRefusal::SignedOut)),
                 }
             }
-            Exchanged::Refused { unknown_client } => {
-                // Another worker may have spent the refresh token and
-                // stored what it got.
-                if let Some((stored, moved)) = self.stored_tokens(plugin).await?
-                    && moved != revision
-                {
-                    return Ok(stored.access_token.expose().to_owned());
-                }
-                if unknown_client {
-                    self.forget_client(plugin, oauth, &tokens.client_id).await;
-                }
-                self.signed_out(plugin, revision).await
-            }
+            Err(failure) => Err(failure),
         }
     }
 
@@ -580,15 +669,10 @@ impl Shared {
         let response = self.vendor(plugin, request, cancel).await?;
         match response.status {
             200..300 => Ok(Exchanged::Issued(decoded("token response", &response)?)),
-            400 | 401 => {
-                let error = decoded::<Refusal>("token refusal", &response)
-                    .map(|refusal| refusal.error)
-                    .unwrap_or_default();
-                Ok(Exchanged::Refused {
-                    unknown_client: error == "invalid_client",
-                })
-            }
-            status => Err(vendor(format!("the token endpoint answered HTTP {status}"))),
+            status => Ok(Exchanged::Refused {
+                status,
+                refusal: TokenRefusal::of(response.body.as_bytes()),
+            }),
         }
     }
 

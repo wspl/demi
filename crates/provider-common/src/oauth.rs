@@ -17,6 +17,7 @@ use regex::Regex;
 use serde::{Deserialize, Deserializer, de, de::DeserializeOwned};
 
 use crate::credentials::{SecretDecodeError, decode_secret};
+use crate::wire::ReportedString;
 
 /// A duration in seconds as an OAuth server states it: RFC 8628 says a
 /// number, and some deployments send the digits as a string. The number is
@@ -97,6 +98,76 @@ impl<'de> Deserialize<'de> for Lifetime {
             .filter(|seconds| *seconds > 0.0)
             .map(Duration::from_secs_f64);
         Ok(Self(lifetime))
+    }
+}
+
+/// The error codes a token endpoint's refusal states (RFC 6749 § 5.2), and
+/// those of a device login's poll (RFC 8628 § 3.5).
+const OAUTH_ERRORS: [&str; 12] = [
+    "invalid_request",
+    "invalid_client",
+    "invalid_grant",
+    "unauthorized_client",
+    "unsupported_grant_type",
+    "invalid_scope",
+    "server_error",
+    "temporarily_unavailable",
+    "authorization_pending",
+    "slow_down",
+    "access_denied",
+    "expired_token",
+];
+
+/// A token endpoint's refusal (RFC 6749 § 5.2): the `error` code of a body
+/// that is a JSON object, when it is one OAuth defines. Nothing else of the
+/// body is kept, its `error_description` included, so no log or message
+/// repeats what a vendor wrote, which may quote a token.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct TokenRefusal {
+    /// The OAuth code; none for a body that is no JSON object, states no
+    /// code or one OAuth does not define.
+    code: Option<&'static str>,
+}
+
+/// The fields of a refusal's JSON object that are read.
+#[derive(Deserialize)]
+struct RefusalObject {
+    #[serde(default)]
+    error: ReportedString,
+}
+
+impl TokenRefusal {
+    /// The refusal in `body`.
+    pub fn of(body: &[u8]) -> Self {
+        // A body that is not a JSON object states no code: serde would read
+        // the struct from an array too.
+        let Ok(object) = serde_json::from_slice::<serde_json::Map<String, serde_json::Value>>(body)
+        else {
+            return Self::default();
+        };
+        let Ok(refusal) = serde_json::from_value::<RefusalObject>(object.into()) else {
+            return Self::default();
+        };
+        let code = refusal
+            .error
+            .as_deref()
+            .and_then(|error| OAUTH_ERRORS.into_iter().find(|code| *code == error));
+        Self { code }
+    }
+
+    /// The OAuth code the body states, if any.
+    pub fn code(&self) -> Option<&'static str> {
+        self.code
+    }
+
+    /// The code as logs and messages name it: OAuth's, or `other`.
+    pub fn named(&self) -> &'static str {
+        self.code.unwrap_or("other")
+    }
+
+    /// Whether the body states `code`.
+    pub fn is(&self, code: &str) -> bool {
+        self.code == Some(code)
     }
 }
 

@@ -180,6 +180,14 @@ impl ProductPort for ShardPort {
     fn now(&self) -> Timestamp {
         self.services.clock.now()
     }
+
+    fn spawn(&self, work: LocalBoxFuture<'static, ()>) {
+        // A shard already gone is shutting down: the work has not started,
+        // and whoever waits for it hears that the backend is shutting down.
+        if let Some(shard) = self.shard.upgrade() {
+            shard.tasks().spawn_local(work);
+        }
+    }
 }
 
 /// The client of a shard thread's plugins' outbound requests

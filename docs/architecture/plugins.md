@@ -494,8 +494,16 @@ host runs the flow, one for every such plugin:
    renewing it first when it expires within a minute. A renewal takes the
    secret's revision and replaces it at that revision, so two workers never
    spend one refresh token twice, as for provider credentials
-   ([Token refresh](../providers/providers.md#token-refresh)); a refusal
-   forgets the tokens and answers *signed out*.
+   ([Token refresh](../providers/providers.md#token-refresh)), and runs to
+   its end when its caller goes away. Only the vendor's refusal of the
+   refresh token itself, an HTTP 400 or 401 whose body is a JSON object
+   with `error: "invalid_grant"`, forgets the tokens and
+   answers *signed out*; any other failure, another error, a timeout or no
+   answer, keeps them and answers that the vendor did not answer, so the
+   next call renews again. The log names each refused renewal's HTTP status
+   and OAuth `error` code when it is one OAuth defines, `other` otherwise,
+   never the vendor's text, its description or a token, so a lost
+   sign-in can be traced.
 5. **Sign out.** Forgets the tokens, then revokes them at the vendor when it
    offers revocation. A sign-out, and a renewal the vendor refused, mark the
    plugin's user state changed as the callback does, so no page goes on
