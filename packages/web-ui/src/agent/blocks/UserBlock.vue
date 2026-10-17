@@ -20,7 +20,7 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import NoticeLabel from './NoticeLabel.vue'
 import VersionSwitcher from './VersionSwitcher.vue'
 import { composerCapsule, composerTransfer, contentMessage, provideTransfers } from '../message-editor/capsules'
-import MessageEditor from '../message-editor/MessageEditor.vue'
+import SentMessage from '../message-editor/SentMessage.vue'
 import StreamedMarkdown from '../../ui/StreamedMarkdown.vue'
 import type { ComposerAttachment } from '../message-input/attachments'
 
@@ -69,7 +69,7 @@ const emit = defineEmits<{
   retry: []
 }>()
 
-const editor = ref<InstanceType<typeof MessageEditor>>()
+const sent = ref<InstanceType<typeof SentMessage>>()
 
 /**
  * Copy puts the message on the clipboard in every form, its files with it
@@ -77,7 +77,7 @@ const editor = ref<InstanceType<typeof MessageEditor>>()
  * answer's Copy does.
  */
 function copySource(): CopySource {
-  return typeof props.brief === 'string' ? props.brief : editor.value?.clipboardItem()
+  return typeof props.brief === 'string' ? props.brief : sent.value?.clipboardItem()
 }
 
 // A message not yet confirmed shows how far each of its files' uploads has
@@ -102,7 +102,7 @@ interface BubbleAction {
   emit: () => void
 }
 
-/** The message as its editor shows it: its Markdown, and a capsule for each file in the order of their marks. */
+/** The message as it shows: its Markdown, and a capsule for each file in the order of their marks. */
 const message = computed(() => {
   const held = contentMessage(props.content)
   return props.attachments ? { ...held, capsules: props.attachments.map(composerCapsule) } : held
@@ -268,9 +268,9 @@ useResizeObserver(bodyRef, measure)
             v-if="typeof brief === 'string'"
             :content="brief"
           />
-          <MessageEditor
+          <SentMessage
             v-else
-            ref="editor"
+            ref="sent"
             :markdown="message.markdown"
             :attachments="message.capsules"
           />
