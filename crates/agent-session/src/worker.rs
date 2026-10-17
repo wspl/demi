@@ -6,9 +6,9 @@
 
 use std::rc::{Rc, Weak};
 
-use demi_agent_transcript::{resume_point, rewind, turn_record, unwind};
+use demi_agent_transcript::{resume_point, rewind, unwind};
 use demi_provider_common::Ahead;
-use demi_shared_types::{Block, ErrorDevice, HOST_OFFLINE, TurnId};
+use demi_shared_types::TurnId;
 use tokio::sync::Notify;
 
 use demi_conversation_socket_protocol::AgentCode;
@@ -292,17 +292,6 @@ async fn resume(
     s.update(|core| core.push_resume(reason));
     compaction::preflight(s, cancel).await?;
     turn::run(s, cancel).await
-}
-
-/// The device whose absence left the last turn unfinished: the turn's
-/// record ([`turn_record`]) is a `host_offline` error naming it. The backend
-/// reads it to say, as the user resumes, where the turn now runs
-/// (`failures-and-recovery.md` § The unfinished turn).
-pub fn left_by_offline_host(blocks: &[Block]) -> Option<&ErrorDevice> {
-    match turn_record(blocks)? {
-        Block::Error(error) if error.code.as_deref() == Some(HOST_OFFLINE) => error.device.as_ref(),
-        _ => None,
-    }
 }
 
 /// Records how the body ended, unless dispose stopped it: a stop leaves its

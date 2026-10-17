@@ -33,7 +33,7 @@ mod stream_pipe;
 #[cfg(feature = "testing")]
 pub mod testing;
 
-pub use device_jobs::{CLOUD_RESTARTED, DeviceJobs, Hello, NEVER_RECEIVED, RUNNER_RESTARTED, UNREACHED, UPGRADED};
+pub use device_jobs::{CLOUD_RESTARTED, DeviceJobs, Hello, NEVER_RECEIVED, RUNNER_RESTARTED, UPGRADED};
 pub use file_watch::{HostEvent, HostSubscriber};
 pub use link::{
     DirectAdmission, DirectAnswer, PackageEvent, PeerEvent, JobEnd, JobMedium, JobOrigin, JobOutput, Link, LinkDriver, LinkEnd, LinkOptions,
@@ -55,6 +55,6 @@ pub use runner_socket::{close_frame, socket_frame};
 #[cfg(feature = "edge")]
 pub use stream_pipe::accept_stream_pipe;
 pub use shell_environment::{
-    CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, RemoteShellEnvironment,
+    CommandKeeper, ContextSource, EnvironmentOptions, HostAccess, JobWaiting, KeptStart, RemoteShellEnvironment,
     RemoteShellEnvironmentFactory, edited_file,
 };

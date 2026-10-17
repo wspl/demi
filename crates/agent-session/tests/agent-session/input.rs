@@ -1424,6 +1424,7 @@ async fn a_command_whose_call_a_crash_interrupted_keeps_its_interval_and_its_los
         interval_ms: Some(300_000),
         started: Timestamp::UNIX_EPOCH,
         place: Default::default(),
+        unsent: None,
     }];
     let deps = SessionDeps {
         runtime: Rc::new(runtime),

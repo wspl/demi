@@ -39,7 +39,7 @@ pub use demi_command_declarations::{CapabilityIndex, IndexGroup};
 pub use environment::{
     BinaryOutput, CommandState, CommandStatus, DEFAULT_BINARY_LIMIT_BYTES,
     DEFAULT_OUTPUT_LIMIT_BYTES, EditedFiles, ExecRequest, JobCaller, Newest, Numbers, PageFeed,
-    ShellEnvironment, ShellError, TakenUp, Unreachable, WholeView,
+    ShellEnvironment, ShellError, TakenUp, Unreachable, UnsentStart, WholeView,
 };
 pub use host::{
     ByteRange, ByteStream, CpOptions, Descriptor, DirEntry, FileContents, FileKind, FileStat, Host, HostError,

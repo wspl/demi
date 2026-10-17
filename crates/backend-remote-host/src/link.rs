@@ -548,10 +548,6 @@ pub struct JobEnd {
     pub files: Vec<wire::JobFileChange>,
     pub path_changes: Vec<wire::JobPathChange>,
     pub files_truncated: bool,
-    /// Why the job counts as lost although its runner kept its output: it
-    /// stopped the job once its connection stayed away (`runner.md`
-    /// § Command lifetime).
-    pub lost: Option<String>,
 }
 
 impl JobEnd {
@@ -562,7 +558,6 @@ impl JobEnd {
             files: Vec::new(),
             path_changes: Vec::new(),
             files_truncated: false,
-            lost: None,
         }
     }
 }
@@ -1372,8 +1367,7 @@ impl Link {
                     files,
                     path_changes,
                     files_truncated,
-                    lost: None,
-                };
+                        };
                 // The exit of a job the backend has no command for, or one
                 // it heard already over a connection that ended, releases
                 // the job's directory.

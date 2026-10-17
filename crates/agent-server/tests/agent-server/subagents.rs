@@ -1193,6 +1193,7 @@ async fn restore_takes_up_the_commands_closed_children_left_stopping() {
                 interval_ms: None,
                 started: Timestamp::UNIX_EPOCH,
                 place: Seen::default(),
+                unsent: None,
             },
         );
     }
@@ -1270,6 +1271,7 @@ async fn a_report_during_the_take_up_of_an_interrupted_root_starts_no_turn() {
             interval_ms: None,
             started: Timestamp::UNIX_EPOCH,
             place: Seen::default(),
+            unsent: None,
         },
     );
     let model = Model::default();

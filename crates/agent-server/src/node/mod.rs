@@ -243,7 +243,7 @@ impl<H: HostResolver> Node<H> {
             .page_views()
             .into_iter()
             .filter(|view| {
-                matches!(view.state, PageState::Running | PageState::Stopping)
+                matches!(view.state, PageState::Running | PageState::Waiting { .. } | PageState::Stopping)
                     || stored.contains(&view.command_id)
             })
             .collect();
@@ -261,6 +261,12 @@ impl<H: HostResolver> Node<H> {
             Ok(true) => Some(Ok(())),
             Err(error) => Some(Err(error)),
         }
+    }
+
+    /// Ends each of the node's commands whose start still waits for its
+    /// Host, as the user's Stop does.
+    pub(crate) async fn stop_waiting(&self) {
+        self.runtime.environments.stop_waiting().await;
     }
 
     /// Ends the node's shells on every Host, their running commands with
@@ -765,7 +771,7 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
             .environments
             .page_views()
             .into_iter()
-            .filter(|view| view.state == PageState::Running)
+            .filter(|view| matches!(view.state, PageState::Running | PageState::Waiting { .. }))
             .collect();
         views.sort_by_key(|view| std::cmp::Reverse(view.running_ms));
         let commands = views
@@ -851,16 +857,21 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
                 // A resident command reports only its end, and one whose
                 // Host's connection is away nothing until it is back: the
                 // silence is the connection's (`shell-tool.md` § Command
-                // reports).
+                // reports). So does one whose start waits for its Host,
+                // which never ran (`sessions-and-targets.md` § Host
+                // operations).
                 let interval = interval_ms?;
                 if environment.unreachable(command).is_some() {
                     return None;
                 }
-                let running_ms = environment
+                let view = environment
                     .page_views()
                     .into_iter()
-                    .find(|view| &view.command_id == command)
-                    .map_or(0, |view| view.running_ms);
+                    .find(|view| &view.command_id == command);
+                if view.as_ref().is_some_and(|view| matches!(view.state, PageState::Waiting { .. })) {
+                    return None;
+                }
+                let running_ms = view.map_or(0, |view| view.running_ms);
                 let idle_ms = environment
                     .quiet(command)
                     .map_or(0, |quiet| u64::try_from(quiet.as_millis()).unwrap_or(u64::MAX));

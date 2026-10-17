@@ -143,8 +143,8 @@ impl LinkPolicy for ShardPolicy {
                 .await
                 .map_err(|error| error.to_string())?
                 .into_iter()
-                .find(|(recorded, _)| *recorded == job)
-                .map(|(_, conversation)| conversation)
+                .find(|recorded| recorded.sent && recorded.job == job)
+                .map(|recorded| recorded.conversation)
                 .ok_or("rpc requires a live job dispatched to this device")?;
             // Counted before the open, so the close waits for it before the
             // agent shuts down.

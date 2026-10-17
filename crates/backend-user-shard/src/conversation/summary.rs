@@ -51,10 +51,11 @@ impl Shard {
         &self,
         record: ConversationRecord,
     ) -> Result<ConversationSummary, StorageError> {
-        let live = self
-            .agent()
-            .tree(&root_of(&record.id))
+        let tree = self.agent().tree(&root_of(&record.id));
+        let live = tree
+            .as_ref()
             .map(|tree| (tree.works(), tree.root().session().phase()));
+        let only_waits_for_host = tree.as_ref().is_some_and(|tree| tree.only_waits());
         // A conversation whose database cannot be opened, as one a build
         // that does not know its schema made, is listed without its facts:
         // it alone fails to open, and the user's other conversations and
@@ -80,7 +81,7 @@ impl Shard {
         let cwd = resolved.path().to_owned();
         let target = record.target.shown(&resolved);
         let model = record.model.as_ref().map(settings).transpose()?;
-        let plugins_changed = match self.agent().tree(&root_of(&record.id)) {
+        let plugins_changed = match &tree {
             Some(tree) => tree.toolset() != self.plugins().revision().await?,
             None => false,
         };
@@ -97,6 +98,7 @@ impl Shard {
         Ok(ConversationSummary {
             unread: facts.revision > record.read_revision,
             plugins_changed,
+            only_waits_for_host,
             id: record.id,
             title: record.title,
             archived: record.archived,

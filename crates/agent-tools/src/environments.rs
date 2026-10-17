@@ -169,6 +169,20 @@ impl Environments {
         }
     }
 
+    /// Ends each command whose start still waits for its Host, in every
+    /// environment made so far, as the user's Stop does
+    /// (`sessions-and-targets.md` § Host operations).
+    pub async fn stop_waiting(&self) {
+        let made: Vec<Rc<dyn ShellEnvironment>> = self
+            .slots
+            .borrow()
+            .iter()
+            .filter_map(|slot| slot.environment.get())
+            .cloned()
+            .collect();
+        join_all(made.iter().map(|environment| environment.stop_waiting())).await;
+    }
+
     /// The pages' view of every command the environments made so far hold.
     pub fn page_views(&self) -> Vec<PageView> {
         self.slots
@@ -210,7 +224,7 @@ impl Environments {
         let environments = self.forget_all();
         for environment in &environments {
             for view in environment.page_views() {
-                if view.state == PageState::Running {
+                if matches!(view.state, PageState::Running | PageState::Waiting { .. }) {
                     // An environment refuses only a command it does not
                     // hold, and it holds every command its views show.
                     let _ = environment.abort(&view.command_id).await;
@@ -438,6 +452,10 @@ mod tests {
 
         fn release_command<'a>(&'a self, _: &'a CommandId) -> LocalBoxFuture<'a, bool> {
             Box::pin(async { false })
+        }
+
+        fn stop_waiting(&self) -> LocalBoxFuture<'_, ()> {
+            Box::pin(async {})
         }
 
         fn adopt(&self, _: demi_host_interface::TakenUp) {

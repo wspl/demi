@@ -43,6 +43,8 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   archived: boolean
   /** The open tree runs with commands of plugins since turned on or off; a reload would change it. */
   pluginsChanged: boolean
+  /** The backend says the agent only waits for the conversation's offline device: a move stops nothing. */
+  onlyWaitsForHost: boolean
   /** The conversation's shares, its own and its answers' (`web-api-conversations.md` § Sharing). */
   shares: ConversationShare[]
   createdAt: string

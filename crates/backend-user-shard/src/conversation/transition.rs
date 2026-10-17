@@ -139,7 +139,7 @@ impl Shard {
             ConversationChange::Target(_) => self.leaving_offline(&record).await?,
             _ => None,
         };
-        let tree = self.reserve_idle_tree(&record.id, leaving.is_some())?;
+        let tree = self.reserve_idle_tree(&record.id, leaving.as_ref())?;
         if let Some(device) = &leaving {
             self.conversations().slot(&record.id).leave_jobs_on(device);
         }
@@ -150,6 +150,9 @@ impl Shard {
                 if let Ok(Some(switched)) = &switched {
                     if switched.made.is_some() {
                         self.mark(Part::Workspaces);
+                    }
+                    if let Some(device) = &leaving {
+                        self.fail_waiting_for(&record, device).await?;
                     }
                     self.switched(&record.id).await;
                 }
@@ -230,7 +233,7 @@ impl Shard {
                 .conversation(conversation.clone())
                 .await?
                 .ok_or(ChangeRefusal::NotFound)?;
-            let tree = self.reserve_idle_tree(conversation, false)?;
+            let tree = self.reserve_idle_tree(conversation, None)?;
             holds.push(host.hold_for_transition(conversation, tree).await?);
             records.push(record);
         }
@@ -287,26 +290,53 @@ impl Shard {
 
     /// Reserves the conversation's live tree while it does nothing by itself
     /// (`runtime.md` § Actions): no action runs or waits, no child is live
-    /// and no command runs, unless `commands_left`, for a switch away from
-    /// an offline device, whose commands run on there. A conversation
-    /// without a live tree runs nothing; one whose tree works refuses the
-    /// transition.
+    /// and no command runs. A switch that `leaves` an offline device takes
+    /// the tree with commands running, which run on there, and also a tree
+    /// whose every running node only waits for that device: its waiting
+    /// jobs were never sent, the switch fails them, and the nodes go on on
+    /// the new Host, so nothing is reserved (`sessions-and-targets.md`
+    /// § Switch the primary target). A conversation without a live tree runs
+    /// nothing; one whose tree works otherwise refuses the transition.
     fn reserve_idle_tree(
         &self,
         id: &ConversationId,
-        commands_left: bool,
+        leaves: Option<&DeviceId>,
     ) -> Result<Option<Reservation>, ChangeRefusal> {
         let Some(tree) = self.agent().tree(&root_of(id)) else {
             return Ok(None);
         };
         // The check and the reservation are one step: no await between them.
-        if tree.works() || (tree.runs_commands() && !commands_left) {
+        if leaves.is_some() && tree.only_waits() {
+            return Ok(None);
+        }
+        if tree.works() || (tree.runs_commands() && leaves.is_none()) {
             return Err(ChangeRefusal::TurnInFlight);
         }
         tree.admission()
             .try_reserve()
             .map(Some)
             .ok_or(ChangeRefusal::TurnInFlight)
+    }
+
+    /// Fails the jobs that wait for `device`, the offline device the switch
+    /// of `record` left, with what the agent reads of them: where the
+    /// conversation runs now, and that the command did not run
+    /// (`sessions-and-targets.md` § Host operations).
+    async fn fail_waiting_for(&self, record: &ConversationRecord, device: &DeviceId) -> Result<(), ChangeRefusal> {
+        let control = &self.services().control;
+        let left = control
+            .device(device.clone())
+            .await?
+            .map_or_else(|| device.to_string(), |left| left.name);
+        let record = control
+            .conversation(record.id.clone())
+            .await?
+            .ok_or(ChangeRefusal::NotFound)?;
+        let target = self.host_shard().resolve_target(&record).await?;
+        let (_, now) = self.primary_host(&target).await?;
+        let reason = format!("This conversation now runs on {now}; this command did not run, since {left} was offline.");
+        self.conversations().slot(&record.id).fail_waiting_for(device, &reason);
+        Ok(())
     }
 }
 

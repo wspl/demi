@@ -1187,6 +1187,7 @@ async fn a_job_whose_command_cannot_be_taken_up_answers_why() {
             interval_ms: None,
             started: demi_shared_types::Timestamp::UNIX_EPOCH,
             place: Default::default(),
+            unsent: None,
         },
     );
     let _client = fixture.opened().await;

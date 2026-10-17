@@ -254,20 +254,10 @@ leave such a record, and a compaction leaves none:
   agent message is written, and the `abort` block after it lets Continue
   answer it. Nothing waits for the user afterwards
   ([Stop](runtime.md#stop)).
-- **A Host that was away** leaves the root's turn unfinished: when the
-  turn ends normally, but a call of it failed because its Host was offline
-  and no later call of the turn ran on that Host, the session appends an
-  `error` block of Demi's own, cause `host_offline` with the device, after
-  the agent's last words, so the turn offers Resume
-  ([Recovering an unfinished turn](../product/turns.md#recovering-an-unfinished-turn)).
-  Resume continues it with a `resume` block whose reason says where the
-  turn now runs: "MacBook Pro is back online. Continue from where you left
-  off.", or, after the user moved the conversation meanwhile, "This
-  conversation now runs on Cloud. Continue from where you left off." The
-  backend composes the reason as it passes the user's Resume to the
-  session, since it alone knows the conversation's primary Host. A
-  child's turn gets none: its result, which says what it could not do,
-  reaches its parent, whose own turn decides.
+- **A Host that is away** never ends a turn: the agent's operations on its
+  primary Host wait for the device however long it takes, and one on an
+  attached device fails with an error the agent reads and decides on
+  ([Host operations](../execution/sessions-and-targets.md#host-operations)).
 - **A compaction** is not a turn's end. Its boundary and marker are kept
   history, but they say nothing about the turn before them. For example, a
   turn fails, and the user then compacts: the divider is the last block,
@@ -321,21 +311,6 @@ short before saving it
 start, after the shards are up, the backend resumes the marked roots in the
 background, removing each mark before it acts on it; the start waits for
 none of them.
-
-A turn its offline Host left (`host_offline`) goes on by itself when that
-Host comes back, unless the user turned that off (`resumeWhenHostBack`, on
-unless turned off, [User preferences](../product/web-api-settings.md#user-preferences)):
-the backend resumes it, as the user's Resume would, with the reason "MacBook
-Pro is back online. Continue from where you left off.", when the runner of
-the device the `error` block names connects again and the conversation still
-runs there. A device that came back before the turn ended, while the turn still ran,
-counts as back: the turn resumes as the record is written. It does so once
-for each `host_offline` block: a turn that the
-same device leaves again waits for the user's Resume, so a device that keeps
-dropping costs one resumed turn, not one per reconnection. A conversation
-moved elsewhere meanwhile is not resumed; the user's Resume says where it now
-runs. With the preference off, the turn waits for the user's Resume, as
-before.
 
 Continuing by itself is the user's choice, off unless they turn it on
 (`resumeAtRetry`, [User preferences](../product/web-api-settings.md#user-preferences)):
@@ -415,9 +390,7 @@ appended, and inference continues after the preserved progress. The model
 receives the `resume` block as "Continue from where you left off.", after
 the sentence its reason holds when it has one: "Demi resumed this turn
 after the backend restarted." when the system resumed a subagent's turn
-after a restart, or "MacBook Pro is back online." or "This conversation
-now runs on Cloud." when the user resumed a turn its offline Host left
-unfinished.
+after a restart.
 
 The product offers `resume` in one control above the composer, labeled Resume
 after an error and Continue after the user's Stop

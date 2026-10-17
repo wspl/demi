@@ -331,15 +331,9 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
         };
         let command = match environment.start(request, stop).await {
             Ok(command) => command,
-            // A Host whose runner is away runs nothing now: the call's
-            // result is its offline error as it is, worded for the model
-            // (`sessions-and-targets.md` § Host operations).
-            Err(ShellError::HostOffline { device, message }) => {
-                return Ok(ToolOutcome {
-                    effect: Some(ToolEffect::HostOffline(device)),
-                    ..ToolOutcome::error(message)
-                });
-            }
+            // A Host that is offline to the environment runs nothing now:
+            // the call's result is its offline error as it is, worded for
+            // the model (`sessions-and-targets.md` § Host operations).
             Err(ShellError::Host(error)) if error.kind == HostErrorKind::Offline => {
                 return Ok(ToolOutcome::error(error.message));
             }
@@ -414,8 +408,10 @@ impl<'a, H: HostResolver> ShellAccess<'a, H> {
                 turn: running.turn.clone(),
             },
             title: running.title.clone(),
+            interval_ms: running.interval_ms,
             running: ran,
             seen: running.place,
+            unsent: running.unsent.clone(),
         });
         Ok(())
     }

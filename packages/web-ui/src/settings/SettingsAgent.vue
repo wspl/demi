@@ -43,7 +43,6 @@ const props = defineProps<{
 const smallModel = defineModel<SmallModelChoice | null>('smallModel', { required: true })
 const sameProvider = defineModel<boolean>('sameProvider', { required: true })
 const sendWhileRunning = defineModel<SendWhileRunning>('sendWhileRunning', { required: true })
-const resumeWhenHostBack = defineModel<boolean>('resumeWhenHostBack', { required: true })
 const resumeAfterRestart = defineModel<boolean>('resumeAfterRestart', { required: true })
 const resumeAtRetry = defineModel<boolean>('resumeAtRetry', { required: true })
 
@@ -134,16 +133,6 @@ const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() =>
           v-model="sendWhileRunning"
           size="sm"
           :options="sendOptions"
-        />
-      </SettingsRow>
-      <SettingsRow
-        :label="t('settings.agent.resumeWhenHostBack')"
-        :description="t('settings.agent.resumeWhenHostBackDescription')"
-      >
-        <Switch
-          v-model="resumeWhenHostBack"
-          size="sm"
-          :aria-label="t('settings.agent.resumeWhenHostBack')"
         />
       </SettingsRow>
       <SettingsRow

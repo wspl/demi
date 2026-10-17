@@ -4,8 +4,8 @@
 //! download asks where its artifact is, a service asks for its conversation
 //! numbers, and a job makes its execution context live. The handle outlives
 //! each connection, since a job does: work that needs the backend waits for
-//! the next connection while the runner is away, and fails once the runner
-//! stopped waiting. The registration's owner serves the requests and routes
+//! the next connection while the runner is away, however long it takes, and
+//! fails only once the runner ends. The registration's owner serves the requests and routes
 //! the backend's answers through a [`Relay`].
 
 use std::{collections::HashMap, io, sync::Arc, time::Duration};
@@ -33,8 +33,8 @@ const REQUESTS: usize = 64;
 /// (`native-runtime.md` § Publish packages, then source artifacts on demand).
 const NUMBERS_TIMEOUT: Duration = Duration::from_secs(15);
 
-/// Why work that needs the backend did not reach it: the runner stopped
-/// waiting for a connection (`runner.md` § Command lifetime).
+/// Why work that needs the backend did not reach it: the runner ends
+/// (`runner.md` § Command lifetime).
 pub const UNREACHABLE: &str = "the backend is unreachable";
 
 /// Whether the runner reaches its backend now.
@@ -44,7 +44,8 @@ pub enum Reach {
     Connected(Live),
     /// The connection was lost; the runner waits for the next.
     Away,
-    /// The runner stopped waiting: its jobs were stopped, or it stops.
+    /// The runner ends, and its jobs with it, as when the backend refused
+    /// it.
     Unreached,
 }
 
@@ -106,7 +107,7 @@ impl ConnectionHandle {
     }
 
     /// The connection that serves, waiting for the next while the runner
-    /// is away; an error once it stopped waiting.
+    /// is away; an error once the runner ends.
     pub async fn connected(&self) -> Result<Live, Unreachable> {
         let mut reach = self.reach.clone();
         loop {
@@ -218,7 +219,7 @@ impl ConnectionHandle {
     }
 }
 
-/// The runner stopped waiting for a connection.
+/// The runner ends, and waits for no connection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 #[error("the backend is unreachable")]
 pub struct Unreachable;
@@ -264,7 +265,7 @@ impl ServiceBackend for ConnectionHandle {
 
     fn lost(&self, package: String) -> BoxFuture<'_, ()> {
         Box::pin(async move {
-            // A runner that stopped waiting stops its services anyway, and
+            // A runner that ends stops its services anyway, and
             // its next start names another instance, which says the same.
             if let Err(error) = self.send(&wire::Outbound::PackageLost { package }).await {
                 tracing::info!("a lost service was not reported: {error}");
@@ -276,7 +277,7 @@ impl ServiceBackend for ConnectionHandle {
 impl ConnectionHandle {
     /// Hands `message` to the connection that serves, waiting for room in
     /// it, and for the next connection while the runner is away or the one
-    /// it waited on ended; an error once the runner stopped waiting, or for
+    /// it waited on ended; an error once the runner ends, or for
     /// a message that breaks the wire's rules.
     async fn send(&self, message: &wire::Outbound) -> Result<(), String> {
         let frame = wire::encode(message).map_err(|error| error.to_string())?;
