@@ -239,21 +239,20 @@ function stillLeaving(parent: HTMLElement): boolean {
   )
 }
 
-function lockSiblingWidths(tab: HTMLElement): void {
-  const parent = tab.parentElement
-  if (!parent?.children) {
-    return
-  }
-  for (const child of parent.children) {
-    if (!isStyledEl(child) || child === tab) {
-      continue
-    }
-    if (child.classList.contains('tabs-leave-active')) {
-      continue
-    }
-    child.style.width = `${child.getBoundingClientRect().width}px`
-    child.style.flexShrink = '0'
-  }
+/**
+ * Holds `tab` and each other tab that stays at its width, all read before
+ * any is written, so the strip is laid out once and not once per tab.
+ */
+function lockWidths(tab: HTMLElement): void {
+  const siblings = [...tab.parentElement?.children ?? []].filter(
+    (child): child is HTMLElement => isStyledEl(child) && child !== tab && !child.classList.contains('tabs-leave-active'),
+  )
+  const held = [tab, ...siblings]
+  const widths = held.map((each) => each.getBoundingClientRect().width)
+  held.forEach((each, index) => {
+    each.style.width = `${widths[index]}px`
+    each.style.flexShrink = '0'
+  })
 }
 
 /** After a close, ease remaining tabs from the squeezed width to the new layout. */
@@ -320,11 +319,9 @@ export function beforeLeaveTab(el: Element): void {
   // the strip shows one selected tab throughout.
   tab.setAttribute('aria-selected', 'false')
   tab.style.setProperty('--tab-active', 'var(--tab-row)')
-  lockSiblingWidths(tab)
-  tab.style.width = `${tab.getBoundingClientRect().width}px`
+  lockWidths(tab)
   tab.style.minWidth = '0'
   tab.style.overflow = 'hidden'
-  tab.style.flexShrink = '0'
 }
 
 export function leaveTab(el: Element): void {

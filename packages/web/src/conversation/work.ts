@@ -40,6 +40,11 @@ export interface WorkState {
   pinned: PinnedTabs
   /** The history and the tabs, as the panel shows them. */
   readonly panel: PanelState
+  /**
+   * Whether the page read the conversation's tabs: the tabs the first read
+   * brings were there before the page looked, and show at once.
+   */
+  readonly tabsRead: boolean
 }
 
 /**
@@ -168,6 +173,9 @@ export const useWorkPanel = defineStore('work-panel', () => {
         pinned: {},
         get panel(): PanelState {
           return { history: this.history, tabs: tabs.tabs.value }
+        },
+        get tabsRead(): boolean {
+          return tabs.read
         },
       })
     }

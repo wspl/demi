@@ -34,13 +34,16 @@ const [initialize] = useOverlayScrollbars({
   options: computed(() => scrollbarsOptions(props.axis)),
 })
 
-// The bar is set up when it would first show, as the content scrollers'
-// (`useContentScrollers`): the pointer comes onto the scroller, the focus
-// moves into it, or it scrolls. A list mounts many scrollers, most never
-// touched, and setting one up costs layouts. Until then the viewport scrolls
-// natively with its native bar hidden, as OverlayScrollbars leaves an
-// element it is about to take over, and its geometry is the same before and
-// after, so a caller can read it as it mounts.
+// The bar is set up when the user first reaches the scroller, as the content
+// scrollers' (`useContentScrollers`): the pointer comes onto it, the focus
+// moves into it, or a wheel turns over it. A scroll the page makes, such as
+// placing a transcript where its reader left it, sets up nothing: as on
+// macOS, the page moving its content shows no scroller. A list mounts many
+// scrollers, most never touched, and setting one up costs layouts. Until
+// then the viewport scrolls natively with its native bar hidden, as
+// OverlayScrollbars leaves an element it is about to take over, and its
+// geometry is the same before and after, so a caller can read it as it
+// mounts.
 const started = ref(false)
 function start(): void {
   if (started.value || !viewport.value || !root.value)
@@ -64,11 +67,6 @@ const nativeOverflow = computed((): CSSProperties => ({
   overflowY: props.axis === 'x' ? 'hidden' : 'auto',
 }))
 
-function onScroll(event: Event): void {
-  start()
-  emit('scroll', event)
-}
-
 defineExpose({
   /** The scrolling element, for scrollTop and scrollTo. */
   el: viewport,
@@ -82,6 +80,7 @@ defineExpose({
     ref="root"
     class="scroll-area relative flex min-h-0 flex-col overflow-hidden"
     @pointerover.capture.passive="start"
+    @wheel.capture.passive="start"
     @focusin="start"
   >
     <!-- A stacking context of its own (a flex item with a z-index), as
@@ -94,7 +93,7 @@ defineExpose({
       class="scroll-area-viewport z-0 min-h-0 flex-auto"
       :class="[viewportClass, OVERSCROLL[axis]]"
       :style="started ? undefined : nativeOverflow"
-      @scroll.passive="onScroll"
+      @scroll.passive="emit('scroll', $event)"
     >
       <slot />
     </div>

@@ -1,8 +1,8 @@
-import { watch, type WatchStopHandle } from 'vue'
+import { toRaw, watch, type WatchStopHandle } from 'vue'
 import { latestWindow } from '@demicodes/web-ui/transport/protocol'
 import { transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
-import { writeConversationCopy, type AgentCopy, type ConversationCopy } from '../state/offline'
+import { onConversationCopyDropped, writeConversationCopy, writeConversationOpened, type AgentCopy, type ConversationCopy } from '../state/offline'
 import type { Conversation } from '../state/types'
 
 /**
@@ -15,12 +15,18 @@ export const COPY_DELAY_MS = 3_000
 /**
  * The copies of the conversations the user opens on this page, for opening
  * offline: each opened conversation's copy is replaced whole with what the
- * page holds of it, at most every `COPY_DELAY_MS` while it changes, and at
- * once on `keep`, as the page hides.
+ * page holds of it, once as the page first opens it and then at most every
+ * `COPY_DELAY_MS` while it changes, and at once on `keep`, as the page
+ * hides. Opening it again writes only when it was opened, never its copy,
+ * unless the cache has dropped the copy meanwhile, which it then writes.
  */
 export function createConversationCopies(items: () => Conversation[], userId: () => string | null) {
-  /** When the user last opened each conversation on this page. */
+  /** When the user last opened each conversation on this page, which each write of its copy carries. */
   const openedAt = new Map<string, number>()
+  /** The opened conversations whose copy the cache dropped since this page wrote it. */
+  const dropped = new Set<string>()
+  /** What stops hearing of dropped copies; none until a conversation is opened. */
+  let stopDrops: (() => void) | null = null
   /** What watches each opened conversation for a change. */
   const watches = new Map<string, WatchStopHandle>()
   /** The conversations whose copy is to be written. */
@@ -31,9 +37,21 @@ export function createConversationCopies(items: () => Conversation[], userId: ()
     return items().find((item) => item.id === id)
   }
 
-  /** The user opened conversation `id`: its copy is kept from now on, and says it was opened now. */
+  /** The user opened conversation `id`: its copy is kept from now on, and it was opened now. */
   function opened(id: string): void {
     openedAt.set(id, Date.now())
+    stopDrops ??= onConversationCopyDropped((gone) => {
+      if (watches.has(gone)) {
+        dropped.add(gone)
+      }
+    })
+    const user = userId()
+    if (dropped.delete(id)) {
+      changed(id)
+    } else if (user && watches.has(id)) {
+      // A failed write says so itself; the copy stays as it was.
+      void writeConversationOpened(user, id, openedAt.get(id)!)
+    }
     if (!watches.has(id)) {
       watches.set(id, watch(
         () => {
@@ -45,8 +63,9 @@ export function createConversationCopies(items: () => Conversation[], userId: ()
         },
         () => changed(id),
       ))
+      // What the page holds of it was never written by this page.
+      changed(id)
     }
-    changed(id)
   }
 
   function changed(id: string): void {
@@ -64,9 +83,10 @@ export function createConversationCopies(items: () => Conversation[], userId: ()
     const writes: Promise<void>[] = []
     for (const id of due) {
       const conversation = find(id)
-      const copy = conversation ? copyOf(conversation, openedAt.get(id) ?? Date.now()) : null
+      const copy = conversation ? copyOf(conversation) : null
       if (user && copy) {
-        writes.push(writeConversationCopy(user, id, copy))
+        dropped.delete(id)
+        writes.push(writeConversationCopy(user, id, copy, openedAt.get(id) ?? Date.now()))
       }
     }
     due.clear()
@@ -83,6 +103,9 @@ export function createConversationCopies(items: () => Conversation[], userId: ()
       stop()
     }
     watches.clear()
+    stopDrops?.()
+    stopDrops = null
+    dropped.clear()
     openedAt.clear()
     due.clear()
   }
@@ -94,12 +117,21 @@ export function createConversationCopies(items: () => Conversation[], userId: ()
  * What the page holds of `conversation` as its copy: the latest window of
  * its root as held, each block whole or light as the page holds it, with
  * its agents; none while it shows no transcript, or holds no latest window.
+ *
+ * The copy is made of the data under the store's proxies (`raw`), which the
+ * database's own copy of the record, the browser's structured clone, reads
+ * as it is, so nothing walks the transcript to unwrap it. The transcript is
+ * frozen, which the store never puts behind a proxy (`heldTranscript`); a
+ * field of the conversation the store replaced with a spread of an older
+ * value may hold a proxy for each entry it kept, so each entry of those is
+ * unwrapped, one level, as the data under it is the page's own.
  */
-function copyOf(conversation: Conversation, openedAt: number): ConversationCopy | null {
-  if (!transcriptShown(conversation.load)) {
+function copyOf(conversation: Conversation): ConversationCopy | null {
+  const raw = toRaw(conversation)
+  if (!transcriptShown(raw.load)) {
     return null
   }
-  const { history } = conversation
+  const { history } = raw
   const window = latestWindow(history)
   if (!window && history.length > 0) {
     return null
@@ -108,12 +140,13 @@ function copyOf(conversation: Conversation, openedAt: number): ConversationCopy 
   const blocks = (window?.blocks ?? []).map((block) => (block.arrivals ? { ...block, arrivals: undefined } : block))
   const held = new Set(blocks.map((block) => block.id))
   return {
-    openedAt,
     transcript: { length: history.length, start: window?.start ?? 0, blocks },
-    failures: Object.fromEntries(Object.entries(conversation.failures).filter(([id]) => held.has(id))),
-    instructions: conversation.instructions,
-    summaries: conversation.summaries,
-    agents: conversation.subagents.map(agentCopy),
+    failures: Object.fromEntries(
+      Object.entries(raw.failures).flatMap(([id, facts]) => (held.has(id) ? [[id, toRaw(facts)]] : [])),
+    ),
+    instructions: raw.instructions.map((entry) => toRaw(entry)),
+    summaries: raw.summaries,
+    agents: raw.subagents.map((agent) => agentCopy(toRaw(agent))),
   }
 }
 

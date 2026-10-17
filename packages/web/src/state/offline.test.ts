@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, setSystemTime, spyOn, test } from 'bun:t
 import { deferred, waitFor } from '@demicodes/utils'
 import { IDBFactory, IDBKeyRange, IDBObjectStore } from 'fake-indexeddb'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
+import { nextTick } from 'vue'
 import type { Block } from '@demicodes/protocol'
 import { heldBlocks } from '@demicodes/web-ui/transport/protocol'
 import { pageReturned } from '@demicodes/web-ui/transport/liveness'
@@ -316,8 +317,8 @@ test('a copy another build wrote in its own shape is dropped without a word, and
   }
 })
 
-test('when the web browser refuses a copy for lack of room, the conversations opened longest ago go', async () => {
-  // Room for two conversations' copies, as a browser's quota allows.
+/** Room for two conversations' copies, as a browser's quota allows; returns what gives the room back. */
+function roomForTwo(): () => void {
   const held = new Set<IDBValidKey>()
   const put = IDBObjectStore.prototype.put
   const remove = IDBObjectStore.prototype.delete
@@ -336,22 +337,80 @@ test('when the web browser refuses a copy for lack of room, the conversations op
     }
     return remove.call(this, key)
   })
+  return () => {
+    puts.mockRestore()
+    deletes.mockRestore()
+  }
+}
+
+/** Opens each of `ids` in turn, an hour apart, and keeps its copy. */
+async function openInTurn(ids: readonly (readonly [number, string])[]): Promise<void> {
+  const conversations = useConversations()
+  for (const [at, id] of ids) {
+    setSystemTime(new Date(Date.UTC(2026, 9, 16, at)))
+    void conversations.activate(id)
+    await waitFor(() => conversations.items.find((item) => item.id === id)?.load === 'ready')
+    await conversations.keepCopies()
+  }
+}
+
+test('when the web browser refuses a copy for lack of room, the conversations opened longest ago go', async () => {
+  const giveBack = roomForTwo()
   try {
     openPage()
     await signedIn()
     channels.last().connect(backendState())
-    const conversations = useConversations()
-    for (const [at, id] of [[1, SECOND], [2, FIRST], [3, THIRD]] as const) {
-      setSystemTime(new Date(Date.UTC(2026, 9, 16, at)))
-      void conversations.activate(id)
-      await waitFor(() => conversations.items.find((item) => item.id === id)?.load === 'ready')
-      await conversations.keepCopies()
-    }
+    await openInTurn([[1, SECOND], [2, FIRST], [3, THIRD]])
     expect(await readConversationCopy(USER.id, SECOND)).toBeNull()
     expect((await readConversationCopy(USER.id, FIRST))?.transcript.blocks.map((block) => block.id)).toEqual(['first-1', 'first-2'])
     expect((await readConversationCopy(USER.id, THIRD))?.transcript.blocks.map((block) => block.id)).toEqual(['third-1'])
   } finally {
+    giveBack()
+  }
+})
+
+test('a copy that went for room is kept again when its conversation changes or opens again, and can go for room again', async () => {
+  const giveBack = roomForTwo()
+  const blocks = async (id: string) => (await readConversationCopy(USER.id, id))?.transcript.blocks.map((block) => block.id) ?? null
+  try {
+    openPage()
+    await signedIn()
+    channels.last().connect(backendState())
+    await openInTurn([[1, SECOND], [2, FIRST], [3, THIRD]])
+    // The page still holds the conversation whose copy went, which changes: its copy is kept
+    // again, with when it was opened, and the copy opened longest ago of the others goes.
+    const second = useConversations().items.find((item) => item.id === SECOND)!
+    second.instructions = [...second.instructions]
+    await nextTick()
+    await useConversations().keepCopies()
+    expect(await blocks(SECOND)).toEqual(['second-1'])
+    expect(await blocks(FIRST)).toBeNull()
+    // Opened again, the conversation whose copy went has it again; the one opened longest ago goes.
+    await openInTurn([[4, FIRST]])
+    expect(await blocks(FIRST)).toEqual(['first-1', 'first-2'])
+    expect(await blocks(SECOND)).toBeNull()
+    expect(await blocks(THIRD)).toEqual(['third-1'])
+  } finally {
+    giveBack()
+  }
+})
+
+test('opening a kept conversation again writes when it was opened, never its copy', async () => {
+  await readOnline([FIRST, SECOND])
+  const written: string[] = []
+  const put = IDBObjectStore.prototype.put
+  const puts = spyOn(IDBObjectStore.prototype, 'put').mockImplementation(function (this: IDBObjectStore, value: unknown, key?: IDBValidKey) {
+    written.push(`${this.name} ${String(key)}`)
+    return put.call(this, value, key)
+  })
+  try {
+    const conversations = useConversations()
+    void conversations.activate(FIRST)
+    await waitFor(() => written.includes(`opened ${FIRST}`), () => `the page wrote ${written.join(', ')}`)
+    await conversations.keepCopies()
+    expect(written.filter((write) => write.startsWith('conversations '))).toEqual([])
+    expect((await readConversationCopy(USER.id, FIRST))?.transcript.blocks.map((block) => block.id)).toEqual(['first-1', 'first-2'])
+  } finally {
     puts.mockRestore()
-    deletes.mockRestore()
   }
 })

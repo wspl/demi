@@ -612,7 +612,6 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             :key="shownEdit.request.operationId"
             ref="editor"
             v-model:multiline="multiline"
-            composer
             cancelable
             autofocus
             asked
@@ -634,7 +633,6 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             v-else
             ref="editor"
             v-model:multiline="multiline"
-            composer
             :line-width="line"
             :markdown="draft"
             :attachments="carried"

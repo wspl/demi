@@ -1,4 +1,4 @@
-import { Extension, Mark, Node, type AnyExtension, type Editor, type JSONContent } from '@tiptap/core'
+import { Extension, Mark, Node, getSchema, type AnyExtension, type Editor, type JSONContent } from '@tiptap/core'
 import { Bold } from '@tiptap/extension-bold'
 import { Code } from '@tiptap/extension-code'
 import { CodeBlock } from '@tiptap/extension-code-block'
@@ -9,7 +9,7 @@ import { Paragraph } from '@tiptap/extension-paragraph'
 import { Strike } from '@tiptap/extension-strike'
 import { Text } from '@tiptap/extension-text'
 import { Dropcursor, Placeholder, UndoRedo } from '@tiptap/extensions'
-import { Fragment, type Node as ProseMirrorNode, type ResolvedPos } from '@tiptap/pm/model'
+import { Fragment, type Node as ProseMirrorNode, type ResolvedPos, type Schema } from '@tiptap/pm/model'
 import { Plugin, PluginKey, TextSelection, type EditorState, type Transaction } from '@tiptap/pm/state'
 import { Decoration, DecorationSet, type EditorView } from '@tiptap/pm/view'
 import { keepComposition } from '@demicodes/utils'
@@ -94,7 +94,18 @@ const ImageNode = Node.create({
     }
   },
   parseHTML() {
-    return [{ tag: `img[${MESSAGE_IMAGE_ATTRIBUTE}]` }]
+    return [
+      { tag: `img[${MESSAGE_IMAGE_ATTRIBUTE}]` },
+      // A sent message draws it as its capsule, in a span that keeps its attributes (`SentMessage`).
+      {
+        tag: `span[${MESSAGE_IMAGE_ATTRIBUTE}]`,
+        getAttrs: (element) => ({
+          src: element.getAttribute('data-src') ?? '',
+          alt: element.getAttribute('data-alt') ?? '',
+          title: element.getAttribute('data-title'),
+        }),
+      },
+    ]
   },
   renderHTML({ HTMLAttributes }) {
     return ['img', { ...HTMLAttributes, [MESSAGE_IMAGE_ATTRIBUTE]: '' }]
@@ -404,24 +415,40 @@ export function redrawDecorations(editor: Editor): void {
   editor.view.dispatch(editor.state.tr.setMeta(decorationsKey, true))
 }
 
+/**
+ * A code block's colors (`file-previews.md` § Code): the theme's text color
+ * for the block, and its tokens' where the language colors them, each run
+ * by its offset in the code.
+ */
+export function codeColors(node: ProseMirrorNode): { style: string; runs: { from: number; to: number; classes: string }[] } {
+  const language = String(node.attrs['language'] ?? '').split(/\s/)[0] ?? ''
+  return { style: `color: ${codeTextColor()}`, runs: codeRuns(node.textContent, language) }
+}
+
+/**
+ * The bare URLs of a text node, each a link in the text itself, with the
+ * attributes of its link; none in code or in a written link.
+ */
+export function bareLinks(node: ProseMirrorNode): { from: number; to: number; attributes: Record<string, string> }[] {
+  if (!node.isText || !node.text?.includes('http') || node.marks.some((mark) => mark.type.name === 'link' || mark.type.spec.code)) {
+    return []
+  }
+  return bareUrls(node.text).map((url) => ({ from: url.from, to: url.to, attributes: linkAttributes(url.href) }))
+}
+
 function decorate(doc: ProseMirrorNode): DecorationSet {
   const decorations: Decoration[] = []
   doc.descendants((node, pos) => {
     if (node.type.spec.code) {
-      const language = String(node.attrs['language'] ?? '').split(/\s/)[0] ?? ''
-      // In the colors all code shows in (`file-previews.md` § Code): the
-      // theme's text color, and its tokens' where the language colors them.
-      decorations.push(Decoration.node(pos, pos + node.nodeSize, { style: `color: ${codeTextColor()}` }))
-      for (const run of codeRuns(node.textContent, language)) {
+      const colors = codeColors(node)
+      decorations.push(Decoration.node(pos, pos + node.nodeSize, { style: colors.style }))
+      for (const run of colors.runs) {
         decorations.push(Decoration.inline(pos + 1 + run.from, pos + 1 + run.to, { class: run.classes }))
       }
       return false
     }
-    // A bare URL is a link in the text itself, not in a code or a written link.
-    if (node.isText && node.text?.includes('http') && !node.marks.some((mark) => mark.type.name === 'link' || mark.type.spec.code)) {
-      for (const url of bareUrls(node.text)) {
-        decorations.push(Decoration.inline(pos + url.from, pos + url.to, { nodeName: 'a', ...linkAttributes(url.href) }))
-      }
+    for (const link of bareLinks(node)) {
+      decorations.push(Decoration.inline(pos + link.from, pos + link.to, { nodeName: 'a', ...link.attributes }))
     }
     return true
   })
@@ -453,9 +480,15 @@ const MessageFormat = Extension.create({
   },
 })
 
-/** A message as the conversation shows it: what it holds and how it looks, one schema with the composer's. */
-export function readOnlyExtensions(): AnyExtension[] {
-  return messageExtensions()
+let schema: Schema | null = null
+
+/**
+ * The schema of a message, the composer's: what a sent message is read
+ * into and drawn from (`SentMessage`), without an editor.
+ */
+export function messageSchema(): Schema {
+  schema ??= getSchema(messageExtensions())
+  return schema
 }
 
 /**

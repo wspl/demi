@@ -1,5 +1,5 @@
-import { computed, nextTick, onScopeDispose, ref, type Ref, watch } from 'vue'
-import { measureElement as measureRow, useVirtualizer } from '@tanstack/vue-virtual'
+import { computed, nextTick, onScopeDispose, ref, shallowRef, type Ref, watch } from 'vue'
+import { measureElement as measureRow, useVirtualizer, type Range, type VirtualItem, type Virtualizer } from '@tanstack/vue-virtual'
 import { BOTTOM_THRESHOLD_PX, distanceFromBottom } from './scroll-bottom'
 import { FOLD_MS } from '../ui/fold'
 import { revealOffset } from '../ui/reveal'
@@ -10,7 +10,42 @@ interface VirtualizedBlock {
   type: string
 }
 
+/**
+ * How many rows the list draws beyond each edge of the view, at most, so a
+ * row is drawn before it scrolls in; `drawnRows` draws only those within a
+ * view's height of the edge.
+ */
 const OVERSCAN = 8
+
+/**
+ * The rows the list draws: those in view, and beyond each edge up to
+ * `range.overscan` rows that start or end within a view's height of it. A
+ * transcript of long answers then draws no screens of them beyond the
+ * next, which nobody sees as the list opens, while a run of short rows,
+ * many to a screen, still has its rows ready.
+ */
+function drawnRows(range: Range, rows: readonly Pick<VirtualItem, 'start' | 'end'>[], view: { offset: number, height: number }): number[] {
+  if (range.count === 0)
+    return []
+  let first = range.startIndex
+  while (first > 0 && range.startIndex - first < range.overscan && rows[first - 1]!.end > view.offset - view.height)
+    first -= 1
+  let last = range.endIndex
+  while (last < range.count - 1 && last - range.endIndex < range.overscan && rows[last + 1]!.start < view.offset + 2 * view.height)
+    last += 1
+  return Array.from({ length: last - first + 1 }, (_, index) => first + index)
+}
+
+/** The rows that lie in the view, by first and last index; the view's first row when none does. */
+function rowsInView(rows: readonly Pick<VirtualItem, 'start' | 'end'>[], view: { offset: number, height: number }): Pick<Range, 'startIndex' | 'endIndex'> {
+  const firstAfter = rows.findIndex((row) => row.end > view.offset)
+  const startIndex = Math.max(0, firstAfter)
+  let endIndex = startIndex
+  while (endIndex < rows.length - 1 && rows[endIndex + 1]!.start < view.offset + view.height)
+    endIndex += 1
+  return { startIndex, endIndex }
+}
+
 /** Space between transcript rows; a row placed after the list keeps it too. */
 export const BLOCK_GAP = 4
 /**
@@ -109,6 +144,43 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   let revealing: { key: string, coveredBottom: number, part: { selector: string, until: number } | null } | null = null
   const isRestored = ref(false)
 
+  /** The virtualizer exists: what reads it may. */
+  const created = shallowRef(false)
+  /** Where the view is and how tall, as the scroller says it now. */
+  function view(instance: Virtualizer<HTMLElement, HTMLElement>): { offset: number, height: number } {
+    return {
+      offset: scrollContainer.value?.scrollTop ?? instance.scrollOffset ?? 0,
+      height: instance.scrollRect?.height ?? window.innerHeight,
+    }
+  }
+  /**
+   * The rows `drawnRows` draws for where the view is, as a key. The
+   * virtualizer works its rows out again only when its own range of rows in
+   * view, its count or its options change, never as the view moves within a
+   * row taller than it, where the rows drawn beyond the view do change; so
+   * the range extractor is made anew whenever this does. It follows the
+   * scroll offset the list reads and each change the virtualizer announces,
+   * its measurements and the view's size among them.
+   */
+  const drawn = computed((): string => {
+    void scrollOffset.value
+    if (!created.value)
+      return ''
+    const instance: Virtualizer<HTMLElement, HTMLElement> = virtualizer.value
+    const rows = instance.measurementsCache
+    const at = view(instance)
+    return drawnRows({ ...rowsInView(rows, at), overscan: OVERSCAN, count: rows.length }, rows, at).join()
+  })
+
+  /** A range extractor of its own for the rows `key` names, so the virtualizer draws them (`drawn`). */
+  function extractorFor(key: string): (range: Range) => number[] {
+    return (range) => {
+      void key
+      const instance: Virtualizer<HTMLElement, HTMLElement> = virtualizer.value
+      return drawnRows(range, instance.measurementsCache, view(instance))
+    }
+  }
+
   const virtualizer = useVirtualizer<HTMLElement, HTMLElement>(
     computed(() => ({
       count: blocks.value.length,
@@ -134,6 +206,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       },
       scrollPaddingStart: revealRoom,
       overscan: OVERSCAN,
+      rangeExtractor: extractorFor(drawn.value),
       gap: BLOCK_GAP,
       getItemKey: (index: number) => {
         const block = blocks.value[index]
@@ -141,6 +214,7 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
       },
     })),
   )
+  created.value = true
 
   /** A row's height until it is measured: as last measured, or by its kind. */
   function estimateSize(index: number): number {

@@ -32,16 +32,31 @@ function cacheBuild(): string {
 
 const ACCOUNT = 'account'
 const CONVERSATIONS = 'conversations'
+/**
+ * When the user last opened each kept conversation, `{ openedAt }` by its
+ * id: a record of its own, so opening a conversation writes these few bytes
+ * and never its copy, and the copies opened longest ago are found by its
+ * index when room runs out. A copy and its record are written and deleted
+ * together, so every kept copy has one.
+ */
+const OPENED = 'opened'
 /** The one key of the account's record. */
 const ACCOUNT_KEY = 'account'
 
 /**
  * The database's layout. Its records are disposable, so a change of their
- * shape needs no new version: a record of another build is dropped.
+ * shape needs no new version: a record of another build is dropped. A new
+ * layout drops every store of the one before, records and all, as a cache
+ * of another build is dropped.
  */
-const database = new IndexedDatabase('demi-offline', 1, (request) => {
-  request.result.createObjectStore(ACCOUNT)
-  request.result.createObjectStore(CONVERSATIONS).createIndex('openedAt', 'openedAt')
+const database = new IndexedDatabase('demi-offline', 2, (request) => {
+  const db = request.result
+  for (const name of [...db.objectStoreNames]) {
+    db.deleteObjectStore(name)
+  }
+  db.createObjectStore(ACCOUNT)
+  db.createObjectStore(CONVERSATIONS)
+  db.createObjectStore(OPENED).createIndex('openedAt', 'openedAt')
 })
 
 const accountRecordSchema = z.object({
@@ -62,8 +77,6 @@ const heldBlockSchema = z.intersection(
 const conversationRecordSchema = z.object({
   build: z.string(),
   userId: z.string(),
-  /** When the user last opened the conversation on this device, as `Date.now()`. */
-  openedAt: z.number(),
   /** The root agent's latest window, and how many blocks its transcript held. */
   transcript: z.object({
     length: z.int().nonnegative(),
@@ -88,10 +101,10 @@ export type AgentCopy = z.infer<typeof agentCopySchema>
  * `value` as the database keeps it: the plain data under the reactive
  * proxies that hold it, which the database's copy of a record cannot read.
  * Only an array or object that holds a proxy is copied, with the plain
- * data in its place; the rest is the data itself. A long transcript then
- * costs a walk, not a serialization of every field through its proxy,
- * which took the page a tenth of a second; the database copies the record
- * itself, as the browser's own structured clone.
+ * data in its place; the rest is the data itself. The database copies the
+ * record itself, as the browser's own structured clone. A conversation's
+ * copy needs none of it: it is made of the plain data (`copyOf`), so its
+ * transcript is never walked.
  */
 function stored(value: unknown): unknown {
   const raw: unknown = toRaw(value)
@@ -173,7 +186,7 @@ async function readConversation(userId: string, id: string): Promise<Conversatio
     if (record !== null && !record.success) {
       reportError(t('failures.readOffline'), schemaRefusal(record.error))
     }
-    await database.transaction(CONVERSATIONS, 'readwrite', (store) => store.delete(id))
+    await forget(id)
     return null
   }
   const { build: _build, userId: _user, ...copy } = record.data
@@ -192,41 +205,100 @@ function writable(userId: string): boolean {
   return ended?.userId !== userId
 }
 
+/** What hears that a conversation's copy left the cache, by its id. */
+const dropListeners = new Set<(id: string) => void>()
+
 /**
- * Replaces the copy of conversation `id` whole with `copy`, unless the
- * session of `userId` ended. A write that fails says so on the console: the
- * page works without the copy.
+ * Hears of each conversation whose copy leaves the cache while the account
+ * keeps it: the copy opened longest ago, which goes to make room, or one
+ * that did not read. Returns what stops it.
  */
-export async function writeConversationCopy(userId: string, id: string, copy: ConversationCopy): Promise<void> {
+export function onConversationCopyDropped(listener: (id: string) => void): () => void {
+  dropListeners.add(listener)
+  return () => {
+    dropListeners.delete(listener)
+  }
+}
+
+/**
+ * Replaces the copy of conversation `id` whole with `copy`, and when the
+ * user last opened it with `openedAt`, as `Date.now()`, both in one
+ * transaction, so every kept copy has the recency room is made by; unless
+ * the session of `userId` ended. `copy` is plain data, behind no proxy,
+ * which the database copies as it is. A write that fails says so on the
+ * console: the page works without the copy.
+ */
+export async function writeConversationCopy(userId: string, id: string, copy: ConversationCopy, openedAt: number): Promise<void> {
   if (!writable(userId)) {
     return
   }
+  const record = { build: cacheBuild(), userId, ...copy }
   try {
-    await put(CONVERSATIONS, id, stored({ build: cacheBuild(), userId, ...copy }), id)
+    await withRoom(id, () => database.across([CONVERSATIONS, OPENED], 'readwrite', (transaction) => {
+      transaction.objectStore(CONVERSATIONS).put(record, id)
+      transaction.objectStore(OPENED).put({ openedAt }, id)
+      return () => {}
+    }))
   } catch (error) {
     reportError(t('failures.keepOffline'), error)
   }
 }
 
+/**
+ * Records that the user opened conversation `id` at `openedAt`, as
+ * `Date.now()`, where the cache keeps its copy, which stays as it is; a
+ * conversation without a copy gets its recency with its copy. Nothing
+ * once the session of `userId` ended. A write that fails says so on the
+ * console.
+ */
+export async function writeConversationOpened(userId: string, id: string, openedAt: number): Promise<void> {
+  if (!writable(userId)) {
+    return
+  }
+  try {
+    await withRoom(id, () => database.across([CONVERSATIONS, OPENED], 'readwrite', (transaction) => {
+      const kept = transaction.objectStore(CONVERSATIONS).getKey(id)
+      kept.onsuccess = () => {
+        if (kept.result !== undefined) {
+          transaction.objectStore(OPENED).put({ openedAt }, id)
+        }
+      }
+      return () => {}
+    }))
+  } catch (error) {
+    reportError(t('failures.keepOffline'), error)
+  }
+}
+
+/** Deletes conversation `id`'s copy and when it was opened, together, and says the copy is gone. */
+async function forget(id: string): Promise<void> {
+  await database.across([CONVERSATIONS, OPENED], 'readwrite', (transaction) => {
+    transaction.objectStore(CONVERSATIONS).delete(id)
+    transaction.objectStore(OPENED).delete(id)
+    return () => {}
+  })
+  for (const listener of dropListeners) {
+    listener(id)
+  }
+}
+
 /** Deletes the account's cache, as signing out, a 401 or `session_ended` does. */
 export async function deleteAccountCache(): Promise<void> {
-  // Both go at once, so whatever reads the cache from now on finds it gone.
-  await Promise.all([
-    database.transaction(ACCOUNT, 'readwrite', (store) => store.clear()),
-    database.transaction(CONVERSATIONS, 'readwrite', (store) => store.clear()),
-  ])
+  // All go at once, so whatever reads the cache from now on finds it gone.
+  await Promise.all([ACCOUNT, CONVERSATIONS, OPENED].map((store) =>
+    database.transaction(store, 'readwrite', (records) => records.clear()),
+  ))
 }
 
 /**
- * Writes `value` under `key`. When the web browser refuses it for lack of
- * room, the copies of the conversations opened longest ago go, one at a
- * time, until it fits; the copy of `keep`, the one being written, stays.
+ * Runs `write`. When the web browser refuses it for lack of room, the
+ * copies of the conversations opened longest ago go, one at a time, until
+ * it fits; the copy of `keep`, the one being written, stays.
  */
-async function put(store: string, key: string, value: unknown, keep: string | null): Promise<void> {
+async function withRoom<T>(keep: string | null, write: () => Promise<T>): Promise<T> {
   for (;;) {
     try {
-      await database.transaction(store, 'readwrite', (records) => records.put(value, key))
-      return
+      return await write()
     } catch (error) {
       if (!(error instanceof DOMException) || error.name !== 'QuotaExceededError') {
         throw error
@@ -235,14 +307,14 @@ async function put(store: string, key: string, value: unknown, keep: string | nu
       if (oldest === null) {
         throw error
       }
-      await database.transaction(CONVERSATIONS, 'readwrite', (records) => records.delete(oldest))
+      await forget(oldest)
     }
   }
 }
 
 /** The conversation, other than `keep`, whose copy was opened longest ago; none when no other is kept. */
 async function openedLongestAgo(keep: string | null): Promise<string | null> {
-  const keys = await database.transaction(CONVERSATIONS, 'readonly', (records) =>
+  const keys = await database.transaction(OPENED, 'readonly', (records) =>
     records.index('openedAt').getAllKeys(null, 2),
   )
   return keys.find((key): key is string => typeof key === 'string' && key !== keep) ?? null
@@ -345,7 +417,8 @@ function keepAccountCopy(account: () => AccountCopy | null): { settled(): Promis
         if (!account() || !writable(user.id)) {
           return
         }
-        await put(ACCOUNT, ACCOUNT_KEY, stored({ build: cacheBuild(), user, state }), null)
+        const record = stored({ build: cacheBuild(), user, state })
+        await withRoom(null, () => database.transaction(ACCOUNT, 'readwrite', (store) => store.put(record, ACCOUNT_KEY)))
       }
     } catch (error) {
       // The page works without the copy; it goes on showing the backend's state.

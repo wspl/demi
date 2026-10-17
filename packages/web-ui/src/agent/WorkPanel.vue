@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from './locales/text'
 import { t as shared } from '../locales/text'
-import { computed, ref, shallowRef, watch, type Component } from 'vue'
+import { computed, nextTick, ref, shallowRef, watch, type Component } from 'vue'
 import { ArrowLeftToLine, ArrowRightToLine, ChevronLeft, CopyX, PanelRightClose, X } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import Tooltip from '../ui/Tooltip.vue'
@@ -28,9 +28,15 @@ import { resolvePanelTab, type PanelTabKind } from './panel-kinds/kind'
  * own: Conversation, which goes back to the conversation as it was, the
  * strip, and the strip's controls; the desktop's close control is that back.
  */
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   /** The selection and the user's tabs. */
   panel: PanelState
+  /**
+   * Whether the owner has read the tabs, true unless it says not: the tabs
+   * a first read brings were there before the panel showed them, so they
+   * come with no motion; a tab opened or closed after it moves.
+   */
+  tabsRead?: boolean
   /** The pinned tabs' data, by kind. */
   pinned: PinnedTabs
   kinds: readonly PanelTabKind[]
@@ -39,7 +45,9 @@ const props = defineProps<{
    * working directory: the body says when files and changes appear.
    */
   beforeFirstMessage?: boolean
-}>()
+}>(), {
+  tabsRead: true,
+})
 const emit = defineEmits<{
   select: [selection: string]
   /** The tab `id` moved to `index` among the others, as the user dragged it. */
@@ -69,9 +77,28 @@ const kept = shallowRef<readonly string[]>(keptContents([], selection.value, pre
 watch([selection, present], ([shown, ids]) => {
   kept.value = keptContents(kept.value, shown, ids)
 })
+/**
+ * The strip shows tabs nobody opened or closed just now: another
+ * conversation's, or another set of pages', in place of its own, or the
+ * ones the first read of the tabs brings. They come and go at once, with no
+ * motion (`TabStrip`'s `still`), for the render that shows them.
+ */
+const replacing = ref(false)
+function replaceTabs(): void {
+  replacing.value = true
+  void nextTick(() => {
+    replacing.value = false
+  })
+}
 // Kinds bound anew belong to another conversation, or another set of pages: nothing of the old ones stays.
 watch(() => props.kinds, () => {
   kept.value = keptContents([], selection.value, present.value)
+  replaceTabs()
+})
+watch(() => props.tabsRead, (read) => {
+  if (read) {
+    replaceTabs()
+  }
 })
 /** The kept contents, each with its kind and data. */
 const contents = computed(() => kept.value.flatMap((id) => {
@@ -153,6 +180,7 @@ function reorder(from: number, to: number): void {
       <TabStrip
         class="min-w-0 grow"
         surface="raised"
+        :still="replacing"
         @reorder="reorder"
       >
         <!-- The pinned tabs lead the strip and give way before its tabs: in a narrow panel the titles of

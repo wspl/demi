@@ -57,9 +57,26 @@ export class IndexedDatabase {
     mode: IDBTransactionMode,
     operation: (store: IDBObjectStore) => IDBRequest<T>,
   ): Promise<T> {
+    return this.across([store], mode, (transaction) => {
+      const request = operation(transaction.objectStore(store))
+      return () => request.result
+    })
+  }
+
+  /**
+   * Runs `operation` in one transaction over `stores`, all of whose changes
+   * commit or none, and resolves with what the reader it returns gives once
+   * the transaction commits. On an open connection the transaction starts
+   * before this returns.
+   */
+  across<T>(
+    stores: readonly string[],
+    mode: IDBTransactionMode,
+    operation: (transaction: IDBTransaction) => () => T,
+  ): Promise<T> {
     return this.#database
-      ? this.#run(this.#database, store, mode, operation, false)
-      : this.#open().then((database) => this.#run(database, store, mode, operation, false))
+      ? this.#run(this.#database, stores, mode, operation, false)
+      : this.#open().then((database) => this.#run(database, stores, mode, operation, false))
   }
 
   /**
@@ -83,25 +100,25 @@ export class IndexedDatabase {
 
   #run<T>(
     database: IDBDatabase,
-    store: string,
+    stores: readonly string[],
     mode: IDBTransactionMode,
-    operation: (store: IDBObjectStore) => IDBRequest<T>,
+    operation: (transaction: IDBTransaction) => () => T,
     retried: boolean,
   ): Promise<T> {
     let transaction: IDBTransaction
     try {
-      transaction = database.transaction(store, mode)
+      transaction = database.transaction([...stores], mode)
     } catch (error) {
       if (retried || !(error instanceof DOMException) || error.name !== 'InvalidStateError') {
         return Promise.reject(storageFailure(error))
       }
       // The connection closed without a close event. No transaction was
       // made, so nothing of `operation` ran: it runs once on a new one.
-      return this.#again(database, store, mode, operation)
+      return this.#again(database, stores, mode, operation)
     }
     return new Promise<T>((resolve, reject) => {
-      const request = operation(transaction.objectStore(store))
-      transaction.oncomplete = () => resolve(request.result)
+      const result = operation(transaction)
+      transaction.oncomplete = () => resolve(result())
       // A failed request aborts its transaction, so `abort` reports every
       // failure; its `error` event comes first and is left to it.
       transaction.onabort = () => {
@@ -112,19 +129,19 @@ export class IndexedDatabase {
         }
         // The web browser closed the connection under the transaction, which
         // committed nothing: it runs once on a new one.
-        resolve(this.#again(database, store, mode, operation))
+        resolve(this.#again(database, stores, mode, operation))
       }
     })
   }
 
   #again<T>(
     closed: IDBDatabase,
-    store: string,
+    stores: readonly string[],
     mode: IDBTransactionMode,
-    operation: (store: IDBObjectStore) => IDBRequest<T>,
+    operation: (transaction: IDBTransaction) => () => T,
   ): Promise<T> {
     this.#forget(closed)
-    return this.#open().then((database) => this.#run(database, store, mode, operation, true))
+    return this.#open().then((database) => this.#run(database, stores, mode, operation, true))
   }
 
   #open(): Promise<IDBDatabase> {
