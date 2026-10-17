@@ -3,8 +3,10 @@
 //! with the backend and serves its work, and, under a root command's name,
 //! the command alias that forwards one command line to it.
 
+mod autostart;
 mod connection;
 mod console;
+mod environment;
 #[cfg(windows)]
 mod detached;
 mod direct;
@@ -235,6 +237,10 @@ enum Action {
         #[command(flatten)]
         installation: Installation,
     },
+    /// Prints this process's environment as JSON between two `mark`s, for
+    /// the login shell a starting runner reads the device environment from.
+    #[command(name = environment::PRINT, hide = true)]
+    Environment { mark: String },
 }
 
 /// Which installation a command acts on.
@@ -309,6 +315,10 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             }
             return start::start(&directory, arguments).await;
         }
+        Action::Environment { mark } => {
+            environment::print(&mark)?;
+            return Ok(0);
+        }
         Action::Uninstall { installation } => {
             let directory = directory(&installation, None)?;
             // Checked before anything writes there: opening the state would
@@ -327,7 +337,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
                     }
                     let revocation = serde_json::from_slice(&answer)
                         .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
-                    return uninstalled(&directory, &revocation);
+                    return uninstalled(&directory, &revocation).await;
                 }
                 // No runner is active: this process runs one that asks the
                 // backend, then removes the installation.
@@ -352,22 +362,38 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         .as_ref()
         .map(|boot| boot.backend_url.clone())
         .or(installation.backend);
-    // The device environment (`runner.md` § Host operations): the runner's
-    // own, as its jobs' shell reads it, without the names that configure it
-    // or belong to whatever started it, which no program it starts is meant
-    // to read. Nor the entries Windows names `=C:` and the like, which are
-    // no variables but the current directory cmd.exe keeps for each drive:
-    // a runner whose starter passed them on handed them to every command,
-    // which refuses a name with `=` ("invalid environment variable name
-    // \"=C:\"").
-    let env: BTreeMap<_, _> = demi_runner_shell::host_environment()
-        .filter(|(name, _)| !name.starts_with("DEMI_") && !name.starts_with('='))
-        .collect();
     let home = home()?;
     let state = RunnerState::open(directory.clone()).await?;
     if log {
         console::to_log(&directory)?;
     }
+    let own: BTreeMap<String, String> = demi_runner_shell::host_environment().collect();
+    // A paired device's is the user's login environment, whoever started
+    // the runner; a managed guest's is its image's (`managed-hosts.md`
+    // § Images), and one that `uninstall` runs starts nothing.
+    #[cfg(unix)]
+    let (resolved, unresolved) = if boot.is_none() && !removing {
+        match environment::login_environment(&own).await {
+            Ok(resolved) => (resolved, None),
+            Err(reason) => (own, Some(reason)),
+        }
+    } else {
+        (own, None)
+    };
+    #[cfg(windows)]
+    let (resolved, unresolved): (_, Option<String>) = (own, None);
+    // The device environment (`runner.md` § Host operations), without the
+    // names that configure the runner or belong to whatever started it,
+    // which no program it starts is meant to read. Nor the entries Windows
+    // names `=C:` and the like, which are no variables but the current
+    // directory cmd.exe keeps for each drive: a runner whose starter passed
+    // them on handed them to every command, which refuses a name with `=`
+    // ("invalid environment variable name \"=C:\"").
+    let mut env: BTreeMap<_, _> = resolved
+        .into_iter()
+        .filter(|(name, _)| !name.starts_with("DEMI_") && !name.starts_with('='))
+        .collect();
+    environment::complete(&mut env);
     let backend = match backend {
         Some(backend) => backend,
         None => {
@@ -394,6 +420,11 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
     // `uninstall` runs is being removed.
     let removal = (boot.is_none() && !removing)
         .then(|| removal::command(&directory, installed.is_some(), &executable));
+    // An installer's installation has the launcher its registration runs.
+    let autostart = match &installed {
+        Some(_) if !removing => Some(autostart::Registration::of(&directory, &home)?),
+        _ => None,
+    };
     let scratch_root = Scratch::new(&directory).root().to_string_lossy().into_owned();
     // The home as its Host names it, so the backend tells a directory that
     // is the home from another (`sessions-and-targets.md` § Resolve a
@@ -432,6 +463,8 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
                 .to_string_lossy()
                 .into_owned()
         }),
+        // The registration says, once this runner holds its installation.
+        autostart_unavailable: None,
     };
     // A managed guest's state is temporary; its log and its job output stay
     // on the system layer, which a stop keeps (`runner.md` § Host log,
@@ -449,6 +482,9 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         .with(layer.with_filter(LevelFilter::INFO))
         .with(host_log::Console.with_filter(LevelFilter::WARN))
         .init();
+    if let Some(reason) = unresolved {
+        tracing::warn!("the device environment is the runner's own: {reason}");
+    }
     // Every job and stream shares this process's open files (`runner.md`
     // § Load); without the raise the runner still works, waiting sooner.
     #[cfg(unix)]
@@ -501,6 +537,7 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         installed: installed.filter(|_| !removing),
         removal,
         removing,
+        autostart,
     };
     let stop = CancellationToken::new();
     let running = registration::run(options, stop.clone());
@@ -524,13 +561,36 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
         // Whatever the backend answered, or when it could not be reached,
         // the installation goes.
         Ok(Ending::Uninstalled(revocation)) if removing => {
-            uninstalled(&installation_directory, &revocation)
+            uninstalled(&installation_directory, &revocation).await
         }
-        Err(_) if removing => uninstalled(&installation_directory, &Revocation::Unreached),
+        // A backend that no longer knows the device has none to revoke.
+        Ok(Ending::Refused(wire::HelloErrorCode::UnknownDevice)) if removing => {
+            uninstalled(&installation_directory, &Revocation::Unpaired).await
+        }
+        Err(_) | Ok(Ending::Refused(_) | Ending::Unstartable) if removing => {
+            uninstalled(&installation_directory, &Revocation::Unreached).await
+        }
         // An interrupted `uninstall` removes nothing.
         Ok(Ending::Stopped) if removing => Ok(130),
-        // The `uninstall` that asked removes the installation.
-        Ok(Ending::Stopped | Ending::Uninstalled(_)) => Ok(0),
+        Ok(Ending::Held) if removing => {
+            println!("A runner of this installation started meanwhile; nothing was removed.");
+            Ok(1)
+        }
+        // The `uninstall` that asked removes the installation. Nothing
+        // would come of starting again a runner that stopped, handed over to
+        // the service manager's, or whose installation another runner
+        // holds, or whose state no start can change, or whose backend no
+        // longer knows its device or protocol: only a backend's own failure
+        // may pass (`runner.md` § Starting with the computer).
+        Ok(
+            Ending::Stopped
+            | Ending::Uninstalled(_)
+            | Ending::Held
+            | Ending::HandedOver
+            | Ending::Unstartable,
+        ) => Ok(0),
+        Ok(Ending::Refused(wire::HelloErrorCode::Internal)) => Ok(1),
+        Ok(Ending::Refused(_)) => Ok(0),
         Ok(Ending::Replaced(successor)) => {
             successor.start()?;
             Ok(0)
@@ -545,6 +605,9 @@ async fn runner(cli: Cli, shell: ShellRuntime) -> io::Result<u8> {
             }
             let removed = removal::remove(&installation_directory)?;
             console::line(format_args!("demi-runner: {}", removed.told(&installation_directory)));
+            autostart::Registration::of(&installation_directory, &home)?
+                .remove()
+                .await;
             Ok(0)
         }
         Err(_) => Ok(1),
@@ -590,8 +653,9 @@ async fn prepare_temporary(directory: &Path) {
 }
 
 /// Says what came of the revocation, then removes the installation in
-/// `directory` once its runner ended.
-fn uninstalled(directory: &Path, revocation: &Revocation) -> io::Result<u8> {
+/// `directory` once its runner ended, and last its registration with the
+/// service manager.
+async fn uninstalled(directory: &Path, revocation: &Revocation) -> io::Result<u8> {
     match revocation {
         Revocation::Revoked { projects } if projects.is_empty() => {
             println!("The backend removed this device.");
@@ -611,6 +675,7 @@ fn uninstalled(directory: &Path, revocation: &Revocation) -> io::Result<u8> {
     }
     let removed = removal::remove(directory)?;
     println!("{}", removed.told(directory));
+    autostart::Registration::of(directory, &home()?)?.remove().await;
     Ok(0)
 }
 

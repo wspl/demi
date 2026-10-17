@@ -67,6 +67,7 @@
   "page": {
     "cloud": "云端",
     "startSentence": "在设备上启动 Demi：",
+    "noAutostart": "此设备重新启动后不会自动启动 Demi。",
     "connection": "连接",
     "route": "连接路径",
     "p2p": "P2P",
@@ -146,5 +147,14 @@
     "powershell": "如果运行器已停止，请在设备上的 PowerShell 中运行此命令。",
     "terminal": "如果运行器已停止，请在设备上的终端中运行此命令。",
     "copy": "复制启动命令"
+  },
+  "autostart": {
+    "noSystemd": "此系统未运行 systemd。",
+    "noUserManager": "systemd 用户管理器没有响应：{error}",
+    "notWritten": "Demi 无法保存 {path}：{error}",
+    "lingerOff": "只有在 {user} 登录后才会启动。若要在电脑启动时启动，请运行：",
+    "refused": "Windows 拒绝了计划任务和启动项：{error}",
+    "unusableName": "安装文件夹的名称“{name}”无法用作启动项的名称。",
+    "unknownAccount": "系统无法识别此用户账户。"
   }
 }

@@ -34,6 +34,93 @@ pub fn native_fixture_binary() -> PathBuf {
     built_program("demi-native-fixture")
 }
 
+/// The file beside the stand-in in which it records the service-manager
+/// commands it was given, one line each.
+pub const SERVICE_MANAGER_CALLS: &str = "service-manager-calls";
+
+/// Writes in `directory` the program that stands in for the service
+/// manager's commands of the runners a test starts
+/// ([`demi_runner_protocol::SERVICE_MANAGER_STAND_IN`]) and returns its
+/// path. On Unix it records each command line in [`SERVICE_MANAGER_CALLS`]
+/// beside it and keeps whether a LaunchAgent is loaded as launchd would;
+/// asked to start the runner, by `launchctl kickstart` of a loaded agent or
+/// `systemctl --user restart`, it starts the
+/// launcher of the installation `DEMI_HOME` names, when there is one, in
+/// the background, as the manager's runner; loading an agent starts none,
+/// where launchd's would find the lock held and end, so that no runner of
+/// the stand-in's outlives the test's. With `DEMI_TEST_MANAGER_REFUSES`
+/// set, it refuses every command. On Windows it answers every command with
+/// success.
+pub fn service_manager_stand_in(directory: &Path) -> PathBuf {
+    #[cfg(unix)]
+    {
+        const SCRIPT: &str = r#"#!/bin/sh
+here=$(dirname "$0")
+printf '%s\n' "$*" >> "$here/service-manager-calls"
+# A test names a manager that refuses every command.
+[ -z "$DEMI_TEST_MANAGER_REFUSES" ] || exit 1
+start() {
+  if [ -x "$DEMI_HOME/run" ]; then
+    DEMI_SUPERVISED=1 "$DEMI_HOME/run" run --log < /dev/null > /dev/null 2>&1 &
+  fi
+}
+case "$1 $2" in
+  'launchctl print') test -e "$here/loaded" ;;
+  'launchctl bootstrap') : > "$here/loaded" ;;
+  'launchctl bootout') rm -f "$here/loaded" ;;
+  'launchctl kickstart') test -e "$here/loaded" && start ;;
+  'systemctl --user') case "$3" in start|restart) start ;; esac ;;
+esac
+"#;
+        executable(&directory.join("service-manager"), SCRIPT)
+    }
+    #[cfg(windows)]
+    {
+        let path = directory.join("service-manager.cmd");
+        std::fs::write(&path, "@exit /b 0\r\n").expect("the service manager's stand-in can be written");
+        path
+    }
+}
+
+/// Writes in `directory` a login shell that reads no file of the user's and
+/// runs the command it is given as `-i -l -c <command>` with the
+/// environment it was given, and returns its path: the `SHELL` the runners
+/// a test starts read their device environment from (`runner.md` § Host
+/// operations), so that none reads the test machine's shell files.
+#[cfg(unix)]
+pub fn login_shell_stand_in(directory: &Path) -> PathBuf {
+    const SCRIPT: &str = r#"#!/bin/sh
+while [ "$#" -gt 1 ] && [ "$1" != -c ]; do shift; done
+exec /bin/sh -c "$2"
+"#;
+    executable(&directory.join("login-shell"), SCRIPT)
+}
+
+/// The launcher an installer writes into an installation
+/// (`builds-and-releases.md` § Packaging), which runs the installation's
+/// release for its backend.
+#[cfg(unix)]
+const LAUNCHER: &str = r#"#!/bin/sh
+set -eu
+state=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+IFS= read -r backend < "$state/backend-url"
+IFS= read -r release < "$state/release-id"
+export DEMI_HOME="$state" DEMI_RELEASE_ID="$release"
+action=${1:-run}
+[ "$#" -eq 0 ] || shift
+exec "$state/releases/$release/demi-runner" "$action" --backend "$backend" "$@"
+"#;
+
+/// Writes `script` to `path` as a program and returns the path.
+#[cfg(unix)]
+pub fn executable(path: &Path, script: &str) -> PathBuf {
+    use std::os::unix::fs::PermissionsExt as _;
+    std::fs::write(path, script).expect("a test program can be written");
+    std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755))
+        .expect("a test program can be made executable");
+    path.to_owned()
+}
+
 /// How a runner process starts.
 #[derive(Debug, Clone)]
 pub struct RunnerProcessOptions {
@@ -116,6 +203,16 @@ impl RunnerProcess {
             std::os::unix::fs::symlink(&program, installed).expect("the installed runner");
             #[cfg(windows)]
             std::fs::hard_link(&program, installed).expect("the installed runner");
+            // The launcher an installer writes, which the service manager's
+            // stand-in starts the runner with.
+            #[cfg(unix)]
+            {
+                std::fs::write(state.path().join("backend-url"), format!("{backend}\n"))
+                    .expect("the installation's backend");
+                std::fs::write(state.path().join("release-id"), format!("{release}\n"))
+                    .expect("the installation's release");
+                executable(&state.path().join("run"), LAUNCHER);
+            }
         }
         let mut process = Self {
             program,
@@ -147,6 +244,19 @@ impl RunnerProcess {
     /// The runner's installation state, which holds its device token.
     pub fn state_dir(&self) -> &Path {
         self.state.path()
+    }
+
+    /// The service-manager commands the runner gave, one line each.
+    pub fn service_manager_calls(&self) -> String {
+        std::fs::read_to_string(self.home.path().join(SERVICE_MANAGER_CALLS)).unwrap_or_default()
+    }
+
+    /// How the runner process ended, once it has.
+    pub fn exit_code(&mut self) -> Option<i32> {
+        self.child
+            .as_mut()
+            .and_then(|child| child.try_wait().ok().flatten())
+            .and_then(|status| status.code())
     }
 
     /// Another runner set up as this one: the same home, state and backend.
@@ -378,8 +488,28 @@ fn runner_command(
         // process's state, even when it is killed.
         .env("TMPDIR", state.join("tmp"))
         .env("DEMI_RUNNER_NAME", &options.name)
+        .env(
+            demi_runner_protocol::SERVICE_MANAGER_STAND_IN,
+            service_manager_stand_in(Path::new(home)),
+        )
         .stdin(Stdio::null())
         .kill_on_drop(true);
+    let named = |name: &str| match &options.env {
+        SpawnEnv::Inherit => false,
+        SpawnEnv::Overlay(changes) => changes.contains_key(name),
+        SpawnEnv::Exactly(_) => true,
+    };
+    // The service manager's runner, which hands nothing over, unless the
+    // test says otherwise.
+    if !named(demi_runner_protocol::SUPERVISED) {
+        command.env(demi_runner_protocol::SUPERVISED, "1");
+    }
+    // A login shell that reads none of the test machine's files, unless the
+    // test names its own or gives the runner exactly its environment.
+    #[cfg(unix)]
+    if !named("SHELL") {
+        command.env("SHELL", login_shell_stand_in(Path::new(home)));
+    }
     if let Some(release) = &options.release {
         command.env(demi_runner_protocol::release::RELEASE_ENV, release);
     }

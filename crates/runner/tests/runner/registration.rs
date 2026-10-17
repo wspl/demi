@@ -8,7 +8,7 @@
 
 use std::{collections::BTreeMap, time::Duration};
 
-use demi_backend_remote_host::testing::{DetachedRunners, runner_binary};
+use demi_backend_remote_host::testing::{DetachedRunners, login_shell_stand_in, runner_binary};
 use demi_runner_protocol::{
     manifest::Manifest,
     wire::{self, Inbound, Outbound},
@@ -452,6 +452,7 @@ async fn start_appends_to_the_log_reads_it_from_where_it_ended_and_starts_it_aga
             let started = tokio::process::Command::new(runner_binary())
                 .args(["start", "--backend", "http://127.0.0.1:9/", "--home"])
                 .arg(installation)
+                .env("SHELL", login_shell_stand_in(installation))
                 .env_remove("DEMI_HOME")
                 .output()
                 .await
@@ -510,6 +511,7 @@ async fn a_runner_with_a_log_started_in_a_terminals_foreground_leaves_the_termin
         runner
             .args(["run", "--log", "--backend", "http://127.0.0.1:9/", "--home"])
             .arg(installation)
+            .env("SHELL", login_shell_stand_in(installation))
             .env_remove("DEMI_HOME")
             .kill_on_drop(true);
         // Read as a terminal window reads it: a process that closes a

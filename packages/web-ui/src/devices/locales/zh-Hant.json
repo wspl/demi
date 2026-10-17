@@ -67,6 +67,7 @@
   "page": {
     "cloud": "雲端",
     "startSentence": "在裝置上啟動 Demi：",
+    "noAutostart": "此裝置重新開機後不會自動啟動 Demi。",
     "connection": "連線",
     "route": "連線路徑",
     "p2p": "P2P",
@@ -146,5 +147,14 @@
     "powershell": "如果執行器已停止，請在裝置上的 PowerShell 中執行此指令。",
     "terminal": "如果執行器已停止，請在裝置上的終端機中執行此指令。",
     "copy": "複製啟動指令"
+  },
+  "autostart": {
+    "noSystemd": "此系統未執行 systemd。",
+    "noUserManager": "systemd 使用者管理程式沒有回應：{error}",
+    "notWritten": "Demi 無法儲存 {path}：{error}",
+    "lingerOff": "只有在 {user} 登入後才會啟動。若要在電腦開機時啟動，請執行：",
+    "refused": "Windows 拒絕了排程工作和啟動項目：{error}",
+    "unusableName": "安裝資料夾的名稱「{name}」無法作為啟動項目的名稱。",
+    "unknownAccount": "系統無法識別此使用者帳號。"
   }
 }

@@ -17,8 +17,11 @@ mod terminal;
 #[cfg(unix)]
 pub use detached::DetachedRunners;
 pub use process::{
-    PAIRING_CODE, RunnerProcess, RunnerProcessOptions, native_fixture_binary, runner_binary,
+    PAIRING_CODE, RunnerProcess, RunnerProcessOptions, SERVICE_MANAGER_CALLS, native_fixture_binary,
+    runner_binary, service_manager_stand_in,
 };
+#[cfg(unix)]
+pub use process::{executable, login_shell_stand_in};
 pub use runner::{FixtureOptions, RunnerFixture};
 #[cfg(unix)]
 pub use terminal::Terminal;

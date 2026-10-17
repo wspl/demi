@@ -67,6 +67,7 @@
   "page": {
     "cloud": "クラウド",
     "startSentence": "デバイスで Demi を起動します:",
+    "noAutostart": "このデバイスでは、再起動後に Demi が自動で起動しません。",
     "connection": "接続",
     "route": "経路",
     "p2p": "P2P",
@@ -146,5 +147,14 @@
     "powershell": "ランナーが停止している場合は、デバイスの PowerShell でこれを実行します。",
     "terminal": "ランナーが停止している場合は、デバイスのターミナルでこれを実行します。",
     "copy": "起動コマンドをコピー"
+  },
+  "autostart": {
+    "noSystemd": "このシステムでは systemd が動作していません。",
+    "noUserManager": "systemd のユーザマネージャが応答しません：{error}",
+    "notWritten": "Demi は {path} を保存できませんでした：{error}",
+    "lingerOff": "{user} がログインしたときにだけ起動します。コンピュータの起動時に起動するには、次を実行してください：",
+    "refused": "Windows がスケジュールされたタスクとスタートアップ項目の両方を拒否しました：{error}",
+    "unusableName": "インストールフォルダの名前「{name}」は、スタートアップ項目の名前に使用できません。",
+    "unknownAccount": "システムがこのユーザアカウントを認識できません。"
   }
 }

@@ -58,7 +58,8 @@ use crate::{
 pub enum End {
     Stopped,
     Disconnected,
-    Rejected,
+    /// The backend refused the hello with this code.
+    Rejected(wire::HelloErrorCode),
     /// The backend revoked the device; the projects of these names went
     /// with it.
     Revoked(Vec<String>),
@@ -401,7 +402,7 @@ impl Owner<'_> {
                     ));
                 }
                 management.set_phase(Phase::Rejected);
-                return Ok(Some(End::Rejected));
+                return Ok(Some(End::Rejected(code)));
             }
             Inbound::Revoked { projects } if management.phase() == Phase::Online => {
                 management.settle(Revocation::Revoked {

@@ -4,7 +4,9 @@
 //! connection in turn is served by its own owner
 //! ([`crate::connection::serve`]).
 
+use crate::autostart::Supervision;
 use crate::connection::{self, Connected, End, Kept, Registered, Transport};
+use demi_runner_protocol::console::HANDED_OVER;
 use crate::update::{Installed, Successor};
 use crate::{
     host_log::HostLogReader,
@@ -67,6 +69,10 @@ pub struct Options {
     /// Whether this registration runs only to ask the backend to revoke the
     /// device, for an `uninstall` that found no active runner.
     pub removing: bool,
+    /// The registration with the system's service manager that this runner
+    /// keeps, for an installation an installer made (`runner.md` § Starting
+    /// with the computer).
+    pub autostart: Option<crate::autostart::Registration>,
 }
 
 /// How a registration ended.
@@ -84,26 +90,85 @@ pub enum Ending {
     /// revoke the device: the `uninstall` that asked removes the
     /// installation.
     Uninstalled(Revocation),
+    /// Another runner of the installation holds its lock, so this one
+    /// never started (`runner.md` § Starting with the computer).
+    Held,
+    /// The backend refused the runner's hello, for the reason its code
+    /// says.
+    Refused(wire::HelloErrorCode),
+    /// The service manager runs the installation's runner from here on,
+    /// which this one, which the manager did not start, handed it to
+    /// (`runner.md` § Starting with the computer).
+    HandedOver,
+    /// The installation's state is one no start can change, which the log
+    /// says.
+    Unstartable,
 }
 
 pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending> {
     let state = RunnerState::open(options.directory.clone()).await?;
-    let mut lease = state.lock()?;
-    let saved = state.config().await?;
+    let Some(mut lease) = state.try_lock()? else {
+        crate::console::line(crate::console::runner_line(
+            "another runner of this installation is running; this one ends",
+        ));
+        return Ok(Ending::Held);
+    };
+    // Kept while this runner holds the lock, so a runner that writing it
+    // starts finds the lock held.
+    let mut runner = options.runner;
+    let supervision = match &options.autostart {
+        Some(registration) => Some(registration.ensure().await),
+        None => None,
+    };
+    if let (Some(registration), Some(Ok(Supervision::Restarts))) = (&options.autostart, &supervision)
+        && !registration.supervised()
+    {
+        lease.release()?;
+        match registration.start().await {
+            Ok(()) => {
+                crate::console::line(HANDED_OVER);
+                return Ok(Ending::HandedOver);
+            }
+            Err(error) => {
+                tracing::warn!("the runner goes on unsupervised: the service manager did not start the installation's runner: {error}");
+                lease = match state.try_lock()? {
+                    Some(lease) => lease,
+                    // The manager started it all the same.
+                    None => {
+                        crate::console::line(HANDED_OVER);
+                        return Ok(Ending::HandedOver);
+                    }
+                };
+            }
+        }
+    }
+    runner.autostart_unavailable = supervision.and_then(Result::err);
+    let unstartable = |reason: String| {
+        tracing::error!("{reason}; starting the runner again changes nothing");
+        Ok(Ending::Unstartable)
+    };
+    let saved = match state.config().await {
+        Ok(saved) => saved,
+        Err(error) => return unstartable(format!("the installation's configuration cannot be read: {error}")),
+    };
     if let Some(saved) = &saved
         && crate::state::instance_id(&saved.backend_url)
             != crate::state::instance_id(options.backend.url())
     {
-        return Err(io::Error::other(
-            "installation is registered to another backend",
+        return unstartable(format!(
+            "the installation is registered to another backend, {}",
+            saved.backend_url
         ));
     }
     let token = match &options.token {
         Some(token) => Some(token.clone()),
-        None => state.token().await?,
+        None => match state.token().await {
+            Ok(token) => token,
+            Err(error) => return unstartable(format!("the device token cannot be read: {error}")),
+        },
     };
-    if options.runner.managed == Some(true) && token.is_none() {
-        return Err(io::Error::other("managed runner requires a device token"));
+    if runner.managed == Some(true) && token.is_none() {
+        return unstartable("a managed runner requires a device token".into());
     }
     state
         .write_config(&RunnerConfig {
@@ -113,7 +178,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         .await?;
     // Every pipe request reads the token; only a claim changes it.
     let token = watch::Sender::new(token);
-    tracing::info!("runner {} started", options.runner.version);
+    tracing::info!("runner {} started", runner.version);
     // A Cloud image preinstalls the command artifacts there. The runner
     // looks on every Host, and a paired device has nothing there; Cloud
     // images are Linux only, so a Windows runner does not look.
@@ -131,9 +196,14 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     let index = watch::Sender::new(Arc::default());
     let pipes = PipeClient::new(&options.backend, token.subscribe())?;
     let secret = uuid::Uuid::new_v4().simple().to_string();
-    let management = Management::new(secret.clone(), options.runner.version.clone(), stop.clone());
+    let management = Management::new(secret.clone(), runner.version.clone(), stop.clone());
     if options.removing {
         management.removing.cancel();
+    }
+    if let Some(reason) = &runner.autostart_unavailable {
+        let sentence = reason.sentence(&runner.identity.home_dir);
+        tracing::info!("this device will not start Demi by itself after a restart: {sentence}");
+        management.tell_no_autostart(&sentence);
     }
     let dispatcher = Arc::new(Dispatcher {
         contexts: Contexts::new(index.subscribe()),
@@ -155,7 +225,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
             &ActiveRunner {
                 endpoint: server.endpoint().into(),
                 secret,
-                release: options.runner.version.clone(),
+                release: runner.version.clone(),
             },
         )
         .await?;
@@ -163,7 +233,7 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
         installed: options.installed.map(Arc::new),
         scratch: Scratch::new(&state.root),
         backend: options.backend,
-        runner: options.runner,
+        runner,
         state: Arc::new(state),
         token,
         management,
@@ -273,12 +343,7 @@ async fn reconnect(registered: &Registered, kept: &mut Kept) -> io::Result<Endin
             Err(error) => Err(error),
         };
         match result {
-            Ok(End::Rejected) => {
-                return Err(io::Error::new(
-                    io::ErrorKind::PermissionDenied,
-                    "backend rejected runner registration",
-                ));
-            }
+            Ok(End::Rejected(code)) => return Ok(Ending::Refused(code)),
             Ok(End::Stopped) => return Ok(Ending::Stopped),
             // An `uninstall` asked for the revocation, and removes the
             // installation once this runner has ended.

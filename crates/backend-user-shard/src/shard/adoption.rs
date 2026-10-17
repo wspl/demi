@@ -14,7 +14,7 @@ use demi_backend_page_sync::Part;
 use demi_backend_plugins::Lost;
 use demi_backend_remote_host::{Hello, Link, LinkOptions, RemoteHost, host_identity};
 use demi_host_interface::{HostErrorKind, HostFs as _};
-use demi_backend_runners::devices::{DeviceRecorder, Download, Serving, Updating, send};
+use demi_backend_runners::devices::{DeviceRecorder, Download, Reported, Serving, Updating, send};
 use demi_backend_runners::native::system_targets;
 use demi_runner_protocol::wire::{HelloErrorCode, Inbound, KeptJob, RunnerInfo};
 use demi_web_api_protocol::devices::DeviceKind;
@@ -270,8 +270,10 @@ impl Shard {
                 link,
                 driver,
                 seen.clone(),
-                runner.installation,
-                runner.native_target.clone(),
+                Reported {
+                    installation: runner.installation,
+                    target: runner.native_target.clone(),
+                },
             );
         // What its conversations keep of its files is searched again on the
         // new connection.
@@ -280,7 +282,14 @@ impl Shard {
         let device = device.clone();
         let reported = async move {
             let first = seen
-                .hello(device.clone(), runner.os, runner.version, hello_instance, home)
+                .hello(
+                    device.clone(),
+                    runner.os,
+                    runner.version,
+                    hello_instance,
+                    home,
+                    runner.autostart_unavailable,
+                )
                 .await?;
             Some(settle_first_home(access, seen, device, first))
         };
@@ -598,6 +607,7 @@ impl Shard {
             shell: None,
             managed: None,
             installation: None,
+            autostart_unavailable: None,
         };
         let hello = Hello {
             instance: 0,

@@ -242,7 +242,7 @@ test("what a conversation holds is its primary Host's, of the plugin's packages"
         { package: 'demi.browser', name: 'program', version: '0.1.3' },
         { package: 'demi.file', name: 'program', version: '0.1.0' },
       ],
-      startCommand: null,
+      startCommand: null, autostartUnavailable: null,
       os: null,
       runnerVersion: null, downloadPercent: null,
       mark: { logo: 'tux', number: 1 },

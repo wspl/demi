@@ -19,6 +19,8 @@ import { formatDay, formatMoment } from '../ui/dates'
 import DeviceRenameDialog from '../devices/DeviceRenameDialog.vue'
 import DeviceRevokeDialog from '../devices/DeviceRevokeDialog.vue'
 import DeviceStartHint from '../devices/DeviceStartHint.vue'
+import { autostartCause } from '../devices/autostart'
+import CopyCode from '../ui/CopyCode.vue'
 import { useAsked } from '../devices/useAsked'
 import {
   DEVICE_ROUTE_DESCRIPTION,
@@ -110,6 +112,16 @@ const status = computed<{ tone: StatusDotTone; words: SentenceText }>(() => {
 
 /** How to start the runner again, which the header gives while the device is offline. */
 const offlineStart = computed(() => (device.value?.state === 'offline' ? (device.value.start ?? null) : null))
+/**
+ * Why the device will not start its runner by itself after a restart,
+ * which the header says whatever its state, so the user learns it before a
+ * restart (`runner.md` § Starting with the computer): a plain sentence of
+ * the cause, and the command that removes it, when one does.
+ */
+const noAutostart = computed(() => {
+  const reason = device.value?.autostartUnavailable
+  return reason ? autostartCause(reason, device.value?.home) : null
+})
 
 /**
  * The Latency row's value while the device is online: the paths compared
@@ -228,8 +240,15 @@ async function revoke(): Promise<void> {
     <template #status>
       {{ status.words }}<span v-if="device?.state === 'offline' && device.seen" class="text-fg-subtle"> · {{ t('page.lastSeen') }} <RelativeTime :timestamp="device.seen" /></span>
     </template>
-    <template v-if="offlineStart" #description>
-      <DeviceStartHint :sentence="t('page.startSentence')" :start="offlineStart" />
+    <template v-if="offlineStart || noAutostart" #description>
+      <div class="flex min-w-0 flex-col gap-3">
+        <!-- A cause may name a long path, which wraps anywhere. -->
+        <div v-if="noAutostart" class="flex min-w-0 flex-col gap-1.5">
+          <p class="[overflow-wrap:anywhere]">{{ t('page.noAutostart') }} {{ noAutostart.sentence }}</p>
+          <CopyCode v-if="noAutostart.command" :code="noAutostart.command" :copy-label="t('startHint.copy')" />
+        </div>
+        <DeviceStartHint v-if="offlineStart" :sentence="t('page.startSentence')" :start="offlineStart" />
+      </div>
     </template>
 
     <SettingsGroup v-if="device" :title="t('page.connection')">
