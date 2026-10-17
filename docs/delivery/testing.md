@@ -124,6 +124,10 @@ backend's scenario suites in [Scenarios](scenarios.md).
   Split it only where
   [build isolation](../architecture/crates-and-packages.md#module-layout)
   allows; otherwise the crate keeps its tests as unit tests.
+- Cargo starts every test binary through the runner in `.cargo/config.toml`,
+  which raises its soft open-file limit to the hard limit (on macOS to
+  `kern.maxfilesperproc`), so a shell's low default, such as macOS's 256,
+  needs no `ulimit`; a test that needs a lower limit sets it itself.
 - A new test goes into the existing test file for the code it covers. A test
   for a fixed bug sits beside the tests of the behavior it restores and is
   named after that behavior.
