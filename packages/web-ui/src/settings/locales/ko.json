@@ -539,7 +539,13 @@
     "saving": "저장 중…",
     "addAccount": "계정 추가",
     "showInMenu": "모델 메뉴에 표시",
-    "imageGeneration": "이미지 생성",
+    "media": {
+      "imageGeneration": "이미지 생성",
+      "images": "이미지",
+      "none": "없음",
+      "addImage": "이미지 모델 추가",
+      "noImages": "아직 이미지 모델이 없습니다"
+    },
     "state": {
       "setup": "설정되지 않음",
       "signedOut": "로그아웃됨",
@@ -576,11 +582,12 @@
       "keyReplace": "교체할 새 키 입력",
       "keyPaste": "API 키 붙여넣기",
       "test": "연결 테스트",
-      "testDescription": "켜져 있는 첫 번째 모델에 짧은 요청을 하나 보냅니다.",
+      "testDescription": "켜져 있는 첫 번째 텍스트 모델에 짧은 채팅 메시지를 하나 보냅니다.",
       "testing": "테스트 중…",
       "connected": "연결됨",
       "failed": "실패",
-      "enableModel": "먼저 모델을 켜십시오"
+      "enableModel": "먼저 모델을 켜십시오",
+      "noTextModel": "테스트는 채팅 메시지를 보내지만 이 제공업체에는 텍스트 모델이 없습니다"
     },
     "cli": {
       "title": "명령줄 도구",
@@ -611,7 +618,7 @@
       "enable": "“{name}” 켜기",
       "noResults": "결과 없음",
       "signInToSee": "로그인하면 모델이 표시됩니다",
-      "none": "모델 없음"
+      "none": "아직 모델이 없습니다"
     },
     "removeProvider": {
       "title": "“{name}” 제공업체를 제거하시겠습니까?",
@@ -665,6 +672,7 @@
     "id": "모델 ID",
     "name": "이름",
     "nameDescription": "모델 메뉴에 표시됩니다. 기본값은 ID입니다.",
+    "nameDefault": "기본값은 ID입니다.",
     "contextWindow": "컨텍스트 길이",
     "maxOutput": "최대 출력",
     "optional": "선택 사항",

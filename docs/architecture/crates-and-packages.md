@@ -132,8 +132,8 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     catalog model into a selection (`ProviderModel::selection`, with the
     attachment types it derives, `ATTACHMENT_FILE_EXTENSIONS`); the wire
     format an `openai` entry speaks (`WireApi`), which its configuration names
-    and its provider sends; the vendor whose images it makes (`ImageVendor`),
-    which its details and the preference `imageEntries` name; its
+    and its provider sends; the shapes in which it makes images, videos and audio
+    (`MediaShapes`), which its details name; its
     authentication and runtime states (`AuthState`, `RuntimeState`); its subscription accounts as the web app
     sees them (`AccountInfo`, `LoginPending`); and an account's quota snapshot
     (`QuotaSnapshot`, `QuotaWindow`, `QuotaPlan` and their sets);

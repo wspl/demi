@@ -1,65 +1,178 @@
-//! The port's Providers service (`plugins.md` § The contract, `images.md`):
-//! the image models of the user's provider entries, by vendor, and one
-//! image made through an entry's account or key. The backend chooses the
+//! The port's Providers service (`plugins.md` § The contract, `media.md`):
+//! the media models of the user's provider entries with what the catalog
+//! states of each and the entries that offer it, and one image made
+//! through an entry's account or key. The backend chooses the
 //! entry and the account, rotates them, renews their sign-in and records
 //! the call in the usage ledger; no token or key reaches the plugin.
 
 use demi_shared_types::{B64Bytes, Timestamp};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-/// The image models of one vendor's entries (`images.md` § Commands): the
-/// groups of `demi image models`, OpenAI's, Google's and xAI's in that
-/// order.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// The models of one kind the user's entries offer (`media.md` § What the
+/// agent is told): newest first by release date, those without one last.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ImageVendorModels {
-    /// How the user knows the vendor, such as `OpenAI`.
-    pub vendor: String,
-    /// Its models.dev id, such as `openai`.
-    pub vendor_id: String,
-    /// The entry its models go through now: the one the user chose, or the
-    /// one Automatic takes (`images.md` § Which entry makes an image).
-    pub through: ImageEntry,
-    /// Newest first by release date, those without one last.
-    pub models: Vec<ImageModel>,
+pub struct MediaListing {
+    pub models: Vec<MediaModel>,
     /// The entries whose models could not be listed, each with why.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unlisted: Vec<ImageUnlisted>,
+    /// Why no entry offers any model, when none does.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub none: Option<ImageRefusal>,
 }
 
-/// An entry an image is made through.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// A model, with every fact the catalog of media models states of it and
+/// the entries that offer it in the order a call tries them.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ImageEntry {
+pub struct MediaModel {
+    /// The ID `--model` takes.
+    pub id: String,
+    /// The vendor's name, such as `OpenAI`, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vendor: Option<String>,
+    /// The vendor's id in the catalog, such as `openai`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub vendor_id: Option<String>,
+    /// The vendor's name for the model.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    /// The vendor's one-line description.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// The release date, `YYYY-MM-DD`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub released: Option<String>,
+    /// For an alias, the model it names now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub alias_of: Option<String>,
+    /// The aliases that name it now.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+    /// What an image model takes, as the catalog states it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<ImageFacts>,
+    /// What it costs through a key, as the catalog states it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub price: Option<MediaPrice>,
+    /// The entries that offer it, in the order a call tries them.
+    pub entries: Vec<ModelEntry>,
+}
+
+/// What an image model takes; a fact the vendor does not state is absent,
+/// which means unknown.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageFacts {
+    /// The only sizes it takes, as `1024x1536`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sizes: Option<Vec<String>>,
+    /// The rule of the other sizes it takes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub custom_size: Option<CustomSizeRule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aspect_ratios: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolutions: Option<Vec<String>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub edits: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_input_images: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub transparent: Option<bool>,
+}
+
+/// The sizes a model takes besides any fixed ones.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CustomSizeRule {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub multiple_of: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_edge: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_ratio: Option<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_pixels: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_pixels: Option<u64>,
+}
+
+/// A model's prices through a key, and the vendor's pricing page.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MediaPrice {
+    pub rates: Vec<PriceRate>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<String>,
+}
+
+/// What one unit costs, in the vendor's currency, by the size, quality,
+/// resolution or duration it depends on.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PriceRate {
+    /// Such as `image`, `second` or `millionInputTokens`.
+    pub unit: String,
+    /// `image` or `text`, for tokens the vendor prices by their kind.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub modality: Option<String>,
+    pub amount: f64,
+    /// `USD` or `CNY`.
+    pub currency: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub quality: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub resolution: Option<String>,
+    /// Seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+/// An entry that offers a model, and whether a call would take it now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ModelEntry {
     /// The entry's name, as Settings › Providers shows it.
     pub provider: String,
     pub provider_id: String,
-    /// The account's label for a user who manages the entry, as
-    /// [`MadeImage`] names it; none for a key or a shared instance's user.
+    /// Whether it is a subscription, whose media come with its plan, or a
+    /// key, which pays for each.
+    pub subscription: bool,
+    /// The account's label for a user who manages the entry; none for a
+    /// key or a shared instance's user.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
-    /// Whether the entry's vendor confirms the model that answered; one
-    /// that does not, ChatGPT, is shown as asked (`images.md` § Commands).
+    /// Whether its vendor confirms the model that answered; one that does
+    /// not, ChatGPT, is shown as asked (`images.md` § Commands).
     pub confirmed: bool,
+    pub status: EntryStatus,
 }
 
-/// An image model of a vendor's entries.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct ImageModel {
-    pub id: String,
-    /// The vendor's release date, `YYYY-MM-DD`, when known.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub released: Option<String>,
-    /// What the vendor says the model is for; empty when it says nothing.
-    pub description: String,
-    /// The sizes or shapes it takes, when known.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub takes: Option<String>,
-    /// The entry it goes through when that is not the group's: a model
-    /// only another entry of the vendor offers.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub through: Option<ImageEntry>,
+/// Why an entry would or would not make a call now (`media.md` § What the
+/// agent is told).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "status", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
+pub enum EntryStatus {
+    /// The entry a call takes now.
+    Now,
+    /// One a call takes when those before it cannot.
+    Next,
+    /// Every account of it is used up, until the moment when known.
+    UsedUp {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        until: Option<Timestamp>,
+    },
+    /// Its switch for the kind is off.
+    Off,
+    /// A subscription with no account signed in.
+    NotSignedIn,
+    /// The user turned the entry off in Settings › Providers.
+    TurnedOff,
 }
 
 /// An entry whose models could not be listed, and why, as a call's
@@ -83,9 +196,13 @@ pub struct ImageAsk {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aspect: Option<ImageAspect>,
     pub transparent: bool,
-    /// An image model `demi image models` lists, which names its vendor;
-    /// the user's setting picks the entry.
+    /// An image model `demi image models` lists.
     pub model: String,
+    /// The entry to make it through, by its name or id, when the agent
+    /// names one; else the first that can, by the order of Settings ›
+    /// Providers (`media.md` § Which entry makes a call).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
 }
 
 /// A shape, such as 16:9: two positive whole numbers.
@@ -144,6 +261,21 @@ pub struct MadeImage {
     pub confirmed: bool,
 }
 
+/// Why a named entry cannot make a model now.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
+pub enum Unable {
+    /// It does not offer the model, or makes no images.
+    NotOffered,
+    UsedUp {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        until: Option<Timestamp>,
+    },
+    Off,
+    NotSignedIn,
+    TurnedOff,
+}
+
 /// Why no image was made (`images.md` § Accounts and failures).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, thiserror::Error)]
 #[serde(
@@ -196,6 +328,15 @@ pub enum ImageRefusal {
     /// The vendor failed, or did not answer in time.
     #[error("{vendor} did not answer: {cause}")]
     Unanswered { vendor: String, cause: String },
+    /// The entry `--provider` names cannot make the model now, saying why,
+    /// with the entries that can, in the order a call tries them.
+    #[error("{provider} cannot make \"{model}\"")]
+    Cannot {
+        provider: String,
+        model: String,
+        why: Unable,
+        can: Vec<String>,
+    },
     /// The backend could not make the call, such as a store that failed.
     #[error("{message}")]
     Failed { message: String },

@@ -21,7 +21,7 @@ beforeEach(() => {
   pinia = createPinia()
   setActivePinia(pinia)
   channels = playChannels()
-  modelResponse = async () => Response.json({ providers: [], smallModel: null, imageEntries: {} })
+  modelResponse = async () => Response.json({ providers: [], smallModel: null })
   vendorResponse = async () => Response.json({ subscriptions: [], vendors: [] })
   vendorReads = 0
   sessionReads = 0
@@ -598,7 +598,7 @@ test('failed catalog reads can retry, and a cached catalog survives a failed ref
   modelResponse = () => deferred.promise
   const retry = product.loadModels(true)
   expect(product.catalogLoad).toBe('loading')
-  deferred.resolve(Response.json({ providers: [], smallModel: null, imageEntries: {} }))
+  deferred.resolve(Response.json({ providers: [], smallModel: null }))
   await retry
   expect(product.catalogLoad).toBe('ready')
   modelResponse = async () => {
@@ -640,7 +640,7 @@ test('conversations and the channel\'s messages reuse one catalog until it is a 
   let calls = 0
   modelResponse = async () => {
     calls++
-    return Response.json({ providers: [], smallModel: null, imageEntries: {} })
+    return Response.json({ providers: [], smallModel: null })
   }
   try {
     const product = started()
@@ -662,7 +662,7 @@ test('conversations and the channel\'s messages reuse one catalog until it is a 
     const second = product.loadModels()
     expect(calls).toBe(2)
     expect(product.catalogLoad).toBe('ready')
-    pending.resolve(Response.json({ providers: [], smallModel: null, imageEntries: {} }))
+    pending.resolve(Response.json({ providers: [], smallModel: null }))
     await Promise.all([first, second])
     await product.loadModels()
     expect(calls).toBe(2)
@@ -679,10 +679,10 @@ test('the first snapshot does not wait for the catalog; a sign-out leaves a late
   expect(product.catalogLoad).toBe('loading')
   const old = product.loadModels().catch(error => error)
   product.stop()
-  modelResponse = async () => Response.json({ providers: [], smallModel: null, imageEntries: {} })
+  modelResponse = async () => Response.json({ providers: [], smallModel: null })
   started()
   await product.loadModels()
-  pending.resolve(Response.json({ providers: [], smallModel: null, imageEntries: {} }))
+  pending.resolve(Response.json({ providers: [], smallModel: null }))
   expect(await old).toBeInstanceOf(Error)
   expect(product.catalogLoad).toBe('ready')
 })
@@ -698,10 +698,10 @@ test('a change of an entry loads the catalog again with a refresh, dropping a re
   }) as typeof fetch
   const product = started()
   const old = product.loadModels().catch(error => error)
-  modelResponse = async () => Response.json({ providers: [], smallModel: null, imageEntries: {} })
+  modelResponse = async () => Response.json({ providers: [], smallModel: null })
   await product.reloadModels()
   expect(paths.filter((path) => path.startsWith('/api/models'))).toEqual(['/api/models', '/api/models?refresh=true'])
-  pending.resolve(Response.json({ providers: [], smallModel: null, imageEntries: {} }))
+  pending.resolve(Response.json({ providers: [], smallModel: null }))
   expect(await old).toBeInstanceOf(Error)
   expect(product.catalogLoad).toBe('ready')
 })
@@ -714,7 +714,7 @@ function smallModelAnswer(name: string | null): Response {
     thinking: null,
     serviceTierId: null,
   }
-  return Response.json({ providers: [], smallModel, imageEntries: {} })
+  return Response.json({ providers: [], smallModel })
 }
 
 /** Catalog reads that each wait for the test to answer them, in order. */

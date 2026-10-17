@@ -4,6 +4,7 @@
 //! entry read is unchanged, so a lookup that completes after an edit cannot
 //! keep later requests on a stale configuration.
 
+use demi_provider_common::media_catalog::MediaCatalog;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex, OnceLock, PoisonError};
@@ -11,17 +12,18 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use demi_backend_database::StorageError;
 use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
+use demi_provider_common::images::{ImageMaker, ImageModelInfo};
 use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
-use demi_shared_types::{Clock, Model, Rotation};
+use demi_shared_types::{Clock, ImageShape, MediaShapes, Model, Rotation};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
-use demi_web_api_protocol::providers::{ProviderDto, SETUP_MESSAGE};
+use demi_web_api_protocol::providers::{ModelKind, ProviderDto, SETUP_MESSAGE};
 use demi_web_api_protocol::text::EndpointUrl;
 
 use super::catalog_cache::ModelCatalogCache;
 use super::rotation::{AccountRotation, Candidate, Choice};
 use super::families::{
-    AccountBinding, ApiKeyArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry,
-    ProviderFamily, SubscriptionArgs,
+    AccountBinding, ApiKeyArgs, CompatibleImagesArgs, FamilyArgs, FamilyCredential, FamilyError,
+    FamilyRegistry, ProviderFamily, SubscriptionArgs,
 };
 use super::vendors::VendorCatalog;
 use crate::vault::entries::{EntryCredential, ProviderEntry, Vault};
@@ -92,6 +94,8 @@ pub struct ProviderAssembly {
     /// The Claude Code machine, set once the backend's shards started,
     /// which hold it.
     machine: OnceLock<Arc<dyn AccountMachine>>,
+    /// The media catalog, whose time each entry's media carry.
+    media: MediaCatalog,
 }
 
 impl ProviderAssembly {
@@ -103,8 +107,10 @@ impl ProviderAssembly {
         vendors: VendorCatalog,
         http: reqwest::Client,
         clock: Arc<dyn Clock>,
+        media: MediaCatalog,
     ) -> Self {
         Self {
+            media,
             vault,
             families,
             quotas,
@@ -379,7 +385,65 @@ impl ProviderAssembly {
             .and_then(|family| family.default_endpoint())
             // A family's default is a constant that parses.
             .map(|url| EndpointUrl::try_from(url.to_owned()).expect("a default endpoint parses"));
-        entry.dto(default)
+        entry.dto(default, self.media_shapes(entry), self.media.current().updated)
+    }
+
+    /// The shapes in which `entry` makes media: a compatible entry's, its
+    /// user's choice; a vendor entry's, its family's for its vendor
+    /// (`media.md` § Which entries make which media).
+    pub fn media_shapes(&self, entry: &ProviderEntry) -> MediaShapes {
+        let vendor = match &entry.credential {
+            EntryCredential::ApiKey(config) if config.is_compatible() => {
+                return MediaShapes { image: config.image_shape };
+            }
+            EntryCredential::ApiKey(config) => config.vendor_id.as_deref(),
+            EntryCredential::Subscription { .. } => None,
+        };
+        let family = self.families.get(&entry.family);
+        MediaShapes {
+            image: family.and_then(|family| family.image_shape(vendor)),
+        }
+    }
+
+    /// What makes `entry`'s images with `provider`, its provider for the
+    /// account a call takes: a compatible entry's OpenAI Images, the one
+    /// implementation every such endpoint shares, offering the image models
+    /// its user added; a vendor entry's provider's own. None for an entry
+    /// that makes no images.
+    pub fn image_maker(&self, entry: &ProviderEntry, provider: &Arc<dyn Provider>) -> Option<ImageMakerOf> {
+        match &entry.credential {
+            EntryCredential::ApiKey(config) if config.is_compatible() => {
+                if config.image_shape != Some(ImageShape::OpenaiImages) {
+                    return None;
+                }
+                let base = config.base_url.as_ref()?.url().clone();
+                let models = config
+                    .models
+                    .iter()
+                    .flat_map(|models| &models.0)
+                    .filter(|model| model.kind == ModelKind::Image)
+                    .map(|model| ImageModelInfo {
+                        name: Some(model.display_name.as_str().to_owned()),
+                        ..ImageModelInfo::id(model.id.as_str())
+                    })
+                    .collect();
+                let make = self.families.compatible_images()?;
+                Some(ImageMakerOf::Own(make(CompatibleImagesArgs {
+                    name: entry.label.clone(),
+                    key: config.api_key.clone(),
+                    base,
+                    models,
+                    clock: self.clock.clone(),
+                })))
+            }
+            _ => provider.images().is_some().then(|| ImageMakerOf::Provider(provider.clone())),
+        }
+    }
+
+    /// The client the entries' providers send with, which lists an entry's
+    /// image models for the settings page too.
+    pub fn http(&self) -> &reqwest::Client {
+        &self.http
     }
 
     pub fn family(&self, name: &str) -> Result<&Arc<dyn ProviderFamily>, AssemblyError> {
@@ -424,6 +488,7 @@ impl ProviderAssembly {
                     wire_api: config.wire_api,
                     vendor: self.vendors.policy(config.vendor_id.as_deref()),
                     vendor_id: config.vendor_id.clone(),
+                    image_shape: self.media_shapes(entry).image.filter(|_| !config.is_compatible()),
                 })
             }
             EntryCredential::Subscription { .. } => {
@@ -460,6 +525,22 @@ impl ProviderAssembly {
             clock: self.clock.clone(),
             models_dev: self.vendors.models_dev().clone(),
             machine: self.machine.get().cloned(),
+        }
+    }
+}
+
+/// What makes an entry's images: its provider's own role, or one of its
+/// own for a compatible entry.
+pub enum ImageMakerOf {
+    Provider(Arc<dyn Provider>),
+    Own(Arc<dyn ImageMaker>),
+}
+
+impl ImageMakerOf {
+    pub fn images(&self) -> &dyn ImageMaker {
+        match self {
+            Self::Provider(provider) => provider.images().expect("a maker's provider makes images"),
+            Self::Own(maker) => maker.as_ref(),
         }
     }
 }

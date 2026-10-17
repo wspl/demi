@@ -84,7 +84,7 @@ pub use model::{
     file_extension_support, model_accepts_video,
 };
 pub use provider_state::{
-    AccountInfo, AuthState, ImageVendor, LoginPending, LoginStage, RefusedCode, RuntimeState, WireApi,
+    AccountInfo, AuthState, ImageShape, LoginPending, LoginStage, MediaKind, MediaShapes, RefusedCode, RuntimeState, WireApi,
 };
 pub use quota::{
     QuotaKind, QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, QuotaWindowName,

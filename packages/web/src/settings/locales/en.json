@@ -36,6 +36,7 @@
     "cliInstallFailed": "Could Not Install the Command-Line Tool",
     "usageFailed": "Could Not Refresh Usage",
     "reorderFailed": "Could Not Reorder the Accounts",
+    "reorderProvidersFailed": "Could Not Reorder the Providers",
     "switchFailed": "Could Not Switch Accounts",
     "cancelLoginFailed": "Could Not Cancel the Sign-In",
     "loginStopped": "This sign-in is no longer running.",

@@ -20,7 +20,7 @@
       "id": "gpt-image-2.5-sunburst-2026-09-08",
       "kind": "image",
       "name": "GPT-Image-2.5 Sunburst",
-      "description": "Dated snapshot of gpt-image-2.5-sunburst",
+      "description": "Most capable model for image generation and editing",
       "released": "2026-09-08",
       "image": {
         "customSize": {
@@ -36,10 +36,46 @@
       "subscriptions": [
         "chatgpt"
       ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionInputTokens",
+            "modality": "image",
+            "amount": 8.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionCachedInputTokens",
+            "modality": "image",
+            "amount": 2.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "modality": "image",
+            "amount": 30.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionInputTokens",
+            "modality": "text",
+            "amount": 5.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionCachedInputTokens",
+            "modality": "text",
+            "amount": 1.25,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://developers.openai.com/api/docs/pricing"
+      },
       "sources": [
         "https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst",
         "https://developers.openai.com/api/docs/changelog",
-        "https://developers.openai.com/api/docs/guides/image-generation"
+        "https://developers.openai.com/api/docs/guides/image-generation",
+        "https://developers.openai.com/api/docs/pricing"
       ]
     },
     {
@@ -61,7 +97,7 @@
       "id": "gpt-image-2.5-flare-2026-09-08",
       "kind": "image",
       "name": "GPT-Image-2.5 Flare",
-      "description": "Dated snapshot of gpt-image-2.5-flare",
+      "description": "Fast, high-quality everyday image generation",
       "released": "2026-09-08",
       "image": {
         "customSize": {
@@ -77,10 +113,46 @@
       "subscriptions": [
         "chatgpt"
       ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionInputTokens",
+            "modality": "image",
+            "amount": 8.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionCachedInputTokens",
+            "modality": "image",
+            "amount": 2.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "modality": "image",
+            "amount": 30.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionInputTokens",
+            "modality": "text",
+            "amount": 5.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionCachedInputTokens",
+            "modality": "text",
+            "amount": 1.25,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://developers.openai.com/api/docs/pricing"
+      },
       "sources": [
         "https://developers.openai.com/api/docs/models/gpt-image-2.5-flare",
         "https://developers.openai.com/api/docs/changelog",
-        "https://developers.openai.com/api/docs/guides/image-generation"
+        "https://developers.openai.com/api/docs/guides/image-generation",
+        "https://developers.openai.com/api/docs/pricing"
       ]
     },
     {
@@ -102,7 +174,7 @@
       "id": "gpt-image-2-2026-04-21",
       "kind": "image",
       "name": "GPT-Image-2",
-      "description": "Dated snapshot of gpt-image-2",
+      "description": "State-of-the-art image generation model",
       "released": "2026-04-21",
       "image": {
         "customSize": {
@@ -118,10 +190,46 @@
       "subscriptions": [
         "chatgpt"
       ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionInputTokens",
+            "modality": "image",
+            "amount": 8.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionCachedInputTokens",
+            "modality": "image",
+            "amount": 2.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "modality": "image",
+            "amount": 30.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionInputTokens",
+            "modality": "text",
+            "amount": 5.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionCachedInputTokens",
+            "modality": "text",
+            "amount": 1.25,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://developers.openai.com/api/docs/pricing"
+      },
       "sources": [
         "https://developers.openai.com/api/docs/models/gpt-image-2",
         "https://developers.openai.com/api/docs/changelog",
-        "https://developers.openai.com/api/docs/guides/image-generation"
+        "https://developers.openai.com/api/docs/guides/image-generation",
+        "https://developers.openai.com/api/docs/pricing"
       ]
     },
     {
@@ -143,7 +251,7 @@
       "id": "gpt-image-1.5-2025-12-16",
       "kind": "image",
       "name": "GPT-Image-1.5",
-      "description": "Dated snapshot of gpt-image-1.5",
+      "description": "Previous image generation model",
       "released": "2025-12-16",
       "image": {
         "sizes": [
@@ -226,7 +334,8 @@
       ],
       "sources": [
         "https://developers.openai.com/api/docs/models/gpt-image-1.5",
-        "https://developers.openai.com/api/docs/changelog"
+        "https://developers.openai.com/api/docs/changelog",
+        "https://developers.openai.com/api/docs/pricing"
       ]
     },
     {
@@ -1379,7 +1488,7 @@
       "id": "gpt-4o-mini-tts-2025-12-15",
       "kind": "audio",
       "name": "GPT-4o Mini TTS",
-      "description": "Dated snapshot of gpt-4o-mini-tts",
+      "description": "Text-to-speech model powered by GPT-4o Mini",
       "released": "2025-12-15",
       "audio": {
         "makes": [
@@ -1472,7 +1581,8 @@
       "sources": [
         "https://developers.openai.com/api/docs/models/gpt-4o-mini-tts",
         "https://developers.openai.com/api/docs/guides/text-to-speech",
-        "https://developers.openai.com/api/docs/changelog"
+        "https://developers.openai.com/api/docs/changelog",
+        "https://developers.openai.com/api/docs/pricing"
       ],
       "price": {
         "rates": [

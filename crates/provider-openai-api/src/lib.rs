@@ -6,6 +6,8 @@
 //! entry's key also makes images.
 
 mod images;
+
+pub use images::compatible_images;
 mod request;
 mod run;
 
@@ -44,8 +46,11 @@ pub struct OpenAiConfig {
     /// The models.dev vendor the entry was added from, such as `openai` or
     /// `xai`; none for a compatible API. It prefixes the reasoning items
     /// the provider receives, so that each vendor replays only its own
-    /// ciphertext, and an OpenAI or xAI entry's key makes its images.
+    /// ciphertext, and an xAI entry's images are xAI's requests.
     pub vendor_id: Option<String>,
+    /// Whether the entry's key makes images, as its vendor's image shape
+    /// says: an OpenAI or xAI key's does.
+    pub makes_images: bool,
 }
 
 impl OpenAiConfig {
@@ -81,11 +86,15 @@ impl OpenAiProvider {
             WireApi::ChatCompletions => "/chat/completions",
         };
         let vendor = config.vendor_id.as_deref();
-        let images = vendor
-            .and_then(ImageVendor::from_id)
-            .filter(|vendor| matches!(vendor, ImageVendor::OpenAi | ImageVendor::Xai))
-            .zip(config.api_key.clone())
-            .map(|(vendor, key)| images::KeyImages::new(vendor, key, &base, clock.clone()));
+        let image_vendor = match vendor {
+            Some("xai") => ImageVendor::Xai,
+            _ => ImageVendor::OpenAi,
+        };
+        let images = config
+            .api_key
+            .clone()
+            .filter(|_| config.makes_images)
+            .map(|key| images::KeyImages::new(image_vendor, key, &base, clock.clone()));
         let signature_tag = Arc::from(format!("{}:", vendor.unwrap_or(COMPATIBLE)));
         Self {
             shared: Arc::new(Shared {

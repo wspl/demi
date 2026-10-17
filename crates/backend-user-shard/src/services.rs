@@ -341,19 +341,6 @@ impl Storage {
 }
 
 impl Services {
-    /// The entry Automatic takes now for each vendor an entry of `user`
-    /// makes images for, or none when none can (`images.md` § Which entry
-    /// makes an image).
-    pub async fn automatic_image_entries(
-        &self,
-        user: &demi_web_api_protocol::ids::UserId,
-    ) -> Result<
-        std::collections::BTreeMap<demi_shared_types::ImageVendor, Option<demi_web_api_protocol::ids::ProviderId>>,
-        demi_backend_providers::llm::assembly::AssemblyError,
-    > {
-        crate::shard::images::automatic_entries(self, user).await
-    }
-
     /// Starts the services on the edge's runtime, which the ones that spawn
     /// work of their own run it on.
     pub async fn start(
@@ -400,6 +387,16 @@ impl Services {
         );
         let media = MediaCatalog::new(http.clone(), providers.media_catalog_url, providers.media_catalog);
         media.start(&edge);
+        // A new catalog describes every user's media models anew: their
+        // pages read them again (`web-api-settings.md` § Models). The task
+        // ends with the catalog, whose last owner drops the sender.
+        let mut catalogs = media.subscribe();
+        let announced = sync.clone();
+        edge.spawn(async move {
+            while catalogs.changed().await.is_ok() {
+                announced.mark_everyone(&demi_backend_page_sync::Part::Providers);
+            }
+        });
         let claude_releases =
             ClaudeReleases::new(&providers.claude_releases, edge.clone(), clock.clone())
                 .map_err(ServicesError::Http)?;
@@ -411,6 +408,7 @@ impl Services {
             VendorCatalog::new(models_dev),
             http,
             providers.clock,
+            media.clone(),
         ));
         let operations = Arc::new(ProviderOperations::default());
         let logins = LoginFlows::new(

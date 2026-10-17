@@ -1174,6 +1174,11 @@ mod tests {
             VendorCatalog::new(models_dev),
             reqwest::Client::new(),
             clock.clone(),
+            demi_provider_common::media_catalog::MediaCatalog::new(
+                reqwest::Client::new(),
+                None,
+                demi_provider_common::media_catalog::Catalog::carried(),
+            ),
         ));
         let flows = LoginFlows::new(
             assembly,

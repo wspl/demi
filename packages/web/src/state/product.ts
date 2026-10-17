@@ -275,8 +275,6 @@ export const useProduct = defineStore('product', () => {
     providers: CatalogProvider[]
     /** What the small model's Automatic resolves to, as the backend answered with the catalog. */
     smallModel: ModelCatalog['smallModel']
-    /** The entry each vendor's image Automatic takes, as the backend answered with the catalog. */
-    imageEntries: ModelCatalog['imageEntries']
     /** The preferences Automatic was resolved with, by `smallModelInputs`. */
     smallModelInputs: string
     checkedAt: number
@@ -340,14 +338,6 @@ export const useProduct = defineStore('product', () => {
    */
   const automaticSmallModel = computed(() => modelSnapshot.value?.key === catalogKey.value
     ? modelSnapshot.value.smallModel : null)
-  /**
-   * The entry Automatic takes for each vendor an entry makes images for,
-   * which Settings › Agent shows beside each vendor's Automatic
-   * (`images.md` § Which entry makes an image); empty before the catalog is
-   * read.
-   */
-  const automaticImageEntries = computed<ModelCatalog['imageEntries']>(() => modelSnapshot.value?.key === catalogKey.value
-    ? modelSnapshot.value.imageEntries : {})
   let modelRequest: { key: string; promise: Promise<void>; controller: AbortController } | null = null
   let vendorRequest: Promise<void> | null = null
   /** Set while the page is signed in and follows the state. */
@@ -718,7 +708,6 @@ export const useProduct = defineStore('product', () => {
               key,
               providers: next.providers,
               smallModel: next.smallModel,
-              imageEntries: next.imageEntries,
               smallModelInputs: inputs,
               checkedAt: Date.now(),
             }
@@ -866,7 +855,6 @@ export const useProduct = defineStore('product', () => {
     newBuild,
     catalog,
     automaticSmallModel,
-    automaticImageEntries,
     vendors,
     vendorLoad,
     catalogLoad,

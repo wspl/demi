@@ -21,7 +21,7 @@ mod host;
 mod host_tests;
 pub mod page_socket;
 mod permissions;
-pub(crate) mod images;
+pub(crate) mod media;
 pub(crate) mod provider_commands;
 
 pub use self::adoption::KeptJobs;

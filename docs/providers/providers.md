@@ -1004,18 +1004,46 @@ at nothing, so it shows no error; a compatible entry with no models yet says
 *No models yet* in plain text with Add Model, and an entry nobody has tested
 shows no status until it is tested or used.
 
-An entry whose provider makes images, a ChatGPT or Grok subscription or
-an OpenAI, xAI or Google API key, has
-an **Image Generation** switch on its page, on from the start. Turned off,
-the entry makes no images: `demi image models` lists none of its models and
-`demi image` never picks it, while its text models work as before
-([Images](../agent/images.md)). For example, Alex has a ChatGPT
-subscription and an OpenAI key and turns the key's switch off: once
-ChatGPT's limit is reached, an image call fails instead of paying for the
-image through the key. The switch belongs to the
-entry and is kept with its configuration, so whoever manages the entry
-sets it, and a shared instance's administrator turning it off turns it
-off for every user of that entry.
+An entry's page keeps its connection settings, its endpoint, protocol and
+key, at the top, then its text models under **Models**, then one section
+for each kind of media it can make, **Images**, and later **Videos** and
+**Audio**, below the models, so the media an entry makes are read with its
+models rather than with its connection
+([Which entries make which media](../agent/media.md#which-entries-make-which-media)).
+For example, Alex's OpenAI key entry shows its endpoint and key, its chat
+models, and under them *Images*: its **Image Generation** switch and the
+image models the key offers, newest first, each with its release date.
+
+- **A vendor entry** whose provider makes images, a ChatGPT or Grok
+  subscription or an OpenAI, xAI or Google API key, shows the section with
+  the switch, on from the start, and the vendor's image models, which it
+  does not edit.
+- **A compatible entry** shows the section with its shape, *None* until the
+  user chooses one, such as *OpenAI Images*, and once one is chosen, the
+  switch and the image models the user added with the section's own **Add
+  Image Model**, which opens the same search and an editor of the model's
+  ID and name. Its text models stay under Models, added with Add Model.
+  Choosing *None* again keeps the image models it had, unused and hidden,
+  and choosing the shape again brings them back, as a switch turned off
+  and on does.
+
+Turned off, the entry makes none of that kind: `demi image models` lists
+none of its models and `demi image` never picks it, while its text models
+work as before. For example, Alex has a ChatGPT subscription and an OpenAI
+key and turns the key's switch off: once ChatGPT's limit is reached, an
+image call fails instead of paying for the image through the key. An entry
+is complete with a model of any kind, so an image-only proxy is a working
+entry; the model menu lists only text models, and an entry with none is not
+in it. The switches, shapes and media models belong to the entry and are
+kept with its configuration, so whoever manages the entry sets them, and a
+shared instance's administrator turning one off turns it off for every user
+of that entry.
+
+The user orders the entries by dragging them in Settings › Providers, as
+the accounts of an entry are ordered; a new entry joins the end. The order
+is the order generated media try entries in, within subscriptions and
+within keys ([Which entry makes a call](../agent/media.md#which-entry-makes-a-call)),
+and the order the model menu lists them in.
 
 Entries can be renamed, edited, or removed. A vendor entry's models can be
 replaced by a manual list; clearing it returns to the vendor's catalog. A new entry's default name takes *(2)* when taken; a name the user gives need not be unique.

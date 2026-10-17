@@ -8,19 +8,19 @@
 use std::io::Cursor;
 
 use demi_host_interface::RpcInvocation;
-use demi_host_interface::text::table;
 use demi_plugin_interface::{
-    HostFile, HostRead, ImageAsk, ImageAspect, ImageEntry, ImageInput, ImageKind, ImageRefusal, PluginError,
-    PluginPort, PortFailure, PortRefusal,
+    EntryStatus, HostFile, HostRead, ImageAsk, ImageAspect, ImageInput, ImageKind, ImageRefusal, PluginError,
+    PluginPort, PortFailure, PortRefusal, Unable,
 };
 use demi_shared_types::Timestamp;
+use demi_shared_types::output::{Cell, Fields, Table, instant, note, warning};
 use demi_shared_types::whole_image;
 use image::{DynamicImage, GenericImageView as _, ImageFormat};
 use jiff::tz::TimeZone;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::commands::{EditArgs, Format, GenerateArgs, ListedEntry, ListedModel, ListedUnlisted, ListedVendor, Listing, ModelsArgs};
+use crate::commands::{EditArgs, Format, GenerateArgs, ListedModel, ModelsArgs, ModelsOutput};
 
 /// The largest image an edit sends.
 const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
@@ -41,18 +41,20 @@ pub(crate) async fn run(invocation: RpcInvocation, port: &PluginPort) -> Result<
     match invocation.path.last().map(String::as_str) {
         Some("generate") => {
             let args: GenerateArgs = decode(&invocation)?;
-            let ask = ask(port, args.prompt, args.model, args.aspect, args.transparent).await?;
+            let mut ask = ask(port, args.prompt, args.model, args.aspect, args.transparent).await?;
+            ask.provider = args.provider;
             make(&invocation, port, ask, args.format.unwrap_or_default()).await
         }
         Some("edit") => {
             let args: EditArgs = decode(&invocation)?;
             let mut ask = ask(port, args.prompt, args.model, args.aspect, args.transparent).await?;
+            ask.provider = args.provider;
             ask.images = read_images(port, &args.image).await?;
             make(&invocation, port, ask, args.format.unwrap_or_default()).await
         }
         Some("models") => {
-            let _: ModelsArgs = decode(&invocation)?;
-            models(&invocation, port).await
+            let args: ModelsArgs = decode(&invocation)?;
+            models(&invocation, port, args.model).await
         }
         _ => Err(PluginError::failed(format!("no command \"{}\"", invocation.path.join(" ")))),
     }
@@ -90,6 +92,7 @@ async fn ask(
         aspect,
         transparent: transparent == Some(true),
         model,
+        provider: None,
     })
 }
 
@@ -258,11 +261,12 @@ async fn make(invocation: &RpcInvocation, port: &PluginPort, ask: ImageAsk, form
         None => rpc.stdout(made.bytes.into_bytes()).await?,
     }
     // A model the vendor does not confirm is the one asked of, not the one
-    // that answered (`images.md` § Commands).
+    // that answered (`images.md` § Commands); the entry is named as
+    // Settings names it (`media.md` § What the agent is told).
     let mut said = if made.confirmed {
-        format!("{width}×{height} {name} from {} ({}", made.model, made.vendor)
+        format!("{width}×{height} {name} from {} ({}", made.model, made.provider)
     } else {
-        format!("{width}×{height} {name}, asked of {} ({}", made.model, made.vendor)
+        format!("{width}×{height} {name}, asked of {} ({}", made.model, made.provider)
     };
     if let Some(account) = &made.account {
         said.push_str(&format!(", {account}"));
@@ -294,101 +298,205 @@ fn format_name(format: Format) -> &'static str {
     }
 }
 
-async fn models(invocation: &RpcInvocation, port: &PluginPort) -> Result<u8, PluginError> {
-    let vendors = match port.image_models().await {
-        Ok(vendors) => vendors,
+/// `models`: the list as a table, or `shown` as labelled lines, and the
+/// same as JSON with `--json` (`commands.md` § Output). Notes, such as an
+/// entry whose models could not be listed, go to stderr.
+async fn models(invocation: &RpcInvocation, port: &PluginPort, shown: Option<String>) -> Result<u8, PluginError> {
+    let listing = match port.image_models().await {
+        Ok(listing) => listing,
         Err(PortFailure::Refused(PortRefusal::Image { refusal })) => {
             return Err(PluginError::failed(words(&refusal, None, invocation)));
         }
         Err(failure) => return Err(failure.into()),
     };
-    let entry = |entry: ImageEntry| ListedEntry {
-        provider: entry.provider,
-        provider_id: entry.provider_id,
-        account: entry.account,
-        confirmed: entry.confirmed,
-    };
-    let listed: Vec<ListedVendor> = vendors
+    let command = format!("demi {}", invocation.path.join(" "));
+    let mut notes = String::new();
+    for unlisted in &listing.unlisted {
+        notes.push_str(&warning(
+            &command,
+            &format!(
+                "{}'s models could not be listed: {}",
+                unlisted.provider,
+                words(&unlisted.refusal, None, invocation)
+            ),
+        ));
+    }
+    let listed: Vec<ListedModel> = listing
+        .models
         .into_iter()
-        .map(|group| ListedVendor {
-            vendor: group.vendor,
-            vendor_id: group.vendor_id,
-            through: entry(group.through),
-            models: group
-                .models
-                .into_iter()
-                .map(|model| ListedModel {
-                    id: model.id,
-                    released: model.released,
-                    description: model.description,
-                    takes: model.takes,
-                    through: model.through.map(entry),
-                })
-                .collect(),
-            unlisted: group
-                .unlisted
-                .into_iter()
-                .map(|unlisted| ListedUnlisted {
-                    message: words(&unlisted.refusal, None, invocation),
-                    provider: unlisted.provider,
-                })
-                .collect(),
+        .map(|model| ListedModel {
+            entry: model
+                .entries
+                .iter()
+                .find(|entry| entry.status == EntryStatus::Now)
+                .map(|entry| entry.provider.clone()),
+            model,
         })
         .collect();
     let rpc = port.rpc();
-    if invocation.json {
-        let text = serde_json::to_string(&Listing { vendors: listed }).expect("a listing encodes as JSON");
-        rpc.stdout(format!("{text}\n")).await?;
+    if let Some(id) = shown {
+        // An alias names the model it is an alias of, listed once.
+        let Some(model) = listed
+            .into_iter()
+            .find(|model| model.model.id == id || model.model.aliases.iter().any(|alias| *alias == id))
+        else {
+            return Err(PluginError::failed(format!("no provider makes \"{id}\"; demi image models lists them")));
+        };
+        unconfirmed(&mut notes, &command, std::slice::from_ref(&model));
+        let text = if invocation.json {
+            json_line(&ModelsOutput::One(model))
+        } else {
+            show(&model)
+        };
+        rpc.stdout(text).await?;
+        if !notes.is_empty() {
+            rpc.stderr(notes).await?;
+        }
         return Ok(0);
     }
-    if listed.is_empty() {
-        return Err(PluginError::failed(NO_PROVIDER));
+    if let Some(none) = &listing.none {
+        notes.push_str(&note(&command, &words(none, None, invocation)));
     }
-    let mut text = String::new();
-    for group in &listed {
-        text.push_str(&format!("{}, through {}\n", group.vendor, entry_name(&group.through)));
-        let rows: Vec<[String; 3]> = group
-            .models
-            .iter()
-            .map(|model| {
-                let mut said: Vec<String> = Vec::new();
-                if !model.description.is_empty() {
-                    said.push(model.description.clone());
-                }
-                if let Some(takes) = &model.takes {
-                    said.push(format!("takes {takes}"));
-                }
-                if let Some(through) = &model.through {
-                    said.push(format!("through {}", entry_name(through)));
-                }
-                [format!("  {}", model.id), model.released.clone().unwrap_or_default(), said.join("; ")]
-            })
-            .collect();
-        text.push_str(&table(&rows));
-        // An entry whose vendor cannot confirm the model that answered says
-        // so once, under its group.
-        let mut unconfirmed: Vec<&str> = Vec::new();
-        let entries = std::iter::once(&group.through).chain(group.models.iter().filter_map(|model| model.through.as_ref()));
-        for listed in entries {
-            if !listed.confirmed && !unconfirmed.contains(&listed.provider.as_str()) {
-                unconfirmed.push(&listed.provider);
-                text.push_str(&format!("  {} does not confirm which of these models answers a call\n", listed.provider));
-            }
+    unconfirmed(&mut notes, &command, &listed);
+    let text = if invocation.json {
+        json_line(&ModelsOutput::List(listed))
+    } else {
+        let mut table = Table::new(["id", "vendor", "released", "entry", "name"]);
+        for listed in &listed {
+            let model = &listed.model;
+            table.row::<Cell>([
+                model.id.as_str().into(),
+                model.vendor.as_deref().into(),
+                model.released.as_deref().into(),
+                listed.entry.as_deref().into(),
+                model.name.as_deref().into(),
+            ]);
         }
-        for unlisted in &group.unlisted {
-            text.push_str(&format!("  {}'s models could not be listed: {}\n", unlisted.provider, unlisted.message));
-        }
-    }
+        table.render()
+    };
     rpc.stdout(text).await?;
+    if !notes.is_empty() {
+        rpc.stderr(notes).await?;
+    }
     Ok(0)
 }
 
-/// An entry as a listing names it: `ChatGPT (alex@example.com)`, or its
-/// name alone.
-fn entry_name(entry: &ListedEntry) -> String {
-    match &entry.account {
-        Some(account) => format!("{} ({account})", entry.provider),
-        None => entry.provider.clone(),
+fn json_line(output: &ModelsOutput) -> String {
+    let text = serde_json::to_string(output).expect("a listing encodes as JSON");
+    format!("{text}\n")
+}
+
+/// A note, once for each entry, that its vendor does not confirm the model
+/// that answers a call, which a call's line then says as *asked of*.
+fn unconfirmed(notes: &mut String, command: &str, models: &[ListedModel]) {
+    let mut named: Vec<&str> = Vec::new();
+    for entry in models.iter().flat_map(|model| &model.model.entries) {
+        if !entry.confirmed && !named.contains(&entry.provider.as_str()) {
+            named.push(&entry.provider);
+            notes.push_str(&note(command, &format!("{} does not confirm which model answers a call", entry.provider)));
+        }
+    }
+}
+
+fn joined(values: Option<&[String]>) -> String {
+    match values {
+        Some(values) if !values.is_empty() => values.join(", "),
+        _ => "-".to_owned(),
+    }
+}
+
+/// One model as labelled lines, its prices and its entries as tables
+/// under their keys.
+fn show(listed: &ListedModel) -> String {
+    let model = &listed.model;
+    let image = model.image.clone().unwrap_or_default();
+    let custom = image.custom_size.as_ref().map(|rule| {
+        let mut said = vec!["any WxH".to_owned()];
+        if let Some(multiple) = rule.multiple_of {
+            said.push(format!("each edge a multiple of {multiple}"));
+        }
+        if let Some(edge) = rule.max_edge {
+            said.push(format!("each edge at most {edge}"));
+        }
+        if let Some(ratio) = rule.max_ratio {
+            said.push(format!("long:short at most {ratio}:1"));
+        }
+        match (rule.min_pixels, rule.max_pixels) {
+            (Some(min), Some(max)) => said.push(format!("{min} to {max} pixels")),
+            (None, Some(max)) => said.push(format!("at most {max} pixels")),
+            (Some(min), None) => said.push(format!("at least {min} pixels")),
+            (None, None) => {}
+        }
+        said.join("; ")
+    });
+    let mut fields = Fields::new();
+    fields
+        .field("ID", model.id.as_str())
+        .field("Vendor", model.vendor.as_deref())
+        .field("Released", model.released.as_deref())
+        .field("Entry", listed.entry.as_deref())
+        .field("Name", model.name.as_deref())
+        .field("Alias of", model.alias_of.as_deref())
+        .field("Aliases", joined(Some(&model.aliases)))
+        .field("Sizes", joined(image.sizes.as_deref()))
+        .field("Custom size", custom)
+        .field("Aspect ratios", joined(image.aspect_ratios.as_deref()))
+        .field("Resolutions", joined(image.resolutions.as_deref()))
+        .field("Edits", image.edits)
+        .field("Max input images", image.max_input_images)
+        .field("Transparent background", image.transparent)
+        .field("Price page", model.price.as_ref().and_then(|price| price.page.as_deref()));
+    let rates = model.price.as_ref().map(|price| &price.rates[..]).unwrap_or_default();
+    if rates.is_empty() {
+        fields.field("Prices", None::<&str>);
+    } else {
+        let mut prices = Table::new(["unit", "modality", "amount", "currency", "size", "quality", "resolution", "duration (s)"]);
+        for rate in rates {
+            prices.row::<Cell>([
+                rate.unit.as_str().into(),
+                rate.modality.as_deref().into(),
+                rate.amount.to_string().into(),
+                rate.currency.as_str().into(),
+                rate.size.as_deref().into(),
+                rate.quality.as_deref().into(),
+                rate.resolution.as_deref().into(),
+                rate.duration.into(),
+            ]);
+        }
+        fields.table("Prices", &prices);
+    }
+    let mut entries = Table::new(["entry", "kind", "account", "price", "status"]);
+    for entry in &model.entries {
+        let price = match (entry.subscription, rates.is_empty()) {
+            (true, _) => Some("included"),
+            (false, false) => Some("listed"),
+            (false, true) => None,
+        };
+        entries.row::<Cell>([
+            entry.provider.as_str().into(),
+            if entry.subscription { "subscription" } else { "api-key" }.into(),
+            entry.account.as_deref().into(),
+            price.into(),
+            status_words(&entry.status).into(),
+        ]);
+    }
+    fields.table("Entries", &entries);
+    if let Some(description) = &model.description {
+        fields.text("Description", description);
+    }
+    fields.render()
+}
+
+/// Why an entry would or would not make a call now, in the list's words.
+fn status_words(status: &EntryStatus) -> String {
+    match status {
+        EntryStatus::Now => "now".to_owned(),
+        EntryStatus::Next => "next".to_owned(),
+        EntryStatus::UsedUp { until: Some(until) } => format!("used up until {}", instant(*until)),
+        EntryStatus::UsedUp { until: None } => "used up".to_owned(),
+        EntryStatus::Off => "Image Generation off".to_owned(),
+        EntryStatus::NotSignedIn => "not signed in".to_owned(),
+        EntryStatus::TurnedOff => "turned off in Settings › Providers".to_owned(),
     }
 }
 
@@ -429,6 +537,25 @@ fn words(refusal: &ImageRefusal, aspect: Option<ImageAspect>, invocation: &RpcIn
             format!("the {vendor} sign-in has expired; ask your administrator to sign in again")
         }
         ImageRefusal::Unanswered { vendor, cause } => format!("{vendor} did not answer: {cause}"),
+        ImageRefusal::Cannot { provider, model, why, can } => {
+            let zone = TimeZone::get(&invocation.context.locale.time_zone).unwrap_or(TimeZone::UTC);
+            let why = match why {
+                Unable::NotOffered => format!("it does not make \"{model}\""),
+                Unable::UsedUp { until: Some(moment) } => {
+                    format!("its usage limit is reached, resetting at {}", clock_time(*moment, &zone))
+                }
+                Unable::UsedUp { until: None } => "its usage limit is reached".to_owned(),
+                Unable::Off => "its image generation is off in Settings › Providers".to_owned(),
+                Unable::NotSignedIn => "it is not signed in".to_owned(),
+                Unable::TurnedOff => "it is turned off in Settings › Providers".to_owned(),
+            };
+            let others = match can.as_slice() {
+                [] => "no other provider can make it now".to_owned(),
+                [one] => format!("{one} can"),
+                several => format!("{} can", listed(several)),
+            };
+            format!("{provider} cannot make \"{model}\": {why}; {others}")
+        }
         ImageRefusal::Failed { message } => message.clone(),
     }
 }
