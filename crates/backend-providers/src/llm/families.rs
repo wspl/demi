@@ -13,10 +13,12 @@ use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
 use demi_provider_common::{RuntimeEnv, VendorPolicy};
 use demi_provider_common::models_dev::ModelsDevClient;
-use demi_provider_common::images::{ImageMaker, ImageModelInfo};
+use demi_provider_common::images::ImageMaker;
+use demi_provider_common::media::MediaModelInfo;
+use demi_provider_common::videos::VideoMaker;
 use demi_provider_common::quota::QuotaSnapshotStore;
 use demi_provider_common::{Provider, ProviderRuntime, Secret};
-use demi_shared_types::{Clock, ImageShape, WireApi};
+use demi_shared_types::{Clock, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 use url::Url;
 
@@ -45,6 +47,12 @@ pub trait ProviderFamily: Send + Sync + 'static {
     /// make which media); none when it makes none. A compatible entry's is
     /// the one its user chose, whatever its family.
     fn image_shape(&self, _vendor_id: Option<&str>) -> Option<ImageShape> {
+        None
+    }
+
+    /// How a vendor entry of the family makes videos, as
+    /// [`ProviderFamily::image_shape`] says it of images.
+    fn video_shape(&self, _vendor_id: Option<&str>) -> Option<VideoShape> {
         None
     }
 
@@ -119,6 +127,10 @@ pub struct ApiKeyArgs {
     /// compatible entry, whose images are the registry's
     /// [`CompatibleImages`].
     pub image_shape: Option<ImageShape>,
+    /// How the vendor entry makes videos, as its family says; none for a
+    /// compatible entry, whose videos are the registry's
+    /// [`CompatibleVideos`].
+    pub video_shape: Option<VideoShape>,
 }
 
 /// What a compatible entry whose image shape is OpenAI Images makes its
@@ -129,13 +141,30 @@ pub struct CompatibleImagesArgs {
     pub key: Option<Secret>,
     pub base: Url,
     /// The image models its user added.
-    pub models: Vec<ImageModelInfo>,
+    pub models: Vec<MediaModelInfo>,
     pub clock: Arc<dyn Clock>,
 }
 
 /// Builds a compatible entry's OpenAI Images role: the OpenAI key's, one
 /// implementation for every endpoint that speaks it.
 pub type CompatibleImages = Arc<dyn Fn(CompatibleImagesArgs) -> Arc<dyn ImageMaker> + Send + Sync>;
+
+/// What a compatible entry with a video shape makes its videos with.
+pub struct CompatibleVideosArgs {
+    /// The entry's name, which its failures name.
+    pub name: String,
+    /// The shape its user chose.
+    pub shape: VideoShape,
+    pub key: Option<Secret>,
+    pub base: Url,
+    /// The video models its user added.
+    pub models: Vec<MediaModelInfo>,
+    pub clock: Arc<dyn Clock>,
+}
+
+/// Builds a compatible entry's video role in its shape, one implementation
+/// of each shape for every endpoint that speaks it.
+pub type CompatibleVideos = Arc<dyn Fn(CompatibleVideosArgs) -> Arc<dyn VideoMaker> + Send + Sync>;
 
 /// A subscription entry's accounts: the pool bound to the entry, and the
 /// account the provider stands for, when the entry has one.
@@ -180,6 +209,7 @@ pub fn family_name(family: &str) -> &str {
 pub struct FamilyRegistry {
     families: BTreeMap<String, Arc<dyn ProviderFamily>>,
     compatible_images: Option<CompatibleImages>,
+    compatible_videos: Option<CompatibleVideos>,
 }
 
 impl FamilyRegistry {
@@ -205,6 +235,18 @@ impl FamilyRegistry {
     /// that has no family speaking them.
     pub fn compatible_images(&self) -> Option<&CompatibleImages> {
         self.compatible_images.as_ref()
+    }
+
+    /// The registry with `videos` making a compatible entry's videos.
+    pub fn with_compatible_videos(mut self, videos: CompatibleVideos) -> Self {
+        self.compatible_videos = Some(videos);
+        self
+    }
+
+    /// What makes a compatible entry's videos; none in a registry that has
+    /// no family speaking their shapes.
+    pub fn compatible_videos(&self) -> Option<&CompatibleVideos> {
+        self.compatible_videos.as_ref()
     }
 
     /// The names of the subscription families, in order.

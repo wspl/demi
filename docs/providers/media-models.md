@@ -42,7 +42,11 @@ answer ([Options are asked, results are checked](../agent/images.md#options-are-
 
 The first entries are drawn from the model lists of OpenRouter and Vercel's
 AI Gateway and the prices of LiteLLM's, then checked by hand against each
-vendor's documentation; an entry names the page it was checked against.
+vendor's documentation; an entry names the page it was checked against. A
+subscription's models, which no vendor documents, are those the
+subscription accepted when tried, and the entry names, instead of a page,
+the design section that records the trial, as
+`docs/agent/videos.md#vendors` records Grok's video models.
 Where models.dev states a model wrongly, such as an image model marked as
 returning text, the fix goes to models.dev as well.
 

@@ -12,8 +12,8 @@ and attaches the file.
 
 This document holds what the three groups share: which entries make which
 media, how a call chooses its entry, and what the agent is told. Each
-group's own commands and vendors are in [Images](images.md) and, as they
-are built, Video and Audio.
+group's own commands and vendors are in [Images](images.md),
+[Videos](videos.md) and, as it is built, Audio.
 
 ## Who does what
 
@@ -141,8 +141,9 @@ answer.
 
 `demi providers` changes all of it with the user's permission, as it
 changes text models ([Managing providers from a conversation](../providers/models.md#managing-providers-from-a-conversation)):
-`edit <entry> --image <shape|off> --video <shape|off> --audio <shape|off>`
-sets a compatible entry's shapes and any entry's switches,
+`edit <entry> --image <shape|on|off> --video <shape|on|off> --audio <shape|on|off>`
+sets a compatible entry's shapes and any entry's switches, `on` turning a
+vendor entry's kind on with its fixed shape,
 `models add <entry> <model> --kind image|video|audio` adds a model to a
 compatible entry's list for that kind, and `order <entry>...` sets the
 order of Settings › Providers.

@@ -27,7 +27,7 @@ use demi_provider_common::models_dev::ModelsDevClient;
 
 use demi_backend_user_shard::shard::ShardPlacement;
 use demi_backend_user_shard::tuning::{
-    ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning,
+    ConversationTuning, LifecycleTuning, MediaTuning, PageTuning, RunnerTuning,
 };
 
 use self::secret::InstanceSecret;
@@ -373,6 +373,8 @@ pub struct BackendConfig {
     pub conversations: ConversationTuning,
     /// How the sockets to a page are timed.
     pub pages: PageTuning,
+    /// How a video's job is waited for.
+    pub media: MediaTuning,
     /// The command packages the conversations' commands bind to.
     pub native: NativeCatalog,
     /// When a conversation's Host resources are reclaimed.
@@ -436,6 +438,7 @@ impl BackendConfig {
             runners: RunnerTuning::default(),
             conversations: ConversationTuning::default(),
             pages: PageTuning::default(),
+            media: MediaTuning::default(),
             // The product's start publishes its server release's
             // `commands/` and sets the catalog of them.
             native: NativeCatalog::unpublished(),

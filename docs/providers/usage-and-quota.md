@@ -56,11 +56,13 @@ says so ([Vendor quota](#vendor-quota)).
 | `user_id`, `conversation_id` | Whose call it was |
 | `agent` | The number of the session in the conversation's tree, 0 for the root ([Subagents](../agent/subagents.md)); null for a request outside a session, such as a title |
 | `turn_id` | The turn the call belongs to: for a command's call, such as an image, the turn whose shell call started the command's job, even when the job outlives it; null outside a turn |
-| `purpose` | `turn`, `compaction`, `title` or `image` ([Image generation](../agent/images.md)): what the call was for |
+| `purpose` | `turn`, `compaction`, `title`, `image` ([Image generation](../agent/images.md)) or `video` ([Video generation](../agent/videos.md)): what the call was for |
 | `provider_id`, `account_id`, `model_id` | The provider entry, its subscription account (null for an API key) and the model |
 | `request_id` | Demi's id of the request, under which the server log holds its course |
 | `vendor_id` | The vendor's id of the call, such as a Messages API message id, when the vendor gives one |
 | `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cache_write_1h_tokens` | The vendor's counts for this call alone ([Usage](providers.md#usage)), each null when the vendor reported none, as for a call cancelled before it answered; `cache_write_1h_tokens` is the part of the cache write kept for an hour, which a vendor prices apart, 0 where the vendor has no such tier |
+| `media_seconds` | The length of the video or audio the call made, in seconds, as the file states it; null for any other call or when nothing was made |
+| `cost`, `cost_currency` | What the vendor says the call cost, in its documented unit converted to the currency it names (`usd` or `cny`, never converted between them), as xAI's `cost_in_usd_ticks` are ten-billionths of a dollar; null when the vendor reports no cost or one in an undocumented unit |
 | `outcome` | `answered`; the failure code of a call the vendor refused ([Failures and recovery](../agent/failures-and-recovery.md)); `failed` for a failure with no code; `cancelled` |
 | `quota` | The windows of the account's quota that this call's own response reported, each as the snapshot names a window, its kind, period and scope, with `usedPercent` and `resetsAt`; null when the call reported none. Windows the snapshot holds from other calls are not repeated here. A window the vendor reports after the call's end and before the next call starts, as Claude Code's `rate_limit_event` follows its `message_stop`, is this call's and is added to its row when it arrives |
 | `started_at`, `ended_at` | When the call was sent and when it ended |

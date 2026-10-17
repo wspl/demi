@@ -2,9 +2,10 @@
 //! plugin answers itself with the request's whole port.
 
 use demi_host_interface::{GroupBuilder, LeafBuilder};
-use demi_plugin_interface::{CommandPlugin, MediaModel, Placement, PortHandled};
+use demi_plugin_interface::{CommandPlugin, Placement, PortHandled};
+use demi_plugin_media::ModelsOutput;
 use schemars::JsonSchema;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 const SUMMARY: &str = "Make and edit images through the user's provider entries, one image per call, written to stdout, and list the image models they offer.";
 
@@ -72,25 +73,6 @@ pub(crate) struct EditArgs {
 #[serde(deny_unknown_fields)]
 pub(crate) struct ModelsArgs {
     pub(crate) model: Option<String>,
-}
-
-/// `models --json`: the list, or the one model shown.
-#[derive(Serialize, JsonSchema)]
-#[serde(untagged)]
-pub(crate) enum ModelsOutput {
-    List(Vec<ListedModel>),
-    One(ListedModel),
-}
-
-/// A model as `models --json` prints it: every fact of it, with the entry
-/// a call takes now.
-#[derive(Serialize, JsonSchema)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ListedModel {
-    #[serde(flatten)]
-    pub(crate) model: MediaModel,
-    /// The name of the entry a call takes now; null when none can.
-    pub(crate) entry: Option<String>,
 }
 
 /// The plugin's commands: the `demi image` group.

@@ -12,7 +12,8 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_provider_common::{
     Provider, Secret,
-    images::{Aspect, ImageFailure, ImageRequest, ImageVendor, InputImage},
+    images::{Aspect, ImageRequest, InputImage},
+    media::{MediaFailure, MediaVendor},
     testing::{FixedClock, MockResponse, MockVendor},
 };
 use demi_provider_google::{GoogleConfig, GoogleProvider};
@@ -37,6 +38,7 @@ fn provider(vendor: &MockVendor, makes_images: bool) -> GoogleProvider {
         api_key: Some(Secret::try_from("google-key".to_owned()).unwrap()),
         base_url: Some(vendor.url("/v1beta").parse().unwrap()),
         makes_images,
+        makes_videos: false,
     };
     GoogleProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }
@@ -99,7 +101,7 @@ async fn a_gemini_key_lists_every_page_and_sends_generations_and_edits_as_docume
     vendor.respond_at(GENERATE, json_answer(200, answer));
     let provider = provider(&vendor, true);
     let maker = provider.images().expect("a Gemini key makes images");
-    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("Google", Some(ImageVendor::Google), true));
+    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("Google", Some(MediaVendor::Google), true));
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
     let models = maker.models(&http, &catalog()).await.unwrap();
@@ -190,24 +192,24 @@ async fn a_gemini_keys_failures_read_as_a_block_a_spent_quota_a_refused_key_or_g
     let fail = async || maker.make(&http, &catalog(), request(None, Vec::new())).await.result.unwrap_err();
 
     match fail().await {
-        ImageFailure::Refused { message, .. } => assert_eq!(message, "the prompt was blocked (PROHIBITED_CONTENT)"),
+        MediaFailure::Refused { message, .. } => assert_eq!(message, "the prompt was blocked (PROHIBITED_CONTENT)"),
         other => panic!("not a refusal: {other:?}"),
     }
     match fail().await {
-        ImageFailure::Refused { message, .. } => assert_eq!(message, "Unable to show the generated image. (IMAGE_SAFETY)"),
+        MediaFailure::Refused { message, .. } => assert_eq!(message, "Unable to show the generated image. (IMAGE_SAFETY)"),
         other => panic!("not a refusal: {other:?}"),
     }
-    assert!(matches!(fail().await, ImageFailure::UsageLimit { .. }));
-    assert!(matches!(fail().await, ImageFailure::Unanswered { .. }));
+    assert!(matches!(fail().await, MediaFailure::UsageLimit { .. }));
+    assert!(matches!(fail().await, MediaFailure::Unanswered { .. }));
     let invalid = fail().await;
-    assert!(matches!(&invalid, ImageFailure::KeyRefused { message, .. } if message == "API key not valid. Please pass a valid API key."));
+    assert!(matches!(&invalid, MediaFailure::KeyRefused { message, .. } if message == "API key not valid. Please pass a valid API key."));
     assert_eq!(invalid.outcome(), "auth_expired");
     // A key Google knows and does not allow here is refused, not expired.
     let blocked = fail().await;
-    assert!(matches!(&blocked, ImageFailure::KeyRefused { message, .. } if message == "Requests to this API are blocked."));
+    assert!(matches!(&blocked, MediaFailure::KeyRefused { message, .. } if message == "Requests to this API are blocked."));
     assert_eq!(blocked.outcome(), "permission_denied");
     match fail().await {
-        ImageFailure::Refused { message, .. } => assert_eq!(message, "Unsupported aspect ratio: 4:5"),
+        MediaFailure::Refused { message, .. } => assert_eq!(message, "Unsupported aspect ratio: 4:5"),
         other => panic!("not a refusal: {other:?}"),
     }
 }

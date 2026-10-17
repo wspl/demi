@@ -19,5 +19,5 @@ pub mod testing;
 pub use user::{
     ReadOn,
     ContextAsk, Lost, PageCall, PageCallError, PanelError, PluginToolset, ProductPort,
-    SwitchError, UserPlugins,
+    SwitchError, UserPlugins, VideoJob,
 };

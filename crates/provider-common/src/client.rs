@@ -160,12 +160,28 @@ impl ProviderHttp {
         }
     }
 
+    /// The same way to the network and the devices on a client that follows
+    /// no redirect, for a caller that follows them itself, choosing each
+    /// hop's headers: reqwest sets its redirect policy per client, not per
+    /// request. It builds a client, its own connection pool included.
+    pub fn without_redirects(&self) -> Result<Self, reqwest::Error> {
+        let client = reqwest::Client::builder().redirect(reqwest::redirect::Policy::none()).build()?;
+        Ok(Self {
+            client,
+            devices: self.devices.clone(),
+        })
+    }
+
     pub fn get(&self, url: impl IntoUrl) -> RequestBuilder {
         self.request(Method::GET, url)
     }
 
     pub fn post(&self, url: impl IntoUrl) -> RequestBuilder {
         self.request(Method::POST, url)
+    }
+
+    pub fn delete(&self, url: impl IntoUrl) -> RequestBuilder {
+        self.request(Method::DELETE, url)
     }
 
     pub fn request(&self, method: Method, url: impl IntoUrl) -> RequestBuilder {

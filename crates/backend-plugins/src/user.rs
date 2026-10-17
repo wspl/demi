@@ -24,19 +24,21 @@ use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{CommandSet, GroupBuilder, JobCaller, PortError, RpcPort};
 use demi_plugin_interface::{
-    ImageAsk, MadeImage, MediaListing,
+    AskedVideo, ImageAsk, MadeImage, MediaListing, MediaRefusal, VideoAsk, VideoStep,
     CallKind, DirectoryPath, HostDirectory, HostFile, HostRead, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
     PortRefusal, Reply, Request, Scope, StoredValue,
 };
-use demi_shared_types::{B64Bytes, BlobRef, NodeId, Timestamp, TurnId};
+use demi_shared_types::{B64Bytes, BlobRef, MediaKind, NodeId, Timestamp, TurnId};
 use demi_web_api_protocol::conversations::PluginRevision;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use demi_web_api_protocol::panel::{PanelChange, PanelEffect, WorkPanel};
 use demi_web_api_protocol::plugins::{PluginEntry, PluginStateAnswer};
 use demi_web_api_protocol::workflows::WatchSubject;
+use futures_util::StreamExt as _;
 use futures_util::future::LocalBoxFuture;
+use futures_util::stream::LocalBoxStream;
 use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 use url::Url;
@@ -45,6 +47,12 @@ use crate::Registry;
 use crate::commands::compose;
 use crate::oauth::{Callback, CallbackError, SignIns};
 use crate::web;
+
+/// A video's job as the product runs it: each change of its state, then
+/// its video or the failure that ended it. Dropped before its video, the
+/// job's waiting ends and the job is cancelled where the vendor can cancel
+/// one (`videos.md` § A call is a job).
+pub type VideoJob = LocalBoxStream<'static, Result<VideoStep, PortFailure>>;
 
 /// What the product does for the plugins' port: the operations that reach
 /// a conversation's Hosts through its host access, and the user's blobs.
@@ -72,9 +80,9 @@ pub trait ProductPort {
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>>;
 
-    /// The image models of the user's provider entries, each with the
+    /// The models of `kind` of the user's provider entries, each with the
     /// entries that offer it (`media.md`).
-    fn image_models(&self) -> LocalBoxFuture<'_, Result<MediaListing, PortFailure>>;
+    fn media_models(&self, kind: MediaKind) -> LocalBoxFuture<'_, Result<MediaListing, PortFailure>>;
 
     /// Makes the image `ask` names for the conversation, through the entry
     /// and account the providers choose; its usage ledger row names the
@@ -87,6 +95,19 @@ pub trait ProductPort {
         ask: ImageAsk,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<MadeImage, PortFailure>>;
+
+    /// Asks for the video `ask` names for the conversation, through the
+    /// entry and account the providers choose, and answers the job the
+    /// vendor took with its steps; its usage ledger row names the agent and
+    /// the turn of `caller`. Dropping the steps before the video ends the
+    /// job's waiting and cancels it where the vendor can.
+    fn make_video<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        caller: Option<&'a JobCaller>,
+        ask: VideoAsk,
+        cancel: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<(AskedVideo, VideoJob), PortFailure>>;
 
     /// Stores `bytes` in the user's blob namespace.
     fn put_blob(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, PortFailure>>;
@@ -296,6 +317,7 @@ impl Shared {
             cancel: cancel.clone(),
             read_on,
             caller,
+            video: RefCell::new(None),
         };
         let port = PluginPort::new(Rc::new(transport), cancel);
         self.instances[plugin].call(request, port).await
@@ -1058,6 +1080,9 @@ struct RequestPort {
     /// The job that called the command, for a command an agent's job
     /// called.
     caller: Option<JobCaller>,
+    /// The request's video's job, from its ask to its video; dropped with
+    /// the request.
+    video: RefCell<Option<VideoJob>>,
 }
 
 impl RequestPort {
@@ -1239,19 +1264,58 @@ impl RequestPort {
                 shared.oauth_sign_out(self.plugin, &self.cancel).await?;
                 PortAnswer::Done
             }
-            PortMessage::ImageModels => PortAnswer::ImageModels {
-                listing: product.image_models().await?,
+            PortMessage::MediaModels { kind } => PortAnswer::MediaModels {
+                listing: product.media_models(kind).await?,
             },
             PortMessage::MakeImage { ask } => PortAnswer::Image {
                 image: product
                     .make_image(self.conversation()?, self.caller.as_ref(), ask, &self.cancel)
                     .await?,
             },
+            PortMessage::MakeVideo { ask } => {
+                if self.video.borrow().is_some() {
+                    return Err(Self::job_failure("the call has a video's job already"));
+                }
+                let (asked, job) = product
+                    .make_video(self.conversation()?, self.caller.as_ref(), ask, &self.cancel)
+                    .await?;
+                self.video.replace(Some(job));
+                PortAnswer::VideoAsked { asked }
+            }
+            PortMessage::VideoProgress => {
+                // Taken out for the wait, so no borrow is held across it.
+                let Some(mut job) = self.video.take() else {
+                    return Err(Self::job_failure("the call has no video's job"));
+                };
+                let step = tokio::select! {
+                    step = job.next() => step,
+                    () = self.cancel.cancelled() => return Err(PortError::Ended("the call was stopped".into()).into()),
+                };
+                match step {
+                    Some(Ok(step)) => {
+                        // The job ends with its video; until then it waits
+                        // for the next ask.
+                        if !matches!(step, VideoStep::Made { .. }) {
+                            self.video.replace(Some(job));
+                        }
+                        PortAnswer::VideoProgress { step }
+                    }
+                    Some(Err(failure)) => return Err(failure),
+                    None => {
+                        return Err(Self::job_failure("the video's job ended"));
+                    }
+                }
+            }
         };
         Ok(answer)
     }
 
-    /// Applies a plugin's change of the request's conversation's panel.
+    /// Why a step of a video's job was not answered.
+fn job_failure(message: &str) -> PortFailure {
+    PortFailure::Refused(PortRefusal::Media { refusal: MediaRefusal::Failed { message: message.into() } })
+}
+
+/// Applies a plugin's change of the request's conversation's panel.
     async fn panel_change(&self, change: PanelChange) -> Result<PortAnswer, PortFailure> {
         let conversation = self.conversation()?;
         let (revision, _) = self

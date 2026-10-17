@@ -61,6 +61,7 @@ pub(crate) fn scripts(cost: Option<ProbeCost>) -> Scripts {
         runs: None,
         process_host: false,
         images: None,
+        videos: None,
     };
     let families = demi_backend::families::builtin()
         .with("claude-code", family())
@@ -740,6 +741,7 @@ async fn removing_the_active_account_selects_the_next_and_the_last_leaves_none()
         runs: Some(runs.clone()),
         process_host: false,
         images: None,
+        videos: None,
     };
     let scripts = Scripts {
         login,

@@ -380,7 +380,10 @@ impl ProductPort for TestProduct {
         none()
     }
 
-    fn image_models(&self) -> LocalBoxFuture<'_, Result<demi_plugin_interface::MediaListing, PortFailure>> {
+    fn media_models(
+        &self,
+        _: demi_shared_types::MediaKind,
+    ) -> LocalBoxFuture<'_, Result<demi_plugin_interface::MediaListing, PortFailure>> {
         none()
     }
 
@@ -391,6 +394,16 @@ impl ProductPort for TestProduct {
         _: demi_plugin_interface::ImageAsk,
         _: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<demi_plugin_interface::MadeImage, PortFailure>> {
+        none()
+    }
+
+    fn make_video<'a>(
+        &'a self,
+        _: &'a ConversationId,
+        _: Option<&'a demi_host_interface::JobCaller>,
+        _: demi_plugin_interface::VideoAsk,
+        _: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<(demi_plugin_interface::AskedVideo, demi_backend_plugins::VideoJob), PortFailure>> {
         none()
     }
 

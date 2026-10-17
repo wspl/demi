@@ -52,6 +52,7 @@ fn image_family(images: &Arc<ImageScript>) -> crate::accounts::Scripts {
         runs: None,
         process_host: false,
         images: Some(images.clone()),
+        videos: None,
     };
     crate::accounts::Scripts {
         login,
@@ -354,6 +355,7 @@ async fn an_entry_with_image_generation_off_is_never_chosen_and_says_why() {
         runs: None,
         process_host: false,
         images: Some(second_images.clone()),
+        videos: None,
     };
     let families = logins.families.clone().with("device-2", second);
     let scripts = Arc::new(Scripts::default());

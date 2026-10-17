@@ -143,6 +143,7 @@ impl Family {
                 policy: VendorPolicy::default(),
                 vendor_id: Some("openai".to_owned()),
                 makes_images: false,
+                makes_videos: false,
             };
             OpenAiProvider::new(config, clock.clone())
         };
@@ -162,6 +163,7 @@ impl Family {
                     api_key: Some(Secret::try_from("google-key".to_owned()).unwrap()),
                     base_url: Some(vendor.url("/v1beta").parse().unwrap()),
                     makes_images: false,
+                    makes_videos: false,
                 };
                 GoogleProvider::new(config, clock).runtime(env)
             }

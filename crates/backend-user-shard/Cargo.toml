@@ -41,7 +41,7 @@ demi-backend-plugins = { path = "../backend-plugins" }
 demi-plugin-interface = { path = "../plugin-interface" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-declarations = { path = "../command-declarations" }
-demi-shared-types = { path = "../shared-types" }
+demi-shared-types = { path = "../shared-types", features = ["mp4"] }
 demi-shared-gates = { path = "../shared-gates" }
 demi-backend-remote-host = { path = "../backend-remote-host" }
 demi-machine-manager-protocol = { path = "../machine-manager-protocol" }

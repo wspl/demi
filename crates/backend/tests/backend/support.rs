@@ -25,7 +25,7 @@ use demi_backend_remote_host::testing::{
 };
 use demi_backend_user_shard::shard::ShardPlacement;
 use demi_backend_user_shard::tuning::{
-    ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning,
+    ConversationTuning, LifecycleTuning, MediaTuning, PageTuning, RunnerTuning,
 };
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::{
@@ -74,7 +74,10 @@ pub const MEDIA_CATALOG: &str = r#"{
       "description": "Faster pictures", "released": "2026-06-01", "image": { "aspectRatios": ["1:1"] } },
     { "vendor": "openai", "id": "drawing-1", "kind": "image", "name": "Drawing 1",
       "description": "Line drawings", "released": "2026-02-01", "image": { "aspectRatios": ["1:1"] },
-      "brushes": ["pencil"] }
+      "brushes": ["pencil"] },
+    { "vendor": "xai", "id": "clip-1", "kind": "video", "name": "Clip 1", "released": "2026-03-01",
+      "video": { "durationRange": { "min": 1, "max": 15 }, "resolutions": ["480p", "720p"], "audio": true },
+      "price": { "rates": [{ "unit": "second", "amount": 0.05, "currency": "usd" }] } }
   ]
 }"#;
 
@@ -293,6 +296,7 @@ pub struct Harness {
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
     pub pages: PageTuning,
+    pub media: MediaTuning,
     runner_releases: Option<PathBuf>,
     /// The development release of the workspace's packages the backends
     /// load.
@@ -381,6 +385,7 @@ impl Harness {
                 ..ConversationTuning::default()
             },
             pages: PageTuning::default(),
+            media: MediaTuning::default(),
             runner_releases: None,
             release: None,
             public_url: None,
@@ -681,6 +686,7 @@ impl Harness {
         config.runner_releases = self.runner_releases.clone();
         config.conversations = self.conversations;
         config.pages = self.pages;
+        config.media = self.media;
         config.public_url = self.public_url.clone();
         config.runner_socket = self.runner_socket.clone();
         config.manage_socket = self.manage_socket.clone();

@@ -5,7 +5,8 @@
 //! OIDC tokens by the one protocol of `providers.md` § Token refresh, reads
 //! the model catalog from `/v1/models`, and keeps the account's quota from a
 //! free billing and subscription probe and the rate-limit headers of every
-//! chat response. It makes images through the proxy's image endpoints.
+//! chat response. It makes images and videos through the proxy's image and
+//! video endpoints.
 
 mod auth;
 mod images;
@@ -14,6 +15,7 @@ mod models;
 mod quota;
 mod request;
 mod run;
+mod videos;
 
 use std::sync::Arc;
 
@@ -22,6 +24,7 @@ use demi_provider_common::{
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError,
     credentials::{Accounts, CredentialPool, SubscriptionAccounts},
     images::ImageMaker,
+    videos::VideoMaker,
     endpoint_url,
     quota::{ProviderQuota, QuotaSnapshotStore},
     read_http_failure,
@@ -72,6 +75,8 @@ impl GrokConfig {
 /// request of the entry.
 pub struct GrokProvider {
     shared: Arc<Shared>,
+    images: images::GrokImages,
+    videos: videos::GrokVideos,
 }
 
 /// What the provider and all its runtimes share.
@@ -80,6 +85,9 @@ struct Shared {
     models_url: Url,
     image_generations_url: Url,
     image_edits_url: Url,
+    video_generations_url: Url,
+    /// The proxy's base, under which a video job's state is read.
+    proxy_url: Url,
     auth: Arc<GrokAuth>,
     quota: ProviderQuota,
     accounts: Accounts<GrokKit>,
@@ -116,18 +124,23 @@ impl GrokProvider {
             user_url,
             billing_url,
         };
-        Self {
-            shared: Arc::new(Shared {
+        let shared = Arc::new(Shared {
                 chat_url: endpoint_url(&config.proxy_url, "/chat/completions"),
                 models_url: endpoint_url(&config.proxy_url, "/models"),
                 image_generations_url: endpoint_url(&config.proxy_url, "/images/generations"),
                 image_edits_url: endpoint_url(&config.proxy_url, "/images/edits"),
+                video_generations_url: endpoint_url(&config.proxy_url, "/videos/generations"),
+                proxy_url: config.proxy_url.clone(),
                 auth,
                 quota: ProviderQuota::new(Box::new(source), snapshots, clock.clone()),
                 accounts: Accounts::new(pool, kit, clock.clone()),
                 http,
                 clock,
-            }),
+            });
+        Self {
+            images: images::GrokImages(shared.clone()),
+            videos: videos::GrokVideos(shared.clone()),
+            shared,
         }
     }
 }
@@ -177,7 +190,11 @@ impl Provider for GrokProvider {
     }
 
     fn images(&self) -> Option<&dyn ImageMaker> {
-        Some(self)
+        Some(&self.images)
+    }
+
+    fn videos(&self) -> Option<&dyn VideoMaker> {
+        Some(&self.videos)
     }
 
     fn runtime(&self, env: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {

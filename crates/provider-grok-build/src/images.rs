@@ -5,14 +5,47 @@
 
 use bytes::Bytes;
 use demi_provider_common::{
-    images::{ImageAnswer, ImageCall, ImageCredential, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, read_data_answer, subscription_models, xai},
-    media_catalog::{Catalog, Subscription},
+    Secret,
+    credentials::AuthFailure,
+    images::{ImageMaker, ImageRequest, MadeImage, read_data_answer, xai},
+    media::{MediaAnswer, MediaCall, MediaCredential, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, subscription_models},
+    media_catalog::{Catalog, MediaKind, Subscription},
     json_body, read_http_failure,
 };
 use futures_util::future::BoxFuture;
+use reqwest::header::HeaderMap;
 use serde::Serialize;
 
-use crate::{GrokProvider, LABEL, request::identity_headers, run::with_usage_limit};
+use crate::{LABEL, Shared, request::identity_headers, run::with_usage_limit};
+
+impl Shared {
+    /// How the proxy's media requests are sent: with the account's token,
+    /// renewed once when refused, its usage limit read as a turn's is.
+    pub(crate) fn media_call(&self) -> MediaCall<'_> {
+        MediaCall {
+            label: LABEL,
+            credential: MediaCredential::Account { family: crate::auth::FAMILY },
+            reader: read_http_failure,
+            used_up: with_usage_limit,
+            clock: &*self.clock,
+            quota: Some(&self.quota),
+        }
+    }
+
+    /// The account's headers for a media request, renewed past `refused`,
+    /// the token a request was refused with, and the token they carry.
+    pub(crate) async fn media_headers(
+        &self,
+        http: &demi_provider_common::ProviderHttp,
+        refused: Option<Secret>,
+    ) -> Result<(HeaderMap, Option<Secret>), AuthFailure> {
+        let credentials = self.auth.credentials(http, refused.as_ref()).await?;
+        Ok((identity_headers(&credentials), Some(credentials.access_token)))
+    }
+}
+
+/// The image role of the provider's account.
+pub(crate) struct GrokImages(pub(crate) std::sync::Arc<Shared>);
 
 #[derive(Serialize)]
 struct Body<'a> {
@@ -50,13 +83,13 @@ fn encode(request: &ImageRequest) -> Bytes {
     Bytes::from(json_body(&body))
 }
 
-impl ImageMaker for GrokProvider {
+impl MediaMaker for GrokImages {
     fn name(&self) -> &str {
         "Grok"
     }
 
-    fn vendor(&self) -> Option<ImageVendor> {
-        Some(ImageVendor::Xai)
+    fn vendor(&self) -> Option<MediaVendor> {
+        Some(MediaVendor::Xai)
     }
 
     /// The catalog's models of a Grok subscription, those it accepted: the
@@ -65,44 +98,32 @@ impl ImageMaker for GrokProvider {
         &'a self,
         _: &'a demi_provider_common::ProviderHttp,
         catalog: &'a Catalog,
-    ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
-        Box::pin(std::future::ready(Ok(subscription_models(catalog, Subscription::Grok))))
+    ) -> BoxFuture<'a, Result<Vec<MediaModelInfo>, MediaFailure>> {
+        Box::pin(std::future::ready(Ok(subscription_models(catalog, Subscription::Grok, MediaKind::Image))))
     }
+}
 
-    /// The proxy refuses a model it does not have rather than answer with
-    /// another.
-    fn confirms_model(&self) -> bool {
-        true
-    }
-
+/// The proxy refuses a model it does not have rather than answer with
+/// another, so its model is confirmed, as [`MediaMaker`] holds by default.
+impl ImageMaker for GrokImages {
     fn make<'a>(
         &'a self,
         http: &'a demi_provider_common::ProviderHttp,
         _: &'a Catalog,
         request: ImageRequest,
-    ) -> BoxFuture<'a, ImageAnswer> {
+    ) -> BoxFuture<'a, MediaAnswer<MadeImage>> {
         Box::pin(async move {
-            let shared = &self.shared;
+            let shared = &*self.0;
             let url = if request.images.is_empty() {
                 &shared.image_generations_url
             } else {
                 &shared.image_edits_url
             };
-            let call = ImageCall {
-                label: LABEL,
-                credential: ImageCredential::Account { family: crate::auth::FAMILY },
-                reader: read_http_failure,
-                used_up: with_usage_limit,
-                clock: &*shared.clock,
-                quota: Some(&shared.quota),
-                answer: read_data_answer,
-            };
-            let answer = call
-                .send(http, url, encode(&request), |refused| async move {
-                    let credentials = shared.auth.credentials(http, refused.as_ref()).await?;
-                    Ok((identity_headers(&credentials), Some(credentials.access_token)))
-                })
-                .await;
+            let answer = shared
+                .media_call()
+                .post_json(http, url, encode(&request), |refused| shared.media_headers(http, refused))
+                .await
+                .and_then(|body| read_data_answer(&body));
             // A refused shape is told with the shapes the proxy named.
             xai::with_shapes(answer)
         })

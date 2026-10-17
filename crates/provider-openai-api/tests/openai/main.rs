@@ -1,12 +1,14 @@
 //! The OpenAI API provider at its boundaries: the requests it sends to a
 //! scripted vendor over both wires and the answers it reads back, its
 //! failures, its cancellation, what it says about itself, and an OpenAI or
-//! xAI key's images. No test calls the real vendor.
+//! xAI key's images and videos, and a compatible API's videos. No test
+//! calls the real vendor.
 
 mod cancellation;
 mod failures;
 mod images;
 mod request;
+mod videos;
 
 use std::sync::Arc;
 
@@ -48,6 +50,7 @@ pub(crate) fn provider_of(
         policy,
         vendor_id: vendor_id.map(str::to_owned),
         makes_images: false,
+        makes_videos: false,
     };
     OpenAiProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }

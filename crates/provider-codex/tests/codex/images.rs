@@ -8,7 +8,8 @@ use bytes::Bytes;
 use demi_provider_codex::TransportMode;
 use demi_provider_common::{
     Provider,
-    images::{Aspect, ImageFailure, ImageRequest, ImageVendor, InputImage},
+    images::{Aspect, ImageRequest, InputImage},
+    media::{MediaFailure, MediaVendor},
     testing::{MockResponse, MockVendor},
 };
 use demi_shared_types::{B64Bytes, TokenUsage};
@@ -72,7 +73,7 @@ async fn a_generation_sends_the_asked_options_with_the_accounts_headers_and_read
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
     let provider = provider(&vendor, &pool, TransportMode::Sse);
     let maker = provider.images().expect("Codex makes images");
-    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("ChatGPT", Some(ImageVendor::OpenAi), false));
+    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("ChatGPT", Some(MediaVendor::OpenAi), false));
     // The catalog's image models of a ChatGPT subscription, in its order.
     let models = maker.models(&demi_provider_common::ProviderHttp::new(reqwest::Client::new()), &catalog()).await.unwrap();
     let offered: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
@@ -146,16 +147,16 @@ async fn a_failed_call_says_whether_the_account_is_used_up_the_vendor_refused_or
 
     let failure = maker.make(&http, &catalog(), request(Vec::new())).await.result.unwrap_err();
     let lifts = demi_shared_types::Timestamp::from_millisecond((NOW_SECONDS + 3_600) * 1000).unwrap();
-    assert_eq!(failure, ImageFailure::UsageLimit { retry_at: Some(lifts) });
+    assert_eq!(failure, MediaFailure::UsageLimit { retry_at: Some(lifts) });
     assert_eq!(failure.outcome(), "usage_limit");
     match maker.make(&http, &catalog(), request(Vec::new())).await.result.unwrap_err() {
-        ImageFailure::Refused { message, .. } => {
+        MediaFailure::Refused { message, .. } => {
             assert_eq!(message, "Your request was rejected by the safety system.");
         }
         other => panic!("not a refusal: {other:?}"),
     }
     match maker.make(&http, &catalog(), request(Vec::new())).await.result.unwrap_err() {
-        ImageFailure::Unanswered { cause, .. } => assert_eq!(cause, "HTTP 503: upstream connect error"),
+        MediaFailure::Unanswered { cause, .. } => assert_eq!(cause, "HTTP 503: upstream connect error"),
         other => panic!("not unanswered: {other:?}"),
     }
     maker.make(&http, &catalog(), request(Vec::new())).await.result.unwrap();
@@ -216,7 +217,7 @@ async fn a_refusal_whose_body_never_ends_fails_at_the_deadline() {
         .await
         .expect("the call ends at its deadline");
     match answer.result.unwrap_err() {
-        ImageFailure::Unanswered { cause, .. } => assert_eq!(cause, "no answer in 120 s"),
+        MediaFailure::Unanswered { cause, .. } => assert_eq!(cause, "no answer in 120 s"),
         other => panic!("not unanswered: {other:?}"),
     }
     assert!(started.elapsed() >= std::time::Duration::from_secs(120));

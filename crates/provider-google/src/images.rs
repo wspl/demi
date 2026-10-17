@@ -10,9 +10,10 @@ use bytes::Bytes;
 use demi_provider_common::{
     media_catalog::Catalog,
     ErrorCode, HttpFailureRecord, ProviderFailure, Secret, json_body, model_words,
-    images::{
-        ImageAnswer, ImageCall, ImageCredential, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor,
-        MadeImage, unreadable, vendor_message,
+    images::{ImageMaker, ImageRequest, MadeImage},
+    media::{
+        MediaAnswer, MediaCall, MediaCredential, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable,
+        vendor_message,
     },
     read_http_failure,
 };
@@ -25,43 +26,48 @@ use reqwest::{
 use serde::{Deserialize, Serialize};
 
 /// How failure messages name the vendor.
-const LABEL: &str = "Google";
+pub(crate) const LABEL: &str = "Google";
 
 /// The most models one page of the listing holds, the most Google takes.
 const PAGE_SIZE: &str = "1000";
 
-/// A Gemini API key's image role.
-pub(crate) struct KeyImages {
+/// A Gemini API key, which its media roles send their requests with.
+#[derive(Clone)]
+pub(crate) struct GeminiKey {
     key: Secret,
     base: Url,
-    clock: Arc<dyn Clock>,
+    pub(crate) clock: Arc<dyn Clock>,
 }
 
-impl KeyImages {
+impl GeminiKey {
     pub(crate) fn new(key: Secret, base: Url, clock: Arc<dyn Clock>) -> Self {
         Self { key, base, clock }
     }
 
-    fn call(&self) -> ImageCall<'_> {
-        ImageCall {
+    pub(crate) fn call(&self) -> MediaCall<'_> {
+        MediaCall {
             label: LABEL,
-            credential: ImageCredential::Key { refused: refused_key },
+            credential: MediaCredential::Key { refused: refused_key },
             reader: read_http_failure,
             used_up,
             clock: &*self.clock,
             quota: None,
-            answer: read_answer,
         }
     }
 
-    fn headers(&self) -> HeaderMap {
+    pub(crate) fn headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
         headers.insert(HeaderName::from_static("x-goog-api-key"), self.key.header_value());
         headers
     }
 
+    /// The base, the API's version, such as `…/v1beta`.
+    pub(crate) fn base(&self) -> &Url {
+        &self.base
+    }
+
     /// `…/models` under the base, then `segment` when given.
-    fn models_url(&self, segment: Option<&str>) -> Url {
+    pub(crate) fn models_url(&self, segment: Option<&str>) -> Url {
         let mut url = self.base.clone();
         {
             let mut path = url
@@ -76,9 +82,13 @@ impl KeyImages {
         url
     }
 
-    /// Every page of the listing: the models whose ID has the word `image`
-    /// or `banana` and that list `generateContent`.
-    async fn list(&self, http: &demi_provider_common::ProviderHttp) -> Result<Vec<ImageModelInfo>, ImageFailure> {
+    /// Every page of the listing: the models `keeps` keeps, by the words of
+    /// their ID and the generation methods they list.
+    pub(crate) async fn list(
+        &self,
+        http: &demi_provider_common::ProviderHttp,
+        keeps: fn(&[String], &[String]) -> bool,
+    ) -> Result<Vec<MediaModelInfo>, MediaFailure> {
         let mut models = Vec::new();
         let mut page: Option<String> = None;
         loop {
@@ -95,11 +105,8 @@ impl KeyImages {
                 .map_err(|error| unreadable(format!("its list of models could not be read: {error}")))?;
             for model in listing.models {
                 let id = model.name.strip_prefix("models/").unwrap_or(&model.name);
-                let words = model_words(id);
-                let images = words.iter().any(|word| word == "image" || word == "banana");
-                let generates = model.supported_generation_methods.iter().any(|method| method == "generateContent");
-                if images && generates {
-                    models.push(ImageModelInfo { description: model.description.clone(), ..ImageModelInfo::id(id) });
+                if keeps(&model_words(id), &model.supported_generation_methods) {
+                    models.push(MediaModelInfo { description: model.description.clone(), ..MediaModelInfo::id(id) });
                 }
             }
             match listing.next_page_token.filter(|token| !token.is_empty()) {
@@ -110,40 +117,50 @@ impl KeyImages {
     }
 }
 
-impl ImageMaker for KeyImages {
+/// A Gemini API key's image role.
+pub(crate) struct KeyImages(pub(crate) GeminiKey);
+
+/// The models whose ID has the word `image` or `banana` and that list
+/// `generateContent`.
+fn makes_images(words: &[String], methods: &[String]) -> bool {
+    words.iter().any(|word| word == "image" || word == "banana") && methods.iter().any(|method| method == "generateContent")
+}
+
+/// The model is the request's URL: Google answers no other, so it is
+/// confirmed, as [`MediaMaker`] holds by default.
+impl MediaMaker for KeyImages {
     fn name(&self) -> &str {
         LABEL
     }
 
-    fn vendor(&self) -> Option<ImageVendor> {
-        Some(ImageVendor::Google)
+    fn vendor(&self) -> Option<MediaVendor> {
+        Some(MediaVendor::Google)
     }
 
     fn models<'a>(
         &'a self,
         http: &'a demi_provider_common::ProviderHttp,
         _: &'a Catalog,
-    ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
-        Box::pin(self.list(http))
+    ) -> BoxFuture<'a, Result<Vec<MediaModelInfo>, MediaFailure>> {
+        Box::pin(self.0.list(http, makes_images))
     }
+}
 
-    /// The model is the request's URL: Google answers no other.
-    fn confirms_model(&self) -> bool {
-        true
-    }
-
+impl ImageMaker for KeyImages {
     fn make<'a>(
         &'a self,
         http: &'a demi_provider_common::ProviderHttp,
         _: &'a Catalog,
         request: ImageRequest,
-    ) -> BoxFuture<'a, ImageAnswer> {
+    ) -> BoxFuture<'a, MediaAnswer<MadeImage>> {
         Box::pin(async move {
-            let url = self.models_url(Some(&format!("{}:generateContent", request.model)));
-            let headers = self.headers();
-            self.call()
-                .send(http, &url, encode(&request), |_| std::future::ready(Ok((headers.clone(), None))))
+            let key = &self.0;
+            let url = key.models_url(Some(&format!("{}:generateContent", request.model)));
+            let headers = key.headers();
+            key.call()
+                .post_json(http, &url, encode(&request), |_| std::future::ready(Ok((headers.clone(), None))))
                 .await
+                .and_then(|body| read_answer(&body))
         })
     }
 }
@@ -287,7 +304,7 @@ struct UsageMetadata {
 /// The image of the first candidate's first inline part; a prompt Google
 /// blocked, or a candidate it ended without an image, is a refusal in its
 /// words.
-fn read_answer(text: &[u8]) -> Result<MadeImage, ImageFailure> {
+fn read_answer(text: &[u8]) -> Result<MadeImage, MediaFailure> {
     let answer: Answer = serde_json::from_slice(text)
         .map_err(|error| unreadable(format!("its answer could not be read: {error}")))?;
     if let Some(PromptFeedback { block_reason: Some(reason), block_reason_message }) = answer.prompt_feedback {
@@ -295,7 +312,7 @@ fn read_answer(text: &[u8]) -> Result<MadeImage, ImageFailure> {
             Some(said) => format!("{said} ({reason})"),
             None => format!("the prompt was blocked ({reason})"),
         };
-        return Err(ImageFailure::Refused { message, code: Some(ErrorCode::Vendor(reason)) });
+        return Err(MediaFailure::Refused { message, code: Some(ErrorCode::Vendor(reason)) });
     }
     let candidate = answer.candidates.into_iter().next();
     let image = candidate
@@ -309,7 +326,7 @@ fn read_answer(text: &[u8]) -> Result<MadeImage, ImageFailure> {
                     Some(said) => format!("{said} ({reason})"),
                     None => format!("the answer was stopped ({reason})"),
                 };
-                ImageFailure::Refused { message, code: Some(ErrorCode::Vendor(reason)) }
+                MediaFailure::Refused { message, code: Some(ErrorCode::Vendor(reason)) }
             }
             _ => unreadable("its answer held no image".to_owned()),
         });

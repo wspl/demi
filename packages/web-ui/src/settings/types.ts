@@ -23,25 +23,42 @@ import type { VerificationHost } from '../auth/verification'
  */
 export type SmallModelChoice = Pick<ModelSettings, 'providerId' | 'modelId' | 'thinkingEffort'>
 
-/** A kind of media an entry may make (`media.md` § Which entries make which media); video and audio join as their commands are built. */
-export type SettingsMediaKind = 'image'
+/** A kind of media an entry may make (`media.md` § Which entries make which media); audio joins as its commands are built. */
+export type SettingsMediaKind = 'image' | 'video'
 
-export const SETTINGS_MEDIA_KINDS: readonly SettingsMediaKind[] = ['image']
+export const SETTINGS_MEDIA_KINDS: readonly SettingsMediaKind[] = ['image', 'video']
 
 /** How an entry's API makes images: a vendor entry's is its vendor's, a compatible API's the one its user chose. */
 export type SettingsImageShape = 'chatgpt' | 'grok' | 'openai-images' | 'gemini'
 
+/** How an entry's API makes videos, as `SettingsImageShape` says of images. */
+export type SettingsVideoShape = 'grok' | 'xai-videos' | 'veo' | 'openai-videos' | 'openrouter-videos'
+
+/** Each kind's shapes. */
+export interface SettingsMediaShapes {
+  image: SettingsImageShape
+  video: SettingsVideoShape
+}
+
+/** A shape of any kind. */
+export type SettingsMediaShape = SettingsMediaShapes[SettingsMediaKind]
+
 /** The names of the shapes, the vendors' own formats, which no language translates. */
-export const IMAGE_SHAPE_LABELS: Record<SettingsImageShape, string> = {
+export const MEDIA_SHAPE_LABELS: Record<SettingsMediaShape, string> = {
   chatgpt: 'ChatGPT',
   grok: 'Grok',
   'openai-images': 'OpenAI Images',
   gemini: 'Gemini',
+  'xai-videos': 'xAI Videos',
+  veo: 'Veo',
+  'openai-videos': 'OpenAI Videos',
+  'openrouter-videos': 'OpenRouter Videos',
 }
 
-/** The shapes a compatible API may choose for each kind, besides none. */
-export const COMPATIBLE_MEDIA_SHAPES: Record<SettingsMediaKind, readonly SettingsImageShape[]> = {
+/** The shapes a compatible API may choose for each kind, besides none, in the menu's order. */
+export const COMPATIBLE_MEDIA_SHAPES: { readonly [K in SettingsMediaKind]: readonly SettingsMediaShapes[K][] } = {
   image: ['openai-images'],
+  video: ['xai-videos', 'openai-videos', 'openrouter-videos'],
 }
 
 /** A vendor's media model as an entry's section lists it, never edited. */
@@ -53,8 +70,8 @@ export interface SettingsMediaModel {
 }
 
 /** How an entry makes one kind of media: its shape, null for none, and its switch. */
-export interface SettingsEntryMedia {
-  shape: SettingsImageShape | null
+export interface SettingsEntryMedia<K extends SettingsMediaKind = SettingsMediaKind> {
+  shape: SettingsMediaShapes[K] | null
   enabled: boolean
   /** A vendor entry's models of the kind, newest first; a compatible API's are its list's, kind and all. */
   models?: SettingsMediaModel[]
@@ -377,9 +394,9 @@ export interface SettingsProviderEntry {
   rotation?: SettingsRotation
   /**
    * How it makes each kind of media (`media.md` § Which entries make which
-   * media): a kind with a shape has its switch, Image Generation, on its page.
+   * media): a kind with a shape has its switch, such as Image Generation, on its page.
    */
-  media: Record<SettingsMediaKind, SettingsEntryMedia>
+  media: { [K in SettingsMediaKind]: SettingsEntryMedia<K> }
   /** The vendor supports a free quota request when an account becomes visible. */
   autoRefreshUsage?: boolean
   /** The vendor mark (`providerLogo`); null falls back to an initial. */

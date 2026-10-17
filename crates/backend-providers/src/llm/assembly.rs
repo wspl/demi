@@ -12,9 +12,11 @@ use std::sync::{Arc, Mutex, OnceLock, PoisonError};
 use demi_backend_database::StorageError;
 use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
-use demi_provider_common::images::{ImageMaker, ImageModelInfo};
+use demi_provider_common::images::ImageMaker;
+use demi_provider_common::media::{MediaMaker, MediaModelInfo};
+use demi_provider_common::videos::VideoMaker;
 use demi_provider_common::{DeviceRoute, Provider, ProviderHttp, ProviderRuntime, RuntimeEnv};
-use demi_shared_types::{Clock, ImageShape, MediaShapes, Model, Rotation};
+use demi_shared_types::{Clock, ImageShape, MediaKind, MediaShapes, Model, Rotation};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId};
 use demi_web_api_protocol::providers::{ModelKind, ProviderDto, SETUP_MESSAGE};
 use demi_web_api_protocol::text::EndpointUrl;
@@ -22,7 +24,7 @@ use demi_web_api_protocol::text::EndpointUrl;
 use super::catalog_cache::ModelCatalogCache;
 use super::rotation::{AccountRotation, Candidate, Choice};
 use super::families::{
-    AccountBinding, ApiKeyArgs, CompatibleImagesArgs, FamilyArgs, FamilyCredential, FamilyError,
+    AccountBinding, ApiKeyArgs, CompatibleImagesArgs, CompatibleVideosArgs, FamilyArgs, FamilyCredential, FamilyError,
     FamilyRegistry, ProviderFamily, SubscriptionArgs,
 };
 use super::vendors::VendorCatalog;
@@ -423,7 +425,7 @@ impl ProviderAssembly {
     pub fn media_shapes(&self, entry: &ProviderEntry) -> MediaShapes {
         let vendor = match &entry.credential {
             EntryCredential::ApiKey(config) if config.is_compatible() => {
-                return MediaShapes { image: config.image_shape };
+                return MediaShapes { image: config.image_shape, video: config.video_shape };
             }
             EntryCredential::ApiKey(config) => config.vendor_id.as_deref(),
             EntryCredential::Subscription { .. } => None,
@@ -431,41 +433,61 @@ impl ProviderAssembly {
         let family = self.families.get(&entry.family);
         MediaShapes {
             image: family.and_then(|family| family.image_shape(vendor)),
+            video: family.and_then(|family| family.video_shape(vendor)),
         }
     }
 
-    /// What makes `entry`'s images with `provider`, its provider for the
-    /// account a call takes: a compatible entry's OpenAI Images, the one
-    /// implementation every such endpoint shares, offering the image models
-    /// its user added; a vendor entry's provider's own. None for an entry
-    /// that makes no images.
-    pub fn image_maker(&self, entry: &ProviderEntry, provider: &Arc<dyn Provider>) -> Option<ImageMakerOf> {
-        match &entry.credential {
-            EntryCredential::ApiKey(config) if config.is_compatible() => {
+    /// What makes `entry`'s media of `kind` with `provider`, its provider
+    /// for the account a call takes: for a compatible entry, its shape's
+    /// role, the one implementation every endpoint of that shape shares,
+    /// offering the models of the kind its user added; a vendor entry's
+    /// provider's own. None for an entry that makes none of the kind.
+    pub fn maker(&self, entry: &ProviderEntry, provider: &Arc<dyn Provider>, kind: MediaKind) -> Option<MakerOf> {
+        let EntryCredential::ApiKey(config) = &entry.credential else {
+            return MakerOf::of(provider, kind);
+        };
+        if !config.is_compatible() {
+            return MakerOf::of(provider, kind);
+        }
+        let base = config.base_url.as_ref()?.url().clone();
+        let added = |of: ModelKind| -> Vec<MediaModelInfo> {
+            config
+                .models
+                .iter()
+                .flat_map(|models| &models.0)
+                .filter(|model| model.kind == of)
+                .map(|model| MediaModelInfo {
+                    name: Some(model.display_name.as_str().to_owned()),
+                    ..MediaModelInfo::id(model.id.as_str())
+                })
+                .collect()
+        };
+        match kind {
+            MediaKind::Image => {
                 if config.image_shape != Some(ImageShape::OpenaiImages) {
                     return None;
                 }
-                let base = config.base_url.as_ref()?.url().clone();
-                let models = config
-                    .models
-                    .iter()
-                    .flat_map(|models| &models.0)
-                    .filter(|model| model.kind == ModelKind::Image)
-                    .map(|model| ImageModelInfo {
-                        name: Some(model.display_name.as_str().to_owned()),
-                        ..ImageModelInfo::id(model.id.as_str())
-                    })
-                    .collect();
                 let make = self.families.compatible_images()?;
-                Some(ImageMakerOf::Own(make(CompatibleImagesArgs {
+                Some(MakerOf::Images(make(CompatibleImagesArgs {
                     name: entry.label.clone(),
                     key: config.api_key.clone(),
                     base,
-                    models,
+                    models: added(ModelKind::Image),
                     clock: self.clock.clone(),
                 })))
             }
-            _ => provider.images().is_some().then(|| ImageMakerOf::Provider(provider.clone())),
+            MediaKind::Video => {
+                let shape = config.video_shape?;
+                let make = self.families.compatible_videos()?;
+                Some(MakerOf::Videos(make(CompatibleVideosArgs {
+                    name: entry.label.clone(),
+                    shape,
+                    key: config.api_key.clone(),
+                    base,
+                    models: added(ModelKind::Video),
+                    clock: self.clock.clone(),
+                })))
+            }
         }
     }
 
@@ -518,6 +540,7 @@ impl ProviderAssembly {
                     vendor: self.vendors.policy(config.vendor_id.as_deref()),
                     vendor_id: config.vendor_id.clone(),
                     image_shape: self.media_shapes(entry).image.filter(|_| !config.is_compatible()),
+                    video_shape: self.media_shapes(entry).video.filter(|_| !config.is_compatible()),
                 })
             }
             EntryCredential::Subscription { .. } => {
@@ -560,18 +583,52 @@ impl ProviderAssembly {
     }
 }
 
-/// What makes an entry's images: its provider's own role, or one of its
-/// own for a compatible entry.
-pub enum ImageMakerOf {
-    Provider(Arc<dyn Provider>),
-    Own(Arc<dyn ImageMaker>),
+/// What makes an entry's media of one kind: its provider's own role, or
+/// one of its own for a compatible entry. It holds what it makes with, so
+/// a video job keeps it for as long as it runs.
+#[derive(Clone)]
+pub enum MakerOf {
+    /// The provider's own role of the kind.
+    Provider(Arc<dyn Provider>, MediaKind),
+    Images(Arc<dyn ImageMaker>),
+    Videos(Arc<dyn VideoMaker>),
 }
 
-impl ImageMakerOf {
-    pub fn images(&self) -> &dyn ImageMaker {
+impl MakerOf {
+    /// `provider`'s own role of `kind`, when it has one.
+    fn of(provider: &Arc<dyn Provider>, kind: MediaKind) -> Option<Self> {
+        let makes = match kind {
+            MediaKind::Image => provider.images().is_some(),
+            MediaKind::Video => provider.videos().is_some(),
+        };
+        makes.then(|| Self::Provider(provider.clone(), kind))
+    }
+
+    /// What every kind's role says of itself.
+    pub fn media(&self) -> &dyn MediaMaker {
         match self {
-            Self::Provider(provider) => provider.images().expect("a maker's provider makes images"),
-            Self::Own(maker) => maker.as_ref(),
+            Self::Provider(provider, MediaKind::Image) => provider.images().expect("a maker's provider makes images"),
+            Self::Provider(provider, MediaKind::Video) => provider.videos().expect("a maker's provider makes videos"),
+            Self::Images(maker) => maker.as_ref(),
+            Self::Videos(maker) => maker.as_ref(),
+        }
+    }
+
+    /// The image role, for a maker of images.
+    pub fn images(&self) -> Option<&dyn ImageMaker> {
+        match self {
+            Self::Provider(provider, MediaKind::Image) => provider.images(),
+            Self::Images(maker) => Some(maker.as_ref()),
+            Self::Provider(_, MediaKind::Video) | Self::Videos(_) => None,
+        }
+    }
+
+    /// The video role, for a maker of videos.
+    pub fn videos(&self) -> Option<&dyn VideoMaker> {
+        match self {
+            Self::Provider(provider, MediaKind::Video) => provider.videos(),
+            Self::Videos(maker) => Some(maker.as_ref()),
+            Self::Provider(_, MediaKind::Image) | Self::Images(_) => None,
         }
     }
 }

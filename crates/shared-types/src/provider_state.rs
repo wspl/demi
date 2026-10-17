@@ -54,17 +54,78 @@ impl ImageShape {
 serde_plain::derive_display_from_serialize!(ImageShape);
 serde_plain::derive_fromstr_from_deserialize!(ImageShape);
 
+/// How an entry's API makes videos, its *video shape* (`videos.md`
+/// § Vendors): a vendor entry's is its vendor's, a compatible entry's the
+/// one its user chose, or none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+pub enum VideoShape {
+    /// The Grok subscription's video endpoints.
+    #[serde(rename = "grok")]
+    Grok,
+    /// `…/videos/generations` and `…/videos/<request_id>`, as xAI's API
+    /// serves them.
+    #[serde(rename = "xai-videos")]
+    XaiVideos,
+    /// Gemini's `predictLongRunning` and its operations.
+    #[serde(rename = "veo")]
+    Veo,
+    /// `…/videos`, `…/videos/<id>` and `…/videos/<id>/content`, as OpenAI's
+    /// Videos API served them and vLLM-Omni serves them.
+    #[serde(rename = "openai-videos")]
+    OpenaiVideos,
+    /// OpenRouter's `…/videos` jobs.
+    #[serde(rename = "openrouter-videos")]
+    OpenrouterVideos,
+}
+
+impl VideoShape {
+    /// The shapes a compatible entry may choose.
+    pub const CHOSEN: [Self; 3] = [Self::XaiVideos, Self::OpenaiVideos, Self::OpenrouterVideos];
+
+    /// How a call's words name it, such as `Veo takes no --seed`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Grok => "Grok",
+            Self::XaiVideos => "xAI Videos",
+            Self::Veo => "Veo",
+            Self::OpenaiVideos => "OpenAI Videos",
+            Self::OpenrouterVideos => "OpenRouter Videos",
+        }
+    }
+}
+
+serde_plain::derive_display_from_serialize!(VideoShape);
+serde_plain::derive_fromstr_from_deserialize!(VideoShape);
+
 /// The kinds of media an entry may make, each with its shape and switch
-/// (`media.md` § Which entries make which media). Video and audio join as
-/// their commands are built.
+/// (`media.md` § Which entries make which media). Audio joins as its
+/// commands are built.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum MediaKind {
     Image,
+    Video,
 }
 
 impl MediaKind {
-    pub const ALL: [Self; 1] = [Self::Image];
+    pub const ALL: [Self; 2] = [Self::Image, Self::Video];
+
+    /// The word for what the kind makes, as a sentence uses it: `images`,
+    /// `videos`.
+    pub fn plural(self) -> &'static str {
+        match self {
+            Self::Image => "images",
+            Self::Video => "videos",
+        }
+    }
+
+    /// The name of the entry's switch for it, as Settings shows it.
+    pub fn switch(self) -> &'static str {
+        match self {
+            Self::Image => "Image Generation",
+            Self::Video => "Video Generation",
+        }
+    }
 }
 
 serde_plain::derive_display_from_serialize!(MediaKind);
@@ -77,6 +138,8 @@ serde_plain::derive_fromstr_from_deserialize!(MediaKind);
 pub struct MediaShapes {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub image: Option<ImageShape>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video: Option<VideoShape>,
 }
 
 impl MediaShapes {
@@ -84,6 +147,7 @@ impl MediaShapes {
     pub fn makes(&self, kind: MediaKind) -> bool {
         match kind {
             MediaKind::Image => self.image.is_some(),
+            MediaKind::Video => self.video.is_some(),
         }
     }
 }

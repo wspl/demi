@@ -70,6 +70,16 @@ pub struct ProviderRow {
     pub rotation: Rotation,
     /// Whether the entry makes images when its provider can.
     pub image_generation: bool,
+    /// Whether the entry makes videos when its provider can.
+    pub video_generation: bool,
+}
+
+/// The media switches a change of an entry sets, each kind's when given
+/// (`media.md` § Which entries make which media).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct MediaSwitches {
+    pub image: Option<bool>,
+    pub video: Option<bool>,
 }
 
 /// An entry as it is first stored, with manual rotation.
@@ -115,7 +125,7 @@ pub struct CredentialWrite {
     pub secret: Option<Vec<u8>>,
 }
 
-const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation";
+const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation, video_generation";
 /// The columns a new entry stores; its rotation is the default, manual, its
 /// Image Generation is on, and it joins the end of its owner's list.
 const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, position";
@@ -203,8 +213,8 @@ impl ControlService {
     }
 
     /// Replaces the entry's label, family, sealed configuration, rotation or
-    /// Image Generation, and answers the entry as it now is; `None` for an entry
-    /// that no longer exists.
+    /// media switches, and answers the entry as it now is; `None` for an
+    /// entry that no longer exists.
     pub async fn update_provider(
         &self,
         id: ProviderId,
@@ -212,7 +222,7 @@ impl ControlService {
         family: Option<String>,
         config: Option<Vec<u8>>,
         rotation: Option<Rotation>,
-        image_generation: Option<bool>,
+        switches: MediaSwitches,
     ) -> Result<Option<ProviderRow>, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
@@ -240,9 +250,15 @@ impl ControlService {
                     params![rotation.to_string(), id.as_str()],
                 )?;
             }
-            if let Some(on) = image_generation {
+            if let Some(on) = switches.image {
                 transaction.execute(
                     "UPDATE providers SET image_generation = ?1 WHERE id = ?2",
+                    params![on, id.as_str()],
+                )?;
+            }
+            if let Some(on) = switches.video {
+                transaction.execute(
+                    "UPDATE providers SET video_generation = ?1 WHERE id = ?2",
                     params![on, id.as_str()],
                 )?;
             }
@@ -653,6 +669,7 @@ fn provider_row(row: &Row<'_>) -> Result<ProviderRow, StorageError> {
             row.get::<_, String>("rotation")?.parse::<Rotation>(),
         )?,
         image_generation: row.get("image_generation")?,
+        video_generation: row.get("video_generation")?,
     })
 }
 

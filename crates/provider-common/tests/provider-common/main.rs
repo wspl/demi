@@ -18,4 +18,5 @@ mod quota;
 mod responses;
 mod secret;
 mod sse;
+mod videos;
 mod wire;

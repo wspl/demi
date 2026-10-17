@@ -271,6 +271,7 @@ impl Backend {
             runners: config.runners,
             conversations: config.conversations,
             pages: config.pages,
+            media_tuning: config.media,
             native: config.native,
             plugins: config.plugins,
             cloud: CloudServices::new(machines, config.cloud),

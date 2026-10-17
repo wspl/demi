@@ -544,7 +544,11 @@
       "images": "图像",
       "none": "无",
       "addImage": "添加图像模型",
-      "noImages": "还没有图像模型"
+      "noImages": "还没有图像模型",
+      "videoGeneration": "视频生成",
+      "videos": "视频",
+      "addVideo": "添加视频模型",
+      "noVideos": "还没有视频模型"
     },
     "state": {
       "setup": "未设置",

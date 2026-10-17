@@ -254,7 +254,12 @@ pub(crate) const CONTROL: Schema = Schema {
 /// added in (`providers.md` § Provider management); and preferences no
 /// longer choose an entry per vendor's images, which the order and the
 /// switches say instead (`media.md` § Which entry makes a call), so a
-/// saved choice is dropped.
+/// saved choice is dropped; an entry whose provider makes videos has a
+/// Video Generation switch, on for every entry stored before; and a usage
+/// ledger row may be a video's, with the seconds made and the cost the
+/// vendor reported (`usage-and-quota.md` § Usage ledger), which SQLite's
+/// checks let in only on a table made again, its rows as they were with
+/// null for both.
 const CONTROL_FROM_0_1_27: &str = "
 CREATE TABLE port_forwards (
   id                TEXT PRIMARY KEY,
@@ -293,6 +298,40 @@ CREATE UNIQUE INDEX providers_one_subscription ON providers (owner_user_id, prov
   WHERE credential_kind = 'subscription';
 UPDATE user_preferences SET preferences = json_remove(preferences, '$.imageEntries')
   WHERE json_type(preferences, '$.imageEntries') IS NOT NULL;
+ALTER TABLE providers ADD COLUMN video_generation INTEGER NOT NULL DEFAULT 1 CHECK (video_generation IN (0, 1));
+CREATE TABLE usage_ledger_media (
+  id                    TEXT PRIMARY KEY,
+  user_id               TEXT NOT NULL REFERENCES users (id),
+  conversation_id       TEXT NOT NULL,
+  agent                 INTEGER CHECK (agent >= 0),
+  turn_id               TEXT,
+  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title', 'image', 'video')),
+  provider_id           TEXT NOT NULL,
+  account_id            TEXT,
+  model_id              TEXT NOT NULL,
+  request_id            TEXT,
+  vendor_id             TEXT,
+  input_tokens          INTEGER,
+  output_tokens         INTEGER,
+  cache_read_tokens     INTEGER,
+  cache_write_tokens    INTEGER,
+  cache_write_1h_tokens INTEGER,
+  outcome               TEXT,
+  quota                 TEXT,
+  started_at            INTEGER,
+  ended_at              INTEGER NOT NULL,
+  media_seconds         REAL CHECK (media_seconds >= 0),
+  cost                  REAL CHECK (cost >= 0),
+  cost_currency         TEXT CHECK (cost_currency IN ('usd', 'cny')),
+  CHECK ((cost IS NULL) = (cost_currency IS NULL))
+) STRICT;
+INSERT INTO usage_ledger_media (id, user_id, conversation_id, agent, turn_id, purpose, provider_id, account_id,
+    model_id, request_id, vendor_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
+    cache_write_1h_tokens, outcome, quota, started_at, ended_at)
+  SELECT * FROM usage_ledger ORDER BY rowid;
+DROP TABLE usage_ledger;
+ALTER TABLE usage_ledger_media RENAME TO usage_ledger;
+CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
 ";
 
 /// From 0.1.22-dev.20261016T095626Z's control schema, which a server keeps
@@ -3688,6 +3727,9 @@ CREATE TABLE providers (
   -- The entry's place in its owner's list of Settings › Providers, which
   -- generated media try entries in (media.md § Which entry makes a call).
   position             INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
+  -- Whether the entry makes videos when its provider can (providers.md
+  -- § Provider management); on from the start.
+  video_generation     INTEGER NOT NULL DEFAULT 1 CHECK (video_generation IN (0, 1)),
   CHECK ((credential_kind = 'api_key') = (config IS NOT NULL)),
   CHECK (credential_kind = 'subscription' OR active_credential_id IS NULL)
 ) STRICT;
@@ -3737,7 +3779,7 @@ CREATE TABLE usage_ledger (
   -- Null for a request outside a session, such as a title.
   agent                 INTEGER CHECK (agent >= 0),
   turn_id               TEXT,
-  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title', 'image')),
+  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title', 'image', 'video')),
   provider_id           TEXT NOT NULL,
   -- Null for an API key.
   account_id            TEXT,
@@ -3753,7 +3795,15 @@ CREATE TABLE usage_ledger (
   outcome               TEXT,
   quota                 TEXT,
   started_at            INTEGER,
-  ended_at              INTEGER NOT NULL
+  ended_at              INTEGER NOT NULL,
+  -- The seconds of video or audio the call made, as its file states them;
+  -- null for any other call or when nothing was made.
+  media_seconds         REAL CHECK (media_seconds >= 0),
+  -- What the vendor said the call cost, in the currency it names, never
+  -- converted; null when it said nothing in a documented unit.
+  cost                  REAL CHECK (cost >= 0),
+  cost_currency         TEXT CHECK (cost_currency IN ('usd', 'cny')),
+  CHECK ((cost IS NULL) = (cost_currency IS NULL))
 ) STRICT;
 CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
 
@@ -6654,6 +6704,57 @@ mod tests {
                 "row-1 user-1 conversation-1 null null null entry-1 null model-1 null null 1 2 3 4 null null null null 20",
             ]
         );
+    }
+
+    /// A database of 0.1.27's control schema keeps each ledger row whole,
+    /// with no seconds and no cost, takes a video's row with both, and its
+    /// entries make videos, as a new entry does (`usage-and-quota.md`
+    /// § Usage ledger, `providers.md` § Provider management). Planted
+    /// defects: the purpose's check left as it was, the columns copied out
+    /// of order, or a switch that starts off.
+    /// One small database, milliseconds.
+    #[test]
+    fn a_ledger_of_0_1_27_stays_whole_and_takes_a_videos_row_and_its_entries_make_videos() {
+        let (_directory, path, mut connection) = database(include_str!("schema/control-0.1.27.sql"));
+        let row = "'row-1', 'user-1', 'conversation-1', 2, 'turn-1', 'image', 'entry-1', 'account-1', 'model-1', \
+            'request-1', 'vendor-1', 1, 2, 3, 4, 5, 'answered', '[]', 10, 20";
+        connection
+            .execute_batch(&format!(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('user-1', 'a@example.test', 'A', 'hash', 'master', 1);
+                 INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, created_at)
+                   VALUES ('entry-1', 'user-1', 'grok-build', 'subscription', 'Grok', NULL, 10);
+                 INSERT INTO usage_ledger VALUES ({row});"
+            ))
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        connection
+            .execute_batch(
+                "INSERT INTO usage_ledger (id, user_id, conversation_id, purpose, provider_id, model_id, ended_at,
+                     media_seconds, cost, cost_currency)
+                   VALUES ('row-2', 'user-1', 'conversation-1', 'video', 'entry-1', 'grok-imagine-video', 30,
+                     5.04, 0.25, 'usd');",
+            )
+            .unwrap();
+        let kept: String = connection
+            .query_row(
+                "SELECT id || user_id || conversation_id || agent || turn_id || purpose || provider_id || account_id
+                   || model_id || request_id || vendor_id || input_tokens || output_tokens || cache_read_tokens
+                   || cache_write_tokens || cache_write_1h_tokens || outcome || quota || started_at || ended_at
+                   || coalesce(media_seconds, 'none') || coalesce(cost, 'none') || coalesce(cost_currency, 'none')
+                 FROM usage_ledger WHERE id = 'row-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            kept,
+            "row-1user-1conversation-12turn-1imageentry-1account-1model-1request-1vendor-112345answered[]1020nonenonenone"
+        );
+        let video: bool = connection
+            .query_row("SELECT video_generation FROM providers WHERE id = 'entry-1'", [], |row| row.get(0))
+            .unwrap();
+        assert!(video);
     }
 
     /// A ledger row of 0.1.22 keeps every column

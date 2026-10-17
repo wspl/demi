@@ -83,6 +83,7 @@ mod uploads;
 mod usage;
 mod users;
 mod versions;
+mod videos;
 mod work;
 mod workflows;
 mod workspaces;

@@ -7,6 +7,7 @@ use demi_plugin_changes::Changes;
 use demi_plugin_file::File;
 use demi_plugin_file_browser::FileBrowser;
 use demi_plugin_image::Image;
+use demi_plugin_video::Video;
 use demi_plugin_interface::PluginFactory;
 use demi_plugin_mobile::Mobile;
 use demi_plugin_skills::Skills;
@@ -21,6 +22,7 @@ pub fn builtin() -> Vec<Box<dyn PluginFactory>> {
         Box::new(Skills::new()),
         Box::new(Web::new()),
         Box::new(Image::new()),
+        Box::new(Video::new()),
         Box::new(Changes::new()),
         Box::new(FileBrowser::new()),
     ]

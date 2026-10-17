@@ -19,12 +19,15 @@ mod block;
 mod bytes;
 mod catalog;
 mod content;
+mod cost;
 mod context_limit;
 mod failure;
 mod file_types;
 mod ids;
 mod media;
 mod model;
+#[cfg(feature = "mp4")]
+pub mod mp4;
 pub mod names;
 pub mod output;
 mod provider_state;
@@ -51,6 +54,7 @@ pub use block::{
     client_blocks, WakeupPlacement,
 };
 pub use bytes::B64Bytes;
+pub use cost::{Cost, Currency};
 pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};
 pub use content::{
     Attachment, BlobRef, DocumentSource, GoneCause, MediaSource, PixelSize, ToolMediaSource,
@@ -84,7 +88,7 @@ pub use model::{
     file_extension_support, model_accepts_video,
 };
 pub use provider_state::{
-    AccountInfo, AuthState, ImageShape, LoginPending, LoginStage, MediaKind, MediaShapes, RefusedCode, RuntimeState, WireApi,
+    AccountInfo, AuthState, ImageShape, LoginPending, LoginStage, MediaKind, MediaShapes, RefusedCode, RuntimeState, VideoShape, WireApi,
 };
 pub use quota::{
     QuotaKind, QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, QuotaWindowName,

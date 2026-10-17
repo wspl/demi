@@ -4,11 +4,12 @@
 //! video is a real inline part and thought summaries, thought signatures and
 //! thinking token counts arrive as fields of their own. It reads its
 //! failure records by the standard reading. The key of a Gemini API vendor
-//! entry also makes images.
+//! entry also makes images and, with Veo, videos.
 
 mod images;
 mod request;
 mod stream;
+mod videos;
 
 use std::sync::Arc;
 
@@ -16,6 +17,7 @@ use demi_provider_common::{
     Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, read_http_failure,
     images::ImageMaker,
+    videos::VideoMaker,
 };
 use demi_shared_types::{
     AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts,
@@ -44,6 +46,9 @@ pub struct GoogleConfig {
     /// Whether the key makes images: an entry of the Gemini API vendor,
     /// not another vendor that speaks its protocol.
     pub makes_images: bool,
+    /// Whether the key makes videos with Veo: an entry of the Gemini API
+    /// vendor.
+    pub makes_videos: bool,
 }
 
 impl GoogleConfig {
@@ -56,6 +61,8 @@ pub struct GoogleProvider {
     shared: Arc<Shared>,
     /// The key's image role, for a Gemini API entry with its key.
     images: Option<images::KeyImages>,
+    /// The key's video role, for a Gemini API entry with its key.
+    videos: Option<videos::KeyVideos>,
 }
 
 /// What the provider and all its runtimes share.
@@ -85,11 +92,9 @@ impl GoogleProvider {
         let base_url = config.base_url.unwrap_or_else(|| {
             Url::parse(GoogleConfig::DEFAULT_BASE_URL).expect("the default base URL parses")
         });
-        let images = config
-            .api_key
-            .clone()
-            .filter(|_| config.makes_images)
-            .map(|key| images::KeyImages::new(key, base_url.clone(), clock.clone()));
+        let key = config.api_key.clone().map(|key| images::GeminiKey::new(key, base_url.clone(), clock.clone()));
+        let images = key.clone().filter(|_| config.makes_images).map(images::KeyImages);
+        let videos = key.filter(|_| config.makes_videos).map(videos::KeyVideos);
         Self {
             shared: Arc::new(Shared {
                 api_key: config.api_key.as_ref().map(Secret::header_value),
@@ -97,6 +102,7 @@ impl GoogleProvider {
                 clock,
             }),
             images,
+            videos,
         }
     }
 }
@@ -125,6 +131,10 @@ impl Provider for GoogleProvider {
 
     fn images(&self) -> Option<&dyn ImageMaker> {
         self.images.as_ref().map(|images| images as &dyn ImageMaker)
+    }
+
+    fn videos(&self) -> Option<&dyn VideoMaker> {
+        self.videos.as_ref().map(|videos| videos as &dyn VideoMaker)
     }
 
     fn read_failure(

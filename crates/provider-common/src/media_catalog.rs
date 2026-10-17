@@ -100,6 +100,16 @@ pub enum MediaKind {
     Other,
 }
 
+impl From<demi_shared_types::MediaKind> for MediaKind {
+    /// The catalog's kind of the models an entry makes of `kind`.
+    fn from(kind: demi_shared_types::MediaKind) -> Self {
+        match kind {
+            demi_shared_types::MediaKind::Image => Self::Image,
+            demi_shared_types::MediaKind::Video => Self::Video,
+        }
+    }
+}
+
 /// A subscription that makes a model without listing it
 /// (`images.md` § Vendors). One this backend does not know is skipped.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

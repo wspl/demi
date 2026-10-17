@@ -7,11 +7,12 @@
 //! incomplete until it has what it needs.
 
 use demi_backend_database::StorageError;
+use demi_backend_database::providers::MediaSwitches;
 use demi_backend_providers::llm::families::{ProviderFamily, family_name};
 use demi_backend_providers::vault::entries::{ApiKeyConfig, EntryCredential, ProviderEntry};
 use demi_backend_providers::vault::operations::OperationGuard;
 use demi_provider_common::{Secret, SecretError};
-use demi_shared_types::{ImageShape, MediaKind, MediaShapes, WireApi};
+use demi_shared_types::{ImageShape, MediaKind, MediaShapes, VideoShape, WireApi};
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::ids::{ProviderId, UserId};
 use demi_web_api_protocol::providers::{
@@ -75,7 +76,7 @@ pub enum ProviderRefusal {
     #[error("{0} makes media as its vendor does; its shapes can’t be changed.")]
     ShapeFixed(String),
     /// A model of a kind the entry makes none of.
-    #[error("models: {model} is an {kind} model, but {entry} makes no {kind}s; choose an {kind} shape first")]
+    #[error("models: {model} is {} {kind} model, but {entry} makes no {kind}s; choose {} {kind} shape first", article(*kind), article(*kind))]
     UnmadeKind { entry: String, model: String, kind: ModelKind },
     /// A list of entries for an order that does not name each of the
     /// scope's once.
@@ -86,6 +87,14 @@ pub enum ProviderRefusal {
     DuplicateModel(String),
     #[error(transparent)]
     Storage(#[from] StorageError),
+}
+
+/// The article before a kind of model: an image model, a video model.
+fn article(kind: ModelKind) -> &'static str {
+    match kind {
+        ModelKind::Image => "an",
+        ModelKind::Text | ModelKind::Video => "a",
+    }
 }
 
 impl Services {
@@ -163,6 +172,7 @@ impl Services {
                     vendor_id: Some(vendor.id),
                     models,
                     image_shape: None,
+                    video_shape: None,
                 };
                 (vendor.provider_type, label, config)
             }
@@ -183,6 +193,7 @@ impl Services {
                     vendor_id: Some(provider_type.clone()),
                     models,
                     image_shape: None,
+                    video_shape: None,
                 };
                 (provider_type, label, config)
             }
@@ -204,6 +215,7 @@ impl Services {
                     vendor_id: None,
                     models,
                     image_shape: None,
+                    video_shape: None,
                 };
                 (provider_type, label, config)
             }
@@ -238,18 +250,20 @@ impl Services {
         let _held = self.hold_entry(&entry)?;
         let protocol = patch.provider_type.is_some() || patch.wire_api.is_some();
         let image_shape = patch.media.as_ref().and_then(|media| media.image.as_ref()).and_then(|image| image.shape);
+        let video_shape = patch.media.as_ref().and_then(|media| media.video.as_ref()).and_then(|video| video.shape);
+        let shaped = image_shape.is_some() || video_shape.is_some();
         let lists = patch.models.is_some();
         let reconfigures = patch.api_key.is_some()
             || patch.base_url.is_some()
             || lists
-            || image_shape.is_some()
+            || shaped
             || protocol;
         let mut family = None;
         let config = if reconfigures {
             let EntryCredential::ApiKey(config) = &entry.credential else {
                 return Err(if patch.models.is_some() {
                     ProviderRefusal::OwnModels(entry.label.clone())
-                } else if image_shape.is_some() {
+                } else if shaped {
                     ProviderRefusal::ShapeFixed(entry.label.clone())
                 } else {
                     ProviderRefusal::SubscriptionOnly
@@ -291,13 +305,25 @@ impl Services {
                 }
                 config.image_shape = shape;
             }
+            if let Some(shape) = video_shape {
+                if !config.is_compatible() {
+                    return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
+                }
+                if shape.is_some_and(|shape| !VideoShape::CHOSEN.contains(&shape)) {
+                    return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
+                }
+                config.video_shape = shape;
+            }
             // A model added of a kind the entry does not make is no model of
             // it: only a compatible entry with a shape for the kind lists
             // one. One kept from before the shape was set to None stays,
             // unused and hidden, and comes back with the shape
             // (`providers.md` § Provider management), so a list that still
             // carries it, as an edit of a text model sends, is taken.
-            let shapes = MediaShapes { image: config.image_shape.filter(|_| config.is_compatible()) };
+            let shapes = MediaShapes {
+                image: config.image_shape.filter(|_| config.is_compatible()),
+                video: config.video_shape.filter(|_| config.is_compatible()),
+            };
             let kept = |model: &ConfiguredModel| {
                 stored.iter().flat_map(|models| &models.0).any(|before| before.id == model.id && before.kind == model.kind)
             };
@@ -330,15 +356,20 @@ impl Services {
         }
         // A switch belongs to a kind the entry makes, with the shape this
         // change gives it.
-        let image_generation = patch.media.as_ref().and_then(|media| media.enabled(MediaKind::Image));
-        if image_generation.is_some() {
-            let shapes = match &config {
-                Some(config) if config.is_compatible() => MediaShapes { image: config.image_shape },
-                _ => self.assembly.media_shapes(&entry),
-            };
-            if !shapes.makes(MediaKind::Image) {
-                return Err(ProviderRefusal::MakesNo(entry.label.clone(), "images"));
-            }
+        let switch = |kind| patch.media.as_ref().and_then(|media| media.enabled(kind));
+        let switches = MediaSwitches {
+            image: switch(MediaKind::Image),
+            video: switch(MediaKind::Video),
+        };
+        let shapes = match &config {
+            Some(config) if config.is_compatible() => MediaShapes {
+                image: config.image_shape,
+                video: config.video_shape,
+            },
+            _ => self.assembly.media_shapes(&entry),
+        };
+        if let Some(kind) = MediaKind::ALL.into_iter().find(|kind| switch(*kind).is_some() && !shapes.makes(*kind)) {
+            return Err(ProviderRefusal::MakesNo(entry.label.clone(), kind.plural()));
         }
         let label = patch.label.map(|label| label.into_string());
         let updated = self
@@ -349,7 +380,7 @@ impl Services {
                 family,
                 config,
                 patch.rotation,
-                image_generation,
+                switches,
             )
             .await?
             .ok_or(ProviderRefusal::NotFound)?;
@@ -387,16 +418,18 @@ impl Services {
         Ok(entry)
     }
 
-    /// The models.dev models `query` matches, filled from the vendor of the
-    /// entry `entry` of `user`'s scope where it lists them.
-    /// Each entry's image models by entry id, which `GET /api/models` carries
-    /// for the settings page (`web-api-settings.md` § Models).
-    pub async fn entry_image_models(
+    /// Each entry's models of `kind` by entry id, which `GET /api/models`
+    /// carries for the settings page (`web-api-settings.md` § Models).
+    pub async fn entry_media_models(
         &self,
         user: &UserId,
-    ) -> Result<std::collections::HashMap<String, Vec<demi_web_api_protocol::providers::EntryImageModel>>, demi_backend_providers::llm::assembly::AssemblyError> {
-        crate::shard::media::entry_image_models(self, user).await
+        kind: demi_shared_types::MediaKind,
+    ) -> Result<std::collections::HashMap<String, Vec<demi_web_api_protocol::providers::EntryMediaModel>>, demi_backend_providers::llm::assembly::AssemblyError> {
+        crate::shard::media::entry_media_models(self, user, kind).await
     }
+
+    /// The models.dev models `query` matches, filled from the vendor of the
+    /// entry `entry` of `user`'s scope where it lists them.
 
     pub async fn search_models(
         &self,

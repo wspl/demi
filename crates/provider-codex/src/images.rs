@@ -5,8 +5,9 @@
 
 use bytes::Bytes;
 use demi_provider_common::{
-    images::{ImageAnswer, ImageCall, ImageCredential, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, openai, read_data_answer, subscription_models},
-    media_catalog::{Catalog, Subscription},
+    images::{ImageMaker, ImageRequest, MadeImage, openai, read_data_answer},
+    media::{MediaAnswer, MediaCall, MediaCredential, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, subscription_models},
+    media_catalog::{Catalog, MediaKind, Subscription},
     json_body,
 };
 use futures_util::future::BoxFuture;
@@ -47,13 +48,13 @@ fn encode(catalog: &Catalog, request: &ImageRequest) -> Bytes {
     Bytes::from(json_body(&body))
 }
 
-impl ImageMaker for CodexProvider {
+impl MediaMaker for CodexProvider {
     fn name(&self) -> &str {
         "ChatGPT"
     }
 
-    fn vendor(&self) -> Option<ImageVendor> {
-        Some(ImageVendor::OpenAi)
+    fn vendor(&self) -> Option<MediaVendor> {
+        Some(MediaVendor::OpenAi)
     }
 
     /// The catalog's models of a ChatGPT subscription: the backend refuses
@@ -62,8 +63,8 @@ impl ImageMaker for CodexProvider {
         &'a self,
         _: &'a demi_provider_common::ProviderHttp,
         catalog: &'a Catalog,
-    ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
-        Box::pin(std::future::ready(Ok(subscription_models(catalog, Subscription::Chatgpt))))
+    ) -> BoxFuture<'a, Result<Vec<MediaModelInfo>, MediaFailure>> {
+        Box::pin(std::future::ready(Ok(subscription_models(catalog, Subscription::Chatgpt, MediaKind::Image))))
     }
 
     /// The backend's answer names no model, and it may answer with another
@@ -71,13 +72,15 @@ impl ImageMaker for CodexProvider {
     fn confirms_model(&self) -> bool {
         false
     }
+}
 
+impl ImageMaker for CodexProvider {
     fn make<'a>(
         &'a self,
         http: &'a demi_provider_common::ProviderHttp,
         catalog: &'a Catalog,
         request: ImageRequest,
-    ) -> BoxFuture<'a, ImageAnswer> {
+    ) -> BoxFuture<'a, MediaAnswer<MadeImage>> {
         Box::pin(async move {
             let shared = &self.shared;
             let url = if request.images.is_empty() {
@@ -85,21 +88,21 @@ impl ImageMaker for CodexProvider {
             } else {
                 &shared.image_edits_url
             };
-            let call = ImageCall {
+            let call = MediaCall {
                 label: LABEL,
-                credential: ImageCredential::Account { family: crate::auth::FAMILY },
+                credential: MediaCredential::Account { family: crate::auth::FAMILY },
                 reader: read_codex_failure,
                 used_up: with_usage_limit,
                 clock: &*shared.clock,
                 quota: Some(&shared.quota),
-                answer: read_data_answer,
             };
-            call.send(http, url, encode(catalog, &request), |refused| async move {
+            call.post_json(http, url, encode(catalog, &request), |refused| async move {
                 let credentials = shared.auth.credentials(http, refused.as_ref()).await?;
                 let headers = account_headers(&credentials, &shared.user_agent);
                 Ok((headers, Some(credentials.access_token)))
             })
             .await
+            .and_then(|body| read_data_answer(&body))
         })
     }
 }

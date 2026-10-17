@@ -205,7 +205,7 @@ export function provider(
     enabled: true,
     models: [],
     accounts: [],
-    media: { image: { shape: null, enabled: true } },
+    media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true } },
     autoRefreshUsage: partial.kind === 'subscription',
     logo: providerLogo({ kind: partial.kind, providerType: partial.family, vendorId: partial.vendorId ?? null }),
     ...partial,
@@ -474,7 +474,7 @@ export function mockProviders(): MockProvider[] {
         { id: 'gpt-image-2', name: 'GPT-Image-2', released: '2026-04-21' },
         { id: 'gpt-image-1.5', name: 'GPT-Image-1.5', released: '2025-12-16' },
         { id: 'gpt-image-1-mini', name: 'GPT-Image-1 Mini', released: '2025-10-06' },
-      ] } },
+      ] }, video: { shape: null, enabled: true } },
       // Two accounts, so Rotation shows here too; removing both signs it out.
       accounts: [
         {
@@ -517,11 +517,19 @@ export function mockProviders(): MockProvider[] {
         kind: 'subscription',
         family: 'grok-build',
         // Its images are turned off, so the agent's come from Codex, and Settings › Agent's
-        // xAI row has no entry to offer.
-        media: { image: { shape: 'grok', enabled: false, models: [
-          { id: 'grok-imagine-image-1.5', name: 'Grok Imagine Image 1.5', released: '2026-07-14' },
-          { id: 'grok-imagine-image', name: 'Grok Imagine Image', released: '2026-01-28' },
-        ] } },
+        // xAI row has no entry to offer; it makes the agent's videos, the subscription's
+        // models newest first, those xAI gives no date last.
+        media: {
+          image: { shape: 'grok', enabled: false, models: [
+            { id: 'grok-imagine-image-1.5', name: 'Grok Imagine Image 1.5', released: '2026-07-14' },
+            { id: 'grok-imagine-image', name: 'Grok Imagine Image', released: '2026-01-28' },
+          ] },
+          video: { shape: 'grok', enabled: true, models: [
+            { id: 'grok-imagine-video-1.5', name: 'Grok Imagine Video 1.5', released: '2026-05-30' },
+            { id: 'grok-imagine-video-1.5-lite', name: 'Grok Imagine Video 1.5 Lite', released: null },
+            { id: 'grok-imagine-video', name: 'Grok Imagine Video', released: null },
+          ] },
+        },
         // Signed in and reachable from the backend: its active account can be tested.
         accounts: [
           { id: 'g1', label: 'alex@example.com', plan: 'XPremium', active: true, quota: [] },
@@ -621,7 +629,7 @@ export function mockProviders(): MockProvider[] {
         { id: 'gpt-image-2', name: 'GPT-Image-2', released: '2026-04-21' },
         { id: 'gpt-image-1.5', name: 'GPT-Image-1.5', released: '2025-12-16' },
         { id: 'gpt-image-1-mini', name: 'GPT-Image-1 Mini', released: '2025-10-06' },
-      ] } },
+      ] }, video: { shape: null, enabled: true } },
       state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: ago(3 * DAY),
       models: [
         model(
@@ -686,8 +694,9 @@ export function mockProviders(): MockProvider[] {
       id: 'ollama', name: 'Ollama on the lab workstation', kind: 'api_key', family: 'openai', vendorId: null, compatible: true,
       baseUrl: 'http://localhost:11434/v1', wireApi: 'openai-chat', apiKey: '',
       modelSource: 'manual', state: 'unreachable', detail: 'connect ECONNREFUSED 127.0.0.1:11434',
-      // Ollama serves OpenAI's image requests too, so the user chose that shape and added an image model.
-      media: { image: { shape: 'openai-images', enabled: true } },
+      // Ollama serves OpenAI's image requests too, so the user chose that shape and added an
+      // image model; it serves no videos, so its video shape stays None.
+      media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true } },
       models: [
         model({
           id: 'qwen3:32b',

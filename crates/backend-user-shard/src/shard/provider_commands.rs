@@ -16,14 +16,14 @@ use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc};
 use demi_agent_tools::EFFORT_OFF;
 use demi_shared_types::{
-    FileExtension, ImageShape, ModelSelection, WireApi, model_reads_images,
+    FileExtension, ImageShape, ModelSelection, VideoShape, WireApi, model_reads_images,
     output::{Cell, Fields, Table, warning},
 };
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::error::problems;
 use demi_web_api_protocol::providers::{
     Availability, ConfiguredModel, ConfiguredModels, CreateProvider,
-    CredentialKind, ImageMedia, ImageMediaPatch, MediaPatch, ModelKind, ModelMatch,
+    CredentialKind, ImageMedia, ImageMediaPatch, MediaPatch, ModelKind, ModelMatch, VideoMedia, VideoMediaPatch,
     ProviderPatch, SetupPart,
 };
 use demi_web_api_protocol::text::{EndpointUrl, Trimmed};
@@ -56,9 +56,9 @@ const SHOW_SUMMARY: &str = "Show every setting of one entry: name, kind, vendor 
 
 const ADD_SUMMARY: &str = "Add a provider entry: --vendor, a models.dev vendor; --family alone, the family's own vendor; or --family with --wire and --base-url, a compatible API. Without --name it is named after its vendor or family, or Compatible API, with (2), (3) when that name is taken. A vendor's entry without a key joins the list incomplete until the user adds the key in Settings > Providers; a compatible API's key is optional. Needs the user's permission.";
 
-const EDIT_SUMMARY: &str = "Change an entry's name, its endpoint, its key with --api-key-stdin, or how it makes images with --image. Needs the user's permission.";
+const EDIT_SUMMARY: &str = "Change an entry's name, its endpoint, its key with --api-key-stdin, or how it makes images with --image and videos with --video. Needs the user's permission.";
 
-const ORDER_SUMMARY: &str = "Put the entries in an order, the one Settings > Providers shows and generated images try them in, subscriptions before keys: the entries named come first, in the order given, and the others keep theirs after them. Needs the user's permission.";
+const ORDER_SUMMARY: &str = "Put the entries in an order, the one Settings > Providers shows and generated images and videos try them in, subscriptions before keys: the entries named come first, in the order given, and the others keep theirs after them. Needs the user's permission.";
 
 const REMOVE_SUMMARY: &str = "Remove an entry with its accounts, as Settings does. Needs the user's permission.";
 
@@ -81,9 +81,10 @@ const NAME: &str = "The entry's name, 1 to 80 characters, as Settings shows it."
 const BASE_URL: &str = "The API's address, an http or https URL such as https://api.example.com/v1.";
 const API_KEY_STDIN: &str = "Read the entry's key from stdin, one line; pipe it in, never type it into a command.";
 const API_KEY: &str = "The key, read from stdin with --api-key-stdin.";
-const IMAGE: &str = "off turns the entry's Image Generation off; a shape turns it on, and for a compatible API also chooses how it makes images: openai-images, or none for no images. A vendor's entry makes images in its vendor's shape only.";
+const IMAGE: &str = "on turns the entry's Image Generation on and off turns it off; a shape turns it on, and for a compatible API also chooses how it makes images: openai-images, or none for no images. A vendor's entry makes images in its vendor's shape only, which on turns on.";
+const VIDEO: &str = "on turns the entry's Video Generation on and off turns it off; a shape turns it on, and for a compatible API also chooses how it makes videos: xai-videos, openai-videos, openrouter-videos, or none for no videos. A vendor's entry makes videos in its vendor's shape only, which on turns on.";
 const ENTRIES: &str = "The entries, by name or id, in the order to put them.";
-const KIND: &str = "What the model makes: text, the model menu's, or image, for a compatible API whose image shape is chosen; text without it.";
+const KIND: &str = "What the model makes: text, the model menu's; image, for a compatible API whose image shape is chosen; or video, for one whose video shape is chosen. Text without it.";
 const MODEL_ID: &str = "The model's id as the entry's vendor names it.";
 const MODEL_NAME: &str = "The model's name in the model menu; its id without one.";
 const CONTEXT: &str = "The context window in tokens.";
@@ -129,6 +130,7 @@ struct EditArgs {
     api_key_stdin: Option<bool>,
     api_key: Option<String>,
     image: Option<String>,
+    video: Option<String>,
 }
 
 /// The input of `order`.
@@ -254,11 +256,15 @@ struct ShownEntry {
     hidden: bool,
     /// How it makes images: its shape, null for none, and its switch.
     images: ImageMedia,
+    /// How it makes videos, as `images` says of images.
+    videos: VideoMedia,
     /// Where its models come from.
     models_from: ModelSource,
     models: Vec<ShownModel>,
     /// The image models of its own list.
     image_models: Vec<ConfiguredModel>,
+    /// The video models of its own list.
+    video_models: Vec<ConfiguredModel>,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -367,6 +373,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .describe("api-key-stdin", API_KEY_STDIN)
                 .describe("api-key", API_KEY)
                 .describe("image", IMAGE)
+                .describe("video", VIDEO)
                 .positionals(["entry"])
                 .stdin_field("api-key")
                 .stdin_with(["api-key-stdin"])
@@ -568,12 +575,12 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
         label: args.name.map(Trimmed::from),
         api_key: key(args.api_key_stdin, args.api_key)?.map(Some),
         base_url: args.base_url.map(endpoint).transpose()?.map(Some),
-        media: args.image.map(|image| image_patch(&image, compatible)).transpose()?,
+        media: media_patch(args.image.as_deref(), args.video.as_deref(), compatible)?,
         ..ProviderPatch::default()
     };
     if patch.label.is_none() && patch.api_key.is_none() && patch.base_url.is_none() && patch.media.is_none() {
         return Err(failed(
-            "nothing to change: give --name, --base-url, --api-key-stdin or --image",
+            "nothing to change: give --name, --base-url, --api-key-stdin, --image or --video",
         ));
     }
     patch.validate().map_err(|report| failed(problems(&report)))?;
@@ -589,23 +596,43 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
     answer(&port, call.invocation.json, shown).await
 }
 
-/// What `--image` asks: `off` turns the switch off; a shape turns it on,
-/// and chooses a compatible entry's shape, `none` taking it away.
-fn image_patch(image: &str, compatible: bool) -> Result<MediaPatch, RpcError> {
-    let change = match image {
-        "off" => ImageMediaPatch { shape: None, enabled: Some(false) },
-        "none" if compatible => ImageMediaPatch { shape: Some(None), enabled: None },
+/// What `--image` and `--video` ask; none when neither is given.
+fn media_patch(image: Option<&str>, video: Option<&str>, compatible: bool) -> Result<Option<MediaPatch>, RpcError> {
+    if image.is_none() && video.is_none() {
+        return Ok(None);
+    }
+    let image = image
+        .map(|asked| kind_patch::<ImageShape>(asked, "--image", "openai-images", compatible))
+        .transpose()?
+        .map(|(shape, enabled)| ImageMediaPatch { shape, enabled });
+    let video = video
+        .map(|asked| kind_patch::<VideoShape>(asked, "--video", "xai-videos", compatible))
+        .transpose()?
+        .map(|(shape, enabled)| VideoMediaPatch { shape, enabled });
+    Ok(Some(MediaPatch { image, video }))
+}
+
+/// What a kind's option asks, as its patch's shape and switch: `on` and
+/// `off` turn the switch on and off, a vendor entry's kind in its fixed
+/// shape (`media.md`); a shape turns it on, and chooses a compatible
+/// entry's shape, `none` taking it away.
+fn kind_patch<S: std::str::FromStr>(
+    asked: &str,
+    option: &str,
+    example: &str,
+    compatible: bool,
+) -> Result<(Option<Option<S>>, Option<bool>), RpcError> {
+    Ok(match asked {
+        "on" => (None, Some(true)),
+        "off" => (None, Some(false)),
+        "none" if compatible => (Some(None), None),
         shape => {
-            let shape: ImageShape = shape.parse().map_err(|_| {
-                failed(format!("--image {shape}: give off, a shape such as openai-images, or none"))
-            })?;
-            ImageMediaPatch {
-                shape: compatible.then_some(Some(shape)),
-                enabled: Some(true),
-            }
+            let shape: S = shape
+                .parse()
+                .map_err(|_| failed(format!("{option} {shape}: give on, off, a shape such as {example}, or none")))?;
+            (compatible.then_some(Some(shape)), Some(true))
         }
-    };
-    Ok(MediaPatch { image: Some(change) })
+    })
 }
 
 async fn order(shard: Rc<Shard>, call: Call<OrderArgs>, port: RpcPort) -> Result<u8, RpcError> {
@@ -728,10 +755,8 @@ async fn add_model(
     let count = models.len();
     write_list(&shard, &user, entry, models).await?;
     if started {
-        let note = format!(
-            "{} now keeps its own list of {count} models; it no longer follows models.dev",
-            entry.label
-        );
+        let models = if count == 1 { "1 model".to_owned() } else { format!("{count} models") };
+        let note = format!("{} now keeps its own list of {models}; it no longer follows models.dev", entry.label);
         port.stderr(warning(&call.invocation.path.join(" "), &note)).await?;
     }
     model_answer(&port, call.invocation.json, model).await
@@ -1116,6 +1141,14 @@ async fn shown(
                 .collect()
         })
         .unwrap_or_default();
+    let media = services.assembly.provider_dto(entry).media;
+    // The media models of the entry's own list, by kind.
+    let own = |kind: ModelKind| -> Vec<ConfiguredModel> {
+        config
+            .and_then(|config| config.models.as_ref())
+            .map(|models| models.0.iter().filter(|model| model.kind == kind).cloned().collect())
+            .unwrap_or_default()
+    };
     Ok(ShownEntry {
         id: entry.id.as_str().to_owned(),
         name: entry.label.clone(),
@@ -1131,13 +1164,12 @@ async fn shown(
             |catalog| catalog.availability.clone(),
         ),
         hidden: scope.preferences.hides_provider(&entry.id),
-        images: services.assembly.provider_dto(entry).media.image,
+        images: media.image,
+        videos: media.video,
         models_from,
         models,
-        image_models: config
-            .and_then(|config| config.models.as_ref())
-            .map(|models| models.0.iter().filter(|model| model.kind == ModelKind::Image).cloned().collect())
-            .unwrap_or_default(),
+        image_models: own(ModelKind::Image),
+        video_models: own(ModelKind::Video),
     })
 }
 
@@ -1279,6 +1311,13 @@ impl ShownEntry {
                 }),
             )
             .field(
+                "Videos",
+                self.videos.shape.map(|shape| {
+                    let switch = if self.videos.enabled { "on" } else { "off" };
+                    format!("{shape}, Video Generation {switch}")
+                }),
+            )
+            .field(
                 "Models from",
                 match self.models_from {
                     ModelSource::List => "list",
@@ -1287,12 +1326,15 @@ impl ShownEntry {
                 },
             )
             .table("Models", &models);
-        if !self.image_models.is_empty() {
-            let mut images = Table::new(["id", "name"]);
-            for model in &self.image_models {
-                images.row([model.id.as_str(), model.display_name.as_str()]);
+        for (title, own) in [("Image models", &self.image_models), ("Video models", &self.video_models)] {
+            if own.is_empty() {
+                continue;
             }
-            fields.table("Image models", &images);
+            let mut table = Table::new(["id", "name"]);
+            for model in own {
+                table.row([model.id.as_str(), model.display_name.as_str()]);
+            }
+            fields.table(title, &table);
         }
         fields.render()
     }

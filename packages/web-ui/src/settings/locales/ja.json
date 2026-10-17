@@ -544,7 +544,11 @@
       "images": "画像",
       "none": "なし",
       "addImage": "画像モデルを追加",
-      "noImages": "画像モデルはまだありません"
+      "noImages": "画像モデルはまだありません",
+      "videoGeneration": "動画生成",
+      "videos": "動画",
+      "addVideo": "動画モデルを追加",
+      "noVideos": "動画モデルはまだありません"
     },
     "state": {
       "setup": "未設定",

@@ -254,6 +254,7 @@ fn deepseek() -> Result<Rc<OpenAiProvider>, String> {
         },
         vendor_id: Some("openai".to_owned()),
         makes_images: false,
+        makes_videos: false,
     };
     Ok(Rc::new(OpenAiProvider::new(config, Arc::new(SystemClock))))
 }

@@ -190,6 +190,7 @@ impl ProviderAssembly {
             models,
             // The media service fills them, which knows the media catalog.
             image_models: Vec::new(),
+            video_models: Vec::new(),
             source_fetched_at: catalog.source_fetched_at,
             stale: catalog.stale,
             warnings: catalog.warnings,
@@ -246,9 +247,11 @@ mod tests {
                 vendor_id: None,
                 models,
                 image_shape: None,
+                video_shape: None,
             }),
             created_at: Timestamp::UNIX_EPOCH,
             image_generation: true,
+            video_generation: true,
         }
     }
 
