@@ -798,6 +798,7 @@ impl Owner<'_> {
                     command: TaskCommand::Shell {
                         script: script.clone(),
                         conversation: context.conversation.clone(),
+                        caller: context.caller.clone(),
                         stdin: stdin.clone(),
                         stdout: stdout.clone(),
                         // The job pins the manifest its start names as the

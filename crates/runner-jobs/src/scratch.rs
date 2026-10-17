@@ -1,13 +1,17 @@
 //! Each conversation's scratch directory (`runner.md` § Scratch directory):
 //! `<DEMI_HOME>/scratch/<conversation id>/`, made at the conversation's
-//! first job on the Host, named by `DEMI_SCRATCH` in each of its jobs, and
-//! removed once its conversation no longer exists.
+//! first job on the Host and removed once its conversation no longer
+//! exists. `DEMI_SCRATCH` names the calling agent's own: the conversation's
+//! directory for the root agent, its `agent-<number>/` folder for a
+//! subagent.
 
 use std::{
     collections::HashSet,
     io,
     path::{Path, PathBuf},
 };
+
+use demi_command_protocol::CommandCaller;
 
 /// The variable that names a job's scratch directory.
 pub const SCRATCH_ENV: &str = "DEMI_SCRATCH";
@@ -31,10 +35,14 @@ impl Scratch {
         &self.root
     }
 
-    /// The directory of `conversation`, a conversation name the wire checked
-    /// (`native-runtime.md` § Command context), made when it is not there.
-    pub async fn create(&self, conversation: &str) -> io::Result<PathBuf> {
-        let directory = self.root.join(conversation);
+    /// The scratch directory of `caller` in `conversation`, a conversation
+    /// name the wire checked (`native-runtime.md` § Command context), made
+    /// when it is not there.
+    pub async fn create(&self, conversation: &str, caller: &CommandCaller) -> io::Result<PathBuf> {
+        let mut directory = self.root.join(conversation);
+        if let Some(folder) = caller.scratch_folder() {
+            directory.push(folder);
+        }
         tokio::fs::create_dir_all(&directory).await?;
         Ok(directory)
     }

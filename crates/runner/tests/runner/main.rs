@@ -228,10 +228,15 @@ const CONVERSATION: &str = "conversation";
 
 /// A command context for jobs that run no declared command.
 fn context() -> CommandContext {
+    context_of(CommandCaller::agent(1))
+}
+
+/// The command context of a job of `CONVERSATION` that `caller` starts.
+fn context_of(caller: CommandCaller) -> CommandContext {
     CommandContext {
         color_scheme: demi_command_protocol::ColorScheme::Light,
         conversation: CONVERSATION.into(),
-        caller: CommandCaller::agent(1),
+        caller,
         locale: CommandLocale {
             time_zone: "UTC".into(),
             languages: vec!["en-US".into()],
@@ -247,11 +252,16 @@ async fn start_job(host: &mut Host, job: &str, script: &str) {
 
 /// Starts `script` as job `job` in `cwd`.
 async fn start_job_in(host: &mut Host, job: &str, cwd: &Path, script: &str) {
+    start_job_by(host, job, cwd, CommandCaller::agent(1), script).await;
+}
+
+/// Starts `script` as job `job` of `caller` in `cwd`.
+async fn start_job_by(host: &mut Host, job: &str, cwd: &Path, caller: CommandCaller, script: &str) {
     let cwd = cwd.to_string_lossy().into_owned();
     host.send(Inbound::JobStart {
         manifest_hash: None,
         viewable: None,
-        context: context(),
+        context: context_of(caller),
         job_id: job.into(),
         script: script.into(),
         cwd,
