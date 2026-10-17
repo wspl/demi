@@ -187,11 +187,11 @@ async fn an_agent_adds_a_provider_and_a_model_from_models_dev_under_the_permissi
         serde_json::to_value(&google.models).unwrap(),
         json!([
             {
-                "id": "gemini-3.8-pro", "displayName": "Gemini 3.8 Pro", "contextWindow": 1_048_576,
+                "kind": "text", "id": "gemini-3.8-pro", "displayName": "Gemini 3.8 Pro", "contextWindow": 1_048_576,
                 "outputLimit": null, "thinkingEfforts": [], "acceptedExtensions": [], "fastTier": null
             },
             {
-                "id": "gemini-3.8-flash", "displayName": "Gemini 3.8 Flash", "contextWindow": 1_048_576,
+                "kind": "text", "id": "gemini-3.8-flash", "displayName": "Gemini 3.8 Flash", "contextWindow": 1_048_576,
                 "outputLimit": 65_536, "thinkingEfforts": ["low", "medium", "high"],
                 "acceptedExtensions": ["png", "jpg", "jpeg", "gif", "webp", "pdf"], "fastTier": null
             }

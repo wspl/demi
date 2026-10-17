@@ -290,6 +290,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         .route("/models/search", get(models::search))
         .route("/providers", get(providers::list).post(providers::create))
         .route("/providers/catalog", get(providers::catalog))
+        .route("/providers/order", put(providers::order))
         .route("/providers/subscription-login", post(accounts::start_login))
         .route(
             "/providers/subscription-login/{id}",

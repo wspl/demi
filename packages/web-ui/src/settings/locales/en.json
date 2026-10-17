@@ -539,7 +539,13 @@
     "saving": "Saving…",
     "addAccount": "Add Account",
     "showInMenu": "Show in model menu",
-    "imageGeneration": "Image Generation",
+    "media": {
+      "imageGeneration": "Image Generation",
+      "images": "Images",
+      "none": "None",
+      "addImage": "Add Image Model",
+      "noImages": "No image models yet"
+    },
     "state": {
       "setup": "Not set up",
       "signedOut": "Signed out",
@@ -576,11 +582,12 @@
       "keyReplace": "Enter a new key to replace",
       "keyPaste": "Paste your API key",
       "test": "Test connection",
-      "testDescription": "Sends one short request to the first enabled model.",
+      "testDescription": "Sends one short chat message to the first enabled text model.",
       "testing": "Testing…",
       "connected": "Connected",
       "failed": "Failed",
-      "enableModel": "Enable a model first"
+      "enableModel": "Enable a model first",
+      "noTextModel": "The test sends a chat message, and this provider has no text model"
     },
     "cli": {
       "title": "Command-Line Tool",
@@ -611,7 +618,7 @@
       "enable": "Enable {name}",
       "noResults": "No results",
       "signInToSee": "Sign in to see models",
-      "none": "No models"
+      "none": "No models yet"
     },
     "removeProvider": {
       "title": "Remove “{name}”?",
@@ -665,6 +672,7 @@
     "id": "Model ID",
     "name": "Name",
     "nameDescription": "Shown in the model menu. Defaults to the ID.",
+    "nameDefault": "Defaults to the ID.",
     "contextWindow": "Context window",
     "maxOutput": "Max output",
     "optional": "Optional",

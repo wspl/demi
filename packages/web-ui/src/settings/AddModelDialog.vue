@@ -33,6 +33,8 @@ const props = defineProps<{
   adding?: boolean
   /** Why the last add failed, with the request it came from. */
   error?: ShownError | null
+  /** The title, the name of the button that opened it, such as Add Image Model; Add Model without it. */
+  title?: string
 }>()
 
 const emit = defineEmits<{
@@ -88,10 +90,10 @@ function choose(choice: Choice): void {
 </script>
 
 <template>
-  <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="lg" :label="t('addModel.title')" @close="emit('close')">
+  <Dialog :is-open="isOpen" :overlay-store="overlayStore" size="lg" :label="props.title ?? t('addModel.title')" @close="emit('close')">
     <div class="flex flex-col gap-4 px-5 pt-5">
       <header class="select-none pr-10">
-        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ t('addModel.title') }}</h3>
+        <h3 class="text-[15px] font-medium text-fg-emphasis">{{ props.title ?? t('addModel.title') }}</h3>
         <p class="mt-0.5 text-explanation leading-5 text-fg-muted">
           {{ t('addModel.hint') }}
         </p>

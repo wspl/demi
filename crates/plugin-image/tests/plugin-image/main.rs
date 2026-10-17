@@ -8,7 +8,10 @@ mod support;
 
 use std::io::Cursor;
 
-use demi_plugin_interface::{ImageEntry, ImageKind, ImageModel, ImageRefusal, ImageUnlisted, ImageVendorModels, MadeImage, PortRefusal};
+use demi_plugin_interface::{
+    EntryStatus, ImageFacts, ImageKind, ImageRefusal, ImageUnlisted, MadeImage, MediaListing, MediaModel, MediaPrice, ModelEntry,
+    PortRefusal, PriceRate, Unable,
+};
 use image::{GenericImageView as _, ImageFormat, Rgb, RgbImage};
 
 use crate::support::{Plugged, local};
@@ -26,7 +29,7 @@ fn made(bytes: Vec<u8>) -> MadeImage {
     MadeImage {
         bytes: bytes.into(),
         model: "gpt-image-2".into(),
-        provider: "Codex".into(),
+        provider: "ChatGPT".into(),
         vendor: "ChatGPT".into(),
         account: Some("alex@example.com".into()),
         // The ChatGPT backend's answer names no model.
@@ -39,7 +42,7 @@ fn from_grok(bytes: Vec<u8>) -> MadeImage {
     MadeImage {
         bytes: bytes.into(),
         model: "grok-imagine-image".into(),
-        provider: "Grok Build".into(),
+        provider: "Grok".into(),
         vendor: "Grok".into(),
         account: Some("alex@example.com".into()),
         confirmed: true,
@@ -313,63 +316,204 @@ fn a_call_without_a_model_fails_and_asks_for_nothing() {
     });
 }
 
-/// The listing groups the models by vendor, each group headed by the entry
-/// its models go through now; a model only another entry offers names that
-/// entry on its line; a date is shown when known; an entry whose vendor
-/// cannot confirm the model says so once under its group; an entry whose
-/// list could not be read says why.
-/// Planted defect this catches: a model of another entry listed as the
-/// group's, or the note repeated on every model.
+fn entry(provider: &str, subscription: bool, account: Option<&str>, confirmed: bool, status: EntryStatus) -> ModelEntry {
+    ModelEntry {
+        provider: provider.into(),
+        provider_id: provider.to_lowercase(),
+        subscription,
+        account: account.map(str::to_owned),
+        confirmed,
+        status,
+    }
+}
+
+fn model(id: &str, vendor: Option<&str>, released: Option<&str>, name: Option<&str>, entries: Vec<ModelEntry>) -> MediaModel {
+    MediaModel {
+        id: id.into(),
+        vendor: vendor.map(str::to_owned),
+        vendor_id: vendor.map(str::to_lowercase),
+        name: name.map(str::to_owned),
+        description: None,
+        released: released.map(str::to_owned),
+        alias_of: None,
+        aliases: Vec::new(),
+        image: None,
+        price: None,
+        entries,
+    }
+}
+
+/// The list is a table (`commands.md` § Output): one row per model with
+/// the entry a call takes now, `-` where nothing is known, columns aligned
+/// by the width a terminal gives them, a CJK name counting two; what is no
+/// data, an entry whose models could not be listed or one that does not
+/// confirm the model, goes to stderr. One model is labelled lines with its
+/// prices and its entries as tables, and `--json` prints the same.
+/// Planted defects this catches: a CJK name that pushes its row out of
+/// line; the entry a call takes named from one used up; a note on stdout;
+/// a fact or a status left out of the page.
 #[test]
-fn the_model_listing_groups_by_vendor_under_the_entry_each_goes_through() {
+fn the_models_are_a_table_one_model_is_labelled_lines_and_json_prints_the_same() {
     local(async {
         let plugged = Plugged::new();
-        let entry = |provider: &str, account: Option<&str>, confirmed: bool| ImageEntry {
-            provider: provider.into(),
-            provider_id: provider.to_lowercase(),
-            account: account.map(str::to_owned),
-            confirmed,
-        };
-        let model = |id: &str, released: Option<&str>, takes: Option<&str>, through: Option<ImageEntry>| ImageModel {
-            id: id.into(),
-            released: released.map(str::to_owned),
-            description: format!("About {id}"),
-            takes: takes.map(str::to_owned),
-            through,
-        };
-        plugged.demi.image_models.replace(vec![
-            ImageVendorModels {
-                vendor: "OpenAI".into(),
-                vendor_id: "openai".into(),
-                through: entry("ChatGPT", Some("alex@example.com"), false),
-                models: vec![
-                    model("gpt-new", Some("2026-10-01"), None, Some(entry("OpenAI key", None, true))),
-                    model("gpt-image-2", Some("2026-04-21"), Some("any W×H"), None),
-                ],
-                unlisted: Vec::new(),
-            },
-            ImageVendorModels {
-                vendor: "Google".into(),
-                vendor_id: "google".into(),
-                through: entry("Gemini", None, true),
-                models: vec![model("gemini-nano-banana-2.1", None, Some("1:1 or 16:9"), None)],
-                unlisted: vec![ImageUnlisted {
-                    provider: "Gemini 2".into(),
-                    refusal: ImageRefusal::KeyRefused { vendor: "Google".into(), manages: true },
-                }],
-            },
-        ]);
-        let (code, stdout, _) = plugged.run(&["image", "models"]).await;
+        let used_up = EntryStatus::UsedUp { until: Some("2026-10-17T18:00:00Z".parse().unwrap()) };
+        let mut gpt = model(
+            "gpt-image-2",
+            Some("OpenAI"),
+            Some("2026-04-21"),
+            Some("GPT Image 2"),
+            vec![
+                entry("ChatGPT", true, Some("alex@example.com"), false, used_up),
+                entry("OpenAI", false, None, true, EntryStatus::Now),
+                entry("Proxy", false, None, true, EntryStatus::Off),
+            ],
+        );
+        gpt.description = Some("State-of-the-art image generation".into());
+        gpt.aliases = vec!["chatgpt-image-latest".into()];
+        gpt.image = Some(ImageFacts {
+            sizes: Some(vec!["1024x1024".into(), "1536x1024".into()]),
+            edits: Some(true),
+            max_input_images: Some(16),
+            transparent: Some(true),
+            ..ImageFacts::default()
+        });
+        gpt.price = Some(MediaPrice {
+            rates: vec![PriceRate {
+                unit: "millionInputTokens".into(),
+                modality: Some("text".into()),
+                amount: 5.0,
+                currency: "USD".into(),
+                size: None,
+                quality: None,
+                resolution: None,
+                duration: None,
+            }, PriceRate {
+                unit: "image".into(),
+                modality: None,
+                amount: 0.167,
+                currency: "USD".into(),
+                size: Some("1024x1024".into()),
+                quality: Some("high".into()),
+                resolution: None,
+                duration: None,
+            }],
+            page: Some("https://openai.com/api/pricing".into()),
+        });
+        plugged.demi.image_models.replace(MediaListing {
+            models: vec![
+                model("seedream-5-0", Some("BytePlus"), Some("2026-09-01"), Some("即梦 5.0"), vec![entry("火山", false, None, true, EntryStatus::Now)]),
+                gpt.clone(),
+                model("own", None, None, None, vec![entry("Proxy", false, None, true, EntryStatus::NotSignedIn)]),
+            ],
+            unlisted: vec![ImageUnlisted {
+                provider: "Gemini".into(),
+                refusal: ImageRefusal::KeyRefused { vendor: "Google".into(), manages: true },
+            }],
+            none: None,
+        });
+        let (code, stdout, stderr) = plugged.run(&["image", "models"]).await;
         assert_eq!(code, 0);
         assert_eq!(
             String::from_utf8(stdout).unwrap(),
-            "OpenAI, through ChatGPT (alex@example.com)\n  \
-             gpt-new      2026-10-01  About gpt-new; through OpenAI key\n  \
-             gpt-image-2  2026-04-21  About gpt-image-2; takes any W×H\n  \
-             ChatGPT does not confirm which of these models answers a call\n\
-             Google, through Gemini\n  \
-             gemini-nano-banana-2.1    About gemini-nano-banana-2.1; takes 1:1 or 16:9\n  \
-             Gemini 2's models could not be listed: Google refused the API key; check it in Settings › Providers\n"
+            "ID            VENDOR    RELEASED    ENTRY   NAME\n\
+             seedream-5-0  BytePlus  2026-09-01  火山    即梦 5.0\n\
+             gpt-image-2   OpenAI    2026-04-21  OpenAI  GPT Image 2\n\
+             own           -         -           -       -\n"
+        );
+        assert_eq!(
+            stderr,
+            "demi image models: warning: Gemini's models could not be listed: Google refused the API key; check it in Settings › Providers\n\
+             demi image models: note: ChatGPT does not confirm which model answers a call\n"
+        );
+
+        let (code, stdout, _) = plugged.run(&["image", "models", "gpt-image-2"]).await;
+        assert_eq!(code, 0);
+        assert_eq!(
+            String::from_utf8(stdout).unwrap(),
+            "ID: gpt-image-2\nVendor: OpenAI\nReleased: 2026-04-21\nEntry: OpenAI\nName: GPT Image 2\nAlias of: -\n\
+             Aliases: chatgpt-image-latest\nSizes: 1024x1024, 1536x1024\nCustom size: -\nAspect ratios: -\nResolutions: -\n\
+             Edits: yes\nMax input images: 16\nTransparent background: yes\nPrice page: https://openai.com/api/pricing\n\
+             Prices:\n\
+             \x20 UNIT                MODALITY  AMOUNT  CURRENCY  SIZE       QUALITY  RESOLUTION  DURATION (S)\n\
+             \x20 millionInputTokens  text      5       USD       -          -        -           -\n\
+             \x20 image               -         0.167   USD       1024x1024  high     -           -\n\
+             Entries:\n\
+             \x20 ENTRY    KIND          ACCOUNT           PRICE     STATUS\n\
+             \x20 ChatGPT  subscription  alex@example.com  included  used up until 2026-10-17T18:00:00Z\n\
+             \x20 OpenAI   api-key       -                 listed    now\n\
+             \x20 Proxy    api-key       -                 listed    Image Generation off\n\
+             Description:\n  State-of-the-art image generation\n"
+        );
+        let (code, stdout, _) = plugged.run(&["image", "models", "gpt-image-2", "--json"]).await;
+        assert_eq!(code, 0);
+        let shown: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
+        assert_eq!(shown["entry"], "OpenAI");
+        assert_eq!(shown["image"]["maxInputImages"], 16);
+        assert_eq!(shown["price"]["rates"][0]["modality"], "text");
+        assert_eq!(shown["price"]["rates"][1]["amount"], 0.167);
+        assert_eq!(shown["entries"][0]["status"], serde_json::json!({ "status": "usedUp", "until": "2026-10-17T18:00:00.000Z" }));
+        let (code, stdout, _) = plugged.run(&["image", "models", "--json"]).await;
+        assert_eq!(code, 0);
+        let listed: serde_json::Value = serde_json::from_slice(&stdout).unwrap();
+        let ids: Vec<&str> = listed.as_array().unwrap().iter().map(|model| model["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["seedream-5-0", "gpt-image-2", "own"]);
+
+        // An alias finds the model it names, as a call by it would.
+        let (code, by_alias, _) = plugged.run(&["image", "models", "chatgpt-image-latest", "--json"]).await;
+        assert_eq!(code, 0);
+        assert_eq!(serde_json::from_slice::<serde_json::Value>(&by_alias).unwrap()["id"], "gpt-image-2");
+
+        let (code, _, stderr) = plugged.run(&["image", "models", "nope"]).await;
+        assert_eq!((code, stderr.as_str()), (1, "demi image models: no provider makes \"nope\"; demi image models lists them\n"));
+
+        // An empty list is its header alone, and why on stderr.
+        plugged.demi.image_models.replace(MediaListing {
+            none: Some(ImageRefusal::AllOff { providers: vec!["ChatGPT".into()] }),
+            ..MediaListing::default()
+        });
+        let (code, stdout, stderr) = plugged.run(&["image", "models"]).await;
+        assert_eq!(
+            (code, String::from_utf8(stdout).unwrap().as_str(), stderr.as_str()),
+            (0, "ID  VENDOR  RELEASED  ENTRY  NAME\n", "demi image models: note: image generation is off for ChatGPT; turn it on in Settings › Providers\n")
+        );
+    });
+}
+
+/// An entry `--provider` names that cannot make the model says why and
+/// which can, and the name reaches the Providers service.
+/// Planted defect this catches: the reason or the entries that can left
+/// out of the words; `--provider` not passed on.
+#[test]
+fn an_entry_named_that_cannot_make_the_model_says_why_and_which_can() {
+    local(async {
+        let plugged = Plugged::new();
+        plugged.answer(|ask| match ask.provider.as_deref() {
+            Some("Proxy") => Err(PortRefusal::Image {
+                refusal: ImageRefusal::Cannot {
+                    provider: "Proxy".into(),
+                    model: ask.model.clone(),
+                    why: Unable::Off,
+                    can: vec!["ChatGPT".into(), "OpenAI".into()],
+                },
+            }),
+            _ => Err(PortRefusal::Image {
+                refusal: ImageRefusal::Cannot {
+                    provider: "Grok".into(),
+                    model: ask.model.clone(),
+                    why: Unable::NotOffered,
+                    can: Vec::new(),
+                },
+            }),
+        });
+        let (code, _, stderr) = plugged.run(&["image", "generate", "a fox", "--model", "gpt-image-2", "--provider", "Proxy"]).await;
+        assert_eq!(
+            (code, stderr.as_str()),
+            (1, "demi image generate: Proxy cannot make \"gpt-image-2\": its image generation is off in Settings › Providers; ChatGPT and OpenAI can\n")
+        );
+        let (_, _, stderr) = plugged.run(&["image", "generate", "a fox", "--model", "gpt-image-2", "--provider", "Grok"]).await;
+        assert_eq!(
+            stderr,
+            "demi image generate: Grok cannot make \"gpt-image-2\": it does not make \"gpt-image-2\"; no other provider can make it now\n"
         );
     });
 }

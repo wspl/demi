@@ -36,6 +36,8 @@ let startLogin: (path: string) => Promise<Response>
 let cancelled: string[]
 /** What the backend answers to a pasted code. */
 let pasteCode: (code: string) => Promise<Response>
+/** What the backend answers to a new order of the entries, by the body sent. */
+let order: (body: Record<string, unknown>) => Promise<Response>
 
 beforeEach(async () => {
   pinia = createPinia()
@@ -52,7 +54,7 @@ beforeEach(async () => {
         compatible: false,
         endpoint: null,
         hasApiKey: true,
-        rotation: 'manual' as const, imageGeneration: true,
+        rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
         models: null,
         createdAt: '2026-09-10T00:00:00.000Z',
         details: { type: 'failed', message: 'Not read in this test' },
@@ -68,6 +70,9 @@ beforeEach(async () => {
   cancelled = []
   pasteCode = async () => {
     throw new Error('No code is pasted in this test')
+  }
+  order = async () => {
+    throw new Error('No order is sent in this test')
   }
   write = async (body) => {
     if (typeof body.label === 'string') {
@@ -92,7 +97,7 @@ beforeEach(async () => {
     }
     if (path.startsWith('/api/models')) {
       catalogReads.push(path)
-      return Response.json({ providers: catalogProviders, smallModel: null, imageEntries: {} })
+      return Response.json({ providers: catalogProviders, smallModel: null })
     }
     if (path === '/api/providers' && init?.method === 'POST') {
       const body = JSON.parse(String(init.body)) as Record<string, unknown>
@@ -107,7 +112,7 @@ beforeEach(async () => {
         compatible: body.source === 'compatible',
         endpoint: null,
         hasApiKey: false,
-        rotation: 'manual' as const, imageGeneration: true,
+        rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
         models: null,
         createdAt: '2026-09-11T00:00:00.000Z',
       }
@@ -136,6 +141,9 @@ beforeEach(async () => {
       // The page's channel brings the entry as the write left it.
       channels.last().send({ type: 'providers', providers: state.providers })
       return answer
+    }
+    if (path === '/api/providers/order' && init?.method === 'PUT') {
+      return order(JSON.parse(String(init.body)))
     }
     if (path === '/api/providers/codex/accounts/active' && init?.method === 'PUT') {
       return activate()
@@ -222,7 +230,7 @@ test('a model Custom adds is saved at once without a context window, and a reloa
     const models = body.models as { id: string; displayName: string; contextWindow: number | null }[]
     state.providers[0]!.models = models as never
     catalogProviders = [{
-      providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
+      providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', imageModels: [], stale: false,
       warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
       availability: { type: 'available' },
       models: models.map((model) => ({
@@ -295,7 +303,7 @@ test('the page shows an entry’s kind and effective endpoint as the read model 
     compatible,
     endpoint,
     hasApiKey: true,
-    rotation: 'manual' as const, imageGeneration: true,
+    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
     models: null,
     createdAt: '2026-09-10T00:00:00.000Z',
     details: { type: 'failed' as const, message: 'Not read in this test' },
@@ -317,7 +325,7 @@ test('the page shows an entry’s kind and effective endpoint as the read model 
 test('an incomplete entry is in the setup state, from its availability; a complete one is not', async () => {
   const settings = useProviderSettings()
   catalogProviders = [{
-    providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
+    providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', imageModels: [], stale: false,
     warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
     availability: { type: 'unavailable', reason: 'setup', message: 'Finish setting up this provider in Settings', missing: ['apiKey', 'models'] },
     models: [],
@@ -604,6 +612,8 @@ test('a failed save is a toast; the input stays and the next change resends it',
   ).toBe('Retained name')
 })
 
+// Planted defects: the shape sent along with the switch, which a vendor
+// entry refuses; the failed value kept after the toast, or sent again.
 // The Image Generation switch shows its new value while it saves; a save
 // that fails puts it back to the backend's with the toast, and the next
 // edit does not send the failed value again. Cost: a stubbed backend, a
@@ -618,8 +628,8 @@ test('a switch that fails to save returns to the backend\'s value with a toast, 
     quota: null,
     quotaCapability: { type: 'none' },
     cliPackage: null,
-    imageVendor: 'openai',
   }
+  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, catalog: '2026-09-01T00:00:00.000Z' }
   channels.last().send({ type: 'providers', providers: state.providers })
   const settings = useProviderSettings()
   const entry = () => settings.providers.find((candidate) => candidate.id === 'configured')!
@@ -629,14 +639,14 @@ test('a switch that fails to save returns to the backend\'s value with a toast, 
     bodies.push(body)
     return answer.promise
   }
-  settings.change(entry(), { imageGeneration: false })
-  expect(entry().imageGeneration).toBe(false)
+  settings.change(entry(), { media: { image: { shape: 'openai-images', enabled: false } } })
+  expect(entry().media.image.enabled).toBe(false)
 
   answer.resolve(
     Response.json({ requestId: 'req_test000000000001', code: 'invalid_body', message: 'The network is offline.' }, { status: 400 }),
   )
   await idle()
-  expect(entry().imageGeneration).toBe(true)
+  expect(entry().media.image.enabled).toBe(true)
   expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Save the Provider', tone: 'danger' })
 
   write = async (body) => {
@@ -646,8 +656,38 @@ test('a switch that fails to save returns to the backend\'s value with a toast, 
   }
   settings.change(entry(), { name: 'Renamed' })
   await idle()
-  expect(bodies).toEqual([{ imageGeneration: false }, { label: 'Renamed' }])
-  expect(entry().imageGeneration).toBe(true)
+  expect(bodies).toEqual([{ media: { image: { enabled: false } } }, { label: 'Renamed' }])
+  expect(entry().media.image.enabled).toBe(true)
+})
+
+// The order of Settings › Providers, which generated media follow
+// (`media.md` § Which entry makes a call): the list shows the dragged
+// order at once and sends every entry once; a refusal puts the list back
+// with a toast. Planted defects: the list waiting for the answer; a
+// partial order sent; the refused order kept. Cost: a stubbed backend, a
+// few milliseconds.
+test('a new order of the entries shows at once, is sent whole, and a refusal puts the list back', async () => {
+  state.providers.push({ ...state.providers[0]!, id: 'second', label: 'Second' })
+  channels.last().send({ type: 'providers', providers: state.providers })
+  const settings = useProviderSettings()
+  const ids = () => settings.providers.filter((entry) => entry.configured).map((entry) => entry.id)
+  await waitFor(() => ids().length === 2)
+  const answer = Promise.withResolvers<Response>()
+  const sent: Record<string, unknown>[] = []
+  order = (body) => {
+    sent.push(body)
+    return answer.promise
+  }
+  const done = settings.reorderProviders(['second', 'configured'])
+  expect(ids()).toEqual(['second', 'configured'])
+  await waitFor(() => sent.length === 1)
+  expect(sent).toEqual([{ providerIds: ['second', 'configured'] }])
+  answer.resolve(
+    Response.json({ requestId: 'req_test000000000002', code: 'invalid_body', message: 'Not every entry.' }, { status: 400 }),
+  )
+  await done
+  expect(ids()).toEqual(['configured', 'second'])
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Reorder the Providers', tone: 'danger' })
 })
 
 test('a saved change is not read back: the catalog follows the channel\'s entry, read once', async () => {
@@ -657,6 +697,31 @@ test('a saved change is not read back: the catalog follows the channel\'s entry,
   settings.change(settings.providers.find((entry) => entry.id === 'configured')!, { name: 'Renamed' })
   await idle()
   expect(settings.providers.find((entry) => entry.id === 'configured')?.name).toBe('Renamed')
+  expect(catalogReads).toEqual(['/api/models'])
+})
+
+// A newer media catalog changes each entry's catalog time on the channel:
+// the page reads the catalog again and its Images section shows the new
+// models, with no change of the entry itself. Planted defect: a providers
+// message not followed by a read of the catalog, so the old models stay.
+// Cost: a stubbed backend, a few milliseconds.
+test('a newer media catalog on the channel reads the catalog again, and the Images section shows its models', async () => {
+  const settings = useProviderSettings()
+  const entry = () => settings.providers.find((candidate) => candidate.id === 'configured')!
+  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, catalog: '2026-09-01T00:00:00.000Z' }
+  channels.last().send({ type: 'providers', providers: state.providers })
+  await useProduct().loadModels()
+  catalogReads = []
+  catalogProviders = [{
+    providerId: 'configured', displayName: 'API', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
+    warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
+    availability: { type: 'available' }, models: [],
+    imageModels: [{ id: 'gpt-image-3', name: 'GPT-Image-3', released: '2026-09-30' }],
+  }]
+  state.providers[0]!.media = { image: { shape: 'openai-images', enabled: true }, catalog: '2026-10-01T00:00:00.000Z' }
+  channels.last().send({ type: 'providers', providers: state.providers })
+  await waitFor(() => entry().media.image.models?.length === 1)
+  expect(entry().media.image.models).toEqual([{ id: 'gpt-image-3', name: 'GPT-Image-3', released: '2026-09-30' }])
   expect(catalogReads).toEqual(['/api/models'])
 })
 
@@ -684,7 +749,7 @@ test('Activate moves the Active mark at once, and a refused switch moves it back
     compatible: false,
     endpoint: null,
     hasApiKey: false,
-    rotation: 'manual' as const, imageGeneration: true,
+    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
     models: null,
     createdAt: '2026-09-10T00:00:00.000Z',
     details: {
@@ -695,7 +760,7 @@ test('Activate moves the Active mark at once, and a refused switch moves it back
       active: 'a',
       quota: null,
       quotaCapability: { type: 'none' },
-      cliPackage: null, imageVendor: null,
+      cliPackage: null,
     },
   })
   channels.last().send({ type: 'providers', providers: state.providers })
@@ -775,7 +840,7 @@ test('a start the entry’s running sign-in holds opens that sign-in, whose fail
     providerType: 'codex',
     label: 'Codex',
     hasApiKey: false,
-    rotation: 'manual' as const, imageGeneration: true,
+    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
   }
   state.providers.push(entry)
   // Another page of the user's started it.
@@ -881,7 +946,7 @@ test('an account whose sign-in the vendor refused reads as signed out, and Sign 
     providerType: 'claude-code',
     label: 'Claude',
     hasApiKey: false,
-    rotation: 'manual' as const, imageGeneration: true,
+    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
     details: {
       type: 'read' as const,
       auth: { status: 'authenticated' as const },
@@ -890,7 +955,7 @@ test('an account whose sign-in the vendor refused reads as signed out, and Sign 
       active: 'first',
       quota: null,
       quotaCapability: { type: 'none' as const },
-      cliPackage: null, imageVendor: null,
+      cliPackage: null,
     },
   })
   channels.last().send({ type: 'providers', providers: state.providers })
@@ -916,7 +981,7 @@ test('a completed sign-in says done the moment the page learns it, and an accoun
     providerType: 'codex',
     label: 'Codex',
     hasApiKey: false,
-    rotation: 'manual' as const, imageGeneration: true,
+    rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' },
     details: {
       type: 'read' as const,
       auth: { status: 'authenticated' as const },
@@ -925,7 +990,7 @@ test('a completed sign-in says done the moment the page learns it, and an accoun
       active: 'first',
       quota: null,
       quotaCapability: { type: 'none' as const },
-      cliPackage: null, imageVendor: null,
+      cliPackage: null,
     },
   })
   state.providers.push(entry(['first']))

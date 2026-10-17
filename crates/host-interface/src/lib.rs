@@ -29,7 +29,6 @@ mod paths;
 mod record;
 mod reserved;
 mod rpc;
-pub mod text;
 #[cfg(feature = "testing")]
 pub mod testing;
 

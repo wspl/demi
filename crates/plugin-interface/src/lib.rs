@@ -32,8 +32,8 @@ pub use port::{
     StoredValue,
 };
 pub use providers::{
-    ImageAsk, ImageAspect, ImageEntry, ImageInput, ImageKind, ImageModel, ImageRefusal, ImageUnlisted,
-    ImageVendorModels, MadeImage,
+    CustomSizeRule, EntryStatus, ImageAsk, ImageAspect, ImageFacts, ImageInput, ImageKind, ImageRefusal,
+    ImageUnlisted, MadeImage, MediaListing, MediaModel, MediaPrice, ModelEntry, PriceRate, Unable,
 };
 pub use request::{PluginError, Reply, Request};
 /// What a project search names to watch (`Reply::Project`).

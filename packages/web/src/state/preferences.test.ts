@@ -23,7 +23,7 @@ beforeEach(() => {
   setActivePinia(pinia)
   saved = { appearance: {}, shortcuts: {} }
   patches = []
-  catalog = { providers: [], smallModel: null, imageEntries: {} }
+  catalog = { providers: [], smallModel: null }
   Object.defineProperty(navigator, 'languages', {
     configurable: true,
     get: () => ['zh-cn', 'en', 'zh-CN'],
@@ -116,7 +116,7 @@ test('a report the backend stored in its own spelling is not sent again', async 
 /** The provider entry `stub`, as the product state lists it. */
 const stub = {
   id: 'stub', kind: 'api_key' as const, providerType: 'stub', label: 'Stub',
-  wireApi: null, vendorId: null, compatible: false, endpoint: null, hasApiKey: true, rotation: 'manual' as const, imageGeneration: true, models: null, createdAt: '2026-09-09T00:00:00.000Z',
+  wireApi: null, vendorId: null, compatible: false, endpoint: null, hasApiKey: true, rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' }, models: null, createdAt: '2026-09-09T00:00:00.000Z',
   details: { type: 'failed' as const, message: 'Not read in this test' },
 }
 
@@ -135,10 +135,10 @@ function catalogModel(id: string) {
 
 test("a model or an entry the user turns off is saved in the user's preferences, and every page's menus leave it out", async () => {
   catalog = { providers: [{
-    providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '1970-01-01T00:00:00.000Z', stale: false,
+    providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '1970-01-01T00:00:00.000Z', imageModels: [], stale: false,
     warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
     availability: { type: 'available' }, models: [catalogModel('a'), catalogModel('b')],
-  }], smallModel: null, imageEntries: {} }
+  }], smallModel: null }
   useProduct().start()
   channels.last().connect(productState({ preferences: saved, providers: [stub] }))
   const preferences = usePreferences()
@@ -241,7 +241,7 @@ test('Settings › Agent names Automatic’s model from the catalog, read again 
     thinking: null,
     serviceTierId: null,
   }
-  catalog = { providers: [], smallModel: haiku, imageEntries: {} }
+  catalog = { providers: [], smallModel: haiku }
   const fetchAsBefore = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
@@ -280,25 +280,8 @@ test('Settings › Agent names Automatic’s model from the catalog, read again 
   // kept on the conversation's provider, from another page, read the
   // catalog again, which then names no model.
   channels.last().send({ type: 'preferences', preferences: { ...saved, sendWhileRunning: 'queue' } })
-  catalog = { providers: [], smallModel: null, imageEntries: {} }
+  catalog = { providers: [], smallModel: null }
   channels.last().send({ type: 'preferences', preferences: { ...saved, smallModelSameProvider: true } })
   await waitFor(() => product.automaticSmallModel === null)
   expect(modelReads).toBe(2)
-})
-
-// Planted defects: the catalog's image entries left unread, so each row
-// shows Automatic alone; a choice not saved as `imageEntries`.
-test('Settings › Agent reads the entry each vendor’s Automatic takes from the catalog and saves a choice as imageEntries', async () => {
-  catalog = { providers: [], smallModel: null, imageEntries: { openai: 'p1', xai: null } }
-  const product = useProduct()
-  product.start()
-  channels.last().connect(productState({ preferences: saved }))
-  const preferences = usePreferences()
-  await waitFor(() => product.automaticImageEntries.openai === 'p1')
-  expect(product.automaticImageEntries).toEqual({ openai: 'p1', xai: null })
-
-  preferences.update({ imageEntries: { openai: 'p2' } })
-  expect(preferences.imageEntries).toEqual({ openai: 'p2' })
-  await waitFor(() => patches.length === 1)
-  expect(patches).toEqual([{ imageEntries: { openai: 'p2' } }])
 })

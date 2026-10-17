@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use demi_provider_common::Provider;
 use demi_shared_types::{ModelSelection, ProviderModel, ProviderModelList, ServiceTier, Timestamp};
-use demi_web_api_protocol::providers::{CatalogModel, CatalogProvider, ConfiguredModel};
+use demi_web_api_protocol::providers::{CatalogModel, CatalogProvider, ConfiguredModel, ModelKind};
 use futures_util::future::join_all;
 use sha2::{Digest, Sha256};
 
@@ -70,7 +70,7 @@ pub fn configured_selection(
     let Some(model) = models
         .0
         .iter()
-        .find(|model| model.id.as_str() == selection.model.id)
+        .find(|model| model.kind == ModelKind::Text && model.id.as_str() == selection.model.id)
     else {
         return Err(NotConfigured(selection.model.id));
     };
@@ -105,8 +105,12 @@ impl ProviderAssembly {
     ) -> ProviderModelList {
         let vendor = match &entry.credential {
             EntryCredential::ApiKey(config) => {
+                // The model menu's are the text models; an image model of
+                // the list is `demi image`'s (`providers.md` § Provider
+                // management).
                 if let Some(models) = &config.models {
-                    return unfetched(models.0.iter().map(configured_model).collect(), Vec::new());
+                    let text = models.0.iter().filter(|model| model.kind == ModelKind::Text);
+                    return unfetched(text.map(configured_model).collect(), Vec::new());
                 }
                 // A compatible endpoint decides its own models, so it never
                 // borrows its family's directory or a vendor's list.
@@ -184,6 +188,8 @@ impl ProviderAssembly {
                 .ok()
                 .and_then(|provider| super::claude_releases::cli_package(provider.as_ref())),
             models,
+            // The media service fills them, which knows the media catalog.
+            image_models: Vec::new(),
             source_fetched_at: catalog.source_fetched_at,
             stale: catalog.stale,
             warnings: catalog.warnings,
@@ -239,6 +245,7 @@ mod tests {
                 wire_api: None,
                 vendor_id: None,
                 models,
+                image_shape: None,
             }),
             created_at: Timestamp::UNIX_EPOCH,
             image_generation: true,

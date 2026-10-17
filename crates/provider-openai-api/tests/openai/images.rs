@@ -47,6 +47,7 @@ fn provider(vendor: &MockVendor, images: Option<ImageVendor>) -> OpenAiProvider 
         wire: WireApi::Responses,
         policy: VendorPolicy::default(),
         vendor_id: images.map(|vendor| vendor.id().to_owned()),
+        makes_images: images.is_some(),
     };
     OpenAiProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }
@@ -74,7 +75,7 @@ fn image(media_type: &'static str, bytes: &'static [u8]) -> InputImage {
 fn ids(models: &[ImageModelInfo]) -> Vec<(&str, Option<&str>, &str)> {
     models
         .iter()
-        .map(|model| (model.id.as_str(), model.released.as_deref(), model.description.as_str()))
+        .map(|model| (model.id.as_str(), model.released.as_deref(), model.description.as_deref().unwrap_or_default()))
         .collect()
 }
 
@@ -135,19 +136,11 @@ async fn an_openai_key_lists_its_image_models_and_sends_generations_and_edits_as
     vendor.respond_at("/v1/images/edits", json_answer(200, answer));
     let provider = provider(&vendor, Some(ImageVendor::OpenAi));
     let maker = provider.images().expect("an OpenAI key makes images");
-    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("OpenAI", ImageVendor::OpenAi, true));
+    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("OpenAI", Some(ImageVendor::OpenAi), true));
     let http = reqwest::Client::new();
 
-    // The catalog describes a model it knows; another is what the listing says.
     let models = maker.models(&http, &catalog()).await.unwrap();
-    assert_eq!(
-        ids(&models),
-        [
-            ("gpt-image-2", Some("2026-04-21"), "State-of-the-art image generation model"),
-            ("gpt-image-3-preview", Some("2026-09-21"), ""),
-        ]
-    );
-    assert_eq!(models[1].takes, None);
+    assert_eq!(ids(&models), [("gpt-image-2", Some("2026-04-21"), ""), ("gpt-image-3-preview", Some("2026-09-21"), "")]);
 
     let made = maker
         .make(&http, &catalog(), request("gpt-image-2", Some(Aspect { width: 16, height: 9 }), Vec::new()))
@@ -281,14 +274,14 @@ async fn an_xai_key_lists_models_with_their_aliases_sends_its_shapes_and_reads_i
     );
     let provider = provider(&vendor, Some(ImageVendor::Xai));
     let maker = provider.images().expect("an xAI key makes images");
-    assert_eq!((maker.name(), maker.vendor()), ("xAI", ImageVendor::Xai));
+    assert_eq!((maker.name(), maker.vendor()), ("xAI", Some(ImageVendor::Xai)));
     let http = reqwest::Client::new();
 
     let models = maker.models(&http, &catalog()).await.unwrap();
     assert_eq!(
         ids(&models),
         [
-            ("grok-imagine-image-2.0", Some("2026-08-07"), "Precise image generation and editing, built for real creative work"),
+            ("grok-imagine-image-2.0", Some("2026-08-11"), ""),
             ("grok-imagine-image-2.0-latest", Some("2026-08-11"), "Alias of grok-imagine-image-2.0"),
         ]
     );

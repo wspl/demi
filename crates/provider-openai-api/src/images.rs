@@ -1,8 +1,11 @@
-//! The image role of an OpenAI or xAI key (`images.md` § Vendors): each
-//! vendor's image API under the entry's base URL, with the key as a bearer
-//! token; the models the vendor lists for the key, read when asked; and
-//! the vendor's failures read as its text failures are, a usage or billing
-//! limit used up and a refused key named.
+//! The image role of an OpenAI or xAI key and of a compatible entry whose
+//! image shape is OpenAI Images (`images.md` § Vendors, `media.md` § Which
+//! entries make which media): each vendor's image API under the entry's
+//! base URL, with the key as a bearer token; the models the vendor lists
+//! for the key, read when asked, or the models a compatible entry's user
+//! added; and the vendor's failures read as its text failures are, a usage
+//! or billing limit used up and a refused key named. A compatible endpoint
+//! is sent OpenAI's requests and read as OpenAI's API is.
 
 use std::sync::Arc;
 
@@ -11,7 +14,7 @@ use demi_provider_common::{
     ErrorCode, ProviderFailure, Secret, endpoint_url,
     images::{
         ImageAnswer, ImageCall, ImageCredential, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest,
-        ImageVendor, created_date, listed, openai, read_data_answer, unreadable, vendor_message, xai,
+        ImageVendor, created_date, openai, read_data_answer, unreadable, vendor_message, xai,
     },
     media_catalog::Catalog,
     json_body, read_http_failure,
@@ -24,10 +27,20 @@ use reqwest::{
 };
 use serde::{Deserialize, Serialize};
 
-/// An OpenAI or xAI key's image role.
+/// Whose image API an entry's requests go to.
+enum Flavor {
+    OpenAi,
+    Xai,
+    /// A compatible endpoint, which the user knows by the entry's name and
+    /// whose models are the ones the user added.
+    Compatible { name: String, models: Vec<ImageModelInfo> },
+}
+
+/// The image role of a key or a compatible endpoint.
 pub(crate) struct KeyImages {
-    vendor: ImageVendor,
-    key: Secret,
+    flavor: Flavor,
+    /// None for a compatible endpoint that takes none.
+    key: Option<Secret>,
     generations: Url,
     edits: Url,
     models: Url,
@@ -35,15 +48,22 @@ pub(crate) struct KeyImages {
 }
 
 impl KeyImages {
-    /// The role of `vendor`'s `key` under the API `base`; `vendor` is
-    /// OpenAI or xAI.
+    /// The role of an OpenAI or xAI `key` under the API `base`.
     pub(crate) fn new(vendor: ImageVendor, key: Secret, base: &Url, clock: Arc<dyn Clock>) -> Self {
-        let models = match vendor {
-            ImageVendor::Xai => "/image-generation-models",
-            ImageVendor::OpenAi | ImageVendor::Google => "/models",
+        let flavor = match vendor {
+            ImageVendor::Xai => Flavor::Xai,
+            ImageVendor::OpenAi | ImageVendor::Google => Flavor::OpenAi,
+        };
+        Self::of(flavor, Some(key), base, clock)
+    }
+
+    fn of(flavor: Flavor, key: Option<Secret>, base: &Url, clock: Arc<dyn Clock>) -> Self {
+        let models = match flavor {
+            Flavor::Xai => "/image-generation-models",
+            Flavor::OpenAi | Flavor::Compatible { .. } => "/models",
         };
         Self {
-            vendor,
+            flavor,
             generations: endpoint_url(base, "/images/generations"),
             edits: endpoint_url(base, "/images/edits"),
             models: endpoint_url(base, models),
@@ -52,20 +72,26 @@ impl KeyImages {
         }
     }
 
+    fn label(&self) -> &str {
+        match &self.flavor {
+            Flavor::OpenAi => ImageVendor::OpenAi.name(),
+            Flavor::Xai => ImageVendor::Xai.name(),
+            Flavor::Compatible { name, .. } => name,
+        }
+    }
+
     fn call(&self) -> ImageCall<'_> {
+        let xai = matches!(self.flavor, Flavor::Xai);
         ImageCall {
-            label: self.vendor.name(),
+            label: match self.flavor {
+                Flavor::Xai => "xAI",
+                Flavor::OpenAi | Flavor::Compatible { .. } => "OpenAI",
+            },
             credential: ImageCredential::Key {
-                refused: match self.vendor {
-                    ImageVendor::Xai => xai_refused_key,
-                    ImageVendor::OpenAi | ImageVendor::Google => openai_refused_key,
-                },
+                refused: if xai { xai_refused_key } else { openai_refused_key },
             },
             reader: read_http_failure,
-            used_up: match self.vendor {
-                ImageVendor::Xai => xai_used_up,
-                ImageVendor::OpenAi | ImageVendor::Google => openai_used_up,
-            },
+            used_up: if xai { xai_used_up } else { openai_used_up },
             clock: &*self.clock,
             quota: None,
             answer: read_data_answer,
@@ -74,42 +100,56 @@ impl KeyImages {
 
     fn headers(&self) -> HeaderMap {
         let mut headers = HeaderMap::new();
-        headers.insert(AUTHORIZATION, self.key.bearer());
+        if let Some(key) = &self.key {
+            headers.insert(AUTHORIZATION, key.bearer());
+        }
         headers
     }
 
-    async fn list(&self, http: &reqwest::Client, catalog: &Catalog) -> Result<Vec<ImageModelInfo>, ImageFailure> {
+    async fn list(&self, http: &reqwest::Client) -> Result<Vec<ImageModelInfo>, ImageFailure> {
+        if let Flavor::Compatible { models, .. } = &self.flavor {
+            return Ok(models.clone());
+        }
         let text = self.call().get(http, &self.models, self.headers()).await?;
         let unread = |error: serde_json::Error| unreadable(format!("its list of models could not be read: {error}"));
-        match self.vendor {
-            ImageVendor::Xai => {
+        match self.flavor {
+            Flavor::Xai => {
                 let listing: XaiListing = serde_json::from_slice(&text).map_err(unread)?;
                 let mut models = Vec::new();
                 for model in listing.models {
                     let released = model.created.and_then(created_date);
-                    models.push(listed(catalog, self.vendor, &model.id, released.clone(), None));
                     for alias in &model.aliases {
-                        let said = format!("Alias of {}", model.id);
-                        models.push(listed(catalog, self.vendor, alias, released.clone(), Some(said)));
+                        models.push(ImageModelInfo {
+                            released: released.clone(),
+                            description: Some(format!("Alias of {}", model.id)),
+                            ..ImageModelInfo::id(alias)
+                        });
                     }
+                    models.insert(models.len() - model.aliases.len(), ImageModelInfo {
+                        released,
+                        ..ImageModelInfo::id(&model.id)
+                    });
                 }
                 Ok(models)
             }
-            ImageVendor::OpenAi | ImageVendor::Google => {
+            Flavor::OpenAi | Flavor::Compatible { .. } => {
                 let listing: OpenAiListing = serde_json::from_slice(&text).map_err(unread)?;
                 Ok(listing
                     .data
                     .into_iter()
                     .filter(|model| model.id.starts_with("gpt-image-") || model.id.starts_with("chatgpt-image-"))
-                    .map(|model| listed(catalog, self.vendor, &model.id, model.created.and_then(created_date), None))
+                    .map(|model| ImageModelInfo {
+                        released: model.created.and_then(created_date),
+                        ..ImageModelInfo::id(&model.id)
+                    })
                     .collect())
             }
         }
     }
 
     fn encode(&self, catalog: &Catalog, request: &ImageRequest) -> Bytes {
-        let body = match self.vendor {
-            ImageVendor::Xai => {
+        let body = match self.flavor {
+            Flavor::Xai => {
                 let mut images: Vec<XaiImage> = request
                     .images
                     .iter()
@@ -126,7 +166,7 @@ impl KeyImages {
                     images,
                 })
             }
-            ImageVendor::OpenAi | ImageVendor::Google => {
+            Flavor::OpenAi | Flavor::Compatible { .. } => {
                 let size = openai::size(catalog, &request.model, request.aspect);
                 json_body(&OpenAiBody {
                     prompt: &request.prompt,
@@ -148,24 +188,28 @@ impl KeyImages {
 }
 
 impl ImageMaker for KeyImages {
-    fn name(&self) -> &'static str {
-        self.vendor.name()
+    fn name(&self) -> &str {
+        self.label()
     }
 
-    fn vendor(&self) -> ImageVendor {
-        self.vendor
+    fn vendor(&self) -> Option<ImageVendor> {
+        match self.flavor {
+            Flavor::OpenAi => Some(ImageVendor::OpenAi),
+            Flavor::Xai => Some(ImageVendor::Xai),
+            Flavor::Compatible { .. } => None,
+        }
     }
 
     fn models<'a>(
         &'a self,
         http: &'a reqwest::Client,
-        catalog: &'a Catalog,
+        _: &'a Catalog,
     ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
-        Box::pin(self.list(http, catalog))
+        Box::pin(self.list(http))
     }
 
     /// Both APIs refuse a model they do not have rather than answer with
-    /// another.
+    /// another; a compatible endpoint is taken to answer as OpenAI's does.
     fn confirms_model(&self) -> bool {
         true
     }
@@ -179,20 +223,33 @@ impl ImageMaker for KeyImages {
         Box::pin(async move {
             let url = if request.images.is_empty() { &self.generations } else { &self.edits };
             let headers = self.headers();
-            let key = self.key.clone();
             let answer = self
                 .call()
                 .send(http, url, self.encode(catalog, &request), |_| {
-                    std::future::ready(Ok((headers.clone(), key.clone())))
+                    std::future::ready(Ok((headers.clone(), None)))
                 })
                 .await;
-            match self.vendor {
+            match self.flavor {
                 // A refused shape is told with the shapes xAI named.
-                ImageVendor::Xai => xai::with_shapes(answer),
-                ImageVendor::OpenAi | ImageVendor::Google => answer,
+                Flavor::Xai => xai::with_shapes(answer),
+                Flavor::OpenAi | Flavor::Compatible { .. } => answer,
             }
         })
     }
+}
+
+/// The image role of a compatible entry whose image shape is OpenAI
+/// Images: OpenAI's image requests under its `base`, with its `key` when it
+/// has one, offering the `models` its user added; `name` is the entry's,
+/// which its failures name.
+pub fn compatible_images(
+    name: String,
+    key: Option<Secret>,
+    base: &Url,
+    models: Vec<ImageModelInfo>,
+    clock: Arc<dyn Clock>,
+) -> Arc<dyn ImageMaker> {
+    Arc::new(KeyImages::of(Flavor::Compatible { name, models }, key, base, clock))
 }
 
 /// `GET /v1/models`: `data[].id` and `created`, in seconds.

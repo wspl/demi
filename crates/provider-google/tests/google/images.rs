@@ -99,18 +99,18 @@ async fn a_gemini_key_lists_every_page_and_sends_generations_and_edits_as_docume
     vendor.respond_at(GENERATE, json_answer(200, answer));
     let provider = provider(&vendor, true);
     let maker = provider.images().expect("a Gemini key makes images");
-    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("Google", ImageVendor::Google, true));
+    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("Google", Some(ImageVendor::Google), true));
     let http = reqwest::Client::new();
 
     let models = maker.models(&http, &catalog()).await.unwrap();
     let listed: Vec<(&str, Option<&str>, &str)> = models
         .iter()
-        .map(|model| (model.id.as_str(), model.released.as_deref(), model.description.as_str()))
+        .map(|model| (model.id.as_str(), model.released.as_deref(), model.description.as_deref().unwrap_or_default()))
         .collect();
     assert_eq!(
         listed,
         [
-            ("gemini-nano-banana-2.1", Some("2026-10-06"), "Nano Banana 2.1: the high-efficiency workhorse for image generation and conversational editing"),
+            ("gemini-nano-banana-2.1", None, "What gemini-nano-banana-2.1 is"),
             ("gemini-4-flash-image", None, "What gemini-4-flash-image is"),
         ]
     );

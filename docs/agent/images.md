@@ -24,7 +24,7 @@ user's own subscription, as the agent's turns do.
 ```text
 demi image generate <prompt> --model <id> [--aspect <W:H>] [--transparent] [--format png|jpeg|webp]
 demi image edit <prompt> <image>... --model <id> [--aspect <W:H>] [--transparent] [--format png|jpeg|webp]
-demi image models
+demi image models [<model>]
 ```
 
 - `generate` makes one image from the prompt; `edit` makes one image from
@@ -100,46 +100,15 @@ its format merely has an alpha channel.
 
 ## Which entry makes an image
 
-A vendor's model can be made through more than one entry: `gpt-image-2`
-through a ChatGPT subscription or an OpenAI API key, `grok-imagine-image`
-through a Grok subscription or an xAI key. Settings › Agent › Image
-Generation, under Small Model, has one row for each vendor Demi makes
-images with, OpenAI, Google and xAI, always all three, each with a menu of
-**Automatic**, the default, and that vendor's image-making entries; after
-*Automatic*, on the same line in smaller, secondary text, the row names
-the entry it resolves to by the entry's name alone, in parentheses,
-*Automatic (Codex)*, as
-Small Model does, and the menu names each entry's account the same way
-after its name: the first entry Automatic would
-try, judged by all but the model, its switch, its sign-in or key and its
-limit, as the row names no model. A vendor none of whose entries can make
-images, because the user has none or switched them off, shows *Automatic*
-with *Not available* after it, as small and a menu holding *Add Provider…*, which
-opens Settings › Providers, so the user learns what Demi can make images
-with and where to enable it, as macOS keeps a setting it cannot use in its
-place, dimmed.
-
-- **Automatic** takes the vendor's subscription entries first, then its
-  API-key entries, each kind in the order of Settings › Providers, and
-  uses the first that can make the model now: its Image Generation is on,
-  it is signed in or has its key, it offers the model, and an account of
-  it is not used up. A subscription's images come with its plan, while a
-  key pays for each image, so a key is used only when no subscription
-  can.
-- **A chosen entry** is used while it can make the model; when it cannot,
-  the call resolves as Automatic.
-- **Used up during a call.** When the entry's last account reaches its
-  limit, the call goes on at once with the next entry Automatic takes, as
-  it goes on with another account within an entry
-  ([Accounts and failures](#accounts-and-failures)). For example, Alex has
-  a ChatGPT subscription and an OpenAI key: once ChatGPT's limit is
-  reached, his images are made, and paid for, through the key; turning
-  the key's Image Generation off makes the call fail with the limit
-  instead.
-
-The choice is the user's, kept in the preferences as `imageEntries`
-([User preferences](../product/web-api-settings.md#user-preferences)),
-so each user of a shared instance chooses among the entries they use.
+An entry makes images when its Image Generation is on, and a call chooses
+among the entries that make the model as every generated medium does:
+`--provider` when the agent names one, else subscriptions before keys in
+the order of Settings › Providers, handing on to the next when one is used
+up ([Which entry makes a call](media.md#which-entry-makes-a-call)). For
+example, Alex has a ChatGPT subscription and an OpenAI key: once ChatGPT's
+limit is reached, his images are made, and paid for, through the key;
+turning the key's Image Generation off makes the call fail with the limit
+instead.
 
 The model is the one thing the result cannot show: no vendor names the model
 that made an image. The ChatGPT backend accepts any model name, an invented

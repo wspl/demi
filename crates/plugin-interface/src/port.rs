@@ -13,7 +13,7 @@ use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::panel::{CreatePanelTab, WorkPanel};
 
 use crate::{
-    ImageAsk, ImageRefusal, ImageVendorModels, MadeImage, PluginId, Scope, SecretName, StoredSecret, WebFailure,
+    ImageAsk, ImageRefusal, MadeImage, MediaListing, PluginId, Scope, SecretName, StoredSecret, WebFailure,
     WebRequest, WebResponse,
 };
 use futures_util::future::LocalBoxFuture;
@@ -131,7 +131,8 @@ pub enum PortMessage {
     /// Revokes the user's sign-in at the vendor when it offers revocation,
     /// and forgets it either way.
     OauthSignOut,
-    /// The image models of the user's provider entries, by vendor.
+    /// The image models of the user's provider entries, each with the
+    /// entries that offer it.
     ImageModels,
     /// Makes one image through an entry's account, for the request's
     /// conversation and the agent that called the command.
@@ -209,7 +210,7 @@ pub enum PortAnswer {
         token: String,
     },
     ImageModels {
-        vendors: Vec<ImageVendorModels>,
+        listing: MediaListing,
     },
     Image {
         image: MadeImage,
@@ -777,10 +778,11 @@ impl PluginPort {
         self.done("oauth_sign_out", PortMessage::OauthSignOut).await
     }
 
-    /// The image models of the user's provider entries, by vendor.
-    pub async fn image_models(&self) -> Result<Vec<ImageVendorModels>, PortFailure> {
+    /// The image models of the user's provider entries, each with the
+    /// entries that offer it.
+    pub async fn image_models(&self) -> Result<MediaListing, PortFailure> {
         match self.ask(PortMessage::ImageModels).await? {
-            PortAnswer::ImageModels { vendors } => Ok(vendors),
+            PortAnswer::ImageModels { listing } => Ok(listing),
             answer => Err(unexpected("image_models", &answer)),
         }
     }

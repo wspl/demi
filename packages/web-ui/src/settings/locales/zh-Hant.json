@@ -539,7 +539,13 @@
     "saving": "正在儲存…",
     "addAccount": "新增帳號",
     "showInMenu": "在模型選單中顯示",
-    "imageGeneration": "影像生成",
+    "media": {
+      "imageGeneration": "影像生成",
+      "images": "影像",
+      "none": "無",
+      "addImage": "新增影像模型",
+      "noImages": "還沒有影像模型"
+    },
     "state": {
       "setup": "尚未設定",
       "signedOut": "已登出",
@@ -576,11 +582,12 @@
       "keyReplace": "輸入新金鑰即可取代",
       "keyPaste": "貼上你的 API 金鑰",
       "test": "測試連線",
-      "testDescription": "向第一個已啟用的模型傳送一個簡短請求。",
+      "testDescription": "向第一個已啟用的文字模型傳送一則簡短的聊天訊息。",
       "testing": "正在測試…",
       "connected": "已連線",
       "failed": "失敗",
-      "enableModel": "請先啟用一個模型"
+      "enableModel": "請先啟用一個模型",
+      "noTextModel": "測試會傳送一則聊天訊息，但此供應商沒有文字模型"
     },
     "cli": {
       "title": "命令列工具",
@@ -611,7 +618,7 @@
       "enable": "啟用「{name}」",
       "noResults": "沒有結果",
       "signInToSee": "登入後可檢視模型",
-      "none": "沒有模型"
+      "none": "還沒有模型"
     },
     "removeProvider": {
       "title": "移除「{name}」？",
@@ -665,6 +672,7 @@
     "id": "模型 ID",
     "name": "名稱",
     "nameDescription": "顯示在模型選單中。預設為 ID。",
+    "nameDefault": "預設為 ID。",
     "contextWindow": "上下文視窗",
     "maxOutput": "最大輸出",
     "optional": "選填",

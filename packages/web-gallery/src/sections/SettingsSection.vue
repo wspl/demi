@@ -143,6 +143,10 @@ const anatomy: [string, string][] = [
 const account = { id: 'alex', name: 'Alex' }
 const full = createSettingsState()
 /** Providers where the only API-key entry is complete: Add, then a vendor, adds an incomplete one. */
+/** The full list, Ollama selected: its image shape, its switch and an image model. */
+const ordering = createSettingsState()
+ordering.selectedProviderId = 'ollama'
+ordering.providerDetailOpen = true
 const adding = createSettingsState()
 adding.providers = mockProviders().filter((entry) => ['claude-code', 'anthropic'].includes(entry.id))
 adding.selectedProviderId = 'anthropic'
@@ -366,6 +370,15 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
       </GallerySection>
 
       <GallerySection
+        title="Providers · Order and Media"
+        note="The list’s order is the one generated media follow, subscriptions before API keys: drag a signed-in subscription or a key within its group, or move the focused row with Option and the Up or Down arrow, and it stays where it lands; a subscription nobody signed in to follows them and does not move. Under its Models, each entry has a section for each kind of media it can make: Codex’s Images has its Image Generation switch and the vendor’s image models, newest first with their release dates, read only; Grok’s switch is off, so its models are grey. Ollama, a compatible API, chose OpenAI Images as its protocol there, so it has the switch and Z-Image Turbo, which Add Image Model added and which edits only its ID and name; set the protocol to None and the switch and the models go."
+      >
+        <div class="h-[640px] w-full max-w-4xl @container rounded-xl border border-line bg-surface-dialog p-6">
+          <GallerySettingsProviders :state="ordering" />
+        </div>
+      </GallerySection>
+
+      <GallerySection
         title="Providers · Adding"
         note="Add in the API Keys caption offers a compatible API or a vendor, and choosing one creates the entry at once, selected, with the yellow dot and nothing red. Pick Google, paste any key into the API key field, and Add Model finds Gemini on models.dev, adds it and opens it in Edit Model. Or add a compatible API: it is Compatible API, then Compatible API (2), speaking Anthropic Messages with no endpoint; set its protocol, its endpoint and, if you like, a key, and add a model. The dot goes with the last part."
       >
@@ -484,7 +497,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Agent · Only the Conversation’s Provider"
-        note="With small requests kept on the conversation’s provider, the page cannot know which model Automatic resolves to, so it reads Automatic alone. Turning the switch off names it again, after Automatic in smaller secondary text. Image Generation always has its three rows: OpenAI reads Automatic (Codex), the entry’s name alone, and its menu names each entry’s account after it; Google, for which no entry makes images, and xAI, whose one entry has Image Generation off, read Automatic (Not available), and their menus offer Add Provider…, which opens Settings › Providers."
+        note="With small requests kept on the conversation’s provider, the page cannot know which model Automatic resolves to, so it reads Automatic alone. Turning the switch off names it again, after Automatic in smaller secondary text."
       >
         <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
           <GalleryAgent :state="smallModelSameProvider" />

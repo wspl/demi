@@ -80,6 +80,8 @@ function clone(m: SettingsModelDraft): SettingsModelDraft {
 }
 
 const editable = computed(() => props.mode === 'edit')
+/** Whether the model is text, the model menu's: only a text model has a window, efforts and files. */
+const text = computed(() => (draft.value.kind ?? 'text') === 'text')
 const title = computed(() =>
   props.mode === 'edit' ? t('modelDialog.edit') : draft.value.name || draft.value.id,
 )
@@ -180,7 +182,7 @@ function save(): void {
           </SettingsRow>
           <SettingsRow
             :label="t('modelDialog.name')"
-            :description="editable ? t('modelDialog.nameDescription') : undefined"
+            :description="editable ? (text ? t('modelDialog.nameDescription') : t('modelDialog.nameDefault')) : undefined"
             :compact="!editable"
           >
             <TextInput
@@ -194,6 +196,8 @@ function save(): void {
               draft.name || '—'
             }}</span>
           </SettingsRow>
+          <!-- A model that is not text is only its ID and name (`providers.md` § Image generation switch). -->
+          <template v-if="text">
           <SettingsRow :label="t('modelDialog.contextWindow')" :compact="!editable">
             <TokenInput
               v-if="editable"
@@ -261,9 +265,11 @@ function save(): void {
               draft.fastTier ?? '—'
             }}</span>
           </SettingsRow>
+          </template>
         </div>
 
         <div
+          v-if="text"
           class="settings-card @container overflow-hidden rounded-xl border border-line bg-surface-float"
         >
           <SettingsRow

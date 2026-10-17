@@ -66,7 +66,10 @@ pub const MEDIA_CATALOG: &str = r#"{
   "models": [
     { "vendor": "openai", "id": "picture-1", "kind": "image", "name": "Picture 1",
       "description": "Best pictures", "released": "2026-01-05",
-      "image": { "aspectRatios": ["1:1", "16:9"], "edits": true } },
+      "image": { "aspectRatios": ["1:1", "16:9"], "edits": true },
+      "price": { "rates": [{ "unit": "image", "amount": 0.04, "currency": "usd", "quality": "high" }],
+                 "page": "https://example.test/pricing" } },
+    { "vendor": "openai", "id": "picture-latest", "kind": "image", "name": "Picture", "aliasOf": "picture-1" },
     { "vendor": "openai", "id": "picture-2", "kind": "image", "name": "Picture 2",
       "description": "Faster pictures", "released": "2026-06-01", "image": { "aspectRatios": ["1:1"] } },
     { "vendor": "openai", "id": "drawing-1", "kind": "image", "name": "Drawing 1",
@@ -285,6 +288,7 @@ pub struct Harness {
     mode: InstanceMode,
     families: FamilyRegistry,
     models_dev_url: Option<String>,
+    media_catalog_url: Option<String>,
     claude_releases: Option<String>,
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
@@ -358,6 +362,7 @@ impl Harness {
             mode: InstanceMode::Shared,
             families: demi_backend::families::builtin(),
             models_dev_url: None,
+            media_catalog_url: None,
             claude_releases: None,
             // Liveness would ping every 30 s; the tests end runners
             // themselves.
@@ -519,6 +524,12 @@ impl Harness {
     /// Sends the backends' push messages through `transport`.
     pub fn with_push_transport(mut self, transport: Arc<dyn demi_backend_accounts::push::PushTransport>) -> Self {
         self.push_transport = Some(transport);
+        self
+    }
+
+    /// Where the backend downloads the media catalog.
+    pub fn with_media_catalog(mut self, url: String) -> Self {
+        self.media_catalog_url = Some(url);
         self
     }
 
@@ -708,9 +719,9 @@ impl Harness {
                 .expect("the backend has the skills plugin");
             *skills = Box::new(repos.skills());
         }
-        // No test downloads the media catalog: each reads the scripted
-        // image models' instead of the release's.
-        config.media_catalog_url = None;
+        // A test downloads the media catalog only from its own server: each
+        // reads the scripted image models' instead of the release's.
+        config.media_catalog_url = self.media_catalog_url.as_deref().map(|url| url.parse().unwrap());
         config.media_catalog = Arc::new(Catalog::decode(MEDIA_CATALOG.as_bytes()).unwrap());
         config.models_dev_url = self
             .models_dev_url
@@ -889,6 +900,11 @@ impl TestBackend {
 
     pub fn address(&self) -> SocketAddr {
         self.backend.local_addr()
+    }
+
+    /// Downloads the media catalog now, as its daily download does.
+    pub async fn refresh_media_catalog(&self) {
+        self.backend.refresh_media_catalog().await;
     }
 
     /// Holds every commit of a conversation's checkpoint or stored

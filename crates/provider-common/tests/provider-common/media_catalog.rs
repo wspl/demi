@@ -7,9 +7,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_provider_common::images::{ImageModelInfo, ImageVendor, listed, subscription_models};
+use demi_provider_common::images::{ImageModelInfo, subscription_models};
 use demi_provider_common::media_catalog::{
-    AudioOutput, Catalog, Currency, DurationRange, ListedVoices, MediaCatalog, MediaKind, PriceUnit, Subscription, Voices, branch_url,
+    AudioOutput, Catalog, Currency, DurationRange, ListedVoices, MediaCatalog, MediaKind, Modality, PriceUnit, Subscription, Voices, branch_url,
 };
 use demi_provider_common::testing::{MockResponse, MockVendor};
 use serde_json::{Value, json};
@@ -119,6 +119,7 @@ fn an_audio_model_decodes_with_its_voices_durations_and_rates() {
               "audio": { "makes": ["music"], "durations": [30], "durationRange": { "max": 120 }, "lyrics": true, "instrumental": true },
               "price": { "rates": [
                   { "unit": "millionInputTokens", "amount": 1.5, "currency": "usd" },
+                  { "unit": "millionCachedInputTokens", "modality": "image", "amount": 2, "currency": "usd" },
                   { "unit": "millionOutputTokens", "amount": 3, "currency": "cny", "duration": 30 },
                   { "unit": "video", "amount": 0.28, "currency": "usd", "resolution": "768P", "duration": 6 }
               ] } },
@@ -137,22 +138,23 @@ fn an_audio_model_decodes_with_its_voices_durations_and_rates() {
     assert_eq!(audio(2).duration_range, Some(DurationRange { min: Some(0.5), max: Some(30.0) }));
     assert_eq!(audio(3).durations.as_deref(), Some(&[30][..]));
     assert_eq!(audio(3).duration_range, Some(DurationRange { min: None, max: Some(120.0) }));
-    let rates: Vec<(PriceUnit, Currency, Option<f64>)> = read
+    let rates: Vec<(PriceUnit, Option<Modality>, Currency, Option<f64>)> = read
         .models
         .iter()
         .filter_map(|model| model.price.as_ref())
         .flat_map(|price| &price.rates)
-        .map(|rate| (rate.unit, rate.currency, rate.duration))
+        .map(|rate| (rate.unit, rate.modality, rate.currency, rate.duration))
         .collect();
     assert_eq!(
         rates,
         [
-            (PriceUnit::MillionCharacters, Currency::Usd, None),
-            (PriceUnit::Minute, Currency::Usd, None),
-            (PriceUnit::MillionInputTokens, Currency::Usd, None),
-            (PriceUnit::MillionOutputTokens, Currency::Cny, Some(30.0)),
-            (PriceUnit::Video, Currency::Usd, Some(6.0)),
-            (PriceUnit::Other, Currency::Other, None),
+            (PriceUnit::MillionCharacters, None, Currency::Usd, None),
+            (PriceUnit::Minute, None, Currency::Usd, None),
+            (PriceUnit::MillionInputTokens, None, Currency::Usd, None),
+            (PriceUnit::MillionCachedInputTokens, Some(Modality::Image), Currency::Usd, None),
+            (PriceUnit::MillionOutputTokens, None, Currency::Cny, Some(30.0)),
+            (PriceUnit::Video, None, Currency::Usd, Some(6.0)),
+            (PriceUnit::Other, None, Currency::Other, None),
         ]
     );
 }
@@ -295,20 +297,17 @@ async fn a_build_from_no_branch_downloads_nothing_and_keeps_its_copy() {
     media.close();
 }
 
-fn info(models: &[ImageModelInfo]) -> Vec<(&str, Option<&str>, &str, Option<&str>)> {
-    models
-        .iter()
-        .map(|model| (model.id.as_str(), model.released.as_deref(), model.description.as_str(), model.takes.as_deref()))
-        .collect()
+fn listed_ids(models: &[ImageModelInfo]) -> Vec<&str> {
+    models.iter().map(|model| model.id.as_str()).collect()
 }
 
-// Reads a catalog in memory: microseconds.
+// Reads a catalog in memory: microseconds. What `demi image models` says
+// of each model, an alias's facts included, is the backend's scenario's.
 //
-// Planted defects: an alias without the date or sizes of the model it
-// names; a video model, or another subscription's, listed as an image
-// model; a listed model the catalog lacks told with the catalog's words.
+// Planted defect: a video model, or another subscription's, listed as an
+// image model.
 #[test]
-fn a_subscription_lists_the_catalogs_image_models_for_it_and_an_alias_takes_its_models_facts() {
+fn a_subscription_lists_the_catalogs_image_models_for_it() {
     let catalog = decoded(&json!({ "updated": "2026-10-01T00:00:00Z", "models": [
         { "vendor": "openai", "id": "pic", "kind": "image", "name": "Pic", "description": "Best pictures",
           "aliasOf": "pic-2026-09-08", "subscriptions": ["chatgpt"] },
@@ -324,23 +323,6 @@ fn a_subscription_lists_the_catalogs_image_models_for_it_and_an_alias_takes_its_
         { "vendor": "xai", "id": "imagine", "kind": "image", "name": "Imagine", "subscriptions": ["grok"],
           "image": { "aspectRatios": ["1:1", "16:9", "9:19.5"], "resolutions": ["1k", "2k"], "edits": true, "maxInputImages": 5 } }
     ] }));
-    assert_eq!(
-        info(&subscription_models(&catalog, Subscription::Chatgpt)),
-        [
-            ("pic", Some("2026-09-08"), "Best pictures",
-             Some("any W×H, each edge a multiple of 16 and at most 3840, long:short at most 3:1, 655,360 to 8,294,400 pixels; transparent backgrounds; edits")),
-            ("pic-2026-09-08", Some("2026-09-08"), "Dated snapshot of pic",
-             Some("any W×H, each edge a multiple of 16 and at most 3840, long:short at most 3:1, 655,360 to 8,294,400 pixels; transparent backgrounds; edits")),
-            ("pic-1", Some("2025-04-23"), "", Some("1024×1024, 1536×1024 or 1024×1536")),
-            ("pic-latest", Some("2025-04-23"), "Alias of pic-1", Some("1024×1024, 1536×1024 or 1024×1536")),
-        ]
-    );
-    assert_eq!(
-        info(&subscription_models(&catalog, Subscription::Grok)),
-        [("imagine", None, "", Some("1:1, 16:9 or 9:19.5, at 1k or 2k; edits up to 5 images"))]
-    );
-    let unknown = listed(&catalog, ImageVendor::OpenAi, "pic-3", Some("2026-10-02".into()), Some("New".into()));
-    assert_eq!(info(&[unknown]), [("pic-3", Some("2026-10-02"), "New", None)]);
-    let other_vendors = listed(&catalog, ImageVendor::Xai, "pic", None, None);
-    assert_eq!(info(&[other_vendors]), [("pic", None, "", None)]);
+    assert_eq!(listed_ids(&subscription_models(&catalog, Subscription::Chatgpt)), ["pic", "pic-2026-09-08", "pic-1", "pic-latest"]);
+    assert_eq!(listed_ids(&subscription_models(&catalog, Subscription::Grok)), ["imagine"]);
 }

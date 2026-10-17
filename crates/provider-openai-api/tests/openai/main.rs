@@ -47,6 +47,7 @@ pub(crate) fn provider_of(
         wire,
         policy,
         vendor_id: vendor_id.map(str::to_owned),
+        makes_images: false,
     };
     OpenAiProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }
