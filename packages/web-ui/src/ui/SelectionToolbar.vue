@@ -19,7 +19,8 @@ import { t as shared } from '../locales/text'
  * one object that offers tools for it, as a message does
  * (`selectionTools`), a row of its tools stands by it, Copy first, then the
  * object's, such as Send to Conversation. On the desktop it stands above
- * the selection, once the mouse that drags it is released; on a phone
+ * the selection, once the mouse that drags it is released, with a divider
+ * between tools, as the system's edit menu has; on a phone
  * under it, clear of the system's callout above. A tool with a submenu
  * opens it from its button, on a phone as a sheet; while it is open the
  * toolbar keeps the selection it opened for, though the focus moving into
@@ -118,9 +119,10 @@ const isCopy = (index: number) => index === 0
       @mousedown.prevent
       @touchstart.prevent
     >
+      <template v-for="(entry, index) in tools.entries" :key="entry.label">
+      <!-- A divider between tools, as the system's edit menu has. -->
+      <div v-if="index > 0" class="h-4 w-px bg-line-subtle" aria-hidden="true" />
       <Button
-        v-for="(entry, index) in tools.entries"
-        :key="entry.label"
         size="sm"
         variant="ghost"
         :pressed="opened?.entry === entry"
@@ -130,6 +132,7 @@ const isCopy = (index: number) => index === 0
         <component :is="isCopy(index) && copied ? Check : entry.icon" v-if="entry.icon" :size="ICON_PX.in28" aria-hidden="true" />
         {{ isCopy(index) && copied ? shared('common.copied') : entry.label }}
       </Button>
+      </template>
     </div>
   </Teleport>
   <Popover
