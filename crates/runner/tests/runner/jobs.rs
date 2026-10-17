@@ -12,7 +12,9 @@ use demi_runner_protocol::{
 };
 use serde_json::json;
 
-use crate::{Host, context, start_job, start_job_in};
+use demi_command_protocol::CommandCaller;
+
+use crate::{Host, context, start_job, start_job_by};
 
 #[tokio::test]
 async fn functions_and_compound_pipelines_drain_large_output_and_here_documents() {
@@ -552,36 +554,48 @@ async fn a_move_out_of_tmp_carries_the_files_edits_and_a_made_and_removed_file_i
     .unwrap();
 }
 
-/// A conversation's job finds its scratch directory made and named by
-/// `DEMI_SCRATCH` (`runner.md` § Scratch directory). About a second: a job
-/// starts a login shell.
+/// Each agent of a conversation finds its own scratch directory made and
+/// named by `DEMI_SCRATCH` (`runner.md` § Scratch directory): the root
+/// agent's is the conversation's, each subagent's its `agent-<number>`
+/// folder inside it, so two subagents that save one relative name keep
+/// their own files. Under a second: three short jobs, one after another.
 #[tokio::test]
-async fn a_job_finds_its_scratch_directory_made_and_named() {
+async fn each_agent_finds_its_own_scratch_directory_made_and_named() {
     tokio::time::timeout(Duration::from_secs(60), async {
         let mut host = Host::start(BTreeMap::new()).await.online().await;
         let working = tempfile::tempdir_in("/tmp").unwrap();
-        let scratch = host.state().join("scratch").join(crate::CONVERSATION);
-        let scratch = scratch.to_string_lossy().into_owned();
-
-        start_job_in(
-            &mut host,
-            "where",
-            working.path(),
-            r#"printf '%s' "$DEMI_SCRATCH"; test -d "$DEMI_SCRATCH""#,
-        )
-        .await;
-        let mut named = Vec::new();
-        loop {
-            match host.frame().await {
-                Outbound::JobOutput { bytes, .. } => named.extend(bytes.0),
-                Outbound::JobExit { exit_code, .. } => {
-                    assert_eq!(exit_code, Some(0), "the directory exists");
-                    break;
+        let conversation = host.state().join("scratch").join(crate::CONVERSATION);
+        for (number, expected) in [
+            (0, conversation.clone()),
+            (4, conversation.join("agent-4")),
+            (5, conversation.join("agent-5")),
+        ] {
+            let script = format!(
+                r#"test -d "$DEMI_SCRATCH" && mkdir -p "$DEMI_SCRATCH/shots" && printf {number} > "$DEMI_SCRATCH/shots/before.png" && printf '%s' "$DEMI_SCRATCH""#
+            );
+            let job = format!("agent-{number}");
+            start_job_by(&mut host, &job, working.path(), CommandCaller::agent(number), &script).await;
+            let mut named = Vec::new();
+            loop {
+                match host.frame().await {
+                    Outbound::JobOutput { bytes, .. } => named.extend(bytes.0),
+                    Outbound::JobExit { exit_code, .. } => {
+                        assert_eq!(exit_code, Some(0), "agent {number}'s directory exists");
+                        break;
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
+            assert_eq!(String::from_utf8(named).unwrap(), expected.to_string_lossy());
         }
-        assert_eq!(String::from_utf8(named).unwrap(), scratch);
+        for (number, directory) in [
+            (0, conversation.clone()),
+            (4, conversation.join("agent-4")),
+            (5, conversation.join("agent-5")),
+        ] {
+            let saved = std::fs::read_to_string(directory.join("shots/before.png")).unwrap();
+            assert_eq!(saved, number.to_string(), "agent {number}'s file is its own");
+        }
         host.close().await;
     })
     .await

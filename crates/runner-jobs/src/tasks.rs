@@ -18,7 +18,7 @@ use crate::{
     connection::ConnectionHandle,
 };
 use bytes::Bytes;
-use demi_command_protocol::{CommandContext, Viewable};
+use demi_command_protocol::{CommandCaller, CommandContext, Viewable};
 use demi_runner_command_packages::ServiceHandle;
 use demi_runner_process::{
     job_shell::{JobCommands, JobShell, JobStart, ShellJob},
@@ -122,9 +122,10 @@ struct Controls {
 pub enum TaskCommand {
     Shell {
         script: String,
-        /// The conversation the job belongs to, whose scratch directory
-        /// `DEMI_SCRATCH` names.
+        /// The conversation the job belongs to and the agent that started
+        /// it, whose scratch directory `DEMI_SCRATCH` names.
         conversation: String,
+        caller: CommandCaller,
         stdin: Option<wire::PipeRef>,
         stdout: Option<wire::PipeRef>,
         /// The manifest, command context and viewable media types of a job
@@ -494,6 +495,7 @@ impl JobConfig {
             TaskCommand::Shell {
                 script,
                 conversation,
+                caller,
                 stdin,
                 stdout,
                 commands,
@@ -506,7 +508,7 @@ impl JobConfig {
                     running,
                 } = self.directories.create(&id, &cancel).await?;
                 env.insert(JOB_ID_ENV.into(), id.clone());
-                let scratch = self.scratch.create(&conversation).await?;
+                let scratch = self.scratch.create(&conversation, &caller).await?;
                 env.insert(SCRATCH_ENV.into(), scratch.to_string_lossy().into_owned());
                 let edit_context = demi_command_protocol::EditContext {
                     directory: path.join("changes").to_string_lossy().into_owned(),
