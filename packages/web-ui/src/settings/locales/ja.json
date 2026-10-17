@@ -479,6 +479,7 @@
     "apiKeys": "API キー",
     "name": "プロバイダー名",
     "rename": "名前を変更",
+    "remove": "プロバイダーを削除…",
     "saving": "保存中…",
     "addAccount": "アカウントを追加",
     "showInMenu": "モデルメニューに表示",
