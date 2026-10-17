@@ -90,6 +90,10 @@ impl Shard {
             return Ok(false);
         };
         self.mark(Part::Conversation(id.clone()));
+        // Its runs keep no conversation, and the automations that woke it
+        // pause, saying why.
+        self.automation_target_gone(&id, demi_web_api_protocol::automations::PauseReason::ConversationDeleted)
+            .await;
         self.agent().close_tree(&root).await;
         drop(stopped);
         self.titles().abort(&id);

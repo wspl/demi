@@ -1,0 +1,168 @@
+{
+  "page": {
+    "title": "자동화",
+    "description": "정해진 시간, 명령의 출력이 바뀔 때, 또는 URL이 호출될 때 에이전트를 시작합니다.",
+    "new": "새로운 자동화",
+    "newName": "새로운 자동화",
+    "empty": "자동화 없음",
+    "emptyHint": "아무 대화에서나 에이전트에게 요청하거나 새로운 자동화를 클릭하십시오.",
+    "paused": "일시 정지됨",
+    "unread": "알림을 보냈으며 아직 열지 않음",
+    "failed": "마지막 실행이 실패함",
+    "openSidebar": "사이드바 보기"
+  },
+  "editor": {
+    "rename": "이름 변경",
+    "name": "이름",
+    "on": "켬",
+    "pausedHint": "일시 정지되었습니다. 켜기 전까지는 지금 실행으로만 실행됩니다.",
+    "runNow": "지금 실행",
+    "delete": "자동화 삭제…",
+    "deleteTitle": "‘{name}’을(를) 삭제하겠습니까?",
+    "deleteBody": "실행으로 생긴 대화는 남으며 사이드바에 추가됩니다.",
+    "deleteAction": "삭제",
+    "next": "다음 실행: {when}",
+    "pausedBecause": {
+      "conversation_archived": "대상 대화가 보관되어 일시 정지되었습니다.",
+      "conversation_deleted": "대상 대화가 삭제되어 일시 정지되었습니다."
+    }
+  },
+  "trigger": {
+    "title": "트리거",
+    "kind": "시작",
+    "time": "정해진 시간",
+    "change": "출력이 바뀔 때",
+    "url": "URL이 호출될 때",
+    "repeat": "반복",
+    "once": "한 번",
+    "repeating": "간격",
+    "cron": "Cron",
+    "moment": "날짜 및 시간",
+    "momentHint": "2026-10-18 08:00 형식으로.",
+    "momentInvalid": "날짜와 시간을 2026-10-18 08:00 형식으로 입력하십시오.",
+    "interval": "간격",
+    "intervalInvalid": "1 이상의 정수를 입력하십시오.",
+    "units": {
+      "minutes": "분",
+      "hours": "시간",
+      "days": "일"
+    },
+    "expression": "Cron 표현식",
+    "expressionHint": "분, 시, 일, 월, 요일: {words}.",
+    "expressionInvalid": "0 9 * * 1-5처럼 다섯 개의 필드를 입력하십시오.",
+    "timeZone": "시간대",
+    "command": "명령",
+    "commandHint": "대상의 디렉터리에서 실행됩니다. 출력이나 종료 상태가 바뀌면 실행이 시작되며, 첫 확인은 기록만 합니다.",
+    "checkEvery": "확인 간격",
+    "cloudCost": "확인할 때마다 클라우드에서 실행되어 클라우드를 깨우므로, 자주 확인하면 클라우드가 계속 실행됩니다.",
+    "address": "주소",
+    "secret": "시크릿",
+    "secretHidden": "비밀 키, 숨김",
+    "regenerate": "시크릿 재생성",
+    "regenerateTitle": "시크릿을 재생성하겠습니까?",
+    "regenerateBody": "이후 현재 시크릿을 사용하는 호출은 거부됩니다.",
+    "regenerateAction": "재생성",
+    "stripe": "Stripe 서명 비밀 키",
+    "stripeHint": "Stripe는 자체 비밀 키를 씁니다. 여기에 붙여 넣으면 Stripe가 서명한 이벤트를 받습니다.",
+    "daily": "매일",
+    "dailyTime": "시각",
+    "days": "요일",
+    "clockInvalid": "09:00 형식으로 시각을 입력하세요.",
+    "limit": "하루 실행 횟수",
+    "limitHint": "한도에 도달하면 자정까지 이후의 변경과 호출로는 실행되지 않습니다.",
+    "noLimit": "제한 없음",
+    "limitInvalid": "1 이상의 정수를 입력하거나 비워 두세요.",
+    "addressHint": "다른 시스템이 이 주소로 POST를 보내면 실행이 시작됩니다.",
+    "secretHint": "Authorization: Bearer <secret>으로 보내거나 GitHub 웹후크의 Secret 칸에 붙여 넣으세요.",
+    "show": "비밀 키 보기",
+    "hide": "비밀 키 숨기기",
+    "stripePaste": "비밀 키 붙여 넣기"
+  },
+  "target": {
+    "title": "대상",
+    "host": "기기",
+    "project": "프로젝트",
+    "noProject": "없음",
+    "conversation": "대화",
+    "new": "실행마다 새로운 대화",
+    "existing": "기존 대화",
+    "newHint": "실행마다 빈 대화가 시작되며, 프롬프트에 쓴 내용만 압니다.",
+    "existingHint": "실행마다 메시지로 깨우며, 지금까지의 내용을 모두 이어서 진행합니다.",
+    "pick": "대화 선택",
+    "noConversations": "{host}에 대화가 없음",
+    "offline": "오프라인"
+  },
+  "prompt": {
+    "title": "프롬프트",
+    "hint": "실행마다 보내는 내용입니다. 에이전트에게 쓰듯이 쓰십시오.",
+    "placeholder": "어제 실패한 결제를 확인하고, 있으면 알려 주십시오."
+  },
+  "model": {
+    "label": "모델",
+    "hint": "새로운 대화는 이 모델로 시작하며, 기존 대화는 자체 모델을 유지합니다.",
+    "choose": "모델 선택",
+    "missing": "새 대화를 시작하려면 모델이 필요합니다."
+  },
+  "runs": {
+    "title": "실행 기록",
+    "none": "아직 실행되지 않았습니다.",
+    "never": "실행된 적 없음",
+    "last": "{when} {status}",
+    "open": "대화 열기",
+    "moved": "대화로 이동됨",
+    "status": {
+      "running": "실행 중",
+      "done": "완료",
+      "notified": "알림 보냄",
+      "skipped": "건너뜀",
+      "failed": "실패"
+    },
+    "note": {
+      "offline": "{device}이(가) 오프라인이었습니다",
+      "limit": "하루 {limit}회 한도에 도달했습니다. 이후 호출 {calls}회",
+      "targetGone": "대상 대화가 보관되거나 삭제되었습니다",
+      "timedOut": "명령이 60초를 넘겼습니다",
+      "commandFailed": "명령 실패: {message}",
+      "noModel": "선택한 모델 없음"
+    }
+  },
+  "notify": {
+    "off": "실행 결과는 알림으로 알려 주지만, 모든 브라우저에서 알림이 꺼져 있습니다.",
+    "turnOn": "알림 켜기"
+  },
+  "words": {
+    "interval": {
+      "minutes": "매분 | {count}분마다",
+      "hours": "매시간 | {count}시간마다",
+      "days": "매일 | {count}일마다"
+    },
+    "daily": "매일 {time}",
+    "weekdays": "평일 {time}",
+    "weekly": "매주 {day} {time}",
+    "onChange": "{interval}, 바뀔 때",
+    "url": "URL",
+    "newConversation": "새로운 대화",
+    "existing": "‘{title}’",
+    "days": "{days} {time}",
+    "existingGone": "삭제된 대화"
+  },
+  "bar": {
+    "label": "자동화 실행",
+    "automation": "자동화",
+    "move": "대화로 이동",
+    "moveShort": "이동"
+  },
+  "mark": {
+    "chip": "자동화 {count}개 | 자동화 {count}개",
+    "bolt": "자동화가 이 대화를 깨웁니다"
+  },
+  "failed": {
+    "create": "자동화를 만들 수 없음",
+    "save": "자동화를 저장할 수 없음",
+    "run": "자동화를 실행할 수 없음",
+    "delete": "자동화를 삭제할 수 없음",
+    "secret": "비밀 키를 표시할 수 없음",
+    "regenerate": "비밀 키를 다시 생성할 수 없음",
+    "move": "대화를 이동할 수 없음"
+  }
+}

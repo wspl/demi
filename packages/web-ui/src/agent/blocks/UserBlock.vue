@@ -3,7 +3,7 @@ import { t } from '../locales/text'
 import { computed, ref } from 'vue'
 import type { Component } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { Pencil } from '@lucide/vue'
+import { Pencil, Zap } from '@lucide/vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import CopyButton from '@demicodes/web-ui/ui/CopyButton.vue'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
@@ -11,6 +11,9 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import type { CopySource } from '../../composables/useCopy'
 import type { MessageEditContent } from '../message-editing'
 import type { VersionChoice } from '../versions'
+import type { MessageOrigin } from '../message-origins'
+import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import NoticeLabel from './NoticeLabel.vue'
 import VersionSwitcher from './VersionSwitcher.vue'
 import { composerCapsule, composerTransfer, contentMessage, provideTransfers } from '../message-editor/capsules'
 import MessageEditor from '../message-editor/MessageEditor.vue'
@@ -45,6 +48,12 @@ const props = defineProps<{
    * editable.
    */
   brief?: string | null
+  /**
+   * What sent the message when the user did not write it, an automation
+   * (`automations.md` § What a run sends): named above the bubble, as a
+   * receipt names the agent that sent one.
+   */
+  origin?: MessageOrigin | null
 }>()
 
 const emit = defineEmits<{
@@ -177,6 +186,11 @@ useResizeObserver(bodyRef, measure)
     class="group/user relative z-10 flex flex-col items-end bg-surface px-[var(--agent-pad-x,2rem)] pb-2 pt-1.5"
     :class="forceStuck ? 'user-sticky' : ''"
   >
+    <div v-if="origin" class="flex max-w-[80%] select-none items-center gap-1.5 pb-1 text-detail text-fg-subtle">
+      <Zap :size="ICON_PX.in24" class="shrink-0" aria-hidden="true" />
+      <NoticeLabel :notice="t('transcript.user.fromAutomation')" :title="origin.name" :go="origin.go" />
+      <span class="shrink-0">· {{ origin.when }}</span>
+    </div>
     <div class="relative max-w-[80%] rounded-xl bg-surface-card px-4 py-2.5">
       <div
         v-if="!pending"

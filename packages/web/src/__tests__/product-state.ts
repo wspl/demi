@@ -56,6 +56,8 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
     pluginStates: { skills: { sources: [] } },
     mail: false,
     run: 'run-1',
+    automations: [],
+    automationsUnread: 0,
     ...parts,
   })
 }
@@ -67,6 +69,6 @@ export function conversationSummary(id: string, title: string | null = null, par
     pluginsChanged: false, onlyWaitsForHost: false, draftRevision: 0, saved: 0, savedRevision: 0, panelRevision: 0, hostsRevision: 0, lastAttachment: 0, pluginRevisions: [],
     permissionRequests: 0, unreadPermissionRequests: 0, permissionsRevision: 0, cwd: '/home/demi', target: { kind: 'cloud' },
     contextVersion: 0, model: null, workflow: { type: 'default' }, createdAt: '2026-09-09T00:00:00.000Z', updatedAt: '2026-09-09T00:00:00.000Z',
-    status: 'idle', lastTurn: null, shares: [], ...parts,
+    status: 'idle', lastTurn: null, shares: [], automation: null, ...parts,
   }
 }

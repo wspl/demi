@@ -1375,6 +1375,7 @@ fn user(id: &str, words: &str) -> Block {
         model: test_model(),
         content: text(words),
         preamble: None,
+        automation: None,
     })
 }
 
@@ -1403,6 +1404,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     let brief = QueuedMessage {
         id: TurnId::try_from("brief").unwrap(),
         content: text("task lost"),
+        automation: None,
     };
     let lost = NodeRecord {
         instructions: Some("retired prompt".into()),
@@ -2319,6 +2321,7 @@ async fn a_childs_lists_hold_only_what_it_changed_in_its_own_directory() {
     let brief = QueuedMessage {
         id: TurnId::try_from("brief").unwrap(),
         content: text("task edit"),
+        automation: None,
     };
     let editor = NodeRecord {
         cwd: Some(ChildDirectory {

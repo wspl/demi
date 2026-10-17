@@ -37,6 +37,7 @@ use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 
 use crate::shard::Shard;
+use crate::automations::commands::automation_group;
 use crate::shard::credential_commands::credentials_group;
 use crate::shard::notify_commands::notify_group;
 
@@ -72,6 +73,7 @@ impl ToolsetSource for ShardToolsets {
                     attachment_group(hosts),
                     conversation_group(self.shard.clone()),
                     credentials_group(self.shard.clone()),
+                    automation_group(self.shard.clone()),
                     providers_group(self.shard.clone()),
                     notify_group(self.shard.clone()),
                 ])

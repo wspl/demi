@@ -116,6 +116,16 @@ pub struct QueuedMessage {
     pub id: TurnId,
     #[garde(dive)]
     pub content: Vec<UserContentBlock>,
+    /// The automation's run that sent it, which its `user` block keeps;
+    /// absent for a message the user wrote.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "serde_with::rust::unwrap_or_skip"
+    )]
+    #[schemars(with = "crate::AutomationMark")]
+    #[garde(dive)]
+    pub automation: Option<crate::AutomationMark>,
 }
 
 /// A call the model is writing (`rendering.md` § Calls being written): the

@@ -2,7 +2,9 @@
   "nav": {
     "new": "新對話",
     "search": "搜尋",
-    "archived": "已封存"
+    "archived": "已封存",
+    "automations": "自動化",
+    "unreadRuns": "{count} 則未讀"
   },
   "groups": {
     "conversations": "對話",

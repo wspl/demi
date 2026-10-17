@@ -265,7 +265,8 @@ impl Candidate {
             Some(content) => {
                 let content = Self::content(target, content)?;
                 let mut candidate = TranscriptLog::new(prefix, s.ids.clone(), core.clock());
-                candidate.push_user(turn.clone(), &model, content, preamble);
+                // A new version is the user's own, whoever sent the first.
+                candidate.push_user(turn.clone(), &model, content, preamble, None);
                 candidate.blocks().to_vec()
             }
             // The message stays, and the new answer follows it.

@@ -11,10 +11,12 @@ import { computed } from 'vue'
  * (`/phone-frame` gives them that iPhone's values).
  */
 const props = defineProps<{
-  /** What the frame shows: a scene of `/phone-frame`. */
+  /** What the frame shows: a scene of `path`. */
   scene: string
   /** Which phone; the iPhone 15 without one. */
   device?: 'iphone-15' | 'iphone-se'
+  /** The page whose scene it shows; `/phone-frame` without one. */
+  path?: string
   /** The caption under the phone. */
   label: string
   /** Whether the page loads now; a page of phones loads them one at a time, as each is a whole app. */
@@ -26,7 +28,7 @@ const emit = defineEmits<{
 }>()
 
 const se = computed(() => props.device === 'iphone-se')
-const src = computed(() => `/phone-frame?scene=${encodeURIComponent(props.scene)}${se.value ? '&device=se' : ''}`)
+const src = computed(() => `${props.path ?? '/phone-frame'}?scene=${encodeURIComponent(props.scene)}${se.value ? '&device=se' : ''}`)
 </script>
 
 <template>

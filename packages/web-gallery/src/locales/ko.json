@@ -16,7 +16,8 @@
     "settings": "설정",
     "markdown": "Markdown",
     "phone": "휴대폰",
-    "roadmap": "로드맵"
+    "roadmap": "로드맵",
+    "automations": "자동화"
   },
   "views": {
     "errors": {
@@ -68,7 +69,11 @@
       "skills": "스킬",
       "search": "검색"
     },
-    "page": "페이지"
+    "page": "페이지",
+    "automations": {
+      "app": "앱",
+      "phone": "휴대폰"
+    }
   },
   "chrome": {
     "mode": "모드",

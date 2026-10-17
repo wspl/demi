@@ -64,6 +64,8 @@ impl Shard {
             .await?;
         let instructions = services.control.instructions(self.user().clone()).await?;
         let credentials = self.credential_list().await?;
+        let automations = self.automation_list().await?;
+        let automations_unread = services.control.unread_automation_runs(self.user().clone()).await?;
         let passkeys = passkey_list(&services.control, self.user()).await?;
         let sessions = services.sessions.list(self.user(), reader).await?.sessions;
         let users = match user.role {
@@ -97,6 +99,8 @@ impl Shard {
             subagents,
             instructions,
             credentials,
+            automations,
+            automations_unread,
             passkeys,
             passkey_rp_id: relying_party_id(public_url).map(str::to_owned),
             sessions,
@@ -160,6 +164,10 @@ impl Shard {
             },
             Part::Credentials => SyncEvent::Credentials {
                 credentials: self.credential_list().await?,
+            },
+            Part::Automations => SyncEvent::Automations {
+                automations: self.automation_list().await?,
+                automations_unread: self.services().control.unread_automation_runs(self.user().clone()).await?,
             },
             Part::Passkeys => {
                 let list = passkey_list(control, self.user()).await?;

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::{
-    AgentMessage, BlockId, CommandId, MAX_SAFE_INTEGER, ModelSelection, Nullable, ProviderErrorDiagnostics,
+    AgentMessage, AutomationId, AutomationRunId, BlockId, CommandId, MAX_SAFE_INTEGER, ModelSelection, Nullable, ProviderErrorDiagnostics,
     QuotaWindowName, Timestamp, TokenUsage, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 
@@ -252,6 +252,17 @@ pub struct UserBlock {
     #[schemars(with = "Nullable<String>")]
     #[garde(skip)]
     pub preamble: Option<String>,
+    /// The automation's run that sent the message, which the transcript
+    /// names above it as a receipt names the agent that sent one; absent
+    /// for a message the user wrote (`automations.md` § What a run sends).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "AutomationMark")]
+    #[garde(dive)]
+    pub automation: Option<AutomationMark>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
     /// a process resumes); omitted when there are none. They never leave
@@ -261,6 +272,24 @@ pub struct UserBlock {
     #[schemars(skip)]
     #[garde(skip)]
     pub entries: Vec<serde_json::Value>,
+}
+
+/// The automation's run a message came from (`automations.md` § What a run
+/// sends): which automation, as it was named when it fired, and when.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AutomationMark {
+    #[garde(skip)]
+    pub automation_id: AutomationId,
+    #[garde(skip)]
+    pub run_id: AutomationRunId,
+    /// The automation's name when the run started; the automation may be
+    /// renamed or deleted since.
+    #[garde(length(chars, min = 1))]
+    pub name: String,
+    /// When its trigger fired.
+    #[garde(skip)]
+    pub at: Timestamp,
 }
 
 /// What one context source told the node before a request (`transcript.md`

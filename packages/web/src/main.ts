@@ -60,6 +60,11 @@ const router = createRouter({
       path: '/chat/:id?',
       component: ChatPage,
     },
+    // The Automations page, and one automation (`automations.md` § Where the user sees them).
+    {
+      path: '/automations/:automation?',
+      component: ChatPage,
+    },
     {
       path: '/settings/:section?/:detail?',
       name: SETTINGS_ROUTE,

@@ -1176,6 +1176,16 @@ impl TestBackend {
         answer(request.send().await.unwrap()).await
     }
 
+    /// A call of an automation's URL, `/hooks/<id>`, as another system
+    /// makes it: no session, its own headers and body.
+    pub async fn hook(&self, id: &str, headers: &[(&str, &str)], body: Vec<u8>) -> Answer {
+        let mut request = self.http.post(format!("{}/hooks/{id}", self.url));
+        for (name, value) in headers {
+            request = request.header(*name, *value);
+        }
+        answer(request.body(body).send().await.unwrap()).await
+    }
+
     pub async fn get(&self, path: &str, session: Option<&Session>) -> Answer {
         self.send(
             Method::GET,

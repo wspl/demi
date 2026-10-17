@@ -4,6 +4,9 @@ import { useRouter } from 'vue-router'
 import { coded } from '@demicodes/web-ui/infra/errors'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import { provideAutomationOpener } from '@demicodes/web-ui/agent/message-origins'
+import AutomationRunBar from '@demicodes/web-ui/automations/AutomationRunBar.vue'
+import { useAutomations } from '../automations/store'
 import SessionStatus from '@demicodes/web-ui/agent/SessionStatus.vue'
 import { conversationPageKind, transcriptShown } from '@demicodes/web-ui/agent/session-status'
 import ConversationComposer from './ConversationComposer.vue'
@@ -61,6 +64,19 @@ const navigation = useConversationNavigation()
 const conversation = computed(() =>
   store.items.find((c) => c.id === props.id),
 )
+const automations = useAutomations()
+function openAutomation(id: string): void {
+  void router.push(`/automations/${encodeURIComponent(id)}`)
+}
+// An automation's message names it in the transcript and leads to it.
+provideAutomationOpener(openAutomation)
+/** The automation and run the conversation is filed under, whose bar shows under the header. */
+const filedRun = computed(() => {
+  const filed = conversation.value?.filed
+  return filed ? automations.runOf(filed) : null
+})
+/** The automations that wake the conversation, which the chip above the composer lists. */
+const wakers = computed(() => (conversation.value ? automations.wakers(conversation.value.id) : []))
 /** The header's place, which carries out a move the offline primary Host's card asks for. */
 const place = useTemplateRef<InstanceType<typeof WorkspaceInfo>>('place')
 /** Where the conversation runs now, live over the account's device states: Resume runs there. */
@@ -311,7 +327,18 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @compact-subagent="store.compact(conversation, $event)"
     @refresh-limits="card.refreshLimits"
     @open-instruction="card.openInstruction"
+    :automations="wakers"
+    @open-automation="openAutomation"
   >
+    <template v-if="filedRun" #bar
+      ><AutomationRunBar
+        :name="filedRun.automation.name"
+        :at="filedRun.run.at"
+        :time-zone="filedRun.automation.timeZone"
+        @open-page="router.push('/automations')"
+        @open-automation="openAutomation(filedRun.automation.id)"
+        @move="automations.moveToConversations(conversation.id)"
+    /></template>
     <template #workspace
       ><WorkspaceInfo ref="place" :project="project" :conversation="conversation"
     /></template>

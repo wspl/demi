@@ -247,9 +247,11 @@ ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cl
 /// From 0.1.22's control schema to the current one: a usage ledger row may
 /// be an image's (`images.md` § Accounts and failures), which SQLite's
 /// checks let in only on a table made again, its rows as they were; each
-/// browser's push subscription is kept (`turns.md` § Notifications); and a
+/// browser's push subscription is kept (`turns.md` § Notifications); a
 /// running job may wait to be sent to its device (`sessions-and-targets.md`
-/// § Host operations), which every one recorded before was.
+/// § Host operations), which every one recorded before was; and
+/// the users' automations and their runs (`automations.md` § Records), none
+/// before.
 const CONTROL_FROM_0_1_22: &str = "
 ALTER TABLE running_jobs ADD COLUMN sent INTEGER NOT NULL DEFAULT 1 CHECK (sent IN (0, 1));
 CREATE TABLE usage_ledger_images (
@@ -298,6 +300,87 @@ CREATE TABLE push_subscriptions (
   created_at       INTEGER NOT NULL
 ) STRICT;
 CREATE INDEX push_subscriptions_of_user ON push_subscriptions (user_id);
+-- Each user's automations (`automations.md`): the trigger as JSON,
+-- automation trigger format 1, the `Trigger` of the web contract; the
+-- target as JSON, automation target format 1, with the existing
+-- conversation it wakes again in `conversation_id`, null for a new one each
+-- run; the model settings as JSON, null for none chosen; why it paused
+-- itself, null while it is on or the user paused it; when its trigger was
+-- last set or it was last turned on, before which no time of its schedule
+-- fires; a URL trigger's secret and the Stripe signing secret the user
+-- pasted, each sealed with the automation as the additional data; and a
+-- change watch's last output, its standard output's last 16 KB, the
+-- SHA-256 of the whole of it, which a check compares, and its exit status,
+-- with when its command last ran, all null before its first.
+CREATE TABLE automations (
+  id               TEXT PRIMARY KEY,
+  user_id          TEXT NOT NULL REFERENCES users (id),
+  name             TEXT NOT NULL,
+  trigger          TEXT NOT NULL,
+  time_zone        TEXT NOT NULL,
+  max_runs_per_day INTEGER CHECK (max_runs_per_day > 0),
+  target           TEXT NOT NULL,
+  conversation_id  TEXT,
+  prompt           TEXT NOT NULL,
+  model            TEXT,
+  paused           INTEGER NOT NULL CHECK (paused IN (0, 1)),
+  paused_because   TEXT CHECK (paused_because IN ('conversation_archived', 'conversation_deleted')),
+  schedule_since   INTEGER NOT NULL,
+  secret           BLOB,
+  stripe_secret    BLOB,
+  watch_stdout     BLOB,
+  watch_digest     BLOB,
+  watch_exit       INTEGER,
+  watch_checked_at INTEGER,
+  created_at       INTEGER NOT NULL,
+  updated_at       INTEGER NOT NULL
+) STRICT;
+CREATE INDEX automations_by_user ON automations (user_id, created_at);
+CREATE INDEX automations_by_conversation ON automations (conversation_id) WHERE conversation_id IS NOT NULL;
+-- Each automation's runs (`automations.md` § Runs): what fired it, when,
+-- its state with a note as JSON, automation run note format 1, the `RunNote`
+-- of the web contract, the start of its agent's last answer, the
+-- conversation it ran in with the turn its message started, whether that
+-- new conversation is still filed under the automation, out of the
+-- sidebar, whether it notified and its conversation was not opened since,
+-- and whether its agent notified at all, which makes it end Notified. A
+-- run's conversation outlives it.
+CREATE TABLE automation_runs (
+  id              TEXT PRIMARY KEY,
+  automation_id   TEXT NOT NULL REFERENCES automations (id) ON DELETE CASCADE,
+  cause           TEXT NOT NULL CHECK (cause IN ('time', 'change', 'url', 'now')),
+  at              INTEGER NOT NULL,
+  state           TEXT NOT NULL CHECK (state IN ('running', 'done', 'notified', 'skipped', 'failed')),
+  note            TEXT,
+  line            TEXT,
+  conversation_id TEXT,
+  turn_id         TEXT,
+  filed           INTEGER NOT NULL CHECK (filed IN (0, 1)),
+  unread          INTEGER NOT NULL CHECK (unread IN (0, 1)),
+  notified        INTEGER NOT NULL CHECK (notified IN (0, 1))
+) STRICT;
+CREATE INDEX automation_runs_by_automation ON automation_runs (automation_id, at);
+CREATE INDEX automation_runs_by_conversation ON automation_runs (conversation_id) WHERE conversation_id IS NOT NULL;
+-- A URL's calls (`automations.md` § Triggers), each kept as it is taken,
+-- with its delivery ID: pending until a run takes it, so a restart loses
+-- none; taken; or held, for one a paused automation or its daily limit
+-- answered and one a pause or an edit dropped. A pending call keeps its
+-- method, its headers as JSON and its body; the others keep only what
+-- dedupes a repeated delivery ID, for an hour.
+CREATE TABLE automation_calls (
+  id            INTEGER PRIMARY KEY,
+  automation_id TEXT NOT NULL REFERENCES automations (id) ON DELETE CASCADE,
+  at            INTEGER NOT NULL,
+  delivery_id   TEXT,
+  state         TEXT NOT NULL CHECK (state IN ('pending', 'taken', 'held')),
+  method        TEXT,
+  headers       TEXT,
+  body          BLOB,
+  CHECK ((state = 'pending') = (method IS NOT NULL AND headers IS NOT NULL AND body IS NOT NULL))
+) STRICT;
+CREATE INDEX automation_calls_by_state ON automation_calls (automation_id, state, id);
+CREATE INDEX automation_calls_by_delivery ON automation_calls (automation_id, delivery_id)
+  WHERE delivery_id IS NOT NULL;
 ";
 
 /// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
@@ -1177,7 +1260,10 @@ pub(crate) const CONVERSATION: Schema = Schema {
 /// names (`usage-and-quota.md` § Usage ledger); one recorded before keeps
 /// none. A command whose start waits for its Host keeps what it starts
 /// (`sessions-and-targets.md` § Host operations); every one recorded before
-/// was sent.
+/// was sent. A `user` block (transcript block format 11) and a queued
+/// message (checkpoint state format 5) may name the automation's run that
+/// sent it (`automations.md` § What a run sends); one stored before names
+/// none, as a message the user wrote, so neither is rewritten.
 const CONVERSATION_FROM_0_1_22: &str = "
 ALTER TABLE running_commands ADD COLUMN turn_id TEXT;
 ALTER TABLE running_commands ADD COLUMN unsent TEXT;
@@ -3058,6 +3144,88 @@ CREATE TABLE user_credentials (
 ) STRICT;
 CREATE INDEX user_credentials_by_expiry ON user_credentials (keep_until) WHERE keep_until IS NOT NULL;
 
+-- Each user's automations (`automations.md`): the trigger as JSON,
+-- automation trigger format 1, the `Trigger` of the web contract; the
+-- target as JSON, automation target format 1, with the existing
+-- conversation it wakes again in `conversation_id`, null for a new one each
+-- run; the model settings as JSON, null for none chosen; why it paused
+-- itself, null while it is on or the user paused it; when its trigger was
+-- last set or it was last turned on, before which no time of its schedule
+-- fires; a URL trigger's secret and the Stripe signing secret the user
+-- pasted, each sealed with the automation as the additional data; and a
+-- change watch's last output, its standard output's last 16 KB, the
+-- SHA-256 of the whole of it, which a check compares, and its exit status,
+-- with when its command last ran, all null before its first.
+CREATE TABLE automations (
+  id               TEXT PRIMARY KEY,
+  user_id          TEXT NOT NULL REFERENCES users (id),
+  name             TEXT NOT NULL,
+  trigger          TEXT NOT NULL,
+  time_zone        TEXT NOT NULL,
+  max_runs_per_day INTEGER CHECK (max_runs_per_day > 0),
+  target           TEXT NOT NULL,
+  conversation_id  TEXT,
+  prompt           TEXT NOT NULL,
+  model            TEXT,
+  paused           INTEGER NOT NULL CHECK (paused IN (0, 1)),
+  paused_because   TEXT CHECK (paused_because IN ('conversation_archived', 'conversation_deleted')),
+  schedule_since   INTEGER NOT NULL,
+  secret           BLOB,
+  stripe_secret    BLOB,
+  watch_stdout     BLOB,
+  watch_digest     BLOB,
+  watch_exit       INTEGER,
+  watch_checked_at INTEGER,
+  created_at       INTEGER NOT NULL,
+  updated_at       INTEGER NOT NULL
+) STRICT;
+CREATE INDEX automations_by_user ON automations (user_id, created_at);
+CREATE INDEX automations_by_conversation ON automations (conversation_id) WHERE conversation_id IS NOT NULL;
+-- Each automation's runs (`automations.md` § Runs): what fired it, when,
+-- its state with a note as JSON, automation run note format 1, the `RunNote`
+-- of the web contract, the start of its agent's last answer, the
+-- conversation it ran in with the turn its message started, whether that
+-- new conversation is still filed under the automation, out of the
+-- sidebar, whether it notified and its conversation was not opened since,
+-- and whether its agent notified at all, which makes it end Notified. A
+-- run's conversation outlives it.
+CREATE TABLE automation_runs (
+  id              TEXT PRIMARY KEY,
+  automation_id   TEXT NOT NULL REFERENCES automations (id) ON DELETE CASCADE,
+  cause           TEXT NOT NULL CHECK (cause IN ('time', 'change', 'url', 'now')),
+  at              INTEGER NOT NULL,
+  state           TEXT NOT NULL CHECK (state IN ('running', 'done', 'notified', 'skipped', 'failed')),
+  note            TEXT,
+  line            TEXT,
+  conversation_id TEXT,
+  turn_id         TEXT,
+  filed           INTEGER NOT NULL CHECK (filed IN (0, 1)),
+  unread          INTEGER NOT NULL CHECK (unread IN (0, 1)),
+  notified        INTEGER NOT NULL CHECK (notified IN (0, 1))
+) STRICT;
+CREATE INDEX automation_runs_by_automation ON automation_runs (automation_id, at);
+CREATE INDEX automation_runs_by_conversation ON automation_runs (conversation_id) WHERE conversation_id IS NOT NULL;
+-- A URL's calls (`automations.md` § Triggers), each kept as it is taken,
+-- with its delivery ID: pending until a run takes it, so a restart loses
+-- none; taken; or held, for one a paused automation or its daily limit
+-- answered and one a pause or an edit dropped. A pending call keeps its
+-- method, its headers as JSON and its body; the others keep only what
+-- dedupes a repeated delivery ID, for an hour.
+CREATE TABLE automation_calls (
+  id            INTEGER PRIMARY KEY,
+  automation_id TEXT NOT NULL REFERENCES automations (id) ON DELETE CASCADE,
+  at            INTEGER NOT NULL,
+  delivery_id   TEXT,
+  state         TEXT NOT NULL CHECK (state IN ('pending', 'taken', 'held')),
+  method        TEXT,
+  headers       TEXT,
+  body          BLOB,
+  CHECK ((state = 'pending') = (method IS NOT NULL AND headers IS NOT NULL AND body IS NOT NULL))
+) STRICT;
+CREATE INDEX automation_calls_by_state ON automation_calls (automation_id, state, id);
+CREATE INDEX automation_calls_by_delivery ON automation_calls (automation_id, delivery_id)
+  WHERE delivery_id IS NOT NULL;
+
 -- The conversation index. The web app chooses a conversation's id and its
 -- case is kept, but no two ids differ only in case: each names a database
 -- file, and a file system may ignore case. The target is Cloud (optionally a
@@ -3494,7 +3662,7 @@ CREATE TABLE nodes (
   delivered        INTEGER NOT NULL CHECK (delivered IN (0, 1)),
   -- The session's checkpoint state as JSON, with whether a Stop holds its
   -- waiting input until the user's next action.
-  -- nodes.state: checkpoint state format 4
+  -- nodes.state: checkpoint state format 5
   state            TEXT NOT NULL,
   output_revision  INTEGER NOT NULL CHECK (output_revision >= 0),
   -- The number of the agent the node was forked from; null for one that
@@ -3541,14 +3709,14 @@ CREATE TABLE sequences (
   next INTEGER NOT NULL CHECK (next >= 1)
 ) STRICT;
 
--- blocks.block: transcript block format 10.
+-- blocks.block: transcript block format 11.
 -- A node's transcript is a tree of rows (message-editing.md § Versions):
 -- `idx` is a row's number, its place in the order the node's rows were
 -- written, which no other row is ever given. A row is never deleted.
 CREATE TABLE blocks (
   node_id  TEXT NOT NULL REFERENCES nodes (id) ON DELETE CASCADE,
   idx      INTEGER NOT NULL CHECK (idx >= 0),
-  -- blocks.block: transcript block format 10
+  -- blocks.block: transcript block format 11
   block    TEXT NOT NULL,
   -- The row before it on its path; null for a path's first row.
   follows  INTEGER CHECK (follows < idx),
@@ -3630,7 +3798,7 @@ CREATE INDEX share_entries_by_row ON share_entries (node_id, idx, token);
 CREATE TABLE share_blocks (
   token TEXT NOT NULL,
   idx   INTEGER NOT NULL CHECK (idx >= 0),
-  -- share_blocks.block: transcript block format 10
+  -- share_blocks.block: transcript block format 11
   block TEXT NOT NULL,
   PRIMARY KEY (token, idx)
 ) STRICT;

@@ -73,7 +73,8 @@
       "sendNow": "今すぐ送信",
       "recall": "取り消す",
       "recalled": "メッセージを取り消しました",
-      "notDelivered": "このメッセージは配信されませんでした。"
+      "notDelivered": "このメッセージは配信されませんでした。",
+      "fromAutomation": "オートメーション"
     },
     "assistant": {
       "fork": "分岐",

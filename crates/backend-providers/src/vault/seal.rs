@@ -33,6 +33,11 @@ pub enum Row<'a> {
     },
     /// A user's credential's values, by the user and the credential's name.
     Credential { user: &'a UserId, name: &'a str },
+    /// An automation's URL secret, by the automation's id.
+    AutomationSecret(&'a str),
+    /// The Stripe signing secret the user pasted into an automation, by the
+    /// automation's id.
+    AutomationStripeSecret(&'a str),
 }
 
 impl Row<'_> {
@@ -49,6 +54,10 @@ impl Row<'_> {
                 (b"demi plugin secret", vec![*plugin, user.as_str(), *name])
             }
             Self::Credential { user, name } => (b"demi credential", vec![user.as_str(), *name]),
+            Self::AutomationSecret(automation) => (b"demi automation secret", vec![*automation]),
+            Self::AutomationStripeSecret(automation) => {
+                (b"demi automation stripe secret", vec![*automation])
+            }
         };
         let mut name = label.to_vec();
         for id in ids {

@@ -16,7 +16,8 @@
     "settings": "Settings",
     "markdown": "Markdown",
     "phone": "Phone",
-    "roadmap": "Roadmap"
+    "roadmap": "Roadmap",
+    "automations": "Automations"
   },
   "views": {
     "errors": {
@@ -68,7 +69,11 @@
       "skills": "Skills",
       "search": "Search"
     },
-    "page": "Page"
+    "page": "Page",
+    "automations": {
+      "app": "App",
+      "phone": "Phone"
+    }
   },
   "chrome": {
     "mode": "Mode",

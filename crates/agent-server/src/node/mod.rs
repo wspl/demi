@@ -371,7 +371,7 @@ impl<H: HostResolver> Node<H> {
         for message in continuation.queued {
             // A restored session is live and has run nothing, so it admits
             // them; the actions report their course as events.
-            drop(session.send(message.content, message.id));
+            drop(session.send_message(message));
         }
         session.wake();
         session.flush().await

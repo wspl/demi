@@ -552,7 +552,10 @@ impl ControlService {
     /// its value when the conversation may use the credential, which is
     /// then its last use; otherwise the allowance request recorded for
     /// `command`, in place of the undecided one of the same credential from
-    /// the same agent.
+    /// the same agent. With `asks_since`, every read asks, whatever the
+    /// conversation's grants: an allowance covers one read, the first after
+    /// it and after that time.
+    #[allow(clippy::too_many_arguments)]
     pub async fn read_credential(
         &self,
         conversation: ConversationId,
@@ -560,6 +563,7 @@ impl ControlService {
         field: String,
         command: String,
         agent: AskingAgent,
+        asks_since: Option<Timestamp>,
         seal: std::sync::Arc<dyn CredentialSeal>,
     ) -> Result<CredentialRead, StorageError> {
         self.call(move |connection, now| {
@@ -571,10 +575,22 @@ impl ControlService {
             if !stored.fields.iter().any(|known| known.name == field) {
                 return Ok(CredentialRead::NoField(stored.fields));
             }
+            // While the conversation works for a run a URL started, every
+            // read asks, whatever the conversation's grants: another
+            // system's call wrote part of what its agent reads
+            // (`automations.md` § What a run sends). An allowance then
+            // covers one read, the first after it.
+            let since = match asks_since {
+                Some(started) => {
+                    let used = stored.last_used_at.map_or(i64::MIN, |used| used.as_millisecond());
+                    started.as_millisecond().max(used)
+                }
+                None => i64::MIN,
+            };
             let allowed: bool = transaction.query_row(
                 "SELECT EXISTS (SELECT 1 FROM credential_allowances
-                                WHERE conversation_id = ?1 AND credential_id = ?2)",
-                params![conversation.as_str(), stored.id.as_str()],
+                                WHERE conversation_id = ?1 AND credential_id = ?2 AND allowed_at > ?3)",
+                params![conversation.as_str(), stored.id.as_str(), since],
                 |row| row.get(0),
             )?;
             if !allowed {
@@ -810,8 +826,9 @@ fn allow(
     now: Timestamp,
 ) -> Result<(), StorageError> {
     connection.execute(
-        "INSERT OR IGNORE INTO credential_allowances (conversation_id, credential_id, allowed_at)
-         VALUES (?1, ?2, ?3)",
+        "INSERT INTO credential_allowances (conversation_id, credential_id, allowed_at)
+         VALUES (?1, ?2, ?3)
+         ON CONFLICT (conversation_id, credential_id) DO UPDATE SET allowed_at = excluded.allowed_at",
         params![conversation.as_str(), credential.as_str(), now.as_millisecond()],
     )?;
     Ok(())

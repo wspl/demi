@@ -21,6 +21,7 @@ fn user(value: &str) -> Block {
         model: test_model(),
         content: Vec::new(),
         preamble: None,
+        automation: None,
     })
 }
 

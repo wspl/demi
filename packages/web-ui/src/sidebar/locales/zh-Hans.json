@@ -2,7 +2,9 @@
   "nav": {
     "new": "新建",
     "search": "搜索",
-    "archived": "已归档"
+    "archived": "已归档",
+    "automations": "自动化",
+    "unreadRuns": "{count} 条未读"
   },
   "groups": {
     "conversations": "对话",

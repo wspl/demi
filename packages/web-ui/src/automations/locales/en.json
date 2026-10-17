@@ -1,0 +1,168 @@
+{
+  "page": {
+    "title": "Automations",
+    "description": "Start the agent at a time, when a command’s output changes, or when a URL is called.",
+    "new": "New Automation",
+    "newName": "New Automation",
+    "empty": "No Automations",
+    "emptyHint": "Ask the agent in any conversation, or click New Automation.",
+    "paused": "Paused",
+    "unread": "Notified, not opened yet",
+    "failed": "The last run failed",
+    "openSidebar": "Show Sidebar"
+  },
+  "editor": {
+    "rename": "Rename",
+    "name": "Name",
+    "on": "On",
+    "pausedHint": "Paused. It runs only with Run Now until you turn it on.",
+    "runNow": "Run Now",
+    "delete": "Delete Automation…",
+    "deleteTitle": "Delete “{name}”?",
+    "deleteBody": "Its runs’ conversations stay, and join the sidebar.",
+    "deleteAction": "Delete",
+    "next": "Next run {when}.",
+    "pausedBecause": {
+      "conversation_archived": "Paused because its conversation was archived.",
+      "conversation_deleted": "Paused because its conversation was deleted."
+    }
+  },
+  "trigger": {
+    "title": "Trigger",
+    "kind": "Start",
+    "time": "At a Time",
+    "change": "When Output Changes",
+    "url": "When a URL Is Called",
+    "repeat": "Repeat",
+    "once": "Once",
+    "repeating": "Every",
+    "cron": "Cron",
+    "moment": "Date and time",
+    "momentHint": "As 2026-10-18 08:00.",
+    "momentInvalid": "Enter a date and time as 2026-10-18 08:00.",
+    "interval": "Every",
+    "intervalInvalid": "Enter a whole number, 1 or more.",
+    "units": {
+      "minutes": "Minutes",
+      "hours": "Hours",
+      "days": "Days"
+    },
+    "expression": "Cron expression",
+    "expressionHint": "Minute, hour, day of month, month and weekday: {words}.",
+    "expressionInvalid": "Enter five fields, such as 0 9 * * 1-5.",
+    "timeZone": "Time zone",
+    "command": "Command",
+    "commandHint": "Runs in the target’s directory. A run starts when its output or exit status changes; the first check only records it.",
+    "checkEvery": "Check every",
+    "cloudCost": "Each check runs on the Cloud and wakes it, so checking often keeps the Cloud running.",
+    "address": "Address",
+    "secret": "Secret",
+    "secretHidden": "Secret, hidden",
+    "regenerate": "Regenerate Secret",
+    "regenerateTitle": "Regenerate the secret?",
+    "regenerateBody": "Calls with the current secret will be refused from then on.",
+    "regenerateAction": "Regenerate",
+    "stripe": "Stripe signing secret",
+    "stripeHint": "Stripe makes its own secret: paste it here to accept the events Stripe signs.",
+    "daily": "Daily",
+    "dailyTime": "Time",
+    "days": "Days",
+    "clockInvalid": "Enter a time as 09:00.",
+    "limit": "Runs a day",
+    "limitHint": "Once reached, later changes and calls start nothing until midnight.",
+    "noLimit": "No limit",
+    "limitInvalid": "Enter a whole number, 1 or more, or leave it empty.",
+    "addressHint": "Another system calls it with a POST to start a run.",
+    "secretHint": "Send it as Authorization: Bearer <secret>, or paste it in a GitHub webhook’s Secret field.",
+    "show": "Show Secret",
+    "hide": "Hide Secret",
+    "stripePaste": "Paste a secret"
+  },
+  "target": {
+    "title": "Target",
+    "host": "Device",
+    "project": "Project",
+    "noProject": "None",
+    "conversation": "Conversation",
+    "new": "New Conversation per Run",
+    "existing": "Existing Conversation",
+    "newHint": "Each run starts an empty conversation, which knows only what the prompt says.",
+    "existingHint": "Each run wakes it with a message, and it goes on with everything it holds.",
+    "pick": "Choose a Conversation",
+    "noConversations": "No conversations on {host}",
+    "offline": "Offline"
+  },
+  "prompt": {
+    "title": "Prompt",
+    "hint": "What each run sends, written as you’d write it to the agent.",
+    "placeholder": "Check yesterday’s failed payments, and notify me if there are any."
+  },
+  "model": {
+    "label": "Model",
+    "hint": "A new conversation starts with it; an existing one keeps its own.",
+    "choose": "Choose a Model",
+    "missing": "Runs need a model to start a new conversation."
+  },
+  "runs": {
+    "title": "Runs",
+    "none": "No runs yet.",
+    "never": "Never run",
+    "last": "{status} {when}",
+    "open": "Open Conversation",
+    "moved": "In Conversations",
+    "status": {
+      "running": "Running",
+      "done": "Done",
+      "notified": "Notified",
+      "skipped": "Skipped",
+      "failed": "Failed"
+    },
+    "note": {
+      "offline": "{device} was offline",
+      "limit": "The limit of {limit} runs a day was reached, {calls} call since | The limit of {limit} runs a day was reached, {calls} calls since",
+      "targetGone": "Its conversation was archived or deleted",
+      "timedOut": "The command ran over 60 seconds",
+      "commandFailed": "The command failed: {message}",
+      "noModel": "No model chosen"
+    }
+  },
+  "notify": {
+    "off": "Runs tell you what they find with notifications, which are off in all your browsers.",
+    "turnOn": "Turn On Notifications"
+  },
+  "words": {
+    "interval": {
+      "minutes": "Every minute | Every {count} min",
+      "hours": "Every hour | Every {count} hours",
+      "days": "Every day | Every {count} days"
+    },
+    "daily": "Every day {time}",
+    "weekdays": "Weekdays {time}",
+    "weekly": "Every {day} {time}",
+    "onChange": "{interval}, on change",
+    "url": "URL",
+    "newConversation": "New conversation",
+    "existing": "“{title}”",
+    "days": "{days} {time}",
+    "existingGone": "A deleted conversation"
+  },
+  "bar": {
+    "label": "Automation run",
+    "automation": "Automation",
+    "move": "Move to Conversations",
+    "moveShort": "Move"
+  },
+  "mark": {
+    "chip": "{count} Automation | {count} Automations",
+    "bolt": "Automations wake this conversation"
+  },
+  "failed": {
+    "create": "Couldn’t Create the Automation",
+    "save": "Couldn’t Save the Automation",
+    "run": "Couldn’t Run the Automation",
+    "delete": "Couldn’t Delete the Automation",
+    "secret": "Couldn’t Show the Secret",
+    "regenerate": "Couldn’t Regenerate the Secret",
+    "move": "Couldn’t Move the Conversation"
+  }
+}

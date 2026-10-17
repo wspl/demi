@@ -11,6 +11,7 @@ mod accounts;
 mod assets;
 mod attachments;
 mod auth;
+mod automations;
 mod blobs;
 mod body;
 mod cloud;
@@ -403,6 +404,20 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/push/subscription",
             put(push::subscribe).delete(push::unsubscribe),
         )
+        .route("/automations", get(automations::list).post(automations::create))
+        .route(
+            "/automations/{id}",
+            patch(automations::patch).delete(automations::delete),
+        )
+        .route("/automations/{id}/run", post(automations::run))
+        .route(
+            "/automations/{id}/secret",
+            get(automations::secret).post(automations::regenerate),
+        )
+        .route(
+            "/conversations/{id}/move-to-conversations",
+            post(automations::move_to_conversations),
+        )
         .route("/credentials", get(credentials::list).post(credentials::create))
         .route("/credentials/{id}/values", get(credentials::values))
         .route(
@@ -493,6 +508,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
         ));
     let app = Router::new()
         .merge(runners_and_downloads())
+        .merge(hooks())
         .merge(web_app_routes);
     let app = match web_directory {
         Some(directory) => assets::serve(app, directory, state.services.public_url.clone()),
@@ -518,6 +534,13 @@ fn public_shares() -> Router<AppState> {
             get(shares::attachment),
         )
         .layer(middleware::map_response(shares::public_headers))
+}
+
+/// The automations' URLs (`automations.md` § An automation): no session
+/// gate and no check of the page they come from, since another system calls
+/// them; the id and the secret are their only keys.
+fn hooks() -> Router<AppState> {
+    Router::new().route("/hooks/{id}", axum::routing::any(automations::hook))
 }
 
 /// The routes of the backend's runner socket: what a Cloud's runner reaches

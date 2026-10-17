@@ -40,6 +40,10 @@ pub struct SessionDto {
     /// The nickname of the administrator whose sign-in code made it, if one
     /// did: their email while they have no nickname.
     pub issued_by: Option<String>,
+    /// Whether its browser has notifications on (`turns.md` §
+    /// Notifications): it keeps a push subscription, which the session's
+    /// end removes. A change of it is announced with the sessions.
+    pub notifications: bool,
 }
 
 /// `GET /auth/sessions`: the account's sessions, newest first.

@@ -178,8 +178,9 @@ export const useConversations = defineStore('conversations', () => {
    * one, so it shows the moment it opens and goes when it is left empty
    * (`conversations.md` § Conversations and projects).
    */
+  // A run's conversation filed under its automation stays out of the sidebar (`automations.md` § Runs).
   const listed = computed(() => items.value.filter((item) =>
-    !item.archived && (!isEmptyDraft(item) || item.id === product.activeConversationId)))
+    !item.archived && !item.filed && (!isEmptyDraft(item) || item.id === product.activeConversationId)))
   /**
    * The writes on their way, by the conversation they change, or by
    * `conversation_order` for a move: each conversation's go one at a time in
@@ -344,6 +345,7 @@ export const useConversations = defineStore('conversations', () => {
       | 'title'
       | 'pinned'
       | 'archived'
+      | 'automation'
       | 'target'
       | 'revision'
       | 'readRevision'
@@ -362,6 +364,7 @@ export const useConversations = defineStore('conversations', () => {
       title: record.title,
       pinned: record.pinned,
       archived: record.archived,
+      filed: record.automation,
       target: record.target,
       projectId:
         record.target.kind === 'workspace' ? record.target.workspaceId : null,
@@ -742,6 +745,7 @@ export const useConversations = defineStore('conversations', () => {
         const conversation = newConversation({
           ...draft.local.conversation,
           model: null,
+          automation: null,
           pluginsChanged: false,
           onlyWaitsForHost: false,
           draftRevision: 0,
@@ -1233,6 +1237,15 @@ export const useConversations = defineStore('conversations', () => {
     } catch (error) {
       // Archived meanwhile, the session waits for Restore with all it shows.
       if (conversation.archived && !signal.aborted) {
+        return
+      }
+      // A record that holds no model, such as one an automation's run
+      // started, opens no session until one is chosen: it shows its
+      // transcript, and the composer's choice writes the record and opens
+      // it (`changeModel`), never a failed opening.
+      if (errorCode(error) === 'model_not_selected' && !signal.aborted) {
+        entry.runtime = null
+        runtime.dispose()
         return
       }
       throw error
@@ -1772,6 +1785,7 @@ export const useConversations = defineStore('conversations', () => {
       title: null,
       pinned: false,
       archived: false,
+      automation: null,
       target: projectId
         ? { kind: 'workspace', workspaceId: projectId }
         : { kind: 'cloud' },

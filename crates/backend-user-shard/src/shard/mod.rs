@@ -150,6 +150,8 @@ pub struct Shard {
     credential_waits: demi_backend_permissions::Waits,
     /// What rearms the expiry of the user's credentials.
     credential_expiry: credentials::CredentialExpiry,
+    /// The user's automations' scheduler, change watches and URL calls.
+    automations: crate::automations::Automations,
     /// Each conversation's timer for the retry time of its root's failed
     /// turn.
     retry_resumes: RetryResumes,
@@ -219,6 +221,7 @@ impl Shard {
             pending_watches: PendingWatches::default(),
             credential_waits: demi_backend_permissions::Waits::default(),
             credential_expiry: credentials::CredentialExpiry::default(),
+            automations: crate::automations::Automations::default(),
             retry_resumes: RetryResumes::default(),
             notifications: Notifications::default(),
         }
@@ -239,6 +242,10 @@ impl Shard {
 
     pub(crate) fn claude_cli(&self) -> &ClaudeCli {
         &self.claude_cli
+    }
+
+    pub(crate) fn automations(&self) -> &crate::automations::Automations {
+        &self.automations
     }
 
     pub(crate) fn pending_watches(&self) -> &PendingWatches {
@@ -754,6 +761,11 @@ async fn serve(mut queue: mpsc::Receiver<Message>, services: Arc<Services>) {
                         shard
                             .tasks
                             .spawn_local(shard.clone().follow_credential_expiry());
+                        // And the user's automations, which fire what a
+                        // backend that was down missed.
+                        shard
+                            .tasks
+                            .spawn_local(shard.clone().follow_automations());
                         shard
                     })
                     .clone();
