@@ -32,6 +32,7 @@ use demi_runner_protocol::files::SubscriptionKind as WatchKind;
 use demi_web_api_protocol::workflows::{ConversationWorkflows, MenuWorkflow, WatchSubject};
 use tokio_util::sync::CancellationToken;
 
+use super::project_files::KeptWorkflows;
 use crate::shard::Shard;
 use crate::shard::agent_profiles::{Scope, first_offering};
 
@@ -344,18 +345,14 @@ pub(crate) async fn search_conversation_workflows(
 
 impl Shard {
     /// The workflows the shard holds for the conversation `id`'s working
-    /// directory; [`ReadFilesError::NotRunning`] while it holds none, as
-    /// on a Host that has not run since. `wait` says whether a search under
-    /// way for a change the runner reported is waited for.
-    pub(crate) async fn project_workflows(
-        &self,
-        id: &ConversationId,
-        wait: Wait,
-    ) -> Result<Rc<ProjectWorkflows>, ReadFilesError> {
-        self.kept_workflows(id, wait)
-            .await
-            .map_err(|error| ReadFilesError::Access(HostAccessError::Host(HostError::failed(None, error))))?
-            .ok_or(ReadFilesError::NotRunning)
+    /// directory; why none are, while it holds none, as on a Host that has
+    /// not run since. `wait` says whether a search under way for a change
+    /// the runner reported is waited for.
+    pub(crate) async fn project_workflows(&self, id: &ConversationId, wait: Wait) -> Result<Rc<ProjectWorkflows>, String> {
+        match self.kept_workflows(id, wait).await.map_err(|error| error.to_string())? {
+            KeptWorkflows::Found(found) => Ok(found),
+            KeptWorkflows::None { .. } => Err(ReadFilesError::NotRunning.to_string()),
+        }
     }
 
     /// The Workflow menu's list for a new conversation that works in
@@ -390,14 +387,35 @@ impl Shard {
     /// /conversations/:id/workflows`), with what the page watches. The page
     /// asks when the runner reported a change, so a search under way for one
     /// is waited for; with `after`, as its watch went live after the answer
-    /// it holds, one read at that number or later is.
+    /// it holds, one read at that number or later is. While no search is
+    /// held, it answers no workflows, read at no number, and the working
+    /// directory to watch: the page's watch going live there, as the Host
+    /// runs, makes that answer out of date (`web-api-conversations.md`
+    /// § Workflows of a directory).
     pub async fn menu_workflows(
         &self,
         id: &ConversationId,
         after: Option<ReadAt>,
-    ) -> Result<(ConversationWorkflows, ReadAt), ReadFilesError> {
+    ) -> Result<(ConversationWorkflows, Option<ReadAt>), Rc<HostAccessError>> {
         let wait = after.map_or(Wait::Current, Wait::After);
-        Ok(self.project_workflows(id, wait).await?.menu())
+        Ok(match self.kept_workflows(id, wait).await? {
+            KeptWorkflows::Found(found) => {
+                let (answer, read_at) = found.menu();
+                (answer, Some(read_at))
+            }
+            KeptWorkflows::None { directory } => {
+                let answer = ConversationWorkflows {
+                    directory: None,
+                    unavailable: None,
+                    workflows: Vec::new(),
+                    watch: vec![WatchSubject {
+                        kind: WatchKind::FolderNames,
+                        path: directory,
+                    }],
+                };
+                (answer, None)
+            }
+        })
     }
 
     /// `demi agent workflows list` for the conversation `id`.
@@ -453,10 +471,7 @@ impl Shard {
             WorkflowChoice::None => return Ok(ConversationProfiles::Off),
             WorkflowChoice::Workflow { id } => id,
         };
-        let found = self
-            .project_workflows(id, Wait::First)
-            .await
-            .map_err(|error| error.to_string())?;
+        let found = self.project_workflows(id, Wait::First).await?;
         if let Some(reason) = found.unavailable(&chosen) {
             return Ok(ConversationProfiles::Unavailable { id: chosen, reason });
         }

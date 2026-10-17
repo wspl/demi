@@ -683,9 +683,9 @@ export class HostFiles implements WatchListener {
    * depends on one and whose answer the numbers now show changed is read
    * again, at once but a listing and a changes list at most once a second,
    * and so is one whose read failed, as a history read outside a repository
-   * does until `git init` makes one there. An entry off screen is only
-   * noted, by the numbers its subscriptions now hold, and read when it
-   * comes on screen.
+   * does until `git init` makes one there, and one read at no number once
+   * its watch is live. An entry off screen is only noted, by the numbers
+   * its subscriptions now hold, and read when it comes on screen.
    */
   heard(subscriptions: readonly Subscription[]): void {
     const heard = new Set(subscriptions)
@@ -694,8 +694,13 @@ export class HostFiles implements WatchListener {
       if (entry.shown === 0 || entry.reading || !entry.subscriptions.value.some((subscription) => heard.has(subscription)))
         continue
       const failed = entry.state.answer === null && entry.state.failure !== null
+      // An answer read at no number, as a conversation's workflows while its
+      // Host does not run, holds against no watch: its watch live, the Host's
+      // word that it runs, makes it out of date, and it is read after that.
+      const unnumbered = entry.state.answer !== null && entry.readAt === null && !entry.spec.immutable &&
+        entry.readAfter(now) !== null
       const freshness = entry.freshness(now)
-      if (failed || freshness === 'stale' || freshness === 'restarted')
+      if (failed || unnumbered || freshness === 'stale' || freshness === 'restarted')
         this.reread(entry)
     }
   }
