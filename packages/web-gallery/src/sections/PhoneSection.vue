@@ -9,6 +9,8 @@ const CONVERSATION = [
   { scene: 'title', label: 'The title sheet' },
   { scene: 'drawer', label: 'The sidebar' },
   { scene: 'model', label: 'The model picker' },
+  { scene: 'long-model', label: 'A long model name' },
+  { scene: 'long-model', label: 'A long model name at 320 px', device: 'iphone-se' as const },
   { scene: 'passkey', label: 'The passkey offer after a handoff' },
   { scene: 'password', label: 'Choose Your Password at the first sign-in' },
 ]
@@ -61,8 +63,9 @@ const PANES = [
       <div class="flex flex-wrap gap-8">
         <GalleryPhoneFrame
           v-for="(item, index) in CONVERSATION"
-          :key="item.scene"
+          :key="item.label"
           :scene="item.scene"
+          :device="item.device"
           :label="item.label"
           :active="index <= loaded"
           @loaded="loaded += 1"
