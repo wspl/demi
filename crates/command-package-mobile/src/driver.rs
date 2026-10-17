@@ -160,6 +160,16 @@ pub struct PixelRect {
     pub height: f64,
 }
 
+/// Where the view lays a device's frame out: `width` × `height` device
+/// pixels at `scale` of them per point, the page's pixel ratio, which the
+/// frame is drawn at.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct FrameArea {
+    pub width: u32,
+    pub height: u32,
+    pub scale: f64,
+}
+
 /// The device's frame (`mobile.md` § The live view), turned as its picture
 /// is turned upright.
 #[derive(Debug, Clone, PartialEq)]
@@ -231,8 +241,8 @@ pub trait Device: Send + Sync + 'static {
     /// Records the screen into `file`, an MP4 that `record_stop` finishes.
     fn record_start<'a>(&'a self, file: &'a std::path::Path) -> BoxFuture<'a, Result<()>>;
     fn record_stop(&self) -> BoxFuture<'_, Result<Recording>>;
-    /// The device's frame, fitted into `area` pixels.
-    fn frame(&self, area: (u32, u32)) -> BoxFuture<'_, Result<Frame>>;
+    /// The device's frame, fitted into `area`.
+    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Frame>>;
     /// Starts encoding the screen at `size` pixels.
     fn capture(
         &self,
