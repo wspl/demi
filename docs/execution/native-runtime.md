@@ -688,8 +688,9 @@ Service                        Runner                          Backend
 - The service writes each request as one standard output record, JSON with
   `id`, its own number for the request, unique among its requests in flight;
   `conversation`, a conversation name it received in a
-  [command context](#command-context); `sequence`, which is `tab`, the only
-  sequence a service draws from; and `count`, from 1 to 16. It reads the
+  [command context](#command-context); `sequence`, `tab` for the
+  conversation browser's tabs or `device` for the simulators `demi mobile`
+  opens, the two sequences a service draws from; and `count`, from 1 to 16. It reads the
   answers as input, one chunk per pull
   ([Request body and input demand](#request-body-and-input-demand)).
 - The runner sends each request to the backend as `numbers_reserve` on its

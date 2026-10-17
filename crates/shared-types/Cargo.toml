@@ -22,6 +22,7 @@ base64.workspace = true
 bytes.workspace = true
 garde.workspace = true
 jiff.workspace = true
+regex = "1"
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

@@ -633,7 +633,10 @@ Runner-owned variables, the local endpoint, the opaque context handle,
 `DEMI_HOME` and the alias directory on `PATH`, override caller values. The
 opaque handle ties command callbacks to the live execution, registration, and
 pinned manifest; the live execution also holds the job's
-[command context](native-runtime.md#command-context).
+[command context](native-runtime.md#command-context). A resident service gets
+`DEMI_HOME` as well, the installation's directory, so a service that keeps
+files of its own, such as the iOS helper `demi mobile` unpacks
+([iOS](../mobile/mobile.md#ios)), finds the installation whoever called it.
 The runner releases contexts when execution completes, is cancelled, or loses
 its backend connection. Provider CLI assembly can request environment inheritance,
 but the runner has no provider-specific behavior.

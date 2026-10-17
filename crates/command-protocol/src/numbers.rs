@@ -17,6 +17,8 @@ pub const MAX_NUMBERS: u32 = 16;
 pub enum ServiceSequence {
     /// The conversation browser's tabs (`browser.md` § One tab registry).
     Tab,
+    /// The simulators `demi mobile` opens (`mobile.md` § Commands).
+    Device,
 }
 
 /// The metadata that opens a stream the runner answers a service's requests

@@ -52,6 +52,7 @@ export type { Language } from '@demicodes/web-ui/i18n/languages'
 // Streams: the liveness a stream's protocol uses.
 export {
   pageReturned,
+  pageVisibility,
   waitToReconnect,
   watchSilence,
   type ReconnectWait,
@@ -92,6 +93,25 @@ export {
   type PointerInput,
   type WheelInput,
 } from '@demicodes/web-ui/live/input'
+export {
+  LiveLink,
+  REFUSED_FRAME,
+  SILENT_STREAM,
+  type LiveConnection,
+  type LiveFrames,
+  type LiveLinkHandlers,
+  type LiveLinkState,
+} from '@demicodes/web-ui/live/link'
+export {
+  OUTLINE_ROOM,
+  deviceOutline,
+  observeSettledSize,
+  type OutlineBox,
+  type OutlineButton,
+  type OutlineShape,
+} from '@demicodes/web-ui/live/outline'
+export { default as LiveDeviceOutline } from '@demicodes/web-ui/live/LiveDeviceOutline.vue'
+export { default as LiveActivityOverlay } from '@demicodes/web-ui/live/LiveActivityOverlay.vue'
 // Composables.
 // A field that takes the focus as its surface opens, as a phone allows (`web-application.md` § The phone layout).
 export { useAutofocus } from '@demicodes/web-ui/ui/autofocus'
