@@ -208,6 +208,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version-file: package.json
       # The contracts the packages are built from compile the workspace.
       - uses: ./.github/actions/rust-cache
       - run: bun install --frozen-lockfile
