@@ -288,7 +288,9 @@ async fn cp_makes_copies_as_gnu_cp_does() {
 
 /// A copy carries none of the source's extended attributes unless it
 /// preserves them, as GNU cp's does, also where macOS's clonefile(2) copied
-/// them with the data. Runs in about 50 ms: macOS's own `xattr` reads them.
+/// them with the data. Only the attribute the test set is read: macOS 27
+/// gives every new file a `com.apple.provenance` of its own, which the copy
+/// has whatever cp does. Runs in about 50 ms: macOS's own `xattr` reads it.
 #[cfg(target_os = "macos")]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn cp_copies_extended_attributes_only_when_preserving_them() {
@@ -298,13 +300,14 @@ async fn cp_copies_extended_attributes_only_when_preserving_them() {
         root.path(),
         "/usr/bin/xattr -w demi.test kept src && cp src copy && cp -c src cloned && cp -p src stamped \
          && cp --preserve=xattr src preserved && cp -a src archived \
-         && for f in copy cloned stamped preserved archived; do echo \"$f: $(/usr/bin/xattr $f)\"; done",
+         && for f in copy cloned stamped preserved archived; do \
+         echo \"$f: $(/usr/bin/xattr -p demi.test $f 2>/dev/null)\"; done",
     )
     .await;
     assert_eq!((code, error.as_str()), (0, ""), "{output}");
     assert_eq!(
         output,
-        "copy: \ncloned: \nstamped: \npreserved: demi.test\narchived: demi.test\n"
+        "copy: \ncloned: \nstamped: \npreserved: kept\narchived: kept\n"
     );
 }
 
