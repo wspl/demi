@@ -1962,6 +1962,52 @@ async fn a_call_exits_after_its_standard_output_drained() {
     assert_eq!(call_outcome(&mut link).await, (String::new(), 3));
 }
 
+/// A call whose handler returns without reading its finite input answers
+/// the process's upload of it as a whole one, so the runner does not take
+/// the call for a failed one while its stdout still travels (`commands.md`
+/// § Handle an rpc call). Before, the call's end failed the upload with
+/// `rpc call ended`, and the runner cut a large stdout short 15 seconds
+/// later.
+#[tokio::test(flavor = "local")]
+async fn a_calls_unread_input_ends_as_finished_with_the_call() {
+    let mut commands = CommandSet::new();
+    let handler = TypedRpc::new(|_: Call<Map<String, Value>>, port: RpcPort| async move {
+        port.stdout("hello").await?;
+        Ok(0)
+    });
+    commands
+        .register(
+            GroupBuilder::new("probe", "Probes.").index_entry("Runs probes.")
+                .leaf(LeafBuilder::rpc("live", "Speaks.").bind(handler)),
+        )
+        .unwrap();
+    let device = TestDevice::new(CommandPolicy::new(commands));
+    let mut link = device.connect(None);
+    let job = device
+        .host("/work", Admission::Free)
+        .start_job(job_start("probe live"))
+        .await
+        .unwrap();
+    drain(&mut link).await;
+    link.send(rpc_call(job.id(), "call")).await;
+    let Inbound::RpcPipes {
+        stdin: Some(stdin),
+        stdout,
+        ..
+    } = link.next().await
+    else {
+        panic!("a process with a finite stdin gets its pipe")
+    };
+    let source = device.pipes().claim_source(&stdin.id, TEST_DEVICE).unwrap();
+    let upload = tokio::task::spawn_local(
+        source.pump(futures_util::stream::empty::<Result<Bytes, std::io::Error>>()),
+    );
+    let sink = device.pipes().claim_sink(&stdout.id, TEST_DEVICE).unwrap();
+    assert_eq!(Framed::new(sink).read().await, (b"hello".to_vec(), Ok(())));
+    assert_eq!(call_outcome(&mut link).await, (String::new(), 0));
+    assert_eq!(upload.await.unwrap(), Ok(()));
+}
+
 // A call refused before its handler runs, as the permission check refuses
 // one, fails at once: the process it was handed the stdout pipe for still
 // finds the pipe, ended, and reads the refusal on stderr.
