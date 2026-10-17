@@ -58,7 +58,7 @@ export interface CredentialRequestView {
   /** Why the agent asks; empty when it gave none. */
   reason: string
   fields: CredentialFieldView[]
-  /** What *Keep until* shows at first. */
+  /** How long the credential is kept once saved, as the agent decided; the card says it. */
   keep: CredentialKeep
   /** A credential of this name is saved already: the card asks for its fields again. */
   renewal: boolean
@@ -78,13 +78,12 @@ export type RequestView = PermissionRequestView | CredentialRequestView | Allowa
 
 export type PermissionDecision = 'allow' | 'deny'
 
-/** The user's answer to a credential request: each field's value by its name, and how long to keep it. */
+/** The user's answer to a credential request: each field's value by its name, kept as the request's `keep` says. */
 export interface CredentialAnswer {
   values: Record<string, string>
-  keep: CredentialKeep
 }
 
-/** The options of *Keep until*, in the order the card and Settings offer them. */
+/** The options of *Keep until*, in the order Settings › Credentials offers them. */
 export const KEEP_OPTIONS: readonly { value: CredentialKeep; label: string }[] = [
   {
     value: '1h',

@@ -79,7 +79,7 @@ pub struct CredentialAsk {
     pub reason: String,
     #[garde(length(min = 1), dive)]
     pub fields: Vec<CredentialField>,
-    /// The keep the card offers first.
+    /// How long the credential is kept once saved, as the agent decided.
     #[garde(skip)]
     pub keep: Keep,
 }
@@ -152,6 +152,8 @@ pub enum PermissionRefusal {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Answered {
     pub credential: StoredCredential,
+    /// How long it is kept: the request's keep.
+    pub keep: Keep,
     pub others: Vec<ConversationId>,
 }
 
@@ -452,8 +454,8 @@ impl ControlService {
         .await
     }
 
-    /// Answers the credential request `request` with `values`, kept as
-    /// `keep` says (`credentials.md` § Requests and routes), in one
+    /// Answers the credential request `request` with `values`, kept as the
+    /// request's `keep` says (`credentials.md` § Requests and routes), in one
     /// transaction: it saves a new credential of the request's name, or new
     /// values of the saved one with the same fields; allows the
     /// conversation to use it; and forgets the request, whose agent waits
@@ -463,7 +465,6 @@ impl ControlService {
         conversation: ConversationId,
         request: PermissionRequestId,
         values: BTreeMap<String, String>,
-        keep: Keep,
         seal: std::sync::Arc<dyn CredentialSeal>,
     ) -> Result<Result<Answered, PermissionRefusal>, StorageError> {
         self.call(move |connection, now| {
@@ -481,6 +482,7 @@ impl ControlService {
                 return Ok(Err(PermissionRefusal::InvalidAnswer(problem)));
             }
             let owner = owner_of(&transaction, &conversation)?;
+            let keep = ask.keep;
             let keep_until = credentials::keep_until(now, keep)?;
             let id = match credentials::named(&transaction, &owner, name)? {
                 Some(saved) if !saved.same_fields(&ask.fields) => {
@@ -514,6 +516,7 @@ impl ControlService {
             transaction.commit()?;
             Ok(Ok(Answered {
                 credential,
+                keep,
                 others: others.into_iter().collect(),
             }))
         })

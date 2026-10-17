@@ -195,19 +195,19 @@ test('the values of a credential go with the answer, the card stays until they a
   await until(() => state.requests.length).toBe(3)
 
   decide = () => Response.json({ requestId: 'req_test000000000001', code: 'invalid_answer', message: 'The value of “API key” can be at most 64 KiB.', params: { field: 'API key', limitBytes: 65_536 } }, { status: 400 })
-  await permissions.decide(CONVERSATION, 'cr-1', 'allow', { values: { key: 'AIza' }, keep: '1d' })
+  await permissions.decide(CONVERSATION, 'cr-1', 'allow', { values: { key: 'AIza' } })
   expect(state.requests.map((request) => request.id)).toEqual(['cr-1', 'al-1', 'al-2'])
   // The user corrects the value in the card: no request to trace.
   expect({ ...state.error }).toEqual({ message: `The value of “API key” can be at most ${formatBytes(65_536)}.`, requestId: null })
   expect(state.deciding).toBe(false)
 
   decide = () => new Response(null, { status: 204 })
-  await permissions.decide(CONVERSATION, 'cr-1', 'allow', { values: { key: 'AIza' }, keep: '1d' })
+  await permissions.decide(CONVERSATION, 'cr-1', 'allow', { values: { key: 'AIza' } })
   expect(state.requests.map((request) => request.id)).toEqual(['al-1', 'al-2'])
   expect(state.error).toBeNull()
   expect(decided).toEqual([
-    { decision: 'allow', credential: { values: { key: 'AIza' }, keep: '1d' } },
-    { decision: 'allow', credential: { values: { key: 'AIza' }, keep: '1d' } },
+    { decision: 'allow', credential: { values: { key: 'AIza' } } },
+    { decision: 'allow', credential: { values: { key: 'AIza' } } },
   ])
 
   await permissions.decide(CONVERSATION, 'al-2', 'deny')

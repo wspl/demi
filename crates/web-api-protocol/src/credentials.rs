@@ -255,16 +255,15 @@ pub struct CredentialPatch {
     pub keep: Option<Keep>,
 }
 
-/// The answer to a credential request: every field's value by its name,
-/// and how long to keep it.
+/// The answer to a credential request: every field's value by its name.
+/// The credential is kept as the request's `keep` says, which the agent
+/// chose (`credentials.md` § A credential).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RequestedValues {
     /// Checked against the request's fields where it is answered.
     #[garde(skip)]
     pub values: BTreeMap<String, String>,
-    #[garde(skip)]
-    pub keep: Keep,
 }
 
 /// Each field's name once.

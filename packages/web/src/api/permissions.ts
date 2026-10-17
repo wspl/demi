@@ -20,7 +20,7 @@ export async function readPermissions(conversationId: string): Promise<Conversat
 /**
  * Decides the request: an allow grants its category for the conversation, a
  * deny decides it alone, and an allow of a credential request carries the
- * credential's values and how long to keep it.
+ * credential's values, kept as the request says.
  */
 export async function decidePermission(
   conversationId: string,
