@@ -82,6 +82,24 @@ impl Default for PageTuning {
     }
 }
 
+/// How a video's job is waited for (`videos.md` § A call is a job): its
+/// state read every 5 seconds, the whole job bounded by 10 minutes from the
+/// ask to the end of the download. Tests shorten both.
+#[derive(Debug, Clone, Copy)]
+pub struct MediaTuning {
+    pub video_reads_every: Duration,
+    pub video_bound: Duration,
+}
+
+impl Default for MediaTuning {
+    fn default() -> Self {
+        Self {
+            video_reads_every: Duration::from_secs(5),
+            video_bound: Duration::from_secs(10 * 60),
+        }
+    }
+}
+
 /// How the backend treats runner connections (`runner.md` § Connection and
 /// identity, `backend.md` § Authentication and ownership). Tests shorten
 /// the times.

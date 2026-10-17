@@ -544,7 +544,11 @@
       "images": "影像",
       "none": "無",
       "addImage": "新增影像模型",
-      "noImages": "還沒有影像模型"
+      "noImages": "還沒有影像模型",
+      "videoGeneration": "影片生成",
+      "videos": "影片",
+      "addVideo": "新增影片模型",
+      "noVideos": "還沒有影片模型"
     },
     "state": {
       "setup": "尚未設定",

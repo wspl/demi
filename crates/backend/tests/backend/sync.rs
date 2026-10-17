@@ -246,6 +246,7 @@ async fn the_snapshot_is_the_users_product_state() {
             ("skills", true),
             ("web", true),
             ("image", true),
+            ("video", true),
             ("changes", true),
             ("file-browser", true),
         ]

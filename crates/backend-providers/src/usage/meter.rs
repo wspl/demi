@@ -209,6 +209,8 @@ impl Calls {
             quota: (!observed.is_empty()).then_some(observed),
             started_at,
             ended_at,
+            media_seconds: None,
+            cost: None,
         }
     }
 

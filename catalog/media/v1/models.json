@@ -1137,11 +1137,15 @@
         ],
         "page": "https://docs.x.ai/developers/pricing"
       },
+      "subscriptions": [
+        "grok"
+      ],
       "sources": [
         "https://docs.x.ai/developers/models/grok-imagine-video-1.5",
         "https://docs.x.ai/developers/model-capabilities/video/overview",
         "https://docs.x.ai/developers/model-capabilities/video/generation",
-        "https://docs.x.ai/developers/pricing"
+        "https://docs.x.ai/developers/pricing",
+        "docs/agent/videos.md#vendors"
       ]
     },
     {
@@ -1150,8 +1154,12 @@
       "kind": "video",
       "name": "Grok Imagine Video 1.5",
       "aliasOf": "grok-imagine-video-1.5",
+      "subscriptions": [
+        "grok"
+      ],
       "sources": [
-        "https://docs.x.ai/developers/models/grok-imagine-video-1.5"
+        "https://docs.x.ai/developers/models/grok-imagine-video-1.5",
+        "docs/agent/videos.md#vendors"
       ]
     },
     {
@@ -1160,8 +1168,12 @@
       "kind": "video",
       "name": "Grok Imagine Video 1.5",
       "aliasOf": "grok-imagine-video-1.5",
+      "subscriptions": [
+        "grok"
+      ],
       "sources": [
-        "https://docs.x.ai/developers/models/grok-imagine-video-1.5"
+        "https://docs.x.ai/developers/models/grok-imagine-video-1.5",
+        "docs/agent/videos.md#vendors"
       ]
     },
     {
@@ -1206,11 +1218,15 @@
         ],
         "page": "https://docs.x.ai/developers/pricing"
       },
+      "subscriptions": [
+        "grok"
+      ],
       "sources": [
         "https://docs.x.ai/developers/models/grok-imagine-video-1.5-lite",
         "https://docs.x.ai/developers/model-capabilities/video/overview",
         "https://docs.x.ai/developers/model-capabilities/video/generation",
-        "https://docs.x.ai/developers/pricing"
+        "https://docs.x.ai/developers/pricing",
+        "docs/agent/videos.md#vendors"
       ]
     },
     {
@@ -1254,11 +1270,15 @@
         ],
         "page": "https://docs.x.ai/developers/pricing"
       },
+      "subscriptions": [
+        "grok"
+      ],
       "sources": [
         "https://docs.x.ai/developers/models/grok-imagine-video",
         "https://docs.x.ai/developers/model-capabilities/video/overview",
         "https://docs.x.ai/developers/model-capabilities/video/generation",
-        "https://docs.x.ai/developers/pricing"
+        "https://docs.x.ai/developers/pricing",
+        "docs/agent/videos.md#vendors"
       ]
     },
     {

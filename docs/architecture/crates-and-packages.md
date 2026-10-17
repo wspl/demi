@@ -118,6 +118,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     that a picture decodes whole (`whole_image::decode`), which
     `demi file view` and `demi image` both run: a JPEG is read by its
     markers up to its end, since the decoder fills a cut scan with gray;
+  - behind the `mp4` feature, with the `mp4parse` crate, the one reader of
+    an MP4's duration, picture size and whether it has a sound track
+    (`mp4::read`), which `demi video` checks its result with and the
+    backend writes a video's seconds to the usage ledger from;
   - tool views (`ToolView`, `ShellToolView`, `OutputChunk`, `EditedFile`) and
     a command's output views, which the shell status frame and the shell
     contract are built from (`StreamView`, `OutputView`, `BinaryStdout`);
@@ -933,15 +937,37 @@ or on another plugin.
 - **Must not:** hold an HTTP client of its own, store a search result, or
   put a token or a key in page state or a log.
 
+#### `plugin-media`
+
+- **Owns:** what the media plugins share, as a library, not a plugin: the
+  prompt read from stdin, the reads of input images through the port's file
+  reads, the words of a media refusal, and the `models` listing and
+  one-model view on the shared renderer
+  ([Generated media](../agent/media.md)).
+- **Public boundary:** those functions, called by `plugin-image`,
+  `plugin-video` and later `plugin-audio`.
+- **Must not:** declare a command group or hold an HTTP client or a
+  credential.
+
 #### `plugin-image`
 
 - **Owns:** [image generation](../agent/images.md)'s commands: the `demi
-  image` group with its help and words, the reads of an edit's images
-  through the port's file reads, the image written to stdout, and the checks
-  of the result's shape and transparency.
+  image` group with its help and words, the image written to stdout, and
+  the checks of the result's shape and transparency.
 - **Public boundary:** its factory.
 - **Must not:** hold an HTTP client or a credential, or choose a provider
   entry or an account; the port's Providers service does.
+
+#### `plugin-video`
+
+- **Owns:** [video generation](../agent/videos.md)'s commands: the `demi
+  video` group with its help and words, the job's progress lines on
+  stderr, the video written to stdout, and the check of the MP4 it reads
+  with `shared-types`' MP4 reader.
+- **Public boundary:** its factory.
+- **Must not:** hold an HTTP client or a credential, choose a provider
+  entry or an account, or wait on a vendor itself; the port's Providers
+  service runs the job.
 
 ### Runner libraries
 
@@ -1857,7 +1883,9 @@ plugin-browser -> plugin-interface, command-declarations, command-package-browse
 plugin-mobile -> plugin-interface, command-declarations, command-package-mobile-protocol, host-interface, live-view-protocol, web-api-protocol
 plugin-skills -> plugin-interface, host-interface, shared-types
 plugin-web -> plugin-interface, command-declarations, command-package-fetch-protocol, host-interface
-plugin-image -> plugin-interface, host-interface, shared-types
+plugin-media -> plugin-interface, host-interface, shared-types
+plugin-image -> plugin-media, plugin-interface, host-interface, shared-types
+plugin-video -> plugin-media, plugin-interface, host-interface, shared-types
 plugin-changes -> plugin-interface
 plugin-file-browser -> plugin-interface
 backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
@@ -1882,7 +1910,7 @@ backend-permissions -> command-declarations, shared-types, host-interface, backe
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
-backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-mobile, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, plugin-mobile, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image, plugin-video
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 server -> backend-database, machine-manager-protocol, runner-protocol, shared-artifacts, shared-cli
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli

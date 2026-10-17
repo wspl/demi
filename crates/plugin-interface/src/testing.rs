@@ -5,12 +5,12 @@
 //! answers the port's operations from memory.
 
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::rc::Rc;
 
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{PortError, PortTransport};
-use demi_shared_types::{B64Bytes, BlobRef};
+use demi_shared_types::{B64Bytes, BlobRef, MediaKind};
 use demi_web_api_protocol::panel::{Applied, PanelChange, PanelDocument, PanelTab, WorkPanel};
 use futures_util::future::LocalBoxFuture;
 use serde::{Serialize, de::DeserializeOwned};
@@ -18,7 +18,7 @@ use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ImageAsk, MadeImage, MediaListing,
+    AskedVideo, ImageAsk, MadeImage, MediaListing, VideoAsk, VideoStep,
     CallKind, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile, HostRead, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
     PortRefusal, Reply, Request, SecretName, StoredSecret, StoredValue, WebRequest, WebResponse,
@@ -84,6 +84,9 @@ pub type WebRequests = Box<dyn Fn(&WebRequest) -> Result<WebResponse, PortRefusa
 /// How a test answers a request for an image: the image made, or a refusal.
 pub type ImageRequests = Box<dyn Fn(&ImageAsk) -> Result<MadeImage, PortRefusal>>;
 
+/// How a test answers the plugin's video asks.
+pub type VideoRequests = Box<dyn Fn(&VideoAsk) -> Result<AskedVideo, PortRefusal>>;
+
 /// A package call a plugin made.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackageCall {
@@ -128,11 +131,16 @@ pub struct TestDemi {
     pub sent: RefCell<Vec<WebRequest>>,
     /// The access token of the user's sign-in; none while signed out.
     pub access_token: RefCell<Option<String>>,
-    /// The image models of the user's provider entries.
-    pub image_models: RefCell<MediaListing>,
+    /// The models of each kind of the user's provider entries.
+    pub media_models: RefCell<BTreeMap<MediaKind, MediaListing>>,
     pub image_requests: RefCell<Option<ImageRequests>>,
     /// Each image the plugin asked for.
     pub images_asked: RefCell<Vec<ImageAsk>>,
+    pub video_requests: RefCell<Option<VideoRequests>>,
+    /// Each video the plugin asked for.
+    pub videos_asked: RefCell<Vec<VideoAsk>>,
+    /// What each wait for the job answers, in order.
+    pub video_steps: RefCell<VecDeque<Result<VideoStep, PortRefusal>>>,
     /// Woken at each port message the plugin sends.
     answered: tokio::sync::Notify,
 }
@@ -164,9 +172,12 @@ impl TestDemi {
             web_requests: RefCell::default(),
             sent: RefCell::default(),
             access_token: RefCell::default(),
-            image_models: RefCell::default(),
+            media_models: RefCell::default(),
             image_requests: RefCell::default(),
             images_asked: RefCell::default(),
+            video_requests: RefCell::default(),
+            videos_asked: RefCell::default(),
+            video_steps: RefCell::default(),
             answered: tokio::sync::Notify::new(),
         }
     }
@@ -410,8 +421,8 @@ impl TestDemi {
                 self.access_token.replace(None);
                 PortAnswer::Done
             }
-            PortMessage::ImageModels => PortAnswer::ImageModels {
-                listing: self.image_models.borrow().clone(),
+            PortMessage::MediaModels { kind } => PortAnswer::MediaModels {
+                listing: self.media_models.borrow().get(&kind).cloned().unwrap_or_default(),
             },
             PortMessage::MakeImage { ask } => {
                 let requests = self.image_requests.borrow();
@@ -419,6 +430,17 @@ impl TestDemi {
                 let answer = answer(&ask);
                 self.images_asked.borrow_mut().push(ask);
                 PortAnswer::Image { image: answer? }
+            }
+            PortMessage::MakeVideo { ask } => {
+                let requests = self.video_requests.borrow();
+                let answer = requests.as_ref().expect("the test answers video requests");
+                let answer = answer(&ask);
+                self.videos_asked.borrow_mut().push(ask);
+                PortAnswer::VideoAsked { asked: answer? }
+            }
+            PortMessage::VideoProgress => {
+                let step = self.video_steps.borrow_mut().pop_front().expect("the test scripts each step of the job");
+                PortAnswer::VideoProgress { step: step? }
             }
         };
         Ok(answer)

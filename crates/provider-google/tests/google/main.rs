@@ -1,11 +1,12 @@
 //! The Google Gemini provider at its boundaries: the request it sends to a
 //! scripted vendor, the events it makes of recorded streams, its failures,
-//! its cancellation, what it says about itself, and a Gemini key's images. No test calls the real
-//! vendor.
+//! its cancellation, what it says about itself, and a Gemini key's images
+//! and videos. No test calls the real vendor.
 
 mod images;
 mod request;
 mod stream;
+mod videos;
 
 use std::sync::Arc;
 
@@ -23,6 +24,7 @@ pub(crate) fn provider_at(vendor: &MockVendor, base: &str) -> GoogleProvider {
         api_key: Some(Secret::try_from("google-key".to_owned()).unwrap()),
         base_url: Some(vendor.url(base).parse().unwrap()),
         makes_images: false,
+        makes_videos: false,
     };
     GoogleProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }

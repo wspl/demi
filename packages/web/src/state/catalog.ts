@@ -226,9 +226,10 @@ export function providerView(
         }) ?? [],
       })) ?? [],
     rotation: entry.kind === 'subscription' ? entry.rotation : undefined,
-    // A vendor's image models are the catalog's; a compatible API's are its list's, above.
+    // A vendor's media models are the catalog's; a compatible API's are its list's, above.
     media: {
       image: { ...entry.media.image, models: entry.compatible ? undefined : catalog?.imageModels ?? [] },
+      video: { ...entry.media.video, models: entry.compatible ? undefined : catalog?.videoModels ?? [] },
     },
     autoRefreshUsage: details?.quotaCapability.type === 'supported'
       && details.quotaCapability.probe === 'free',

@@ -213,7 +213,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       catalogFetched: null,
       state: 'setup',
       enabled: true,
-      media: { image: { shape: null, enabled: true } },
+      media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true } },
       models: [],
       accounts: [],
       // A subscription not yet configured goes by its type; an added vendor's draft takes its mark below.

@@ -9,9 +9,10 @@ mod support;
 use std::io::Cursor;
 
 use demi_plugin_interface::{
-    EntryStatus, ImageFacts, ImageKind, ImageRefusal, ImageUnlisted, MadeImage, MediaListing, MediaModel, MediaPrice, ModelEntry,
+    EntryStatus, ImageFacts, ImageKind, MediaRefusal, MediaUnlisted, MadeImage, MediaListing, MediaModel, MediaPrice, ModelEntry,
     PortRefusal, PriceRate, Unable,
 };
+use demi_shared_types::MediaKind;
 use image::{GenericImageView as _, ImageFormat, Rgb, RgbImage};
 
 use crate::support::{Plugged, local};
@@ -79,55 +80,55 @@ fn a_failure_is_told_in_the_designs_words() {
         let plugged = Plugged::new();
         let refusals = [
             (
-                ImageRefusal::UsedUp {
+                MediaRefusal::UsedUp {
                     vendor: "ChatGPT".into(),
                     resets_at: Some("2030-01-01T13:00:00Z".parse().unwrap()),
                 },
                 "ChatGPT's usage limit is reached, resetting at Jan 1, 9:00 PM",
             ),
             (
-                ImageRefusal::UsedUp { vendor: "Grok".into(), resets_at: None },
+                MediaRefusal::UsedUp { vendor: "Grok".into(), resets_at: None },
                 "Grok's usage limit is reached",
             ),
             (
-                ImageRefusal::Refused { vendor: "ChatGPT".into(), message: "Your request was rejected.".into() },
+                MediaRefusal::Refused { vendor: "ChatGPT".into(), message: "Your request was rejected.".into() },
                 "ChatGPT refused the request: Your request was rejected.",
             ),
             (
-                ImageRefusal::Expired { vendor: "ChatGPT".into(), account: Some("alex@example.com".into()) },
+                MediaRefusal::Expired { vendor: "ChatGPT".into(), account: Some("alex@example.com".into()) },
                 "the ChatGPT sign-in for alex@example.com has expired; sign in again in Settings › Providers",
             ),
             (
-                ImageRefusal::Expired { vendor: "ChatGPT".into(), account: None },
+                MediaRefusal::Expired { vendor: "ChatGPT".into(), account: None },
                 "the ChatGPT sign-in has expired; ask your administrator to sign in again",
             ),
             (
-                ImageRefusal::Unanswered { vendor: "Grok".into(), cause: "no answer in 120 s".into() },
+                MediaRefusal::Unanswered { vendor: "Grok".into(), cause: "no answer in 120 s".into() },
                 "Grok did not answer: no answer in 120 s",
             ),
             (
-                ImageRefusal::AllOff { providers: vec!["ChatGPT".into(), "Grok".into()] },
+                MediaRefusal::AllOff { providers: vec!["ChatGPT".into(), "Grok".into()] },
                 "image generation is off for ChatGPT and Grok; turn it on in Settings › Providers",
             ),
             (
-                ImageRefusal::KeyRefused { vendor: "OpenAI".into(), manages: true },
+                MediaRefusal::KeyRefused { vendor: "OpenAI".into(), manages: true },
                 "OpenAI refused the API key; check it in Settings › Providers",
             ),
             (
-                ImageRefusal::KeyRefused { vendor: "xAI".into(), manages: false },
+                MediaRefusal::KeyRefused { vendor: "xAI".into(), manages: false },
                 "xAI refused the API key; ask your administrator to check it",
             ),
             (
-                ImageRefusal::NoProvider,
+                MediaRefusal::NoProvider,
                 "no provider makes images; sign in to ChatGPT or Grok, or add an OpenAI, xAI or Google key, in Settings › Providers",
             ),
             (
-                ImageRefusal::Off { model: "gpt-image-2".into(), provider: "ChatGPT".into() },
+                MediaRefusal::Off { model: "gpt-image-2".into(), provider: "ChatGPT".into() },
                 "\"gpt-image-2\" is ChatGPT's, whose image generation is off in Settings › Providers",
             ),
         ];
         for (refusal, words) in refusals {
-            plugged.answer(move |_| Err(PortRefusal::Image { refusal: refusal.clone() }));
+            plugged.answer(move |_| Err(PortRefusal::Media { refusal: refusal.clone() }));
             let (code, stdout, stderr) = plugged.run(&["image", "generate", "a fox", "--model", "m"]).await;
             assert_eq!((code, stdout.len(), stderr), (1, 0, format!("demi image generate: {words}\n")));
         }
@@ -278,8 +279,8 @@ fn a_refused_shape_names_the_shapes_the_vendor_takes() {
     local(async {
         let plugged = Plugged::new();
         plugged.answer(|_| {
-            Err(PortRefusal::Image {
-                refusal: ImageRefusal::Shape {
+            Err(PortRefusal::Media {
+                refusal: MediaRefusal::Shape {
                     vendor: "Grok".into(),
                     takes: vec!["1:1".into(), "3:4".into(), "19.5:9".into()],
                 },
@@ -338,6 +339,7 @@ fn model(id: &str, vendor: Option<&str>, released: Option<&str>, name: Option<&s
         alias_of: None,
         aliases: Vec::new(),
         image: None,
+        video: None,
         price: None,
         entries,
     }
@@ -399,15 +401,15 @@ fn the_models_are_a_table_one_model_is_labelled_lines_and_json_prints_the_same()
             }],
             page: Some("https://openai.com/api/pricing".into()),
         });
-        plugged.demi.image_models.replace(MediaListing {
+        plugged.demi.media_models.borrow_mut().insert(MediaKind::Image, MediaListing {
             models: vec![
                 model("seedream-5-0", Some("BytePlus"), Some("2026-09-01"), Some("即梦 5.0"), vec![entry("火山", false, None, true, EntryStatus::Now)]),
                 gpt.clone(),
                 model("own", None, None, None, vec![entry("Proxy", false, None, true, EntryStatus::NotSignedIn)]),
             ],
-            unlisted: vec![ImageUnlisted {
+            unlisted: vec![MediaUnlisted {
                 provider: "Gemini".into(),
-                refusal: ImageRefusal::KeyRefused { vendor: "Google".into(), manages: true },
+                refusal: MediaRefusal::KeyRefused { vendor: "Google".into(), manages: true },
             }],
             none: None,
         });
@@ -467,8 +469,8 @@ fn the_models_are_a_table_one_model_is_labelled_lines_and_json_prints_the_same()
         assert_eq!((code, stderr.as_str()), (1, "demi image models: no provider makes \"nope\"; demi image models lists them\n"));
 
         // An empty list is its header alone, and why on stderr.
-        plugged.demi.image_models.replace(MediaListing {
-            none: Some(ImageRefusal::AllOff { providers: vec!["ChatGPT".into()] }),
+        plugged.demi.media_models.borrow_mut().insert(MediaKind::Image, MediaListing {
+            none: Some(MediaRefusal::AllOff { providers: vec!["ChatGPT".into()] }),
             ..MediaListing::default()
         });
         let (code, stdout, stderr) = plugged.run(&["image", "models"]).await;
@@ -488,16 +490,16 @@ fn an_entry_named_that_cannot_make_the_model_says_why_and_which_can() {
     local(async {
         let plugged = Plugged::new();
         plugged.answer(|ask| match ask.provider.as_deref() {
-            Some("Proxy") => Err(PortRefusal::Image {
-                refusal: ImageRefusal::Cannot {
+            Some("Proxy") => Err(PortRefusal::Media {
+                refusal: MediaRefusal::Cannot {
                     provider: "Proxy".into(),
                     model: ask.model.clone(),
                     why: Unable::Off,
                     can: vec!["ChatGPT".into(), "OpenAI".into()],
                 },
             }),
-            _ => Err(PortRefusal::Image {
-                refusal: ImageRefusal::Cannot {
+            _ => Err(PortRefusal::Media {
+                refusal: MediaRefusal::Cannot {
                     provider: "Grok".into(),
                     model: ask.model.clone(),
                     why: Unable::NotOffered,

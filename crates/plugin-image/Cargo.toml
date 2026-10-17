@@ -15,12 +15,11 @@ bench = false
 [dependencies]
 demi-host-interface = { path = "../host-interface" }
 demi-plugin-interface = { path = "../plugin-interface" }
+demi-plugin-media = { path = "../plugin-media" }
 demi-shared-types = { path = "../shared-types", features = ["whole-image"] }
 # What an image is, its size and whether it has an alpha channel, read
 # from its header.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
-# A reset time in the user's time zone.
-jiff = { workspace = true, features = ["tz-system", "tzdb-bundle-platform"] }
 futures-util.workspace = true
 schemars.workspace = true
 serde.workspace = true

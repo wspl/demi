@@ -8,13 +8,13 @@ use std::rc::Rc;
 
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{PortError, PortRequest, PortResponse, PortTransport, RpcPort};
-use demi_shared_types::{B64Bytes, BlobRef};
+use demi_shared_types::{B64Bytes, BlobRef, MediaKind};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::panel::{CreatePanelTab, WorkPanel};
 
 use crate::{
-    ImageAsk, ImageRefusal, MadeImage, MediaListing, PluginId, Scope, SecretName, StoredSecret, WebFailure,
-    WebRequest, WebResponse,
+    AskedVideo, ImageAsk, MadeImage, MediaListing, MediaRefusal, PluginId, Scope, SecretName, StoredSecret,
+    VideoAsk, VideoStep, WebFailure, WebRequest, WebResponse,
 };
 use futures_util::future::LocalBoxFuture;
 use serde::{Deserialize, Serialize};
@@ -131,14 +131,27 @@ pub enum PortMessage {
     /// Revokes the user's sign-in at the vendor when it offers revocation,
     /// and forgets it either way.
     OauthSignOut,
-    /// The image models of the user's provider entries, each with the
+    /// The models of `kind` of the user's provider entries, each with the
     /// entries that offer it.
-    ImageModels,
+    MediaModels {
+        kind: MediaKind,
+    },
     /// Makes one image through an entry's account, for the request's
     /// conversation and the agent that called the command.
     MakeImage {
         ask: ImageAsk,
     },
+    /// Asks for one video through an entry's account, for the request's
+    /// conversation and the agent that called the command; answered once
+    /// the vendor took the job, which the request then follows with
+    /// [`PortMessage::VideoProgress`]. A request has one job at most, and
+    /// it ends with the request: stopped before its video, it is cancelled
+    /// at the vendor where the vendor can cancel one.
+    MakeVideo {
+        ask: VideoAsk,
+    },
+    /// Waits for the request's job's next state, or its video.
+    VideoProgress,
 }
 
 /// The answer to one [`PortMessage`].
@@ -209,11 +222,17 @@ pub enum PortAnswer {
     AccessToken {
         token: String,
     },
-    ImageModels {
+    MediaModels {
         listing: MediaListing,
     },
     Image {
         image: MadeImage,
+    },
+    VideoAsked {
+        asked: AskedVideo,
+    },
+    VideoProgress {
+        step: VideoStep,
     },
     Refused {
         refusal: PortRefusal,
@@ -239,8 +258,10 @@ impl PortAnswer {
             Self::Response { .. } => "response",
             Self::AuthorizationUrl { .. } => "authorization_url",
             Self::AccessToken { .. } => "access_token",
-            Self::ImageModels { .. } => "image_models",
+            Self::MediaModels { .. } => "media_models",
             Self::Image { .. } => "image",
+            Self::VideoAsked { .. } => "video_asked",
+            Self::VideoProgress { .. } => "video_progress",
             Self::Refused { .. } => "refused",
         }
     }
@@ -482,9 +503,9 @@ pub enum PortRefusal {
     /// forgot.
     #[error("the user is not signed in")]
     SignedOut,
-    /// No image was made.
+    /// No image or video was made.
     #[error("{refusal}")]
-    Image { refusal: ImageRefusal },
+    Media { refusal: MediaRefusal },
 }
 
 /// Why a typed port operation did not answer.
@@ -778,21 +799,39 @@ impl PluginPort {
         self.done("oauth_sign_out", PortMessage::OauthSignOut).await
     }
 
-    /// The image models of the user's provider entries, each with the
+    /// The models of `kind` of the user's provider entries, each with the
     /// entries that offer it.
-    pub async fn image_models(&self) -> Result<MediaListing, PortFailure> {
-        match self.ask(PortMessage::ImageModels).await? {
-            PortAnswer::ImageModels { listing } => Ok(listing),
-            answer => Err(unexpected("image_models", &answer)),
+    pub async fn media_models(&self, kind: MediaKind) -> Result<MediaListing, PortFailure> {
+        match self.ask(PortMessage::MediaModels { kind }).await? {
+            PortAnswer::MediaModels { listing } => Ok(listing),
+            answer => Err(unexpected("media_models", &answer)),
         }
     }
 
-    /// Makes the image `ask` names; [`PortRefusal::Image`] when none was
+    /// Makes the image `ask` names; [`PortRefusal::Media`] when none was
     /// made.
     pub async fn make_image(&self, ask: ImageAsk) -> Result<MadeImage, PortFailure> {
         match self.ask(PortMessage::MakeImage { ask }).await? {
             PortAnswer::Image { image } => Ok(image),
             answer => Err(unexpected("make_image", &answer)),
+        }
+    }
+
+    /// Asks for the video `ask` names and answers the job the vendor took;
+    /// [`PortRefusal::Media`] when none was taken.
+    pub async fn make_video(&self, ask: VideoAsk) -> Result<AskedVideo, PortFailure> {
+        match self.ask(PortMessage::MakeVideo { ask }).await? {
+            PortAnswer::VideoAsked { asked } => Ok(asked),
+            answer => Err(unexpected("make_video", &answer)),
+        }
+    }
+
+    /// The request's job's next state, or its video; [`PortRefusal::Media`]
+    /// when the job failed, expired or outlasted the call's bound.
+    pub async fn video_progress(&self) -> Result<VideoStep, PortFailure> {
+        match self.ask(PortMessage::VideoProgress).await? {
+            PortAnswer::VideoProgress { step } => Ok(step),
+            answer => Err(unexpected("video_progress", &answer)),
         }
     }
 

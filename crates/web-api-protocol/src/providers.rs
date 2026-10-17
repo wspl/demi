@@ -4,7 +4,7 @@
 //! material.
 
 use demi_shared_types::{
-    AccountInfo, AuthState, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection,
+    AccountInfo, AuthState, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection, VideoShape,
     Nullable, ProviderModel, QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
 };
 use garde::Validate;
@@ -40,14 +40,15 @@ serde_plain::derive_fromstr_from_deserialize!(CredentialKind);
 pub use demi_shared_types::Rotation;
 
 /// What a configured model makes (`providers.md` § Provider management):
-/// text, the model menu's, unless its user added it as an image model of a
-/// compatible entry with an image shape.
+/// text, the model menu's, unless its user added it as an image or video
+/// model of a compatible entry with a shape for that kind.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelKind {
     #[default]
     Text,
     Image,
+    Video,
 }
 
 impl ModelKind {
@@ -56,6 +57,7 @@ impl ModelKind {
         match self {
             Self::Text => None,
             Self::Image => Some(MediaKind::Image),
+            Self::Video => Some(MediaKind::Video),
         }
     }
 }
@@ -275,6 +277,8 @@ pub struct ProviderPatch {
 pub struct MediaPatch {
     #[serde(default)]
     pub image: Option<ImageMediaPatch>,
+    #[serde(default)]
+    pub video: Option<VideoMediaPatch>,
 }
 
 /// A change of how an entry makes images: `shape`, a compatible entry's
@@ -290,11 +294,25 @@ pub struct ImageMediaPatch {
     pub enabled: Option<bool>,
 }
 
+/// A change of how an entry makes videos: `shape`, a compatible entry's
+/// only, null for none; `enabled`, its Video Generation switch, for an
+/// entry that makes videos.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VideoMediaPatch {
+    #[serde(default, with = "double_option")]
+    #[schemars(with = "Option<Nullable<VideoShape>>")]
+    pub shape: Option<Option<VideoShape>>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
 impl MediaPatch {
     /// The switch the patch sets for `kind`.
     pub fn enabled(&self, kind: MediaKind) -> Option<bool> {
         match kind {
             MediaKind::Image => self.image.as_ref().and_then(|image| image.enabled),
+            MediaKind::Video => self.video.as_ref().and_then(|video| video.enabled),
         }
     }
 }
@@ -304,6 +322,7 @@ impl MediaPatch {
 #[serde(rename_all = "camelCase")]
 pub struct EntryMedia {
     pub image: ImageMedia,
+    pub video: VideoMedia,
     /// When the media catalog that describes its models was published: a
     /// newer catalog changes it, so the page reads the entry's media models
     /// again (`web-api-settings.md` § Models).
@@ -318,6 +337,17 @@ pub struct ImageMedia {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ImageShape>")]
     pub shape: Option<ImageShape>,
+    pub enabled: bool,
+}
+
+/// How an entry makes videos: its shape, null when it makes none, and its
+/// Video Generation switch, on from the start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct VideoMedia {
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<VideoShape>")]
+    pub shape: Option<VideoShape>,
     pub enabled: bool,
 }
 
@@ -795,7 +825,10 @@ pub struct CatalogProvider {
     /// vendor's as the media catalog describes them, a compatible entry's
     /// those its user added; listed whether or not its Image Generation is
     /// on (`web-api-settings.md` § Models).
-    pub image_models: Vec<EntryImageModel>,
+    pub image_models: Vec<EntryMediaModel>,
+    /// The video models the entry offers, as `image_models` lists its
+    /// image models.
+    pub video_models: Vec<EntryMediaModel>,
     /// When the source was last downloaded; the Unix epoch for a configured
     /// list, and for a catalog no refresh has filled.
     pub source_fetched_at: Timestamp,
@@ -807,10 +840,10 @@ pub struct CatalogProvider {
     pub availability: Availability,
 }
 
-/// An image model of an entry as Settings › Providers lists it.
+/// An image or video model of an entry as Settings › Providers lists it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct EntryImageModel {
+pub struct EntryMediaModel {
     pub id: String,
     pub name: String,
     /// The release date, `YYYY-MM-DD`; null when neither the catalog nor

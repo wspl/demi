@@ -50,7 +50,7 @@ use demi_web_api_protocol::settings::InstanceMode;
 use object_store::ObjectStore;
 
 use crate::conversation::claude_cli::{ClaudeMachine, CliInstalls};
-use crate::tuning::{ConversationTuning, LifecycleTuning, PageTuning, RunnerTuning};
+use crate::tuning::{ConversationTuning, LifecycleTuning, MediaTuning, PageTuning, RunnerTuning};
 
 const CONTROL_DATABASE: &str = "control.sqlite";
 const CONVERSATION_DATABASES: &str = "conversations";
@@ -99,6 +99,8 @@ pub struct Services {
     pub conversation_tuning: ConversationTuning,
     /// How the sockets to a page are timed.
     pub pages: PageTuning,
+    /// How a video's job is waited for.
+    pub media_tuning: MediaTuning,
     /// The command packages each shard's catalog is built from.
     pub native: NativeCatalog,
     /// The backend's plugins, checked at startup (`plugins.md` § The plugin
@@ -194,6 +196,7 @@ pub struct ServiceSettings {
     pub runners: RunnerTuning,
     pub conversations: ConversationTuning,
     pub pages: PageTuning,
+    pub media_tuning: MediaTuning,
     pub native: NativeCatalog,
     /// The plugins, in their order of registration.
     pub plugins: Vec<Box<dyn PluginFactory>>,
@@ -449,6 +452,7 @@ impl Services {
             runners: settings.runners,
             conversation_tuning: settings.conversations,
             pages: settings.pages,
+            media_tuning: settings.media_tuning,
             user_streams: UserStreams::new(
                 plugins
                     .streams()
@@ -536,6 +540,7 @@ impl Services {
             runners: RunnerTuning::default(),
             conversations: ConversationTuning::default(),
             pages: PageTuning::default(),
+            media_tuning: MediaTuning::default(),
             native: NativeCatalog::unpublished(),
             plugins: Vec::new(),
             cloud: CloudServices::new(machines, demi_backend_cloud::tuning::CloudTuning::default()),

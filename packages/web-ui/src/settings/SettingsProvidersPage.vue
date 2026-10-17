@@ -65,14 +65,14 @@ import { formatDate } from '../ui/dates'
 import {
   COMPATIBLE_MEDIA_SHAPES,
   COMPATIBLE_WIRE_APIS,
-  IMAGE_SHAPE_LABELS,
+  MEDIA_SHAPE_LABELS,
   SETTINGS_MEDIA_KINDS,
   ROTATIONS,
   ROTATION_HINTS,
   ROTATION_LABELS,
   WIRE_API_LABELS,
   type SettingsEntryMedia,
-  type SettingsImageShape,
+  type SettingsMediaShape,
   type SettingsMediaKind,
   type SettingsModelDraft,
   type SettingsModelSearch,
@@ -468,6 +468,12 @@ const MEDIA_WORDS: Record<SettingsMediaKind, {
     add: () => t('providers.media.addImage'),
     none: () => t('providers.media.noImages'),
   },
+  video: {
+    title: () => t('providers.media.videos'),
+    generation: () => t('providers.media.videoGeneration'),
+    add: () => t('providers.media.addVideo'),
+    none: () => t('providers.media.noVideos'),
+  },
 }
 
 function changeMedia(
@@ -478,7 +484,7 @@ function changeMedia(
   emit('change', provider, { media: { ...provider.media, [kind]: { ...provider.media[kind], ...change } } })
 }
 
-function chooseShape(provider: SettingsProviderEntry, kind: SettingsMediaKind, shape: SettingsImageShape | null): void {
+function chooseShape(provider: SettingsProviderEntry, kind: SettingsMediaKind, shape: SettingsMediaShape | null): void {
   if (shape !== provider.media[kind].shape) {
     changeMedia(provider, kind, { shape })
   }
@@ -1478,7 +1484,7 @@ function endpointCheck(value: string) {
                   :disabled="fieldsLocked(selected)"
                 >
                   <template #trigger>{{
-                    selected.media[kind].shape ? IMAGE_SHAPE_LABELS[selected.media[kind].shape!] : t('providers.media.none')
+                    selected.media[kind].shape ? MEDIA_SHAPE_LABELS[selected.media[kind].shape!] : t('providers.media.none')
                   }}</template>
                   <template #content="{ close }">
                     <Menu>
@@ -1491,7 +1497,7 @@ function endpointCheck(value: string) {
                       <MenuItem
                         v-for="shape in COMPATIBLE_MEDIA_SHAPES[kind]"
                         :key="shape"
-                        :label="IMAGE_SHAPE_LABELS[shape]"
+                        :label="MEDIA_SHAPE_LABELS[shape]"
                         choice
                         :is-selected="selected.media[kind].shape === shape"
                         @select="close(); chooseShape(selected, kind, shape)"

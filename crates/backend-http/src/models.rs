@@ -9,6 +9,7 @@ use std::sync::Arc;
 use axum::Json;
 use axum::extract::State;
 use demi_backend_providers::llm::small_model::automatic_small_model;
+use demi_shared_types::MediaKind;
 use demi_web_api_protocol::providers::{ModelCatalog, ModelSearchResults};
 use demi_web_api_protocol::query::{ModelSearch, Refresh};
 
@@ -41,9 +42,11 @@ pub(super) async fn models(
     let entries = services.vault.entries(owner).await?;
     let preferences = services.control.preferences(user.id.clone()).await?;
     let mut providers = services.assembly.model_catalog(&entries, refresh.0).await;
-    let mut images = services.entry_image_models(&user.id).await?;
+    let mut images = services.entry_media_models(&user.id, MediaKind::Image).await?;
+    let mut videos = services.entry_media_models(&user.id, MediaKind::Video).await?;
     for provider in &mut providers {
         provider.image_models = images.remove(provider.provider_id.as_str()).unwrap_or_default();
+        provider.video_models = videos.remove(provider.provider_id.as_str()).unwrap_or_default();
     }
     let small_model = automatic_small_model(&providers, &preferences);
     Ok(Json(ModelCatalog {

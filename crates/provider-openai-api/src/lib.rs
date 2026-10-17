@@ -3,20 +3,24 @@
 //! speaking the Responses API or, for OpenAI-compatible endpoints, Chat
 //! Completions, with the typed vendor policy its entry names and the
 //! standard reading of its failure records; an OpenAI or xAI vendor
-//! entry's key also makes images.
+//! entry's key also makes images, and an xAI vendor entry's key videos.
 
 mod images;
-
-pub use images::compatible_images;
 mod request;
 mod run;
+mod videos;
+
+pub use images::compatible_images;
+pub use videos::compatible_videos;
 
 use std::sync::Arc;
 
 use demi_provider_common::{
     Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
-    images::{ImageMaker, ImageVendor},
+    images::ImageMaker,
+    media::MediaVendor,
+    videos::VideoMaker,
 };
 use demi_shared_types::{
     AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts,
@@ -51,6 +55,9 @@ pub struct OpenAiConfig {
     /// Whether the entry's key makes images, as its vendor's image shape
     /// says: an OpenAI or xAI key's does.
     pub makes_images: bool,
+    /// Whether the entry's key makes videos, as its vendor's video shape
+    /// says: an xAI key's does.
+    pub makes_videos: bool,
 }
 
 impl OpenAiConfig {
@@ -63,6 +70,8 @@ pub struct OpenAiProvider {
     shared: Arc<Shared>,
     /// The key's image role, for an OpenAI or xAI entry with its key.
     images: Option<images::KeyImages>,
+    /// The key's video role, for an xAI entry with its key.
+    videos: Option<videos::KeyVideos>,
 }
 
 /// What the provider and all its runtimes share.
@@ -87,14 +96,19 @@ impl OpenAiProvider {
         };
         let vendor = config.vendor_id.as_deref();
         let image_vendor = match vendor {
-            Some("xai") => ImageVendor::Xai,
-            _ => ImageVendor::OpenAi,
+            Some("xai") => MediaVendor::Xai,
+            _ => MediaVendor::OpenAi,
         };
         let images = config
             .api_key
             .clone()
             .filter(|_| config.makes_images)
             .map(|key| images::KeyImages::new(image_vendor, key, &base, clock.clone()));
+        let videos = config
+            .api_key
+            .clone()
+            .filter(|_| config.makes_videos)
+            .map(|key| videos::KeyVideos::xai(key, &base, clock.clone()));
         let signature_tag = Arc::from(format!("{}:", vendor.unwrap_or(COMPATIBLE)));
         Self {
             shared: Arc::new(Shared {
@@ -106,6 +120,7 @@ impl OpenAiProvider {
                 clock,
             }),
             images,
+            videos,
         }
     }
 }
@@ -138,6 +153,10 @@ impl Provider for OpenAiProvider {
 
     fn images(&self) -> Option<&dyn ImageMaker> {
         self.images.as_ref().map(|images| images as &dyn ImageMaker)
+    }
+
+    fn videos(&self) -> Option<&dyn VideoMaker> {
+        self.videos.as_ref().map(|videos| videos as &dyn VideoMaker)
     }
 
     fn read_failure(

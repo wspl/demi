@@ -145,7 +145,7 @@ const anatomy: [string, string][] = [
 const account = { id: 'alex', name: 'Alex' }
 const full = createSettingsState()
 /** Providers where the only API-key entry is complete: Add, then a vendor, adds an incomplete one. */
-/** The full list, Ollama selected: its image shape, its switch and an image model. */
+/** The full list, Ollama selected: its image shape, its switch and an image model, and its video shape, None. */
 const ordering = createSettingsState()
 ordering.selectedProviderId = 'ollama'
 ordering.providerDetailOpen = true
@@ -377,7 +377,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Providers · Order and Media"
-        note="The list’s order is the one generated media follow, subscriptions before API keys: drag a signed-in subscription or a key within its group, or move the focused row with Option and the Up or Down arrow, and it stays where it lands; a subscription nobody signed in to follows them and does not move. Under its Models, each entry has a section for each kind of media it can make: Codex’s Images has its Image Generation switch and the vendor’s image models, newest first with their release dates, read only; Grok’s switch is off, so its models are grey. Ollama, a compatible API, chose OpenAI Images as its protocol there, so it has the switch and Z-Image Turbo, which Add Image Model added and which edits only its ID and name; set the protocol to None and the switch and the models go."
+        note="The list’s order is the one generated media follow, subscriptions before API keys: drag a signed-in subscription or a key within its group, or move the focused row with Option and the Up or Down arrow, and it stays where it lands; a subscription nobody signed in to follows them and does not move. Under its Models, each entry has a section for each kind of media it can make: Codex’s Images has its Image Generation switch and the vendor’s image models, newest first with their release dates, read only; Grok’s switch is off, so its models are grey, and its Videos has Video Generation on with the subscription’s three video models. Ollama, a compatible API, chose OpenAI Images as its protocol there, so it has the switch and Z-Image Turbo, which Add Image Model added and which edits only its ID and name; set the protocol to None and the switch and the models go. Its Videos has only its protocol, None: choose xAI Videos, OpenAI Videos or OpenRouter Videos and the Video Generation switch and Add Video Model appear."
       >
         <div class="h-[640px] w-full max-w-4xl @container rounded-xl border border-line bg-surface-dialog p-6">
           <GallerySettingsProviders :state="ordering" />

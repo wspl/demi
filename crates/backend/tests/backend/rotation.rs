@@ -51,6 +51,7 @@ async fn two_accounts(process_host: bool) -> TwoAccounts {
         runs: Some(runs.clone()),
         process_host,
         images: None,
+        videos: None,
     };
     let scripts = Scripts {
         login,

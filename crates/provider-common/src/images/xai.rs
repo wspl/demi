@@ -1,6 +1,9 @@
 //! How xAI's image API, a Grok subscription's and an xAI key's alike,
 //! refuses a shape (`images.md` § Commands).
 
+use super::MadeImage;
+use crate::media::{MediaAnswer, MediaFailure};
+
 /// The shapes xAI's image API takes, as its refusal of `aspect_ratio` lists
 /// them: ``aspect_ratio: unknown variant `4:5`, expected one of `1:1`,
 /// `3:4`, …, `auto` at line 1 column 304``. The whole list is read, each
@@ -32,11 +35,11 @@ fn shapes_taken(message: &str) -> Option<Vec<String>> {
 
 /// `answer` with a refusal of the shape asked for told as the shapes xAI
 /// named, so a shape xAI adds needs no change (`images.md` § Commands).
-pub fn with_shapes(mut answer: super::ImageAnswer) -> super::ImageAnswer {
-    if let Err(super::ImageFailure::Refused { message, code }) = &answer.result
+pub fn with_shapes(mut answer: MediaAnswer<MadeImage>) -> MediaAnswer<MadeImage> {
+    if let Err(MediaFailure::Refused { message, code }) = &answer.result
         && let Some(takes) = shapes_taken(message)
     {
-        answer.result = Err(super::ImageFailure::Shape { takes, code: code.clone() });
+        answer.result = Err(MediaFailure::Shape { takes, code: code.clone() });
     }
     answer
 }

@@ -1006,8 +1006,8 @@ shows no status until it is tested or used.
 
 An entry's page keeps its connection settings, its endpoint, protocol and
 key, at the top, then its text models under **Models**, then one section
-for each kind of media it can make, **Images**, and later **Videos** and
-**Audio**, below the models, so the media an entry makes are read with its
+for each kind of media it can make, **Images**, **Videos** and later
+**Audio**, below the models, each laid out as Images is, so the media an entry makes are read with its
 models rather than with its connection
 ([Which entries make which media](../agent/media.md#which-entries-make-which-media)).
 For example, Alex's OpenAI key entry shows its endpoint and key, its chat

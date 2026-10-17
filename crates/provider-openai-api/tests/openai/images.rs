@@ -12,7 +12,8 @@ use std::sync::Arc;
 use bytes::Bytes;
 use demi_provider_common::{
     Provider, Secret, VendorPolicy,
-    images::{Aspect, ImageFailure, ImageModelInfo, ImageRequest, ImageVendor, InputImage},
+    images::{Aspect, ImageRequest, InputImage},
+    media::{MediaFailure, MediaModelInfo, MediaVendor},
     testing::{FixedClock, MockResponse, MockVendor},
 };
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
@@ -39,7 +40,7 @@ const IMAGE: &[u8] = b"\x89PNG\r\n\x1a\n made image";
 
 /// An entry of `vendor` whose key is `sk-test`, at `/v1` on the scripted
 /// vendor.
-fn provider(vendor: &MockVendor, images: Option<ImageVendor>) -> OpenAiProvider {
+fn provider(vendor: &MockVendor, images: Option<MediaVendor>) -> OpenAiProvider {
     // An entry of neither vendor, a compatible API, makes no images.
     let config = OpenAiConfig {
         api_key: Some(Secret::try_from("sk-test".to_owned()).unwrap()),
@@ -48,6 +49,7 @@ fn provider(vendor: &MockVendor, images: Option<ImageVendor>) -> OpenAiProvider 
         policy: VendorPolicy::default(),
         vendor_id: images.map(|vendor| vendor.id().to_owned()),
         makes_images: images.is_some(),
+        makes_videos: false,
     };
     OpenAiProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }
@@ -72,7 +74,7 @@ fn image(media_type: &'static str, bytes: &'static [u8]) -> InputImage {
     InputImage { media_type, bytes: Bytes::from_static(bytes) }
 }
 
-fn ids(models: &[ImageModelInfo]) -> Vec<(&str, Option<&str>, &str)> {
+fn ids(models: &[MediaModelInfo]) -> Vec<(&str, Option<&str>, &str)> {
     models
         .iter()
         .map(|model| (model.id.as_str(), model.released.as_deref(), model.description.as_deref().unwrap_or_default()))
@@ -90,7 +92,7 @@ async fn the_size_sent_for_a_shape_follows_the_sizes_the_catalog_gives_the_model
     for _ in 0..3 {
         vendor.respond_at("/v1/images/generations", json_answer(200, answer.clone()));
     }
-    let provider = provider(&vendor, Some(ImageVendor::OpenAi));
+    let provider = provider(&vendor, Some(MediaVendor::OpenAi));
     let maker = provider.images().unwrap();
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
     let with_sizes = |image: Value| {
@@ -134,9 +136,9 @@ async fn an_openai_key_lists_its_image_models_and_sends_generations_and_edits_as
         vendor.respond_at("/v1/images/generations", json_answer(200, answer.clone()));
     }
     vendor.respond_at("/v1/images/edits", json_answer(200, answer));
-    let provider = provider(&vendor, Some(ImageVendor::OpenAi));
+    let provider = provider(&vendor, Some(MediaVendor::OpenAi));
     let maker = provider.images().expect("an OpenAI key makes images");
-    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("OpenAI", Some(ImageVendor::OpenAi), true));
+    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("OpenAI", Some(MediaVendor::OpenAi), true));
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
     let models = maker.models(&http, &catalog()).await.unwrap();
@@ -212,30 +214,30 @@ async fn an_openai_keys_failures_read_as_a_spent_limit_a_refused_key_a_policy_bl
     vendor.respond_at(generations, json_answer(400, error("Invalid size '9x9'.", "invalid_request_error", Value::Null)));
     vendor.respond_at(generations, json_answer(429, error("Rate limit reached for gpt-image-2.", "requests", Value::Null)));
     vendor.respond_at("/v1/models", json_answer(401, error("Incorrect API key provided.", "invalid_request_error", json!("invalid_api_key"))));
-    let provider = provider(&vendor, Some(ImageVendor::OpenAi));
+    let provider = provider(&vendor, Some(MediaVendor::OpenAi));
     let maker = provider.images().unwrap();
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
     let fail = async || maker.make(&http, &catalog(), request("gpt-image-2", None, Vec::new())).await.result.unwrap_err();
 
-    assert_eq!(fail().await, ImageFailure::UsageLimit { retry_at: None });
-    assert_eq!(fail().await, ImageFailure::UsageLimit { retry_at: None });
+    assert_eq!(fail().await, MediaFailure::UsageLimit { retry_at: None });
+    assert_eq!(fail().await, MediaFailure::UsageLimit { retry_at: None });
     let refused = fail().await;
-    assert!(matches!(&refused, ImageFailure::KeyRefused { message, .. } if message.starts_with("Incorrect API key provided")), "{refused:?}");
+    assert!(matches!(&refused, MediaFailure::KeyRefused { message, .. } if message.starts_with("Incorrect API key provided")), "{refused:?}");
     assert_eq!(refused.outcome(), "auth_expired");
     match fail().await {
-        ImageFailure::Refused { message, .. } => assert_eq!(message, "Your request was rejected as a result of our safety system."),
+        MediaFailure::Refused { message, .. } => assert_eq!(message, "Your request was rejected as a result of our safety system."),
         other => panic!("not a refusal: {other:?}"),
     }
     match fail().await {
-        ImageFailure::Refused { message, .. } => assert_eq!(message, "Invalid size '9x9'."),
+        MediaFailure::Refused { message, .. } => assert_eq!(message, "Invalid size '9x9'."),
         other => panic!("not a refusal: {other:?}"),
     }
     match fail().await {
-        ImageFailure::Unanswered { cause, .. } => assert_eq!(cause, "HTTP 429: Rate limit reached for gpt-image-2."),
+        MediaFailure::Unanswered { cause, .. } => assert_eq!(cause, "HTTP 429: Rate limit reached for gpt-image-2."),
         other => panic!("not unanswered: {other:?}"),
     }
     // A key refused while listing is the same failure.
-    assert!(matches!(maker.models(&http, &catalog()).await, Err(ImageFailure::KeyRefused { .. })));
+    assert!(matches!(maker.models(&http, &catalog()).await, Err(MediaFailure::KeyRefused { .. })));
     // A key is never retried: each refusal was one request.
     assert_eq!(vendor.requests().len(), 7);
 }
@@ -272,9 +274,9 @@ async fn an_xai_key_lists_models_with_their_aliases_sends_its_shapes_and_reads_i
         "/v1/images/generations",
         json_answer(400, json!({ "code": "Client specified an invalid argument", "error": "Generated image rejected by content moderation." })),
     );
-    let provider = provider(&vendor, Some(ImageVendor::Xai));
+    let provider = provider(&vendor, Some(MediaVendor::Xai));
     let maker = provider.images().expect("an xAI key makes images");
-    assert_eq!((maker.name(), maker.vendor()), ("xAI", Some(ImageVendor::Xai)));
+    assert_eq!((maker.name(), maker.vendor()), ("xAI", Some(MediaVendor::Xai)));
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
     let models = maker.models(&http, &catalog()).await.unwrap();
@@ -312,11 +314,11 @@ async fn an_xai_key_lists_models_with_their_aliases_sends_its_shapes_and_reads_i
     );
 
     let fail = async || maker.make(&http, &catalog(), request("grok-imagine-image-2.0", None, Vec::new())).await.result.unwrap_err();
-    assert!(matches!(fail().await, ImageFailure::Shape { takes, .. } if takes == ["1:1", "3:4", "16:9"]));
-    assert_eq!(fail().await, ImageFailure::UsageLimit { retry_at: None });
-    assert!(matches!(fail().await, ImageFailure::KeyRefused { .. }));
+    assert!(matches!(fail().await, MediaFailure::Shape { takes, .. } if takes == ["1:1", "3:4", "16:9"]));
+    assert_eq!(fail().await, MediaFailure::UsageLimit { retry_at: None });
+    assert!(matches!(fail().await, MediaFailure::KeyRefused { .. }));
     match fail().await {
-        ImageFailure::Refused { message, .. } => assert_eq!(message, "Generated image rejected by content moderation."),
+        MediaFailure::Refused { message, .. } => assert_eq!(message, "Generated image rejected by content moderation."),
         other => panic!("not a refusal: {other:?}"),
     }
 }

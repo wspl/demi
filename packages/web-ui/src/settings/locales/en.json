@@ -544,7 +544,11 @@
       "images": "Images",
       "none": "None",
       "addImage": "Add Image Model",
-      "noImages": "No image models yet"
+      "noImages": "No image models yet",
+      "videoGeneration": "Video Generation",
+      "videos": "Videos",
+      "addVideo": "Add Video Model",
+      "noVideos": "No video models yet"
     },
     "state": {
       "setup": "Not set up",

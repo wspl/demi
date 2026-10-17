@@ -17,7 +17,7 @@ pub fn size(catalog: &Catalog, model: &str, aspect: Option<Aspect>) -> String {
         return "auto".to_owned();
     };
     let fixed = catalog
-        .model(super::ImageVendor::OpenAi.id(), model)
+        .model(crate::media::MediaVendor::OpenAi.id(), model)
         .and_then(|model| catalog.image(model))
         .and_then(|image| image.sizes.as_deref());
     let asked = f64::from(aspect.width) / f64::from(aspect.height);

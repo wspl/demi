@@ -13,15 +13,15 @@ use demi_backend_host_access::plugin_files::ReadFilesError;
 use demi_backend_host_access::stream::{ServiceBinding, ServiceCall, UserCallError, UserCallKind};
 use demi_backend_page_sync::Part;
 use demi_backend_host_access::host_commands::reachable;
-use demi_backend_plugins::{Lost, ProductPort, ReadOn};
+use demi_backend_plugins::{Lost, ProductPort, ReadOn, VideoJob};
 use demi_backend_providers::vault::seal::Row;
 use demi_backend_remote_host::ServiceCallError;
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{HostErrorKind, JobCaller, PortError};
 use demi_plugin_interface::{
-    CallKind, HostFile, HostRead, ImageAsk, MediaListing, MadeImage, PortFailure, PortRefusal,
+    AskedVideo, CallKind, HostFile, HostRead, ImageAsk, MediaListing, MadeImage, PortFailure, PortRefusal, VideoAsk,
 };
-use demi_shared_types::{B64Bytes, BlobRef, Timestamp};
+use demi_shared_types::{B64Bytes, BlobRef, MediaKind, Timestamp};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use futures_util::future::LocalBoxFuture;
@@ -121,8 +121,8 @@ impl ProductPort for ShardPort {
         })
     }
 
-    fn image_models(&self) -> LocalBoxFuture<'_, Result<MediaListing, PortFailure>> {
-        Box::pin(async move { super::media::image_models(&*self.shard()?).await })
+    fn media_models(&self, kind: MediaKind) -> LocalBoxFuture<'_, Result<MediaListing, PortFailure>> {
+        Box::pin(async move { super::media::media_models(&*self.shard()?, kind).await })
     }
 
     fn make_image<'a>(
@@ -135,6 +135,19 @@ impl ProductPort for ShardPort {
         Box::pin(async move {
             let shard = self.shard()?;
             super::media::make_image(&shard, conversation, caller, ask, cancel).await
+        })
+    }
+
+    fn make_video<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        caller: Option<&'a JobCaller>,
+        ask: VideoAsk,
+        cancel: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<(AskedVideo, VideoJob), PortFailure>> {
+        Box::pin(async move {
+            let shard = self.shard()?;
+            super::media::make_video(&shard, conversation, caller, ask, cancel).await
         })
     }
 

@@ -42,6 +42,9 @@ pub(crate) struct Row {
     pub quota: Option<String>,
     pub started_at: Option<i64>,
     pub ended_at: i64,
+    pub media_seconds: Option<f64>,
+    pub cost: Option<f64>,
+    pub cost_currency: Option<String>,
 }
 
 /// Every row of the ledger, in the order they were written.
@@ -51,7 +54,7 @@ pub(crate) fn rows(harness: &Harness) -> Vec<Row> {
         .prepare(
             "SELECT agent, turn_id, purpose, provider_id, account_id, model_id, request_id, vendor_id,
                input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, cache_write_1h_tokens,
-               outcome, quota, started_at, ended_at
+               outcome, quota, started_at, ended_at, media_seconds, cost, cost_currency
              FROM usage_ledger ORDER BY rowid",
         )
         .unwrap();
@@ -72,6 +75,9 @@ pub(crate) fn rows(harness: &Harness) -> Vec<Row> {
                 quota: row.get(14)?,
                 started_at: row.get(15)?,
                 ended_at: row.get(16)?,
+                media_seconds: row.get(17)?,
+                cost: row.get(18)?,
+                cost_currency: row.get(19)?,
             })
         })
         .unwrap()

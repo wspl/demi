@@ -6,7 +6,8 @@ use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
 use demi_backend_providers::llm::families::{
-    AccountBinding, CompatibleImagesArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
+    AccountBinding, CompatibleImagesArgs, CompatibleVideosArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry,
+    ProviderFamily,
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
 use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider, Placement};
@@ -17,7 +18,7 @@ use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
-use demi_shared_types::{ImageShape, WireApi};
+use demi_shared_types::{ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 
 /// The families built into the backend.
@@ -25,6 +26,9 @@ pub fn builtin() -> FamilyRegistry {
     FamilyRegistry::default()
         .with_compatible_images(Arc::new(|args: CompatibleImagesArgs| {
             demi_provider_openai_api::compatible_images(args.name, args.key, &args.base, args.models, args.clock)
+        }))
+        .with_compatible_videos(Arc::new(|args: CompatibleVideosArgs| {
+            demi_provider_openai_api::compatible_videos(args.name, args.shape, args.key, &args.base, args.models, args.clock)
         }))
         .with("anthropic", AnthropicFamily)
         .with("claude-code", ClaudeCodeFamily)
@@ -88,6 +92,7 @@ impl ProviderFamily for OpenAiFamily {
             policy: settings.vendor,
             vendor_id: settings.vendor_id,
             makes_images: settings.image_shape == Some(ImageShape::OpenaiImages),
+            makes_videos: settings.video_shape == Some(VideoShape::XaiVideos),
         };
         Ok(Arc::new(OpenAiProvider::new(config, args.clock)))
     }
@@ -96,6 +101,12 @@ impl ProviderFamily for OpenAiFamily {
     /// API (`media.md` § Which entries make which media).
     fn image_shape(&self, vendor_id: Option<&str>) -> Option<ImageShape> {
         matches!(vendor_id, Some("openai" | "xai")).then_some(ImageShape::OpenaiImages)
+    }
+
+    /// An xAI key makes videos through xAI's video API; OpenAI's was shut
+    /// down (`videos.md` § Vendors).
+    fn video_shape(&self, vendor_id: Option<&str>) -> Option<VideoShape> {
+        (vendor_id == Some("xai")).then_some(VideoShape::XaiVideos)
     }
 }
 
@@ -119,6 +130,7 @@ impl ProviderFamily for GoogleFamily {
             api_key: settings.api_key,
             base_url: settings.base_url,
             makes_images: settings.image_shape == Some(ImageShape::Gemini),
+            makes_videos: settings.video_shape == Some(VideoShape::Veo),
         };
         Ok(Arc::new(GoogleProvider::new(config, args.clock)))
     }
@@ -126,6 +138,11 @@ impl ProviderFamily for GoogleFamily {
     /// A Gemini API key makes images with `generateContent`.
     fn image_shape(&self, vendor_id: Option<&str>) -> Option<ImageShape> {
         (vendor_id == Some("google")).then_some(ImageShape::Gemini)
+    }
+
+    /// A Gemini API key makes videos with Veo.
+    fn video_shape(&self, vendor_id: Option<&str>) -> Option<VideoShape> {
+        (vendor_id == Some("google")).then_some(VideoShape::Veo)
     }
 }
 
@@ -201,6 +218,10 @@ impl ProviderFamily for GrokBuildFamily {
 
     fn image_shape(&self, _: Option<&str>) -> Option<ImageShape> {
         Some(ImageShape::Grok)
+    }
+
+    fn video_shape(&self, _: Option<&str>) -> Option<VideoShape> {
+        Some(VideoShape::Grok)
     }
 }
 

@@ -7,7 +7,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use demi_provider_common::images::{ImageModelInfo, subscription_models};
+use demi_provider_common::media::{MediaModelInfo, subscription_models};
 use demi_provider_common::media_catalog::{
     AudioOutput, Catalog, Currency, DurationRange, ListedVoices, MediaCatalog, MediaKind, Modality, PriceUnit, Subscription, Voices, branch_url,
 };
@@ -297,7 +297,7 @@ async fn a_build_from_no_branch_downloads_nothing_and_keeps_its_copy() {
     media.close();
 }
 
-fn listed_ids(models: &[ImageModelInfo]) -> Vec<&str> {
+fn listed_ids(models: &[MediaModelInfo]) -> Vec<&str> {
     models.iter().map(|model| model.id.as_str()).collect()
 }
 
@@ -323,6 +323,6 @@ fn a_subscription_lists_the_catalogs_image_models_for_it() {
         { "vendor": "xai", "id": "imagine", "kind": "image", "name": "Imagine", "subscriptions": ["grok"],
           "image": { "aspectRatios": ["1:1", "16:9", "9:19.5"], "resolutions": ["1k", "2k"], "edits": true, "maxInputImages": 5 } }
     ] }));
-    assert_eq!(listed_ids(&subscription_models(&catalog, Subscription::Chatgpt)), ["pic", "pic-2026-09-08", "pic-1", "pic-latest"]);
-    assert_eq!(listed_ids(&subscription_models(&catalog, Subscription::Grok)), ["imagine"]);
+    assert_eq!(listed_ids(&subscription_models(&catalog, Subscription::Chatgpt, MediaKind::Image)), ["pic", "pic-2026-09-08", "pic-1", "pic-latest"]);
+    assert_eq!(listed_ids(&subscription_models(&catalog, Subscription::Grok, MediaKind::Image)), ["imagine"]);
 }

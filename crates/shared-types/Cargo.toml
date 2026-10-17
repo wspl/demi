@@ -9,6 +9,8 @@ publish.workspace = true
 [features]
 # `whole_image`: decodes an image whole, refusing one cut short.
 whole-image = ["dep:image"]
+# `mp4`: reads what an MP4 file holds from its header.
+mp4 = ["dep:mp4parse"]
 
 [lib]
 # No doc examples: rustdoc has nothing to test. The tests are in tests/core,
@@ -36,3 +38,5 @@ unicode-width = "0.2"
 # The one check that an image's bytes are a whole picture, for the crates
 # that turn on `whole-image`.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"], optional = true }
+# The one reader of an MP4's header, for the crates that turn on `mp4`.
+mp4parse = { version = "0.17", optional = true }

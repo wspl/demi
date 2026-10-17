@@ -2,7 +2,7 @@
 //! ledger): one row per vendor call, kept as written, and the totals
 //! computed when they are read.
 
-use demi_shared_types::{QuotaKind, QuotaScope, QuotaWindow, Timestamp, TokenUsage};
+use demi_shared_types::{Cost, QuotaKind, QuotaScope, QuotaWindow, Timestamp, TokenUsage};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::text::EmailAddress;
 use demi_web_api_protocol::usage::{UsageGroup, UserUsage};
@@ -24,7 +24,7 @@ pub struct UsageRow {
     pub agent: Option<u64>,
     /// None outside a turn.
     pub turn: Option<String>,
-    /// `turn`, `compaction`, `title` or `image`.
+    /// `turn`, `compaction`, `title`, `image` or `video`.
     pub purpose: &'static str,
     pub provider: ProviderId,
     /// The subscription account; none for an API key.
@@ -45,6 +45,12 @@ pub struct UsageRow {
     pub quota: Option<Vec<ObservedWindow>>,
     pub started_at: Timestamp,
     pub ended_at: Timestamp,
+    /// The seconds of video or audio the call made, as its file states
+    /// them; none for any other call or when nothing was made.
+    pub media_seconds: Option<f64>,
+    /// What the vendor said the call cost; none when it said nothing in a
+    /// documented unit.
+    pub cost: Option<Cost>,
 }
 
 /// A window of the account's quota as a call's response reported it, as
@@ -135,9 +141,9 @@ impl ControlService {
                 "INSERT INTO usage_ledger (id, user_id, conversation_id, agent, turn_id, purpose,
                    provider_id, account_id, model_id, request_id, vendor_id,
                    input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-                   cache_write_1h_tokens, outcome, quota, started_at, ended_at)
+                   cache_write_1h_tokens, outcome, quota, started_at, ended_at, media_seconds, cost, cost_currency)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                   ?18, ?19, ?20)",
+                   ?18, ?19, ?20, ?21, ?22, ?23)",
                 params![
                     id,
                     row.user.as_str(),
@@ -159,6 +165,9 @@ impl ControlService {
                     quota,
                     row.started_at.as_millisecond(),
                     row.ended_at.as_millisecond(),
+                    row.media_seconds,
+                    row.cost.map(|cost| cost.amount),
+                    row.cost.map(|cost| cost.currency.to_string()),
                 ],
             )?;
             Ok(id)

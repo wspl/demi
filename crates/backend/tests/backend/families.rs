@@ -1,8 +1,8 @@
 //! Scripted provider families: an API-key family whose directory the test
 //! answers, and a subscription family whose device login and quota probe the
 //! test scripts, both over the account operations and the
-//! quota every family shares, and makes images as the test scripts. No
-//! test calls a real vendor.
+//! quota every family shares, and makes images and videos as the test
+//! scripts. No test calls a real vendor.
 
 use demi_provider_common::media_catalog::Catalog;
 use std::collections::VecDeque;
@@ -22,13 +22,13 @@ use demi_provider_common::quota::{
     Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError, QuotaSource,
 };
 use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
-use demi_provider_common::images::{
-    ImageAnswer, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, MadeImage,
-};
+use demi_provider_common::images::{ImageMaker, ImageRequest, MadeImage};
+use demi_provider_common::media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor};
+use demi_provider_common::videos::{Done, JobState, VideoMaker, VideoRequest};
 use demi_provider_common::{
     Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError,
 };
-use demi_shared_types::{ImageShape, 
+use demi_shared_types::{ImageShape, VideoShape,
     AuthState, LoginPending, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModel,
     ProviderModelList, QuotaWindow, RuntimeState, Timestamp, TokenUsage, WireApi,
 };
@@ -137,6 +137,7 @@ impl ProviderFamily for ScriptedKey {
                 script,
                 account: KEY.to_owned(),
             }),
+            videos: None,
         }))
     }
 
@@ -225,6 +226,9 @@ pub struct ScriptedSubscription {
     /// The image role of its provider; none for a family that makes no
     /// images.
     pub images: Option<Arc<ImageScript>>,
+    /// Its video role, in the Grok shape; none for a family that makes no
+    /// videos.
+    pub videos: Option<Arc<VideoScript>>,
 }
 
 /// A scripted image role: who answers and whose models it makes, its
@@ -232,7 +236,7 @@ pub struct ScriptedSubscription {
 /// used up, and the calls it was sent.
 pub struct ImageScript {
     pub name: &'static str,
-    pub vendor: ImageVendor,
+    pub vendor: MediaVendor,
     /// The IDs of its models, which it lists as a key's listing names
     /// them, told as the backend's catalog states them.
     pub models: &'static [&'static str],
@@ -264,7 +268,7 @@ impl ImageScript {
     pub fn new(models: &'static [&'static str], image: bytes::Bytes) -> Self {
         Self {
             name: "Scripted",
-            vendor: ImageVendor::OpenAi,
+            vendor: MediaVendor::OpenAi,
             models,
             image: Mutex::new(image),
             used_up: Mutex::default(),
@@ -294,12 +298,12 @@ struct ScriptedImages {
     account: String,
 }
 
-impl ImageMaker for ScriptedImages {
+impl MediaMaker for ScriptedImages {
     fn name(&self) -> &str {
         self.script.name
     }
 
-    fn vendor(&self) -> Option<ImageVendor> {
+    fn vendor(&self) -> Option<MediaVendor> {
         Some(self.script.vendor)
     }
 
@@ -307,21 +311,19 @@ impl ImageMaker for ScriptedImages {
         &'a self,
         _: &'a demi_provider_common::ProviderHttp,
         _: &'a Catalog,
-    ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
-        let models = self.script.models.iter().map(|id| ImageModelInfo::id(id)).collect();
+    ) -> BoxFuture<'a, Result<Vec<MediaModelInfo>, MediaFailure>> {
+        let models = self.script.models.iter().map(|id| MediaModelInfo::id(id)).collect();
         Box::pin(std::future::ready(Ok(models)))
     }
+}
 
-    fn confirms_model(&self) -> bool {
-        true
-    }
-
+impl ImageMaker for ScriptedImages {
     fn make<'a>(
         &'a self,
         _: &'a demi_provider_common::ProviderHttp,
         _: &'a Catalog,
         request: ImageRequest,
-    ) -> BoxFuture<'a, ImageAnswer> {
+    ) -> BoxFuture<'a, MediaAnswer<MadeImage>> {
         let mut calls = self.script.calls.lock().unwrap();
         calls.push((self.account.clone(), request));
         self.script.counts.send_modify(|(asked, _)| *asked += 1);
@@ -342,9 +344,9 @@ impl ImageMaker for ScriptedImages {
             }
             let script = &self.script;
             let result = if let Some(message) = script.refusal.lock().unwrap().clone() {
-                Err(ImageFailure::Refused { message, code: None })
+                Err(MediaFailure::Refused { message, code: None })
             } else if script.used_up.lock().unwrap().contains(&self.account) {
-                Err(ImageFailure::UsageLimit { retry_at: None })
+                Err(MediaFailure::UsageLimit { retry_at: None })
             } else {
                 Ok(MadeImage {
                     bytes: script.image.lock().unwrap().clone(),
@@ -357,8 +359,128 @@ impl ImageMaker for ScriptedImages {
                     vendor_id: Some(format!("gen-{count}")),
                 })
             };
-            ImageAnswer { result, observed: Vec::new() }
+            MediaAnswer { result, observed: Vec::new() }
         })
+    }
+}
+
+/// A scripted video role, xAI's in the Grok shape: its models, the answers
+/// of its jobs' state reads in turn, the video every download answers, the
+/// accounts whose asks fail as used up, how long an ask takes, a failure
+/// the next download answers, and the asks it was sent.
+pub struct VideoScript {
+    /// The IDs of its models, told as the backend's catalog states them.
+    pub models: &'static [&'static str],
+    /// What each read of a job's state answers, one per read; with none
+    /// left, the job runs on.
+    pub states: Mutex<VecDeque<Result<JobState, MediaFailure>>>,
+    pub video: bytes::Bytes,
+    pub used_up: Mutex<Vec<String>>,
+    pub ask_takes: Mutex<std::time::Duration>,
+    pub download_fails: Mutex<Option<MediaFailure>>,
+    asks: Mutex<Vec<(String, VideoRequest)>>,
+    /// How many asks and how many state reads were sent.
+    pub counts: watch::Sender<(usize, usize)>,
+}
+
+impl VideoScript {
+    pub fn new(models: &'static [&'static str], video: bytes::Bytes) -> Self {
+        Self {
+            models,
+            states: Mutex::default(),
+            video,
+            used_up: Mutex::default(),
+            ask_takes: Mutex::default(),
+            download_fails: Mutex::default(),
+            asks: Mutex::default(),
+            counts: watch::Sender::new((0, 0)),
+        }
+    }
+
+    /// The reads' answers to come, in order.
+    pub fn answer(&self, states: impl IntoIterator<Item = Result<JobState, MediaFailure>>) {
+        self.states.lock().unwrap().extend(states);
+    }
+
+    /// Each ask's account, by its ID, and request, in order.
+    pub fn asks(&self) -> Vec<(String, VideoRequest)> {
+        self.asks.lock().unwrap().clone()
+    }
+
+    /// A finished job's answer.
+    pub fn done() -> JobState {
+        JobState::Done(Done {
+            url: "https://vendor.invalid/video.mp4".parse().unwrap(),
+            cost: Some(demi_shared_types::Cost {
+                amount: 0.05,
+                currency: demi_shared_types::Currency::Usd,
+            }),
+            usage: None,
+        })
+    }
+}
+
+/// The video role of one account's provider.
+struct ScriptedVideos {
+    script: Arc<VideoScript>,
+    account: String,
+}
+
+impl MediaMaker for ScriptedVideos {
+    fn name(&self) -> &str {
+        "Grok"
+    }
+
+    fn vendor(&self) -> Option<MediaVendor> {
+        Some(MediaVendor::Xai)
+    }
+
+    fn models<'a>(
+        &'a self,
+        _: &'a demi_provider_common::ProviderHttp,
+        _: &'a Catalog,
+    ) -> BoxFuture<'a, Result<Vec<MediaModelInfo>, MediaFailure>> {
+        let models = self.script.models.iter().map(|id| MediaModelInfo::id(id)).collect();
+        Box::pin(std::future::ready(Ok(models)))
+    }
+}
+
+impl VideoMaker for ScriptedVideos {
+    fn shape(&self) -> VideoShape {
+        VideoShape::Grok
+    }
+
+    fn ask<'a>(&'a self, _: &'a demi_provider_common::ProviderHttp, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+        let mut asks = self.script.asks.lock().unwrap();
+        asks.push((self.account.clone(), request));
+        let count = asks.len();
+        drop(asks);
+        self.script.counts.send_modify(|(asked, _)| *asked += 1);
+        let result = if self.script.used_up.lock().unwrap().contains(&self.account) {
+            Err(MediaFailure::UsageLimit { retry_at: None })
+        } else {
+            Ok(format!("job-{count}"))
+        };
+        let takes = *self.script.ask_takes.lock().unwrap();
+        Box::pin(async move {
+            tokio::time::sleep(takes).await;
+            MediaAnswer { result, observed: Vec::new() }
+        })
+    }
+
+    fn state<'a>(&'a self, _: &'a demi_provider_common::ProviderHttp, _: &'a str) -> BoxFuture<'a, MediaAnswer<JobState>> {
+        let next = self.script.states.lock().unwrap().pop_front();
+        self.script.counts.send_modify(|(_, read)| *read += 1);
+        let result = next.unwrap_or(Ok(JobState::Running { progress: None }));
+        Box::pin(std::future::ready(MediaAnswer { result, observed: Vec::new() }))
+    }
+
+    fn download<'a>(&'a self, _: &'a demi_provider_common::ProviderHttp, _: &'a Done) -> BoxFuture<'a, MediaAnswer<bytes::Bytes>> {
+        let result = match self.script.download_fails.lock().unwrap().take() {
+            Some(failure) => Err(failure),
+            None => Ok(self.script.video.clone()),
+        };
+        Box::pin(std::future::ready(MediaAnswer { result, observed: Vec::new() }))
     }
 }
 
@@ -369,6 +491,10 @@ impl ProviderFamily for ScriptedSubscription {
 
     fn image_shape(&self, _: Option<&str>) -> Option<ImageShape> {
         self.images.as_ref().map(|_| ImageShape::Chatgpt)
+    }
+
+    fn video_shape(&self, _: Option<&str>) -> Option<VideoShape> {
+        self.videos.as_ref().map(|_| VideoShape::Grok)
     }
 
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {
@@ -391,6 +517,10 @@ impl ProviderFamily for ScriptedSubscription {
             accounts: Some(Box::new(accounts)),
             quota,
             images: self.images.clone().zip(subscription.account.as_ref()).map(|(script, binding)| ScriptedImages {
+                script,
+                account: binding.credential_id.clone(),
+            }),
+            videos: self.videos.clone().zip(subscription.account.as_ref()).map(|(script, binding)| ScriptedVideos {
                 script,
                 account: binding.credential_id.clone(),
             }),
@@ -511,6 +641,7 @@ struct Scripted {
     process_host: bool,
     runs: Option<Arc<crate::conversations::Runs>>,
     images: Option<ScriptedImages>,
+    videos: Option<ScriptedVideos>,
 }
 
 impl Provider for Scripted {
@@ -548,6 +679,10 @@ impl Provider for Scripted {
 
     fn images(&self) -> Option<&dyn ImageMaker> {
         self.images.as_ref().map(|images| images as &dyn ImageMaker)
+    }
+
+    fn videos(&self) -> Option<&dyn VideoMaker> {
+        self.videos.as_ref().map(|videos| videos as &dyn VideoMaker)
     }
 
     fn runtime(&self, _: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {

@@ -7,7 +7,7 @@
 //! streams and their request side in [`openai_request`]; the OAuth pieces of
 //! device logins and refreshes in [`oauth`]; the credential pool, its refresh
 //! protocol and the account operations in [`credentials`]; an account's
-//! quota in [`quota`]; the image role in [`images`]; the models.dev document in [`models_dev`]; a value
+//! quota in [`quota`]; the media roles in [`media`], [`images`] and [`videos`]; the models.dev document in [`models_dev`]; a value
 //! read from a vendor's service and kept for a while in [`kept`]; and, behind
 //! the `testing` feature, scripted runtimes and a scripted vendor for tests.
 
@@ -21,6 +21,7 @@ mod failure;
 mod http_record;
 pub mod images;
 pub mod kept;
+pub mod media;
 pub mod media_catalog;
 pub mod models_dev;
 mod model_words;
@@ -32,9 +33,10 @@ mod secret;
 pub mod testing;
 pub mod thinking;
 mod vendor;
+pub mod videos;
 pub mod wire;
 
-pub use body::{encode_body, json_body};
+pub use body::{FormBody, encode_body, json_body};
 pub use client::{
     DeviceAddress, DeviceAnswer, DeviceRefusal, DeviceRequest, DeviceRoute, ProviderHttp, RequestBuilder, Routed, SendError,
 };

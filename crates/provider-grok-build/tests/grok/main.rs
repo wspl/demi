@@ -5,6 +5,7 @@
 
 mod auth;
 mod images;
+mod videos;
 mod login;
 mod models;
 mod quota;
