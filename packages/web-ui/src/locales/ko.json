@@ -32,6 +32,8 @@
       "messages": "메시지",
       "sendWhileRunning": "에이전트 작업 중 Enter 키",
       "sendWhileRunningDescription": "조정은 실행 중인 턴에 바로 보냅니다. 대기열에 추가는 턴이 끝날 때까지 기다립니다. {keys} 키는 나머지 방식으로 보냅니다.",
+      "resumeWhenHostBack": "기기가 다시 온라인이 되면 재개",
+      "resumeWhenHostBackDescription": "기기가 오프라인이 되어 멈춘 턴을 기기가 다시 온라인이 되면 이어서 실행합니다.",
       "resumeAfterRestart": "Demi가 다시 시작되면 재개",
       "resumeAfterRestartDescription": "업데이트 등으로 Demi가 다시 시작되어 멈춘 턴을 이어서 실행합니다.",
       "resumeAtRetry": "사용 한도가 초기화되면 재개",

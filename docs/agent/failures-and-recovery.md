@@ -322,6 +322,21 @@ start, after the shards are up, the backend resumes the marked roots in the
 background, removing each mark before it acts on it; the start waits for
 none of them.
 
+A turn its offline Host left (`host_offline`) goes on by itself when that
+Host comes back, unless the user turned that off (`resumeWhenHostBack`, on
+unless turned off, [User preferences](../product/web-api-settings.md#user-preferences)):
+the backend resumes it, as the user's Resume would, with the reason "MacBook
+Pro is back online. Continue from where you left off.", when the runner of
+the device the `error` block names connects again and the conversation still
+runs there. A device that came back before the turn ended, while the turn still ran,
+counts as back: the turn resumes as the record is written. It does so once
+for each `host_offline` block: a turn that the
+same device leaves again waits for the user's Resume, so a device that keeps
+dropping costs one resumed turn, not one per reconnection. A conversation
+moved elsewhere meanwhile is not resumed; the user's Resume says where it now
+runs. With the preference off, the turn waits for the user's Resume, as
+before.
+
 Continuing by itself is the user's choice, off unless they turn it on
 (`resumeAtRetry`, [User preferences](../product/web-api-settings.md#user-preferences)):
 with it on, a root's turn whose failure names its `retryAt` is resumed at that
