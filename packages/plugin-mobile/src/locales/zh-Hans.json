@@ -45,7 +45,7 @@
     "capture_failed": "无法显示模拟器屏幕。",
     "capture_unavailable": "这台设备无法显示模拟器屏幕。",
     "input_failed": "你的输入未送达模拟器。",
-    "no_focused_field": "没有可添加“{text}”的已聚焦文本框。",
+    "no_focused_field": "没有正在输入的文本框，无法输入“{text}”。",
     "conversation_not_found": "此对话已不存在。",
     "conversation_archived": "此对话已归档。",
     "conversation_busy": "对话正忙。请稍后再试。",

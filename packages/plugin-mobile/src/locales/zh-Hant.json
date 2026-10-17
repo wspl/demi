@@ -45,7 +45,7 @@
     "capture_failed": "無法顯示模擬器畫面。",
     "capture_unavailable": "這部裝置無法顯示模擬器畫面。",
     "input_failed": "你的輸入未送達模擬器。",
-    "no_focused_field": "沒有可加入「{text}」的已聚焦文字欄位。",
+    "no_focused_field": "沒有正在輸入的文字欄位，無法輸入「{text}」。",
     "conversation_not_found": "此對話已不存在。",
     "conversation_archived": "此對話已封存。",
     "conversation_busy": "對話正忙碌。請稍後再試。",
