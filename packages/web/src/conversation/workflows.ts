@@ -78,10 +78,17 @@ export function useConversationWorkflows(conversation: () => Conversation): Comp
       watch: conversationId === null
         ? deviceWatch(deviceId, files)
         : conversationWatch(conversationId).channel(deviceId, files),
-      async read() {
+      // A read after the page's watch went live asks for an answer read at
+      // or after it, which the backend's kept search then searches again
+      // for (`web-api-conversations.md` § Workflows of a directory).
+      async read(_held, after) {
+        const query = new URLSearchParams(conversationId === null ? { directory } : {})
+        if (after !== null)
+          query.set('readAfter', `${after.epoch}.${after.number}`)
+        const search = query.size > 0 ? `?${query}` : ''
         const route = conversationId === null
-          ? `/devices/${encodeURIComponent(deviceId)}/workflows?${new URLSearchParams({ directory })}`
-          : `/conversations/${encodeURIComponent(conversationId)}/workflows`
+          ? `/devices/${encodeURIComponent(deviceId)}/workflows${search}`
+          : `/conversations/${encodeURIComponent(conversationId)}/workflows${search}`
         try {
           const response = await apiRequest(route)
           const readAt = readAtOf(response.headers)
