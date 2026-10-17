@@ -5,7 +5,8 @@
 
 use bytes::Bytes;
 use demi_provider_common::{
-    images::{ImageAnswer, ImageCall, ImageCredential, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, openai, read_data_answer, table},
+    images::{ImageAnswer, ImageCall, ImageCredential, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, openai, read_data_answer, subscription_models},
+    media_catalog::{Catalog, Subscription},
     json_body,
 };
 use futures_util::future::BoxFuture;
@@ -29,8 +30,8 @@ struct Image {
     image_url: String,
 }
 
-fn encode(request: &ImageRequest) -> Bytes {
-    let size = openai::size(&request.model, request.aspect);
+fn encode(catalog: &Catalog, request: &ImageRequest) -> Bytes {
+    let size = openai::size(catalog, &request.model, request.aspect);
     let body = Body {
         prompt: &request.prompt,
         model: &request.model,
@@ -55,9 +56,14 @@ impl ImageMaker for CodexProvider {
         ImageVendor::OpenAi
     }
 
-    /// OpenAI's table: the backend refuses every listing route.
-    fn models<'a>(&'a self, _: &'a reqwest::Client) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
-        Box::pin(std::future::ready(Ok(table(ImageVendor::OpenAi))))
+    /// The catalog's models of a ChatGPT subscription: the backend refuses
+    /// every listing route.
+    fn models<'a>(
+        &'a self,
+        _: &'a reqwest::Client,
+        catalog: &'a Catalog,
+    ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
+        Box::pin(std::future::ready(Ok(subscription_models(catalog, Subscription::Chatgpt))))
     }
 
     /// The backend's answer names no model, and it may answer with another
@@ -69,6 +75,7 @@ impl ImageMaker for CodexProvider {
     fn make<'a>(
         &'a self,
         http: &'a reqwest::Client,
+        catalog: &'a Catalog,
         request: ImageRequest,
     ) -> BoxFuture<'a, ImageAnswer> {
         Box::pin(async move {
@@ -87,7 +94,7 @@ impl ImageMaker for CodexProvider {
                 quota: Some(&shared.quota),
                 answer: read_data_answer,
             };
-            call.send(http, url, encode(&request), |refused| async move {
+            call.send(http, url, encode(catalog, &request), |refused| async move {
                 let credentials = shared.auth.credentials(http, refused.as_ref()).await?;
                 let headers = account_headers(&credentials, &shared.user_agent);
                 Ok((headers, credentials.access_token))

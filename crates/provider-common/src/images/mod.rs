@@ -4,10 +4,10 @@
 //! account. The request a vendor takes is the provider's own; what every
 //! vendor's call has in common is here: the sending within the deadline,
 //! how a refusal reads, the answer of the OpenAI-shaped image APIs, and
-//! what each vendor publishes of its models, one table per vendor that a
-//! subscription and a key of it both read.
+//! a model as the agent reads it from what the catalog of image and video
+//! models states of it (`media-models.md`), which a subscription and a key
+//! of its vendor both read.
 
-mod google;
 pub mod openai;
 pub mod xai;
 
@@ -15,12 +15,13 @@ use std::{fmt, time::Duration};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use bytes::Bytes;
-use demi_shared_types::{B64Bytes, Clock, QuotaWindow, Timestamp, TokenUsage};
+use demi_shared_types::{B64Bytes, Clock, QuotaWindow, Timestamp, TokenUsage, thousands};
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, HeaderValue, StatusCode, header::CONTENT_TYPE};
 use reqwest::Url;
 use serde::Deserialize;
 
+use crate::media_catalog::{Catalog, ImageCapabilities, MediaKind, MediaModel, Subscription};
 use crate::{
     ErrorCode, FailureReader, HttpFailureRecord, ProviderFailure, Secret,
     credentials::{AuthFailure, AuthReason},
@@ -35,32 +36,115 @@ pub const IMAGE_TIMEOUT: Duration = Duration::from_secs(120);
 
 pub use demi_shared_types::ImageVendor;
 
-/// What `vendor` publishes of its image models, newest first.
-pub fn facts(vendor: ImageVendor) -> &'static [ImageFacts] {
-    match vendor {
-        ImageVendor::OpenAi => openai::MODELS,
-        ImageVendor::Google => google::MODELS,
-        ImageVendor::Xai => xai::MODELS,
-    }
+/// The image models `subscription` makes, as the catalog lists them for
+/// it: a subscription's vendor lists none to it.
+pub fn subscription_models(catalog: &Catalog, subscription: Subscription) -> Vec<ImageModelInfo> {
+    catalog
+        .models
+        .iter()
+        .filter(|model| model.kind == MediaKind::Image && model.subscriptions.contains(&subscription))
+        .map(|model| info(catalog, model))
+        .collect()
 }
 
-/// Every model of `vendor`'s table, as a provider whose vendor lists none
-/// to it, a subscription's, offers them.
-pub fn table(vendor: ImageVendor) -> Vec<ImageModelInfo> {
-    facts(vendor).iter().map(ImageModelInfo::from).collect()
-}
-
-/// `vendor`'s model `id` as a listing named it: what the table knows of
-/// it, else what the listing says, its date and its description.
-pub fn listed(vendor: ImageVendor, id: &str, released: Option<String>, description: Option<String>) -> ImageModelInfo {
-    match facts(vendor).iter().find(|facts| facts.id == id) {
-        Some(facts) => ImageModelInfo::from(facts),
+/// `vendor`'s model `id` as a key's listing named it: what the catalog
+/// states of it, else what the listing says, its date and its description.
+pub fn listed(
+    catalog: &Catalog,
+    vendor: ImageVendor,
+    id: &str,
+    released: Option<String>,
+    description: Option<String>,
+) -> ImageModelInfo {
+    match image_model(catalog, vendor, id) {
+        Some(model) => info(catalog, model),
         None => ImageModelInfo {
             id: id.to_owned(),
             released,
             description: description.unwrap_or_default(),
             takes: None,
         },
+    }
+}
+
+/// Whether the catalog has `vendor`'s image model `id`.
+pub fn knows(catalog: &Catalog, vendor: ImageVendor, id: &str) -> bool {
+    image_model(catalog, vendor, id).is_some()
+}
+
+/// The catalog's entry of `vendor`'s image model `id`.
+fn image_model<'a>(catalog: &'a Catalog, vendor: ImageVendor, id: &str) -> Option<&'a MediaModel> {
+    catalog.model(vendor.id(), id).filter(|model| model.kind == MediaKind::Image)
+}
+
+/// `model` as the agent reads it: its date, what the vendor says it is
+/// for, or the model an alias names, and what it takes.
+fn info(catalog: &Catalog, model: &MediaModel) -> ImageModelInfo {
+    let description = match (&model.description, &model.alias_of) {
+        (Some(description), _) => description.clone(),
+        (None, Some(named)) => format!("Alias of {named}"),
+        (None, None) => String::new(),
+    };
+    ImageModelInfo {
+        id: model.id.clone(),
+        released: catalog.released(model).map(|date| date.to_string()),
+        description,
+        takes: catalog.image(model).and_then(takes),
+    }
+}
+
+/// What a model with `image`'s capabilities takes, in words, such as
+/// `1024×1024, 1536×1024 or 1024×1536; edits`; none when the catalog
+/// states nothing of it.
+fn takes(image: &ImageCapabilities) -> Option<String> {
+    let mut parts = Vec::new();
+    if let Some(sizes) = image.sizes.as_ref().filter(|sizes| !sizes.is_empty()) {
+        let sizes: Vec<String> = sizes.iter().map(|size| format!("{}×{}", size.width, size.height)).collect();
+        parts.push(listed_words(&sizes));
+    }
+    if let Some(custom) = &image.custom_size {
+        let mut rule = vec!["any W×H".to_owned()];
+        match (custom.multiple_of, custom.max_edge) {
+            (Some(multiple), Some(edge)) => rule.push(format!("each edge a multiple of {multiple} and at most {edge}")),
+            (Some(multiple), None) => rule.push(format!("each edge a multiple of {multiple}")),
+            (None, Some(edge)) => rule.push(format!("each edge at most {edge}")),
+            (None, None) => {}
+        }
+        if let Some(ratio) = custom.max_ratio {
+            rule.push(format!("long:short at most {ratio}:1"));
+        }
+        match (custom.min_pixels, custom.max_pixels) {
+            (Some(min), Some(max)) => rule.push(format!("{} to {} pixels", thousands(min), thousands(max))),
+            (None, Some(max)) => rule.push(format!("at most {} pixels", thousands(max))),
+            (Some(min), None) => rule.push(format!("at least {} pixels", thousands(min))),
+            (None, None) => {}
+        }
+        parts.push(rule.join(", "));
+    }
+    let resolutions = image.resolutions.as_ref().filter(|tiers| !tiers.is_empty());
+    match (image.aspect_ratios.as_ref().filter(|shapes| !shapes.is_empty()), resolutions) {
+        (Some(shapes), Some(tiers)) => parts.push(format!("{}, at {}", listed_words(shapes), listed_words(tiers))),
+        (Some(shapes), None) => parts.push(listed_words(shapes)),
+        (None, Some(tiers)) => parts.push(format!("at {}", listed_words(tiers))),
+        (None, None) => {}
+    }
+    if image.transparent == Some(true) {
+        parts.push("transparent backgrounds".to_owned());
+    }
+    match (image.edits, image.max_input_images) {
+        (Some(true), Some(count)) => parts.push(format!("edits up to {count} images")),
+        (Some(true), None) => parts.push("edits".to_owned()),
+        _ => {}
+    }
+    (!parts.is_empty()).then(|| parts.join("; "))
+}
+
+/// `items` as a list in words: `a, b or c`.
+fn listed_words(items: &[String]) -> String {
+    match items {
+        [] => String::new(),
+        [only] => only.clone(),
+        [rest @ .., last] => format!("{} or {last}", rest.join(", ")),
     }
 }
 
@@ -72,10 +156,15 @@ pub trait ImageMaker: Send + Sync {
     /// Whose models it makes.
     fn vendor(&self) -> ImageVendor;
 
-    /// The image models it offers: its vendor's table for a subscription,
-    /// whose vendor lists none to it, or what the vendor lists for a key,
-    /// read when asked, with the HTTP client of the shard that asks.
-    fn models<'a>(&'a self, http: &'a reqwest::Client) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>>;
+    /// The image models it offers: those `catalog` lists for a
+    /// subscription, whose vendor lists none to it, or what the vendor
+    /// lists for a key, read when asked, with the HTTP client of the shard
+    /// that asks, and told as `catalog` states them.
+    fn models<'a>(
+        &'a self,
+        http: &'a reqwest::Client,
+        catalog: &'a Catalog,
+    ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>>;
 
     /// Whether the model that answered is known to be the one asked for.
     /// A vendor whose answer does not name it, the ChatGPT backend's, is
@@ -83,42 +172,14 @@ pub trait ImageMaker: Send + Sync {
     fn confirms_model(&self) -> bool;
 
     /// Makes one image for the provider's account or key, sending with
-    /// `http`, the client of the shard that asks.
-    fn make<'a>(&'a self, http: &'a reqwest::Client, request: ImageRequest) -> BoxFuture<'a, ImageAnswer>;
-}
-
-/// What a vendor publishes of one of its image models: a row of its table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ImageFacts {
-    pub id: &'static str,
-    /// The vendor's release date, `YYYY-MM-DD`, when it publishes one: a
-    /// dated ID's is its snapshot's, an alias's that of the model it named
-    /// when the table was made.
-    pub released: Option<&'static str>,
-    /// What the vendor says the model is for, in one line.
-    pub description: &'static str,
-    /// The sizes or shapes it takes, and what the vendor says of its
-    /// formats.
-    pub takes: &'static str,
-    /// The only sizes it takes, `(width, height)`, for a model that takes
-    /// no other; none for one that takes any size of a shape.
-    pub sizes: Option<&'static [(u32, u32)]>,
-}
-
-impl ImageFacts {
-    pub const fn new(
-        id: &'static str,
-        released: Option<&'static str>,
-        description: &'static str,
-        takes: &'static str,
-    ) -> Self {
-        Self { id, released, description, takes, sizes: None }
-    }
-
-    /// The model, which takes only `sizes`.
-    pub const fn only(self, sizes: &'static [(u32, u32)]) -> Self {
-        Self { sizes: Some(sizes), ..self }
-    }
+    /// `http`, the client of the shard that asks; `catalog` says what the
+    /// model takes.
+    fn make<'a>(
+        &'a self,
+        http: &'a reqwest::Client,
+        catalog: &'a Catalog,
+        request: ImageRequest,
+    ) -> BoxFuture<'a, ImageAnswer>;
 }
 
 /// An image model a provider offers, with what is known of it, so the
@@ -132,17 +193,6 @@ pub struct ImageModelInfo {
     pub description: String,
     /// The sizes or shapes it takes, when known.
     pub takes: Option<String>,
-}
-
-impl From<&ImageFacts> for ImageModelInfo {
-    fn from(facts: &ImageFacts) -> Self {
-        Self {
-            id: facts.id.to_owned(),
-            released: facts.released.map(str::to_owned),
-            description: facts.description.to_owned(),
-            takes: Some(facts.takes.to_owned()),
-        }
-    }
 }
 
 /// How one image call ended, with the windows of the account's quota its

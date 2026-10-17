@@ -8,6 +8,7 @@ use std::sync::Arc;
 
 use bytes::Bytes;
 use demi_provider_common::{
+    media_catalog::Catalog,
     ErrorCode, HttpFailureRecord, ProviderFailure, Secret, json_body, model_words,
     images::{
         ImageAnswer, ImageCall, ImageCredential, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor,
@@ -77,7 +78,7 @@ impl KeyImages {
 
     /// Every page of the listing: the models whose ID has the word `image`
     /// or `banana` and that list `generateContent`.
-    async fn list(&self, http: &reqwest::Client) -> Result<Vec<ImageModelInfo>, ImageFailure> {
+    async fn list(&self, http: &reqwest::Client, catalog: &Catalog) -> Result<Vec<ImageModelInfo>, ImageFailure> {
         let mut models = Vec::new();
         let mut page: Option<String> = None;
         loop {
@@ -98,7 +99,7 @@ impl KeyImages {
                 let images = words.iter().any(|word| word == "image" || word == "banana");
                 let generates = model.supported_generation_methods.iter().any(|method| method == "generateContent");
                 if images && generates {
-                    models.push(listed(ImageVendor::Google, id, None, model.description.clone()));
+                    models.push(listed(catalog, ImageVendor::Google, id, None, model.description.clone()));
                 }
             }
             match listing.next_page_token.filter(|token| !token.is_empty()) {
@@ -118,8 +119,12 @@ impl ImageMaker for KeyImages {
         ImageVendor::Google
     }
 
-    fn models<'a>(&'a self, http: &'a reqwest::Client) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
-        Box::pin(self.list(http))
+    fn models<'a>(
+        &'a self,
+        http: &'a reqwest::Client,
+        catalog: &'a Catalog,
+    ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
+        Box::pin(self.list(http, catalog))
     }
 
     /// The model is the request's URL: Google answers no other.
@@ -127,7 +132,12 @@ impl ImageMaker for KeyImages {
         true
     }
 
-    fn make<'a>(&'a self, http: &'a reqwest::Client, request: ImageRequest) -> BoxFuture<'a, ImageAnswer> {
+    fn make<'a>(
+        &'a self,
+        http: &'a reqwest::Client,
+        _: &'a Catalog,
+        request: ImageRequest,
+    ) -> BoxFuture<'a, ImageAnswer> {
         Box::pin(async move {
             let url = self.models_url(Some(&format!("{}:generateContent", request.model)));
             let headers = self.headers();

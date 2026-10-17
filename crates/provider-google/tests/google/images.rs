@@ -6,6 +6,7 @@
 //! troubleshooting guide's errors (ai.google.dev/gemini-api/docs/troubleshooting).
 //! No test calls a vendor.
 
+use demi_provider_common::media_catalog::Catalog;
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -19,6 +20,17 @@ use demi_shared_types::{B64Bytes, TokenUsage};
 use serde_json::{Value, json};
 
 use crate::NOW;
+
+/// The catalog the tests read: what it states of the model the scripted
+/// vendor lists.
+fn catalog() -> std::sync::Arc<Catalog> {
+    let document = json!({ "updated": "2026-10-01T00:00:00Z", "models": [
+        { "vendor": "google", "id": "gemini-nano-banana-2.1", "kind": "image", "name": "Nano Banana 2.1",
+          "description": "Nano Banana 2.1: the high-efficiency workhorse for image generation and conversational editing",
+          "released": "2026-10-06" }
+    ] });
+    std::sync::Arc::new(Catalog::decode(document.to_string().as_bytes()).unwrap())
+}
 
 fn provider(vendor: &MockVendor, makes_images: bool) -> GoogleProvider {
     let config = GoogleConfig {
@@ -90,7 +102,7 @@ async fn a_gemini_key_lists_every_page_and_sends_generations_and_edits_as_docume
     assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("Google", ImageVendor::Google, true));
     let http = reqwest::Client::new();
 
-    let models = maker.models(&http).await.unwrap();
+    let models = maker.models(&http, &catalog()).await.unwrap();
     let listed: Vec<(&str, Option<&str>, &str)> = models
         .iter()
         .map(|model| (model.id.as_str(), model.released.as_deref(), model.description.as_str()))
@@ -98,13 +110,13 @@ async fn a_gemini_key_lists_every_page_and_sends_generations_and_edits_as_docume
     assert_eq!(
         listed,
         [
-            ("gemini-nano-banana-2.1", None, "Nano Banana 2.1: the high-efficiency workhorse for image generation and conversational editing"),
+            ("gemini-nano-banana-2.1", Some("2026-10-06"), "Nano Banana 2.1: the high-efficiency workhorse for image generation and conversational editing"),
             ("gemini-4-flash-image", None, "What gemini-4-flash-image is"),
         ]
     );
 
     let made = maker
-        .make(&http, request(Some(Aspect { width: 16, height: 9 }), Vec::new()))
+        .make(&http, &catalog(), request(Some(Aspect { width: 16, height: 9 }), Vec::new()))
         .await
         .result
         .unwrap();
@@ -115,7 +127,7 @@ async fn a_gemini_key_lists_every_page_and_sends_generations_and_edits_as_docume
         Some(TokenUsage { input_tokens: 12, output_tokens: 1_290, cache_read_tokens: 0, cache_write_tokens: 0 })
     );
     let edit = vec![InputImage { media_type: "image/jpeg", bytes: Bytes::from_static(b"jpeg bytes") }];
-    maker.make(&http, request(None, edit)).await.result.unwrap();
+    maker.make(&http, &catalog(), request(None, edit)).await.result.unwrap();
 
     let sent = vendor.requests();
     assert_eq!(sent[0].uri.query(), Some("pageSize=1000"));
@@ -172,7 +184,7 @@ async fn a_gemini_keys_failures_read_as_a_block_a_spent_quota_a_refused_key_or_g
     let provider = provider(&vendor, true);
     let maker = provider.images().unwrap();
     let http = reqwest::Client::new();
-    let fail = async || maker.make(&http, request(None, Vec::new())).await.result.unwrap_err();
+    let fail = async || maker.make(&http, &catalog(), request(None, Vec::new())).await.result.unwrap_err();
 
     match fail().await {
         ImageFailure::Refused { message, .. } => assert_eq!(message, "the prompt was blocked (PROHIBITED_CONTENT)"),

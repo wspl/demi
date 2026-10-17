@@ -3,6 +3,7 @@
 //! an edit's images as data URLs, the image and its counts read from the
 //! answer, and the failures a call ends with.
 
+use demi_provider_common::media_catalog::Catalog;
 use bytes::Bytes;
 use demi_provider_codex::TransportMode;
 use demi_provider_common::{
@@ -14,6 +15,21 @@ use demi_shared_types::{B64Bytes, TokenUsage};
 use serde_json::{Value, json};
 
 use crate::{NOW, NOW_SECONDS, fresh_token, pool_with, provider, secret};
+
+/// The catalog the tests read: two models of a ChatGPT subscription, one
+/// only a key makes, a video model and another subscription's.
+fn catalog() -> std::sync::Arc<Catalog> {
+    let document = json!({ "updated": "2026-10-01T00:00:00Z", "models": [
+        { "vendor": "openai", "id": "gpt-image-2", "kind": "image", "name": "GPT Image 2",
+          "subscriptions": ["chatgpt"] },
+        { "vendor": "openai", "id": "gpt-image-1", "kind": "image", "name": "GPT Image 1",
+          "subscriptions": ["chatgpt"], "image": { "sizes": ["1024x1024", "1536x1024", "1024x1536"] } },
+        { "vendor": "openai", "id": "gpt-image-0", "kind": "image", "name": "GPT Image 0" },
+        { "vendor": "openai", "id": "sora-3", "kind": "video", "name": "Sora 3", "subscriptions": ["chatgpt"] },
+        { "vendor": "xai", "id": "grok-imagine-image", "kind": "image", "name": "Imagine", "subscriptions": ["grok"] }
+    ] });
+    std::sync::Arc::new(Catalog::decode(document.to_string().as_bytes()).unwrap())
+}
 
 const GENERATIONS: &str = "/backend-api/codex/images/generations";
 const EDITS: &str = "/backend-api/codex/images/edits";
@@ -56,15 +72,18 @@ async fn a_generation_sends_the_asked_options_with_the_accounts_headers_and_read
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
     let provider = provider(&vendor, &pool, TransportMode::Sse);
     let maker = provider.images().expect("Codex makes images");
-    let models = maker.models(&reqwest::Client::new()).await.unwrap();
-    assert_eq!((maker.name(), maker.vendor(), models.len(), maker.confirms_model()), ("ChatGPT", ImageVendor::OpenAi, 11, false));
+    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("ChatGPT", ImageVendor::OpenAi, false));
+    // The catalog's image models of a ChatGPT subscription, in its order.
+    let models = maker.models(&reqwest::Client::new(), &catalog()).await.unwrap();
+    let offered: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
+    assert_eq!(offered, ["gpt-image-2", "gpt-image-1"]);
 
     let asked = ImageRequest {
         aspect: Some(Aspect { width: 16, height: 9 }),
         transparent: true,
         ..request(Vec::new())
     };
-    let made = maker.make(&reqwest::Client::new(), asked).await.result.unwrap();
+    let made = maker.make(&reqwest::Client::new(), &catalog(), asked).await.result.unwrap();
     assert_eq!(made.bytes, Bytes::from_static(IMAGE));
     assert_eq!(made.vendor_id.as_deref(), Some("gen_1"));
     assert_eq!(
@@ -92,7 +111,7 @@ async fn an_edit_sends_each_image_as_a_data_url() {
         InputImage { media_type: "image/png", bytes: Bytes::from_static(b"png bytes") },
         InputImage { media_type: "image/jpeg", bytes: Bytes::from_static(b"jpeg bytes") },
     ];
-    provider.images().unwrap().make(&reqwest::Client::new(), request(images)).await.result.unwrap();
+    provider.images().unwrap().make(&reqwest::Client::new(), &catalog(), request(images)).await.result.unwrap();
     let sent = &vendor.requests()[0];
     assert_eq!(sent.uri.path(), EDITS);
     assert_eq!(
@@ -125,21 +144,21 @@ async fn a_failed_call_says_whether_the_account_is_used_up_the_vendor_refused_or
     let maker = provider.images().unwrap();
     let http = reqwest::Client::new();
 
-    let failure = maker.make(&http, request(Vec::new())).await.result.unwrap_err();
+    let failure = maker.make(&http, &catalog(), request(Vec::new())).await.result.unwrap_err();
     let lifts = demi_shared_types::Timestamp::from_millisecond((NOW_SECONDS + 3_600) * 1000).unwrap();
     assert_eq!(failure, ImageFailure::UsageLimit { retry_at: Some(lifts) });
     assert_eq!(failure.outcome(), "usage_limit");
-    match maker.make(&http, request(Vec::new())).await.result.unwrap_err() {
+    match maker.make(&http, &catalog(), request(Vec::new())).await.result.unwrap_err() {
         ImageFailure::Refused { message, .. } => {
             assert_eq!(message, "Your request was rejected by the safety system.");
         }
         other => panic!("not a refusal: {other:?}"),
     }
-    match maker.make(&http, request(Vec::new())).await.result.unwrap_err() {
+    match maker.make(&http, &catalog(), request(Vec::new())).await.result.unwrap_err() {
         ImageFailure::Unanswered { cause, .. } => assert_eq!(cause, "HTTP 503: upstream connect error"),
         other => panic!("not unanswered: {other:?}"),
     }
-    maker.make(&http, request(Vec::new())).await.result.unwrap();
+    maker.make(&http, &catalog(), request(Vec::new())).await.result.unwrap();
     let sent: Vec<_> = vendor.requests().into_iter().filter(|sent| sent.uri.path() == GENERATIONS).collect();
     assert_eq!(sent.last().unwrap().header("authorization"), Some("Bearer new-access"));
 }
@@ -169,11 +188,11 @@ async fn the_quota_an_image_answer_or_refusal_reports_updates_the_accounts_snaps
         snapshot.windows.iter().map(|window| window.used_percent).collect::<Vec<_>>()
     };
 
-    let refused = maker.make(&reqwest::Client::new(), request(Vec::new())).await;
+    let refused = maker.make(&reqwest::Client::new(), &catalog(), request(Vec::new())).await;
     assert!(refused.result.is_err());
     assert_eq!(refused.observed.len(), 1);
     assert_eq!(used(), [Some(42.0)]);
-    let answered = maker.make(&reqwest::Client::new(), request(Vec::new())).await;
+    let answered = maker.make(&reqwest::Client::new(), &catalog(), request(Vec::new())).await;
     assert!(answered.result.is_ok());
     assert_eq!(used(), [Some(43.0)]);
 }
@@ -190,7 +209,8 @@ async fn a_refusal_whose_body_never_ends_fails_at_the_deadline() {
     let provider = provider(&vendor, &pool, TransportMode::Sse);
     let started = tokio::time::Instant::now();
     let http = reqwest::Client::new();
-    let call = provider.images().unwrap().make(&http, request(Vec::new()));
+    let catalog = catalog();
+    let call = provider.images().unwrap().make(&http, &catalog, request(Vec::new()));
     // Well past the deadline, so a call that ignores it fails here.
     let answer = tokio::time::timeout(std::time::Duration::from_secs(600), call)
         .await

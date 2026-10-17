@@ -13,6 +13,7 @@ use demi_provider_common::{
         ImageAnswer, ImageCall, ImageCredential, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest,
         ImageVendor, created_date, listed, openai, read_data_answer, unreadable, vendor_message, xai,
     },
+    media_catalog::Catalog,
     json_body, read_http_failure,
 };
 use demi_shared_types::Clock;
@@ -77,7 +78,7 @@ impl KeyImages {
         headers
     }
 
-    async fn list(&self, http: &reqwest::Client) -> Result<Vec<ImageModelInfo>, ImageFailure> {
+    async fn list(&self, http: &reqwest::Client, catalog: &Catalog) -> Result<Vec<ImageModelInfo>, ImageFailure> {
         let text = self.call().get(http, &self.models, self.headers()).await?;
         let unread = |error: serde_json::Error| unreadable(format!("its list of models could not be read: {error}"));
         match self.vendor {
@@ -86,10 +87,10 @@ impl KeyImages {
                 let mut models = Vec::new();
                 for model in listing.models {
                     let released = model.created.and_then(created_date);
-                    models.push(listed(self.vendor, &model.id, released.clone(), None));
+                    models.push(listed(catalog, self.vendor, &model.id, released.clone(), None));
                     for alias in &model.aliases {
                         let said = format!("Alias of {}", model.id);
-                        models.push(listed(self.vendor, alias, released.clone(), Some(said)));
+                        models.push(listed(catalog, self.vendor, alias, released.clone(), Some(said)));
                     }
                 }
                 Ok(models)
@@ -100,13 +101,13 @@ impl KeyImages {
                     .data
                     .into_iter()
                     .filter(|model| model.id.starts_with("gpt-image-") || model.id.starts_with("chatgpt-image-"))
-                    .map(|model| listed(self.vendor, &model.id, model.created.and_then(created_date), None))
+                    .map(|model| listed(catalog, self.vendor, &model.id, model.created.and_then(created_date), None))
                     .collect())
             }
         }
     }
 
-    fn encode(&self, request: &ImageRequest) -> Bytes {
+    fn encode(&self, catalog: &Catalog, request: &ImageRequest) -> Bytes {
         let body = match self.vendor {
             ImageVendor::Xai => {
                 let mut images: Vec<XaiImage> = request
@@ -126,7 +127,7 @@ impl KeyImages {
                 })
             }
             ImageVendor::OpenAi | ImageVendor::Google => {
-                let size = openai::size(&request.model, request.aspect);
+                let size = openai::size(catalog, &request.model, request.aspect);
                 json_body(&OpenAiBody {
                     prompt: &request.prompt,
                     model: &request.model,
@@ -155,8 +156,12 @@ impl ImageMaker for KeyImages {
         self.vendor
     }
 
-    fn models<'a>(&'a self, http: &'a reqwest::Client) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
-        Box::pin(self.list(http))
+    fn models<'a>(
+        &'a self,
+        http: &'a reqwest::Client,
+        catalog: &'a Catalog,
+    ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
+        Box::pin(self.list(http, catalog))
     }
 
     /// Both APIs refuse a model they do not have rather than answer with
@@ -165,14 +170,19 @@ impl ImageMaker for KeyImages {
         true
     }
 
-    fn make<'a>(&'a self, http: &'a reqwest::Client, request: ImageRequest) -> BoxFuture<'a, ImageAnswer> {
+    fn make<'a>(
+        &'a self,
+        http: &'a reqwest::Client,
+        catalog: &'a Catalog,
+        request: ImageRequest,
+    ) -> BoxFuture<'a, ImageAnswer> {
         Box::pin(async move {
             let url = if request.images.is_empty() { &self.generations } else { &self.edits };
             let headers = self.headers();
             let key = self.key.clone();
             let answer = self
                 .call()
-                .send(http, url, self.encode(&request), |_| {
+                .send(http, url, self.encode(catalog, &request), |_| {
                     std::future::ready(Ok((headers.clone(), key.clone())))
                 })
                 .await;
