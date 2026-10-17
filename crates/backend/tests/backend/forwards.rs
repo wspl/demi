@@ -533,10 +533,15 @@ async fn changing_where_a_forward_listens_or_connects_ends_its_connections_and_a
     let _program = opened(moved_port).await;
     assert_eq!(next_seen(&mut second).await, Seen::Accepted(1));
 
-    // Turned off, its connections end.
+    // Turned off, its connections end and it no longer listens. The page
+    // hears that before it is turned on again: the states it heard before,
+    // listening with no connection once the connection to the first target
+    // ended, would otherwise answer the wait below before the runner
+    // listens again.
     let off = backend.patch(&path, &master, json!({ "enabled": false })).await;
     assert_eq!(off.status, StatusCode::OK);
     assert_eq!(next_seen(&mut second).await, Seen::Ended(1));
+    until_forward(&mut sync, &id, |forward| !forward.enabled && forward.state.is_none()).await;
 
     // Turned on again, it carries; its Connect To Host removed, the forward
     // goes with it, and so do its connections.

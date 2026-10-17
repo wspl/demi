@@ -19,7 +19,10 @@ use std::sync::{Mutex, PoisonError};
 /// has not written that yet or no longer has it, the process that holds the
 /// installation's `runner.lock`, which the runner takes before it writes
 /// `active.json` and keeps until it ends; `lsof` names both, with no help of
-/// the runner's. Each is sent `TERM`, which ends its jobs as a stop does,
+/// the runner's. A process whose command line names the installation is one
+/// too, such as a runner that has not taken the lock yet when a killed test
+/// leaves it to the watchdog: found by neither of the others, it took the
+/// lock after the watchdog's last round and ran on for good. Each is sent `TERM`, which ends its jobs as a stop does,
 /// and `KILL` once ten seconds have passed, and only while its command line
 /// still names its installation, so neither a process that took its id
 /// after it ended nor a test's own `lsof` match is stopped. A runner that
@@ -60,6 +63,8 @@ runners() {
         /^n/ { name = substr($0, 2); if (name == want || name == "/private" want) print pid }'
     fi
     [ -e "$1/runner.lock" ] && lsof -t "$1/runner.lock" 2>/dev/null
+    # The grep itself is listed too, and has ended by the check below.
+    ps -A -ww -o pid=,command= | grep -F -- "$1" | awk '{ print $1 }'
   } | sort -u | while read -r pid; do
     ours "$pid" "$1" && printf '%s %s\n' "$pid" "$1"
   done
