@@ -167,9 +167,22 @@ export function useBlockVirtualizer<Block extends VirtualizedBlock>(
   const virtualItems = computed(() => virtualizer.value.getVirtualItems())
   const totalSize = computed(() => virtualizer.value.getTotalSize())
 
+  /** The row elements the virtualizer watches, whose later changes of size its resize observer reports. */
+  const watched = new WeakSet<HTMLElement>()
+
+  /**
+   * Hands the virtualizer a row as it mounts, which it measures at once and
+   * then watches. Vue calls a row's ref again at every update of the list,
+   * as a turn streams; measuring each row again there would read its height
+   * while the styles the update changed are not yet computed, so the
+   * browser would recompute them for each row. A row's later sizes come
+   * from the observer, after the browser laid the frame out.
+   */
   function measureElement(el: Element | null) {
-    if (el instanceof HTMLElement)
-      virtualizer.value.measureElement(el)
+    if (!(el instanceof HTMLElement) || watched.has(el))
+      return
+    watched.add(el)
+    virtualizer.value.measureElement(el)
   }
 
   const shouldAutoScroll = ref(true)

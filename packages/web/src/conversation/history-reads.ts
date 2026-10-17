@@ -1,6 +1,7 @@
 import {
   EMPTY_TRANSCRIPT,
   addPage,
+  heldTranscript,
   latestWindow,
   withWholeBlock,
   type HeldTranscript,
@@ -133,7 +134,7 @@ export function createHistoryReads<T extends HistoryHolder>(
   async function recover(holder: T, node: string | null, anchor: string): Promise<void> {
     const keep = (history: HeldTranscript): HeldTranscript => {
       const latest = latestWindow(history)
-      return { length: history.length, windows: latest ? [latest] : [] }
+      return heldTranscript(history.length, latest ? [latest] : [])
     }
     if (node === null) {
       holder.history = keep(holder.history)

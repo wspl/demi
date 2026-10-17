@@ -48,6 +48,7 @@ export interface ModelInfo {
 // package.
 export {
   EMPTY_TRANSCRIPT,
+  heldTranscript,
   addPage,
   addWindow,
   applyTranscriptPatches,
