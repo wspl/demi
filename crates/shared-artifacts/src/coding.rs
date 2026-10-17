@@ -14,6 +14,9 @@ use crate::{Digest, Error, Verifier};
 /// The `Content-Encoding` an encoded executable is served with.
 pub const CONTENT_CODING: &str = "zstd";
 
+/// The first bytes of a zstd frame.
+pub(crate) const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
+
 /// How hard an encoding works for its size.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Effort {
@@ -108,8 +111,11 @@ pub async fn decode_file(
     output: &mut (impl tokio::io::AsyncWrite + Unpin),
     cancel: &tokio_util::sync::CancellationToken,
 ) -> Result<(), Error> {
-    let file = tokio::fs::File::open(encoded).await?;
-    let mut decoder =
-        async_compression::tokio::bufread::ZstdDecoder::new(tokio::io::BufReader::new(file));
+    use tokio::io::AsyncBufReadExt as _;
+    let mut file = tokio::io::BufReader::new(tokio::fs::File::open(encoded).await?);
+    if !file.fill_buf().await?.starts_with(&ZSTD_MAGIC) {
+        return Err(Error::Uncompressed);
+    }
+    let mut decoder = async_compression::tokio::bufread::ZstdDecoder::new(file);
     crate::copy(&mut decoder, expected, output, cancel).await
 }

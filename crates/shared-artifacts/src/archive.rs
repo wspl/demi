@@ -15,7 +15,7 @@ use std::{
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
-use crate::{Digest, Error, InstallLock};
+use crate::{Digest, Error, InstallLock, coding::ZSTD_MAGIC};
 
 /// The most bytes an installed entry may have: the digest of a larger file
 /// stops early.
@@ -291,8 +291,6 @@ enum Format {
 
 /// The first bytes of a zip archive's first local file header.
 const ZIP_MAGIC: [u8; 4] = *b"PK\x03\x04";
-/// The first bytes of a zstd frame.
-const ZSTD_MAGIC: [u8; 4] = [0x28, 0xb5, 0x2f, 0xfd];
 
 /// Which kind of archive `file` holds, read from its start, which the file
 /// is left at.
