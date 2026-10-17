@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
 import { DOMSerializer, Fragment, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
-import { Selection, type Transaction } from '@tiptap/pm/state'
+import { type EditorState, Selection, type Transaction } from '@tiptap/pm/state'
 import type { EditorView } from '@tiptap/pm/view'
 import { Editor, EditorContent } from '@tiptap/vue-3'
 import { messageFileTarget } from '../../markdown/filePath'
@@ -146,9 +146,9 @@ const editor = new Editor({
   enablePasteRules: false,
   editorProps: {
     // Read again on every update, so a composer that stops taking typing says so.
-    attributes: () => ({
+    attributes: (state) => ({
       class: 'markdown-body message-editor-text',
-      ...(props.composer ? fieldAttributes() : {}),
+      ...(props.composer ? fieldAttributes(state) : {}),
     }),
     // A sent message copies with its files (`composer.md` § Writing a message);
     // the composer's own copy keeps ProseMirror's, which a paste in it reads.
@@ -222,8 +222,14 @@ watch(
  * (WAI-ARIA's textbox role): an editable element has no role of its own. A
  * sent message is content, not a field.
  */
-function fieldAttributes(): Record<string, string> {
-  const attributes: Record<string, string> = { 'role': 'textbox', 'aria-multiline': 'true' }
+function fieldAttributes(state: EditorState): Record<string, string> {
+  const attributes: Record<string, string> = {
+    'role': 'textbox',
+    'aria-multiline': 'true',
+    // A touch keyboard's return key says what Enter does here: it sends,
+    // and in a code block it breaks the line (`composer.md` § Writing a message).
+    'enterkeyhint': state.selection.$from.parent.type.name === 'codeBlock' ? 'enter' : 'send',
+  }
   if (props.label) {
     attributes['aria-label'] = props.label
   }

@@ -98,7 +98,8 @@ Enter sends and Shift+Enter breaks the line; in a code block Enter breaks the
 line and ⌘/Ctrl+Enter sends. While the agent works, ⌘/Ctrl+Enter outside a
 code block sends the other way than Enter
 ([Steer or queue](turns.md#steer-or-queue)); in a code block it is the send key and
-sends the way Enter does elsewhere. An input method's Enter never sends, and
+sends the way Enter does elsewhere. A phone's keyboard labels its return
+key by this: *Send*, or *return* in a code block (`enterkeyhint`). An input method's Enter never sends, and
 its Escape never ends an edit ([Typing with an input method](#typing-with-an-input-method)). A
 message whose files are still uploading is sent like any other: it leaves
 the composer, shows at once as the user's bubble with each capsule showing
