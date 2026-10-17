@@ -3,7 +3,8 @@
  * draws a page, encodes it as the Host's capture would, and speaks the live
  * protocol, so the view's pictures, input, controls and dialogs show here.
  */
-import { LIVE_CAPTURE_STOPPED, LIVE_CAPTURE_UNAVAILABLE, LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC } from '@demicodes/plugin-browser/generated/plugin'
+import { LIVE_CAPTURE_STOPPED, LIVE_CAPTURE_UNAVAILABLE } from '@demicodes/plugin-browser/generated/plugin'
+import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type ViewerInput } from '@demicodes/protocol'
 import type {
   BrowserTab,
   BrowserViewport,
@@ -15,28 +16,19 @@ import type {
   LiveViewerMessage,
 } from '@demicodes/plugin-browser/generated/plugin'
 import { shallowRef, type ShallowRef } from 'vue'
-import { encodeVideo } from '@demicodes/plugin-browser/live/frames'
+import { encodeControl, encodeVideo } from '@demicodes/web-ui/live/frames'
 import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugins/streams'
-import { CONTROL, META } from '@demicodes/plugin-browser/live/input'
+import { CONTROL, META } from '@demicodes/web-ui/live/input'
 import { BrowserTabsError, type BrowserTabList, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
 import type { PanelReason } from '@demicodes/plugin-browser/generated/plugin'
 import type { HostArtifact } from '@demicodes/web-ui/devices/installed'
 import { WORKSPACE_ROOT } from './workspace'
 
 const FPS = 10
-const encoder = new TextEncoder()
 const decoder = new TextDecoder()
 
-function framed(kind: number, payload: Uint8Array): Uint8Array {
-  const bytes = new Uint8Array(5 + payload.length)
-  new DataView(bytes.buffer).setUint32(0, 1 + payload.length)
-  bytes[4] = kind
-  bytes.set(payload, 5)
-  return bytes
-}
-
 function message(value: LiveModuleMessage): Uint8Array {
-  return framed(LIVE_CONTROL_FRAME, encoder.encode(JSON.stringify(value)))
+  return encodeControl(value)
 }
 
 function picture(
@@ -49,7 +41,7 @@ function picture(
   const data = new Uint8Array(chunk.byteLength)
   chunk.copyTo(data)
   return encodeVideo({
-    tab,
+    source: tab,
     generation,
     sequence,
     key: chunk.type === 'key',
@@ -323,6 +315,37 @@ class GalleryBrowserView {
         }
         break
       }
+      case 'input':
+        this.input(value.input)
+        break
+      case 'paste':
+        this.type(value.text)
+        break
+      case 'choice':
+        this.status = value.value
+        this.send({ type: 'choice', token: value.token, accepted: true })
+        break
+      case 'dialog':
+        if (tab) {
+          this.send({ type: 'dialog', tab: tab.id, dialog: null })
+        }
+        this.pressed = false
+        break
+      case 'keyframe':
+        this.restart()
+        break
+      case 'recapture':
+        this.recaptured()
+        break
+      default:
+        break
+    }
+  }
+
+  /** The viewer's input to the watched tab, as the page drawn here takes it. */
+  private input(value: ViewerInput): void {
+    const tab = this.tab()
+    switch (value.type) {
       case 'pointer':
         if (value.action === 'down' && tab && value.button === 'right') {
           // The page leaves the right click to the browser: what lies under it builds the menu.
@@ -378,38 +401,24 @@ class GalleryBrowserView {
             }
           }
         } else if (value.text) {
-          this.handle({ type: 'text', tab: value.tab, text: value.text })
+          this.type(value.text)
         } else if (value.key === 'Backspace') {
           this.typed = this.selection === 'all' ? '' : this.typed.slice(0, -1)
           this.selection = 'caret'
         }
         break
       case 'text':
-        this.typed = (this.selection === 'all' ? '' : this.typed) + value.text
-        this.selection = 'caret'
-        break
-      case 'paste':
-        this.handle({ type: 'text', tab: value.tab, text: value.text })
-        break
-      case 'choice':
-        this.status = value.value
-        this.send({ type: 'choice', token: value.token, accepted: true })
-        break
-      case 'dialog':
-        if (tab) {
-          this.send({ type: 'dialog', tab: tab.id, dialog: null })
-        }
-        this.pressed = false
-        break
-      case 'keyframe':
-        this.restart()
-        break
-      case 'recapture':
-        this.recaptured()
+        this.type(value.text)
         break
       default:
         break
     }
+  }
+
+  /** Text the viewer typed or pasted, into the page's field. */
+  private type(text: string): void {
+    this.typed = (this.selection === 'all' ? '' : this.typed) + text
+    this.selection = 'caret'
   }
 
   /** The downloads in `tab` changed: a view watching it hears the list, as the module tells its viewer. */

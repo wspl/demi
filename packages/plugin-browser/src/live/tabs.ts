@@ -14,7 +14,7 @@ import { computed, shallowReactive, shallowRef, watch, type ComputedRef, type Re
 import { z } from 'zod'
 import { panelReasonSchema, type BrowserTab, type LiveDownload, type LiveTab, type NeededBrowser, type PanelReason } from '../generated/plugin'
 import { viewerClipboard } from './clipboard'
-import { picturesSupported } from './pictures'
+import { picturesSupported } from '@demicodes/plugin-sdk'
 import type { HostArtifact, OpenUserStream, PageContext, SentenceText } from '@demicodes/plugin-sdk'
 import { LiveSession, type PanelReport } from './session'
 import { t } from '../locales/text'

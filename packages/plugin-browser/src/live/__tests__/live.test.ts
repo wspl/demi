@@ -1,8 +1,8 @@
 import { expect, jest, spyOn, test } from 'bun:test'
 import type { LiveControl, LiveModuleMessage, LiveTab, LiveViewerMessage } from '../../generated/plugin'
-import { LiveFrameReader, encodeFile, encodeMessage, encodeVideo, type LiveFrame } from '../frames'
-import { ClickCount, browserShortcut, keyMessage, localKey, modifiers, pointerMessage, shortcutKeys, wheelMessage } from '../input'
-import { pageReturned } from '@demicodes/plugin-sdk'
+import { LiveFrameReader, encodeFile, encodeMessage } from '../frames'
+import { browserShortcut, inputMessage, localKey, shortcutKeys } from '../input'
+import { encodeVideo, pageReturned, pointerInput } from '@demicodes/plugin-sdk'
 import type { UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { LiveSession, REFUSED_FRAME, SILENT_STREAM, type LiveSessionOptions, type LiveStream, type PanelReport, type PictureSink } from '../session'
 import { cursorAt, deviceSnap, panelSize, placePicture, panelRect, tabPoint, viewportChoices } from '../view'
@@ -13,7 +13,7 @@ const PHONE = { width: 390, height: 844, devicePixelRatio: 2, mode: 'mobile' } a
 /** A module frame as the Host writes it. */
 function video(tab: string, generation: number, sequence: number, key: boolean, data: number[]): Uint8Array {
   return encodeVideo({
-    tab,
+    source: tab,
     generation,
     sequence,
     key,
@@ -37,40 +37,27 @@ function moduleFrame(message: LiveModuleMessage): Uint8Array {
   return rawFrame(1, new TextEncoder().encode(JSON.stringify(message)))
 }
 
-test('frames split across chunks and join within one', () => {
-  const reader = new LiveFrameReader()
-  const bytes = new Uint8Array([
-    ...moduleFrame({ type: 'heartbeat' }),
-    ...video('t1', 3, 7, true, [0, 0, 0, 1, 9]),
-  ])
-  const oneByOne: LiveFrame[] = []
-  for (const byte of bytes) {
-    oneByOne.push(...reader.read(new Uint8Array([byte])))
-  }
-  const together = new LiveFrameReader().read(bytes)
-  for (const frames of [oneByOne, together]) {
-    expect(frames).toHaveLength(2)
-    expect(frames[0]).toEqual({ kind: 'message', message: { type: 'heartbeat' } })
-    expect(frames[1]!.kind).toBe('video')
-    const frame = frames[1]!.kind === 'video' ? frames[1]!.frame : null
-    expect(frame).toMatchObject({ tab: 't1', generation: 3, sequence: 7, key: true, width: 1600, height: 1200 })
-    expect([...frame!.data]).toEqual([0, 0, 0, 1, 9])
-  }
-})
-
-test('a frame the protocol refuses is an error, never a frame', () => {
+test('a control message the browser\'s protocol refuses is an error, never a message', () => {
   const text = (value: string) => new TextEncoder().encode(value)
   const refused: Array<[Uint8Array, string]> = [
     [rawFrame(1, text('{"type":')), 'not JSON'],
     [rawFrame(1, new Uint8Array([0x7b, 0xff, 0x7d])), 'not JSON'],
     [rawFrame(1, text('{"type":"state","running":"yes","tabs":[],"watched":null}')), 'the protocol refuses'],
-    [rawFrame(3, new Uint8Array(8)), 'kind 3'],
-    [rawFrame(2, new Uint8Array([0, 0, 0, 1])), 'shorter than its header'],
-    [new Uint8Array([0, 0, 0, 0]), 'impossible size'],
   ]
   for (const [bytes, reason] of refused) {
     expect(() => new LiveFrameReader().read(bytes)).toThrow(reason)
   }
+})
+
+test('the viewer\'s own paste keys stay with its browser, and reach the page as a paste', () => {
+  const key = (letter: string, altGraph = false) => ({
+    altKey: altGraph, ctrlKey: altGraph, metaKey: !altGraph, shiftKey: false,
+    key: letter, code: `Key${letter.toUpperCase()}`, keyCode: 0, repeat: false, location: 0,
+    getModifierState: (name: string) => name === 'AltGraph' && altGraph,
+  })
+  expect(localKey(key('v'))).toBe(true)
+  expect(localKey(key('c'))).toBe(false)
+  expect(localKey(key('v', true))).toBe(false)
 })
 
 test('a viewer message and a file frame carry their kind and header', () => {
@@ -157,65 +144,6 @@ test('the viewport menu offers Web and Mobile, and shows what the agent set', ()
   const custom = viewportChoices({ width: 1440, height: 900, devicePixelRatio: 2, mode: 'custom' })
   expect(custom.map((choice) => choice.label)).toEqual(['Web', 'Mobile', 'Custom 1440 × 900 @2'])
   expect(custom.at(-1)!.selectable).toBe(false)
-})
-
-test('pointer, wheel and key events carry what the page needs', () => {
-  const none = { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false }
-  const down = pointerMessage('t_a', 'down', { x: 5, y: 6 }, { ...none, button: 2, buttons: 2 })
-  expect(down).toMatchObject({ type: 'pointer', action: 'down', button: 'right', buttons: 2, clickCount: 1, modifiers: 0 })
-  const move = pointerMessage('t_a', 'move', { x: 1, y: 2 }, { ...none, button: 0, buttons: 1 })
-  expect(move).toMatchObject({ button: 'left', clickCount: 0 })
-  const lines = wheelMessage('t_a', { x: 0, y: 0 }, { ...none, deltaX: 0, deltaY: 3, deltaMode: 1 }, 600)
-  expect(lines).toMatchObject({ deltaY: 48 })
-  const pages = wheelMessage('t_a', { x: 0, y: 0 }, { ...none, deltaX: 0, deltaY: -1, deltaMode: 2 }, 600)
-  expect(pages).toMatchObject({ deltaY: -600 })
-  const typed = keyMessage('t_a', 'down', { ...none, key: 'a', code: 'KeyA', keyCode: 65, repeat: false, location: 0, getModifierState: () => false })
-  expect(typed).toMatchObject({ type: 'key', action: 'down', text: 'a', modifiers: 0 })
-  const shortcut = keyMessage('t_a', 'down', { ...none, ctrlKey: true, key: 'c', code: 'KeyC', keyCode: 67, repeat: false, location: 0, getModifierState: () => false })
-  expect(shortcut).not.toHaveProperty('text')
-  expect(shortcut.type === 'key' && shortcut.modifiers).toBe(2)
-  const released = keyMessage('t_a', 'up', { ...none, key: 'a', code: 'KeyA', keyCode: 65, repeat: true, location: 0, getModifierState: () => false })
-  expect(released).toMatchObject({ action: 'up', repeat: false })
-  expect(modifiers({ altKey: true, ctrlKey: false, metaKey: true, shiftKey: true })).toBe(1 | 4 | 8)
-  // The viewer's own paste reaches the page as a paste event.
-  expect(localKey({ ...none, metaKey: true, key: 'v', code: 'KeyV', keyCode: 86, repeat: false, location: 0, getModifierState: () => false })).toBe(true)
-  expect(localKey({ ...none, metaKey: true, key: 'c', code: 'KeyC', keyCode: 67, repeat: false, location: 0, getModifierState: () => false })).toBe(false)
-})
-
-test('presses close in time and place count as one double or triple click, as the page needs them', () => {
-  // A pointer event's own detail is 0, so the view counts.
-  const clicks = new ClickCount()
-  const press = (timeStamp: number, clientX = 10, button = 0) => clicks.press({ timeStamp, clientX, clientY: 10, button })
-  expect([press(0), press(200), press(400), press(600)]).toEqual([1, 2, 3, 3])
-  expect(press(2000)).toBe(1)
-  expect(press(2100, 30)).toBe(1)
-  expect(press(2200, 30, 2)).toBe(1)
-  expect(clicks.current).toBe(1)
-  expect(pointerMessage('t_a', 'down', { x: 1, y: 1 }, { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, button: 0, buttons: 1 }, 2))
-    .toMatchObject({ clickCount: 2 })
-})
-
-test('keyboard prototype getters preserve shortcuts and AltGraph text', () => {
-  class Key {
-    constructor(readonly value: string, readonly altGraph = false) {}
-    get key() { return this.value }
-    get code() { return `Key${this.value.toUpperCase()}` }
-    get keyCode() { return this.value.toUpperCase().charCodeAt(0) }
-    get repeat() { return false }
-    get location() { return 0 }
-    get altKey() { return this.altGraph }
-    get ctrlKey() { return this.altGraph }
-    get metaKey() { return !this.altGraph }
-    get shiftKey() { return false }
-    getModifierState(name: string) { return name === 'AltGraph' && this.altGraph }
-  }
-  const select = keyMessage(TAB.id, 'down', new Key('a'))
-  expect(select).toMatchObject({ type: 'key', modifiers: 4, altGraph: false })
-  expect(select).not.toHaveProperty('text')
-  expect(localKey(new Key('v'))).toBe(true)
-  expect(localKey(new Key('v', true))).toBe(false)
-  expect(keyMessage(TAB.id, 'down', new Key('v', true)))
-    .toMatchObject({ text: 'v', modifiers: 3, altGraph: true })
 })
 
 /** A session over a stream the test drives, with a clock it controls. */
@@ -318,7 +246,7 @@ test('a stalled stream discards input and resumes from a key frame', () => {
   expect(view.live.state.connection).toBe('stalled')
   expect(view.sent.at(-1)).toEqual({ type: 'release' })
   const before = view.sent.length
-  view.live.input(pointerMessage(TAB.id, 'down', { x: 1, y: 2 }, { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, button: 0, buttons: 1 }))
+  view.live.input(inputMessage(TAB.id, pointerInput('down', { x: 1, y: 2 }, { altKey: false, ctrlKey: false, metaKey: false, shiftKey: false, button: 0, buttons: 1 })))
   expect(view.sent).toHaveLength(before)
   view.receive(moduleFrame({ type: 'heartbeat' }))
   expect(view.live.state.connection).toBe('live')
@@ -569,10 +497,10 @@ test('a message the protocol refuses is never sent, so the module does not end t
   const event = new Hover()
   const before = view.sent.length
   // Typed as the event, as the DOM's own types are; at run time the copy is empty.
-  view.live.input(pointerMessage(TAB.id, 'move', { x: 10, y: 20 }, Object.assign({}, event)))
+  view.live.input(inputMessage(TAB.id, pointerInput('move', { x: 10, y: 20 }, Object.assign({}, event))))
   expect(view.sent).toHaveLength(before)
-  view.live.input(pointerMessage(TAB.id, 'move', { x: 10, y: 20 }, event))
-  expect(view.sent.at(-1)).toMatchObject({ type: 'pointer', action: 'move', buttons: 0, clickCount: 0 })
+  view.live.input(inputMessage(TAB.id, pointerInput('move', { x: 10, y: 20 }, event)))
+  expect(view.sent.at(-1)).toMatchObject({ type: 'input', tab: TAB.id, input: { type: 'pointer', action: 'move', buttons: 0, clickCount: 0 } })
   expect(view.live.state.connection).toBe('live')
 })
 
@@ -624,11 +552,11 @@ test('the browser’s own shortcuts act in the panel, as Chrome has them on each
 })
 
 test('the browser’s menu copies in the page with the platform’s own copy keys', () => {
-  expect(shortcutKeys('t1', 'c', 'mac').map((key) => key.type === 'key' && [key.action, key.key, key.modifiers])).toEqual([
+  expect(shortcutKeys('t1', 'c', 'mac').map((message) => message.type === 'input' && message.input.type === 'key' && [message.input.action, message.input.key, message.input.modifiers])).toEqual([
     ['down', 'c', 4],
     ['up', 'c', 4],
   ])
   const [cut] = shortcutKeys('t1', 'x', 'linux')
-  expect(cut).toMatchObject({ type: 'key', key: 'x', code: 'KeyX', modifiers: 2 })
-  expect(cut).not.toHaveProperty('text')
+  expect(cut).toMatchObject({ type: 'input', tab: 't1', input: { type: 'key', key: 'x', code: 'KeyX', modifiers: 2 } })
+  expect(cut?.type === 'input' && cut.input).not.toHaveProperty('text')
 })

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use chromiumoxide::browser::BrowserConfigBuilder;
 
-use demi_command_package_browser_protocol::live::VIDEO_CODEC;
+use demi_live_view_protocol::VIDEO_CODEC;
 use demi_command_package_browser_protocol::release::{
     RUNTIME_FONTS_ENTRY, RUNTIME_LIBRARIES_ENTRY,
 };

@@ -1968,6 +1968,7 @@ dependencies = [
  "demi-command-sdk",
  "demi-conversation-socket-protocol",
  "demi-host-interface",
+ "demi-live-view-protocol",
  "demi-machine-manager-protocol",
  "demi-plugin-browser",
  "demi-plugin-changes",
@@ -2487,6 +2488,7 @@ dependencies = [
  "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-command-sdk",
+ "demi-live-view-protocol",
  "demi-shared-cli",
  "futures-util",
  "libc",
@@ -2547,6 +2549,8 @@ dependencies = [
  "demi-command-package-browser-protocol",
  "demi-command-protocol",
  "demi-command-sdk",
+ "demi-live-view",
+ "demi-live-view-protocol",
  "demi-shared-artifacts",
  "demi-shared-types",
  "futures-util",
@@ -2576,6 +2580,7 @@ name = "demi-command-package-browser-protocol"
 version = "0.1.25"
 dependencies = [
  "base64 0.22.1",
+ "demi-live-view-protocol",
  "demi-shared-types",
  "garde",
  "regex",
@@ -2755,6 +2760,37 @@ dependencies = [
  "tokio",
  "tokio-util",
  "typed-path",
+]
+
+[[package]]
+name = "demi-live-view"
+version = "0.1.25"
+dependencies = [
+ "bytes",
+ "demi-command-protocol",
+ "demi-command-sdk",
+ "demi-live-view-protocol",
+ "demi-shared-types",
+ "futures-util",
+ "garde",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "demi-live-view-protocol"
+version = "0.1.25"
+dependencies = [
+ "demi-shared-types",
+ "garde",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_with",
 ]
 
 [[package]]
@@ -12053,6 +12089,7 @@ dependencies = [
  "demi-command-package-file-protocol",
  "demi-command-protocol",
  "demi-conversation-socket-protocol",
+ "demi-live-view-protocol",
  "demi-machine-manager-protocol",
  "demi-plugin-interface",
  "demi-runner-protocol",

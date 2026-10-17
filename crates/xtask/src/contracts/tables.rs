@@ -1,7 +1,8 @@
 //! The constant tables the page shares with the Rust side, with their
 //! lookups (`contracts.md` § Logic the web app and backend share): the
 //! file-type table the page chooses a viewer by, the file types a model
-//! reads, and the context limits a model's window offers. The values come from the Rust constants; the lookups do what
+//! reads, the context limits a model's window offers, and the live view's
+//! frame constants. The values come from the Rust constants; the lookups do what
 //! core's lookups do, and the page's tests check them with core's cases.
 
 use std::fmt::Write as _;
@@ -136,6 +137,59 @@ pub fn module(header: &str) -> String {
         push_doc(&mut source, Some(description), 0);
         writeln!(source, "export const {name} = {value}").expect("writing to a string");
     }
+    {
+        use demi_live_view_protocol as live;
+        for (name, description, value) in [
+            (
+                "LIVE_CONTROL_FRAME",
+                "A live view frame's kind: UTF-8 JSON of one message (`live-view.md` § Framing and versions).",
+                u64::from(live::CONTROL_FRAME),
+            ),
+            (
+                "LIVE_VIDEO_FRAME",
+                "A live view frame's kind: its video header, then H.264 Annex B data.",
+                u64::from(live::VIDEO_FRAME),
+            ),
+            (
+                "LIVE_MAX_FRAME_BYTES",
+                "The largest live view frame after its length.",
+                count(live::MAX_FRAME_BYTES),
+            ),
+            (
+                "LIVE_VIDEO_HEADER_BYTES",
+                "A video frame's header.",
+                count(live::VideoHeader::BYTES),
+            ),
+            (
+                "LIVE_VIDEO_SOURCE_BYTES",
+                "A video frame header's source ID, such as a browser tab's, padded with zero bytes.",
+                count(live::VideoHeader::SOURCE_BYTES),
+            ),
+            (
+                "LIVE_HEARTBEAT_MS",
+                "How often the Host's side of a live view speaks at least.",
+                live::HEARTBEAT_MS,
+            ),
+            (
+                "LIVE_STALL_MS",
+                "Silence after which the page shows a live view's stream as stalled.",
+                live::STALL_MS,
+            ),
+        ] {
+            source.push('\n');
+            push_doc(&mut source, Some(description), 0);
+            writeln!(source, "export const {name} = {value}").expect("writing to a string");
+        }
+        source.push('\n');
+        push_doc(
+            &mut source,
+            Some("A live view's video codec, as WebCodecs names it, which every source encodes with."),
+            0,
+        );
+        writeln!(source, "export const LIVE_VIDEO_CODEC = {:?}", live::VIDEO_CODEC)
+            .expect("writing to a string");
+    }
+
     source.push('\n');
     push_doc(
         &mut source,

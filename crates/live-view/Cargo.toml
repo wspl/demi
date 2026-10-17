@@ -1,0 +1,31 @@
+[package]
+name = "demi-live-view"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# Its tests drive a fake source through the layer's internals, so they are
+# unit tests and the crate has no integration tests (`crates-and-packages.md`
+# § Module layout). No doc examples.
+doctest = false
+bench = false
+
+[dependencies]
+bytes.workspace = true
+demi-command-sdk = { path = "../command-sdk" }
+demi-live-view-protocol = { path = "../live-view-protocol" }
+demi-shared-types = { path = "../shared-types" }
+garde.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+demi-command-protocol = { path = "../command-protocol" }
+futures-util.workspace = true
+tokio = { workspace = true, features = ["test-util"] }
