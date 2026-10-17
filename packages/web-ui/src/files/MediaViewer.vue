@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { createReusableTemplate, useMediaQuery } from '@vueuse/core'
 import Dialog from '../ui/Dialog.vue'
 import FloatingWindow from '../ui/FloatingWindow.vue'
 import RegionStatus from '../ui/RegionStatus.vue'
 import { appOverlayStore } from '../overlay/appOverlay'
+import { startPointerDrag } from '../ui/pointer-drag'
+import { isClick } from './image-zoom'
 import ImagePreview from './ImagePreview.vue'
 import MediaPreview from './MediaPreview.vue'
 import { formatCount } from '../ui/numbers'
@@ -24,13 +26,15 @@ import type { PixelSize } from './thumbnail'
  *
  * On a phone, the medium fills the screen instead, with its close control
  * (§ Media a tool returned, On a phone), and a swipe left or right steps to
- * the next or the previous picture (`ImagePreview`). The page draws it beside
- * the viewer it provides.
+ * the next or the previous picture (`ImagePreview`). Since it covers the
+ * screen, a tap on the empty space around the medium closes it: beside the
+ * picture, in the margin and the line under it, beside a video. The page
+ * draws it beside the viewer it provides.
  */
 const props = defineProps<{ viewer: MediaViewerState }>()
 
 /** The medium itself, which the window and a phone's full screen both show. */
-const [DefineMedium, ReuseMedium] = createReusableTemplate<{ flush: boolean; swipe: boolean }>()
+const [DefineMedium, ReuseMedium] = createReusableTemplate<{ flush: boolean; fullScreen: boolean }>()
 
 /** A phone's width, the app's narrow width, where the viewer fills the screen (48rem, as `Dialog`'s). */
 const phone = useMediaQuery('(max-width: 767.98px)')
@@ -103,6 +107,45 @@ function onSwipe(direction: -1 | 1, slid: boolean): void {
   props.viewer.step(direction)
 }
 
+/** Ends the tap on the phone's empty space under way early, as its release would. */
+let stopTap: (() => void) | null = null
+/** Another finger came down during the tap, which makes it a pinch, not a tap. */
+let tapSpoiled = false
+
+/**
+ * A press on the phone's full screen that the medium did not take: the
+ * picture takes every press on its frame as its gesture (it prevents the
+ * press's default), a video's player keeps its own. What is left is empty
+ * space, where a tap, never a drag or a pinch, closes the viewer.
+ */
+function onScreenPress(event: PointerEvent): void {
+  if (stopTap) {
+    tapSpoiled = true
+    return
+  }
+  if (event.button !== 0 || event.defaultPrevented || (event.target instanceof Element && event.target.closest('video')))
+    return
+  tapSpoiled = false
+  let moved = false
+  stopTap = startPointerDrag(event, {
+    cursor: 'default',
+    move(dx, dy) {
+      moved ||= !isClick(dx, dy)
+    },
+    end(cancelled) {
+      stopTap = null
+      if (!cancelled && !moved && !tapSpoiled)
+        props.viewer.close()
+    },
+  })
+}
+
+// A tap the viewer's going cut short is no tap.
+onBeforeUnmount(() => {
+  tapSpoiled = true
+  stopTap?.()
+})
+
 function onSize(width: number, height: number): void {
   size.value = { width, height }
   props.viewer.measured({ width, height })
@@ -110,7 +153,7 @@ function onSize(width: number, height: number): void {
 </script>
 
 <template>
-  <DefineMedium v-slot="{ flush, swipe }">
+  <DefineMedium v-slot="{ flush, fullScreen }">
     <template v-if="medium">
       <RegionStatus v-if="failed || gone" class="h-full" status="failed" :label="`Could not show this ${medium.kind}.`" />
       <ImagePreview
@@ -119,12 +162,14 @@ function onSize(width: number, height: number): void {
         :src="src"
         :name="medium.name"
         :flush="flush"
-        :steps="swipe ? reach : undefined"
+        :steps="fullScreen ? reach : undefined"
         :from="arriving"
+        :dismissible="fullScreen"
         @size="onSize"
         @zoom="zoom = $event"
         @failed="failed = true"
         @step="onSwipe"
+        @dismiss="viewer.close()"
       />
       <MediaPreview
         v-else-if="medium.kind === 'video'"
@@ -149,9 +194,9 @@ function onSize(width: number, height: number): void {
     close-over-content
     @close="viewer.close()"
   >
-    <div class="flex h-full min-h-0 flex-col">
+    <div class="flex h-full min-h-0 flex-col" @pointerdown="onScreenPress">
       <div class="min-h-0 flex-1">
-        <ReuseMedium :flush="false" :swipe="true" />
+        <ReuseMedium :flush="false" :full-screen="true" />
       </div>
       <div class="h-6 shrink-0 px-3 text-center text-caption tabular-nums text-fg-muted">
         {{ details(false) }}
@@ -171,6 +216,6 @@ function onSize(width: number, height: number): void {
   >
     <template #title>{{ medium?.name }}</template>
     <template v-if="details(true)" #trailing>{{ details(true) }}</template>
-    <ReuseMedium flush :swipe="false" />
+    <ReuseMedium flush :full-screen="false" />
   </FloatingWindow>
 </template>
