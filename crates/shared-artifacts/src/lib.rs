@@ -274,6 +274,12 @@ pub enum Error {
     /// decode: only [`CONTENT_CODING`] and none are.
     #[error("the artifact arrived in the content coding {0}, which downloads do not decode")]
     Coding(String),
+    /// Bytes kept in their coding are not compressed with zstd, as when a
+    /// proxy decoded them on the way.
+    #[error(
+        "the download is not compressed with zstd: a proxy between this device and its backend may have decompressed it"
+    )]
+    Uncompressed,
     /// The archive is not what its installation needs, such as one that
     /// does not extract or lacks its executable.
     #[error("the archive {0}")]

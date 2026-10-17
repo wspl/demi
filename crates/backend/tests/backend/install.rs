@@ -1440,27 +1440,32 @@ async fn without_runner_releases_the_installers_say_so_and_no_artifact_is_served
         executable.bytes().await.unwrap(),
         std::fs::read(stand_in.path()).unwrap()
     );
-    // A runner's update downloads the compressed copy, which its client
-    // decodes from the content coding and checks.
+    // A runner's update downloads the compressed file and keeps it as it
+    // is: the answer declares no content coding, which a proxy in front,
+    // such as Cloudflare, would decode for a runner that does not accept
+    // it, handing it the executable under the `.zst` name.
     let expected = demi_shared_artifacts::Digest {
         size: releases.artifact["size"].as_u64().unwrap(),
         sha256: releases.artifact["sha256"].as_str().unwrap().to_owned(),
     };
-    let client = demi_shared_artifacts::client_allowing_http().unwrap();
-    let mut decoded = Vec::new();
-    demi_shared_artifacts::download(
-        &client,
-        &format!(
+    let compressed = reqwest::Client::builder()
+        .no_zstd()
+        .build()
+        .unwrap()
+        .get(format!(
             "{}/runner-artifacts/{release}/{}/demi-runner.zst",
             served.url,
             host_target()
-        ),
-        &expected,
-        &mut decoded,
-        &tokio_util::sync::CancellationToken::new(),
-    )
-    .await
-    .unwrap();
+        ))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(compressed.status(), StatusCode::OK);
+    assert!(compressed.headers().get("content-encoding").is_none());
+    assert_eq!(compressed.headers()["content-type"], "application/zstd");
+    let decoded =
+        demi_shared_artifacts::decode_blocking(&compressed.bytes().await.unwrap(), &expected)
+            .unwrap();
     assert_eq!(decoded, std::fs::read(stand_in.path()).unwrap());
     backend.close().await;
     served.close().await;

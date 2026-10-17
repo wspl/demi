@@ -1057,16 +1057,18 @@ is `native/blobs/<sha256>`, a descriptor's canonical JSON is
 `native/packages/<id>/<version>.json`, with the version percent-encoded as a
 URI component.
 
-A package executable's object holds the executable compressed with zstd and
-carries `Content-Encoding: zstd`; descriptors, mappings and runner
-executables are stored as they are. HTTP's own content coding is the
-mechanism: the store serves the stored bytes with the coding they were
+A package or runner executable's object holds the executable compressed
+with zstd and carries `Content-Encoding: zstd`; descriptors and mappings are
+stored as they are. For a package executable, HTTP's own content coding is
+the mechanism: the store serves the stored bytes with the coding they were
 stored with, and the runner's HTTP client decodes them
 ([Install artifacts](#install-artifacts)), so no descriptor, manifest or cache
-entry knows about compression. zstd rather than gzip because it matters
-here: the release runner compresses to about 28% of its size with zstd and to
-41% with gzip. Packaging compresses each executable, at zstd's slowest
-ordinary level, and the release's files hold the compressed copy
+entry knows about compression. A runner executable's update is the
+compressed file itself instead ([Runner releases](#runner-releases)). zstd
+rather than gzip because it matters here: the release runner compresses to
+about 28% of its size with zstd and to 41% with gzip. Packaging compresses
+each executable, at zstd's slowest ordinary level, and the release's files
+hold the compressed copy
 ([Packaging](../delivery/builds-and-releases.md#packaging)); the backend
 stores that copy once it decodes to the executable's size and SHA-256, so no
 backend compresses anything.
@@ -1157,10 +1159,14 @@ executable's.
 file from the object store, sourcing it first when the store lacks it, or,
 for the release an upgrade announced, from the directory it names; it
 answers a Range request with 206 and the bytes asked for, so a broken
-download resumes. A paired device's runner downloads its updates from it,
-with its device token in `Demi-Runner-Token` so the backend counts its
-progress, and decompresses them as it does any artifact
-([Runner updates](runner.md#runner-updates)).
+download resumes. The answer is the file itself, `application/zstd`, and
+declares no content coding: a proxy in front of the backend, such as
+Cloudflare, decodes a declared coding for a client that does not accept it,
+and the runner, which keeps the compressed bytes to resume them, would
+receive the executable under the `.zst` name. A paired device's runner
+downloads its updates from it, with its device token in `Demi-Runner-Token`
+so the backend counts its progress, and decompresses them as it does any
+artifact ([Runner updates](runner.md#runner-updates)).
 `GET /runner-artifacts/<release>/<target>/<file>` answers the same file
 decompressed as it streams, for the installers, which know only the backend
 and have no zstd. Both stream from S3 as from the data directory.

@@ -226,7 +226,8 @@ pub(super) async fn artifact(
             Delivery::Shared
         };
         let device = super::runners::paired_device(&state, &headers).await;
-        return stored_download(counted(&state, device, stored.into()).await, delivery);
+        let stored = counted(&state, device, stored.into()).await;
+        return stored_download(stored, Form::Compressed, delivery);
     }
     let mut headers = HeaderMap::new();
     headers.insert(
@@ -281,7 +282,20 @@ pub(super) async fn native_artifact(
         ));
     };
     let artifact = artifact.map_err(|error| ApiError::internal_message(error.to_string()))?;
-    stored_download(artifact, Delivery::Shared)
+    stored_download(artifact, Form::Coded, Delivery::Shared)
+}
+
+/// What a stored artifact's download stands for.
+#[derive(Clone, Copy)]
+enum Form {
+    /// The executable, in the content coding it is stored with, which the
+    /// client decodes as S3's answer would have it do.
+    Coded,
+    /// The compressed file itself, a `.zst` the client keeps as it is: it
+    /// declares no content coding, which a proxy in front, such as
+    /// Cloudflare, would decode for a client that does not accept it
+    /// (`native-runtime.md` § Runner releases).
+    Compressed,
 }
 
 /// How a stored artifact's download reaches its requester.
@@ -295,15 +309,19 @@ enum Delivery {
 }
 
 /// A stored artifact, or the part of it from a byte on, as an immutable
-/// download delivered as `delivery` says: the stored bytes with the content
-/// coding they were stored with.
-fn stored_download(stored: impl Into<Stored>, delivery: Delivery) -> Result<Response, ApiError> {
+/// download of the stored bytes in `form`, delivered as `delivery` says.
+fn stored_download(
+    stored: impl Into<Stored>,
+    form: Form,
+    delivery: Delivery,
+) -> Result<Response, ApiError> {
     let stored = stored.into();
     let mut headers = HeaderMap::new();
-    headers.insert(
-        CONTENT_TYPE,
-        HeaderValue::from_static("application/octet-stream"),
-    );
+    let media_type = match form {
+        Form::Coded => "application/octet-stream",
+        Form::Compressed => "application/zstd",
+    };
+    headers.insert(CONTENT_TYPE, HeaderValue::from_static(media_type));
     match delivery {
         Delivery::Shared => {
             headers.insert(CACHE_CONTROL, HeaderValue::from_static(IMMUTABLE));
@@ -330,10 +348,13 @@ fn stored_download(stored: impl Into<Stored>, delivery: Delivery) -> Result<Resp
     } else {
         StatusCode::OK
     };
-    if let Some(coding) = stored
-        .attributes
-        .get(&object_store::Attribute::ContentEncoding)
-    {
+    let coding = match form {
+        Form::Coded => stored
+            .attributes
+            .get(&object_store::Attribute::ContentEncoding),
+        Form::Compressed => None,
+    };
+    if let Some(coding) = coding {
         let coding = HeaderValue::from_str(coding.as_ref())
             .map_err(|error| ApiError::internal_message(error.to_string()))?;
         headers.insert(CONTENT_ENCODING, coding);
