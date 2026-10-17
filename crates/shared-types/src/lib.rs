@@ -26,6 +26,7 @@ mod ids;
 mod media;
 mod model;
 pub mod names;
+pub mod output;
 mod provider_state;
 mod quota;
 mod read_at;

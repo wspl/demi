@@ -80,11 +80,13 @@ The verbs are the browser's where the meaning is the same
 ([Command reference](../browser/browser.md#command-reference)), so an agent
 that uses `demi browser` already knows them.
 
-- **`list`** prints every simulator of the Host it runs on, iOS and Android
-  together; on an attached Host it
-  runs inside `demi host shell`, as every command does: name, platform, model, OS version, state (shut down, booted,
-  open in this conversation as `m1`, or open in another one), and its
-  `simctl` id or AVD name.
+- **`list`** prints a table of every simulator of the Host it runs on, iOS
+  and Android together; on an attached Host it runs inside `demi host
+  shell`, as every command does: its id, the `simctl` id or AVD name `open`
+  takes, platform, OS version, state (shut down, booted, open in this
+  conversation, or open in another one), its handle such as `m1` while open
+  here, model and name. A platform the Host cannot run is a warning on
+  stderr, *iOS simulators need a Mac*.
 - **`open <device>`** takes a name, a `simctl` id or an AVD name; a name
   two devices share is refused, listing both with their ids, so the agent
   names the one it means. It boots the

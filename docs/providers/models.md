@@ -283,8 +283,11 @@ list change settings every conversation of the user reads, so they need the
 user's permission in each conversation, the category `providers.manage`,
 *Manage Providers*: "Add, change and remove your provider entries and their
 models, which every conversation of yours can use." `list`, `show` and `models search` are reads and
-need none. `--json` returns `{ providers }`, `{ provider }`, `{ results }` or
-`{ model }` with every field the text prints.
+need none. `list` prints one row for each entry, its ID, name, kind, how
+many models it has, how many are hidden and its status; `show` prints an
+entry as labelled lines with its models as a table, each context and output
+size in exact tokens ([Output](../execution/commands.md#output)). `--json`
+returns the same, an array or the object, with every field the text prints.
 
 ## Catalog cache
 

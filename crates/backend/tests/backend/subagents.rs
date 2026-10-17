@@ -421,7 +421,7 @@ async fn a_child_works_in_its_parents_files_keeps_its_identity_and_runs_on_after
     // device, which knows it as the caller.
     let child = format!(
         "{WAIT}; cat notes.md && printf 'from the child\\n' > reply.md && \
-         demi host shell --host laptop \"demi agent list\""
+         demi host shell --host laptop \"demi agent list --json\""
     );
     scripts.child(vec![shell("c1", &child), say("the file says 42")]);
     scripts.root(
@@ -466,12 +466,12 @@ async fn a_child_works_in_its_parents_files_keeps_its_identity_and_runs_on_after
     assert_eq!(latest.matches("[Execution context ").count(), 1, "{latest}");
     let read = children.last().unwrap();
     // The tree is the root and the child: the caller is the child.
+    let root_entry = read.find(r#"\"id\":0,"#).expect(&read);
+    let child_entry = read.find(r#"\"id\":1,"#).expect(&read);
+    assert!(read.contains("the answer is 42"), "{read}");
     assert!(
-        read.contains("the answer is 42") && read.contains("← you"),
-        "{read}"
-    );
-    assert!(
-        !read.contains("(root session) ← you"),
+        read[root_entry..child_entry].contains(r#"\"self\":false"#)
+            && read[child_entry..].contains(r#"\"self\":true"#),
         "the child is the caller: {read}"
     );
     assert_eq!(
@@ -622,7 +622,7 @@ async fn a_move_of_the_conversation_puts_its_children_in_its_new_directory_and_l
             say("received"),
             // `list` names the archived child's directory against the
             // conversation's, `show` whole.
-            shell("t2", "demi agent list; demi agent show 1"),
+            shell("t2", "demi agent list --all --json; demi agent show 1"),
             say("listed"),
         ],
     );
@@ -630,8 +630,8 @@ async fn a_move_of_the_conversation_puts_its_children_in_its_new_directory_and_l
     socket.until_idle().await;
     socket.chat("m2", "List them").await;
     let listed = last_asked(&scripts, |session| session == FIRST);
-    assert!(listed.contains("\\\"mover\\\"  app"), "{listed}");
-    assert!(listed.contains(&format!("cwd: {root}/app")), "{listed}");
+    assert!(listed.contains(r#"\"description\":\"mover\",\"cwd\":\"app\""#), "{listed}");
+    assert!(listed.contains(&format!("Directory: {root}/app")), "{listed}");
 
     // The user moves the conversation to another directory of the device.
     let target = json!({ "target": { "kind": "device", "deviceId": paired.id(), "path": moved } });
@@ -736,7 +736,7 @@ async fn a_fork_taken_while_a_child_runs_leaves_the_child_with_its_source() {
         .find("ToolResult { tool_use_id: \"f1\"")
         .expect("the list's result")..];
     assert!(
-        listed.contains("(root session)") && !listed.contains("worker"),
+        listed.contains("DESCRIPTION\\n0   -") && !listed.contains("worker"),
         "{listed}"
     );
     backend.close().await;
@@ -804,7 +804,7 @@ async fn a_spawn_reads_the_users_settings_and_builds_the_childs_model_from_the_c
     );
     let listed = &scripts.asked(|session| session == FIRST)[1];
     assert!(
-        listed.contains("explore  Finds code; it changes nothing."),
+        listed.contains("explore  user    n      high    Finds code; it changes nothing."),
         "{listed}"
     );
 

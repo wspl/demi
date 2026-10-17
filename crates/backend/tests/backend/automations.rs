@@ -541,7 +541,10 @@ async fn the_agent_manages_automations_with_permission_and_a_run_never_does() {
     scripts.root(
         FIRST,
         vec![
-            shell("t4", &format!("demi automation list; demi automation delete {id}; echo exit=$?")),
+            shell(
+                "t4",
+                &format!("demi automation list; demi automation show {id}; demi automation list --json; demi automation delete {id}; echo exit=$?"),
+            ),
             say("could not"),
         ],
     );
@@ -552,7 +555,13 @@ async fn the_agent_manages_automations_with_permission_and_a_run_never_does() {
     })
     .await;
     let returned = last_asked(&scripts, FIRST);
-    assert!(returned.contains("Morning summary"), "{returned}");
+    // A row per automation, its ID first and its name last; one as labelled
+    // lines, its prompt last; the list as a JSON array.
+    assert!(returned.contains("ID                                STATUS  TRIGGER  NEXT RUN              LAST RUN              NAME\\n"), "{returned}");
+    assert!(returned.contains(&format!("\\n{id}  ")) && returned.contains("  Morning summary\\nID: "), "{returned}");
+    assert!(returned.contains(&format!("ID: {id}\\nName: Morning summary\\nStatus: ")), "{returned}");
+    assert!(returned.contains("\\nPrompt:\\n  Summarize the open issues.\\n"), "{returned}");
+    assert!(returned.contains(&format!("[{{\\\"id\\\":\\\"{id}\\\"")), "{returned}");
     assert!(returned.contains("an automation's run may not delete automations") && returned.contains("exit=1"), "{returned}");
     assert_eq!(automations(&backend, &master).await.len(), 1);
     assert_eq!(the_automation(&backend, &master).await.runs[0].line.as_deref(), Some("could not"));

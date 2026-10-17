@@ -13,14 +13,17 @@ use std::rc::Rc;
 use demi_backend_host_access::host_commands::conversation_of;
 use demi_backend_host_access::root_of;
 use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
-use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
+use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc};
 use demi_agent_tools::EFFORT_OFF;
-use demi_shared_types::{FileExtension, ModelSelection, WireApi, model_reads_images};
+use demi_shared_types::{
+    FileExtension, ModelSelection, WireApi, model_reads_images,
+    output::{Cell, Fields, Table, warning},
+};
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::error::problems;
 use demi_web_api_protocol::providers::{
     Availability, ConfiguredModel, ConfiguredModels, CreateProvider,
-    CredentialKind, ModelMatch, ModelSearchResults, ProviderPatch, SetupPart,
+    CredentialKind, ModelMatch, ProviderPatch, SetupPart,
 };
 use demi_web_api_protocol::text::{EndpointUrl, Trimmed};
 use garde::Validate;
@@ -44,11 +47,11 @@ const SUMMARY: &str = "The user's provider entries and their models: list and sh
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Lists the user's provider entries and the models each offers, the ones the model menu and subagent profiles can use, with what an entry still needs; adds, renames and removes entries, and adds models to an entry's list, filled from a models.dev search. Use it when the user asks which models they have, or to add a provider or a model. It never takes a key as an argument: the user adds keys in Settings, or a key is piped in with --api-key-stdin.";
+const ENTRY: &str = "Lists the user's provider entries and shows the models each offers, the ones the model menu and subagent profiles can use, with what an entry still needs; adds, renames and removes entries, and adds models to an entry's list, filled from a models.dev search. Use it when the user asks which models they have, or to add a provider or a model. It never takes a key as an argument: the user adds keys in Settings, or a key is piped in with --api-key-stdin.";
 
-const LIST_SUMMARY: &str = "List each provider entry by its name in Settings, its kind and its state (Ready, or what it still needs), then its models: id, name, context window, efforts (* marks the default; off when thinking can be turned off), service tiers and whether it reads images. The model you run on is marked. --all adds the entries and models the user turned off. A read.";
+const LIST_SUMMARY: &str = "List each provider entry: its id, its name in Settings, its kind, its count of models and its status (Ready, or what it still needs); demi providers show lists an entry's models. --all adds the entries and models the user turned off. A read.";
 
-const SHOW_SUMMARY: &str = "Show every setting of one entry: name, kind, vendor or family and wire, endpoint, whether a key is saved (never the key), accounts by label, state, and each model with every field. A read.";
+const SHOW_SUMMARY: &str = "Show every setting of one entry: name, kind, vendor or family and wire, endpoint, whether a key is saved (never the key), accounts by label, status, and each model with every field: context window and output limit in tokens, default effort and efforts (off when thinking can be turned off), service tiers, the files it reads, and whether you run on it. A read.";
 
 const ADD_SUMMARY: &str = "Add a provider entry: --vendor, a models.dev vendor; --family alone, the family's own vendor; or --family with --wire and --base-url, a compatible API. Without --name it is named after its vendor or family, or Compatible API, with (2), (3) when that name is taken. A vendor's entry without a key joins the list incomplete until the user adds the key in Settings > Providers; a compatible API's key is optional. Needs the user's permission.";
 
@@ -175,12 +178,6 @@ struct ModelRemoveArgs {
     model: String,
 }
 
-/// `list --json`.
-#[derive(Serialize, JsonSchema)]
-struct Listing {
-    providers: Vec<ListedEntry>,
-}
-
 /// An entry as `list` lists it.
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
@@ -216,13 +213,8 @@ struct ListedModel {
     hidden: bool,
 }
 
-/// `show --json`, and the answer of `add` and `edit`.
-#[derive(Serialize, JsonSchema)]
-struct ProviderAnswer {
-    provider: ShownEntry,
-}
-
-/// Every setting of one entry; never its key.
+/// `show --json`, and the answer of `add` and `edit`: every setting of
+/// one entry; never its key.
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct ShownEntry {
@@ -273,26 +265,16 @@ struct ShownModel {
     /// The types the model reads natively: `[]` for none, null when unknown.
     accepted_extensions: Option<Vec<FileExtension>>,
     hidden: bool,
+    /// Whether the calling agent runs on it.
+    current: bool,
 }
 
 /// `remove --json`.
-#[derive(Serialize, JsonSchema)]
-struct RemovedAnswer {
-    provider: RemovedEntry,
-}
-
 #[derive(Serialize, JsonSchema)]
 struct RemovedEntry {
     id: String,
     name: String,
     removed: bool,
-}
-
-/// The answer of a `models` change: the model as the list holds it now,
-/// or as it held it before it was removed.
-#[derive(Serialize, JsonSchema)]
-struct ModelAnswer {
-    model: ConfiguredModel,
 }
 
 /// The `providers` group, whose handlers act in `shard`.
@@ -302,7 +284,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
             LeafBuilder::rpc("search", SEARCH_SUMMARY)
                 .input::<SearchArgs>()
                 .positionals(["query"])
-                .json_output::<ModelSearchResults>()
+                .json_output::<Vec<ModelMatch>>()
                 .bind(TypedRpc::new(verb(shard.clone(), search))),
         )
         .leaf(model_leaf::<ModelAddArgs>("add", MODEL_ADD_SUMMARY)
@@ -317,7 +299,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .input::<ModelRemoveArgs>()
                 .describe("entry", ENTRY_ARG)
                 .positionals(["entry", "model"])
-                .json_output::<ModelAnswer>()
+                .json_output::<ConfiguredModel>()
                 .permission(MANAGE)
                 .bind(TypedRpc::new(verb(shard.clone(), remove_model))),
         );
@@ -328,7 +310,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<ListArgs>()
                 .describe("all", ALL)
-                .json_output::<Listing>()
+                .json_output::<Vec<ListedEntry>>()
                 .bind(TypedRpc::new(verb(shard.clone(), list))),
         )
         .leaf(
@@ -336,7 +318,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .input::<EntryArgs>()
                 .describe("entry", ENTRY_ARG)
                 .positionals(["entry"])
-                .json_output::<ProviderAnswer>()
+                .json_output::<ShownEntry>()
                 .bind(TypedRpc::new(verb(shard.clone(), show))),
         )
         .leaf(
@@ -351,7 +333,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .describe("api-key", API_KEY)
                 .stdin_field("api-key")
                 .stdin_with(["api-key-stdin"])
-                .json_output::<ProviderAnswer>()
+                .json_output::<ShownEntry>()
                 .permission(MANAGE)
                 .bind(TypedRpc::new(verb(shard.clone(), add))),
         )
@@ -366,7 +348,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .positionals(["entry"])
                 .stdin_field("api-key")
                 .stdin_with(["api-key-stdin"])
-                .json_output::<ProviderAnswer>()
+                .json_output::<ShownEntry>()
                 .permission(MANAGE)
                 .bind(TypedRpc::new(verb(shard.clone(), edit))),
         )
@@ -375,7 +357,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .input::<EntryArgs>()
                 .describe("entry", ENTRY_ARG)
                 .positionals(["entry"])
-                .json_output::<RemovedAnswer>()
+                .json_output::<RemovedEntry>()
                 .permission(MANAGE)
                 .bind(TypedRpc::new(verb(shard, remove))),
         )
@@ -394,7 +376,7 @@ fn model_leaf<A: JsonSchema>(name: &str, summary: &str) -> LeafBuilder {
         .describe("efforts", EFFORTS)
         .describe("extensions", EXTENSIONS)
         .describe("fast-tier", FAST_TIER)
-        .json_output::<ModelAnswer>()
+        .json_output::<ConfiguredModel>()
         .permission(MANAGE)
 }
 
@@ -415,7 +397,7 @@ async fn json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
 async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let all = call.args.all == Some(true);
     let scope = shard.scope().await.map_err(failed)?;
-    let current = caller_model(&shard, &call);
+    let current = caller_model(&shard, &call.invocation);
     let providers: Vec<ListedEntry> = scope
         .entries
         .iter()
@@ -461,19 +443,30 @@ async fn list(shard: Rc<Shard>, call: Call<ListArgs>, port: RpcPort) -> Result<u
             })
         })
         .collect();
-    let listing = Listing { providers };
     if call.invocation.json {
-        return json(&port, &listing).await;
+        return json(&port, &providers).await;
     }
-    out(&port, listing.render()).await
+    let mut table = Table::new(["id", "name", "kind", "models", "hidden", "status"]);
+    for entry in &providers {
+        table.row::<Cell>([
+            entry.id.as_str().into(),
+            entry.name.as_str().into(),
+            kind_text(entry.kind).into(),
+            entry.models.len().into(),
+            entry.hidden.into(),
+            state(&entry.availability).into(),
+        ]);
+    }
+    out(&port, table.render()).await
 }
 
 async fn show(shard: Rc<Shard>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let user = user(&shard).await?;
     let scope = shard.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, &call.args.entry).map_err(failed)?;
-    let shown = shown(&shard, &user, &scope, entry).await?;
-    answer(&port, call.invocation.json, shown, None).await
+    let current = caller_model(&shard, &call.invocation);
+    let shown = shown(&shard, &user, &scope, entry, current.as_ref()).await?;
+    answer(&port, call.invocation.json, shown).await
 }
 
 async fn add(shard: Rc<Shard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8, RpcError> {
@@ -528,9 +521,9 @@ async fn add(shard: Rc<Shard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8,
         .map_err(failed)?;
     let scope = shard.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, entry.id.as_str()).map_err(failed)?;
-    let shown = shown(&shard, &user, &scope, entry).await?;
-    let note = format!("Added {} ({}).", shown.name, shown.id);
-    answer(&port, call.invocation.json, shown, Some(note)).await
+    let current = caller_model(&shard, &call.invocation);
+    let shown = shown(&shard, &user, &scope, entry, current.as_ref()).await?;
+    answer(&port, call.invocation.json, shown).await
 }
 
 async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u8, RpcError> {
@@ -557,9 +550,9 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
         .map_err(failed)?;
     let scope = shard.scope().await.map_err(failed)?;
     let entry = named(&scope.entries, id.as_str()).map_err(failed)?;
-    let shown = shown(&shard, &user, &scope, entry).await?;
-    let note = format!("Changed {} ({}).", shown.name, shown.id);
-    answer(&port, call.invocation.json, shown, Some(note)).await
+    let current = caller_model(&shard, &call.invocation);
+    let shown = shown(&shard, &user, &scope, entry, current.as_ref()).await?;
+    answer(&port, call.invocation.json, shown).await
 }
 
 async fn remove(shard: Rc<Shard>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
@@ -577,7 +570,7 @@ async fn remove(shard: Rc<Shard>, call: Call<EntryArgs>, port: RpcPort) -> Resul
         removed: true,
     };
     if call.invocation.json {
-        return json(&port, &RemovedAnswer { provider: removed }).await;
+        return json(&port, &removed).await;
     }
     out(&port, format!("Removed {} ({}).\n", removed.name, removed.id)).await
 }
@@ -589,15 +582,30 @@ async fn search(shard: Rc<Shard>, call: Call<SearchArgs>, port: RpcPort) -> Resu
         .search_models(shard.user(), &query, None)
         .await
         .map_err(failed)?;
-    let found = ModelSearchResults { results };
     if call.invocation.json {
-        return json(&port, &found).await;
+        return json(&port, &results).await;
     }
-    if found.results.is_empty() {
-        return out(&port, format!("No model on models.dev matches \"{query}\".\n")).await;
+    let mut table = Table::new([
+        "model",
+        "context (tokens)",
+        "output (tokens)",
+        "default effort",
+        "efforts",
+        "files",
+        "name",
+    ]);
+    for found in &results {
+        table.row::<Cell>([
+            found.reference.as_str().into(),
+            found.context_window.into(),
+            found.output_limit.into(),
+            found.thinking_efforts.first().into(),
+            list_cell(&found.thinking_efforts).into(),
+            files_cell(found.accepted_extensions.as_deref()),
+            found.display_name.as_str().into(),
+        ]);
     }
-    let rows: Vec<Vec<String>> = found.results.iter().map(match_row).collect();
-    out(&port, columns(&rows)).await
+    out(&port, table.render()).await
 }
 
 async fn add_model(
@@ -647,14 +655,14 @@ async fn add_model(
     models.push(model.clone());
     let count = models.len();
     write_list(&shard, &user, entry, models).await?;
-    let mut done = format!("Added to {}", entry.label);
     if started {
-        done = format!(
-            "{} now keeps its own list of {count} models; it no longer follows models.dev.\n{done}",
+        let note = format!(
+            "{} now keeps its own list of {count} models; it no longer follows models.dev",
             entry.label
         );
+        port.stderr(warning(&call.invocation.path.join(" "), &note)).await?;
     }
-    model_answer(&port, call.invocation.json, model, &done).await
+    model_answer(&port, call.invocation.json, model).await
 }
 
 /// The models the entry's vendor offers now, as a configured list holds
@@ -718,7 +726,7 @@ async fn edit_model(
     }
     let model = model.clone();
     write_list(&shard, &user, entry, models).await?;
-    model_answer(&port, call.invocation.json, model, &format!("Changed in {}", entry.label)).await
+    model_answer(&port, call.invocation.json, model).await
 }
 
 async fn remove_model(
@@ -734,7 +742,7 @@ async fn remove_model(
     let index = listed(entry, &models, &args.model)?;
     let model = models.remove(index);
     write_list(&shard, &user, entry, models).await?;
-    model_answer(&port, call.invocation.json, model, &format!("Removed from {}", entry.label)).await
+    model_answer(&port, call.invocation.json, model).await
 }
 
 /// The word that empties a field an option sets.
@@ -754,9 +762,9 @@ async fn user(shard: &Shard) -> Result<UserDto, RpcError> {
 }
 
 /// The model the calling agent runs on, while its session is live.
-fn caller_model<A>(shard: &Shard, call: &Call<A>) -> Option<ModelSelection> {
-    let conversation = conversation_of(&call.invocation).ok()?;
-    let job = call.invocation.caller.as_ref()?;
+fn caller_model(shard: &Shard, invocation: &RpcInvocation) -> Option<ModelSelection> {
+    let conversation = conversation_of(invocation).ok()?;
+    let job = invocation.caller.as_ref()?;
     let node = shard.agent().node(&root_of(&conversation), &job.node)?;
     Some(node.session().model())
 }
@@ -947,17 +955,23 @@ fn extensions_of(text: &str) -> Result<Option<Vec<FileExtension>>, RpcError> {
     }
 }
 
-async fn model_answer(
-    port: &RpcPort,
-    json_output: bool,
-    model: ConfiguredModel,
-    done: &str,
-) -> Result<u8, RpcError> {
+/// The answer of a `models` change: the model as the list holds it now,
+/// or as it held it before it was removed.
+async fn model_answer(port: &RpcPort, json_output: bool, model: ConfiguredModel) -> Result<u8, RpcError> {
     if json_output {
-        return json(port, &ModelAnswer { model }).await;
+        return json(port, &model).await;
     }
-    let row = configured_row(&model);
-    out(port, format!("{done}: {}\n", row.join("  "))).await
+    let mut fields = Fields::new();
+    fields
+        .field("ID", model.id.as_str())
+        .field("Name", model.display_name.as_str())
+        .field("Context (tokens)", model.context_window)
+        .field("Output (tokens)", model.output_limit)
+        .field("Default effort", model.thinking_efforts.first())
+        .field("Efforts", list_cell(&model.thinking_efforts))
+        .field("Files", files_cell(model.accepted_extensions.as_deref()))
+        .field("Fast tier", model.fast_tier.as_deref());
+    out(port, fields.render()).await
 }
 
 /// The entry as `show` and a change answer it.
@@ -966,6 +980,7 @@ async fn shown(
     user: &UserDto,
     scope: &Scope,
     entry: &ProviderEntry,
+    current: Option<&ModelSelection>,
 ) -> Result<ShownEntry, RpcError> {
     let services = shard.services();
     let accounts = match entry.credential {
@@ -1007,6 +1022,9 @@ async fn shown(
                     tiers: tiers(&model.model.service_tiers),
                     accepted_extensions: model.model.accepted_extensions.clone(),
                     hidden: scope.preferences.hides_model(&entry.id, &model.model.id),
+                    current: current.is_some_and(|current| {
+                        current.provider_id == entry.id.as_str() && current.model.id == model.model.id
+                    }),
                 })
                 .collect()
         })
@@ -1031,67 +1049,44 @@ async fn shown(
     })
 }
 
-async fn answer(
-    port: &RpcPort,
-    json_output: bool,
-    shown: ShownEntry,
-    note: Option<String>,
-) -> Result<u8, RpcError> {
+async fn answer(port: &RpcPort, json_output: bool, shown: ShownEntry) -> Result<u8, RpcError> {
     if json_output {
-        return json(port, &ProviderAnswer { provider: shown }).await;
+        return json(port, &shown).await;
     }
-    let mut text = note.map(|note| format!("{note}\n")).unwrap_or_default();
-    text.push_str(&shown.render());
-    out(port, text).await
+    out(port, shown.render()).await
 }
 
 fn tiers(tiers: &[demi_shared_types::ServiceTier]) -> Vec<String> {
     tiers.iter().map(|tier| tier.id.clone()).collect()
 }
 
-/// A token count as a menu shows it: `1M`, `128K`, `1.2M`.
-fn tokens(count: u32) -> String {
-    let scaled = |value: f64, unit: &str| {
-        let text = format!("{value:.1}");
-        format!("{}{unit}", text.strip_suffix(".0").unwrap_or(&text))
-    };
-    match count {
-        1_000_000.. => scaled(f64::from(count) / 1_000_000.0, "M"),
-        1_000.. => scaled(f64::from(count) / 1_000.0, "K"),
-        _ => count.to_string(),
-    }
+/// A list of values as one cell, comma-separated; empty when it has none.
+fn list_cell(values: &[String]) -> String {
+    values.join(",")
 }
 
-/// Efforts as a list shows them: the default marked `*`, and `off` last
-/// when thinking can be turned off.
-fn efforts_text(efforts: &[String], can_turn_off: bool) -> String {
-    let mut words: Vec<String> = efforts
-        .iter()
-        .enumerate()
-        .map(|(index, effort)| {
-            if index == 0 {
-                format!("{effort}*")
-            } else {
-                effort.clone()
-            }
-        })
-        .collect();
+/// Efforts as a cell: the model's, and `off` last when thinking can be
+/// turned off.
+fn efforts_cell(efforts: &[String], can_turn_off: bool) -> String {
+    let mut words = efforts.to_vec();
     if can_turn_off {
         words.push(EFFORT_OFF.to_owned());
     }
-    words.join(" ")
+    list_cell(&words)
 }
 
-/// The files a model reads, as a row shows them.
-fn files_text(extensions: Option<&[FileExtension]>) -> String {
+/// The files a model reads as a cell: missing when unknown, `none` for no
+/// file.
+fn files_cell(extensions: Option<&[FileExtension]>) -> Cell {
     match extensions {
-        None => "files unknown".to_owned(),
-        Some([]) => "no files".to_owned(),
+        None => Cell::from(None::<String>),
+        Some([]) => "none".into(),
         Some(extensions) => extensions
             .iter()
             .map(ToString::to_string)
             .collect::<Vec<_>>()
-            .join(" "),
+            .join(",")
+            .into(),
     }
 }
 
@@ -1135,175 +1130,64 @@ fn kind_text(kind: CredentialKind) -> &'static str {
     }
 }
 
-/// Rows in columns two spaces apart, a column no row fills left out.
-fn columns(rows: &[Vec<String>]) -> String {
-    let count = rows.iter().map(Vec::len).max().unwrap_or(0);
-    let mut widths = vec![0; count];
-    for row in rows {
-        for (width, cell) in widths.iter_mut().zip(row) {
-            *width = (*width).max(cell.chars().count());
-        }
-    }
-    let mut text = String::new();
-    for row in rows {
-        let line: Vec<String> = row
-            .iter()
-            .zip(&widths)
-            .filter(|(_, width)| **width > 0)
-            .map(|(cell, width)| format!("{cell:width$}"))
-            .collect();
-        text.push_str(line.join("  ").trim_end());
-        text.push('\n');
-    }
-    text
-}
-
-/// A search match as `models search` lists it.
-fn match_row(found: &ModelMatch) -> Vec<String> {
-    vec![
-        found.reference.clone(),
-        found.display_name.clone(),
-        found.context_window.map_or_else(|| "-".to_owned(), tokens),
-        found
-            .output_limit
-            .map_or_else(|| "-".to_owned(), |limit| format!("out {}", tokens(limit))),
-        efforts_text(&found.thinking_efforts, false),
-        files_text(found.accepted_extensions.as_deref()),
-    ]
-}
-
-/// A configured model as a change answers it.
-fn configured_row(model: &ConfiguredModel) -> Vec<String> {
-    let mut row = vec![
-        model.id.as_str().to_owned(),
-        model.display_name.as_str().to_owned(),
-        model.context_window.map_or_else(|| "-".to_owned(), tokens),
-        model
-            .output_limit
-            .map_or_else(|| "-".to_owned(), |limit| format!("out {}", tokens(limit))),
-        efforts_text(&model.thinking_efforts, false),
-        files_text(model.accepted_extensions.as_deref()),
-    ];
-    if let Some(tier) = &model.fast_tier {
-        row.push(format!("fast {tier}"));
-    }
-    row.retain(|cell| !cell.is_empty());
-    row
-}
-
-impl Listing {
-    /// The text `list` prints: each entry's name, kind and state, then a row
-    /// per model in columns, the calling agent's marked with `*`, as is
-    /// each default effort, and the mark's key last.
-    fn render(&self) -> String {
-        if self.providers.is_empty() {
-            return "The user has no provider entry; `demi providers add` adds one, or the user adds one in Settings > Providers.\n".to_owned();
-        }
-        let rows: Vec<Vec<String>> = self
-            .providers
-            .iter()
-            .flat_map(|entry| &entry.models)
-            .map(|model| {
-                vec![
-                    format!("{} {}", if model.current { '*' } else { ' ' }, model.id),
-                    model.name.clone(),
-                    model.window.map_or_else(|| "-".to_owned(), tokens),
-                    efforts_text(&model.efforts, model.can_turn_off),
-                    model.tiers.join(" "),
-                    if model.images { "images" } else { "-" }.to_owned(),
-                    if model.hidden { "turned off" } else { "" }.to_owned(),
-                ]
-            })
-            .collect();
-        let mut lines = columns(&rows).lines().map(str::to_owned).collect::<Vec<_>>().into_iter();
-        let mut text = String::new();
-        for entry in &self.providers {
-            let hidden = if entry.hidden { " · turned off" } else { "" };
-            text.push_str(&format!(
-                "{} · {} · {}{hidden}\n",
-                entry.name,
-                kind_text(entry.kind),
-                state(&entry.availability)
-            ));
-            for line in lines.by_ref().take(entry.models.len()) {
-                text.push_str(&line);
-                text.push('\n');
-            }
-        }
-        text.push_str("* the model this agent runs on; an effort with * is the model's default\n");
-        text
-    }
-}
-
 impl ShownEntry {
     /// The text `show` prints: a setting per line, then a row per model.
     fn render(&self) -> String {
-        let mut fields = vec![
-            ("name", self.name.clone()),
-            ("id", self.id.clone()),
-            ("kind", kind_text(self.kind).to_owned()),
-        ];
-        if let Some(vendor) = &self.vendor {
-            fields.push(("vendor", vendor.clone()));
+        let mut accounts = Table::new(["account"]);
+        for account in &self.accounts {
+            accounts.row([account.as_str()]);
         }
-        fields.push(("family", self.family.clone()));
-        if let Some(wire) = self.wire {
-            fields.push(("wire", wire.to_string()));
+        let mut models = Table::new([
+            "id",
+            "context (tokens)",
+            "output (tokens)",
+            "default effort",
+            "efforts",
+            "tiers",
+            "files",
+            "current",
+            "hidden",
+            "name",
+        ]);
+        for model in &self.models {
+            models.row::<Cell>([
+                model.id.as_str().into(),
+                model.context_window.into(),
+                model.output_limit.into(),
+                model.efforts.first().into(),
+                efforts_cell(&model.efforts, model.can_turn_off).into(),
+                list_cell(&model.tiers).into(),
+                files_cell(model.accepted_extensions.as_deref()),
+                model.current.into(),
+                model.hidden.into(),
+                model.name.as_str().into(),
+            ]);
         }
-        // A compatible entry names no vendor, and has no endpoint until the
-        // user gives one.
-        if self.kind == CredentialKind::ApiKey {
-            let none = match self.vendor {
-                Some(_) => "the vendor's",
-                None => "not set",
-            };
-            fields.push((
-                "endpoint",
-                self.endpoint.clone().unwrap_or_else(|| none.to_owned()),
-            ));
+        let mut fields = Fields::new();
+        fields
+            .field("ID", self.id.as_str())
+            .field("Name", self.name.as_str())
+            .field("Kind", kind_text(self.kind))
+            .field("Vendor", self.vendor.as_deref())
+            .field("Family", self.family.as_str())
+            .field("Wire", self.wire.map(|wire| wire.to_string()))
+            .field("Endpoint", self.endpoint.as_deref())
+            .field("Key saved", self.key_saved);
+        if self.kind == CredentialKind::Subscription {
+            fields.table("Accounts", &accounts);
         }
-        if let Some(saved) = self.key_saved {
-            fields.push(("key", if saved { "saved" } else { "not saved" }.to_owned()));
-        }
-        if self.kind == CredentialKind::Subscription && !self.accounts.is_empty() {
-            fields.push(("accounts", self.accounts.join(", ")));
-        }
-        fields.push(("state", state(&self.availability)));
-        if self.hidden {
-            fields.push(("menu", "turned off in Settings > Providers".to_owned()));
-        }
-        fields.push((
-            "models",
-            match self.models_from {
-                ModelSource::List => "its own list",
-                ModelSource::Vendor => "its vendor's list on models.dev",
-                ModelSource::Provider => "the provider's own list",
-            }
-            .to_owned(),
-        ));
-        let mut text: String = fields
-            .iter()
-            .map(|(field, value)| format!("{field:10}{value}\n"))
-            .collect();
-        let rows: Vec<Vec<String>> = self
-            .models
-            .iter()
-            .map(|model| {
-                vec![
-                    format!("  {}", model.id),
-                    model.name.clone(),
-                    model.context_window.map_or_else(|| "-".to_owned(), tokens),
-                    model
-                        .output_limit
-                        .map_or_else(|| "-".to_owned(), |limit| format!("out {}", tokens(limit))),
-                    efforts_text(&model.efforts, model.can_turn_off),
-                    model.tiers.join(" "),
-                    files_text(model.accepted_extensions.as_deref()),
-                    if model.hidden { "turned off" } else { "" }.to_owned(),
-                ]
-            })
-            .collect();
-        text.push_str(&columns(&rows));
-        text
+        fields
+            .field("Status", state(&self.availability))
+            .field("Hidden", self.hidden)
+            .field(
+                "Models from",
+                match self.models_from {
+                    ModelSource::List => "list",
+                    ModelSource::Vendor => "vendor",
+                    ModelSource::Provider => "provider",
+                },
+            )
+            .table("Models", &models);
+        fields.render()
     }
 }

@@ -56,7 +56,7 @@ fn help_and_command_lines_match_the_recorded_cases() {
     // A group's help lists its operations; a command's gives its usage.
     assert_eq!(
         tree.help("fixture"),
-        "fixture: CLI fixture.\n\nSubcommands:\n  fixture read — Read a native file."
+        "Usage: fixture <command>\n\nCLI fixture.\n\nCommands:\n  read  Read a native file."
     );
     assert_eq!(help(&tree, &["read"]), fixture["help"].as_str().unwrap());
     for case in fixture["cases"].as_array().unwrap() {
@@ -344,15 +344,15 @@ fn each_field_takes_its_value_from_its_one_source() {
     ]
     .join("\n\n");
     for shown in [
-        "  filer create <path> <<'EOF'\n  <content>\n  EOF\n",
-        "    Stdin body: content - File content",
-        "  filer forward -- <args>...\n",
-        "  filer upload <path>...\n",
-        "      <path>... (required, repeatable)",
-        "  filer key <tab> [<ref>] <key>\n",
-        "      <ref> (optional, or --ref <ref>)",
-        "  filer eval <tab> [<ref>] [<expression>]\n  filer eval <tab> [<ref>] <<'EOF'\n  <expression>\n  EOF\n",
-        "    Stdin body: expression, not read when given as <expression>",
+        "Usage: filer create <path> <<'EOF'\n       <content>\n       EOF\n",
+        "Stdin:\n  <content>  File content",
+        "Usage: filer forward -- <args>...\n",
+        "Usage: filer upload <path>...\n",
+        "  <path>...  (required, repeatable)",
+        "Usage: filer key <tab> [<ref>] <key>\n",
+        "  <ref>  (optional, or --ref <ref>)",
+        "Usage: filer eval <tab> [<ref>] [<expression>]\n       filer eval <tab> [<ref>] <<'EOF'\n       <expression>\n       EOF\n",
+        "Stdin:\n  <expression>  (not read when given as <expression>)",
     ] {
         assert!(help.contains(shown), "{shown} not in {help}");
     }
@@ -625,7 +625,7 @@ fn a_leaf_names_a_permission_category_one_of_its_groups_declares_and_its_help_sa
     declared.validate().unwrap();
     let help = help(&declared, &["skills", "add"]);
     assert!(
-        help.contains("    Permission: needs the user's permission (skills.manage) in each conversation; without it, the command fails at once and the user is asked."),
+        help.contains("\nPermission: needs the user's permission (skills.manage) in each conversation; without it, the command fails at once and the user is asked."),
         "{help}"
     );
 

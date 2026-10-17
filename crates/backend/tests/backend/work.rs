@@ -345,7 +345,7 @@ async fn the_model_creates_reads_edits_and_lists_its_files_where_the_conversatio
     );
     // The conversation runs in the device's home, outside projects.
     assert!(
-        listed.received[0].contains("host: machine \"alpha\" (") && listed.received[0].contains(", online)"),
+        listed.received[0].contains("Name: alpha\nID: ") && listed.received[0].contains("\nStatus: online\nProject: -\nDirectory: "),
         "{}",
         listed.received[0]
     );
@@ -809,7 +809,7 @@ async fn after_a_backend_restart_the_runner_comes_back_and_the_conversation_goes
     );
     assert!(after.received[1].contains("kept"), "{}", after.received[1]);
     assert!(
-        after.received[1].contains("host: machine \"alpha\" (") && after.received[1].contains(", online)"),
+        after.received[1].contains("Name: alpha\nID: ") && after.received[1].contains("\nStatus: online\n"),
         "{}",
         after.received[1]
     );
@@ -884,14 +884,14 @@ async fn demi_host_shell_carries_bytes_both_ways_through_pipes_and_keeps_the_far
     let result = &pulled.received[0];
     assert!(
         result.contains(&format!(
-            "beta  {}  online  {}  (primary)",
+            "beta   {}  online  primary   {}",
             beta.id(),
             b.display()
         )),
         "{result}"
     );
     assert!(
-        result.contains(&format!("alpha  {a_id}  online  {a_path}  (attached)")),
+        result.contains(&format!("alpha  {a_id}  online  attached  {a_path}")),
         "{result}"
     );
     assert!(result.contains("copied"), "{result}");
@@ -975,7 +975,7 @@ EOF"#;
         wandered.received[0]
     );
     assert!(
-        wandered.received[0].contains(&format!("alpha  {a_id}  online  {a_path}  (attached)")),
+        wandered.received[0].contains(&format!("alpha  {a_id}  online  attached  {a_path}")),
         "{}",
         wandered.received[0]
     );
@@ -1074,11 +1074,19 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
         // reads of the whole wait make at most 100.
         tokio::time::sleep(std::time::Duration::from_millis(400)).await;
         reads += 1;
-        let look = format!("demi shell status {command}");
+        // The first look asks for JSON: the same result, with its facts.
+        let json = reads == 1;
+        let look = format!("demi shell status {command}{}", if json { " --json" } else { "" });
         let read = work
             .turn(vec![shell(&format!("s{reads}"), &look, 30_000), say("still waiting")])
             .await;
-        let shown = shown_output(read.received.first().expect("the look reaches the model"));
+        let mut shown = shown_output(read.received.first().expect("the look reaches the model"));
+        if json {
+            let status: Value = serde_json::from_str(&shown).expect(&shown);
+            assert_eq!((status["commandId"].as_str(), status["status"].as_str()), (Some(command.as_str()), Some("running")), "{shown}");
+            assert!(status["exitCode"].is_null() && status["runningMs"].is_u64(), "{shown}");
+            shown = status["result"].as_str().unwrap().to_owned();
+        }
         assert!(shown.starts_with("status: running"), "{shown}");
         output.push_str(&shown_output(&shown));
     }

@@ -15,7 +15,10 @@ use demi_backend_host_access::host_commands::conversation_of;
 use demi_host_interface::{
     Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc,
 };
-use demi_shared_types::{Nullable, Timestamp};
+use demi_shared_types::{
+    Nullable, Timestamp,
+    output::{Cell, Fields, Table},
+};
 use demi_web_api_protocol::credentials::{
     CredentialField, FIELDS_MAX, FieldKind, Keep, NAME_MAX, distinct,
 };
@@ -42,7 +45,7 @@ const SUMMARY: &str = "The user's credentials: named secrets such as API keys, t
 /// § Capability index).
 const ENTRY: &str = "Keeps the secrets a task needs, API keys, tokens, passwords, as the user's named credentials: `request` asks the user for one on a card and waits for the answer; `read` writes one field's value to standard output, to pass into a pipe, a file or `$(…)` without printing it. Use it whenever a task needs a secret, rather than asking the user to paste it into the conversation, where it would join the transcript.";
 
-const LIST_SUMMARY: &str = "List the user's credentials: name, fields (name, kind, label), when each is removed, and whether this conversation may use it. No value.";
+const LIST_SUMMARY: &str = "List the user's credentials: name, field names, when each is removed (- for kept always), and whether this conversation may use it. No value.";
 
 const SHOW_SUMMARY: &str = "Show one credential: its fields, the values of its visible fields once this conversation may use it, its note and its dates. A secret field's value is never shown; `read` passes it on.";
 
@@ -98,18 +101,6 @@ struct Listed {
     allowed: bool,
 }
 
-/// `list --json`.
-#[derive(Serialize, JsonSchema)]
-struct Listing {
-    credentials: Vec<Listed>,
-}
-
-/// `request --json`.
-#[derive(Serialize, JsonSchema)]
-struct Saved {
-    saved: Listed,
-}
-
 /// A field as `show` prints it: a visible field's value once the
 /// conversation may use the credential, never a secret one's.
 #[derive(Debug, Serialize, JsonSchema)]
@@ -138,12 +129,6 @@ struct Shown {
     allowed: bool,
 }
 
-/// `show --json`.
-#[derive(Serialize, JsonSchema)]
-struct ShowAnswer {
-    credential: Shown,
-}
-
 /// The `credentials` group, whose handlers act in `shard`.
 pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
     GroupBuilder::new("credentials", SUMMARY)
@@ -152,7 +137,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()
-                .json_output::<Listing>()
+                .json_output::<Vec<Listed>>()
                 .bind(TypedRpc::new(verb(shard.clone(), list))),
         )
         .leaf(
@@ -160,7 +145,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .input::<NameArgs>()
                 .describe("name", "The credential's name.")
                 .positionals(["name"])
-                .json_output::<ShowAnswer>()
+                .json_output::<Shown>()
                 .bind(TypedRpc::new(verb(shard.clone(), show))),
         )
         .leaf(
@@ -178,7 +163,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                 .describe("keep", "How long the credential is kept, which you decide by what it is for and the card tells the user: 1h (the default) for a secret used once, such as a key to add a provider; 1d or 30d for work that goes on that long; always for one the user wants you to keep using, which stays in Settings › Credentials.")
                 .positionals(["name"])
                 .running_hint(RUNNING_HINT)
-                .json_output::<Saved>()
+                .json_output::<Listed>()
                 .bind(TypedRpc::new(verb(shard.clone(), request))),
         )
         .leaf(
@@ -218,21 +203,39 @@ fn listed(credential: &StoredCredential, allowed: bool) -> Listed {
     }
 }
 
-/// A credential's fields in one line: `key (secret: API key), user (visible:
-/// User name)`.
-fn field_line(fields: &[CredentialField]) -> String {
+/// A credential's field names as one cell: `token,user`.
+fn field_names(fields: &[CredentialField]) -> String {
     fields
         .iter()
-        .map(|field| format!("{} ({}: {})", field.name, field.kind.as_str(), field.label.as_str()))
+        .map(|field| field.name.as_str())
         .collect::<Vec<_>>()
-        .join(", ")
+        .join(",")
 }
 
-fn kept(keep_until: Option<Timestamp>) -> String {
-    match keep_until {
-        Some(time) => format!("until {time}"),
-        None => "always".to_owned(),
+/// A credential's fields as a table: name, kind, label, and the value a
+/// visible field shows, missing for a secret one.
+fn field_table<'a>(fields: impl IntoIterator<Item = (&'a CredentialField, Option<&'a str>)>) -> Table {
+    let mut table = Table::new(["name", "kind", "value", "label"]);
+    for (field, value) in fields {
+        table.row::<Cell>([
+            field.name.as_str().into(),
+            field.kind.as_str().into(),
+            value.into(),
+            field.label.as_str().into(),
+        ]);
     }
+    table
+}
+
+/// A credential as `list` lists it and `request` answers it.
+fn listed_text(listed: &Listed) -> String {
+    let mut fields = Fields::new();
+    fields
+        .field("Name", listed.name.as_str())
+        .field("Keep until", listed.keep_until)
+        .field("Allowed", listed.allowed)
+        .table("Fields", &field_table(listed.fields.iter().map(|field| (field, None))));
+    fields.render()
 }
 
 pub(crate) async fn print_json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
@@ -254,27 +257,18 @@ async fn list(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8,
         .map(|credential| listed(credential, allowed.contains(&credential.id)))
         .collect();
     if call.invocation.json {
-        return print_json(&port, &Listing { credentials: listed }).await;
+        return print_json(&port, &listed).await;
     }
-    if listed.is_empty() {
-        port.stdout("The user has no credentials.\n").await?;
-        return Ok(0);
-    }
-    let mut text = String::new();
+    let mut table = Table::new(["name", "fields", "keep until", "allowed"]);
     for credential in &listed {
-        let use_here = if credential.allowed {
-            "this conversation may use it"
-        } else {
-            "this conversation must ask first, which `read` does"
-        };
-        text.push_str(&format!(
-            "{}\n  fields: {}\n  kept: {}; {use_here}\n",
-            credential.name,
-            field_line(&credential.fields),
-            kept(credential.keep_until),
-        ));
+        table.row::<Cell>([
+            credential.name.as_str().into(),
+            field_names(&credential.fields).into(),
+            credential.keep_until.into(),
+            credential.allowed.into(),
+        ]);
     }
-    port.stdout(text).await?;
+    port.stdout(table.render()).await?;
     Ok(0)
 }
 
@@ -305,6 +299,7 @@ async fn show(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result<u
     } else {
         Default::default()
     };
+    let credential_fields = credential.fields.clone();
     let shown = Shown {
         fields: credential
             .fields
@@ -328,39 +323,22 @@ async fn show(shard: Rc<Shard>, call: Call<NameArgs>, port: RpcPort) -> Result<u
         allowed,
     };
     if call.invocation.json {
-        return print_json(&port, &ShowAnswer { credential: shown }).await;
+        return print_json(&port, &shown).await;
     }
-    let mut text = format!("{}\n", shown.name);
-    for field in &shown.fields {
-        let value = match (field.kind, &field.value) {
-            (FieldKind::Secret, _) => "(secret; `read` passes it on)".to_owned(),
-            (FieldKind::Visible, Some(value)) => value.clone(),
-            (FieldKind::Visible, None) => "(shown once this conversation may use it)".to_owned(),
-        };
-        text.push_str(&format!(
-            "  {} ({}: {}): {value}\n",
-            field.name,
-            field.kind.as_str(),
-            field.label
-        ));
-    }
-    if !shown.note.is_empty() {
-        text.push_str(&format!("note: {}\n", shown.note));
-    }
-    text.push_str(&format!("kept: {}\n", kept(shown.keep_until)));
-    text.push_str(&format!(
-        "last used: {}\n",
-        shown
-            .last_used_at
-            .map_or_else(|| "never".to_owned(), |time| time.to_string())
-    ));
-    text.push_str(&format!("created: {}; changed: {}\n", shown.created_at, shown.updated_at));
-    text.push_str(if shown.allowed {
-        "this conversation may use it\n"
-    } else {
-        "this conversation must ask first, which `read` does\n"
-    });
-    port.stdout(text).await?;
+    let mut fields = Fields::new();
+    fields
+        .field("Name", shown.name.as_str())
+        .field("Keep until", shown.keep_until)
+        .field("Last used", shown.last_used_at)
+        .field("Created", shown.created_at)
+        .field("Updated", shown.updated_at)
+        .field("Allowed", shown.allowed)
+        .table(
+            "Fields",
+            &field_table(credential_fields.iter().zip(&shown.fields).map(|(field, shown)| (field, shown.value.as_deref()))),
+        )
+        .text("Note", &shown.note);
+    port.stdout(fields.render()).await?;
     Ok(0)
 }
 
@@ -423,22 +401,12 @@ async fn request(shard: Rc<Shard>, call: Call<RequestArgs>, port: RpcPort) -> Re
     )
     .await?;
     match answer {
-        Answer::Saved { credential, keep } => {
+        Answer::Saved { credential, .. } => {
+            let saved = listed(&credential, true);
             if call.invocation.json {
-                return print_json(&port, &Saved { saved: listed(&credential, true) }).await;
+                return print_json(&port, &saved).await;
             }
-            let fields = credential
-                .fields
-                .iter()
-                .map(|field| format!("{}: {}", field.name, field.kind.as_str()))
-                .collect::<Vec<_>>()
-                .join(", ");
-            port.stdout(format!(
-                "Saved credential \u{201c}{}\u{201d} ({fields}), {}.\n",
-                credential.name,
-                keep.phrase()
-            ))
-            .await?;
+            port.stdout(listed_text(&saved)).await?;
             Ok(0)
         }
         Answer::Declined => Err(failed(format!(

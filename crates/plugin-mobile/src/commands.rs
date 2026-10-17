@@ -34,7 +34,7 @@ macro_rules! operations {
 }
 
 operations! {
-    "list" => ListInput, ListResult, [], "List this Host's simulators: name, system, whether booted or open, and the simctl id.";
+    "list" => ListInput, ListResult, [], "List this Host's simulators: the simctl id or AVD name open takes, platform, system, state, the handle while open here, model and name; why a platform has none is a warning on stderr.";
     "open" => OpenInput, OpenResult, ["device"], format!("Open a simulator by its name or simctl id, booting it without a window when it is shut down; prints its handle, such as m1, its screenshot size and its simctl id, and shows it in the user's work panel. At most {MAX_DEVICES} per Host."); 
     "close" => CloseInput, CloseResult, ["device"], "Close a device; shuts it down when demi mobile booted it, else leaves it booted.";
     "screenshot" => ScreenshotInput, ScreenshotResult, ["device"], format!("Capture the settled screen: its PNG's bytes on stdout, its long side at most {SCREENSHOT_LONG_SIDE} pixels, so demi mobile screenshot m1 | demi file view shows it to you and > shot.png saves it; or save a new PNG with --output. Waits up to 1.5 s for the screen to stop changing.");

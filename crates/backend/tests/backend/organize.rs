@@ -164,7 +164,10 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
         vec![
             shell("t1", "demi host attach studio"),
             shell("t2", &format!("demi host detach studio && demi host move laptop {}", project_path(&laptop, "notes"))),
-            shell("t3", "demi host list && demi host current"),
+            shell(
+                "t3",
+                "demi host list && demi host current && demi host list --json && demi host current --json && demi host devices --json && demi conversation projects && demi conversation projects --json",
+            ),
             say("done"),
         ],
     );
@@ -178,6 +181,24 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
     // The detach and the move waited: studio was still attached, and the
     // conversation still ran in its directory, for the turn's next command.
     let after_waits = &asked[3];
+    // The hosts and projects as tables, and as JSON: an array for a list,
+    // an object for the one host.
+    let (laptop_id, studio_id) = (laptop.id(), studio.id());
+    assert!(after_waits.contains("NAME    ID                                    STATUS  ROLE      DIRECTORY\\n"), "{after_waits}");
+    assert!(
+        after_waits.contains(&format!(r#"[{{\"name\":\"laptop\",\"id\":\"{laptop_id}\",\"status\":\"online\",\"role\":\"primary\",\"directory\":"#)),
+        "{after_waits}"
+    );
+    assert!(
+        after_waits.contains(&format!(r#"\n{{\"name\":\"laptop\",\"id\":\"{laptop_id}\",\"status\":\"online\",\"project\":\"work\",\"directory\":"#)),
+        "{after_waits}"
+    );
+    assert!(
+        after_waits.contains(&format!(r#"{{\"name\":\"studio\",\"id\":\"{studio_id}\",\"kind\":\"paired\",\"status\":\"online\",\"role\":\"attached\",\"host\":\"studio\"}}"#)),
+        "{after_waits}"
+    );
+    assert!(after_waits.contains("  HOST    DIRECTORY  ") && after_waits.contains("/notes  notes\\n"), "{after_waits}");
+    assert!(after_waits.contains(r#",\"name\":\"notes\",\"host\":\"laptop\",\"directory\":"#), "{after_waits}");
     assert!(
         after_waits.contains("studio is detached when this conversation's work ends"),
         "{after_waits}"
@@ -186,12 +207,12 @@ async fn an_attach_applies_at_once_and_a_detach_and_a_move_wait_until_the_work_e
         after_waits.contains(&format!("The move to laptop ({}) applies", project_path(&laptop, "notes"))),
         "{after_waits}"
     );
-    assert!(after_waits.contains("(attached)"), "{after_waits}");
+    assert!(after_waits.contains("  attached  "), "{after_waits}");
     // Nor did the turn's next request learn of a change: the attach's block
     // is the last it holds.
     assert!(after_waits.contains("[Execution context 1]"), "{after_waits}");
     assert!(!after_waits.contains("[Execution context 2]"), "{after_waits}");
-    assert!(after_waits.contains("host: workspace \\\"work\\\""), "{after_waits}");
+    assert!(after_waits.contains("Project: work\\n"), "{after_waits}");
 
     // Once the turn ended both were made, in one transition.
     eventually("the move and the detach are made", || async {
@@ -643,7 +664,7 @@ async fn a_host_move_asks_once_for_a_host_out_of_reach_and_lands_in_its_director
     );
     socket.chat("m1", "Work on the studio").await;
     let asked = scripts.asked(|session| session == FIRST);
-    assert!(asked[1].contains(&format!("studio  {}  online", studio.id())), "{}", asked[1]);
+    assert!(asked[1].contains(&format!("studio  {}  paired  online", studio.id())), "{}", asked[1]);
     assert!(asked[2].contains("This conversation runs there already."), "{}", asked[2]);
     assert!(
         asked[3].contains("demi host move: this conversation needs the user's permission to reach studio; the request was sent to the user"),

@@ -10,9 +10,12 @@ use std::rc::{Rc, Weak};
 use demi_agent_tools::ModelChoice;
 use demi_backend_host_access::host_commands::conversation_of;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
-use demi_shared_types::{AutomationId, Timestamp};
+use demi_shared_types::{
+    AutomationId, Timestamp,
+    output::{Cell, Fields, Table, warning},
+};
 use demi_web_api_protocol::automations::{
-    AutomationDto, AutomationPatch, AutomationTarget, RunState, Schedule, Trigger, Weekday,
+    AutomationDto, AutomationPatch, AutomationTarget, PauseReason, RunState, Schedule, Trigger, Weekday,
 };
 use demi_web_api_protocol::conversations::ConversationTarget;
 use demi_web_api_protocol::devices::DeviceKind;
@@ -40,7 +43,7 @@ const SUMMARY: &str = "The user's automations: the agent started at a time, when
 /// The group's entry in the model's capability index.
 const ENTRY: &str = "Starts the agent without the user, at a time (once, daily on chosen weekdays, every interval, or cron), when a command's output changes, or when another system calls a URL, in a new conversation each run or in this one. Use it when the user asks for something to happen on a schedule or on an event: restate the schedule in words and the target, and create it once the user agrees.";
 
-const LIST_SUMMARY: &str = "List the user's automations: id, name, trigger, target, whether it is on, and its last run.";
+const LIST_SUMMARY: &str = "List the user's automations: id, whether it is on, its trigger's kind, its next and last run, and its name; show gives the schedule and the target.";
 const SHOW_SUMMARY: &str = "Show one automation: its trigger, target, model, prompt, state and latest runs. A run's own agent may show only its own automation.";
 const CREATE_SUMMARY: &str = "Create an automation, on at once, with the prompt each run sends on stdin. One trigger: --at, --daily [--days], --every, --cron, --watch with --every for a change, or --url. Without --conversation or --new it wakes this conversation. Restate the schedule in words and get the user's agreement first. Needs the user's permission.";
 const EDIT_SUMMARY: &str = "Change the parts the options name and keep the others; a trigger option replaces the trigger, stdin replaces the prompt. --paused pauses it, --on turns it on. Needs the user's permission.";
@@ -91,13 +94,11 @@ struct EditArgs {
     on: Option<bool>,
 }
 
-#[derive(Serialize, JsonSchema)]
-struct Listing {
-    automations: Vec<AutomationDto>,
-}
-
+/// `show --json`, and the answer of `create` and `edit`: the automation
+/// with its URL trigger's address and, once, its secret.
 #[derive(Serialize, JsonSchema)]
 struct Shown {
+    #[serde(flatten)]
     automation: AutomationDto,
     /// A URL trigger's secret, printed once by `create` and by a change
     /// that made it.
@@ -126,7 +127,7 @@ pub(crate) fn automation_group(shard: Weak<Shard>) -> GroupBuilder {
             .describe("new", "A new conversation each run; --device and --directory say where, the Cloud's own directory by default.")
             .describe("device", "With --new: the device, by its name, or Cloud.")
             .describe("directory", "With --new: an absolute directory on the device, such as a project's.")
-            .describe("model", "With --new: a model id `demi providers list` lists, which each run's new conversation starts with.")
+            .describe("model", "With --new: a model id of an entry `demi providers show` shows, which each run's new conversation starts with.")
             .describe("effort", "With --model: an effort the model lists, or off.")
             .describe("prompt", "The message each run sends, written as the user would write it; stdin.")
             .stdin_field("prompt")
@@ -137,7 +138,7 @@ pub(crate) fn automation_group(shard: Weak<Shard>) -> GroupBuilder {
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()
-                .json_output::<Listing>()
+                .json_output::<Vec<AutomationDto>>()
                 .bind(TypedRpc::new(verb(shard.clone(), list))),
         )
         .leaf(
@@ -202,41 +203,24 @@ fn id_of(text: &str) -> Result<AutomationId, RpcError> {
     AutomationId::try_from(text).map_err(|_| failed("give the automation's id, as `list` prints it"))
 }
 
-/// A trigger in words, as `list` and `show` print it.
-fn trigger_words(automation: &AutomationDto) -> String {
-    let zone = &automation.time_zone;
-    match &automation.trigger {
+/// A trigger's kind, as `list` and `show` print it: `once`, `daily`,
+/// `every`, `cron`, `watch` or `url`.
+fn trigger_kind(trigger: &Trigger) -> &'static str {
+    match trigger {
         Trigger::Time { schedule } => match schedule {
-            Schedule::Once { at } => format!("once at {at} ({zone})"),
-            Schedule::Daily { time, days } if days.len() == 7 => format!("every day at {time} ({zone})"),
-            Schedule::Daily { time, days } => format!(
-                "at {time} on {} ({zone})",
-                days.iter().map(|day| day.as_str()).collect::<Vec<_>>().join(",")
-            ),
-            Schedule::Every { minutes } => format!("every {minutes} min"),
-            Schedule::Cron { expression } => format!("cron \"{expression}\" ({zone})"),
+            Schedule::Once { .. } => "once",
+            Schedule::Daily { .. } => "daily",
+            Schedule::Every { .. } => "every",
+            Schedule::Cron { .. } => "cron",
         },
-        Trigger::Change { command, every_minutes } => {
-            format!("every {every_minutes} min when the output of `{command}` changes")
-        }
-        Trigger::Url {} => "when its URL is called".into(),
+        Trigger::Change { .. } => "watch",
+        Trigger::Url {} => "url",
     }
 }
 
-fn target_words(target: &AutomationTarget) -> String {
-    match target {
-        AutomationTarget::Existing { conversation_id } => format!("wakes conversation {conversation_id}"),
-        AutomationTarget::New { target } => match target {
-            ConversationTarget::Cloud { path: None } => "a new conversation on the Cloud".into(),
-            ConversationTarget::Cloud { path: Some(path) } => format!("a new conversation on the Cloud in {path}"),
-            ConversationTarget::Device { device_id, path } => {
-                format!("a new conversation on device {device_id} in {path}")
-            }
-            ConversationTarget::Workspace { workspace_id } => {
-                format!("a new conversation in project {workspace_id}")
-            }
-        },
-    }
+/// An automation's status: `on` or `paused`.
+fn status(automation: &AutomationDto) -> &'static str {
+    if automation.paused { "paused" } else { "on" }
 }
 
 fn state_words(state: RunState) -> &'static str {
@@ -247,22 +231,6 @@ fn state_words(state: RunState) -> &'static str {
         RunState::Skipped => "skipped",
         RunState::Failed => "failed",
     }
-}
-
-fn line(automation: &AutomationDto) -> String {
-    let state = if automation.paused { "paused" } else { "on" };
-    let last = automation
-        .runs
-        .first()
-        .map(|run| format!("; last run {} at {}", state_words(run.state), run.at))
-        .unwrap_or_default();
-    format!(
-        "{}  {}\n  {}; {}; {state}{last}\n",
-        automation.id,
-        automation.name,
-        trigger_words(automation),
-        target_words(&automation.target)
-    )
 }
 
 fn address(shard: &Shard, automation: &AutomationDto) -> Option<String> {
@@ -276,61 +244,112 @@ fn address(shard: &Shard, automation: &AutomationDto) -> Option<String> {
 async fn list(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let automations = shard.automation_list().await.map_err(failed)?;
     if call.invocation.json {
-        return print_json(&port, &Listing { automations }).await;
+        return print_json(&port, &automations).await;
     }
-    if automations.is_empty() {
-        port.stdout("The user has no automations.\n").await?;
-        return Ok(0);
+    let mut table = Table::new(["id", "status", "trigger", "next run", "last run", "name"]);
+    for automation in &automations {
+        table.row::<Cell>([
+            automation.id.to_string().into(),
+            status(automation).into(),
+            trigger_kind(&automation.trigger).into(),
+            automation.next_at.into(),
+            automation.runs.first().map(|run| run.at).into(),
+            automation.name.as_str().into(),
+        ]);
     }
-    let text: String = automations.iter().map(line).collect();
-    port.stdout(text).await?;
+    port.stdout(table.render()).await?;
     Ok(0)
 }
 
 async fn print_shown(
     shard: &Shard,
     port: &RpcPort,
+    command: &str,
     json: bool,
     automation: AutomationDto,
     secret: Option<String>,
 ) -> Result<u8, RpcError> {
     let address = address(shard, &automation);
+    if secret.is_some() {
+        port.stderr(warning(
+            command,
+            "the secret is printed once; the user can show it again on the automation's page",
+        ))
+        .await?;
+    }
     if json {
         return print_json(port, &Shown { automation, secret, address }).await;
     }
-    let mut text = line(&automation);
-    if let Some(address) = &address {
-        text.push_str(&format!("  address: {address}\n"));
-    }
-    if let Some(secret) = &secret {
-        text.push_str(&format!(
-            "  secret: {secret}\n  (printed once; the user can show it again on the automation's page)\n"
-        ));
-    }
-    if let Some(limit) = automation.max_runs_per_day {
-        text.push_str(&format!("  at most {limit} runs a day\n"));
-    }
-    if let Some(next) = automation.next_at {
-        text.push_str(&format!("  next: {next}\n"));
-    }
-    if let Some(model) = &automation.model {
-        text.push_str(&format!("  model: {} ({})\n", model.model_id, model.provider_id));
-    }
-    text.push_str(&format!("  prompt:\n{}\n", indent(&automation.prompt)));
+    let mut fields = Fields::new();
+    fields
+        .field("ID", automation.id.to_string())
+        .field("Name", automation.name.as_str())
+        .field("Status", status(&automation))
+        .field("Paused because", automation.paused_because.map(|reason| match reason {
+            PauseReason::ConversationArchived => "conversation_archived",
+            PauseReason::ConversationDeleted => "conversation_deleted",
+        }))
+        .field("Trigger", trigger_kind(&automation.trigger));
+    match &automation.trigger {
+        Trigger::Time { schedule } => match schedule {
+            Schedule::Once { at } => fields.field("At", *at),
+            Schedule::Daily { time, days } => fields.field("Time", time.as_str()).field(
+                "Days",
+                days.iter().map(|day| day.as_str()).collect::<Vec<_>>().join(","),
+            ),
+            Schedule::Every { minutes } => fields.field("Every (min)", *minutes),
+            Schedule::Cron { expression } => fields.field("Cron", expression.as_str()),
+        },
+        Trigger::Change { command, every_minutes } => {
+            fields.field("Command", command.as_str()).field("Every (min)", *every_minutes)
+        }
+        Trigger::Url {} => fields
+            .field("Address", address.as_deref())
+            .field("Secret", secret.as_deref())
+            .field("Stripe signing", automation.stripe_signing),
+    };
+    fields
+        .field("Time zone", automation.time_zone.as_str())
+        .field("Max runs per day", automation.max_runs_per_day);
+    match &automation.target {
+        AutomationTarget::Existing { conversation_id } => fields
+            .field("Target", "conversation")
+            .field("Conversation", conversation_id.to_string()),
+        AutomationTarget::New { target } => {
+            fields.field("Target", "new");
+            match target {
+                ConversationTarget::Cloud { path } => {
+                    fields.field("Device", "Cloud").field("Directory", path.as_deref())
+                }
+                ConversationTarget::Device { device_id, path } => fields
+                    .field("Device", device_id.to_string())
+                    .field("Directory", path.as_str()),
+                ConversationTarget::Workspace { workspace_id } => {
+                    fields.field("Project", workspace_id.to_string())
+                }
+            }
+        }
+    };
+    let model = automation.model.as_ref();
+    fields
+        .field("Model", model.map(|model| model.model_id.as_str()))
+        .field("Provider ID", model.map(|model| model.provider_id.to_string()))
+        .field("Effort", model.and_then(|model| model.thinking_effort.as_deref()))
+        .field("Tier", model.and_then(|model| model.service_tier_id.as_deref()))
+        .field("Next run", automation.next_at)
+        .field("Created", automation.created_at);
+    let mut runs = Table::new(["at", "state", "conversation", "line"]);
     for run in automation.runs.iter().take(10) {
-        text.push_str(&format!(
-            "  run {} {}{}\n",
-            run.at,
-            state_words(run.state),
-            run.line.as_deref().map(|line| format!(": {line}")).unwrap_or_default()
-        ));
+        runs.row::<Cell>([
+            run.at.into(),
+            state_words(run.state).into(),
+            run.conversation_id.as_ref().map(ToString::to_string).into(),
+            run.line.as_deref().into(),
+        ]);
     }
-    port.stdout(text).await?;
+    fields.table("Runs", &runs).text("Prompt", &automation.prompt);
+    port.stdout(fields.render()).await?;
     Ok(0)
-}
-
-fn indent(text: &str) -> String {
-    text.lines().map(|line| format!("    {line}")).collect::<Vec<_>>().join("\n")
 }
 
 async fn show(shard: Rc<Shard>, call: Call<IdArgs>, port: RpcPort) -> Result<u8, RpcError> {
@@ -348,7 +367,7 @@ async fn show(shard: Rc<Shard>, call: Call<IdArgs>, port: RpcPort) -> Result<u8,
         .into_iter()
         .find(|automation| automation.id == id)
         .ok_or_else(|| failed(format!("{id}: the user has no automation of that id")))?;
-    print_shown(&shard, &port, call.invocation.json, automation, None).await
+    print_shown(&shard, &port, &call.invocation.path.join(" "), call.invocation.json, automation, None).await
 }
 
 /// The local time `text` names in `zone`: `2026-10-18 08:00`, or an
@@ -562,7 +581,7 @@ async fn create(shard: Rc<Shard>, call: Call<PartsArgs>, port: RpcPort) -> Resul
     // The user's grant is the confirmation: it is on at once.
     patch.paused = Some(false);
     let (automation, secret) = shard.create_automation(patch).await.map_err(refused)?;
-    print_shown(&shard, &port, call.invocation.json, automation, secret).await
+    print_shown(&shard, &port, &call.invocation.path.join(" "), call.invocation.json, automation, secret).await
 }
 
 async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u8, RpcError> {
@@ -581,7 +600,7 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
         return Err(failed("nothing to change: give an option, or the prompt on stdin"));
     }
     let (automation, secret) = shard.change_automation(&id, patch).await.map_err(refused)?;
-    print_shown(&shard, &port, call.invocation.json, automation, secret).await
+    print_shown(&shard, &port, &call.invocation.path.join(" "), call.invocation.json, automation, secret).await
 }
 
 async fn run(shard: Rc<Shard>, call: Call<IdArgs>, port: RpcPort) -> Result<u8, RpcError> {

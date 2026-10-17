@@ -1310,11 +1310,11 @@ async fn a_nested_command_prints_its_groups_help_and_only_json_output_that_match
     assert_eq!(exited(&help), 0, "{}", help.stderr.tail);
     let printed = &help.stdout.delta;
     assert!(
-        printed.starts_with("probe json: Output probes.\n\nSubcommands:\n  probe json emit — Print a text.\n"),
+        printed.starts_with("Usage: probe json <command>\n\nOutput probes.\n\nCommands:\n  emit  Print a text.\n"),
         "{printed}"
     );
     assert!(
-        printed.contains("  probe json emit <text> [--json]\n"),
+        printed.contains("Usage: probe json emit <text> [--json]\n"),
         "{printed}"
     );
     // Without --json the output passes as it is; with it, the output reaches

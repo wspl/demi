@@ -195,7 +195,7 @@ async fn each_spawn_reads_the_settings_as_they_are_and_a_child_keeps_what_it_was
     let (listed, _) = profiles(&fixture, &root()).await;
     assert_eq!(
         listed,
-        "explore   Finds code.\nreviewer  Reviews a change.\n"
+        "NAME      SOURCE  MODEL      EFFORT  DESCRIPTION\nexplore   user    inherited  -       Finds code.\nreviewer  user    inherited  -       Reviews a change.\n"
     );
     let two = spawn(
         &fixture,
@@ -314,22 +314,20 @@ async fn profiles_lists_the_enabled_profiles_with_what_is_missing_and_says_when_
     let gone = "profile \"far-reviewer\" is unavailable: its provider entry is gone or no longer available to the user; choose another model for the profile in settings";
     assert_eq!(
         text,
-        format!(
-            "explore       Finds code; it reports and changes nothing.\nfar-reviewer  Reviews a finished change.\n              {gone}\nrestricted    May not spawn.\n"
-        )
+        "NAME          SOURCE  MODEL       EFFORT  DESCRIPTION\nexplore       user    fast-model  low     Finds code; it reports and changes nothing.\nfar-reviewer  user    -           -       Reviews a finished change.\nrestricted    user    inherited   -       May not spawn.\n"
     );
     assert_eq!(
         listing,
-        json!({
-            "enabled": true,
-            "choice": { "type": "default" },
-            "profiles": [
-                { "name": "explore", "description": "Finds code; it reports and changes nothing.", "unavailable": null },
-                { "name": "far-reviewer", "description": "Reviews a finished change.", "unavailable": gone },
-                { "name": "restricted", "description": "May not spawn.", "unavailable": null },
-            ],
-        })
+        json!([
+            { "name": "explore", "workflow": null, "model": "fast-model", "effort": "low", "inherited": false, "description": "Finds code; it reports and changes nothing.", "unavailable": null },
+            { "name": "far-reviewer", "workflow": null, "model": "big-model", "effort": "high", "inherited": false, "description": "Reviews a finished change.", "unavailable": gone },
+            { "name": "restricted", "workflow": null, "model": null, "effort": null, "inherited": true, "description": "May not spawn.", "unavailable": null },
+        ])
     );
+
+    // Why one is unavailable is a warning, not a model in its row.
+    let told = agent(&fixture.server, &root(), "profiles list", json!({})).await;
+    assert_eq!(told.stderr, format!("demi agent profiles list: warning: {gone}\n"));
 
     // A node that may not spawn reads them too.
     let child = spawn(
@@ -349,20 +347,25 @@ async fn profiles_lists_the_enabled_profiles_with_what_is_missing_and_says_when_
             profile.enabled = false;
         }
     });
+    // An empty list is its header row; why it is empty is a warning on
+    // stderr.
+    let header = "NAME  SOURCE  MODEL  EFFORT  DESCRIPTION\n";
     let (none, listing) = profiles(&fixture, &root()).await;
+    assert_eq!((none.as_str(), listing), (header, json!([])));
+    let told = agent(&fixture.server, &root(), "profiles list", json!({})).await;
     assert_eq!(
-        none,
-        "The user has no enabled subagent profile; demi agent spawn without --profile inherits the parent.\n"
+        told.stderr,
+        "demi agent profiles list: warning: the user has no enabled subagent profile; demi agent spawn without --profile inherits the parent\n"
     );
-    assert_eq!(listing, json!({ "enabled": true, "choice": { "type": "default" }, "profiles": [] }));
 
     change(&fixture, |settings| settings.enabled = false);
     let (off, listing) = profiles(&fixture, &root()).await;
+    assert_eq!((off.as_str(), listing), (header, json!([])));
+    let told = agent(&fixture.server, &root(), "profiles list", json!({})).await;
     assert_eq!(
-        off,
-        "Subagents are turned off in settings; demi agent spawn fails until the user turns them on.\n"
+        told.stderr,
+        "demi agent profiles list: warning: subagents are turned off in settings; demi agent spawn fails until the user turns them on\n"
     );
-    assert_eq!(listing, json!({ "enabled": false, "choice": { "type": "default" }, "profiles": [] }));
 }
 
 #[tokio::test(flavor = "local")]

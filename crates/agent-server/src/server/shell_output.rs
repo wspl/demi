@@ -22,10 +22,10 @@ use demi_host_interface::{
     CommandState, Ending, GroupBuilder, LeafBuilder, OutputText, Piece, RpcError, RpcPort, Seen,
     ShellError, Streams, TypedRpc, WholeOutput,
 };
-use demi_shared_types::{CommandEnd, CommandId, NodeId, StreamKind};
+use demi_shared_types::{CommandEnd, CommandId, NodeId, StreamKind, output::warning};
 use futures_util::{FutureExt, future::join_all};
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::{
     commands::{Invoked, fail, fail_one, verb},
@@ -121,6 +121,7 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
                 .positionals(["id"])
                 .success_output("each command's status as a shell result shows it, a blank line between two; with --interval or --resident, a line first that says how it reports from now on")
                 .failure_output("a line per command that cannot be looked at, \"demi shell status: <id>: <reason>\", on stderr; the others are still shown, and the command exits 1")
+                .json_output::<StatusJson>()
                 .bind(TypedRpc::new(verb(server.clone(), status))),
         )
         .leaf(
@@ -129,7 +130,6 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
                 .positionals(["id"])
                 .stdin_field("input")
                 .success_output("nothing")
-                .failure_output("\"demi shell input: <reason>\" on stderr, exit 1")
                 .bind(TypedRpc::new(verb(server.clone(), input))),
         )
         .leaf(
@@ -137,7 +137,6 @@ pub(super) fn shell_group<H: HostResolver>(server: Weak<AgentServer<H>>) -> Grou
                 .input::<OutputArgs>()
                 .positionals(["id"])
                 .success_output("the page, the lines, or with --raw the bytes on stdout; with --raw, a line on stderr where bytes were left out")
-                .failure_output("\"demi shell output: <reason>\" on stderr, exit 1")
                 .bind(TypedRpc::new(verb(server.clone(), output))),
         )
         .leaf(
@@ -163,9 +162,20 @@ async fn status<H: HostResolver>(
     port: RpcPort,
 ) -> Result<u8, RpcError> {
     let args = &call.args;
+    // Arguments that do not go together are a usage error, exit 2, as
+    // clap tells one.
+    let usage = |what: &str| {
+        Err(RpcError::Usage(format!(
+            "error: {what}\nUsage: {} <id>... [--wait <duration>] [--interval <interval> | --resident] [--json]; more with --help",
+            call.command
+        )))
+    };
+    if call.json && args.id.len() > 1 {
+        return usage("--json takes one id; give the others a call each");
+    }
     let mut notes = Vec::new();
     let change = match (&args.interval, args.resident == Some(true)) {
-        (Some(_), true) => return fail("--interval and --resident do not go together"),
+        (Some(_), true) => return usage("--interval and --resident do not go together"),
         (Some(text), false) => {
             let asked = match milliseconds(text) {
                 Ok(asked) => asked,
@@ -206,9 +216,19 @@ async fn status<H: HostResolver>(
     let mut failed = false;
     let mut shown = Vec::new();
     let mut moves = Vec::new();
+    let mut json = None;
     for id in &args.id {
         match status_one(&call.tree, &call.caller, id, change).await {
-            Ok(Shown { text, moved }) => {
+            Ok(Shown { text, facts, moved }) => {
+                json = Some(StatusJson {
+                    command_id: id.clone(),
+                    status: facts.status,
+                    exit_code: facts.exit_code,
+                    reason: facts.reason,
+                    running_ms: facts.running_ms,
+                    idle_ms: facts.idle_ms,
+                    result: text.clone(),
+                });
                 shown.push(text);
                 moves.extend(moved);
             }
@@ -218,8 +238,19 @@ async fn status<H: HostResolver>(
             }
         }
     }
-    let printed: Vec<String> = notes.into_iter().chain([shown.join("\n\n")]).collect();
-    port.stdout(format!("{}\n", printed.join("\n")).into_bytes()).await?;
+    match json.filter(|_| call.json) {
+        Some(json) => {
+            for note in &notes {
+                port.stderr(warning(&call.command, note)).await?;
+            }
+            let text = serde_json::to_string(&json).expect("a status serializes");
+            port.stdout(format!("{text}\n").into_bytes()).await?;
+        }
+        None => {
+            let printed: Vec<String> = notes.into_iter().chain([shown.join("\n\n")]).collect();
+            port.stdout(format!("{}\n", printed.join("\n")).into_bytes()).await?;
+        }
+    }
     // Only what reached the caller was seen: a look its call could not
     // print moves nothing, so an end it showed no one is reported as any
     // end is (`shell-tool.md` § Command reports).
@@ -238,7 +269,72 @@ async fn status<H: HostResolver>(
 /// place in the command's output once the call has printed it.
 struct Shown {
     text: String,
+    /// The facts the text tells, which `--json` prints.
+    facts: Facts,
     moved: Option<(CommandId, Moved)>,
+}
+
+/// What a look tells of a command's state.
+#[derive(Default)]
+struct Facts {
+    status: &'static str,
+    exit_code: Option<i32>,
+    reason: Option<String>,
+    running_ms: Option<u64>,
+    idle_ms: Option<u64>,
+}
+
+impl Facts {
+    fn of(state: &CommandState, running_ms: u64, idle_ms: u64) -> Self {
+        let (status, exit_code, reason) = match state {
+            CommandState::Running { .. } => ("running", None, None),
+            CommandState::Exited { exit_code, .. } => ("exited", Some(*exit_code), None),
+            CommandState::Aborted => ("stopped", None, None),
+            CommandState::Lost { reason, .. } => ("lost", None, Some(reason.clone())),
+        };
+        Self {
+            status,
+            exit_code,
+            reason,
+            running_ms: Some(running_ms),
+            idle_ms: Some(idle_ms),
+        }
+    }
+
+    fn ended(end: &CommandEnd) -> Self {
+        let (status, exit_code, reason) = match end {
+            CommandEnd::Exited { exit_code } => ("exited", Some(*exit_code), None),
+            CommandEnd::Stopped => ("stopped", None, None),
+            CommandEnd::Lost { reason } => ("lost", None, Some(reason.clone())),
+            CommandEnd::Unrecorded => ("ended", None, None),
+        };
+        Self {
+            status,
+            exit_code,
+            reason,
+            ..Self::default()
+        }
+    }
+}
+
+/// `demi shell status --json`: one command's state, and the text a shell
+/// result shows of it, its output since the last look among it.
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+struct StatusJson {
+    command_id: String,
+    /// `running`, `exited`, `stopped`, `lost`, or `ended` for an end that
+    /// keeps no status.
+    status: &'static str,
+    /// Null until it exited.
+    exit_code: Option<i32>,
+    /// Why its Host lost it; null otherwise.
+    reason: Option<String>,
+    /// Null when the look does not know it.
+    running_ms: Option<u64>,
+    idle_ms: Option<u64>,
+    /// What the text output shows: the status as a shell result shows it.
+    result: String,
 }
 
 /// Where a look moves the looking node's place in a command's output.
@@ -348,12 +444,13 @@ async fn status_one<H: HostResolver>(
         let moved = (!matches!(status.state, CommandState::Running { .. })).then_some((command, Moved::End));
         return Ok(Shown {
             text: lines.join("\n"),
+            facts: Facts::of(&status.state, status.running_ms, status.idle_ms),
             moved,
         });
     }
     let running = environment.filter(|environment| environment.ended(&command).now_or_never().is_none());
     let place = looking.place(&command).await;
-    let (shown, seen) = match running {
+    let (shown, seen, facts) = match running {
         Some(environment) => {
             let whole = environment
                 .read_output(&command)
@@ -376,8 +473,9 @@ async fn status_one<H: HostResolver>(
                 ..look
             };
             let seen = whole.seen_through();
+            let facts = Facts::of(&state, running_ms, idle_ms);
             let text = whole_look_text(&command, state, running_ms, idle_ms, Arc::new(whole), place, look);
-            (text, Some(seen))
+            (text, Some(seen), facts)
         }
         // An end a look showed tells the node nothing more, however the
         // command ended (`shell-tool.md` § Command reports).
@@ -399,24 +497,35 @@ async fn status_one<H: HostResolver>(
                         media: Vec::new(),
                     },
                     CommandEnd::Unrecorded => {
+                        let facts = Facts::ended(&end);
                         lines.extend(ended_lines(id, end));
                         return Ok(Shown {
                             text: lines.join("\n"),
+                            facts,
                             moved: Some((command, Moved::Place(Seen::ALL))),
                         });
                     }
                 };
+                let facts = Facts::of(&state, 0, 0);
                 let text = whole_look_text(&command, state, 0, 0, Arc::new(output), place, look);
-                (text, Some(Seen::ALL))
+                (text, Some(Seen::ALL), facts)
             }
-            Ok(Some(StoredCommand { end, .. })) => (ended_lines(id, end).join("\n"), Some(Seen::ALL)),
-            Ok(None) => (ended_lines(id, CommandEnd::Unrecorded).join("\n"), None),
+            Ok(Some(StoredCommand { end, .. })) => {
+                let facts = Facts::ended(&end);
+                (ended_lines(id, end).join("\n"), Some(Seen::ALL), facts)
+            }
+            Ok(None) => (
+                ended_lines(id, CommandEnd::Unrecorded).join("\n"),
+                None,
+                Facts::ended(&CommandEnd::Unrecorded),
+            ),
             Err(error) => return Err(format!("the output of {id} could not be read: {error}")),
         },
     };
     lines.push(shown);
     Ok(Shown {
         text: lines.join("\n"),
+        facts,
         moved: seen.map(|seen| (command, Moved::Place(seen))),
     })
 }

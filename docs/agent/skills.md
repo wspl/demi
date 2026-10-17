@@ -343,7 +343,7 @@ source ([What the plugin keeps](#what-the-plugin-keeps)).
 
 | Command | Does |
 | --- | --- |
-| `list [--json]` | Prints every source with its origin, commit, failure and whether an update is available, and its skills with whether each is on, its description and, while it is off for a taken name, the other skill's source |
+| `list [--json]` | Prints a table of the skills, each with its name, source, commit, whether it is on, the other skill's source while it is off for a taken name, and its description; a source's failure or available update is a note on stderr; `--json` is an array of the sources with their skills |
 | `add <repository> [--skill <name>...]` | [Adds](#user-skills) the source and waits for its first fetch; with `--skill`, only the named skills are on |
 | `update <repository>` | Updates the source and waits for the fetch |
 | `remove <repository>` | Removes the source and its skills |

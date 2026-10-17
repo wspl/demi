@@ -337,17 +337,19 @@ commands print can be run as it stands.
 user's or parent's messages and steers, its own text and the description of
 each command it ran, that hold every word, or any with `--any`; words match
 anywhere in a text, in any language, case aside. The newest come first, five
-to a page, and each hit is its index, who wrote it and when, then the
-matching text with the message before and after it, cut around the words to
-about 600 characters, the words marked, so most hits answer without a
-read:
+to a page. It prints a table of blocks
+([Output](../execution/commands.md#output)): each hit with the message
+before and after it, each row its index, whether it is the hit, who wrote
+it, when, and its text cut around the words to about 600 characters, the
+words marked, so most hits answer without a read; which page this is and
+the command for the next go to stderr as a note:
 
 ```text
-4213 · user · Oct 14, 3:02 PM
-  [4212 agent] …so the list stays as it is.
-  [4213 user] The README's feature list should name what sets Demi apart…
-  [4214 command] Rewrite the README feature list · exit 0
-Page 1 of 4 · next: demi conversation history search README feature list --page 2
+INDEX  HIT  AUTHOR   TIME                  TEXT
+4212   no   agent    2026-10-14T15:01:40Z  …so the list stays as it is.
+4213   yes  user     2026-10-14T15:02:11Z  The **README**'s **feature list** should name what sets Demi apart…
+4214   no   command  2026-10-14T15:02:30Z  Rewrite the README feature list · exit 0
+demi conversation history search: note: page 1 of 4; next: demi conversation history search --page 2 -- README feature list
 ```
 
 Thinking, scripts and command output are not searched: they are most of a
@@ -368,8 +370,7 @@ message and each of the agent's texts whole, as written, and every other
 block as one line saying what it is and how to open it, such as
 `[4214 command: Rewrite the README feature list · exit 0 · 3s]` or
 `[4213/a1 attachment: spec.pdf]`; thinking and the hidden context blocks
-are left out. A block's time reads as the conversation shows it, with the
-year when it is not this year. A range is `4213..4260`, `4213..` or `..4260`. A read
+are left out. A block's time is an RFC 3339 instant. A range is `4213..4260`, `4213..` or `..4260`. A read
 stops at about 8,000 characters, at a block's end, and its last line says
 where to go on, `Stopped at 4231 · next: demi conversation history read
 4232..4260`; one message longer than that is cut, and the line names `open` on it for

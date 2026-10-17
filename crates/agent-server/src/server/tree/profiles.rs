@@ -10,9 +10,12 @@ use std::{num::NonZeroU32, rc::Rc};
 
 use demi_agent_tools::{
     ChosenWorkflow, ConversationProfiles, EFFORT_OFF, HostResolver, NewProfileDraft, Profile,
-    ProfileEdit, SubagentSettings, Unavailable, WorkflowListing,
+    ProfileEdit, SubagentSettings, Unavailable, WorkflowChild, WorkflowListing,
 };
-use demi_shared_types::{ModelSelection, THINKING_OFF, WorkflowChoice, context_word, offers_context};
+use demi_shared_types::{
+    ModelSelection, THINKING_OFF, WorkflowChoice, context_word, offers_context,
+    output::{Cell, Fields, Table},
+};
 use futures_util::future::join_all;
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -81,13 +84,29 @@ pub(crate) struct ProfileListing {
     profiles: Vec<ListedProfile>,
 }
 
+/// One profile of `demi agent profiles list --json`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
-struct ListedProfile {
+pub(crate) struct ListedProfile {
     name: String,
+    /// The workflow the profile is of; null for the user's settings.
+    workflow: Option<String>,
+    /// The model id its children run; null for the parent's, and for a
+    /// workflow's profile whose model is unavailable.
+    model: Option<String>,
+    /// The effort its model runs at, or `off`; null for the parent's, and
+    /// for a model that lists none.
+    effort: Option<String>,
+    /// Whether its children run the parent's model.
+    inherited: bool,
     description: String,
     /// The message a spawn with the profile fails with now, which says
     /// what is missing; null while it is available.
     unavailable: Option<String>,
+}
+
+/// An effort as `profiles` prints it: Demi's word for thinking off.
+fn effort_word(effort: &str) -> String {
+    if effort == THINKING_OFF { EFFORT_OFF } else { effort }.to_owned()
 }
 
 impl<H: HostResolver> Tree<H> {
@@ -251,6 +270,16 @@ impl<H: HostResolver> Tree<H> {
                     .iter()
                     .map(|child| ListedProfile {
                         name: child.name.clone(),
+                        workflow: Some(workflow.name.clone()),
+                        model: match &child.model {
+                            Some(Ok(selection)) => Some(selection.model.id.clone()),
+                            None | Some(Err(_)) => None,
+                        },
+                        effort: match &child.model {
+                            Some(Ok(selection)) => selection.thinking_effort().map(effort_word),
+                            None | Some(Err(_)) => None,
+                        },
+                        inherited: child.model.is_none(),
                         description: child.description.clone(),
                         unavailable: match &child.model {
                             Some(Err(missing)) => {
@@ -287,23 +316,23 @@ impl<H: HostResolver> Tree<H> {
     }
 }
 
-/// `demi agent profiles show --json` and the answer of a profile change.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
-pub(crate) struct ProfileAnswer {
-    profile: ShownProfile,
-}
-
-/// Every field of one profile, enabled or not.
+/// `demi agent profiles show --json` and the answer of a profile change:
+/// every field of one profile, enabled or not.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
-struct ShownProfile {
+pub(crate) struct ProfileAnswer {
     name: String,
+    /// The workflow the profile is of; null for the user's settings.
+    workflow: Option<String>,
     description: String,
     /// Null for the parent's model.
     model: Option<ShownModel>,
     /// The context window its children use, as `--context` names it:
     /// `default` for the user's limit, `full`, or a limit such as `500K`.
     context: String,
+    /// The tokens of that window; null for the user's limit, and while the
+    /// model's window is unknown.
+    context_tokens: Option<u32>,
     /// Null for none.
     instructions: Option<String>,
     /// Whether its children may spawn children of their own.
@@ -319,7 +348,8 @@ struct ShownProfile {
 struct ShownModel {
     /// The provider entry's id.
     provider: String,
-    /// The entry's name as Settings shows it; null once the entry is gone.
+    /// The entry's name as Settings shows it; null once the entry is gone,
+    /// and for a workflow's profile.
     provider_name: Option<String>,
     model: String,
     /// An effort the model lists, or `off`; null only for a model that
@@ -347,6 +377,16 @@ impl<H: HostResolver> Tree<H> {
     /// not, checked now.
     pub(crate) async fn profile(&self, name: &str) -> Result<ProfileAnswer, String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
+        // The profiles `list` lists: the chosen workflow's in place of the
+        // user's (`subagents.md` § Workflows of a project).
+        if let ConversationProfiles::Workflow(workflow) = self.conversation_profiles(&server).await? {
+            let child = workflow
+                .profiles
+                .iter()
+                .find(|child| child.name == name)
+                .ok_or_else(|| unknown_in(name, &workflow))?;
+            return Ok(workflow_answer(&workflow, child));
+        }
         let settings = read(&server).await?;
         let profile = settings
             .profiles
@@ -356,14 +396,29 @@ impl<H: HostResolver> Tree<H> {
         Ok(answer(&server, profile).await)
     }
 
-    /// `demi agent profiles create`: the profile as stored.
+    /// `demi agent profiles create`: the profile as stored, and, while
+    /// this conversation runs a workflow, why a spawn here cannot use it:
+    /// a workflow's profiles replace the user's (`subagents.md`
+    /// § Workflows of a project).
     pub(crate) async fn create_profile(
         &self,
         draft: NewProfileDraft,
-    ) -> Result<ProfileAnswer, String> {
+    ) -> Result<(ProfileAnswer, Option<String>), String> {
         let server = self.server.upgrade().ok_or("the agent server is gone")?;
+        // Read before the profile is saved, so that what the warning needs
+        // cannot fail a creation that succeeded.
+        let workflow = match self.conversation_profiles(&server).await? {
+            ConversationProfiles::Workflow(workflow) => Some(workflow.name),
+            ConversationProfiles::Off
+            | ConversationProfiles::Unavailable { .. }
+            | ConversationProfiles::Settings => None,
+        };
         let created = server.deps.subagents.create_profile(draft).await?;
-        Ok(answer(&server, &created).await)
+        let warning = workflow.map(|workflow| format!(
+            "this conversation runs workflow {workflow}, so demi agent spawn here takes only its profiles; \"{}\" is for the user's other conversations",
+            created.name
+        ));
+        Ok((answer(&server, &created).await, warning))
     }
 
     /// `demi agent profiles edit`: the profile as stored.
@@ -392,43 +447,57 @@ impl ProfileAnswer {
     /// The text `profiles show` and a change print: a field per line, and
     /// the instructions in full last.
     pub(crate) fn render(&self) -> String {
-        let profile = &self.profile;
-        let yes = |value: bool| if value { "yes" } else { "no" };
-        let model = match &profile.model {
-            None => "parent's".to_owned(),
-            Some(model) => {
-                let provider = model.provider_name.as_deref().unwrap_or(&model.provider);
-                let effort = model
-                    .effort
-                    .as_ref()
-                    .map(|effort| format!(", effort {effort}"))
-                    .unwrap_or_default();
-                let tier = model.tier.as_deref().unwrap_or("default");
-                format!("{} from {provider}{effort}, tier {tier}", model.model)
-            }
-        };
-        let mut text = format!(
-            "name          {}\ndescription   {}\nmodel         {model}\ncontext       {}\nspawning      {}\nenabled       {}\n",
-            profile.name,
-            profile.description,
-            profile.context,
-            yes(profile.spawning),
-            yes(profile.enabled),
-        );
-        if let Some(unavailable) = &profile.unavailable {
-            text.push_str(&format!("unavailable   {unavailable}\n"));
-        }
-        match &profile.instructions {
-            None => text.push_str("instructions  none\n"),
-            Some(instructions) => {
-                text.push_str("instructions\n");
-                text.push_str(instructions);
-                if !instructions.ends_with('\n') {
-                    text.push('\n');
-                }
-            }
-        }
-        text
+        let model = self.model.as_ref();
+        let mut fields = Fields::new();
+        fields
+            .field("Name", self.name.as_str())
+            .field("Source", self.workflow.as_deref().unwrap_or("user"))
+            .field("Description", self.description.as_str())
+            .field("Status", status(self.unavailable.is_some()))
+            .field("Unavailable", self.unavailable.as_deref())
+            .field("Model", model.map(|model| model.model.as_str()))
+            .field(
+                "Provider",
+                model.map(|model| model.provider_name.as_deref().unwrap_or(&model.provider)),
+            )
+            .field("Effort", model.and_then(|model| model.effort.as_deref()))
+            .field("Tier", model.and_then(|model| model.tier.as_deref()))
+            .field("Context (tokens)", self.context_tokens)
+            .field("Spawning", self.spawning)
+            .field("Enabled", self.enabled)
+            .text("Instructions", self.instructions.as_deref().unwrap_or_default());
+        fields.render()
+    }
+}
+
+/// A profile's status as `list` and `show` print it.
+fn status(unavailable: bool) -> &'static str {
+    if unavailable { "unavailable" } else { "available" }
+}
+
+/// The profile `child` of the chosen `workflow` as `show` gives it.
+fn workflow_answer(workflow: &ChosenWorkflow, child: &WorkflowChild) -> ProfileAnswer {
+    let selection = child.model.as_ref().and_then(|model| model.as_ref().ok());
+    ProfileAnswer {
+        name: child.name.clone(),
+        workflow: Some(workflow.name.clone()),
+        description: child.description.clone(),
+        model: selection.map(|selection| ShownModel {
+            provider: selection.provider_id.clone(),
+            provider_name: None,
+            model: selection.model.id.clone(),
+            effort: selection.thinking_effort().map(effort_word),
+            tier: selection.service_tier_id.clone(),
+        }),
+        context: child.context_limit.map_or_else(|| "default".to_owned(), context_word),
+        context_tokens: child.context_limit,
+        instructions: child.instructions.clone(),
+        spawning: child.can_spawn,
+        enabled: true,
+        unavailable: match &child.model {
+            Some(Err(missing)) => Some(format!("profile \"{}\" is unavailable: {missing}", child.name)),
+            None | Some(Ok(_)) => None,
+        },
     }
 }
 
@@ -444,37 +513,31 @@ async fn answer<H: HostResolver>(server: &AgentServer<H>, profile: &Profile) -> 
     };
     // What applies now: a stored choice the window no longer offers is the
     // full window, as for a session.
-    let context = match (profile.context_limit, window) {
-        (None, _) => "default".to_owned(),
+    let (context, context_tokens) = match (profile.context_limit, window) {
+        (None, _) => ("default".to_owned(), None),
         (Some(tokens), Some(window)) if !offers_context(window, tokens) || tokens == window => {
-            "full".to_owned()
+            ("full".to_owned(), Some(window).filter(|window| *window > 0))
         }
-        (Some(tokens), _) => context_word(tokens),
+        (Some(tokens), _) => (context_word(tokens), Some(tokens)),
     };
     let missing = selection.and_then(Result::err);
     ProfileAnswer {
-        profile: ShownProfile {
             name: profile.name.clone(),
+            workflow: None,
             description: profile.description.clone(),
             model: profile.model.as_ref().map(|model| ShownModel {
                 provider: model.provider_id.clone(),
                 provider_name: model.provider_name.clone(),
                 model: model.model_id.clone(),
-                effort: model.thinking_effort.as_ref().map(|effort| {
-                    if effort == THINKING_OFF {
-                        EFFORT_OFF.to_owned()
-                    } else {
-                        effort.clone()
-                    }
-                }),
+                effort: model.thinking_effort.as_deref().map(effort_word),
                 tier: model.service_tier_id.clone(),
             }),
             context,
+            context_tokens,
             instructions: profile.instructions.clone(),
             spawning: profile.can_spawn,
             enabled: profile.enabled,
             unavailable: missing.map(|missing| unavailable(&profile.name, &missing)),
-        },
     }
 }
 
@@ -496,54 +559,62 @@ fn no_profile(name: &str, settings: &SubagentSettings) -> String {
 }
 
 impl ProfileListing {
-    /// The text `demi agent profiles list` prints: a profile per line, its name
-    /// padded to one column, and under an unavailable one why a spawn with
-    /// it fails.
-    pub(crate) fn render(&self) -> String {
-        let off = match &self.choice {
+    /// Why no agent of the conversation may spawn now, or with no profile
+    /// what a spawn does, which `list` tells on stderr; none while
+    /// profiles are listed.
+    /// What makes each unavailable profile so, for stderr.
+    pub(crate) fn unavailable(&self) -> impl Iterator<Item = &str> {
+        self.profiles.iter().filter_map(|profile| profile.unavailable.as_deref())
+    }
+
+    pub(crate) fn note(&self) -> Option<String> {
+        match &self.choice {
             WorkflowChoice::Default if !self.enabled => Some(
-                "Subagents are turned off in settings; demi agent spawn fails until the user turns them on.".to_owned(),
+                "subagents are turned off in settings; demi agent spawn fails until the user turns them on".to_owned(),
             ),
             WorkflowChoice::None => Some(
-                "Subagents are turned off for this conversation; demi agent spawn fails until the user chooses Global Workflow or a workflow in the composer's Workflow menu.".to_owned(),
+                "subagents are turned off for this conversation; demi agent spawn fails until the user chooses Global Workflow or a workflow in the composer's Workflow menu".to_owned(),
             ),
             WorkflowChoice::Workflow { id } if !self.enabled => Some(format!(
-                "This conversation's workflow \"{id}\" is unavailable: {}; demi agent spawn fails until the user chooses another in the composer's Workflow menu.",
+                "this conversation's workflow \"{id}\" is unavailable: {}; demi agent spawn fails until the user chooses another in the composer's Workflow menu",
                 self.unavailable.as_deref().unwrap_or_default()
             )),
+            _ if self.profiles.is_empty() => Some(match &self.workflow {
+                None => "the user has no enabled subagent profile; demi agent spawn without --profile inherits the parent".to_owned(),
+                Some(name) => format!("workflow {name} has no profiles; demi agent spawn without --profile inherits the parent"),
+            }),
             WorkflowChoice::Default | WorkflowChoice::Workflow { .. } => None,
-        };
-        if let Some(off) = off {
-            return format!("{off}\n");
         }
-        let heading = match &self.workflow {
-            None if self.profiles.is_empty() => {
-                return "The user has no enabled subagent profile; demi agent spawn without --profile inherits the parent.\n".to_owned();
-            }
-            None => String::new(),
-            Some(name) if self.profiles.is_empty() => format!(
-                "Workflow {name}: no profiles; demi agent spawn without --profile inherits the parent.\n"
-            ),
-            Some(name) => format!("Workflow {name}:\n"),
-        };
-        let width = self
-            .profiles
-            .iter()
-            .map(|profile| profile.name.chars().count())
-            .max()
-            .unwrap_or(0)
-            + 2;
-        let mut text = heading;
+    }
+
+    /// The profiles `list --json` gives.
+    pub(crate) fn profiles(&self) -> &[ListedProfile] {
+        &self.profiles
+    }
+
+    /// The table `demi agent profiles list` prints: where each profile
+    /// comes from, the workflow's name or `user`, and the model and effort
+    /// its children run, so a caller choosing one sees what each runs.
+    pub(crate) fn render(&self) -> String {
+        let mut table = Table::new(["name", "source", "model", "effort", "description"]);
         for profile in &self.profiles {
-            text.push_str(&format!(
-                "{:width$}{}\n",
-                profile.name, profile.description
-            ));
-            if let Some(unavailable) = &profile.unavailable {
-                text.push_str(&format!("{:width$}{unavailable}\n", ""));
-            }
+            // An unavailable profile runs no model now: its reason is a
+            // warning, never a row that names the model it cannot reach.
+            let model = match &profile.model {
+                _ if profile.unavailable.is_some() => None,
+                _ if profile.inherited => Some("inherited"),
+                model => model.as_deref(),
+            };
+            let effort = profile.effort.as_deref().filter(|_| profile.unavailable.is_none());
+            table.row::<Cell>([
+                profile.name.as_str().into(),
+                profile.workflow.as_deref().unwrap_or("user").into(),
+                model.into(),
+                effort.into(),
+                profile.description.as_str().into(),
+            ]);
         }
-        text
+        table.render()
     }
 }
 
@@ -563,8 +634,13 @@ async fn listed<H: HostResolver>(server: &Rc<AgentServer<H>>, profile: &Profile)
         Some(model) => server.deps.providers.profile_selection(model).await.err(),
         None => None,
     };
+    let model = profile.model.as_ref();
     ListedProfile {
         name: profile.name.clone(),
+        workflow: None,
+        model: model.map(|model| model.model_id.clone()),
+        effort: model.and_then(|model| model.thinking_effort.as_deref()).map(effort_word),
+        inherited: model.is_none(),
         description: profile.description.clone(),
         unavailable: missing.map(|missing| unavailable(&profile.name, &missing)),
     }
