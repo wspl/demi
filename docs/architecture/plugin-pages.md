@@ -178,12 +178,9 @@ its tabs.
 | `schema` | The schema of a tab's `data`, checked where the backend's panel enters the page |
 | `title(data, tab)`, `mark` | The tab's title, from its data and its conversation and panel session, and its strip mark (props: `data`) |
 | `content` | The tab's content (props: `conversation`, `session`, `tabId`, `data`, `shown`, whether it is the tab the panel shows: a content stays mounted while another tab is selected ([Work panel](../product/web-application.md#work-panel)); emits `update` with the next `data`, and `close`) |
-| `create` | Whether the strip's new-tab control offers it, with its label, icon and a new tab's `data` |
 | `pinned` | The kind has one tab in every conversation's panel, ahead of the other tabs, never created, closed or kept by the backend; its data starts from the data this gives and lives in the page's memory; its id is the kind's id |
 | `icon(data)` | The strip's icon for a tab, such as a page's favicon; the kind's own icon otherwise |
-| `commands(data)` | The kind's own entries in a tab's menu, ahead of the strip's Close entries, such as a browser tab's Reload and Duplicate |
-| `duplicate(data)` | The data of a new tab showing what this one shows, for its Duplicate |
-| `openedBy(data)` | The panel tab that opened this one, which places it beside its opener |
+| `commands(data)` | The kind's own entries in a tab's menu, ahead of the strip's Close entries, such as a browser tab's Reload |
 | `badge` | What the strip shows after a pinned tab's title, such as the Change view's counts (props: `conversation`, `data`) |
 | `intents` | The [intents](#intents) it opens: for each, the data its tab shows next, from the payload and the data the tab shows now, or none |
 | `shows(data)` | How many times something asked that the user see this tab, from its data. When the count is higher than the one the page last applied for the tab, the panel opens and selects the tab, whether the panel was open or closed, and records the count beside its selection history; the browser's agent-shown tabs use it ([Showing a tab](../browser/live-view.md#showing-a-tab)) |
@@ -225,12 +222,9 @@ selected. The panel opens if it was closed. Whoever shows a control that opens
 an intent asks first whether any page opens it, and shows plain text
 otherwise.
 
-Intents and `panel.add` are the only ways a tab is opened from outside the
-strip, and `panel.add` adds only a tab of the page's own kinds; a kind whose
-tabs name the tab that opened them, by its `openedBy(data)`, has each placed
-right after that tab, behind the tabs it opened before, as a browser places a
-link's tab: a page opens
-another plugin's tab only through an intent. `panel.select` selects a tab of
+Intents are the only way a page opens a tab: a page opens another plugin's
+tab only through an intent, and a plugin's own tabs are opened by the
+plugin. `panel.select` selects a tab of
 the page's own kinds that the strip already holds, as a browser selects the
 tab a click in a page opened.
 
@@ -448,7 +442,7 @@ happened to use, and the SDK's entry exports them by these groups:
 | Layout | `ScrollArea` |
 | Navigation | `AddressBar` |
 | Files | `FileIcon`, `FileView`, `ChangeView`, and the shapes and paths the conversation files service gives |
-| Icons | `ICON_PX`, the icon sizes, and Demi's own icons, such as `GlobePlus` |
+| Icons | `ICON_PX`, the icon sizes |
 | Streams | The liveness helpers a stream's protocol uses to tell a silent stream, and the waits before opening one again |
 
 A primitive joins the kit when a page needs it and another page could use it;

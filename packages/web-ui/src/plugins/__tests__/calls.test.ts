@@ -59,7 +59,7 @@ function host(received: Received[]): PageHost {
     hostStarting: unused,
     files: unused,
     intents: { open: unused, canOpen: unused },
-    panel: { tabs: unused, add: unused, select: unused },
+    panel: { tabs: unused, select: unused },
     openSettings: unused,
     openLink: unused,
     overlays: createOverlayStore(),

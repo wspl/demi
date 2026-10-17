@@ -52,7 +52,6 @@
     "unreadable": "无法读取服务器的响应。",
     "refused": "服务器无法完成该操作（{status}）。"
   },
-  "noBrowser": "此主机上没有浏览器。请让智能体安装一个。",
   "starting": {
     "connecting": "正在连接…",
     "cloud": "正在启动云端…",
@@ -79,7 +78,6 @@
     "waiting": "正在等待主机…"
   },
   "menu": {
-    "openLink": "在新标签页中打开链接",
     "copyLink": "复制链接地址",
     "cut": "剪切",
     "copy": "复制",
@@ -114,9 +112,5 @@
     "cancel": "取消",
     "ok": "确定"
   },
-  "browserInput": "浏览器输入",
-  "tab": {
-    "new": "新标签页",
-    "createInBrowser": "在对话的浏览器中新建标签页"
-  }
+  "browserInput": "浏览器输入"
 }

@@ -32,7 +32,6 @@ use demi_shared_gates::Purpose;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::cloud::{CloudState, CloudStatus, ResetPhase};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::panel::WorkPanel;
 use reqwest::{Method, StatusCode};
 use serde::Deserialize;
 use serde_json::json;
@@ -257,10 +256,10 @@ async fn list(
         .await
 }
 
-/// Opens a tab at `url` as the work panel does: creates a panel tab in
-/// `conversation`, which the browser plugin binds to a browser tab it opens
-/// on the URL, and answers that tab's id once the panel has it
-/// (`live-view.md` § A browser tab in the panel).
+/// Opens a tab at `url` on the conversation's browser through the panel: a
+/// panel tab on the URL, which the browser plugin's `bind`, as Retry calls
+/// it, opens a browser tab for; answers that tab's id (`live-view.md` § A
+/// browser tab in the panel).
 async fn open_tab(
     backend: &TestBackend,
     session: &Session,
@@ -280,27 +279,22 @@ async fn open_tab(
         "{}",
         String::from_utf8_lossy(&created.body)
     );
-    let deadline = Instant::now() + PATIENCE;
-    loop {
-        let panel: WorkPanel = backend
-            .get(
-                &format!("/api/conversations/{conversation}/panel"),
-                Some(session),
-            )
-            .await
-            .json();
-        let tab = panel.tabs.iter().find(|tab| tab.id == id);
-        let data = &tab.expect("the panel keeps the tab it created").data;
-        if let Some(bound) = data.get("tab").and_then(serde_json::Value::as_str) {
-            return TabId::try_from(bound.to_owned()).expect("the plugin binds a browser tab id");
-        }
-        assert!(
-            data.get("failure").is_none(),
-            "the tab did not open: {data:?}"
-        );
-        assert!(Instant::now() < deadline, "tab {id} was never bound");
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
+    let bound = backend
+        .post(
+            &format!("/api/conversations/{conversation}/plugins/browser/calls/bind"),
+            Some(session),
+            json!({ "panelTab": id }),
+        )
+        .await;
+    assert_eq!(
+        bound.status,
+        StatusCode::OK,
+        "{}",
+        String::from_utf8_lossy(&bound.body)
+    );
+    let tab = bound.json::<serde_json::Value>()["tab"].as_str().map(str::to_owned);
+    TabId::try_from(tab.expect("the plugin opened a browser tab for the panel tab"))
+        .expect("the plugin binds a browser tab id")
 }
 
 /// The conversation browser's tabs, as the panel reads them through the

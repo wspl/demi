@@ -76,7 +76,7 @@ import { COMMITS_HEIGHT } from '@demicodes/web-ui/files/file-view'
 import type { CommitHistorySource } from '@demicodes/web-ui/files/history'
 import { selectedTab } from '@demicodes/web-ui/agent/panel-tabs'
 import type { PanelTabKind } from '@demicodes/web-ui/agent/panel-kinds/kind'
-import { BrowserTabsError, NEW_TAB_URL, browserTabDataSchema, startingLabel, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
+import { BrowserTabsError, browserTabDataSchema, startingLabel, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
 import { SERVER_FAILED } from '../fixtures/plugins'
 import type { ChangeMode, ChangeSetSource, ChangeSources } from '@demicodes/web-ui/files/changes'
 import { storedRequests, type RequestChangeSource, type RequestEditRef, type RequestEditSelection } from '@demicodes/web-ui/files/request-changes'
@@ -696,8 +696,13 @@ const sessionFiles = galleryConversationFiles(workspace.source, ({ path, line })
   panelWork.openIn({ intent: 'commit', payload: { commit } })
   view.value = 'panel'
 })
-// The tabs specimen starts on an empty strip, with the globe-plus add control.
+// The tabs specimen starts on an empty strip, which only the agent's tabs fill.
 const exhibitWork = useWorkTabs('file', { browser: galleryBrowser([]) })
+/** The agent opens a page and shows it in the tabs specimen, as `demi browser open --show` does. */
+function exhibitAgentOpens() {
+  productWould('The Agent Opens a Page and Shows It')
+  void exhibitWork.agentOpens('https://example.test/orders', true)
+}
 const editWork = useWorkTabs('change')
 // The gallery's own conversation browser stands behind every specimen's `browser`
 // kind, which lists its tabs as it is made.
@@ -832,9 +837,13 @@ function stopCloud() {
  * whose browser has no tabs, or the browser opening the tab, until the
  * specimen lets it finish.
  */
+/** A tab whose browser tab the browser lost, shown, so it reopens on its address at once, as after a restart. */
+function addLostTab(work: GalleryWork) {
+  work.lost('https://github.com/login')
+}
 function heldWork(phase: StartingPhase) {
   const work = useWorkTabs('change', { path: '', browser: galleryBrowser(phase === 'page' || phase === 'connecting' ? undefined : [], { held: phase }) })
-  work.add('browser', { url: 'https://github.com/login' })
+  addLostTab(work)
   return work
 }
 const STARTING_PHASES: readonly StartingPhase[] = ['connecting', 'cloud', 'browser', 'page']
@@ -849,32 +858,10 @@ function finishStarting(phase: StartingPhase) {
   heldWorks[phase].browser.finish()
   productWould('The Host Goes On; the Tab Opens')
 }
-/** Another tab that waits in the same phase, as the specimen started. */
+/** Another lost tab that waits in the same phase as it reopens, as the specimen started. */
 function holdAgain(phase: StartingPhase) {
   heldWorks[phase].browser.hold(phase)
-  heldWorks[phase].add('browser', { url: 'https://github.com/login' })
-}
-/**
- * The strip's + while the browser starts on the Host: a new tab nobody sent
- * anywhere yet is the blank New Tab at once, as a browser's new tab is, while
- * the browser opens its tab unseen; an address typed meanwhile shows what the
- * tab waits for.
- */
-function blankStartingWork() {
-  const work = useWorkTabs('change', { path: '', browser: galleryBrowser([], { held: 'browser' }) })
-  work.add('browser', { url: NEW_TAB_URL })
-  return work
-}
-const blankStarting = blankStartingWork()
-/** The browser started: the held New Tab gets its browser tab. */
-function finishBlankStarting() {
-  blankStarting.browser.finish()
-  productWould('The Browser Starts; the Tab Opens')
-}
-/** Another New Tab while the browser starts again, as the specimen started. */
-function openBlankAgain() {
-  blankStarting.browser.hold('browser')
-  blankStarting.add('browser', { url: NEW_TAB_URL })
+  addLostTab(heldWorks[phase])
 }
 /** The device refuses the next tab it would open, as an offline device does: a reopening shows Retry. */
 function failNextOpen() {
@@ -894,9 +881,6 @@ function failNextOnServer() {
 // The same conversation browser, viewed in a web browser that cannot decode H.264, such as a Chromium without
 // proprietary codecs.
 const undecodedWork = useWorkTabs('change', { path: '', pictures: async () => false })
-// A Host without the browser, which only the agent installs: the add control
-// is disabled and says so, and the tabs already open stay.
-const noBrowserWork = useWorkTabs('change', { path: '', browser: galleryBrowser(undefined, { chrome: false }) })
 // A Host that cannot capture its tabs, such as an Apple M4's Linux VM: the agent's tab shows why it has no picture.
 const uncapturedWork = useWorkTabs('browser-t1', { path: '', browser: galleryBrowser(undefined, { capture: false }) })
 /** What the Host's live view module does when it cannot deliver the viewer's input: it tells the viewer in a notice. */
@@ -1406,7 +1390,7 @@ onBeforeUnmount(() => {
     <template v-if="view === 'tabs'">
       <GallerySection
         title="Motion"
-        note="The work panel’s browser tabs, and every motion their strip owns, in a narrow frame that overflows and one at the pane width. Tabs fit their mark and title up to 160px; longer titles truncate. As in Chrome, a strip that runs out of room first shrinks its tabs, down to their mark and a few characters, and only then scrolls, so a tab opened in the background normally shows. On a phone (the Phone page) no tab shrinks: each keeps its width, the pinned tabs too, and the whole row scrolls under a finger, with no scrollbar. A tab opens by growing from nothing and closes by collapsing, while the New browser tab control follows the last tab until they scroll and then holds the right edge. The selected tab always shows whole, its close control included, and never under a fade: selecting a tab, opening one, the agent showing one, the strip resizing and the selected tab’s title widening it each scroll, with the same timing as the tab, until it shows whole with a fade’s width beside it; where the strip has no room for that, the fades give way beside it, and no tab is wider than the strip has room for, so a very narrow strip truncates the selected tab’s title. Unselected tabs may lie under the fades, and so may the selected tab once the user scrolls it under an edge: the scrolled edge fades as the other does. Closing scrolls back when the end comes into reach. Wherever the strip comes to rest, a tab mark its edge cuts stays under the fade’s solid start, so a mark at a scrolled edge shows whole or not at all, never sliced. The crowded strip has the product’s panel width and five tabs, the last selected. Play all runs through the cases; the tabs, their close controls and their menus work too. The tabs act as a web browser’s: a middle click closes one, a drag moves one along the strip while the others step aside, and Escape puts it back; a focused tab moves the focus with the arrows, Home and End, and Enter or Space selects it. A tab’s tooltip comes only when the pointer moved onto it and rests there, never after a click, nor for a tab that slid under a pointer at rest, as a new one does under the New Tab control."
+        note="The work panel’s browser tabs, and every motion their strip owns, in a narrow frame that overflows and one at the pane width. Tabs fit their mark and title up to 160px; longer titles truncate. As in Chrome, a strip that runs out of room first shrinks its tabs, down to their mark and a few characters, and only then scrolls, so a tab opened in the background normally shows. On a phone (the Phone page) no tab shrinks: each keeps its width, the pinned tabs too, and the whole row scrolls under a finger, with no scrollbar. A tab opens by growing from nothing and closes by collapsing. The selected tab always shows whole, its close control included, and never under a fade: selecting a tab, opening one, the agent showing one, the strip resizing and the selected tab’s title widening it each scroll, with the same timing as the tab, until it shows whole with a fade’s width beside it; where the strip has no room for that, the fades give way beside it, and no tab is wider than the strip has room for, so a very narrow strip truncates the selected tab’s title. Unselected tabs may lie under the fades, and so may the selected tab once the user scrolls it under an edge: the scrolled edge fades as the other does. Closing scrolls back when the end comes into reach. Wherever the strip comes to rest, a tab mark its edge cuts stays under the fade’s solid start, so a mark at a scrolled edge shows whole or not at all, never sliced. The crowded strip has the product’s panel width and five tabs, the last selected. Play all runs through the cases; the tabs, their close controls and their menus work too. The tabs act as a web browser’s: a middle click closes one, a drag moves one along the strip while the others step aside, and Escape puts it back; a focused tab moves the focus with the arrows, Home and End, and Enter or Space selects it. A tab’s tooltip comes only when the pointer moved onto it and rests there, never after a click, nor for a tab that slid under a pointer at rest, as a new one does."
       >
         <GallerySpecimen variant="narrow · overflows" wide>
           <GalleryTabStripDrive width="32rem" />
@@ -3647,12 +3631,16 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Work Panel"
-        note="Change and File are pinned tabs, the `change` and `file` kinds of the changes and file-browser plugins: content-sized tabs that lead the strip’s one tab list, so the arrow keys move across them and the user’s tabs alike; they are never created, closed or saved, never scroll or drag with the strip’s tabs, and only compete with them for the selection. In a panel too narrow for them and a tab, their titles truncate before the strip gives way, so the strip keeps room for a tab and a new tab always shows. The strip holds the user’s tabs, content-sized and capped at 160px, shrinking toward their mark and a few characters before it scrolls, with scrolling and close menus that affect only tabs. The add control opens a tab in the conversation’s browser: globe-plus while the strip is empty, a plain plus beside tabs. The new tab stands in the strip at once, selected, as what a new tab is: named New Tab, its address bar empty with the focus in it and its page blank, which the first picture of its browser tab replaces; the gallery’s browser takes about a second, as a host takes a moment, and longer on a strip that starts empty, whose browser starts first. A new tab nobody sent anywhere yet loads nothing: it is the blank New Tab at once, with no spinner, Stop or loading line, while the browser opens its tab unseen, as the specimen of a new tab while the browser starts shows; type an address there to see it load. Before the browser has a tab the user sent somewhere, the content says what Demi does from the frame the tab starts opening, centred with a spinner: Connecting… until the page has read what the Host is doing, then Starting Cloud…, Starting the browser… or Opening the page…, as the specimens held in each phase show; Stop the Cloud shows them in turn. An address typed before then shows at once with a thin loading line, and the tab opens there. Reload, Back, Forward and an address show the loading line on the click, before anything left the page: the gallery’s browser answers about a second later and starts loading a moment after its answer, as a far host does. The host numbers its tab lists and the answer names the last one before the request, so only a list numbered higher ends the line, whichever reaches the page first; a page that loads keeps the picture it had under the line until the browser says it stopped loading. Back and Forward are unavailable while the tab’s history has no page that way; go to another address to make Back available. A request the browser refuses ends the line at once and is reported in a toast, never in the tab; a tab the plugin could not open shows a region status with Retry. What the Host’s view cannot do for the viewer while the picture still shows, such as delivering its input, is a toast once; a Host that cannot capture its tabs shows a region status in place of the picture, as the specimen of one does. A closed tab leaves at once and never comes back, fading out as an unselected tab while the selection passes on. While a tab loads, it shows so in three places at once, as a web browser does: Reload turns into Stop, the tab’s mark in the strip turns into a spinner, and the line runs; Stop asks the browser to stop the page, and the three end once the browser says it stopped and, for a tab that shows no picture yet, such as one opening or reopening, once its first picture arrives. Stop is never unavailable while a tab loads: pressed before the browser has the tab, it gives up the address, and the tab opens blank. The gallery’s pages take five seconds to load, so Stop can be tried. A page the agent closed leaves the strip, as a closed tab does. A tab the browser lost when it ended, as a release or a stopped Cloud ends it, keeps its title and address, and opens its page again as soon as it is shown, loading as any page does; a reopening the host refuses shows its message with Retry, which returns the tab to loading at once. A view that reconnects keeps its last picture under a quiet note. On a host without the browser, which only the agent installs with demi browser install, the add control is disabled and its tip says so; the tabs already open stay. A viewer’s browser that cannot decode the host’s H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen’s does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. A Web picture stands at its own size from the panel’s top-left corner and is never scaled: while the panel grows, the part it does not cover yet is white until a picture at the new size arrives, and while it shrinks, the panel cuts it; a phone’s picture is scaled to fit and centred. The cursor over the page is the page’s own, resolved here from where the page says each cursor applies, so moving across the button shows its pointer at once; no caret or local control shows over the picture. A tab selected again after another tab, or after File, shows its picture, address and title at once, with no loading line for a page that had loaded, and the File view’s tree shows as it was, with no slide. The agent shows a tab with demi browser show, or opens one with --show: once its job ends, the panel opens, closed or not, and selects that tab, once per showing, and the user’s own selection after it stands; a tab the agent opens only to check its own work joins the strip without taking the view (the app frame’s controls show both). The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. Change groups its added/removed counts with a 2px gap and shows uncommitted totals, none while nothing changed; picked again, it shows the view as it was left, its mode and file included; file pills still open retained edits there. A browser tab wears its page’s icon, as a web browser’s tab does, and the globe only for a page without one, such as the Docs tab’s site. Its menu offers Reload and Duplicate, which opens the address again in a tab right after it, before the Close commands. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A tab the user just made opens with its address focused and selected, waiting for where to go. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again. The address bar reads what is typed as a browser’s does: localhost:3000 opens over http, example.com over https, words are a Google search, and Escape gives back the page’s address. With the focus in the tab, ⌘L focuses the address, ⌘[ and ⌘] go Back and Forward and ⌘R reloads the page, never Demi. The drawn page’s link opens the invoice in a new tab, which joins the strip at once and is selected, as a click’s new tab is. A right click on the page opens the browser’s menu: Back, Forward and Reload, a link’s Open Link in New Tab and Copy Link Address, Cut, Copy and Paste in the field; Escape closes it, as it closes every menu. A tab Open Link in New Tab opens, like one the page’s link opens, goes right after its page’s tab, behind the tabs that tab opened before, as Chrome places them, and keeps that order after a reload. Ship order asks in a dialog titled with the page’s host, which Enter and Escape answer. Download guide.pdf shows the download in a bubble under the address bar’s download button: its size as it comes, then Save, which saves it to this computer, and Show in Files, which opens it in File. Beside a new conversation, before its first message, the panel binds no plugin and says that files and changes appear after the first message; Close is its only control."
+        note="Change and File are pinned tabs, the `change` and `file` kinds of the changes and file-browser plugins: content-sized tabs that lead the strip’s one tab list, so the arrow keys move across them and the user’s tabs alike; they are never created, closed or saved, never scroll or drag with the strip’s tabs, and only compete with them for the selection. In a panel too narrow for them and a tab, their titles truncate before the strip gives way, so the strip keeps room for a tab and a tab the agent opens always shows. The strip holds the user’s tabs, content-sized and capped at 160px, shrinking toward their mark and a few characters before it scrolls, with scrolling and close menus that affect only tabs. The strip has no control to open a tab: a tab appears when the agent opens one, or when a page in a tab opens one, as the first specimen’s Open and Show a Page as the Agent does. Before the browser has a tab, as while it reopens a tab it lost, the content says what Demi does from the frame the tab starts opening, centred with a spinner: Connecting… until the page has read what the Host is doing, then Starting Cloud…, Starting the browser… or Opening the page…, as the specimens held in each phase show, each a tab the browser lost that reopens; Stop the Cloud shows them in turn. An address typed before then shows at once with a thin loading line, and the tab opens there. Reload, Back, Forward and an address show the loading line on the click, before anything left the page: the gallery’s browser answers about a second later and starts loading a moment after its answer, as a far host does. The host numbers its tab lists and the answer names the last one before the request, so only a list numbered higher ends the line, whichever reaches the page first; a page that loads keeps the picture it had under the line until the browser says it stopped loading. Back and Forward are unavailable while the tab’s history has no page that way; go to another address to make Back available. A request the browser refuses ends the line at once and is reported in a toast, never in the tab; a tab the plugin could not open shows a region status with Retry. What the Host’s view cannot do for the viewer while the picture still shows, such as delivering its input, is a toast once; a Host that cannot capture its tabs shows a region status in place of the picture, as the specimen of one does. A closed tab leaves at once and never comes back, fading out as an unselected tab while the selection passes on. While a tab loads, it shows so in three places at once, as a web browser does: Reload turns into Stop, the tab’s mark in the strip turns into a spinner, and the line runs; Stop asks the browser to stop the page, and the three end once the browser says it stopped and, for a tab that shows no picture yet, such as one opening or reopening, once its first picture arrives. Stop is never unavailable while a tab loads: pressed before the browser has the tab, it gives up the address, and the tab opens blank. The gallery’s pages take five seconds to load, so Stop can be tried. A page the agent closed leaves the strip, as a closed tab does. A tab the browser lost when it ended, as a release or a stopped Cloud ends it, keeps its title and address, and opens its page again as soon as it is shown, loading as any page does; a reopening the host refuses shows its message with Retry, which returns the tab to loading at once. A view that reconnects keeps its last picture under a quiet note. A viewer’s browser that cannot decode the host’s H.264, such as a Chromium built without proprietary codecs, opens no view: its browser tab says so in place of the picture, as the last specimen’s does in any browser. A page holds no view while it is hidden, behind another browser tab or in a minimized window, and opens a new one when it is shown again: switch away from the gallery and back, and the picture connects again, its moving mark starting over. A Web picture stands at its own size from the panel’s top-left corner and is never scaled: while the panel grows, the part it does not cover yet is white until a picture at the new size arrives, and while it shrinks, the panel cuts it; a phone’s picture is scaled to fit and centred. The cursor over the page is the page’s own, resolved here from where the page says each cursor applies, so moving across the button shows its pointer at once; no caret or local control shows over the picture. A tab selected again after another tab, or after File, shows its picture, address and title at once, with no loading line for a page that had loaded, and the File view’s tree shows as it was, with no slide. The agent shows a tab with demi browser show, or opens one with --show: once its job ends, the panel opens, closed or not, and selects that tab, once per showing, and the user’s own selection after it stands; a tab the agent opens only to check its own work joins the strip without taking the view (the app frame’s controls show both). The viewport control is a square icon button, a computer or a phone, as far from the address as the navigation group is; its menu rows carry the same icons. Change groups its added/removed counts with a 2px gap and shows uncommitted totals, none while nothing changed; picked again, it shows the view as it was left, its mode and file included; file pills still open retained edits there. A browser tab wears its page’s icon, as a web browser’s tab does, and the globe only for a page without one, such as the Docs tab’s site. Its menu offers Reload before the Close commands. File uses a Lucide outline icon until a file is selected, then its file-type icon. Every tab content puts its address row immediately below the strip; the same divider as File and Change separates it from the page. Browser and File navigation buttons have no extra gap between them; both address bars leave 12px after the navigation group. A click into an address selects it whole, a second click places the caret, and Enter submits it and lets the field go, so keys reach the page again. The address bar reads what is typed as a browser’s does: localhost:3000 opens over http, example.com over https, words are a Google search, and Escape gives back the page’s address. With the focus in the tab, ⌘L focuses the address, ⌘[ and ⌘] go Back and Forward and ⌘R reloads the page, never Demi. The drawn page’s link opens the invoice in a new tab, which joins the strip at once and is selected, as a click’s new tab is. A right click on the page opens the browser’s menu: Back, Forward and Reload, a link’s Copy Link Address, Cut, Copy and Paste in the field; Escape closes it, as it closes every menu. A tab the page’s link opens goes right after its page’s tab, behind the tabs that tab opened before, as Chrome places them, and keeps that order after a reload. Ship order asks in a dialog titled with the page’s host, which Enter and Escape answer. Download guide.pdf shows the download in a bubble under the address bar’s download button: its size as it comes, then Save, which saves it to this computer, and Show in Files, which opens it in File. Beside a new conversation, before its first message, the panel binds no plugin and says that files and changes appear after the first message; Close is its only control."
       >
         <div class="grid gap-6 md:grid-cols-2">
           <GallerySpecimen variant="tabs" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
               <GalleryWorkPanel class="w-full" :work="exhibitWork" @close="exhibitWork.reset" />
+            </div>
+            <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
+              <Button size="sm" @click="exhibitAgentOpens">Open and Show a Page as the Agent</Button>
+              <span>A tab appears only when the agent or a page opens one.</span>
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · the conversation browser’s tabs · live" wide>
@@ -3710,26 +3698,12 @@ onBeforeUnmount(() => {
             </div>
             <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
               <Button size="sm" :disabled="heldWorks[phase].browser.held.value === null" @click="finishStarting(phase)">Let the Host Go On</Button>
-              <Button size="sm" @click="holdAgain(phase)">Open Another Tab That Waits Here</Button>
-            </div>
-          </GallerySpecimen>
-          <GallerySpecimen variant="tabs · a new tab while the browser starts · New Tab" wide>
-            <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="blankStarting" @close="productWould('The work panel closes.')" />
-            </div>
-            <div class="mt-2 flex items-center gap-2 text-[12px] text-fg-muted">
-              <Button size="sm" :disabled="blankStarting.browser.held.value === null" @click="finishBlankStarting">Let the Browser Start</Button>
-              <Button size="sm" @click="openBlankAgain">Open Another New Tab While It Starts</Button>
+              <Button size="sm" @click="holdAgain(phase)">Show Another Lost Tab That Waits Here</Button>
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · a viewer’s browser that cannot decode H.264 · live" wide>
             <div class="gallery-frame flex h-[24rem] overflow-hidden">
               <GalleryWorkPanel class="w-full" :work="undecodedWork" @close="productWould('The work panel closes.')" />
-            </div>
-          </GallerySpecimen>
-          <GallerySpecimen variant="tabs · a Host without the browser · live" wide>
-            <div class="gallery-frame flex h-[24rem] overflow-hidden">
-              <GalleryWorkPanel class="w-full" :work="noBrowserWork" @close="productWould('The work panel closes.')" />
             </div>
           </GallerySpecimen>
           <GallerySpecimen variant="tabs · a Host that cannot capture · live" wide>

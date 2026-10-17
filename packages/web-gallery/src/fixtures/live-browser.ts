@@ -21,7 +21,6 @@ import type { OpenUserStream, UserStreamHandlers } from '@demicodes/web-ui/plugi
 import { CONTROL, META } from '@demicodes/web-ui/live/input'
 import { BrowserTabsError, type BrowserTabList, type StartingPhase } from '@demicodes/plugin-browser/live/tabs'
 import type { PanelReason } from '@demicodes/plugin-browser/generated/plugin'
-import type { HostArtifact } from '@demicodes/web-ui/devices/installed'
 import { WORKSPACE_ROOT } from './workspace'
 
 const FPS = 10
@@ -500,7 +499,7 @@ class GalleryBrowserView {
     }, 1000 / FPS)
   }
 
-  /** A page worth looking at: a heading, a button, a field and a select; a blank page on `about:blank`, as a new tab is. */
+  /** A page worth looking at: a heading, a button, a field and a select; a blank page on `about:blank`. */
   private paint(tab: LiveTab): void {
     const context = this.canvas.getContext('2d')
     if (!context) {
@@ -585,9 +584,8 @@ class GalleryBrowserView {
  * Host does, and a page it loads takes a while longer, so the page's loading
  * shows. It starts with the agent's and the user's tab unless a specimen
  * supplies its own list, such as an empty one for a panel whose strip starts
- * empty. Without `chrome`, the Host lacks the browser, which only the agent installs, so the
- * strip offers no new tab and says why; without `capture`, the Host cannot capture its tabs, so
- * a view shows no picture and says why.
+ * empty. Without `capture`, the Host cannot capture its tabs, so a view shows no picture and
+ * says why.
  */
 export interface GalleryBrowser {
   /** The tab list, as the plugin's conversation state last brought it. */
@@ -617,8 +615,6 @@ export interface GalleryBrowser {
   /** Even recreating the capture extension fails on the Host: every view loses its pictures and says so, until Retry. */
   stopCapture(): void
   stream: OpenUserStream
-  /** What the Host holds of the browser's package. */
-  installed(): readonly HostArtifact[]
   /** Whether the Host is a Cloud that is starting, as the product state says while it wakes. */
   hostStarting: ShallowRef<boolean>
   /** The Cloud stops, as an idle Cloud does, and its browser ends with it; the next tab opened or shown starts it again. */
@@ -641,7 +637,7 @@ export interface GalleryBrowser {
  */
 export function galleryBrowser(
   tabs: LiveTab[] = galleryTabs(),
-  { chrome = true, capture = true, held: holding = null }: { chrome?: boolean; capture?: boolean; held?: StartingPhase | null } = {},
+  { capture = true, held: holding = null }: { capture?: boolean; held?: StartingPhase | null } = {},
 ): GalleryBrowser {
   const views = new Set<GalleryBrowserView>()
   // The next tab's number, as the conversation gives them: never one given before.
@@ -677,20 +673,14 @@ export function galleryBrowser(
     }
   }
 
-  /** The browser a tab needs, which the pinned Chrome for Testing is. */
-  const needed = { name: 'Chrome for Testing', version: '153.0.8010.36' }
-  const artifacts: readonly HostArtifact[] = [
-    { package: 'demi.browser', name: 'program', version: '0.1.3' },
-    ...(chrome ? [{ package: 'demi.browser', ...needed }] : []),
-  ]
-  const listed = shallowRef<BrowserTabList>({ tabs: tabs.map(info), browser: needed })
+  const listed = shallowRef<BrowserTabList>({ tabs: tabs.map(info) })
 
   /** Each change of the tabs is a new tab list, numbered as the Host numbers them. */
   let lists = 0
 
   function changed(): void {
     lists += 1
-    listed.value = { tabs: tabs.map(info), browser: needed }
+    listed.value = { tabs: tabs.map(info) }
     for (const view of views) {
       view.state()
     }
@@ -999,7 +989,6 @@ export function galleryBrowser(
       }
     },
     stream,
-    installed: () => artifacts,
     hostStarting,
     stopCloud: () => {
       cloudStopped = true

@@ -149,14 +149,14 @@ each tab's `data` against its kind's schema when it reads the panel, and to
 the plugin that owns the kind ([Panel kinds](../architecture/plugins.md#panel-kinds)).
 The selection is not part of it: each page keeps its own.
 
-For example, a page creates a browser tab, and the browser plugin binds it:
+For example, the user clicks a file a message names, and the page opens it
+in a file tab:
 
 ```text
-POST  .../panel/changes     { changes: [{ op: "create", id: "a1", kind: "browser",
-                                          data: { url: "about:blank" } }] }        -> { revision: 4 }
-      (the plugin)          update a1 with { tab: "t3" }                          -> revision 5
-GET   .../panel             -> { revision: 5, tabs: [{ id: "a1", kind: "browser",
-                                                       data: { url: "about:blank", tab: "t3" } }] }
+POST  .../panel/changes     { changes: [{ op: "create", id: "a1", kind: "file",
+                                          data: { path: "/work/src/app.ts" } }] }  -> { revision: 4 }
+GET   .../panel             -> { revision: 4, tabs: [{ id: "a1", kind: "file",
+                                                       data: { path: "/work/src/app.ts" } }] }
 ```
 
 `GET /api/conversations/:id/panel` returns the panel, `{ revision: 0, tabs:

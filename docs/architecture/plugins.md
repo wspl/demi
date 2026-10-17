@@ -352,13 +352,13 @@ backend keeps, such as `plugin-browser`'s `browser`. The backend keeps each
 conversation's tabs ([Work panel state](../product/web-api-conversations.md#work-panel-state))
 and lets the plugin that names a kind take part in its tabs:
 
-- **The user's changes reach the plugin.** When the user creates or removes a
-  tab of the plugin's kind, the backend applies the change, answers the page,
-  and then sends the plugin a `panel_tab` request with the tab as it was
-  created or as it was when it was removed. The page never waits for the
-  plugin. For example, the browser plugin opens a tab in the conversation
-  browser for a tab its user created, and closes the browser's tab of one its
-  user removed.
+- **The user's changes reach the plugin.** When the user removes a tab of
+  the plugin's kind, the backend applies the change, answers the page, and
+  then sends the plugin a `panel_tab` request with the tab as it was when it
+  was removed. The page never waits for the plugin. For example, the browser
+  plugin closes the browser's tab of a panel tab its user removed. The user
+  creates no tab of a plugin's kind: the plugin does
+  ([A browser tab in the panel](../browser/live-view.md#a-browser-tab-in-the-panel)).
 - **The plugin changes its own tabs.** Through the port, the plugin lists,
   creates, updates and removes the tabs of its kinds in the request's
   conversation, as the page does, with ids that are used once
@@ -399,7 +399,7 @@ Each request names its user, since a plugin process would serve every user:
 | `context` | The conversation, the node, its working directory, the id of its current input turn, and the text of the source's blocks the model receives | New text, or none |
 | `page_state` | The scope: the user, or one of the user's conversations | The plugin's state of that scope, valid against the scope's declared schema |
 | `page_call` | The method, its parameters, already valid against the method's schema, and the conversation when the page called for one | The result, valid against the method's result schema |
-| `panel_tab` | The conversation, `created` or `removed`, and the tab, of one of the plugin's [panel kinds](#panel-kinds) | Nothing |
+| `panel_tab` | The conversation and the tab the user removed, of one of the plugin's [panel kinds](#panel-kinds) | Nothing |
 | `package_message` | The conversation, and the message its command package sent ([Messages from its command package](#messages-from-its-command-package)) | Nothing |
 | `package_lost` | The conversation whose state its command package kept on a Host ended without the package saying so | Nothing |
 

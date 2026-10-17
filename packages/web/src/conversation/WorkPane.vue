@@ -63,7 +63,6 @@ const kinds = computed<PanelTabKind[]>(() => bound.value?.kinds ?? [])
     :kinds="kinds"
     :before-first-message="!recorded"
     @select="work.select(conversationId, $event)"
-    @add-tab="(kind, data, index) => work.add(conversationId, kind, data, { select: true, index })"
     @move-tab="(id, index) => work.move(conversationId, id, index)"
     @update-tab="(id, data) => work.update(conversationId, id, data)"
     @update-pinned="(kind, data) => work.updatePinned(conversationId, kind, data)"

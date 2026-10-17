@@ -6,7 +6,6 @@ import { waitFor } from '@demicodes/utils'
 import { createPageI18n } from '@demicodes/web-ui/i18n/text'
 import { computed, effectScope, nextTick, ref, shallowRef } from 'vue'
 import {
-  noBrowser,
   BrowserTabsController,
   BrowserTabsError,
   type BrowserTabList,
@@ -36,7 +35,6 @@ function harness(
       history: async () => 0,
       stop: async () => 0,
       stream: () => ({ send: () => {}, close: () => {} }),
-      installed: () => [],
       hostStarting: () => false,
       ...api,
     },
@@ -91,23 +89,6 @@ function recordingStream(views: Array<{ sent: LiveViewerMessage[]; closed: boole
     }
   }
 }
-
-test('a new tab waits for the Host to hold the browser the tab list names', () => {
-  const chrome = { name: 'Chrome for Testing', version: '153.0.8010.36' }
-  const installed = shallowRef([{ package: 'demi.browser', name: 'program', version: '0.1.3' }])
-  const { controller, list, end } = harness({ installed: () => installed.value })
-  // Until the first list names the browser, nothing says it is missing.
-  expect(controller.unavailable.value).toBeNull()
-  list.value = { tabs: [], browser: chrome }
-  expect(controller.unavailable.value).toBe(noBrowser())
-  // Another version of the line is not the one this Demi pins.
-  installed.value = [...installed.value, { package: 'demi.browser', name: chrome.name, version: '152.0.7900.12' }]
-  expect(controller.unavailable.value).toBe(noBrowser())
-  // The agent's `demi browser install` reports the pinned one.
-  installed.value = [...installed.value, { package: 'demi.browser', ...chrome }]
-  expect(controller.unavailable.value).toBeNull()
-  end()
-})
 
 test('a notice the picture shows through is a toast in the page’s words, once; one that leaves no picture is none', async () => {
   const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
@@ -167,7 +148,7 @@ test('a view waiting to reconnect connects at once when a tab that just got its 
   // The Cloud ran no browser yet, so the view ended; its next try is a wait away.
   opened[0]!.closed('host_stopped')
   expect(opened).toHaveLength(1)
-  // The user's new tab got its browser tab: the view does not wait.
+  // A tab that just got its browser tab: the view does not wait.
   controller.show('p-t2', 't2')
   expect(opened).toHaveLength(2)
   controller.dispose()
@@ -431,7 +412,7 @@ test('a tab opened in the background takes its page’s title once the browser n
     ],
     watched: 't1',
   }))
-  // Open Link in New Tab: the panel tab has its address, then its browser tab, and is never shown.
+  // A tab the page opened in the background: the panel tab has its address and browser tab, and is never shown.
   const invoice = { url: 'https://example.test/invoice', tab: 't2' }
   expect(title(invoice)).toBe('example.test')
   tabs(5, '')
@@ -656,7 +637,7 @@ test('before the browser has a tab, the content says what Demi does: connecting,
   starting.value = false
   expect(controller.startingPhase('p1', opening)).toBe('connecting')
   // The conversation's browser has no tabs yet, as the plugin's list says until the view says otherwise.
-  list.value = { tabs: [], browser: { name: 'Chrome for Testing', version: '153.0.8010.36' } }
+  list.value = { tabs: [] }
   expect(controller.startingPhase('p1', opening)).toBe('browser')
   const tab = (id: string) => ({ id, title: id, url: 'about:blank', createdBy: { kind: 'user' as const }, viewport: VIEWPORT, loading: false, canGoBack: false, canGoForward: false })
   views[0]!.handlers.data(framed({ type: 'state', running: true, list: 1, tabs: [tab('t1')], watched: null }))
@@ -674,35 +655,43 @@ test('before the browser has a tab, the content says what Demi does: connecting,
   end()
 })
 
-test('a new tab nobody sent anywhere is blank at once while the browser starts; an address entered then loads and says what it waits for', async () => {
+test('a reopening tab its user stopped is blank, waiting for nothing; an address entered then loads and says what it waits for', async () => {
   const views: Array<{ sent: LiveViewerMessage[]; closed: boolean; handlers: UserStreamHandlers }> = []
-  const { controller, list, end } = harness({ stream: recordingStream(views) }, { pictures: async () => true })
+  let answer = (_tab: string | null) => {}
+  const { controller, list, end } = harness(
+    { stream: recordingStream(views), bind: () => new Promise<string | null>((resolve) => (answer = resolve)) },
+    { pictures: async () => true },
+  )
   await until(controller.pictures).toBe('supported')
   controller.resize(PANEL)
-  const blank = { url: 'about:blank' }
+  // A tab the browser lost, shown: it opens again, and its user pressed Stop before the browser had it.
+  const lost = { tab: 't0', closed: true }
+  const blank = { ...lost, url: 'about:blank' }
   controller.show('p1', null)
-  // Nothing said yet what the Host does, then the browser does not run: the strip's +, as a browser's new tab.
+  const bound = controller.bind('p1')
+  // Nothing said yet what the Host does, then the browser does not run.
   expect(controller.startingPhase('p1', blank)).toBeNull()
   expect(controller.busy('p1', blank)).toBe(false)
-  const browser = { name: 'Chrome for Testing', version: '153.0.8010.36' }
-  list.value = { tabs: [], browser }
+  list.value = { tabs: [] }
   views[0]!.handlers.data(framed({ type: 'state', running: false, list: 1, tabs: [], watched: null }))
   expect(controller.startingPhase('p1', blank)).toBeNull()
   expect(controller.busy('p1', blank)).toBe(false)
   // The user enters an address before the browser has the tab: it loads, and says what it waits for.
-  const asked = { url: 'https://example.test/' }
+  const asked = { ...lost, url: 'https://example.test/' }
   expect(controller.startingPhase('p1', asked)).toBe('browser')
   expect(controller.busy('p1', asked)).toBe(true)
-  // The browser opened the blank tab unseen: shown before its first picture, it still loads nothing.
+  // The browser opened the blank tab: shown before its first picture, it still loads nothing.
   const tab = { id: 't1', title: '', url: 'about:blank', createdBy: { kind: 'user' as const }, viewport: VIEWPORT, loading: false, canGoBack: false, canGoForward: false }
   views[0]!.handlers.data(framed({ type: 'state', running: true, list: 2, tabs: [tab], watched: null }))
+  answer('t1')
+  await bound
   controller.show('p1', 't1')
-  const bound = { url: 'about:blank', tab: 't1' }
-  expect(controller.startingPhase('p1', bound)).toBeNull()
-  expect(controller.busy('p1', bound)).toBe(false)
+  const opened = { url: 'about:blank', tab: 't1' }
+  expect(controller.startingPhase('p1', opened)).toBeNull()
+  expect(controller.busy('p1', opened)).toBe(false)
   // Its Reload is a request of the user's, which loads as any does.
   void controller.history('t1', 'reload')
-  expect(controller.busy('p1', bound)).toBe(true)
+  expect(controller.busy('p1', opened)).toBe(true)
   end()
 })
 
@@ -716,12 +705,11 @@ test('a tab shown again shows no page until the browser’s list names its tab, 
   // The data names a browser tab, but nothing has said yet what the Host holds.
   expect(controller.startingPhase('p1', signIn)).toBe('connecting')
   // The plugin's list lacks it: the browser lost it, and it opens again as any tab does.
-  const browser = { name: 'Chrome for Testing', version: '153.0.8010.36' }
-  list.value = { tabs: [], browser }
+  list.value = { tabs: [] }
   expect(controller.startingPhase('p1', signIn)).toBe('browser')
   // The list names it: the content shows the page.
   const row = { id: 't1', title: 'Sign in to GitHub', url: signIn.url, createdBy: { kind: 'user' } as const, loading: false, canGoBack: false, canGoForward: false, shows: 0 }
-  list.value = { tabs: [row], browser }
+  list.value = { tabs: [row] }
   expect(controller.startingPhase('p1', signIn)).toBeNull()
   // A view that reports the browser without it outweighs a plugin's list that still names it.
   views[0]!.handlers.data(framed({ type: 'state', running: true, list: 1, tabs: [], watched: null }))
@@ -760,17 +748,16 @@ test('a tab not shown that was lost with the browser keeps its title and waits, 
   await until(controller.pictures).toBe('supported')
   controller.resize(PANEL)
   controller.show('p-t2', 't2')
-  const browser = { name: 'Chrome for Testing', version: '153.0.8010.36' }
   const row = (id: string, title: string) => ({
     id, title, url: `https://example.test/${id}`, createdBy: { kind: 'user' } as const,
     loading: false, canGoBack: false, canGoForward: false, shows: 0,
   })
-  list.value = { tabs: [row('t1', 'Orders'), row('t2', 'Invoices')], browser }
+  list.value = { tabs: [row('t1', 'Orders'), row('t2', 'Invoices')] }
   const orders = { url: 'https://example.test/t1', tab: 't1', title: 'Orders' }
   expect(controller.busy('p-t1', orders)).toBe(false)
   // The browser ended: the view and the plugin's list name no tab, before the plugin read the list and marked the panel tabs.
   views[0]!.handlers.data(framed({ type: 'state', running: false, list: 2, tabs: [], watched: null }))
-  list.value = { tabs: [], browser }
+  list.value = { tabs: [] }
   expect(controller.busy('p-t1', orders)).toBe(false)
   expect(browserTabKind.title(orders, { conversation: 'c1', session: controller })).toBe('Orders')
   end()

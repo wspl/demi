@@ -75,13 +75,11 @@ covers only the web app's technology and architectural boundaries.
 
 The page shows what an action of the user does the moment the user acts, in
 the form it will keep, and lets the backend and the Host catch up behind it.
-For example, the user presses the work panel's new-tab control: the browser tab
-stands in the strip at once, selected, with its address bar on `about:blank`
-and a blank page, which is what a new tab shows. The tab in the conversation
-browser opens behind it, and its first picture replaces the blank page without
-anything else changing. If the user types an address and presses Enter before
-that tab exists, the address bar shows the address at once, the page shows that
-it loads, and the tab opens on the address the user last asked for.
+For example, the user types an address in a browser tab of the work panel
+and presses Enter: the address bar shows the address at once and the page
+shows that it loads, while the conversation's browser goes there behind it;
+the new page's first picture replaces the old one without anything else
+changing.
 
 - **What the page knows, it shows.** A result the page can tell beforehand,
   such as a new tab, a closed tab, a moved tab or a typed address, is shown
@@ -379,7 +377,7 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   content's own runtime state and is not written to the tab.
 - **Kinds.** A kind registers what the panel needs to show its tabs: the
   mark, the title derived from `data`, the content component, a schema for
-  `data`, whether the user can create one from the strip, whether it is
+  `data`, whether it is
   pinned, and the intents it opens. The panel and the tab state know nothing
   else about a kind. What protocol, stream or route a tab's content uses is
   the kind's own business, behind its content component. A new kind is a new
@@ -432,12 +430,10 @@ refuses leaves the list, the page shows the panel as the backend has it, and
 the refusal is reported as any failed write is. A kind's content reaches its
 own tab only through `update` of its `data`.
 
-For example, the user presses the strip's new-tab control. The page creates
-`{ id, kind: 'browser', data: { url: 'about:blank' } }` with a new id, selects
-it and sends the change. The tab is there at once, whatever the Host is doing.
-The browser plugin, told by the backend that its user created the tab, opens a
-tab in the conversation browser and writes that tab's id into `data`; the
-content shows the page live from then on
+For example, the user closes a browser tab. The page removes it, selects the
+tab beside it and sends the change; the tab is gone at once, whatever the
+Host is doing. The browser plugin, told by the backend that its user closed
+the tab, closes the tab in the conversation browser
 ([Live browser view](../browser/live-view.md#a-browser-tab-in-the-panel)).
 
 A tab whose `data` does not fit its kind's schema, or whose kind the page does
@@ -450,7 +446,7 @@ The kinds:
 | --- | --- | --- | --- |
 | `change` | `changes` | Pinned: the conversation's changes, in Commits and Conversation mode ([Changes](file-previews.md#changes)) | The `edit` intent |
 | `file` | `file-browser` | Pinned: one file of the conversation's Host, with its tree ([File previews](file-previews.md)) | The `file` intent |
-| `browser` | `browser` | One tab of the [conversation browser](../browser/browser.md), live; [Live browser view](../browser/live-view.md) owns its content | The strip's new-tab control; the plugin, for a tab the agent or a page opened |
+| `browser` | `browser` | One tab of the [conversation browser](../browser/browser.md), live; [Live browser view](../browser/live-view.md) owns its content | The plugin, for a tab the agent or a page opened |
 
 ## The phone layout
 

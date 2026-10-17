@@ -12,7 +12,6 @@
 
 use std::time::Duration;
 
-use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease};
 use demi_shared_gates::Purpose;
 use demi_web_api_protocol::error::ErrorCode;
 use reqwest::StatusCode;
@@ -67,12 +66,9 @@ async fn tabs(backend: &TestBackend, master: &Session, id: &str) -> crate::suppo
     backend.get(&path, Some(master)).await
 }
 
-/// The conversation state of a browser that runs no tab: none, and the
-/// pinned Chrome for Testing, which the page looks for among the Host's
-/// installed artifacts.
+/// The conversation state of a browser that runs no tab.
 fn no_tabs() -> Value {
-    let pinned = BrowserRelease::pinned().unwrap();
-    json!({ "tabs": [], "browser": { "name": ARTIFACT, "version": pinned.version } })
+    json!({ "tabs": [] })
 }
 
 /// The plugin's refusal: `plugin_refused` with its own reason.
@@ -193,7 +189,7 @@ async fn the_tab_methods_run_the_browsers_operations_as_the_user_on_the_conversa
 /// waited for the new release's browser service, which did not start in
 /// time. A paired device's real runner, about a second.
 #[tokio::test]
-async fn a_browser_whose_service_does_not_start_is_unavailable_to_the_list_the_methods_and_a_new_tab() {
+async fn a_browser_whose_service_does_not_start_is_unavailable_to_the_list_the_methods_and_a_reopened_tab() {
     let harness = Harness::new().with_browser_package_that_does_not_start();
     let (backend, master) = harness.start_set_up().await;
     let laptop = backend.pair(&master, "laptop").await;
@@ -228,14 +224,13 @@ async fn a_browser_whose_service_does_not_start_is_unavailable_to_the_list_the_m
         "{message}"
     );
 
-    // The work panel's New Tab: the plugin's attempt to open a browser tab
-    // for it fails, and the tab keeps why. `bind` runs after that attempt,
-    // one piece of the conversation's work at a time, and fails the same way.
+    // A panel tab whose browser tab the browser lost: Retry's `bind` cannot
+    // open one, and the tab keeps why.
     let created = backend
         .post(
             &format!("/api/conversations/{id}/panel/changes"),
             Some(&master),
-            json!({ "changes": [{ "op": "create", "id": "new", "kind": "browser", "data": { "url": "about:blank" } }] }),
+            json!({ "changes": [{ "op": "create", "id": "new", "kind": "browser", "data": { "url": "https://example.test/", "tab": "t9", "closed": true } }] }),
         )
         .await;
     assert!(

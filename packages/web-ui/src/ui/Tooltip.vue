@@ -77,7 +77,7 @@ import type { SentenceText } from './ui-text'
  *
  * A tip shows as the pointer rests on its trigger, after a delay, and only
  * once the pointer moved there: a trigger that slides under a pointer at rest,
- * as a new tab does under the New tab control just clicked, shows none. A
+ * as a new tab does under a pointer that rests on the strip, shows none. A
  * press on the trigger hides the tip until the pointer leaves, so a click
  * never brings one. Keyboard focus shows it as well, but focus a click gave
  * does not. A touch shows none.
