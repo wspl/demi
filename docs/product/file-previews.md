@@ -484,7 +484,8 @@ the call is folded or open, and a click opens it in the
 - **On a phone**, the preview fits the conversation's width. An image opened
   large fills the screen: a tap toggles actual size, at actual size a drag
   moves the picture, a pinch zooms as anywhere on the page, and the close
-  control closes it. A video opened from its thumbnail plays in the player of
+  control closes it, as does a tap on the empty space around the picture,
+  since the viewer covers the screen and leaves nothing else to tap. A video opened from its thumbnail plays in the player of
   the user's browser, which an iPhone shows full screen.
 - **A medium that is gone.** A result can hold, in a medium's place, a part
   that says its bytes could not be stored ([Media](../agent/transcript.md#media)).
