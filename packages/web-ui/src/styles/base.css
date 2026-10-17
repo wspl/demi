@@ -171,7 +171,7 @@
    file-change pill 28 with 13 px text, a segment 36; text that names a control or a row is 15, a Settings
    label 17. The large icon button stays 32, the size the sidebar's rows
    already draw on a phone. */
-@media (max-width: 767px) {
+@variant phone {
   :root {
     --agent-chrome: 15px;
     --spacing-hit-xs: 28px;
@@ -417,6 +417,20 @@ body,
   height: 100%;
 }
 
+/* The page's own color, under the app: the top of the page's surface, as the
+   browser's bars take it (`theme/themeColor.ts`), so what shows before the
+   app draws, or past its edges, is never a band of another color. The page's
+   HTML names the default tone's values for the moment before this loads. */
+html {
+  background: var(--surface-base);
+}
+
+@variant phone {
+  html {
+    background: var(--surface);
+  }
+}
+
 /* A phone's edges the page keeps clear (`viewport-fit=cover`): the status
    bar and the home indicator. Named, so the gallery's phone frames can give
    them the iPhone's values. */
@@ -451,7 +465,7 @@ body {
 /* The phone layout: the page is the app's and stays put. It never zooms (a
    picture zooms itself), never rubber-bands or pulls as a whole and shows
    no tap highlight; only the scrollers inside it scroll. */
-@media (max-width: 767px) {
+@variant phone {
   html {
     -webkit-tap-highlight-color: transparent;
   }
@@ -470,8 +484,8 @@ body {
    the page cannot set it back. In the base layer, so a control that takes
    the touch itself (`touch-none`, a sheet's grabber) keeps its own. */
 @layer base {
-  @media (max-width: 767px) {
-    * {
+  * {
+    @variant phone {
       touch-action: pan-x pan-y;
     }
   }
@@ -480,7 +494,7 @@ body {
 /* A phone's text fields are 16px at least, which iOS never zooms in on as it
    focuses one; the composer's own rule says the same for its message. A
    read-only text, such as a file's code, keeps its size. */
-@media (max-width: 767px) {
+@variant phone {
   input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]),
   textarea,
   select,
@@ -524,7 +538,7 @@ button,
    such as a toolbar's 40 px button or an answer's 36 px actions 8 px apart),
    so neighbours never share one; a smaller control's hit area reaches past
    its edges to 44 × 44 px, where nothing else of it draws. */
-@media (max-width: 767px) {
+@variant phone {
   @layer base {
     :where(button, [role="button"], [role="checkbox"], [role="switch"], [role="radio"], [role="tab"], [role="menuitem"], [role="option"]) {
       -webkit-touch-callout: none;
@@ -953,7 +967,7 @@ html[data-theme="light"] .file-pill {
    floats beside its field alike, such as a path's completions: 44 px with
    16 px text, its icons grown with it as the sidebar's rows' are (the
    phone's ICON_PX.row). */
-@media (max-width: 767px) {
+@variant phone {
   [data-menu-item] {
     --menu-row-h: 2.75rem;
     --menu-row-px: 0.75rem;
@@ -1053,7 +1067,7 @@ html[data-theme="light"] .file-pill {
 
 /* On a phone the message is typed at 16px at least (below), so its line is
    at least that size's. */
-@media (max-width: 767px) {
+@variant phone {
   .composer-frame {
     --composer-shell-height: 52px;
     --composer-line: calc(max(16px, var(--agent-text)) * var(--agent-leading));
@@ -1196,7 +1210,7 @@ html[data-theme="light"] .file-pill {
 
 /* On a phone the message is typed at 16px at least, as every field there is:
    iOS zooms in on a smaller one as it takes the focus. */
-@media (max-width: 767px) {
+@variant phone {
   .composer-shell-capsule .composer-editor .ProseMirror,
   .composer-shell-expanded .composer-editor .ProseMirror {
     font-size: max(16px, var(--agent-text));
@@ -1464,7 +1478,7 @@ html[data-theme="light"] .file-pill {
    finger's target as tall as its line, not its letters': padding on an inline
    box moves no line, so the text lays out as it did. A link around a picture
    is a tile, already its own size. */
-@media (max-width: 767px) {
+@variant phone {
   .markdown-body a:not(:has(img, video)) {
     padding-block: max(0px, calc((1lh - 1.2em) / 2));
   }
@@ -1581,7 +1595,7 @@ html[data-theme="light"] .file-pill {
 
 /* On a phone the bar is a row's height and each segment its whole height,
    a finger's target of its own beside the next. */
-@media (max-width: 767px) {
+@variant phone {
   .status-bar {
     --status-bar-inset: 0px;
   }
@@ -1743,7 +1757,7 @@ html[data-theme="light"] .file-pill {
   opacity: 1;
 }
 
-@media (max-width: 767px) {
+@variant phone {
   .code-block-copy {
     opacity: 1;
   }
@@ -1947,7 +1961,7 @@ html[data-theme="light"] .file-pill {
 
 /* On a phone a checkbox's square is 20 px, its tick scaled with it, in a
    44 px row (`Checkbox`). */
-@media (max-width: 767px) {
+@variant phone {
   .checkbox-mark {
     width: 20px;
     height: 20px;
