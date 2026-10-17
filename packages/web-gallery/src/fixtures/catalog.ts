@@ -57,6 +57,25 @@ export const demoModels: Record<string, ModelInfo[]> = {
   ],
 }
 
+/**
+ * A compatible entry whose model was added by Custom, so its name is the id
+ * the endpoint knows, as long as such ids run: the chip under a phone's
+ * composer cuts it short and keeps the thinking level whole.
+ */
+export const longNameProviders: ProviderInfo[] = [
+  { id: 'openrouter', label: 'OpenRouter', isAvailable: true },
+]
+
+export const longNameModels: Record<string, ModelInfo[]> = {
+  openrouter: [
+    model({
+      id: 'deepseek/deepseek-v4.1-flash',
+      name: 'deepseek/deepseek-v4.1-flash',
+      reasoning: { efforts: ['low', 'medium', 'high'], canDisable: true },
+    }),
+  ],
+}
+
 /** The window the gallery's conversations use, as the backend reports it. */
 const DEMO_WINDOW = 200_000
 

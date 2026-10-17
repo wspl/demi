@@ -84,10 +84,11 @@ const icons = useIconPx()
     ]"
   >
     <slot />
-    <!-- The auto margin takes the width beyond the content, and only that. -->
+    <!-- The auto margin takes the width beyond the content, and only that; a trigger that gives way
+         cuts its content short, never the chevron. -->
     <ChevronDown
       :size="icons.chip"
-      class="ml-auto transition-transform duration-200 ease-out"
+      class="ml-auto shrink-0 transition-transform duration-200 ease-out"
       :class="isOpen ? 'rotate-180' : ''"
     />
   </span>

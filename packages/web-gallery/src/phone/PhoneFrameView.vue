@@ -23,6 +23,8 @@ import GalleryHostMenu from '../components/GalleryHostMenu.vue'
 import GallerySettingsFull from '../components/GallerySettingsFull.vue'
 import GalleryWorkPanel from '../components/GalleryWorkPanel.vue'
 import { transcriptDemoBlocks } from '../fixtures/blocks'
+import { longNameModels, longNameProviders } from '../fixtures/catalog'
+import { projectWorkflows } from '../fixtures/workflows'
 import { galleryBrowser } from '../fixtures/live-browser'
 import { galleryPasskeyOffer } from '../fixtures/passkey-offer'
 import { galleryPasswordChoice } from '../fixtures/password-choice'
@@ -47,10 +49,11 @@ const agentContext = useAgentContext()
 /**
  * One phone of the Phone page (`GalleryPhoneFrame`): the app frame at a
  * phone's size, live, over the gallery's fixtures, opened on a scene: a
- * turn running, the title sheet, the sidebar, the model picker, the work
+ * turn running, the title sheet, the sidebar, the model picker, a long
+ * model name under the composer, the work
  * panel on a Change, a file, its file tree or a browser tab, the Agents or Running window,
- * or Settings. The safe areas are the iPhone 15's, which the frame draws its
- * status bar and home indicator over.
+ * or Settings. The safe areas are the iPhone 15's, or the iPhone SE's with
+ * `?device=se`, which the frame draws its status bar and home indicator over.
  */
 const route = useRoute()
 const scene = typeof route.query.scene === 'string' ? route.query.scene : 'conversation'
@@ -60,9 +63,11 @@ if (system) {
   provide(deviceReportKey, system.report)
 }
 
+// The iPhone SE has a 20 px status bar and no home indicator.
+const se = route.query.device === 'se'
 const root = document.documentElement
-root.style.setProperty('--safe-top', '59px')
-root.style.setProperty('--safe-bottom', '34px')
+root.style.setProperty('--safe-top', se ? '20px' : '59px')
+root.style.setProperty('--safe-bottom', se ? '0px' : '34px')
 onBeforeUnmount(() => {
   root.style.removeProperty('--safe-top')
   root.style.removeProperty('--safe-bottom')
@@ -83,6 +88,12 @@ const flow = useTurnFlow({
   terminals: reactive(galleryTerminals()),
 })
 const session = flow.state
+/**
+ * The long model name's scene: a compatible entry's model named by its id,
+ * at Low, beside the Workflow menu, so the row under the composer is as full
+ * as a phone's gets.
+ */
+const longModel = scene === 'long-model'
 const commandOf = useCallTerminals(() => session.terminals)
 provideLiveCalls((toolUseId) => commandOf(undefined, toolUseId))
 
@@ -301,6 +312,14 @@ onMounted(async () => {
             :compacting="session.phase === 'compacting'"
             :usage="session.contextUsage ?? undefined"
             :flow="flow"
+            v-bind="longModel ? {
+              providers: longNameProviders,
+              models: longNameModels,
+              selectedProviderId: 'openrouter',
+              selectedModelId: 'deepseek/deepseek-v4.1-flash',
+              thinkingEffort: 'low',
+              workflows: projectWorkflows,
+            } : {}"
             @send="flow.turn"
             @steer="flow.steer"
             @queue="flow.queue"
