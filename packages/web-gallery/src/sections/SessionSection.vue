@@ -1443,14 +1443,14 @@ onBeforeUnmount(() => {
             />
           </GallerySpecimen>
           <GallerySpecimen
-            variant="primary Host offline · how to start its runner again, with Copy · Move to Another Host… lists Run On’s online Hosts and moves it"
+            variant="primary Host offline · how to start its runner again, with Copy · Move to Another Host… lists Run On’s online Hosts and moves it · on a phone a long device name wraps and the button moves under it"
             wide
           >
             <GalleryComposer
               :offline-host="{
-                name: 'Old Laptop',
+                name: 'Alex-MacBook-Pro.local',
                 start: demoDeviceStart('macos'),
-                primaryHost: { id: 'old', name: 'Old Laptop', kind: 'device', state: 'offline', mark: GALLERY_MARKS.debian },
+                primaryHost: { id: 'old', name: 'Alex-MacBook-Pro.local', kind: 'device', state: 'offline', mark: GALLERY_MARKS.mac },
                 devices: offlineMenuDevices,
               }"
             />
