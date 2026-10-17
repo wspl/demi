@@ -10,6 +10,17 @@ import { afterEach, expect, test } from 'bun:test'
 // the search's 150 ms pause, and tens of milliseconds besides.
 
 GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/settings' })
+
+/** The phone switch (`phone.ts`): the desktop's unless a test turns it, and `turn` tells the page. */
+class Width extends EventTarget {
+  matches = false
+  turn(phone: boolean): void {
+    this.matches = phone
+    this.dispatchEvent(new Event('change'))
+  }
+}
+const width = new Width()
+Object.defineProperty(window, 'matchMedia', { value: () => width, configurable: true })
 // After the page, since the components ask for its elements.
 await import('@demicodes/web-ui/__tests__/vue-components')
 const { createApp, h, shallowRef } = await import('vue')
@@ -153,6 +164,66 @@ function mountPage(providers: { value: SettingsProviderEntry[] }, hooks: {
   app.mount(element)
   return app
 }
+
+// On a phone a list row hides no Remove at its end, where a tap meant to open
+// it lands; an API key's own page removes it from its bottom, asking first as
+// the desktop's row does, and the page then goes back to the list
+// (`web-application.md` § The phone layout). The desktop keeps the row's
+// Remove and no Remove Provider on the page. Tens of milliseconds.
+test('on a phone an API key is removed from the bottom of its page, asked first, and the page goes back to the list', async () => {
+  const providers = shallowRef([proxy, { ...proxy, id: 'other', name: 'Other' }])
+  const removed: string[] = []
+  const detailOpen = shallowRef(true)
+  const selectedId = shallowRef('proxy')
+  const element = document.createElement('div')
+  document.body.append(element)
+  const app = createApp({
+    render: () =>
+      h(SettingsProvidersPage, {
+        providers: providers.value,
+        vendors: [],
+        overlayStore: createOverlayStore(),
+        selectedId: selectedId.value,
+        detailOpen: detailOpen.value,
+        saveModel: async () => {},
+        'onUpdate:detailOpen': (open: boolean) => {
+          detailOpen.value = open
+        },
+        onRemove: async (id: string) => {
+          removed.push(id)
+          // The host selects the next provider at once, as the gallery's does.
+          providers.value = providers.value.filter((provider) => provider.id !== id)
+          selectedId.value = providers.value[0]!.id
+        },
+      }),
+  })
+  /** The Remove at the end of a list row, which the desktop shows on hover. */
+  const rowRemove = () => document.querySelector('[aria-pressed] [aria-label="Remove"]')
+  width.turn(true)
+  app.mount(element)
+  try {
+    await until(() => button('Remove Provider…') !== undefined, 'the page shows Remove Provider')
+    expect(rowRemove()).toBeNull()
+
+    button('Remove Provider…')!.click()
+    await until(() => document.body.textContent!.includes('Remove “Proxy”?'), 'the removal is asked')
+    expect(removed).toEqual([])
+    // The question's own button says Remove; the model rows' Remove is an icon.
+    const confirm = () =>
+      [...document.querySelectorAll<HTMLElement>('[role="button"]')].find((candidate) => candidate.textContent?.trim() === 'Remove')
+    await until(() => confirm() !== undefined, 'the question offers Remove')
+    confirm()!.click()
+    await until(() => removed.length === 1 && !detailOpen.value, 'the provider goes and the list shows')
+    expect(removed).toEqual(['proxy'])
+
+    width.turn(false)
+    await until(() => rowRemove() !== null, 'the desktop row offers Remove')
+    expect(button('Remove Provider…')).toBeUndefined()
+  } finally {
+    width.turn(false)
+    app.unmount()
+  }
+})
 
 // Custom adds a model whose id and name are the text typed, its window
 // unknown, and Edit Model saves it so (`models.md` § Model fields). Cost:
