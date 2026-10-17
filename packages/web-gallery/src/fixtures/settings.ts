@@ -204,6 +204,7 @@ export function provider(
     enabled: true,
     models: [],
     accounts: [],
+    media: { image: { shape: null, enabled: true } },
     autoRefreshUsage: partial.kind === 'subscription',
     logo: providerLogo({ kind: partial.kind, providerType: partial.family, vendorId: partial.vendorId ?? null }),
     ...partial,
@@ -467,8 +468,12 @@ export function mockProviders(): MockProvider[] {
       catalogFetched: null,
       // Its provider makes OpenAI's images, so its page has the Image Generation switch, on,
       // and Settings › Agent's OpenAI row offers it.
-      imageGeneration: true,
-      imageVendor: 'openai',
+      media: { image: { shape: 'chatgpt', enabled: true, models: [
+        { id: 'gpt-image-2.5-sunburst', name: 'GPT-Image-2.5 Sunburst', released: '2026-09-08' },
+        { id: 'gpt-image-2', name: 'GPT-Image-2', released: '2026-04-21' },
+        { id: 'gpt-image-1.5', name: 'GPT-Image-1.5', released: '2025-12-16' },
+        { id: 'gpt-image-1-mini', name: 'GPT-Image-1 Mini', released: '2025-10-06' },
+      ] } },
       // Two accounts, so Rotation shows here too; removing both signs it out.
       accounts: [
         {
@@ -512,8 +517,10 @@ export function mockProviders(): MockProvider[] {
         family: 'grok-build',
         // Its images are turned off, so the agent's come from Codex, and Settings › Agent's
         // xAI row has no entry to offer.
-        imageGeneration: false,
-        imageVendor: 'xai',
+        media: { image: { shape: 'grok', enabled: false, models: [
+          { id: 'grok-imagine-image-1.5', name: 'Grok Imagine Image 1.5', released: '2026-07-14' },
+          { id: 'grok-imagine-image', name: 'Grok Imagine Image', released: '2026-01-28' },
+        ] } },
         // Signed in and reachable from the backend: its active account can be tested.
         accounts: [
           { id: 'g1', label: 'alex@example.com', plan: 'XPremium', active: true, quota: [] },
@@ -608,8 +615,12 @@ export function mockProviders(): MockProvider[] {
       id: 'openai', name: 'OpenAI', kind: 'api_key', family: 'openai', vendorId: 'openai',
       baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses', apiKey: 'sk-proj-example-not-a-real-key',
       // Its key makes OpenAI's images too, which Automatic takes only after Codex.
-      imageGeneration: true,
-      imageVendor: 'openai',
+      media: { image: { shape: 'openai-images', enabled: true, models: [
+        { id: 'gpt-image-2.5-sunburst', name: 'GPT-Image-2.5 Sunburst', released: '2026-09-08' },
+        { id: 'gpt-image-2', name: 'GPT-Image-2', released: '2026-04-21' },
+        { id: 'gpt-image-1.5', name: 'GPT-Image-1.5', released: '2025-12-16' },
+        { id: 'gpt-image-1-mini', name: 'GPT-Image-1 Mini', released: '2025-10-06' },
+      ] } },
       state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: ago(3 * DAY),
       models: [
         model(
@@ -674,13 +685,16 @@ export function mockProviders(): MockProvider[] {
       id: 'ollama', name: 'Ollama on the lab workstation', kind: 'api_key', family: 'openai', vendorId: null, compatible: true,
       baseUrl: 'http://localhost:11434/v1', wireApi: 'openai-chat', apiKey: '',
       modelSource: 'manual', state: 'unreachable', detail: 'connect ECONNREFUSED 127.0.0.1:11434',
+      // Ollama serves OpenAI's image requests too, so the user chose that shape and added an image model.
+      media: { image: { shape: 'openai-images', enabled: true } },
       models: [
         model({
           id: 'qwen3:32b',
           contextWindow: 40_000,
           tools: true,
           extensions: []
-        })
+        }),
+        model({ kind: 'image', id: 'x/z-image-turbo', name: 'Z-Image Turbo', extensions: null }),
       ],
     }),
     provider({

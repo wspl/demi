@@ -9,9 +9,11 @@ import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refres
 import type { ProviderLoginPhase } from '@demicodes/web-ui/settings/types'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
+import { testedModel } from '@demicodes/web-ui/settings/tested-model'
 import { providerOperation, providerTarget } from '@demicodes/web-ui/settings/provider-operations'
 import { operations } from '@demicodes/web-ui/ui/operations'
 import {
+  SETTINGS_MEDIA_KINDS,
   type SettingsModelDraft,
   type SettingsModelMatch,
   type SettingsQuotaRefresh,
@@ -35,6 +37,8 @@ import {
   type ActivateAccount,
   type ConfiguredModel,
   type CreateProvider,
+  type MediaPatch,
+  type ProviderOrder,
   type ProviderPatch,
   type ListedLogin,
   type LoginState,
@@ -84,24 +88,22 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       ...(provider.cliPackage === null ? {} : { cli: clis.value[provider.id] ?? null }),
       ...edits.value[provider.id],
     }))
-    const subscriptions = (product.vendors?.subscriptions ?? []).map(
-      (subscription) =>
-        configured.find(
-          (provider) =>
-            provider.kind === 'subscription' &&
-            provider.providerType === subscription.providerType,
-        ) ??
-        emptyProvider(
-          subscription.providerType,
-          subscriptionName(subscription.providerType),
-          'subscription',
-        ),
+    // The signed-in subscriptions in the user's order, which generated
+    // media follow, then each one nobody signed in to, in the vendors' order,
+    // as what could be added follows what was (`media.md` § Which entry
+    // makes a call).
+    const placeholders = (product.vendors?.subscriptions ?? []).flatMap((subscription) =>
+      configured.some(
+        (provider) =>
+          provider.kind === 'subscription' &&
+          provider.providerType === subscription.providerType,
+      )
+        ? []
+        : [emptyProvider(subscription.providerType, subscriptionName(subscription.providerType), 'subscription')],
     )
-    const remaining = configured.filter(
-      (provider) =>
-        !subscriptions.some((subscription) => subscription.id === provider.id),
-    )
-    return [...subscriptions, ...remaining]
+    const subscriptions = configured.filter((provider) => provider.kind === 'subscription')
+    const keys = configured.filter((provider) => provider.kind !== 'subscription')
+    return [...subscriptions, ...placeholders, ...keys]
   })
 
   /** The one toast of a provider operation that failed, titled by what failed. */
@@ -210,6 +212,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       catalogFetched: null,
       state: 'setup',
       enabled: true,
+      media: { image: { shape: null, enabled: true } },
       models: [],
       accounts: [],
       // A subscription not yet configured goes by its type; an added vendor's draft takes its mark below.
@@ -271,6 +274,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
 
   function modelConfig(model: SettingsModelDraft): ConfiguredModel {
     return {
+      ...(model.kind && model.kind !== 'text' ? { kind: model.kind } : {}),
       id: model.id,
       displayName: model.name || model.id,
       contextWindow: model.contextWindow,
@@ -329,12 +333,25 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         // A switch that did not save goes back to what the backend keeps,
         // as Activate does; a typed field keeps its text for the next try.
         const kept = { ...edits.value[provider.id] }
-        delete kept.imageGeneration
+        delete kept.media
         edits.value[provider.id] = kept
         throw error
       }
       delete edits.value[provider.id]
     })
+
+    /** What of each kind's shape and switch the user changed: a vendor entry's shape is never sent. */
+    function mediaPatch(media: SettingsProviderEntry['media']): MediaPatch {
+      return Object.fromEntries(SETTINGS_MEDIA_KINDS.flatMap((kind) => {
+        const was = provider.media[kind]
+        const now = media[kind]
+        const change = {
+          ...(now.shape !== was.shape ? { shape: now.shape } : {}),
+          ...(now.enabled !== was.enabled ? { enabled: now.enabled } : {}),
+        }
+        return Object.keys(change).length ? [[kind, change]] : []
+      }))
+    }
 
     function save(changes: Partial<SettingsProviderEntry>): Promise<void> {
       return patch(provider, {
@@ -345,7 +362,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl || null } : {}),
         ...(changes.apiKey !== undefined ? { apiKey: changes.apiKey || null } : {}),
         ...(changes.rotation !== undefined ? { rotation: changes.rotation } : {}),
-        ...(changes.imageGeneration !== undefined ? { imageGeneration: changes.imageGeneration } : {}),
+        ...(changes.media !== undefined ? { media: mediaPatch(changes.media) } : {}),
         ...(changes.modelSource
           ? {
               models:
@@ -445,11 +462,12 @@ export const useProviderSettings = defineStore('provider-settings', () => {
   }
 
   /**
-   * Tests with the first model the user keeps enabled; the page offers no test
-   * without one. A subscription names the account to test, in use or not.
+   * Tests with the first text model the user keeps enabled; the page offers
+   * no test without one. A subscription names the account to test, in use or
+   * not.
    */
   function test(provider: SettingsProviderEntry, accountId?: string): void {
-    const model = provider.models.find((candidate) => candidate.enabled)
+    const model = testedModel(provider)
     if (!model) {
       return
     }
@@ -659,6 +677,36 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       .catch((error) => {
         shown.drop()
         report(t('providers.reorderFailed'), error)
+      })
+  }
+
+  /**
+   * Puts the entries in the order the user dragged the list to, which
+   * generated media follow (`media.md` § Which entry makes a call): the list
+   * shows it at once, the change is sent after every entry's earlier
+   * writes, and a refusal puts the list back with a toast.
+   */
+  function reorderProviders(ids: string[]): Promise<void> {
+    const shown = product.change('providers', (state) => ({
+      ...state,
+      providers: ids.flatMap((id) => state.providers.filter((entry) => entry.id === id)),
+    }))
+    const current = lifetime
+    return writes
+      // After every entry's earlier writes, which the order must not overtake.
+      .run(ids, async () => {
+        current.signal.throwIfAborted()
+        shown.send()
+        await apiRequest('/providers/order', {
+          method: 'PUT',
+          signal: current.signal,
+          ...jsonBody({ providerIds: ids } satisfies ProviderOrder),
+        })
+        shown.land()
+      })
+      .catch((error) => {
+        shown.drop()
+        report(t('providers.reorderProvidersFailed'), error)
       })
   }
 
@@ -977,6 +1025,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
     removeAccount,
     activateAccount,
     reorderAccounts,
+    reorderProviders,
     saveModel,
     saveModels,
     searchModels,

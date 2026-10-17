@@ -111,6 +111,15 @@ export function formatAge(timestamp: string, now: Date | number): string {
   return day(moment, at)
 }
 
+/**
+ * A calendar date with no time of day, `YYYY-MM-DD` such as a model's
+ * release, as the day it names wherever the reader is: "Apr 21, 2026".
+ */
+export function formatDate(date: string): string {
+  return new Intl.DateTimeFormat(pageLanguage(), { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+    .format(new Date(`${date}T00:00:00Z`))
+}
+
 /** A day in full: "October 7, 2026". */
 export function formatDay(timestamp: string): string {
   return intl(new Date(timestamp), { month: 'long', day: 'numeric', year: 'numeric' })

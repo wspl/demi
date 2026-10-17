@@ -539,7 +539,13 @@
     "saving": "保存中…",
     "addAccount": "アカウントを追加",
     "showInMenu": "モデルメニューに表示",
-    "imageGeneration": "画像生成",
+    "media": {
+      "imageGeneration": "画像生成",
+      "images": "画像",
+      "none": "なし",
+      "addImage": "画像モデルを追加",
+      "noImages": "画像モデルはまだありません"
+    },
     "state": {
       "setup": "未設定",
       "signedOut": "サインアウト済み",
@@ -576,11 +582,12 @@
       "keyReplace": "新しいキーを入力して置き換え",
       "keyPaste": "API キーを貼り付け",
       "test": "接続をテスト",
-      "testDescription": "有効な最初のモデルに短いリクエストを 1 件送信します。",
+      "testDescription": "有効な最初のテキストモデルに短いチャットメッセージを 1 件送信します。",
       "testing": "テスト中…",
       "connected": "接続済み",
       "failed": "失敗",
-      "enableModel": "先にモデルを有効にしてください"
+      "enableModel": "先にモデルを有効にしてください",
+      "noTextModel": "テストはチャットメッセージを送信しますが、このプロバイダーにはテキストモデルがありません"
     },
     "cli": {
       "title": "コマンドラインツール",
@@ -611,7 +618,7 @@
       "enable": "「{name}」を有効にする",
       "noResults": "結果がありません",
       "signInToSee": "サインインするとモデルが表示されます",
-      "none": "モデルはありません"
+      "none": "モデルはまだありません"
     },
     "removeProvider": {
       "title": "「{name}」を削除しますか？",
@@ -665,6 +672,7 @@
     "id": "モデル ID",
     "name": "名前",
     "nameDescription": "モデルメニューに表示されます。デフォルトは ID です。",
+    "nameDefault": "デフォルトは ID です。",
     "contextWindow": "コンテキストウィンドウ",
     "maxOutput": "最大出力",
     "optional": "任意",

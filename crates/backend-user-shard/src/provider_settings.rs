@@ -11,11 +11,11 @@ use demi_backend_providers::llm::families::{ProviderFamily, family_name};
 use demi_backend_providers::vault::entries::{ApiKeyConfig, EntryCredential, ProviderEntry};
 use demi_backend_providers::vault::operations::OperationGuard;
 use demi_provider_common::{Secret, SecretError};
-use demi_shared_types::WireApi;
+use demi_shared_types::{ImageShape, MediaKind, MediaShapes, WireApi};
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::ids::{ProviderId, UserId};
 use demi_web_api_protocol::providers::{
-    ConfiguredModels, CreateProvider, CredentialKind, ModelMatch, ProviderPatch, Rotation,
+    ConfiguredModel, ConfiguredModels, CreateProvider, CredentialKind, ModelKind, ModelMatch, ProviderPatch, Rotation,
 };
 use demi_web_api_protocol::text::EndpointUrl;
 use std::sync::Arc;
@@ -66,10 +66,21 @@ pub enum ProviderRefusal {
     /// accounts.
     #[error("Rotation needs at least two accounts")]
     RotationNeedsAccounts,
-    /// An Image Generation switch for an entry whose provider makes no
-    /// images; it names the entry.
-    #[error("{0} doesn’t make images.")]
-    MakesNoImages(String),
+    /// A switch of a kind for an entry that makes none of it; it names the
+    /// entry and the kind.
+    #[error("{0} doesn’t make {1}.")]
+    MakesNo(String, &'static str),
+    /// A shape for a vendor entry, whose shapes are its vendor's; it names
+    /// the entry.
+    #[error("{0} makes media as its vendor does; its shapes can’t be changed.")]
+    ShapeFixed(String),
+    /// A model of a kind the entry makes none of.
+    #[error("models: {model} is an {kind} model, but {entry} makes no {kind}s; choose an {kind} shape first")]
+    UnmadeKind { entry: String, model: String, kind: ModelKind },
+    /// A list of entries for an order that does not name each of the
+    /// scope's once.
+    #[error("providerIds: name every provider once")]
+    Order,
     /// A model list that names one id twice; it names the id.
     #[error("models: the model ID {0:?} appears twice")]
     DuplicateModel(String),
@@ -151,6 +162,7 @@ impl Services {
                     wire_api: vendor.wire_api,
                     vendor_id: Some(vendor.id),
                     models,
+                    image_shape: None,
                 };
                 (vendor.provider_type, label, config)
             }
@@ -170,6 +182,7 @@ impl Services {
                     wire_api,
                     vendor_id: Some(provider_type.clone()),
                     models,
+                    image_shape: None,
                 };
                 (provider_type, label, config)
             }
@@ -190,6 +203,7 @@ impl Services {
                     wire_api,
                     vendor_id: None,
                     models,
+                    image_shape: None,
                 };
                 (provider_type, label, config)
             }
@@ -223,19 +237,25 @@ impl Services {
         let entry = self.scoped_entry(&user.id, id).await?;
         let _held = self.hold_entry(&entry)?;
         let protocol = patch.provider_type.is_some() || patch.wire_api.is_some();
+        let image_shape = patch.media.as_ref().and_then(|media| media.image.as_ref()).and_then(|image| image.shape);
+        let lists = patch.models.is_some();
         let reconfigures = patch.api_key.is_some()
             || patch.base_url.is_some()
-            || patch.models.is_some()
+            || lists
+            || image_shape.is_some()
             || protocol;
         let mut family = None;
         let config = if reconfigures {
             let EntryCredential::ApiKey(config) = &entry.credential else {
                 return Err(if patch.models.is_some() {
                     ProviderRefusal::OwnModels(entry.label.clone())
+                } else if image_shape.is_some() {
+                    ProviderRefusal::ShapeFixed(entry.label.clone())
                 } else {
                     ProviderRefusal::SubscriptionOnly
                 });
             };
+            let stored = config.models.clone();
             let mut config = config.clone();
             if let Some(text) = patch.api_key {
                 config.api_key = text.map(key).transpose()?;
@@ -261,6 +281,36 @@ impl Services {
                 distinct_models(models.as_ref())?;
                 config.models = models;
             }
+            // A vendor entry makes media as its vendor does.
+            if let Some(shape) = image_shape {
+                if !config.is_compatible() {
+                    return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
+                }
+                if shape.is_some_and(|shape| !ImageShape::CHOSEN.contains(&shape)) {
+                    return Err(ProviderRefusal::ShapeFixed(entry.label.clone()));
+                }
+                config.image_shape = shape;
+            }
+            // A model added of a kind the entry does not make is no model of
+            // it: only a compatible entry with a shape for the kind lists
+            // one. One kept from before the shape was set to None stays,
+            // unused and hidden, and comes back with the shape
+            // (`providers.md` § Provider management), so a list that still
+            // carries it, as an edit of a text model sends, is taken.
+            let shapes = MediaShapes { image: config.image_shape.filter(|_| config.is_compatible()) };
+            let kept = |model: &ConfiguredModel| {
+                stored.iter().flat_map(|models| &models.0).any(|before| before.id == model.id && before.kind == model.kind)
+            };
+            let unmade = config.models.iter().flat_map(|models| &models.0).find(|model| {
+                model.kind.media().is_some_and(|kind| !shapes.makes(kind)) && !kept(model)
+            });
+            if let Some(model) = unmade.filter(|_| lists) {
+                return Err(ProviderRefusal::UnmadeKind {
+                    entry: entry.label.clone(),
+                    model: model.id.as_str().to_owned(),
+                    kind: model.kind,
+                });
+            }
             Some(config)
         } else {
             None
@@ -278,17 +328,16 @@ impl Services {
                 return Err(ProviderRefusal::RotationNeedsAccounts);
             }
         }
-        if patch.image_generation.is_some() {
-            // An entry whose provider cannot be built yet, such as one
-            // without its key, shows no switch either: its details say it
-            // makes no images, so the build's error has nothing to add here.
-            let makes_images = self
-                .assembly
-                .provider_for(&entry)
-                .await
-                .is_ok_and(|provider| provider.images().is_some());
-            if !makes_images {
-                return Err(ProviderRefusal::MakesNoImages(entry.label.clone()));
+        // A switch belongs to a kind the entry makes, with the shape this
+        // change gives it.
+        let image_generation = patch.media.as_ref().and_then(|media| media.enabled(MediaKind::Image));
+        if image_generation.is_some() {
+            let shapes = match &config {
+                Some(config) if config.is_compatible() => MediaShapes { image: config.image_shape },
+                _ => self.assembly.media_shapes(&entry),
+            };
+            if !shapes.makes(MediaKind::Image) {
+                return Err(ProviderRefusal::MakesNo(entry.label.clone(), "images"));
             }
         }
         let label = patch.label.map(|label| label.into_string());
@@ -300,7 +349,7 @@ impl Services {
                 family,
                 config,
                 patch.rotation,
-                patch.image_generation,
+                image_generation,
             )
             .await?
             .ok_or(ProviderRefusal::NotFound)?;
@@ -308,6 +357,18 @@ impl Services {
             self.assembly.invalidate(&entry.id).await?;
         }
         Ok(updated)
+    }
+
+    /// Puts the entries of `user`'s scope in the order `ids` names them,
+    /// each once: the order of Settings › Providers, which generated media
+    /// try entries in (`providers.md` § Provider management).
+    pub async fn order_providers(&self, user: &UserDto, ids: Vec<ProviderId>) -> Result<(), ProviderRefusal> {
+        self.may_configure(user)?;
+        let owner = self.vault.owner_for(&user.id).await?;
+        if !self.vault.set_order(&owner, ids).await? {
+            return Err(ProviderRefusal::Order);
+        }
+        Ok(())
     }
 
     /// Deletes the entry `id` with its accounts, catalog and quota
@@ -328,6 +389,15 @@ impl Services {
 
     /// The models.dev models `query` matches, filled from the vendor of the
     /// entry `entry` of `user`'s scope where it lists them.
+    /// Each entry's image models by entry id, which `GET /api/models` carries
+    /// for the settings page (`web-api-settings.md` § Models).
+    pub async fn entry_image_models(
+        &self,
+        user: &UserId,
+    ) -> Result<std::collections::HashMap<String, Vec<demi_web_api_protocol::providers::EntryImageModel>>, demi_backend_providers::llm::assembly::AssemblyError> {
+        crate::shard::media::entry_image_models(self, user).await
+    }
+
     pub async fn search_models(
         &self,
         user: &UserId,

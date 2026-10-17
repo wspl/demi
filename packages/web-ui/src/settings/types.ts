@@ -23,11 +23,42 @@ import type { VerificationHost } from '../auth/verification'
  */
 export type SmallModelChoice = Pick<ModelSettings, 'providerId' | 'modelId' | 'thinkingEffort'>
 
-/** A vendor whose images an entry makes, by its models.dev id (`images.md` § Which entry makes an image). */
-export type ImageVendorId = 'openai' | 'google' | 'xai'
+/** A kind of media an entry may make (`media.md` § Which entries make which media); video and audio join as their commands are built. */
+export type SettingsMediaKind = 'image'
 
-/** The entry the user chose for each vendor's images; a vendor absent is Automatic. */
-export type ImageEntryChoices = Partial<Record<ImageVendorId, string>>
+export const SETTINGS_MEDIA_KINDS: readonly SettingsMediaKind[] = ['image']
+
+/** How an entry's API makes images: a vendor entry's is its vendor's, a compatible API's the one its user chose. */
+export type SettingsImageShape = 'chatgpt' | 'grok' | 'openai-images' | 'gemini'
+
+/** The names of the shapes, the vendors' own formats, which no language translates. */
+export const IMAGE_SHAPE_LABELS: Record<SettingsImageShape, string> = {
+  chatgpt: 'ChatGPT',
+  grok: 'Grok',
+  'openai-images': 'OpenAI Images',
+  gemini: 'Gemini',
+}
+
+/** The shapes a compatible API may choose for each kind, besides none. */
+export const COMPATIBLE_MEDIA_SHAPES: Record<SettingsMediaKind, readonly SettingsImageShape[]> = {
+  image: ['openai-images'],
+}
+
+/** A vendor's media model as an entry's section lists it, never edited. */
+export interface SettingsMediaModel {
+  id: string
+  name: string
+  /** `YYYY-MM-DD`; null when nobody states it. */
+  released: string | null
+}
+
+/** How an entry makes one kind of media: its shape, null for none, and its switch. */
+export interface SettingsEntryMedia {
+  shape: SettingsImageShape | null
+  enabled: boolean
+  /** A vendor entry's models of the kind, newest first; a compatible API's are its list's, kind and all. */
+  models?: SettingsMediaModel[]
+}
 
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
@@ -150,6 +181,8 @@ export interface SettingsKeyBinding {
 
 /** A model as the settings edit it: what an entry's own list needs to use it. */
 export interface SettingsModelDraft {
+  /** What it makes: text, the model menu's, unless added as an image model of a compatible API; absent is text. An image model has only its ID and name. */
+  kind?: 'text' | SettingsMediaKind
   id: string
   name: string
   contextWindow: number | null
@@ -338,12 +371,10 @@ export interface SettingsProviderEntry {
   /** A subscription's rotation; absent for an API key. */
   rotation?: SettingsRotation
   /**
-   * The Image Generation switch: whether the agent's images may come from
-   * this provider; absent for one whose provider makes no images.
+   * How it makes each kind of media (`media.md` § Which entries make which
+   * media): a kind with a shape has its switch, Image Generation, on its page.
    */
-  imageGeneration?: boolean
-  /** The vendor whose images it makes, present with `imageGeneration`. */
-  imageVendor?: ImageVendorId
+  media: Record<SettingsMediaKind, SettingsEntryMedia>
   /** The vendor supports a free quota request when an account becomes visible. */
   autoRefreshUsage?: boolean
   /** The vendor mark (`providerLogo`); null falls back to an initial. */

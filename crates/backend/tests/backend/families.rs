@@ -23,12 +23,12 @@ use demi_provider_common::quota::{
 };
 use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
 use demi_provider_common::images::{
-    ImageAnswer, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, MadeImage, listed,
+    ImageAnswer, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, MadeImage,
 };
 use demi_provider_common::{
     Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError,
 };
-use demi_shared_types::{
+use demi_shared_types::{ImageShape, 
     AuthState, LoginPending, ProviderErrorDiagnostics, ProviderFailureFacts, ProviderModel,
     ProviderModelList, QuotaWindow, RuntimeState, Timestamp, TokenUsage, WireApi,
 };
@@ -110,6 +110,12 @@ pub const KEY: &str = "key";
 impl ProviderFamily for ScriptedKey {
     fn credential(&self) -> CredentialKind {
         CredentialKind::ApiKey
+    }
+
+    /// A vendor entry of a family whose key makes images makes them in the
+    /// OpenAI shape, as an OpenAI key does.
+    fn image_shape(&self, vendor_id: Option<&str>) -> Option<ImageShape> {
+        self.images.as_ref().filter(|_| vendor_id.is_some()).map(|_| ImageShape::OpenaiImages)
     }
 
     fn wires(&self) -> &'static [WireApi] {
@@ -289,21 +295,20 @@ struct ScriptedImages {
 }
 
 impl ImageMaker for ScriptedImages {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         self.script.name
     }
 
-    fn vendor(&self) -> ImageVendor {
-        self.script.vendor
+    fn vendor(&self) -> Option<ImageVendor> {
+        Some(self.script.vendor)
     }
 
     fn models<'a>(
         &'a self,
         _: &'a reqwest::Client,
-        catalog: &'a Catalog,
+        _: &'a Catalog,
     ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
-        let vendor = self.script.vendor;
-        let models = self.script.models.iter().map(|id| listed(catalog, vendor, id, None, None)).collect();
+        let models = self.script.models.iter().map(|id| ImageModelInfo::id(id)).collect();
         Box::pin(std::future::ready(Ok(models)))
     }
 
@@ -360,6 +365,10 @@ impl ImageMaker for ScriptedImages {
 impl ProviderFamily for ScriptedSubscription {
     fn credential(&self) -> CredentialKind {
         CredentialKind::Subscription
+    }
+
+    fn image_shape(&self, _: Option<&str>) -> Option<ImageShape> {
+        self.images.as_ref().map(|_| ImageShape::Chatgpt)
     }
 
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError> {

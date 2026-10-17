@@ -51,12 +51,12 @@ fn encode(request: &ImageRequest) -> Bytes {
 }
 
 impl ImageMaker for GrokProvider {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "Grok"
     }
 
-    fn vendor(&self) -> ImageVendor {
-        ImageVendor::Xai
+    fn vendor(&self) -> Option<ImageVendor> {
+        Some(ImageVendor::Xai)
     }
 
     /// The catalog's models of a Grok subscription, those it accepted: the
@@ -100,7 +100,7 @@ impl ImageMaker for GrokProvider {
             let answer = call
                 .send(http, url, encode(&request), |refused| async move {
                     let credentials = shared.auth.credentials(http, refused.as_ref()).await?;
-                    Ok((identity_headers(&credentials), credentials.access_token))
+                    Ok((identity_headers(&credentials), Some(credentials.access_token)))
                 })
                 .await;
             // A refused shape is told with the shapes the proxy named.

@@ -20,7 +20,7 @@ beforeEach(() => {
     const path = String(input)
     if (path === '/api/models') {
       // The page reads the model catalog as it starts.
-      return Response.json({ providers: [], smallModel: null, imageEntries: {} })
+      return Response.json({ providers: [], smallModel: null })
     }
     requests.push(path)
     throw new Error(`Unexpected request: ${path}`)

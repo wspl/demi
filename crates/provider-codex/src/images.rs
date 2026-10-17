@@ -48,12 +48,12 @@ fn encode(catalog: &Catalog, request: &ImageRequest) -> Bytes {
 }
 
 impl ImageMaker for CodexProvider {
-    fn name(&self) -> &'static str {
+    fn name(&self) -> &str {
         "ChatGPT"
     }
 
-    fn vendor(&self) -> ImageVendor {
-        ImageVendor::OpenAi
+    fn vendor(&self) -> Option<ImageVendor> {
+        Some(ImageVendor::OpenAi)
     }
 
     /// The catalog's models of a ChatGPT subscription: the backend refuses
@@ -97,7 +97,7 @@ impl ImageMaker for CodexProvider {
             call.send(http, url, encode(catalog, &request), |refused| async move {
                 let credentials = shared.auth.credentials(http, refused.as_ref()).await?;
                 let headers = account_headers(&credentials, &shared.user_agent);
-                Ok((headers, credentials.access_token))
+                Ok((headers, Some(credentials.access_token)))
             })
             .await
         })

@@ -26,43 +26,64 @@ pub enum WireApi {
 
 serde_plain::derive_display_from_serialize!(WireApi);
 
-/// A vendor whose image models an entry makes, by its models.dev id: a
-/// subscription's (ChatGPT's are OpenAI's, Grok's xAI's) or a key's. Each
-/// is a row of Settings › Agent › Image Generation, in this order
-/// (`images.md` § Which entry makes an image).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
-pub enum ImageVendor {
-    #[serde(rename = "openai")]
-    OpenAi,
-    #[serde(rename = "google")]
-    Google,
-    #[serde(rename = "xai")]
-    Xai,
+/// How an entry's API makes images, its *image shape* (`media.md` § Which
+/// entries make which media): a vendor entry's is its vendor's, a
+/// compatible entry's the one its user chose, or none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+pub enum ImageShape {
+    /// The ChatGPT subscription's image endpoints.
+    #[serde(rename = "chatgpt")]
+    Chatgpt,
+    /// The Grok subscription's image endpoints.
+    #[serde(rename = "grok")]
+    Grok,
+    /// `…/images/generations` and `…/images/edits`, as OpenAI's API and
+    /// xAI's serve them.
+    #[serde(rename = "openai-images")]
+    OpenaiImages,
+    /// Gemini's `generateContent`.
+    #[serde(rename = "gemini")]
+    Gemini,
 }
 
-impl ImageVendor {
-    pub const ALL: [Self; 3] = [Self::OpenAi, Self::Google, Self::Xai];
+impl ImageShape {
+    /// The shapes a compatible entry may choose.
+    pub const CHOSEN: [Self; 1] = [Self::OpenaiImages];
+}
 
-    /// Its models.dev id.
-    pub fn id(self) -> &'static str {
-        match self {
-            Self::OpenAi => "openai",
-            Self::Google => "google",
-            Self::Xai => "xai",
-        }
-    }
+serde_plain::derive_display_from_serialize!(ImageShape);
+serde_plain::derive_fromstr_from_deserialize!(ImageShape);
 
-    /// The vendor of models.dev id `id`, when it makes images.
-    pub fn from_id(id: &str) -> Option<Self> {
-        Self::ALL.into_iter().find(|vendor| vendor.id() == id)
-    }
+/// The kinds of media an entry may make, each with its shape and switch
+/// (`media.md` § Which entries make which media). Video and audio join as
+/// their commands are built.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum MediaKind {
+    Image,
+}
 
-    /// How the user knows it.
-    pub fn name(self) -> &'static str {
-        match self {
-            Self::OpenAi => "OpenAI",
-            Self::Google => "Google",
-            Self::Xai => "xAI",
+impl MediaKind {
+    pub const ALL: [Self; 1] = [Self::Image];
+}
+
+serde_plain::derive_display_from_serialize!(MediaKind);
+serde_plain::derive_fromstr_from_deserialize!(MediaKind);
+
+/// The shapes in which an entry makes each kind of media, none for a kind
+/// it does not make.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct MediaShapes {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub image: Option<ImageShape>,
+}
+
+impl MediaShapes {
+    /// Whether the entry makes `kind`.
+    pub fn makes(&self, kind: MediaKind) -> bool {
+        match kind {
+            MediaKind::Image => self.image.is_some(),
         }
     }
 }

@@ -246,17 +246,14 @@ pub(crate) const CONTROL: Schema = Schema {
     ],
 };
 
-/// From 0.1.22-dev.20261016T095626Z's control schema, which a server keeps
-/// data of, to 0.1.22's: each account has the size of its Cloud
-/// disks, 16 GB each until an administrator changes it (`users.md` § User
-/// system).
-const CONTROL_FROM_0_1_22_DEV_20261016T095626Z: &str = "
-ALTER TABLE users ADD COLUMN cloud_system_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_system_gb BETWEEN 1 AND 1024);
-ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_home_gb BETWEEN 1 AND 1024);
-";
-
 /// From 0.1.27's control schema to the current one: the users' port
-/// forwards (`port-forwarding.md`), none before.
+/// forwards (`port-forwarding.md`), none before; each owner's entries
+/// have an order of their own, which the user sets by dragging Settings ›
+/// Providers and generated media try them in, first the order they were
+/// added in (`providers.md` § Provider management); and preferences no
+/// longer choose an entry per vendor's images, which the order and the
+/// switches say instead (`media.md` § Which entry makes a call), so a
+/// saved choice is dropped.
 const CONTROL_FROM_0_1_27: &str = "
 CREATE TABLE port_forwards (
   id                TEXT PRIMARY KEY,
@@ -271,6 +268,29 @@ CREATE TABLE port_forwards (
   UNIQUE (user_id, name)
 ) STRICT;
 CREATE INDEX port_forwards_of_user ON port_forwards (user_id, created_at);
+ALTER TABLE providers ADD COLUMN position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0);
+UPDATE providers SET position = (
+  SELECT count(*) FROM providers AS earlier
+  WHERE earlier.owner_user_id = providers.owner_user_id
+    AND (earlier.created_at < providers.created_at
+      OR earlier.created_at = providers.created_at AND earlier.rowid < providers.rowid)
+);
+DROP INDEX providers_owner;
+DROP INDEX providers_one_subscription;
+CREATE INDEX providers_owner ON providers (owner_user_id, position);
+CREATE UNIQUE INDEX providers_one_subscription ON providers (owner_user_id, provider_type)
+  WHERE credential_kind = 'subscription';
+UPDATE user_preferences SET preferences = json_remove(preferences, '$.imageEntries')
+  WHERE json_type(preferences, '$.imageEntries') IS NOT NULL;
+";
+
+/// From 0.1.22-dev.20261016T095626Z's control schema, which a server keeps
+/// data of, to 0.1.22's: each account has the size of its Cloud
+/// disks, 16 GB each until an administrator changes it (`users.md` § User
+/// system).
+const CONTROL_FROM_0_1_22_DEV_20261016T095626Z: &str = "
+ALTER TABLE users ADD COLUMN cloud_system_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_system_gb BETWEEN 1 AND 1024);
+ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_home_gb BETWEEN 1 AND 1024);
 ";
 
 /// From 0.1.25's control schema to 0.1.27's: an entry whose
@@ -3640,10 +3660,13 @@ CREATE TABLE providers (
   -- Whether the entry makes images when its provider can (providers.md
   -- § Provider management); on from the start.
   image_generation     INTEGER NOT NULL DEFAULT 1 CHECK (image_generation IN (0, 1)),
+  -- The entry's place in its owner's list of Settings › Providers, which
+  -- generated media try entries in (media.md § Which entry makes a call).
+  position             INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
   CHECK ((credential_kind = 'api_key') = (config IS NOT NULL)),
   CHECK (credential_kind = 'subscription' OR active_credential_id IS NULL)
 ) STRICT;
-CREATE INDEX providers_owner ON providers (owner_user_id, created_at);
+CREATE INDEX providers_owner ON providers (owner_user_id, position);
 CREATE UNIQUE INDEX providers_one_subscription ON providers (owner_user_id, provider_type)
   WHERE credential_kind = 'subscription';
 
@@ -6399,6 +6422,61 @@ mod tests {
                 [],
             )
             .unwrap();
+    }
+
+    /// A database of 0.1.27's control schema gives each owner's entries the
+    /// order they were added in, the same instant's in the order stored,
+    /// and drops a saved image entry per vendor while the rest of the
+    /// preferences stay. Planted defects: one order across owners; the
+    /// choice kept, or the preferences dropped with it.
+    #[test]
+    fn entries_of_0_1_27_take_the_order_they_were_added_in_and_the_image_choice_goes() {
+        let (_directory, path, mut connection) = database(include_str!("schema/control-0.1.27.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('u1', 'a@example.test', 'Ana', 'hash', 'master', 1),
+                          ('u2', 'b@example.test', 'Bo', 'hash', 'user', 1);
+                 INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, config, created_at)
+                   VALUES ('late', 'u1', 'openai', 'api_key', 'Late', x'00', 30),
+                          ('first', 'u1', 'codex', 'subscription', 'Codex', NULL, 10),
+                          ('tie-a', 'u1', 'xai', 'api_key', 'Tie A', x'00', 20),
+                          ('tie-b', 'u1', 'google', 'api_key', 'Tie B', x'00', 20),
+                          ('other', 'u2', 'openai', 'api_key', 'Other', x'00', 40);
+                 INSERT INTO user_preferences (user_id, preferences)
+                   VALUES ('u1', '{\"imageEntries\":{\"openai\":\"late\"},\"smallModelSameProvider\":true}'),
+                          ('u2', '{\"smallModelSameProvider\":false}');",
+            )
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let mut order = connection
+            .prepare("SELECT owner_user_id, id, position FROM providers ORDER BY owner_user_id, position")
+            .unwrap();
+        let order: Vec<(String, String, i64)> = order
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        let expected = [("u1", "first", 0), ("u1", "tie-a", 1), ("u1", "tie-b", 2), ("u1", "late", 3), ("u2", "other", 0)];
+        assert_eq!(
+            order.iter().map(|(user, id, position)| (user.as_str(), id.as_str(), *position)).collect::<Vec<_>>(),
+            expected
+        );
+        let mut preferences = connection
+            .prepare("SELECT user_id, preferences FROM user_preferences ORDER BY user_id")
+            .unwrap();
+        let preferences: Vec<(String, String)> = preferences
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+            .unwrap()
+            .map(Result::unwrap)
+            .collect();
+        assert_eq!(
+            preferences,
+            [
+                ("u1".to_owned(), r#"{"smallModelSameProvider":true}"#.to_owned()),
+                ("u2".to_owned(), r#"{"smallModelSameProvider":false}"#.to_owned()),
+            ]
+        );
     }
 
     /// A database of the control schema before administered accounts keeps

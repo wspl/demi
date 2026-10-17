@@ -43,6 +43,7 @@ const proxy: SettingsProviderEntry = {
   baseUrl: 'https://proxy.example/v1', wireApi: 'openai-chat', apiKey: '', keyConfigured: false, configured: true,
   modelSource: 'manual', catalogFetched: null, state: 'ready', enabled: true,
   models: [model('gemini-3.8-flash'), model('other')], accounts: [], logo: null,
+  media: { image: { shape: null, enabled: true } },
 }
 
 const flash: SettingsModelDraft = {
@@ -293,7 +294,7 @@ const subscription = (accounts: string[]): SettingsProviderEntry => ({
   baseUrl: '', wireApi: 'anthropic-messages', apiKey: '', configured: true,
   modelSource: 'catalog', catalogFetched: null, state: 'ready', enabled: true, models: [],
   accounts: accounts.map((label, index) => ({ id: `a${index}`, label, plan: '', active: index === 0, quota: [] })),
-  rotation: 'manual', logo: null,
+  rotation: 'manual', logo: null, media: { image: { shape: null, enabled: true } },
 })
 
 // Adding a second account and choosing In Order or Balanced first warn
@@ -368,12 +369,14 @@ test('the warning about several accounts asks before the second account and a ro
   }
 })
 
-// A provider that makes images has the Image Generation switch, which
+// An entry that makes images has the Image Generation switch, which
 // tells the host the new value; one that makes none has no switch
-// (`providers.md` § Provider management). Tens of milliseconds.
-test('the Image Generation switch shows only for a provider that makes images and tells the host its new value', async () => {
+// (`media.md` § Which entries make which media). Tens of milliseconds.
+test('the Image Generation switch shows only for an entry that makes images and tells the host its new value', async () => {
   const changes: Partial<SettingsProviderEntry>[] = []
-  const providers = shallowRef<SettingsProviderEntry[]>([{ ...subscription([]), imageGeneration: true }])
+  const providers = shallowRef<SettingsProviderEntry[]>([
+    { ...subscription([]), media: { image: { shape: 'chatgpt', enabled: true } } },
+  ])
   const element = document.createElement('div')
   document.body.append(element)
   const app = createApp({
@@ -396,10 +399,181 @@ test('the Image Generation switch shows only for a provider that makes images an
     expect(imageSwitch()!.getAttribute('aria-checked')).toBe('true')
     imageSwitch()!.click()
     await until(() => changes.length === 1, 'the change is told')
-    expect(changes).toEqual([{ imageGeneration: false }])
+    expect(changes).toEqual([{ media: { image: { shape: 'chatgpt', enabled: false } } }])
 
     providers.value = [subscription([])]
     await until(() => imageSwitch() === undefined, 'the switch goes')
+  } finally {
+    app.unmount()
+  }
+})
+
+/** The page over `providers` with `selectedId` selected, its host's changes and orders recorded. */
+function mountTold(providers: { value: SettingsProviderEntry[] }, selectedId: string, told: {
+  changes: Partial<SettingsProviderEntry>[]
+  orders: string[][]
+}) {
+  const element = document.createElement('div')
+  document.body.append(element)
+  const app = createApp({
+    render: () =>
+      h(SettingsProvidersPage, {
+        providers: providers.value,
+        vendors: [],
+        overlayStore: createOverlayStore(),
+        selectedId,
+        detailOpen: true,
+        saveModel: async () => {},
+        searchModels: async () => [],
+        onChange: (_provider: SettingsProviderEntry, change: Partial<SettingsProviderEntry>) => told.changes.push(change),
+        onReorderProviders: (ids: string[]) => told.orders.push(ids),
+      }),
+  })
+  app.mount(element)
+  return app
+}
+
+const menuItems = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]')]
+
+// Below Models, a compatible API's Images section chooses its shape, None
+// until chosen; with one chosen it has the switch and its own Add Image
+// Model, which adds an image model with only an ID and a name, listed
+// there and not under Models, which keeps a plain Add Model for text
+// (`providers.md` § Provider management). Planted defects: Add Model
+// asking for a kind; an image model under Models; the image model's
+// editor with the text fields. Tens of milliseconds.
+test('a compatible API chooses its image shape below its models and adds image models in that section', async () => {
+  const told = { changes: [] as Partial<SettingsProviderEntry>[], orders: [] as string[][] }
+  const providers = shallowRef<SettingsProviderEntry[]>([proxy])
+  const app = mountTold(providers, 'proxy', told)
+  const shapeTrigger = () => document.querySelector<HTMLElement>('[aria-label="Images"]') ?? undefined
+  const imageSwitch = () => document.querySelector('[role="switch"][aria-label="Image Generation"]')
+  try {
+    await until(() => shapeTrigger() !== undefined, 'the Images section shows')
+    expect(shapeTrigger()!.textContent).toContain('None')
+    expect(imageSwitch()).toBeNull()
+    expect(button('Add Image Model')).toBeUndefined()
+    shapeTrigger()!.click()
+    await until(() => menuItems().length > 0, 'the shapes open')
+    expect(menuItems().map((item) => item.textContent!.trim())).toEqual(['None', 'OpenAI Images'])
+    menuItems()[1]!.click()
+    await until(() => told.changes.length === 1, 'the shape is told')
+    expect(told.changes).toEqual([{ media: { image: { shape: 'openai-images', enabled: true } } }])
+    await until(() => menuItems().length === 0, 'the shapes close')
+
+    // With a shape and no model yet, the list says so, its Add beside its
+    // filter as Models has them.
+    providers.value = [{ ...proxy, media: { image: { shape: 'openai-images', enabled: true } } }]
+    await until(() => button('Add Image Model') !== undefined, 'the list shows')
+    expect(document.body.textContent).toContain('No image models yet')
+    const header = button('Add Image Model')!.closest('div.flex')!
+    expect(header.querySelector('input[placeholder="Filter models"]')).not.toBeNull()
+
+    providers.value = [{
+      ...proxy,
+      media: { image: { shape: 'openai-images', enabled: true } },
+      models: [model('other'), { ...model('picture'), kind: 'image', name: 'Picture', contextWindow: null }],
+    }]
+    await until(() => imageSwitch() !== null, 'the switch shows')
+    // The image model is the section's: no model-menu switch, edited apart.
+    expect(document.querySelector('[aria-label="Enable Picture"]')).toBeNull()
+    expect(document.querySelector('[aria-label="Enable other"]')).not.toBeNull()
+    // Models keeps a plain Add Model, which opens the search at once.
+    button('Add Model')!.click()
+    await until(() => document.querySelector('[role="dialog"]') !== null, 'the search opens')
+    expect(menuItems()).toEqual([])
+    expect(button('Add Image Model')).not.toBeUndefined()
+  } finally {
+    app.unmount()
+  }
+})
+
+// Planted defects: the shape row on a vendor entry; the vendor's models
+// editable, or not greyed with the switch off; a date read in the reader's
+// zone a day early. Tens of milliseconds.
+test('a vendor entry’s Images section lists its vendor’s models newest first with their dates, greyed with the switch off', async () => {
+  const told = { changes: [] as Partial<SettingsProviderEntry>[], orders: [] as string[][] }
+  const providers = shallowRef<SettingsProviderEntry[]>([{
+    ...subscription([]),
+    media: { image: { shape: 'chatgpt', enabled: false, models: [
+      { id: 'gpt-image-2', name: 'GPT-Image-2', released: '2026-04-21' },
+      { id: 'gpt-image-1', name: 'GPT-Image-1', released: null },
+    ] } },
+  }])
+  const app = mountTold(providers, 'claude', told)
+  try {
+    await until(() => document.body.textContent!.includes('GPT-Image-2'), 'the models show')
+    expect(document.querySelector('[aria-label="Images"]')).toBeNull()
+    expect(document.body.textContent).toContain('Apr 21, 2026')
+    const faded = [...document.querySelectorAll<HTMLElement>('.opacity-60')]
+    expect(faded.some((element) => element.textContent!.includes('GPT-Image-2'))).toBe(true)
+    expect(button('Add Image Model')).toBeUndefined()
+  } finally {
+    app.unmount()
+  }
+})
+
+// The list's order is the user's, which generated media follow: Option
+// with an arrow key moves the focused entry one place within its group,
+// and the host is told every stored entry's new place, subscriptions
+// first; an arrow alone moves nothing, and a subscription nobody signed in
+// to neither moves nor is told. Planted defects: a move without Option; the
+// order told without the other group, or with the placeholder. Tens of
+// milliseconds.
+test('Option and an arrow key move an entry within its group, and the host is told the whole order', async () => {
+  const told = { changes: [] as Partial<SettingsProviderEntry>[], orders: [] as string[][] }
+  const providers = shallowRef<SettingsProviderEntry[]>([
+    subscription([]),
+    { ...subscription([]), id: 'grok-build', name: 'Grok Build', configured: false },
+    proxy,
+    { ...proxy, id: 'other', name: 'Other' },
+  ])
+  const app = mountTold(providers, 'proxy', told)
+  const row = (id: string) => document.querySelector<HTMLElement>(`[data-reorder-id="${id}"]`) ?? undefined
+  try {
+    await until(() => row('other') !== undefined, 'the list shows')
+    row('other')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', bubbles: true }))
+    expect(told.orders).toEqual([])
+    row('other')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true, bubbles: true }))
+    expect(told.orders).toEqual([['claude', 'other', 'proxy']])
+    // The first subscription goes no higher, and one nobody signed in to is
+    // no entry: it has no place to move to or to be told.
+    row('claude')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowUp', altKey: true, bubbles: true }))
+    row('claude')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, bubbles: true }))
+    expect(told.orders).toHaveLength(1)
+    expect(row('grok-build')).toBeUndefined()
+  } finally {
+    app.unmount()
+  }
+})
+
+// Test Connection sends a chat message, so it tests a text model: an entry
+// with image models alone offers no test and says why, and one with a text
+// model offers it again (`web-api-settings.md` § Providers). Planted
+// defect: the first enabled model of any kind tested, an image model
+// included. Tens of milliseconds.
+test('an entry with image models alone offers no Test Connection and says it has no text model', async () => {
+  const told = { changes: [] as Partial<SettingsProviderEntry>[], orders: [] as string[][] }
+  const picture = { ...model('picture'), kind: 'image' as const, name: 'Picture', contextWindow: null }
+  const providers = shallowRef<SettingsProviderEntry[]>([{
+    ...proxy,
+    media: { image: { shape: 'openai-images', enabled: true } },
+    models: [picture],
+  }])
+  const app = mountTold(providers, 'proxy', told)
+  const testButton = () => document.querySelector<HTMLElement>('[aria-label="Test connection"]') ?? undefined
+  const tooltip = () => document.querySelector('[role="tooltip"]')?.textContent?.trim()
+  try {
+    await until(() => testButton() !== undefined, 'the test shows')
+    expect(disabled(testButton()!)).toBe(true)
+    testButton()!.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }))
+    testButton()!.parentElement!.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }))
+    testButton()!.dispatchEvent(new FocusEvent('focusin', { bubbles: true }))
+    await until(() => tooltip() !== undefined, 'the reason shows')
+    expect(tooltip()).toBe('The test sends a chat message, and this provider has no text model')
+
+    providers.value = [{ ...providers.value[0]!, models: [picture, model('qwen')] }]
+    await until(() => !disabled(testButton()!), 'the test is offered')
   } finally {
     app.unmount()
   }

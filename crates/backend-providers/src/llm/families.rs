@@ -13,9 +13,10 @@ use demi_provider_claude_code::{AccountMachine, Placement};
 use demi_provider_common::credentials::{CredentialPool, SubscriptionAccounts};
 use demi_provider_common::{RuntimeEnv, VendorPolicy};
 use demi_provider_common::models_dev::ModelsDevClient;
+use demi_provider_common::images::{ImageMaker, ImageModelInfo};
 use demi_provider_common::quota::QuotaSnapshotStore;
 use demi_provider_common::{Provider, ProviderRuntime, Secret};
-use demi_shared_types::{Clock, WireApi};
+use demi_shared_types::{Clock, ImageShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 use url::Url;
 
@@ -38,6 +39,14 @@ pub trait ProviderFamily: Send + Sync + 'static {
 
     /// The provider of one entry and account.
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError>;
+
+    /// How a vendor entry of the family makes images, by the models.dev id
+    /// of its vendor, none for a subscription (`media.md` § Which entries
+    /// make which media); none when it makes none. A compatible entry's is
+    /// the one its user chose, whatever its family.
+    fn image_shape(&self, _vendor_id: Option<&str>) -> Option<ImageShape> {
+        None
+    }
 
     /// A session's runtime of the provider `args` build, whose process
     /// `placement` starts, with the shard's `env`; none for a family whose
@@ -102,7 +111,27 @@ pub struct ApiKeyArgs {
     pub vendor: VendorPolicy,
     /// The models.dev id of that vendor; none for a compatible entry.
     pub vendor_id: Option<String>,
+    /// How the vendor entry makes images, as its family says; none for a
+    /// compatible entry, whose images are the registry's
+    /// [`CompatibleImages`].
+    pub image_shape: Option<ImageShape>,
 }
+
+/// What a compatible entry whose image shape is OpenAI Images makes its
+/// images with.
+pub struct CompatibleImagesArgs {
+    /// The entry's name, which its failures name.
+    pub name: String,
+    pub key: Option<Secret>,
+    pub base: Url,
+    /// The image models its user added.
+    pub models: Vec<ImageModelInfo>,
+    pub clock: Arc<dyn Clock>,
+}
+
+/// Builds a compatible entry's OpenAI Images role: the OpenAI key's, one
+/// implementation for every endpoint that speaks it.
+pub type CompatibleImages = Arc<dyn Fn(CompatibleImagesArgs) -> Arc<dyn ImageMaker> + Send + Sync>;
 
 /// A subscription entry's accounts: the pool bound to the entry, and the
 /// account the provider stands for, when the entry has one.
@@ -146,6 +175,7 @@ pub fn family_name(family: &str) -> &str {
 #[derive(Clone, Default)]
 pub struct FamilyRegistry {
     families: BTreeMap<String, Arc<dyn ProviderFamily>>,
+    compatible_images: Option<CompatibleImages>,
 }
 
 impl FamilyRegistry {
@@ -158,6 +188,19 @@ impl FamilyRegistry {
 
     pub fn get(&self, name: &str) -> Option<&Arc<dyn ProviderFamily>> {
         self.families.get(name)
+    }
+
+    /// The registry with `images` making a compatible entry's OpenAI
+    /// Images.
+    pub fn with_compatible_images(mut self, images: CompatibleImages) -> Self {
+        self.compatible_images = Some(images);
+        self
+    }
+
+    /// What makes a compatible entry's OpenAI Images; none in a registry
+    /// that has no family speaking them.
+    pub fn compatible_images(&self) -> Option<&CompatibleImages> {
+        self.compatible_images.as_ref()
     }
 
     /// The names of the subscription families, in order.

@@ -61,6 +61,7 @@ async fn a_request_without_an_answer_fails_as_overloaded() {
         wire: WireApi::Responses,
         policy: VendorPolicy::default(),
         vendor_id: Some("openai".to_owned()),
+        makes_images: false,
     };
     let provider = OpenAiProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())));
     let mut runtime = provider

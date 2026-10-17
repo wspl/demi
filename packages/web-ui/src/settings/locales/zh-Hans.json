@@ -539,7 +539,13 @@
     "saving": "正在保存…",
     "addAccount": "添加账户",
     "showInMenu": "在模型菜单中显示",
-    "imageGeneration": "图像生成",
+    "media": {
+      "imageGeneration": "图像生成",
+      "images": "图像",
+      "none": "无",
+      "addImage": "添加图像模型",
+      "noImages": "还没有图像模型"
+    },
     "state": {
       "setup": "未设置",
       "signedOut": "已退出登录",
@@ -576,11 +582,12 @@
       "keyReplace": "输入新密钥以替换",
       "keyPaste": "粘贴你的 API 密钥",
       "test": "测试连接",
-      "testDescription": "向第一个已启用的模型发送一个简短请求。",
+      "testDescription": "向第一个已启用的文本模型发送一条简短的聊天消息。",
       "testing": "正在测试…",
       "connected": "已连接",
       "failed": "失败",
-      "enableModel": "请先启用一个模型"
+      "enableModel": "请先启用一个模型",
+      "noTextModel": "测试会发送一条聊天消息，但此供应商没有文本模型"
     },
     "cli": {
       "title": "命令行工具",
@@ -611,7 +618,7 @@
       "enable": "启用“{name}”",
       "noResults": "无结果",
       "signInToSee": "登录后可查看模型",
-      "none": "没有模型"
+      "none": "还没有模型"
     },
     "removeProvider": {
       "title": "移除“{name}”？",
@@ -665,6 +672,7 @@
     "id": "模型 ID",
     "name": "名称",
     "nameDescription": "显示在模型菜单中。默认为 ID。",
+    "nameDefault": "默认为 ID。",
     "contextWindow": "上下文窗口",
     "maxOutput": "最大输出",
     "optional": "可选",

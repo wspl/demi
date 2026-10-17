@@ -16,11 +16,11 @@ use demi_provider_common::Secret;
 use demi_provider_common::credentials::{
     CredentialPool, MemoryCredentialPool, RefreshGates, decode_secret,
 };
-use demi_shared_types::{Timestamp, WireApi};
+use demi_shared_types::{ImageShape, MediaKind, MediaShapes, Timestamp, WireApi};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{
-    ConfiguredModels, CredentialKind, ProviderDto, Rotation, SetupPart,
+    ConfiguredModels, CredentialKind, EntryMedia, ImageMedia, ProviderDto, Rotation, SetupPart,
 };
 use demi_web_api_protocol::settings::InstanceMode;
 use demi_web_api_protocol::text::EndpointUrl;
@@ -127,6 +127,16 @@ pub struct ApiKeyConfig {
     )]
     #[garde(dive)]
     pub models: Option<ConfiguredModels>,
+    /// A compatible entry's image shape, which its user chose; none until
+    /// then, and always none for a vendor entry, whose shape is its
+    /// vendor's (`media.md` § Which entries make which media).
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[garde(skip)]
+    pub image_shape: Option<ImageShape>,
 }
 
 impl ApiKeyConfig {
@@ -221,10 +231,19 @@ impl ProviderEntry {
         }
     }
 
+    /// The switch of `kind` (`media.md` § Which entries make which media).
+    pub fn generates(&self, kind: MediaKind) -> bool {
+        match kind {
+            MediaKind::Image => self.image_generation,
+        }
+    }
+
     /// The entry as the web app sees it: never its key. `default_endpoint` is
     /// its family's default base URL, which a vendor entry that stores no
     /// endpoint goes to; a compatible entry without one goes nowhere yet.
-    pub fn dto(&self, default_endpoint: Option<EndpointUrl>) -> ProviderDto {
+    /// `shapes` are the ones it makes media in.
+    /// `catalog` is when the media catalog in use was published.
+    pub fn dto(&self, default_endpoint: Option<EndpointUrl>, shapes: MediaShapes, catalog: Timestamp) -> ProviderDto {
         let config = match &self.credential {
             EntryCredential::ApiKey(config) => Some(config),
             EntryCredential::Subscription { .. } => None,
@@ -244,7 +263,13 @@ impl ProviderEntry {
             has_api_key: config.is_some_and(|config| config.api_key.is_some()),
             models: config.and_then(|config| config.models.clone()),
             rotation: self.rotation(),
-            image_generation: self.image_generation,
+            media: EntryMedia {
+                image: ImageMedia {
+                    shape: shapes.image,
+                    enabled: self.image_generation,
+                },
+                catalog,
+            },
             created_at: self.created_at,
         }
     }
@@ -423,7 +448,7 @@ impl Vault {
         Ok(entry.filter(|entry| entry.owner == owner))
     }
 
-    /// The owner's entries, oldest first.
+    /// The owner's entries in the order of Settings › Providers.
     pub async fn entries(&self, owner: UserId) -> Result<Vec<ProviderEntry>, StorageError> {
         let rows = self.0.control.providers(owner).await?;
         rows.into_iter().map(|row| self.decode(row)).collect()
@@ -537,6 +562,16 @@ impl Vault {
             self.mark_changed(&row.owner);
         }
         row.map(|row| self.decode(row)).transpose()
+    }
+
+    /// Puts the owner's entries in the order `ids` names them; `false`,
+    /// changing nothing, unless it names each of them once.
+    pub async fn set_order(&self, owner: &UserId, ids: Vec<ProviderId>) -> Result<bool, StorageError> {
+        let ordered = self.0.control.set_provider_order(owner.clone(), ids).await?;
+        if ordered {
+            self.mark_changed(owner);
+        }
+        Ok(ordered)
     }
 
     /// Deletes the entry with its accounts and catalog record.

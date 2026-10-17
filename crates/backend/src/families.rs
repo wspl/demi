@@ -6,24 +6,26 @@ use std::rc::Rc;
 use std::sync::{Arc, OnceLock};
 
 use demi_backend_providers::llm::families::{
-    AccountBinding, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
+    AccountBinding, CompatibleImagesArgs, FamilyArgs, FamilyCredential, FamilyError, FamilyRegistry, ProviderFamily,
 };
 use demi_provider_anthropic_api::{AnthropicConfig, AnthropicProvider};
 use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider, Placement};
 use demi_provider_codex::{CodexConfig, CodexProvider, CodexReleases};
 use demi_provider_common::credentials::SubscriptionAccounts;
 use demi_provider_common::quota::{MemorySnapshots, QuotaSnapshotStore};
-use demi_provider_common::images::ImageVendor;
 use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
-use demi_shared_types::WireApi;
+use demi_shared_types::{ImageShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 
 /// The families built into the backend.
 pub fn builtin() -> FamilyRegistry {
     FamilyRegistry::default()
+        .with_compatible_images(Arc::new(|args: CompatibleImagesArgs| {
+            demi_provider_openai_api::compatible_images(args.name, args.key, &args.base, args.models, args.clock)
+        }))
         .with("anthropic", AnthropicFamily)
         .with("claude-code", ClaudeCodeFamily)
         .with("codex", CodexFamily::default())
@@ -85,8 +87,15 @@ impl ProviderFamily for OpenAiFamily {
             wire: settings.wire_api.unwrap_or_default(),
             policy: settings.vendor,
             vendor_id: settings.vendor_id,
+            makes_images: settings.image_shape == Some(ImageShape::OpenaiImages),
         };
         Ok(Arc::new(OpenAiProvider::new(config, args.clock)))
+    }
+
+    /// An OpenAI or xAI key makes images through the OpenAI-shaped image
+    /// API (`media.md` § Which entries make which media).
+    fn image_shape(&self, vendor_id: Option<&str>) -> Option<ImageShape> {
+        matches!(vendor_id, Some("openai" | "xai")).then_some(ImageShape::OpenaiImages)
     }
 }
 
@@ -109,9 +118,14 @@ impl ProviderFamily for GoogleFamily {
         let config = GoogleConfig {
             api_key: settings.api_key,
             base_url: settings.base_url,
-            makes_images: settings.vendor_id.as_deref().and_then(ImageVendor::from_id) == Some(ImageVendor::Google),
+            makes_images: settings.image_shape == Some(ImageShape::Gemini),
         };
         Ok(Arc::new(GoogleProvider::new(config, args.clock)))
+    }
+
+    /// A Gemini API key makes images with `generateContent`.
+    fn image_shape(&self, vendor_id: Option<&str>) -> Option<ImageShape> {
+        (vendor_id == Some("google")).then_some(ImageShape::Gemini)
     }
 }
 
@@ -160,6 +174,10 @@ impl ProviderFamily for CodexFamily {
         let provider = CodexProvider::new(config, subscription.pool, quota, args.http, args.clock);
         Ok(Arc::new(provider))
     }
+
+    fn image_shape(&self, _: Option<&str>) -> Option<ImageShape> {
+        Some(ImageShape::Chatgpt)
+    }
 }
 
 /// The `grok-build` family: Grok accounts on the chat proxy of Grok's own
@@ -179,6 +197,10 @@ impl ProviderFamily for GrokBuildFamily {
         let config = GrokConfig::new(account);
         let provider = GrokProvider::new(config, subscription.pool, quota, args.http, args.clock);
         Ok(Arc::new(provider))
+    }
+
+    fn image_shape(&self, _: Option<&str>) -> Option<ImageShape> {
+        Some(ImageShape::Grok)
     }
 }
 

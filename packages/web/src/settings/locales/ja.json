@@ -36,6 +36,7 @@
     "cliInstallFailed": "コマンドラインツールをインストールできませんでした",
     "usageFailed": "使用量を更新できませんでした",
     "reorderFailed": "アカウントを並べ替えられませんでした",
+    "reorderProvidersFailed": "プロバイダーを並べ替えられませんでした",
     "switchFailed": "アカウントを切り替えられませんでした",
     "cancelLoginFailed": "サインインをキャンセルできませんでした",
     "loginStopped": "このサインインはすでに終了しています。",

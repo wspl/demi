@@ -3,11 +3,9 @@
 //! Subscription accounts). No body the backend answers carries key or token
 //! material.
 
-use std::collections::BTreeMap;
-
 use demi_shared_types::{
-    AccountInfo, AuthState, FileExtension, LoginStage, ModelSelection, Nullable, ProviderModel,
-    ImageVendor, QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
+    AccountInfo, AuthState, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection,
+    Nullable, ProviderModel, QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
 };
 use garde::Validate;
 use schemars::JsonSchema;
@@ -41,13 +39,42 @@ serde_plain::derive_fromstr_from_deserialize!(CredentialKind);
 
 pub use demi_shared_types::Rotation;
 
+/// What a configured model makes (`providers.md` § Provider management):
+/// text, the model menu's, unless its user added it as an image model of a
+/// compatible entry with an image shape.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum ModelKind {
+    #[default]
+    Text,
+    Image,
+}
+
+impl ModelKind {
+    /// The kind of media a model of this kind makes; none for text.
+    pub fn media(self) -> Option<MediaKind> {
+        match self {
+            Self::Text => None,
+            Self::Image => Some(MediaKind::Image),
+        }
+    }
+}
+
+serde_plain::derive_display_from_serialize!(ModelKind);
+serde_plain::derive_fromstr_from_deserialize!(ModelKind);
+
 /// One model of an entry's configured list, which states its facts directly
 /// (`models.md` § Catalog sources): its first thinking effort is its
 /// default, its Fast tier, when it names one, is its only service tier, and
-/// it is taken to call tools.
+/// it is taken to call tools. A model that is not text uses only its ID
+/// and name.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ConfiguredModel {
+    /// Text when absent, as every model stored before kinds was.
+    #[serde(default)]
+    #[garde(skip)]
+    pub kind: ModelKind,
     #[garde(length(chars, min = 1, max = 256))]
     pub id: Trimmed,
     #[garde(length(chars, min = 1, max = 256))]
@@ -235,12 +262,72 @@ pub struct ProviderPatch {
     #[schemars(with = "Rotation")]
     #[garde(skip)]
     pub rotation: Option<Rotation>,
-    /// The entry's Image Generation switch (`providers.md` § Provider
-    /// management).
-    #[serde(default, with = "unwrap_or_skip")]
-    #[schemars(with = "bool")]
+    /// The entry's media shapes and switches (`media.md` § Which entries
+    /// make which media).
+    #[serde(default)]
     #[garde(skip)]
-    pub image_generation: Option<bool>,
+    pub media: Option<MediaPatch>,
+}
+
+/// A change of an entry's media, by kind.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MediaPatch {
+    #[serde(default)]
+    pub image: Option<ImageMediaPatch>,
+}
+
+/// A change of how an entry makes images: `shape`, a compatible entry's
+/// only, null for none; `enabled`, its Image Generation switch, for an
+/// entry that makes images.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageMediaPatch {
+    #[serde(default, with = "double_option")]
+    #[schemars(with = "Option<Nullable<ImageShape>>")]
+    pub shape: Option<Option<ImageShape>>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
+impl MediaPatch {
+    /// The switch the patch sets for `kind`.
+    pub fn enabled(&self, kind: MediaKind) -> Option<bool> {
+        match kind {
+            MediaKind::Image => self.image.as_ref().and_then(|image| image.enabled),
+        }
+    }
+}
+
+/// How an entry makes each kind of media.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryMedia {
+    pub image: ImageMedia,
+    /// When the media catalog that describes its models was published: a
+    /// newer catalog changes it, so the page reads the entry's media models
+    /// again (`web-api-settings.md` § Models).
+    pub catalog: Timestamp,
+}
+
+/// How an entry makes images: its shape, null when it makes none, and its
+/// Image Generation switch, on from the start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ImageMedia {
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<ImageShape>")]
+    pub shape: Option<ImageShape>,
+    pub enabled: bool,
+}
+
+/// `PUT /providers/order`: every entry of the caller's scope once, in the
+/// order Settings › Providers shows.
+#[derive(Debug, Deserialize, JsonSchema, Validate)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ProviderOrder {
+    #[garde(skip)]
+    pub provider_ids: Vec<ProviderId>,
 }
 
 /// An entry as the web app sees it: its family, label, kind, endpoint, vendor
@@ -282,9 +369,8 @@ pub struct ProviderDto {
     pub models: Option<ConfiguredModels>,
     /// Which account each agent uses; `manual` for an API-key entry.
     pub rotation: Rotation,
-    /// Whether the entry makes images when its provider can
-    /// ([`ProviderDetails::image_vendor`]); on from the start.
-    pub image_generation: bool,
+    /// How it makes each kind of media.
+    pub media: EntryMedia,
     pub created_at: Timestamp,
 }
 
@@ -294,7 +380,8 @@ pub struct ProviderAnswer {
     pub provider: ProviderDto,
 }
 
-/// `GET /providers`: the entries of the caller's scope, oldest first.
+/// `GET /providers`: the entries of the caller's scope, in the order
+/// Settings › Providers shows.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Providers {
     pub providers: Vec<ProviderDto>,
@@ -356,12 +443,6 @@ pub struct ProviderDetails {
     #[schemars(with = "Nullable<QuotaSnapshot>")]
     pub quota: Option<QuotaSnapshot>,
     pub quota_capability: QuotaCapability,
-    /// The vendor whose images the entry's provider makes, so its page
-    /// shows the Image Generation switch and Settings › Agent its vendor's
-    /// row; null for one that makes none.
-    #[serde(deserialize_with = "Option::deserialize")]
-    #[schemars(with = "Nullable<ImageVendor>")]
-    pub image_vendor: Option<ImageVendor>,
     /// The command package that installs the CLI the provider's requests
     /// start on the Claude Code machine, such as `demi.claude-code`; null
     /// when its requests are HTTP.
@@ -685,10 +766,6 @@ pub struct ModelCatalog {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ModelSelection>")]
     pub small_model: Option<ModelSelection>,
-    /// The entry Automatic takes now for each vendor an entry of the user
-    /// makes images for, null when none can (`images.md` § Which entry
-    /// makes an image).
-    pub image_entries: BTreeMap<ImageVendor, Option<ProviderId>>,
 }
 
 /// One entry's catalog with the provider's health, read when the backend
@@ -704,6 +781,11 @@ pub struct CatalogProvider {
     #[schemars(with = "Nullable<String>")]
     pub cli_package: Option<String>,
     pub models: Vec<CatalogModel>,
+    /// The image models the entry offers, newest first: a vendor entry's
+    /// vendor's as the media catalog describes them, a compatible entry's
+    /// those its user added; listed whether or not its Image Generation is
+    /// on (`web-api-settings.md` § Models).
+    pub image_models: Vec<EntryImageModel>,
     /// When the source was last downloaded; the Unix epoch for a configured
     /// list, and for a catalog no refresh has filled.
     pub source_fetched_at: Timestamp,
@@ -713,6 +795,19 @@ pub struct CatalogProvider {
     pub auth: AuthState,
     pub runtime: RuntimeState,
     pub availability: Availability,
+}
+
+/// An image model of an entry as Settings › Providers lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct EntryImageModel {
+    pub id: String,
+    pub name: String,
+    /// The release date, `YYYY-MM-DD`; null when neither the catalog nor
+    /// the vendor states one.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<String>")]
+    pub released: Option<String>,
 }
 
 /// A catalog model with the selection the backend built from it, so the

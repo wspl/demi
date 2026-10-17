@@ -142,6 +142,7 @@ impl Family {
                 wire,
                 policy: VendorPolicy::default(),
                 vendor_id: Some("openai".to_owned()),
+                makes_images: false,
             };
             OpenAiProvider::new(config, clock.clone())
         };

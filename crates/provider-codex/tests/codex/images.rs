@@ -72,7 +72,7 @@ async fn a_generation_sends_the_asked_options_with_the_accounts_headers_and_read
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
     let provider = provider(&vendor, &pool, TransportMode::Sse);
     let maker = provider.images().expect("Codex makes images");
-    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("ChatGPT", ImageVendor::OpenAi, false));
+    assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("ChatGPT", Some(ImageVendor::OpenAi), false));
     // The catalog's image models of a ChatGPT subscription, in its order.
     let models = maker.models(&reqwest::Client::new(), &catalog()).await.unwrap();
     let offered: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();

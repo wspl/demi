@@ -16,14 +16,15 @@ use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcInvocation, RpcPort, TypedRpc};
 use demi_agent_tools::EFFORT_OFF;
 use demi_shared_types::{
-    FileExtension, ModelSelection, WireApi, model_reads_images,
+    FileExtension, ImageShape, ModelSelection, WireApi, model_reads_images,
     output::{Cell, Fields, Table, warning},
 };
 use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::error::problems;
 use demi_web_api_protocol::providers::{
     Availability, ConfiguredModel, ConfiguredModels, CreateProvider,
-    CredentialKind, ModelMatch, ProviderPatch, SetupPart,
+    CredentialKind, ImageMedia, ImageMediaPatch, MediaPatch, ModelKind, ModelMatch,
+    ProviderPatch, SetupPart,
 };
 use demi_web_api_protocol::text::{EndpointUrl, Trimmed};
 use garde::Validate;
@@ -55,7 +56,9 @@ const SHOW_SUMMARY: &str = "Show every setting of one entry: name, kind, vendor 
 
 const ADD_SUMMARY: &str = "Add a provider entry: --vendor, a models.dev vendor; --family alone, the family's own vendor; or --family with --wire and --base-url, a compatible API. Without --name it is named after its vendor or family, or Compatible API, with (2), (3) when that name is taken. A vendor's entry without a key joins the list incomplete until the user adds the key in Settings > Providers; a compatible API's key is optional. Needs the user's permission.";
 
-const EDIT_SUMMARY: &str = "Change an entry's name, its endpoint, or its key with --api-key-stdin. Needs the user's permission.";
+const EDIT_SUMMARY: &str = "Change an entry's name, its endpoint, its key with --api-key-stdin, or how it makes images with --image. Needs the user's permission.";
+
+const ORDER_SUMMARY: &str = "Put the entries in an order, the one Settings > Providers shows and generated images try them in, subscriptions before keys: the entries named come first, in the order given, and the others keep theirs after them. Needs the user's permission.";
 
 const REMOVE_SUMMARY: &str = "Remove an entry with its accounts, as Settings does. Needs the user's permission.";
 
@@ -78,6 +81,9 @@ const NAME: &str = "The entry's name, 1 to 80 characters, as Settings shows it."
 const BASE_URL: &str = "The API's address, an http or https URL such as https://api.example.com/v1.";
 const API_KEY_STDIN: &str = "Read the entry's key from stdin, one line; pipe it in, never type it into a command.";
 const API_KEY: &str = "The key, read from stdin with --api-key-stdin.";
+const IMAGE: &str = "off turns the entry's Image Generation off; a shape turns it on, and for a compatible API also chooses how it makes images: openai-images, or none for no images. A vendor's entry makes images in its vendor's shape only.";
+const ENTRIES: &str = "The entries, by name or id, in the order to put them.";
+const KIND: &str = "What the model makes: text, the model menu's, or image, for a compatible API whose image shape is chosen; text without it.";
 const MODEL_ID: &str = "The model's id as the entry's vendor names it.";
 const MODEL_NAME: &str = "The model's name in the model menu; its id without one.";
 const CONTEXT: &str = "The context window in tokens.";
@@ -122,6 +128,15 @@ struct EditArgs {
     base_url: Option<String>,
     api_key_stdin: Option<bool>,
     api_key: Option<String>,
+    image: Option<String>,
+}
+
+/// The input of `order`.
+#[derive(Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+struct OrderArgs {
+    #[schemars(length(min = 1))]
+    entry: Vec<String>,
 }
 
 /// The input of `models search`.
@@ -140,6 +155,7 @@ struct ModelAddArgs {
     entry: String,
     /// A search match's <vendor>/<model id>, such as google/gemini-3.8-flash.
     model: Option<String>,
+    kind: Option<ModelKind>,
     #[serde(flatten)]
     fields: ModelFields,
 }
@@ -236,9 +252,13 @@ struct ShownEntry {
     accounts: Vec<String>,
     availability: Availability,
     hidden: bool,
+    /// How it makes images: its shape, null for none, and its switch.
+    images: ImageMedia,
     /// Where its models come from.
     models_from: ModelSource,
     models: Vec<ShownModel>,
+    /// The image models of its own list.
+    image_models: Vec<ConfiguredModel>,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -288,6 +308,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .bind(TypedRpc::new(verb(shard.clone(), search))),
         )
         .leaf(model_leaf::<ModelAddArgs>("add", MODEL_ADD_SUMMARY)
+            .describe("kind", KIND)
             .positionals(["entry", "model"])
             .bind(TypedRpc::new(verb(shard.clone(), add_model))))
         .leaf(model_leaf::<ModelEditArgs>("edit", MODEL_EDIT_SUMMARY)
@@ -345,6 +366,7 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .describe("base-url", BASE_URL)
                 .describe("api-key-stdin", API_KEY_STDIN)
                 .describe("api-key", API_KEY)
+                .describe("image", IMAGE)
                 .positionals(["entry"])
                 .stdin_field("api-key")
                 .stdin_with(["api-key-stdin"])
@@ -359,7 +381,16 @@ pub(crate) fn providers_group(shard: std::rc::Weak<Shard>) -> GroupBuilder {
                 .positionals(["entry"])
                 .json_output::<RemovedEntry>()
                 .permission(MANAGE)
-                .bind(TypedRpc::new(verb(shard, remove))),
+                .bind(TypedRpc::new(verb(shard.clone(), remove))),
+        )
+        .leaf(
+            LeafBuilder::rpc("order", ORDER_SUMMARY)
+                .input::<OrderArgs>()
+                .describe("entry", ENTRIES)
+                .positionals(["entry"])
+                .json_output::<Vec<ListedEntry>>()
+                .permission(MANAGE)
+                .bind(TypedRpc::new(verb(shard, order))),
         )
         .group(models)
 }
@@ -529,20 +560,23 @@ async fn add(shard: Rc<Shard>, call: Call<AddArgs>, port: RpcPort) -> Result<u8,
 async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let args = call.args;
     let user = user(&shard).await?;
+    let entries = entries(&shard).await.map_err(failed)?;
+    let entry = named(&entries, &args.entry).map_err(failed)?;
+    let id = entry.id.clone();
+    let compatible = matches!(&entry.credential, EntryCredential::ApiKey(config) if config.is_compatible());
     let patch = ProviderPatch {
         label: args.name.map(Trimmed::from),
         api_key: key(args.api_key_stdin, args.api_key)?.map(Some),
         base_url: args.base_url.map(endpoint).transpose()?.map(Some),
+        media: args.image.map(|image| image_patch(&image, compatible)).transpose()?,
         ..ProviderPatch::default()
     };
-    if patch.label.is_none() && patch.api_key.is_none() && patch.base_url.is_none() {
+    if patch.label.is_none() && patch.api_key.is_none() && patch.base_url.is_none() && patch.media.is_none() {
         return Err(failed(
-            "nothing to change: give --name, --base-url or --api-key-stdin",
+            "nothing to change: give --name, --base-url, --api-key-stdin or --image",
         ));
     }
     patch.validate().map_err(|report| failed(problems(&report)))?;
-    let entries = entries(&shard).await.map_err(failed)?;
-    let id = named(&entries, &args.entry).map_err(failed)?.id.clone();
     shard
         .services()
         .update_provider(&user, id.as_str(), patch)
@@ -553,6 +587,44 @@ async fn edit(shard: Rc<Shard>, call: Call<EditArgs>, port: RpcPort) -> Result<u
     let current = caller_model(&shard, &call.invocation);
     let shown = shown(&shard, &user, &scope, entry, current.as_ref()).await?;
     answer(&port, call.invocation.json, shown).await
+}
+
+/// What `--image` asks: `off` turns the switch off; a shape turns it on,
+/// and chooses a compatible entry's shape, `none` taking it away.
+fn image_patch(image: &str, compatible: bool) -> Result<MediaPatch, RpcError> {
+    let change = match image {
+        "off" => ImageMediaPatch { shape: None, enabled: Some(false) },
+        "none" if compatible => ImageMediaPatch { shape: Some(None), enabled: None },
+        shape => {
+            let shape: ImageShape = shape.parse().map_err(|_| {
+                failed(format!("--image {shape}: give off, a shape such as openai-images, or none"))
+            })?;
+            ImageMediaPatch {
+                shape: compatible.then_some(Some(shape)),
+                enabled: Some(true),
+            }
+        }
+    };
+    Ok(MediaPatch { image: Some(change) })
+}
+
+async fn order(shard: Rc<Shard>, call: Call<OrderArgs>, port: RpcPort) -> Result<u8, RpcError> {
+    let user = user(&shard).await?;
+    let entries = entries(&shard).await.map_err(failed)?;
+    let mut ids = Vec::new();
+    for name in &call.args.entry {
+        let id = named(&entries, name).map_err(failed)?.id.clone();
+        if !ids.contains(&id) {
+            ids.push(id);
+        }
+    }
+    for entry in &entries {
+        if !ids.contains(&entry.id) {
+            ids.push(entry.id.clone());
+        }
+    }
+    shard.services().order_providers(&user, ids).await.map_err(failed)?;
+    list(shard, Call { args: ListArgs { all: Some(true) }, invocation: call.invocation }, port).await
 }
 
 async fn remove(shard: Rc<Shard>, call: Call<EntryArgs>, port: RpcPort) -> Result<u8, RpcError> {
@@ -638,7 +710,7 @@ async fn add_model(
         ),
         None => None,
     };
-    let mut model = new_model(found.as_ref(), args.fields)?;
+    let mut model = new_model(found.as_ref(), args.kind.unwrap_or_default(), args.fields)?;
     if started {
         // The vendor's own copy of the model gives way to the one added.
         models.retain(|listed| listed.id != model.id);
@@ -674,6 +746,7 @@ fn vendor_list(scope: &Scope, entry: &ProviderEntry) -> Vec<ConfiguredModel> {
         .map(|model| {
             let model = &model.model;
             ConfiguredModel {
+                kind: ModelKind::Text,
                 id: Trimmed::from(model.id.clone()),
                 display_name: Trimmed::from(model.display_name.clone()),
                 context_window: model.context_window,
@@ -882,7 +955,7 @@ async fn write_list(
 }
 
 /// A new model: `found`'s facts, with what `fields` set over them.
-fn new_model(found: Option<&ModelMatch>, fields: ModelFields) -> Result<ConfiguredModel, RpcError> {
+fn new_model(found: Option<&ModelMatch>, kind: ModelKind, fields: ModelFields) -> Result<ConfiguredModel, RpcError> {
     let id = fields
         .id
         .or_else(|| found.map(|found| found.id.clone()))
@@ -906,7 +979,21 @@ fn new_model(found: Option<&ModelMatch>, fields: ModelFields) -> Result<Configur
         .name
         .or_else(|| found.map(|found| found.display_name.clone()))
         .unwrap_or_else(|| id.clone());
+    // A model that is not text has only its ID and name.
+    if kind != ModelKind::Text {
+        return Ok(ConfiguredModel {
+            kind,
+            id: Trimmed::from(id),
+            display_name: Trimmed::from(display_name),
+            context_window: None,
+            output_limit: None,
+            thinking_efforts: Vec::new(),
+            accepted_extensions: None,
+            fast_tier: None,
+        });
+    }
     Ok(ConfiguredModel {
+        kind,
         id: Trimmed::from(id),
         display_name: Trimmed::from(display_name),
         context_window,
@@ -1044,8 +1131,13 @@ async fn shown(
             |catalog| catalog.availability.clone(),
         ),
         hidden: scope.preferences.hides_provider(&entry.id),
+        images: services.assembly.provider_dto(entry).media.image,
         models_from,
         models,
+        image_models: config
+            .and_then(|config| config.models.as_ref())
+            .map(|models| models.0.iter().filter(|model| model.kind == ModelKind::Image).cloned().collect())
+            .unwrap_or_default(),
     })
 }
 
@@ -1180,6 +1272,13 @@ impl ShownEntry {
             .field("Status", state(&self.availability))
             .field("Hidden", self.hidden)
             .field(
+                "Images",
+                self.images.shape.map(|shape| {
+                    let switch = if self.images.enabled { "on" } else { "off" };
+                    format!("{shape}, Image Generation {switch}")
+                }),
+            )
+            .field(
                 "Models from",
                 match self.models_from {
                     ModelSource::List => "list",
@@ -1188,6 +1287,13 @@ impl ShownEntry {
                 },
             )
             .table("Models", &models);
+        if !self.image_models.is_empty() {
+            let mut images = Table::new(["id", "name"]);
+            for model in &self.image_models {
+                images.row([model.id.as_str(), model.display_name.as_str()]);
+            }
+            fields.table("Image models", &images);
+        }
         fields.render()
     }
 }

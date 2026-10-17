@@ -52,7 +52,7 @@ beforeEach(() => {
   globalThis.fetch = (async (input, init) => {
     const path = String(input)
     if (path.startsWith('/api/models')) {
-      return Response.json({ providers: [], smallModel: null, imageEntries: {} })
+      return Response.json({ providers: [], smallModel: null })
     }
     if (path === `/api/conversations/${CONVERSATION}/panel`) {
       return Response.json({ revision: 1, tabs: panelTabs })

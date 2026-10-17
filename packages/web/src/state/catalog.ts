@@ -183,10 +183,26 @@ export function providerView(
         ? entry.details.message
         : healthMessage(entry.details.auth) ?? healthMessage(entry.details.runtime),
     enabled: !hidden.provider(entry.id),
-    models:
-      catalog?.models.map((model) =>
+    // The catalog lists the text models; a compatible API's models of other
+    // kinds are its own list's, each only its ID and name.
+    models: [
+      ...catalog?.models.map((model) =>
         settingsModel(model, !hidden.model(entry.id, model.id)),
       ) ?? [],
+      ...(entry.models ?? []).flatMap((model) => model.kind && model.kind !== 'text'
+        ? [{
+            kind: model.kind,
+            id: model.id,
+            name: model.displayName,
+            contextWindow: null,
+            outputLimit: null,
+            efforts: [],
+            extensions: null,
+            fastTier: null,
+            enabled: true,
+          }]
+        : []),
+    ],
     accounts:
       details?.accounts.map((account) => ({
         id: account.id,
@@ -210,8 +226,10 @@ export function providerView(
         }) ?? [],
       })) ?? [],
     rotation: entry.kind === 'subscription' ? entry.rotation : undefined,
-    imageGeneration: details?.imageVendor ? entry.imageGeneration : undefined,
-    imageVendor: details?.imageVendor ?? undefined,
+    // A vendor's image models are the catalog's; a compatible API's are its list's, above.
+    media: {
+      image: { ...entry.media.image, models: entry.compatible ? undefined : catalog?.imageModels ?? [] },
+    },
     autoRefreshUsage: details?.quotaCapability.type === 'supported'
       && details.quotaCapability.probe === 'free',
     logo: providerLogo(entry),

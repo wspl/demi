@@ -553,6 +553,12 @@ impl Backend {
         self.services.watches.hold(step)
     }
 
+    /// Downloads the media catalog now, as its daily download does.
+    #[cfg(feature = "testing")]
+    pub async fn refresh_media_catalog(&self) {
+        self.services.media.refresh().await;
+    }
+
     /// Holds every page's synchronization channel at `step` from now on,
     /// until the hold is released.
     #[cfg(feature = "testing")]

@@ -168,7 +168,7 @@ into its own network.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastWorkflow?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, multiAccountWarned?, hiddenProviders?, hiddenModels?, smallModel?, smallModelSameProvider?, imageEntries? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastWorkflow?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, multiAccountWarned?, hiddenProviders?, hiddenModels?, smallModel?, smallModelSameProvider? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
@@ -187,7 +187,7 @@ past the dialog about using several subscription accounts
 then never shows again. Settings › Agent shows `sendWhileRunning`, `resumeAfterRestart` as *Resume after Demi
 restarts* and `resumeAtRetry` as *Resume after a usage
 limit resets*, and so does the error record of such a failure, as *Resume at
-09:00* ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)). `smallModel` is the model settings Settings › Agent chose for small jobs, `{ providerId, modelId, thinkingEffort }`, absent for Automatic, and `smallModelSameProvider` whether small requests stay on the conversation's provider, absent means `false` ([Small model](../providers/models.md#small-model)). `imageEntries` maps a vendor, `openai`, `google` or `xai`, to the provider entry id Settings › Agent chose to make its images, a vendor absent for Automatic ([Which entry makes an image](../agent/images.md#which-entry-makes-an-image)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
+09:00* ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)). `smallModel` is the model settings Settings › Agent chose for small jobs, `{ providerId, modelId, thinkingEffort }`, absent for Automatic, and `smallModelSameProvider` whether small requests stay on the conversation's provider, absent means `false` ([Small model](../providers/models.md#small-model)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
 `{ providerId, modelId }` pairs, are the switches of Settings › Providers that
 take an entry or a model out of the model menu without deleting it; a patch
 replaces the list it names. They are the user's, not a browser's: every
@@ -388,7 +388,11 @@ an edit of the list reaches a running conversation, is defined in
 [Request parameters](../providers/models.md#request-parameters). Changing a
 catalog never resends a failed message.
 
-`GET /api/models` is an account-wide catalog, independent of any conversation.
+`GET /api/models` is an account-wide catalog, independent of any conversation. Each of its providers carries `imageModels`, `[{ id, name, released }]`
+newest first: for a vendor entry the image models its vendor lists, as the
+media catalog describes them, and for a compatible entry the image models
+its user added; they are listed whether or not the entry's Image Generation
+is on, which the page shows by greying them.
 Each provider carries its models, `sourceFetchedAt`, `stale` and `warnings`,
 its authentication and runtime health, the `availability` the backend derives
 from that health, and `cliPackage`: the command package that installs the
@@ -420,12 +424,7 @@ successful inference test. Beside the providers, `smallModel` is the selection A
 to for the [small model](../providers/models.md#small-model), as for a
 conversation on the first entry with the user's hidden entries and models
 left out, or null when Only the Conversation's Provider is on or no tier
-matches; Settings › Agent shows it beside *Automatic*. `imageEntries` maps
-each vendor an entry of the user makes images for to the entry id
-Automatic takes for it now, by the backend's one order
-([Which entry makes an image](../agent/images.md#which-entry-makes-an-image)),
-or null when none can; Settings › Agent shows it beside each row's
-*Automatic*.
+matches; Settings › Agent shows it beside *Automatic*.
 
 `GET /api/models/search?q=<query>&entry=<id>` answers `{ results }`, the
 models.dev models the query matches, filled from `entry`'s vendor where it
@@ -455,7 +454,10 @@ no data returns null, not a fabricated percentage
 never invokes inference.
 `POST /api/providers/:id/test` takes `{ modelId, credentialId? }` and tests
 with that account, in use or not; an unknown account is `account_not_found`.
-The test sends one request to the model and answers `{ type: "passed", model }`
+The test is of a text model: it sends one short request to the model, the
+first enabled text model on the page, and an entry with no text model shows
+**Test Connection** unavailable, saying the test sends a chat message and the
+entry has no text model, since an image costs money to make. It answers `{ type: "passed", model }`
 when the provider answers, or `{ type: "failed", message, model? }` with the
 provider's own reason: a test that ran and failed is a result, not an error. A
 provider whose transport is a process is tested on the Claude Code machine,
@@ -498,11 +500,15 @@ account.
 once, in the order In Order uses and the list shows. `PATCH
 /api/providers/:id` takes `rotation`, `manual`, `in_order` or `balanced`
 ([Account rotation](../providers/providers.md#account-rotation)); an entry
-with fewer than two accounts keeps `manual` (400 `rotation_needs_accounts`). It also takes `imageGeneration`,
-a boolean, the entry's Image Generation switch, for an entry whose provider
-makes images (400 otherwise); each entry carries `imageGeneration` and its
-provider's details `imageVendor`, `openai`, `google` or `xai`, the vendor its images are of, null for an entry whose provider makes none
-([Provider management](../providers/providers.md#provider-management)).
+with fewer than two accounts keeps `manual` (400 `rotation_needs_accounts`). It also takes `media`, `{ image?, video?, audio? }`, each `{ shape?,
+enabled? }`: `shape`, the kind's shape, for a compatible entry only (400
+`shape_fixed` for a vendor entry), a shape name or null for none, and
+`enabled`, the kind's switch, for an entry that makes that kind (400
+otherwise); each entry carries `media` with each kind's `shape`, null when
+it makes none, and `enabled`
+([Which entries make which media](../agent/media.md#which-entries-make-which-media)).
+`PUT /api/providers/order` takes `{ providerIds }`, every entry of the
+user once, in the order Settings › Providers shows.
 `DELETE …/accounts/:credentialId` removes any account, the active one
 included, and answers `{ active }`, the account now active or null when the
 entry has none left
