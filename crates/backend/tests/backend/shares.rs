@@ -241,7 +241,13 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     let shot = upload(&backend, &master, "shot.png", "image/png", &PNG).await;
     let unsent = demi_agent_store::testing::png(5, 5, 1);
     let unsent = upload(&backend, &master, "other.png", "image/png", unsent.as_bytes()).await;
-    scripts.child(vec![shell("c1", &format!("demi attachment upload {root}/viewed.png")), say("hi from the child")]);
+    // Each child's first answer is held until its parent has answered and is
+    // idle. A child that ended sooner, while its spawn command still ran,
+    // would reach the parent before its next request, which takes the report
+    // in (`subagents.md` § Delivery and scheduling); no request would then
+    // ask for the words scripted after the report.
+    let helper =
+        scripts.child_held(vec![shell("c1", &format!("demi attachment upload {root}/viewed.png")), say("hi from the child")]);
     let mut thought = shell("t1", "printf 'hello from the command\\n' && demi attachment upload shown.png");
     thought.insert(0, event::thinking("The file is in the root."));
     scripts.root(
@@ -257,6 +263,8 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
         ],
     );
     socket.send(&with_upload("m1", "Look at this", &[(&shot, "shot.png")])).await;
+    socket.until_idle().await;
+    helper.notify_one();
     // The root's answer after its child's report, and then its rest.
     socket
         .until(|frame| {
@@ -360,7 +368,7 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     // starts are not shared until the owner makes the list again: each, and
     // an index past the list, answers as a token that names no share.
     let length = page(&backend, &token, "").await.length;
-    scripts.child(vec![say("hi from the later child")]);
+    let later_helper = scripts.child_held(vec![say("hi from the later child")]);
     scripts.root(
         FIRST,
         vec![
@@ -372,6 +380,8 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
         ],
     );
     socket.send(&send("m2", "One more")).await;
+    socket.until_idle().await;
+    later_helper.notify_one();
     socket
         .until(|frame| {
             matches!(frame, ServerFrame::TranscriptPatch { patches, .. } if patches.iter().any(|patch| match patch {
