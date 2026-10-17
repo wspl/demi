@@ -144,7 +144,7 @@ async fn a_device_login_follows_the_grok_clis_contract_and_stores_the_user() {
                 request.header("x-grok-client-surface"),
                 request.header("x-grok-client-version")
             ),
-            (Some("ui"), Some("1.0.5"))
+            (Some("ui"), Some("1.0.62"))
         );
     }
     let user = &requests[3];
