@@ -5,7 +5,6 @@ import type { ShownError } from '../infra/errors'
 import { computed, ref, useId, watch } from 'vue'
 import { FolderOpen, Plus, X } from '@lucide/vue'
 import { hostIcon } from './icons'
-import { ICON_PX } from '../ui/icon-metrics'
 import { baseName } from '@demicodes/utils'
 import type { OverlayStore } from '../overlay/overlayStore'
 import AsyncRegion from '../ui/AsyncRegion.vue'
@@ -24,7 +23,6 @@ import FileBrowser from '../files/FileBrowser.vue'
 import PathInput from '../files/PathInput.vue'
 import type { FileBrowserPlaceGroup, FileBrowserSource } from '../files/types'
 import type { PairingDevice } from '../devices/pairing'
-import DeviceIcon from '../devices/DeviceIcon.vue'
 import { deviceGlyph } from '../devices/device-glyphs'
 import { DEVICE_STATE_LABEL } from '../devices/state'
 import {
@@ -295,20 +293,10 @@ function selectDevice(id: string, close: () => void): void {
                   variant="field"
                   width="fill"
                   :trigger-label="t('project.device')"
+                  :icon="device ? deviceGlyph(device.state, device.mark) : deviceGlyph(null, null)"
                   class="flex-1"
                 >
                   <template #trigger>
-                    <DeviceIcon
-                      v-if="device"
-                      :state="device.state"
-                      :mark="device.mark"
-                    />
-                    <component
-                      :is="hostIcon({ kind: 'device' })"
-                      v-else
-                      :size="ICON_PX.in28"
-                      class="shrink-0 text-fg-muted"
-                    />
                     <TruncatedText class="flex-1" :text="deviceLabel" />
                   </template>
                   <template #content="{ close, triggerWidth }">

@@ -6,7 +6,7 @@ import type { ForwardHost, PortForwardChange, SettingsPortForward } from '@demic
 import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
 import { portForwardAnswerSchema, type PortForwardDto, type PortForwardPatch } from '../api/generated/web-api'
 import { useProduct, type Answer } from '../state/product'
-import { hostKindOf, hostLabel } from '../state/hosts'
+import { deviceMarkOf, hostKindOf, hostLabel } from '../state/hosts'
 
 /** The forwards oldest first, as the backend lists them: `forward` in its place by id. */
 function withForward(forwards: PortForwardDto[], forward: PortForwardDto): PortForwardDto[] {
@@ -35,12 +35,15 @@ export const usePortForwardSettings = defineStore('port-forward-settings', () =>
 
   const forwards = computed<SettingsPortForward[]>(() => product.snapshot?.portForwards ?? [])
   /** The user's Hosts, the Cloud first, as a forward's ends are chosen among them. */
-  const hosts = computed<ForwardHost[]>(() =>
-    (product.snapshot?.devices ?? [])
-      .map((device) => ({ id: device.id, name: hostLabel(hostKindOf(device), device), state: device.state, cloud: device.kind === 'managed' }))
-      .sort((a, b) => Number(b.cloud) - Number(a.cloud))
-      .map(({ cloud: _cloud, ...host }) => host),
-  )
+  const hosts = computed<ForwardHost[]>(() => {
+    const devices = product.snapshot?.devices ?? []
+    return devices
+      .map((device): ForwardHost => {
+        const kind = hostKindOf(device)
+        return { id: device.id, name: hostLabel(kind, device), kind, state: device.state, mark: deviceMarkOf(device, devices) }
+      })
+      .sort((a, b) => Number(b.kind === 'cloud') - Number(a.kind === 'cloud'))
+  })
 
   /** Add Forward: one at once, with the backend's defaults; answers its id, or null when it failed. */
   async function add(): Promise<string | null> {

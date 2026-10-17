@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, provide, ref } from 'vue'
+import { computed, provide, ref, type Component } from 'vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import { disabledTooltip } from './disabled'
 import Popover from './Popover.vue'
@@ -7,6 +7,7 @@ import DropdownTrigger from './DropdownTrigger.vue'
 import type { InlineDetailText } from './inline-detail'
 import type { DropdownSize, DropdownVariant } from './DropdownTrigger.vue'
 import { menuRootKey } from './menu-context'
+import type { MenuIndicator } from './MenuItem.vue'
 import Tooltip from './Tooltip.vue'
 import type { SentenceText } from './ui-text'
 
@@ -52,6 +53,14 @@ const props = withDefaults(defineProps<{
   width?: DropdownWidth
   /** What a `field` trigger's value stands for, after it in smaller secondary text (DropdownTrigger). */
   detail?: InlineDetailText
+  /**
+   * A built-in trigger's icon: the chosen item's, as its menu row shows it, when the items have
+   * icons of their own (DropdownTrigger); the `icon` slot draws one otherwise.
+   */
+  icon?: Component
+  /** The chosen item's status dot on that icon's corner, as its menu row's. */
+  indicator?: MenuIndicator
+  indicatorLabel?: string
 }>(), {
   side: 'bottom',
   offset: 4,
@@ -129,8 +138,12 @@ defineExpose({ open, close })
           :aria-label="props.triggerLabel"
           :disabled="props.disabled"
           :detail="props.detail"
+          :icon="props.icon"
+          :indicator="props.indicator"
+          :indicator-label="props.indicatorLabel"
           class="w-full"
         >
+          <template v-if="$slots.icon" #icon><slot name="icon" /></template>
           <slot name="trigger" :is-open="isOpen" />
         </DropdownTrigger>
         <slot

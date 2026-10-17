@@ -258,6 +258,7 @@ async function revoke(): Promise<void> {
           :overlay-store="overlayStore"
           variant="default"
           :trigger-label="t('page.route')"
+          :icon="ROUTE_ICONS[device.direct.route]"
         >
           <template #trigger>{{ DEVICE_ROUTE_LABEL[device.direct.route] }}</template>
           <template #content="{ close }">

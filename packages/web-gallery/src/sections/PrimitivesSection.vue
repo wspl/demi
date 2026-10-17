@@ -1125,11 +1125,12 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
 
       <GallerySection
         title="VendorMark"
-        note="A vendor’s mark in the text’s color, from the one map of marks (vendor-logos): a subscription wears its vendor’s, Claude Code Claude’s own; a vendor without a mark shows its initial. Small in lists, medium beside a title."
+        note="A vendor’s mark in the text’s color, from the one map of marks (vendor-logos): a subscription wears its vendor’s, Claude Code Claude’s own; a vendor without a mark shows its initial. Bare at a row’s size as a menu row’s icon or a dropdown’s face, small on a tile in lists, medium beside a title."
       >
         <div class="specimen-row">
           <GallerySpecimen v-for="mark in vendorMarks" :key="mark.label" :variant="mark.label">
             <div class="flex items-center gap-2">
+              <VendorMark :label="mark.label" :src="mark.src" size="row" />
               <VendorMark :label="mark.label" :src="mark.src" size="sm" />
               <VendorMark :label="mark.label" :src="mark.src" />
             </div>

@@ -4,6 +4,7 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { coded } from '@demicodes/web-ui/infra/errors'
 import SettingsPortForwards from '@demicodes/web-ui/settings/SettingsPortForwards.vue'
 import type { ForwardHost, PortForwardChange, SettingsPortForward } from '@demicodes/web-ui/settings/port-forwards'
+import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { slow } from '../fixtures/slow'
 
 /**
@@ -12,11 +13,11 @@ import { slow } from '../fixtures/slow'
  * do: Add Forward makes one and opens it, a taken name is refused, Try Again
  * finds the port free, and Remove Forward drops it.
  */
-const hosts = ref<ForwardHost[]>([
-  { id: 'cloud', name: 'Cloud', state: 'online' },
-  { id: 'mac', name: 'alex-mbp', state: 'online' },
-  { id: 'build', name: 'build-01', state: 'offline' },
-])
+const hosts = ref<ForwardHost[]>(shownAmong([
+  { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null },
+  { id: 'mac', name: 'alex-mbp', kind: 'device', state: 'online', mark: GALLERY_MARKS.mac },
+  { id: 'build', name: 'build-01', kind: 'device', state: 'offline', mark: GALLERY_MARKS.ubuntu },
+]))
 
 const forwards = ref<SettingsPortForward[]>([
   { id: 'f1', name: 'ollama', listenDevice: 'cloud', listenPort: 11434, connectDevice: 'mac', connectAddress: 'localhost:11434', enabled: true, state: { kind: 'listening', direct: 0, relay: 2, reason: { kind: 'unreachable' } } },

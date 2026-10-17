@@ -81,6 +81,7 @@ function commitText(text: string): void {
       variant="default"
       :overlay-store="overlayStore"
       :trigger-label="`${label}: ${choice}`"
+      :icon="limited ? Gauge : InfinityIcon"
     >
       <template #trigger>{{ choice }}</template>
       <template #content="{ close }">
