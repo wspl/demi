@@ -105,7 +105,7 @@ fn by_id(
 
 /// Whether `device` is one of `user`'s Hosts: a device they paired or their
 /// Cloud, never the Claude Code machine.
-fn is_host(transaction: &Transaction<'_>, user: &UserId, device: &DeviceId) -> Result<bool, StorageError> {
+pub(crate) fn is_host(transaction: &Transaction<'_>, user: &UserId, device: &DeviceId) -> Result<bool, StorageError> {
     Ok(transaction.query_row(
         "SELECT EXISTS (SELECT 1 FROM devices WHERE id = ?1 AND user_id = ?2
            AND (machine IS NULL OR machine = 'cloud'))",

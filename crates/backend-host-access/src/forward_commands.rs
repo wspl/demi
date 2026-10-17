@@ -8,7 +8,7 @@ use std::rc::{Rc, Weak};
 
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
 use demi_runner_protocol::forward::ForwardRunState;
-use demi_web_api_protocol::devices::{DeviceKind, DeviceState};
+use demi_web_api_protocol::devices::DeviceState;
 use demi_web_api_protocol::ids::DeviceId;
 use demi_web_api_protocol::port_forwards::{ForwardAddress, PortForwardDto, PortForwardPatch};
 use demi_web_api_protocol::text::Trimmed;
@@ -19,14 +19,14 @@ use serde::{Deserialize, Serialize};
 use demi_shared_types::output::{Cell, Fields, MISSING, Table};
 
 use crate::HostShard;
-use crate::host_commands::{NoArgs, conversation_of, resolve_host, verb};
+use crate::host_commands::{NoArgs, conversation_of, host_names, print_json, resolve_host, verb};
 
 /// The category `add` and `remove` need.
 pub const MANAGE: &str = "host.forward";
 /// The category's action, which completes "Allow this conversation to …".
 pub const MANAGE_ACTION: &str = "manage port forwards";
 /// What a grant of the category allows.
-pub const MANAGE_DESCRIPTION: &str = "Add and remove the user's port forwards. A forward outlives this conversation, and while it runs any program on the Host it listens on can reach the address it connects to.";
+pub const MANAGE_DESCRIPTION: &str = "Add and remove the user’s port forwards. A forward outlives this conversation, and while it runs any program on the Host it listens on can reach the address it connects to.";
 
 const SUMMARY: &str = "The user's port forwards between their Hosts, as ssh -L makes one: list, add and remove them.";
 
@@ -157,21 +157,8 @@ impl ListedForward {
 
 /// The user's forwards as `list` prints them, each Host by its name.
 async fn listed(shard: &dyn HostShard, forwards: &[PortForwardDto]) -> Result<Vec<ListedForward>, RpcError> {
-    let control = shard.control();
-    let failed = |error: demi_backend_database::StorageError| RpcError::Failed(error.to_string());
-    let mut devices = control.paired_devices(shard.user().clone()).await.map_err(failed)?;
-    devices.extend(control.managed_device(shard.user().clone()).await.map_err(failed)?);
-    let name_of = |id: &DeviceId| {
-        let name = devices
-            .iter()
-            .find(|device| device.id == *id)
-            .map(|device| match device.kind {
-                DeviceKind::Managed => "Cloud".to_owned(),
-                DeviceKind::User => device.name.clone(),
-            })
-            .unwrap_or_else(|| id.to_string());
-        (name, shard.devices().state(id) == DeviceState::Online)
-    };
+    let names = host_names(shard).await?;
+    let name_of = |id: &DeviceId| (names.name(id), shard.devices().state(id) == DeviceState::Online);
     Ok(forwards
         .iter()
         .map(|forward| ListedForward {
@@ -187,12 +174,6 @@ async fn listed(shard: &dyn HostShard, forwards: &[PortForwardDto]) -> Result<Ve
             state: state_words(forward, &name_of),
         })
         .collect())
-}
-
-async fn print_json(port: &RpcPort, value: &impl Serialize) -> Result<u8, RpcError> {
-    let text = serde_json::to_string(value).map_err(|error| RpcError::Failed(error.to_string()))?;
-    port.stdout(format!("{text}\n")).await?;
-    Ok(0)
 }
 
 async fn list(shard: Rc<dyn HostShard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {

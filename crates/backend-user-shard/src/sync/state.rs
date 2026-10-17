@@ -65,6 +65,7 @@ impl Shard {
         let instructions = services.control.instructions(self.user().clone()).await?;
         let credentials = self.credential_list().await?;
         let port_forwards = self.port_forward_list().await?;
+        let exposed_ports = self.exposed_port_list().await?;
         let automations = self.automation_list().await?;
         let automations_unread = services.control.unread_automation_runs(self.user().clone()).await?;
         let passkeys = passkey_list(&services.control, self.user()).await?;
@@ -101,6 +102,7 @@ impl Shard {
             instructions,
             credentials,
             port_forwards,
+            exposed_ports,
             automations,
             automations_unread,
             passkeys,
@@ -169,6 +171,9 @@ impl Shard {
             },
             Part::PortForwards => SyncEvent::PortForwards {
                 port_forwards: self.port_forward_list().await?,
+            },
+            Part::ExposedPorts => SyncEvent::ExposedPorts {
+                exposed_ports: self.exposed_port_list().await?,
             },
             Part::Automations => SyncEvent::Automations {
                 automations: self.automation_list().await?,

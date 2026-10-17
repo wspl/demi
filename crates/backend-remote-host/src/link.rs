@@ -388,6 +388,7 @@ pub(crate) enum Expected {
     JobRead,
     JobMediaRead,
     DirectOffer,
+    Http,
 }
 
 pub(crate) enum Answer {
@@ -400,7 +401,29 @@ pub(crate) enum Answer {
     Read(Vec<FileRead>),
     /// The runner's answer to a page's offer.
     Direct(DirectAnswer),
+    /// An exposed port's answer to a request, but for its body.
+    Http(HttpHead),
     Done,
+}
+
+/// What an exposed port answered a request (`port-exposure.md`): its status
+/// and headers; its body comes through the request's answer pipe.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpHead {
+    pub status: u16,
+    pub headers: Vec<demi_runner_protocol::exposure::HttpHeader>,
+}
+
+/// A request the backend makes for the user to one of the device's exposed
+/// ports, as [`Link::http_request`] sends it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HttpRequest {
+    pub scheme: demi_runner_protocol::exposure::HttpScheme,
+    pub port: u16,
+    pub method: String,
+    /// The path and query, from `/`.
+    pub path: String,
+    pub headers: Vec<demi_runner_protocol::exposure::HttpHeader>,
 }
 
 /// What the runner says of a page's peer besides its answer
@@ -997,6 +1020,37 @@ impl Link {
         self.post(&message);
     }
 
+    /// Asks the runner to make `request` to one of its exposed ports, its
+    /// body read from `body`, and waits for the answer's status and headers;
+    /// the answer's body comes through `answer`. The caller decides that
+    /// the port is exposed (`port-exposure.md` § Exposed ports).
+    pub async fn http_request(
+        &self,
+        request: HttpRequest,
+        body: Option<wire::PipeRef>,
+        answer: wire::PipeRef,
+    ) -> Result<HttpHead, HostError> {
+        let answered = self
+            .call(Expected::Http, |id| Inbound::HttpRequest {
+                id,
+                scheme: request.scheme,
+                port: request.port,
+                method: request.method,
+                path: request.path,
+                headers: request.headers,
+                body,
+                answer,
+            })
+            .await?;
+        match answered {
+            Answer::Http(head) => Ok(head),
+            _ => Err(HostError::new(
+                HostErrorKind::Protocol,
+                "the runner answered a request to a port with another reply",
+            )),
+        }
+    }
+
     /// Tells the page of peer `peer` what the runner said of it; a page
     /// that went has nobody to tell.
     fn tell_peer(&self, peer: &str, event: PeerEvent) {
@@ -1301,6 +1355,10 @@ impl Link {
             Outbound::ForwardOpen { id, forward } => {
                 self.0.policy.forward_event(ForwardEvent::Open { id, forward });
             }
+            Outbound::HttpAnswered { id, status, headers } => {
+                self.answer(&id, Expected::Http, Answer::Http(HttpHead { status, headers }));
+            }
+            Outbound::HttpFailed { id, message } => self.refuse(&id, HostError::failed(None, message)),
             Outbound::DirectRefused { id, code, message } => {
                 let answer = Answer::Direct(DirectAnswer::Refused(code, message));
                 self.answer(&id, Expected::DirectOffer, answer);

@@ -112,6 +112,8 @@
     "failureResets": "{failure}{reset}されます。",
     "apiKeyRefused": "プロバイダーが API キーを拒否しました。",
     "signedOut": "{provider} が {account} をサインアウトしました。設定 › プロバイダーでもう一度サインインしてください。",
+    "notExposed": "{device} のポート {port} は公開されていません。",
+    "deviceOffline": "{device} はオフラインです。",
     "work": {
       "ran": "{count} 件のコマンドを実行",
       "checked": "{count} 件のコマンドを確認",
@@ -211,7 +213,8 @@
     "resume": "再開",
     "continue": "続ける",
     "continueWith": "{label} で続ける",
-    "openProviders": "プロバイダーを開く"
+    "openProviders": "プロバイダーを開く",
+    "exposePort": "ポートを公開"
   },
   "notices": {
     "hostOffline": "{name} はオフラインです。",

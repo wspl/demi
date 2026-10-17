@@ -587,7 +587,10 @@
       "connected": "Connected",
       "failed": "Failed",
       "enableModel": "Enable a model first",
-      "noTextModel": "The test sends a chat message, and this provider has no text model"
+      "noTextModel": "The test sends a chat message, and this provider has no text model",
+      "exposePort": "Expose Port",
+      "tryAgain": "Try Again",
+      "sharedDevice": "Everyone who uses this provider reaches {device} at this endpoint."
     },
     "cli": {
       "title": "Command-Line Tool",

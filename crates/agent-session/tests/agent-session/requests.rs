@@ -133,7 +133,7 @@ impl Family {
     ) -> Box<dyn ProviderRuntime> {
         let clock: Arc<dyn demi_shared_types::Clock> = Arc::new(FixedClock(NOW.parse().unwrap()));
         let env = RuntimeEnv {
-            http: reqwest::Client::new(),
+            http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
         };
         let openai = |wire| {
             let config = OpenAiConfig {
@@ -194,7 +194,7 @@ impl Family {
                     ),
                 };
                 let snapshots = Arc::new(MemorySnapshots::new());
-                CodexProvider::new(config, pool, snapshots, reqwest::Client::new(), clock)
+                CodexProvider::new(config, pool, snapshots, demi_provider_common::ProviderHttp::new(reqwest::Client::new()), clock)
                     .runtime(env)
             }
             Self::GrokBuild => {
@@ -208,7 +208,7 @@ impl Family {
                 config.proxy_url = vendor.url("/v1").parse().unwrap();
                 config.issuer_url = vendor.url("").parse().unwrap();
                 let snapshots = Arc::new(MemorySnapshots::new());
-                GrokProvider::new(config, pool, snapshots, reqwest::Client::new(), clock)
+                GrokProvider::new(config, pool, snapshots, demi_provider_common::ProviderHttp::new(reqwest::Client::new()), clock)
                     .runtime(env)
             }
         };

@@ -66,7 +66,7 @@ async fn a_request_without_an_answer_fails_as_overloaded() {
     let provider = OpenAiProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())));
     let mut runtime = provider
         .runtime(RuntimeEnv {
-            http: reqwest::Client::new(),
+            http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
         })
         .unwrap();
     let events = run(runtime.as_mut(), inference_request()).await;

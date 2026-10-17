@@ -47,6 +47,8 @@ pub struct FixtureOptions {
     pub commands: CommandSet,
     /// Receives a copy of every message the runner sends.
     pub tap: Option<mpsc::Sender<Outbound>>,
+    /// How long a pipe waits for its ends, rather than [`crate::ARRIVAL`].
+    pub arrival: Option<Duration>,
 }
 
 /// A real runner connected to a backend end of its own.
@@ -85,7 +87,7 @@ impl RunnerFixture {
     /// Starts the backend end and the runner, and waits until the runner is
     /// online. It must run where local tasks can, such as a `local` test.
     pub async fn start(options: FixtureOptions) -> Self {
-        let pipes = Pipes::new(crate::ARRIVAL);
+        let pipes = Pipes::new(options.arrival.unwrap_or(crate::ARRIVAL));
         let policy = CommandPolicy::new(options.commands);
         let device = Rc::new(watch::Sender::new(DeviceLink::Offline { last: None }));
         let jobs = DeviceJobs::default();

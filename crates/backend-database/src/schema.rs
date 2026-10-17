@@ -247,7 +247,8 @@ pub(crate) const CONTROL: Schema = Schema {
 };
 
 /// From 0.1.27's control schema to the current one: the users' port
-/// forwards (`port-forwarding.md`), none before; each owner's entries
+/// forwards (`port-forwarding.md`) and exposed ports (`port-exposure.md`),
+/// none before; each owner's entries
 /// have an order of their own, which the user sets by dragging Settings ›
 /// Providers and generated media try them in, first the order they were
 /// added in (`providers.md` § Provider management); and preferences no
@@ -268,6 +269,16 @@ CREATE TABLE port_forwards (
   UNIQUE (user_id, name)
 ) STRICT;
 CREATE INDEX port_forwards_of_user ON port_forwards (user_id, created_at);
+CREATE TABLE exposed_ports (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users (id),
+  device_id  TEXT NOT NULL REFERENCES devices (id),
+  port       INTEGER CHECK (port BETWEEN 1 AND 65535),
+  label      TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (device_id, port)
+) STRICT;
+CREATE INDEX exposed_ports_of_user ON exposed_ports (user_id, created_at);
 ALTER TABLE providers ADD COLUMN position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0);
 UPDATE providers SET position = (
   SELECT count(*) FROM providers AS earlier
@@ -3163,6 +3174,20 @@ CREATE TABLE port_forwards (
   UNIQUE (user_id, name)
 ) STRICT;
 CREATE INDEX port_forwards_of_user ON port_forwards (user_id, created_at);
+
+-- Each user's exposed ports (port-exposure.md): a port of one of the
+-- user's Hosts, none until the user enters it, which the backend's requests
+-- for the user may reach, and its label, empty for none.
+CREATE TABLE exposed_ports (
+  id         TEXT PRIMARY KEY,
+  user_id    TEXT NOT NULL REFERENCES users (id),
+  device_id  TEXT NOT NULL REFERENCES devices (id),
+  port       INTEGER CHECK (port BETWEEN 1 AND 65535),
+  label      TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  UNIQUE (device_id, port)
+) STRICT;
+CREATE INDEX exposed_ports_of_user ON exposed_ports (user_id, created_at);
 
 -- Each choice a user made about a plugin (`plugins.md` § A user's plugins):
 -- a plugin with no row is on.

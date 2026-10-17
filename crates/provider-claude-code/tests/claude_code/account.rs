@@ -69,7 +69,7 @@ async fn an_account_is_named_by_its_record_and_runs_only_in_a_placement() {
         RuntimeState::Unknown { .. }
     ));
     let env = RuntimeEnv {
-        http: reqwest::Client::new(),
+        http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
     };
     let refused = provider.runtime(env).err().unwrap();
     assert_eq!(

@@ -146,7 +146,7 @@ impl Provider for GoogleProvider {
 /// A session's runtime: it holds nothing between runs.
 struct GoogleRuntime {
     shared: Arc<Shared>,
-    http: reqwest::Client,
+    http: demi_provider_common::ProviderHttp,
 }
 
 impl ProviderRuntime for GoogleRuntime {

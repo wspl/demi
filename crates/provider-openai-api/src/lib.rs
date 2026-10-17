@@ -159,7 +159,7 @@ impl Provider for OpenAiProvider {
 /// A session's runtime: it holds nothing between runs.
 struct OpenAiRuntime {
     shared: Arc<Shared>,
-    http: reqwest::Client,
+    http: demi_provider_common::ProviderHttp,
 }
 
 impl ProviderRuntime for OpenAiRuntime {

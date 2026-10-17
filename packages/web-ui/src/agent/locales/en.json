@@ -112,6 +112,8 @@
     "failureResets": "{failure} {reset}.",
     "apiKeyRefused": "The provider refused the API key.",
     "signedOut": "{provider} signed {account} out. Sign it in again in Settings › Providers.",
+    "notExposed": "Port {port} of {device} isn’t exposed.",
+    "deviceOffline": "{device} is offline.",
     "work": {
       "ran": "ran {count} command | ran {count} commands",
       "checked": "checked {count} command | checked {count} commands",
@@ -211,7 +213,8 @@
     "resume": "Resume",
     "continue": "Continue",
     "continueWith": "Continue with {label}",
-    "openProviders": "Open Providers"
+    "openProviders": "Open Providers",
+    "exposePort": "Expose Port"
   },
   "notices": {
     "hostOffline": "{name} is offline.",

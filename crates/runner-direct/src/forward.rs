@@ -140,9 +140,18 @@ pub struct Forwarded {
 /// Connects to a forward's target at `address`: refused when it does not
 /// accept within [`DEADLINE`], or once `ended` is cancelled.
 pub async fn connect_target(address: &str, ended: &CancellationToken) -> std::io::Result<TcpStream> {
+    give_up_on(TcpStream::connect(address), ended).await
+}
+
+/// `connecting`, a connection to a forward's target, given up when it does
+/// not finish within [`DEADLINE`], or once `ended` is cancelled.
+pub async fn give_up_on<T>(
+    connecting: impl Future<Output = std::io::Result<T>>,
+    ended: &CancellationToken,
+) -> std::io::Result<T> {
     tokio::select! {
         () = ended.cancelled() => Err(std::io::Error::new(std::io::ErrorKind::Interrupted, "the forward ended")),
-        connected = tokio::time::timeout(DEADLINE, TcpStream::connect(address)) => connected
+        connected = tokio::time::timeout(DEADLINE, connecting) => connected
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::TimedOut, "the target did not accept in time"))?,
     }
 }

@@ -1,4 +1,5 @@
 import { createSmallModelState } from './small-model'
+import { macAddress } from './exposed-ports'
 import { DEMO_PERSONAL_INSTRUCTIONS } from './instructions'
 import { reactive } from 'vue'
 import { createQuotaRefreshCache } from '@demicodes/web-ui/settings/quota-refresh'
@@ -696,6 +697,15 @@ export function mockProviders(): MockProvider[] {
         }),
         model({ kind: 'image', id: 'x/z-image-turbo', name: 'Z-Image Turbo', extensions: null }),
       ],
+    }),
+    provider({
+      // Its endpoint names alex-mbp by its id, whose port 11434 is not
+      // exposed: its last test says so, with Expose Port.
+      id: 'mac-ollama', name: 'Ollama on alex-mbp', kind: 'api_key', family: 'openai', vendorId: null, compatible: true,
+      baseUrl: `${macAddress(11434)}/v1`, wireApi: 'openai-chat', apiKey: '',
+      modelSource: 'manual', state: 'error', detail: 'Port 11434 of alex-mbp isn’t exposed.', testedWith: 'qwen3:32b',
+      notExposed: { deviceId: 'mac', device: 'alex-mbp', port: 11434 },
+      models: [model({ id: 'qwen3:32b', contextWindow: 40_000, tools: true, extensions: [] })],
     }),
     provider({
       id: 'vertex', name: 'Google Vertex', kind: 'api_key', family: 'google', vendorId: 'google-vertex',

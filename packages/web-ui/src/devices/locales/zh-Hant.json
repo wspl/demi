@@ -156,5 +156,21 @@
     "refused": "Windows 拒絕了排程工作和啟動項目：{error}",
     "unusableName": "安裝資料夾的名稱「{name}」無法作為啟動項目的名稱。",
     "unknownAccount": "系統無法識別此使用者帳號。"
+  },
+  "exposed": {
+    "title": "已公開的連接埠",
+    "description": "Demi 為你發出的請求（例如供應商的請求）可以透過這些位址連到裝置上的這些連接埠。",
+    "expose": "公開連接埠",
+    "none": "沒有已公開的連接埠",
+    "missing": "請輸入要公開的連接埠。",
+    "edit": "編輯…",
+    "copy": "拷貝位址",
+    "editTitle": "已公開的連接埠",
+    "port": "連接埠",
+    "portDescription": "Demi 的請求在裝置上透過 127.0.0.1 連到它。",
+    "portProblem": "請輸入 1 到 65535 之間的連接埠。",
+    "label": "標籤",
+    "labelPlaceholder": "Ollama",
+    "address": "位址"
   }
 }

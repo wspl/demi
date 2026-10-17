@@ -44,7 +44,7 @@ pub(super) async fn transcript(
         .map_err(ApiError::conversation_unreadable)?;
     let mut page = page_answer(read, no_node, no_block, outside, changed)?;
     // Error blocks come whole, so their facts read as the stream's.
-    page.failures = failure_facts(&services.assembly, &page.blocks).await;
+    page.failures = failure_facts(&services.assembly, &user.id, &page.blocks).await;
     Ok(Json(page))
 }
 
@@ -145,7 +145,7 @@ pub(super) async fn block(
         .await
         .map_err(ApiError::conversation_unreadable)?;
     let found = block_answer(read, no_node, no_block)?;
-    let failures = failure_facts(&services.assembly, std::slice::from_ref(&found)).await;
+    let failures = failure_facts(&services.assembly, &user.id, std::slice::from_ref(&found)).await;
     Ok(Json(WholeBlock {
         block: found,
         failures,

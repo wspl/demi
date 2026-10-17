@@ -20,6 +20,7 @@ import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { Action } from '../ui/operations'
+import type { ExposedPortChange, SettingsExposedPort } from './exposed-ports'
 import type { SettingsDevice } from './types'
 
 /**
@@ -48,6 +49,12 @@ const props = defineProps<{
   claimDevice: (code: string, signal?: AbortSignal) => Promise<PairingResult>
   /** Revokes a device; its page works until it settles. */
   onRevoke?: Action<[id: string]>
+  /** The user's exposed ports, each device's on its page. */
+  exposedPorts?: readonly SettingsExposedPort[]
+  /** Expose Port on a device's page: answers the new row's id, or null when it failed. */
+  onExposePort?: (deviceId: string) => Promise<string | null>
+  onChangeExposedPort?: (id: string, change: ExposedPortChange) => Promise<void>
+  onRemoveExposedPort?: (id: string) => Promise<void>
 }>()
 const emit = defineEmits<{
   retry: []
@@ -103,6 +110,10 @@ const pageProjects = computed(() =>
     :projects="pageProjects"
     :name-max-length="nameMaxLength"
     :overlay-store="overlayStore"
+    :exposed-ports="(exposedPorts ?? []).filter((exposed) => exposed.deviceId === shown)"
+    :on-expose-port="onExposePort && (() => onExposePort!(shown!))"
+    :on-change-exposed-port="onChangeExposedPort"
+    :on-remove-exposed-port="onRemoveExposedPort"
     @back="emit('show', null)"
     @set-route="emit('setRoute', shown!, $event)"
     @try-now="emit('tryNow', shown!)"

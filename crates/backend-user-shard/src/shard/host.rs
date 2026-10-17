@@ -137,6 +137,23 @@ impl HostShard for Shard {
     fn remove_port_forward(&self, id: demi_web_api_protocol::ids::PortForwardId) -> LocalBoxFuture<'_, Result<(), String>> {
         Box::pin(async move { Shard::remove_port_forward(self, id).await.map_err(|error| error.to_string()) })
     }
+
+    fn exposed_ports(
+        &self,
+    ) -> LocalBoxFuture<'_, Result<Vec<demi_web_api_protocol::exposed_ports::ExposedPortDto>, String>> {
+        Box::pin(async move { self.exposed_port_list().await.map_err(|error| error.to_string()) })
+    }
+
+    fn add_exposed_port(
+        &self,
+        new: demi_web_api_protocol::exposed_ports::NewExposedPort,
+    ) -> LocalBoxFuture<'_, Result<demi_web_api_protocol::exposed_ports::ExposedPortDto, String>> {
+        Box::pin(async move { self.create_exposed_port(new).await.map(|(exposed, _)| exposed).map_err(|error| error.to_string()) })
+    }
+
+    fn remove_exposed_port(&self, id: demi_web_api_protocol::ids::ExposedPortId) -> LocalBoxFuture<'_, Result<(), String>> {
+        Box::pin(async move { Shard::remove_exposed_port(self, id).await.map_err(|error| error.to_string()) })
+    }
 }
 
 impl Shard {

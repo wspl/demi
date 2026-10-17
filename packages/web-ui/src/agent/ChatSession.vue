@@ -9,7 +9,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { ArrowRightLeft, ChevronDown, Ellipsis, PanelLeft, PanelRight, Play, Settings2, Share, TextCursorInput } from '@lucide/vue'
+import { ArrowRightLeft, ChevronDown, Ellipsis, PanelLeft, PanelRight, Play, EthernetPort, Settings2, Share, TextCursorInput } from '@lucide/vue'
 import type { InstructionEntry, TranscriptVersion } from '@demicodes/protocol'
 import {
   beginMessageEdit,
@@ -65,7 +65,7 @@ import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { provideLabelRoom } from '../ui/label-room'
-import { continueWithOffer, endsWithErrorRecord, signedOutOffer, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
+import { continueWithOffer, endsWithErrorRecord, notExposedOffer, signedOutOffer, sessionFailureNotice, sessionShown, transcriptShown, turnRecovery } from './session-status'
 import { getVisibleBlocks } from './visible-blocks'
 import { latestWindow } from '@demicodes/conversation-client'
 import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from './history'
@@ -149,6 +149,12 @@ const props = withDefaults(defineProps<{
    */
   credentialKinds?: CredentialKinds
   /**
+   * Whether the user's device exposes the port by now, as the page learns
+   * of each change: a failure for a port exposed meanwhile offers Resume
+   * alone, not Expose Port; absent, no port counts as exposed.
+   */
+  isExposed?: (deviceId: string, port: number) => boolean
+  /**
    * The host's connection banner says the backend is away
    * (`web-application.md` § A page of another build): the transcript adds no
    * Connecting row of its own while the conversation's socket waits for it.
@@ -200,6 +206,8 @@ const emit = defineEmits<{
   continueWith: [providerId: string, credentialId: string]
   /** Open Settings › Providers, where an account the vendor signed out is signed in again. */
   openProviders: []
+  /** Expose Port on the turn's failure: the port of the user's device it named, then the turn resumes. */
+  exposePort: [deviceId: string, port: number]
   retryLoad: []
   /** Retry on the message `id`, whose delivery failed. */
   retrySubmission: [id: string]
@@ -401,6 +409,12 @@ function recover(): void {
 const continueWith = computed(() =>
   canRecover.value
     ? continueWithOffer(props.conversation.phase, latestVisible.value, props.conversation.failures)
+    : null,
+)
+/** The port of the user's device the turn's request named while it was not exposed and still is not, which the dock offers to expose. */
+const notExposed = computed(() =>
+  canRecover.value
+    ? notExposedOffer(props.conversation.phase, latestVisible.value, props.conversation.failures, props.isExposed ?? (() => false))
     : null,
 )
 /** Whether the turn ended because the vendor signed its account out, which the dock answers with Open Providers. */
@@ -759,6 +773,10 @@ watch(
               >
                 <ArrowRightLeft :size="ICON_PX.in28" />
                 <span class="min-w-0 truncate">{{ t('dock.continueWith', { label: continueWith.label }) }}</span>
+              </SessionDockChip>
+              <SessionDockChip v-if="notExposed" @click="emit('exposePort', notExposed.deviceId, notExposed.port)">
+                <EthernetPort :size="ICON_PX.in28" />
+                {{ t('dock.exposePort') }}
               </SessionDockChip>
               <SessionDockChip v-if="signedOut" data-open-providers @click="emit('openProviders')">
                 <Settings2 :size="ICON_PX.in28" />

@@ -17,6 +17,7 @@ import { useConversations } from './store'
 import { useConversationNavigation } from './navigation'
 import { useResources } from '../state/resources'
 import type { CredentialKinds } from '@demicodes/web-ui/agent/credential-kinds'
+import { useExposedPortSettings } from '../settings/exposed-ports'
 import { useProviderSettings } from '../settings/providers'
 import { useSettingsAddress } from '../settings/address'
 import { useProduct } from '../state/product'
@@ -44,6 +45,17 @@ const providerSettings = useProviderSettings()
 async function continueWith(conversation: Parameters<typeof store.start>[0], providerId: string, credentialId: string): Promise<void> {
   const provider = providerSettings.providers.find((entry) => entry.id === providerId)
   if (provider && (await providerSettings.activateAccount(provider, credentialId))) {
+    store.start(conversation)
+  }
+}
+const exposedPorts = useExposedPortSettings()
+/**
+ * Expose Port on a turn that failed for a port of the user's device the
+ * device had not exposed: the port is made sure to be exposed, which it may
+ * be by now, then the turn resumes (`port-exposure.md` § Exposed ports).
+ */
+async function exposeAndResume(conversation: Parameters<typeof store.start>[0], deviceId: string, port: number): Promise<void> {
+  if (await exposedPorts.expose(deviceId, port)) {
     store.start(conversation)
   }
 }
@@ -268,6 +280,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :conversation="conversation"
     :has-provider="hasProvider"
     :credential-kinds="credentialKinds"
+    :is-exposed="exposedPorts.isExposed"
     :backend-away="product.connection !== null"
     :resume-at-retry="preferences.resumeAtRetry"
     @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
@@ -298,6 +311,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @retry="store.start(conversation)"
     @continue-with="(providerId, credentialId) => conversation && continueWith(conversation, providerId, credentialId)"
     @open-providers="void settingsAddress.open('models')"
+    @expose-port="(deviceId, port) => conversation && exposeAndResume(conversation, deviceId, port)"
     @rename="store.rename(conversation.id, $event)"
     :listed="conversation.persistence === 'synced' && !conversation.archived ? { pinned: conversation.pinned } : undefined"
     @pin="void store.pin([conversation.id], $event)"

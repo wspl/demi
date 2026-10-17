@@ -78,7 +78,7 @@ impl KeyImages {
 
     /// Every page of the listing: the models whose ID has the word `image`
     /// or `banana` and that list `generateContent`.
-    async fn list(&self, http: &reqwest::Client) -> Result<Vec<ImageModelInfo>, ImageFailure> {
+    async fn list(&self, http: &demi_provider_common::ProviderHttp) -> Result<Vec<ImageModelInfo>, ImageFailure> {
         let mut models = Vec::new();
         let mut page: Option<String> = None;
         loop {
@@ -121,7 +121,7 @@ impl ImageMaker for KeyImages {
 
     fn models<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        http: &'a demi_provider_common::ProviderHttp,
         _: &'a Catalog,
     ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
         Box::pin(self.list(http))
@@ -134,7 +134,7 @@ impl ImageMaker for KeyImages {
 
     fn make<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        http: &'a demi_provider_common::ProviderHttp,
         _: &'a Catalog,
         request: ImageRequest,
     ) -> BoxFuture<'a, ImageAnswer> {

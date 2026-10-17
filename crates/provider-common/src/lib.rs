@@ -12,6 +12,7 @@
 //! the `testing` feature, scripted runtimes and a scripted vendor for tests.
 
 mod body;
+mod client;
 mod conditional;
 mod contract;
 pub mod credentials;
@@ -34,6 +35,9 @@ mod vendor;
 pub mod wire;
 
 pub use body::{encode_body, json_body};
+pub use client::{
+    DeviceAddress, DeviceAnswer, DeviceRefusal, DeviceRequest, DeviceRoute, ProviderHttp, RequestBuilder, Routed, SendError,
+};
 pub use contract::{
     AccountSwitch, Ahead, CallEvent, CallOutcome, Capabilities, CatalogError, EntriesOf, InferenceItem, InferenceRequest,
     MediaBytes, Medium, PromptCache, Provider, ProviderEvent, ProviderRun, ProviderRuntime, RequestBlock, RequestLimits,

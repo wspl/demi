@@ -34,7 +34,7 @@ use tokio::task::JoinSet;
 use tokio_util::sync::CancellationToken;
 
 pub use addresses::{Addresses, offered};
-pub use forward::{ForwardChannel, Forwarded, connect_target};
+pub use forward::{ForwardChannel, Forwarded, connect_target, give_up_on};
 pub use operation::{
     Answer, ByteStream, FileRange, FileText, Listing, Operations, Scope, StreamActivity,
     StreamRequest, WatchStream,

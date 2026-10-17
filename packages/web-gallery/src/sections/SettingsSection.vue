@@ -45,6 +45,7 @@ import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import type { SettingsSessionHost } from '@demicodes/web-ui/settings/types'
 import { demoInstallCommands, demoDeviceReport } from '../fixtures/device-installation'
 import { DEMO_RUNNER_RELEASE, DIRECT_SCENARIOS, galleryDevices, useGalleryDevices, type DirectScenario } from '../fixtures/devices'
+import { useGalleryExposedPorts } from '../fixtures/exposed-ports'
 import type { CloudState } from '@demicodes/web-ui/cloud/types'
 
 const { view } = useGalleryView()
@@ -60,6 +61,7 @@ const { view } = useGalleryView()
  */
 const fullReselects = ref(0)
 const directDevices = useGalleryDevices(() => galleryDevices())
+const directExposedPorts = useGalleryExposedPorts()
 directDevices.shown.value = 'mac'
 const directScenario = computed({
   get: () => directDevices.scenarios.value['mac'] ?? 'connected',
@@ -335,6 +337,10 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
               :install-commands="demoInstallCommands"
               :claim-device="directDevices.claim"
               :name-max-length="64"
+              :exposed-ports="directExposedPorts.ports.value"
+              :on-expose-port="directExposedPorts.expose"
+              :on-change-exposed-port="directExposedPorts.change"
+              :on-remove-exposed-port="directExposedPorts.remove"
               @show="directDevices.shown.value = $event"
               @set-route="directDevices.setRoute"
               @try-now="directDevices.tryNow"

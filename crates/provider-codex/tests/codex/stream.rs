@@ -218,7 +218,7 @@ async fn response_headers_that_do_not_arrive_in_time_fail_the_run_as_overloaded(
         config,
         std::sync::Arc::new(pool),
         snapshots,
-        reqwest::Client::new(),
+        demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
         clock,
     );
     let failure = failure_of(run(runtime_of(&provider).as_mut(), inference_request()).await);

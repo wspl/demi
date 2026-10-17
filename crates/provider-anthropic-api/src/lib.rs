@@ -109,7 +109,7 @@ impl Provider for AnthropicProvider {
 /// A session's runtime: it holds nothing between runs.
 struct AnthropicRuntime {
     shared: Arc<Shared>,
-    http: reqwest::Client,
+    http: demi_provider_common::ProviderHttp,
 }
 
 impl ProviderRuntime for AnthropicRuntime {

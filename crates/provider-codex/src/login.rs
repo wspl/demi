@@ -24,7 +24,7 @@ use crate::auth::{AccountId, CLIENT_ID, CodexSecret, token_account};
 
 /// What Codex adds to the account operations: its device login.
 pub(crate) struct CodexKit {
-    pub(crate) http: reqwest::Client,
+    pub(crate) http: demi_provider_common::ProviderHttp,
     /// The sign-in service, such as `https://auth.openai.com`.
     pub(crate) auth_url: Url,
     pub(crate) clock: Arc<dyn Clock>,
@@ -189,10 +189,10 @@ impl CodexKit {
     }
 }
 
-fn transport(error: reqwest::Error) -> LoginError {
+fn transport(error: impl Into<demi_provider_common::SendError>) -> LoginError {
     LoginError::Failed(format!(
         "Codex sign-in request failed: {}",
-        error.without_url()
+        error.into().without_url()
     ))
 }
 

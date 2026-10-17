@@ -234,7 +234,7 @@ impl CodexAuth {
     /// other's tokens unless they are due as well.
     pub(crate) async fn credentials(
         &self,
-        http: &reqwest::Client,
+        http: &demi_provider_common::ProviderHttp,
         refused: Option<&Secret>,
     ) -> Result<Credentials, AuthFailure> {
         let doc = self.document()?;
@@ -257,7 +257,7 @@ impl CodexAuth {
 /// A refresh of a Codex sign-in, which owns what it needs, so that it runs
 /// to its end apart from the request that asked for it.
 struct Refresh {
-    http: reqwest::Client,
+    http: demi_provider_common::ProviderHttp,
     token_url: Url,
     clock: Arc<dyn Clock>,
 }

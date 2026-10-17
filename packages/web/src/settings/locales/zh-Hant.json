@@ -18,6 +18,11 @@
     "removeFailed": "無法移除轉送",
     "retryFailed": "無法再試一次"
   },
+  "exposedPorts": {
+    "exposeFailed": "無法公開連接埠",
+    "saveFailed": "無法更改已公開的連接埠",
+    "removeFailed": "無法移除已公開的連接埠"
+  },
   "plugins": {
     "turnOnFailed": "無法開啟外掛程式",
     "turnOffFailed": "無法關閉外掛程式"

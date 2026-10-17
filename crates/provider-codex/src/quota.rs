@@ -38,7 +38,7 @@ impl Kind {
 /// The quota source of one Codex account.
 pub(crate) struct CodexQuota {
     pub(crate) auth: Arc<CodexAuth>,
-    pub(crate) http: reqwest::Client,
+    pub(crate) http: demi_provider_common::ProviderHttp,
     pub(crate) usage_url: Url,
     pub(crate) user_agent: HeaderValue,
 }

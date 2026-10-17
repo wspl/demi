@@ -70,6 +70,8 @@ pub struct ProductState {
     /// The user's port forwards, oldest first, each with what its Listen On
     /// runner last announced of it.
     pub port_forwards: Vec<crate::port_forwards::PortForwardDto>,
+    /// The user's exposed ports, oldest first.
+    pub exposed_ports: Vec<crate::exposed_ports::ExposedPortDto>,
     /// The user's automations, newest first, each with its latest runs.
     pub automations: Vec<AutomationDto>,
     /// The runs that notified and whose conversation the user has not
@@ -204,6 +206,12 @@ pub enum SyncEvent {
     PortForwards {
         #[serde(rename = "portForwards")]
         port_forwards: Vec<crate::port_forwards::PortForwardDto>,
+    },
+    /// An exposed port was added, changed or removed: the user's exposed
+    /// ports.
+    ExposedPorts {
+        #[serde(rename = "exposedPorts")]
+        exposed_ports: Vec<crate::exposed_ports::ExposedPortDto>,
     },
     /// An automation was created, changed or deleted, or one of its runs
     /// started, ended or was read: the user's automations, as the product

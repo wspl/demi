@@ -11,7 +11,7 @@ import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import type { ConnectionProblem } from '@demicodes/web-ui/transport/connection'
 import type { Block } from '@demicodes/protocol'
 import type { SentenceText } from '@demicodes/web-ui/ui/ui-text'
-import { accountSwitchBlocks, generationErrorBlock, shortTranscriptBlocks, signedOutErrorBlock, usageLimitErrorBlock, WAITING_SHELL_SCRIPT, waitingShellCall } from '../fixtures/blocks'
+import { accountSwitchBlocks, deviceOfflineErrorBlock, generationErrorBlock, notExposedErrorBlock, shortTranscriptBlocks, signedOutErrorBlock, usageLimitErrorBlock, WAITING_SHELL_SCRIPT, waitingShellCall } from '../fixtures/blocks'
 import { ago } from '../fixtures/time'
 import { galleryMessages } from '../fixtures/send-while-running'
 import {
@@ -55,6 +55,8 @@ interface SessionCase {
    */
   primary?: HostMenuHost
   composer: 'default' | 'none' | 'noModels' | 'archived'
+  /** The port the failure names is exposed by now. */
+  exposed?: boolean
 }
 
 /** The user's devices, as the offline card's move lists them. */
@@ -177,6 +179,13 @@ async function forkFromAnswer(): Promise<void> {
   productWould('Fork the conversation from this answer')
 }
 
+/**
+ * Each specimen's scroll as the product saves it when the reader leaves:
+ * kept for a next open, never fed back into the session on screen, whose
+ * list would otherwise restore a place taken before its dock was measured.
+ */
+const savedScrolls = reactive<Record<string, ChatSessionState['scroll']>>({})
+
 const cases: SessionCase[] = [
   {
     variant: 'Initial load failed · nothing to keep',
@@ -248,6 +257,34 @@ const cases: SessionCase[] = [
     session: state('signed-out', {
       blocks: [...shortTranscriptBlocks(), signedOutErrorBlock('signed-out-error')],
       failures: { 'signed-out-error': { retryAt: null, signedOut: { provider: 'Claude Code', account: 'alex@example.com' } } },
+    }),
+    composer: 'default',
+  },
+  {
+    variant: 'Port not exposed · Expose Port',
+    note: 'The entry’s endpoint names port 11434 of the user’s Mac by its id, and the Mac has not exposed it, so the request was refused before it reached the Mac. The record says so in Demi’s words, and the dock offers Expose Port beside Resume: it exposes the port, as Settings › Devices lists it, and resumes the turn.',
+    session: state('not-exposed', {
+      blocks: [...shortTranscriptBlocks(), notExposedErrorBlock('not-exposed-error')],
+      failures: { 'not-exposed-error': { retryAt: null, notExposed: { deviceId: 'mac', device: 'alex-mbp', port: 11434 } } },
+    }),
+    composer: 'default',
+  },
+  {
+    variant: 'Port exposed since · Resume',
+    note: 'The same failure after the port was exposed from Settings › Devices or another tab, which the page learns of when it happens: the record still says what happened, and the dock offers Resume alone, which makes the request again.',
+    session: state('exposed-since', {
+      blocks: [...shortTranscriptBlocks(), notExposedErrorBlock('exposed-since-error')],
+      failures: { 'exposed-since-error': { retryAt: null, notExposed: { deviceId: 'mac', device: 'alex-mbp', port: 11434 } } },
+    }),
+    composer: 'default',
+    exposed: true,
+  },
+  {
+    variant: 'Device offline · named, after its retries',
+    note: 'The entry’s endpoint names a port of the user’s Mac while the Mac is offline. The request was retried as one to an unreachable endpoint is, and the record names the Mac, since the next step is to bring it online; Resume tries again.',
+    session: state('device-offline', {
+      blocks: [...shortTranscriptBlocks(), deviceOfflineErrorBlock('device-offline-error')],
+      failures: { 'device-offline-error': { retryAt: null, deviceOffline: { deviceId: 'mac', device: 'alex-mbp' } } },
     }),
     composer: 'default',
   },
@@ -368,9 +405,11 @@ const cases: SessionCase[] = [
                 @retry="productWould('Resume the Turn')"
                 @continue-with="(_provider, account) => productWould(`Make ${account === 'a2' ? 'sam@example.com' : account} the Active Account and Resume the Turn`)"
                 @open-providers="productWould('Open Settings › Providers')"
+                :is-exposed="() => item.exposed === true"
+                @expose-port="(_device, port) => productWould(`Expose Port ${port} of alex-mbp and Resume the Turn`)"
                 @retry-load="productWould('Load the Conversation Again')"
                 @rename="item.session.title = $event"
-                @save-scroll="(_id, value) => (item.session.scroll = value)"
+                @save-scroll="(id, value) => (savedScrolls[id] = value)"
               >
                 <template #workspace
                   ><span class="text-chrome text-fg-muted"

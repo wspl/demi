@@ -106,7 +106,7 @@ impl KeyImages {
         headers
     }
 
-    async fn list(&self, http: &reqwest::Client) -> Result<Vec<ImageModelInfo>, ImageFailure> {
+    async fn list(&self, http: &demi_provider_common::ProviderHttp) -> Result<Vec<ImageModelInfo>, ImageFailure> {
         if let Flavor::Compatible { models, .. } = &self.flavor {
             return Ok(models.clone());
         }
@@ -202,7 +202,7 @@ impl ImageMaker for KeyImages {
 
     fn models<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        http: &'a demi_provider_common::ProviderHttp,
         _: &'a Catalog,
     ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
         Box::pin(self.list(http))
@@ -216,7 +216,7 @@ impl ImageMaker for KeyImages {
 
     fn make<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        http: &'a demi_provider_common::ProviderHttp,
         catalog: &'a Catalog,
         request: ImageRequest,
     ) -> BoxFuture<'a, ImageAnswer> {

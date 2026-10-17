@@ -30,7 +30,7 @@ pub(crate) fn provider_at(vendor: &MockVendor, base: &str) -> GoogleProvider {
 pub(crate) fn runtime(vendor: &MockVendor) -> Box<dyn ProviderRuntime> {
     provider_at(vendor, "/v1beta")
         .runtime(RuntimeEnv {
-            http: reqwest::Client::new(),
+            http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
         })
         .unwrap()
 }

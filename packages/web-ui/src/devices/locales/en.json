@@ -156,5 +156,21 @@
     "refused": "Windows refused both the scheduled task and the startup item: {error}",
     "unusableName": "The installation folder’s name, {name}, can’t name a startup item.",
     "unknownAccount": "The system doesn’t recognize this user account."
+  },
+  "exposed": {
+    "title": "Exposed Ports",
+    "description": "Demi’s own requests for you, such as a provider’s, can reach these ports of the device at their address.",
+    "expose": "Expose Port",
+    "none": "No exposed ports",
+    "missing": "Enter a port to expose.",
+    "edit": "Edit…",
+    "copy": "Copy address",
+    "editTitle": "Exposed Port",
+    "port": "Port",
+    "portDescription": "Demi’s requests reach it at 127.0.0.1 on the device.",
+    "portProblem": "Enter a port from 1 to 65535.",
+    "label": "Label",
+    "labelPlaceholder": "Ollama",
+    "address": "Address"
   }
 }

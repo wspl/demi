@@ -140,6 +140,18 @@ const props = defineProps<{
   onInstallCli?: Action<[provider: SettingsProviderEntry]>
   /** Whether the user went on past the warning about several accounts, which then never shows again. */
   multiAccountWarned?: boolean
+  /**
+   * Whether the user's device exposes the port by now, as the page learns
+   * of each change: a test that failed for that port offers Try Again
+   * rather than Expose Port; absent, no port counts as exposed.
+   */
+  isExposed?: (deviceId: string, port: number) => boolean
+  /**
+   * The name of the user's device an endpoint names, when every user of the
+   * entry reaches it, as on a shared instance (`port-exposure.md` §
+   * Exposed ports, Whose); null for any other endpoint. Absent, none is.
+   */
+  sharedDevice?: (endpoint: string) => string | null
 }>()
 
 const emit = defineEmits<{
@@ -162,6 +174,8 @@ const emit = defineEmits<{
   signIn: [provider: SettingsProviderEntry]
   /** Test the provider; a subscription names the account to test with. */
   test: [provider: SettingsProviderEntry, accountId?: string]
+  /** Expose Port on a failed test: the device's port it named is exposed, then the test runs again. */
+  exposePort: [provider: SettingsProviderEntry, deviceId: string, port: number]
   refresh: [provider: SettingsProviderEntry]
   /** Ask the vendor for one account's usage again. */
   refreshUsage: [provider: SettingsProviderEntry, accountId: string, automatic?: boolean]
@@ -786,6 +800,11 @@ const endpointFault = ref<string | null>(null)
 watch(selectedId, () => {
   endpointFault.value = null
 })
+/** The user's device the entry's endpoint names, which every user of the entry reaches. */
+function endpointDevice(provider: SettingsProviderEntry): string | null {
+  return provider.baseUrl ? props.sharedDevice?.(provider.baseUrl) ?? null : null
+}
+
 function endpointCheck(value: string) {
   return value.trim() === '' ? null : endpointProblem(value)
 }
@@ -1115,7 +1134,10 @@ function endpointCheck(value: string) {
                       </template>
                     </Dropdown>
                   </SettingsRow>
-                  <SettingsRow :label="t('providers.connection.endpoint')">
+                  <SettingsRow
+                    :label="t('providers.connection.endpoint')"
+                    :description="endpointDevice(selected) ? t('providers.connection.sharedDevice', { device: endpointDevice(selected) }) : undefined"
+                  >
                     <template v-if="endpointFault" #detail>
                       <InlineError :message="endpointFault" />
                     </template>
@@ -1168,9 +1190,24 @@ function endpointCheck(value: string) {
                   "
                   #detail
                 >
-                  <p class="select-text break-words text-[12px] leading-4 text-on-danger">
-                    {{ selected.detail }}
-                  </p>
+                  <div class="flex min-w-0 flex-col items-start gap-2">
+                    <p class="select-text break-words text-[12px] leading-4 text-on-danger">
+                      {{ selected.detail }}
+                    </p>
+                    <!-- A port exposed by now, from a device's page or another tab, is tried again as it is. -->
+                    <template v-if="selected.notExposed">
+                      <Button
+                        v-if="isExposed?.(selected.notExposed.deviceId, selected.notExposed.port)"
+                        size="sm"
+                        @click="emit('test', selected)"
+                      >{{ t('providers.connection.tryAgain') }}</Button>
+                      <Button
+                        v-else
+                        size="sm"
+                        @click="emit('exposePort', selected, selected.notExposed.deviceId, selected.notExposed.port)"
+                      >{{ t('providers.connection.exposePort') }}</Button>
+                    </template>
+                  </div>
                 </template>
                 <span
                   v-if="isTesting(selected)"

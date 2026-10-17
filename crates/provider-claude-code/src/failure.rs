@@ -37,6 +37,8 @@ pub(crate) fn read_failure(
             retry_at: Some(reset),
             continue_with: None,
             signed_out: None,
+            not_exposed: None,
+            device_offline: None,
         },
         None => read_http_failure(diagnostics, received_at),
     }

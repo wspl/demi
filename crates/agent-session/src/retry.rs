@@ -34,7 +34,7 @@ impl RetryPolicy {
     pub(crate) fn retries(&self, attempt: u32, failure: &ProviderFailure) -> bool {
         let transient = matches!(
             failure.code,
-            Some(ErrorCode::RateLimit | ErrorCode::Overloaded)
+            Some(ErrorCode::RateLimit | ErrorCode::Overloaded | ErrorCode::DeviceOffline)
         );
         let outlasts = failure
             .retry_after

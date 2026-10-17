@@ -9,6 +9,7 @@ import { useResources } from '../state/resources'
 import { useProduct } from '../state/product'
 import { claimDevice, useInstallCommands } from '../devices/pairing'
 import { useDeviceSettings } from './devices'
+import { useExposedPortSettings } from './exposed-ports'
 import { useSettingsAddress } from './address'
 import { directStatus, measureDirect, tryDirect, watchDirect } from '../direct'
 import { changeDeviceSchema } from '../api/generated/web-api'
@@ -16,6 +17,7 @@ import { changeDeviceSchema } from '../api/generated/web-api'
 const resources = useResources()
 const product = useProduct()
 const settings = useDeviceSettings()
+const exposedPorts = useExposedPortSettings()
 const installCommands = useInstallCommands()
 const address = useSettingsAddress()
 const { cloud, resetError } = storeToRefs(settings)
@@ -80,6 +82,10 @@ watch(
     :overlay-store="appOverlayStore"
     :install-commands="installCommands"
     :claim-device="claimDevice"
+    :exposed-ports="exposedPorts.ports"
+    :on-expose-port="exposedPorts.expose"
+    :on-change-exposed-port="exposedPorts.change"
+    :on-remove-exposed-port="exposedPorts.remove"
     @retry="product.reconnect"
     @reset-cloud="resetCloud"
     @show="address.show('devices', $event)"

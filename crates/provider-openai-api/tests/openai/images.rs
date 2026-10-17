@@ -92,7 +92,7 @@ async fn the_size_sent_for_a_shape_follows_the_sizes_the_catalog_gives_the_model
     }
     let provider = provider(&vendor, Some(ImageVendor::OpenAi));
     let maker = provider.images().unwrap();
-    let http = reqwest::Client::new();
+    let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
     let with_sizes = |image: Value| {
         let document = json!({ "updated": "2026-10-01T00:00:00Z", "models": [
             { "vendor": "openai", "id": "picture", "kind": "image", "name": "Picture", "image": image }
@@ -137,7 +137,7 @@ async fn an_openai_key_lists_its_image_models_and_sends_generations_and_edits_as
     let provider = provider(&vendor, Some(ImageVendor::OpenAi));
     let maker = provider.images().expect("an OpenAI key makes images");
     assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("OpenAI", Some(ImageVendor::OpenAi), true));
-    let http = reqwest::Client::new();
+    let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
     let models = maker.models(&http, &catalog()).await.unwrap();
     assert_eq!(ids(&models), [("gpt-image-2", Some("2026-04-21"), ""), ("gpt-image-3-preview", Some("2026-09-21"), "")]);
@@ -214,7 +214,7 @@ async fn an_openai_keys_failures_read_as_a_spent_limit_a_refused_key_a_policy_bl
     vendor.respond_at("/v1/models", json_answer(401, error("Incorrect API key provided.", "invalid_request_error", json!("invalid_api_key"))));
     let provider = provider(&vendor, Some(ImageVendor::OpenAi));
     let maker = provider.images().unwrap();
-    let http = reqwest::Client::new();
+    let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
     let fail = async || maker.make(&http, &catalog(), request("gpt-image-2", None, Vec::new())).await.result.unwrap_err();
 
     assert_eq!(fail().await, ImageFailure::UsageLimit { retry_at: None });
@@ -275,7 +275,7 @@ async fn an_xai_key_lists_models_with_their_aliases_sends_its_shapes_and_reads_i
     let provider = provider(&vendor, Some(ImageVendor::Xai));
     let maker = provider.images().expect("an xAI key makes images");
     assert_eq!((maker.name(), maker.vendor()), ("xAI", Some(ImageVendor::Xai)));
-    let http = reqwest::Client::new();
+    let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
     let models = maker.models(&http, &catalog()).await.unwrap();
     assert_eq!(

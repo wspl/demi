@@ -351,7 +351,7 @@ impl ProviderResolver for DeepSeek {
         let runtime = self
             .provider
             .runtime(RuntimeEnv {
-                http: self.http.clone(),
+                http: demi_provider_common::ProviderHttp::new(self.http.clone()),
             })
             .map(|inner| {
                 Box::new(Recorded {

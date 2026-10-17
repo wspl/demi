@@ -807,6 +807,32 @@ pub enum Inbound {
         id: String,
         message: String,
     },
+    /// A request the backend makes for the user to exposed port `port`
+    /// (`port-exposure.md`): the runner makes it with `method`, `path` and
+    /// `headers`, reading its body from `body`, when it has one, and answers `http_answered`
+    /// with the status and headers, the answer's body going into `answer`,
+    /// or `http_failed`.
+    HttpRequest {
+        id: String,
+        scheme: crate::exposure::HttpScheme,
+        #[garde(range(min = 1))]
+        port: u16,
+        #[garde(length(min = 1, max = 32))]
+        method: String,
+        /// The path and query, from `/`.
+        #[garde(pattern("^/"))]
+        path: String,
+        #[garde(length(max = crate::exposure::MAX_HEADERS), dive)]
+        headers: Vec<crate::exposure::HttpHeader>,
+        /// None for a request without a body.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        body: Option<PipeRef>,
+        answer: PipeRef,
+    },
 }
 
 impl Inbound {
@@ -1283,6 +1309,21 @@ pub enum Outbound {
         id: String,
         #[garde(length(min = 1))]
         forward: String,
+    },
+    /// The port answered the backend's `http_request` `id`: its status and
+    /// headers; the body follows in the request's answer pipe.
+    HttpAnswered {
+        id: String,
+        #[garde(range(min = 100, max = 999))]
+        status: u16,
+        #[garde(length(max = crate::exposure::MAX_HEADERS), dive)]
+        headers: Vec<crate::exposure::HttpHeader>,
+    },
+    /// The request `id` got no answer: the port refused the connection, or
+    /// the request could not be made, as `message` says.
+    HttpFailed {
+        id: String,
+        message: String,
     },
     /// Every artifact this runner's cache holds, once the connection is
     /// online and whenever an install or a retirement changes them

@@ -84,7 +84,7 @@ pub(crate) fn provider(
         config,
         Arc::new(pool.clone()),
         Arc::new(MemorySnapshots::new()),
-        http,
+        demi_provider_common::ProviderHttp::new(http),
         clock,
     )
 }
@@ -92,7 +92,7 @@ pub(crate) fn provider(
 pub(crate) fn runtime_of(provider: &GrokProvider) -> Box<dyn ProviderRuntime> {
     provider
         .runtime(RuntimeEnv {
-            http: reqwest::Client::new(),
+            http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
         })
         .unwrap()
 }

@@ -156,6 +156,9 @@ struct Owner<'r> {
     direct: Direct,
     /// The user's port forwards on this connection, which end with it.
     forwarding: Option<crate::forward::Forwarding>,
+    /// The backend's requests to exposed ports on this connection, which
+    /// end with it.
+    exposure: Option<crate::exposure::Exposure>,
     /// The manifests installed on this connection, which end with it.
     manifests: Manifests,
 }
@@ -204,6 +207,11 @@ pub async fn serve(
         transport.control.clone(),
         transport.cancellation(),
     );
+    let exposure = crate::exposure::Exposure::new(
+        registered.pipes.clone(),
+        transport.control.clone(),
+        transport.cancellation(),
+    )?;
     let mut owner = Owner {
         registered,
         kept,
@@ -221,6 +229,7 @@ pub async fn serve(
         revoke_asked: false,
         direct,
         forwarding: Some(forwarding),
+        exposure: Some(exposure),
         manifests: Manifests::default(),
     };
     let result = owner.run(&mut transport).await;
@@ -639,6 +648,12 @@ impl Owner<'_> {
                     let _ = forwarding.handle(message);
                 }
             }
+            Inbound::HttpRequest { .. } => {
+                if let Some(exposure) = &mut self.exposure {
+                    // It is an exposed port's request.
+                    let _ = exposure.handle(message);
+                }
+            }
             Inbound::DirectClose { peer } => self.direct.close(&peer),
             // The relay probe is answered at once, ahead of the connection's
             // bulk output, so its round trip is the path's own.
@@ -878,6 +893,7 @@ impl Owner<'_> {
         // went away (`direct-channel.md` § Who may connect), and its
         // forwards end with the connection that told it of them.
         self.forwarding = None;
+        self.exposure = None;
         self.direct.close_all();
         tokio::join!(self.host.close(), self.streams.close(), self.volumes.close());
         // State writes finish, since a claimed token must not be lost, and a

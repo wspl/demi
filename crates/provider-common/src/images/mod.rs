@@ -95,7 +95,7 @@ pub trait ImageMaker: Send + Sync {
     /// asks, or the models a compatible entry's user added.
     fn models<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        http: &'a crate::ProviderHttp,
         catalog: &'a Catalog,
     ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>>;
 
@@ -109,7 +109,7 @@ pub trait ImageMaker: Send + Sync {
     /// model takes.
     fn make<'a>(
         &'a self,
-        http: &'a reqwest::Client,
+        http: &'a crate::ProviderHttp,
         catalog: &'a Catalog,
         request: ImageRequest,
     ) -> BoxFuture<'a, ImageAnswer>;
@@ -292,7 +292,7 @@ impl ImageCall<'_> {
     /// is sent again once, with the credentials renewed past the token it
     /// was refused with; `credentials` answers the headers and that token,
     /// none for a key, which is never renewed.
-    pub async fn send<F, Fut>(&self, http: &reqwest::Client, url: &Url, body: Bytes, credentials: F) -> ImageAnswer
+    pub async fn send<F, Fut>(&self, http: &crate::ProviderHttp, url: &Url, body: Bytes, credentials: F) -> ImageAnswer
     where
         F: FnMut(Option<Secret>) -> Fut,
         Fut: Future<Output = Result<(HeaderMap, Option<Secret>), AuthFailure>>,
@@ -306,7 +306,7 @@ impl ImageCall<'_> {
     /// The body of a successful `GET` of `url` with `headers`, a listing of
     /// a key's models, within [`IMAGE_TIMEOUT`]; a refusal reads as a
     /// call's does.
-    pub async fn get(&self, http: &reqwest::Client, url: &Url, headers: HeaderMap) -> Result<Bytes, ImageFailure> {
+    pub async fn get(&self, http: &crate::ProviderHttp, url: &Url, headers: HeaderMap) -> Result<Bytes, ImageFailure> {
         within_deadline(async {
             let response = http.get(url.clone()).headers(headers).send().await.map_err(transport)?;
             if !response.status().is_success() {
@@ -319,7 +319,7 @@ impl ImageCall<'_> {
 
     async fn attempts<F, Fut>(
         &self,
-        http: &reqwest::Client,
+        http: &crate::ProviderHttp,
         url: &Url,
         body: Bytes,
         mut credentials: F,
@@ -420,10 +420,18 @@ async fn within_deadline<T>(call: impl Future<Output = Result<T, ImageFailure>>)
 }
 
 /// The failure of a request that did not reach the vendor or broke off.
-fn transport(error: reqwest::Error) -> ImageFailure {
+/// A port the device has not exposed is `port_not_exposed`, which waiting
+/// cannot fix, and an offline device `device_offline`.
+fn transport(error: impl Into<crate::SendError>) -> ImageFailure {
+    let error = error.into();
+    let code = match &error {
+        crate::SendError::Device(crate::DeviceRefusal::NotExposed { .. }) => ErrorCode::PortNotExposed,
+        crate::SendError::Device(crate::DeviceRefusal::Offline { .. }) => ErrorCode::DeviceOffline,
+        _ => ErrorCode::Overloaded,
+    };
     ImageFailure::Unanswered {
         cause: crate::failure::transport_cause(error),
-        code: Some(ErrorCode::Overloaded),
+        code: Some(code),
     }
 }
 

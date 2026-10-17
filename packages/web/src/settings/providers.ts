@@ -73,6 +73,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         testPassed?: boolean
         detail?: string
         testedWith?: string
+        notExposed?: { deviceId: string; device: string; port: number }
       }
     >
   >({})
@@ -488,7 +489,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         signal.throwIfAborted()
         testResults.value[provider.id] = result.type === 'passed'
           ? { state: 'ready', testPassed: true, testedWith: result.model }
-          : { state: 'error', testPassed: false, detail: result.message, testedWith: result.model }
+          : { state: 'error', testPassed: false, detail: result.message, testedWith: result.model, notExposed: result.notExposed }
       } catch (error) {
         signal.throwIfAborted()
         testResults.value[provider.id] = {

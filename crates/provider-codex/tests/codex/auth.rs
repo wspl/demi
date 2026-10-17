@@ -339,7 +339,7 @@ async fn the_status_names_the_account_and_an_unreadable_or_absent_one_is_reporte
         config,
         std::sync::Arc::new(MemoryCredentialPool::new()),
         snapshots,
-        reqwest::Client::new(),
+        demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
         clock,
     );
     assert_eq!(

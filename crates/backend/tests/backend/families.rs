@@ -305,7 +305,7 @@ impl ImageMaker for ScriptedImages {
 
     fn models<'a>(
         &'a self,
-        _: &'a reqwest::Client,
+        _: &'a demi_provider_common::ProviderHttp,
         _: &'a Catalog,
     ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
         let models = self.script.models.iter().map(|id| ImageModelInfo::id(id)).collect();
@@ -318,7 +318,7 @@ impl ImageMaker for ScriptedImages {
 
     fn make<'a>(
         &'a self,
-        _: &'a reqwest::Client,
+        _: &'a demi_provider_common::ProviderHttp,
         _: &'a Catalog,
         request: ImageRequest,
     ) -> BoxFuture<'a, ImageAnswer> {
@@ -535,7 +535,7 @@ impl Provider for Scripted {
     }
 
     fn read_failure(&self, _: &ProviderErrorDiagnostics, _: Timestamp) -> ProviderFailureFacts {
-        ProviderFailureFacts { retry_at: None, continue_with: None, signed_out: None }
+        ProviderFailureFacts { retry_at: None, continue_with: None, signed_out: None, not_exposed: None, device_offline: None }
     }
 
     fn quota(&self) -> Option<&ProviderQuota> {

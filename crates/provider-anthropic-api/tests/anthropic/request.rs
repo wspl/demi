@@ -50,7 +50,7 @@ async fn a_run_posts_to_the_messages_endpoint_with_the_key_and_version() {
         vendor.respond(stop());
         let mut runtime = provider_at(&vendor, base)
             .runtime(RuntimeEnv {
-                http: reqwest::Client::new(),
+                http: demi_provider_common::ProviderHttp::new(reqwest::Client::new()),
             })
             .unwrap();
         let events = run(runtime.as_mut(), inference_request()).await;

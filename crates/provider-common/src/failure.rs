@@ -7,6 +7,7 @@ use std::{convert::Infallible, error::Error as _, str::FromStr, sync::LazyLock, 
 use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, ProviderFailureFacts, Timestamp};
 use regex::Regex;
 
+use crate::client::{DeviceRefusal, SendError};
 use crate::wire::SseError;
 
 /// Reads a failure record a provider produced: the facts Demi shows, given
@@ -30,9 +31,13 @@ pub struct ProviderFailure {
 }
 
 /// What a request that did not reach the vendor, or broke off, failed
-/// with: the error and each of its causes, without the URL.
-pub(crate) fn transport_cause(error: reqwest::Error) -> String {
-    let error = error.without_url();
+/// with: the error and each of its causes, without the URL; a device's
+/// refusal in its own words.
+pub(crate) fn transport_cause(error: impl Into<SendError>) -> String {
+    let error = match error.into() {
+        SendError::Transport(error) => error.without_url(),
+        SendError::Device(refusal) => return refusal.to_string(),
+    };
     let mut message = error.to_string();
     let mut cause = error.source();
     while let Some(inner) = cause {
@@ -65,7 +70,31 @@ impl ProviderFailure {
     /// request that could not even be built has no code. The message names
     /// the error and its causes but never the endpoint, which stays inside
     /// the provider.
-    pub fn transport(label: &str, error: reqwest::Error) -> Self {
+    ///
+    /// A request to a device's port fails in Demi's words: a port the
+    /// device has not exposed with `port_not_exposed`, which waiting cannot
+    /// fix, an offline device with `device_offline`, retried as an
+    /// unreachable endpoint is, and a failed request as any unreachable
+    /// endpoint (`port-exposure.md` § Exposed ports).
+    pub fn transport(label: &str, error: impl Into<SendError>) -> Self {
+        let error = match error.into() {
+            SendError::Transport(error) => error,
+            SendError::Device(refusal @ DeviceRefusal::NotExposed { .. }) => {
+                return Self {
+                    code: Some(ErrorCode::PortNotExposed),
+                    ..Self::no_answer(refusal.to_string())
+                };
+            }
+            SendError::Device(refusal @ DeviceRefusal::Offline { .. }) => {
+                return Self {
+                    code: Some(ErrorCode::DeviceOffline),
+                    ..Self::no_answer(refusal.to_string())
+                };
+            }
+            SendError::Device(DeviceRefusal::Failed(cause)) => {
+                return Self::no_answer(format!("{label} API request failed: {cause}"));
+            }
+        };
         let unbuilt = error.is_builder();
         let message = format!("{label} API request failed: {}", transport_cause(error));
         let failure = Self::no_answer(message);
@@ -225,6 +254,14 @@ pub enum ErrorCode {
     AuthUnsupported,
     /// The credential could not be refreshed.
     AuthRefreshFailed,
+    /// The request named a port of one of the user's devices that the
+    /// device has not exposed (`port-exposure.md`): the failure offers
+    /// Expose Port, and the agent does not retry it.
+    PortNotExposed,
+    /// The request named a port of one of the user's devices while the
+    /// device is offline, or a Cloud stopped (`port-exposure.md`): retried
+    /// as an unreachable endpoint is, and the failure names the device.
+    DeviceOffline,
     /// Any other failure the vendor named, with the vendor's own code.
     Vendor(String),
 }
@@ -245,6 +282,8 @@ impl ErrorCode {
             Self::AuthInvalid => "auth_invalid",
             Self::AuthUnsupported => "auth_unsupported",
             Self::AuthRefreshFailed => "auth_refresh_failed",
+            Self::PortNotExposed => "port_not_exposed",
+            Self::DeviceOffline => "device_offline",
             Self::Vendor(code) => code,
         }
     }
@@ -309,6 +348,8 @@ impl FromStr for ErrorCode {
             "auth_invalid" => Self::AuthInvalid,
             "auth_unsupported" => Self::AuthUnsupported,
             "auth_refresh_failed" => Self::AuthRefreshFailed,
+            "port_not_exposed" => Self::PortNotExposed,
+            "device_offline" => Self::DeviceOffline,
             other => Self::Vendor(other.to_owned()),
         })
     }

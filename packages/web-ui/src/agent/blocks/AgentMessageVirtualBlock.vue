@@ -249,6 +249,8 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
           :provider-id="block.model.providerId"
           :retry-at="failure?.retryAt ?? null"
           :signed-out="failure?.signedOut ?? null"
+          :not-exposed="failure?.notExposed ?? null"
+          :device-offline="failure?.deviceOffline ?? null"
         />
       </div>
       <div

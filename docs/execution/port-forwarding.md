@@ -13,7 +13,8 @@ program ─▶ 127.0.0.1:11434 on Host A ─▶ A's runner ══ direct ══�
 
 Forwarding connects the user's Hosts to each other; nothing listens on the
 backend's server, where on a shared instance every user's programs could
-connect.
+connect. A provider entry reaching a device's port, the backend's own
+request, uses [port exposure](port-exposure.md) instead.
 
 ## A port forward
 

@@ -1,7 +1,8 @@
 //! The backend's end of a runner: pipe records, the connection engine with
-//! the test as the runner, and a Host, jobs, callbacks and the media its
-//! commands return over a real runner.
+//! the test as the runner, and a Host, jobs, callbacks, the media its
+//! commands return and requests to exposed ports over a real runner.
 
+mod exposure;
 mod link;
 mod media;
 mod pipes;

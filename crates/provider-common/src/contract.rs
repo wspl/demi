@@ -103,7 +103,7 @@ pub struct RuntimeEnv {
     /// The shard's HTTP client. A runtime never builds its own: hyper ties a
     /// pooled connection to the Tokio runtime that created it
     /// (`concurrency.md` § Programs and threads).
-    pub http: reqwest::Client,
+    pub http: crate::ProviderHttp,
 }
 
 /// Why a provider could not build a runtime.

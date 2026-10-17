@@ -1384,6 +1384,40 @@ export function usageLimitErrorBlock(id: string, resetsAt: string): Block {
 }
 
 /**
+ * The record of a turn whose request named port 11434 of alex-mbp, which
+ * the device has not exposed (`port-exposure.md` § Exposed ports): refused
+ * before it reached the device, with no answer to keep.
+ */
+export function notExposedErrorBlock(id: string): Block {
+  return {
+    type: 'error',
+    id,
+    createdAt: iso(30_000),
+    model: demoModel,
+    message: 'Port 11434 of alex-mbp isn’t exposed.',
+    code: 'port_not_exposed',
+    diagnostics: { source: 'transport' },
+  }
+}
+
+/**
+ * The record of a turn whose request named a port of alex-mbp while it was
+ * offline, after the retries an unreachable endpoint gets
+ * (`port-exposure.md` § Exposed ports).
+ */
+export function deviceOfflineErrorBlock(id: string): Block {
+  return {
+    type: 'error',
+    id,
+    createdAt: iso(30_000),
+    model: demoModel,
+    message: 'alex-mbp is offline.',
+    code: 'device_offline',
+    diagnostics: { source: 'transport' },
+  }
+}
+
+/**
  * The record of a turn whose sign-in Claude refused, as Claude Code 2.1.301
  * prints it: its made-up assistant line saying `authentication_failed`,
  * then a failed result that names no status (`claude-code.md` § Accounts

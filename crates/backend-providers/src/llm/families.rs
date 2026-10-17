@@ -79,10 +79,14 @@ pub struct FamilyArgs {
     /// The entry's label.
     pub label: String,
     pub credential: FamilyCredential,
-    /// The HTTP client of the backend's shared services, for the provider's
-    /// own requests such as its directory and quota probes. A runtime gets
-    /// the client of the shard it runs on instead.
-    pub http: reqwest::Client,
+    /// The entry's client on the backend's shared services, for the
+    /// provider's own requests such as its directory and quota probes
+    /// (`port-exposure.md` § What is shared). A runtime gets the entry's
+    /// client on the shard it runs on instead.
+    pub http: demi_provider_common::ProviderHttp,
+    /// The shared services' client itself, for what a family reads that is
+    /// no entry's, such as the newest Codex release.
+    pub services_http: reqwest::Client,
     pub clock: Arc<dyn Clock>,
     /// The backend's one models.dev copy, for a family whose directory it
     /// is.

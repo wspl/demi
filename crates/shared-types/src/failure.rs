@@ -108,6 +108,44 @@ pub struct ProviderFailureFacts {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[garde(dive)]
     pub signed_out: Option<SignedOutAccount>,
+    /// For a request to a port of the entry owner's device that the device
+    /// had not exposed, that port, which the conversation offers to expose
+    /// with Expose Port while the page holds it not exposed, and to try
+    /// again once it is (`port-exposure.md` § Exposed ports); omitted
+    /// otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub not_exposed: Option<NotExposedPort>,
+    /// For a request to a port of a device that was offline, the device,
+    /// which the failure's headline names (`port-exposure.md` § Exposed
+    /// ports); omitted otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub device_offline: Option<OfflineDevice>,
+}
+
+/// A device a request named while it was offline: its id and its name, as
+/// Settings shows it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct OfflineDevice {
+    #[garde(length(min = 1))]
+    pub device_id: String,
+    #[garde(skip)]
+    pub device: String,
+}
+
+/// A port of a device that a request named and the device has not exposed:
+/// the device's id and name, as Settings shows it, and the port.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[serde(rename_all = "camelCase")]
+pub struct NotExposedPort {
+    #[garde(length(min = 1))]
+    pub device_id: String,
+    #[garde(skip)]
+    pub device: String,
+    #[garde(range(min = 1))]
+    pub port: u16,
 }
 
 /// An account its vendor signed out: the provider entry's name and the
