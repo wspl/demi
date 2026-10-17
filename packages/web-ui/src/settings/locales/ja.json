@@ -494,6 +494,7 @@
     "saving": "保存中…",
     "addAccount": "アカウントを追加",
     "showInMenu": "モデルメニューに表示",
+    "imageGeneration": "画像生成",
     "state": {
       "setup": "未設定",
       "signedOut": "サインアウト済み",

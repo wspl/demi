@@ -241,6 +241,7 @@ mod tests {
                 models,
             }),
             created_at: Timestamp::UNIX_EPOCH,
+            image_generation: true,
         }
     }
 

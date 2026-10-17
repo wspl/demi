@@ -985,6 +985,17 @@ at nothing, so it shows no error; a compatible entry with no models yet says
 *No models yet* in plain text with Add Model, and an entry nobody has tested
 shows no status until it is tested or used.
 
+An entry whose provider makes images, a ChatGPT or Grok subscription, has
+an **Image Generation** switch on its page, on from the start. Turned off,
+the entry makes no images: `demi image models` lists none of its models and
+`demi image` never picks it, while its text models work as before
+([Images](../agent/images.md)). For example, Alex keeps ChatGPT for
+images and turns Grok's switch off; the agent's image calls then go to
+ChatGPT even when Grok comes first in the list. The switch belongs to the
+entry and is kept with its configuration, so whoever manages the entry
+sets it, and a shared instance's administrator turning it off turns it
+off for every user of that entry.
+
 Entries can be renamed, edited, or removed. A vendor entry's models can be
 replaced by a manual list; clearing it returns to the vendor's catalog. A new entry's default name takes *(2)* when taken; a name the user gives need not be unique.
 Provider configuration stores explicit endpoint and model overrides. Fetched

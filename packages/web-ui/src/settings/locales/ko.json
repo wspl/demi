@@ -494,6 +494,7 @@
     "saving": "저장 중…",
     "addAccount": "계정 추가",
     "showInMenu": "모델 메뉴에 표시",
+    "imageGeneration": "이미지 생성",
     "state": {
       "setup": "설정되지 않음",
       "signedOut": "로그아웃됨",

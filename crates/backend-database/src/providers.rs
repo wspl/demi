@@ -68,6 +68,8 @@ pub struct ProviderRow {
     pub created_at: Timestamp,
     /// Which account each agent uses; `manual` for an API-key entry.
     pub rotation: Rotation,
+    /// Whether the entry makes images when its provider can.
+    pub image_generation: bool,
 }
 
 /// An entry as it is first stored, with manual rotation.
@@ -113,8 +115,9 @@ pub struct CredentialWrite {
     pub secret: Option<Vec<u8>>,
 }
 
-const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation";
-/// The columns a new entry stores; its rotation is the default, manual.
+const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation";
+/// The columns a new entry stores; its rotation is the default, manual, and
+/// its Image Generation is on.
 const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at";
 const CREDENTIAL_COLUMNS: &str =
     "id, identity_key, label, detail, source, secret, version, quota, updated_at, signed_out";
@@ -198,8 +201,8 @@ impl ControlService {
         .await
     }
 
-    /// Replaces the entry's label, family, sealed configuration or
-    /// rotation, and answers the entry as it now is; `None` for an entry
+    /// Replaces the entry's label, family, sealed configuration, rotation or
+    /// Image Generation, and answers the entry as it now is; `None` for an entry
     /// that no longer exists.
     pub async fn update_provider(
         &self,
@@ -208,6 +211,7 @@ impl ControlService {
         family: Option<String>,
         config: Option<Vec<u8>>,
         rotation: Option<Rotation>,
+        image_generation: Option<bool>,
     ) -> Result<Option<ProviderRow>, StorageError> {
         self.call(move |connection, _| {
             let transaction = connection.transaction()?;
@@ -233,6 +237,12 @@ impl ControlService {
                 transaction.execute(
                     "UPDATE providers SET rotation = ?1 WHERE id = ?2",
                     params![rotation.to_string(), id.as_str()],
+                )?;
+            }
+            if let Some(on) = image_generation {
+                transaction.execute(
+                    "UPDATE providers SET image_generation = ?1 WHERE id = ?2",
+                    params![on, id.as_str()],
                 )?;
             }
             let updated = provider_by_id(&transaction, &id)?;
@@ -613,6 +623,7 @@ fn provider_row(row: &Row<'_>) -> Result<ProviderRow, StorageError> {
             "rotation",
             row.get::<_, String>("rotation")?.parse::<Rotation>(),
         )?,
+        image_generation: row.get("image_generation")?,
     })
 }
 
