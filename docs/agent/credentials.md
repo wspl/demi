@@ -12,13 +12,13 @@ the model's vendor, so it asks for it:
 
 ```text
 $ demi credentials request "Google API key" --reason "To add Google as a provider" \
-    --field key:secret:"API key"
+    --field key:secret:"API key" --keep 1h
 ```
 
 A card opens in the conversation, as a permission request does, and the
 sidebar's dot turns yellow. It shows the reason and one hidden field, *API
-key*, with an eye to show what was typed, and *Keep until* set to *Don't
-keep*. The user pastes the key and presses **Save**. The command returns:
+key*, with an eye to show what was typed, and under it *Kept for 1 hour*.
+The user pastes the key and presses **Save**. The command returns:
 
 ```text
 Saved credential "Google API key" (key: secret), kept for 1 hour.
@@ -30,9 +30,9 @@ The agent then passes the key on without seeing it:
 $ demi credentials read "Google API key" key | demi providers edit google --api-key-stdin
 ```
 
-Had the user set *Keep until* to *Always*, the credential would stay in
-Settings › Credentials, and a later conversation could use it after the user
-allowed it there.
+Had the agent asked with `--keep always`, for a key it will need again, the
+credential would stay in Settings › Credentials, and a later conversation
+could use it after the user allowed it there.
 
 ## A credential
 
@@ -40,7 +40,7 @@ allowed it there.
 | --- | --- |
 | Name | What the user and the agent call it, 1 to 80 characters, unique among the user's credentials: *Google API key*, *GitHub token for deploys* |
 | Fields | One to ten, each a name (lowercase letters, digits, `_` and `-`), a label the card and Settings show, a kind, and a value. A **secret** field is typed hidden and left out of `list` and `show`, which print its name and kind only; an agent reads it with `read`, as advice suggests into a pipe or a variable. A **visible** field, such as a user name or a host, is shown to an agent as it is |
-| Keep until | *Always*, or a time: a credential kept for a while is destroyed when the time comes. A request offers *1 hour* (the default), *1 day*, *30 days* and *Always*; the agent's `--keep` sets the default the card shows, and the user decides |
+| Keep until | *Always*, or a time: a credential kept for a while is destroyed when the time comes. The agent decides it with the request's `--keep`, `1h` (the default), `1d`, `30d` or `always`, as it knows what the secret is for: a key used once to add a provider is kept an hour, a deploy token the user asks it to keep using is kept always. The card says it, *Kept for 1 hour* or *Kept until you remove it*, and offers no choice, as a form does not ask how long its data is kept; Settings › Credentials changes it later |
 | Note | The reason it was asked for, editable |
 
 The user's credentials are the user's, not a conversation's: one kept *Always*
@@ -110,8 +110,9 @@ requests as permission requests are ([Requests](permissions.md#requests)):
 the same list, the same yellow mark, read and answered through the same
 routes, each request carrying its `kind`, `permission`, `credential` or
 `allowance` ([Conversation permissions](../product/web-api-conversations.md#conversation-permissions)).
-A credential request is answered with its values and how long to keep it,
-`{ decision: "allow", credential: { values, keep } }`, or declined with
+A credential request is answered with its values,
+`{ decision: "allow", credential: { values } }`, kept as the request's
+`keep` says, or declined with
 `{ decision: "deny" }`; the command that asked then returns. An agent's
 request for a name already saved asks for new values of the same fields.
 
