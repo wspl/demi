@@ -45,14 +45,22 @@ const shownTitle = computed(() => conversationTitle(props.conversation.title))
 // The row's end holds, in the flow, the pin's box and the device's mark, 24px each (32px on a
 // phone) with 2px between. The actions stand over them: Archive over the pin's box, or just left
 // of the mark when the row is not pinned, and Unpin left of Archive. The title clears them with
-// one margin, since the pin's box and the mark already hold the title back: Archive alone (24px,
-// 32px on a phone) or Unpin before it. On a phone, with no hover, the open row, which a tap
-// opened, shows the actions; the mark stays.
+// one margin, since the pin's box and the mark already hold the title back: Archive alone (24px)
+// or Unpin before it. A phone row shows no actions, since a tap meant to open the row could land
+// on one; its long press opens its menu, which holds them (`web-application.md` § The phone
+// layout), so its title and pin stay put.
 const titleMargin = computed(() => {
-  if (props.menuOpen) {
-    return 'mr-6 phone:mr-8'
+  if (phone.value) {
+    return ''
   }
-  return props.open ? 'group-hover/row:mr-6 phone:mr-8' : 'group-hover/row:mr-6 phone:mr-0'
+  return props.menuOpen ? 'mr-6' : 'group-hover/row:mr-6'
+})
+
+const pinClass = computed(() => {
+  if (phone.value) {
+    return ''
+  }
+  return props.menuOpen ? 'opacity-0' : 'group-hover/row:opacity-0'
 })
 
 // Selected rows are lit; the open one is also emphasized, so it stays visible inside a wider selection.
@@ -104,7 +112,7 @@ const rowClass = computed(() => [
       <span
         v-if="conversation.pinned"
         class="pointer-events-none flex size-6 items-center justify-center text-fg-faint transition-opacity phone:size-8"
-        :class="menuOpen ? 'opacity-0' : ['group-hover/row:opacity-0', open ? 'phone:opacity-0' : '']"
+        :class="pinClass"
       >
         <Pin :size="phone ? ICON_PX.in32 : ICON_PX.in20" />
       </span>
@@ -113,11 +121,11 @@ const rowClass = computed(() => [
     <!-- While renaming the field has the whole row: no actions, no pin glyph over it. The actions
          stand where the pin's box is, and left of the device's mark when the row is not pinned. -->
     <span
-      v-if="!renaming"
+      v-if="!renaming && !phone"
       class="on-fill absolute inset-y-0 flex items-center gap-0.5 transition-opacity"
       :class="[
-        conversation.device ? 'right-[calc(var(--spacing-hit-sm)+4px)] phone:right-9' : 'right-0.5',
-        menuOpen ? 'opacity-100' : ['opacity-0 group-hover/row:opacity-100 focus-within:opacity-100', open ? 'phone:opacity-100' : ''],
+        conversation.device ? 'right-[calc(var(--spacing-hit-sm)+4px)]' : 'right-0.5',
+        menuOpen ? 'opacity-100' : 'opacity-0 group-hover/row:opacity-100 focus-within:opacity-100',
       ]"
     >
       <!-- A pinned row offers Unpin before Archive; Pin is in the row's menu
@@ -125,8 +133,8 @@ const rowClass = computed(() => [
       <Tooltip v-if="conversation.pinned" :content="t('row.unpin')" class="flex items-center">
         <IconButton
           :icon="PinOff"
-          :icon-size="phone ? ICON_PX.in32 : ICON_PX.in20"
-          :size="phone ? 'lg' : 'sm'"
+          :icon-size="ICON_PX.in20"
+          size="sm"
           variant="ghost"
           :aria-label="t('row.unpin')"
           @click.stop="emit('unpin')"
@@ -135,7 +143,7 @@ const rowClass = computed(() => [
       <Tooltip :content="t('row.archive')" class="flex items-center">
         <IconButton
           :icon="Archive"
-          :size="phone ? 'lg' : 'sm'"
+          size="sm"
           variant="ghost"
           :aria-label="t('row.archive')"
           :disabled="conversation.status === 'active'"

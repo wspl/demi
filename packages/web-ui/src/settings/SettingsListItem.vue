@@ -5,6 +5,7 @@ import { pressOnKey } from '@demicodes/web-ui/ui/button-events'
 import IconButton from '@demicodes/web-ui/ui/IconButton.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
+import { usePhone } from '@demicodes/web-ui/ui/phone'
 import type { SentenceText } from '../ui/ui-text'
 
 /**
@@ -20,7 +21,11 @@ defineProps<{
   /** What the dot means, said when the pointer is over the mark. */
   badgeLabel?: SentenceText
   muted?: boolean
-  /** Shows a remove button on hover; the entry's page carries no such action. */
+  /**
+   * Shows a remove button on hover, on the desktop. A phone has no hover, and a row's end is
+   * where a tap meant to open it lands, so there the entry's page removes it instead, at its
+   * bottom (`web-application.md` § The phone layout).
+   */
   removable?: boolean
   removing?: boolean
   removeDisabled?: boolean
@@ -30,6 +35,8 @@ const emit = defineEmits<{
   select: []
   remove: []
 }>()
+
+const phone = usePhone()
 </script>
 
 <template>
@@ -72,7 +79,7 @@ const emit = defineEmits<{
       />
     </span>
     <span
-      v-if="removable"
+      v-if="removable && !phone"
       :class="removing ? 'on-fill flex shrink-0' : 'on-fill hidden shrink-0 group-hover:flex'"
     >
       <IconButton

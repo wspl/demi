@@ -479,6 +479,7 @@
     "apiKeys": "API Keys",
     "name": "Provider name",
     "rename": "Rename",
+    "remove": "Remove Provider…",
     "saving": "Saving…",
     "addAccount": "Add Account",
     "showInMenu": "Show in model menu",

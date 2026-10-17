@@ -7,7 +7,9 @@ import { provideStacking, TOAST_Z } from '../overlay/stacking'
 /**
  * The toasts stand in the top-right corner, below the bar atop the page, as
  * macOS places its notifications: never over the composer or the actions at
- * the bottom of a pane. The newest stands nearest the corner.
+ * the bottom of a pane. The newest stands nearest the corner. On a phone they
+ * span the screen under the top bar, 12 px in from each side, as iOS's
+ * banners do (`web-application.md` § The phone layout).
  */
 const props = withDefaults(defineProps<{
   /** How far down the page's top bars reach, in px: the toasts stand below them. */
@@ -50,14 +52,14 @@ function pinLeavingToast(el: Element) {
     <TransitionGroup
       v-bind="overlayMotion"
       tag="div"
-      class="pointer-events-none fixed right-3 flex flex-col-reverse items-end gap-2"
+      class="pointer-events-none fixed right-3 flex flex-col-reverse items-end gap-2 phone:left-3 phone:items-stretch"
       :style="{ top: `calc(${props.below + 8}px + var(--safe-top))`, zIndex: TOAST_Z }"
       @before-leave="pinLeavingToast"
     >
       <div
         v-for="toast in toasts"
         :key="toast.id"
-        class="pointer-events-auto w-80 max-w-[calc(100vw-1.5rem)]"
+        class="pointer-events-auto w-80 max-w-[calc(100vw-1.5rem)] phone:w-auto"
         @pointerenter="holdToasts"
         @pointerleave="releaseToasts"
       >
