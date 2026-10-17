@@ -79,25 +79,9 @@ fn sme_without_sve(hwcap: u64, hwcap2: u64) -> bool {
     hwcap2 & HWCAP2_SME != 0 && hwcap & HWCAP_SVE == 0
 }
 
-/// One encoded picture of a capture.
-#[derive(Debug, Clone)]
-pub struct Frame {
-    pub sequence: u32,
-    pub key: bool,
-    pub timestamp: f64,
-    pub width: u16,
-    pub height: u16,
-    pub data: Bytes,
-}
-
-#[derive(Debug)]
-pub enum CaptureEvent {
-    Started,
-    Frame(Frame),
-    /// No picture arrived: the page stopped painting before capture began.
-    Stalled,
-    Failed(String),
-}
+/// One encoded picture of a capture, and what a capture reports: the live
+/// view's (`demi_live_view::stream`), which every source of pictures shares.
+pub use demi_live_view::stream::{CaptureEvent, EncodedFrame as Frame};
 
 /// How many captures of one page Chrome holds, and how many resizes of it
 /// are under way; the two exclude each other (`live-view.md` § Pixel ratio).

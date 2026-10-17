@@ -71,24 +71,9 @@ fn live_stream() -> Stream {
     let count = |bytes: usize| u64::try_from(bytes).expect("a size fits in 64 bits");
     Stream::new::<live::LiveModuleMessage, live::LiveViewerMessage>(STREAM, operation)
         .constant(
-            "LIVE_CONTROL_FRAME",
-            "A control frame's kind: UTF-8 JSON of one message.",
-            live::CONTROL_FRAME,
-        )
-        .constant(
-            "LIVE_VIDEO_FRAME",
-            "A video frame's kind: its header, then H.264 Annex B data.",
-            live::VIDEO_FRAME,
-        )
-        .constant(
             "LIVE_FILE_FRAME",
             "A file frame's kind: its header, then a chosen file's bytes.",
             live::FILE_FRAME,
-        )
-        .constant(
-            "LIVE_MAX_FRAME_BYTES",
-            "The largest frame after its length.",
-            count(live::MAX_FRAME_BYTES),
         )
         .constant(
             "LIVE_FILE_CHUNK_BYTES",
@@ -96,34 +81,9 @@ fn live_stream() -> Stream {
             count(live::FILE_CHUNK_BYTES),
         )
         .constant(
-            "LIVE_VIDEO_HEADER_BYTES",
-            "A video frame's header.",
-            count(live::VideoHeader::BYTES),
-        )
-        .constant(
-            "LIVE_VIDEO_TAB_BYTES",
-            "A video frame header's tab ID, padded with zero bytes.",
-            count(live::VideoHeader::TAB_BYTES),
-        )
-        .constant(
             "LIVE_FILE_HEADER_BYTES",
             "A file frame's header.",
             count(live::FileHeader::BYTES),
-        )
-        .constant(
-            "LIVE_HEARTBEAT_MS",
-            "How often the module speaks at least.",
-            live::HEARTBEAT_MS,
-        )
-        .constant(
-            "LIVE_STALL_MS",
-            "Silence after which the page shows the stream as stalled.",
-            live::STALL_MS,
-        )
-        .constant(
-            "LIVE_VIDEO_CODEC",
-            "The video frames' codec, as WebCodecs names it.",
-            live::VIDEO_CODEC,
         )
         .constant(
             "LIVE_CAPTURE_UNAVAILABLE",

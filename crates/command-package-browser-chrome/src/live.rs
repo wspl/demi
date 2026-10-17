@@ -13,7 +13,6 @@ mod downloads;
 mod frames;
 mod input;
 mod observers;
-mod rate;
 mod stream;
 mod uploads;
 mod writer;

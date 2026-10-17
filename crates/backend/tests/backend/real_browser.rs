@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use bytes::{Buf as _, BytesMut};
-use demi_command_package_browser_protocol::live::{CONTROL_FRAME, VIDEO_FRAME, VideoHeader};
+use demi_live_view_protocol::{CONTROL_FRAME, VIDEO_FRAME, VideoHeader};
 use demi_provider_common::testing::MockVendor;
 use futures_util::{SinkExt as _, StreamExt as _};
 use reqwest::StatusCode;
@@ -306,7 +306,7 @@ async fn an_agent_drives_chrome_on_a_paired_device_which_the_user_watches_until_
     let stream = view.control("stream").await;
     assert_eq!(stream["tab"], "t1", "{stream}");
     let (header, data) = view.picture(stream["generation"].as_u64().unwrap()).await;
-    assert_eq!(header.tab.as_str(), "t1");
+    assert_eq!(header.source.as_str(), "t1");
     assert!(header.key, "a stream starts with a key frame");
     assert_eq!(&data[..4], [0, 0, 0, 1], "H.264 Annex B");
     drop(view);

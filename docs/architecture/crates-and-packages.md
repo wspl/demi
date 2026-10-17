@@ -261,9 +261,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 
 - **Owns:** the `demi.browser` package's id (`PACKAGE`) and operations
   (`Operation`): the arguments and results of `browser.*`, browser targets,
-  queries, tab state, observations and resource event payloads, the live
-  view's messages and frame header, the capture extension's events and
-  commands, and the pinned Chrome release record. Limits are the crate's
+  queries, tab state, observations and resource event payloads, the
+  browser's live view messages, which carry the live view's own
+  (`live-view-protocol`), and its file frame header, the capture extension's
+  events and commands, and the pinned Chrome release record. Limits are the crate's
   constants, shared by the inputs they bound; each input type carries its
   default timeout.
 - **Public boundary:** the types above. `plugin-browser` declares the commands
@@ -274,6 +275,22 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
   importing each other's implementations.
 - **Must not:** implement operations, transport, components, Host access,
   process management or conversation persistence.
+
+#### `live-view-protocol`
+
+- **Owns:** the live view's protocol where it is not about its source
+  ([Mobile simulators](../mobile/mobile.md#the-live-view)): the frame kinds
+  and limits, the video header and codec, the viewer's input in the
+  picture's coordinates (`ViewerInput`: pointer, touch, wheel, key, text,
+  composition), the messages that pace the pictures (hello, acknowledgement,
+  key frame, release, heartbeat, notice), what input a source takes and the
+  agent's activity, and the trait through which a source's protocol carries
+  them (`ModuleMessage`).
+- **Public boundary:** the types above. Each source's protocol, such as
+  `command-package-browser-protocol`, embeds them in its own messages; the
+  Host's side of them is `live-view`; the page reads them through
+  `@demicodes/protocol`.
+- **Must not:** know a source, or implement transport or IO.
 
 #### `command-package-claude-code-protocol`
 
@@ -402,6 +419,24 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 - **Must not:** implement commands, download artifacts, start command
   processes, hold credentials, or change the process-wide working directory or
   environment for an invocation.
+
+#### `live-view`
+
+- **Owns:** the Host's side of the live view where it is not about its
+  source ([Mobile simulators](../mobile/mobile.md#the-live-view)): the
+  frames of a user stream, the writer that sends control before video and
+  heartbeats, one capture per watched source shared by its viewers with key
+  frames on request and the encoding the slowest viewer takes, each
+  viewer's delivery with its acknowledgements and rate adaptation, and each
+  viewer's input in order, merged while the source is busy and released
+  when the viewer leaves.
+- **Public boundary:** `frames`, `writer`, `stream` with the source
+  interface (`Source`, `Capture`: H.264 frames out, size and layout, key
+  frames, bit rate and frame rate), `delivery`, and `input` with the input
+  interface (`Deliver`: input in, what a source takes, what letting go
+  takes). A source implements the interfaces; the browser's tabs do in
+  `command-package-browser-chrome`.
+- **Must not:** know a source, a conversation or how a source is owned.
 
 #### `shared-gates`
 
@@ -1297,10 +1332,11 @@ demi-backend (executable: configuration, composition)
     starts, with its connections and their event pumps, and WebMCP;
     `jsonschema` validates both the pinned protocol and the schemas pages
     declare;
-  - `live`: the live view ([Live view](../browser/live-view.md)): the capture
-    pipeline, frame rate and pacing, the viewer connections of user streams,
-    the page observer of each watched tab, and the relay of the user's input
-    to the tab; and the trait through which a viewer reaches its
+  - `live`: the live view of the browser's tabs
+    ([Live view](../browser/live-view.md)): a tab as a source of pictures and
+    input of `live-view`, the viewer connections of user streams, the page
+    observer of each watched tab, and the relay of the user's input to the
+    tab as CDP events; and the trait through which a viewer reaches its
     conversation's browser, which `command-package-browser` implements. The
     hub starts with an environment, and the program starts it for each
     browser it runs.
@@ -1525,8 +1561,9 @@ under `packages/`.
 - **Published** to npm.
 - **Owns:** the TypeScript form of the Rust contracts the web app reads: Zod
   schemas and `z.infer` types for agent frames, transcript blocks and patches,
-  content, tool views, models and failure facts, and
-  the file-type table with its lookups. `xtask contracts` generates all of it
+  content, tool views, models and failure facts, and the live view's own
+  messages, and the file-type table with its lookups and the live view's
+  frame constants. `xtask contracts` generates all of it
   into `src/generated/`, which the package's entry re-exports; nothing else is
   written, and nothing generated is committed.
 - **Public boundary:** the generated schemas, types and lookups.
@@ -1573,7 +1610,11 @@ under `packages/`.
   connecting again, which the synchronization channel, the conversation
   sockets and the live views share, and the check of every socket when the
   page comes back (`transport/liveness.ts`,
-  [Liveness and reconnection](../product/web-application.md#liveness-and-reconnection)).
+  [Liveness and reconnection](../product/web-application.md#liveness-and-reconnection));
+  and the live view's page side where it is not about its source
+  (`live/`, [Mobile simulators](../mobile/mobile.md#the-live-view)): its
+  frames, the decoder that shows its pictures on a canvas, and the viewer's
+  input in the picture's coordinates.
   It consumes an injected `ConversationClient` and injected plugin
   services, and ships no control-plane transport of its own.
 - **Public boundary:** source-path exports (`./*`) consumed by `web`,
@@ -1673,7 +1714,7 @@ Each plugin page package is **private** and has the same boundary:
 
 | Package | Owns |
 | --- | --- |
-| `@demicodes/plugin-browser` | The `browser` work panel kind and the live view ([Live view](../browser/live-view.md#responsibilities)): frames, input, clipboard and pictures over its page context, with the plugin's page types and the live view's messages generated into `src/generated/` |
+| `@demicodes/plugin-browser` | The `browser` work panel kind and the live view of its tabs ([Live view](../browser/live-view.md#responsibilities)): the browser's messages, tabs, clipboard, dialogs and controls over the SDK's live view, with the plugin's page types and the browser's live view messages generated into `src/generated/` |
 | `@demicodes/plugin-skills` | The Skills settings section with its dialogs and its sidebar entry ([Skills](../agent/skills.md#the-page)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-web` | The Web Search settings section with its sidebar entry ([Settings › Web Search](../agent/web.md#settings--web-search)), with the plugin's page types generated into `src/generated/` |
 | `@demicodes/plugin-changes` | The pinned `change` kind, the Change view, over the conversation files service ([Changes](../product/file-previews.md#changes)) |
@@ -1715,7 +1756,8 @@ command-sdk -> shared-artifacts, command-protocol
 command-declarations -> none
 command-package-file-protocol -> shared-types
 command-package-fetch-protocol -> shared-types
-command-package-browser-protocol -> shared-types
+command-package-browser-protocol -> shared-types, live-view-protocol
+live-view-protocol -> shared-types
 command-package-claude-code-protocol -> none
 runner-protocol -> command-protocol, command-declarations, shared-types
 machine-manager-protocol -> command-protocol, runner-protocol
@@ -1751,7 +1793,8 @@ runner-direct -> runner-protocol
 runner-command-packages -> shared-artifacts, command-protocol, command-sdk, runner-process, runner-protocol
 runner-shell -> command-protocol, command-sdk, runner-process, runner-protocol
 runner-jobs -> command-protocol, command-sdk, command-declarations, runner-process, runner-protocol, runner-command-packages
-command-package-browser-chrome -> command-package-browser-protocol, command-protocol, command-sdk, shared-artifacts, shared-types
+live-view -> command-sdk, live-view-protocol, shared-types
+command-package-browser-chrome -> command-package-browser-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-types
 backend-page-sync -> backend-database, web-api-protocol
 backend-database -> agent-store, conversation-socket-protocol, shared-types, shared-gates, backend-remote-host, machine-manager-protocol, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-blobs -> agent-store, shared-types, web-api-protocol
@@ -1773,7 +1816,7 @@ command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-
 command-package-fetch -> command-protocol, command-sdk, command-package-fetch-protocol, shared-cli
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk, shared-cli
-xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-interface
+xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, live-view-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-interface
 ```
 
 ### TypeScript packages

@@ -1,85 +1,84 @@
-//! A viewer's input (`live-view.md` § Input), delivered to the tab it
-//! watches in the order it arrives, beside the agent's commands. Keys and
-//! buttons held down are this viewer's own: its end releases only them.
+//! A viewer's input to the tab it watches (`live-view.md` § Input): the live
+//! view's input task (`demi_live_view::input`) orders it beside the agent's
+//! commands, and this turns it into CDP events. Keys and buttons held down
+//! are this viewer's own: its end releases only them.
 
-use std::{
-    collections::HashMap,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::collections::HashMap;
 
 use chromiumoxide::cdp::browser_protocol::input::{
     DispatchKeyEventParams, DispatchKeyEventType, DispatchMouseEventParams, DispatchMouseEventType,
     DispatchTouchEventParams, DispatchTouchEventType, ImeSetCompositionParams, InsertTextParams,
     MouseButton, TouchPoint,
 };
-use tokio::sync::mpsc;
-use tokio_util::{sync::CancellationToken, task::TaskTracker};
 
 use crate::driver::operation::{BrowserError, CONTROL_TIMEOUT, Result};
 use crate::page::keyboard;
 use crate::tabs::{dialog::InputRelease, tab::BrowserTab};
-use demi_command_package_browser_protocol::live::{
-    KeyAction, LiveModuleMessage, LiveViewerMessage, PointerAction, PointerButton,
-};
+use demi_command_package_browser_protocol::live::{LiveModuleMessage, LiveViewerMessage};
+use demi_live_view::input::{self, Deliver};
+use demi_live_view_protocol::{KeyAction, PointerAction, PointerButton, PointerKind, ViewerInput};
 
 use crate::live::protocol::{TabId, ViewportMode};
 use crate::live::{observers, writer::Writer};
 
-/// Input the viewer sent and the task has not delivered yet. Past this the
-/// tab is not taking input: what is queued is discarded and held input is
-/// released, rather than delivered all at once later.
-const QUEUE: usize = 256;
+pub(crate) type Input = input::Input<BrowserInput>;
 
-pub(crate) enum Item {
-    Message(LiveViewerMessage),
-    /// The viewer watches another tab, or none.
-    Watch(Option<BrowserTab>),
-    /// Release what this viewer holds.
-    Release,
+/// Delivers one viewer's input to the tab it watches.
+pub(crate) struct BrowserInput {
+    writer: Writer,
+    mac: bool,
 }
 
-/// The sending side of a viewer's input task.
-pub(crate) struct Input {
-    items: mpsc::Sender<Item>,
-    overflowed: Arc<AtomicBool>,
-}
-
-impl Input {
-    /// Starts the task on the environment's `tasks`; it ends with the
-    /// environment, or once the view drops this and it released what the
-    /// viewer holds.
-    pub fn start(
-        tasks: &TaskTracker,
-        ended: CancellationToken,
-        writer: Writer,
-        mac: bool,
-    ) -> (Self, tokio::task::JoinHandle<()>) {
-        let (items, receiver) = mpsc::channel(QUEUE);
-        let overflowed = Arc::new(AtomicBool::new(false));
-        let writer = writer.until(&ended);
-        let task = tasks.spawn(run(receiver, overflowed.clone(), writer, mac, ended));
-        (Self { items, overflowed }, task)
+impl BrowserInput {
+    /// Input of a viewer on a Mac when `mac`, whose failures `writer` tells
+    /// the viewer.
+    pub fn new(writer: Writer, mac: bool) -> Self {
+        Self { writer, mac }
     }
+}
 
-    /// Queues input, or discards it when the tab is not taking any.
-    pub fn send(&self, item: Item) {
-        if self.items.try_send(item).is_err() {
-            self.overflowed.store(true, Ordering::SeqCst);
+impl Deliver for BrowserInput {
+    type Message = LiveViewerMessage;
+    type Target = BrowserTab;
+    type Held = Held;
+    /// A tab takes a mouse's input, which a tab in Mobile mode receives as
+    /// touches.
+    const POINTER: PointerKind = PointerKind::Mouse;
+
+    fn merged(
+        message: &LiveViewerMessage,
+        next: LiveViewerMessage,
+    ) -> std::result::Result<LiveViewerMessage, LiveViewerMessage> {
+        match (message, next) {
+            (
+                LiveViewerMessage::Input { tab, input },
+                LiveViewerMessage::Input {
+                    tab: next_tab,
+                    input: next,
+                },
+            ) if *tab == next_tab => input::merged(input, next)
+                .map(|input| LiveViewerMessage::Input { tab: next_tab.clone(), input })
+                .map_err(|input| LiveViewerMessage::Input { tab: next_tab, input }),
+            (_, next) => Err(next),
         }
     }
 
-    /// Changes what is watched or releases held input; these always arrive.
-    pub async fn control(&self, item: Item) {
-        let _ended = self.items.send(item).await;
+    async fn deliver(&self, tab: &BrowserTab, held: &mut Held, message: LiveViewerMessage) {
+        if let Err(error) = deliver(tab, held, message, self.mac, &self.writer).await
+            && !tab.ended().is_cancelled()
+        {
+            self.writer.notice("input_failed", &error.to_string()).await;
+        }
+    }
+
+    async fn release(&self, tab: Option<&BrowserTab>, held: Held) {
+        release(tab, held).await;
     }
 }
 
 /// What this viewer holds down on one tab.
 #[derive(Default)]
-struct Held {
+pub(crate) struct Held {
     keys: HashMap<String, DispatchKeyEventParams>,
     buttons: Vec<MouseButton>,
     point: (f64, f64),
@@ -87,153 +86,10 @@ struct Held {
     composing: bool,
 }
 
-async fn run(
-    mut items: mpsc::Receiver<Item>,
-    overflowed: Arc<AtomicBool>,
-    writer: Writer,
-    mac: bool,
-    ended: CancellationToken,
-) {
-    let mut tab: Option<BrowserTab> = None;
-    let mut held = Held::default();
-    // The first item a merge took that did not merge, handled next.
-    let mut ahead: Option<Item> = None;
-    loop {
-        let item = match ahead.take() {
-            Some(item) => item,
-            None => tokio::select! {
-                biased;
-                // What the viewer held went with the browser.
-                _ = ended.cancelled() => return,
-                item = items.recv() => match item {
-                    Some(item) => item,
-                    None => break,
-                },
-            },
-        };
-        if overflowed.swap(false, Ordering::SeqCst) {
-            // Whatever was queued no longer reflects what the viewer holds.
-            let mut pending = vec![item];
-            while let Ok(item) = items.try_recv() {
-                pending.push(item);
-            }
-            release(tab.as_ref(), &mut held).await;
-            for item in pending {
-                match item {
-                    Item::Watch(next) => tab = next,
-                    Item::Message(_) | Item::Release => {}
-                }
-            }
-            continue;
-        }
-        match item {
-            Item::Watch(next) => {
-                release(tab.as_ref(), &mut held).await;
-                tab = next;
-            }
-            Item::Release => release(tab.as_ref(), &mut held).await,
-            Item::Message(message) => {
-                let Some(tab) = &tab else { continue };
-                let (message, next) = newest(message, &mut items);
-                ahead = next;
-                if let Err(error) = deliver(tab, &mut held, message, mac, &writer).await
-                    && !tab.ended().is_cancelled()
-                {
-                    writer.notice("input_failed", &error.to_string()).await;
-                }
-            }
-        }
-    }
-    release(tab.as_ref(), &mut held).await;
-}
-
-/// `message` with the input queued behind it that only continues it
-/// (`live-view.md` § Input): consecutive wheel turns as one, and consecutive
-/// pointer moves as the latest. Also returns the first queued item that does
-/// not merge, which is handled next.
-fn newest(
-    mut message: LiveViewerMessage,
-    items: &mut mpsc::Receiver<Item>,
-) -> (LiveViewerMessage, Option<Item>) {
-    while let Ok(item) = items.try_recv() {
-        let Item::Message(next) = item else {
-            return (message, Some(item));
-        };
-        match merged(&message, next) {
-            Ok(merged) => message = merged,
-            Err(next) => return (message, Some(Item::Message(next))),
-        }
-    }
-    (message, None)
-}
-
-/// `message` and the `next` one as one, when `next` only continues it: a
-/// wheel turn of the same tab and modifiers adds its deltas and moves the
-/// point, and a pointer move with the same buttons replaces a move. Any
-/// other `next` comes back.
-fn merged(
-    message: &LiveViewerMessage,
-    next: LiveViewerMessage,
-) -> std::result::Result<LiveViewerMessage, LiveViewerMessage> {
-    match (message, next) {
-        (
-            LiveViewerMessage::Wheel {
-                tab,
-                delta_x,
-                delta_y,
-                modifiers,
-                ..
-            },
-            LiveViewerMessage::Wheel {
-                tab: next_tab,
-                x,
-                y,
-                delta_x: next_x,
-                delta_y: next_y,
-                modifiers: next_modifiers,
-            },
-        ) if *tab == next_tab && *modifiers == next_modifiers => Ok(LiveViewerMessage::Wheel {
-            tab: next_tab,
-            x,
-            y,
-            delta_x: delta_x + next_x,
-            delta_y: delta_y + next_y,
-            modifiers: next_modifiers,
-        }),
-        (
-            LiveViewerMessage::Pointer {
-                tab,
-                action: PointerAction::Move,
-                buttons,
-                modifiers,
-                ..
-            },
-            next,
-        ) if matches!(
-            &next,
-            LiveViewerMessage::Pointer {
-                tab: next_tab,
-                action: PointerAction::Move,
-                buttons: next_buttons,
-                modifiers: next_modifiers,
-                ..
-            } if next_tab == tab && next_buttons == buttons && next_modifiers == modifiers
-        ) =>
-        {
-            Ok(next)
-        }
-        (_, next) => Err(next),
-    }
-}
-
 /// The tab named in an input message, which must be the watched one.
 fn target(message: &LiveViewerMessage) -> Option<&TabId> {
     match message {
-        LiveViewerMessage::Pointer { tab, .. }
-        | LiveViewerMessage::Wheel { tab, .. }
-        | LiveViewerMessage::Key { tab, .. }
-        | LiveViewerMessage::Text { tab, .. }
-        | LiveViewerMessage::Composition { tab, .. }
+        LiveViewerMessage::Input { tab, .. }
         | LiveViewerMessage::Paste { tab, .. }
         | LiveViewerMessage::Choice { tab, .. } => Some(tab),
         _ => None,
@@ -277,7 +133,7 @@ async fn deliver(
     }
     let page = tab.page();
     match message {
-        LiveViewerMessage::Pointer {
+        LiveViewerMessage::Input { input: ViewerInput::Pointer {
             action,
             x,
             y,
@@ -286,7 +142,7 @@ async fn deliver(
             click_count,
             modifiers,
             ..
-        } => {
+        }, .. } => {
             held.point = (x, y);
             if tab.viewport().mode == ViewportMode::Mobile {
                 // A phone has touches, not a mouse: no hover, one finger.
@@ -337,14 +193,14 @@ async fn deliver(
                 .map_err(BrowserError::Configuration)?;
             dispatch(tab, page.execute(event)).await
         }
-        LiveViewerMessage::Wheel {
+        LiveViewerMessage::Input { input: ViewerInput::Wheel {
             x,
             y,
             delta_x,
             delta_y,
             modifiers,
             ..
-        } => {
+        }, .. } => {
             // With the screen at the viewer's ratio, Chrome scrolls a delta
             // by that many CSS pixels at every ratio.
             let event = DispatchMouseEventParams::builder()
@@ -358,7 +214,7 @@ async fn deliver(
                 .map_err(BrowserError::Configuration)?;
             dispatch(tab, page.execute(event)).await
         }
-        LiveViewerMessage::Key {
+        LiveViewerMessage::Input { input: ViewerInput::Key {
             action,
             key,
             code,
@@ -369,7 +225,7 @@ async fn deliver(
             text,
             alt_graph,
             ..
-        } => {
+        }, .. } => {
             let down = action == KeyAction::Down;
             let mut event = keyboard::viewer_key(
                 &keyboard::ViewerKey {
@@ -398,11 +254,11 @@ async fn deliver(
             }
             dispatch(tab, page.execute(event)).await
         }
-        LiveViewerMessage::Text { text, .. } => {
+        LiveViewerMessage::Input { input: ViewerInput::Text { text }, .. } => {
             held.composing = false;
             dispatch(tab, page.execute(InsertTextParams::new(text))).await
         }
-        LiveViewerMessage::Composition { text, .. } => {
+        LiveViewerMessage::Input { input: ViewerInput::Composition { text }, .. } => {
             if text.is_empty() && !held.composing {
                 return Ok(());
             }
@@ -452,8 +308,7 @@ async fn paste(tab: &BrowserTab, text: &str, html: &str) -> Result<()> {
 
 /// Releases what this viewer holds on `tab`. A dialog holds the releases
 /// back until someone answers it.
-async fn release(tab: Option<&BrowserTab>, held: &mut Held) {
-    let held = std::mem::take(held);
+async fn release(tab: Option<&BrowserTab>, held: Held) {
     let Some(tab) = tab else { return };
     if tab.ended().is_cancelled() {
         return;
@@ -517,121 +372,5 @@ async fn release(tab: Option<&BrowserTab>, held: &mut Held) {
         && !tab.ended().is_cancelled()
     {
         tracing::warn!("live view input release on {}: {error}", tab.id());
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use demi_command_package_browser_protocol::live::PointerButton;
-
-    use super::*;
-
-    fn wheel(tab: &TabId, y: f64, delta_y: f64, modifiers: u8) -> Item {
-        Item::Message(LiveViewerMessage::Wheel {
-            tab: tab.clone(),
-            x: 10.0,
-            y,
-            delta_x: 0.0,
-            delta_y,
-            modifiers,
-        })
-    }
-
-    fn pointer(tab: &TabId, action: PointerAction, x: f64, buttons: u8) -> Item {
-        Item::Message(LiveViewerMessage::Pointer {
-            tab: tab.clone(),
-            action,
-            x,
-            y: 5.0,
-            button: PointerButton::None,
-            buttons,
-            click_count: 0,
-            modifiers: 0,
-        })
-    }
-
-    /// What reaches the page from `items`, taken as the input task takes them.
-    fn delivered(items: &mut mpsc::Receiver<Item>) -> Vec<LiveViewerMessage> {
-        let mut delivered = Vec::new();
-        let mut ahead = None;
-        loop {
-            let item = match ahead.take() {
-                Some(item) => item,
-                None => match items.try_recv() {
-                    Ok(item) => item,
-                    Err(_) => return delivered,
-                },
-            };
-            let Item::Message(message) = item else {
-                continue;
-            };
-            let (message, next) = newest(message, items);
-            ahead = next;
-            delivered.push(message);
-        }
-    }
-
-    #[test]
-    fn queued_wheel_turns_and_moves_reach_the_page_as_the_newest_input() {
-        let tab = TabId::numbered(1);
-        let (sender, mut items) = mpsc::channel(QUEUE);
-        // A flick queued behind a busy page, a turn with Shift held, hover moves, a drag's move and a press.
-        let queued = [
-            wheel(&tab, 100.0, 40.0, 0),
-            wheel(&tab, 110.0, 40.0, 0),
-            wheel(&tab, 120.0, 30.0, 0),
-            wheel(&tab, 120.0, 40.0, 8),
-            pointer(&tab, PointerAction::Move, 1.0, 0),
-            pointer(&tab, PointerAction::Move, 2.0, 0),
-            pointer(&tab, PointerAction::Move, 3.0, 1),
-            pointer(&tab, PointerAction::Down, 3.0, 1),
-        ];
-        for item in queued {
-            assert!(sender.try_send(item).is_ok());
-        }
-        let delivered = delivered(&mut items);
-        assert_eq!(delivered.len(), 5, "{delivered:?}");
-        assert!(matches!(
-            delivered[0],
-            LiveViewerMessage::Wheel {
-                y: 120.0,
-                delta_y: 110.0,
-                modifiers: 0,
-                ..
-            }
-        ));
-        assert!(matches!(
-            delivered[1],
-            LiveViewerMessage::Wheel {
-                delta_y: 40.0,
-                modifiers: 8,
-                ..
-            }
-        ));
-        assert!(matches!(
-            delivered[2],
-            LiveViewerMessage::Pointer {
-                action: PointerAction::Move,
-                x: 2.0,
-                buttons: 0,
-                ..
-            }
-        ));
-        assert!(matches!(
-            delivered[3],
-            LiveViewerMessage::Pointer {
-                action: PointerAction::Move,
-                x: 3.0,
-                buttons: 1,
-                ..
-            }
-        ));
-        assert!(matches!(
-            delivered[4],
-            LiveViewerMessage::Pointer {
-                action: PointerAction::Down,
-                ..
-            }
-        ));
     }
 }

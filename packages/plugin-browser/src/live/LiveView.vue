@@ -4,14 +4,13 @@ import { ArrowLeft, ArrowRight, ClipboardPaste, Copy, ExternalLink, Link, Rotate
 import { LIVE_CAPTURE_STOPPED, type LiveTab } from '../generated/plugin'
 import LiveControls from './LiveControls.vue'
 import LiveDialog from './LiveDialog.vue'
-import { Menu, MenuDivider, MenuItem, Popover, RegionStatus, usePage } from '@demicodes/plugin-sdk'
+import { CanvasPictures, ClickCount, Menu, MenuDivider, MenuItem, Popover, RegionStatus, keyInput, pointerInput, usePage, wheelInput } from '@demicodes/plugin-sdk'
 import { reasonSentence } from './tabs'
 import { t } from '../locales/text'
-import { CanvasPictures } from './pictures'
 import type { LiveSession, LiveStream } from './session'
 import { viewerClipboard } from './clipboard'
 import { clientPlatform, composingKey } from '@demicodes/utils'
-import { ClickCount, keyMessage, localKey, pointerMessage, shortcutKeys, wheelMessage } from './input'
+import { inputMessage, localKey, shortcutKeys } from './input'
 import { BLANK_PAGE, cursorAt, panelRect, placePicture, tabPoint, type PanelSize } from './view'
 
 /**
@@ -96,7 +95,7 @@ const cursor = computed(() => {
  * with nothing between them (`live-view.md` § A browser tab in the panel).
  */
 const painted = ref(false)
-let pictures: CanvasPictures | null = null
+let pictures: CanvasPictures<LiveStream> | null = null
 let ticking: ReturnType<typeof setInterval> | null = null
 let move: { x: number; y: number; event: PointerEvent } | null = null
 let moving: ReturnType<typeof setInterval> | null = null
@@ -113,7 +112,7 @@ function point(event: { clientX: number; clientY: number }): { x: number; y: num
 function flushMove(): void {
   if (move) {
     // The event itself: a DOM event's fields are getters on its prototype, so a spread copy has none of them.
-    props.session?.input(pointerMessage(props.tab.id, 'move', move, move.event))
+    props.session?.input(inputMessage(props.tab.id, pointerInput('move', move, move.event)))
     move = null
   }
 }
@@ -132,7 +131,7 @@ function pointerDown(event: PointerEvent): void {
   }
   canvas.value?.setPointerCapture(event.pointerId)
   flushMove()
-  props.session?.input(pointerMessage(props.tab.id, 'down', point(event), event, clicks.press(event)))
+  props.session?.input(inputMessage(props.tab.id, pointerInput('down', point(event), event, clicks.press(event))))
 }
 
 function pointerMove(event: PointerEvent): void {
@@ -140,7 +139,7 @@ function pointerMove(event: PointerEvent): void {
   pointer.value = at
   if (event.buttons) {
     move = null
-    props.session?.input(pointerMessage(props.tab.id, 'move', at, event))
+    props.session?.input(inputMessage(props.tab.id, pointerInput('move', at, event)))
     return
   }
   // Hover moves are worth at most one message a frame.
@@ -152,13 +151,13 @@ function pointerUp(event: PointerEvent): void {
   if (canvas.value?.hasPointerCapture(event.pointerId)) {
     canvas.value.releasePointerCapture(event.pointerId)
   }
-  props.session?.input(pointerMessage(props.tab.id, 'up', point(event), event, clicks.current))
+  props.session?.input(inputMessage(props.tab.id, pointerInput('up', point(event), event, clicks.current)))
 }
 
 function wheel(event: WheelEvent): void {
   event.preventDefault()
   flushMove()
-  props.session?.input(wheelMessage(props.tab.id, point(event), event, generation.value.viewport.height))
+  props.session?.input(inputMessage(props.tab.id, wheelInput(point(event), event, generation.value.viewport.height)))
 }
 
 function key(event: KeyboardEvent, action: 'down' | 'up'): void {
@@ -177,7 +176,7 @@ function key(event: KeyboardEvent, action: 'down' | 'up'): void {
       viewerClipboard.expect()
     }
   }
-  props.session?.input(keyMessage(props.tab.id, action, event))
+  props.session?.input(inputMessage(props.tab.id, keyInput(action, event)))
   event.preventDefault()
 }
 
@@ -194,7 +193,7 @@ function typed(event: Event): void {
     return
   }
   if (text) {
-    props.session?.input({ type: 'text', tab: props.tab.id, text })
+    props.session?.input(inputMessage(props.tab.id, { type: 'text', text }))
   }
 }
 
@@ -221,15 +220,14 @@ function composition(event: CompositionEvent, phase: 'start' | 'update' | 'end')
     return
   }
   if (phase === 'update') {
-    props.session?.input({ type: 'composition', tab: props.tab.id, text: event.data })
+    props.session?.input(inputMessage(props.tab.id, { type: 'composition', text: event.data }))
     return
   }
   committed = event.data
-  props.session?.input(
-    event.data
-      ? { type: 'text', tab: props.tab.id, text: event.data }
-      : { type: 'composition', tab: props.tab.id, text: '' },
-  )
+  props.session?.input(inputMessage(
+    props.tab.id,
+    event.data ? { type: 'text', text: event.data } : { type: 'composition', text: '' },
+  ))
   if (bridge.value) {
     bridge.value.value = ''
   }

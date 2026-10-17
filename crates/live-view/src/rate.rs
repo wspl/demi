@@ -5,7 +5,7 @@
 //! resolution; each comes back once the path has room again. No budget
 //! exceeds what the codec's level carries.
 
-use demi_command_package_browser_protocol::live::VIDEO_MAX_BITRATE;
+use demi_live_view_protocol::VIDEO_MAX_BITRATE;
 
 /// Bits per pixel per frame for sharp scrolling text, calibrated in the Tab
 /// Lab's scrolling-text comparison.

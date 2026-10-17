@@ -91,6 +91,7 @@ web-push-native = "0.5"
 hmac = "0.12"
 demi-agent-server = { path = "../agent-server", features = ["testing"] }
 demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
+demi-live-view-protocol = { path = "../live-view-protocol" }
 demi-agent-store = { path = "../agent-store", features = ["testing"] }
 demi-agent-tools = { path = "../agent-tools", features = ["testing"] }
 demi-backend = { path = ".", features = ["testing"] }

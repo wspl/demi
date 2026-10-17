@@ -1,6 +1,6 @@
 import { expect, jest, test } from 'bun:test'
-import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, type LiveModuleMessage, type LiveTab, type LiveViewerMessage } from '../../generated/plugin'
-import { PluginCallError, type ConversationPlugin, type UserStreamHandlers } from '@demicodes/plugin-sdk'
+import type { LiveModuleMessage, LiveTab, LiveViewerMessage } from '../../generated/plugin'
+import { LIVE_CONTROL_FRAME, LIVE_VIDEO_CODEC, PluginCallError, type ConversationPlugin, type UserStreamHandlers } from '@demicodes/plugin-sdk'
 import { until } from '@vueuse/core'
 import { waitFor } from '@demicodes/utils'
 import { createPageI18n } from '@demicodes/web-ui/i18n/text'
@@ -582,7 +582,7 @@ test('a tab a page opens joins the strip at once, selected when the user’s cli
   expect(selected).toEqual([])
   // The user's click on a target=_blank link: the browser selects the tab it opens.
   controller.session.value!.input({
-    type: 'pointer', tab: 't1', action: 'down', x: 10, y: 10, button: 'left', buttons: 1, clickCount: 1, modifiers: 0,
+    type: 'input', tab: 't1', input: { type: 'pointer', action: 'down', x: 10, y: 10, button: 'left', buttons: 1, clickCount: 1, modifiers: 0 },
   })
   state(3, [watchedTab, tab('t2', { kind: 'page', opener: 't1' }), tab('t3', { kind: 'page', opener: 't1' })])
   expect(selected).toEqual(['browser-t3'])

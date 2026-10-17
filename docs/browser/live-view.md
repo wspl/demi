@@ -13,6 +13,11 @@ uses belong to [Native runtime](../execution/native-runtime.md#user-streams),
 [Sessions and targets](../execution/sessions-and-targets.md#host-operations) and
 [Conversation idle](../execution/resource-lifecycle.md#activity); the routes belong to
 [Web API](../product/web-api-hosts.md#user-streams). The gallery shows what the view looks like.
+What this document defines for pictures and input that is not about a
+browser, the stream, framing, delivery, rate adaptation, the page's decoder
+and the input messages with their order, is shared with the
+[simulators' view](../mobile/mobile.md#the-live-view), which uses it with
+another source; the browser view uses it from the same place.
 
 ## What the user sees
 
@@ -398,17 +403,24 @@ messages and file frames, which carry the bytes of files the user chose
 ([Input](#input)). A frame is at most 16 MiB after its length, room for a key
 frame or for a paste's text and HTML.
 
-Control messages are JSON. Their types are defined once, in the
-`command-package-browser-protocol` crate: the module decodes each message into
-them, and the page checks each one against the schema generated from them into
-`@demicodes/plugin-browser`
+Control messages are JSON. What any source's view sends, the pacing
+messages (hello, ack, key frame, release, heartbeat, notice) and the
+viewer's input, one `input` message carrying a pointer, touch, wheel, key,
+text or composition event in the picture's coordinates, is defined once in
+the `live-view-protocol` crate, shared with the
+[simulators' view](../mobile/mobile.md#the-live-view); the browser's own
+messages, its tabs, dialogs, clipboard and files, are defined in
+`command-package-browser-protocol`, its input wrapped as
+`{ type: "input", tab, input }`. The module decodes each message into them,
+and the page checks each one against the schema generated from them
 ([Generated TypeScript](../architecture/contracts.md#generated-typescript)).
-Video frames are binary: a header naming the tab, the stream generation, a
+Video frames are binary: a header naming the source, for the browser the
+tab, the stream generation, a
 sequence number, whether the frame is a key frame, its timestamp and its size,
 followed by H.264 Annex B data. The protocol also fixes the pictures' codec:
 H.264 High at level 5.1, `avc1.640033` in WebCodecs' terms. The module has the
 capture extension encode with it, and the page, which receives it from
-`command-package-browser-protocol` with the protocol's other constants, asks the
+`live-view-protocol` with the protocol's other constants, asks the
 user's browser for a decoder of it before it opens a view; the stream does not
 name it. The page and the module ship in the same release, as the page and the
 backend do, so the protocol carries no version.

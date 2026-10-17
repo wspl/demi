@@ -15,7 +15,7 @@ use axum::{
     routing::get,
 };
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use demi_command_package_browser_protocol::live::VideoHeader;
+use demi_live_view_protocol::VideoHeader;
 use demi_command_protocol::{CommandCaller, Completion, Record};
 use demi_command_sdk::{Input, ServiceError};
 use serde_json::{Value, json};
@@ -183,7 +183,7 @@ impl View {
                         2 => {
                             let (header, _) = VideoHeader::split(&frame).unwrap();
                             Frame::Video {
-                                tab: header.tab.to_string(),
+                                tab: header.source.as_str().to_owned(),
                                 generation: header.generation,
                                 sequence: header.sequence,
                                 key: header.key,
@@ -210,6 +210,11 @@ impl View {
 
     fn send(&self, message: Value) {
         self.try_send(message).unwrap();
+    }
+
+    /// Sends the viewer's `input` to `tab`.
+    fn input(&self, tab: &str, input: Value) {
+        self.send(json!({"type": "input", "tab": tab, "input": input}));
     }
 
     /// Sends viewer control, retaining closure for buffered-frame acknowledgements.
@@ -315,8 +320,8 @@ impl View {
 
     fn pointer(&self, tab: &str, action: &str, x: f64, y: f64) {
         let pressed = action == "down";
-        self.send(json!({
-            "type": "pointer", "tab": tab, "action": action, "x": x, "y": y,
+        self.input(tab, json!({
+            "type": "pointer", "action": action, "x": x, "y": y,
             "button": if action == "move" { "none" } else { "left" },
             "buttons": u8::from(pressed), "clickCount": u8::from(action != "move"), "modifiers": 0,
         }));
@@ -338,7 +343,7 @@ impl View {
     ) {
         for action in ["down", "up"] {
             let mut message = json!({
-                "type": "key", "tab": tab, "action": action, "key": key, "code": code,
+                "type": "key", "action": action, "key": key, "code": code,
                 "keyCode": key_code, "modifiers": modifiers, "repeat": false, "location": 0,
                 "altGraph": false,
             });
@@ -347,7 +352,7 @@ impl View {
             {
                 message["text"] = json!(text);
             }
-            self.send(message);
+            self.input(tab, message);
         }
     }
 
@@ -513,9 +518,9 @@ async fn a_viewer_watches_a_tab_and_types_into_it_beside_the_agent() {
         let screen = evaluate(&fixture, &tab, "[devicePixelRatio, screen.width, screen.height, innerWidth, outerWidth >= innerWidth, outerHeight > innerHeight]").await;
         assert_eq!(screen, json!([2, 1440, 900, 800, true, true]));
         // A wheel turn scrolls the CSS distance the viewer turned.
-        view.send(json!({"type": "wheel", "tab": tab, "x": 400, "y": 300, "deltaX": 0, "deltaY": 120, "modifiers": 0}));
+        view.input(&tab, json!({"type": "wheel", "x": 400, "y": 300, "deltaX": 0, "deltaY": 120, "modifiers": 0}));
         eventually(&fixture, &tab, "scrollY === 120").await;
-        view.send(json!({"type": "wheel", "tab": tab, "x": 400, "y": 300, "deltaX": 0, "deltaY": -120, "modifiers": 0}));
+        view.input(&tab, json!({"type": "wheel", "x": 400, "y": 300, "deltaX": 0, "deltaY": -120, "modifiers": 0}));
         eventually(&fixture, &tab, "scrollY === 0").await;
         view.click(&tab, 100.0, 25.0);
         view.key(&tab, "h", "KeyH", 72, 0, Some("h"));
@@ -818,7 +823,7 @@ async fn dialogs_controls_files_and_the_clipboard_reach_the_viewer() {
         // So does what the page writes with the Clipboard API, once.
         // Selecting the text scrolled the page; the button is where the
         // viewer sees it again.
-        view.send(json!({"type": "wheel", "tab": tab, "x": 400, "y": 300, "deltaX": 0, "deltaY": -200, "modifiers": 0}));
+        view.input(&tab, json!({"type": "wheel", "x": 400, "y": 300, "deltaX": 0, "deltaY": -200, "modifiers": 0}));
         eventually(&fixture, &tab, "scrollY === 0").await;
         view.click(&tab, 50.0, 355.0);
         let written = view.message("clipboard").await;
@@ -1135,8 +1140,8 @@ async fn a_viewer_that_ends_releases_only_what_it_holds() {
         view.message("state").await;
         watch(&mut view, &tab).await;
         view.click(&tab, 100.0, 25.0);
-        view.send(json!({
-            "type": "key", "tab": tab, "action": "down", "key": "Shift", "code": "ShiftLeft",
+        view.input(&tab, json!({
+            "type": "key", "action": "down", "key": "Shift", "code": "ShiftLeft",
             "keyCode": 16, "modifiers": 8, "repeat": false, "location": 1, "altGraph": false,
         }));
         view.pointer(&tab, "down", 400.0, 500.0);
@@ -1571,7 +1576,7 @@ async fn decoded(fixture: &BrowserFixture, tab: &str, frame: &[u8]) -> (u32, Vec
     let decode = format!(
         "({DECODE_PICTURE})('{}', '{}')",
         STANDARD.encode(frame),
-        demi_command_package_browser_protocol::live::VIDEO_CODEC
+        demi_live_view_protocol::VIDEO_CODEC
     );
     let length = run_in_page(fixture, tab, &decode)
         .await
@@ -2159,8 +2164,8 @@ impl View {
     /// The viewer's right click, which the page may leave to the browser.
     fn right_click(&self, tab: &str, x: f64, y: f64) {
         for (action, buttons) in [("down", 2), ("up", 0)] {
-            self.send(json!({
-                "type": "pointer", "tab": tab, "action": action, "x": x, "y": y,
+            self.input(tab, json!({
+                "type": "pointer", "action": action, "x": x, "y": y,
                 "button": "right", "buttons": buttons, "clickCount": 1, "modifiers": 0,
             }));
         }

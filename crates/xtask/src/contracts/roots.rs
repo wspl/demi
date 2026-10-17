@@ -4,6 +4,7 @@
 //! emitted with them.
 
 use demi_conversation_socket_protocol as frames;
+use demi_live_view_protocol as live;
 use demi_shared_types as core;
 use demi_runner_protocol::direct;
 use demi_web_api_protocol as api;
@@ -43,8 +44,8 @@ fn sends<T: JsonSchema>() -> Root {
     }
 }
 
-/// `@demicodes/protocol`: core's types and the conversation socket's
-/// frames. Core's types are listed whether or not a
+/// `@demicodes/protocol`: core's types, the conversation socket's frames
+/// and the live view's own messages. Core's types are listed whether or not a
 /// frame refers to them, so that they are declared here and `web` imports
 /// them.
 pub fn protocol() -> Vec<Root> {
@@ -62,6 +63,17 @@ pub fn protocol() -> Vec<Root> {
         receives::<core::WireApi>(),
         receives::<core::PreviewType>(),
         receives::<core::ContextLimitStep>(),
+        // The live view's own messages, which every source's protocol
+        // carries (`mobile.md` § The live view).
+        sends::<live::LiveHello>(),
+        sends::<live::ViewerInput>(),
+        sends::<live::LiveAck>(),
+        sends::<live::LiveKeyframe>(),
+        sends::<live::LiveRelease>(),
+        receives::<live::LiveHeartbeat>(),
+        receives::<live::LiveNotice>(),
+        receives::<live::LiveInputs>(),
+        receives::<live::LiveActivity>(),
     ]
 }
 
