@@ -99,7 +99,7 @@ import { findCallBlock, shellCallOf } from './terminals'
 import { createConversationCopies } from './offline'
 import { readConversationCopy, type AgentCopy } from '../state/offline'
 import { t } from './locales/text'
-import { EMPTY_TRANSCRIPT, addPage, heldBlocks } from '@demicodes/web-ui/transport/protocol'
+import { EMPTY_TRANSCRIPT, addPage, heldBlocks, heldTranscript } from '@demicodes/web-ui/transport/protocol'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import {
   deleteDraft,
@@ -1380,10 +1380,10 @@ export const useConversations = defineStore('conversations', () => {
       return
     }
     const { transcript } = copy
-    conversation.history = {
-      length: transcript.length,
-      windows: transcript.blocks.length > 0 ? [{ start: transcript.start, blocks: transcript.blocks }] : [],
-    }
+    conversation.history = heldTranscript(
+      transcript.length,
+      transcript.blocks.length > 0 ? [{ start: transcript.start, blocks: transcript.blocks }] : [],
+    )
     conversation.shownAt = null
     conversation.failures = copy.failures
     conversation.instructions = copy.instructions

@@ -1,4 +1,4 @@
-import { computed, ref, watch, type ComputedRef } from 'vue'
+import { computed, ref, toRaw, watch, type ComputedRef } from 'vue'
 import type { Block, PendingCall, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import { assistantFooterIds, replyEndIds } from './assistant-footer'
 import type { PendingAction } from './activity-slot'
@@ -9,7 +9,7 @@ import type { SessionFailureNotice, SessionLoad } from './session-status'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
 import { useActivitySlot, type ActivitySlotState } from './useActivitySlot'
 import { getVisibleBlocks } from './visible-blocks'
-import { groupWork } from './work-groups'
+import { workGrouping } from './work-groups'
 
 /** What a transcript list shows its rows from, as `AgentMessageList` takes it. */
 export interface MessageRowsSource {
@@ -88,7 +88,14 @@ interface Recovery {
  * way: the one change that shrinks the list, which the user asked for.
  */
 export function useMessageRows(source: () => MessageRowsSource): MessageRows {
-  const visibleBlocks = computed(() => getVisibleBlocks(source().blocks))
+  // The transcript as plain data: a block that changes is replaced, as is
+  // the list that holds it (`applyTranscriptPatches`), so a new list is the
+  // one change to follow, and reading each block through a reactive proxy
+  // would track every field of a long transcript at every change. A list
+  // made from a reactive one holds proxies of the blocks it kept, so each
+  // block is unwrapped too, which keeps an unchanged block the same object.
+  const blocks = computed(() => toRaw(source().blocks).map(toRaw))
+  const visibleBlocks = computed(() => getVisibleBlocks(blocks.value))
 
   // A recovery this page asked for lasts from the press until the session
   // is idle again with nothing pending: the turn it ran ended, or the server
@@ -112,7 +119,7 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
     const input = source()
     return !input.latest ? { turn: [], waiting: [] } : listTailBlocks({
       phase: input.phase,
-      blocks: input.blocks,
+      blocks: blocks.value,
       pendingCalls: input.pendingCalls ?? [],
       pendingSteers: input.pendingSteers,
       queue: input.queue,
@@ -138,6 +145,9 @@ export function useMessageRows(source: () => MessageRowsSource): MessageRows {
   })
   const hiddenId = computed(() => atCut.value ? recovery.value?.record ?? null : null)
   const transcriptRows = computed(() => visibleBlocks.value.filter((block) => block.id !== hiddenId.value))
+  // Each run keeps its rows while it stays as it was, so a turn that
+  // streams regroups only its own last run.
+  const groupWork = workGrouping()
   const turnRows = computed(() => groupWork(
     [...visibleBlocks.value, ...pendingCallRows.value],
     source().phase === 'running' && !atCut.value,

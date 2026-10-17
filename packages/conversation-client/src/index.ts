@@ -2,6 +2,7 @@ export { ActionOutlivedError, ConversationClient, EditRejectedError, RefusedErro
 export type { ConversationClientListener, ClientSessionEvent, Failures, ServerFrameOf } from './events'
 export {
   EMPTY_TRANSCRIPT,
+  heldTranscript,
   addPage,
   addWindow,
   applyTranscriptPatches,
