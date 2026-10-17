@@ -1,6 +1,6 @@
 import type { Block, ChangedFile, EditedFile, PathChange } from '@demicodes/protocol'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
-import { demoModel, inRun, listedFile, listedFiles, ownLists, shellView, uncopiedFile, withEnd, withLists } from './blocks'
+import { binaryFile, demoModel, inRun, listedFile, listedFiles, ownLists, shellView, uncopiedFile, withEnd, withLists } from './blocks'
 import { editCopies } from './blobs'
 import { ago } from './time'
 import { SLOT_ROOT, WORKSPACE_ROOT } from './workspace'
@@ -137,7 +137,7 @@ export function signInRequestBlocks(prefix: string): Block[] {
  */
 export function uncopiedRequestBlocks(): Block[] {
   const logo = shell('uncopied-logo', 390_000, 'cp new-logo.png assets/logo.png', 'Replace the logo', [
-    uncopiedFile({ path: `${WORKSPACE_ROOT}/assets/logo.png`, kind: 'modified', added: 0, removed: 0 }),
+    binaryFile({ path: `${WORKSPACE_ROOT}/assets/logo.png`, kind: 'modified', added: 0, removed: 0 }),
     uncopiedFile({ path: `${WORKSPACE_ROOT}/README.md`, kind: 'modified', added: 1, removed: 1 }),
   ])
   const readme = shell('uncopied-readme', 380_000, 'demi file edit README.md', 'Say when the logo changed', [

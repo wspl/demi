@@ -474,5 +474,10 @@ Binary contents, by the one rule a job's stdout is judged by
 ([What `demi file view` shows](../agent/shell-tool.md#what-demi-file-view-shows)),
 are never retained, whatever their size: copies of images and
 media would fill the blob store for little use, since the change view's
-history is about text. The work panel shows a binary file only as it exists
-on the Host ([File previews](../product/file-previews.md)).
+history is about text. A segment kept without contents because a side is
+binary says so, `binary`, from the recorder through the runner's journal
+and the stored segment to the Change view, so the view tells a picture or
+an archive the conversation wrote from a text file over the size limit
+whatever the file's name; a file over the limit is judged by its first
+bytes. The work panel shows a binary file only as it exists on the Host
+([File previews](../product/file-previews.md)).

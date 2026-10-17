@@ -6,6 +6,10 @@ license.workspace = true
 publish.workspace = true
 
 
+[features]
+# `whole_image`: decodes an image whole, refusing one cut short.
+whole-image = ["dep:image"]
+
 [lib]
 # No doc examples: rustdoc has nothing to test. The tests are in tests/core,
 # so the library needs no test harness of its own.
@@ -25,3 +29,6 @@ serde_plain.workspace = true
 serde_with.workspace = true
 sha2 = "0.10"
 thiserror.workspace = true
+# The one check that an image's bytes are a whole picture, for the crates
+# that turn on `whole-image`.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"], optional = true }

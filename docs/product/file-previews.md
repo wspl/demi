@@ -670,8 +670,10 @@ working-tree side is unaffected.
 
 Conversation mode has no media previews: a call's retained edits are text
 only, and a binary edit keeps no contents
-([Edit tracking](../execution/edit-tracking.md#rationale)). Open file shows the
-file as it is now.
+([Edit tracking](../execution/edit-tracking.md#rationale)). Such an edit
+says so in words a user reads without the design, *Demi keeps the text of
+the changes a conversation makes, not pictures or other binary files.*,
+with **Open File**, which shows the file as it is now.
 
 ## Getting the bytes
 

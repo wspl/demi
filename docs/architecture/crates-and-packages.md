@@ -112,6 +112,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     title and attachments cut texts at;
   - models and their selection (`Model`, `ModelSelection`, `ThinkingConfig`)
     and token usage (`TokenUsage`);
+  - behind the `whole-image` feature, with the `image` crate, the one check
+    that a picture decodes whole (`whole_image::decode`), which
+    `demi file view` and `demi image` both run: a JPEG is read by its
+    markers up to its end, since the decoder fills a cut scan with gray;
   - tool views (`ToolView`, `ShellToolView`, `OutputChunk`, `EditedFile`) and
     a command's output views, which the shell status frame and the shell
     contract are built from (`StreamView`, `OutputView`, `BinaryStdout`);

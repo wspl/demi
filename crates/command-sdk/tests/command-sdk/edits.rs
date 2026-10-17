@@ -100,9 +100,12 @@ fn a_failed_write_below_a_file_is_not_an_edit() {
 }
 
 /// Binary is what git calls binary (`shell-tool.md` § What `demi file view`
-/// shows): a NUL in the first 8 KiB leaves an edit without contents, while a
-/// Latin-1 file is text whose copy is kept as written, for the change view to
-/// show its odd bytes as U+FFFD.
+/// shows): a NUL in the first 8 KiB leaves an edit without contents, marked
+/// binary for the Change view to say why, as does a file over the limit
+/// whose first bytes are binary, while a Latin-1 file is text whose copy is
+/// kept as written, for the change view to show its odd bytes as U+FFFD.
+/// Planted defect this catches: a binary edit not marked, so the view
+/// cannot tell it from one over the limits.
 #[test]
 fn only_binary_edits_have_no_contents() {
     let root = tempfile::tempdir().unwrap();
@@ -115,17 +118,35 @@ fn only_binary_edits_have_no_contents() {
     recorder
         .record(&latin1, || fs::write(&latin1, b"caf\xe9\n"))
         .unwrap();
-    let report = recorder.report().unwrap();
+    let archive = root.path().join("archive");
+    recorder
+        .record(&archive, || {
+            let mut bytes = b"PK\x03\x04\0\0".to_vec();
+            bytes.resize(EDIT_FILE_BYTES + 1, 7);
+            fs::write(&archive, bytes)
+        })
+        .unwrap();
     let edit = |path: &Path| {
+        let report = recorder.report().unwrap();
         let file = report
             .files
-            .iter()
+            .into_iter()
             .find(|file| Path::new(&file.path).file_name() == path.file_name())
             .unwrap();
         assert_eq!(file.kind, EditKind::Added);
-        file.edits[0].modified.clone()
+        file.edits[0].clone()
     };
-    assert!(edit(&binary).is_none());
-    let copy = edit(&latin1).expect("a text file's copy");
+    let log = root.path().join("big.log");
+    recorder
+        .record(&log, || fs::write(&log, "x".repeat(EDIT_FILE_BYTES + 1)))
+        .unwrap();
+    let too_large = edit(&log);
+    assert_eq!((too_large.modified, too_large.binary), (None, false));
+    for path in [&binary, &archive] {
+        let unkept = edit(path);
+        assert_eq!((unkept.modified, unkept.binary), (None, true), "{path:?}");
+    }
+    let copy = edit(&latin1).modified.expect("a text file's copy");
+    assert!(!edit(&latin1).binary);
     assert_eq!(fs::read(copy).unwrap(), b"caf\xe9\n");
 }

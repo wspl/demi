@@ -222,6 +222,7 @@ impl Tracking {
                     segment: u32::try_from(segment).unwrap_or(u32::MAX),
                     created: file.kind == EditKind::Added && segment == 0,
                     copies: edit.copies.clone(),
+                    binary: edit.binary,
                 });
             }
         }

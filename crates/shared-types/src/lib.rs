@@ -32,6 +32,8 @@ mod schema;
 mod session;
 mod time;
 mod view;
+#[cfg(feature = "whole-image")]
+pub mod whole_image;
 mod workflow;
 
 pub use account::{AgentAccount, Rotation};

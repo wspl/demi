@@ -37,6 +37,7 @@ impl Copies {
                 original: self.blob(original),
                 modified: self.blob(modified),
             }),
+            binary: false,
         }
     }
 
