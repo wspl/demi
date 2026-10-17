@@ -542,6 +542,16 @@ so that no runner compiles two targets or two groups one after the other:
 | Server, per Linux target | `ubuntu-26.04`, `ubuntu-26.04-arm` | The backend, the machine manager and `demi-server` |
 | Web | `ubuntu-26.04` | `bun run build`: the published packages, then the web app that imports them |
 
+The runner job of each Apple target signs the runner before packaging it,
+with Demi's self-signed code-signing certificate, *Demi Code Signing*, and
+the identifier `sh.demi.runner`, and checks that the signature satisfies
+that identifier and that certificate, so every release has the same
+designated requirement ([Starting with the computer](../execution/runner.md#starting-with-the-computer)).
+The certificate and its password are the repository's Actions secrets
+`MACOS_SIGNING_CERTIFICATE` (the PKCS #12 file, Base64) and
+`MACOS_SIGNING_CERTIFICATE_PASSWORD`; a release without them fails at that
+step. A development build keeps the linker's ad hoc signature.
+
 The jobs after them each start once their inputs exist:
 
 ```text

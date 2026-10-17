@@ -122,6 +122,29 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: cargo run --locked --package xtask --no-default-features -- native build --target ${{ matrix.target }} ${{ matrix.packages }}
+      # Demi's own certificate, the same in every release, so macOS keeps
+      # the user's grants to the runner across updates
+      # (docs/execution/runner.md § Starting with the computer). Signed
+      # before packaging, which hashes the program as it ships.
+      - name: Sign the runner
+        if: runner.os == 'macOS' && matrix.group == 'runner'
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
+          PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          secret=$(openssl rand -hex 16)
+          security create-keychain -p "$secret" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$secret" "$keychain"
+          echo "$CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -P "$PASSWORD" -T /usr/bin/codesign -f pkcs12
+          rm "$RUNNER_TEMP/signing.p12"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$secret" "$keychain" > /dev/null
+          runner=".cache/native-target/${{ matrix.target }}/release/demi-runner"
+          codesign --force --sign "Demi Code Signing" --keychain "$keychain" --identifier sh.demi.runner --timestamp=none "$runner"
+          codesign --verify -R='identifier "sh.demi.runner" and certificate root = H"ec331d9849fab753102595f45da7244ae6036d32"' "$runner"
+          security delete-keychain "$keychain"
       # Packaging compresses each program into the cache, by its SHA-256,
       # where the server release finds the copies made, so it compresses
       # none itself; what packaging publishes is thrown away.
