@@ -17,7 +17,12 @@
     "save": "저장",
     "updateCredential": "자격 증명 업데이트",
     "saveCredential": "자격 증명 저장",
-    "keepUntil": "저장 기간",
+    "kept": {
+      "1h": "1시간 동안 보관",
+      "1d": "1일 동안 보관",
+      "30d": "30일 동안 보관",
+      "always": "제거할 때까지 보관"
+    },
     "needsValues": "모든 필드에 64 KiB 이하의 값이 필요합니다.",
     "allowCredentialTitle": "이 대화에서 “{name}” 자격 증명을 사용하도록 허용하시겠습니까?",
     "removed": "제거됨",

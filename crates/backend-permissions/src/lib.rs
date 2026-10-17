@@ -538,9 +538,9 @@ pub async fn read(
 /// granted, an allow of an allowance request allows its credential and
 /// decides each request to use it, a deny decides this one alone. Each
 /// agent that asked is sent its message after the answer. A credential
-/// request is allowed with `credential`, its values and keep, which saves
-/// the credential and allows it in the conversation; its command, which
-/// waits, returns with the answer instead of a message.
+/// request is allowed with `credential`, its values, which saves the
+/// credential for the request's keep and allows it in the conversation;
+/// its command, which waits, returns with the answer instead of a message.
 pub async fn decide(
     shard: &dyn PermissionShard,
     conversation: &ConversationId,
@@ -549,14 +549,13 @@ pub async fn decide(
     credential: Option<RequestedValues>,
 ) -> Result<(), PermissionError> {
     match (decision, credential) {
-        (PermissionDecision::Allow, Some(RequestedValues { values, keep })) => {
-            let Answered { credential, others } = shard
+        (PermissionDecision::Allow, Some(RequestedValues { values })) => {
+            let Answered { credential, keep, others } = shard
                 .control()
                 .answer_credential(
                     conversation.clone(),
                     request.clone(),
                     values,
-                    keep,
                     shard.credential_seal(),
                 )
                 .await??;

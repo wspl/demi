@@ -175,7 +175,7 @@ pub(crate) fn credentials_group(shard: Weak<Shard>) -> GroupBuilder {
                     "One field as <name>:<secret|visible>:<label>, such as token:secret:\"Personal access token\" or user:visible:\"User name\"; one to ten. A name is lowercase letters, digits, _ and -. A secret field is typed hidden and never listed; a visible one, such as a user name or a host, is shown as it is.",
                 )
                 .describe("reason", "Why you ask, which the card shows the user and the credential keeps as its note.")
-                .describe("keep", "How long the card offers to keep it at first: 1h (the default), 1d, 30d or always; the user decides.")
+                .describe("keep", "How long the credential is kept, which you decide by what it is for and the card tells the user: 1h (the default) for a secret used once, such as a key to add a provider; 1d or 30d for work that goes on that long; always for one the user wants you to keep using, which stays in Settings › Credentials.")
                 .positionals(["name"])
                 .running_hint(RUNNING_HINT)
                 .json_output::<Saved>()
