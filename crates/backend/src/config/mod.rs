@@ -22,6 +22,7 @@ use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::vault::logins::LoginTiming;
 use demi_backend_runners::native::NativeCatalog;
 use demi_plugin_interface::PluginFactory;
+use demi_provider_common::media_catalog;
 use demi_provider_common::models_dev::ModelsDevClient;
 
 use demi_backend_user_shard::shard::ShardPlacement;
@@ -352,6 +353,14 @@ pub struct BackendConfig {
     pub plugins: Vec<Box<dyn PluginFactory>>,
     /// Where the models.dev document is read.
     pub models_dev_url: Url,
+    /// Where the catalog of image and video models is downloaded: the
+    /// file of the branch the backend was built from, none for a build
+    /// from no branch, which keeps the release's copy
+    /// (`media-models.md` § Versions).
+    pub media_catalog_url: Option<Url>,
+    /// The media catalog the release carries, until a newer one is
+    /// downloaded.
+    pub media_catalog: Arc<media_catalog::Catalog>,
     /// The Claude Code distribution whose newest release the CLI on each
     /// Cloud follows (`claude-code.md` § Which version).
     pub claude_releases: Url,
@@ -388,7 +397,8 @@ pub struct BackendConfig {
 
 impl BackendConfig {
     /// A configuration on the system clock with one shard thread, the
-    /// built-in families, the published models.dev document, no web
+    /// built-in families, the published models.dev document, the media
+    /// catalog of the branch the backend was built from, no web
     /// directory and no mail sender, whose Clouds the machine manager at
     /// `machines_socket` runs.
     pub fn new(
@@ -417,6 +427,8 @@ impl BackendConfig {
             models_dev_url: ModelsDevClient::DEFAULT_URL
                 .parse()
                 .expect("the models.dev address parses"),
+            media_catalog_url: media_catalog::branch_url(option_env!("DEMI_BUILD_BRANCH")),
+            media_catalog: media_catalog::Catalog::carried(),
             claude_releases: DEFAULT_RELEASES_URL
                 .parse()
                 .expect("the Claude Code distribution's address parses"),

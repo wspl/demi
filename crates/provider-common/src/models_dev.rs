@@ -11,14 +11,13 @@ use std::time::Duration;
 use demi_shared_types::{Clock, ModelCost, ProviderModel, ProviderModelList, Timestamp, modality_extensions};
 use futures_util::FutureExt;
 use futures_util::future::{BoxFuture, Shared, WeakShared};
-use http::header::{ACCEPT, ETAG, IF_MODIFIED_SINCE, IF_NONE_MATCH, LAST_MODIFIED};
-use http::{HeaderValue, StatusCode};
 use indexmap::IndexMap;
 use reqwest::Url;
 use serde::Deserialize;
 use tokio::time::Instant;
 
 use crate::ProviderFailure;
+use crate::conditional::{self, Answer, Failure, Validators};
 
 /// How long a copy serves [`ModelsDevClient::current`] after it was
 /// downloaded or confirmed.
@@ -57,8 +56,7 @@ struct DocumentCopy {
     fetched_at: Timestamp,
     /// When the content was downloaded or last confirmed.
     confirmed_at: Instant,
-    etag: Option<HeaderValue>,
-    last_modified: Option<HeaderValue>,
+    validators: Validators,
 }
 
 /// The document as one read returned it.
@@ -187,39 +185,29 @@ async fn request(
     inner: &Inner,
     previous: Option<&DocumentCopy>,
 ) -> Result<Arc<DocumentCopy>, String> {
-    let mut request = inner
-        .http
-        .get(inner.url.clone())
-        .header(ACCEPT, HeaderValue::from_static("application/json"));
-    if let Some(previous) = previous {
-        if let Some(etag) = &previous.etag {
-            request = request.header(IF_NONE_MATCH, etag.clone());
+    let answer = conditional::get(&inner.http, &inner.url, previous.map(|copy| &copy.validators)).await;
+    let (body, validators) = match (answer, previous) {
+        (Ok(Answer::NotModified), Some(previous)) => {
+            return Ok(Arc::new(DocumentCopy {
+                document: previous.document.clone(),
+                fetched_at: previous.fetched_at,
+                confirmed_at: Instant::now(),
+                validators: previous.validators.clone(),
+            }));
         }
-        if let Some(modified) = &previous.last_modified {
-            request = request.header(IF_MODIFIED_SINCE, modified.clone());
+        (Ok(Answer::Fetched { body, validators }), _) => (body, validators),
+        // A 304 answers only a request sent with a copy's validators.
+        (Ok(Answer::NotModified), None) => unreachable!("an unconditional request is never answered 304"),
+        (Err(Failure::Status(status)), _) => {
+            return Err(format!(
+                "models.dev catalog request failed with HTTP {}",
+                status.as_u16()
+            ));
         }
-    }
-    let unanswered = |error| ProviderFailure::transport("models.dev", error).message;
-    let response = request.send().await.map_err(unanswered)?;
-    let status = response.status();
-    if let (StatusCode::NOT_MODIFIED, Some(previous)) = (status, previous) {
-        return Ok(Arc::new(DocumentCopy {
-            document: previous.document.clone(),
-            fetched_at: previous.fetched_at,
-            confirmed_at: Instant::now(),
-            etag: previous.etag.clone(),
-            last_modified: previous.last_modified.clone(),
-        }));
-    }
-    if !status.is_success() {
-        return Err(format!(
-            "models.dev catalog request failed with HTTP {}",
-            status.as_u16()
-        ));
-    }
-    let etag = response.headers().get(ETAG).cloned();
-    let last_modified = response.headers().get(LAST_MODIFIED).cloned();
-    let body = response.bytes().await.map_err(unanswered)?;
+        (Err(Failure::Transport(error)), _) => {
+            return Err(ProviderFailure::transport("models.dev", error).message);
+        }
+    };
     // The document is megabytes of JSON, more than an async thread may spend.
     let document = tokio::task::spawn_blocking(move || ModelsDevDocument::decode(&body))
         .await
@@ -228,8 +216,7 @@ async fn request(
         document: Arc::new(document),
         fetched_at: inner.clock.now(),
         confirmed_at: Instant::now(),
-        etag,
-        last_modified,
+        validators,
     }))
 }
 
@@ -437,15 +424,17 @@ struct ModelsDevDocument(IndexMap<String, ModelsDevVendor>);
 
 impl ModelsDevDocument {
     fn decode(body: &[u8]) -> Result<Self, String> {
-        serde_path_to_error::deserialize(&mut serde_json::Deserializer::from_slice(body)).map_err(
-            |error| {
-                format!(
-                    "models.dev catalog cannot be read at {}: {}",
-                    error.path(),
-                    error.inner()
-                )
-            },
-        )
+        let mut json = serde_json::Deserializer::from_slice(body);
+        let document = serde_path_to_error::deserialize(&mut json).map_err(|error| {
+            format!(
+                "models.dev catalog cannot be read at {}: {}",
+                error.path(),
+                error.inner()
+            )
+        })?;
+        json.end()
+            .map_err(|error| format!("models.dev catalog cannot be read: {error}"))?;
+        Ok(document)
     }
 }
 

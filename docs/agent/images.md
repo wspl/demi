@@ -166,7 +166,10 @@ its image models with the subscription's token (Grok's
 every listing route), so each provider's list is the vendor's published IDs,
 dated snapshots and aliases included, each with the release date the
 vendor publishes (an alias such as `chatgpt-image-latest` takes that of the
-model it names at the time of the list), and changes with a Demi release.
+model it names at the time of the list), as the catalog of image and video
+models lists them for that subscription
+([Image and video models](../providers/media-models.md)), so a model the
+vendor adds needs a change to the catalog and no Demi release.
 Grok's models are those the subscription accepted, each tried once; the retired `dall-e-*` and
 `grok-2-image*` are left out. A Grok answer by URL is never used: the URL
 refused an immediate download. These request shapes are those of the
@@ -187,8 +190,8 @@ The API keys, as each vendor's API reference documents them in October
 A key's models are those its vendor lists for it, read when the list is
 asked for, so a model the vendor adds needs no Demi release. What Demi
 knows of a vendor's models, the one-line description, the release date
-and the sizes or shapes, is one table per vendor, which its subscription
-and its key both read; a listed model the table does not know is shown
+and the sizes or shapes, is the catalog's, which its subscription and its
+key both read; a listed model the catalog does not know is shown
 with what the listing says. Google's Gemini API is reached through
 `generateContent`, not the newer Interactions API, because only its
 answer's shape is documented for images; Google's Imagen models are shut

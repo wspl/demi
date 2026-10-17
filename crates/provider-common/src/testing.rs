@@ -501,6 +501,9 @@ pub struct RecordedRequest {
     pub uri: Uri,
     pub headers: HeaderMap,
     pub body: Bytes,
+    /// When the vendor read it, on the test's clock, which a paused clock
+    /// makes exact.
+    pub at: tokio::time::Instant,
 }
 
 impl RecordedRequest {
@@ -674,20 +677,25 @@ impl MockVendor {
     /// Waits until the vendor has received `count` requests, at most five
     /// seconds.
     pub async fn received(&self, count: usize) {
-        let arrived = async {
-            loop {
-                // Created before the count is read, so a request that arrives
-                // in between still wakes it.
-                let next = self.state.requested.notified();
-                if self.lock().requests.len() >= count {
-                    return;
-                }
-                next.await;
-            }
-        };
-        tokio::time::timeout(Duration::from_secs(5), arrived)
+        tokio::time::timeout(Duration::from_secs(5), self.requested(count))
             .await
             .expect("the vendor receives the requests");
+    }
+
+    /// Waits until the vendor has received `count` requests, with no
+    /// deadline of its own: for a test on a paused clock, whose deadline
+    /// is the caller's and which lets the clock run to the timer that sends
+    /// the request, as [`received`](Self::received)'s would fire first.
+    pub async fn requested(&self, count: usize) {
+        loop {
+            // Created before the count is read, so a request that arrives
+            // in between still wakes it.
+            let next = self.state.requested.notified();
+            if self.lock().requests.len() >= count {
+                return;
+            }
+            next.await;
+        }
     }
 
     /// Waits until a client leaves a response that was still open, at most
@@ -725,6 +733,7 @@ async fn answer(State(state): State<Arc<VendorState>>, request: Request) -> Resp
             uri: parts.uri,
             headers: parts.headers,
             body,
+            at: tokio::time::Instant::now(),
         });
         state.requested.notify_waiters();
         routed.or_else(|| script.responses.pop_front())

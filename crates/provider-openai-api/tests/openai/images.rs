@@ -6,6 +6,7 @@
 //! models listing and its debugging guide's status codes. No test calls a
 //! vendor.
 
+use demi_provider_common::media_catalog::Catalog;
 use std::sync::Arc;
 
 use bytes::Bytes;
@@ -19,6 +20,20 @@ use demi_shared_types::{B64Bytes, TokenUsage, WireApi};
 use serde_json::{Value, json};
 
 use crate::NOW;
+
+/// The catalog the tests read: what it states of the models the scripted
+/// vendors list.
+fn catalog() -> std::sync::Arc<Catalog> {
+    let document = json!({ "updated": "2026-10-01T00:00:00Z", "models": [
+        { "vendor": "openai", "id": "gpt-image-2", "kind": "image", "name": "GPT Image 2",
+          "description": "State-of-the-art image generation model", "released": "2026-04-21" },
+        { "vendor": "openai", "id": "gpt-image-1", "kind": "image", "name": "GPT Image 1",
+          "image": { "sizes": ["1024x1024", "1536x1024", "1024x1536"] } },
+        { "vendor": "xai", "id": "grok-imagine-image-2.0", "kind": "image", "name": "Imagine 2.0",
+          "description": "Precise image generation and editing, built for real creative work", "released": "2026-08-07" }
+    ] });
+    std::sync::Arc::new(Catalog::decode(document.to_string().as_bytes()).unwrap())
+}
 
 const IMAGE: &[u8] = b"\x89PNG\r\n\x1a\n made image";
 
@@ -63,6 +78,37 @@ fn ids(models: &[ImageModelInfo]) -> Vec<(&str, Option<&str>, &str)> {
         .collect()
 }
 
+// One scripted vendor, three requests: milliseconds.
+//
+// Planted defect: the sizes a request is sent at read from anywhere but the
+// catalog the call is given, such as the release's copy.
+#[tokio::test]
+async fn the_size_sent_for_a_shape_follows_the_sizes_the_catalog_gives_the_model() {
+    let vendor = MockVendor::start().await;
+    let answer = json!({ "created": 1_790_000_000, "data": [{ "b64_json": B64Bytes::from(IMAGE) }] });
+    for _ in 0..3 {
+        vendor.respond_at("/v1/images/generations", json_answer(200, answer.clone()));
+    }
+    let provider = provider(&vendor, Some(ImageVendor::OpenAi));
+    let maker = provider.images().unwrap();
+    let http = reqwest::Client::new();
+    let with_sizes = |image: Value| {
+        let document = json!({ "updated": "2026-10-01T00:00:00Z", "models": [
+            { "vendor": "openai", "id": "picture", "kind": "image", "name": "Picture", "image": image }
+        ] });
+        Catalog::decode(document.to_string().as_bytes()).unwrap()
+    };
+    let wide = || request("picture", Some(Aspect { width: 16, height: 9 }), Vec::new());
+    for (image, sent) in [
+        (json!({ "sizes": ["1024x1024", "1536x1024", "1024x1536"] }), "1536x1024"),
+        (json!({ "sizes": ["1024x1024", "1792x1024"] }), "1792x1024"),
+        (json!({ "edits": true }), "1536x864"),
+    ] {
+        maker.make(&http, &with_sizes(image), wide()).await.result.unwrap();
+        assert_eq!(vendor.requests().last().unwrap().json()["size"], sent);
+    }
+}
+
 // One scripted vendor, a few requests: milliseconds.
 //
 // Planted defects: a compatible entry, or one of another vendor, that
@@ -92,8 +138,8 @@ async fn an_openai_key_lists_its_image_models_and_sends_generations_and_edits_as
     assert_eq!((maker.name(), maker.vendor(), maker.confirms_model()), ("OpenAI", ImageVendor::OpenAi, true));
     let http = reqwest::Client::new();
 
-    // The table describes a model it knows; another is what the listing says.
-    let models = maker.models(&http).await.unwrap();
+    // The catalog describes a model it knows; another is what the listing says.
+    let models = maker.models(&http, &catalog()).await.unwrap();
     assert_eq!(
         ids(&models),
         [
@@ -104,7 +150,7 @@ async fn an_openai_key_lists_its_image_models_and_sends_generations_and_edits_as
     assert_eq!(models[1].takes, None);
 
     let made = maker
-        .make(&http, request("gpt-image-2", Some(Aspect { width: 16, height: 9 }), Vec::new()))
+        .make(&http, &catalog(), request("gpt-image-2", Some(Aspect { width: 16, height: 9 }), Vec::new()))
         .await
         .result
         .unwrap();
@@ -114,12 +160,12 @@ async fn an_openai_key_lists_its_image_models_and_sends_generations_and_edits_as
         Some(TokenUsage { input_tokens: 50, output_tokens: 1_056, cache_read_tokens: 0, cache_write_tokens: 0 })
     );
     let edit = vec![image("image/png", b"png bytes"), image("image/webp", b"webp bytes")];
-    maker.make(&http, request("gpt-image-2", None, edit)).await.result.unwrap();
+    maker.make(&http, &catalog(), request("gpt-image-2", None, edit)).await.result.unwrap();
     // A model that takes only three sizes is sent the one nearest the
     // shape, never a size of the shape it would refuse.
     for (aspect, sent) in [((1, 1), "1024x1024"), ((16, 9), "1536x1024"), ((2, 3), "1024x1536")] {
         let shape = Some(Aspect { width: aspect.0, height: aspect.1 });
-        maker.make(&http, request("gpt-image-1", shape, Vec::new())).await.result.unwrap();
+        maker.make(&http, &catalog(), request("gpt-image-1", shape, Vec::new())).await.result.unwrap();
         assert_eq!(vendor.requests().last().unwrap().json()["size"], sent);
     }
 
@@ -176,7 +222,7 @@ async fn an_openai_keys_failures_read_as_a_spent_limit_a_refused_key_a_policy_bl
     let provider = provider(&vendor, Some(ImageVendor::OpenAi));
     let maker = provider.images().unwrap();
     let http = reqwest::Client::new();
-    let fail = async || maker.make(&http, request("gpt-image-2", None, Vec::new())).await.result.unwrap_err();
+    let fail = async || maker.make(&http, &catalog(), request("gpt-image-2", None, Vec::new())).await.result.unwrap_err();
 
     assert_eq!(fail().await, ImageFailure::UsageLimit { retry_at: None });
     assert_eq!(fail().await, ImageFailure::UsageLimit { retry_at: None });
@@ -196,7 +242,7 @@ async fn an_openai_keys_failures_read_as_a_spent_limit_a_refused_key_a_policy_bl
         other => panic!("not unanswered: {other:?}"),
     }
     // A key refused while listing is the same failure.
-    assert!(matches!(maker.models(&http).await, Err(ImageFailure::KeyRefused { .. })));
+    assert!(matches!(maker.models(&http, &catalog()).await, Err(ImageFailure::KeyRefused { .. })));
     // A key is never retried: each refusal was one request.
     assert_eq!(vendor.requests().len(), 7);
 }
@@ -238,7 +284,7 @@ async fn an_xai_key_lists_models_with_their_aliases_sends_its_shapes_and_reads_i
     assert_eq!((maker.name(), maker.vendor()), ("xAI", ImageVendor::Xai));
     let http = reqwest::Client::new();
 
-    let models = maker.models(&http).await.unwrap();
+    let models = maker.models(&http, &catalog()).await.unwrap();
     assert_eq!(
         ids(&models),
         [
@@ -247,11 +293,11 @@ async fn an_xai_key_lists_models_with_their_aliases_sends_its_shapes_and_reads_i
         ]
     );
     let wide = Some(Aspect { width: 16, height: 9 });
-    let made = maker.make(&http, request("grok-imagine-image-2.0", wide, Vec::new())).await.result.unwrap();
+    let made = maker.make(&http, &catalog(), request("grok-imagine-image-2.0", wide, Vec::new())).await.result.unwrap();
     assert_eq!(made.bytes, Bytes::from_static(b"jpeg image"));
-    maker.make(&http, request("grok-imagine-image-2.0", None, vec![image("image/png", b"png bytes")])).await.result.unwrap();
+    maker.make(&http, &catalog(), request("grok-imagine-image-2.0", None, vec![image("image/png", b"png bytes")])).await.result.unwrap();
     let two = vec![image("image/png", b"png bytes"), image("image/jpeg", b"jpeg bytes")];
-    maker.make(&http, request("grok-imagine-image-2.0", None, two)).await.result.unwrap();
+    maker.make(&http, &catalog(), request("grok-imagine-image-2.0", None, two)).await.result.unwrap();
 
     let sent = vendor.requests();
     assert_eq!((sent[0].uri.path(), sent[0].header("authorization")), ("/v1/image-generation-models", Some("Bearer sk-test")));
@@ -272,7 +318,7 @@ async fn an_xai_key_lists_models_with_their_aliases_sends_its_shapes_and_reads_i
         ])
     );
 
-    let fail = async || maker.make(&http, request("grok-imagine-image-2.0", None, Vec::new())).await.result.unwrap_err();
+    let fail = async || maker.make(&http, &catalog(), request("grok-imagine-image-2.0", None, Vec::new())).await.result.unwrap_err();
     assert!(matches!(fail().await, ImageFailure::Shape { takes, .. } if takes == ["1:1", "3:4", "16:9"]));
     assert_eq!(fail().await, ImageFailure::UsageLimit { retry_at: None });
     assert!(matches!(fail().await, ImageFailure::KeyRefused { .. }));

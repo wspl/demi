@@ -76,6 +76,7 @@ layout and interaction; these documents do not repeat it.
 
 - [Providers](providers/providers.md): families, vendors and endpoints, the provider contract, the [prompt cache](providers/providers.md#prompt-cache) and the rule that each request extends the previous one, per-account runtimes, the credential vault, login flows and inference admission.
 - [Models](providers/models.md): catalog sources, the catalog cache, request parameters and request limits.
+- [Image, video and audio models](providers/media-models.md): the catalog of image, video and audio models Demi keeps in its repository, its schema versions and how the backend reads it.
 - [Usage and quota](providers/usage-and-quota.md): the usage ledger, the request rate limit and vendor quota.
 - [Claude Code](providers/claude-code.md): the Claude Code CLI package, its version, where it runs, and how the provider talks to it.
 

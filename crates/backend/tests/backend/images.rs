@@ -13,7 +13,7 @@
 
 use std::sync::Arc;
 
-use demi_provider_common::images::{ImageFacts, ImageVendor};
+use demi_provider_common::images::ImageVendor;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{Accounts, LoginState, ModelCatalog, ProviderAnswer, ProviderDto};
 use demi_web_api_protocol::state::SyncEvent;
@@ -30,14 +30,12 @@ use crate::support::{Harness, Session, TestBackend};
 use crate::usage::{Row, rows};
 
 /// The scripted family's image models, the older first, so the list shows
-/// the newer first.
-const PICTURES: &[ImageFacts] = &[
-    ImageFacts::new("picture-1", Some("2026-01-05"), "Best pictures", "any shape"),
-    ImageFacts::new("picture-2", Some("2026-06-01"), "Faster pictures", "1:1"),
-];
+/// the newer first; the test backend's catalog says what each is
+/// (`support::MEDIA_CATALOG`).
+const PICTURES: &[&str] = &["picture-1", "picture-2"];
 
 /// A second family's image model.
-const DRAWINGS: &[ImageFacts] = &[ImageFacts::new("drawing-1", Some("2026-02-01"), "Line drawings", "1:1")];
+const DRAWINGS: &[&str] = &["drawing-1"];
 
 /// A `device` family whose accounts make images of `models` as `images`
 /// scripts them, and the scripts of its logins.
@@ -148,7 +146,7 @@ async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_
         "demi image generate: no provider makes \"nope\"; demi image models lists them\nexit=1\n",
         "700×700 PNG from picture-2 (Scripted, first@example.test)\n",
         &format!(
-            "OpenAI, through {label} (first@example.test)\n  picture-2  2026-06-01  Faster pictures; takes 1:1\n  picture-1  2026-01-05  Best pictures; takes any shape",
+            "OpenAI, through {label} (first@example.test)\n  picture-2  2026-06-01  Faster pictures; takes 1:1\n  picture-1  2026-01-05  Best pictures; takes 1:1 or 16:9; edits",
             label = entry.label
         ),
     ] {
@@ -524,7 +522,7 @@ async fn automatic_takes_the_subscription_before_a_key_a_chosen_entry_while_it_c
     assert_shows(&shown, BY_SUBSCRIPTION);
     assert_shows(
         &shown,
-        &format!("OpenAI, through {} (first@example.test)\n  picture-1  2026-01-05  Best pictures; takes any shape", entry.label),
+        &format!("OpenAI, through {} (first@example.test)\n  picture-1  2026-01-05  Best pictures; takes 1:1 or 16:9; edits", entry.label),
     );
 
     // The user's choice, while it can make the model.

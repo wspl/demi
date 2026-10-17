@@ -30,7 +30,7 @@ futures-util.workspace = true
 http.workspace = true
 httpdate = "1"
 indexmap = { version = "2", features = ["serde"] }
-jiff.workspace = true
+jiff = { workspace = true, features = ["serde"] }
 regex = "1"
 reqwest = { workspace = true, features = ["rustls", "stream"] }
 serde.workspace = true

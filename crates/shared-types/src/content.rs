@@ -220,6 +220,21 @@ pub fn char_offset(text: &str, chars: usize) -> usize {
         .map_or(text.len(), |(offset, _)| offset)
 }
 
+/// `count` with its thousands separated by commas, as `48,213`: how the
+/// agent reads a large count, such as a page's characters or a size's
+/// pixels.
+pub fn thousands(count: u64) -> String {
+    let digits = count.to_string();
+    let mut grouped = String::with_capacity(digits.len() + digits.len() / 3);
+    for (index, digit) in digits.chars().enumerate() {
+        if index > 0 && (digits.len() - index) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(digit);
+    }
+    grouped
+}
+
 /// JavaScript's white space and line terminators.
 fn is_trimmed_space(character: char) -> bool {
     character == '\u{feff}' || (character.is_whitespace() && character != '\u{85}')

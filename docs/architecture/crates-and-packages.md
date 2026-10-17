@@ -95,7 +95,9 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 
 #### `shared-types`
 
-- **Owns:** the data the web app, the agent and the backend share:
+- **Owns:** the data the web app, the agent and the backend share, and a
+  count grouped by thousands (`thousands`), as commands and the catalog
+  write sizes and bytes:
   - transcript blocks (`Block`): the explicit submission `User`, the only
     editable type; `Context`, `Wakeup`, `Steer` and `AgentMessage` inputs;
     `Resume` and `Abort`; provider output; `CompactionBoundary` and
@@ -539,10 +541,13 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     the small model's tiers and a key's image models match whole
     (`model_words`); the image role (`provider_common::images`: `ImageMaker`,
     one image for one account or key and its vendor's models, the request
-    and the OpenAI-shaped answer the vendors' image endpoints share, how a
-    refused call or a refused key reads, and what each vendor publishes of
-    its image models, one table per vendor that its subscription and its
-    key both read); the
+    and the OpenAI-shaped answer the vendors' image endpoints share, and how a
+    refused call or a refused key reads); the catalog of image, video and
+    audio models (`provider_common::media_catalog`: the copy a release carries,
+    the download from the build's branch and the newer-of rule,
+    [Image, video and audio models](../providers/media-models.md)), which the
+    image role reads through the backend's services and which shares
+    `models_dev`'s conditional download; the
     catalog, state, account and quota
     shapes they return are `shared-types`'s, because the web app receives them.
 - **Public boundary:** the items above; `provider_common::testing` supplies scripted
@@ -1813,7 +1818,7 @@ machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runne
 server -> backend-database, machine-manager-protocol, runner-protocol, shared-artifacts, shared-cli
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli
 command-package-file -> shared-artifacts, command-protocol, command-sdk, shared-types, command-package-file-protocol, shared-gates, shared-cli
-command-package-fetch -> command-protocol, command-sdk, command-package-fetch-protocol, shared-cli
+command-package-fetch -> command-protocol, command-sdk, command-package-fetch-protocol, shared-cli, shared-types
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk, shared-cli
 xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, live-view-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-interface
