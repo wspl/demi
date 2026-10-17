@@ -43,7 +43,7 @@ use demi_live_view_protocol::{
 
 use crate::{
     devices::{Devices, OpenDevice, Watching},
-    driver::{DeviceCapture, KeyPress, Points, TouchPhase},
+    driver::{DeviceCapture, FrameArea, KeyPress, Points, TouchPhase},
     keys,
 };
 
@@ -345,9 +345,9 @@ struct Watched {
     /// The device's screen, whose turns turn its frame.
     screen: watch::Receiver<crate::driver::Screen>,
     /// The size the view lays the device out at, which its frame fits.
-    area: Option<(u32, u32)>,
+    area: Option<FrameArea>,
     /// The size and the orientation of the frame the view has.
-    framed: Option<((u32, u32), Orientation)>,
+    framed: Option<(FrameArea, Orientation)>,
     _watching: Watching,
 }
 
@@ -494,11 +494,11 @@ async fn view(
                         delivery.key_frame(generation, watched.as_ref().map(|watched| &watched.stream));
                     }
                     LiveViewerMessage::Release(LiveRelease {}) => input.control(Item::Release).await,
-                    LiveViewerMessage::Frame { device, width, height } => {
+                    LiveViewerMessage::Frame { device, width, height, scale } => {
                         if let Some(watched) = watched.as_mut()
                             && watched.open.handle == device
                         {
-                            watched.area = Some((width, height));
+                            watched.area = Some(FrameArea { width, height, scale });
                             frame(watched, writer).await;
                         }
                     }

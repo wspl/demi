@@ -125,7 +125,8 @@ function askFrame(): void {
     return
   }
   const room = frameRoom(size.value)
-  props.session.frame(room.width * window.devicePixelRatio, room.height * window.devicePixelRatio)
+  const scale = window.devicePixelRatio
+  props.session.frame(room.width * scale, room.height * scale, scale)
 }
 
 watch(watching, (now) => {

@@ -24,7 +24,7 @@ use demi_live_view::stream::CaptureEvent;
 
 use crate::{
     driver::{
-        Button, Device, DeviceCapture, Driver, DriverError, Frame, KeyPress, PixelRect, Png, Points,
+        Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, KeyPress, PixelRect, Png, Points,
         RawElement, Rect, Recording, Result, Screen, Simulator, TouchPhase,
     },
     keys,
@@ -592,7 +592,7 @@ impl Device for IosDevice {
         })
     }
 
-    fn frame(&self, area: (u32, u32)) -> BoxFuture<'_, Result<Frame>> {
+    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Frame>> {
         Box::pin(async move {
             #[derive(Deserialize)]
             #[serde(rename_all_fields = "camelCase", untagged)]
@@ -607,7 +607,7 @@ impl Device for IosDevice {
                 width: f64,
                 height: f64,
             }
-            let answer = self.call("frame", json!({ "width": area.0, "height": area.1 })).await?;
+            let answer = self.call("frame", json!({ "width": area.width, "height": area.height, "scale": area.scale })).await?;
             let answered: Answered = serde_json::from_value(answer.result)
                 .map_err(|error| DriverError::Failed(format!("the device's frame does not read: {error}")))?;
             Ok(match answered {

@@ -127,7 +127,7 @@ export class MobileSession {
   /** Whether a settling of the watch is queued for after this turn's tab changes. */
   private settling = false
   /** The device pixels the view lays the frame into, as it last measured them. */
-  private area: { width: number; height: number } | null = null
+  private area: { width: number; height: number; scale: number } | null = null
 
   constructor(private readonly options: MobileSessionOptions) {
     this.link = new LiveLink(this.state, {
@@ -342,12 +342,13 @@ export class MobileSession {
 
   /**
    * The view lays the watched device's frame into `width` × `height` device
-   * pixels: the module draws it for that size, and again when the device
-   * turns. The view says so once its size settled.
+   * pixels, `scale` of them per CSS pixel: the module draws it for that size
+   * and scale, and again when the device turns. The view says so once its
+   * size settled.
    */
-  frame(width: number, height: number): void {
-    const area = { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)) }
-    if (this.area && this.area.width === area.width && this.area.height === area.height) {
+  frame(width: number, height: number, scale: number): void {
+    const area = { width: Math.max(1, Math.round(width)), height: Math.max(1, Math.round(height)), scale }
+    if (this.area && this.area.width === area.width && this.area.height === area.height && this.area.scale === area.scale) {
       return
     }
     this.area = area
@@ -356,7 +357,7 @@ export class MobileSession {
 
   private askFrame(): void {
     if (this.area && this.state.watched !== null) {
-      this.send({ type: 'frame', device: this.state.watched, width: this.area.width, height: this.area.height })
+      this.send({ type: 'frame', device: this.state.watched, width: this.area.width, height: this.area.height, scale: this.area.scale })
     }
   }
 
