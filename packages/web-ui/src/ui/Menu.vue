@@ -205,8 +205,9 @@ watch(inputRef, (el) => {
     return
   filterQuery.value = props.initialQuery ?? ''
   focusedIndex.value = -1
-  if (props.autofocus)
-    autofocus(el, { preventScroll: true })
+  // A phone leaves the filter for a tap (`useAutofocus`): the panel takes the keys meanwhile.
+  if (props.autofocus && !autofocus(el, { preventScroll: true }))
+    autofocus(panelRef.value, { preventScroll: true })
 })
 
 watch(panelRef, (el) => {

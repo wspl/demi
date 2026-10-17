@@ -18,6 +18,12 @@ const props = withDefaults(defineProps<{
   placeholder?: PlaceholderText
   /** Take focus on mount: the field a dialog or form opens on. The ring follows real focus. */
   focused?: boolean
+  /**
+   * With `focused`: typing here is the whole of what the user just chose
+   * (Search, a new tab's address, a filter), so the field takes the focus on
+   * a phone too, where any other waits for a tap (`useAutofocus`).
+   */
+  asked?: boolean
   /** Paint the focus ring without holding focus, for a catalog specimen. */
   showFocus?: boolean
   /**
@@ -91,7 +97,7 @@ const inputAttrs = computed(() => ({
 }))
 const inputRef = ref<HTMLInputElement>()
 const isFocused = ref(false)
-const autofocus = useAutofocus()
+const autofocus = useAutofocus({ asked: () => props.asked })
 function input(event: Event): void {
   const target = event.target as HTMLInputElement
   if (props.trim && target.value !== target.value.trim()) {
