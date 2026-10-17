@@ -3,8 +3,7 @@ import { t } from './locales/text'
 import { computed, nextTick, ref, watch } from 'vue'
 import { Bot, CircleStop, Copy, X } from '@lucide/vue'
 import type { InstructionEntry } from '@demicodes/protocol'
-import MenuDivider from '../ui/MenuDivider.vue'
-import MenuItem from '../ui/MenuItem.vue'
+import { vContextMenu, type ContextMenuGroup } from '../ui/context-menu'
 import RegionStatus from '../ui/RegionStatus.vue'
 import AgentMessageList from './AgentMessageList.vue'
 import AgentStatusBar from './AgentStatusBar.vue'
@@ -120,6 +119,22 @@ function agentOf(id: string): SubagentRecord | undefined {
   return tabs.value.find((agent) => agent.id === id)
 }
 
+/** A tab's menu: stop its agent, copy its number, close its tab once the agent is done. */
+function tabMenu(id: string): () => ContextMenuGroup[] {
+  return () => [
+    [
+      { icon: CircleStop, label: t('subagents.stopAgent'), disabled: agentOf(id)?.phase !== 'running', run: () => emit('abortAgent', id) },
+      { icon: Copy, label: t('subagents.copyId'), run: () => copyAgentId(id) },
+    ],
+    [{ icon: X, label: t('subagents.closeTab'), disabled: agentOf(id)?.phase === 'running', run: () => closeTab(id) }],
+  ]
+}
+
+/** What acts on every agent. */
+function stripMenu(): ContextMenuGroup[] {
+  return [[{ icon: CircleStop, label: t('subagents.stopAll'), disabled: !anyRunning.value, run: () => emit('abort') }]]
+}
+
 // The number the `demi agent` commands take, not the record's id.
 function copyAgentId(id: string): void {
   const agent = agentOf(id)
@@ -138,9 +153,10 @@ function closeTab(id: string): void {
   <SessionOverlay
     :open="open"
     :still-tabs="replacing"
+    :strip-menu="stripMenu"
     @close="closePanel"
   >
-    <template #tabs="{ openTabMenu }">
+    <template #tabs>
       <TabItem
         v-for="agent in tabs"
         :key="agent.id"
@@ -148,40 +164,12 @@ function closeTab(id: string): void {
         :is-active="agent.id === active?.id"
         :closable="false"
         @select="activate(agent.id)"
-        @contextmenu="openTabMenu($event, agent.id)"
+        v-context-menu="tabMenu(agent.id)"
       >
         <template #mark>
           <AgentMark :phase="agent.phase" :size="ICON_PX.markIn28" />
         </template>
       </TabItem>
-    </template>
-    <template #tabMenu="{ id }">
-      <MenuItem
-        :icon="CircleStop"
-        :label="t('subagents.stopAgent')"
-        :disabled="agentOf(id)?.phase !== 'running'"
-        @select="emit('abortAgent', id)"
-      />
-      <MenuItem
-        :icon="Copy"
-        :label="t('subagents.copyId')"
-        @select="copyAgentId(id)"
-      />
-      <MenuDivider />
-      <MenuItem
-        :icon="X"
-        :label="t('subagents.closeTab')"
-        :disabled="agentOf(id)?.phase === 'running'"
-        @select="closeTab(id)"
-      />
-    </template>
-    <template #stripMenu>
-      <MenuItem
-        :icon="CircleStop"
-        :label="t('subagents.stopAll')"
-        :disabled="!anyRunning"
-        @select="emit('abort')"
-      />
     </template>
     <template #trailing>
       <SubagentHistoryMenu

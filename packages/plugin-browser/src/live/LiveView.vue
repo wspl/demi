@@ -390,7 +390,7 @@ onBeforeUnmount(() => {
       @pointercancel="release"
       @pointerleave="pointer = null"
       @wheel.prevent="wheel"
-      @contextmenu.prevent
+      @contextmenu.stop.prevent
     />
     <div v-if="!painted" class="pointer-events-none absolute inset-0" :class="BLANK_PAGE" />
     <!-- A notice that leaves no picture takes the picture's place; the page's controls and dialogs stay over it. -->

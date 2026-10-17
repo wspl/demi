@@ -62,6 +62,11 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   select: [id: string]
+  /**
+   * What the filter field holds, as it changes: a menu whose rows are its
+   * slot's, which another source finds, as a search over conversations does.
+   */
+  query: [text: string]
 }>()
 
 defineSlots<{
@@ -79,6 +84,7 @@ const nested = inject(menuSubmenuKey, null) !== null
 const submenuKeys = inject(menuSubmenuKeysKey, null)
 
 const filterQuery = ref(props.initialQuery ?? '')
+watch(filterQuery, (text) => emit('query', text))
 const focusedIndex = ref(-1)
 const inputRef = ref<HTMLInputElement>()
 const panelRef = ref<HTMLElement>()

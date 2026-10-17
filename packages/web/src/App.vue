@@ -12,6 +12,8 @@ import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
+import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
+import SelectionToolbar from '@demicodes/web-ui/ui/SelectionToolbar.vue'
 import { APP_BAR_PX, CONNECTION_BANNER_PX } from '@demicodes/web-ui/ui/app-bar'
 import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
 import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
@@ -23,6 +25,7 @@ import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
 import PasskeyOffer from '@demicodes/web-ui/auth/PasskeyOffer.vue'
 import SearchDialog from '@demicodes/web-ui/search/SearchDialog.vue'
 import type { SearchRow } from '@demicodes/web-ui/search/search'
+import { provideSendTargets } from '@demicodes/web-ui/agent/send-to-conversation'
 import { searchConversations } from './api/search'
 import { useDevicePairing } from '@demicodes/web-ui/devices/pairing'
 import SettingsDialog from './settings/SettingsDialog.vue'
@@ -116,12 +119,11 @@ const searchOpen = ref(false)
 const handoffOpen = ref(false)
 const sessions = useSessions()
 const handoffHost = computed(() => sessions.handoffHost(() => pageRoute.value.fullPath))
-/** What the search window lists before the user types: the conversations most recently active. */
-const recentConversations = computed<SearchRow[]>(() =>
+/** The conversations the backend has, the most recently active first. */
+const activeConversations = computed<SearchRow[]>(() =>
   conversations.items
     .filter((conversation) => conversation.persistence === 'synced')
     .toSorted((a, b) => b.updatedAt.localeCompare(a.updatedAt))
-    .slice(0, RECENT_CONVERSATIONS)
     .map((conversation) => ({
       conversationId: conversation.id,
       title: conversation.title,
@@ -131,6 +133,29 @@ const recentConversations = computed<SearchRow[]>(() =>
       match: null,
     })),
 )
+/** What the search window lists before the user types: the conversations most recently active. */
+const recentConversations = computed(() => activeConversations.value.slice(0, RECENT_CONVERSATIONS))
+// Send to Conversation: the search window's sources, and the words go to the end of the chosen draft.
+provideSendTargets({
+  recent: () => activeConversations.value,
+  search: searchConversations,
+  describe: (id) => {
+    const row = sidebarConversations.value.find((conversation) => conversation.id === id)
+    if (!row)
+      return null
+    return { status: row, project: resources.projects.find((project) => project.id === row.projectId)?.name ?? null }
+  },
+  shown: () => product.activeConversationId,
+  send: (to, words) => {
+    const shown = conversations.items.find((item) => item.id === product.activeConversationId)
+    const id = to ?? create(shown?.projectId ?? null)
+    if (to !== null)
+      open(to)
+    const target = conversations.items.find((item) => item.id === id)
+    if (target)
+      conversations.appendToDraft(target, words)
+  },
+})
 function openSearchResult(row: SearchRow): void {
   searchOpen.value = false
   openFound(row.conversationId, row.match?.blockId ?? null)
@@ -377,6 +402,10 @@ useAppShortcuts(
   <div v-else class="h-full">
     <RouterView />
   </div>
+  <!-- The page's one context menu, which the root handler opens for whatever declares one. -->
+  <ContextMenu />
+  <!-- The text selection's toolbar, by a selection in a message. -->
+  <SelectionToolbar />
   <ToastHost :below="APP_BAR_PX + (session.signedIn && product.connection ? CONNECTION_BANNER_PX : 0)" />
   <UpdateFailedScreen v-if="updateFailed" @reload="reloadPage" />
   <MediaViewer :viewer="mediaViewer" />

@@ -38,5 +38,13 @@
   },
   "rowSpinner": {
     "working": "処理中"
+  },
+  "contextMenu": {
+    "open": "開く",
+    "openLink": "リンクを開く",
+    "copyLink": "リンクをコピー",
+    "copyImage": "画像をコピー",
+    "saveImage": "画像を保存",
+    "copyCode": "コードをコピー"
   }
 }

@@ -442,6 +442,7 @@ happened to use, and the SDK's entry exports them by these groups:
 | --- | --- |
 | Settings | `SettingsPage`, `SettingsGroup`, `SettingsRow` |
 | Controls | `Button`, `IconButton`, `Switch`, `TextInput`, `Dropdown`, `Menu`, `MenuItem`, `MenuGroup`, `MenuDivider`, `Popover`, `Tooltip`, `Dialog`, `Fold`, `FoldChevron`, `ExternalLink` |
+| Context menus | `vContextMenu`, which declares an element's entries for the page's context menu ([Context menus](../product/web-application.md#context-menus)); a view that handles its own pointer, such as a remote page, stops the event itself |
 | Progress | `IndeterminateSpinner`, `ProgressLine` |
 | Status | `RegionStatus`, what a region shows in place of content it cannot show (the gallery's Errors page) |
 | Layout | `ScrollArea` |

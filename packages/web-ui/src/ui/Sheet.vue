@@ -11,6 +11,8 @@ import { dragCloses, dragVelocity } from './drag-close'
 import { focusByPage } from './focus-by-page'
 import { inSheetKey } from './sheet-context'
 import { stackAbove } from '../overlay/stacking'
+// A context menu opened in the sheet reads its layer from its element and stands on it (`context-menu.ts`).
+import { overlayLayerAttributes } from './context-menu'
 
 /**
  * A bottom sheet, as a phone's own apps open a menu or a short choice: it
@@ -59,6 +61,8 @@ function close(): void {
 
 useBackClose(() => props.open, close)
 
+/** The sheet's layer in the store, when it stands in one. */
+let layerId: string | null = null
 if (props.overlayStore) {
   const store = props.overlayStore
   // The sheet takes Back itself, store or not.
@@ -66,6 +70,7 @@ if (props.overlayStore) {
   // A menu or dropdown inside the sheet is a layer on it: Escape closes it first, and the sheet stays.
   provide(overlayFamilyKey, createOverlayFamily())
   provide(overlayOwnerKey, id)
+  layerId = id
   useEscapeClose(() => props.open && store.isTop(id), close)
 }
 
@@ -226,6 +231,7 @@ const panelStyle = computed(() => ({
         role="dialog"
         aria-modal="true"
         :aria-label="label"
+        v-bind="layerId ? overlayLayerAttributes(layerId, z()) : {}"
         tabindex="-1"
         class="sheet fixed inset-x-0 bottom-0 flex flex-col rounded-t-2xl bg-surface-dialog text-fg shadow-2xl outline-none"
         :class="{ 'sheet-dragging': holding }"

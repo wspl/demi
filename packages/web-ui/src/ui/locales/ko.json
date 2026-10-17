@@ -38,5 +38,13 @@
   },
   "rowSpinner": {
     "working": "작업 중"
+  },
+  "contextMenu": {
+    "open": "열기",
+    "openLink": "링크 열기",
+    "copyLink": "링크 복사",
+    "copyImage": "이미지 복사",
+    "saveImage": "이미지 저장",
+    "copyCode": "코드 복사"
   }
 }

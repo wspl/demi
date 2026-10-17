@@ -58,7 +58,6 @@ const iconOnly = computed(() => iconsOnPhone && !props.isActive)
 
 const emit = defineEmits<{
   select: []
-  contextmenu: [event: MouseEvent]
   close: []
 }>()
 
@@ -75,25 +74,6 @@ function onAuxclick(event: MouseEvent): void {
   }
 }
 
-/**
- * The Menu key or Shift+F10 asks for the tab's menu as a right-click does,
- * through the same event, placed at the tab's lower left; a browser that
- * sends its own for the key finds it already handled.
- */
-function onMenuKey(event: KeyboardEvent): void {
-  if (event.key !== 'ContextMenu' && !(event.key === 'F10' && event.shiftKey)) {
-    return
-  }
-  event.preventDefault()
-  const tab = event.currentTarget as HTMLElement
-  const rect = tab.getBoundingClientRect()
-  tab.dispatchEvent(new MouseEvent('contextmenu', {
-    bubbles: true,
-    cancelable: true,
-    clientX: rect.left,
-    clientY: rect.bottom,
-  }))
-}
 </script>
 
 <template>
@@ -110,8 +90,6 @@ function onMenuKey(event: KeyboardEvent): void {
     @auxclick="onAuxclick"
     @keydown.enter.self="emit('select')"
     @keydown.space.self.prevent="emit('select')"
-    @keydown.self="onMenuKey"
-    @contextmenu.prevent="emit('contextmenu', $event)"
   >
     <!-- The tooltip covers the whole tab; the tab itself stays a plain element so the strip can transition it. -->
     <Tooltip

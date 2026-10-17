@@ -60,6 +60,7 @@ const classes = computed(() => [
   <span
     class="shrink-0 rounded-full transition-[background-color,opacity] duration-300"
     :class="classes"
+    :data-tone="tone ?? undefined"
     :role="label ? 'img' : undefined"
     :aria-label="label"
     :aria-hidden="label ? undefined : 'true'"

@@ -4,6 +4,8 @@ import { useSavedScroll } from '@demicodes/web-ui/composables/useSavedScroll'
 import ScrollArea from '@demicodes/web-ui/ui/ScrollArea.vue'
 import Segmented from '@demicodes/web-ui/ui/Segmented.vue'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
+import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
+import SelectionToolbar from '@demicodes/web-ui/ui/SelectionToolbar.vue'
 import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
@@ -18,6 +20,9 @@ import { galleryBlobUrl } from './fixtures/blobs'
 import { galleryConversationFiles } from './fixtures/message-files'
 import { createGalleryWorkspace } from './fixtures/workspace'
 import { productWould } from './product-would'
+import { provideSendTargets, type SendTargetLook } from '@demicodes/web-ui/agent/send-to-conversation'
+import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
+import { fixtureSearch, searchConversations } from './fixtures/search'
 import { galleryNav } from './router'
 
 provideBlobUrl(galleryBlobUrl)
@@ -33,6 +38,25 @@ const messageFiles = galleryConversationFiles(workspace.source, ({ path, line, r
 }, ({ commit }) => productWould(`Show Commit ${commit} in Change`))
 provideMessageFiles(() => ({ ...messageFiles, cwd: workspace.root }))
 const mediaViewer = provideMediaViewer()
+// Send to Conversation lists the search window's conversations; a pick says what the product would do.
+const sendable = searchConversations()
+const sendLooks: Record<string, SendTargetLook> = {
+  'search-ts2307': { status: { status: 'active', unread: false }, project: 'demi' },
+  'search-login': { status: { status: 'done', unread: true }, project: 'demi' },
+  'search-wording': { status: { status: 'idle', unread: false }, project: null },
+}
+provideSendTargets({
+  recent: () => sendable.toSorted((a, b) => b.lastActiveAt.localeCompare(a.lastActiveAt)).map(({ messages: _, ...row }) => ({ ...row, titleRanges: [], match: null })),
+  search: fixtureSearch(() => sendable),
+  // Each listed conversation as its sidebar row: a state for its dot, and a project for some.
+  describe: (id) => sendLooks[id] ?? null,
+  shown: () => null,
+  send: (to, words) => {
+    const title = to === null ? 'a New Conversation' : `“${conversationTitle(sendable.find((row) => row.conversationId === to)?.title ?? null)}”`
+    const files = words.files.length > 0 ? ` with ${words.files.length === 1 ? 'Its File' : `Its ${words.files.length} Files`}` : ''
+    productWould(`Open ${title} with the Words at the End of Its Draft${files}`)
+  },
+})
 const route = useRoute()
 const main = ref<InstanceType<typeof ScrollArea>>()
 const viewport = computed(() => main.value?.el)
@@ -110,6 +134,10 @@ const mainClass = computed(() => {
       <RouterView />
     </ScrollArea>
   </SidebarLayout>
+  <!-- The page's one context menu, which the root handler opens for whatever declares one. -->
+  <ContextMenu />
+  <!-- The text selection's toolbar, by a selection in a message. -->
+  <SelectionToolbar />
   <ToastHost />
   <MediaViewer :viewer="mediaViewer" />
 </template>
