@@ -2,8 +2,10 @@
 //! crates): an `openai` entry, which sends its API key when it has one,
 //! speaking the Responses API or, for OpenAI-compatible endpoints, Chat
 //! Completions, with the typed vendor policy its entry names and the
-//! standard reading of its failure records.
+//! standard reading of its failure records; an OpenAI or xAI vendor
+//! entry's key also makes images.
 
+mod images;
 mod request;
 mod run;
 
@@ -12,6 +14,7 @@ use std::sync::Arc;
 use demi_provider_common::{
     Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
+    images::{ImageMaker, ImageVendor},
 };
 use demi_shared_types::{
     AuthState, Clock, Model, ProviderErrorDiagnostics, ProviderFailureFacts,
@@ -23,9 +26,9 @@ use futures_util::{
 };
 use reqwest::{Url, header::HeaderValue};
 
-/// The prefix this provider puts on the reasoning items it receives, so that
-/// on replay it sends back only its vendor's.
-const SIGNATURE_TAG: &str = "openai:";
+/// The vendor of an entry that names none, a compatible API, as the
+/// prefix of its reasoning items names it.
+const COMPATIBLE: &str = "compatible";
 
 /// The configuration of an `openai` entry, as the backend decoded it.
 #[derive(Debug, Clone)]
@@ -38,6 +41,11 @@ pub struct OpenAiConfig {
     pub base_url: Option<Url>,
     pub wire: WireApi,
     pub policy: VendorPolicy,
+    /// The models.dev vendor the entry was added from, such as `openai` or
+    /// `xai`; none for a compatible API. It prefixes the reasoning items
+    /// the provider receives, so that each vendor replays only its own
+    /// ciphertext, and an OpenAI or xAI entry's key makes its images.
+    pub vendor_id: Option<String>,
 }
 
 impl OpenAiConfig {
@@ -48,11 +56,15 @@ impl OpenAiConfig {
 /// An `openai` entry, shared by every user and request of the entry.
 pub struct OpenAiProvider {
     shared: Arc<Shared>,
+    /// The key's image role, for an OpenAI or xAI entry with its key.
+    images: Option<images::KeyImages>,
 }
 
 /// What the provider and all its runtimes share.
 struct Shared {
     authorization: Option<HeaderValue>,
+    /// `<vendor>:`, the prefix of the reasoning items it receives.
+    signature_tag: Arc<str>,
     url: Url,
     wire: WireApi,
     policy: VendorPolicy,
@@ -68,14 +80,23 @@ impl OpenAiProvider {
             WireApi::Responses => "/responses",
             WireApi::ChatCompletions => "/chat/completions",
         };
+        let vendor = config.vendor_id.as_deref();
+        let images = vendor
+            .and_then(ImageVendor::from_id)
+            .filter(|vendor| matches!(vendor, ImageVendor::OpenAi | ImageVendor::Xai))
+            .zip(config.api_key.clone())
+            .map(|(vendor, key)| images::KeyImages::new(vendor, key, &base, clock.clone()));
+        let signature_tag = Arc::from(format!("{}:", vendor.unwrap_or(COMPATIBLE)));
         Self {
             shared: Arc::new(Shared {
                 authorization: config.api_key.as_ref().map(Secret::bearer),
+                signature_tag,
                 url: endpoint_url(&base, path),
                 wire: config.wire,
                 policy: config.policy,
                 clock,
             }),
+            images,
         }
     }
 }
@@ -105,6 +126,10 @@ impl Provider for OpenAiProvider {
         }
     }
 
+
+    fn images(&self) -> Option<&dyn ImageMaker> {
+        self.images.as_ref().map(|images| images as &dyn ImageMaker)
+    }
 
     fn read_failure(
         &self,
@@ -162,9 +187,10 @@ impl ProviderRuntime for OpenAiRuntime {
 pub mod testing {
     use demi_provider_common::{InferenceRequest, VendorPolicy};
 
-    /// The Responses API body of `request` for a vendor of `policy`.
+    /// The Responses API body of `request` for OpenAI's own entry, of
+    /// `policy`.
     pub fn responses_body(request: &InferenceRequest, policy: VendorPolicy) -> Vec<u8> {
-        crate::request::responses(request, policy)
+        crate::request::responses(request, policy, "openai:")
     }
 
     /// The Chat Completions body of `request` for a vendor of `policy`.

@@ -22,6 +22,12 @@ import type { VerificationHost } from '../auth/verification'
  */
 export type SmallModelChoice = Pick<ModelSettings, 'providerId' | 'modelId' | 'thinkingEffort'>
 
+/** A vendor whose images an entry makes, by its models.dev id (`images.md` § Which entry makes an image). */
+export type ImageVendorId = 'openai' | 'google' | 'xai'
+
+/** The entry the user chose for each vendor's images; a vendor absent is Automatic. */
+export type ImageEntryChoices = Partial<Record<ImageVendorId, string>>
+
 /** A section id. Hosts choose their own set; the built-in four cover the product today. */
 export type SettingsTab = string
 
@@ -330,6 +336,8 @@ export interface SettingsProviderEntry {
    * this provider; absent for one whose provider makes no images.
    */
   imageGeneration?: boolean
+  /** The vendor whose images it makes, present with `imageGeneration`. */
+  imageVendor?: ImageVendorId
   /** The vendor supports a free quota request when an account becomes visible. */
   autoRefreshUsage?: boolean
   /** The vendor mark (`providerLogo`); null falls back to an initial. */

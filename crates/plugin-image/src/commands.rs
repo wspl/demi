@@ -6,28 +6,28 @@ use demi_plugin_interface::{CommandPlugin, Placement, PortHandled};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-const SUMMARY: &str = "Make and edit images through the user's ChatGPT or Grok subscription, one image per call, written to stdout.";
+const SUMMARY: &str = "Make and edit images through the user's ChatGPT or Grok subscription or OpenAI, xAI or Google API key, one image per call, written to stdout.";
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Makes and edits images through the user's ChatGPT or Grok subscription: `generate` makes one from a prompt, `edit` from a prompt and images of the Host. The image's bytes go to stdout: `> icon.png` saves it, `| demi file view` shows it to you; stderr says what came back. Several images are several calls. Use it when the user asks for an image, an icon or an illustration, or to change one.";
+const ENTRY: &str = "Makes and edits images through the user's ChatGPT or Grok subscription or OpenAI, xAI or Google API key: `generate` makes one from a prompt with the model `--model` names, `edit` from a prompt and images of the Host. The image's bytes go to stdout: `> icon.png` saves it, `| demi file view` shows it to you; stderr says what came back. Several images are several calls. Use it when the user asks for an image, an icon or an illustration, or to change one.";
 
 const GENERATE_SUMMARY: &str = "Make one image from the prompt and write its bytes to stdout; stderr says its size, format, model and account. An option the result does not honour adds a warning and still succeeds.";
 
 const EDIT_SUMMARY: &str = "Make one image from the prompt and the images given, each changed, combined or used as a reference as the prompt says, and write its bytes to stdout. Each image is a PNG, JPEG or WebP file of this Host of at most 16 MiB.";
 
-const MODELS_SUMMARY: &str = "List the image models of the user's provider entries, one per line: its entry's name, its release date, newest first, the default marked, what its vendor says it is for and the sizes or shapes it takes; a provider that cannot confirm which model answered says so under its models. A read.";
+const MODELS_SUMMARY: &str = "List the image models of the user's provider entries by vendor, each vendor headed by the entry its models go through, one model per line: its release date when known, newest first, what its vendor says it is for, the sizes or shapes it takes, and the entry it goes through when another; a provider that cannot confirm which model answered says so under its vendor. A read.";
 
 const PROMPT: &str = "What to make, or how to change the images; - reads it from stdin.";
 const IMAGE: &str = "The images to edit, relative to the current directory or absolute.";
-const MODEL: &str = "An image model `demi image models` lists, which picks its entry; the first entry's default model without it.";
+const MODEL: &str = "The image model, required: one `demi image models` lists, which names its vendor; the user's settings pick the entry.";
 const ASPECT: &str = "The shape to ask for, as W:H, such as 16:9.";
 const TRANSPARENT: &str = "Ask for a transparent background, which needs PNG or WebP.";
 const FORMAT: &str = "The format of the bytes written, whatever the vendor sent; PNG without it.";
 
 const SUCCESS: &str = "the image's bytes on stdout; on stderr a line such as `864×1152 PNG from grok-imagine-image (Grok, alex@example.com)`, or `1254×1254 PNG, asked of gpt-image-2 (ChatGPT, alex@example.com)` from a vendor that does not confirm the model, and a warning for each option the result does not honour";
 
-const FAILURE: &str = "no provider that makes images, a model none makes, every account used up, a refusal, a shape the vendor does not take (with the shapes it takes), an expired sign-in or a vendor that did not answer in 120 s, each named on stderr with exit status 1";
+const FAILURE: &str = "no --model, no provider that makes images, a model none makes, every entry that could used up, a refused API key, a refusal, a shape the vendor does not take (with the shapes it takes), an expired sign-in or a vendor that did not answer in 120 s, each named on stderr with exit status 1";
 
 /// The format of the bytes `generate` and `edit` write.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
@@ -71,28 +71,58 @@ pub(crate) struct ModelsArgs {}
 /// `models --json`.
 #[derive(Serialize, JsonSchema)]
 pub(crate) struct Listing {
+    pub(crate) vendors: Vec<ListedVendor>,
+}
+
+/// One vendor's image models.
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ListedVendor {
+    /// How the user knows the vendor, such as `OpenAI`.
+    pub(crate) vendor: String,
+    /// Its models.dev id, such as `openai`.
+    pub(crate) vendor_id: String,
+    /// The entry its models go through now.
+    pub(crate) through: ListedEntry,
+    /// Newest first by release date.
     pub(crate) models: Vec<ListedModel>,
+    /// The entries whose models could not be listed.
+    pub(crate) unlisted: Vec<ListedUnlisted>,
+}
+
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ListedEntry {
+    /// The entry's name as Settings shows it.
+    pub(crate) provider: String,
+    pub(crate) provider_id: String,
+    /// The account's label, for a user who manages the entry.
+    pub(crate) account: Option<String>,
+    /// Whether the vendor confirms the model that answered; a call to one
+    /// that does not says `asked of` the model.
+    pub(crate) confirmed: bool,
 }
 
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ListedModel {
     pub(crate) id: String,
-    /// The entry's name as Settings shows it.
-    pub(crate) provider: String,
-    pub(crate) provider_id: String,
-    /// The vendor's release date, `YYYY-MM-DD`.
-    pub(crate) released: String,
-    /// What the vendor publishes the model is for.
+    /// The vendor's release date, `YYYY-MM-DD`, when known.
+    pub(crate) released: Option<String>,
+    /// What the vendor says the model is for.
     pub(crate) description: String,
-    /// The sizes or shapes it takes, and what the vendor says of its
-    /// formats.
-    pub(crate) takes: String,
-    /// Whether the vendor confirms the model that answered; a call to one
-    /// that does not says `asked of` the model.
-    pub(crate) confirmed: bool,
-    /// Whether a call without --model takes it.
-    pub(crate) default: bool,
+    /// The sizes or shapes it takes, when known.
+    pub(crate) takes: Option<String>,
+    /// The entry it goes through when that is not its vendor's.
+    pub(crate) through: Option<ListedEntry>,
+}
+
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct ListedUnlisted {
+    pub(crate) provider: String,
+    /// Why, as a call's failure says it.
+    pub(crate) message: String,
 }
 
 /// The plugin's commands: the `demi image` group.

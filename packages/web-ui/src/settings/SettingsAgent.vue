@@ -8,6 +8,9 @@ import ModelMenu from '../agent/ModelMenu.vue'
 import { applyModelChange, initialModelSettings, type ModelSettings, type ModelSettingsChange } from '../agent/model-selection'
 import { otherWayKeys, sendWayLabel, type SendWhileRunning } from '../agent/send-way'
 import Dropdown from '../ui/Dropdown.vue'
+import Menu from '../ui/Menu.vue'
+import MenuDivider from '../ui/MenuDivider.vue'
+import MenuItem from '../ui/MenuItem.vue'
 import Segmented, { type SegmentedOption } from '../ui/Segmented.vue'
 import Switch from '../ui/Switch.vue'
 import ModelChoiceTrigger from './ModelChoiceTrigger.vue'
@@ -16,15 +19,17 @@ import { profileMissing } from './subagent-profiles'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
-import type { SmallModelChoice } from './types'
+import type { ImageEntryChoices, SmallModelChoice } from './types'
+import type { ImageEntryOption, ImageVendorRow } from './image-entries'
 
 /**
  * How the agent works for the user (`models.md` § Small model,
  * `turns.md`): the small model that writes conversation titles, Automatic
  * or one the user picks with the composer's model menu, and whether small
- * requests stay on the conversation's provider; then what Enter does with a
- * message while the agent works, and whether a stopped turn goes on by
- * itself. Every row is a model.
+ * requests stay on the conversation's provider; the entry that makes each
+ * vendor's images (`images.md` § Which entry makes an image), Automatic or
+ * one the user picks; then what Enter does with a message while the agent
+ * works, and whether a stopped turn goes on by itself. Every row is a model.
  */
 const props = defineProps<{
   overlayStore: OverlayStore
@@ -38,6 +43,8 @@ const props = defineProps<{
    * null when it resolves none for the page, so Automatic shows alone.
    */
   automaticModel: string | null
+  /** A row for each vendor an entry of the user makes images for; none hides the group. */
+  imageVendors: ImageVendorRow[]
 }>()
 
 const smallModel = defineModel<SmallModelChoice | null>('smallModel', { required: true })
@@ -45,6 +52,7 @@ const sameProvider = defineModel<boolean>('sameProvider', { required: true })
 const sendWhileRunning = defineModel<SendWhileRunning>('sendWhileRunning', { required: true })
 const resumeAfterRestart = defineModel<boolean>('resumeAfterRestart', { required: true })
 const resumeAtRetry = defineModel<boolean>('resumeAtRetry', { required: true })
+const imageEntries = defineModel<ImageEntryChoices>('imageEntries', { required: true })
 
 /** The small model as the menu holds model settings: always the default tier. */
 const settings = computed<ModelSettings | null>(() =>
@@ -81,6 +89,29 @@ function chooseAutomatic(): void {
 function change(next: ModelSettingsChange): void {
   const { providerId, modelId, thinkingEffort } = applyModelChange(settings.value ?? initialModelSettings(), next)
   smallModel.value = { providerId, modelId, thinkingEffort }
+}
+
+/** The entry chosen for `row`'s vendor while it can be chosen; otherwise the backend resolves Automatic. */
+function chosenEntry(row: ImageVendorRow): ImageEntryOption | undefined {
+  return row.entries.find((entry) => entry.id === imageEntries.value[row.vendor])
+}
+
+/** Automatic's name, with the entry it takes now beside it when one can. */
+function automaticEntry(row: ImageVendorRow): string {
+  return row.automatic
+    ? t('settings.agent.automaticResolved', { model: row.automatic.label })
+    : t('settings.agent.automatic')
+}
+
+/** Chooses `entry` for `row`'s vendor, or Automatic for null. */
+function chooseEntry(row: ImageVendorRow, entry: string | null): void {
+  const next = { ...imageEntries.value }
+  if (entry === null) {
+    delete next[row.vendor]
+  } else {
+    next[row.vendor] = entry
+  }
+  imageEntries.value = next
 }
 
 const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() => [
@@ -122,6 +153,42 @@ const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() =>
         :description="t('settings.agent.sameProviderDescription')"
       >
         <Switch v-model="sameProvider" size="sm" :aria-label="t('settings.agent.sameProvider')" />
+      </SettingsRow>
+    </SettingsGroup>
+    <SettingsGroup
+      v-if="imageVendors.length"
+      :title="t('settings.agent.imageGeneration')"
+      :description="t('settings.agent.imageGenerationDescription')"
+    >
+      <SettingsRow v-for="row in imageVendors" :key="row.vendor" :label="row.name">
+        <Dropdown
+          :overlay-store="overlayStore"
+          variant="field"
+          size="sm"
+          width="shrink"
+          :trigger-label="row.name"
+        >
+          <template #trigger>{{ chosenEntry(row)?.label ?? automaticEntry(row) }}</template>
+          <template #content="{ close }">
+            <Menu>
+              <MenuItem
+                :label="automaticEntry(row)"
+                choice
+                :is-selected="!chosenEntry(row)"
+                @select="chooseEntry(row, null); close()"
+              />
+              <MenuDivider v-if="row.entries.length" />
+              <MenuItem
+                v-for="entry in row.entries"
+                :key="entry.id"
+                :label="entry.label"
+                choice
+                :is-selected="chosenEntry(row)?.id === entry.id"
+                @select="chooseEntry(row, entry.id); close()"
+              />
+            </Menu>
+          </template>
+        </Dropdown>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup :title="t('settings.agent.messages')">

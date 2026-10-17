@@ -1,35 +1,74 @@
 //! The port's Providers service (`plugins.md` § The contract, `images.md`):
-//! the image models of the user's provider entries, and one image made
-//! through an entry's account. The backend chooses the entry and the
-//! account, rotates them, renews their sign-in and records the call in the
-//! usage ledger; no token reaches the plugin.
+//! the image models of the user's provider entries, by vendor, and one
+//! image made through an entry's account or key. The backend chooses the
+//! entry and the account, rotates them, renews their sign-in and records
+//! the call in the usage ledger; no token or key reaches the plugin.
 
 use demi_shared_types::{B64Bytes, Timestamp};
 use serde::{Deserialize, Serialize};
 
-/// An image model of one of the user's entries; the list is the entries in
-/// the order of Settings › Providers, each entry's models newest first.
+/// The image models of one vendor's entries (`images.md` § Commands): the
+/// groups of `demi image models`, OpenAI's, Google's and xAI's in that
+/// order.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageVendorModels {
+    /// How the user knows the vendor, such as `OpenAI`.
+    pub vendor: String,
+    /// Its models.dev id, such as `openai`.
+    pub vendor_id: String,
+    /// The entry its models go through now: the one the user chose, or the
+    /// one Automatic takes (`images.md` § Which entry makes an image).
+    pub through: ImageEntry,
+    /// Newest first by release date, those without one last.
+    pub models: Vec<ImageModel>,
+    /// The entries whose models could not be listed, each with why.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unlisted: Vec<ImageUnlisted>,
+}
+
+/// An entry an image is made through.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageEntry {
+    /// The entry's name, as Settings › Providers shows it.
+    pub provider: String,
+    pub provider_id: String,
+    /// The account's label for a user who manages the entry, as
+    /// [`MadeImage`] names it; none for a key or a shared instance's user.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
+    /// Whether the entry's vendor confirms the model that answered; one
+    /// that does not, ChatGPT, is shown as asked (`images.md` § Commands).
+    pub confirmed: bool,
+}
+
+/// An image model of a vendor's entries.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageModel {
     pub id: String,
-    /// The entry's name, as Settings › Providers shows it.
-    pub provider: String,
-    pub provider_id: String,
-    /// How the user knows the vendor, such as `ChatGPT`.
-    pub vendor: String,
-    /// The vendor's release date, `YYYY-MM-DD`.
-    pub released: String,
-    /// What the vendor publishes the model is for, in one line.
+    /// The vendor's release date, `YYYY-MM-DD`, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub released: Option<String>,
+    /// What the vendor says the model is for; empty when it says nothing.
     pub description: String,
-    /// The sizes or shapes it takes, and what the vendor says of its
-    /// formats.
-    pub takes: String,
-    /// Whether a call that names no model takes it.
-    pub default: bool,
-    /// Whether the entry's vendor confirms the model that answered; one
-    /// that does not, ChatGPT, is shown as asked (`images.md` § Commands).
-    pub confirmed: bool,
+    /// The sizes or shapes it takes, when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub takes: Option<String>,
+    /// The entry it goes through when that is not the group's: a model
+    /// only another entry of the vendor offers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub through: Option<ImageEntry>,
+}
+
+/// An entry whose models could not be listed, and why, as a call's
+/// refusal says it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ImageUnlisted {
+    pub provider: String,
+    pub refusal: ImageRefusal,
 }
 
 /// One image to make: from the prompt alone, or from the prompt and the
@@ -44,10 +83,9 @@ pub struct ImageAsk {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub aspect: Option<ImageAspect>,
     pub transparent: bool,
-    /// An image model of [`ImageModel`]'s list, which picks its entry; the
-    /// first entry's first model without it.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub model: Option<String>,
+    /// An image model `demi image models` lists, which names its vendor;
+    /// the user's setting picks the entry.
+    pub model: String,
 }
 
 /// A shape, such as 16:9: two positive whole numbers.
@@ -129,14 +167,18 @@ pub enum ImageRefusal {
     /// off, which it names.
     #[error("\"{model}\" is {provider}'s, whose image generation is off")]
     Off { model: String, provider: String },
-    /// Every account the call could take is used up, until the moment
-    /// named, when known.
+    /// Every entry that could make the model is used up, the first named
+    /// with the moment it can be used again, when known.
     #[error("{vendor}'s usage limit is reached")]
     UsedUp {
         vendor: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resets_at: Option<Timestamp>,
     },
+    /// The vendor refused the entry's API key; `manages` says whether the
+    /// user manages the entry, and so can check it.
+    #[error("{vendor} refused the API key")]
+    KeyRefused { vendor: String, manages: bool },
     /// The vendor refused the prompt or an image, in its own words.
     #[error("{vendor} refused the request: {message}")]
     Refused { vendor: String, message: String },

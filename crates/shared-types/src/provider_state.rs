@@ -26,6 +26,47 @@ pub enum WireApi {
 
 serde_plain::derive_display_from_serialize!(WireApi);
 
+/// A vendor whose image models an entry makes, by its models.dev id: a
+/// subscription's (ChatGPT's are OpenAI's, Grok's xAI's) or a key's. Each
+/// is a row of Settings › Agent › Image Generation, in this order
+/// (`images.md` § Which entry makes an image).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+pub enum ImageVendor {
+    #[serde(rename = "openai")]
+    OpenAi,
+    #[serde(rename = "google")]
+    Google,
+    #[serde(rename = "xai")]
+    Xai,
+}
+
+impl ImageVendor {
+    pub const ALL: [Self; 3] = [Self::OpenAi, Self::Google, Self::Xai];
+
+    /// Its models.dev id.
+    pub fn id(self) -> &'static str {
+        match self {
+            Self::OpenAi => "openai",
+            Self::Google => "google",
+            Self::Xai => "xai",
+        }
+    }
+
+    /// The vendor of models.dev id `id`, when it makes images.
+    pub fn from_id(id: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|vendor| vendor.id() == id)
+    }
+
+    /// How the user knows it.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::OpenAi => "OpenAI",
+            Self::Google => "Google",
+            Self::Xai => "xAI",
+        }
+    }
+}
+
 /// Whether a provider's credential is present and usable. Reading it never
 /// makes an inference request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

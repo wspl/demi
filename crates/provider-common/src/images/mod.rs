@@ -1,9 +1,15 @@
 //! The image role of a provider (`images.md` § Vendors): a provider that
-//! makes images states its image models and makes one image for its
-//! account; the backend chooses the entry and the account. The request a
-//! vendor takes is the provider's own, and what every vendor's answer has
-//! in common is read here: one image as `data[0].b64_json`, the counts it
-//! reported, and how a refusal reads.
+//! makes images names its vendor, lists its image models and makes one
+//! image for its account or key; the backend chooses the entry and the
+//! account. The request a vendor takes is the provider's own; what every
+//! vendor's call has in common is here: the sending within the deadline,
+//! how a refusal reads, the answer of the OpenAI-shaped image APIs, and
+//! what each vendor publishes of its models, one table per vendor that a
+//! subscription and a key of it both read.
+
+mod google;
+pub mod openai;
+pub mod xai;
 
 use std::{fmt, time::Duration};
 
@@ -23,51 +29,119 @@ use crate::{
 };
 
 /// How long one image call may take: the token's refresh, the request and
-/// the reading of the answer or the refusal.
+/// the reading of the answer or the refusal. A listing of a key's models
+/// takes as long at most.
 pub const IMAGE_TIMEOUT: Duration = Duration::from_secs(120);
+
+pub use demi_shared_types::ImageVendor;
+
+/// What `vendor` publishes of its image models, newest first.
+pub fn facts(vendor: ImageVendor) -> &'static [ImageFacts] {
+    match vendor {
+        ImageVendor::OpenAi => openai::MODELS,
+        ImageVendor::Google => google::MODELS,
+        ImageVendor::Xai => xai::MODELS,
+    }
+}
+
+/// Every model of `vendor`'s table, as a provider whose vendor lists none
+/// to it, a subscription's, offers them.
+pub fn table(vendor: ImageVendor) -> Vec<ImageModelInfo> {
+    facts(vendor).iter().map(ImageModelInfo::from).collect()
+}
+
+/// `vendor`'s model `id` as a listing named it: what the table knows of
+/// it, else what the listing says, its date and its description.
+pub fn listed(vendor: ImageVendor, id: &str, released: Option<String>, description: Option<String>) -> ImageModelInfo {
+    match facts(vendor).iter().find(|facts| facts.id == id) {
+        Some(facts) => ImageModelInfo::from(facts),
+        None => ImageModelInfo {
+            id: id.to_owned(),
+            released,
+            description: description.unwrap_or_default(),
+            takes: None,
+        },
+    }
+}
 
 /// A provider's image role.
 pub trait ImageMaker: Send + Sync {
-    /// How the user knows the vendor, such as `ChatGPT`.
-    fn vendor(&self) -> &'static str;
+    /// How the user knows who answers, such as `ChatGPT` or `OpenAI`.
+    fn name(&self) -> &'static str;
 
-    /// The image models, each with what the vendor publishes of it.
-    /// Neither vendor lists them, so the list is the provider's own.
-    fn models(&self) -> &'static [ImageModelInfo];
+    /// Whose models it makes.
+    fn vendor(&self) -> ImageVendor;
 
-    /// The model a call that names none takes, one of [`Self::models`].
-    fn default_model(&self) -> &'static str;
+    /// The image models it offers: its vendor's table for a subscription,
+    /// whose vendor lists none to it, or what the vendor lists for a key,
+    /// read when asked, with the HTTP client of the shard that asks.
+    fn models<'a>(&'a self, http: &'a reqwest::Client) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>>;
 
     /// Whether the model that answered is known to be the one asked for.
     /// A vendor whose answer does not name it, the ChatGPT backend's, is
     /// shown as asked, not confirmed (`images.md` § Commands).
     fn confirms_model(&self) -> bool;
 
-    /// Makes one image for the provider's account, sending with `http`, the
-    /// client of the shard that asks.
+    /// Makes one image for the provider's account or key, sending with
+    /// `http`, the client of the shard that asks.
     fn make<'a>(&'a self, http: &'a reqwest::Client, request: ImageRequest) -> BoxFuture<'a, ImageAnswer>;
 }
 
-/// An image model a provider offers, with what its vendor publishes of
-/// it, so the agent picks a model and a shape from the list
-/// (`images.md` § Commands).
+/// What a vendor publishes of one of its image models: a row of its table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ImageModelInfo {
+pub struct ImageFacts {
     pub id: &'static str,
-    /// The vendor's release date, `YYYY-MM-DD`: a dated ID's is its
-    /// snapshot's, an alias's that of the model it named when the list was
-    /// made.
-    pub released: &'static str,
+    /// The vendor's release date, `YYYY-MM-DD`, when it publishes one: a
+    /// dated ID's is its snapshot's, an alias's that of the model it named
+    /// when the table was made.
+    pub released: Option<&'static str>,
     /// What the vendor says the model is for, in one line.
     pub description: &'static str,
     /// The sizes or shapes it takes, and what the vendor says of its
     /// formats.
     pub takes: &'static str,
+    /// The only sizes it takes, `(width, height)`, for a model that takes
+    /// no other; none for one that takes any size of a shape.
+    pub sizes: Option<&'static [(u32, u32)]>,
 }
 
-impl ImageModelInfo {
-    pub const fn new(id: &'static str, released: &'static str, description: &'static str, takes: &'static str) -> Self {
-        Self { id, released, description, takes }
+impl ImageFacts {
+    pub const fn new(
+        id: &'static str,
+        released: Option<&'static str>,
+        description: &'static str,
+        takes: &'static str,
+    ) -> Self {
+        Self { id, released, description, takes, sizes: None }
+    }
+
+    /// The model, which takes only `sizes`.
+    pub const fn only(self, sizes: &'static [(u32, u32)]) -> Self {
+        Self { sizes: Some(sizes), ..self }
+    }
+}
+
+/// An image model a provider offers, with what is known of it, so the
+/// agent picks a model and a shape from the list (`images.md` § Commands).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImageModelInfo {
+    pub id: String,
+    /// The release date, `YYYY-MM-DD`, when known.
+    pub released: Option<String>,
+    /// What the vendor says the model is for; empty when it says nothing.
+    pub description: String,
+    /// The sizes or shapes it takes, when known.
+    pub takes: Option<String>,
+}
+
+impl From<&ImageFacts> for ImageModelInfo {
+    fn from(facts: &ImageFacts) -> Self {
+        Self {
+            id: facts.id.to_owned(),
+            released: facts.released.map(str::to_owned),
+            description: facts.description.to_owned(),
+            takes: Some(facts.takes.to_owned()),
+        }
     }
 }
 
@@ -131,9 +205,15 @@ pub struct InputImage {
 }
 
 impl InputImage {
-    /// The image as a `data:` URL, as both vendors take an edit's images.
+    /// The image as a `data:` URL, as the OpenAI-shaped APIs take an
+    /// edit's images.
     pub fn data_url(&self) -> String {
-        format!("data:{};base64,{}", self.media_type, STANDARD.encode(&self.bytes))
+        format!("data:{};base64,{}", self.media_type, self.base64())
+    }
+
+    /// The image's bytes in base64, as Gemini's inline data takes them.
+    pub fn base64(&self) -> String {
+        STANDARD.encode(&self.bytes)
     }
 }
 
@@ -150,10 +230,13 @@ pub struct MadeImage {
 /// Why no image came back.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ImageFailure {
-    /// The account is used up, until the moment the vendor named, if any.
+    /// The account or key is used up, until the moment the vendor named,
+    /// if any.
     UsageLimit { retry_at: Option<Timestamp> },
     /// The account's sign-in could not be used or renewed.
     SignIn(AuthFailure),
+    /// The vendor refused the entry's API key, in its own words.
+    KeyRefused { message: String },
     /// The vendor refused the prompt or an image, in its own words.
     Refused { message: String, code: Option<ErrorCode> },
     /// The vendor refused the shape asked for, naming the shapes it takes,
@@ -169,33 +252,48 @@ impl ImageFailure {
         let code = match self {
             Self::UsageLimit { .. } => Some(ErrorCode::UsageLimit),
             Self::SignIn(failure) => failure.failure().code,
+            Self::KeyRefused { .. } => Some(ErrorCode::AuthExpired),
             Self::Refused { code, .. } | Self::Shape { code, .. } | Self::Unanswered { code, .. } => code.clone(),
         };
         code.map_or_else(|| "failed".to_owned(), |code| code.as_str().to_owned())
     }
 }
 
+/// What an image request is sent with.
+#[derive(Clone, Copy)]
+pub enum ImageCredential {
+    /// A subscription account's token: a request refused with HTTP 401 is
+    /// sent again once with the token renewed, and a second refusal is a
+    /// sign-in that cannot be used, named by the account's `family`.
+    Account { family: &'static str },
+    /// An API key, never renewed: a refusal `refused` reads as the key's,
+    /// from its status and body, fails as [`ImageFailure::KeyRefused`].
+    Key { refused: fn(StatusCode, &str) -> bool },
+}
+
 /// How a provider's image requests are sent and their failures read: the
 /// label its failure records carry, the reader that finds a moment in one,
-/// its reading of a used-up account, its clock, and the account's quota.
+/// its reading of a used-up account or key, its clock, the account's
+/// quota, what the request is sent with, and how its answer is read.
 pub struct ImageCall<'a> {
     pub label: &'static str,
-    /// How the account's sign-in failures name the family.
-    pub family: &'static str,
+    pub credential: ImageCredential,
     pub reader: FailureReader,
     pub used_up: fn(ProviderFailure) -> ProviderFailure,
     pub clock: &'a dyn Clock,
     /// The account's quota, which each response's windows update, as a
-    /// turn's do (`usage-and-quota.md` § Vendor quota).
-    pub quota: &'a ProviderQuota,
+    /// turn's do (`usage-and-quota.md` § Vendor quota); none for a key.
+    pub quota: Option<&'a ProviderQuota>,
+    /// Reads the image of a successful answer's body.
+    pub answer: fn(&[u8]) -> Result<MadeImage, ImageFailure>,
 }
 
 impl ImageCall<'_> {
     /// Posts `body`, a JSON object, to `url` with the headers `credentials`
     /// gives and reads the one image of the answer, all within
-    /// [`IMAGE_TIMEOUT`]. A request refused with HTTP 401 is sent again once, with
-    /// the credentials renewed past the token it was refused with;
-    /// `credentials` answers the headers and that token.
+    /// [`IMAGE_TIMEOUT`]. For an account, a request refused with HTTP 401
+    /// is sent again once, with the credentials renewed past the token it
+    /// was refused with; `credentials` answers the headers and that token.
     pub async fn send<F, Fut>(&self, http: &reqwest::Client, url: &Url, body: Bytes, credentials: F) -> ImageAnswer
     where
         F: FnMut(Option<Secret>) -> Fut,
@@ -203,14 +301,22 @@ impl ImageCall<'_> {
     {
         let mut observed = Vec::new();
         let call = self.attempts(http, url, body, credentials, &mut observed);
-        let result = match tokio::time::timeout(IMAGE_TIMEOUT, call).await {
-            Ok(result) => result,
-            Err(_) => Err(ImageFailure::Unanswered {
-                cause: format!("no answer in {} s", IMAGE_TIMEOUT.as_secs()),
-                code: Some(ErrorCode::Overloaded),
-            }),
-        };
+        let result = within_deadline(call).await;
         ImageAnswer { result, observed }
+    }
+
+    /// The body of a successful `GET` of `url` with `headers`, a listing of
+    /// a key's models, within [`IMAGE_TIMEOUT`]; a refusal reads as a
+    /// call's does.
+    pub async fn get(&self, http: &reqwest::Client, url: &Url, headers: HeaderMap) -> Result<Bytes, ImageFailure> {
+        within_deadline(async {
+            let response = http.get(url.clone()).headers(headers).send().await.map_err(transport)?;
+            if !response.status().is_success() {
+                return Err(self.refusal(response).await);
+            }
+            response.bytes().await.map_err(transport)
+        })
+        .await
     }
 
     async fn attempts<F, Fut>(
@@ -238,13 +344,16 @@ impl ImageCall<'_> {
                 .await
                 .map_err(transport)?;
             let status = response.status();
-            let reported = self.quota.observe(Observation::Response {
-                status,
-                headers: response.headers(),
-            });
-            // The row merges a window reported twice, as a turn's does.
-            observed.extend(reported.into_iter().flatten());
-            if status == StatusCode::UNAUTHORIZED && !retried {
+            if let Some(quota) = self.quota {
+                let reported = quota.observe(Observation::Response {
+                    status,
+                    headers: response.headers(),
+                });
+                // The row merges a window reported twice, as a turn's does.
+                observed.extend(reported.into_iter().flatten());
+            }
+            let renews = matches!(self.credential, ImageCredential::Account { .. });
+            if status == StatusCode::UNAUTHORIZED && renews && !retried {
                 // Dropping the answer releases its connection.
                 refused = Some(token);
                 continue;
@@ -253,7 +362,7 @@ impl ImageCall<'_> {
                 return Err(self.refusal(response).await);
             }
             let text = response.bytes().await.map_err(transport)?;
-            return read_answer(&text);
+            return (self.answer)(&text);
         }
     }
 
@@ -266,14 +375,21 @@ impl ImageCall<'_> {
             let retry_at = diagnostics.and_then(|diagnostics| (self.reader)(diagnostics, self.clock.now()).retry_at);
             return ImageFailure::UsageLimit { retry_at };
         }
-        if status == StatusCode::UNAUTHORIZED {
-            return ImageFailure::SignIn(AuthFailure::new(self.family, AuthReason::SignedOut));
-        }
         let body = diagnostics
             .and_then(HttpFailureRecord::read)
             .map(|record| record.body)
             .unwrap_or_default();
         let said = vendor_message(&body);
+        match self.credential {
+            ImageCredential::Account { family } if status == StatusCode::UNAUTHORIZED => {
+                return ImageFailure::SignIn(AuthFailure::new(family, AuthReason::SignedOut));
+            }
+            ImageCredential::Key { refused } if refused(status, &body) => {
+                let message = said.unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
+                return ImageFailure::KeyRefused { message };
+            }
+            _ => {}
+        }
         if status.is_server_error() || status == StatusCode::TOO_MANY_REQUESTS || status == StatusCode::REQUEST_TIMEOUT {
             let cause = match said {
                 Some(said) => format!("HTTP {}: {said}", status.as_u16()),
@@ -286,6 +402,17 @@ impl ImageCall<'_> {
     }
 }
 
+/// `call`'s result, or a failure once [`IMAGE_TIMEOUT`] has passed.
+async fn within_deadline<T>(call: impl Future<Output = Result<T, ImageFailure>>) -> Result<T, ImageFailure> {
+    match tokio::time::timeout(IMAGE_TIMEOUT, call).await {
+        Ok(result) => result,
+        Err(_) => Err(ImageFailure::Unanswered {
+            cause: format!("no answer in {} s", IMAGE_TIMEOUT.as_secs()),
+            code: Some(ErrorCode::Overloaded),
+        }),
+    }
+}
+
 /// The failure of a request that did not reach the vendor or broke off.
 fn transport(error: reqwest::Error) -> ImageFailure {
     ImageFailure::Unanswered {
@@ -294,9 +421,14 @@ fn transport(error: reqwest::Error) -> ImageFailure {
     }
 }
 
+/// The failure of an answer that is not what the vendor documents.
+pub fn unreadable(cause: String) -> ImageFailure {
+    ImageFailure::Unanswered { cause, code: None }
+}
+
 /// What a vendor said in a refusal's body: `error.message`, `error` when
 /// it is text, or `message`; a body of none of these is its text, trimmed.
-fn vendor_message(body: &str) -> Option<String> {
+pub fn vendor_message(body: &str) -> Option<String> {
     #[derive(Deserialize)]
     struct Refusal {
         #[serde(default)]
@@ -322,8 +454,8 @@ fn vendor_message(body: &str) -> Option<String> {
     Some(said.or(refusal.message).unwrap_or_else(|| trimmed.to_owned()))
 }
 
-/// The answer both vendors give: the image as base64, and the counts the
-/// ChatGPT backend reports.
+/// The answer of the OpenAI-shaped image APIs, OpenAI's, xAI's and the
+/// subscriptions': the image as base64, and the counts the vendor reports.
 #[derive(Deserialize)]
 struct Answer {
     data: Vec<Datum>,
@@ -346,8 +478,9 @@ struct AnswerUsage {
     output_tokens: Option<u64>,
 }
 
-fn read_answer(text: &[u8]) -> Result<MadeImage, ImageFailure> {
-    let unreadable = |cause: String| ImageFailure::Unanswered { cause, code: None };
+/// Reads the answer of an OpenAI-shaped image API: `data[0].b64_json`, and
+/// `usage`'s counts when it gives both.
+pub fn read_data_answer(text: &[u8]) -> Result<MadeImage, ImageFailure> {
     let answer: Answer = serde_json::from_slice(text)
         .map_err(|error| unreadable(format!("its answer could not be read: {error}")))?;
     let Some(datum) = answer.data.into_iter().next() else {
@@ -366,4 +499,11 @@ fn read_answer(text: &[u8]) -> Result<MadeImage, ImageFailure> {
         usage,
         vendor_id: datum.generation_id,
     })
+}
+
+/// A Unix time in seconds, as OpenAI's and xAI's listings give `created`,
+/// as the date `YYYY-MM-DD` it falls on in UTC.
+pub fn created_date(seconds: i64) -> Option<String> {
+    let moment = jiff::Timestamp::from_second(seconds).ok()?;
+    Some(moment.strftime("%Y-%m-%d").to_string())
 }

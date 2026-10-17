@@ -11,7 +11,7 @@ use demi_shared_types::WireApi;
 use futures_util::{Stream, StreamExt};
 use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 
-use crate::{SIGNATURE_TAG, Shared, request};
+use crate::{Shared, request};
 
 /// How failure messages name the vendor.
 const LABEL: &str = "OpenAI";
@@ -32,8 +32,9 @@ pub(crate) fn run(
         let wire = shared.wire;
         let policy = shared.policy;
         let model = request.model_id.clone();
+        let tag = shared.signature_tag.clone();
         let body = encode_body(LABEL, move || match wire {
-            WireApi::Responses => request::responses(&request, policy),
+            WireApi::Responses => request::responses(&request, policy, &tag),
             WireApi::ChatCompletions => request::chat_completions(&request, policy),
         });
         let body = tokio::select! {
@@ -92,7 +93,7 @@ pub(crate) fn run(
         let events = match wire {
             WireApi::Responses => {
                 let received = responses::sse_events(body, LABEL, cancel.clone());
-                responses::map_events(received, vendor, SIGNATURE_TAG, cancel).boxed_local()
+                responses::map_events(received, vendor, shared.signature_tag.clone(), cancel).boxed_local()
             }
             WireApi::ChatCompletions => chat_completions::map_sse(body, vendor, cancel).boxed_local(),
         };

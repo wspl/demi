@@ -380,7 +380,7 @@ impl ProductPort for TestProduct {
         none()
     }
 
-    fn image_models(&self) -> LocalBoxFuture<'_, Result<Vec<demi_plugin_interface::ImageModel>, PortFailure>> {
+    fn image_models(&self) -> LocalBoxFuture<'_, Result<Vec<demi_plugin_interface::ImageVendorModels>, PortFailure>> {
         none()
     }
 

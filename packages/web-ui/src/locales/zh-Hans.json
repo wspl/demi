@@ -21,7 +21,7 @@
     },
     "agent": {
       "title": "智能体",
-      "description": "轻量模型和消息。",
+      "description": "轻量模型、图像生成和消息。",
       "smallModel": "轻量模型",
       "model": "模型",
       "modelDescription": "用于撰写对话标题。“自动”会从你的供应商中选择一款快速模型。",
@@ -29,6 +29,8 @@
       "automaticResolved": "自动（{model}）",
       "sameProvider": "仅用对话的供应商",
       "sameProviderDescription": "轻量请求只发送到对话所用的供应商。",
+      "imageGeneration": "图像生成",
+      "imageGenerationDescription": "“自动”会优先使用订阅，只有在订阅无法使用时才使用 API 密钥。",
       "messages": "消息",
       "sendWhileRunning": "智能体工作时按 Enter",
       "sendWhileRunningDescription": "“引导”会把消息发送给正在进行的轮次，“添加到队列”会等它结束。{keys} 则用另一种方式。",

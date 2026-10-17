@@ -1,8 +1,9 @@
 //! The Google Gemini provider at its boundaries: the request it sends to a
 //! scripted vendor, the events it makes of recorded streams, its failures,
-//! its cancellation and what it says about itself. No test calls the real
+//! its cancellation, what it says about itself, and a Gemini key's images. No test calls the real
 //! vendor.
 
+mod images;
 mod request;
 mod stream;
 
@@ -21,6 +22,7 @@ pub(crate) fn provider_at(vendor: &MockVendor, base: &str) -> GoogleProvider {
     let config = GoogleConfig {
         api_key: Some(Secret::try_from("google-key".to_owned()).unwrap()),
         base_url: Some(vendor.url(base).parse().unwrap()),
+        makes_images: false,
     };
     GoogleProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }

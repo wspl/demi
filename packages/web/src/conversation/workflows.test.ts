@@ -77,7 +77,7 @@ beforeEach(() => {
       return Response.json(workflowsOf(cwd, read.length), { headers: { 'x-demi-read-at': `e.${read.length}` } })
     }
     if (path.startsWith('/api/models')) {
-      return Response.json({ providers: [], smallModel: null })
+      return Response.json({ providers: [], smallModel: null, imageEntries: {} })
     }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch

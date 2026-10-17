@@ -102,7 +102,7 @@ pub(crate) fn run(
             clock: shared.clock.clone(),
             model,
         };
-        let mut events = std::pin::pin!(responses::map_events(events, vendor, SIGNATURE_TAG, cancel));
+        let mut events = std::pin::pin!(responses::map_events(events, vendor, SIGNATURE_TAG.into(), cancel));
         // The call's end, held until the event after it: a failure's code
         // is Codex's reading, which the call's outcome then says too.
         let mut ended = None;

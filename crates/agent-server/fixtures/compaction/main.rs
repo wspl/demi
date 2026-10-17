@@ -252,6 +252,7 @@ fn deepseek() -> Result<Rc<OpenAiProvider>, String> {
             pass_back_reasoning_content: true,
             ..VendorPolicy::default()
         },
+        vendor_id: Some("openai".to_owned()),
     };
     Ok(Rc::new(OpenAiProvider::new(config, Arc::new(SystemClock))))
 }

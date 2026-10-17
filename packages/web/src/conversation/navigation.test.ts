@@ -59,7 +59,7 @@ beforeEach(async () => {
       return Response.json({ requestId: 'req_test000000000001', code: 'internal_error', message: 'Not saved' }, { status: 503 })
     }
     if (path.startsWith('/api/models')) {
-      return Response.json({ providers: [], smallModel: null })
+      return Response.json({ providers: [], smallModel: null, imageEntries: {} })
     }
     throw new Error(`Unexpected request: ${method} ${path}`)
   }) as typeof fetch

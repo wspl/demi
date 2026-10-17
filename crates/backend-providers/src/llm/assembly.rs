@@ -131,6 +131,14 @@ impl ProviderAssembly {
         &self.rotation
     }
 
+    /// Marks `account` of `entry` used up until `until`, so no agent and no
+    /// image takes it meanwhile, and tells the entry's pages now and at
+    /// `until`, since it routes their requests elsewhere until then.
+    pub fn mark_used_up(&self, entry: &ProviderId, account: &CredentialId, until: demi_shared_types::Timestamp) {
+        self.rotation.mark_used_up(entry, account, until);
+        self.quotas.used_up(entry, until);
+    }
+
     /// Now, by the clock the assembly's choices read.
     pub fn now(&self) -> demi_shared_types::Timestamp {
         self.clock.now()
@@ -415,6 +423,7 @@ impl ProviderAssembly {
                         .map(|endpoint| endpoint.url().clone()),
                     wire_api: config.wire_api,
                     vendor: self.vendors.policy(config.vendor_id.as_deref()),
+                    vendor_id: config.vendor_id.clone(),
                 })
             }
             EntryCredential::Subscription { .. } => {

@@ -14,7 +14,7 @@ use demi_provider_common::{
 use demi_shared_types::{B64Bytes, ThinkingConfig, ThinkingSummary, TokenUsage, WireApi};
 use serde_json::{Value, json};
 
-use crate::{body_of, provider_at, run};
+use crate::{body_of, provider_at, provider_of, run};
 
 fn text(text: &str) -> Vec<UserPart> {
     vec![UserPart::Text(text.into())]
@@ -608,4 +608,47 @@ async fn thinking_is_replayed_as_reasoning_content_only_when_the_vendor_policy_a
             { "role": "assistant", "content": "answer three" },
         ])
     );
+}
+
+// OpenAI and xAI both speak Responses with encrypted reasoning: each stamps
+// the reasoning it receives with its vendor, and replays only its own, so a
+// conversation moved between them never sends one vendor's ciphertext to
+// the other, in either direction. Milliseconds.
+//
+// Planted defect: one stamp for every entry of the family, so the other
+// vendor's item is replayed.
+#[tokio::test]
+async fn openai_and_xai_each_stamp_their_reasoning_and_replay_only_their_own() {
+    let item = json!({ "type": "reasoning", "id": "rs_1", "summary": [], "encrypted_content": "enc" });
+    let streamed = sse_body(&[
+        json!({ "type": "response.output_item.done", "item": item }),
+        json!({ "type": "response.completed", "response": { "usage": { "input_tokens": 3, "output_tokens": 1 } } }),
+    ]);
+    for (own, other) in [("openai", "xai"), ("xai", "openai")] {
+        let vendor = MockVendor::start().await;
+        vendor.respond(MockResponse::event_stream(streamed.clone()));
+        vendor.respond(MockResponse::event_stream(streamed.clone()));
+        let provider = provider_of(&vendor, "/v1", WireApi::Responses, NO_POLICY, Some(own));
+        let mut runtime = provider.runtime(RuntimeEnv { http: reqwest::Client::new() }).unwrap();
+        let events = run(runtime.as_mut(), inference_request()).await;
+        let stamped: Vec<&String> = events
+            .iter()
+            .filter_map(|event| match event {
+                ProviderEvent::ThinkingSignature(signature) => Some(signature),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(stamped.len(), 1, "{own}: {events:?}");
+        assert!(stamped[0].starts_with(&format!("{own}:{{")), "{own}: {}", stamped[0]);
+
+        let history = vec![
+            InferenceItem::UserMessage { content: text("hello") },
+            thinking("mine", Some(&format!("{own}:{item}"))),
+            thinking("theirs", Some(&format!("{other}:{item}"))),
+        ];
+        run(runtime.as_mut(), request_with(history)).await;
+        let sent = vendor.requests()[1].json();
+        let replayed: Vec<&Value> = sent["input"].as_array().unwrap().iter().filter(|input| input["type"] == "reasoning").collect();
+        assert_eq!(replayed.len(), 1, "{own} replays only its own: {sent}");
+    }
 }

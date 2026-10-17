@@ -64,7 +64,7 @@ function stubCatalog() {
       canDisableThinking: null, serviceTiers: [], defaultServiceTierId: null, cost: null,
       selection: model,
     }],
-  }], smallModel: null }
+  }], smallModel: null, imageEntries: {} }
 }
 
 /**
@@ -264,7 +264,7 @@ beforeEach(async () => {
       return Response.json({ preferences: savedPreferences })
     }
     if (path.startsWith('/api/models')) {
-      return Response.json({ providers: [], smallModel: null })
+      return Response.json({ providers: [], smallModel: null, imageEntries: {} })
     }
     const workspacePatch = /^\/api\/workspaces\/([^/]+)$/.exec(path)
     if (workspacePatch && init?.method === 'PATCH') {

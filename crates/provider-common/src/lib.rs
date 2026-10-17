@@ -20,6 +20,7 @@ mod http_record;
 pub mod images;
 pub mod kept;
 pub mod models_dev;
+mod model_words;
 pub mod oauth;
 pub mod openai_request;
 pub mod quota;
@@ -40,5 +41,6 @@ pub use contract::{
 pub use endpoint::endpoint_url;
 pub use failure::{EarlyEnd, ErrorCode, FailureReader, ProviderFailure};
 pub use http_record::{HttpFailureRecord, http_failure, read_http_failure, retry_at};
+pub use model_words::model_words;
 pub use secret::{Secret, SecretError};
 pub use vendor::VendorPolicy;

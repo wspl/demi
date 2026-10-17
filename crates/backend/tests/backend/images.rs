@@ -1,19 +1,22 @@
 //! The agent's `demi image` (`images.md`), the `image` plugin over the
 //! port's Providers service: an image made to a file and to `demi file
 //! view`, an edit of the Host's files, warnings for what the result did not
-//! honour, the entry `--model` picks, a used-up account under Balanced
-//! moving the call to another, a usage ledger row per call, a stopped
-//! call's cancelled row, no account named to a shared instance's user, and
-//! an entry whose Image Generation is off never chosen. The model
+//! honour, a used-up account under Balanced moving the call to another, a
+//! usage ledger row per call, a stopped call's cancelled row, no account
+//! named to a shared instance's user, an entry whose Image Generation is
+//! off never chosen, and the entry a vendor's model is made through:
+//! Automatic's subscription before a key, the user's choice while it can,
+//! and the key once the subscription is used up. The model
 //! is the scripted family of the subagent scenarios, the image role a
 //! scripted family's, and the device a real runner. No test calls a real
 //! model.
 
 use std::sync::Arc;
 
-use demi_provider_common::images::ImageModelInfo;
+use demi_provider_common::images::{ImageFacts, ImageVendor};
 use demi_web_api_protocol::error::ErrorCode;
-use demi_web_api_protocol::providers::{Accounts, LoginState, ProviderAnswer};
+use demi_web_api_protocol::providers::{Accounts, LoginState, ModelCatalog, ProviderAnswer, ProviderDto};
+use demi_web_api_protocol::state::SyncEvent;
 use reqwest::StatusCode;
 use serde_json::json;
 
@@ -21,20 +24,20 @@ use crate::accounts::{awaited, device_entry, ended, start_login};
 use crate::agent_profiles::{assert_shows, last_root};
 use crate::conversations::{FIRST, SECOND, Socket, choose, create, working_on};
 use demi_web_api_protocol::auth::Role;
-use crate::families::{Directory, ImageScript, LoginScript, QuotaScript, ScriptedSubscription};
+use crate::families::{Directory, ImageScript, KEY, LoginScript, QuotaScript, ScriptedKey, ScriptedSubscription};
 use crate::subagents::{Scripts, say, shell, tree_among};
-use crate::support::Harness;
+use crate::support::{Harness, Session, TestBackend};
 use crate::usage::{Row, rows};
 
-/// The scripted family's image models, its default first and the other
-/// newer, so the list shows the newer first and marks the default.
-const PICTURES: &[ImageModelInfo] = &[
-    ImageModelInfo::new("picture-1", "2026-01-05", "Best pictures", "any shape"),
-    ImageModelInfo::new("picture-2", "2026-06-01", "Faster pictures", "1:1"),
+/// The scripted family's image models, the older first, so the list shows
+/// the newer first.
+const PICTURES: &[ImageFacts] = &[
+    ImageFacts::new("picture-1", Some("2026-01-05"), "Best pictures", "any shape"),
+    ImageFacts::new("picture-2", Some("2026-06-01"), "Faster pictures", "1:1"),
 ];
 
 /// A second family's image model.
-const DRAWINGS: &[ImageModelInfo] = &[ImageModelInfo::new("drawing-1", "2026-02-01", "Line drawings", "1:1")];
+const DRAWINGS: &[ImageFacts] = &[ImageFacts::new("drawing-1", Some("2026-02-01"), "Line drawings", "1:1")];
 
 /// A `device` family whose accounts make images of `models` as `images`
 /// scripts them, and the scripts of its logins.
@@ -98,12 +101,12 @@ async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_
     // Before any sign-in, nothing makes images.
     scripts.root(
         FIRST,
-        vec![shell("t1", "demi image generate 'a red fox'; echo exit=$?"), say("none")],
+        vec![shell("t1", "demi image generate 'a red fox' --model picture-1; echo exit=$?"), say("none")],
     );
     socket.chat("m1", "Draw a fox").await;
     assert_shows(
         &last_root(&scripts),
-        "demi image generate: no provider makes images; sign in to ChatGPT or Grok in Settings › Providers\nexit=1",
+        "demi image generate: no provider makes images; sign in to ChatGPT or Grok, or add an OpenAI, xAI or Google key, in Settings › Providers\nexit=1",
     );
 
     logins.login.signs_in("first");
@@ -118,10 +121,10 @@ async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_
             shell(
                 "t2",
                 &[
-                    "demi image generate 'a red fox' > fox.png && cmp fox.png expected.png && echo same",
-                    "demi image generate 'a red fox' --aspect 16:9 --transparent | demi file view",
-                    "printf 'make the ears rounder' | demi image edit - fox.png photo.png > fox-2.png; echo exit=$?",
-                    "demi image edit 'x' notes.txt; echo exit=$?",
+                    "demi image generate 'a red fox' --model picture-1 > fox.png && cmp fox.png expected.png && echo same",
+                    "demi image generate 'a red fox' --model picture-1 --aspect 16:9 --transparent | demi file view",
+                    "printf 'make the ears rounder' | demi image edit - fox.png photo.png --model picture-1 > fox-2.png; echo exit=$?",
+                    "demi image edit 'x' notes.txt --model picture-1; echo exit=$?",
                     "demi image generate 'x' --model nope; echo exit=$?",
                     "demi image generate 'x' --model picture-2 > /dev/null",
                     "demi image models",
@@ -145,7 +148,7 @@ async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_
         "demi image generate: no provider makes \"nope\"; demi image models lists them\nexit=1\n",
         "700×700 PNG from picture-2 (Scripted, first@example.test)\n",
         &format!(
-            "picture-2  {label}  2026-06-01           Faster pictures; takes 1:1\npicture-1  {label}  2026-01-05  default  Best pictures; takes any shape",
+            "OpenAI, through {label} (first@example.test)\n  picture-2  2026-06-01  Faster pictures; takes 1:1\n  picture-1  2026-01-05  Best pictures; takes any shape",
             label = entry.label
         ),
     ] {
@@ -162,7 +165,7 @@ async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_
     scripts.root(
         FIRST,
         vec![
-            shell("t3", "demi host shell --host alpha 'demi image edit \"keep it\" far.png > far-2.png'; echo exit=$?"),
+            shell("t3", "demi host shell --host alpha 'demi image edit \"keep it\" far.png --model picture-1 > far-2.png'; echo exit=$?"),
             say("edited there"),
         ],
     );
@@ -234,7 +237,7 @@ async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_
         vec![
             shell(
                 "t4",
-                "demi image generate 'a fox' > held.png & call=$!; until [ -f go ]; do sleep 0.05; done; kill $call; wait $call; echo stopped",
+                "demi image generate 'a fox' --model picture-1 > held.png & call=$!; until [ -f go ]; do sleep 0.05; done; kill $call; wait $call; echo stopped",
             ),
             say("stopped"),
         ],
@@ -261,7 +264,7 @@ async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_
     working_on(&harness, &reading, SECOND);
     let mut theirs = Socket::connect(&backend, &reader, SECOND).await;
     theirs.open().await;
-    scripts.root(SECOND, vec![shell("r1", "demi image generate 'a fox' > fox.png"), say("drawn")]);
+    scripts.root(SECOND, vec![shell("r1", "demi image generate 'a fox' --model picture-1 > fox.png"), say("drawn")]);
     theirs.chat("m1", "Draw a fox").await;
     let asked = scripts.asked(|session| session == SECOND).pop().unwrap();
     assert_shows(&asked, "700×700 PNG from picture-1 (Scripted)");
@@ -300,7 +303,7 @@ async fn a_used_up_account_under_balanced_moves_the_call_to_the_other_and_none_l
 
     scripts.root(
         FIRST,
-        vec![shell("t1", "demi image generate 'a fox' > fox.png; echo exit=$?"), say("drawn")],
+        vec![shell("t1", "demi image generate 'a fox' --model picture-1 > fox.png; echo exit=$?"), say("drawn")],
     );
     socket.chat("m1", "Draw a fox").await;
     assert_shows(&last_root(&scripts), "8×8 PNG from picture-1 (Scripted, second@example.test)\nexit=0");
@@ -320,7 +323,7 @@ async fn a_used_up_account_under_balanced_moves_the_call_to_the_other_and_none_l
     images.used_up.lock().unwrap().push(second.to_string());
     scripts.root(
         FIRST,
-        vec![shell("t2", "demi image generate 'a fox' > fox.png; echo exit=$?"), say("none")],
+        vec![shell("t2", "demi image generate 'a fox' --model picture-1 > fox.png; echo exit=$?"), say("none")],
     );
     socket.chat("m2", "Again").await;
     let asked = last_root(&scripts);
@@ -332,10 +335,9 @@ async fn a_used_up_account_under_balanced_moves_the_call_to_the_other_and_none_l
 // About a second: two logins and a real device's shell jobs of two turns.
 //
 // Planted defects: a switch stored for an entry that makes no images; an
-// entry whose Image Generation is off still chosen
-// without --model or listed by `demi image models`; a --model of an entry
-// that is off told as a model nobody makes; every entry off told as none
-// signed in.
+// entry whose Image Generation is off still chosen or listed by `demi
+// image models`; a --model of an entry that is off told as a model nobody
+// makes; every entry off told as none signed in.
 #[tokio::test]
 async fn an_entry_with_image_generation_off_is_never_chosen_and_says_why() {
     let made = demi_agent_store::testing::png(8, 8, 2).into_bytes();
@@ -392,7 +394,7 @@ async fn an_entry_with_image_generation_off_is_never_chosen_and_says_why() {
             shell(
                 "t1",
                 &[
-                    "demi image generate 'a fox' > /dev/null",
+                    "demi image generate 'a fox' --model drawing-1 > /dev/null",
                     "demi image models",
                     "demi image generate 'a fox' --model picture-1; echo exit=$?",
                 ]
@@ -404,7 +406,7 @@ async fn an_entry_with_image_generation_off_is_never_chosen_and_says_why() {
     socket.chat("m1", "Draw a fox").await;
     let asked = last_root(&scripts);
     for shown in [
-        "8×8 PNG from drawing-1 (Scripted, first@example.test)\ndrawing-1  Second  2026-02-01  default  Line drawings; takes 1:1\n",
+        "8×8 PNG from drawing-1 (Scripted, first@example.test)\nOpenAI, through Second (first@example.test)\n  drawing-1  2026-02-01  Line drawings; takes 1:1\n",
         "demi image generate: \"picture-1\" is First's, whose image generation is off in Settings › Providers\nexit=1",
     ] {
         assert_shows(&asked, shown);
@@ -415,13 +417,227 @@ async fn an_entry_with_image_generation_off_is_never_chosen_and_says_why() {
     set(second.as_str(), json!({ "imageGeneration": false })).await;
     scripts.root(
         FIRST,
-        vec![shell("t2", "demi image generate 'a fox'; echo exit=$?"), say("none")],
+        vec![shell("t2", "demi image models; echo exit=$?"), say("none")],
     );
     socket.chat("m2", "Again").await;
     assert_shows(
         &last_root(&scripts),
-        "demi image generate: image generation is off for First and Second; turn it on in Settings › Providers\nexit=1",
+        "demi image models: image generation is off for First and Second; turn it on in Settings › Providers\nexit=1",
     );
     assert_eq!(second_images.calls().len(), 1);
+    backend.close().await;
+}
+
+const DRAW: &str = "demi image generate 'a fox' --model picture-1 > /dev/null; echo exit=$?";
+const BY_SUBSCRIPTION: &str = "8×8 PNG from picture-1 (Scripted, first@example.test)\nexit=0";
+const BY_KEY: &str = "8×8 PNG from picture-1 (Scripted key)\nexit=0";
+
+/// A user with a subscription entry and a key entry that make the same
+/// vendor's images, the key first in Settings › Providers.
+struct Both {
+    harness: Harness,
+    /// The paired device the agent's shell runs on, kept for the test.
+    _device: crate::support::Paired,
+    backend: TestBackend,
+    master: Session,
+    scripts: Arc<Scripts>,
+    subscription: Arc<ImageScript>,
+    key: Arc<ImageScript>,
+    entry: ProviderDto,
+    key_entry: ProviderDto,
+    /// The subscription's account.
+    account: String,
+}
+
+async fn both() -> Both {
+    let made = demi_agent_store::testing::png(8, 8, 2).into_bytes();
+    let subscription = Arc::new(ImageScript::new(&PICTURES[..1], made.clone()));
+    let key = Arc::new(ImageScript::new(&PICTURES[..1], made).named("Scripted key"));
+    let logins = image_family(&subscription);
+    let keys = ScriptedKey {
+        directory: Arc::new(Directory::default()),
+        wires: &[],
+        process_host: false,
+        images: Some(key.clone()),
+    };
+    let scripts = Arc::new(Scripts::default());
+    let (harness, backend, master, device, _root, _tree) =
+        tree_among(&scripts, Harness::new(), logins.families.clone().with("key", keys)).await;
+    let created = backend
+        .post(
+            "/api/providers",
+            Some(&master),
+            json!({ "source": "family", "providerType": "key", "label": "Key", "apiKey": "k" }),
+        )
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&created.body));
+    let key_entry = created.json::<ProviderAnswer>().provider;
+    logins.login.signs_in("first");
+    let entry = device_entry(&backend, &master, &logins).await;
+    let account = backend
+        .get(&format!("/api/providers/{}/accounts", entry.id), Some(&master))
+        .await
+        .json::<Accounts>()
+        .active
+        .unwrap()
+        .to_string();
+    Both { harness, _device: device, backend, master, scripts, subscription, key, entry, key_entry, account }
+}
+
+/// The entry each vendor's Automatic takes, as `GET /api/models` answers.
+async fn automatic(backend: &TestBackend, master: &Session) -> Vec<(ImageVendor, Option<String>)> {
+    let catalog = backend.get("/api/models", Some(master)).await.json::<ModelCatalog>();
+    catalog.image_entries.into_iter().map(|(vendor, entry)| (vendor, entry.map(|id| id.to_string()))).collect()
+}
+
+/// Runs `command` in a turn of the root agent of `FIRST` and answers what
+/// the agent was shown.
+async fn ran(scripts: &Arc<Scripts>, socket: &mut Socket, turn: &str, command: &str) -> String {
+    scripts.root(FIRST, vec![shell(&format!("t-{turn}"), command), say("done")]);
+    socket.chat(turn, "Draw").await;
+    last_root(scripts)
+}
+
+// A few seconds: a login, two entries and a real device's shell jobs of
+// seven turns.
+//
+// Planted defects: Automatic taking the key, which comes first in Settings
+// › Providers, over the subscription; the chosen entry kept while its
+// Image Generation is off; a used-up subscription failing the call instead
+// of going on with the key, or asked again once it is used up; a key whose
+// Image Generation is off still paying for the image.
+#[tokio::test]
+async fn automatic_takes_the_subscription_before_a_key_a_chosen_entry_while_it_can_and_the_key_once_the_subscription_is_used_up() {
+    let Both { harness, _device, backend, master, scripts, subscription, key, entry, key_entry, account } = both().await;
+    let patch = async |path: &str, body: serde_json::Value| {
+        let answer = backend.patch(path, &master, body).await;
+        assert_eq!(answer.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answer.body));
+    };
+    let key_path = format!("/api/providers/{}", key_entry.id);
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    let automatic = async || automatic(&backend, &master).await;
+    // Automatic: the subscription, though the key comes first in the list,
+    // as Settings › Agent shows it beside Automatic.
+    assert_eq!(automatic().await, [(ImageVendor::OpenAi, Some(entry.id.to_string()))]);
+    let shown = ran(&scripts, &mut socket, "m1", &format!("{DRAW}\ndemi image models")).await;
+    assert_shows(&shown, BY_SUBSCRIPTION);
+    assert_shows(
+        &shown,
+        &format!("OpenAI, through {} (first@example.test)\n  picture-1  2026-01-05  Best pictures; takes any shape", entry.label),
+    );
+
+    // The user's choice, while it can make the model.
+    patch("/api/settings/preferences", json!({ "imageEntries": { "openai": key_entry.id } })).await;
+    let shown = ran(&scripts, &mut socket, "m2", &format!("{DRAW}\ndemi image models")).await;
+    assert_shows(&shown, BY_KEY);
+    assert_shows(&shown, "OpenAI, through Key\n");
+    patch(&key_path, json!({ "imageGeneration": false })).await;
+    assert_shows(&ran(&scripts, &mut socket, "m3", DRAW).await, BY_SUBSCRIPTION);
+
+    // Automatic again: once the subscription is used up, the key makes the
+    // image at once, and the used-up subscription is not asked again.
+    patch(&key_path, json!({ "imageGeneration": true })).await;
+    patch("/api/settings/preferences", json!({ "imageEntries": {} })).await;
+    *subscription.used_up.lock().unwrap() = vec![account.clone()];
+    assert_shows(&ran(&scripts, &mut socket, "m4", DRAW).await, BY_KEY);
+    assert_eq!(automatic().await, [(ImageVendor::OpenAi, Some(key_entry.id.to_string()))]);
+    let asked = subscription.calls().len();
+    assert_shows(&ran(&scripts, &mut socket, "m5", DRAW).await, BY_KEY);
+    assert_eq!(subscription.calls().len(), asked);
+    let calls: Vec<(Option<String>, Option<String>)> = image_rows(&harness)
+        .into_iter()
+        .skip(3)
+        .map(|row| (row.account_id, row.outcome))
+        .collect();
+    assert_eq!(
+        calls,
+        [
+            (Some(account.clone()), Some("usage_limit".to_owned())),
+            (None, Some("answered".to_owned())),
+            (None, Some("answered".to_owned())),
+        ]
+    );
+    assert_eq!(key.calls().iter().map(|(account, _)| account.as_str()).collect::<Vec<_>>(), [KEY, KEY, KEY]);
+
+    // With the key's Image Generation off, the call fails with the limit
+    // instead of paying for the image.
+    patch(&key_path, json!({ "imageGeneration": false })).await;
+    assert_eq!(automatic().await, [(ImageVendor::OpenAi, None)]);
+    let shown = ran(&scripts, &mut socket, "m6", DRAW).await;
+    assert_shows(&shown, "demi image generate: Scripted's usage limit is reached");
+    assert_shows(&shown, "\nexit=1");
+    backend.close().await;
+}
+
+// About a second.
+//
+// Planted defect: the entries read once before the first request, so a key
+// turned off while the subscription's request was under way still pays for
+// the image.
+#[tokio::test]
+async fn a_key_turned_off_while_the_subscriptions_request_is_under_way_is_not_sent_to() {
+    let Both { harness: _harness, _device, backend, master, scripts, subscription, key, key_entry, account, .. } = both().await;
+    *subscription.used_up.lock().unwrap() = vec![account];
+    let (release, gate) = tokio::sync::oneshot::channel();
+    *subscription.gate.lock().unwrap() = Some(gate);
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    let mut counts = subscription.counts.subscribe();
+    scripts.root(FIRST, vec![shell("t1", DRAW), say("done")]);
+    socket.send(&crate::conversations::send("m1", "Draw")).await;
+    // The subscription's request is under way: the key goes off meanwhile.
+    counts.wait_for(|(asked, _)| *asked == 1).await.unwrap();
+    let off = backend.patch(&format!("/api/providers/{}", key_entry.id), &master, json!({ "imageGeneration": false })).await;
+    assert_eq!(off.status, StatusCode::OK, "{}", String::from_utf8_lossy(&off.body));
+    release.send(()).unwrap();
+    socket.until_idle().await;
+    let shown = last_root(&scripts);
+    assert_shows(&shown, "demi image generate: Scripted's usage limit is reached");
+    assert_shows(&shown, "\nexit=1");
+    assert!(key.calls().is_empty());
+    backend.close().await;
+}
+
+// About a second.
+//
+// Planted defect: a refusal read as an entry that cannot make the image,
+// so the next entry, a key that pays for it, is asked the same prompt.
+#[tokio::test]
+async fn a_refusal_on_one_entry_never_calls_another() {
+    let Both { harness: _harness, _device, backend, master, scripts, subscription, key, .. } = both().await;
+    *subscription.refusal.lock().unwrap() = Some("Your request was rejected by the safety system.".to_owned());
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    let shown = ran(&scripts, &mut socket, "m1", DRAW).await;
+    assert_shows(&shown, "demi image generate: Scripted refused the request: Your request was rejected by the safety system.\nexit=1");
+    assert_eq!(subscription.calls().len(), 1);
+    assert!(key.calls().is_empty());
+    backend.close().await;
+}
+
+// About a second.
+//
+// Planted defect: an account marked used up without telling the pages, so
+// Settings › Agent keeps naming the subscription beside Automatic.
+#[tokio::test]
+async fn a_subscription_used_up_without_quota_headers_tells_the_pages_and_automatic_moves_to_the_key() {
+    let Both { harness: _harness, _device, backend, master, scripts, subscription, entry, key_entry, account, .. } = both().await;
+    assert_eq!(automatic(&backend, &master).await, [(ImageVendor::OpenAi, Some(entry.id.to_string()))]);
+    let mut page = backend.sync(&master).await;
+    page.snapshot().await;
+    *subscription.used_up.lock().unwrap() = vec![account];
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    assert_shows(&ran(&scripts, &mut socket, "m1", DRAW).await, BY_KEY);
+    // The page learns of it as it does of any change of the providers,
+    // and the catalog it then reads names the key.
+    let told = tokio::time::timeout(
+        std::time::Duration::from_secs(10),
+        page.until(|event| matches!(event, SyncEvent::Providers { .. })),
+    )
+    .await;
+    assert!(told.is_ok(), "the pages were not told");
+    assert_eq!(automatic(&backend, &master).await, [(ImageVendor::OpenAi, Some(key_entry.id.to_string()))]);
     backend.close().await;
 }

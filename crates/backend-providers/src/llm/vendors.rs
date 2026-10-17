@@ -16,7 +16,7 @@ use icu_collator::{Collator, CollatorBorrowed};
 
 /// The family and wire each models.dev client package is written for. A
 /// vendor of another package is not offered.
-const FAMILIES: [(&str, &str, Option<WireApi>); 4] = [
+const FAMILIES: [(&str, &str, Option<WireApi>); 5] = [
     (
         "@ai-sdk/openai-compatible",
         "openai",
@@ -25,7 +25,12 @@ const FAMILIES: [(&str, &str, Option<WireApi>); 4] = [
     ("@ai-sdk/openai", "openai", Some(WireApi::Responses)),
     ("@ai-sdk/anthropic", "anthropic", None),
     ("@ai-sdk/google", "google", None),
+    ("@ai-sdk/xai", "openai", Some(WireApi::Responses)),
 ];
+
+/// xAI's API, which models.dev does not name (`providers.md` § Vendors
+/// from models.dev).
+const XAI_BASE_URL: &str = "https://api.x.ai/v1";
 
 /// The most matches a model search answers.
 const SEARCH_LIMIT: usize = 20;
@@ -178,6 +183,7 @@ fn official_base_url(vendor_id: &str) -> Option<String> {
     match vendor_id {
         "anthropic" => Some(AnthropicConfig::DEFAULT_BASE_URL.to_owned()),
         "openai" => Some(OpenAiConfig::DEFAULT_BASE_URL.to_owned()),
+        "xai" => Some(XAI_BASE_URL.to_owned()),
         _ => None,
     }
 }

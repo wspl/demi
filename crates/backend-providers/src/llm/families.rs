@@ -100,6 +100,8 @@ pub struct ApiKeyArgs {
     /// The request requirements of the vendor the entry was added from,
     /// which each protocol's provider applies.
     pub vendor: VendorPolicy,
+    /// The models.dev id of that vendor; none for a compatible entry.
+    pub vendor_id: Option<String>,
 }
 
 /// A subscription entry's accounts: the pool bound to the entry, and the

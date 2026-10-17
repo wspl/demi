@@ -18,7 +18,7 @@ use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    ImageAsk, ImageModel, MadeImage,
+    ImageAsk, ImageVendorModels, MadeImage,
     CallKind, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile, HostRead, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
     PortRefusal, Reply, Request, SecretName, StoredSecret, StoredValue, WebRequest, WebResponse,
@@ -129,7 +129,7 @@ pub struct TestDemi {
     /// The access token of the user's sign-in; none while signed out.
     pub access_token: RefCell<Option<String>>,
     /// The image models of the user's provider entries.
-    pub image_models: RefCell<Vec<ImageModel>>,
+    pub image_models: RefCell<Vec<ImageVendorModels>>,
     pub image_requests: RefCell<Option<ImageRequests>>,
     /// Each image the plugin asked for.
     pub images_asked: RefCell<Vec<ImageAsk>>,
@@ -411,7 +411,7 @@ impl TestDemi {
                 PortAnswer::Done
             }
             PortMessage::ImageModels => PortAnswer::ImageModels {
-                models: self.image_models.borrow().clone(),
+                vendors: self.image_models.borrow().clone(),
             },
             PortMessage::MakeImage { ask } => {
                 let requests = self.image_requests.borrow();

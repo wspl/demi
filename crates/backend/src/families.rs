@@ -13,6 +13,7 @@ use demi_provider_claude_code::{ClaudeCodeConfig, ClaudeCodeProvider, Placement}
 use demi_provider_codex::{CodexConfig, CodexProvider, CodexReleases};
 use demi_provider_common::credentials::SubscriptionAccounts;
 use demi_provider_common::quota::{MemorySnapshots, QuotaSnapshotStore};
+use demi_provider_common::images::ImageVendor;
 use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider};
@@ -83,6 +84,7 @@ impl ProviderFamily for OpenAiFamily {
             // An entry that names no wire speaks Responses.
             wire: settings.wire_api.unwrap_or_default(),
             policy: settings.vendor,
+            vendor_id: settings.vendor_id,
         };
         Ok(Arc::new(OpenAiProvider::new(config, args.clock)))
     }
@@ -107,6 +109,7 @@ impl ProviderFamily for GoogleFamily {
         let config = GoogleConfig {
             api_key: settings.api_key,
             base_url: settings.base_url,
+            makes_images: settings.vendor_id.as_deref().and_then(ImageVendor::from_id) == Some(ImageVendor::Google),
         };
         Ok(Arc::new(GoogleProvider::new(config, args.clock)))
     }

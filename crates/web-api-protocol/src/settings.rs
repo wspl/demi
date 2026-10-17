@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use demi_command_protocol::{COMMAND_LOCALE_LANGUAGES, ColorScheme, CommandLocale};
-use demi_shared_types::{Nullable, WorkflowChoice, is_context_limit};
+use demi_shared_types::{ImageVendor, Nullable, WorkflowChoice, is_context_limit};
 use garde::Validate;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -478,7 +478,16 @@ pub struct Preferences {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub small_model_same_provider: Option<bool>,
+    /// The entry Settings › Agent chose to make each vendor's images
+    /// (`images.md` § Which entry makes an image); a vendor it does not
+    /// name is Automatic.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[garde(skip)]
+    pub image_entries: ImageEntries,
 }
+
+/// The entry chosen for each vendor's images.
+pub type ImageEntries = BTreeMap<ImageVendor, ProviderId>;
 
 /// The small model the user chose: model settings without a service tier,
 /// since a small request uses the vendor's default.
@@ -726,6 +735,15 @@ pub struct PreferencesPatch {
     #[schemars(with = "bool")]
     #[garde(skip)]
     pub small_model_same_provider: Option<bool>,
+    /// Replaces the entries chosen for vendors' images.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[schemars(with = "ImageEntries")]
+    #[garde(skip)]
+    pub image_entries: Option<ImageEntries>,
 }
 
 /// `{ preferences }`: the answer of `GET` and `PATCH /settings/preferences`.

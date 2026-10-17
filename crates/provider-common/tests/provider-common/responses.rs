@@ -48,7 +48,7 @@ async fn events_with(
 ) -> Vec<ProviderEvent> {
     let cancel = CancellationToken::new();
     let events = sse_events(body(frames), "Codex", cancel.clone());
-    demi_provider_common::testing::all_events(map_events(events, vendor(reader), "codex:", cancel)).await
+    demi_provider_common::testing::all_events(map_events(events, vendor(reader), "codex:".into(), cancel)).await
 }
 
 async fn events(frames: &[Value]) -> Vec<ProviderEvent> {
@@ -382,7 +382,7 @@ async fn a_cancelled_run_ends_without_a_further_event() {
     let events: Vec<ProviderEvent> = map_events(
         sse_events(frames, "Codex", cancel.clone()),
         vendor(read_http_failure),
-        "codex:",
+        "codex:".into(),
         cancel,
     )
     .collect()

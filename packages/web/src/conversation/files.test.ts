@@ -112,7 +112,7 @@ beforeEach(() => {
       )
     }
     if (path.startsWith('/api/models')) {
-      return Response.json({ providers: [], smallModel: null })
+      return Response.json({ providers: [], smallModel: null, imageEntries: {} })
     }
     throw new Error(`Unexpected request: ${path}`)
   }) as typeof fetch
