@@ -510,7 +510,10 @@ never ships without its notice.
 release. It runs on GitHub's standard hosted runners, which cost nothing for a
 public repository, and on no machine of a developer's. A manual start runs
 it, in one of two ways, and nothing else does; an ordinary push builds no
-release:
+release. It and the CI workflow install the Bun that `packageManager` in
+`package.json` names, the one developers use, so a newer Bun on GitHub,
+whose ICU words a date differently, changes nothing until the version is
+raised there:
 
 - **A manual start on a branch**, `gh workflow run release.yml --ref
   <branch>`, releases the workspace version in `Cargo.toml` of that branch's
