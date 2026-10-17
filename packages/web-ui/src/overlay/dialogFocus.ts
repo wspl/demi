@@ -1,19 +1,7 @@
 import { onBeforeUnmount, watch, type Ref } from 'vue'
 import { onKeyStroke } from '@vueuse/core'
-import { useAutofocus } from '../ui/autofocus'
+import { FIELD, useAutofocus } from '../ui/autofocus'
 import { useFocusReturn } from './focusReturn'
-
-/** A field the user types in or picks a value from: what a dialog opens on first. */
-export const FIELD = [
-  'input:not([type=button],[type=submit],[type=reset],[type=checkbox],[type=radio],[type=range],[type=color],[type=file],[type=hidden])',
-  'textarea',
-  'select',
-  '[contenteditable=""]',
-  '[contenteditable=true]',
-  '[role=textbox]',
-  '[role=combobox]',
-  '[role=searchbox]',
-].join(',')
 
 /** A dialog's default button, which Return presses and the dialog opens on when it has no field (`Button` marks it). */
 export const DEFAULT_ACTION = '[data-default-action]:not([aria-disabled=true])'
@@ -65,7 +53,8 @@ function nextStop(panel: HTMLElement, stops: HTMLElement[], active: Element | nu
  * macOS sheets have it: when the panel shows, the focus moves into it (its
  * first field, else its default action, else the panel); while it is the top
  * layer, Tab and Shift+Tab go round inside it; when it closes, the focus goes
- * back to what had it when the dialog opened. A close that put the focus
+ * back to what had it when the dialog opened. On a phone a field waits for
+ * a tap, and the panel takes the focus in its place. A close that put the focus
  * somewhere else on purpose keeps it there. A dialog pinned open in a catalog
  * host is not open here (the caller says so), and leaves the focus alone.
  */
@@ -95,7 +84,11 @@ export function useDialogFocus(options: {
     if (!panel || !options.isOpen() || panel.contains(document.activeElement)) {
       return
     }
-    autofocus(initialFocus(panel))
+    // A field a phone leaves for a tap (`useAutofocus`) leaves the focus on the panel, so keys and a screen reader start in it.
+    const first = initialFocus(panel)
+    if (!autofocus(first) && first !== panel) {
+      autofocus(panel)
+    }
   }, { flush: 'post' })
 
   onKeyStroke('Tab', (event) => {

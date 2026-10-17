@@ -44,7 +44,8 @@ watch(
 const trimmed = computed(() => draft.value.trim())
 
 const field = ref<InstanceType<typeof TextInput>>()
-const autofocus = useAutofocus()
+// Renaming is typing the name: the field takes the focus on a phone too.
+const autofocus = useAutofocus({ asked: () => true })
 // The field mounts with each opening; it takes the focus with the name
 // selected. Where it may not take the focus (a catalog host), nothing is
 // selected either.

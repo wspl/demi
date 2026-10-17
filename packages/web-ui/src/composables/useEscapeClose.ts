@@ -1,5 +1,5 @@
 import { onKeyStroke } from '@vueuse/core'
-import { FIELD } from '../overlay/dialogFocus'
+import { FIELD } from '../ui/autofocus'
 
 /** What a layer needs to know of an Escape. */
 export interface EscapeKey {

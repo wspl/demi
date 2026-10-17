@@ -402,6 +402,13 @@ conversation; the panel button covers the screen with the work panel, and
   callout, a message's long press still selects its text, and a long press
   opens the menu a right-click opens on the desktop. Controls the desktop
   shows on hover show at rest, a sidebar row's on the open row.
+- **The keyboard comes when asked.** Opening a page, a dialog or a sheet
+  focuses no text field on a phone, as iOS's Settings does, so the
+  keyboard does not cover what just opened; the field takes the focus when
+  tapped. A field is focused on open only where typing in it is the whole
+  of what the user just chose: Rename, Search, a new browser tab's address,
+  a filter the user opened. Opening or starting a conversation leaves the
+  composer unfocused.
 - **One phone scale.** Every control on a phone is drawn at the phone's
   size, not the desktop's with a larger invisible target: a button, an
   icon, a row, a tab, a switch and their text take the phone metrics
