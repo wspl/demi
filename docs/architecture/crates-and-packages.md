@@ -467,9 +467,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     Claude Code release pointer and the Codex client version both use;
   - the provider contract: `Provider`, one entry shared by every user and
     request (identity, capabilities, authentication status, models, failure
-    reading, quota, accounts and `runtime`), and `ProviderRuntime`, one
-    session's runtime (`run`, `fresh`, `close`, and its vendor's request
-    limits for a model, `RequestLimits`); `InferenceRequest`, with the
+    reading, quota, accounts, its image role and `runtime`), and
+    `ProviderRuntime`, one session's runtime (`run`, `fresh`, `close`, and
+    its vendor's request limits for a model, `RequestLimits`);
+    `InferenceRequest`, with the
     transcript as it carries it (`InferenceItem`), whose parts hold each
     medium's bytes, or a URL, and never a reference (`UserPart`, `ResultPart`,
     `MediaBytes`; a tool returns its result as `ResultPart`s too), and how it
@@ -494,7 +495,10 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
     account could not be used (`AuthFailure`); quota (`ProviderQuota`), token
     accounting, and the models.dev client (`provider_common::models_dev`: the one
     copy of the document a backend keeps, `ModelsDevClient`, and its vendors
-    and models as catalog models); the catalog, state, account and quota
+    and models as catalog models); the image role (`provider_common::images`:
+    `ImageMaker`, one image for one account, the request and answer every
+    vendor's image endpoint shares, and how a refused call reads); the
+    catalog, state, account and quota
     shapes they return are `shared-types`'s, because the web app receives them.
 - **Public boundary:** the items above; `provider_common::testing` supplies scripted
   runtimes (`ScriptedRuntime`), a scripted vendor server (`MockVendor`), waits
@@ -518,8 +522,8 @@ Each crate implements the provider contract for one vendor family.
 | `provider-anthropic-api` | The Anthropic Messages API: request and stream mapping, model metadata and failure reading |
 | `provider-openai-api` | The OpenAI Responses API, and the Chat Completions wire for OpenAI-compatible endpoints with their reasoning deltas and the opt-in replay of thinking as `reasoning_content`; model metadata |
 | `provider-google` | The Gemini `generateContent` API, the native wire rather than the OpenAI-compatible one: request and stream mapping, including thought summaries, thought signatures and tool-returned media as inline parts; model metadata |
-| `provider-codex` | The Codex Responses transport over server-sent events and WebSocket, device login, token refresh, reading its failure records (usage-limit reset fields), the quota from its usage probe and the `x-codex-*` headers, and the model catalog |
-| `provider-grok-build` | RFC 8628 device login against `auth.x.ai`, OIDC token refresh, the Chat Completions transport to the Grok Build proxy, the model catalog from `/v1/models`, and the quota from the billing and subscription probe and the rate-limit headers |
+| `provider-codex` | The Codex Responses transport over server-sent events and WebSocket, device login, token refresh, reading its failure records (usage-limit reset fields), the quota from its usage probe and the `x-codex-*` headers, the model catalog, and its image models with the image endpoints' requests |
+| `provider-grok-build` | RFC 8628 device login against `auth.x.ai`, OIDC token refresh, the Chat Completions transport to the Grok Build proxy, the model catalog from `/v1/models`, the quota from the billing and subscription probe and the rate-limit headers, and its image models with the image endpoints' requests |
 
 - **Public boundary:** each crate's `Provider` implementation and its
   configuration type; transports, body builders, stream parsers and
@@ -844,6 +848,16 @@ or on another plugin.
 - **Must not:** hold an HTTP client of its own, store a search result, or
   put a token or a key in page state or a log.
 
+#### `plugin-image`
+
+- **Owns:** [image generation](../agent/images.md)'s commands: the `demi
+  image` group with its help and words, the reads of an edit's images
+  through the port's file reads, the image written to stdout, and the checks
+  of the result's shape and transparency.
+- **Public boundary:** its factory.
+- **Must not:** hold an HTTP client or a credential, or choose a provider
+  entry or an account; the port's Providers service does.
+
 ### Runner libraries
 
 The runner is one executable built from seven crates, so that a change to one
@@ -1146,7 +1160,8 @@ demi-backend (executable: configuration, composition)
   sources in registration order; each user's instances, with the `rpc`
   handlers that forward a command to its plugin; the port's operations over
   the user's plugin values, blobs, Host directory sets, Host file reads,
-  package calls and page-state marks, and over its secrets, sealed through
+  package calls, page-state marks and the Providers service's images, which
+  the product's port answers, and over its secrets, sealed through
   the product's port by the one owner of sealing, its outbound requests and
   its OAuth sign-ins with their registrations, flows and renewals
   ([OAuth sign-in](plugins.md#oauth-sign-in)); the
@@ -1197,7 +1212,9 @@ demi-backend (executable: configuration, composition)
   with the delivery of a decision's message,
   summaries and titles, the providers a session resolves, the changes of
   provider entries and their models that Settings and the `demi providers`
-  group both make (`provider_settings`), and the user's credentials with the
+  group both make (`provider_settings`), the plugins' Providers service,
+  which makes an image on an entry's account under its rotation and writes
+  its usage ledger row, and the user's credentials with the
   `demi credentials` group, with a child's
   model selection built from its profile and checked against the catalog,
   and its failure facts; the conversations' idle watches, release and the daily retention
@@ -1712,6 +1729,7 @@ plugin-file -> plugin-interface, command-declarations, command-package-file-prot
 plugin-browser -> plugin-interface, command-declarations, command-package-browser-protocol, host-interface, web-api-protocol
 plugin-skills -> plugin-interface, host-interface, shared-types
 plugin-web -> plugin-interface, command-declarations, command-package-fetch-protocol, host-interface
+plugin-image -> plugin-interface, host-interface, shared-types
 plugin-changes -> plugin-interface
 plugin-file-browser -> plugin-interface
 backend-remote-host -> command-protocol, command-declarations, shared-types, shared-gates, runner-protocol, host-interface
@@ -1735,7 +1753,7 @@ backend-permissions -> command-declarations, shared-types, host-interface, backe
 backend-host-access -> agent-store, agent-tools, backend-cloud, backend-blobs, backend-runners, backend-database, command-protocol, command-declarations, shared-types, shared-gates, backend-remote-host, runner-protocol, host-interface, web-api-protocol, plugin-interface
 backend-user-shard -> agent-server, conversation-socket-protocol, agent-session, agent-store, agent-tools, agent-transcript, backend-accounts, backend-cloud, backend-host-access, backend-idle-watch, backend-blobs, backend-permissions, backend-plugins, backend-providers, backend-runners, backend-database, backend-page-sync, command-package-claude-code-protocol, command-protocol, command-declarations, shared-types, shared-gates, plugin-interface, backend-remote-host, machine-manager-protocol, provider-common, provider-claude-code, runner-protocol, host-interface, web-api-protocol
 backend-http -> conversation-socket-protocol, agent-store, shared-artifacts, backend-accounts, backend-cloud, backend-host-access, backend-blobs, backend-providers, backend-runners, backend-user-shard, backend-database, backend-page-sync, command-protocol, shared-types, backend-remote-host, provider-common, runner-protocol, host-interface, web-api-protocol, backend-permissions, backend-plugins, plugin-interface
-backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web
+backend -> backend-accounts, backend-blobs, backend-cloud, backend-database, backend-host-access, backend-http, backend-providers, backend-runners, backend-user-shard, command-declarations, command-package-browser-protocol, plugin-browser, plugin-changes, plugin-file, plugin-file-browser, plugin-interface, provider-anthropic-api, provider-claude-code, provider-codex, provider-common, provider-google, provider-grok-build, provider-openai-api, runner-protocol, shared-artifacts, shared-cli, shared-gates, shared-types, web-api-protocol, plugin-skills, plugin-web, plugin-image
 machine-manager -> shared-artifacts, shared-cli, machine-manager-protocol, runner-protocol
 server -> backend-database, machine-manager-protocol, runner-protocol, shared-artifacts, shared-cli
 runner -> command-protocol, command-sdk, runner-direct, runner-host, runner-jobs, runner-process, runner-protocol, runner-command-packages, runner-shell, shared-artifacts, shared-cli

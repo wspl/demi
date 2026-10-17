@@ -43,6 +43,7 @@ mod host_commands {
             caller: Some(demi_host_interface::JobCaller {
                 node: demi_shared_types::NodeId::try_from("node-1").unwrap(),
                 tool_use_id: "call".into(),
+                turn: None,
             }),
             stdin: false,
             pipes: None,

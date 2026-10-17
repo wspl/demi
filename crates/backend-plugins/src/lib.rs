@@ -17,6 +17,7 @@ pub use registry::{Registry, RegistryError};
 #[cfg(feature = "testing")]
 pub mod testing;
 pub use user::{
+    ReadOn,
     ContextAsk, Lost, PageCall, PageCallError, PanelError, PluginToolset, ProductPort,
     SwitchError, UserPlugins,
 };

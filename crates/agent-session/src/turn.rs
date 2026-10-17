@@ -578,12 +578,14 @@ async fn run_tools(
             // node works in by then (`edit-tracking.md` § Within the working
             // directory).
             let started_in = s.runtime.directory().await;
+            let turn = s.read(SessionCore::turn);
             let invocations = step
                 .iter()
                 .zip(&handles)
                 .map(|(call, handle)| ToolInvocation {
                     tool_use_id: call.tool_use_id.clone(),
                     tool_name: call.tool_name.clone(),
+                    turn: turn.clone(),
                     input: tool_input(&call.input),
                     model: model.clone(),
                     request_limits,

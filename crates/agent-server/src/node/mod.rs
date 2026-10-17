@@ -136,11 +136,13 @@ impl<H: HostResolver> Node<H> {
         &self.runtime.commands
     }
 
-    /// The caller a job the node's call `tool_use_id` starts records.
-    pub fn job_caller(&self, tool_use_id: &str) -> JobCaller {
+    /// The caller a job the node's call `tool_use_id` of `turn` starts
+    /// records.
+    pub fn job_caller(&self, tool_use_id: &str, turn: Option<TurnId>) -> JobCaller {
         JobCaller {
             node: self.runtime.node.clone(),
             tool_use_id: tool_use_id.to_owned(),
+            turn,
         }
     }
 

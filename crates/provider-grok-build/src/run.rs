@@ -129,7 +129,7 @@ pub(crate) fn run(
 /// reads it: a 402, whatever its body, or a 403 whose text says the account
 /// ran out of credits. Any other 403 stays a refused credential, and a 429
 /// only throttles.
-fn with_usage_limit(mut failure: ProviderFailure) -> ProviderFailure {
+pub(crate) fn with_usage_limit(mut failure: ProviderFailure) -> ProviderFailure {
     let used_up = failure
         .diagnostics
         .as_deref()

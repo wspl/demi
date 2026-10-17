@@ -5,10 +5,11 @@
 //! the one protocol of `providers.md` § Token refresh, reads its failure
 //! records' usage-limit resets, keeps the account's quota from the
 //! `x-codex-*` headers and a free usage probe, and reads the account's model
-//! catalog.
+//! catalog, and makes images through the backend's image endpoints.
 
 mod auth;
 mod failure;
+mod images;
 mod login;
 mod models;
 mod quota;
@@ -28,6 +29,7 @@ use demi_provider_common::{
     Capabilities, CatalogError, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError,
     credentials::{Accounts, CredentialPool, SubscriptionAccounts},
+    images::ImageMaker,
     quota::{ProviderQuota, QuotaSnapshotStore},
 };
 use demi_shared_types::{
@@ -117,6 +119,8 @@ struct Shared {
     websocket_url: Url,
     /// The catalog's address, without the client version.
     models_url: Url,
+    image_generations_url: Url,
+    image_edits_url: Url,
     releases: CodexReleases,
     transport: TransportMode,
     header_timeout: Duration,
@@ -177,6 +181,8 @@ impl CodexProvider {
                 websocket_url: websocket_url(&responses_url),
                 responses_url,
                 models_url: codex_url(&config.backend_url, "/models"),
+                image_generations_url: codex_url(&config.backend_url, "/images/generations"),
+                image_edits_url: codex_url(&config.backend_url, "/images/edits"),
                 releases: config.releases,
                 transport: config.transport,
                 header_timeout: config.header_timeout,
@@ -265,6 +271,10 @@ impl Provider for CodexProvider {
 
     fn accounts(&self) -> Option<&dyn SubscriptionAccounts> {
         Some(&self.shared.accounts)
+    }
+
+    fn images(&self) -> Option<&dyn ImageMaker> {
+        Some(self)
     }
 
     fn runtime(&self, env: RuntimeEnv) -> Result<Box<dyn ProviderRuntime>, RuntimeError> {

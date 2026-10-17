@@ -187,6 +187,9 @@ pub struct RunningCommand {
     pub command: CommandId,
     pub job: String,
     pub tool_use_id: String,
+    /// The turn of the call; none for a command recorded before records
+    /// kept it.
+    pub turn: Option<TurnId>,
     /// The title its reports name (`shell-tool.md` § Command reports); empty
     /// for a command recorded before records kept it.
     pub title: String,

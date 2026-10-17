@@ -65,7 +65,7 @@ pub trait HostAccess {
 /// its whole output (`shell-tool.md` § The whole output). A failure to keep
 /// them is the keeper's to record.
 pub trait CommandKeeper {
-    /// Records that `command`, which the call `tool_use_id` titled `title`
+    /// Records that `command`, which the call `caller` names titled `title`
     /// started to report every `interval_ms`, or only its end when none,
     /// runs as the job `job` on the environment's Host, before the job
     /// starts, so that a backend that starts again takes it up, its reports
@@ -76,7 +76,7 @@ pub trait CommandKeeper {
     fn started<'a>(
         &'a self,
         command: &'a CommandId,
-        tool_use_id: &'a str,
+        caller: &'a JobCaller,
         title: &'a str,
         interval_ms: Option<u32>,
         job: &'a str,
@@ -482,7 +482,7 @@ impl RemoteShellEnvironment {
         let id = RemoteHost::job_id();
         if let Some(keeper) = &self.0.options.keeper {
             keeper
-                .started(command, &request.caller.tool_use_id, &request.title, request.interval_ms, &id)
+                .started(command, &request.caller, &request.title, request.interval_ms, &id)
                 .await;
         }
         let job = self
