@@ -19,7 +19,7 @@ use demi_web_api_protocol::auth::UserDto;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::CredentialId;
 use demi_web_api_protocol::providers::{
-    CreateProvider, ProviderAnswer, ProviderDetails, ProviderPatch, Providers, QuotaAnswer,
+    CreateProvider, ProviderAnswer, ProviderDetails, ProviderOrder, ProviderPatch, Providers, QuotaAnswer,
     QuotaRequest, SubscriptionFamily, TestRequest, TestResult, VendorCatalog,
 };
 
@@ -61,9 +61,14 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
         ProviderRefusal::NotConfiguring => return ApiError::forbidden(message),
         ProviderRefusal::NotFound => return ApiError::provider_not_found(),
         ProviderRefusal::Busy => return ApiError::provider_busy(),
-        ProviderRefusal::Wire { .. } | ProviderRefusal::Key(_) | ProviderRefusal::MakesNoImages(_) => {
+        ProviderRefusal::Wire { .. }
+        | ProviderRefusal::Key(_)
+        | ProviderRefusal::MakesNo(..)
+        | ProviderRefusal::UnmadeKind { .. }
+        | ProviderRefusal::Order => {
             return ApiError::invalid_body(message);
         }
+        ProviderRefusal::ShapeFixed(_) => (StatusCode::BAD_REQUEST, ErrorCode::ShapeFixed),
         ProviderRefusal::UnknownFamily(_) => {
             (StatusCode::BAD_REQUEST, ErrorCode::UnknownProviderType)
         }
@@ -97,6 +102,16 @@ pub(super) async fn list(
             .map(|entry| services.assembly.provider_dto(entry))
             .collect(),
     }))
+}
+
+/// Puts the scope's entries in the order the body names them, each once.
+pub(super) async fn order(
+    State(services): State<Arc<Services>>,
+    AuthUser(user): AuthUser,
+    JsonBody(order): JsonBody<ProviderOrder>,
+) -> Result<StatusCode, ApiError> {
+    services.order_providers(&user, order.provider_ids).await.map_err(refused)?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// What the page can add: each subscription family with whether the scope

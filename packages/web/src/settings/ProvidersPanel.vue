@@ -29,6 +29,7 @@ const {
   removeAccount,
   activateAccount,
   reorderAccounts,
+  reorderProviders,
   saveModel,
   saveModels,
   searchModels,
@@ -106,6 +107,7 @@ watch(
     @install-cli="installCli"
     @activate-account="activateAccount"
     @reorder-accounts="reorderAccounts"
+    @reorder-providers="reorderProviders"
     :multi-account-warned="preferences.multiAccountWarned"
     @multi-account-warned="preferences.update({ multiAccountWarned: true })"
     @remove-account="removeAccount"

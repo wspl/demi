@@ -44,7 +44,7 @@ test('the eye asks the user to confirm it is them, then shows the secret, and a 
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const key = `${init?.method ?? 'GET'} ${String(input)}`
     if (key === 'GET /api/models') {
-      return Response.json({ providers: [], smallModel: null, imageEntries: {} })
+      return Response.json({ providers: [], smallModel: null })
     }
     requests.push(init?.body === undefined ? key : `${key} ${String(init.body)}`)
     if (key === 'GET /api/credentials/c1/values') {

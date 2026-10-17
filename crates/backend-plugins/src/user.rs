@@ -24,7 +24,7 @@ use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{CommandSet, GroupBuilder, JobCaller, PortError, RpcPort};
 use demi_plugin_interface::{
-    ImageAsk, ImageVendorModels, MadeImage,
+    ImageAsk, MadeImage, MediaListing,
     CallKind, DirectoryPath, HostDirectory, HostFile, HostRead, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
     PortRefusal, Reply, Request, Scope, StoredValue,
@@ -72,9 +72,9 @@ pub trait ProductPort {
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<Vec<HostFile>, PortFailure>>;
 
-    /// The image models of the user's provider entries, the default first
-    /// (`images.md`).
-    fn image_models(&self) -> LocalBoxFuture<'_, Result<Vec<ImageVendorModels>, PortFailure>>;
+    /// The image models of the user's provider entries, each with the
+    /// entries that offer it (`media.md`).
+    fn image_models(&self) -> LocalBoxFuture<'_, Result<MediaListing, PortFailure>>;
 
     /// Makes the image `ask` names for the conversation, through the entry
     /// and account the providers choose; its usage ledger row names the
@@ -1240,7 +1240,7 @@ impl RequestPort {
                 PortAnswer::Done
             }
             PortMessage::ImageModels => PortAnswer::ImageModels {
-                vendors: product.image_models().await?,
+                listing: product.image_models().await?,
             },
             PortMessage::MakeImage { ask } => PortAnswer::Image {
                 image: product

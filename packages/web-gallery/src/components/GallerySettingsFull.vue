@@ -334,7 +334,7 @@ function resetShortcuts() {
     :overlay-store="appOverlayStore"
   />
 
-  <GalleryAgent v-else-if="tab === 'agent'" :state="s.smallModel" :entries="s.providers" />
+  <GalleryAgent v-else-if="tab === 'agent'" :state="s.smallModel" />
 
   <GallerySettingsProviders v-else-if="tab === 'models'" :state="state" />
 

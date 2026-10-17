@@ -17,7 +17,6 @@ import {
   Plus,
   RefreshCw,
   Scale,
-  Search,
   SlidersHorizontal,
   TextCursorInput,
   Trash2,
@@ -37,7 +36,6 @@ import Switch from '@demicodes/web-ui/ui/Switch.vue'
 import Tag from '@demicodes/web-ui/ui/Tag.vue'
 import CommitTextInput from '../ui/CommitTextInput.vue'
 import TitleInput from '../ui/TitleInput.vue'
-import TextInput from '@demicodes/web-ui/ui/TextInput.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
@@ -57,16 +55,25 @@ import { answerInDialog } from './dialog-work'
 import { providerOperation, providerTarget } from './provider-operations'
 import SettingsGroup from './SettingsGroup.vue'
 import SettingsListItem from './SettingsListItem.vue'
+import SettingsModelList from './SettingsModelList.vue'
 import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import SettingsSplit from './SettingsSplit.vue'
 import { useListReorder } from '../ui/useListReorder'
+import { hasTextModel, testedModel } from './tested-model'
+import { formatDate } from '../ui/dates'
 import {
+  COMPATIBLE_MEDIA_SHAPES,
   COMPATIBLE_WIRE_APIS,
+  IMAGE_SHAPE_LABELS,
+  SETTINGS_MEDIA_KINDS,
   ROTATIONS,
   ROTATION_HINTS,
   ROTATION_LABELS,
   WIRE_API_LABELS,
+  type SettingsEntryMedia,
+  type SettingsImageShape,
+  type SettingsMediaKind,
   type SettingsModelDraft,
   type SettingsModelSearch,
   type SettingsQuotaRefresh,
@@ -163,6 +170,8 @@ const emit = defineEmits<{
   activateAccount: [provider: SettingsProviderEntry, accountId: string]
   /** The accounts in the order the user dragged them to, every one once. */
   reorderAccounts: [provider: SettingsProviderEntry, accountIds: string[]]
+  /** Every entry in the order the user dragged the list to, subscriptions first, each once. */
+  reorderProviders: [providerIds: string[]]
   /** The user went on past the warning about several accounts. */
   multiAccountWarned: []
 }>()
@@ -389,6 +398,83 @@ function chooseRotation(provider: SettingsProviderEntry, rotation: SettingsRotat
   afterWarning(() => emit('change', provider, { rotation }))
 }
 
+/**
+ * The list's order, which generated media follow (`media.md` § Which entry
+ * makes a call): a row is dragged within its own group, as Finder's sidebar
+ * rows are, or moved one place with Option and the arrow keys, and the host
+ * receives every stored entry's new place.
+ */
+const subscriptionList = ref<HTMLElement>()
+const keyList = ref<HTMLElement>()
+// A subscription nobody signed in to is no entry and has no place: only the
+// stored ones are dragged and told, and the placeholders follow them.
+const storedSubscriptions = computed(() =>
+  subscriptions.value.filter((provider) => provider.configured !== false).map((provider) => provider.id),
+)
+const subscriptionOrder = useListReorder(
+  subscriptionList,
+  () => storedSubscriptions.value,
+  (ids) => emit('reorderProviders', [...ids, ...apiKeys.value.map((provider) => provider.id)]),
+)
+const keyOrder = useListReorder(
+  keyList,
+  () => apiKeys.value.map((provider) => provider.id),
+  (ids) => emit('reorderProviders', [...storedSubscriptions.value, ...ids]),
+)
+function moveProvider(order: typeof keyOrder, event: KeyboardEvent, id: string): void {
+  if (event.altKey) {
+    order.keydown(event, id)
+  }
+}
+
+/** The kinds the entry makes, each with its switch on the page. */
+function madeKinds(provider: SettingsProviderEntry): SettingsMediaKind[] {
+  return SETTINGS_MEDIA_KINDS.filter((kind) => provider.media[kind].shape !== null)
+}
+
+/**
+ * The kinds whose sections the entry's page shows below Models
+ * (`providers.md` § Provider management): each a vendor entry makes, and
+ * every kind for a compatible API, which chooses its shape there.
+ */
+function mediaSections(provider: SettingsProviderEntry): SettingsMediaKind[] {
+  return provider.compatible ? [...SETTINGS_MEDIA_KINDS] : madeKinds(provider)
+}
+
+/** Each kind's section title, its switch and its Add, as the page names them. */
+const MEDIA_WORDS: Record<SettingsMediaKind, {
+  title: () => string
+  generation: () => string
+  add: () => string
+  none: () => string
+}> = {
+  image: {
+    title: () => t('providers.media.images'),
+    generation: () => t('providers.media.imageGeneration'),
+    add: () => t('providers.media.addImage'),
+    none: () => t('providers.media.noImages'),
+  },
+}
+
+function changeMedia(
+  provider: SettingsProviderEntry,
+  kind: SettingsMediaKind,
+  change: Partial<SettingsEntryMedia>,
+): void {
+  emit('change', provider, { media: { ...provider.media, [kind]: { ...provider.media[kind], ...change } } })
+}
+
+function chooseShape(provider: SettingsProviderEntry, kind: SettingsMediaKind, shape: SettingsImageShape | null): void {
+  if (shape !== provider.media[kind].shape) {
+    changeMedia(provider, kind, { shape })
+  }
+}
+
+/** A model's kind when it is not text, which its row tags and which has no menu switch. */
+function mediaKind(m: SettingsProviderModel): SettingsMediaKind | null {
+  return m.kind && m.kind !== 'text' ? m.kind : null
+}
+
 const accountList = ref<HTMLElement>()
 const accountOrder = useListReorder(
   accountList,
@@ -469,23 +555,51 @@ watch(testingAccounts, (now, before) => {
 })
 
 // Why the selected provider cannot be tested right now, for the button's tooltip.
+/** Why Test Connection is unavailable: no text model to send its chat message to, or none enabled. */
 const testBlockReason = computed(() => {
-  return selected.value?.models.some((model) => model.enabled)
-    ? undefined
-    : t('providers.connection.enableModel')
+  const provider = selected.value
+  if (!provider || testedModel(provider)) {
+    return undefined
+  }
+  return hasTextModel(provider) ? t('providers.connection.enableModel') : t('providers.connection.noTextModel')
 })
 
 const modelFilter = ref('')
 
 const isUnknown = (m: SettingsProviderModel) => m.contextWindow === null
 
+/** The text models Models lists, which the filter narrows; the media models are their kinds' sections'. */
 function visibleModels(p: SettingsProviderEntry): SettingsProviderModel[] {
   const q = modelFilter.value.trim().toLowerCase()
+  const text = p.models.filter((m) => !mediaKind(m))
   return q
-    ? p.models.filter(
+    ? text.filter(
         (m) => m.id.includes(q) || m.name.toLowerCase().includes(q),
       )
-    : p.models
+    : text
+}
+
+/** The media lists' filter, one for every kind, as Models has its own. */
+const mediaFilter = ref('')
+
+/** `models` the media filter leaves, by ID or name. */
+function filtered<M extends { id: string; name: string }>(models: M[]): M[] {
+  const q = mediaFilter.value.trim().toLowerCase()
+  return q ? models.filter((m) => m.id.includes(q) || m.name.toLowerCase().includes(q)) : models
+}
+
+/** Why `kind`'s list shows no row, or null while it shows some. */
+function mediaEmpty(p: SettingsProviderEntry, kind: SettingsMediaKind): string | null {
+  const shown = p.compatible ? filtered(addedModels(p, kind)) : filtered(p.media[kind].models ?? [])
+  if (shown.length) {
+    return null
+  }
+  return mediaFilter.value ? t('providers.models.noResults') : MEDIA_WORDS[kind].none()
+}
+
+/** The models of `kind` a compatible entry's user added, which its section lists and edits. */
+function addedModels(p: SettingsProviderEntry, kind: SettingsMediaKind): SettingsProviderModel[] {
+  return p.models.filter((m) => mediaKind(m) === kind)
 }
 
 /**
@@ -508,6 +622,8 @@ const takenIds = computed(() => {
 /** Add Model, a search over models.dev, for the entry `providerId`. */
 const modelSearch = ref<{
   providerId: string
+  /** What the model added makes: text, or a kind the entry has a shape for. */
+  kind: 'text' | SettingsMediaKind
   open: boolean
   /** Whether the model chosen is being added. */
   adding: boolean
@@ -519,9 +635,9 @@ const searchModelsOf = computed<SettingsModelSearch | undefined>(() => {
   return search && shown ? (query, signal) => search(shown.providerId, query, signal) : undefined
 })
 
-function openAddModel(): void {
+function openAddModel(kind: 'text' | SettingsMediaKind = 'text'): void {
   if (selected.value) {
-    modelSearch.value = { providerId: selected.value.id, open: true, adding: false, error: null }
+    modelSearch.value = { providerId: selected.value.id, kind, open: true, adding: false, error: null }
   }
 }
 
@@ -536,10 +652,20 @@ async function addModel(draft: SettingsModelDraft): Promise<void> {
   if (!search || !provider || search.adding) {
     return
   }
-  const model: SettingsModelDraft = {
-    ...draft,
-    id: provider.modelSource === 'manual' ? freeModelId(provider.models.map((m) => m.id), draft.id) : draft.id,
-  }
+  const id = provider.modelSource === 'manual' ? freeModelId(provider.models.map((m) => m.id), draft.id) : draft.id
+  // A model that is not text keeps only its ID and name.
+  const model: SettingsModelDraft = search.kind === 'text'
+    ? { ...draft, id }
+    : {
+        kind: search.kind,
+        id,
+        name: draft.name,
+        contextWindow: null,
+        outputLimit: null,
+        efforts: [],
+        extensions: null,
+        fastTier: null,
+      }
   search.adding = true
   let added = false
   try {
@@ -569,6 +695,7 @@ async function addModel(draft: SettingsModelDraft): Promise<void> {
 
 function toDraft(m: SettingsProviderModel): SettingsModelDraft {
   return {
+    ...(m.kind ? { kind: m.kind } : {}),
     id: m.id,
     name: m.name,
     contextWindow: m.contextWindow,
@@ -681,20 +808,26 @@ function endpointCheck(value: string) {
           >
             {{ t('providers.subscriptions') }}
           </div>
+          <div ref="subscriptionList" class="contents">
           <SettingsListItem
             v-for="p in subscriptions"
             :key="p.id"
+            :data-reorder-id="p.configured === false ? undefined : p.id"
+            :class="{ 'bg-surface-float shadow-md': subscriptionOrder.dragging.value === p.id }"
             :label="p.name"
             :selected="p.id === selectedId"
             :badge="providerBadge[p.state]"
             :badge-label="providerBadgeLabel[p.state]"
             :muted="!p.enabled"
             @select="select(p.id)"
+            @pointerdown="p.configured !== false && subscriptionOrder.start($event, p.id)"
+            @keydown="p.configured !== false && moveProvider(subscriptionOrder, $event, p.id)"
           >
             <template #leading
               ><VendorMark :label="p.name" :src="p.logo" size="sm"
             /></template>
           </SettingsListItem>
+          </div>
           <!-- Adding belongs to this group alone, so its button sits in the group's caption. -->
           <div class="flex h-8 select-none items-center pl-1 pt-2">
             <span
@@ -705,9 +838,12 @@ function endpointCheck(value: string) {
               ><Plus :size="12" /> {{ uiText('common.add') }}</Button
             >
           </div>
+          <div ref="keyList" class="contents">
           <SettingsListItem
             v-for="p in apiKeys"
             :key="p.id"
+            :data-reorder-id="p.id"
+            :class="{ 'bg-surface-float shadow-md': keyOrder.dragging.value === p.id }"
             :label="p.name"
             :selected="p.id === selectedId"
             :badge="providerBadge[p.state]"
@@ -718,11 +854,14 @@ function endpointCheck(value: string) {
             :remove-disabled="busy(p.id)"
             @select="select(p.id)"
             @remove="askRemoveProvider(p)"
+            @pointerdown="keyOrder.start($event, p.id)"
+            @keydown="moveProvider(keyOrder, $event, p.id)"
           >
             <template #leading
               ><VendorMark :label="p.name" :src="p.logo" size="sm"
             /></template>
           </SettingsListItem>
+          </div>
         </template>
 
         <template #detail>
@@ -867,7 +1006,7 @@ function endpointCheck(value: string) {
                       :icon="Plug"
                       :aria-label="t('providers.account.test')"
                       :operation="providerOperation(selected.id, { kind: 'account', accountId: account.id, action: 'test' })"
-                      :disabled="!selected.models.some((model) => model.enabled)"
+                      :disabled="!testedModel(selected)"
                       :disabled-reason="testBlockReason"
                       @click="emit('test', selected, account.id)"
                   /></Tooltip>
@@ -1068,26 +1207,11 @@ function endpointCheck(value: string) {
                     :disabled="
                       selected.configured === false ||
                       busy(selected.id) ||
-                      !selected.models.some((model) => model.enabled)
+                      !testedModel(selected)
                     "
                     :disabled-reason="testBlockReason"
                     @click="emit('test', selected)"
                 /></Tooltip>
-              </SettingsRow>
-            </SettingsGroup>
-
-            <!-- A provider that makes images has a switch for whether the agent's images may come
-               from it (`providers.md` § Provider management), a setting of its own as in macOS
-               Settings. -->
-            <SettingsGroup v-if="selected.imageGeneration !== undefined">
-              <SettingsRow :label="t('providers.imageGeneration')">
-                <Switch
-                  :model-value="selected.imageGeneration"
-                  :aria-label="t('providers.imageGeneration')"
-                  :disabled="fieldsLocked(selected)"
-                  size="sm"
-                  @update:model-value="emit('change', selected, { imageGeneration: $event })"
-                />
               </SettingsRow>
             </SettingsGroup>
 
@@ -1187,28 +1311,30 @@ function endpointCheck(value: string) {
                   />
                 </header>
               </template>
-              <!-- The filter is bare text; its hit area is the whole row height. -->
-              <div
-                v-if="selected.kind === 'api_key'"
-                class="flex min-h-10 items-center gap-3 px-3 py-1"
+              <SettingsModelList
+                v-model:filter="modelFilter"
+                :filter-placeholder="selected.kind === 'api_key' ? t('providers.models.filterModels') : undefined"
+                :state="selected.models.length || selected.modelSource === 'manual' ? 'ready' : modelLoad"
+                :loading-label="t('providers.models.loading')"
+                :empty="
+                  visibleModels(selected).length
+                    ? null
+                    : modelFilter
+                      ? t('providers.models.noResults')
+                      : selected.kind === 'subscription' && !selected.accounts.length
+                        ? t('providers.models.signInToSee')
+                        : t('providers.models.none')
+                "
+                @retry="emit('retryModels')"
               >
-                <TextInput
-                  size="sm"
-                  v-model="modelFilter"
-                  search
-                  :placeholder="t('providers.models.filterModels')"
-                  bare
-                  class="min-w-0 flex-1"
-                >
-                  <template #prefix><Search :size="ICON_PX.in24" /></template>
-                </TextInput>
+                <template #actions>
                 <Tooltip :content="t('providers.models.add')"
                   ><IconButton
                     size="sm"
                     :icon="Plus"
                     :aria-label="t('providers.models.add')"
                     :disabled="fieldsLocked(selected)"
-                    @click="openAddModel"
+                    @click="openAddModel()"
                 /></Tooltip>
                 <!-- A compatible API has no catalog to read again: its models are the ones added. -->
                 <Tooltip v-if="!selected.compatible && selected.modelSource === 'catalog'" :content="t('providers.models.refresh')"
@@ -1224,16 +1350,7 @@ function endpointCheck(value: string) {
                     :aria-label="t('providers.models.refresh')"
                     @click="emit('refresh', selected)"
                 /></Tooltip>
-              </div>
-              <AsyncRegion
-                :state="
-                  selected.models.length || selected.modelSource === 'manual'
-                    ? 'ready'
-                    : modelLoad
-                "
-                :label="t('providers.models.loading')"
-                @retry="emit('retryModels')"
-              >
+                </template>
                 <SettingsRow
                   v-for="m in visibleModels(selected)"
                   :key="m.id"
@@ -1306,22 +1423,116 @@ function endpointCheck(value: string) {
                     :aria-label="t('providers.models.enable', { name: m.name || m.id })"
                   />
                 </SettingsRow>
-                <div
-                  v-if="!visibleModels(selected).length"
-                  class="flex select-none justify-center px-4 py-6 text-center text-[13px] text-fg-subtle"
-                >
-                  <!-- An empty list is a plain wait, never red: nothing has failed. -->
-                  {{
-                    modelFilter
-                      ? t('providers.models.noResults')
-                      : selected.kind === 'subscription' &&
-                          !selected.accounts.length
-                        ? t('providers.models.signInToSee')
-                        : t('providers.models.none')
-                  }}
-                </div>
-              </AsyncRegion>
+              </SettingsModelList>
             </SettingsGroup>
+            <!-- One section for each kind of media the entry can make, below its models
+               (`providers.md` § Provider management): a vendor entry's switch and its vendor's
+               models, which it does not edit; a compatible API's shape, then once chosen its
+               switch and the models its user added with the section's own Add. -->
+            <template v-for="kind in mediaSections(selected)" :key="kind">
+              <SettingsGroup :title="MEDIA_WORDS[kind].title()">
+              <SettingsRow v-if="selected.compatible" :label="t('providers.connection.protocol')">
+                <Dropdown
+                  size="sm"
+                  :overlay-store="overlayStore"
+                  variant="default"
+                  :trigger-label="MEDIA_WORDS[kind].title()"
+                  :disabled="fieldsLocked(selected)"
+                >
+                  <template #trigger>{{
+                    selected.media[kind].shape ? IMAGE_SHAPE_LABELS[selected.media[kind].shape!] : t('providers.media.none')
+                  }}</template>
+                  <template #content="{ close }">
+                    <Menu>
+                      <MenuItem
+                        :label="t('providers.media.none')"
+                        choice
+                        :is-selected="selected.media[kind].shape === null"
+                        @select="close(); chooseShape(selected, kind, null)"
+                      />
+                      <MenuItem
+                        v-for="shape in COMPATIBLE_MEDIA_SHAPES[kind]"
+                        :key="shape"
+                        :label="IMAGE_SHAPE_LABELS[shape]"
+                        choice
+                        :is-selected="selected.media[kind].shape === shape"
+                        @select="close(); chooseShape(selected, kind, shape)"
+                      />
+                    </Menu>
+                  </template>
+                </Dropdown>
+              </SettingsRow>
+                <SettingsRow v-if="selected.media[kind].shape" :label="MEDIA_WORDS[kind].generation()">
+                  <Switch
+                    :model-value="selected.media[kind].enabled"
+                    :aria-label="MEDIA_WORDS[kind].generation()"
+                    :disabled="fieldsLocked(selected)"
+                    size="sm"
+                    @update:model-value="changeMedia(selected, kind, { enabled: $event })"
+                  />
+                </SettingsRow>
+              </SettingsGroup>
+              <!-- The kind's models in the same list as Models: a compatible API's are its user's,
+                   each edited or removed, added with the list's own Add; a vendor's are its
+                   vendor's, newest first, read and never edited. -->
+              <SettingsGroup v-if="selected.media[kind].shape">
+                <SettingsModelList
+                  v-model:filter="mediaFilter"
+                  :filter-placeholder="t('providers.models.filterModels')"
+                  :empty="mediaEmpty(selected, kind)"
+                >
+                  <template v-if="selected.compatible" #actions>
+                    <Tooltip :content="MEDIA_WORDS[kind].add()"
+                      ><IconButton
+                        size="sm"
+                        :icon="Plus"
+                        :aria-label="MEDIA_WORDS[kind].add()"
+                        :disabled="fieldsLocked(selected)"
+                        @click="openAddModel(kind)"
+                    /></Tooltip>
+                  </template>
+                  <template v-if="selected.compatible">
+                  <SettingsRow
+                    v-for="m in filtered(addedModels(selected, kind))"
+                    :key="m.id"
+                    :label="m.name || m.id"
+                    compact
+                    :muted="!selected.media[kind].enabled"
+                  >
+                    <Tooltip :content="t('providers.models.edit')"
+                      ><IconButton
+                        size="sm"
+                        :icon="SlidersHorizontal"
+                        :aria-label="t('providers.models.edit')"
+                        :disabled="fieldsLocked(selected)"
+                        @click="openModel('edit', m)"
+                    /></Tooltip>
+                    <Tooltip :content="t('providers.account.remove')"
+                      ><IconButton
+                        size="sm"
+                        :icon="Trash2"
+                        variant="danger"
+                        :aria-label="t('providers.account.remove')"
+                        @click="askRemoveModel(selected, m)"
+                    /></Tooltip>
+                  </SettingsRow>
+                  </template>
+                  <template v-else>
+                  <SettingsRow
+                    v-for="m in filtered(selected.media[kind].models ?? [])"
+                    :key="m.id"
+                    :label="m.name"
+                    compact
+                    :muted="!selected.media[kind].enabled"
+                  >
+                    <span v-if="m.released" class="select-none text-[12px] tabular-nums text-fg-subtle">{{
+                      formatDate(m.released)
+                    }}</span>
+                  </SettingsRow>
+                  </template>
+                </SettingsModelList>
+              </SettingsGroup>
+            </template>
             <!-- A phone's list rows show no remove button, so an API key is removed from the
                  bottom of its own page, as iOS's Settings removes an account; the desktop's
                  stays on the row. A subscription is a fixture and is never removed. -->
@@ -1400,6 +1611,7 @@ function endpointCheck(value: string) {
       :search="searchModelsOf"
       :adding="modelSearch.adding"
       :error="modelSearch.error"
+      :title="modelSearch.kind === 'text' ? undefined : MEDIA_WORDS[modelSearch.kind].add()"
       @close="modelSearch.open = false"
       @add="addModel"
     />

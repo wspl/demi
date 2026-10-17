@@ -269,6 +269,9 @@ pub struct Price {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct Rate {
     pub unit: PriceUnit,
+    /// The tokens' kind, where the vendor prices image and text tokens
+    /// apart, as OpenAI does gpt-image-2's input.
+    pub modality: Option<Modality>,
     pub amount: f64,
     pub currency: Currency,
     pub size: Option<String>,
@@ -292,8 +295,21 @@ pub enum PriceUnit {
     /// A million characters of text read aloud.
     MillionCharacters,
     MillionInputTokens,
+    /// A million input tokens the vendor has cached from an earlier call.
+    MillionCachedInputTokens,
     MillionOutputTokens,
     /// A unit this backend does not know, whose rate it cannot use.
+    #[serde(other)]
+    Other,
+}
+
+/// The kind of tokens a rate is the price of.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Modality {
+    Image,
+    Text,
+    /// A kind this backend does not know, whose rate it cannot use.
     #[serde(other)]
     Other,
 }

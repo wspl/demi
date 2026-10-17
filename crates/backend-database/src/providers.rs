@@ -116,9 +116,9 @@ pub struct CredentialWrite {
 }
 
 const PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, rotation, image_generation";
-/// The columns a new entry stores; its rotation is the default, manual, and
-/// its Image Generation is on.
-const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at";
+/// The columns a new entry stores; its rotation is the default, manual, its
+/// Image Generation is on, and it joins the end of its owner's list.
+const NEW_PROVIDER_COLUMNS: &str = "id, owner_user_id, provider_type, credential_kind, label, config, active_credential_id, created_at, position";
 const CREDENTIAL_COLUMNS: &str =
     "id, identity_key, label, detail, source, secret, version, quota, updated_at, signed_out";
 
@@ -150,7 +150,8 @@ impl ControlService {
             let inserted = transaction
                 .query_row(
                     &format!(
-                        "INSERT INTO providers ({NEW_PROVIDER_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                        "INSERT INTO providers ({NEW_PROVIDER_COLUMNS}) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8,
+                           (SELECT coalesce(max(position) + 1, 0) FROM providers WHERE owner_user_id = ?2))
                          ON CONFLICT (owner_user_id, provider_type) WHERE credential_kind = 'subscription' DO NOTHING
                          RETURNING {PROVIDER_COLUMNS}"
                     ),
@@ -185,11 +186,11 @@ impl ControlService {
             .await
     }
 
-    /// The owner's entries, oldest first.
+    /// The owner's entries in the order of Settings › Providers.
     pub async fn providers(&self, owner: UserId) -> Result<Vec<ProviderRow>, StorageError> {
         self.call(move |connection, _| {
             let mut statement = connection.prepare_cached(&format!(
-                "SELECT {PROVIDER_COLUMNS} FROM providers WHERE owner_user_id = ?1 ORDER BY created_at, rowid"
+                "SELECT {PROVIDER_COLUMNS} FROM providers WHERE owner_user_id = ?1 ORDER BY position, rowid"
             ))?;
             let mut rows = statement.query([owner.as_str()])?;
             let mut providers = Vec::new();
@@ -248,6 +249,34 @@ impl ControlService {
             let updated = provider_by_id(&transaction, &id)?;
             transaction.commit()?;
             Ok(updated)
+        })
+        .await
+    }
+
+    /// Puts the owner's entries in the order `ids` names them; `false`,
+    /// changing nothing, unless `ids` names each of them once.
+    pub async fn set_provider_order(&self, owner: UserId, ids: Vec<ProviderId>) -> Result<bool, StorageError> {
+        self.call(move |connection, _| {
+            let transaction = connection.transaction()?;
+            let held: Vec<String> = transaction
+                .prepare("SELECT id FROM providers WHERE owner_user_id = ?1")?
+                .query_map([owner.as_str()], |row| row.get(0))?
+                .collect::<Result<_, _>>()?;
+            let mut named: Vec<&str> = ids.iter().map(ProviderId::as_str).collect();
+            named.sort_unstable();
+            let mut sorted: Vec<&str> = held.iter().map(String::as_str).collect();
+            sorted.sort_unstable();
+            if named != sorted {
+                return Ok(false);
+            }
+            for (position, id) in ids.iter().enumerate() {
+                transaction.execute(
+                    "UPDATE providers SET position = ?2 WHERE id = ?1",
+                    params![id.as_str(), i64::try_from(position).expect("an owner holds few entries")],
+                )?;
+            }
+            transaction.commit()?;
+            Ok(true)
         })
         .await
     }

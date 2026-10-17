@@ -36,6 +36,7 @@
     "cliInstallFailed": "无法安装命令行工具",
     "usageFailed": "无法刷新用量",
     "reorderFailed": "无法重新排序账户",
+    "reorderProvidersFailed": "无法重新排序供应商",
     "switchFailed": "无法切换账户",
     "cancelLoginFailed": "无法取消登录",
     "loginStopped": "此登录已不再运行。",

@@ -122,6 +122,8 @@ pub enum ErrorCode {
     /// A rotation other than `manual` for an entry with fewer than two
     /// accounts.
     RotationNeedsAccounts,
+    /// A media shape for a vendor entry, whose shapes are its vendor's.
+    ShapeFixed,
     /// The family has no login.
     NoLoginFlow,
     /// No login of the caller's has that id, or its result was dropped ten

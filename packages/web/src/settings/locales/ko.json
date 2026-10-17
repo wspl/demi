@@ -36,6 +36,7 @@
     "cliInstallFailed": "명령줄 도구를 설치할 수 없습니다",
     "usageFailed": "사용량을 새로 고칠 수 없습니다",
     "reorderFailed": "계정 순서를 변경할 수 없습니다",
+    "reorderProvidersFailed": "제공업체 순서를 변경할 수 없습니다",
     "switchFailed": "계정을 전환할 수 없습니다",
     "cancelLoginFailed": "로그인을 취소할 수 없습니다",
     "loginStopped": "이 로그인은 이미 종료되었습니다.",

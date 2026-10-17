@@ -36,6 +36,7 @@
     "cliInstallFailed": "無法安裝命令列工具",
     "usageFailed": "無法重新整理用量",
     "reorderFailed": "無法重新排序帳號",
+    "reorderProvidersFailed": "無法重新排序供應商",
     "switchFailed": "無法切換帳號",
     "cancelLoginFailed": "無法取消登入",
     "loginStopped": "此登入已不再執行。",

@@ -107,9 +107,6 @@ pub fn merge(mut preferences: Preferences, CheckedPatch(patch): CheckedPatch) ->
     if let Some(small_model) = patch.small_model {
         preferences.small_model = small_model;
     }
-    if let Some(entries) = patch.image_entries {
-        preferences.image_entries = entries;
-    }
     preferences.small_model_same_provider = patch
         .small_model_same_provider
         .or(preferences.small_model_same_provider);
