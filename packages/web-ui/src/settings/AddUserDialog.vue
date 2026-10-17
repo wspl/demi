@@ -103,6 +103,7 @@ function submit(): unknown {
             :overlay-store="overlayStore"
             :disabled="roles.length < 2"
             :disabled-reason="t('addUser.adminAdds')"
+            :icon="ROLE_ICONS[role]"
           >
             <template #trigger>{{ roleLabel(role) }}</template>
             <template #content="{ close }">

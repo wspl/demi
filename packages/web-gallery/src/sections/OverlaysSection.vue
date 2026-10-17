@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
-import { Archive, Brain, Copy, Cpu, Folder, Pencil, Layers, Pin, Play, Plus, Server, Settings, Trash2, Zap } from '@lucide/vue'
+import { Archive, Brain, Copy, Cpu, Feather, Folder, Pencil, Layers, Pin, Play, Plus, Server, Settings, Trash2, Zap } from '@lucide/vue'
 import type { Component } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { showToast } from '@demicodes/web-ui/infra/toast'
@@ -46,6 +46,10 @@ import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
 import type { TitleText } from '@demicodes/web-ui/ui/ui-text'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE, deviceStatusLabel } from '@demicodes/web-ui/devices/state'
+import { hostGlyph } from '@demicodes/web-ui/devices/device-glyphs'
+import type { HostMenuHost } from '@demicodes/web-ui/hosts/types'
+import { vendorGlyph } from '@demicodes/web-ui/ui/vendor-glyphs'
+import { providerLogo } from '@demicodes/web-ui/settings/vendor-logos'
 
 const { view } = useGalleryView()
 
@@ -244,6 +248,7 @@ const triggerSmClosed = ref(false)
 const triggerFieldPlain = ref(false)
 const triggerFieldDetail = ref(false)
 const triggerFieldNarrow = ref(false)
+const triggerFieldIcon = ref(false)
 
 /**
  * The image entries a field with a detail offers, as Settings › Agent's
@@ -253,12 +258,22 @@ const triggerFieldNarrow = ref(false)
  * name alone.
  */
 const detailEntries = [
-  { id: 'codex', name: 'Codex', account: 'name@example.com' },
-  { id: 'chatgpt', name: 'ChatGPT', account: 'name@work.example.com' },
-  { id: 'openai', name: 'OpenAI', account: null },
+  { id: 'codex', name: 'Codex', account: 'name@example.com', icon: vendorGlyph('Codex', providerLogo({ kind: 'subscription', providerType: 'codex', vendorId: null })) },
+  { id: 'chatgpt', name: 'ChatGPT', account: 'name@work.example.com', icon: vendorGlyph('ChatGPT', providerLogo({ kind: 'subscription', providerType: 'codex', vendorId: null })) },
+  { id: 'openai', name: 'OpenAI', account: null, icon: vendorGlyph('OpenAI', providerLogo({ kind: 'api_key', providerType: 'openai', vendorId: 'openai' })) },
 ] as const
 const detailChoice = ref<string | null>(null)
 const detailChosen = computed(() => detailEntries.find((entry) => entry.id === detailChoice.value))
+/** The face's icon: the chosen entry's vendor mark, or Automatic's own, as the menu rows draw them. */
+const detailIcon = computed(() => detailChosen.value?.icon ?? Feather)
+
+/** The Hosts the Host field chooses among, as Settings › Port Forwarding lists them: the Cloud first. */
+const fieldHosts: HostMenuHost[] = [
+  { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null },
+  ...hostDevices.map((device): HostMenuHost => ({ ...device, kind: 'device' })),
+]
+const fieldHostChoice = ref('mac')
+const fieldHost = computed(() => fieldHosts.find((host) => host.id === fieldHostChoice.value)!)
 /** What Automatic resolves to, in brackets that stay whole while the name inside truncates. */
 const detailAutomatic = { text: 'Codex', open: '(', close: ')' }
 const detailHaiku = { text: 'Claude Haiku 5.5', open: '(', close: ')' }
@@ -756,6 +771,17 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
               ><span class="min-w-0 truncate">Automatic</span></DropdownTrigger>
             </div>
           </GallerySpecimen>
+          <GallerySpecimen variant="field · icon">
+            <div class="w-48">
+              <DropdownTrigger
+                variant="field"
+                size="sm"
+                :icon="hostGlyph(fieldHosts[1]!)"
+                :is-open="triggerFieldIcon"
+                @click="triggerFieldIcon = !triggerFieldIcon"
+              ><span class="min-w-0 truncate">{{ fieldHosts[1]!.name }}</span></DropdownTrigger>
+            </div>
+          </GallerySpecimen>
           <GallerySpecimen variant="field · detail · narrow">
             <div class="w-36">
               <DropdownTrigger
@@ -772,7 +798,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
 
       <GallerySection
         title="Dropdown"
-        note="Trigger plus slotted Menu. A field’s value may carry a detail after it on the same line, smaller and in the secondary color: what Automatic resolves to, in brackets, Automatic (Codex), whose brackets stay whole while the name inside truncates. Both sit on one text baseline. A menu row shows its detail the same way, an entry’s account after its name; a choice without one, such as OpenAI here, reads its name alone. The detail truncates first, the name only once the detail is gone; field and row keep their height."
+        note="Trigger plus slotted Menu. A choice that stands for a thing with an icon of its own shows that icon, from the one component web-ui draws it with, in the menu and on the closed dropdown alike: a Host is its system’s logo with its status dot (as Run On draws it, the Cloud its cloud), a provider entry its vendor mark. A choice with no icon of its own, such as a language or a time, stays text; nothing gets an icon just to have one. A field’s value may carry a detail after it on the same line, smaller and in the secondary color: what Automatic resolves to, in brackets, Automatic (Codex), whose brackets stay whole while the name inside truncates. Both sit on one text baseline. A menu row shows its detail the same way, an entry’s account after its name; a choice without one, such as OpenAI here, reads its name alone. The detail truncates first, the name only once the detail is gone; field and row keep their height."
       >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="default · md · actions">
@@ -813,6 +839,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
             <Dropdown
               variant="ghost"
               size="sm"
+              :icon="effortItems.find((item) => item.id === dropdownEffortSelected)?.icon"
               :overlay-store="appOverlayStore"
             >
               <template #trigger>{{ itemLabel(dropdownEffortSelected, effortItems) }}</template>
@@ -853,6 +880,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                 width="fill"
                 trigger-label="OpenAI"
                 :detail="detailChosen ? undefined : detailAutomatic"
+                :icon="detailIcon"
                 :overlay-store="appOverlayStore"
               >
                 <template #trigger>
@@ -861,6 +889,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                 <template #content="{ close }">
                   <Menu>
                     <MenuItem
+                      :icon="Feather"
                       label="Automatic"
                       :detail="detailAutomatic"
                       choice
@@ -871,11 +900,41 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                     <MenuItem
                       v-for="entry in detailEntries"
                       :key="entry.id"
+                      :icon="entry.icon"
                       :label="entry.name"
                       :detail="entry.account ?? undefined"
                       choice
                       :is-selected="detailChoice === entry.id"
                       @select="detailChoice = entry.id; close()"
+                    />
+                  </Menu>
+                </template>
+              </Dropdown>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="field · Host">
+            <div class="w-48">
+              <Dropdown
+                variant="field"
+                size="sm"
+                width="fill"
+                trigger-label="Host"
+                :icon="hostGlyph(fieldHost)"
+                :overlay-store="appOverlayStore"
+              >
+                <template #trigger>
+                  <span class="min-w-0 truncate">{{ fieldHost.name }}</span>
+                </template>
+                <template #content="{ close }">
+                  <Menu>
+                    <MenuItem
+                      v-for="host in fieldHosts"
+                      :key="host.id"
+                      :icon="hostGlyph(host)"
+                      :label="host.name"
+                      choice
+                      :is-selected="host.id === fieldHostChoice"
+                      @select="fieldHostChoice = host.id; close()"
                     />
                   </Menu>
                 </template>
@@ -949,6 +1008,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                 width="fill"
                 trigger-label="OpenAI"
                 :detail="detailChosen ? undefined : detailAutomatic"
+                :icon="detailIcon"
                 :overlay-store="appOverlayStore"
                 open
               >
@@ -958,6 +1018,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                 <template #content>
                   <Menu>
                     <MenuItem
+                      :icon="Feather"
                       label="Automatic"
                       :detail="detailAutomatic"
                       choice
@@ -968,6 +1029,7 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
                     <MenuItem
                       v-for="entry in detailEntries"
                       :key="entry.id"
+                      :icon="entry.icon"
                       :label="entry.name"
                       :detail="entry.account ?? undefined"
                       choice

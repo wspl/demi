@@ -1048,6 +1048,7 @@ function endpointCheck(value: string) {
                     variant="default"
                     :trigger-label="t('providers.rotation.title')"
                     :disabled="busy(selected.id)"
+                    :icon="ROTATION_ICONS[selected.rotation ?? 'manual']"
                   >
                     <template #trigger>{{ ROTATION_LABELS[selected.rotation ?? 'manual'] }}</template>
                     <template #content="{ close }">

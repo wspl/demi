@@ -1,5 +1,7 @@
 import { reasonSentence } from '../devices/direct'
+import type { DeviceMark } from '../devices/mark'
 import type { DeviceState } from '../devices/state'
+import type { HostKind } from '../hosts/types'
 import type { SentenceText } from '../ui/ui-text'
 import { t } from './locales/text'
 
@@ -43,7 +45,10 @@ export type PortForwardChange = Partial<
 export interface ForwardHost {
   id: string
   name: string
+  kind: HostKind
   state: DeviceState
+  /** A device's mark, with the number it shows (`shownMark`); null for the Cloud. */
+  mark: DeviceMark | null
 }
 
 function hostName(hosts: readonly ForwardHost[], id: string): string {
