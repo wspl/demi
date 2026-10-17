@@ -3,7 +3,9 @@
 //! change reaches the caller's pages as the `credentials` part, which
 //! carries a visible field's value and never a secret one's. Only the
 //! reveal answers every value. Each refusal is in words for the user, which
-//! the page shows as they are.
+//! the page shows as they are. The reveal, which is the only route that
+//! answers a secret's value, takes the session's confirmation that it is the
+//! user (`users.md` § User system), as a handoff code does.
 
 use axum::Json;
 use axum::extract::{FromRequest, Path, Request, State};
@@ -21,7 +23,8 @@ use serde::de::DeserializeOwned;
 use super::AppState;
 use super::body::{decode_worded, read};
 use super::error::ApiError;
-use super::gate::AuthUser;
+use super::gate::{AuthUser, CurrentSession};
+use super::sessions::require_verification;
 
 /// A credential body, read as a JSON body is, whose broken rules are refused
 /// in the user's words.
@@ -53,12 +56,15 @@ pub(super) async fn list(
     Ok(Json(CredentialList { credentials }))
 }
 
-/// `GET /credentials/:id/values`.
+/// `GET /credentials/:id/values`, for a session verified in the last five
+/// minutes.
 pub(super) async fn values(
     State(state): State<AppState>,
     AuthUser(user): AuthUser,
+    session: CurrentSession,
     Path(id): Path<String>,
 ) -> Result<Json<CredentialValues>, ApiError> {
+    require_verification(&state.services, &session)?;
     let id = credential_id(id)?;
     let values = state
         .shards

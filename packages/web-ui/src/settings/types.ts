@@ -497,6 +497,16 @@ export interface SettingsCredentialDraftField extends CredentialFieldView {
   value: string | null
 }
 
+/**
+ * How reading a credential's values for the eye ended: its values by field
+ * name; the user's confirmation is needed first (the page asks it and reads
+ * again); or failed, which the host has told the user.
+ */
+export type CredentialRevealOutcome =
+  | { kind: 'revealed'; values: Record<string, string> }
+  | { kind: 'needsVerification' }
+  | { kind: 'failed' }
+
 /** What the credential editor saves. */
 export interface SettingsCredentialDraft {
   name: string

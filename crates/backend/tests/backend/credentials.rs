@@ -24,7 +24,7 @@ use serde_json::json;
 use crate::conversations::{FIRST, Socket, send, summary, transcript};
 use crate::permissions::{categories, permissions};
 use crate::subagents::{Scripts, say, shell, tree_on};
-use crate::support::{Harness, Session, TestBackend, elapse, eventually};
+use crate::support::{Harness, MASTER_PASSWORD, Session, TestBackend, elapse, eventually};
 
 /// The secret the user types, which only the file on the Host may hold.
 const SECRET: &str = "sk-live-7f3a9c";
@@ -380,6 +380,52 @@ async fn a_read_without_the_allowance_asks_the_user_and_a_removal_needs_the_user
         last_asked(&scripts, FIRST)
     );
     assert!(credentials(&backend, &master).await.credentials.is_empty());
+    backend.close().await;
+}
+
+/// Settings' reveal answers a secret's value only to a browser that
+/// confirmed it is the user in the last five minutes, a sign-in counting as
+/// one; the list never carries it, and changing a secret's value asks
+/// nothing.
+#[tokio::test]
+async fn revealing_a_secret_needs_a_recent_confirmation() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let id = saved(
+        &backend,
+        &master,
+        json!({
+            "name": "Linear key", "keep": "always",
+            "fields": [{ "name": "key", "label": "API key", "kind": "secret", "value": "lin_api_1" }]
+        }),
+    )
+    .await;
+    let reveal = format!("/api/credentials/{id}/values");
+    let signed_in = backend.get(&reveal, Some(&master)).await;
+    assert_eq!(signed_in.status, StatusCode::OK, "{}", String::from_utf8_lossy(&signed_in.body));
+
+    harness.clock.advance(jiff::SignedDuration::from_mins(5));
+    let lapsed = backend.get(&reveal, Some(&master)).await;
+    assert_eq!(lapsed.refusal(), (StatusCode::FORBIDDEN, ErrorCode::VerificationRequired));
+    assert!(!String::from_utf8_lossy(&lapsed.body).contains("lin_api_1"));
+    let changed = backend
+        .patch(
+            &format!("/api/credentials/{id}"),
+            &master,
+            json!({ "fields": [{ "name": "key", "label": "API key", "kind": "secret", "value": "lin_api_2" }] }),
+        )
+        .await;
+    assert_eq!(changed.status, StatusCode::OK, "{}", String::from_utf8_lossy(&changed.body));
+    assert!(!String::from_utf8_lossy(&changed.body).contains("lin_api_2"));
+
+    let verified = backend
+        .post("/api/auth/verify", Some(&master), json!({ "password": MASTER_PASSWORD }))
+        .await;
+    assert_eq!(verified.status, StatusCode::NO_CONTENT);
+    let read = backend.get(&reveal, Some(&master)).await;
+    assert_eq!(read.status, StatusCode::OK, "{}", String::from_utf8_lossy(&read.body));
+    let CredentialValues { values } = read.json();
+    assert_eq!(values.get("key").map(String::as_str), Some("lin_api_2"));
     backend.close().await;
 }
 

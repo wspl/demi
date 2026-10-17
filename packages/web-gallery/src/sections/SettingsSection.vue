@@ -502,7 +502,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Credentials"
-        note="The user’s credentials, each with its fields and a tag for their kind, Kept until and Last used. The eye of a secret field reads its value and shows it, and the value goes when the pointer or the focus leaves the row; the Linear sign-in’s user name is visible, its password hidden. Click a row or Edit to change it; New Credential adds one. Every write waits a beat, and a name another credential has is refused."
+        note="The user’s credentials, each with its fields and a tag for their kind, Kept until and Last used. The eye of a secret field first asks Confirm It’s You, as a browser not confirmed in the last five minutes does (any password but “wrong” confirms), then reads its value and shows it, and asks nothing again for five minutes; the value goes when the pointer or the focus leaves the row; the Linear sign-in’s user name is visible, its password hidden. Click a row or Edit to change it; New Credential adds one. Every write waits a beat, and a name another credential has is refused."
       >
         <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
           <GalleryCredentials :state="full.credentials" />

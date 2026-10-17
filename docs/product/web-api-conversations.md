@@ -379,7 +379,7 @@ reads and changes:
 | Route | Body | Does |
 | --- | --- | --- |
 | `GET /api/credentials` | None | `{ credentials }`: each `{ id, name, note, fields: [{ name, label, kind, value? }], keepUntil, lastUsedAt, createdAt, updatedAt }`, a visible field with its `value` and a secret one without, `keepUntil` null for always |
-| `GET /api/credentials/:id/values` | None | `{ values }`, every field's value, for Settings' reveal; it is logged by name, never by value |
+| `GET /api/credentials/:id/values` | None | `{ values }`, every field's value, for Settings' reveal; it is logged by name, never by value; a session not verified in the last five minutes answers 403 `verification_required` |
 | `POST /api/credentials` | `{ name, note?, fields: [{ name, label, kind, value }], keep }` | Saves a new one; a taken name is 409 `credential_name_taken` |
 | `PATCH /api/credentials/:id` | Any of `name`, `note`, `fields` (the whole list, a field's `value` left out to keep it), `keep` | Changes it |
 | `DELETE /api/credentials/:id` | None | Removes it and its allowances |

@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import SettingsUsers from '@demicodes/web-ui/settings/SettingsUsers.vue'
 import type { SettingsUsersHost } from '@demicodes/web-ui/settings/types'
-import { galleryHandoff } from '../fixtures/handoff'
+import { galleryHandoff, galleryVerification } from '../fixtures/handoff'
 import { fakeFirstPassword, type UsersState } from '../fixtures/users'
 import { productWould } from '../product-would'
 
@@ -23,8 +23,9 @@ const props = defineProps<{
 }>()
 
 const timers = new Set<number>()
-/** When the administrator's confirmation holds until; the specimen starts unverified. */
-let verifiedUntil = 0
+/** The administrator's confirmation; the specimen starts unverified. */
+const verification = galleryVerification()
+const verified = verification.verified
 
 /** Resolves after a beat, as a request to the backend would. */
 function beat(): Promise<void> {
@@ -42,10 +43,6 @@ onBeforeUnmount(() => {
   }
 })
 
-function verified(): boolean {
-  return Date.now() < verifiedUntil
-}
-
 let added = 0
 function find(id: string) {
   return props.state.users.find((user) => user.id === id)
@@ -54,20 +51,7 @@ function find(id: string) {
 const host = computed<SettingsUsersHost>(() => ({
   users: props.state.users,
   viewerId: props.state.viewerId,
-  verifyPassword: async (password) => {
-    await beat()
-    if (password === 'wrong') {
-      return { kind: 'wrongPassword', message: 'That is not your password.' }
-    }
-    verifiedUntil = Date.now() + 5 * 60_000
-    return { kind: 'verified' }
-  },
-  verifyPasskey: async () => {
-    await beat()
-    productWould('Ask the Browser for a Passkey of This Account')
-    verifiedUntil = Date.now() + 5 * 60_000
-    return { kind: 'verified' }
-  },
+  ...verification.host,
   add: async (draft) => {
     await beat()
     if (!verified()) {

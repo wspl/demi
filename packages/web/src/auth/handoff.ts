@@ -4,6 +4,7 @@ import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
 import { defineStore } from 'pinia'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import type { HandoffHost, HandoffStart, HandoffVerifyOutcome } from '@demicodes/web-ui/auth/handoff'
+import type { VerificationHost } from '@demicodes/web-ui/auth/verification'
 import type { SettingsSession } from '@demicodes/web-ui/settings/types'
 import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
 import {
@@ -63,6 +64,17 @@ export async function verifyWithPassword(password: string): Promise<HandoffVerif
     }
     return { kind: 'failed', ...shownError(error) }
   }
+}
+
+/**
+ * How the user confirms it is them (`users.md` § User system): the
+ * password, and a passkey where this server, this account and this browser
+ * offer one.
+ */
+export function confirmationHost(): VerificationHost {
+  const state = useProduct().snapshot
+  const passkeys = state?.passkeyRpId && state.passkeys.passkeys.length > 0 && browserHasPasskeys()
+  return { verifyPassword: verifyWithPassword, verifyPasskey: passkeys ? verifyWithPasskey : undefined }
 }
 
 /** Confirms it is the user with a passkey of the account, in the browser's own prompt. */
@@ -150,12 +162,9 @@ export const useSessions = defineStore('sessions', () => {
 
   /** The dialog's host for a code that opens the page `to` names. */
   function handoffHost(to: () => string): HandoffHost {
-    const state = product.snapshot
-    const passkeys = state?.passkeyRpId && state.passkeys.passkeys.length > 0 && browserHasPasskeys()
     return {
       makeCode: () => makeHandoffCode(to()),
-      verifyPassword: verifyWithPassword,
-      verifyPasskey: passkeys ? verifyWithPasskey : undefined,
+      ...confirmationHost(),
       handedOffTo: (id) => product.snapshot?.sessions.find((session) => session.handoffId === id)?.name ?? null,
     }
   }
