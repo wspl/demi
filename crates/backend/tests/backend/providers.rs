@@ -75,6 +75,7 @@ fn scripted(directory: &Arc<Directory>) -> FamilyRegistry {
             directory: directory.clone(),
             wires: &[],
             process_host: false,
+            images: None,
         },
     )
 }
@@ -89,6 +90,7 @@ async fn an_api_key_entry_is_sealed_at_rest_and_answered_without_its_key() {
             directory: directory.clone(),
             wires: &[],
             process_host: false,
+            images: None,
         },
     );
     let harness = Harness::new()
@@ -394,6 +396,7 @@ fn models_dev_document() -> Value {
             "models": { "minimax-m3": { "name": "MiniMax M3", "limit": { "context": 200_000, "output": 64_000 } } }
         },
         "zai": { "id": "zai", "name": "z.ai", "npm": "@ai-sdk/google", "models": {} },
+        "xai": { "id": "xai", "name": "xAI", "npm": "@ai-sdk/xai", "doc": "https://docs.x.ai/docs/models", "models": {} },
         "amazon-bedrock": {
             "id": "amazon-bedrock", "name": "Amazon Bedrock", "npm": "@ai-sdk/amazon-bedrock",
             "models": { "anthropic.claude-sonnet": { "name": "Claude Sonnet on Bedrock" } }
@@ -422,6 +425,7 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
             directory: directory.clone(),
             wires: &[WireApi::Responses, WireApi::ChatCompletions],
             process_host: false,
+            images: None,
         },
     );
     let harness = Harness::new()
@@ -431,7 +435,8 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
     vendor.respond(served(&models_dev_document()));
     // Only vendors a family speaks to, by name: Bedrock's package has no
     // family, and Copilot is excluded by name. A vendor that names no
-    // endpoint and has no official one starts without.
+    // endpoint and has no official one starts without; xAI's is the one
+    // xAI documents, on its preferred Responses API.
     let offered = backend
         .get("/api/providers/catalog", Some(&master))
         .await
@@ -448,6 +453,8 @@ async fn a_vendor_entry_takes_its_family_wire_and_endpoint_from_models_dev_and_r
                     "baseUrl": "https://api.deepseek.com", "doc": "https://api-docs.deepseek.com" }),
             json!({ "id": "minimax", "name": "MiniMax", "providerType": "anthropic",
                     "baseUrl": "https://api.minimax.io/anthropic/v1", "doc": null }),
+            json!({ "id": "xai", "name": "xAI", "providerType": "openai", "wireApi": "responses",
+                    "baseUrl": "https://api.x.ai/v1", "doc": "https://docs.x.ai/docs/models" }),
             json!({ "id": "zai", "name": "z.ai", "providerType": "google", "baseUrl": null, "doc": null }),
         ]
     );

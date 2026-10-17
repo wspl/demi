@@ -37,7 +37,7 @@ const explore: SubagentProfile = {
 /** What the backend answers to each request, by method and path. */
 function answer(method: string, path: string): Response {
   if (path.startsWith('/api/models')) {
-    return Response.json({ providers: [], smallModel: null })
+    return Response.json({ providers: [], smallModel: null, imageEntries: {} })
   }
   if (method === 'POST' && path === '/api/subagents/profiles') {
     const body = sent.at(-1)?.body

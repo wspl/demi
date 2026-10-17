@@ -86,8 +86,12 @@ supported protocol:
 | `@ai-sdk/openai` | `openai`, Responses |
 | `@ai-sdk/anthropic` | `anthropic` |
 | `@ai-sdk/google` | `google` |
+| `@ai-sdk/xai` | `openai`, Responses, at `https://api.x.ai/v1` |
 
-Other mappings are not offered. `github-copilot` is excluded because its
+models.dev names no endpoint for xAI, so the table gives the one xAI
+documents; xAI prefers its Responses API, which takes the same requests
+as OpenAI's, earlier reasoning replayed encrypted rather than stored on
+xAI's servers. Other mappings are not offered. `github-copilot` is excluded because its
 credential scheme is not the API-key scheme of these families.
 
 A vendor's request requirements are typed settings of the backend's vendor
@@ -177,7 +181,8 @@ provider   shared by every user and request of one entry and account
   model directory, read fresh on each call
   reading its vendor's failure records
   quota, and the accounts of a subscription family
-  images: its image models, and one image for one account (Codex, Grok Build)
+  images: its image models, and one image for one account (Codex, Grok Build,
+          and the OpenAI, xAI and Google API keys)
   build a runtime ------------------------------------+
                                                       v
 runtime    one per session, on the user's shard
@@ -242,7 +247,9 @@ whole, so its runs report only the Tool call.
 Signatures and redacted reasoning are sent back only to the vendor that
 issued them, because a vendor refuses a signature it did not sign. Each
 provider marks what it receives with its family's name so that it recognizes
-its own on replay: `anthropic:`, `openai:`, `codex:` or `google:` before the
+its own on replay: `anthropic:`, `codex:` or `google:`, and for the `openai`
+family the entry's vendor, `openai:`, `xai:`, or `compatible:` for an entry
+with none, since OpenAI and xAI speak the same API but sign apart, before the
 vendor's signature, or before the whole reasoning item a Responses stream
 sends, which is what that API takes back. Thinking without a signature of its
 own, or with another vendor's, is not replayed. Gemini requires the signature
@@ -985,13 +992,15 @@ at nothing, so it shows no error; a compatible entry with no models yet says
 *No models yet* in plain text with Add Model, and an entry nobody has tested
 shows no status until it is tested or used.
 
-An entry whose provider makes images, a ChatGPT or Grok subscription, has
+An entry whose provider makes images, a ChatGPT or Grok subscription or
+an OpenAI, xAI or Google API key, has
 an **Image Generation** switch on its page, on from the start. Turned off,
 the entry makes no images: `demi image models` lists none of its models and
 `demi image` never picks it, while its text models work as before
-([Images](../agent/images.md)). For example, Alex keeps ChatGPT for
-images and turns Grok's switch off; the agent's image calls then go to
-ChatGPT even when Grok comes first in the list. The switch belongs to the
+([Images](../agent/images.md)). For example, Alex has a ChatGPT
+subscription and an OpenAI key and turns the key's switch off: once
+ChatGPT's limit is reached, an image call fails instead of paying for the
+image through the key. The switch belongs to the
 entry and is kept with its configuration, so whoever manages the entry
 sets it, and a shared instance's administrator turning it off turns it
 off for every user of that entry.

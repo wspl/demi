@@ -8,7 +8,7 @@ mod support;
 
 use std::io::Cursor;
 
-use demi_plugin_interface::{ImageKind, ImageModel, ImageRefusal, MadeImage, PortRefusal};
+use demi_plugin_interface::{ImageEntry, ImageKind, ImageModel, ImageRefusal, ImageUnlisted, ImageVendorModels, MadeImage, PortRefusal};
 use image::{GenericImageView as _, ImageFormat, Rgb, RgbImage};
 
 use crate::support::{Plugged, local};
@@ -107,13 +107,25 @@ fn a_failure_is_told_in_the_designs_words() {
                 "image generation is off for ChatGPT and Grok; turn it on in Settings › Providers",
             ),
             (
+                ImageRefusal::KeyRefused { vendor: "OpenAI".into(), manages: true },
+                "OpenAI refused the API key; check it in Settings › Providers",
+            ),
+            (
+                ImageRefusal::KeyRefused { vendor: "xAI".into(), manages: false },
+                "xAI refused the API key; ask your administrator to check it",
+            ),
+            (
+                ImageRefusal::NoProvider,
+                "no provider makes images; sign in to ChatGPT or Grok, or add an OpenAI, xAI or Google key, in Settings › Providers",
+            ),
+            (
                 ImageRefusal::Off { model: "gpt-image-2".into(), provider: "ChatGPT".into() },
                 "\"gpt-image-2\" is ChatGPT's, whose image generation is off in Settings › Providers",
             ),
         ];
         for (refusal, words) in refusals {
             plugged.answer(move |_| Err(PortRefusal::Image { refusal: refusal.clone() }));
-            let (code, stdout, stderr) = plugged.run(&["image", "generate", "a fox"]).await;
+            let (code, stdout, stderr) = plugged.run(&["image", "generate", "a fox", "--model", "m"]).await;
             assert_eq!((code, stdout.len(), stderr), (1, 0, format!("demi image generate: {words}\n")));
         }
     });
@@ -132,7 +144,7 @@ fn an_image_that_does_not_decode_whole_fails_and_writes_nothing() {
         let cut = whole[..whole.len() - 24].to_vec();
         for answer in [b"<html>busy</html>".to_vec(), b"\x89PNG\r\n\x1a\n".to_vec(), cut] {
             plugged.answer(move |_| Ok(made(answer.clone())));
-            let (code, stdout, stderr) = plugged.run(&["image", "generate", "a fox"]).await;
+            let (code, stdout, stderr) = plugged.run(&["image", "generate", "a fox", "--model", "m"]).await;
             assert_eq!(
                 (code, stdout.len(), stderr.as_str()),
                 (1, 0, "demi image generate: ChatGPT returned an image that could not be read\n")
@@ -150,7 +162,7 @@ fn an_opaque_image_with_an_alpha_channel_warns_and_an_unnamed_account_stays_unna
     local(async {
         let plugged = Plugged::new();
         plugged.answer(|_| Ok(MadeImage { account: None, ..made(rgba_png(6, 4, 255)) }));
-        let (code, _, stderr) = plugged.run(&["image", "generate", "a fox", "--transparent"]).await;
+        let (code, _, stderr) = plugged.run(&["image", "generate", "a fox", "--transparent", "--model", "m"]).await;
         assert_eq!(
             (code, stderr.as_str()),
             (
@@ -159,7 +171,7 @@ fn an_opaque_image_with_an_alpha_channel_warns_and_an_unnamed_account_stays_unna
             )
         );
         plugged.answer(|_| Ok(made(rgba_png(6, 4, 0))));
-        let (code, _, stderr) = plugged.run(&["image", "generate", "a fox", "--transparent"]).await;
+        let (code, _, stderr) = plugged.run(&["image", "generate", "a fox", "--transparent", "--model", "m"]).await;
         assert_eq!((code, stderr.as_str()), (0, "6×4 PNG, asked of gpt-image-2 (ChatGPT, alex@example.com)\n"));
     });
 }
@@ -183,7 +195,7 @@ fn an_edit_reads_its_images_beside_the_shell_and_names_one_it_cannot_send() {
         ]));
         let answer = png(8, 8);
         plugged.answer(move |_| Ok(made(answer.clone())));
-        let (code, stdout, stderr) = plugged.run(&["image", "edit", "rounder ears", "fox.png", "/photos/cat.jpg"]).await;
+        let (code, stdout, stderr) = plugged.run(&["image", "edit", "rounder ears", "fox.png", "/photos/cat.jpg", "--model", "m"]).await;
         assert_eq!((code, stderr.as_str()), (0, "8×8 PNG, asked of gpt-image-2 (ChatGPT, alex@example.com)\n"));
         assert_eq!(stdout, png(8, 8));
         let asked = plugged.demi.images_asked.borrow().last().cloned().unwrap();
@@ -198,11 +210,11 @@ fn an_edit_reads_its_images_beside_the_shell_and_names_one_it_cannot_send() {
             ("gone.png", "no such file"),
             ("big.png", "the file is 16777217 bytes; an image is at most 16 MiB"),
         ] {
-            let (code, _, stderr) = plugged.run(&["image", "edit", "x", path]).await;
+            let (code, _, stderr) = plugged.run(&["image", "edit", "x", path, "--model", "m"]).await;
             assert_eq!((code, stderr), (1, format!("demi image edit: {path}: {reason}\n")));
         }
         plugged.host_files(None);
-        let (code, _, stderr) = plugged.run(&["image", "edit", "x", "fox.png"]).await;
+        let (code, _, stderr) = plugged.run(&["image", "edit", "x", "fox.png", "--model", "m"]).await;
         assert_eq!((code, stderr.as_str()), (1, "demi image edit: the Host is not running\n"));
     });
 }
@@ -218,7 +230,7 @@ fn the_image_is_written_in_the_format_asked_for_whatever_the_vendor_sent() {
     local(async {
         let plugged = Plugged::new();
         plugged.answer(|_| Ok(from_grok(jpeg(8, 6))));
-        let (code, stdout, stderr) = plugged.run(&["image", "generate", "a fox"]).await;
+        let (code, stdout, stderr) = plugged.run(&["image", "generate", "a fox", "--model", "m"]).await;
         assert_eq!((code, stderr.as_str()), (0, "8×6 PNG from grok-imagine-image (Grok, alex@example.com)\n"));
         assert_eq!(image::guess_format(&stdout).unwrap(), ImageFormat::Png);
         assert_eq!(image::load_from_memory(&stdout).unwrap().dimensions(), (8, 6));
@@ -226,7 +238,7 @@ fn the_image_is_written_in_the_format_asked_for_whatever_the_vendor_sent() {
         plugged.answer(|_| Ok(made(rgba_png(6, 4, 0))));
         for (format, written, name) in [("jpeg", ImageFormat::Jpeg, "JPEG"), ("webp", ImageFormat::WebP, "WebP")] {
             let (code, stdout, stderr) =
-                plugged.run(&["image", "generate", "a fox", "--transparent", "--format", format]).await;
+                plugged.run(&["image", "generate", "a fox", "--transparent", "--format", format, "--model", "m"]).await;
             assert_eq!(image::guess_format(&stdout).unwrap(), written);
             let said = format!("6×4 {name}, asked of gpt-image-2 (ChatGPT, alex@example.com)\n");
             let warned = "demi image generate: warning: asked for a transparent background, got an opaque image\n";
@@ -246,10 +258,10 @@ fn a_model_chatgpt_cannot_confirm_is_named_as_asked_of() {
     local(async {
         let plugged = Plugged::new();
         plugged.answer(|_| Ok(made(png(1254, 1254))));
-        let (_, _, stderr) = plugged.run(&["image", "generate", "a fox"]).await;
+        let (_, _, stderr) = plugged.run(&["image", "generate", "a fox", "--model", "m"]).await;
         assert_eq!(stderr, "1254×1254 PNG, asked of gpt-image-2 (ChatGPT, alex@example.com)\n");
         plugged.answer(|_| Ok(from_grok(png(4, 4))));
-        let (_, _, stderr) = plugged.run(&["image", "generate", "a fox"]).await;
+        let (_, _, stderr) = plugged.run(&["image", "generate", "a fox", "--model", "m"]).await;
         assert_eq!(stderr, "4×4 PNG from grok-imagine-image (Grok, alex@example.com)\n");
     });
 }
@@ -270,7 +282,7 @@ fn a_refused_shape_names_the_shapes_the_vendor_takes() {
                 },
             })
         });
-        let (code, stdout, stderr) = plugged.run(&["image", "generate", "an otter", "--aspect", "4:5"]).await;
+        let (code, stdout, stderr) = plugged.run(&["image", "generate", "an otter", "--aspect", "4:5", "--model", "m"]).await;
         assert_eq!(
             (code, stdout.len(), stderr.as_str()),
             (1, 0, "demi image generate: Grok takes no 4:5 (it takes 1:1, 3:4, 19.5:9)\n")
@@ -278,39 +290,86 @@ fn a_refused_shape_names_the_shapes_the_vendor_takes() {
     });
 }
 
-/// The listing shows each model's entry, release date, the default by its
-/// mark, what the vendor says it is for and what it takes; an entry whose
-/// vendor cannot confirm the model says so once, under its last model.
-/// Planted defect this catches: the default read from the first line, or
-/// the note repeated on every model.
+/// A call without `--model` fails before it asks for anything: the agent
+/// always names the model (`images.md` § Commands).
+/// Planted defect this catches: a call without a model sent on, so an
+/// entry's own choice makes the image.
 #[test]
-fn the_model_listing_shows_dates_the_default_descriptions_and_what_each_takes() {
+fn a_call_without_a_model_fails_and_asks_for_nothing() {
     local(async {
         let plugged = Plugged::new();
-        let model = |id: &str, provider: &str, released: &str, default: bool, confirmed: bool| ImageModel {
-            id: id.into(),
+        plugged.answer(|_| Ok(made(png(4, 4))));
+        for (args, command) in [
+            (&["image", "generate", "a fox"][..], "generate"),
+            (&["image", "edit", "rounder", "fox.png"][..], "edit"),
+        ] {
+            let (code, stdout, stderr) = plugged.run(args).await;
+            assert_eq!(
+                (code, stdout.len(), stderr),
+                (1, 0, format!("demi image {command}: --model is required; demi image models lists them\n"))
+            );
+        }
+        assert!(plugged.demi.images_asked.borrow().is_empty());
+    });
+}
+
+/// The listing groups the models by vendor, each group headed by the entry
+/// its models go through now; a model only another entry offers names that
+/// entry on its line; a date is shown when known; an entry whose vendor
+/// cannot confirm the model says so once under its group; an entry whose
+/// list could not be read says why.
+/// Planted defect this catches: a model of another entry listed as the
+/// group's, or the note repeated on every model.
+#[test]
+fn the_model_listing_groups_by_vendor_under_the_entry_each_goes_through() {
+    local(async {
+        let plugged = Plugged::new();
+        let entry = |provider: &str, account: Option<&str>, confirmed: bool| ImageEntry {
             provider: provider.into(),
             provider_id: provider.to_lowercase(),
-            vendor: provider.into(),
-            released: released.into(),
-            description: format!("About {id}"),
-            takes: "1:1 or 16:9".into(),
-            default,
+            account: account.map(str::to_owned),
             confirmed,
         };
+        let model = |id: &str, released: Option<&str>, takes: Option<&str>, through: Option<ImageEntry>| ImageModel {
+            id: id.into(),
+            released: released.map(str::to_owned),
+            description: format!("About {id}"),
+            takes: takes.map(str::to_owned),
+            through,
+        };
         plugged.demi.image_models.replace(vec![
-            model("new-one", "Codex", "2026-09-08", false, false),
-            model("old-one", "Codex", "2026-04-21", true, false),
-            model("grok-one", "Grok", "2026-08-07", false, true),
+            ImageVendorModels {
+                vendor: "OpenAI".into(),
+                vendor_id: "openai".into(),
+                through: entry("ChatGPT", Some("alex@example.com"), false),
+                models: vec![
+                    model("gpt-new", Some("2026-10-01"), None, Some(entry("OpenAI key", None, true))),
+                    model("gpt-image-2", Some("2026-04-21"), Some("any W×H"), None),
+                ],
+                unlisted: Vec::new(),
+            },
+            ImageVendorModels {
+                vendor: "Google".into(),
+                vendor_id: "google".into(),
+                through: entry("Gemini", None, true),
+                models: vec![model("gemini-nano-banana-2.1", None, Some("1:1 or 16:9"), None)],
+                unlisted: vec![ImageUnlisted {
+                    provider: "Gemini 2".into(),
+                    refusal: ImageRefusal::KeyRefused { vendor: "Google".into(), manages: true },
+                }],
+            },
         ]);
         let (code, stdout, _) = plugged.run(&["image", "models"]).await;
         assert_eq!(code, 0);
         assert_eq!(
             String::from_utf8(stdout).unwrap(),
-            "new-one   Codex  2026-09-08           About new-one; takes 1:1 or 16:9\n\
-             old-one   Codex  2026-04-21  default  About old-one; takes 1:1 or 16:9\n  \
-             Codex does not confirm which of these models answers a call\n\
-             grok-one  Grok   2026-08-07           About grok-one; takes 1:1 or 16:9\n"
+            "OpenAI, through ChatGPT (alex@example.com)\n  \
+             gpt-new      2026-10-01  About gpt-new; through OpenAI key\n  \
+             gpt-image-2  2026-04-21  About gpt-image-2; takes any W×H\n  \
+             ChatGPT does not confirm which of these models answers a call\n\
+             Google, through Gemini\n  \
+             gemini-nano-banana-2.1    About gemini-nano-banana-2.1; takes 1:1 or 16:9\n  \
+             Gemini 2's models could not be listed: Google refused the API key; check it in Settings › Providers\n"
         );
     });
 }
@@ -329,7 +388,7 @@ fn a_cut_jpeg_from_the_vendor_is_not_converted() {
         let whole = bytes.into_inner();
         let cut = whole[..whole.len() * 2 / 3].to_vec();
         plugged.answer(move |_| Ok(from_grok(cut.clone())));
-        let (code, stdout, stderr) = plugged.run(&["image", "generate", "a fox"]).await;
+        let (code, stdout, stderr) = plugged.run(&["image", "generate", "a fox", "--model", "m"]).await;
         assert_eq!(
             (code, stdout.len(), stderr.as_str()),
             (1, 0, "demi image generate: Grok returned an image that could not be read\n")

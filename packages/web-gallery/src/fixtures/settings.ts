@@ -465,8 +465,10 @@ export function mockProviders(): MockProvider[] {
     provider({
       id: 'codex', name: 'Codex', kind: 'subscription', family: 'codex',
       catalogFetched: null,
-      // Its provider makes images, so its page has the Image Generation switch, on.
+      // Its provider makes OpenAI's images, so its page has the Image Generation switch, on,
+      // and Settings › Agent's OpenAI row offers it.
       imageGeneration: true,
+      imageVendor: 'openai',
       // Two accounts, so Rotation shows here too; removing both signs it out.
       accounts: [
         {
@@ -508,8 +510,10 @@ export function mockProviders(): MockProvider[] {
         name: 'Grok Build',
         kind: 'subscription',
         family: 'grok-build',
-        // Its images are turned off, so the agent's come from Codex.
+        // Its images are turned off, so the agent's come from Codex, and Settings › Agent's
+        // xAI row has no entry to offer.
         imageGeneration: false,
+        imageVendor: 'xai',
         // Signed in and reachable from the backend: its active account can be tested.
         accounts: [
           { id: 'g1', label: 'alex@example.com', plan: 'XPremium', active: true, quota: [] },
@@ -603,6 +607,9 @@ export function mockProviders(): MockProvider[] {
     provider({
       id: 'openai', name: 'OpenAI', kind: 'api_key', family: 'openai', vendorId: 'openai',
       baseUrl: 'https://api.openai.com/v1', wireApi: 'openai-responses', apiKey: 'sk-proj-example-not-a-real-key',
+      // Its key makes OpenAI's images too, which Automatic takes only after Codex.
+      imageGeneration: true,
+      imageVendor: 'openai',
       state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: ago(3 * DAY),
       models: [
         model(

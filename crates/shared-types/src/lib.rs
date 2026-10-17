@@ -81,7 +81,9 @@ pub use model::{
     ThinkingCapability, ThinkingConfig, ThinkingSummary, TokenUsage, VIDEO_FILE_EXTENSIONS,
     file_extension_support, model_accepts_video,
 };
-pub use provider_state::{AccountInfo, AuthState, LoginPending, LoginStage, RefusedCode, RuntimeState, WireApi};
+pub use provider_state::{
+    AccountInfo, AuthState, ImageVendor, LoginPending, LoginStage, RefusedCode, RuntimeState, WireApi,
+};
 pub use quota::{
     QuotaKind, QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, QuotaWindowName,
     SnapshotSource,

@@ -119,6 +119,8 @@ export const usePreferences = defineStore('preferences', () => {
   const multiAccountWarned = computed(() => product.snapshot?.preferences.multiAccountWarned ?? false)
   /** The small model the user chose (`models.md` § Small model); null for Automatic. */
   const smallModel = computed(() => product.snapshot?.preferences.smallModel ?? null)
+  /** The entry the user chose for each vendor's images (`images.md` § Which entry makes an image); a vendor absent is Automatic. */
+  const imageEntries = computed(() => product.snapshot?.preferences.imageEntries ?? {})
   /** Whether small requests stay on the conversation's provider; absent means no. */
   const smallModelSameProvider = computed(() => product.snapshot?.preferences.smallModelSameProvider ?? false)
 
@@ -374,6 +376,7 @@ export const usePreferences = defineStore('preferences', () => {
     multiAccountWarned,
     smallModel,
     smallModelSameProvider,
+    imageEntries,
     contextLimit,
     setContextLimit,
     hidesProvider,

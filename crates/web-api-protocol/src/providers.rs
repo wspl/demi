@@ -3,9 +3,11 @@
 //! Subscription accounts). No body the backend answers carries key or token
 //! material.
 
+use std::collections::BTreeMap;
+
 use demi_shared_types::{
     AccountInfo, AuthState, FileExtension, LoginStage, ModelSelection, Nullable, ProviderModel,
-    QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
+    ImageVendor, QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
 };
 use garde::Validate;
 use schemars::JsonSchema;
@@ -281,7 +283,7 @@ pub struct ProviderDto {
     /// Which account each agent uses; `manual` for an API-key entry.
     pub rotation: Rotation,
     /// Whether the entry makes images when its provider can
-    /// ([`ProviderDetails::makes_images`]); on from the start.
+    /// ([`ProviderDetails::image_vendor`]); on from the start.
     pub image_generation: bool,
     pub created_at: Timestamp,
 }
@@ -354,9 +356,12 @@ pub struct ProviderDetails {
     #[schemars(with = "Nullable<QuotaSnapshot>")]
     pub quota: Option<QuotaSnapshot>,
     pub quota_capability: QuotaCapability,
-    /// Whether the entry's provider makes images, so its page shows the
-    /// Image Generation switch.
-    pub makes_images: bool,
+    /// The vendor whose images the entry's provider makes, so its page
+    /// shows the Image Generation switch and Settings › Agent its vendor's
+    /// row; null for one that makes none.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<ImageVendor>")]
+    pub image_vendor: Option<ImageVendor>,
     /// The command package that installs the CLI the provider's requests
     /// start on the Claude Code machine, such as `demi.claude-code`; null
     /// when its requests are HTTP.
@@ -680,6 +685,10 @@ pub struct ModelCatalog {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ModelSelection>")]
     pub small_model: Option<ModelSelection>,
+    /// The entry Automatic takes now for each vendor an entry of the user
+    /// makes images for, null when none can (`images.md` § Which entry
+    /// makes an image).
+    pub image_entries: BTreeMap<ImageVendor, Option<ProviderId>>,
 }
 
 /// One entry's catalog with the provider's health, read when the backend

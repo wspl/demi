@@ -83,7 +83,7 @@ beforeEach(() => {
     }
     if (path === '/api/setup') return Response.json({ needed: false, passkeys: null })
     if (path === '/api/auth/logout') return new Response(null, { status: 204 })
-    if (path.startsWith('/api/models')) return Response.json({ providers: [], smallModel: null })
+    if (path.startsWith('/api/models')) return Response.json({ providers: [], smallModel: null, imageEntries: {} })
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
     if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
     if (path.endsWith('/draft')) return Response.json({ draft: { revision: 0, text: '', files: [], replaced: null } })
