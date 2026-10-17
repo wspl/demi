@@ -72,7 +72,8 @@ const props = defineProps<{
   hideClose?: boolean
   /**
    * Content runs under the close control (a picture, a page that scrolls up to the
-   * panel's top edge): the control is raised on an opaque fill, so nothing shows through it.
+   * panel's top edge): the control, ghost as every close control is, stands on the
+   * panel's own opaque fill, so nothing shows through it.
    */
   closeOverContent?: boolean
   /** Where the scrim is narrow, fill it whatever the size, as an xl or full panel does. */
@@ -216,7 +217,8 @@ useEscapeClose(() => props.isOpen && !pinned.value && props.overlayStore.isTop(i
           <div v-if="!hideClose" class="dialog-close absolute right-3 top-3 z-10">
             <IconButton
               :icon="X"
-              :variant="closeOverContent ? 'solid' : 'ghost'"
+              variant="ghost"
+              :class="closeOverContent ? 'bg-surface-dialog' : undefined"
               :aria-label="shared('common.close')"
               @click="emit('close')"
             />
