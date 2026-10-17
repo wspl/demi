@@ -18,7 +18,10 @@ import type { HostChoice, HostDeviceOption, HostMenuHost } from '../hosts/types'
  * Host…, which lists Run On's online Hosts once the conversation's work
  * is idle; choosing one is the host's to carry out, as the header's host
  * menu's choice is. Gone once the device is online. The row owns the
- * button's inset from its edges.
+ * button's inset from its edges. On a phone the sentence is never cut for
+ * the button: it wraps, and the button moves under it, at its leading edge,
+ * when the two do not fit on one line, as iOS's inline notices keep their
+ * text whole.
  */
 defineProps<{
   /** The device's name. */
@@ -51,7 +54,7 @@ function choose(host: HostChoice): void {
     role="status"
   >
     <div class="host-offline-notice-row flex items-center gap-2 pl-3">
-      <span class="min-w-0 flex-1 truncate">{{ t('notices.hostOffline', { name }) }}</span>
+      <span class="host-offline-notice-sentence min-w-0 flex-1 truncate">{{ t('notices.hostOffline', { name }) }}</span>
       <span class="host-offline-notice-move">
         <Dropdown
           v-model:open="open"
@@ -96,10 +99,28 @@ function choose(host: HostChoice): void {
   margin-right: calc((var(--host-offline-row-h) - var(--spacing-hit-sm)) / 2);
 }
 
-/* A phone's row is 44 px, around its 36 px buttons. */
+/* A phone's row is at least 44 px, around its 36 px button, and grows with
+   the sentence. The sentence keeps its whole width before the button takes
+   any: as wide as its text, it pushes the button onto a line of its own,
+   where the button starts under the sentence's first letter. Its own padding
+   makes a line of it as tall as the button, so a wrapped row keeps the same
+   inset above the text as beside it. */
 @media (max-width: 767px) {
   .host-offline-notice-row {
     --host-offline-row-h: var(--spacing-row);
+    --host-offline-row-pad: calc((var(--host-offline-row-h) - var(--spacing-hit-sm)) / 2);
+    height: auto;
+    min-height: var(--host-offline-row-h);
+    flex-wrap: wrap;
+    row-gap: 0;
+    padding-block: var(--host-offline-row-pad);
+  }
+
+  .host-offline-notice-sentence {
+    flex: 1 1 auto;
+    overflow: visible;
+    white-space: normal;
+    padding-block: calc((var(--spacing-hit-sm) - 1lh) / 2);
   }
 }
 </style>
