@@ -205,7 +205,8 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="h-full min-h-0 w-full px-3 py-2">
+  <!-- The terminal handles its own pointer: the page's context menu stays off it. -->
+  <div class="h-full min-h-0 w-full px-3 py-2" @contextmenu.stop>
     <div
       ref="hostRef"
       class="xterm-host h-full min-h-0 w-full"

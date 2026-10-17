@@ -22,6 +22,8 @@ import * as draftStorage from './drafts'
 import * as localState from '../state/local'
 import { DRAFT_SAVE_DELAY_MS } from './record'
 import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
+import { contentCopy } from '@demicodes/web-ui/agent/message-input/copied-message'
+import { quotedWords, textWords } from '@demicodes/web-ui/agent/send-to-conversation'
 import { EMPTY_TRANSCRIPT } from '@demicodes/web-ui/transport/protocol'
 import { latestBlocks, wholeHistory } from '@demicodes/web-ui/agent/history'
 import { TestSocket } from '@demicodes/web-ui/transport/__tests__/test-socket'
@@ -3726,6 +3728,48 @@ test('a draft another page saved shows in a composer at rest; one its user is ty
     expect([current.draft, current.record.revision('draft')]).toEqual(['Fix the login test, again', 6])
   } finally {
     jest.useRealTimers()
+    signOut()
+  }
+})
+
+// Send to Conversation (`web-application.md` § Context menus): the words go
+// to the end of the chosen conversation's draft as a paste there adds them,
+// sent before it opened, so they wait for the draft the backend has, and
+// nothing goes to the agent.
+test.each([
+  { source: 'the user’s whole message, its file with it', words: () => contentCopy(withPicture('m').content), text: `Fix the login\n\nCompare ${ATTACHMENT_MARK} with the old one`, files: 1 },
+  { source: 'text selected in it', words: () => textWords('the cookie rename'), text: 'Fix the login\n\nthe cookie rename', files: 0 },
+  { source: 'text selected in the agent’s reply', words: () => quotedWords('Point it at packages/utils/src.\nThen rebuild.'), text: 'Fix the login\n\n> Point it at packages/utils/src.\n> Then rebuild.', files: 0 },
+])('$source goes to the end of another conversation’s draft once it is read, and nothing is sent', async ({ words, text, files }) => {
+  const signOut = signIn()
+  const restoreClaims = answerClaims(Promise.resolve())
+  const claimsFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
+    if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
+    return claimsFetch(input, init)
+  }) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit')
+  try {
+    serverDrafts.set(FIRST, { revision: 1, text: 'Fix the login', files: [], replaced: null })
+    records[0]!.draftRevision = 1
+    const store = useConversations()
+    const current = store.items.find((item) => item.id === FIRST)!
+    store.appendToDraft(current, words())
+    expect(current.draft).toBe('')
+    await store.activate(FIRST)
+    await until(() => current.draft !== '' && current.draft !== 'Fix the login', 'the words are added')
+    expect(current.draft).toBe(text)
+    expect(current.attachmentIds).toHaveLength(files)
+    expect([submit.mock.calls.length, current.pendingSends.length]).toEqual([0, 0])
+  } finally {
+    submit.mockRestore()
+    connect.mockRestore()
+    globalThis.fetch = claimsFetch
+    restoreClaims()
     signOut()
   }
 })

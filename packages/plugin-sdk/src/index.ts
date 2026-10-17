@@ -95,6 +95,13 @@ export {
 // Composables.
 // A field that takes the focus as its surface opens, as a phone allows (`web-application.md` § The phone layout).
 export { useAutofocus } from '@demicodes/web-ui/ui/autofocus'
+export {
+  vContextMenu,
+  type ContextMenuDeclaration,
+  type ContextMenuEntry,
+  type ContextMenuGroup,
+  type ContextMenuValue,
+} from '@demicodes/web-ui/ui/context-menu'
 
 // Files: the shapes the conversation files service gives, and their paths.
 export {

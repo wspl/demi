@@ -64,15 +64,16 @@ export function useConversationNavigation() {
   /**
    * Opens a new conversation in the project, or outside any: a draft that
    * the first send makes a conversation. New on the empty draft already
-   * shown gives it back with the focus in its composer.
+   * shown gives it back with the focus in its composer. Answers its id.
    */
-  function create(projectId: string | null): void {
+  function create(projectId: string | null): string {
     const id = conversations.create(projectId)
     if (router.currentRoute.value.params.id === id) {
       conversations.composerFocusRequests += 1
     }
     resources.sidebarOpen = false
     void router.push(newConversationAt(id, projectId))
+    return id
   }
 
   /**

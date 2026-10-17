@@ -24,9 +24,6 @@ import { PHONE_QUERY, SCREEN_EDGE_PX } from './phone'
  *   WebKit starts each scroller over (`base.css`), keeps it from the page
  *   everywhere but iOS, which ignores it for a pinch and is stopped through
  *   its own gesture events.
- * - A long press opens what a right-click opens where the page marks it
- *   (`data-touch-menu`), as iOS gives no `contextmenu` for one; Android
- *   gives its own, and then none is added.
  * - The screen's edges are the app's: Safari on iOS, and the installed app,
  *   start their back and forward swipe from a touch within a few px of the
  *   screen's left or right edge, sliding the previous page in under the
@@ -49,10 +46,8 @@ import { PHONE_QUERY, SCREEN_EDGE_PX } from './phone'
  * after it, as an extension may, finds the page's tag back as it was, and last.
  */
 
-/** A press held this long, without moving, is a long press. */
-const LONG_PRESS_MS = 550
-/** A finger that moves farther than this scrolls or drags, and is no long press. */
-const LONG_PRESS_SLOP_PX = 10
+/** A finger that moves farther than this drags, and is no tap. */
+const TAP_SLOP_PX = 10
 /** The visible part this much shorter than the page means the keyboard is open, not a toolbar that moved. */
 const KEYBOARD_MIN_PX = 80
 /** A scale this close to 1 is a page not zoomed in; a pinch on a desktop's page scales it. */
@@ -114,65 +109,25 @@ export function installPhonePage(): () => void {
       edgeTap = { x: finger.clientX, y: finger.clientY, target: event.target }
   }, { passive: false, signal })
 
-  let press: { timer: number; x: number; y: number; target: Element; opened: boolean } | null = null
-  const endPress = (): void => {
-    if (press)
-      window.clearTimeout(press.timer)
-    press = null
-  }
-  document.addEventListener('touchstart', (event) => {
-    endPress()
-    const finger = event.touches[0]
-    const target = event.target instanceof Element ? event.target : null
-    if (!phone.matches || event.touches.length !== 1 || !finger || !target?.closest('[data-touch-menu]'))
-      return
-    const x = finger.clientX
-    const y = finger.clientY
-    press = {
-      x,
-      y,
-      target,
-      opened: false,
-      timer: window.setTimeout(() => {
-        if (!press)
-          return
-        press.opened = true
-        target.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: x, clientY: y, button: 2 }))
-      }, LONG_PRESS_MS),
-    }
-  }, { passive: true, signal })
   document.addEventListener('touchmove', (event) => {
     const finger = event.touches[0]
-    if (press && !press.opened && finger && Math.hypot(finger.clientX - press.x, finger.clientY - press.y) > LONG_PRESS_SLOP_PX)
-      endPress()
-    if (edgeTap && (event.touches.length !== 1 || !finger || Math.hypot(finger.clientX - edgeTap.x, finger.clientY - edgeTap.y) > LONG_PRESS_SLOP_PX))
+    if (edgeTap && (event.touches.length !== 1 || !finger || Math.hypot(finger.clientX - edgeTap.x, finger.clientY - edgeTap.y) > TAP_SLOP_PX))
       edgeTap = null
   }, { passive: true, signal })
   document.addEventListener('touchend', (event) => {
-    // The press opened a menu: its release is no tap on what lies under it.
-    if (press?.opened && event.cancelable)
-      event.preventDefault()
-    endPress()
     const tap = edgeTap
     edgeTap = null
-    // A release whose default is prevented, by the menu above or by what was touched, makes no click.
+    // A release whose default is prevented, by a long press's menu (`context-menu.ts`) or by what was touched, makes no click.
     if (tap && !event.defaultPrevented && event.touches.length === 0)
       giveTap(tap)
   }, { passive: false, signal })
   document.addEventListener('touchcancel', () => {
-    endPress()
     edgeTap = null
   }, { signal })
-  // Android's own long press opens the menu: none is added.
-  document.addEventListener('contextmenu', (event) => {
-    if (press && !press.opened && event.isTrusted)
-      endPress()
-  }, { capture: true, signal })
 
   return () => {
     listeners.abort()
     keepViewport?.disconnect()
-    endPress()
   }
 }
 

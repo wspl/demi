@@ -2297,6 +2297,21 @@ html[data-theme="light"] .file-pill {
   --alert-color: var(--on-danger);
 }
 
+/* On a phone a long press on what declares a context menu opens it
+   (`ui/context-menu.ts`), so there it selects no text and brings up no
+   callout. A message's text is the exception (`data-context-text`): its
+   long press selects words with the system's handles, and the selection's
+   toolbar stands under them. A text field keeps the system's. Unlayered, so
+   it wins over a `select-text` utility. */
+@variant phone {
+  [data-context-menu]:not([data-context-text]),
+  [data-context-menu]:not([data-context-text]) :not(input, textarea, [contenteditable="true"], [contenteditable="true"] *) {
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+}
+
 /* Interface controls are not document text; editable fields keep native selection. */
 @layer base {
   :where(button, [role="button"], [role="tab"], [role="menu"], nav, label, legend) {

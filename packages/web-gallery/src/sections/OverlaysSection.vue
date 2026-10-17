@@ -3,7 +3,6 @@ import { GALLERY_MARKS, shownAmong } from '../fixtures/device-marks'
 import { Archive, Brain, Copy, Cpu, Folder, Pencil, Layers, Pin, Play, Plus, Server, Settings, Trash2, Zap } from '@lucide/vue'
 import type { Component } from 'vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
-import { useContextMenuOwner } from '@demicodes/web-ui/composables/useContextMenuOwner'
 import { showToast } from '@demicodes/web-ui/infra/toast'
 import { showArchived } from '@demicodes/web-ui/sidebar/archived-toast'
 import { productWould } from '../product-would'
@@ -11,7 +10,7 @@ import Button from '@demicodes/web-ui/ui/Button.vue'
 import Toast from '@demicodes/web-ui/ui/Toast.vue'
 import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
 import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
-import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
+import GalleryContextMenus from '../components/GalleryContextMenus.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import FloatingWindow from '@demicodes/web-ui/ui/FloatingWindow.vue'
 import HelpPopover from '@demicodes/web-ui/ui/HelpPopover.vue'
@@ -279,16 +278,6 @@ function itemLabel(id: string, list: MenuChoice[] = items): TitleText {
   return list.find(item => item.id === id)?.label ?? id
 }
 
-// One menu for several rows, opened by their handlers; a row with nothing to offer keeps the browser's own menu.
-const sharedRows = ['Project notes', 'Release checklist', 'Scratch']
-const sharedRow = ref('')
-const sharedMenu = useContextMenuOwner()
-function openSharedMenu(row: string, event: MouseEvent): void {
-  if (row === 'Scratch')
-    return
-  sharedRow.value = row
-  sharedMenu.open(event)
-}
 </script>
 
 <template>
@@ -1078,56 +1067,13 @@ function openSharedMenu(row: string, event: MouseEvent): void {
         </GallerySpecimen>
       </GallerySection>
 
-      <GallerySection title="ContextMenu" note="Right-click Menu.">
-        <GallerySpecimen variant="right-click">
-          <ContextMenu :overlay-store="appOverlayStore">
-            <template #trigger>
-              <div
-                class="flex h-24 w-72 items-center justify-center rounded-lg bg-surface-raised text-[13px] text-fg-muted ring-1 ring-line"
-              >
-              Right-click this surface
-              </div>
-            </template>
-            <template #menu>
-              <MenuItem
-                :icon="Pencil"
-                label="Rename"
-                shortcut="↵"
-                @select="productWould('Rename')"
-              />
-              <MenuItem :icon="Plus" label="New Tab" @select="productWould('New Tab')" />
-              <MenuDivider />
-              <MenuItem
-                :icon="Trash2"
-                label="Close"
-                is-danger
-                @select="productWould('Close')"
-              />
-            </template>
-          </ContextMenu>
-        </GallerySpecimen>
-        <!-- Rows that share one menu, as the sidebar's do: the rows' handlers open it with `owner.open`, and a row with nothing to offer leaves the browser's own menu. -->
-        <GallerySpecimen variant="right-click, one menu for several rows">
-          <div class="flex w-72 flex-col gap-1 rounded-lg bg-surface-raised p-1.5 ring-1 ring-line">
-            <div
-              v-for="row in sharedRows"
-              :key="row"
-              class="flex h-8 items-center rounded-md px-2 text-[13px] text-fg-muted hover:bg-hover"
-              @contextmenu="openSharedMenu(row, $event)"
-            >
-              {{ row }}
-            </div>
-            <div class="px-2 pb-1 pt-0.5 text-[12px] text-fg-faint">Right-click a row; the last one has no menu.</div>
-          </div>
-          <ContextMenu :overlay-store="appOverlayStore" :owner="sharedMenu">
-            <template #menu>
-              <MenuItem :icon="Pencil" label="Rename" @select="productWould(`Rename ${sharedRow}`)" />
-              <MenuItem :icon="Copy" label="Duplicate" @select="productWould(`Duplicate ${sharedRow}`)" />
-              <MenuDivider />
-              <MenuItem :icon="Trash2" label="Delete" is-danger @select="productWould(`Delete ${sharedRow}`)" />
-            </template>
-          </ContextMenu>
-        </GallerySpecimen>
+      <GallerySection
+        title="Context Menus"
+        note="Right-click, or on a phone long-press, each case. The menu gathers the entries of the content under the pointer, innermost first, and ends with the first object's; Shift and text fields keep the browser's menu."
+      >
+        <div class="flex flex-col items-start gap-6">
+          <GalleryContextMenus />
+        </div>
       </GallerySection>
 
       <GallerySection title="HelpPopover" note="A ? button that opens help about the thing beside it; Escape or a click outside closes it, as the button does a second time.">

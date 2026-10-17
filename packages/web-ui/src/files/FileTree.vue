@@ -4,15 +4,13 @@ import RequestIdLine from '../ui/RequestIdLine.vue'
 import { computed, markRaw, nextTick, onBeforeUnmount, reactive, ref, shallowReactive, watch } from 'vue'
 import { Download, RefreshCw, Upload } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
-import { useContextMenuOwner } from '../composables/useContextMenuOwner'
+import type { ContextMenuDeclaration } from '../ui/context-menu'
 import { useFileDrop } from '../composables/useFileDrop'
 import { showToast } from '../infra/toast'
 import { appOverlayStore } from '../overlay/appOverlay'
 import CornerDot from '../ui/CornerDot.vue'
 import IconButton from '../ui/IconButton.vue'
 import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
-import MenuItem from '../ui/MenuItem.vue'
-import ContextMenu from '../ui/ContextMenu.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import FileUploadList from './FileUploadList.vue'
@@ -313,26 +311,27 @@ async function followLink(row: TreeRow): Promise<void> {
   }
 }
 
-// What a right-click offers: a file to download, or a directory to upload into.
-interface MenuTarget {
-  kind: 'file' | 'directory'
-  path: string
-}
+// What a row's context menu offers: a file to download, or a directory to upload into; the tree's
+// empty space is its root directory. The row shows it while it is open.
+const menuRow = ref<string | null>(null)
 
-const menuTarget = ref<MenuTarget | null>(null)
-const menu = useContextMenuOwner(() => {
-  menuTarget.value = null
-})
-
-function openMenu(row: TreeRow | null, event: MouseEvent): void {
-  const target: MenuTarget = row === null
-    ? { kind: 'directory', path: normalizePath(props.root) }
-    : { kind: row.isDirectory ? 'directory' : 'file', path: row.path }
-  // With nothing to offer, the web browser's own menu stays.
-  if (target.kind === 'file' ? !props.source.contents : !props.source.upload)
-    return
-  menuTarget.value = target
-  menu.open(event)
+function rowMenu(row: TreeRow | null): ContextMenuDeclaration | null {
+  const kind = row === null || row.isDirectory ? 'directory' : 'file'
+  const path = row === null ? normalizePath(props.root) : row.path
+  // With nothing to offer, no menu: a row is still its own object, which never takes the tree's.
+  if (kind === 'file' ? !props.source.contents : !props.source.upload)
+    return row === null ? null : { entries: () => [] }
+  return {
+    opened: () => {
+      menuRow.value = row === null ? null : path
+    },
+    entries: () => [kind === 'file'
+      ? [{ icon: Download, label: t('actions.download'), run: () => download(path) }]
+      : [{ icon: Upload, label: t('tree.uploadFiles'), run: () => chooseFiles(path) }]],
+    closed: () => {
+      menuRow.value = null
+    },
+  }
 }
 
 function download(path: string): void {
@@ -528,16 +527,15 @@ defineExpose({
     <Tree
       ref="tree"
       class="min-h-0 flex-1"
-      data-touch-menu
       :rows="rows"
       :caption="rootName"
       :caption-title="root"
       :selected="selectedPath"
-      :menu-row="menu.isOpen.value ? menuTarget?.path : null"
+      :menu-row="menuRow"
       :drop-target="dropTarget"
       :tooltip="failureText"
       @activate="activate"
-      @menu="openMenu"
+      :row-menu="rowMenu"
     >
       <template #captionTrailing>
         <Tooltip :content="t('actions.refresh')" class="ml-2 shrink-0">
@@ -606,12 +604,6 @@ defineExpose({
       />
     </template>
   </div>
-  <ContextMenu :overlay-store="appOverlayStore" :owner="menu">
-    <template #menu>
-      <MenuItem v-if="menuTarget?.kind === 'file'" :icon="Download" :label="t('actions.download')" @select="download(menuTarget.path)" />
-      <MenuItem v-else-if="menuTarget" :icon="Upload" :label="t('tree.uploadFiles')" @select="chooseFiles(menuTarget.path)" />
-    </template>
-  </ContextMenu>
   <input ref="picker" type="file" multiple class="hidden" @change="onPicked">
   <UploadConflictDialog
     :is-open="question !== null"

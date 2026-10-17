@@ -263,6 +263,95 @@ or covers ([Product checks](../delivery/browse.md)). A disabled control is skipp
 primitive per kind of control owns this, so no caller makes a control
 focusable by hand.
 
+### Context menus
+
+The user right-clicks a link in one of the agent's replies. A menu opens at
+the pointer, built from everything under it, the innermost first:
+
+```text
+Open Link
+Copy Link
+───────────
+Copy Message
+Fork
+```
+
+The page, not the browser, shows every context menu of the app. One handler
+at the page's root takes each `contextmenu` event and each long press,
+walks from the element under the pointer up to the root, and gathers
+the entries of the content it passes and of the first object it meets;
+each is a group, and dividers part the groups. Content, a link, a picture,
+a code block, a selection, adds to the object around it, as the link adds
+to its message above. An object ends the walk: a file row's menu is the
+file's, never also its tree's, as Finder's menu on a file holds no New
+Folder; the tree's own menu opens on its empty space, where no row is. An
+object whose menu should hold an entry of its container, as a tab's holds
+the strip's Close Other Tabs, declares that entry itself. A web-ui primitive
+declares an element's menu, and the plugin SDK passes it on, so a plugin's
+own objects, such as the file browser's files, declare theirs the same way
+([Plugin pages](../architecture/plugin-pages.md)).
+
+- **Content** has the entries the browser's own menu would give it, which
+  the page's menu replaces: a link *Open Link* and *Copy Link*; a picture
+  *Copy Image* and *Save Image*; a code block *Copy Code*; text the user
+  selected, when the pointer is on the selection, *Copy*. A link to a file,
+  an agent or a commit, which has no address to copy, has *Open* alone,
+  which acts as clicking it does.
+- **An object** has the actions it already offers elsewhere, in the same
+  order and with the same names: its row's controls, its footer, its
+  preview. A conversation row has what its row's menu holds, Pin, Rename and Archive among them; a tab its
+  strip's entries; a message what its footer shows at that moment, such as
+  Copy, Fork, Share and Regenerate, and Edit for the user's own, so text
+  in the middle of a reply, which has no footer, has none; an attachment
+  what its preview offers. An entry names its object where the menu also
+  holds another's, *Copy Message* beside *Copy Link*. A menu is another
+  way to an action, as in macOS's Finder, never the only one, so it adds
+  none of its own, but one: *Send to Conversation*, below.
+- **Send to Conversation** takes words to another conversation, as iOS's
+  Share takes them to another app. The user's own message has it, on its
+  bubble or on text selected in it, and so does text selected in the
+  agent's reply; the text selection's toolbar offers it too, the toolbar
+  that stands by a selection in a message, above it on the desktop and
+  under it on a phone, with Copy and Send to Conversation. Its submenu
+  starts with a search field over every conversation, the archived ones
+  included, then, while the field is empty, *New Conversation*, which makes
+  one in the current project, then the eight conversations the user was last active in,
+  leaving out this one and the archived ones, each drawn as the sidebar
+  draws its row, its status dot before its title and its project after it
+  in secondary text, so a row reads as the conversation the user knows. Picking one opens that
+  conversation with the words added to the end of its draft, as pasting
+  them there would add them, and sends nothing: the user adds a word and
+  sends it, or leaves it as a draft ([Drafts](#drafts)). A whole message
+  of the user's goes as a copied message is pasted, its files with it; a
+  selection goes as text, from the agent's reply as a quotation. On a
+  phone the submenu is a sheet with the same search field and list.
+- **Where nothing declares a menu**, on empty space, the toolbar's
+  background or a heading, no menu opens, the browser's included.
+- **The browser's own menu stays** where the page cannot do what it does:
+  in a text field, the composer and a message being edited included, whose
+  menu holds spelling suggestions, the system's writing and lookup
+  services and Paste without a permission prompt; in a view that handles
+  its own pointer, such as the conversation browser's page, a simulator or
+  a terminal, which takes the event before the root handler sees it; and
+  anywhere when the user holds Shift as they right-click, for the browser's
+  Inspect.
+- **From the keyboard**, the menu key and Shift-F10 open the menu of the
+  focused element, at its corner, as Windows does; arrow keys move through
+  it, Enter acts and Escape closes it, giving the focus back.
+
+On a phone a long press, the finger still for half a second and moving
+under ten pixels, opens the same menu as a sheet from the bottom, as iOS's
+Messages does, and a scroll that starts first cancels it. A message's text
+is the exception: its long press selects words, with the system's own
+handles and callout, as in Safari, since a page cannot add to the system's
+menu and a long press cannot both select and open a menu. Once a selection
+holds text in a message, a toolbar stands under it, clear of the system's
+callout above it, and offers Copy and Send to Conversation, as Notion's
+page does on an iPhone; it is the text selection's toolbar the desktop
+shows above a selection in a message, with the same tools. The rest of a message's menu is its
+footer's buttons, which a phone shows at rest. A control's long press opens
+nothing, and a text field keeps the system's.
+
 ## Work panel
 
 The work panel shows one tab at a time. Its frame belongs to the shell; every
@@ -399,8 +488,8 @@ conversation; the panel button covers the screen with the work panel, and
   Settings and the file tree, is at least 44 pixels tall, with 16-pixel
   titles; a group label is 36, the sidebar's footer 52, a tab 36. No tap
   highlight shows, a control's long press selects nothing and opens no
-  callout, a message's long press still selects its text, and a long press
-  opens the menu a right-click opens on the desktop. Controls the desktop
+  callout, and a long press opens the menu a right-click opens on the
+  desktop ([Context menus](#context-menus)). Controls the desktop
   shows on hover show at rest, except a sidebar conversation row's: a phone
   row shows none, since a tap meant to open it could land on one, and its
   long press opens its menu, which holds them, as ChatGPT's and Mail's rows

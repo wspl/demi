@@ -130,7 +130,10 @@
         "stopped": "{count} 个智能体已停止"
       },
       "heard": "收到 {count} 个智能体的消息"
-    }
+    },
+    "copyMessage": "复制消息",
+    "sendToConversation": "发送到对话",
+    "sendToNew": "新对话"
   },
   "subagents": {
     "mainAgent": "主智能体",
