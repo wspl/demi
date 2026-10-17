@@ -10,6 +10,7 @@
 use std::rc::{Rc, Weak};
 
 use demi_backend_database::conversation_index::ExecutionTarget;
+use demi_backend_host_access::access::HostAccessError;
 use demi_backend_host_access::conversation_of;
 use demi_backend_host_access::kept::{Found, Kept, SearchError, Subscribe, Wait};
 use demi_plugin_interface::{PluginId, WatchSubject};
@@ -143,10 +144,10 @@ pub(crate) struct KeptAt {
 impl Shard {
     /// Where the conversation `id`'s project files are kept, read without
     /// reaching its Host.
-    async fn kept_at(&self, id: &ConversationId) -> Result<KeptAt, String> {
+    async fn kept_at(&self, id: &ConversationId) -> Result<KeptAt, HostAccessError> {
         let host = self.host_shard();
-        let record = host.owned_conversation(id).await.map_err(|error| error.to_string())?;
-        let target = host.resolve_target(&record).await.map_err(|error| error.to_string())?;
+        let record = host.owned_conversation(id).await?;
+        let target = host.resolve_target(&record).await?;
         Ok(KeptAt {
             device: target.device().cloned(),
             directory: target.path().to_owned(),
@@ -171,22 +172,34 @@ impl Shard {
             .instructions
             .get(id, &device, cwd.to_owned(), at.loaded, Wait::First)
             .await
+            // A refusal is logged where the search met it.
+            .ok()
+            .flatten()
             .unwrap_or_else(|| Rc::from([]))
     }
 
-    /// The workflows of the conversation `id`'s directory; none while
-    /// nothing was found, such as on a Host that never ran. `wait` says
+    /// The workflows of the conversation `id`'s directory, or that no search
+    /// of it is held, such as on a Host that never ran; the refusal when the
+    /// last search was refused or failed and nothing is held. `wait` says
     /// whether a search under way for a reported change is waited for.
     pub(crate) async fn kept_workflows(
         &self,
         id: &ConversationId,
         wait: Wait,
-    ) -> Result<Option<Rc<ProjectWorkflows>>, String> {
-        let at = self.kept_at(id).await?;
+    ) -> Result<KeptWorkflows, Rc<HostAccessError>> {
+        let at = self.kept_at(id).await.map_err(Rc::new)?;
         let Some(device) = at.device else {
-            return Ok(None);
+            return Ok(KeptWorkflows::None { directory: at.directory });
         };
-        Ok(self.project_files().workflows.get(id, &device, at.directory, at.loaded, wait).await)
+        let found = self
+            .project_files()
+            .workflows
+            .get(id, &device, at.directory.clone(), at.loaded, wait)
+            .await?;
+        Ok(match found {
+            Some(found) => KeptWorkflows::Found(found),
+            None => KeptWorkflows::None { directory: at.directory },
+        })
     }
 
     /// What `plugin`'s project search holds for the conversation of `root`;
@@ -212,7 +225,19 @@ impl Shard {
             .plugins
             .get(&id, &at.device?, key, at.loaded, Wait::First)
             .await
+            // A refusal is logged where the search met it.
+            .ok()
+            .flatten()
     }
+}
+
+/// What the shard holds of a conversation's workflows.
+pub(crate) enum KeptWorkflows {
+    /// What the last search found.
+    Found(Rc<ProjectWorkflows>),
+    /// No search of `directory`, the conversation's working directory, is
+    /// held: its Host is not running, or the first search has not finished.
+    None { directory: String },
 }
 
 /// What a search names to watch, as the runner subscribes to it.

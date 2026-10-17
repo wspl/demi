@@ -459,9 +459,16 @@ impl From<CloudError> for ApiError {
 
 impl From<HostAccessError> for ApiError {
     fn from(error: HostAccessError) -> Self {
+        Self::from(&error)
+    }
+}
+
+/// A refusal kept and answered more than once, as a kept search's.
+impl From<&HostAccessError> for ApiError {
+    fn from(error: &HostAccessError) -> Self {
         match error {
-            HostAccessError::Host(error) => Self::host_operation(error),
-            HostAccessError::Cancelled | HostAccessError::Storage(_) => Self::internal(&error),
+            HostAccessError::Host(error) => Self::host_operation(error.clone()),
+            HostAccessError::Cancelled | HostAccessError::Storage(_) => Self::internal(error),
             error => {
                 let (code, status) = error.code();
                 Self::new(status_of(status), code, error.to_string())
