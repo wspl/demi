@@ -256,7 +256,9 @@ useEventListener(sidebar, 'touchmove', swipeMove, { passive: false })
       :label="t('layout.sidebarWidth')"
       @commit="emit('resizeEnd', $event)"
     />
-    <main data-region class="isolate flex min-w-0 flex-1 flex-col overflow-hidden">
+    <!-- On a phone the pane is the conversation's surface from the first frame, its top bar too, which stands
+         behind the status bar: a page that has not drawn its own yet shows no band of the base surface. -->
+    <main data-region class="isolate flex min-w-0 flex-1 flex-col overflow-hidden phone:bg-surface">
       <!-- The frame's own top bar, while no page shows its own (`useSidebarDrawer`). -->
       <div
         v-if="phone && barOwners === 0"

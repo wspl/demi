@@ -7,8 +7,20 @@
     <link rel="icon" href="/icons/otter-dark.svg" type="image/svg+xml" media="(prefers-color-scheme: dark)" />
     <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- The top of the page's color, before the app runs, in the default tone (`product-appearance.css`):
+         on a phone the conversation's surface, elsewhere the base surface. The browser's bars take it, and the
+         page shows it until its stylesheet loads; once the app runs, `theme/themeColor.ts` keeps the bars on the
+         theme and tone the user chose. The first tag whose query holds is the one a browser takes. -->
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light) and (max-width: 767px)" />
+    <meta name="theme-color" content="#242424" media="(prefers-color-scheme: dark) and (max-width: 767px)" />
     <meta name="theme-color" content="#f4f4f4" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#1a1a1a" media="(prefers-color-scheme: dark)" />
+    <style>
+      html { background: #f4f4f4; }
+      @media (prefers-color-scheme: dark) { html { background: #1a1a1a; } }
+      @media (max-width: 767px) { html { background: #ffffff; } }
+      @media (prefers-color-scheme: dark) and (max-width: 767px) { html { background: #242424; } }
+    </style>
     <title>Demi</title>
   </head>
   <body>

@@ -1167,7 +1167,10 @@ open the app
 **Installing.** The page names a web app manifest: the name *Demi*, the
 otter as its icons (the browsers' sizes, a maskable one, and the Home
 Screen icon iOS reads), `/` as its start and scope, and `standalone` display,
-with the light and dark page colors as its theme. The installed app is the
+with the light and dark page colors as its theme. The browser's own bars,
+the band behind the status bar included, take the color of the page's top
+from the first frame, in the user's theme and tone: on a phone the
+conversation's surface, elsewhere the base surface. The installed app is the
 same page: the phone layout's bars stand inside the safe areas there as in
 a browser, every screen has its own way back since there is no Back button,
 and a link outside the app opens in the system's browser. An installed app on

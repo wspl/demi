@@ -3,6 +3,7 @@ import { createPageI18n, setPageLanguage } from '@demicodes/web-ui/i18n/text'
 import { resolveLanguage } from '@demicodes/web-ui/i18n/languages'
 import { applyThemeToDocument } from '@demicodes/web-ui/theme/appTheme'
 import { applyTranscriptTextSize, DEFAULT_TRANSCRIPT_TEXT_SIZE } from '@demicodes/web-ui/theme/productAppearance'
+import { followThemeColor } from '@demicodes/web-ui/theme/themeColor'
 import { installPhonePage } from '@demicodes/web-ui/ui/phone-page'
 import { historySettled, setHistoryTraversal } from '@demicodes/web-ui/overlay/back-close'
 import { reportPageErrorsWith } from '@demicodes/web-ui/infra/errors'
@@ -28,6 +29,8 @@ const stopLanguage = watch(
   { immediate: true },
 )
 applyThemeToDocument()
+// As in the product: the browser's bars take the color of the page's top.
+followThemeColor()
 persistGalleryState()
 // The transcript reads the user's text size, as in the product; Settings'
 // specimen changes it from there.
