@@ -29,8 +29,13 @@ use std::sync::{Mutex, PoisonError};
 /// outside the test's process tree once its first shell exits, so that what
 /// stops the test does not stop it first. The guard asks and waits by line,
 /// not by closing pipes: a process another test starts at the moment a pipe
-/// is made may inherit its end, and would hold it open.
-const WATCHDOG: &str = r#"{
+/// is made may inherit its end, and would hold it open. The input reaches
+/// the background block through descriptor 3: dash, Linux's `sh`, gives an
+/// asynchronous list `/dev/null` as its input even when the list redirects
+/// `<&0` itself, so the watchdog read nothing, ended at once, and every
+/// later `watch` met a broken pipe.
+const WATCHDOG: &str = r#"exec 3<&0
+{
 trap '' HUP INT TERM
 installations=
 while IFS= read -r line; do
@@ -82,7 +87,7 @@ while [ "$round" -lt 5 ]; do
   done
 done
 echo stopped
-} <&0 &"#;
+} <&3 3<&- &"#;
 
 /// Stops the runners of the installations it watches when it drops, on a
 /// test's success, failure or panic, and when the test process is killed;
