@@ -4,25 +4,30 @@ import { t } from './locales/text'
 
 /**
  * Where a command is, as a stored view or the command's live frames say it:
- * running, and whether a stop waits for its end, exited with its code,
- * stopped (`aborted`), or lost with why.
+ * running, and whether a stop waits for its end or its start for its Host,
+ * the device `waitingFor` names, exited with its code, stopped (`aborted`),
+ * or lost with why.
  */
 export interface CommandEnd {
   status: ShellViewStatus
   exitCode?: number
   lostReason?: string
   stopping?: boolean
+  waitingFor?: string
 }
 
 /**
  * How a command ended, as a shell row or a report row marks it (`rendering.md`
- * § Rendering boundary, § Command reports), or that a stop waits for its
- * runner to end it (`runner.md` § Cancellation and completion): a row marks
- * only what went wrong, and a call's row and its notice mark it alike.
+ * § Rendering boundary, § Command reports), that a stop waits for its
+ * runner to end it (`runner.md` § Cancellation and completion), or that its
+ * start waits for its Host, an offline device (`sessions-and-targets.md`
+ * § Host operations): a row marks only what is not going as planned, and
+ * a call's row and its notice mark it alike.
  */
 export type CommandEndMark =
   | { kind: 'failed', exitCode: number }
   | { kind: 'stopping' }
+  | { kind: 'waiting', host: string }
   | { kind: 'stopped' }
   | { kind: 'lost', reason: string }
 
@@ -30,7 +35,10 @@ export type CommandEndMark =
 export function commandEndMark(view: CommandEnd | null): CommandEndMark | null {
   switch (view?.status) {
     case 'running':
-      return view.stopping ? { kind: 'stopping' } : null
+      if (view.stopping) {
+        return { kind: 'stopping' }
+      }
+      return view.waitingFor === undefined ? null : { kind: 'waiting', host: view.waitingFor }
     case 'exited':
       return view.exitCode !== undefined && view.exitCode !== 0
         ? { kind: 'failed', exitCode: view.exitCode }
@@ -62,7 +70,9 @@ export function runningTime(elapsedMs: number | null): string | null {
  * none, or how it ended and after how long, given how long it ran or has
  * run, `elapsedMs`. A lost command says why, as its tag does, and no time;
  * one a stop waits for says so, as its tag does (`runner.md`
- * § Cancellation and completion); none while the time is unknown.
+ * § Cancellation and completion), and so does one whose start waits for
+ * its Host (`sessions-and-targets.md` § Host operations); none while the
+ * time is unknown.
  */
 export function commandStatusLine(end: CommandEnd | null, elapsedMs: number | null): string | null {
   if (end?.status === 'lost') {
@@ -70,6 +80,9 @@ export function commandStatusLine(end: CommandEnd | null, elapsedMs: number | nu
   }
   if (end?.stopping) {
     return t('transcript.commandStatus.stopping')
+  }
+  if (end?.waitingFor !== undefined) {
+    return t('transcript.commandStatus.waiting', { host: end.waitingFor })
   }
   if (elapsedMs === null) {
     return null

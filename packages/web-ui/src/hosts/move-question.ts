@@ -34,13 +34,20 @@ export interface WorkToStop {
  * its subagents and its commands have all ended. A command counts as work
  * because its job holds the conversation's file gate until its runner says it
  * ended, and the backend moves no conversation while it is held
- * (`sessions-and-targets.md` § Switch the primary target).
+ * (`sessions-and-targets.md` § Switch the primary target). None either while
+ * the backend says the agent only waits for the conversation's offline
+ * device, `onlyWaitsForHost`: a move fails the commands that wait, which
+ * never ran, and lets the agent go on on the new Host.
  */
 export function workToStop(conversation: {
   phase: ConversationState['phase']
   subagents: readonly Pick<SubagentRecord, 'phase'>[]
   terminals: readonly Pick<TerminalRecord, 'phase'>[]
+  onlyWaitsForHost: boolean
 }): WorkToStop | null {
+  if (conversation.onlyWaitsForHost) {
+    return null
+  }
   const work = {
     agent: conversation.phase !== 'idle',
     subagents: conversation.subagents.filter((agent) => isSubagentRunning(agent.phase)).length,

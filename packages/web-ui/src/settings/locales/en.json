@@ -232,7 +232,6 @@
       "modelKeywords": "title model,haiku,flash,automatic",
       "sameProviderKeywords": "privacy,same provider",
       "sendKeywords": "steer,queue,enter",
-      "hostBackKeywords": "offline,online,device,continue",
       "restartKeywords": "restart,update,continue",
       "retryKeywords": "usage limit,quota,reset"
     },

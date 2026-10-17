@@ -100,10 +100,6 @@ pub enum HelloStep {
     /// In the shard of the device's owner, which took the socket and has not
     /// bound it to the device yet.
     Bind,
-    /// In the shard of the device's owner, which bound the connection and
-    /// has resumed the turns the device's absence left, or found none to
-    /// resume.
-    HostBack,
 }
 
 /// Where a failed turn's resume at its retry time waits while a test holds

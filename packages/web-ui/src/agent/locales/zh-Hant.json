@@ -35,6 +35,7 @@
       "failed": "失敗",
       "stopped": "已停止",
       "stopping": "正在停止…",
+      "waiting": "正在等待 {host}",
       "lost": "已遺失",
       "exitCode": "結束代碼 {code}"
     },
@@ -42,6 +43,7 @@
       "lost": "已遺失",
       "lostWhy": "已遺失：{reason}",
       "stopping": "正在停止…",
+      "waiting": "正在等待 {host}",
       "running": "已執行 {span}",
       "exited": "{span} 後結束",
       "exitedZero": "{span} 後結束，結束代碼 0",
@@ -203,7 +205,6 @@
     "scrollToBottom": "捲動到底部",
     "resume": "恢復",
     "continue": "繼續",
-    "stillOffline": "{name} 仍為離線",
     "continueWith": "改用 {label} 繼續",
     "openProviders": "打開供應商"
   },

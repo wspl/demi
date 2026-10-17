@@ -1395,28 +1395,27 @@ When it connects again, its hello lists them, and the backend picks them up:
 the suite's end and the output both printed meanwhile reach the conversation
 as if the connection had never dropped, and the dev server is still serving.
 
-- **A connection loss stops nothing for 10 minutes.** The runner keeps its
+- **A connection loss stops nothing.** The runner keeps its
   jobs, their directories and execution contexts, and its resident services,
   with the conversation state they hold, such as a browser's tabs. A job's
   output goes on into its kept output; the messages the runner would have
   sent about it are not queued, since the next connection reads what it
   needs from the kept output. A declared command a job runs that needs the
-  backend, such as an `rpc` call, waits for the connection, and fails with
-  `<command>: the backend is unreachable` if the 10 minutes pass first.
+  backend, such as an `rpc` call, waits for the connection.
 - **The runner notices a loss itself.** It pings the backend every 30
   seconds and counts a connection unanswered for 60 seconds as lost, so a
-  connection the network dropped without closing it starts the 10 minutes
-  as a closed one does.
+  connection the network dropped without closing it is lost as a closed one
+  is.
 - **The hello lists the runner's jobs**: each job's id, whether it runs or
   ended, with its status, each stream's length and its media count, and the
   runner's own instance, a number each start of the runner draws, so the
   backend tells a runner that kept its jobs from one that started anew
   ([Recovery and persistence](sessions-and-targets.md#recovery-and-persistence)).
   A job the backend has no command for is stopped.
-- **After 10 minutes without a connection** the runner stops its jobs, as a
-  stop does ([Cancellation and completion](#cancellation-and-completion)),
-  and its services, keeps the jobs' ends and their directories, and reports
-  them at its next connection as ended for that reason.
+- **A refused connection stops them.** When the backend refuses the
+  runner, since the device was revoked or removed, the runner stops its jobs,
+  as a stop does ([Cancellation and completion](#cancellation-and-completion)),
+  and its services; nobody will read them again.
 - **A runner that ends loses its jobs**: their shell work runs in its
   process. That happens when it crashes, when it updates itself to another
   release ([Runner updates](#runner-updates)), and when a Cloud stops.

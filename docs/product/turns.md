@@ -79,24 +79,15 @@ either without the user typing anything.
   ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
   its record stays in the transcript, followed by the turn's progress.
 
-  A Host that goes offline does not stop a turn while it runs. The operation
-  that needed it fails with the runner's offline error, worded for the agent
-  ([Host operations](../execution/sessions-and-targets.md#host-operations)),
-  the tool call shows that error, and the agent decides: it retries, or it
-  ends its turn and says what it could not do. A turn that ends with work
-  left undone because its Host was away is unfinished, as one that broke
-  is: when the root's turn ends and a call of it failed because its Host
-  was offline, with no later call of the turn run on that Host, the
-  transcript gets an error record of Demi's fact, "MacBook Pro went offline,
-  so this turn could not finish its work.", and the dock offers **Resume**,
-  which stays disabled, *MacBook Pro is still offline*, while the Host the
-  conversation runs on is an offline device: until the device is back, or
-  the user moves the conversation to a Host that is online. Nothing wakes the agent by itself when the device returns, so a user
-  who was away is not surprised by it starting work again; the user
-  resumes, and the agent's next request says the device is back. Above the
+  A Host that goes offline does not stop a turn. The agent's next command on
+  the conversation's device waits for it, however long it takes, and runs
+  when the device is back, so the agent goes on as if nothing happened; the
+  turn stays running meanwhile, its command showing *Waiting for MacBook
+  Pro*, and the user's Stop ends it. Above the
   composer the device's offline card says how to start its runner and
   offers **Move to Another Host…**, the Run On menu's online Hosts, which
-  moves the conversation as the menu does once the tree is idle
+  moves the conversation at once when the agent only waits for the device,
+  and otherwise once the tree is idle
   ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)).
 - **The user stopped it.** Stop is a decision, not a failure, and the
   transcript marks the turn as stopped.

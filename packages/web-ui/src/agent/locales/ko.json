@@ -35,6 +35,7 @@
       "failed": "실패",
       "stopped": "중지됨",
       "stopping": "중지하는 중…",
+      "waiting": "{host} 기다리는 중",
       "lost": "상태 알 수 없음",
       "exitCode": "종료 코드 {code}"
     },
@@ -42,6 +43,7 @@
       "lost": "상태 알 수 없음",
       "lostWhy": "상태 알 수 없음: {reason}",
       "stopping": "중지하는 중…",
+      "waiting": "{host} 기다리는 중",
       "running": "{span} 동안 실행 중",
       "exited": "{span} 후 종료됨",
       "exitedZero": "{span} 후 종료 코드 0으로 종료됨",
@@ -203,7 +205,6 @@
     "scrollToBottom": "맨 아래로 스크롤",
     "resume": "재개",
     "continue": "계속",
-    "stillOffline": "{name} 호스트는 아직 오프라인입니다",
     "continueWith": "다음으로 계속: {label}",
     "openProviders": "제공업체 열기"
   },

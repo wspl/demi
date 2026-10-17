@@ -194,7 +194,7 @@ async fn a_job_that_ends_while_the_connection_is_lost_is_listed_and_its_exit_fol
         };
         assert_eq!(job.job_id, "kept");
         let ended = job.ended.as_ref().expect("the job ended");
-        assert_eq!((ended.exit_code, ended.unreached), (Some(3), false));
+        assert_eq!(ended.exit_code, Some(3));
         assert_eq!(job.output.stdout_bytes, 3);
         let mut host = host.online().await;
         loop {
@@ -279,43 +279,57 @@ async fn a_start_that_arrives_twice_runs_the_job_once() {
     .unwrap();
 }
 
-/// A connection that stays away past the grace stops the runner's jobs as a
-/// stop does, and the next hello lists them ended for that reason
-/// (`runner.md` § Command lifetime). The test's runner keeps its jobs 200 ms
-/// instead of 10 minutes.
+/// A connection loss stops nothing, however long it lasts; only the
+/// backend's refusal of the runner, as for a revoked device, stops its jobs
+/// (`runner.md` § Command lifetime). The runner's attempts to connect again
+/// while it stays away mark the time that passes, so the test waits for
+/// them, not for time. About seven seconds: a login shell starts, the
+/// runner tries twice in vain and is back within two, and the refused
+/// runner takes about five to end.
 #[tokio::test]
-async fn a_job_kept_past_the_grace_is_stopped_and_listed_as_unreached() {
+async fn a_job_runs_on_through_a_connection_loss_until_the_backend_refuses_the_runner() {
     tokio::time::timeout(Duration::from_secs(60), async {
-        let env = BTreeMap::from([("DEMI_UNREACHED_GRACE_MS".to_owned(), "200".to_owned())]);
-        let mut host = Host::start(env).await.online().await;
-        start_job(&mut host, "long", "sh -c 'echo $$ > pid; exec sleep 60'").await;
+        let mut host = Host::start(BTreeMap::new()).await.online().await;
+        start_job(
+            &mut host,
+            "long",
+            "sh -c 'echo $$ > pid; exec sleep 60'",
+        )
+        .await;
         let pid = host.home().join("pid");
         until_exists(&pid).await;
         let pid = std::fs::read_to_string(&pid).unwrap().trim().to_owned();
         let alive = |pid: &str| {
             std::process::Command::new("kill")
                 .args(["-0", pid])
+                .stderr(std::process::Stdio::null())
                 .status()
                 .unwrap()
                 .success()
         };
 
+        // The job goes on while the runner tries in vain to connect again,
+        // and is still running when the runner is back.
         host.cut().await;
-        while alive(&pid) {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-        }
+        host.drop_next().await;
+        host.drop_next().await;
         host.reconnected().await;
-
         let (_, kept) = host.kept();
         let [job] = kept.as_slice() else {
             panic!("{kept:?}");
         };
-        assert_eq!(job.job_id, "long");
-        assert!(
-            job.ended.as_ref().is_some_and(|ended| ended.unreached),
-            "{job:?}"
-        );
-        host.close().await;
+        assert_eq!((job.job_id.as_str(), &job.ended), ("long", &None));
+        assert!(alive(&pid), "the job runs on");
+
+        // The backend refuses the runner: the runner stops its jobs.
+        host.send(Inbound::HelloError {
+            code: demi_runner_protocol::wire::HelloErrorCode::UnknownDevice,
+            reason: "unknown device".into(),
+        })
+        .await;
+        while alive(&pid) || host.process.running() {
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     })
     .await
     .unwrap();

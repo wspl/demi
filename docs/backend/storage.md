@@ -461,13 +461,15 @@ changes. No session holds the rows: `demi shell output` reads a row, then its
 blob, on the conversation's read-only connection.
 
 A running command has a row of its own in `running_commands`, written when
-its job starts and deleted in the transaction that writes its
+its job starts, or when it starts waiting for its offline device, and deleted in the transaction that writes its
 `command_outputs` row: its number, the node that ran it, its device, its
 job's id on that device, the tool call that started it, when it started,
-the interval it reports at (null for a resident one), and the place in its output each node has looked to, which a look or a
+the interval it reports at (null for a resident one), what it will start
+while it waits, not yet sent (`unsent`), and the place in its output each node has looked to, which a look or a
 report moves ([Command reports](../agent/shell-tool.md#command-reports)).
 The control database's `running_jobs` table indexes them by device: each
-running job's id with its device and conversation, written before the job
+running job's id with its device and conversation, and whether it was sent
+(`sent`, 0 while the command waits for its device), written before the job
 starts and deleted with the command's end. A runner's hello names its jobs,
 and the table says which conversation each belongs to, so a backend that
 starts again takes the commands up when their runners connect, and restores

@@ -246,9 +246,12 @@ ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cl
 
 /// From 0.1.22's control schema to the current one: a usage ledger row may
 /// be an image's (`images.md` § Accounts and failures), which SQLite's
-/// checks let in only on a table made again, its rows as they were; and
-/// each browser's push subscription is kept (`turns.md` § Notifications).
+/// checks let in only on a table made again, its rows as they were; each
+/// browser's push subscription is kept (`turns.md` § Notifications); and a
+/// running job may wait to be sent to its device (`sessions-and-targets.md`
+/// § Host operations), which every one recorded before was.
 const CONTROL_FROM_0_1_22: &str = "
+ALTER TABLE running_jobs ADD COLUMN sent INTEGER NOT NULL DEFAULT 1 CHECK (sent IN (0, 1));
 CREATE TABLE usage_ledger_images (
   id                    TEXT PRIMARY KEY,
   user_id               TEXT NOT NULL REFERENCES users (id),
@@ -1172,9 +1175,12 @@ pub(crate) const CONVERSATION: Schema = Schema {
 /// command keeps the turn
 /// whose shell call started it, which a command's call's usage ledger row
 /// names (`usage-and-quota.md` § Usage ledger); one recorded before keeps
-/// none.
+/// none. A command whose start waits for its Host keeps what it starts
+/// (`sessions-and-targets.md` § Host operations); every one recorded before
+/// was sent.
 const CONVERSATION_FROM_0_1_22: &str = "
 ALTER TABLE running_commands ADD COLUMN turn_id TEXT;
+ALTER TABLE running_commands ADD COLUMN unsent TEXT;
 ";
 
 /// From 0.1.22-dev.20261015T134426Z's control schema, which a server keeps
@@ -3134,11 +3140,13 @@ CREATE INDEX conversations_workspace ON conversations (target_workspace_id);
 -- Each job of a command that runs, with its device, whose runner's hello
 -- names the job, and its conversation, whose tree takes the command up
 -- again (`storage.md` § Command outputs). Written before the job starts and
--- deleted with the command's end.
+-- deleted with the command's end; written before then too while the job's
+-- start waits for its device, with sent 0, until it is sent.
 CREATE TABLE running_jobs (
   job_id          TEXT PRIMARY KEY,
   device_id       TEXT NOT NULL REFERENCES devices (id) ON DELETE CASCADE,
-  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE
+  conversation_id TEXT NOT NULL COLLATE NOCASE REFERENCES conversations (id) ON DELETE CASCADE,
+  sent            INTEGER NOT NULL DEFAULT 1 CHECK (sent IN (0, 1))
 ) STRICT;
 CREATE INDEX running_jobs_of_device ON running_jobs (device_id);
 
@@ -3690,7 +3698,11 @@ CREATE TABLE running_commands (
   interval_ms INTEGER CHECK (interval_ms >= 1),
   -- The turn whose shell call started it; null for a command recorded
   -- before records kept it.
-  turn_id     TEXT
+  turn_id     TEXT,
+  -- What it starts once its Host is back, while its start waits for it and
+  -- was never sent; null once sent. running_commands.unsent: unsent start
+  -- format 1.
+  unsent      TEXT
 ) STRICT;
 CREATE INDEX running_commands_of_node ON running_commands (node_id);
 
@@ -5387,7 +5399,8 @@ mod tests {
         );
         later.command = demi_shared_types::CommandId::try_from("2").unwrap();
         later.turn = Some(demi_shared_types::TurnId::try_from("m4").unwrap());
-        running::insert(&connection, &later).unwrap();
+        assert_eq!(later.unsent, None);
+        running::record(&connection, &later).unwrap();
         let turns: Vec<Option<String>> = running::of_node(&connection, &root)
             .unwrap()
             .into_iter()

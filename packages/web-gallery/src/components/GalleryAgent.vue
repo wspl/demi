@@ -21,7 +21,6 @@ defineProps<{
     v-model:small-model="state.choice"
     v-model:same-provider="state.sameProvider"
     v-model:send-while-running="galleryMessages.sendWhileRunning"
-    v-model:resume-when-host-back="galleryMessages.resumeWhenHostBack"
     v-model:resume-after-restart="galleryMessages.resumeAfterRestart"
     v-model:resume-at-retry="galleryMessages.resumeAtRetry"
     :overlay-store="appOverlayStore"

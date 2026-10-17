@@ -31,10 +31,7 @@ use std::{
     collections::{BTreeMap, HashMap, HashSet},
     io,
     path::PathBuf,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    sync::Arc,
 };
 use tokio::{
     sync::{mpsc, oneshot, watch},
@@ -108,9 +105,6 @@ struct Entry {
     /// first `JOB_VIEW_BYTES`.
     follow: watch::Sender<bool>,
     cancel: CancellationToken,
-    /// Set when the runner stops the job because its connection stayed away
-    /// (`runner.md` § Command lifetime).
-    unreached: Arc<AtomicBool>,
 }
 
 enum TaskInput {
@@ -215,7 +209,6 @@ impl JobTable {
         let (signals, signal_receiver) = mpsc::channel(SIGNAL_QUEUE);
         let (follow, following) = watch::channel(false);
         let cancel = CancellationToken::new();
-        let unreached = Arc::new(AtomicBool::new(false));
         self.entries.insert(
             key.clone(),
             Entry {
@@ -223,7 +216,6 @@ impl JobTable {
                 signals,
                 follow,
                 cancel: cancel.clone(),
-                unreached: unreached.clone(),
             },
         );
         let config = self.config.clone();
@@ -254,7 +246,6 @@ impl JobTable {
                             wire::KeptEnd {
                                 exit_code: terminal.exit_code,
                                 signal: terminal.signal,
-                                unreached: unreached.load(Ordering::Relaxed),
                             },
                         );
                     }
@@ -352,15 +343,13 @@ impl JobTable {
     }
 
     /// Stops every job as a stop does, first with `TERM`
-    /// (`runner.md` § Cancellation and completion); `unreached` marks it
-    /// stopped because the connection stayed away. [`kill_jobs`] ends what
+    /// (`runner.md` § Cancellation and completion). [`kill_jobs`] ends what
     /// remains.
     ///
     /// [`kill_jobs`]: Self::kill_jobs
-    pub fn stop_jobs(&self, unreached: bool) {
+    pub fn stop_jobs(&self) {
         for (id, entry) in &self.entries {
             if let WorkId::Job(_) = id {
-                entry.unreached.fetch_or(unreached, Ordering::Relaxed);
                 if entry.signals.try_send(Signal::Terminate).is_err() {
                     // A job whose signals back up is ended at once.
                     entry.cancel.cancel();

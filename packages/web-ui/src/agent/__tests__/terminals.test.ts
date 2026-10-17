@@ -360,6 +360,9 @@ test('a returned call marks its command\'s end once the end arrives, and not fro
   expect(commandEndMark(shellRowEnd(returned, { ...command, stopping: true }))).toEqual({ kind: 'stopping' })
   expect(commandEndMark(shellRowEnd({ ...returned, status: 'executing' }, { ...command, stopping: true })))
     .toEqual({ kind: 'stopping' })
+  // A start that waits for its offline Host says which, also while the call watches.
+  expect(commandEndMark(shellRowEnd({ ...returned, status: 'executing' }, { ...command, waitingFor: 'MacBook Pro' })))
+    .toEqual({ kind: 'waiting', host: 'MacBook Pro' })
   // Its end arrives in a frame: exit 1 is Failed, a stop is Stopped, exit 0 is nothing.
   expect(commandEndMark(shellRowEnd(returned, { ...command, phase: 'exited', exitCode: 1 })))
     .toEqual({ kind: 'failed', exitCode: 1 })

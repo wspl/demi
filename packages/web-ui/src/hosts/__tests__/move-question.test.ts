@@ -23,14 +23,25 @@ test.each([
 })
 
 test('what stops is counted from the phases the page shows; once everything ended nothing stops', () => {
-  expect(workToStop({ phase: 'idle', subagents: [subagent('completed')], terminals: [command('exited')] })).toBeNull()
+  const at = (conversation: Omit<Parameters<typeof workToStop>[0], 'onlyWaitsForHost'>) =>
+    workToStop({ ...conversation, onlyWaitsForHost: false })
+  expect(at({ phase: 'idle', subagents: [subagent('completed')], terminals: [command('exited')] })).toBeNull()
   // A command that runs on after the turn ended still holds the conversation.
-  expect(workToStop({ phase: 'idle', subagents: [], terminals: [command('running')] }))
+  expect(at({ phase: 'idle', subagents: [], terminals: [command('running')] }))
     .toEqual({ agent: false, subagents: 0, commands: 1 })
-  expect(workToStop({ phase: 'running', subagents: [subagent('running'), subagent('aborted')], terminals: [command('running'), command('exited')] }))
+  expect(at({ phase: 'running', subagents: [subagent('running'), subagent('aborted')], terminals: [command('running'), command('exited')] }))
     .toEqual({ agent: true, subagents: 1, commands: 1 })
-  expect(workToStop({ phase: 'idle', subagents: [subagent('running')], terminals: [] }))
+  expect(at({ phase: 'idle', subagents: [subagent('running')], terminals: [] }))
     .toEqual({ agent: false, subagents: 1, commands: 0 })
+})
+
+test('while the backend says the agent only waits for its offline device, a move stops nothing', () => {
+  const waiting = { ...command('running'), waitingFor: 'MacBook Pro' }
+  const conversation = { phase: 'running' as const, subagents: [], terminals: [waiting] }
+  expect(workToStop({ ...conversation, onlyWaitsForHost: true })).toBeNull()
+  // A command shown waiting is not enough: the backend decides.
+  expect(workToStop({ ...conversation, onlyWaitsForHost: false }))
+    .toEqual({ agent: true, subagents: 0, commands: 1 })
 })
 
 test('Cancel carries out nothing, and an answer carries out the move once, told or not', async () => {

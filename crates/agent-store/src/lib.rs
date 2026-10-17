@@ -25,7 +25,7 @@ pub mod versions;
 use std::{collections::BTreeMap, rc::Rc};
 
 use demi_conversation_socket_protocol::{JobModel, JobPhase, SubagentChild, SubagentJob, Versions};
-use demi_host_interface::{Seen, WholeOutput};
+use demi_host_interface::{Seen, UnsentStart, WholeOutput};
 use demi_shared_types::{
     AgentAccount, AgentMessage, AgentMessageEvent, Block, BlockId, CommandEnd, CommandId, CommandReport, CompletionId, ModelSelection, NodeId,
     OperationId, QueuedMessage, Sequence, SessionPhase, Timestamp, TurnId,
@@ -199,6 +199,9 @@ pub struct RunningCommand {
     pub interval_ms: Option<u32>,
     pub started: Timestamp,
     pub place: Seen,
+    /// What it starts once its Host is back, while its start waits for it
+    /// and was never sent (`sessions-and-targets.md` § Host operations).
+    pub unsent: Option<UnsentStart>,
 }
 
 /// What a conversation holds of an ended command: the title of the call
