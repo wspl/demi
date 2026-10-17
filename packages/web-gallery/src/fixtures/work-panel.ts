@@ -1,5 +1,6 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { browserPage } from '@demicodes/plugin-browser'
+import { mobilePage } from '@demicodes/plugin-mobile'
 import { addedPanelTab } from '@demicodes/plugin-browser/live/tabs'
 import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
 import {
@@ -25,6 +26,7 @@ import { productWould } from '../product-would'
 import { readGalleryEdit } from './blobs'
 import { galleryRequest } from './transcripts'
 import { galleryBrowser, type GalleryBrowser } from './live-browser'
+import { galleryMobile } from './live-mobile'
 import { GalleryPanel, galleryBrowserPlugin } from './panel'
 import { createSlotChangeSet, type createGalleryWorkspace } from './workspace'
 import { sharedHistory } from './history'
@@ -71,10 +73,17 @@ export function useGalleryWork(
   },
 ) {
   // The gallery's pages, with the browser's own made for a specimen that says how the pictures decode.
-  const shown = pages ?? PLUGIN_PAGES.map((page) => (page.plugin === 'browser' && pictures ? browserPage({ pictures }) : page))
+  const shown = pages ?? PLUGIN_PAGES.map((page) => {
+    if (!pictures) {
+      return page
+    }
+    return page.plugin === 'browser' ? browserPage({ pictures }) : page.plugin === 'mobile' ? mobilePage({ pictures }) : page
+  })
   const enabled = () => true
   const backend = new GalleryPanel()
   const plugin = galleryBrowserPlugin(browser, backend)
+  // The conversation's simulators, whose plugin opens and closes devices for the panel's `mobile` tabs.
+  const mobile = galleryMobile(backend)
   // The browser tells the plugin of every change of its tabs, as the browser package does
   // (`native-runtime.md` § Messages to the plugin).
   watch(browser.listed, () => void plugin.tabsChanged())
@@ -90,7 +99,9 @@ export function useGalleryWork(
     productWould(`Report the Refused Panel Change: ${error instanceof Error ? error.message : String(error)}`)
   })
   backend.removed = (tab) => {
-    if (tab.kind === 'browser') {
+    if (tab.kind === 'mobile') {
+      mobile.removed(tab)
+    } else if (tab.kind === 'browser') {
       void plugin.removed(tab)
     }
   }
@@ -180,7 +191,7 @@ export function useGalleryWork(
     open.value = true
   }
 
-  const host = galleryPageHost({ browser: browserPlugin(browser, plugin) }, {
+  const host = galleryPageHost({ browser: browserPlugin(browser, plugin), mobile: mobile.plugin }, {
     files,
     hostStarting: () => browser.hostStarting.value,
     intents: {
@@ -234,6 +245,7 @@ export function useGalleryWork(
     kinds,
     selected,
     browser,
+    mobile,
     agentShows,
     agentOpens,
     host,

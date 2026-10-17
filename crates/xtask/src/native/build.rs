@@ -15,6 +15,9 @@ use serde::Deserialize;
 
 use super::{Error, Executable, apple, linux, windows};
 
+/// The one target whose demi-mobile carries the iOS helper.
+const IOS_HELPER_TARGET: &str = "aarch64-apple-darwin";
+
 /// The Apple SDK the Apple targets are built against: the one the Command
 /// Line Tools and Xcode 26.6 install, on a developer's Mac and on the
 /// release workflow's `macos-26` runner alike.
@@ -122,6 +125,14 @@ pub fn run(options: Options) -> Result<(), Error> {
                 Some(image) => build.in_container(image, target, &built)?,
                 None => build.here(target, &built),
             };
+            // demi-mobile's build carries the iOS helper on Apple silicon,
+            // and a release never ships without it (`mobile.md` § iOS).
+            if target == IOS_HELPER_TARGET && built.contains(&Executable::Mobile) {
+                if options.container.is_some() || Platform::HOST != Platform::Mac {
+                    return Err(Error::IosHelperNeedsMac);
+                }
+                command.env("DEMI_MOBILE_IOS_HELPER", "required");
+            }
             let status = command.status()?;
             if !status.success() {
                 return Err(Error::Build { target, status });

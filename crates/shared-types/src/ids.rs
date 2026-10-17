@@ -201,6 +201,9 @@ pub enum Sequence {
     /// reserves them a few at a time (`native-runtime.md` § Conversation
     /// numbers).
     Tab,
+    /// Simulators `demi mobile` opens, from 1: `m2`. The `demi.mobile`
+    /// service reserves them as it opens devices (`mobile.md` § Commands).
+    Device,
     /// Attachments the agent uploaded, from 1: `a3`. `demi attachment
     /// upload` takes one per file it stores (`commands.md` § Attachment
     /// commands).

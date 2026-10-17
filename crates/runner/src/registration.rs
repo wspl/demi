@@ -183,12 +183,19 @@ pub async fn run(options: Options, stop: CancellationToken) -> io::Result<Ending
     // looks on every Host, and a paired device has nothing there; Cloud
     // images are Linux only, so a Windows runner does not look.
     let image = cfg!(unix).then(|| PathBuf::from(ARTIFACTS_PATH));
+    // A resident service finds the installation, as a job does, by
+    // DEMI_HOME (`runner.md` § Host operations), whoever called it.
+    let mut services_env = options.env.clone();
+    services_env.insert(
+        "DEMI_HOME".to_owned(),
+        state.root.to_string_lossy().into_owned(),
+    );
     let registry = ServiceRegistry::new(
         options.artifacts.clone(),
         image,
         Some(options.backend.clone()),
         options.cwd.clone(),
-        options.env.clone(),
+        services_env,
     )
     .await
     .map_err(io::Error::other)?;

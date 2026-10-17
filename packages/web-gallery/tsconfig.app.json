@@ -9,6 +9,7 @@
       "@/*": ["./src/*"],
       "@demicodes/web-ui/*": ["../web-ui/src/*"],
       "@demicodes/plugin-browser/*": ["../plugin-browser/src/*"],
+      "@demicodes/plugin-mobile/*": ["../plugin-mobile/src/*"],
       "@demicodes/plugin-changes/*": ["../plugin-changes/src/*"],
       "@demicodes/plugin-file-browser/*": ["../plugin-file-browser/src/*"],
       "@demicodes/plugin-skills/*": ["../plugin-skills/src/*"],

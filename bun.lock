@@ -79,6 +79,21 @@
         "typescript": "^6.0.3",
       },
     },
+    "packages/plugin-mobile": {
+      "name": "@demicodes/plugin-mobile",
+      "version": "0.0.0",
+      "dependencies": {
+        "@demicodes/plugin-sdk": "workspace:^",
+        "@demicodes/utils": "workspace:^",
+        "@lucide/vue": "^1.40.0",
+        "vue": "^3.5.38",
+        "zod": "^4.0.0",
+      },
+      "devDependencies": {
+        "@vue/tsconfig": "^0.9.1",
+        "typescript": "^6.0.3",
+      },
+    },
     "packages/plugin-sdk": {
       "name": "@demicodes/plugin-sdk",
       "version": "3.0.0",
@@ -138,6 +153,7 @@
         "@demicodes/plugin-browser": "workspace:^",
         "@demicodes/plugin-changes": "workspace:^",
         "@demicodes/plugin-file-browser": "workspace:^",
+        "@demicodes/plugin-mobile": "workspace:^",
         "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
         "@demicodes/plugin-web": "workspace:^",
@@ -171,6 +187,7 @@
         "@demicodes/plugin-browser": "workspace:^",
         "@demicodes/plugin-changes": "workspace:^",
         "@demicodes/plugin-file-browser": "workspace:^",
+        "@demicodes/plugin-mobile": "workspace:^",
         "@demicodes/plugin-sdk": "workspace:^",
         "@demicodes/plugin-skills": "workspace:^",
         "@demicodes/plugin-web": "workspace:^",
@@ -405,6 +422,8 @@
     "@demicodes/plugin-changes": ["@demicodes/plugin-changes@workspace:packages/plugin-changes"],
 
     "@demicodes/plugin-file-browser": ["@demicodes/plugin-file-browser@workspace:packages/plugin-file-browser"],
+
+    "@demicodes/plugin-mobile": ["@demicodes/plugin-mobile@workspace:packages/plugin-mobile"],
 
     "@demicodes/plugin-sdk": ["@demicodes/plugin-sdk@workspace:packages/plugin-sdk"],
 

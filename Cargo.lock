@@ -1976,6 +1976,7 @@ dependencies = [
  "demi-plugin-file-browser",
  "demi-plugin-image",
  "demi-plugin-interface",
+ "demi-plugin-mobile",
  "demi-plugin-skills",
  "demi-plugin-web",
  "demi-provider-anthropic-api",
@@ -2631,6 +2632,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-command-package-mobile-protocol"
+version = "0.1.27"
+dependencies = [
+ "demi-live-view-protocol",
+ "demi-shared-types",
+ "garde",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_plain",
+ "serde_with",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "demi-command-protocol"
 version = "0.1.27"
 dependencies = [
@@ -2844,6 +2860,38 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-mobile"
+version = "0.1.27"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "demi-command-package-mobile-protocol",
+ "demi-command-protocol",
+ "demi-command-sdk",
+ "demi-live-view",
+ "demi-live-view-protocol",
+ "demi-mobile",
+ "demi-shared-artifacts",
+ "demi-shared-cli",
+ "demi-shared-types",
+ "flate2",
+ "futures-util",
+ "garde",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "sysinfo",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "tracing-subscriber",
+ "zstd 0.13.3",
+]
+
+[[package]]
 name = "demi-plugin-browser"
 version = "0.1.27"
 dependencies = [
@@ -2921,6 +2969,24 @@ dependencies = [
  "tokio",
  "tokio-util",
  "url",
+]
+
+[[package]]
+name = "demi-plugin-mobile"
+version = "0.1.27"
+dependencies = [
+ "demi-command-declarations",
+ "demi-command-package-mobile-protocol",
+ "demi-host-interface",
+ "demi-live-view-protocol",
+ "demi-plugin-interface",
+ "demi-web-api-protocol",
+ "futures-util",
+ "schemars",
+ "serde",
+ "serde_json",
+ "serde_plain",
+ "tokio",
 ]
 
 [[package]]
@@ -3448,6 +3514,7 @@ dependencies = [
  "garde",
  "image",
  "jiff",
+ "regex",
  "schemars",
  "serde",
  "serde_json",
@@ -12090,6 +12157,7 @@ dependencies = [
  "demi-command-package-claude-code-protocol",
  "demi-command-package-fetch-protocol",
  "demi-command-package-file-protocol",
+ "demi-command-package-mobile-protocol",
  "demi-command-protocol",
  "demi-conversation-socket-protocol",
  "demi-live-view-protocol",

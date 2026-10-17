@@ -11,7 +11,9 @@
 //! Vite's `build.license` lists them from the bundle's module graph, each
 //! with the text of its license file. A dependency whose license is not one
 //! of [`ACCEPTED`], or whose license cannot be read, stops the command, so a
-//! new dependency never ships without its notice.
+//! new dependency never ships without its notice. The libraries a program
+//! carries that are neither, [`LIBRARIES`], have their notice in the
+//! repository.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
@@ -58,6 +60,25 @@ const ACCEPTED: [&str; 18] = [
     "OpenSSL",
 ];
 
+/// A library a shipped program carries that is neither a crate nor an npm
+/// package, with its notice in the repository.
+struct Library {
+    name: &'static str,
+    version: &'static str,
+    license: &'static str,
+    /// Its notice, from the repository's root.
+    notice: &'static str,
+}
+
+/// idb's libraries and guest bridge, in demi-mobile's iOS helper
+/// (`mobile.md` § iOS).
+const LIBRARIES: [Library; 1] = [Library {
+    name: "idb",
+    version: "1.7.6",
+    license: "MIT",
+    notice: "crates/command-package-mobile/ios-sim/LICENSE-idb",
+}];
+
 #[derive(clap::Args)]
 pub struct Options {
     /// The built web app, which the notices are written into.
@@ -101,9 +122,28 @@ pub fn run(options: Options) -> Result<(), Error> {
 pub fn write(repository: &Path, web: &Path) -> Result<PathBuf, Error> {
     let packages = npm(web)?;
     let crates = crates(repository)?;
+    let libraries = libraries(repository)?;
     let path = web.join(WEB_NOTICES);
-    std::fs::write(&path, render(&crates, &packages))?;
+    std::fs::write(&path, render(&crates, &packages, &libraries))?;
     Ok(path)
+}
+
+/// The notices of [`LIBRARIES`].
+fn libraries(repository: &Path) -> Result<Vec<Notice>, Error> {
+    let mut notices = Notices::default();
+    for library in LIBRARIES {
+        let text = std::fs::read_to_string(repository.join(library.notice))?;
+        notices.add(
+            library.license,
+            &text,
+            Shipped {
+                name: library.name.to_owned(),
+                version: library.version.to_owned(),
+                source: None,
+            },
+        );
+    }
+    Ok(notices.into_vec())
 }
 
 /// One license text and the packages under it.
@@ -343,12 +383,12 @@ fn crates(repository: &Path) -> Result<Vec<Notice>, Error> {
 }
 
 /// The notices as the file holds them.
-fn render(crates: &[Notice], packages: &[Notice]) -> String {
+fn render(crates: &[Notice], packages: &[Notice], libraries: &[Notice]) -> String {
     let mut out = "Third-party notices\n\n\
          Demi includes the third-party software below. Each notice names the\n\
          packages under one license text, then gives the text.\n"
         .to_owned();
-    for (title, notices) in [("Rust crates", crates), ("npm packages", packages)] {
+    for (title, notices) in [("Rust crates", crates), ("npm packages", packages), ("Other libraries", libraries)] {
         let _ = write!(out, "\n\n{title}\n{}\n", "=".repeat(title.len()));
         for notice in notices {
             let _ = write!(out, "\n{}\n{}\n\n", notice.license, "-".repeat(notice.license.len()));

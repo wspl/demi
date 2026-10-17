@@ -98,12 +98,15 @@ export class CanvasPictures<S extends LivePictureStream> implements PictureSink<
       this.handlers.lost()
       return
     }
-    this.pending.set(frame.timestamp, { sequence: frame.sequence, generation: frame.generation })
-    this.decoder.decode(new EncodedVideoChunk({
+    const chunk = new EncodedVideoChunk({
       type: frame.key ? 'key' : 'delta',
       timestamp: frame.timestamp,
       data: frame.data,
-    }))
+    })
+    // The picture comes back with the chunk's timestamp, whole microseconds,
+    // which a source's own (a fraction, from a capture clock) is not.
+    this.pending.set(chunk.timestamp, { sequence: frame.sequence, generation: frame.generation })
+    this.decoder.decode(chunk)
   }
 
   /** Nothing is watched: decoding ends. The last picture stays until its canvas goes or the next one is painted. */

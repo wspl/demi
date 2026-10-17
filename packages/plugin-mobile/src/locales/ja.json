@@ -1,0 +1,62 @@
+{
+  "toolbar": {
+    "rotateLeft": "左に回転",
+    "rotateRight": "右に回転",
+    "appearance": "外観モードを切り替える",
+    "home": "ホーム",
+    "lock": "ロック",
+    "volumeUp": "音量を上げる",
+    "volumeDown": "音量を下げる",
+    "back": "戻る",
+    "screenshot": "スクリーンショット",
+    "record": "収録",
+    "stopRecording": "収録を停止"
+  },
+  "activity": "エージェントがこのデバイスを操作しています",
+  "keyboard": "シミュレータのキーボード",
+  "region": {
+    "connecting": "シミュレータに接続しています…",
+    "waiting": "デバイスを待っています…",
+    "couldntShow": "シミュレータを表示できませんでした",
+    "unsupported": "このブラウザではライブビデオを表示できません。"
+  },
+  "failures": {
+    "control": "シミュレータで実行できませんでした",
+    "save": "ファイルを保存できませんでした",
+    "hostFilesUnreachable": "現在デバイスのファイルにアクセスできません。"
+  },
+  "reasons": {
+    "invalid_input": "シミュレータはその操作を受け付けません。",
+    "device_not_found": "そのシミュレータはこのデバイスにありません。",
+    "ambiguous_device": "その名前のシミュレータが複数あります。",
+    "device_busy": "ほかの会話がそのシミュレータを使用しています。先にそちらで閉じてください。",
+    "too_many_devices": "この会話ではこのデバイスでシミュレータを4台開いています。先に1台閉じてください。",
+    "stale_ref": "シミュレータが操作する前に画面が変わりました。",
+    "timeout": "シミュレータが時間内に応答しませんでした。",
+    "unavailable": "このデバイスではシミュレータを使用できません。",
+    "not_recording": "シミュレータは収録していません。",
+    "recording": "シミュレータはすでに収録中です。",
+    "output_exists": "同じ名前のファイルがすでにあります。",
+    "io_error": "デバイスにファイルを書き込めませんでした。",
+    "driver_error": "シミュレータで実行できませんでした。",
+    "device_lost": "シミュレータが停止しました。",
+    "cancelled": "要求はキャンセルされました。",
+    "mobile_unavailable": "このデバイスでシミュレータを開始できませんでした。",
+    "capture_failed": "シミュレータの画面を表示できませんでした。",
+    "capture_unavailable": "このデバイスではシミュレータの画面を表示できません。",
+    "input_failed": "入力がシミュレータに届きませんでした。",
+    "conversation_not_found": "この会話はもう存在しません。",
+    "conversation_archived": "この会話はアーカイブされています。",
+    "conversation_busy": "会話がビジー状態です。しばらくしてからもう一度お試しください。",
+    "host_stopped": "デバイスは停止しています。",
+    "device_offline": "デバイスはオフラインです。",
+    "cloud_unavailable": "現在クラウドを使用できません。",
+    "cloud_resetting": "クラウドをリセットしています。",
+    "cloud_capacity": "現在クラウドに空きがありません。",
+    "cloud_crash_loop": "クラウドが停止を繰り返しています。",
+    "host_operation_failed": "デバイスで実行できませんでした。",
+    "unknown_plugin_method": "このページは古くなっています。再読み込みしてください。",
+    "plugin_disabled": "シミュレータはオフになっています。"
+  },
+  "status": "デバイスはステータス{status}で応答しました。"
+}

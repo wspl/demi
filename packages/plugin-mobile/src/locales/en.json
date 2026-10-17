@@ -1,0 +1,62 @@
+{
+  "toolbar": {
+    "rotateLeft": "Rotate Left",
+    "rotateRight": "Rotate Right",
+    "appearance": "Toggle Appearance",
+    "home": "Home",
+    "lock": "Lock",
+    "volumeUp": "Volume Up",
+    "volumeDown": "Volume Down",
+    "back": "Back",
+    "screenshot": "Screenshot",
+    "record": "Record",
+    "stopRecording": "Stop Recording"
+  },
+  "activity": "The agent is using this device",
+  "keyboard": "Simulator Keyboard",
+  "region": {
+    "connecting": "Connecting to the simulator…",
+    "waiting": "Waiting for the device…",
+    "couldntShow": "Couldn’t Show the Simulator",
+    "unsupported": "This browser can’t show live video."
+  },
+  "failures": {
+    "control": "The Simulator Couldn’t Do That",
+    "save": "Couldn’t Save the File",
+    "hostFilesUnreachable": "The device’s files can’t be reached right now."
+  },
+  "reasons": {
+    "invalid_input": "The simulator can’t take that.",
+    "device_not_found": "That simulator is no longer on this device.",
+    "ambiguous_device": "More than one simulator has that name.",
+    "device_busy": "Another conversation is using that simulator. Close it there first.",
+    "too_many_devices": "This conversation has 4 simulators open on this device. Close one first.",
+    "stale_ref": "The screen changed before the simulator could act on it.",
+    "timeout": "The simulator didn’t answer in time.",
+    "unavailable": "Simulators aren’t available on this device.",
+    "not_recording": "The simulator isn’t recording.",
+    "recording": "The simulator is already recording.",
+    "output_exists": "A file of that name exists already.",
+    "io_error": "The file couldn’t be written on the device.",
+    "driver_error": "The simulator couldn’t do that.",
+    "device_lost": "The simulator stopped.",
+    "cancelled": "The request was canceled.",
+    "mobile_unavailable": "Simulators couldn’t start on this device.",
+    "capture_failed": "The simulator’s screen couldn’t be shown.",
+    "capture_unavailable": "This device can’t show the simulator’s screen.",
+    "input_failed": "Your input didn’t reach the simulator.",
+    "conversation_not_found": "This conversation no longer exists.",
+    "conversation_archived": "This conversation is archived.",
+    "conversation_busy": "The conversation is busy. Try again in a moment.",
+    "host_stopped": "The device is stopped.",
+    "device_offline": "The device is offline.",
+    "cloud_unavailable": "The Cloud isn’t available right now.",
+    "cloud_resetting": "The Cloud is being reset.",
+    "cloud_capacity": "The Cloud has no room right now.",
+    "cloud_crash_loop": "The Cloud keeps stopping.",
+    "host_operation_failed": "The device couldn’t do that.",
+    "unknown_plugin_method": "This page is out of date. Reload it.",
+    "plugin_disabled": "Simulators are turned off."
+  },
+  "status": "The device answered with status {status}."
+}
