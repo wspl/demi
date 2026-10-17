@@ -312,10 +312,11 @@ async fn a_recording_larger_than_a_frame_is_saved_whole() {
 }
 
 /// The view gets the frame the helper draws for a model whose frame Xcode
-/// installed, with the screen's place and corners, and the outline with
-/// the screen's corners for one without. Planted defect this catches: the
-/// helper's camelCase answer read with snake_case fields, which loses
-/// every frame and gives the outline square corners. One fake helper, one
+/// installed, at the page's pixel ratio, with the screen's place and
+/// corners, and the outline with the screen's corners for one without.
+/// Planted defects this catches: the helper's camelCase answer read with
+/// snake_case fields, which loses every frame and gives the outline square
+/// corners; the pixel ratio not passed to the helper. One fake helper, one
 /// view, milliseconds.
 #[tokio::test]
 async fn the_view_gets_the_frame_the_helper_draws_or_the_outline() {
@@ -328,7 +329,7 @@ async fn the_view_gets_the_frame_the_helper_draws_or_the_outline() {
     let mut frames = Vec::new();
     for device in [&framed, &bare] {
         page.send(json!({ "type": "watch", "device": device })).await;
-        page.send(json!({ "type": "frame", "device": device, "width": 800, "height": 1200 })).await;
+        page.send(json!({ "type": "frame", "device": device, "width": 800, "height": 1200, "scale": 2.0 })).await;
         let LiveModuleMessage::Frame { frame, .. } =
             tokio::time::timeout(std::time::Duration::from_secs(10), page.until("frame")).await.expect("the frame arrives")
         else {
@@ -336,6 +337,8 @@ async fn the_view_gets_the_frame_the_helper_draws_or_the_outline() {
         };
         frames.push(frame);
     }
+    // The helper draws at the page's pixel ratio.
+    assert_eq!(helper.requests("frame")[0], json!({ "udid": "UDID-A", "width": 800, "height": 1200, "scale": 2.0 }));
     match &frames[0] {
         LiveFrame::Image { png, width, height, screen, corner_radius } => {
             assert_eq!((png.as_str(), *width, *height), ("UE5H", 400, 800));

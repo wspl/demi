@@ -165,7 +165,21 @@ device type names it (`chromeIdentifier` in its profile), a bundle in
 `/Library/Developer/DeviceKit/Chrome` holding the bezel as PDF pieces and
 the places of its buttons, and the screen's rounded corners are the device
 type's framebuffer mask. The helper draws the frame once for each device
-and size the view asks for, and the view lays the picture into its screen.
+and size the view asks for, as DeviceKit's own renderer draws it, which
+DeviceHub shows: the frame is sized from the screen in points, the pixel
+size divided by the device's scale; each piece takes the size of its own
+artwork, scaled and floored to whole points, the edges overlapping the
+corners by two points at each end, where DeviceKit overlaps them by one,
+so that the faded end of an edge's artwork lies wholly under the corner
+at any screen scale; everything is drawn into one image with no
+piece clipped, the screen, then the edges, then the corners: DeviceKit
+draws the corners before the edges, and an edge's last column of artwork,
+half transparent, then lies over the corner's black as a thin grey line, so
+Demi draws the corners last to cover it; the screen's
+artwork fills only the framebuffer's rectangle; and each button is placed
+outside the frame from its anchor and alignment by its artwork's size less
+its travel, unrotated, then turned with the frame. The view lays the
+picture into its screen.
 A device with no frame installed, an Android emulator or a model Xcode
 draws none for, gets a frame the view draws itself: a thin outline of the
 device around the screen, with the screen's corner radius and the

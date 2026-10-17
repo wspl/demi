@@ -234,7 +234,7 @@ test('Record stops a recording the device announces, whoever started it', () => 
   session.close()
 })
 
-test('the view asks for the frame of its laid-out size once, again for a new size or device, and keeps the watched device’s', () => {
+test('the view asks for the frame of its laid-out size and pixel ratio once, again for a new size, ratio or device, and keeps the watched device’s', () => {
   const streams: UserStreamHandlers[] = []
   const sent: LiveViewerMessage[] = []
   const session = viewing(sent, streams)
@@ -242,15 +242,18 @@ test('the view asks for the frame of its laid-out size once, again for a new siz
   // No size yet: nothing to draw for.
   session.showing('m1')
   expect(frames()).toEqual([])
-  session.frame(800.4, 1200)
-  session.frame(800, 1200)
-  expect(frames()).toEqual([{ type: 'frame', device: 'm1', width: 800, height: 1200 }])
-  session.frame(1000, 1200)
+  session.frame(800.4, 1200, 2)
+  session.frame(800, 1200, 2)
+  expect(frames()).toEqual([{ type: 'frame', device: 'm1', width: 800, height: 1200, scale: 2 }])
+  session.frame(1000, 1200, 2)
+  // The window moved to a screen of another pixel ratio, its size in device pixels the same.
+  session.frame(1000, 1200, 1)
   session.showing('m2')
   expect(frames()).toEqual([
-    { type: 'frame', device: 'm1', width: 800, height: 1200 },
-    { type: 'frame', device: 'm1', width: 1000, height: 1200 },
-    { type: 'frame', device: 'm2', width: 1000, height: 1200 },
+    { type: 'frame', device: 'm1', width: 800, height: 1200, scale: 2 },
+    { type: 'frame', device: 'm1', width: 1000, height: 1200, scale: 2 },
+    { type: 'frame', device: 'm1', width: 1000, height: 1200, scale: 1 },
+    { type: 'frame', device: 'm2', width: 1000, height: 1200, scale: 1 },
   ])
   const outline = { kind: 'outline' as const, cornerRadius: 55, buttons: [] }
   streams[0]!.data(framed({ type: 'frame', device: 'm1', orientation: 'portrait', frame: outline }))
