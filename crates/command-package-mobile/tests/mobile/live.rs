@@ -197,7 +197,7 @@ async fn the_view_gets_the_frame_for_its_size_and_again_when_the_device_turns() 
     let mut page = Page::open(&mobile, CHAT).await;
     page.send(json!({ "type": "hello", "platform": "mac" })).await;
     page.send(json!({ "type": "watch", "device": device })).await;
-    page.send(json!({ "type": "frame", "device": device, "width": 800, "height": 1600 })).await;
+    page.send(json!({ "type": "frame", "device": device, "width": 800, "height": 1600, "scale": 2.0 })).await;
     let LiveModuleMessage::Frame { orientation, frame, .. } = page.until("frame").await else { unreachable!() };
     assert_eq!(orientation.to_string(), "portrait");
     let framed = serde_json::to_value(&frame).unwrap();
@@ -209,7 +209,7 @@ async fn the_view_gets_the_frame_for_its_size_and_again_when_the_device_turns() 
     assert_eq!(sides(&framed), ["left", "left", "left", "right"]);
 
     // The same size again needs no new frame; a turn does.
-    page.send(json!({ "type": "frame", "device": device, "width": 800, "height": 1600 })).await;
+    page.send(json!({ "type": "frame", "device": device, "width": 800, "height": 1600, "scale": 2.0 })).await;
     mobile.run(CHAT, "rotate", json!({ "device": device, "orientation": "landscape" })).await.json();
     let turned = tokio::time::timeout(Duration::from_secs(10), page.until("frame")).await;
     let Ok(LiveModuleMessage::Frame { orientation, frame, .. }) = turned else { panic!("no frame came after the turn") };
