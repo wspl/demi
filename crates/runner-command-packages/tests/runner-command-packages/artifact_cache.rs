@@ -243,15 +243,16 @@ fn listed(root: &Path) -> Vec<String> {
 /// Five conversations that start Claude Code at once after a deploy share
 /// one download of its executable instead of five copies that fill the
 /// disk, and each gets the one published file. An install joins the
-/// download as it is first polled, so polling each once makes them
-/// concurrent. Cost: a few small files.
+/// download as it is first polled, and the download is held until all have
+/// joined, so polling each once makes them concurrent however fast the
+/// machine. Cost: a few small files.
 #[tokio::test]
 async fn concurrent_installs_of_one_artifact_share_one_download() {
     let root = tempfile::tempdir().unwrap();
     let source = root.path().join("source");
     let bytes = b"claude code executable fixture";
     tokio::fs::write(&source, bytes).await.unwrap();
-    let resolver = Resolver::at(source);
+    let resolver = Gated::at(source);
     let cache = cache(root.path()).await;
     let cancel = CancellationToken::new();
     let wanted = file("Claude Code", "2.1.0", bytes);
@@ -261,12 +262,13 @@ async fn concurrent_installs_of_one_artifact_share_one_download() {
     for install in &mut installs {
         assert!(install.as_mut().now_or_never().is_none());
     }
+    resolver.open.send_replace(true);
     let paths = futures_util::future::join_all(installs).await;
     let destination = root.path().join("cache").join(&wanted.artifact.sha256);
     for path in paths {
         assert_eq!(path.unwrap(), destination);
     }
-    assert_eq!(resolver.calls.load(Ordering::SeqCst), 1, "one download");
+    assert_eq!(*resolver.calls.borrow(), 1, "one download");
     assert_eq!(tokio::fs::read(&destination).await.unwrap(), bytes);
     let sha256 = &wanted.artifact.sha256;
     assert_eq!(listed(root.path()), [sha256.clone(), format!("{sha256}.line.json")]);

@@ -141,8 +141,12 @@ jobs:
           security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -P "$PASSWORD" -T /usr/bin/codesign -f pkcs12
           rm "$RUNNER_TEMP/signing.p12"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$secret" "$keychain" > /dev/null
+          # codesign looks for an identity only in the search list, and
+          # finds a self-signed one, which no trust setting vouches for,
+          # only by its hash.
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           runner=".cache/native-target/${{ matrix.target }}/release/demi-runner"
-          codesign --force --sign "Demi Code Signing" --keychain "$keychain" --identifier sh.demi.runner --timestamp=none "$runner"
+          codesign --force --sign EC331D9849FAB753102595F45DA7244AE6036D32 --keychain "$keychain" --identifier sh.demi.runner --timestamp=none "$runner"
           codesign --verify -R='identifier "sh.demi.runner" and certificate root = H"ec331d9849fab753102595f45da7244ae6036d32"' "$runner"
           security delete-keychain "$keychain"
       # Packaging compresses each program into the cache, by its SHA-256,
