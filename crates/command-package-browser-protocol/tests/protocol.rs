@@ -9,7 +9,7 @@ use demi_command_package_browser_protocol::{
         MouseButton, NodeRef, OPERATIONS, ReadResult, ResolvedElement, TabId,
     },
     capture::{CaptureEvent, FrameHeader},
-    live::{FileHeader, LiveViewerMessage, VideoHeader},
+    live::{FileHeader, LiveViewerMessage},
     release::BrowserRelease,
 };
 use serde_json::{Value, json};
@@ -274,11 +274,11 @@ fn live_messages_decode_as_the_page_sends_them() {
             "screenWidth": 1512, "screenHeight": 982}),
         json!({"type": "watch", "tab": null}),
         json!({"type": "mode", "tab": TAB, "mode": "mobile"}),
-        json!({"type": "pointer", "tab": TAB, "action": "down", "x": 10.5, "y": 0, "button": "left",
-            "buttons": 1, "clickCount": 1, "modifiers": 0}),
-        json!({"type": "key", "tab": TAB, "action": "down", "key": "a", "code": "KeyA",
-            "keyCode": 65, "modifiers": 8, "repeat": false, "location": 0, "text": "A",
-            "altGraph": false}),
+        json!({"type": "input", "tab": TAB, "input": {"type": "pointer", "action": "down", "x": 10.5,
+            "y": 0, "button": "left", "buttons": 1, "clickCount": 1, "modifiers": 0}}),
+        json!({"type": "input", "tab": TAB, "input": {"type": "key", "action": "down", "key": "a",
+            "code": "KeyA", "keyCode": 65, "modifiers": 8, "repeat": false, "location": 0,
+            "text": "A", "altGraph": false}}),
         json!({"type": "upload", "tab": TAB, "token": "00000000-0000-4000-8000-0000000000a1",
             "revision": 3, "upload": 1, "files": [{"name": "a.txt", "mimeType": "text/plain", "size": 3}]}),
         json!({"type": "ack", "generation": 1, "sequence": 7, "decodeQueue": 0}),
@@ -290,8 +290,8 @@ fn live_messages_decode_as_the_page_sends_them() {
     for message in [
         json!({"type": "watch"}),
         json!({"type": "mode", "tab": TAB, "mode": "custom"}),
-        json!({"type": "pointer", "tab": TAB, "action": "down", "x": 5000, "y": 0, "button": "left",
-            "buttons": 1, "clickCount": 1, "modifiers": 0}),
+        json!({"type": "input", "tab": TAB, "input": {"type": "pointer", "action": "down", "x": 5000,
+            "y": 0, "button": "left", "buttons": 1, "clickCount": 1, "modifiers": 0}}),
         json!({"type": "upload", "tab": TAB, "token": "not-a-token", "revision": 3, "upload": 1,
             "files": []}),
         json!({"type": "upload", "tab": TAB, "token": "00000000-0000-4000-8000-0000000000a1",
@@ -306,24 +306,6 @@ fn live_messages_decode_as_the_page_sends_them() {
 
 #[test]
 fn frame_headers_have_their_documented_layout() {
-    let header = VideoHeader {
-        tab: TAB.parse().unwrap(),
-        generation: 2,
-        sequence: 9,
-        key: true,
-        timestamp: 1.5,
-        width: 1280,
-        height: 720,
-    };
-    let mut bytes = Vec::new();
-    header.write(&mut bytes);
-    assert_eq!(bytes.len(), VideoHeader::BYTES);
-    assert_eq!(&bytes[..16], b"t1\0\0\0\0\0\0\0\0\0\0\0\0\0\0");
-    assert_eq!(&bytes[16..25], [0, 0, 0, 2, 0, 0, 0, 9, 1]);
-    assert_eq!(&bytes[36..], [5, 0, 2, 208]);
-    bytes.extend_from_slice(b"data");
-    assert_eq!(VideoHeader::split(&bytes).unwrap(), (header, &b"data"[..]));
-    assert!(VideoHeader::split(&bytes[..39]).is_err());
     let (file, data) = FileHeader::split(&[0, 0, 0, 7, 0, 0, 0, 1, b'a']).unwrap();
     assert_eq!((file.upload, file.file, data), (7, 1, &b"a"[..]));
     assert!(FileHeader::split(&[0; 7]).is_err());

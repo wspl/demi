@@ -25,6 +25,8 @@ members = [
   "crates/backend-page-sync",
   "crates/backend-permissions",
   "crates/command-package-browser-protocol",
+  "crates/live-view",
+  "crates/live-view-protocol",
   "crates/command-package-claude-code-protocol",
   "crates/plugin-interface",
   "crates/plugin-changes",

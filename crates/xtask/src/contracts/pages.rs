@@ -54,8 +54,9 @@ pub fn modules() -> Result<Vec<Directory>, Error> {
 }
 
 /// The module of `page`, the page of `manifest`'s plugin. Definitions
-/// `@demicodes/protocol` declares are imported from it, so a package never
-/// declares a protocol type a second time.
+/// `@demicodes/protocol` declares are imported through the SDK, which
+/// re-exports them, so a package never declares a protocol type a second
+/// time.
 fn page_module(manifest: &Manifest, page: &Page) -> Result<String, Error> {
     let mut schemas: Vec<(&BTreeMap<String, Value>, Direction)> = Vec::new();
     for state in [&page.user, &page.conversation].into_iter().flatten() {
@@ -95,7 +96,7 @@ fn page_module(manifest: &Manifest, page: &Page) -> Result<String, Error> {
         .cloned()
         .collect();
     let (declarations, imports) = module(&definitions, &received, &names)?;
-    let mut text = source(&declarations, &imports);
+    let mut text = source(&declarations, &imports, super::PAGE_PROTOCOL_MODULE);
     text.push('\n');
     push_doc(
         &mut text,

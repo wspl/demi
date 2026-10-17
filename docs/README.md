@@ -68,6 +68,10 @@ layout and interaction; these documents do not repeat it.
 - [Conversation browser](browser/browser.md): browser automation for a conversation and the `demi browser` command reference.
 - [Live view](browser/live-view.md): watching and operating the conversation's browser tabs from the page.
 
+## How does the agent use an iOS or Android simulator?
+
+- [Mobile simulators](mobile/mobile.md): `demi mobile`, the simulator in the work panel, and the iOS and Android drivers.
+
 ## How are providers, models and credentials handled?
 
 - [Providers](providers/providers.md): families, vendors and endpoints, the provider contract, the [prompt cache](providers/providers.md#prompt-cache) and the rule that each request extends the previous one, per-account runtimes, the credential vault, login flows and inference admission.

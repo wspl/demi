@@ -8,11 +8,11 @@
  * § Liveness and reconnection).
  */
 import { liveViewerMessageSchema, panelReasonSchema, type BrowserViewport, type CursorRegion, type LiveControl, type LiveDialog, type LiveDownload, type LiveMenu, type LiveTab, type LiveViewerMessage, type PanelReason } from '../generated/plugin'
-import { LIVE_CAPTURE_FAILED, LIVE_CAPTURE_STOPPED, LIVE_CAPTURE_UNAVAILABLE, LIVE_FILE_CHUNK_BYTES, LIVE_STALL_MS } from '../generated/plugin'
+import { LIVE_CAPTURE_FAILED, LIVE_CAPTURE_STOPPED, LIVE_CAPTURE_UNAVAILABLE, LIVE_FILE_CHUNK_BYTES } from '../generated/plugin'
 import { reactive } from 'vue'
-import { waitToReconnect, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/plugin-sdk'
+import { LIVE_STALL_MS, waitToReconnect, watchSilence, type LiveVideoFrame, type PictureSink as LivePictureSink, type ReconnectWait, type SilenceWatch } from '@demicodes/plugin-sdk'
 import type { OpenUserStream, StreamBytes, UserStream } from '@demicodes/plugin-sdk'
-import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame, type LiveVideoFrame } from './frames'
+import { LiveFrameReader, encodeFile, encodeMessage, type LiveFrame } from './frames'
 import type { PanelSize } from './view'
 
 /**
@@ -30,13 +30,7 @@ export interface LiveStream {
 }
 
 /** What shows the pictures: a decoder in the page, or the gallery's canvas. */
-export interface PictureSink {
-  /** Frames of this generation follow. */
-  start(stream: LiveStream): void
-  show(frame: LiveVideoFrame): void
-  /** Nothing is watched any more. */
-  stop(): void
-}
+export type PictureSink = LivePictureSink<LiveStream>
 
 /** Why the page ended a view whose module sent a frame the protocol refuses. */
 export const REFUSED_FRAME = 'invalid_frame'
@@ -490,14 +484,15 @@ export class LiveSession {
 
   /** Pointer movement is not an operation; everything else is. A press is the viewer's own click or key. */
   input(message: LiveViewerMessage): void {
-    const moving = message.type === 'pointer' && message.action === 'move'
+    const input = message.type === 'input' ? message.input : null
+    const moving = input?.type === 'pointer' && input.action === 'move'
     if (moving) {
       if (this.state.connection === 'live') {
         this.send(message)
       }
       return
     }
-    if (this.state.connection === 'live' && (message.type === 'pointer' || message.type === 'key') && message.action === 'down') {
+    if (this.state.connection === 'live' && message.type === 'input' && (input?.type === 'pointer' || input?.type === 'key') && input.action === 'down') {
       this.pressed = { tab: message.tab, at: this.time() }
     }
     this.operate(message)

@@ -1,9 +1,8 @@
-//! The live view's protocol (`live-view.md` § The stream): what the page and
-//! the live view module say to each other over a user stream. The stream
-//! carries bytes without boundaries, so each message is one frame: a
-//! four-byte big-endian length of the rest, a one-byte kind, then its
-//! payload. The page and the module ship in the same release; there is no
-//! version.
+//! The browser's live view protocol (`live-view.md` § The stream): what the
+//! page and the live view module say to each other over a user stream about
+//! the browser, beside the live view's own frames, pictures and input
+//! (`live-view-protocol`). The page and the module ship in the same release;
+//! there is no version.
 
 use std::sync::LazyLock;
 
@@ -14,6 +13,11 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use demi_shared_types::DecodeError;
+
+use demi_live_view_protocol::{
+    LiveAck, LiveHeartbeat, LiveHello, LiveKeyframe, LiveNotice, LiveRelease, ModuleMessage,
+    ViewerInput,
+};
 
 use crate::browser::{BrowserCreatedBy, BrowserViewport, DialogType, TabId};
 
@@ -26,31 +30,11 @@ pub const OPERATION: &str = "browser.live";
 #[serde(deny_unknown_fields)]
 pub struct LiveInput {}
 
-/// A frame's kind, the byte after its length.
-pub const CONTROL_FRAME: u8 = 1;
-/// A video frame: [`VideoHeader`], then H.264 Annex B data.
-pub const VIDEO_FRAME: u8 = 2;
-/// The video frames' codec as WebCodecs names it: H.264 High profile (`64`),
-/// no constraint flags (`00`), level 5.1 (`33`). The capture extension
-/// encodes with it, and the page asks the user's browser for a decoder
-/// of it before it opens a view.
-pub const VIDEO_CODEC: &str = "avc1.640033";
-/// The most bits per second [`VIDEO_CODEC`]'s level carries: level 5.1's
-/// maximum video bit rate (H.264 Table A-1). The capture extension's
-/// software encoder refuses to start above the level's limit ("Failed to
-/// initialize OpenH264 encoder", measured with the pinned Chrome between 288
-/// and 299 Mbps), so a budget never asks for more.
-pub const VIDEO_MAX_BITRATE: u32 = 240_000_000;
-/// A chosen file's bytes: [`FileHeader`], then the data.
+/// A chosen file's bytes: [`FileHeader`], then the data. The live view's
+/// own frames are `live-view-protocol`'s, kinds 1 and 2.
 pub const FILE_FRAME: u8 = 3;
-/// The largest frame after its length: a paste's text and HTML, or a key frame.
-pub const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 /// A file frame's largest data.
 pub const FILE_CHUNK_BYTES: usize = 64 * 1024;
-/// How often the module speaks at least, so a still page is told from a stall.
-pub const HEARTBEAT_MS: u64 = 250;
-/// Silence after which the page shows the stream as stalled and stops sending input.
-pub const STALL_MS: u64 = 1000;
 
 /// A notice's code when this Host cannot capture the watched tab.
 pub const CAPTURE_UNAVAILABLE: &str = "capture_unavailable";
@@ -60,70 +44,10 @@ pub const CAPTURE_FAILED: &str = "capture_failed";
 /// module stops trying until the viewer asks again (`Recapture`).
 pub const CAPTURE_STOPPED: &str = "capture_stopped";
 
+/// A paste's largest text and HTML, which together stay within the
+/// live view's largest frame.
 const TEXT_BYTES: usize = 1_000_000;
 const HTML_BYTES: usize = 4_000_000;
-
-/// A video frame's header, big-endian: the tab ID (ASCII, padded with zero
-/// bytes to 16), the stream generation (u32), the sequence number (u32),
-/// flags (u8, 1 = key frame), three reserved bytes, the timestamp in
-/// microseconds (f64), and the picture's width and height in pixels (u16
-/// each).
-#[derive(Debug, Clone, PartialEq)]
-pub struct VideoHeader {
-    pub tab: TabId,
-    pub generation: u32,
-    pub sequence: u32,
-    pub key: bool,
-    pub timestamp: f64,
-    pub width: u16,
-    pub height: u16,
-}
-
-impl VideoHeader {
-    pub const BYTES: usize = 40;
-    /// The tab ID's field: the longest tab ID, `t` and 15 digits.
-    pub const TAB_BYTES: usize = 16;
-
-    /// Appends the header to `bytes`.
-    pub fn write(&self, bytes: &mut Vec<u8>) {
-        let tab = self.tab.as_str().as_bytes();
-        bytes.extend_from_slice(tab);
-        bytes.resize(bytes.len() + Self::TAB_BYTES - tab.len(), 0);
-        bytes.extend_from_slice(&self.generation.to_be_bytes());
-        bytes.extend_from_slice(&self.sequence.to_be_bytes());
-        bytes.push(u8::from(self.key));
-        bytes.extend_from_slice(&[0; 3]);
-        bytes.extend_from_slice(&self.timestamp.to_be_bytes());
-        bytes.extend_from_slice(&self.width.to_be_bytes());
-        bytes.extend_from_slice(&self.height.to_be_bytes());
-    }
-
-    /// Splits a video frame's payload into its header and data.
-    pub fn split(payload: &[u8]) -> Result<(Self, &[u8]), DecodeError> {
-        let Some((header, data)) = payload.split_first_chunk::<{ Self::BYTES }>() else {
-            return Err(DecodeError::Invalid(
-                "a video frame is shorter than its header".into(),
-            ));
-        };
-        let (tab, fields) = header.split_at(Self::TAB_BYTES);
-        let length = tab.iter().position(|byte| *byte == 0).unwrap_or(tab.len());
-        let tab = std::str::from_utf8(&tab[..length])
-            .map_err(|error| DecodeError::Invalid(error.to_string()))?
-            .parse::<TabId>()
-            .map_err(DecodeError::Invalid)?;
-        let bytes = |at: usize, count: usize| &fields[at..at + count];
-        let header = Self {
-            tab,
-            generation: u32::from_be_bytes(bytes(0, 4).try_into().expect("four bytes")),
-            sequence: u32::from_be_bytes(bytes(4, 4).try_into().expect("four bytes")),
-            key: fields[8] & 1 == 1,
-            timestamp: f64::from_be_bytes(bytes(12, 8).try_into().expect("eight bytes")),
-            width: u16::from_be_bytes(bytes(20, 2).try_into().expect("two bytes")),
-            height: u16::from_be_bytes(bytes(22, 2).try_into().expect("two bytes")),
-        };
-        Ok((header, data))
-    }
-}
 
 /// A file frame's header, big-endian: the upload (u32) and the file's index
 /// in it (u32).
@@ -185,44 +109,10 @@ impl TryFrom<String> for ControlToken {
 }
 
 closed_set! {
-    /// The viewer's platform, which decides how its keys map on the Host.
-    pub enum Platform {
-        Mac = "mac",
-        Windows = "windows",
-        Linux = "linux",
-        Other = "other",
-    }
-}
-
-closed_set! {
     /// A viewport mode the page may choose; `custom` is the agent's.
     pub enum ViewerMode {
         Web = "web",
         Mobile = "mobile",
-    }
-}
-
-closed_set! {
-    pub enum PointerAction {
-        Move = "move",
-        Down = "down",
-        Up = "up",
-    }
-}
-
-closed_set! {
-    pub enum PointerButton {
-        None = "none",
-        Left = "left",
-        Middle = "middle",
-        Right = "right",
-    }
-}
-
-closed_set! {
-    pub enum KeyAction {
-        Down = "down",
-        Up = "up",
     }
 }
 
@@ -270,15 +160,13 @@ pub struct UploadFile {
     pub size: u64,
 }
 
-/// What the page sends.
+/// What the page sends: the live view's own messages
+/// (`live-view-protocol`) and the browser's.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(tag = "type", rename_all = "lowercase", deny_unknown_fields)]
 pub enum LiveViewerMessage {
     /// First: the viewer's platform.
-    Hello {
-        #[garde(skip)]
-        platform: Platform,
-    },
+    Hello(#[garde(dive)] LiveHello),
     /// The panel's size in CSS pixels and the viewer's screen.
     #[serde(rename_all = "camelCase")]
     Panel {
@@ -306,84 +194,12 @@ pub enum LiveViewerMessage {
         #[garde(skip)]
         mode: ViewerMode,
     },
-    #[serde(rename_all = "camelCase")]
-    Pointer {
+    /// The viewer's input to `tab`, in its CSS pixels.
+    Input {
         #[garde(skip)]
         tab: TabId,
-        #[garde(skip)]
-        action: PointerAction,
-        #[garde(range(min = 0.0, max = 4096.0))]
-        x: f64,
-        #[garde(range(min = 0.0, max = 4096.0))]
-        y: f64,
-        #[garde(skip)]
-        button: PointerButton,
-        #[garde(range(max = 31))]
-        buttons: u8,
-        #[garde(range(max = 3))]
-        click_count: u8,
-        /// The modifier keys held, as CDP numbers them: Alt 1, Control 2,
-        /// Meta 4, Shift 8.
-        #[garde(range(max = 15))]
-        modifiers: u8,
-    },
-    #[serde(rename_all = "camelCase")]
-    Wheel {
-        #[garde(skip)]
-        tab: TabId,
-        #[garde(range(min = 0.0, max = 4096.0))]
-        x: f64,
-        #[garde(range(min = 0.0, max = 4096.0))]
-        y: f64,
-        #[garde(range(min = -10_000.0, max = 10_000.0))]
-        delta_x: f64,
-        #[garde(range(min = -10_000.0, max = 10_000.0))]
-        delta_y: f64,
-        #[garde(range(max = 15))]
-        modifiers: u8,
-    },
-    #[serde(rename_all = "camelCase")]
-    Key {
-        #[garde(skip)]
-        tab: TabId,
-        #[garde(skip)]
-        action: KeyAction,
-        #[garde(length(chars, max = 64))]
-        key: String,
-        #[garde(length(chars, max = 64))]
-        code: String,
-        #[garde(skip)]
-        key_code: u8,
-        #[garde(range(max = 15))]
-        modifiers: u8,
-        #[garde(skip)]
-        repeat: bool,
-        #[garde(range(max = 3))]
-        location: u8,
-        #[serde(
-            default,
-            skip_serializing_if = "Option::is_none",
-            with = "unwrap_or_skip"
-        )]
-        #[schemars(with = "String")]
-        #[garde(length(chars, min = 1, max = 16))]
-        text: Option<String>,
-        #[garde(skip)]
-        alt_graph: bool,
-    },
-    /// Committed text: an input method's result.
-    Text {
-        #[garde(skip)]
-        tab: TabId,
-        #[garde(length(chars, max = 20_000))]
-        text: String,
-    },
-    /// An input method's text being composed.
-    Composition {
-        #[garde(skip)]
-        tab: TabId,
-        #[garde(length(chars, max = 20_000))]
-        text: String,
+        #[garde(dive)]
+        input: ViewerInput,
     },
     Paste {
         #[garde(skip)]
@@ -433,23 +249,9 @@ pub enum LiveViewerMessage {
         #[garde(length(chars, max = 2000))]
         text: Option<String>,
     },
-    /// The page showed this frame; the module paces itself by these.
-    #[serde(rename_all = "camelCase")]
-    Ack {
-        #[garde(skip)]
-        generation: u32,
-        #[garde(skip)]
-        sequence: u32,
-        #[garde(skip)]
-        decode_queue: u32,
-    },
-    /// The decoder lost the stream; the next frame must be a key frame.
-    Keyframe {
-        #[garde(skip)]
-        generation: u32,
-    },
-    /// Release every key and button this viewer holds.
-    Release {},
+    Ack(#[garde(dive)] LiveAck),
+    Keyframe(#[garde(dive)] LiveKeyframe),
+    Release(#[garde(dive)] LiveRelease),
     /// Try capturing again after [`CAPTURE_STOPPED`]: the module recreates
     /// the capture extension.
     Recapture {},
@@ -685,7 +487,7 @@ pub enum LiveModuleMessage {
         #[garde(range(min = f64::MIN_POSITIVE, max = 1.0))]
         scale: f64,
     },
-    Heartbeat {},
+    Heartbeat(#[garde(dive)] LiveHeartbeat),
     /// Where on the watched tab's visible page each cursor applies, in
     /// document order: a later region over an earlier one wins. The view
     /// resolves the cursor under its pointer from them; where none applies,
@@ -747,18 +549,23 @@ pub enum LiveModuleMessage {
         #[garde(length(max = MAX_DOWNLOADS), dive)]
         downloads: Vec<LiveDownload>,
     },
-    /// Something the viewer asked for failed; the stream goes on.
-    Notice {
-        /// A browser failure's code, [`CAPTURE_UNAVAILABLE`],
-        /// [`CAPTURE_FAILED`] or [`CAPTURE_STOPPED`].
-        #[garde(skip)]
-        code: String,
-        #[garde(skip)]
-        message: String,
-    },
+    /// Something the viewer asked for failed; the stream goes on: a
+    /// browser failure's code, [`CAPTURE_UNAVAILABLE`], [`CAPTURE_FAILED`]
+    /// or [`CAPTURE_STOPPED`].
+    Notice(#[garde(dive)] LiveNotice),
     /// The browser ended; the stream ends after this.
     Ended {
         #[garde(skip)]
         reason: EndReason,
     },
+}
+
+impl ModuleMessage for LiveModuleMessage {
+    fn heartbeat(heartbeat: LiveHeartbeat) -> Self {
+        Self::Heartbeat(heartbeat)
+    }
+
+    fn notice(notice: LiveNotice) -> Self {
+        Self::Notice(notice)
+    }
 }

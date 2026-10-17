@@ -39,7 +39,7 @@ use crate::tabs::{
 use crate::live::protocol::{BrowserViewport, TabId, ViewportMode};
 use crate::live::{
     observers::{self, Observed},
-    stream::{StreamHandle, StreamView},
+    stream::{self, StreamHandle, StreamView},
 };
 
 /// Requests waiting for the hub; a full queue holds back their viewers.
@@ -363,7 +363,7 @@ impl Owner {
                     .chain(self.modes.iter().map(|request| &request.tab))
                     .any(|held| held.id() == tab);
                 if !waits {
-                    stream.sized();
+                    stream.ready();
                 }
             }
         }
@@ -427,7 +427,7 @@ impl Owner {
                     let tasks = &self.tasks;
                     self.streams
                         .entry(tab.id().clone())
-                        .or_insert_with(|| StreamHandle::start(tab, captures.clone(), tasks))
+                        .or_insert_with(|| stream::start(tab, captures.clone(), tasks))
                         .join(viewer)
                 });
                 self.due = true;
