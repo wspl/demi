@@ -401,7 +401,13 @@ conversation; the panel button covers the screen with the work panel, and
   highlight shows, a control's long press selects nothing and opens no
   callout, a message's long press still selects its text, and a long press
   opens the menu a right-click opens on the desktop. Controls the desktop
-  shows on hover show at rest, a sidebar row's on the open row.
+  shows on hover show at rest, except a sidebar conversation row's: a phone
+  row shows none, since a tap meant to open it could land on one, and its
+  long press opens its menu, which holds them, as ChatGPT's and Mail's rows
+  on iOS do. A row's removal is never at its end on a phone: a provider is
+  removed from the bottom of its own page, as iOS's Settings removes an
+  account. A toast spans the screen under the top bar, 12 pixels in from
+  each side.
 - **The keyboard comes when asked.** Opening a page, a dialog or a sheet
   focuses no text field on a phone, as iOS's Settings does, so the
   keyboard does not cover what just opened; the field takes the focus when

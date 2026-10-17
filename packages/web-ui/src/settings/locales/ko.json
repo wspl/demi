@@ -479,6 +479,7 @@
     "apiKeys": "API 키",
     "name": "제공업체 이름",
     "rename": "이름 변경",
+    "remove": "제공업체 제거…",
     "saving": "저장 중…",
     "addAccount": "계정 추가",
     "showInMenu": "모델 메뉴에 표시",

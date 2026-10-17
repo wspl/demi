@@ -479,6 +479,7 @@
     "apiKeys": "API 密钥",
     "name": "供应商名称",
     "rename": "重命名",
+    "remove": "移除供应商…",
     "saving": "正在保存…",
     "addAccount": "添加账户",
     "showInMenu": "在模型菜单中显示",

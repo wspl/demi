@@ -86,10 +86,12 @@ project asks for a permission, and the dot appears after *PROJECTS* until
 the user answers. Which groups are folded is the browser's, as the
 sidebar's width is, and stays across reloads.
 
-On hover a row shows Archive at its end, and a pinned row shows Unpin
+On the desktop, on hover, a row shows Archive at its end, and a pinned row shows Unpin
 before it. Pin is in the row's context menu, beside the other changes of a
 conversation; a row that is not pinned offers no Pin button on hover, as
-Mail and Linear keep the actions they offer on hover few.
+Mail and Linear keep the actions they offer on hover few. On a phone the
+row shows neither, and its long press opens its menu
+([The phone layout](web-application.md#the-phone-layout)).
 
 ```text
 User

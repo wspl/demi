@@ -42,6 +42,7 @@ import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import TruncatedText from '@demicodes/web-ui/ui/TruncatedText.vue'
 import VendorMark from '@demicodes/web-ui/ui/VendorMark.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
+import { usePhone } from '@demicodes/web-ui/ui/phone'
 import Dropdown from '@demicodes/web-ui/ui/Dropdown.vue'
 import Menu from '@demicodes/web-ui/ui/Menu.vue'
 import MenuItem from '@demicodes/web-ui/ui/MenuItem.vue'
@@ -178,6 +179,7 @@ const apiKeys = computed(() =>
 const selected = computed(
   () => props.providers.find((p) => p.id === selectedId.value) ?? null,
 )
+const phone = usePhone()
 const splitOpen = computed({
   get: () => detailOpen.value && selected.value !== null,
   set: (value: boolean) => {
@@ -206,6 +208,18 @@ watch(
     selectedId.value = first?.id ?? null
   },
   { immediate: true },
+)
+
+// A provider removed while its page is open, as a phone removes one from its own page,
+// leaves the page for the list, as iOS's Settings does, whichever provider the host
+// selects next.
+watch(
+  () => [props.providers.map((provider) => provider.id), selectedId.value] as const,
+  ([ids], [, shown]) => {
+    if (shown !== null && !ids.includes(shown)) {
+      detailOpen.value = false
+    }
+  },
 )
 
 /**
@@ -1293,6 +1307,17 @@ function endpointCheck(value: string) {
                 </div>
               </AsyncRegion>
             </SettingsGroup>
+            <!-- A phone's list rows show no remove button, so an API key is removed from the
+                 bottom of its own page, as iOS's Settings removes an account; the desktop's
+                 stays on the row. A subscription is a fixture and is never removed. -->
+            <Button
+              v-if="phone && selected.kind === 'api_key'"
+              variant="danger"
+              class="mb-1 w-full"
+              :operation="providerOperation(selected.id, { kind: 'removing' })"
+              :disabled="busy(selected.id) && !runs(selected.id, { kind: 'removing' })"
+              @click="askRemoveProvider(selected)"
+            >{{ t('providers.remove') }}</Button>
           </div>
         </template>
       </SettingsSplit>
