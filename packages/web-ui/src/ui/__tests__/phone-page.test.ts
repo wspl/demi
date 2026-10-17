@@ -99,3 +99,40 @@ test('the page scroll Safari makes to show a focused field goes back to 0, at an
   window.dispatchEvent(new Event('scroll'))
   expect(window.scrollY).toBe(337)
 })
+
+// An extension that rewrites the page's viewport tag, as one that drops its
+// `maximum-scale=1` does, lets Safari on iOS zoom in on a small field it
+// focuses, and the page then stays zoomed with its right edge off the screen:
+// the tag comes back as the page shipped it, and last, whatever replaced it.
+test('the viewport tag stays as the page shipped it when a script rewrites, removes or outranks it', async () => {
+  const SHIPPED = 'width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover'
+  const tag = document.createElement('meta')
+  tag.name = 'viewport'
+  tag.content = SHIPPED
+  document.head.append(tag)
+  stop = installPhonePage()
+  // The page's observer answers once the event loop has turned.
+  const settled = () => new Promise((resolve) => setImmediate(resolve))
+  /** Every viewport tag of the head, in order, by its words. */
+  const tags = () => [...document.head.querySelectorAll<HTMLMetaElement>('meta[name="viewport"]')].map((each) => each.content)
+
+  tag.content = 'width=device-width, initial-scale=1'
+  await settled()
+  expect(tags()).toEqual([SHIPPED])
+
+  tag.remove()
+  await settled()
+  expect(tags()).toEqual([SHIPPED])
+
+  const other = document.createElement('meta')
+  other.name = 'viewport'
+  other.content = 'width=device-width'
+  document.head.append(other)
+  await settled()
+  expect(tags()).toEqual(['width=device-width', SHIPPED])
+
+  stop()
+  stop = null
+  tag.remove()
+  other.remove()
+})

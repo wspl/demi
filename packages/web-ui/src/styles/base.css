@@ -459,7 +459,21 @@ body {
   html,
   body {
     overscroll-behavior: none;
-    touch-action: pan-x pan-y;
+  }
+}
+
+/* No finger zooms the page: every element pans and nothing else, not only
+   the root. WebKit starts a scroller's touch actions over at `auto`
+   (StyleAdjuster's computeUsedTouchAction), so a root's `pan-x pan-y` alone
+   leaves a pinch or a double tap on the transcript, a tab strip or any list
+   free to zoom the page, which then stays zoomed: Safari keeps the scale and
+   the page cannot set it back. In the base layer, so a control that takes
+   the touch itself (`touch-none`, a sheet's grabber) keeps its own. */
+@layer base {
+  @media (max-width: 767px) {
+    * {
+      touch-action: pan-x pan-y;
+    }
   }
 }
 
