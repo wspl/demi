@@ -284,10 +284,10 @@ onClickOutside(floatingRef, () => {
 })
 
 // Opened inside a dialog or another panel, it is a layer on that one: it replaces nothing, Escape
-// closes it before the one it is in, and it goes with that one.
+// closes it before the one it is in, and it goes with that one. As a sheet, the sheet takes Back.
 const overlayId = useOverlay(props.overlayStore, () => (
   pinned.value ? false : props.isOpen
-), () => emit('close'), nested ? 'nested' : 'exclusive', 'popover', inject(overlayOwnerKey, undefined))
+), () => emit('close'), nested ? 'nested' : 'exclusive', 'popover', inject(overlayOwnerKey, undefined), () => !asSheet.value)
 if (!nested)
   provide(overlayOwnerKey, overlayId)
 

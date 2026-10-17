@@ -13,6 +13,14 @@ import { createSharedComposable, useMediaQuery } from '@vueuse/core'
  */
 export const PHONE_QUERY = '(max-width: 767px)'
 
+/**
+ * A phone's screen edges are the app's: a touch that starts this close to
+ * the left or right edge never takes the browser back or forward
+ * (`phone-page.ts`), and one at the left edge that moves right opens the
+ * sidebar's drawer (SidebarLayout).
+ */
+export const SCREEN_EDGE_PX = 16
+
 /** Whether the page is a phone's width now, live; one listener for the whole page. */
 export const usePhone: () => Readonly<Ref<boolean>> = createSharedComposable(() => useMediaQuery(PHONE_QUERY))
 

@@ -1,13 +1,13 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { computed, provide, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useElementSize, useEventListener } from '@vueuse/core'
 import { useEscapeClose } from '../composables/useEscapeClose'
 import { PanelLeft } from '@lucide/vue'
 import IconButton from '../ui/IconButton.vue'
 import ResizeHandle from '../ui/ResizeHandle.vue'
 import { clampSize } from '../ui/resize-handle'
-import { usePhone } from '../ui/phone'
+import { SCREEN_EDGE_PX, usePhone } from '../ui/phone'
 import { dragCloses, dragVelocity } from '../ui/drag-close'
 import { useBackClose } from '../overlay/back-close'
 import { appOverlayStore } from '../overlay/appOverlay'
@@ -28,7 +28,9 @@ import { sidebarDrawerKey } from './sidebar-drawer'
  *
  * On a phone (`ui/phone.ts`) one pane shows at a time. The sidebar is a
  * drawer from the left, 85% of the screen and at most 320 px, over a scrim
- * that a tap closes it by, as do a swipe left on it, Escape and Back; the
+ * that a tap closes it by, as do a swipe left on it, Escape and Back; a
+ * swipe right from the screen's left edge (`SCREEN_EDGE_PX`) opens it,
+ * following the finger in as the closing swipe follows it out; the
  * work panel opens full screen over the conversation, sliding in from the
  * right, and Back closes it too (`useBackClose`). Opening one closes the other. The frame shows
  * one top bar there: a page with its own puts the sidebar's button in it
@@ -101,30 +103,53 @@ useEscapeClose(() => open.value && phone.value && !appOverlayStore.hasExclusive(
   open.value = false
 })
 
+/** The drawer's share of a phone's width, and the most it takes. */
+const DRAWER_SHARE = 0.85
+const DRAWER_MAX_PX = 320
 /** The drawer's width on a phone: 85% of the screen, at most 320 px. */
-const DRAWER_WIDTH = 'min(85vw, 320px)'
+const DRAWER_WIDTH = `min(${DRAWER_SHARE * 100}vw, ${DRAWER_MAX_PX}px)`
+
+/** The drawer's width in px, which a swipe measures itself against: known before the drawer shows. */
+function drawerWidth(): number {
+  return Math.min(window.innerWidth * DRAWER_SHARE, DRAWER_MAX_PX)
+}
 
 /**
  * How far a swipe has pulled the drawer left of its place, in px; null at
  * rest. A swipe that closes it leaves it here, so the drawer and the scrim
- * go on closing from where they stand, until the drawer has left.
+ * go on closing from where they stand, until the drawer has left; one that
+ * opens it from the edge starts it here a whole width away.
  */
 const drawerPull = ref<number | null>(null)
 /** Whether a finger holds the drawer now, which then follows it without easing. */
 const pulling = ref(false)
+/** Whether a finger is drawing the closed drawer in from the screen's edge, which shows it while it does. */
+const drawingIn = ref(false)
 /** How dark the scrim is, from 1 with the drawer in place to 0 with it pulled its whole width away. */
-const scrimShade = computed(() => drawerPull.value === null || sidebarWidth.value <= 0
+const scrimShade = computed(() => drawerPull.value === null
   ? 1
-  : Math.max(0, 1 - drawerPull.value / sidebarWidth.value))
-let swipe: { startX: number; startY: number; holding: boolean; samples: { at: number; t: number }[] } | null = null
+  : Math.max(0, 1 - drawerPull.value / drawerWidth()))
+/**
+ * The swipe under way: where the finger first touched, whether the swipe
+ * holds the drawer, and its recent samples of how far the drawer is pulled
+ * toward the way it goes (`at`). `opening` is a swipe from the screen's
+ * edge on the closed drawer, and otherwise one on the open drawer.
+ */
+let swipe: { startX: number; startY: number; opening: boolean; holding: boolean; samples: { at: number; t: number }[] } | null = null
 /** A finger that moves this far settles whether it swipes the drawer or scrolls its list. */
 const SWIPE_SLOP_PX = 8
 
-/** A swipe that leaves the drawer open: it springs back, and the scrim darkens with it. */
+/** A swipe that leaves the drawer as it was: it springs back, open or out of sight, and the scrim with it. */
 function springBack(): void {
+  const opening = swipe?.opening === true
   swipe = null
   pulling.value = false
-  drawerPull.value = null
+  if (opening) {
+    // It slides back out from where the finger left it; once it has left, it rests (`drawerSettled`).
+    drawingIn.value = false
+  } else {
+    drawerPull.value = null
+  }
 }
 
 function swipeStart(event: TouchEvent): void {
@@ -137,8 +162,55 @@ function swipeStart(event: TouchEvent): void {
     return
   }
   // The first touch is the pull's first sample, so a flick of a single move has a speed.
-  swipe = { startX: finger.clientX, startY: finger.clientY, holding: false, samples: [{ at: 0, t: event.timeStamp }] }
+  swipe = { startX: finger.clientX, startY: finger.clientY, opening: false, holding: false, samples: [{ at: 0, t: event.timeStamp }] }
 }
+
+/** The listeners of a touch that started at the screen's edge, from its first touch to its lift. */
+let edgeTouch: AbortController | null = null
+
+function endEdgeTouch(): void {
+  edgeTouch?.abort()
+  edgeTouch = null
+}
+
+/**
+ * A finger down on the frame: at the screen's left edge, with the drawer
+ * and the panel closed, it may draw the drawer in. Its moves are heard on
+ * what it touched, where a touch's events go however far it moves, and
+ * only while it lasts: a listener that may stop a move from scrolling
+ * makes every scroll wait for it.
+ */
+function edgeStart(event: TouchEvent): void {
+  const finger = event.touches[0]
+  if (swipe?.opening && (event.touches.length !== 1 || !finger)) {
+    swipeCancel()
+    return
+  }
+  const target = event.target
+  if (!phone.value || open.value || asideOpen.value || event.touches.length !== 1 || !finger || finger.clientX > SCREEN_EDGE_PX || !(target instanceof Element))
+    return
+  swipe = { startX: finger.clientX, startY: finger.clientY, opening: true, holding: false, samples: [{ at: 0, t: event.timeStamp }] }
+  endEdgeTouch()
+  edgeTouch = new AbortController()
+  const { signal } = edgeTouch
+  // An Element's own event map names no touch events: these are, as their names say.
+  target.addEventListener('touchmove', (move) => {
+    if (swipe?.opening && move instanceof TouchEvent)
+      swipeMove(move)
+  }, { passive: false, signal })
+  target.addEventListener('touchend', (end) => {
+    if (swipe?.opening && end instanceof TouchEvent)
+      swipeEnd(end)
+    endEdgeTouch()
+  }, { signal })
+  target.addEventListener('touchcancel', () => {
+    if (swipe?.opening)
+      swipeCancel()
+    endEdgeTouch()
+  }, { signal })
+}
+
+onBeforeUnmount(endEdgeTouch)
 
 function swipeMove(event: TouchEvent): void {
   const finger = event.touches[0]
@@ -151,26 +223,32 @@ function swipeMove(event: TouchEvent): void {
   }
   const dx = finger.clientX - swipe.startX
   const dy = finger.clientY - swipe.startY
+  // The way the swipe moves the drawer: left to close it, right to open it.
+  const along = swipe.opening ? dx : -dx
   if (!swipe.holding) {
     if (Math.hypot(dx, dy) < SWIPE_SLOP_PX)
       return
-    // A move mostly to the left swipes the drawer; any other scrolls its list.
-    if (!(dx < 0 && Math.abs(dx) > Math.abs(dy))) {
+    // A move mostly that way swipes the drawer; any other scrolls what is under the finger.
+    if (!(along > 0 && Math.abs(dx) > Math.abs(dy))) {
       swipe = null
       return
     }
     swipe.holding = true
     pulling.value = true
+    drawingIn.value = swipe.opening
   }
   if (event.cancelable)
     event.preventDefault()
   // The drawer follows the finger from where it first touched, the slop included.
-  const pulled = Math.max(0, swipe.startX - finger.clientX)
-  swipe.samples = [...swipe.samples.filter((sample) => event.timeStamp - sample.t < 120), { at: pulled, t: event.timeStamp }]
-  drawerPull.value = pulled
+  const moved = Math.max(0, along)
+  swipe.samples = [...swipe.samples.filter((sample) => event.timeStamp - sample.t < 120), { at: moved, t: event.timeStamp }]
+  drawerPull.value = swipe.opening ? Math.max(0, drawerWidth() - moved) : moved
 }
 
-/** The finger lifts: a long or flicked pull closes the drawer from where it stands, a short or still one springs back. */
+/**
+ * The finger lifts: a long or flicked pull closes the drawer, or opens it
+ * from the edge, from where it stands; a short or still one springs back.
+ */
 function swipeEnd(event: TouchEvent): void {
   const ended = swipe
   if (!ended?.holding) {
@@ -182,13 +260,20 @@ function swipeEnd(event: TouchEvent): void {
     springBack()
     return
   }
-  const width = sidebar.value?.offsetWidth ?? 0
-  if (dragCloses(drawerPull.value ?? 0, width, dragVelocity(ended.samples, event.timeStamp))) {
-    swipe = null
-    pulling.value = false
-    open.value = false
-  } else {
+  const moved = ended.samples.at(-1)?.at ?? 0
+  if (!dragCloses(moved, drawerWidth(), dragVelocity(ended.samples, event.timeStamp))) {
     springBack()
+    return
+  }
+  swipe = null
+  pulling.value = false
+  if (ended.opening) {
+    // It goes on into its place from where the finger left it.
+    open.value = true
+    drawingIn.value = false
+    drawerPull.value = null
+  } else {
+    open.value = false
   }
 }
 
@@ -214,13 +299,14 @@ function drawerSettled(): void {
 
 // Touch moves are listened to without `passive`, so that a swipe the drawer takes scrolls nothing.
 useEventListener(sidebar, 'touchmove', swipeMove, { passive: false })
+useEventListener(frame, 'touchstart', edgeStart, { passive: true })
 </script>
 
 <template>
   <div ref="frame" class="flex h-full bg-surface-base text-fg">
     <Transition name="frame-scrim" @before-leave="scrimLeaving">
       <div
-        v-if="open && phone"
+        v-if="(open || drawingIn) && phone"
         class="frame-scrim fixed inset-0 z-30 bg-black/50"
         :style="{ '--scrim-shade': scrimShade }"
         :data-pulled="pulling ? '' : undefined"
@@ -230,7 +316,7 @@ useEventListener(sidebar, 'touchmove', swipeMove, { passive: false })
     <!-- On a phone the sidebar is a drawer, which slides in over the scrim. -->
     <Transition name="frame-drawer" :css="phone" @after-leave="drawerSettled" @leave-cancelled="drawerSettled">
       <div
-        v-show="open || !phone"
+        v-show="open || drawingIn || !phone"
         ref="sidebar"
         data-region
         class="h-full shrink-0"

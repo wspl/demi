@@ -1,4 +1,4 @@
-import { PHONE_QUERY } from './phone'
+import { PHONE_QUERY, SCREEN_EDGE_PX } from './phone'
 
 /**
  * What a phone's page needs, set up once by the app (`installPhonePage`):
@@ -27,6 +27,19 @@ import { PHONE_QUERY } from './phone'
  * - A long press opens what a right-click opens where the page marks it
  *   (`data-touch-menu`), as iOS gives no `contextmenu` for one; Android
  *   gives its own, and then none is added.
+ * - The screen's edges are the app's: Safari on iOS, and the installed app,
+ *   start their back and forward swipe from a touch within a few px of the
+ *   screen's left or right edge, sliding the previous page in under the
+ *   app's own controls. A touch that starts within `SCREEN_EDGE_PX` of
+ *   either edge has its default prevented, which keeps that swipe from
+ *   starting (since iOS 13.4); the app's own gestures there, such as the
+ *   drawer's opening drag (SidebarLayout), still see every move. That touch
+ *   scrolls nothing, and a prevented touch is no click either, so a tap
+ *   there, one that lifts without moving and opened no menu, is given its
+ *   click here, and a text field under it the focus, as the browser would
+ *   have. Android's own Back, which no page can stop, is the history's
+ *   (`overlay/back-close.ts`); Chrome's overscroll navigation is held off
+ *   by the page's `overscroll-behavior: none` (`base.css`).
  *
  * At every width, the viewport tag stays as the page shipped it: its
  * `maximum-scale=1` is what keeps Safari on iOS from zooming in on a field it
@@ -85,6 +98,22 @@ export function installPhonePage(): () => void {
       window.scrollTo(0, 0)
   }, { passive: true, signal })
 
+  /** A touch that started at a screen edge, whose default was prevented, while it may still be a tap. */
+  let edgeTap: { x: number; y: number; target: Element } | null = null
+  document.addEventListener('touchstart', (event) => {
+    edgeTap = null
+    // The finger that just came down, which with another already on the screen is not the first.
+    const finger = event.changedTouches[0]
+    if (!phone.matches || !finger || !event.cancelable)
+      return
+    if (finger.clientX > SCREEN_EDGE_PX && finger.clientX < window.innerWidth - SCREEN_EDGE_PX)
+      return
+    event.preventDefault()
+    // A second finger makes it a pinch or a gesture of the page's, never a tap.
+    if (event.touches.length === 1 && event.target instanceof Element)
+      edgeTap = { x: finger.clientX, y: finger.clientY, target: event.target }
+  }, { passive: false, signal })
+
   let press: { timer: number; x: number; y: number; target: Element; opened: boolean } | null = null
   const endPress = (): void => {
     if (press)
@@ -116,14 +145,24 @@ export function installPhonePage(): () => void {
     const finger = event.touches[0]
     if (press && !press.opened && finger && Math.hypot(finger.clientX - press.x, finger.clientY - press.y) > LONG_PRESS_SLOP_PX)
       endPress()
+    if (edgeTap && (event.touches.length !== 1 || !finger || Math.hypot(finger.clientX - edgeTap.x, finger.clientY - edgeTap.y) > LONG_PRESS_SLOP_PX))
+      edgeTap = null
   }, { passive: true, signal })
   document.addEventListener('touchend', (event) => {
     // The press opened a menu: its release is no tap on what lies under it.
     if (press?.opened && event.cancelable)
       event.preventDefault()
     endPress()
+    const tap = edgeTap
+    edgeTap = null
+    // A release whose default is prevented, by the menu above or by what was touched, makes no click.
+    if (tap && !event.defaultPrevented && event.touches.length === 0)
+      giveTap(tap)
   }, { passive: false, signal })
-  document.addEventListener('touchcancel', endPress, { signal })
+  document.addEventListener('touchcancel', () => {
+    endPress()
+    edgeTap = null
+  }, { signal })
   // Android's own long press opens the menu: none is added.
   document.addEventListener('contextmenu', (event) => {
     if (press && !press.opened && event.isTrusted)
@@ -135,6 +174,23 @@ export function installPhonePage(): () => void {
     keepViewport?.disconnect()
     endPress()
   }
+}
+
+/** What takes the focus from a tap, as the browser gives it to a field. */
+const TAP_FOCUSES = 'input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]), textarea, [contenteditable]:not([contenteditable=false])'
+
+/**
+ * The click a tap at a screen edge would have made, which preventing its
+ * touch took away: on what the finger touched, where it touched, with the
+ * focus first in the text field it touched, as the browser orders them.
+ */
+function giveTap(tap: { x: number; y: number; target: Element }): void {
+  if (!tap.target.isConnected)
+    return
+  const field = tap.target.closest<HTMLElement>(TAP_FOCUSES)
+  if (field && document.activeElement !== field)
+    field.focus()
+  tap.target.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, composed: true, view: window, detail: 1, clientX: tap.x, clientY: tap.y }))
 }
 
 /**
