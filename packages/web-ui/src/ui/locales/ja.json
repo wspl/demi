@@ -18,7 +18,8 @@
   },
   "requestId": "リクエスト ID: {id}",
   "errorNotice": {
-    "providerResponse": "プロバイダーの応答"
+    "providerResponse": "プロバイダーの応答",
+    "headers": "ヘッダー"
   },
   "updateFailed": {
     "title": "このページを更新できませんでした",

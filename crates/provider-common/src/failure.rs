@@ -210,8 +210,13 @@ pub enum ErrorCode {
     /// The vendor ended the reply before it was complete: for its output
     /// limit, a filter or another reason it named.
     Incomplete,
-    /// The credential expired or was refused.
+    /// The vendor does not accept the credential: it expired, or the key or
+    /// token is not one the vendor knows (HTTP 401).
     AuthExpired,
+    /// The vendor knows the credential and refuses this request with it, as
+    /// a plan without API access or a model the account may not use (HTTP
+    /// 403); signing in again changes nothing, so it is not retried.
+    PermissionDenied,
     /// The account has no credential.
     AuthMissing,
     /// The stored credential cannot be read.
@@ -235,6 +240,7 @@ impl ErrorCode {
             Self::RequestTooLarge => "request_too_large",
             Self::Incomplete => "incomplete",
             Self::AuthExpired => "auth_expired",
+            Self::PermissionDenied => "permission_denied",
             Self::AuthMissing => "auth_missing",
             Self::AuthInvalid => "auth_invalid",
             Self::AuthUnsupported => "auth_unsupported",
@@ -249,7 +255,8 @@ impl ErrorCode {
     /// is too large, not too long: leaving media out makes it smaller.
     pub fn from_http(status: u16, message: &str) -> Option<Self> {
         match status {
-            401 | 403 => Some(Self::AuthExpired),
+            401 => Some(Self::AuthExpired),
+            403 => Some(Self::PermissionDenied),
             429 => Some(Self::RateLimit),
             408 | 409 | 425 | 500.. => Some(Self::Overloaded),
             413 => Some(Self::RequestTooLarge),
@@ -297,6 +304,7 @@ impl FromStr for ErrorCode {
             "request_too_large" => Self::RequestTooLarge,
             "incomplete" => Self::Incomplete,
             "auth_expired" => Self::AuthExpired,
+            "permission_denied" => Self::PermissionDenied,
             "auth_missing" => Self::AuthMissing,
             "auth_invalid" => Self::AuthInvalid,
             "auth_unsupported" => Self::AuthUnsupported,

@@ -110,6 +110,7 @@
     "stepsNotShared": "공유되지 않은 단계 {count}개",
     "turnFailed": "턴이 실패했습니다.",
     "failureResets": "{failure} {reset}됩니다.",
+    "apiKeyRefused": "제공업체가 API 키를 거부했습니다.",
     "signedOut": "{provider}에서 {account} 계정을 로그아웃했습니다. 설정 › 제공업체에서 다시 로그인하세요.",
     "work": {
       "ran": "명령 {count}개 실행",

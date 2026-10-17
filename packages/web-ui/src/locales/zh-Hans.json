@@ -269,6 +269,7 @@
     "request_too_large": "请求超出了供应商的大小限制。",
     "incomplete": "回复在完成前结束。",
     "auth_expired": "供应商的登录已过期或被拒绝。",
+    "permission_denied": "供应商拒绝了此请求。",
     "auth_missing": "供应商没有凭据。",
     "auth_invalid": "无法读取供应商的凭据。",
     "auth_unsupported": "供应商不接受此类凭据。",

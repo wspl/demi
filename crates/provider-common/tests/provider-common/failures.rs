@@ -31,7 +31,7 @@ fn record(source: FailureSource, upstream: &str) -> ProviderErrorDiagnostics {
 fn an_http_status_decides_the_code() {
     let cases = [
         (401, "", Some(ErrorCode::AuthExpired)),
-        (403, "", Some(ErrorCode::AuthExpired)),
+        (403, "", Some(ErrorCode::PermissionDenied)),
         (429, "", Some(ErrorCode::RateLimit)),
         (408, "", Some(ErrorCode::Overloaded)),
         (409, "", Some(ErrorCode::Overloaded)),

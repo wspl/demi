@@ -269,6 +269,7 @@
     "request_too_large": "요청이 너무 커서 제공업체에서 처리할 수 없습니다.",
     "incomplete": "응답이 완료되기 전에 끝났습니다.",
     "auth_expired": "제공업체 로그인이 만료되었거나 거부되었습니다.",
+    "permission_denied": "제공업체가 이 요청을 거부했습니다.",
     "auth_missing": "제공업체에 자격 증명이 없습니다.",
     "auth_invalid": "제공업체의 자격 증명을 읽을 수 없습니다.",
     "auth_unsupported": "제공업체가 이 종류의 자격 증명을 지원하지 않습니다.",

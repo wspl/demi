@@ -246,6 +246,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
           :message="block.message"
           :code="block.code"
           :diagnostics="block.diagnostics"
+          :provider-id="block.model.providerId"
           :retry-at="failure?.retryAt ?? null"
           :signed-out="failure?.signedOut ?? null"
         />
