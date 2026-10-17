@@ -1,4 +1,5 @@
 import type { ModelSettings } from '../agent/model-selection'
+import type { DeviceMark } from '../devices/mark'
 
 /**
  * An automation as the page shows and edits it (`automations.md`): what
@@ -96,6 +97,8 @@ export interface AutomationHost {
   name: string
   kind: 'cloud' | 'device'
   state: 'online' | 'offline' | 'updating'
+  /** A device's mark, with the number it shows (`shownMark`); null for the Cloud. */
+  mark: DeviceMark | null
   /** Its projects. */
   projects: readonly { id: string; name: string }[]
 }

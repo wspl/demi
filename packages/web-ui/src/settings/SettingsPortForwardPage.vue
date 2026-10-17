@@ -4,6 +4,7 @@ import { t as uiText } from '../locales/text'
 import { computed, ref } from 'vue'
 import { TriangleAlert } from '@lucide/vue'
 import { ICON_PX } from '../ui/icon-metrics'
+import { deviceGlyph, hostGlyph } from '../devices/device-glyphs'
 import Button from '../ui/Button.vue'
 import CommitTextInput from '../ui/CommitTextInput.vue'
 import ConfirmDialog from '../ui/ConfirmDialog.vue'
@@ -75,6 +76,12 @@ function portProblem(value: string): SentenceText | null {
 
 const hostName = (id: string | null) =>
   id === null ? null : (props.hosts.find((host) => host.id === id)?.name ?? t('portForwards.unknownHost'))
+
+/** A chosen Host's glyph as its menu row draws it; a Host the account no longer lists is the plain computer. */
+function chosenGlyph(id: string) {
+  const host = props.hosts.find((candidate) => candidate.id === id)
+  return host ? hostGlyph(host) : deviceGlyph(null, null)
+}
 
 const state = computed(() => forwardState(props.forward, props.hosts))
 const reason = computed(() => forwardReason(props.forward))
@@ -153,13 +160,15 @@ async function remove(): Promise<void> {
           size="sm"
           width="shrink"
           :trigger-label="t('portForwards.page.listenOn')"
+          :icon="chosenGlyph(forward.listenDevice)"
         >
-          <template #trigger>{{ hostName(forward.listenDevice) }}</template>
+          <template #trigger><span class="min-w-0 truncate">{{ hostName(forward.listenDevice) }}</span></template>
           <template #content="{ close }">
             <Menu>
               <MenuItem
                 v-for="host in hosts"
                 :key="host.id"
+                :icon="hostGlyph(host)"
                 :label="host.name"
                 choice
                 :is-selected="forward.listenDevice === host.id"
@@ -198,18 +207,21 @@ async function remove(): Promise<void> {
           size="sm"
           width="shrink"
           :trigger-label="t('portForwards.page.connectTo')"
+          :icon="forward.connectDevice === null ? undefined : chosenGlyph(forward.connectDevice)"
         >
+          <!-- Missing, the warning takes the Host's icon's place. -->
+          <template v-if="forward.connectDevice === null" #icon>
+            <TriangleAlert :size="ICON_PX.in28" class="text-on-warning" aria-hidden="true" />
+          </template>
           <template #trigger>
-            <span class="flex min-w-0 items-center gap-1.5">
-              <TriangleAlert v-if="forward.connectDevice === null" :size="ICON_PX.in24" class="shrink-0 text-on-warning" aria-hidden="true" />
-              <span class="min-w-0 truncate">{{ hostName(forward.connectDevice) ?? t('portForwards.page.chooseHost') }}</span>
-            </span>
+            <span class="min-w-0 truncate">{{ hostName(forward.connectDevice) ?? t('portForwards.page.chooseHost') }}</span>
           </template>
           <template #content="{ close }">
             <Menu>
               <MenuItem
                 v-for="host in hosts"
                 :key="host.id"
+                :icon="hostGlyph(host)"
                 :label="host.name"
                 choice
                 :is-selected="forward.connectDevice === host.id"

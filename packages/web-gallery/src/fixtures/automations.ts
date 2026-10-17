@@ -2,22 +2,23 @@ import type { Block } from '@demicodes/protocol'
 import { WEEKDAYS, type Automation, type AutomationConversation, type AutomationHost, type AutomationRun } from '@demicodes/web-ui/automations/types'
 import { demoModel } from './blocks'
 import type { SidebarConversation } from '@demicodes/web-ui/sidebar/types'
-import { GALLERY_MARKS } from './device-marks'
+import { GALLERY_MARKS, shownAmong } from './device-marks'
 import { DAY, HOUR, MINUTE, ago } from './time'
 
 /** The Hosts a target names: the Cloud, an online MacBook Pro and an offline Mac mini. */
 export function automationHosts(): AutomationHost[] {
-  return [
-    { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', projects: [{ id: 'p-shop', name: 'shop' }] },
+  return shownAmong<AutomationHost>([
+    { id: 'cloud', name: 'Cloud', kind: 'cloud', state: 'online', mark: null, projects: [{ id: 'p-shop', name: 'shop' }] },
     {
       id: 'mbp',
       name: 'MacBook Pro',
       kind: 'device',
       state: 'online',
+      mark: GALLERY_MARKS.mac,
       projects: [{ id: 'p-demi', name: 'demi' }, { id: 'p-chromium', name: 'chromium' }],
     },
-    { id: 'mini', name: 'Mac mini', kind: 'device', state: 'offline', projects: [{ id: 'p-dotfiles', name: 'dotfiles' }] },
-  ]
+    { id: 'mini', name: 'Mac mini', kind: 'device', state: 'offline', mark: GALLERY_MARKS.macMini, projects: [{ id: 'p-dotfiles', name: 'dotfiles' }] },
+  ])
 }
 
 /** The conversations an automation can wake, with their Hosts. */

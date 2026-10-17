@@ -18,9 +18,8 @@ import {
   FolderPlus,
   MapPin,
 } from '@lucide/vue'
-import { CLOUD_HOST_ID, hostIcon } from '../hosts/icons'
-import DeviceIcon from '../devices/DeviceIcon.vue'
-import { deviceGlyph } from '../devices/device-glyphs'
+import { CLOUD_HOST_ID } from '../hosts/icons'
+import { deviceGlyph, hostGlyph } from '../devices/device-glyphs'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Button from '../ui/Button.vue'
@@ -33,7 +32,6 @@ import MenuItem from '../ui/MenuItem.vue'
 import ScrollArea from '../ui/ScrollArea.vue'
 import Tooltip from '../ui/Tooltip.vue'
 import TruncatedText from '../ui/TruncatedText.vue'
-import { ICON_PX } from '../ui/icon-metrics'
 import SidebarNavItem from '../sidebar/SidebarNavItem.vue'
 import FileBrowserAddressBar from './FileBrowserAddressBar.vue'
 import FileBrowserList from './FileBrowserList.vue'
@@ -148,9 +146,14 @@ const selectedEntry = computed(
 const currentHost = computed(() =>
   props.hosts.find((host) => host.id === props.hostId),
 )
-/** A host's glyph in the device menu: a device's mark with its state's dot, or the host's glyph. */
-function hostGlyph(host: FileBrowserHost) {
-  return host.mark ? deviceGlyph(host.state, host.mark) : hostIcon(host)
+/** A host's glyph in the device menu and on its face: the Cloud's, or a device's mark with its state's dot. */
+function glyphOf(host: FileBrowserHost) {
+  const kind = host.kind ?? (host.id === CLOUD_HOST_ID ? 'cloud' : 'device')
+  return hostGlyph({ kind, state: host.state, mark: host.mark ?? null })
+}
+/** A device without a mark has no dot of its own: its state's dot rides its glyph, unless it wakes on access. */
+function hostIndicator(host: FileBrowserHost) {
+  return host.mark || host.id === CLOUD_HOST_ID || host.canWake ? undefined : DEVICE_STATE_TONE[host.state]
 }
 const hasRail = computed(() => props.places.length > 0)
 /** A place's name: the label its caller gave it, or its directory's own. */
@@ -423,19 +426,11 @@ onBeforeUnmount(() => pending?.abort())
           variant="field"
           width="fill"
           :trigger-label="t('browser.device')"
+          :icon="currentHost ? glyphOf(currentHost) : deviceGlyph(null, null)"
+          :indicator="currentHost ? hostIndicator(currentHost) : undefined"
+          :indicator-label="currentHost ? DEVICE_STATE_LABEL[currentHost.state] : undefined"
         >
           <template #trigger>
-            <DeviceIcon
-              v-if="currentHost?.mark"
-              :state="currentHost.state"
-              :mark="currentHost.mark"
-            />
-            <component
-              :is="currentHost ? hostIcon(currentHost) : hostIcon({ kind: 'device' })"
-              v-else
-              :size="ICON_PX.in28"
-              class="shrink-0 text-fg-muted"
-            />
             <span class="min-w-0 flex-1 truncate">{{
               currentHost?.label ?? t('browser.device')
             }}</span>
@@ -445,12 +440,8 @@ onBeforeUnmount(() => pending?.abort())
               <MenuItem
                 v-for="host in hosts"
                 :key="host.id"
-                :icon="hostGlyph(host)"
-                :indicator="
-                  host.mark || host.id === CLOUD_HOST_ID || host.canWake
-                    ? undefined
-                    : DEVICE_STATE_TONE[host.state]
-                "
+                :icon="glyphOf(host)"
+                :indicator="hostIndicator(host)"
                 :indicator-label="DEVICE_STATE_LABEL[host.state]"
                 :value="
                   host.id !== CLOUD_HOST_ID && !host.canWake && host.state !== 'online'
