@@ -20,12 +20,20 @@ import { PHONE_QUERY } from './phone'
  * While the page is a phone's width, too:
  *
  * - The page never zooms. A pinch zooms nothing but what zooms itself, such
- *   as a picture (`ImagePreview`): `touch-action` keeps it from the page
+ *   as a picture (`ImagePreview`): `touch-action`, on every element since
+ *   WebKit starts each scroller over (`base.css`), keeps it from the page
  *   everywhere but iOS, which ignores it for a pinch and is stopped through
  *   its own gesture events.
  * - A long press opens what a right-click opens where the page marks it
  *   (`data-touch-menu`), as iOS gives no `contextmenu` for one; Android
  *   gives its own, and then none is added.
+ *
+ * At every width, the viewport tag stays as the page shipped it: its
+ * `maximum-scale=1` is what keeps Safari on iOS from zooming in on a field it
+ * focuses whose text is under 16 px, such as one an extension adds, and a page
+ * Safari zoomed stays zoomed, since nothing a page does sets the scale back. So
+ * a script that rewrites the tag, removes it or adds a viewport tag of its own
+ * after it, as an extension may, finds the page's tag back as it was, and last.
  */
 
 /** A press held this long, without moving, is a long press. */
@@ -50,6 +58,8 @@ export function installPhonePage(): () => void {
   }
   document.addEventListener('gesturestart', stopGesture, { passive: false, signal })
   document.addEventListener('gesturechange', stopGesture, { passive: false, signal })
+
+  const keepViewport = keepViewportTag()
 
   const viewport = window.visualViewport
   const fit = (): void => {
@@ -122,6 +132,34 @@ export function installPhonePage(): () => void {
 
   return () => {
     listeners.abort()
+    keepViewport?.disconnect()
     endPress()
   }
+}
+
+/**
+ * Holds the viewport tag the page shipped with, read as the app starts, before
+ * any extension's script runs: puts its words back when they change, and the
+ * tag back as the last viewport tag of the head, which is the one a browser
+ * follows, when it leaves or another follows it. Null on a page without one.
+ */
+function keepViewportTag(): MutationObserver | null {
+  const tag = document.querySelector<HTMLMetaElement>('meta[name="viewport"]')
+  const head = document.head
+  if (!tag || !head)
+    return null
+  const shipped = tag.content
+  const restore = (): void => {
+    if (tag.name !== 'viewport')
+      tag.name = 'viewport'
+    if (tag.content !== shipped)
+      tag.content = shipped
+    const tags = head.querySelectorAll('meta[name="viewport"]')
+    if (tags[tags.length - 1] !== tag)
+      head.append(tag)
+  }
+  // What it puts back changes the head once more, and then finds all as it was.
+  const observer = new MutationObserver(restore)
+  observer.observe(head, { childList: true, subtree: true, attributes: true, attributeFilter: ['content', 'name'] })
+  return observer
 }
