@@ -123,6 +123,8 @@ The words a failure prints, on stderr with exit status 1:
 | Cause | Words |
 | --- | --- |
 | No entry makes images | `demi image generate: no provider makes images; sign in to ChatGPT or Grok in Settings › Providers` |
+| Every entry that could has Image Generation off | `demi image generate: image generation is off for ChatGPT and Grok; turn it on in Settings › Providers` |
+| `--model` names a model of an entry with Image Generation off | `demi image generate: "gpt-image-2" is ChatGPT's, whose image generation is off in Settings › Providers` |
 | `--model` names no listed model | `demi image generate: no provider makes "<id>"; demi image models lists them` |
 | Every account is used up | `demi image generate: ChatGPT's usage limit is reached, resetting at 9:00 PM` |
 | The vendor refused the prompt or an image | `demi image generate: ChatGPT refused the request: <vendor's message>` |

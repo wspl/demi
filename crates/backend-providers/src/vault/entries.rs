@@ -64,6 +64,9 @@ pub struct ProviderEntry {
     pub label: String,
     pub credential: EntryCredential,
     pub created_at: Timestamp,
+    /// Whether the entry makes images when its provider can: its Image
+    /// Generation switch (`providers.md` § Provider management).
+    pub image_generation: bool,
 }
 
 /// How an entry authenticates.
@@ -241,6 +244,7 @@ impl ProviderEntry {
             has_api_key: config.is_some_and(|config| config.api_key.is_some()),
             models: config.and_then(|config| config.models.clone()),
             rotation: self.rotation(),
+            image_generation: self.image_generation,
             created_at: self.created_at,
         }
     }
@@ -512,8 +516,8 @@ impl Vault {
         row.map(|row| self.decode(row)).transpose()
     }
 
-    /// Replaces the entry's label, family, configuration or rotation;
-    /// `None` for an entry that no longer exists.
+    /// Replaces the entry's label, family, configuration, rotation or Image
+    /// Generation; `None` for an entry that no longer exists.
     pub async fn update(
         &self,
         id: ProviderId,
@@ -521,12 +525,13 @@ impl Vault {
         family: Option<String>,
         config: Option<ApiKeyConfig>,
         rotation: Option<Rotation>,
+        image_generation: Option<bool>,
     ) -> Result<Option<ProviderEntry>, StorageError> {
         let sealed = config.map(|config| self.seal_config(&id, &config));
         let row = self
             .0
             .control
-            .update_provider(id, label, family, sealed, rotation)
+            .update_provider(id, label, family, sealed, rotation, image_generation)
             .await?;
         if let Some(row) = &row {
             self.mark_changed(&row.owner);
@@ -600,6 +605,7 @@ impl Vault {
             label: row.label,
             credential,
             created_at: row.created_at,
+            image_generation: row.image_generation,
         })
     }
 
@@ -761,9 +767,9 @@ mod tests {
             // conversation kept the hosts it may reach, the one before
             // shares, the one before a device's mark had a number,
             // 0.1.22-dev.20261015T105826Z's, 0.1.22-dev.20261015T134426Z's,
-            // 0.1.22-dev.20261016T043704Z's, 0.1.22-dev.20261016T095626Z's and
-            // 0.1.22's follow in the history.
-            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 11);
+            // 0.1.22-dev.20261016T043704Z's, 0.1.22-dev.20261016T095626Z's,
+            // 0.1.22's and 0.1.25's follow in the history.
+            schema_testing::store_as_shipped_before(&path, DatabaseKind::Control, 12);
             (data, path, own.id, proxy.id)
         };
         let clock = Arc::new(demi_shared_types::SystemClock);

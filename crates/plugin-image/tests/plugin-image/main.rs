@@ -79,6 +79,14 @@ fn a_failure_is_told_in_the_designs_words() {
                 ImageRefusal::Unanswered { vendor: "Grok".into(), cause: "no answer in 120 s".into() },
                 "Grok did not answer: no answer in 120 s",
             ),
+            (
+                ImageRefusal::AllOff { providers: vec!["ChatGPT".into(), "Grok".into()] },
+                "image generation is off for ChatGPT and Grok; turn it on in Settings › Providers",
+            ),
+            (
+                ImageRefusal::Off { model: "gpt-image-2".into(), provider: "ChatGPT".into() },
+                "\"gpt-image-2\" is ChatGPT's, whose image generation is off in Settings › Providers",
+            ),
         ];
         for (refusal, words) in refusals {
             plugged.answer(move |_| Err(PortRefusal::Image { refusal: refusal.clone() }));

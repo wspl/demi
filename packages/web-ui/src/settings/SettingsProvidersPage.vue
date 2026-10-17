@@ -1076,6 +1076,21 @@ function endpointCheck(value: string) {
               </SettingsRow>
             </SettingsGroup>
 
+            <!-- A provider that makes images has a switch for whether the agent's images may come
+               from it (`providers.md` § Provider management), a setting of its own as in macOS
+               Settings. -->
+            <SettingsGroup v-if="selected.imageGeneration !== undefined">
+              <SettingsRow :label="t('providers.imageGeneration')">
+                <Switch
+                  :model-value="selected.imageGeneration"
+                  :aria-label="t('providers.imageGeneration')"
+                  :disabled="fieldsLocked(selected)"
+                  size="sm"
+                  @update:model-value="emit('change', selected, { imageGeneration: $event })"
+                />
+              </SettingsRow>
+            </SettingsGroup>
+
             <!-- The CLI of a provider whose requests are a process: Demi installs the vendor's newest
                on Claude Code's one machine and keeps it updated, so this shows the version it
                follows, and only a failure asks for anything. -->

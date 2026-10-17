@@ -76,6 +76,7 @@ impl ProviderAssembly {
                     active: None,
                     quota: None,
                     quota_capability: QuotaCapability::None {},
+                    makes_images: false,
                     cli_package: None,
                 });
             }
@@ -115,6 +116,7 @@ impl ProviderAssembly {
             active,
             quota,
             quota_capability,
+            makes_images: provider.images().is_some(),
             cli_package: super::claude_releases::cli_package(provider.as_ref()),
         };
         Ok(if disclose {

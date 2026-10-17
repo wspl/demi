@@ -88,7 +88,9 @@ impl ReadBlob for NoBlobs {
 /// before the usage ledger kept a row per vendor call and before the
 /// Claude Code machine and the accounts whose CLI keeps their sign-in, and
 /// 0.1.22-dev.20261016T095626Z's, before each account had the size of its
-/// Cloud disks, and 0.1.22's, before a ledger row could be an image's.
+/// Cloud disks, 0.1.22's, before a ledger row could be an image's, and
+/// 0.1.25's, which 0.1.23 and 0.1.24 shipped too, before an entry had its
+/// Image Generation switch.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -232,6 +234,10 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.22.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_22),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.25.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_25),
+        },
     ],
 };
 
@@ -244,7 +250,14 @@ ALTER TABLE users ADD COLUMN cloud_system_gb INTEGER NOT NULL DEFAULT 16 CHECK (
 ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_home_gb BETWEEN 1 AND 1024);
 ";
 
-/// From 0.1.22's control schema to the current one: a usage ledger row may
+/// From 0.1.25's control schema to the current one: an entry whose
+/// provider makes images has an Image Generation switch, on for every entry
+/// stored before (`providers.md` § Provider management).
+const CONTROL_FROM_0_1_25: &str = "
+ALTER TABLE providers ADD COLUMN image_generation INTEGER NOT NULL DEFAULT 1 CHECK (image_generation IN (0, 1));
+";
+
+/// From 0.1.22's control schema to 0.1.25's: a usage ledger row may
 /// be an image's (`images.md` § Accounts and failures), which SQLite's
 /// checks let in only on a table made again, its rows as they were; each
 /// browser's push subscription is kept (`turns.md` § Notifications); a
@@ -3558,6 +3571,9 @@ CREATE TABLE providers (
   rotation             TEXT NOT NULL DEFAULT 'manual'
     CHECK (rotation IN ('manual', 'in_order', 'balanced')
       AND (credential_kind = 'subscription' OR rotation = 'manual')),
+  -- Whether the entry makes images when its provider can (providers.md
+  -- § Provider management); on from the start.
+  image_generation     INTEGER NOT NULL DEFAULT 1 CHECK (image_generation IN (0, 1)),
   CHECK ((credential_kind = 'api_key') = (config IS NOT NULL)),
   CHECK (credential_kind = 'subscription' OR active_credential_id IS NULL)
 ) STRICT;
@@ -6483,6 +6499,30 @@ mod tests {
             )
             .unwrap();
         assert_eq!(kept, "row-1user-1conversation-12turn-1turnentry-1account-1model-1request-1vendor-112345answered[]1020");
+    }
+
+    /// An entry stored by 0.1.25 makes images after the migration, as a
+    /// new entry does (`providers.md` § Provider management).
+    /// Planted defect this catches: a switch that starts off, so every
+    /// entry of an upgraded server stops making images.
+    /// One small database, milliseconds.
+    #[test]
+    fn an_entry_of_0_1_25_keeps_making_images() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.25.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('user-1', 'a@example.test', 'A', 'hash', 'master', 1);
+                 INSERT INTO providers (id, owner_user_id, provider_type, credential_kind, label, created_at)
+                   VALUES ('entry-1', 'user-1', 'codex', 'subscription', 'ChatGPT', 1);",
+            )
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let on: bool = connection
+            .query_row("SELECT image_generation FROM providers WHERE id = 'entry-1'", [], |row| row.get(0))
+            .unwrap();
+        assert!(on);
     }
 
     #[test]

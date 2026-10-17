@@ -3,14 +3,16 @@
 //! view`, an edit of the Host's files, warnings for what the result did not
 //! honour, the entry `--model` picks, a used-up account under Balanced
 //! moving the call to another, a usage ledger row per call, a stopped
-//! call's cancelled row, and no account named to a shared instance's user. The model
+//! call's cancelled row, no account named to a shared instance's user, and
+//! an entry whose Image Generation is off never chosen. The model
 //! is the scripted family of the subagent scenarios, the image role a
 //! scripted family's, and the device a real runner. No test calls a real
 //! model.
 
 use std::sync::Arc;
 
-use demi_web_api_protocol::providers::{Accounts, LoginState};
+use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::providers::{Accounts, LoginState, ProviderAnswer};
 use reqwest::StatusCode;
 use serde_json::json;
 
@@ -310,5 +312,102 @@ async fn a_used_up_account_under_balanced_moves_the_call_to_the_other_and_none_l
     let asked = last_root(&scripts);
     assert_shows(&asked, "demi image generate: Scripted's usage limit is reached, resetting at ");
     assert_shows(&asked, "\nexit=1");
+    backend.close().await;
+}
+
+// About a second: two logins and a real device's shell jobs of two turns.
+//
+// Planted defects: a switch stored for an entry that makes no images; an
+// entry whose Image Generation is off still chosen
+// without --model or listed by `demi image models`; a --model of an entry
+// that is off told as a model nobody makes; every entry off told as none
+// signed in.
+#[tokio::test]
+async fn an_entry_with_image_generation_off_is_never_chosen_and_says_why() {
+    let made = demi_agent_store::testing::png(8, 8, 2).into_bytes();
+    let first_images = Arc::new(ImageScript::new(&["picture-1"], made.clone()));
+    let second_images = Arc::new(ImageScript::new(&["drawing-1"], made.clone()));
+    let logins = image_family(&first_images);
+    let second = ScriptedSubscription {
+        login: logins.login.clone(),
+        quota: logins.quota.clone(),
+        directory: Arc::new(Directory::default()),
+        runs: None,
+        process_host: false,
+        images: Some(second_images.clone()),
+    };
+    let families = logins.families.clone().with("device-2", second);
+    let scripts = Arc::new(Scripts::default());
+    let (_harness, backend, master, _device, _root, tree) =
+        tree_among(&scripts, Harness::new(), families).await;
+    // An entry that makes no images has no switch to set.
+    let refused = backend
+        .patch(&format!("/api/providers/{tree}"), &master, json!({ "imageGeneration": false }))
+        .await;
+    assert_eq!(refused.refusal(), (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody));
+    logins.login.signs_in("first");
+    let first = device_entry(&backend, &master, &logins).await;
+    let login = start_login(
+        &backend,
+        &master,
+        "/api/providers/subscription-login",
+        json!({ "providerType": "device-2" }),
+    )
+    .await;
+    let LoginState::Completed { provider_id: second, .. } = awaited(&backend, &master, &login, ended).await
+    else {
+        panic!("the second entry's login did not complete");
+    };
+    let set = async |id: &str, body: serde_json::Value| {
+        let answer = backend.patch(&format!("/api/providers/{id}"), &master, body).await;
+        assert_eq!(answer.status, StatusCode::OK, "{}", String::from_utf8_lossy(&answer.body));
+        answer.json::<ProviderAnswer>().provider
+    };
+    set(first.id.as_str(), json!({ "label": "First" })).await;
+    set(second.as_str(), json!({ "label": "Second" })).await;
+    let off = set(first.id.as_str(), json!({ "imageGeneration": false })).await;
+    assert!(!off.image_generation);
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+
+    // The first entry is off: the call goes to the second, the list shows
+    // only the second's, and the first's model says why.
+    scripts.root(
+        FIRST,
+        vec![
+            shell(
+                "t1",
+                &[
+                    "demi image generate 'a fox' > /dev/null",
+                    "demi image models",
+                    "demi image generate 'a fox' --model picture-1; echo exit=$?",
+                ]
+                .join("\n"),
+            ),
+            say("drawn"),
+        ],
+    );
+    socket.chat("m1", "Draw a fox").await;
+    let asked = last_root(&scripts);
+    for shown in [
+        "8×8 PNG from drawing-1 (Scripted, first@example.test)\ndrawing-1  Second\n",
+        "demi image generate: \"picture-1\" is First's, whose image generation is off in Settings › Providers\nexit=1",
+    ] {
+        assert_shows(&asked, shown);
+    }
+    assert!(first_images.calls().is_empty());
+
+    // Both off: no entry makes images, and the call names them.
+    set(second.as_str(), json!({ "imageGeneration": false })).await;
+    scripts.root(
+        FIRST,
+        vec![shell("t2", "demi image generate 'a fox'; echo exit=$?"), say("none")],
+    );
+    socket.chat("m2", "Again").await;
+    assert_shows(
+        &last_root(&scripts),
+        "demi image generate: image generation is off for First and Second; turn it on in Settings › Providers\nexit=1",
+    );
+    assert_eq!(second_images.calls().len(), 1);
     backend.close().await;
 }
