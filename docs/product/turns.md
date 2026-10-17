@@ -317,10 +317,22 @@ the system shows a notification from the browser with the conversation's
 title and the start of the answer; clicking it brings the Demi tab forward
 with that conversation open.
 
+Notifications come as push notifications, so they reach the user with
+every Demi page closed, the phone locked or the laptop asleep, as a long
+turn often ends while nobody looks. Each browser that
+turns them on subscribes with its push service (Web Push, VAPID keys of
+the backend), and the backend keeps the subscription with the user, with
+the events that browser chose, and sends each notification to every
+subscription of the user that chose its event. A browser must show every
+push it receives, or it shows one of its own or ends the subscription, so
+the backend decides what is sent and the page's service worker shows all
+of it, and a click opens the conversation, focusing a
+Demi page when one is open.
+
 Notifications are off until the user turns them on in Settings ›
 Notifications. The setting belongs to the browser, not the account, because
-a browser grants a site permission to notify on that browser alone; the page
-keeps it in the browser's storage. Turning on Browser notifications asks the
+a browser grants a site permission to notify on that browser alone; turning
+it off removes that browser's subscription. Turning on Browser notifications asks the
 browser for permission. When the browser refuses, the switch goes back off and
 the row says that the browser blocks notifications for this site and that its
 site settings allow them again. Under it the user chooses what notifies, each
@@ -331,17 +343,50 @@ on by default:
 | A turn finishes | A turn of the conversation's root ends with an answer, and the conversation no longer [runs](web-api-conversations.md#sidebar-mutations-and-read-state): its subagents are done too | The title, and the start of the answer as plain text, cut to 120 characters |
 | A turn fails | A turn of the root ends with an error, which offers Resume | The title, and that the turn stopped with an error |
 | Demi needs permission | The conversation asks for a [permission](../agent/permissions.md) | The title, and what the request asks |
+| The agent notifies | The agent runs `demi notify send` (below) | What the agent wrote |
 
 A notification shows only while its conversation is not in front of the
-user: the page is hidden or not focused, or it shows another conversation. A
-turn the user stopped notifies nothing, since the user was there. The pages
-learn of these events from their synchronization channel, a turn's end from
-the conversation's summary
-([Sidebar mutations and read state](web-api-conversations.md#sidebar-mutations-and-read-state)), so notifications
-come while any Demi page of the browser is open, and none come when none is,
-which would need push notifications. Each notification is tagged with its
-conversation and turn, or its permission request, so several open pages show
-it once. The system's own notification sound plays as the system's settings
+user: the backend sends nothing to a browser whose Demi page shows that
+conversation, focused and visible, which each page reports on its
+[synchronization channel](web-api-sync.md#page-synchronization) as that
+changes, so a page that closes or loses its connection stops holding it
+back. A
+turn the user stopped notifies nothing, since the user was there. The backend sends them as the events happen, so they come whether or not a
+page is open. Each notification is tagged with its conversation and turn,
+or its permission request, so a browser shows it once.
+
+**iPhone and iPad.** Safari sends push notifications only to Demi added to
+the Home Screen (iOS 16.4 and later). In Safari itself, turning on
+notifications opens a sheet instead of the browser's question: *To get
+notifications on iPhone, add Demi to your Home Screen*, with the three
+steps, Share, Add to Home Screen, then open Demi from the Home Screen and
+turn notifications on there, each beside the icon it names, and OK. The row
+then reads *Add Demi to your Home Screen to get notifications* with How to
+Add, which opens the sheet again.
+
+**The agent's notifications.** `demi notify` is a command group, as every
+capability of the agent is:
+
+- `demi notify send <title> [<body>]` sends the user a notification from
+  the conversation: its title, at most 80 characters, and its body, at most
+  200, open the conversation. It returns at once, saying how many browsers
+  it goes to, *Sending to 2 browsers.*; delivery goes on in the
+  background, and a browser the push service no longer knows is dropped
+  then.
+- `demi notify status` says whether a notification would reach the user:
+  how many of the user's browsers have notifications on, and whether the
+  agent's notifications are among the events they chose; with none, it
+  says that the user turns them on in Settings › Notifications.
+
+The agent uses `send` when the user should know something while away; a
+turn that ends while the user watches needs none. It reads `status` before
+it relies on reaching the user, such as when it sets up an automation, so
+it can tell the user that notifications are off. Which events notify stays
+the user's choice in each browser; no command changes it. A conversation
+sends at most 3 a minute and 30 an hour; more fail, naming the limit
+reached: *demi notify send: too many notifications; at most 3 a minute*,
+or *at most 30 an hour*. Neither needs a permission, as
+the user's own turns notify them. The system's own notification sound plays as the system's settings
 say; Demi adds no sound of its own.
 
 The instruction tells the model to produce a title, never an answer: one line

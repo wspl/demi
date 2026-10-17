@@ -12,6 +12,7 @@ import {
   type UserDto,
 } from '../api/generated/web-api'
 import { apiRequest, ApiError, jsonBody, readResponse } from '../api/client'
+import { unsubscribeOnSignOut } from '../state/notifications'
 import { signalUnknownPasskey, signWithPasskey } from './webauthn'
 import { deleteAccountCache } from '../state/offline'
 
@@ -243,6 +244,9 @@ export const useSession = defineStore('session', {
       }
     },
     async signOut(): Promise<void> {
+      // While the session can still say so: what comes for the account
+      // after it signed out never reaches this browser.
+      await unsubscribeOnSignOut()
       try {
         await apiRequest('/auth/logout', { method: 'POST' })
       } catch (error) {

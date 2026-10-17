@@ -803,6 +803,31 @@ impl AgentSession {
             .read(|core| last_failure(core.transcript.blocks()).map(|error| error.id.clone()))
     }
 
+    /// The block that ended the latest ended turn, the one a conversation's
+    /// summary names: what a turn that ends later is told apart from.
+    pub fn ended_turn(&self) -> Option<BlockId> {
+        self.shared
+            .read(|core| demi_agent_transcript::ended_turn(core.transcript.blocks()).map(|block| block.id().clone()))
+    }
+
+    /// The latest ended turn as it ended: the block that ended it, how, and
+    /// the Markdown of its last text that is not blank.
+    pub fn ended_turn_result(&self) -> Option<EndedTurn> {
+        self.shared.read(|core| {
+            let (end, answer) = demi_agent_transcript::ended_turn_answer(core.transcript.blocks())?;
+            let outcome = match end {
+                Block::Response(_) => TurnOutcome::Answered,
+                Block::Error(_) => TurnOutcome::Failed,
+                _ => TurnOutcome::Stopped,
+            };
+            Some(EndedTurn {
+                id: end.id().clone(),
+                outcome,
+                answer: answer.map(|text| text.text.clone()),
+            })
+        })
+    }
+
     /// The record of the last turn when it failed: the `error` block that
     /// left it unfinished (`failures-and-recovery.md` § The unfinished turn).
     pub fn failed_turn(&self) -> Option<ErrorBlock> {
@@ -1276,3 +1301,23 @@ fn check_restored_input(
     Ok(())
 }
 
+/// How a turn ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TurnOutcome {
+    /// With an answer.
+    Answered,
+    /// With an error.
+    Failed,
+    /// The user stopped it.
+    Stopped,
+}
+
+/// A turn that ended, as [`Session::ended_turn_result`] reads it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EndedTurn {
+    /// The block that ended it.
+    pub id: BlockId,
+    pub outcome: TurnOutcome,
+    /// The Markdown of its last text that is not blank.
+    pub answer: Option<String>,
+}

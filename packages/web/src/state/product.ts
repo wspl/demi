@@ -16,6 +16,7 @@ import {
   type CatalogProvider,
   type ConversationSummary,
   type ModelCatalog,
+  type PageShowing,
   type Preferences,
   type ProductState,
   type SyncEvent,
@@ -340,6 +341,12 @@ export const useProduct = defineStore('product', () => {
   let retry: ReconnectWait | null = null
   /** The open channel's silence watch (`web-application.md` § Liveness and reconnection). */
   let silence: SilenceWatch | null = null
+  /**
+   * The conversation this page shows, focused and visible, which the channel
+   * tells the backend so this session's browser is not notified of it; each
+   * new connection tells it again, as the backend forgets it with the last.
+   */
+  let showing: string | null = null
   function clearRetry(): void {
     retry?.cancel()
     retry = null
@@ -394,6 +401,9 @@ export const useProduct = defineStore('product', () => {
       opened = true
       // A channel that brings nothing, heartbeats included, for too long is broken.
       silence = watchSilence('synchronization channel', replace)
+      if (showing !== null) {
+        sendShowing(channel)
+      }
     }
     channel.onmessage = (message) => {
       if (socket !== channel) {
@@ -452,6 +462,21 @@ export const useProduct = defineStore('product', () => {
       }
       failures.value += 1
       scheduleRetry()
+    }
+  }
+
+  function sendShowing(channel: WebSocket): void {
+    channel.send(JSON.stringify({ showing } satisfies PageShowing))
+  }
+
+  /** Says the page shows `conversation`, focused and visible, or none. */
+  function show(conversation: string | null): void {
+    if (conversation === showing) {
+      return
+    }
+    showing = conversation
+    if (socket?.readyState === WebSocket.OPEN) {
+      sendShowing(socket)
     }
   }
 
@@ -806,6 +831,7 @@ export const useProduct = defineStore('product', () => {
     vendorRequest = null
     vendorError.value = null
     activeConversationId.value = null
+    showing = null
     load.value = 'loading'
   }
 
@@ -826,6 +852,7 @@ export const useProduct = defineStore('product', () => {
     catalogLoad,
     catalogFailure,
     activeConversationId,
+    show,
     sent,
     answered,
     change,

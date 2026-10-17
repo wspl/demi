@@ -97,7 +97,7 @@
       "title": "浏览器",
       "label": "浏览器通知",
       "blocked": "已在此浏览器的网站设置中阻止。",
-      "thisBrowser": "仅限此浏览器。",
+      "thisBrowser": "仅限此浏览器。即使关闭 Demi 也会收到。",
       "unsupported": "此浏览器不支持通知。"
     },
     "when": {
@@ -105,7 +105,17 @@
       "turnFinishes": "轮次完成",
       "turnFails": "轮次失败",
       "needsPermission": "Demi 需要权限",
-      "turnOnFirst": "请先开启浏览器通知。"
+      "turnOnFirst": "请先开启浏览器通知。",
+      "agentNotifies": "智能体给你发通知"
+    },
+    "homeScreen": {
+      "title": "要在 iPhone 上接收通知，请将 Demi 添加到主屏幕",
+      "share": "轻点 Safari 工具栏中的“共享”。",
+      "add": "选择“添加到主屏幕”。",
+      "open": "从主屏幕打开 Demi，并在其中开启通知。",
+      "ok": "好",
+      "row": "将 Demi 添加到主屏幕以接收通知",
+      "howTo": "添加方法"
     }
   },
   "passkeys": {
@@ -213,7 +223,9 @@
       "browserKeywords": "通知",
       "finishesKeywords": "完成,结束",
       "failsKeywords": "错误,出错",
-      "permissionKeywords": "权限请求,请求许可"
+      "permissionKeywords": "权限请求,请求许可",
+      "agentKeywords": "demi notify,智能体通知,推送",
+      "homeScreenKeywords": "主屏幕,iPhone,iPad,添加到主屏幕"
     },
     "agentPage": {
       "keywords": "轻量模型,标题,快速模型,haiku,flash,轮次",

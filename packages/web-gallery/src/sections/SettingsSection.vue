@@ -152,14 +152,19 @@ const incomplete = createSettingsState()
 incomplete.providers = incompleteProviders()
 incomplete.selectedProviderId = 'google'
 incomplete.providerDetailOpen = true
-/** What the Notifications specimen's stand-in browser answers when asked. */
-const browserAnswers = [
+/** The Notifications specimen's stand-in browser, and what it answers when asked. */
+const browsers = [
   { value: 'granted', label: 'Browser Allows' },
   { value: 'denied', label: 'Browser Blocks' },
+  { value: 'iphone', label: 'Safari on iPhone' },
 ] as const
-/** A new answer is a browser whose site settings were reset: it asks again. */
-function answerAs(answer: 'granted' | 'denied'): void {
-  full.notifications.answer = answer
+type StandInBrowser = (typeof browsers)[number]['value']
+const browser = ref<StandInBrowser>('granted')
+/** Another browser is one whose site settings were reset: it asks again. */
+function useBrowser(next: StandInBrowser): void {
+  browser.value = next
+  full.notifications.iphone = next === 'iphone'
+  full.notifications.answer = next === 'denied' ? 'denied' : 'granted'
   full.notifications.permission = 'default'
   full.notifications.enabled = false
 }
@@ -380,14 +385,14 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Notifications"
-        note="Browser notifications are off until turned on, and belong to this browser. Turning them on asks the browser; switch what the stand-in browser answers to see each. Blocked, the switch goes back off and the row says where to allow them again; a browser that already blocks the site answers without asking. The three switches under it choose what notifies, and wait for notifications to be on."
+        note="Notifications come by push, so they reach the user with every Demi page closed. They are off until turned on, and belong to this browser. Turning them on asks the browser; switch the stand-in browser to see each. Blocked, the switch goes back off and the row says where to allow them again; a browser that already blocks the site answers without asking. Safari on iPhone pushes only to Demi on the Home Screen: there turning notifications on shows how to add it, Share, Add to Home Screen, then Demi itself, and the row then says so with How to Add, which shows the steps again. The four switches under it choose what notifies, the agent’s own demi notify send among them, and wait for notifications to be on."
       >
         <div class="flex w-full max-w-2xl flex-col gap-4">
           <Segmented
-            :model-value="full.notifications.answer"
-            :options="browserAnswers"
+            :model-value="browser"
+            :options="browsers"
             size="sm"
-            @update:model-value="answerAs"
+            @update:model-value="useBrowser"
           />
           <div class="rounded-xl border border-line bg-surface-dialog p-6">
             <GallerySettingsFull tab="notifications" :state="full" />

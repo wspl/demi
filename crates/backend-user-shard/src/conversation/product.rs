@@ -38,6 +38,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::shard::Shard;
 use crate::shard::credential_commands::credentials_group;
+use crate::shard::notify_commands::notify_group;
 
 /// The product's instructions, the identity that opens every node's system
 /// prompt, which a subagent profile's replace (`system-prompt.md` § Identity).
@@ -49,7 +50,8 @@ pub(crate) const HARNESS_GUIDE: &str = "How Demi works:\n\nHosts. Your shell too
 
 /// What a conversation's tree opens with: the commands of the plugins the
 /// user has on, with the product's `demi host`, `demi attachment`, `demi
-/// conversation`, `demi credentials` and `demi providers` groups.
+/// conversation`, `demi credentials`, `demi providers` and `demi notify`
+/// groups.
 pub(crate) struct ShardToolsets {
     /// Weak: the shard owns the agent server that holds the source.
     pub(crate) shard: Weak<Shard>,
@@ -71,6 +73,7 @@ impl ToolsetSource for ShardToolsets {
                     conversation_group(self.shard.clone()),
                     credentials_group(self.shard.clone()),
                     providers_group(self.shard.clone()),
+                    notify_group(self.shard.clone()),
                 ])
                 .await
                 .map_err(|error| error.to_string())?;

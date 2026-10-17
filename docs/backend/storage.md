@@ -143,6 +143,9 @@ input, which the multi-worker control service also relies on
   (written at most once an hour), when it was last verified, and the
   handoff code that made it, if one did, with the administrator who issued
   it when it was a sign-in code; a login deletes expired sessions.
+  `push_subscriptions` stores each browser's push subscription of a user:
+  its endpoint, unique, its two keys, the session it serves, one per
+  session, the events it chose, and when it was made.
   `handoff_codes` keeps one live code of each kind per user, a handoff code
   and an administrator's sign-in code: its kind, its SHA-256, the path it
   opens, its issuer, its expiry and whether it was spent. `email_challenges` stores one pending

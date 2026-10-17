@@ -1,16 +1,16 @@
 {
   "notifications": {
     "turnStopped": "The turn stopped with an error.",
-    "saveCredential": "Save the credential “{name}”?",
-    "allowUse": "Allow this conversation to use “{name}”?"
+    "saveCredential": "Save the credential “{name}”?"
   },
   "hosts": {
     "unavailableDevice": "Unavailable device"
   },
   "failures": {
+    "turnOnNotifications": "Could Not Turn On Notifications",
+    "turnOffNotifications": "Could Not Turn Off Notifications",
     "updateSettings": "Could Not Update Settings",
     "changeContextLimit": "Could Not Change the Context Limit",
-    "readPermissionRequests": "Could Not Read the Permission Requests for a Notification",
     "updateTimeZoneLanguage": "Could Not Update Time Zone and Language",
     "readSync": "Could Not Read a Message of the Synchronization Channel",
     "keepOffline": "Could Not Keep a Copy for Offline Use",

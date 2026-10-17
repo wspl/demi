@@ -12,7 +12,7 @@ use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_database::tree::{self, EndedTurn, SummaryFacts, Terminal};
 use demi_shared_types::{ModelSelection, SessionPhase};
 use demi_web_api_protocol::conversations::{
-    ANSWER_START_CHARS, ConversationStatus, ConversationSummary, LastTurn, ModelSettings,
+    ConversationStatus, ConversationSummary, LastTurn, ModelSettings,
     TurnOutcome,
 };
 use demi_web_api_protocol::ids::ProviderId;
@@ -111,7 +111,7 @@ impl Shard {
             cwd,
             status,
             revision: facts.revision,
-            last_turn: facts.last_turn.map(last_turn),
+            last_turn: facts.last_turn.as_ref().map(last_turn),
             draft_revision: record.draft_revision,
             saved: record.saved,
             saved_revision: record.saved_revision,
@@ -142,19 +142,15 @@ fn settings(selection: &ModelSelection) -> Result<ModelSettings, StorageError> {
     })
 }
 
-/// The root's latest ended turn as the summary carries it, its answer cut to
-/// its start.
-fn last_turn(turn: EndedTurn) -> LastTurn {
+/// The root's latest ended turn as the summary carries it.
+fn last_turn(turn: &EndedTurn) -> LastTurn {
     LastTurn {
-        id: turn.id,
+        id: turn.id.clone(),
         outcome: match turn.outcome {
             Terminal::Response => TurnOutcome::Finished,
             Terminal::Error => TurnOutcome::Failed,
             Terminal::Abort => TurnOutcome::Stopped,
         },
-        answer_start: turn
-            .answer
-            .map(|answer| answer.chars().take(ANSWER_START_CHARS).collect()),
     }
 }
 
