@@ -31,7 +31,30 @@ impl fmt::Display for ReadAt {
     }
 }
 
+impl std::str::FromStr for ReadAt {
+    type Err = String;
+
+    /// `<epoch>.<number>`, as [`ReadAt`]'s `Display` writes it; the epoch
+    /// may hold dots of its own, the number never does.
+    fn from_str(text: &str) -> Result<Self, String> {
+        let refuse = || format!("must be <epoch>.<number>, not {text:?}");
+        let (epoch, number) = text.rsplit_once('.').ok_or_else(refuse)?;
+        let read_at = ReadAt {
+            epoch: epoch.to_owned(),
+            number: number.parse().map_err(|_| refuse())?,
+        };
+        read_at.validate().map_err(|error| format!("{text:?}: {error}"))?;
+        Ok(read_at)
+    }
+}
+
 impl ReadAt {
+    /// Whether a read taken here holds what was there at `after`: of the
+    /// same run, at its number or later.
+    pub fn holds(&self, after: &ReadAt) -> bool {
+        self.epoch == after.epoch && self.number >= after.number
+    }
+
     /// The earlier of two reads of one answer, which holds what both hold
     /// only from there: a change after it may be missing from either.
     pub fn earlier(self, other: ReadAt) -> ReadAt {

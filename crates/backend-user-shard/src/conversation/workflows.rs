@@ -362,14 +362,18 @@ impl Shard {
     /// `directory` of the paired device `device`, before its first message
     /// gives it a record (`subagents.md` § Workflows of a project): read
     /// through device access, which wakes nothing; none while the device's
-    /// runner is not connected.
+    /// runner is not connected. With `after`, the answer is read at that
+    /// number or later (`web-api-conversations.md` § Workflows of a
+    /// directory).
     pub async fn device_workflows(
         &self,
         device: &DeviceId,
         directory: &str,
+        after: Option<&ReadAt>,
     ) -> Result<(ConversationWorkflows, ReadAt), DeviceWorkflowsRefusal> {
-        // What a loaded conversation there keeps already.
-        if let Some(found) = self.project_files().workflows.held(device, directory.to_owned()) {
+        // What a loaded conversation there keeps already, unless it was read
+        // before `after`: the search below reads it anew.
+        if let Some(found) = self.project_files().workflows.held(device, directory.to_owned(), after) {
             return Ok(found.menu());
         }
         let host = self.devices().device_access(device).ok_or(DeviceWorkflowsRefusal::Offline)?;
@@ -385,12 +389,15 @@ impl Shard {
     /// The Workflow menu's list for the conversation `id` (`GET
     /// /conversations/:id/workflows`), with what the page watches. The page
     /// asks when the runner reported a change, so a search under way for one
-    /// is waited for.
+    /// is waited for; with `after`, as its watch went live after the answer
+    /// it holds, one read at that number or later is.
     pub async fn menu_workflows(
         &self,
         id: &ConversationId,
+        after: Option<ReadAt>,
     ) -> Result<(ConversationWorkflows, ReadAt), ReadFilesError> {
-        Ok(self.project_workflows(id, Wait::Current).await?.menu())
+        let wait = after.map_or(Wait::Current, Wait::After);
+        Ok(self.project_workflows(id, wait).await?.menu())
     }
 
     /// `demi agent workflows list` for the conversation `id`.

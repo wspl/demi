@@ -414,7 +414,15 @@ the workflows were found in, or null; `unavailable`, the reason the whole
 directory cannot be used, such as a link, or null; each workflow as
 `{ id, name, path, unavailable }`; and `watch`, the folders the page follows
 on its file watch to learn of a change. The answer carries the Host's read
-number in `X-Demi-Read-At`, as file reads do. The device route wakes
+number in `X-Demi-Read-At`, as file reads do. Both take an optional
+`readAfter=<epoch>.<number>`: the backend answers what it keeps when its
+search read at that number or later, and otherwise searches again and
+answers that. While its watch of `watch` is live, the page sends that
+watch's highest `since`, so an answer it holds that was read before the
+watch went live is read once more. The backend's kept answer stays current by the backend's
+own watch, but its number is the one its search took, which is older than a
+watch the page starts later; without `readAfter`, the page would get the
+same answer and number back and ask again without end. The device route wakes
 nothing and answers 409 `device_offline` while the device's runner is not
 connected; a directory that is not an absolute path answers 400
 `invalid_body`, one that does not exist 404 `fs_not_found`, and another Host
