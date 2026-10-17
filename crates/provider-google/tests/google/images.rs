@@ -155,7 +155,8 @@ async fn a_gemini_key_lists_every_page_and_sends_generations_and_edits_as_docume
 // Planted defects: a blocked prompt or answer read as an unreadable one,
 // without Google's reason; a day's quota read as a rate limit, so the call
 // does not go on with another entry; a minute's read as a usage limit; a
-// key Google does not accept told as a refusal of the request.
+// key Google does not accept told as a refusal of the request; a key it
+// does not allow here (403) recorded as an expired one.
 #[tokio::test]
 async fn a_gemini_keys_failures_read_as_a_block_a_spent_quota_a_refused_key_or_googles_words() {
     let vendor = MockVendor::start().await;
@@ -177,6 +178,8 @@ async fn a_gemini_keys_failures_read_as_a_block_a_spent_quota_a_refused_key_or_g
     let invalid = json!({ "error": { "code": 400, "message": "API key not valid. Please pass a valid API key.", "status": "INVALID_ARGUMENT",
         "details": [{ "@type": "type.googleapis.com/google.rpc.ErrorInfo", "reason": "API_KEY_INVALID", "domain": "googleapis.com" }] } });
     vendor.respond_at(GENERATE, json_answer(400, invalid));
+    let forbidden = json!({ "error": { "code": 403, "message": "Requests to this API are blocked.", "status": "PERMISSION_DENIED" } });
+    vendor.respond_at(GENERATE, json_answer(403, forbidden));
     vendor.respond_at(
         GENERATE,
         json_answer(400, json!({ "error": { "code": 400, "message": "Unsupported aspect ratio: 4:5", "status": "INVALID_ARGUMENT" } })),
@@ -196,7 +199,13 @@ async fn a_gemini_keys_failures_read_as_a_block_a_spent_quota_a_refused_key_or_g
     }
     assert!(matches!(fail().await, ImageFailure::UsageLimit { .. }));
     assert!(matches!(fail().await, ImageFailure::Unanswered { .. }));
-    assert!(matches!(fail().await, ImageFailure::KeyRefused { message } if message == "API key not valid. Please pass a valid API key."));
+    let invalid = fail().await;
+    assert!(matches!(&invalid, ImageFailure::KeyRefused { message, .. } if message == "API key not valid. Please pass a valid API key."));
+    assert_eq!(invalid.outcome(), "auth_expired");
+    // A key Google knows and does not allow here is refused, not expired.
+    let blocked = fail().await;
+    assert!(matches!(&blocked, ImageFailure::KeyRefused { message, .. } if message == "Requests to this API are blocked."));
+    assert_eq!(blocked.outcome(), "permission_denied");
     match fail().await {
         ImageFailure::Refused { message, .. } => assert_eq!(message, "Unsupported aspect ratio: 4:5"),
         other => panic!("not a refusal: {other:?}"),

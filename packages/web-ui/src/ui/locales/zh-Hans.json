@@ -18,7 +18,8 @@
   },
   "requestId": "请求 ID：{id}",
   "errorNotice": {
-    "providerResponse": "供应商响应"
+    "providerResponse": "供应商响应",
+    "headers": "标头"
   },
   "updateFailed": {
     "title": "无法更新此页面",

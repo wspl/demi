@@ -16,6 +16,7 @@ import { executionFor, primaryHostOf } from '../targets/execution'
 import { useConversations } from './store'
 import { useConversationNavigation } from './navigation'
 import { useResources } from '../state/resources'
+import type { CredentialKinds } from '@demicodes/web-ui/agent/credential-kinds'
 import { useProviderSettings } from '../settings/providers'
 import { useSettingsAddress } from '../settings/address'
 import { useProduct } from '../state/product'
@@ -149,6 +150,9 @@ watch(
 const project = computed(() =>
   resources.projects.find((p) => p.id === conversation.value?.projectId),
 )
+/** What each entry holds, which a failure's record names. */
+const credentialKinds: CredentialKinds = (providerId) =>
+  resources.providers.find((provider) => provider.id === providerId)?.kind ?? null
 const hasProvider = computed(() =>
   resources.providerInfos.some(
     (p) => p.id === conversation.value?.model.providerId && p.isAvailable,
@@ -263,6 +267,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     @dock-window-resize-end="resources.dockWindowShare = $event"
     :conversation="conversation"
     :has-provider="hasProvider"
+    :credential-kinds="credentialKinds"
     :backend-away="product.connection !== null"
     :resume-at-retry="preferences.resumeAtRetry"
     @update:resume-at-retry="preferences.update({ resumeAtRetry: $event })"
