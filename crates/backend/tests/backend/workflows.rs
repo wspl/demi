@@ -357,7 +357,12 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     std::fs::create_dir_all(home.join("shared-demi/workflows")).unwrap();
     std::fs::write(home.join("shared-demi/workflows/review.yaml"), REVIEW).unwrap();
     std::os::unix::fs::symlink(home.join("shared-demi"), repo.join(".demi")).unwrap();
-    let listed = menu_once(&backend, &master, |listed| listed["watch"][0]["path"] == path(&repo)).await;
+    // Between the rename and the link the repository has no `.demi`, which
+    // the menu also watches for in `repo`, with no directory.
+    let listed = menu_once(&backend, &master, |listed| {
+        listed["watch"][0]["path"] == path(&repo) && listed["directory"] == path(&workflows)
+    })
+    .await;
     assert_eq!(listed["directory"], json!(path(&workflows)));
     assert_eq!(listed["unavailable"], json!("Workflows are files of the project, not links."));
     assert_eq!(listed["workflows"], json!([]));
