@@ -2,14 +2,14 @@
 //! installer of the backend's current runner release, and each release's
 //! executables. An installer run here installs this build's runner for its
 //! backend and starts it, and the runner then waits to be paired; the test
-//! drains every runner it installed.
+//! stops every runner it installed ([`DetachedRunners`]).
 
 use std::os::unix::fs::PermissionsExt as _;
 use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::time::Duration;
 
-use demi_backend_remote_host::testing::runner_binary;
+use demi_backend_remote_host::testing::{DetachedRunners, runner_binary};
 use demi_command_protocol::{TARGETS, VERSION, host_target};
 use demi_provider_common::testing::MockVendor;
 use demi_runner_protocol::release::{
@@ -129,21 +129,22 @@ impl Releases {
     }
 }
 
-/// The installations the test made under `home`, each drained when the test
-/// ends, however it ends.
+/// The installations the test made under `home`, whose runners are stopped
+/// when the test ends, however it ends.
 struct Installations {
+    /// Dropped before the home goes.
+    runners: DetachedRunners,
     home: tempfile::TempDir,
-    states: std::cell::RefCell<Vec<PathBuf>>,
 }
 
 impl Installations {
     fn new() -> Self {
         Self {
+            runners: DetachedRunners::new(),
             home: tempfile::Builder::new()
                 .prefix("demi-install-home-")
                 .tempdir()
                 .unwrap(),
-            states: std::cell::RefCell::default(),
         }
     }
 
@@ -154,7 +155,7 @@ impl Installations {
             .path()
             .join(".demi/instances")
             .join(sha(url.as_bytes()));
-        self.states.borrow_mut().push(state.clone());
+        self.runners.watch(&state);
         state
     }
 
@@ -162,7 +163,7 @@ impl Installations {
     /// ID `id`.
     fn state_named(&self, id: &str) -> PathBuf {
         let state = self.home.path().join(".demi/instances").join(id);
-        self.states.borrow_mut().push(state.clone());
+        self.runners.watch(&state);
         state
     }
 
@@ -243,18 +244,6 @@ impl Installations {
             .env("DEMI_RUNNER_NAME", DEVICE)
             .env_remove("DEMI_INSTALLATION_ID");
         shell
-    }
-}
-
-impl Drop for Installations {
-    fn drop(&mut self) {
-        for state in self.states.borrow().iter() {
-            let launcher = state.join("run");
-            if launcher.exists() {
-                // A runner that never started has nothing to drain.
-                let _ = std::process::Command::new(launcher).arg("drain").output();
-            }
-        }
     }
 }
 
@@ -448,7 +437,7 @@ async fn pairs(
         );
     };
     if read.is_err() {
-        // The runner it started stays, and the installations' drop drains it.
+        // The runner it started stays, and the installations' drop stops it.
         child.start_kill().unwrap();
     }
     stderr.read_to_end(&mut errors).await.unwrap();
@@ -943,7 +932,7 @@ async fn a_paired_devices_start_command_starts_its_stopped_runner_again() {
 
     // The command names the installation's launcher, and returns once the
     // runner it started in the background is connected; the installations'
-    // drop drains it.
+    // drop stops it.
     let devices = backend.devices(&master).await;
     let command = devices[0].start_command.clone().expect("a paired device has a start command");
     assert_eq!(command, "~/.demi/instances/elsewhere/run start");
