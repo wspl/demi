@@ -130,6 +130,7 @@ const emptyLabel = computed(() =>
           :aria-activedescendant="rows.length ? `${listId}-${current}` : undefined"
           :maxlength="SEARCH_QUERY_MAX"
           focused
+          asked
           @keydown="keydown"
         >
           <template #prefix><Search :size="ICON_PX.in24" /></template>

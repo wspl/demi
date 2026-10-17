@@ -58,6 +58,8 @@ export {
   type SilenceWatch,
 } from '@demicodes/web-ui/transport/liveness'
 // Composables.
+// A field that takes the focus as its surface opens, as a phone allows (`web-application.md` § The phone layout).
+export { useAutofocus } from '@demicodes/web-ui/ui/autofocus'
 
 // Files: the shapes the conversation files service gives, and their paths.
 export {

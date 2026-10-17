@@ -55,8 +55,10 @@ const props = withDefaults(
      * measures it): a message wider than that needs more than one line.
      */
     lineWidth?: number
-    /** Takes the focus once it shows, the cursor at the end. */
+    /** Takes the focus once it shows, the cursor at the end; on a phone only when `asked`. */
     autofocus?: boolean
+    /** Typing here is what the user just chose, as Edit on a message is: it takes the focus on a phone too. */
+    asked?: boolean
     /**
      * Counts the messages shown from outside: when it changes, the editor
      * shows `markdown` and `attachments` anew, even when the text is the one
@@ -103,7 +105,7 @@ const emit = defineEmits<{
 const multiline = defineModel<boolean>('multiline', { default: false })
 
 const files = useMessageFiles()
-const autofocus = useAutofocus()
+const autofocus = useAutofocus({ asked: () => props.asked })
 const editable = computed(() => !!props.composer && !props.disabled)
 const transfers = useTransfers()
 const mediaAddress = useMediaAddress()
@@ -176,13 +178,18 @@ const editor = new Editor({
 editor.view.dispatch(editor.state.tr.setSelection(Selection.atEnd(editor.state.doc)))
 measure()
 
+/** Takes the focus as the page gives it, the cursor at the end. */
+function takeFocus(): void {
+  autofocus({ element: editor.view.dom, focus: () => editor.commands.focus('end') })
+}
+
 /** The focus waits for tiptap to move the editor's page into place, which happens after mounting. */
 let focusing: ReturnType<typeof setTimeout> | undefined
 onMounted(() => {
   // On the page at last: how wide the text is can be measured.
   measure()
   if (props.autofocus) {
-    focusing = setTimeout(() => autofocus({ focus: () => editor.commands.focus('end') }))
+    focusing = setTimeout(() => takeFocus())
   }
 })
 onBeforeUnmount(() => {
@@ -575,6 +582,8 @@ defineExpose({
   focus(): void {
     editor.commands.focus()
   },
+  /** Takes the focus as the page gives it, the cursor at the end: not on a phone unless `asked` (`useAutofocus`). */
+  takeFocus,
 })
 </script>
 
