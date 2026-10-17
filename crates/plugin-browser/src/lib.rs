@@ -15,7 +15,7 @@ use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::browser::{BrowserMessage, TabsChange};
 use demi_command_package_browser_protocol::{PACKAGE, live};
 use demi_plugin_interface::{
-    CommandPlugin, Manifest, PanelTabChange, Placement, Plugin, PluginError, PluginFactory,
+    CommandPlugin, Manifest, Placement, Plugin, PluginError, PluginFactory,
     PluginId, PluginPort, Reply, Request, Scope, Stream,
 };
 use futures_util::future::LocalBoxFuture;
@@ -141,20 +141,9 @@ impl Plugin for Instance {
                     conversation: None, ..
                 } => Err(PluginError::undeclared("user method")),
                 Request::PanelTab {
-                    conversation,
-                    change,
-                    tab,
-                    ..
+                    conversation, tab, ..
                 } => {
-                    match change {
-                        PanelTabChange::Created => {
-                            // The backend reads the tab's data, not this answer.
-                            let _bound = self.work.bind(&conversation, &port, &tab.id).await?;
-                        }
-                        PanelTabChange::Removed => {
-                            self.work.removed(&conversation, &port, &tab).await?;
-                        }
-                    }
+                    self.work.removed(&conversation, &port, &tab).await?;
                     port.changed(Scope::Conversation).await?;
                     Ok(Reply::Done)
                 }

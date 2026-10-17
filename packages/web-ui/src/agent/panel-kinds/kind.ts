@@ -43,21 +43,8 @@ export interface PanelTabKind<Data = unknown> {
   pinned?: { data(): Data }
   /** What the tab's menu offers before its Close commands, read when the menu opens. */
   commands?(data: Data, id: string): readonly TabCommand[]
-  /** The data of a copy of a tab, which its menu's Duplicate opens right after it; without it there is no Duplicate. */
-  duplicate?(data: Data): Data
   /** What the strip shows after a pinned tab's title, such as its counts. Props: `data`. */
   badge?: Component
-  /**
-   * The kind is offered on the strip's new-tab control; `data` is a new
-   * tab's. While `unavailable` gives a reason, read reactively, the control
-   * is disabled and says it.
-   */
-  create?: {
-    label: string
-    icon: Component
-    data(): Data
-    unavailable?(): string | null
-  }
 }
 
 /** A tab with its kind and checked data, or why the panel cannot show it. */

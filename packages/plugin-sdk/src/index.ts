@@ -161,5 +161,4 @@ export { default as SettingsRow } from '@demicodes/web-ui/settings/SettingsRow.v
 export { default as Switch } from '@demicodes/web-ui/ui/Switch.vue'
 export { default as TextInput } from '@demicodes/web-ui/ui/TextInput.vue'
 export { default as Tooltip } from '@demicodes/web-ui/ui/Tooltip.vue'
-export { GlobePlus } from '@demicodes/web-ui/ui/GlobePlus'
 export { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'

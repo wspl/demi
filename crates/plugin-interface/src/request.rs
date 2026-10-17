@@ -76,14 +76,13 @@ pub enum Request {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         conversation: Option<ConversationId>,
     },
-    /// The user created or removed a tab of one of the plugin's panel
-    /// kinds; the backend applied the change and answered the page
-    /// (`plugins.md` § Panel kinds). `tab` is the tab as it was created, or
-    /// as it was when it was removed.
+    /// The user removed a tab of one of the plugin's panel kinds; the
+    /// backend applied the change and answered the page (`plugins.md` §
+    /// Panel kinds). `tab` is the tab as it was when it was removed. The
+    /// user creates no tab of a plugin's kind: the plugin does.
     PanelTab {
         user: UserId,
         conversation: ConversationId,
-        change: PanelTabChange,
         tab: PanelTab,
     },
     /// The command package the plugin's commands bind said `message` about
@@ -101,14 +100,6 @@ pub enum Request {
         user: UserId,
         conversation: ConversationId,
     },
-}
-
-/// What the user did to a tab of the plugin's panel kind.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum PanelTabChange {
-    Created,
-    Removed,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

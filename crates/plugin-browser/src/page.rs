@@ -14,7 +14,6 @@
 
 use demi_command_declarations::NativeOperation;
 use demi_command_package_browser_protocol::PACKAGE;
-use demi_command_package_browser_protocol::release::{ARTIFACT, BrowserRelease};
 use demi_command_package_browser_protocol::browser::{
     BackInput, BrowserCreatedBy, BrowserErrorCode, BrowserOperation, BrowserTab, CloseInput,
     FailureDocument, ForwardInput, GotoInput, NavigationResult, OpenInput, OpenResult, PREFIX,
@@ -37,20 +36,10 @@ use crate::reason::PanelReason;
 pub const URL_MAX: usize = 4096;
 
 /// The conversation state: the conversation browser's tabs, none while it
-/// does not run, and the browser a tab needs on the Host.
+/// does not run.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct BrowserTabs {
     pub tabs: Vec<BrowserTab>,
-    pub browser: NeededBrowser,
-}
-
-/// The pinned Chrome for Testing as the Host's installed artifacts name it,
-/// which the page looks for among them (`live-view.md` § A browser tab in
-/// the panel).
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub struct NeededBrowser {
-    pub name: String,
-    pub version: String,
 }
 
 /// `bind { panelTab }`: a browser tab for the panel tab, which Retry and
@@ -169,14 +158,9 @@ pub(crate) struct Listing {
     pub closed: Vec<TabId>,
 }
 
-/// The conversation state: the browser's tabs, and the browser they need.
+/// The conversation state: the browser's tabs.
 pub(crate) async fn tabs(port: &PluginPort) -> Result<Value, PluginError> {
-    let pinned = BrowserRelease::pinned().map_err(PluginError::failed)?;
     to_value(BrowserTabs {
-        browser: NeededBrowser {
-            name: ARTIFACT.to_owned(),
-            version: pinned.version,
-        },
         tabs: list(port).await?.tabs,
     })
 }

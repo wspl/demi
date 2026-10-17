@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
-import { ArrowLeft, ArrowRight, ClipboardPaste, Copy, ExternalLink, Link, RotateCw, Scissors } from '@lucide/vue'
+import { ArrowLeft, ArrowRight, ClipboardPaste, Copy, Link, RotateCw, Scissors } from '@lucide/vue'
 import { LIVE_CAPTURE_STOPPED, type LiveTab } from '../generated/plugin'
 import LiveControls from './LiveControls.vue'
 import LiveDialog from './LiveDialog.vue'
@@ -36,8 +36,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** Back, Forward or Reload, chosen in the browser's menu. */
   history: [action: 'back' | 'forward' | 'reload']
-  /** Open Link in New Tab, chosen in the browser's menu. */
-  openLink: [url: string]
 }>()
 const { overlays, errors } = usePage()
 const platform = clientPlatform(navigator)
@@ -274,11 +272,6 @@ function chooseHistory(action: 'back' | 'forward' | 'reload'): void {
   emit('history', action)
 }
 
-function openLink(link: string): void {
-  closeMenu()
-  emit('openLink', link)
-}
-
 function copyLink(link: string): void {
   closeMenu()
   navigator.clipboard.writeText(link).catch((error: unknown) => errors.report(t('failures.copyLink'), error))
@@ -449,7 +442,6 @@ onBeforeUnmount(() => {
     >
       <Menu v-if="menu">
         <template v-if="menu.link">
-          <MenuItem :icon="ExternalLink" :label="t('menu.openLink')" @select="openLink(menu.link)" />
           <MenuItem :icon="Link" :label="t('menu.copyLink')" @select="copyLink(menu.link)" />
         </template>
         <template v-if="menu.editable">

@@ -39,7 +39,7 @@ export type AutofocusTarget = HTMLElement | { readonly element: HTMLElement; foc
  * On a phone a field takes no focus as what holds it opens, since the
  * on-screen keyboard would cover what just opened (`web-application.md` §
  * The phone layout); it waits for a tap. Only a field typing in is the whole
- * of what the user just chose (`asked`: Rename, Search, a new tab's address,
+ * of what the user just chose (`asked`: Rename, Search,
  * a filter the user opened) takes it there too. Answers whether the target
  * took the focus, so the caller can put it on its surface instead.
  */

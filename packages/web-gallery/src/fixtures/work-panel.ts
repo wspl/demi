@@ -4,7 +4,6 @@ import { addedPanelTab } from '@demicodes/plugin-browser/live/tabs'
 import { PanelTabs, closePanelTabs, updatePanelTab } from '@demicodes/web-ui/agent/panel-changes'
 import {
   openIntent,
-  openedTabIndex,
   pendingShows,
   shownSelection,
   type AppliedShows,
@@ -75,7 +74,7 @@ export function useGalleryWork(
   const shown = pages ?? PLUGIN_PAGES.map((page) => (page.plugin === 'browser' && pictures ? browserPage({ pictures }) : page))
   const enabled = () => true
   const backend = new GalleryPanel()
-  const plugin = galleryBrowserPlugin(browser, backend, shown)
+  const plugin = galleryBrowserPlugin(browser, backend)
   // The browser tells the plugin of every change of its tabs, as the browser package does
   // (`native-runtime.md` § Messages to the plugin).
   watch(browser.listed, () => void plugin.tabsChanged())
@@ -90,11 +89,10 @@ export function useGalleryWork(
   const tabs = new PanelTabs(backend, (error) => {
     productWould(`Report the Refused Panel Change: ${error instanceof Error ? error.message : String(error)}`)
   })
-  backend.told = ({ change, tab }) => {
-    if (tab.kind !== 'browser') {
-      return
+  backend.removed = (tab) => {
+    if (tab.kind === 'browser') {
+      void plugin.removed(tab)
     }
-    void (change === 'created' ? plugin.bind(tab.id) : plugin.removed(tab))
   }
   backend.changed = (revision) => tabs.noticed(revision)
   tabs.start()
@@ -129,6 +127,21 @@ export function useGalleryWork(
     if (options.select) {
       select(id)
     }
+    return id
+  }
+  /** The number of the next browser tab `lost` names, past any the gallery's browser gives. */
+  let lostTabs = 90
+  /**
+   * A browser tab on `url` whose browser tab the browser lost, as after a
+   * restart: the panel the backend keeps has it already, as it had before,
+   * and the page selects it once it arrives, so its content asks the plugin
+   * to open it again, as a shown lost tab does.
+   */
+  function lost(url: string): string {
+    const id = crypto.randomUUID()
+    lostTabs += 1
+    backend.apply({ type: 'create', tab: { id, kind: 'browser', data: { url, tab: `t${lostTabs}`, closed: true } } })
+    select(id)
     return id
   }
   /** Moves the tab `id` to `index` among the others, where the user dragged it. */
@@ -176,9 +189,6 @@ export function useGalleryWork(
     },
     panel: {
       tabs: (_conversation, kind) => tabs.tabs.value.filter((tab) => tab.kind === kind).map((tab) => tab.data),
-      add: (_conversation, kind, data, options = { select: false }) => {
-        add(kind, data, { select: options.select, index: openedTabIndex(tabs.tabs.value, shown, kind, data) })
-      },
       select: (_conversation, _kind, id) => {
         select(id)
         open.value = true
@@ -229,6 +239,7 @@ export function useGalleryWork(
     host,
     select,
     add,
+    lost,
     move,
     update,
     updatePinned,

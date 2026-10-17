@@ -175,7 +175,6 @@ const count = computed(() => ids().length)
         :pinned="pinned"
         :kinds="kinds"
         @select="work.select($event)"
-        @add-tab="(kind, data, index) => work.add(kind, data, { select: true, index })"
         @move-tab="work.move"
         @update-tab="work.update"
         @update-pinned="work.updatePinned"
