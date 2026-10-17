@@ -75,6 +75,47 @@
     "lastSeen": "上次在线",
     "none": "没有设备"
   },
+  "portForwards": {
+    "title": "端口转发",
+    "description": "让一台主机上的程序连接到另一台主机的端口，如同 ssh -L。",
+    "yours": "转发",
+    "add": "添加转发",
+    "loading": "正在载入端口转发…",
+    "none": "没有端口转发",
+    "unknownHost": "未知主机",
+    "state": {
+      "off": "关闭",
+      "chooseHost": "请选择要连接的主机。",
+      "offline": "{host} 已离线",
+      "starting": "正在启动…",
+      "portInUse": "端口 {port} 在 {host} 上已被占用",
+      "direct": "直连 · {count} 个连接",
+      "relay": "中继 · {count} 个连接",
+      "and": "，",
+      "idle": "空闲"
+    },
+    "page": {
+      "name": "名称",
+      "nameProblem": "请输入不超过 {max} 个字符的名称。",
+      "on": "开启",
+      "onDescription": "开启后，只要监听主机在线就会运行。",
+      "listenOn": "监听",
+      "connectTo": "连接到",
+      "host": "主机",
+      "listenDescription": "此主机上的程序连接 127.0.0.1 的这个端口。",
+      "port": "端口",
+      "portProblem": "请输入 1 到 65535 之间的端口。",
+      "connectDescription": "由此主机打开每个连接。",
+      "chooseHost": "选择主机",
+      "address": "地址",
+      "addressDescription": "此主机能访问的任意 host:port。",
+      "tryAgain": "重试",
+      "removeThis": "移除此转发",
+      "remove": "移除转发…",
+      "removeTitle": "移除“{name}”？",
+      "removeBody": "它会停止监听，已打开的连接将结束。"
+    }
+  },
   "keyboard": {
     "title": "键盘",
     "description": "点击“更改”，然后按下新的按键。",
@@ -256,6 +297,9 @@
       "keywords": "添加设备,配对码,认领,撤销,运行器,电脑",
       "cloudKeywords": "云端,云,重置环境",
       "storageKeywords": "磁盘,空间"
+    },
+    "portForwards": {
+      "keywords": "端口转发,隧道,ssh -L,localhost,监听,连接,ollama"
     },
     "archived": {
       "keywords": "归档,恢复,对话"

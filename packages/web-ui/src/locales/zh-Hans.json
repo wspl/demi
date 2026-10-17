@@ -173,6 +173,8 @@
     "invalid_answer_too_large": "“{field}”的值最多为 {limitBytes}。",
     "credential_not_found": "未找到凭据。",
     "credential_name_taken": "另一个凭据已使用此名称。",
+    "port_forward_name_taken": "名为“{name}”的转发已存在。",
+    "port_forward_not_found": "此端口转发已不存在。",
     "credential_fields_differ": "同名凭据的字段不同。",
     "credential_removed": "凭据已移除。",
     "passkey_expired": "通行密钥请求已过期。请重试。",

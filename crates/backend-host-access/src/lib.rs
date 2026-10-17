@@ -13,6 +13,7 @@ pub mod access;
 pub mod attachment_commands;
 pub mod directories;
 pub mod file_watch;
+pub mod forward_commands;
 pub mod host_commands;
 pub mod kept;
 pub mod lease;
@@ -105,6 +106,18 @@ pub trait HostShard {
     /// asked for, once its tree is next idle (`sessions-and-targets.md`
     /// § Switch the primary target).
     fn settle_when_idle(&self, conversation: &ConversationId);
+    /// The user's port forwards, as `demi host forward list` names them.
+    fn port_forwards(&self) -> LocalBoxFuture<'_, Result<Vec<demi_web_api_protocol::port_forwards::PortForwardDto>, String>>;
+    /// Adds a port forward from its defaults with `patch` over them.
+    fn add_port_forward(
+        &self,
+        patch: demi_web_api_protocol::port_forwards::PortForwardPatch,
+    ) -> LocalBoxFuture<'_, Result<demi_web_api_protocol::port_forwards::PortForwardDto, String>>;
+    /// Removes the port forward `id`.
+    fn remove_port_forward(
+        &self,
+        id: demi_web_api_protocol::ids::PortForwardId,
+    ) -> LocalBoxFuture<'_, Result<(), String>>;
 }
 
 /// The root node of a conversation's tree, whose id is the conversation's in

@@ -12,6 +12,12 @@
     "routeFailed": "Could Not Change the Route",
     "resetNotStarted": "The reset didn’t start. Check your connection and try again."
   },
+  "portForwards": {
+    "addFailed": "Could Not Add the Forward",
+    "saveFailed": "Could Not Change the Forward",
+    "removeFailed": "Could Not Remove the Forward",
+    "retryFailed": "Could Not Try Again"
+  },
   "plugins": {
     "turnOnFailed": "Could Not Turn the Plugin On",
     "turnOffFailed": "Could Not Turn the Plugin Off"

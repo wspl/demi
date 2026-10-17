@@ -173,6 +173,8 @@
     "invalid_answer_too_large": "「{field}」の値は {limitBytes} 以下にしてください。",
     "credential_not_found": "認証情報が見つかりませんでした。",
     "credential_name_taken": "この名前は別の認証情報で使用されています。",
+    "port_forward_name_taken": "「{name}」という名前の転送はすでに存在します。",
+    "port_forward_not_found": "このポート転送はもう存在しません。",
     "credential_fields_differ": "この名前の認証情報は項目が異なります。",
     "credential_removed": "認証情報は削除されました。",
     "passkey_expired": "パスキーのリクエストの有効期限が切れました。もう一度お試しください。",

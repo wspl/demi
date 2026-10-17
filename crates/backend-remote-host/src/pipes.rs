@@ -58,6 +58,8 @@ struct Slot {
     sink_arrived: bool,
     /// The byte channel's ends, until the ends that use them arrive.
     sender: Option<mpsc::Sender<Bytes>>,
+    /// How long its ends have to arrive.
+    arrival: Duration,
     receiver: Option<mpsc::Receiver<Bytes>>,
     core: Arc<Core>,
     deadline: watch::Sender<Option<Instant>>,
@@ -225,10 +227,16 @@ impl Pipes {
     /// A pipe whose source is `source`'s runner or, when none, named later;
     /// likewise its sink.
     pub fn mint(&self, source: Option<&str>, sink: Option<&str>) -> Pipe {
+        self.mint_within(source, sink, self.0.arrival)
+    }
+
+    /// [`Pipes::mint`], whose ends have `arrival` to arrive rather than the
+    /// pipes' own window, as a forwarded connection's do.
+    pub fn mint_within(&self, source: Option<&str>, sink: Option<&str>, arrival: Duration) -> Pipe {
         let id: Arc<str> = uuid::Uuid::new_v4().simple().to_string().into();
         let core = Core::new();
         let (sender, receiver) = mpsc::channel(1);
-        let deadline = watch::Sender::new(Some(Instant::now() + self.0.arrival));
+        let deadline = watch::Sender::new(Some(Instant::now() + arrival));
         let end =
             |device: Option<&str>| device.map_or(End::Open, |device| End::Device(device.into()));
         let watching = deadline.subscribe();
@@ -243,6 +251,7 @@ impl Pipes {
                 receiver: Some(receiver),
                 core: core.clone(),
                 deadline,
+                arrival,
             },
         );
         self.0.tasks.spawn_local(watch_arrival(
@@ -292,7 +301,7 @@ impl Pipes {
         }
         let sender = slot.sender.take().ok_or(PipeRefusal::AlreadyConnected)?;
         slot.source_arrived = true;
-        slot.update_deadline(self.0.arrival);
+        slot.update_deadline();
         Ok(DeviceSource {
             writer: PipeWriter {
                 sender: Some(sender),
@@ -311,7 +320,7 @@ impl Pipes {
         }
         let receiver = slot.receiver.take().ok_or(PipeRefusal::AlreadyConnected)?;
         slot.sink_arrived = true;
-        slot.update_deadline(self.0.arrival);
+        slot.update_deadline();
         Ok(DeviceSink {
             reader: PipeReader {
                 receiver,
@@ -373,25 +382,25 @@ impl Pipes {
     fn with_slot<T>(
         &self,
         id: &str,
-        change: impl FnOnce(&mut Slot, Duration) -> Result<T, PipeError>,
+        change: impl FnOnce(&mut Slot) -> Result<T, PipeError>,
     ) -> Result<T, PipeError> {
         let mut slots = self.0.slots.borrow_mut();
         let slot = slots.get_mut(id).ok_or(PipeError::Settled)?;
         if !slot.core.is_open() {
             return Err(PipeError::Settled);
         }
-        change(slot, self.0.arrival)
+        change(slot)
     }
 }
 
 impl Slot {
     /// The arrival window runs while an end is missing: it stops once both
     /// arrived, and starts again when an end is named anew.
-    fn update_deadline(&mut self, arrival: Duration) {
+    fn update_deadline(&mut self) {
         if self.source_arrived && self.sink_arrived {
             self.deadline.send_replace(None);
         } else if self.deadline.borrow().is_none() {
-            self.deadline.send_replace(Some(Instant::now() + arrival));
+            self.deadline.send_replace(Some(Instant::now() + self.arrival));
         }
     }
 }
@@ -453,7 +462,7 @@ impl Pipe {
 
     /// Makes this process the sink: the pipe's bytes as they come.
     pub fn reader(&self) -> Result<PipeReader, PipeError> {
-        self.pipes.with_slot(&self.id, |slot, arrival| {
+        self.pipes.with_slot(&self.id, |slot| {
             match slot.sink {
                 End::Open => slot.sink = End::Process,
                 End::Process => {}
@@ -461,7 +470,7 @@ impl Pipe {
             }
             let receiver = slot.receiver.take().ok_or(PipeError::Taken("sink"))?;
             slot.sink_arrived = true;
-            slot.update_deadline(arrival);
+            slot.update_deadline();
             Ok(PipeReader {
                 receiver,
                 core: slot.core.clone(),
@@ -474,7 +483,7 @@ impl Pipe {
     /// Makes this process the source: a writer whose writes wait until the
     /// sink takes them.
     pub fn writer(&self) -> Result<PipeWriter, PipeError> {
-        self.pipes.with_slot(&self.id, |slot, arrival| {
+        self.pipes.with_slot(&self.id, |slot| {
             match slot.source {
                 End::Open => slot.source = End::Process,
                 End::Process => {}
@@ -482,7 +491,7 @@ impl Pipe {
             }
             let sender = slot.sender.take().ok_or(PipeError::Taken("source"))?;
             slot.source_arrived = true;
-            slot.update_deadline(arrival);
+            slot.update_deadline();
             Ok(PipeWriter {
                 sender: Some(sender),
                 core: slot.core.clone(),
@@ -495,25 +504,25 @@ impl Pipe {
     /// the writer or hands the source to a device: an rpc call's standard
     /// output, whose handler may never write or may hand it on.
     pub fn hold_source(&self) -> Result<(), PipeError> {
-        self.pipes.with_slot(&self.id, |slot, arrival| {
+        self.pipes.with_slot(&self.id, |slot| {
             if slot.source != End::Open {
                 return Err(PipeError::AlreadyFixed("source"));
             }
             slot.source_arrived = true;
-            slot.update_deadline(arrival);
+            slot.update_deadline();
             Ok(())
         })
     }
 
     /// Names a device that will `GET` the pipe as its sink.
     pub fn sink_to(&self, device: &str) -> Result<(), PipeError> {
-        self.pipes.with_slot(&self.id, |slot, arrival| {
+        self.pipes.with_slot(&self.id, |slot| {
             if slot.sink != End::Open {
                 return Err(PipeError::AlreadyFixed("sink"));
             }
             slot.sink = End::Device(device.into());
             slot.sink_arrived = false;
-            slot.update_deadline(arrival);
+            slot.update_deadline();
             Ok(())
         })
     }
@@ -521,13 +530,13 @@ impl Pipe {
     /// Names a device that will `PUT` the pipe as its source, taking over a
     /// source this process held.
     pub fn source_from(&self, device: &str) -> Result<(), PipeError> {
-        self.pipes.with_slot(&self.id, |slot, arrival| {
+        self.pipes.with_slot(&self.id, |slot| {
             if slot.source != End::Open {
                 return Err(PipeError::AlreadyFixed("source"));
             }
             slot.source = End::Device(device.into());
             slot.source_arrived = false;
-            slot.update_deadline(arrival);
+            slot.update_deadline();
             Ok(())
         })
     }

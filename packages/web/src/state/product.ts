@@ -148,6 +148,8 @@ function partEvent(state: ProductState, part: Part): PartEvent {
       return { type: 'users', users: state.users ?? [] }
     case 'automations':
       return { type: 'automations', automations: state.automations, automationsUnread: state.automationsUnread }
+    case 'port_forwards':
+      return { type: 'port_forwards', portForwards: state.portForwards }
   }
   if (part.startsWith('plugin:')) {
     const plugin = part.slice('plugin:'.length)
@@ -199,6 +201,8 @@ export function withPart(state: ProductState, event: PartEvent): ProductState {
       return { ...state, users: event.users }
     case 'automations':
       return { ...state, automations: event.automations, automationsUnread: event.automationsUnread }
+    case 'port_forwards':
+      return { ...state, portForwards: event.portForwards }
   }
 }
 

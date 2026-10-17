@@ -28,6 +28,9 @@ pub struct Held {
     /// The streams opened: the operation each one's name binds, and the
     /// id its request carries.
     pub streams: Vec<(String, String)>,
+    /// The address each forward connects to, by the forward and the device
+    /// at its other end, as the runner's Connect To knows it.
+    pub forwards: BTreeMap<(String, String), std::net::SocketAddr>,
     /// How many streams the runner gave an id, which is `s` and the count.
     pub given: usize,
 }
@@ -44,6 +47,12 @@ pub struct Fake {
     /// What the runner told the backend of its streams, in order: each
     /// one's conversation, and whether it opened or closed.
     pub activity: tokio::sync::watch::Sender<Vec<(String, bool)>>,
+    /// Ends the forwarded connections the runner carries as Connect To, as
+    /// a forward turned off does.
+    pub forward_ended: tokio_util::sync::CancellationToken,
+    /// How many connections of forward `hang`, whose target never accepts,
+    /// the runner gave up on.
+    pub hung_up: tokio::sync::watch::Sender<usize>,
 }
 
 impl Default for Fake {
@@ -54,6 +63,8 @@ impl Default for Fake {
             cut_writes: tokio::sync::watch::Sender::new(0),
             watch_says: Arc::default(),
             activity: tokio::sync::watch::Sender::new(Vec::new()),
+            forward_ended: tokio_util::sync::CancellationToken::new(),
+            hung_up: tokio::sync::watch::Sender::new(0),
         }
     }
 }
@@ -256,6 +267,29 @@ impl Operations for Fake {
             held: Box::new(scopeguard(told(false))),
         };
         Box::pin(std::future::ready(activity))
+    }
+
+    fn forward(&self, forward: String, from: String) -> Answer<demi_runner_direct::Forwarded> {
+        if forward == "hang" {
+            let hung_up = self.hung_up.clone();
+            return Box::pin(async move {
+                let _counted = scopeguard(move || {
+                    hung_up.send_modify(|count| *count += 1);
+                });
+                std::future::pending().await
+            });
+        }
+        let address = self.held.lock().unwrap().forwards.get(&(forward, from)).copied();
+        let ended = self.forward_ended.clone();
+        Box::pin(async move {
+            let address = address.ok_or_else(|| {
+                ChannelError::new(ChannelErrorCode::HostOperationFailed, 404, "No such forward")
+            })?;
+            let tcp = demi_runner_direct::connect_target(&address.to_string(), &ended).await.map_err(|error| {
+                ChannelError::new(ChannelErrorCode::HostOperationFailed, 502, error.to_string())
+            })?;
+            Ok(demi_runner_direct::Forwarded { tcp, ended })
+        })
     }
 }
 

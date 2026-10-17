@@ -12,6 +12,12 @@
     "routeFailed": "無法變更連線路徑",
     "resetNotStarted": "重設未能開始。請檢查網路連線後重試。"
   },
+  "portForwards": {
+    "addFailed": "無法加入轉送",
+    "saveFailed": "無法變更轉送",
+    "removeFailed": "無法移除轉送",
+    "retryFailed": "無法再試一次"
+  },
   "plugins": {
     "turnOnFailed": "無法開啟外掛程式",
     "turnOffFailed": "無法關閉外掛程式"

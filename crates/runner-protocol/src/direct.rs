@@ -177,6 +177,28 @@ pub struct Introduction {
     pub color_scheme: ColorScheme,
 }
 
+/// Whom the backend introduces to a runner: a page of the device's owner,
+/// with what the runner needs of the user, or another runner of the owner's,
+/// by its device, for a port forward between the two
+/// (`port-forwarding.md` § The path of a connection).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Validate)]
+#[serde(
+    tag = "kind",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum Introduced {
+    Page {
+        #[garde(dive)]
+        page: Introduction,
+    },
+    Runner {
+        #[garde(length(min = 1))]
+        device: String,
+    },
+}
+
 /// Why a runner did not answer an offer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -470,6 +492,17 @@ pub struct Listed {
     pub home: Option<String>,
     pub entries: Vec<DirectoryEntry>,
     pub read_at: ReadAt,
+}
+
+/// Why the backend did not introduce a runner to the other runner of a
+/// forward: that runner refused the offer, or the two may not talk
+/// directly now, its runner not connected included.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DialRefusal {
+    Busy,
+    InvalidOffer,
+    Unavailable,
 }
 
 serde_plain::derive_display_from_serialize!(OfferRefusal);

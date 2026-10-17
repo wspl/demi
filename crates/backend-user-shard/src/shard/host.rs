@@ -122,6 +122,21 @@ impl HostShard for Shard {
     fn settle_when_idle(&self, conversation: &ConversationId) {
         Shard::settle_when_idle(self, conversation);
     }
+
+    fn port_forwards(&self) -> LocalBoxFuture<'_, Result<Vec<demi_web_api_protocol::port_forwards::PortForwardDto>, String>> {
+        Box::pin(async move { self.port_forward_list().await.map_err(|error| error.to_string()) })
+    }
+
+    fn add_port_forward(
+        &self,
+        patch: demi_web_api_protocol::port_forwards::PortForwardPatch,
+    ) -> LocalBoxFuture<'_, Result<demi_web_api_protocol::port_forwards::PortForwardDto, String>> {
+        Box::pin(async move { self.create_port_forward(patch).await.map_err(|error| error.to_string()) })
+    }
+
+    fn remove_port_forward(&self, id: demi_web_api_protocol::ids::PortForwardId) -> LocalBoxFuture<'_, Result<(), String>> {
+        Box::pin(async move { Shard::remove_port_forward(self, id).await.map_err(|error| error.to_string()) })
+    }
 }
 
 impl Shard {

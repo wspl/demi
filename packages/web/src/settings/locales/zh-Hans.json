@@ -12,6 +12,12 @@
     "routeFailed": "无法更改连接路径",
     "resetNotStarted": "重置未能开始。请检查网络连接后重试。"
   },
+  "portForwards": {
+    "addFailed": "无法添加转发",
+    "saveFailed": "无法更改转发",
+    "removeFailed": "无法移除转发",
+    "retryFailed": "无法重试"
+  },
   "plugins": {
     "turnOnFailed": "无法开启插件",
     "turnOffFailed": "无法关闭插件"

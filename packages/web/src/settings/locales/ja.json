@@ -12,6 +12,12 @@
     "routeFailed": "経路を変更できませんでした",
     "resetNotStarted": "リセットを開始できませんでした。接続を確認して、もう一度お試しください。"
   },
+  "portForwards": {
+    "addFailed": "転送を追加できませんでした",
+    "saveFailed": "転送を変更できませんでした",
+    "removeFailed": "転送を削除できませんでした",
+    "retryFailed": "再試行できませんでした"
+  },
   "plugins": {
     "turnOnFailed": "プラグインをオンにできませんでした",
     "turnOffFailed": "プラグインをオフにできませんでした"

@@ -22,7 +22,8 @@ use demi_host_interface::{
     HostError, HostErrorKind, HostIdentity, HostKey, JobCaller, ProcessEnd, ProcessOutput,
     RpcError, RpcInvocation, RpcPort, SpawnError, SpawnErrorKind,
 };
-use demi_runner_protocol::direct::{Introduction, OfferRefusal, StunUrl};
+use demi_runner_protocol::direct::{DialRefusal, Introduced, OfferRefusal, StunUrl};
+use demi_runner_protocol::forward::{Forward, ForwardRunState};
 use demi_runner_protocol::wire::{
     self, ArtifactOwner, FileRead, FsResult, GitResult, HostArtifact, Inbound, LogLine, Outbound,
     ReadAt,
@@ -126,6 +127,36 @@ pub trait LinkPolicy {
     /// connection hands its events on one after another, in the order the
     /// runner sent them.
     fn package_event(&self, event: PackageEvent) -> LocalBoxFuture<'static, ()>;
+
+    /// The runner said something of a port forward or of a peer it made
+    /// with another runner (`port-forwarding.md`), in the order it said
+    /// it; the policy answers through the link.
+    fn forward_event(&self, event: ForwardEvent);
+}
+
+/// What a runner says of the user's port forwards (`port-forwarding.md`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ForwardEvent {
+    /// What `forward` is on this runner, its Listen On, now; none once it
+    /// no longer listens.
+    State {
+        forward: String,
+        state: Option<ForwardRunState>,
+    },
+    /// A connection of `forward` that goes through the relay, which the
+    /// policy answers with [`Link::forward_opened`] under `id`.
+    Open { id: String, forward: String },
+    /// The runner asks to be introduced to `device`'s runner as peer
+    /// `peer` with its offer `sdp`; the policy answers with
+    /// [`Link::direct_dialed`] under `id`.
+    Dial {
+        id: String,
+        peer: String,
+        device: String,
+        sdp: String,
+    },
+    /// The runner's peer `peer` with another runner ended.
+    Closed { peer: String },
 }
 
 /// What a native service's package says to its plugin, through the runner.
@@ -848,7 +879,7 @@ impl Link {
         }
     }
 
-    /// Introduces a page to the runner with its offer for peer `peer`,
+    /// Introduces a page, or another runner, to the runner with its offer for peer `peer`,
     /// which replaces the peer of that id, and waits for the runner's
     /// answer; the caller bounds the wait. The runner asks the STUN servers
     /// `stun` for its public addresses; what it finds after its answer comes
@@ -857,7 +888,7 @@ impl Link {
         &self,
         peer: &str,
         sdp: String,
-        introduction: Introduction,
+        introduction: Introduced,
         stun: Vec<StunUrl>,
     ) -> Result<DirectAnswer, HostError> {
         let answer = self
@@ -920,6 +951,50 @@ impl Link {
     /// runner says of the peer has anywhere to go.
     pub fn direct_forget(&self, peer: &str) {
         self.0.state.borrow_mut().direct_peers.remove(peer);
+    }
+
+    /// The other runner's answer to this runner's `direct_dial` under `id`,
+    /// or why the backend did not introduce them.
+    pub fn direct_dialed(&self, id: String, answered: Result<String, (DialRefusal, String)>) {
+        let message = match answered {
+            Ok(sdp) => Inbound::DirectDialed { id, sdp },
+            Err((code, message)) => Inbound::DirectDialRefused { id, code, message },
+        };
+        self.post(&message);
+    }
+
+    /// Tells the runner every forward it is an end of, and the STUN
+    /// servers it asks when it offers a peer to another runner.
+    pub fn forwards(&self, forwards: Vec<Forward>, stun: Vec<StunUrl>) {
+        self.post(&Inbound::Forwards { forwards, stun });
+    }
+
+    /// Asks the runner to try `forward`'s port again.
+    pub fn forward_retry(&self, forward: &str) {
+        self.post(&Inbound::ForwardRetry {
+            forward: forward.to_owned(),
+        });
+    }
+
+    /// Hands the runner, the Connect To of `forward`, a connection on the
+    /// relay: it reads the Listen On side's bytes from `input` and writes
+    /// its own into `output`.
+    pub fn forward_connect(&self, forward: &str, input: wire::PipeRef, output: wire::PipeRef) {
+        self.post(&Inbound::ForwardConnect {
+            forward: forward.to_owned(),
+            input,
+            output,
+        });
+    }
+
+    /// Answers the runner's `forward_open` under `id`: the connection's
+    /// pipes from its side, input and output, or why it is refused.
+    pub fn forward_opened(&self, id: String, opened: Result<(wire::PipeRef, wire::PipeRef), String>) {
+        let message = match opened {
+            Ok((input, output)) => Inbound::ForwardOpened { id, input, output },
+            Err(message) => Inbound::ForwardRefused { id, message },
+        };
+        self.post(&message);
     }
 
     /// Tells the page of peer `peer` what the runner said of it; a page
@@ -1206,6 +1281,26 @@ impl Link {
                 self.tell_peer(&peer, PeerEvent::Candidate(candidate));
             }
             Outbound::DirectPong { peer, id } => self.tell_peer(&peer, PeerEvent::Pong(id)),
+            Outbound::DirectDial {
+                id,
+                peer,
+                device,
+                sdp,
+            } => self.0.policy.forward_event(ForwardEvent::Dial {
+                id,
+                peer,
+                device,
+                sdp,
+            }),
+            Outbound::DirectClosed { peer } => {
+                self.0.policy.forward_event(ForwardEvent::Closed { peer });
+            }
+            Outbound::ForwardState { forward, state } => {
+                self.0.policy.forward_event(ForwardEvent::State { forward, state });
+            }
+            Outbound::ForwardOpen { id, forward } => {
+                self.0.policy.forward_event(ForwardEvent::Open { id, forward });
+            }
             Outbound::DirectRefused { id, code, message } => {
                 let answer = Answer::Direct(DirectAnswer::Refused(code, message));
                 self.answer(&id, Expected::DirectOffer, answer);
