@@ -1603,6 +1603,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
                 original: BlobRef::of(b"before\n"),
                 modified: BlobRef::of(b"after\n"),
             }),
+            binary: false,
         }],
     };
     let (publish, barrier) = tokio::sync::oneshot::channel();
@@ -1638,6 +1639,7 @@ async fn a_command_ends_once_its_edits_are_published_and_keeps_them() {
             edits: vec![EditCopies {
                 original: Some("/copies/before".into()),
                 modified: Some("/copies/after".into()),
+                binary: false,
             }],
             added: 1,
             removed: 1,

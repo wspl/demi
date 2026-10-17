@@ -5,7 +5,8 @@
     "refresh": "更新",
     "download": "ダウンロード",
     "clear": "クリア",
-    "dismiss": "閉じる"
+    "dismiss": "閉じる",
+    "openFile": "ファイルを開く"
   },
   "reading": "読み取っています…",
   "gone": "すでに存在しません。",
@@ -184,6 +185,7 @@
     "selectFile": "変更されたファイルを選択",
     "previousNotKept": "以前の内容は保存されていません。",
     "changeNotKept": "この変更の内容は保存されていません。",
+    "binaryNotKept": "Demi が保存するのは会話で行われた変更のテキストで、画像やその他のバイナリファイルは保存しません。",
     "onNoBranch": "どのブランチにもありません",
     "committed": "コミット済み",
     "workingTree": "作業ツリー",

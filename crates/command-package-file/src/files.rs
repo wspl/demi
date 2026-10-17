@@ -50,6 +50,8 @@ pub enum FileError {
     NotMedia(u64),
     #[error("{:.1} MiB; a medium is at most 16 MiB", *.0 as f64 / (1024.0 * 1024.0))]
     TooLarge(u64),
+    #[error(transparent)]
+    Undecodable(#[from] demi_shared_types::whole_image::Undecodable),
     #[error("this conversation's model, {model}, does not read {media_type} in a tool result")]
     NotViewable { model: String, media_type: String },
     #[error(
@@ -333,6 +335,13 @@ async fn show(
             model: viewable.model.clone(),
             media_type: media_type.to_owned(),
         });
+    }
+    if media_type.starts_with("image/") {
+        let whole = bytes.clone();
+        // Decoding takes the thread for a while.
+        tokio::task::spawn_blocking(move || facts::decode_whole(&whole, media_type))
+            .await
+            .map_err(std::io::Error::other)??;
     }
     let facts = facts::facts(&bytes, media_type, name);
     context.output.medium(facts, bytes).await?;

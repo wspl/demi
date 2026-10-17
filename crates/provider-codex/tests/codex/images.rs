@@ -56,7 +56,7 @@ async fn a_generation_sends_the_asked_options_with_the_accounts_headers_and_read
     let pool = pool_with(secret(&fresh_token(), "refresh-1", NOW)).await;
     let provider = provider(&vendor, &pool, TransportMode::Sse);
     let maker = provider.images().expect("Codex makes images");
-    assert_eq!((maker.vendor(), maker.models()[0], maker.models().len()), ("ChatGPT", "gpt-image-2", 11));
+    assert_eq!((maker.vendor(), maker.default_model(), maker.models().len(), maker.confirms_model()), ("ChatGPT", "gpt-image-2", 11, false));
 
     let asked = ImageRequest {
         aspect: Some(Aspect { width: 16, height: 9 }),

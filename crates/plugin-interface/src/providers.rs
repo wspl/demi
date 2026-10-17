@@ -7,7 +7,8 @@
 use demi_shared_types::{B64Bytes, Timestamp};
 use serde::{Deserialize, Serialize};
 
-/// An image model of one of the user's entries.
+/// An image model of one of the user's entries; the list is the entries in
+/// the order of Settings › Providers, each entry's models newest first.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImageModel {
@@ -17,6 +18,18 @@ pub struct ImageModel {
     pub provider_id: String,
     /// How the user knows the vendor, such as `ChatGPT`.
     pub vendor: String,
+    /// The vendor's release date, `YYYY-MM-DD`.
+    pub released: String,
+    /// What the vendor publishes the model is for, in one line.
+    pub description: String,
+    /// The sizes or shapes it takes, and what the vendor says of its
+    /// formats.
+    pub takes: String,
+    /// Whether a call that names no model takes it.
+    pub default: bool,
+    /// Whether the entry's vendor confirms the model that answered; one
+    /// that does not, ChatGPT, is shown as asked (`images.md` § Commands).
+    pub confirmed: bool,
 }
 
 /// One image to make: from the prompt alone, or from the prompt and the
@@ -88,6 +101,9 @@ pub struct MadeImage {
     /// account is the administrator's (`providers.md` § Scope).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub account: Option<String>,
+    /// Whether the vendor confirms `model` made the image; otherwise it is
+    /// only the model asked for.
+    pub confirmed: bool,
 }
 
 /// Why no image was made (`images.md` § Accounts and failures).
@@ -124,6 +140,9 @@ pub enum ImageRefusal {
     /// The vendor refused the prompt or an image, in its own words.
     #[error("{vendor} refused the request: {message}")]
     Refused { vendor: String, message: String },
+    /// The vendor refused the shape asked for, naming the shapes it takes.
+    #[error("{vendor} takes none of the shape asked for")]
+    Shape { vendor: String, takes: Vec<String> },
     /// The account's sign-in expired and cannot be renewed; the account is
     /// named as [`MadeImage`] names it.
     #[error("the {vendor} sign-in has expired")]

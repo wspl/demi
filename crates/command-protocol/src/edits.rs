@@ -35,7 +35,8 @@ impl EditContext {
     }
 }
 
-/// The copies of one edit segment: the file before and after it.
+/// The copies of one edit segment: the file before and after it, or none
+/// with why.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(deny_unknown_fields)]
 pub struct EditCopies {
@@ -53,6 +54,11 @@ pub struct EditCopies {
     )]
     #[garde(inner(length(min = 1), custom(without_nul)))]
     pub modified: Option<String>,
+    /// No copies were kept because a side is binary ([`is_binary`]), which
+    /// edit tracking never keeps, as against a side over the limits.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(skip)]
+    pub binary: bool,
 }
 
 /// Whether an edited file existed before the job.

@@ -16,17 +16,28 @@ const GENERATE_SUMMARY: &str = "Make one image from the prompt and write its byt
 
 const EDIT_SUMMARY: &str = "Make one image from the prompt and the images given, each changed, combined or used as a reference as the prompt says, and write its bytes to stdout. Each image is a PNG, JPEG or WebP file of this Host of at most 16 MiB.";
 
-const MODELS_SUMMARY: &str = "List the image models of the user's provider entries, one per line with its entry's name, the default first. A read.";
+const MODELS_SUMMARY: &str = "List the image models of the user's provider entries, one per line: its entry's name, its release date, newest first, the default marked, what its vendor says it is for and the sizes or shapes it takes; a provider that cannot confirm which model answered says so under its models. A read.";
 
 const PROMPT: &str = "What to make, or how to change the images; - reads it from stdin.";
 const IMAGE: &str = "The images to edit, relative to the current directory or absolute.";
-const MODEL: &str = "An image model `demi image models` lists, which picks its entry; the first entry's first model without it.";
+const MODEL: &str = "An image model `demi image models` lists, which picks its entry; the first entry's default model without it.";
 const ASPECT: &str = "The shape to ask for, as W:H, such as 16:9.";
-const TRANSPARENT: &str = "Ask for a transparent background.";
+const TRANSPARENT: &str = "Ask for a transparent background, which needs PNG or WebP.";
+const FORMAT: &str = "The format of the bytes written, whatever the vendor sent; PNG without it.";
 
-const SUCCESS: &str = "the image's bytes on stdout; on stderr a line such as `1254×1254 PNG from gpt-image-2 (ChatGPT, alex@example.com)`, and a warning for each option the result does not honour";
+const SUCCESS: &str = "the image's bytes on stdout; on stderr a line such as `864×1152 PNG from grok-imagine-image (Grok, alex@example.com)`, or `1254×1254 PNG, asked of gpt-image-2 (ChatGPT, alex@example.com)` from a vendor that does not confirm the model, and a warning for each option the result does not honour";
 
-const FAILURE: &str = "no provider that makes images, a model none makes, every account used up, a refusal, an expired sign-in or a vendor that did not answer in 120 s, each named on stderr with exit status 1";
+const FAILURE: &str = "no provider that makes images, a model none makes, every account used up, a refusal, a shape the vendor does not take (with the shapes it takes), an expired sign-in or a vendor that did not answer in 120 s, each named on stderr with exit status 1";
+
+/// The format of the bytes `generate` and `edit` write.
+#[derive(Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum Format {
+    #[default]
+    Png,
+    Jpeg,
+    Webp,
+}
 
 /// The input of `generate`.
 #[derive(Deserialize, JsonSchema)]
@@ -36,6 +47,7 @@ pub(crate) struct GenerateArgs {
     pub(crate) model: Option<String>,
     pub(crate) aspect: Option<String>,
     pub(crate) transparent: Option<bool>,
+    pub(crate) format: Option<Format>,
 }
 
 /// The input of `edit`.
@@ -48,6 +60,7 @@ pub(crate) struct EditArgs {
     pub(crate) model: Option<String>,
     pub(crate) aspect: Option<String>,
     pub(crate) transparent: Option<bool>,
+    pub(crate) format: Option<Format>,
 }
 
 /// The input of `models`.
@@ -68,6 +81,16 @@ pub(crate) struct ListedModel {
     /// The entry's name as Settings shows it.
     pub(crate) provider: String,
     pub(crate) provider_id: String,
+    /// The vendor's release date, `YYYY-MM-DD`.
+    pub(crate) released: String,
+    /// What the vendor publishes the model is for.
+    pub(crate) description: String,
+    /// The sizes or shapes it takes, and what the vendor says of its
+    /// formats.
+    pub(crate) takes: String,
+    /// Whether the vendor confirms the model that answered; a call to one
+    /// that does not says `asked of` the model.
+    pub(crate) confirmed: bool,
     /// Whether a call without --model takes it.
     pub(crate) default: bool,
 }
@@ -88,6 +111,7 @@ fn image_group() -> GroupBuilder {
                 .describe("model", MODEL)
                 .describe("aspect", ASPECT)
                 .describe("transparent", TRANSPARENT)
+                .describe("format", FORMAT)
                 .positionals(["prompt"])
                 .success_output(SUCCESS)
                 .failure_output(FAILURE)
@@ -101,6 +125,7 @@ fn image_group() -> GroupBuilder {
                 .describe("model", MODEL)
                 .describe("aspect", ASPECT)
                 .describe("transparent", TRANSPARENT)
+                .describe("format", FORMAT)
                 .positionals(["prompt", "image"])
                 .success_output(SUCCESS)
                 .failure_output(format!("{FAILURE}; an image that is not a PNG, JPEG or WebP file, or is over 16 MiB, named the same way"))

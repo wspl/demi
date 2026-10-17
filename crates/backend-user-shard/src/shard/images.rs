@@ -89,22 +89,33 @@ async fn makers(shard: &Shard) -> Result<Makers, PortFailure> {
 }
 
 /// The image models of the user's entries whose Image Generation is on,
-/// the default first; when every entry that could make images is off, the
-/// refusal that says so.
+/// in the order of Settings › Providers, each entry's newest first by the
+/// vendor's release date, the first entry's default model the default
+/// (`images.md` § Commands); when every entry that could make images is
+/// off, the refusal that says so.
 pub(crate) async fn image_models(shard: &Shard) -> Result<Vec<ImageModel>, PortFailure> {
     let makers = makers(shard).await?;
     if makers.on.is_empty() && !makers.off.is_empty() {
         return Err(refused(makers.none()));
     }
     let mut models = Vec::new();
-    for maker in &makers.on {
+    for (index, maker) in makers.on.iter().enumerate() {
         let images = maker.images();
-        for model in images.models() {
+        let mut offered = images.models().to_vec();
+        // ISO dates sort as text; a sort that keeps the provider's order
+        // for one date.
+        offered.sort_by(|a, b| b.released.cmp(a.released));
+        for model in offered {
             models.push(ImageModel {
-                id: (*model).to_owned(),
+                id: model.id.to_owned(),
                 provider: maker.entry.label.clone(),
                 provider_id: maker.entry.id.as_str().to_owned(),
                 vendor: images.vendor().to_owned(),
+                released: model.released.to_owned(),
+                description: model.description.to_owned(),
+                takes: model.takes.to_owned(),
+                default: index == 0 && model.id == images.default_model(),
+                confirmed: images.confirms_model(),
             });
         }
     }
@@ -122,7 +133,7 @@ pub(crate) async fn make_image(
     cancel: &CancellationToken,
 ) -> Result<MadeImage, PortFailure> {
     let mut makers = makers(shard).await?;
-    let makes = |maker: &Maker, model: &str| maker.images().models().contains(&model);
+    let makes = |maker: &Maker, model: &str| maker.images().models().iter().any(|offered| offered.id == model);
     let (maker, model) = match &ask.model {
         Some(model) => match makers.on.iter().position(|maker| makes(maker, model)) {
             Some(index) => (makers.on.swap_remove(index), model.clone()),
@@ -142,7 +153,7 @@ pub(crate) async fn make_image(
                 return Err(refused(makers.none()));
             }
             let maker = makers.on.swap_remove(0);
-            let model = maker.images().models()[0].to_owned();
+            let model = maker.images().default_model().to_owned();
             (maker, model)
         }
     };
@@ -269,6 +280,7 @@ impl Making<'_> {
                         provider: self.entry.label.clone(),
                         vendor,
                         account: label,
+                        confirmed: maker.confirms_model(),
                     });
                 }
                 Err(failure) => failure,
@@ -373,6 +385,7 @@ fn vendor_refusal(failure: ImageFailure, vendor: String, account: Option<String>
         }
         ImageFailure::SignIn(_) => ImageRefusal::Expired { vendor, account },
         ImageFailure::Refused { message, .. } => ImageRefusal::Refused { vendor, message },
+        ImageFailure::Shape { takes, .. } => ImageRefusal::Shape { vendor, takes },
         ImageFailure::Unanswered { cause, .. } => ImageRefusal::Unanswered { vendor, cause },
         ImageFailure::UsageLimit { retry_at } => ImageRefusal::UsedUp { vendor, resets_at: retry_at },
     }

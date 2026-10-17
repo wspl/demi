@@ -14,6 +14,7 @@ import {
   requestFileSelection,
   runFiles,
   selectionCopies,
+  selectionIsBinary,
   storedRequests,
 } from '../request-changes'
 
@@ -234,5 +235,19 @@ describe('the Change view on a request’s file', () => {
     expect(editIndex(nothingKept, null)).toBe(0)
     expect(selectionCopies(nothingKept, editIndex(nothingKept, null))).toBeNull()
     expect(editIndex(file, null)).toBeNull()
+  })
+})
+
+describe('an edit whose contents were not kept', () => {
+  // Planted defect this catches: binary read from the file's name, so a ZIP
+  // or an extensionless picture says its change was simply not kept.
+  test('says it is binary by the backend’s mark, whatever the file is called', () => {
+    const file = (edits: FileEdit[]) => ({ path: 'release', kind: 'added' as const, edits: edits.map((edit) => ({ ...edit, title: 'Pack it' })) })
+    const archive = file([{ ...edit('c-1', 'release', null), binary: true }])
+    const huge = file([edit('c-1', 'big.log', null)])
+    const mixed = file([edit('c-1', 'notes', 1), { ...edit('c-2', 'notes', null), binary: true }])
+    expect([selectionIsBinary(archive, 0), selectionIsBinary(archive, null)]).toEqual([true, true])
+    expect([selectionIsBinary(huge, 0), selectionIsBinary(huge, null)]).toEqual([false, false])
+    expect([selectionIsBinary(mixed, 0), selectionIsBinary(mixed, 1), selectionIsBinary(mixed, null)]).toEqual([false, true, true])
   })
 })

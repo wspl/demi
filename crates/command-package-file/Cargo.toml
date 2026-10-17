@@ -22,7 +22,7 @@ bytes.workspace = true
 demi-shared-artifacts = { path = "../shared-artifacts" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
-demi-shared-types = { path = "../shared-types" }
+demi-shared-types = { path = "../shared-types", features = ["whole-image"] }
 demi-command-package-file-protocol = { path = "../command-package-file-protocol" }
 demi-shared-gates = { path = "../shared-gates" }
 demi-shared-cli = { path = "../shared-cli", features = ["host-allocator"] }

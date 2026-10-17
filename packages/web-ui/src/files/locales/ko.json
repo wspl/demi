@@ -5,7 +5,8 @@
     "refresh": "새로 고침",
     "download": "다운로드",
     "clear": "지우기",
-    "dismiss": "닫기"
+    "dismiss": "닫기",
+    "openFile": "파일 열기"
   },
   "reading": "읽는 중…",
   "gone": "더 이상 없습니다.",
@@ -184,6 +185,7 @@
     "selectFile": "변경된 파일 선택",
     "previousNotKept": "이전 내용이 저장되지 않았습니다.",
     "changeNotKept": "이 변경의 내용이 저장되지 않았습니다.",
+    "binaryNotKept": "Demi는 대화에서 이루어진 변경의 텍스트를 보관하며, 사진이나 기타 바이너리 파일은 보관하지 않습니다.",
     "onNoBranch": "어떤 브랜치에도 없음",
     "committed": "커밋됨",
     "workingTree": "작업 트리",

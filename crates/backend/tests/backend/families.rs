@@ -21,7 +21,7 @@ use demi_provider_common::quota::{
     Observation, ProbeCost, ProbeReading, ProviderQuota, QuotaError, QuotaSource,
 };
 use demi_provider_common::testing::{ScriptedRuntime, Turn, event};
-use demi_provider_common::images::{ImageAnswer, ImageFailure, ImageMaker, ImageRequest, MadeImage};
+use demi_provider_common::images::{ImageAnswer, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, MadeImage};
 use demi_provider_common::{
     Capabilities, CatalogError, Provider, ProviderRuntime, RuntimeEnv, RuntimeError,
 };
@@ -213,7 +213,7 @@ pub struct ScriptedSubscription {
 /// A scripted image role: its models, the image every call answers, the
 /// accounts whose calls fail as used up, and the calls it was sent.
 pub struct ImageScript {
-    pub models: &'static [&'static str],
+    pub models: &'static [ImageModelInfo],
     pub image: Mutex<bytes::Bytes>,
     pub used_up: Mutex<Vec<String>>,
     /// Whether a call waits, never answering, until it is dropped.
@@ -233,7 +233,7 @@ impl Drop for Dropped {
 }
 
 impl ImageScript {
-    pub fn new(models: &'static [&'static str], image: bytes::Bytes) -> Self {
+    pub fn new(models: &'static [ImageModelInfo], image: bytes::Bytes) -> Self {
         Self {
             models,
             image: Mutex::new(image),
@@ -261,8 +261,16 @@ impl ImageMaker for ScriptedImages {
         "Scripted"
     }
 
-    fn models(&self) -> &'static [&'static str] {
+    fn models(&self) -> &'static [ImageModelInfo] {
         self.script.models
+    }
+
+    fn default_model(&self) -> &'static str {
+        self.script.models[0].id
+    }
+
+    fn confirms_model(&self) -> bool {
+        true
     }
 
     fn make<'a>(

@@ -39,6 +39,7 @@ import {
   editRef,
   offersAllChanges,
   selectionCopies,
+  selectionIsBinary,
   type RequestEdit,
   type RequestEditRef,
 } from './request-changes'
@@ -319,13 +320,27 @@ const idleText = computed(() => {
   return workingTree.value.files.length > 0 ? t('changes.selectFile') : emptyText.value
 })
 
-/** What stands where the diff would, when the contents it needs were not kept. */
-const unkeptText = computed(() => selectedChange.value?.kind === 'deleted'
-  ? t('changes.previousNotKept')
-  : t('changes.changeNotKept'))
-
 const kind = computed(() => selectedChange.value ? previewKind(selectedChange.value.path) : 'text')
 const sourceView = computed(() => selectedChange.value !== null && hasSourceView(selectedChange.value.path))
+
+/**
+ * What stands where the diff would, when the contents it needs were not
+ * kept: a binary file's edit says why and opens the file as it is now.
+ */
+const unkept = computed(() => {
+  if (mode.value === 'conversation' && requestFile.value && selectionIsBinary(requestFile.value, editAt.value)) {
+    const opens = props.opens !== false && selectedChange.value?.kind !== 'deleted'
+    return { label: t('changes.binaryNotKept'), action: opens ? t('actions.openFile') : undefined }
+  }
+  const label = selectedChange.value?.kind === 'deleted' ? t('changes.previousNotKept') : t('changes.changeNotKept')
+  return { label, action: undefined }
+})
+
+/** Opens the selected file in the File view, as the header's button does. */
+function openSelected(): void {
+  if (selectedChange.value)
+    emit('open', selectedChange.value.path)
+}
 /** The committed side's path: a renamed file's is its old one. */
 /** A renamed file's earlier path, whose content is the diff's old side. */
 const renamedFrom = computed(() => {
@@ -502,13 +517,15 @@ const region = computed(() => {
   const current = content.value
   switch (current.phase) {
     case 'loading':
-      return { status: 'loading' as const, label: t('reading'), detail: null, requestId: null, retry }
+      return { status: 'loading' as const, label: t('reading'), detail: null, requestId: null, retry, action: undefined }
     case 'editorFailed':
-      return { status: 'failed' as const, label: editorText('unavailable'), detail: current.message, requestId: null, retry: retryEditor }
+      return { status: 'failed' as const, label: editorText('unavailable'), detail: current.message, requestId: null, retry: retryEditor, action: undefined }
     case 'failed':
-      return { status: 'failed' as const, label: t('changes.readFailed'), detail: current.message, requestId: current.requestId, retry }
+      return { status: 'failed' as const, label: t('changes.readFailed'), detail: current.message, requestId: current.requestId, retry, action: undefined }
+    case 'unavailable':
+      return { status: 'note' as const, label: unkept.value.label, detail: null, requestId: null, retry, action: unkept.value.action }
     default:
-      return { status: 'note' as const, label: current.phase === 'unavailable' ? unkeptText.value : idleText.value, detail: null, requestId: null, retry }
+      return { status: 'note' as const, label: idleText.value, detail: null, requestId: null, retry, action: undefined }
   }
 })
 /**
@@ -705,6 +722,8 @@ function pick(path: string): void {
           :detail="region.detail"
           :request-id="region.requestId"
           :on-retry="region.retry"
+          :action="region.action"
+          @action="openSelected"
         />
       </div>
       </div>

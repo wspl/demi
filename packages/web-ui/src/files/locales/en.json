@@ -5,7 +5,8 @@
     "refresh": "Refresh",
     "download": "Download",
     "clear": "Clear",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "openFile": "Open File"
   },
   "reading": "Reading…",
   "gone": "It’s no longer there.",
@@ -184,6 +185,7 @@
     "selectFile": "Select a changed file",
     "previousNotKept": "The previous contents weren’t kept.",
     "changeNotKept": "This change’s contents weren’t kept.",
+    "binaryNotKept": "Demi keeps the text of the changes a conversation makes, not pictures or other binary files.",
     "onNoBranch": "Not on any branch",
     "committed": "Committed",
     "workingTree": "Working tree",
