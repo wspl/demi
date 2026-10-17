@@ -1,33 +1,25 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
-import { DOMSerializer, Fragment, type Node as ProseMirrorNode, type Schema } from '@tiptap/pm/model'
+import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { type EditorState, Selection, type Transaction } from '@tiptap/pm/state'
-import type { EditorView } from '@tiptap/pm/view'
 import { Editor, EditorContent } from '@tiptap/vue-3'
-import { messageFileTarget } from '../../markdown/filePath'
 import { useMarkdownRenderVersion } from '../../markdown/render-version'
 import { useMessageFiles } from '../../markdown/message-files'
 import { ATTACHMENT_MARK, parseUserMarkdown, serializeUserMarkdown } from '../../markdown/user-markdown'
 import { useAutofocus } from '../../ui/autofocus'
-import { reportError } from '../../infra/errors'
-import { t } from '../locales/text'
-import { useMediaAddress } from '../media-source'
-import {
-  copiedMessageHtml,
-  messageClipboard,
-  type CopiedMessage,
-  type MessageClipboard,
-} from '../message-input/copied-message'
+import { copiedMessageHtml, messageClipboard, type CopiedMessage } from '../message-input/copied-message'
 import { capsuleOf, useTransfers, type MessageCapsule } from './capsules'
-import { composerExtensions, readOnlyExtensions, redrawDecorations } from './extensions'
+import { composerExtensions, redrawDecorations } from './extensions'
 import { fragmentDocument, markdownSlice, trimmedSlice } from './clipboard-slices'
+import { useMessageClipboard } from './message-clipboard'
+import { followMessageLink } from './message-links'
 import type { PlaceholderText } from '../../ui/ui-text'
 
 /**
- * A user message, written or shown in one editor (`composer.md` § Writing a
- * message): its Markdown formatted as it will look, each file a capsule where
- * it stands. In the composer it is typed into; in the conversation it is the
- * sent message, read-only.
+ * The composer's editor, where a user message is written (`composer.md`
+ * § Writing a message): its Markdown formatted as it will look, each file a
+ * capsule where it stands. A sent message is drawn from the same schema,
+ * without an editor (`SentMessage`).
  */
 const props = withDefaults(
   defineProps<{
@@ -35,8 +27,6 @@ const props = withDefaults(
     markdown: string
     /** Its files, in the order of their marks; the document keeps them from there on. */
     attachments?: readonly MessageCapsule[]
-    /** The composer's editor: formatting as it is typed, Enter to send, files dropped and pasted. */
-    composer?: boolean
     /** A composer that takes no typing for now, such as an edit being sent. */
     disabled?: boolean
     /** Escape ends something, such as an edit. */
@@ -106,9 +96,9 @@ const multiline = defineModel<boolean>('multiline', { default: false })
 
 const files = useMessageFiles()
 const autofocus = useAutofocus({ asked: () => props.asked })
-const editable = computed(() => !!props.composer && !props.disabled)
+const editable = computed(() => !props.disabled)
 const transfers = useTransfers()
-const mediaAddress = useMediaAddress()
+const clipboard = useMessageClipboard()
 
 /** The Markdown the editor last showed or wrote, so the same text coming back as a prop is not shown again. */
 let shown = props.markdown
@@ -116,31 +106,29 @@ let shown = props.markdown
 let landing: number | null = null
 
 const editor = new Editor({
-  extensions: props.composer
-    ? composerExtensions({
-        placeholder: () => props.placeholder,
-        submit: (otherWay) => emit('submit', otherWay),
-        cancel: () => {
-          if (props.cancelable) {
-            emit('cancel')
-          }
-          return !!props.cancelable
-        },
-        editLast: () => {
-          props.editLast?.()
-          return !!props.editLast
-        },
-        intake: {
-          carries: (id) => transfers?.carries(id) ?? false,
-          land: (at) => {
-            landing = at
-          },
-          files: (taken) => emit('files', taken),
-          message: (message, picture) => emit('message', message, picture),
-          content: insertContent,
-        },
-      })
-    : readOnlyExtensions(),
+  extensions: composerExtensions({
+    placeholder: () => props.placeholder,
+    submit: (otherWay) => emit('submit', otherWay),
+    cancel: () => {
+      if (props.cancelable) {
+        emit('cancel')
+      }
+      return !!props.cancelable
+    },
+    editLast: () => {
+      props.editLast?.()
+      return !!props.editLast
+    },
+    intake: {
+      carries: (id) => transfers?.carries(id) ?? false,
+      land: (at) => {
+        landing = at
+      },
+      files: (taken) => emit('files', taken),
+      message: (message, picture) => emit('message', message, picture),
+      content: insertContent,
+    },
+  }),
   content: parseUserMarkdown(props.markdown, props.attachments),
   editable: editable.value,
   // Formatting as it is typed and pasted text follow the dialect, not tiptap's own rules.
@@ -150,11 +138,8 @@ const editor = new Editor({
     // Read again on every update, so a composer that stops taking typing says so.
     attributes: (state) => ({
       class: 'markdown-body message-editor-text',
-      ...(props.composer ? fieldAttributes(state) : {}),
+      ...fieldAttributes(state),
     }),
-    // A sent message copies with its files (`composer.md` § Writing a message);
-    // the composer's own copy keeps ProseMirror's, which a paste in it reads.
-    handleDOMEvents: props.composer ? {} : { copy: (view, event) => copySelection(view, event) },
     // A copy, a cut or a drag holds no blank line before its first line or
     // after its last, in its HTML as in its text; ProseMirror drags the
     // copied slice, so text moved within a composer leaves such lines behind.
@@ -205,7 +190,7 @@ watch(() => [props.placeholder, props.label], () => editor.view.dispatch(editor.
 // the caret in view: the text scrolled while the composer was one line high,
 // which leaves its box at the top once it holds six.
 watch(multiline, () => {
-  if (props.composer && editor.isFocused) {
+  if (editor.isFocused) {
     editor.view.dispatch(editor.state.tr.scrollIntoView())
   }
 }, { flush: 'post' })
@@ -226,8 +211,7 @@ watch(
 
 /**
  * The composer is a text field to assistive technology, as a textarea is
- * (WAI-ARIA's textbox role): an editable element has no role of its own. A
- * sent message is content, not a field.
+ * (WAI-ARIA's textbox role): an editable element has no role of its own.
  */
 function fieldAttributes(state: EditorState): Record<string, string> {
   const attributes: Record<string, string> = {
@@ -248,9 +232,7 @@ function fieldAttributes(state: EditorState): Record<string, string> {
     attributes['aria-disabled'] = 'true'
   }
   // The product checks write in the composer by it, in any language (`browse.md`).
-  if (props.composer) {
-    attributes['data-composer'] = ''
-  }
+  attributes['data-composer'] = ''
   return attributes
 }
 
@@ -272,7 +254,7 @@ function measure(): void {
     multiline.value = true
     return
   }
-  // A sent message has no line to fit, and a composer's is unknown until it is laid out.
+  // The composer's line is unknown until it is laid out.
   const line = props.lineWidth ?? 0
   multiline.value = line > 0 && textWidth() > line + LINE_SLACK_PX
 }
@@ -318,115 +300,6 @@ function show(): void {
   editor.view.dispatch(tr)
   landing = null
   write()
-}
-
-function inCode(view: EditorView): boolean {
-  return !!view.state.selection.$from.parent.type.spec.code
-}
-
-/**
- * A copy's forms: Demi's own and plain text, and its HTML, Demi's own form an
- * attribute of its outermost element; all three hold the same lines, without
- * blank ones at the ends.
- */
-function clipboardForms(content: Fragment): { clipboard: MessageClipboard; html: string } {
-  const clipboard = messageClipboard(fragmentDocument(content))
-  const html = htmlSerializer(editor.schema).serializeFragment(Fragment.fromJSON(editor.schema, clipboard.doc.content ?? []))
-  return { clipboard, html: copiedMessageHtml(clipboard.message, html) }
-}
-
-/** The message as HTML for mail, documents and chat apps: its formatting, each picture an image, every other file its name. */
-function htmlSerializer(schema: Schema): DOMSerializer {
-  const base = DOMSerializer.fromSchema(schema)
-  return new DOMSerializer({
-    ...base.nodes,
-    attachment: (node) => {
-      const capsule = capsuleOf(node)
-      const src = capsule ? pictureAddress(capsule) : null
-      const name = capsule?.name ?? ''
-      return src ? ['img', { src, alt: name }] : ['span', name]
-    },
-  }, base.marks)
-}
-
-/** Where a capsule's picture loads from, as an address any page can follow; null for a file without one. */
-function pictureAddress(capsule: MessageCapsule): string | null {
-  const image = capsule.image
-  if (!image) {
-    return null
-  }
-  return new URL(typeof image === 'string' ? image : mediaAddress(image), document.baseURI).href
-}
-
-/**
- * The clipboard item of a copy: its forms, and the picture itself when it
- * holds a lone image, so pasting it anywhere pastes the picture.
- */
-function clipboardItem(forms: { clipboard: MessageClipboard; html: string }): ClipboardItem {
-  const image = forms.clipboard.image
-  const src = image ? pictureAddress(image) : null
-  return new ClipboardItem({
-    'text/plain': new Blob([forms.clipboard.plain], { type: 'text/plain' }),
-    'text/html': new Blob([forms.html], { type: 'text/html' }),
-    ...(src ? { 'image/png': pngOf(src) } : {}),
-  })
-}
-
-/** A picture as PNG, the one image type every web browser's clipboard takes. */
-async function pngOf(src: string): Promise<Blob> {
-  const response = await fetch(src, { credentials: 'include' })
-  if (!response.ok) {
-    throw new Error(`The picture did not load (${response.status}).`)
-  }
-  const blob = await response.blob()
-  if (blob.type === 'image/png') {
-    return blob
-  }
-  const bitmap = await createImageBitmap(blob)
-  try {
-    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
-    canvas.getContext('2d')?.drawImage(bitmap, 0, 0)
-    return await canvas.convertToBlob({ type: 'image/png' })
-  } finally {
-    bitmap.close()
-  }
-}
-
-/** Whether the page's selection runs past this message, into the answer or another message. */
-function selectionLeaves(view: EditorView): boolean {
-  const selection = view.dom.ownerDocument.getSelection()
-  if (!selection || selection.rangeCount === 0) {
-    return false
-  }
-  const range = selection.getRangeAt(0)
-  return !view.dom.contains(range.startContainer) || !view.dom.contains(range.endContainer)
-}
-
-/** A selection in a sent message copies in every form; a lone picture also as itself. */
-function copySelection(view: EditorView, event: ClipboardEvent): boolean {
-  // A selection that runs on past the message is the page's to copy, whole and
-  // in order, as any web page copies it: ProseMirror's own copy, which a
-  // handler that declines would get, holds only the part in this message.
-  if (selectionLeaves(view)) {
-    return true
-  }
-  const transfer = event.clipboardData
-  const { selection } = view.state
-  // Code copied from inside a code block is the code, as ProseMirror copies it.
-  if (selection.empty || !transfer || (selection.$from.sameParent(selection.$to) && inCode(view))) {
-    return false
-  }
-  const forms = clipboardForms(selection.content().content)
-  event.preventDefault()
-  transfer.setData('text/plain', forms.clipboard.plain)
-  transfer.setData('text/html', forms.html)
-  // A picture cannot go into the copy event's data; the asynchronous
-  // clipboard takes it, with the forms above, while the copy is a gesture.
-  if (forms.clipboard.image) {
-    void navigator.clipboard.write([clipboardItem(forms)])
-      .catch((error: unknown) => reportError(t('attachments.couldntCopyPicture'), error))
-  }
-  return true
 }
 
 /**
@@ -503,42 +376,17 @@ function dragStart(event: DragEvent): void {
   if (!slice || !transfer) {
     return
   }
-  const { clipboard } = clipboardForms(slice.content)
-  if (!clipboard.message.files.length) {
+  const forms = clipboard.forms(editor.schema, slice.content)
+  if (!forms.clipboard.message.files.length) {
     return
   }
   const html = document.createRange().createContextualFragment(transfer.getData('text/html'))
-  transfer.setData('text/html', copiedMessageHtml(clipboard.message, html))
+  transfer.setData('text/html', copiedMessageHtml(forms.clipboard.message, html))
 }
 
-/**
- * A link opens as `file-previews.md` § Files named in messages says: in the
- * conversation on a click, in the composer on ⌘/Ctrl+click, since a click
- * there places the cursor.
- */
+/** A link opens as `followMessageLink` says, in the composer on ⌘/Ctrl+click. */
 function click(event: MouseEvent): void {
-  const link = event.target instanceof Element ? event.target.closest('a[data-link]') : null
-  if (!link) {
-    return
-  }
-  const kind = link.getAttribute('data-link')
-  const target = link.getAttribute('data-target') ?? ''
-  if (kind === 'web' && !editable.value) {
-    return
-  }
-  event.preventDefault()
-  if (editable.value && !event.metaKey && !event.ctrlKey) {
-    return
-  }
-  if (kind === 'web') {
-    window.open(target, '_blank', 'noopener,noreferrer')
-    return
-  }
-  const current = files()
-  const file = kind === 'file' && current ? messageFileTarget(target, current) : null
-  if (current?.open && file !== null) {
-    current.open(file)
-  }
+  followMessageLink(event, editable.value, files())
 }
 
 defineExpose({
@@ -574,10 +422,6 @@ defineExpose({
     }
     editor.view.dispatch(editor.state.tr.replaceWith(at, at + 1, editor.schema.text(text)))
     return true
-  },
-  /** The whole message as the clipboard takes it, for its Copy control. */
-  clipboardItem(): ClipboardItem {
-    return clipboardItem(clipboardForms(editor.state.doc.content))
   },
   focus(): void {
     editor.commands.focus()

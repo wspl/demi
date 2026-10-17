@@ -2151,8 +2151,9 @@ html[data-theme="light"] .file-pill {
   border-radius: calc(var(--capsule-radius) - var(--capsule-inset));
 }
 
-/* A user message in its editor (`MessageEditor`): lines, not paragraphs, so a
-   run of text around a code block keeps only the lines typed. */
+/* A user message in its editor (`MessageEditor`), or sent (`SentMessage`):
+   lines, not paragraphs, so a run of text around a code block keeps only the
+   lines typed. */
 .message-editor-text {
   --markdown-block-gap: 0.5em;
   outline: none;
@@ -2160,6 +2161,20 @@ html[data-theme="light"] .file-pill {
 
 .message-editor-text p {
   margin: 0;
+}
+
+/* A sent message lays its text out as the editor does (tiptap's own style). */
+.sent-message {
+  position: relative;
+  word-wrap: break-word;
+  white-space: pre-wrap;
+  white-space: break-spaces;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0;
+}
+
+.sent-message pre {
+  white-space: pre-wrap;
 }
 
 .message-editor-text p.is-editor-empty:first-child::before {
