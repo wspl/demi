@@ -12,6 +12,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use demi_backend_user_shard::holds::{StepHold, WatchStep};
 use demi_backend_user_shard::shard::ShardPlacement;
 use demi_shared_types::Block;
 use demi_web_api_protocol::automations::{AutomationAnswer, AutomationDto, AutomationList, AutomationSecret, RunNote, RunState};
@@ -74,6 +75,23 @@ fn coming_minute(harness: &Harness, minutes: i64) -> (String, jiff::Timestamp) {
 /// reads.
 fn set_clock(harness: &Harness, to: jiff::Timestamp) {
     harness.clock.set(demi_shared_types::Timestamp::truncate(to));
+}
+
+/// Waits until `ended` holds `count` ends of the watch's checks, then moves
+/// the clock 61 seconds on, which makes the next check due, holds that
+/// check's end and lets these go. The clock moves only once the check has
+/// ended: one still finishing would read the moved clock as the time it
+/// tried and put the next check a minute later than the test waits for.
+/// That the output is recorded is no sign of the end, which comes after.
+async fn next_check(harness: &Harness, backend: &TestBackend, ended: StepHold, count: usize) -> StepHold {
+    use demi_shared_types::Clock;
+    ended.until_arrived(count).await;
+    let now = harness.clock.now().to_jiff();
+    set_clock(harness, now.checked_add(jiff::SignedDuration::from_secs(61)).unwrap());
+    let next = backend.hold_watches(WatchStep::Ended);
+    ended.release();
+    elapse(Duration::from_secs(61)).await;
+    next
 }
 
 // Several seconds: two runs into new conversations on a real device, across
@@ -222,6 +240,7 @@ async fn a_watch_records_first_fires_on_a_change_and_waits_for_the_next_day_at_i
     harness.shards = Some(ShardPlacement::Inline);
     let (harness, backend, master, _paired, root, _provider) = tree_on(&scripts, harness).await;
     std::fs::write(format!("{root}/price.txt"), "100\n").unwrap();
+    let ended = backend.hold_watches(WatchStep::Ended);
     let watch = created(
         &backend,
         &master,
@@ -252,10 +271,7 @@ async fn a_watch_records_first_fires_on_a_change_and_waits_for_the_next_day_at_i
     // A minute later the output changed: a run, whose message carries both.
     std::fs::write(format!("{root}/price.txt"), "120\n").unwrap();
     scripts.root(FIRST, vec![say("The X100 now costs 120.")]);
-    use demi_shared_types::Clock;
-    let now = harness.clock.now().to_jiff();
-    set_clock(&harness, now.checked_add(jiff::SignedDuration::from_secs(61)).unwrap());
-    elapse(Duration::from_secs(61)).await;
+    let ended = next_check(&harness, &backend, ended, 1).await;
     eventually("the change's run is done", || async {
         the_automation(&backend, &master).await.runs.first().is_some_and(|run| run.state == RunState::Done)
     })
@@ -269,9 +285,8 @@ async fn a_watch_records_first_fires_on_a_change_and_waits_for_the_next_day_at_i
     // shows one skipped run, and the change is found the next day.
     changed(&backend, &master, &id, json!({ "maxRunsPerDay": 1 })).await;
     std::fs::write(format!("{root}/price.txt"), "130\n").unwrap();
-    let now = harness.clock.now().to_jiff();
-    set_clock(&harness, now.checked_add(jiff::SignedDuration::from_secs(61)).unwrap());
-    elapse(Duration::from_secs(61)).await;
+    // The limit, not a check, holds back the command from here on.
+    next_check(&harness, &backend, ended, 1).await.release();
     eventually("the limit's run is listed", || async {
         the_automation(&backend, &master).await.runs.first().is_some_and(|run| run.state == RunState::Skipped)
     })
@@ -841,6 +856,7 @@ async fn a_check_its_command_was_edited_under_records_nothing() {
     let mut harness = Harness::new();
     harness.shards = Some(ShardPlacement::Inline);
     let (harness, backend, master, _paired, root, _provider) = tree_on(&scripts, harness).await;
+    let ended = backend.hold_watches(WatchStep::Ended);
     let watch = created(
         &backend,
         &master,
@@ -869,15 +885,14 @@ async fn a_check_its_command_was_edited_under_records_nothing() {
     })
     .await;
     std::fs::write(format!("{root}/go"), "").unwrap();
-    // The next check finds the same output: nothing fired.
+    // The next check, once both have ended, finds the same output: nothing
+    // fired.
     let (_, at) = recorded(&harness, &id);
-    use demi_shared_types::Clock;
-    let now = harness.clock.now().to_jiff();
-    set_clock(&harness, now.checked_add(jiff::SignedDuration::from_secs(61)).unwrap());
-    elapse(Duration::from_secs(61)).await;
+    let ended = next_check(&harness, &backend, ended, 2).await;
     eventually("the next check is recorded", || async { recorded(&harness, &id).1 != at }).await;
     assert_eq!(recorded(&harness, &id).0.as_deref(), Some(&b"100\n"[..]));
     assert!(the_automation(&backend, &master).await.runs.is_empty());
+    ended.release();
     backend.close().await;
 }
 
@@ -890,6 +905,7 @@ async fn a_change_before_the_last_16_kb_of_the_output_fires() {
     let (harness, backend, master, _paired, root, _provider) = tree_on(&scripts, harness).await;
     let tail = "x".repeat(20 * 1024);
     std::fs::write(format!("{root}/big.txt"), format!("A{tail}")).unwrap();
+    let ended = backend.hold_watches(WatchStep::Ended);
     let watch = created(
         &backend,
         &master,
@@ -907,14 +923,12 @@ async fn a_change_before_the_last_16_kb_of_the_output_fires() {
     eventually("the first check is recorded", || async { recorded(&harness, &id).0.is_some() }).await;
     std::fs::write(format!("{root}/big.txt"), format!("B{tail}")).unwrap();
     scripts.root(FIRST, vec![say("it changed")]);
-    use demi_shared_types::Clock;
-    let now = harness.clock.now().to_jiff();
-    set_clock(&harness, now.checked_add(jiff::SignedDuration::from_secs(61)).unwrap());
-    elapse(Duration::from_secs(61)).await;
+    let ended = next_check(&harness, &backend, ended, 1).await;
     eventually("the change's run is done", || async {
         the_automation(&backend, &master).await.runs.first().is_some_and(|run| run.state == RunState::Done)
     })
     .await;
+    ended.release();
     backend.close().await;
 }
 

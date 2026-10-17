@@ -198,6 +198,12 @@ impl Shard {
             if let Some(done) = done {
                 done.disarm();
             }
+            #[cfg(feature = "testing")]
+            shard
+                .services()
+                .watches
+                .pass(crate::holds::WatchStep::Ended)
+                .await;
             shard.rearm_automations();
         });
     }

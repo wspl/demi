@@ -1,7 +1,8 @@
 //! A test's hold on a flow at one of its steps, for the scenarios that race
 //! something against a flow while it waits: the runners' hellos
-//! (`HelloStep`), the pages' synchronization channels (`SyncStep`) and a
-//! failed turn's resume at its retry time (`RetryStep`). From
+//! (`HelloStep`), the pages' synchronization channels (`SyncStep`), a
+//! failed turn's resume at its retry time (`RetryStep`) and a change
+//! watch's check (`WatchStep`). From
 //! `StepHolds::hold` until the hold is released or dropped, whatever passes
 //! the held step waits there.
 
@@ -112,4 +113,12 @@ pub enum RetryStep {
     /// The resume found the shard open and goes on to read the preference
     /// and open the tree: a close that begins now waits for it.
     Started,
+}
+
+/// Where a change watch's check waits while a test holds it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WatchStep {
+    /// The check is over: it recorded what it found and when it tried, and
+    /// no longer counts as under way; the scheduler has not looked again.
+    Ended,
 }
