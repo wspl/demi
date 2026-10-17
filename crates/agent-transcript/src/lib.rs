@@ -19,7 +19,7 @@ pub use compaction::{
     summary_text,
 };
 pub use cut::{
-    CutError, ForkEnd, ResumePoint, Rewind, before_user, fork_prefix, last_answer, last_failure,
+    CutError, ForkEnd, ResumePoint, Rewind, before_user, ended_turn, ended_turn_answer, fork_prefix, last_answer, last_failure,
     last_assistant_text, last_turn, resume_point, rewind, turn_record, unwind,
 };
 pub use ids::{IdSource, RandomIds};

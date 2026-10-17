@@ -1,6 +1,16 @@
+import {
+  OPEN_CONVERSATION,
+  WORDS_CACHE,
+  WORDS_KEY,
+  notificationWordsSchema,
+  productPage,
+  pushedNotification,
+  type NotificationWords,
+} from './notifications'
+
 /**
  * The page's one service worker, served from the root so that its scope is
- * the whole origin. It has two jobs:
+ * the whole origin. It has three jobs:
  *
  * - The direct channel's raw requests (`direct-channel.md` § Bytes the
  *   browser fetches itself): a `GET` of a conversation's raw file route,
@@ -12,9 +22,15 @@
  *   when the network fails, is answered with the page of the build that
  *   last ran; that build's hashed files are kept as its pages fetch them
  *   and answered from the cache. One build is kept.
+ * - Push notifications (`turns.md` § Notifications): it shows every push
+ *   the backend sends, worded from the words the page left it, since a
+ *   browser shows one of its own for a push that shows none, or ends the
+ *   subscription, and one whose words cannot be read still shows; a click
+ *   on one opens its conversation, in a page of the product that is open,
+ *   never a share's, or a new one.
  *
  * It answers nothing else from a cache: not `build.json`, the API, the
- * sockets or a share's page. It is a module that imports nothing.
+ * sockets or a share's page. It imports only what needs no page.
  */
 
 declare const self: ServiceWorkerGlobalScope
@@ -111,6 +127,58 @@ self.addEventListener('message', (event) => {
     return
   event.waitUntil(Promise.all([setClientBuild(source.id, Promise.resolve(said.build)), ran(said.build, said.files)]))
 })
+
+self.addEventListener('push', (event) => {
+  event.waitUntil(showPush(event.data))
+})
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const conversationId = conversationOf(event.notification.data)
+  if (conversationId)
+    event.waitUntil(openConversation(conversationId))
+})
+
+/** Shows the push `data` carries; one that does not read still shows, as every push must. */
+async function showPush(data: PushMessageData | null): Promise<void> {
+  let message: unknown = null
+  try {
+    message = data?.json() ?? null
+  } catch (error) {
+    console.error('A push is not JSON', error)
+  }
+  const shown = await pushedNotification(message, words)
+  await self.registration.showNotification(shown.title, shown.options)
+}
+
+/** The words the page left; none before it left any, or when they do not read. */
+async function words(): Promise<NotificationWords | null> {
+  const kept = await (await caches.open(WORDS_CACHE)).match(WORDS_KEY)
+  if (!kept)
+    return null
+  const parsed = notificationWordsSchema.safeParse(await kept.json().catch(() => null))
+  return parsed.success ? parsed.data : null
+}
+
+/** The conversation a notification's data names. */
+function conversationOf(data: unknown): string | null {
+  return isRecord(data) && typeof data.conversationId === 'string' ? data.conversationId : null
+}
+
+/**
+ * Opens the conversation in a page of the product: the focused one, else
+ * one that is visible, else any open one, brought forward, which opens it
+ * as a click of its own would; else a new one.
+ */
+async function openConversation(conversationId: string): Promise<void> {
+  const page = productPage(await self.clients.matchAll({ type: 'window', includeUncontrolled: true }))
+  if (!page) {
+    await self.clients.openWindow(`/chat/${encodeURIComponent(conversationId)}`)
+    return
+  }
+  page.postMessage({ type: OPEN_CONVERSATION, conversationId })
+  await page.focus()
+}
 
 /**
  * Whether a navigation to `path` is one of the app's pages, which the
@@ -361,4 +429,3 @@ function readNext(value: unknown): Next | null {
   return null
 }
 
-export {}

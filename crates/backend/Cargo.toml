@@ -83,6 +83,11 @@ url = { version = "2", features = ["serde"] }
 reqwest = { workspace = true, features = ["rustls"], optional = true }
 
 [dev-dependencies]
+# The notification scenarios' stand-in push service, and the browsers'
+# keys it decrypts each message with.
+axum = "0.8"
+base64.workspace = true
+web-push-native = "0.5"
 demi-agent-server = { path = "../agent-server", features = ["testing"] }
 demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-agent-store = { path = "../agent-store", features = ["testing"] }

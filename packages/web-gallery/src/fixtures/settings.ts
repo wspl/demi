@@ -818,6 +818,9 @@ export function createSettingsState() {
       permission: 'default' as NotificationPermission,
       /** What the stand-in browser answers when it is asked. */
       answer: 'granted' as 'granted' | 'denied',
+      agentNotifies: true,
+      /** The stand-in browser is Safari on an iPhone, outside the Home Screen, which cannot push. */
+      iphone: false,
     },
     account: {
       name: 'Alex',

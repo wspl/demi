@@ -85,6 +85,29 @@ function serviceWorker(): Plugin {
 }
 
 /**
+ * Demi's Apple touch icon, which `index.html` and the manifest name at
+ * `/icons/apple-touch-icon.png`: the app icon `web-ui` keeps, its one
+ * source, served there by the development server and emitted there by the
+ * build.
+ */
+function appleTouchIcon(): Plugin {
+  const source = resolve(import.meta.dirname, '../web-ui/src/assets/app-icon.png')
+  const fileName = 'icons/apple-touch-icon.png'
+  return {
+    name: 'demi-apple-touch-icon',
+    configureServer(server) {
+      server.middlewares.use(`/${fileName}`, (_request, response) => {
+        response.setHeader('content-type', 'image/png')
+        response.end(readFileSync(source))
+      })
+    },
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName, source: readFileSync(source) })
+    },
+  }
+}
+
+/**
  * Keeps the page's hot-update socket on the development server itself,
  * even for a page loaded through a forwarder in front of it, as `bun browse`
  * loads it (`browse.md` § The slot's servers): Vite reloads a page whose
@@ -122,7 +145,7 @@ function sharedPage(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [vue(), tailwindcss(), webBuild(), serviceWorker(), directHotUpdates(), sharedPage()],
+  plugins: [vue(), tailwindcss(), webBuild(), serviceWorker(), appleTouchIcon(), directHotUpdates(), sharedPage()],
   // The repository's `.env` carries the local development account
   // (`DEMI_DEV_EMAIL`, `DEMI_DEV_PASSWORD`); the sign-in page fills it in
   // during development only.

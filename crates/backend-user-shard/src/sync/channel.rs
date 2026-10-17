@@ -2,9 +2,11 @@
 //! § Page synchronization): registered for changes before it reads the
 //! product state, it sends that state, then waits for marks and sends each
 //! marked part as it is when the channel takes it, and a heartbeat once its
-//! page socket has been silent for the heartbeat interval. It ends with its
-//! session, at shutdown, when the page sends anything, and when a part cannot
-//! be read.
+//! page socket has been silent for the heartbeat interval. It keeps what the
+//! page says it shows, which holds back the session's notifications of that
+//! conversation while the channel lives. It ends with its session, at
+//! shutdown, when the page sends anything else, and when a part cannot be
+//! read.
 
 use std::collections::BTreeSet;
 use std::convert::Infallible;
@@ -15,9 +17,11 @@ use demi_backend_database::accounts::TokenHash;
 use demi_backend_page_sync::{Part, Registration};
 use demi_shared_types::Timestamp;
 use demi_web_api_protocol::auth::{Role, UserDto};
-use demi_web_api_protocol::state::SyncEvent;
+use demi_web_api_protocol::sessions::SessionId;
+use demi_web_api_protocol::state::{PageShowing, SyncEvent};
 use futures_util::StreamExt as _;
 
+use crate::conversation::notifications::PageShows;
 use crate::shard::page_socket::{PageSocketOrigin, open_page_socket};
 use crate::shard::{PageEnd, PageGone, PageSocket, PageStream, Shard};
 
@@ -27,6 +31,7 @@ const SESSION_ENDED: u16 = 4002;
 /// The session a page's channel or conversation socket opened with: its
 /// token's hash, its user, and when it expires unless a request renews it.
 pub struct ChannelSession {
+    pub id: SessionId,
     pub token: TokenHash,
     pub user: UserDto,
     pub expires_at: Timestamp,
@@ -37,7 +42,7 @@ pub struct ChannelSession {
 enum End {
     /// The backend shuts down.
     BackendClosing,
-    /// The page sent a message.
+    /// The page sent a message that is not what it shows.
     UnexpectedMessage,
     /// A part could not be read.
     InternalError,
@@ -89,6 +94,9 @@ impl Shard {
         let end = if self.is_closing() {
             End::BackendClosing
         } else {
+            // What the page shows holds back the session's notifications
+            // of it until the channel ends.
+            let shows = self.notifications().page(session.id.clone());
             let mut channel = Channel {
                 registration: self
                     .services()
@@ -101,7 +109,7 @@ impl Shard {
             tokio::select! {
                 biased;
                 () = self.closed() => End::BackendClosing,
-                end = page_ends(&mut from_page) => end,
+                end = page_messages(&self, &mut from_page, &shows) => end,
                 end = channel.serve() => match end {
                     Ok(never) => match never {},
                     Err(end) => end,
@@ -293,12 +301,22 @@ impl Channel<'_> {
     }
 }
 
-/// Reads the page's side of the socket until it ends: the page sends
-/// nothing, so any message ends the channel.
-async fn page_ends(from_page: &mut PageStream) -> End {
+/// Reads the page's side of the socket until it ends: the page sends only
+/// what it shows, which `shows` keeps, and any other message ends the
+/// channel.
+#[cfg_attr(not(feature = "testing"), expect(unused_variables, reason = "the shard holds a test's channels"))]
+async fn page_messages(shard: &Shard, from_page: &mut PageStream, shows: &PageShows) -> End {
     loop {
         match from_page.next().await {
-            Some(Ok(Message::Text(_) | Message::Binary(_))) => return End::UnexpectedMessage,
+            Some(Ok(Message::Text(text))) => match serde_json::from_str::<PageShowing>(&text) {
+                Ok(PageShowing { showing }) => {
+                    shows.set(showing);
+                    #[cfg(feature = "testing")]
+                    shard.services().syncs.pass(super::SyncStep::Showing).await;
+                }
+                Err(_) => return End::UnexpectedMessage,
+            },
+            Some(Ok(Message::Binary(_))) => return End::UnexpectedMessage,
             Some(Ok(Message::Ping(_) | Message::Pong(_))) => {}
             Some(Ok(Message::Close(_)) | Err(_)) | None => return End::PageGone,
         }

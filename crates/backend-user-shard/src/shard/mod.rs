@@ -10,6 +10,7 @@ mod adoption;
 pub(crate) use adoption::PlayedHost;
 pub(crate) mod agent_profiles;
 pub(crate) mod credential_commands;
+pub(crate) mod notify_commands;
 pub mod credentials;
 #[cfg(test)]
 pub(crate) use self::adoption::PlayedRunner;
@@ -61,6 +62,7 @@ use crate::conversation::claude_cli::{ClaudeCli, ClaudeMachine};
 use crate::conversation::pending::PendingWatches;
 use crate::conversation::project_files::ProjectFiles;
 use crate::conversation::host_back_resume::HostBackResumes;
+use crate::conversation::notifications::Notifications;
 use crate::conversation::retry_resume::RetryResumes;
 use crate::conversation::search::SearchIndexer;
 use crate::conversation::titles::Titles;
@@ -155,6 +157,9 @@ pub struct Shard {
     /// What each conversation's root waits for of a device that left its
     /// turn.
     host_back_resumes: HostBackResumes,
+    /// The turns its conversations' trees work on, and the agents' own
+    /// notifications, for the user's push notifications.
+    pub(crate) notifications: Notifications,
 }
 
 impl Shard {
@@ -220,6 +225,7 @@ impl Shard {
             credential_expiry: credentials::CredentialExpiry::default(),
             retry_resumes: RetryResumes::default(),
             host_back_resumes: HostBackResumes::default(),
+            notifications: Notifications::default(),
         }
     }
 

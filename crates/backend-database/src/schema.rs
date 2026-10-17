@@ -246,7 +246,8 @@ ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cl
 
 /// From 0.1.22's control schema to the current one: a usage ledger row may
 /// be an image's (`images.md` § Accounts and failures), which SQLite's
-/// checks let in only on a table made again, its rows as they were.
+/// checks let in only on a table made again, its rows as they were; and
+/// each browser's push subscription is kept (`turns.md` § Notifications).
 const CONTROL_FROM_0_1_22: &str = "
 CREATE TABLE usage_ledger_images (
   id                    TEXT PRIMARY KEY,
@@ -277,6 +278,23 @@ INSERT INTO usage_ledger_images SELECT * FROM usage_ledger ORDER BY rowid;
 DROP TABLE usage_ledger;
 ALTER TABLE usage_ledger_images RENAME TO usage_ledger;
 CREATE INDEX usage_ledger_user ON usage_ledger (user_id, ended_at);
+-- A browser's push subscription of a user (turns.md § Notifications), one
+-- per session, which it serves and which takes it along when it ends: its
+-- push service's endpoint, which names the browser's subscription, its two
+-- keys and the events it chose.
+CREATE TABLE push_subscriptions (
+  session_id       TEXT PRIMARY KEY REFERENCES web_sessions (id) ON DELETE CASCADE,
+  endpoint         TEXT NOT NULL UNIQUE,
+  user_id          TEXT NOT NULL REFERENCES users (id),
+  p256dh           TEXT NOT NULL,
+  auth             TEXT NOT NULL,
+  turn_finishes    INTEGER NOT NULL CHECK (turn_finishes IN (0, 1)),
+  turn_fails       INTEGER NOT NULL CHECK (turn_fails IN (0, 1)),
+  needs_permission INTEGER NOT NULL CHECK (needs_permission IN (0, 1)),
+  agent_notifies   INTEGER NOT NULL CHECK (agent_notifies IN (0, 1)),
+  created_at       INTEGER NOT NULL
+) STRICT;
+CREATE INDEX push_subscriptions_of_user ON push_subscriptions (user_id);
 ";
 
 /// From 0.1.22-dev.20261016T043704Z's control schema, which a server keeps
@@ -2770,6 +2788,24 @@ CREATE TABLE web_sessions (
 ) STRICT;
 CREATE INDEX web_sessions_expiry ON web_sessions (expires_at);
 CREATE INDEX web_sessions_of_user ON web_sessions (user_id, created_at);
+
+-- A browser's push subscription of a user (turns.md § Notifications), one
+-- per session, which it serves and which takes it along when it ends: its
+-- push service's endpoint, which names the browser's subscription, its two
+-- keys and the events it chose.
+CREATE TABLE push_subscriptions (
+  session_id       TEXT PRIMARY KEY REFERENCES web_sessions (id) ON DELETE CASCADE,
+  endpoint         TEXT NOT NULL UNIQUE,
+  user_id          TEXT NOT NULL REFERENCES users (id),
+  p256dh           TEXT NOT NULL,
+  auth             TEXT NOT NULL,
+  turn_finishes    INTEGER NOT NULL CHECK (turn_finishes IN (0, 1)),
+  turn_fails       INTEGER NOT NULL CHECK (turn_fails IN (0, 1)),
+  needs_permission INTEGER NOT NULL CHECK (needs_permission IN (0, 1)),
+  agent_notifies   INTEGER NOT NULL CHECK (agent_notifies IN (0, 1)),
+  created_at       INTEGER NOT NULL
+) STRICT;
+CREATE INDEX push_subscriptions_of_user ON push_subscriptions (user_id);
 
 -- Each user's one handoff code and one sign-in code, by the SHA-256 of the
 -- code, with the path it opens; a sign-in code is made by an administrator

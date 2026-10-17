@@ -97,7 +97,7 @@
       "title": "Browser",
       "label": "Browser notifications",
       "blocked": "Blocked in this browser’s site settings.",
-      "thisBrowser": "On this browser only.",
+      "thisBrowser": "On this browser only. They come even with Demi closed.",
       "unsupported": "This browser doesn’t support notifications."
     },
     "when": {
@@ -105,7 +105,17 @@
       "turnFinishes": "A turn finishes",
       "turnFails": "A turn fails",
       "needsPermission": "Demi needs permission",
-      "turnOnFirst": "Turn on browser notifications first."
+      "turnOnFirst": "Turn on browser notifications first.",
+      "agentNotifies": "The agent notifies"
+    },
+    "homeScreen": {
+      "title": "To get notifications on iPhone, add Demi to your Home Screen",
+      "share": "Tap Share in Safari’s toolbar.",
+      "add": "Choose Add to Home Screen.",
+      "open": "Open Demi from your Home Screen, and turn on notifications there.",
+      "ok": "OK",
+      "row": "Add Demi to your Home Screen to get notifications",
+      "howTo": "How to Add"
     }
   },
   "passkeys": {
@@ -213,7 +223,9 @@
       "browserKeywords": "notify",
       "finishesKeywords": "done,complete",
       "failsKeywords": "error",
-      "permissionKeywords": "permission request"
+      "permissionKeywords": "permission request",
+      "agentKeywords": "demi notify,agent notification,push",
+      "homeScreenKeywords": "home screen,iphone,ipad,add to home screen"
     },
     "agentPage": {
       "keywords": "small model,title,fast model,haiku,flash,turn",

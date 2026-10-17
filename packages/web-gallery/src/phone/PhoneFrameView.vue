@@ -243,6 +243,12 @@ onMounted(async () => {
     case 'settings':
       settingsOpen.value = true
       break
+    case 'notifications':
+      // Safari on an iPhone, outside the Home Screen: turning notifications on shows how to add Demi there.
+      settings.notifications.iphone = true
+      settingsTab.value = 'notifications'
+      settingsOpen.value = true
+      break
   }
 })
 </script>

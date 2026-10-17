@@ -16,8 +16,10 @@ demi-conversation-socket-protocol = { path = "../conversation-socket-protocol" }
 demi-command-protocol = { path = "../command-protocol" }
 demi-shared-types = { path = "../shared-types" }
 demi-runner-protocol = { path = "../runner-protocol" }
+base64.workspace = true
 garde.workspace = true
 jiff.workspace = true
+p256 = { version = "0.13", default-features = false, features = ["arithmetic"] }
 regex = "1"
 schemars.workspace = true
 serde.workspace = true

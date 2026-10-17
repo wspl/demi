@@ -381,6 +381,9 @@ pub struct BackendConfig {
     /// system's, for a test's HTTPS servers.
     #[cfg(feature = "testing")]
     pub web_roots: Vec<reqwest::Certificate>,
+    /// Where push messages go instead of the internet's push services.
+    #[cfg(feature = "testing")]
+    pub push_transport: Option<std::sync::Arc<dyn demi_backend_accounts::push::PushTransport>>,
 }
 
 impl BackendConfig {
@@ -431,6 +434,8 @@ impl BackendConfig {
             object_counts: None,
             #[cfg(feature = "testing")]
             web_roots: Vec::new(),
+            #[cfg(feature = "testing")]
+            push_transport: None,
         }
     }
 }

@@ -140,6 +140,32 @@ can sign in without a verification email; this flow proves the new address
 when an existing account changes it. Registration and password recovery are
 not provided.
 
+## Push notifications
+
+`GET /api/push/key` answers `{ publicKey }`, the backend's VAPID public key,
+which the page subscribes with
+([Notifications](turns.md#notifications)). `PUT /api/push/subscription`
+takes `{ endpoint, keys: { p256dh, auth }, events: { turnFinishes,
+turnFails, needsPermission, agentNotifies } }` and keeps it for the
+session, one per session, replacing what the session had; the page sends it
+when notifications are turned on and when a switch changes. `DELETE
+/api/push/subscription` removes the session's and answers 204, when the
+browser turns notifications off. Neither reaches another session's
+subscription: an endpoint another live session holds answers 409
+`push_endpoint_taken`.
+
+A browser's subscription serves one session. The page unsubscribes the
+browser at sign-out, and a session that finds the browser subscribed by
+another session makes a new subscription before it sends one, so a push
+queued for an account before it signed out is never shown after another
+signs in: the browser drops what comes for an ended subscription. Signing
+out, the session expiring or an administrator ending it removes the
+session's subscription, and one the push service answers 404 or 410 for is
+removed too. An endpoint is accepted only as an `https` URL whose host
+resolves to public addresses, checked again as each send connects, and a
+send follows no redirect, so a subscription cannot make the backend call
+into its own network.
+
 ## User preferences
 
 `GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastWorkflow?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, resumeWhenHostBack?, multiAccountWarned?, hiddenProviders?, hiddenModels?, smallModel?, smallModelSameProvider? } }`

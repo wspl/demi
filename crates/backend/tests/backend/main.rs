@@ -49,6 +49,7 @@ mod isolation;
 mod lifetime;
 mod machines;
 mod native;
+mod notifications;
 mod offline;
 mod organize;
 mod outputs;

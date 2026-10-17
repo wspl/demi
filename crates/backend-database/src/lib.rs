@@ -29,6 +29,7 @@ pub mod permissions;
 pub mod plugin_secrets;
 pub mod plugin_values;
 pub mod providers;
+pub mod push;
 pub mod references;
 pub mod running;
 pub mod saved;

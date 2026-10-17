@@ -377,6 +377,7 @@ pub(super) async fn stream(
         ..client.origin(PageSocketKind::Conversation, user.id.clone())
     };
     let session = ChannelSession {
+        id: session.id,
         token: session.token,
         user: user.clone(),
         expires_at: session.expires_at,

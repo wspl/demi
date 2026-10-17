@@ -45,7 +45,18 @@ export class TestChannel extends EventTarget {
     this.dispatchEvent(new Event('open'))
   }
 
-  send(event: SyncEvent): void {
+  /** What the page sent on it, each message parsed. */
+  readonly fromPage: unknown[] = []
+
+  /**
+   * With text, the page sends it, as on the web browser's socket; with an
+   * event, the backend sends it to the page.
+   */
+  send(event: SyncEvent | string): void {
+    if (typeof event === 'string') {
+      this.fromPage.push(JSON.parse(event))
+      return
+    }
     this.deliver(event)
   }
 

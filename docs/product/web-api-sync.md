@@ -18,8 +18,13 @@ to whatever reads it, so an upgrade from a page that is not the product's
 answers 403 `forbidden_origin` ([Authentication](web-api.md#authentication)). A request
 that is not an upgrade answers 426 `upgrade_required`.
 
-After the upgrade, the backend sends JSON text messages, each a `SyncEvent`,
-and the page sends none. The first message is the whole product state; each
+After the upgrade, the backend sends JSON text messages, each a `SyncEvent`.
+The page sends one kind, `{ showing }`: the id of the conversation it shows
+while it is focused and visible, or null, each time that changes. The backend
+keeps it with the connection and forgets it when the connection ends, and
+sends no [push notification](../product/turns.md#notifications) of a
+conversation to the browser of a session while any connection of that
+session shows it. The first message is the whole product state; each
 later one is the current value of one part of it that changed:
 
 | Message | Carries | Sent when |
