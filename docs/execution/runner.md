@@ -41,7 +41,13 @@ the Host's operating system with its release, such as `Ubuntu 26.04` or
 projects](../product/conversations.md#conversations-and-projects)), its
 architecture, such as `x86_64`, and, read once at the
 runner's start without a shell, its kernel's name and release (`uname -s`,
-`uname -r`) and the `SHELL` of its environment, which the Claude Code
+`uname -r`), `autostartUnavailable`, why the device will not start the
+runner by itself after a restart, an object tagged by its `cause`
+(`noSystemd`, `noUserManager`, `notWritten`, `lingerOff`, `refused`,
+`unusableName`, `unknownAccount`) with the path, the user or the system's
+error the cause names, null when it will
+([Starting with the computer](#starting-with-the-computer)), and the
+`SHELL` of its environment, which the Claude Code
 provider's session snapshot takes ([The session a process
 resumes](../providers/claude-code.md#the-session-a-process-resumes)). The backend keeps them
 and the runner's version on the device record, which Settings shows, and the
@@ -336,6 +342,95 @@ one before that, and the home directory written as `~`, or as
 `powershell -ExecutionPolicy Bypass -File '<installation>\run.ps1' start`, so
 the default execution policy does not refuse it).
 
+### Starting with the computer
+
+A paired device comes back by itself: Alex restarts his MacBook for a system
+update, logs in, and the laptop is online in Demi again before he opens a
+browser, as Dropbox or Tailscale would be; a runner that crashes is started
+again by itself. Nobody runs `run start` for either.
+
+The runner keeps itself registered with the computer's service manager for
+its user, the one each system offers without administrator rights:
+
+| System | Registration | Starts | Started again |
+| --- | --- | --- | --- |
+| macOS | A LaunchAgent, `~/Library/LaunchAgents/sh.demi.runner.<id>.plist`, in the user's `gui` domain | At the user's login | After a crash or a non-zero exit, `KeepAlive` with `SuccessfulExit` false: at once, and 10 s apart when it ends again within 10 s of starting |
+| Linux | A systemd user unit, `~/.config/systemd/user/demi-runner-<id>.service`, `WantedBy=default.target`, with lingering turned on for the user (`loginctl enable-linger`) | At boot with lingering; at the user's first login without it | `Restart=on-failure`, `RestartSec=10` |
+| Windows | A scheduled task with a logon trigger for the user, named by the user's SID, run with the user's limited rights and hidden; the `HKCU\…\Run` value when the system refuses the task | At the user's logon | The task's restart on failure, after a minute, the shortest Task Scheduler takes; not with the `Run` value |
+
+A service manager gives the runner its own small environment, not a
+terminal's: on macOS `PATH` is `/usr/bin:/bin:/usr/sbin:/sbin` and `SHELL`
+and `LANG` are unset, and the user's `PATH`, Homebrew's, nvm's, bun's, lives
+in zsh's files, which a job's login shell, reading the bash ones, never
+reads. So the device environment comes from the user's login shell, not
+from whoever started the runner ([Host operations](#host-operations)), the
+same after a restart as from a terminal. On macOS `LANG`, which Terminal
+sets and no profile does, the runner sets itself when the shell leaves it
+unset: the user's language and region with UTF-8, `zh_CN.UTF-8` for Chinese
+(China); when the system has no such locale, such as `en_CN`, the first it
+has of the same language, else `en_US.UTF-8`; without a UTF-8 `LANG`, `ls`
+and `git` print a non-ASCII file name as question marks.
+
+`<id>` is the installation's directory name, so runners of several backends
+on one computer are registered apart; Windows keeps every user's tasks in
+one folder, so the task's name also carries the user's SID. Each registration runs the
+installation's launcher, `<installation>/run run --log`, never a release's
+binary, so it outlives every update; the runner writes its own log, and the
+service manager's output goes nowhere. On macOS the agent's process type is
+`Interactive`, which the system does not throttle.
+
+- **The runner keeps it.** Every runner, at each start, makes sure its
+  registration exists and names this installation, and writes it when it
+  does not; so an installation from before this rule gains it at its next
+  update, and a person who deleted the file has it back at the next start.
+  Writing it may start a second runner at once, which finds the lock held
+  and exits as below. The installer starts the runner as before and leaves
+  the registration to it.
+- **Exit status decides a restart.** A runner exits 0 when nothing would
+  come of starting it again: stopped, drained, removed, its device no longer
+  paired (it logs the removal command, as now), another runner of the
+  installation holding the lock, or a state no start can change, such as a
+  saved configuration or token it cannot read or a backend that is not the
+  one it was paired with, each logged. It exits non-zero only on a failure
+  a new start may cure. So a revoked device or a second copy never loops.
+- **The manager's runner is the one that runs.** A runner the manager did
+  not start, the installer's or an update's successor on Windows, hands
+  over once its registration works: it releases the lock, asks the manager
+  to start the installation's runner, and exits 0; the manager names its
+  own with `DEMI_SUPERVISED` in the registration's environment, so its
+  runner never hands over. So a runner is supervised from the first minute
+  after the install and after every update, and a crash before the next
+  login is recovered too. Where the manager refuses, the runner goes on
+  unsupervised and says so as below.
+- **`run start` asks the service manager** when the registration exists
+  (`launchctl kickstart`, `systemctl --user start`, the task's start), so
+  the runner it starts is the manager's, and spawns the runner itself only
+  where there is none.
+- **Removal removes it.** `run uninstall` and a revocation the runner
+  receives remove the registration as the runner's last step, after the
+  directory, so the service manager never starts a runner that is gone.
+- **Where none can be made**, such as Linux without a systemd user manager
+  (most containers, WSL without systemd) or a Windows that refuses both, the
+  runner runs as before and says so in its log and its hello: *This device
+  will not start Demi by itself after a restart: <reason>.* Lingering the
+  system refuses to turn on is said the same way, with the command that
+  turns it on, `sudo loginctl enable-linger <user>`, since without it the
+  runner starts only at a login. The installer shows the line, and Devices
+  shows it on the device, so the user learns it before a restart, not
+  after.
+
+On macOS a runner the LaunchAgent starts answers for its own access to the
+user's protected folders, Desktop, Documents and Downloads, and to what
+the user allowed only Terminal; a runner started from a terminal answers
+through the terminal. macOS remembers such a grant for the program's
+designated requirement, so the release workflow signs the runner with
+Demi's own code-signing certificate, the same in every release, with the
+identifier `sh.demi.runner`; an ad hoc signature names the build's hash,
+and the system would ask again after every update. The certificate is
+self-signed: it is not for Gatekeeper, which never checks the runner, since
+the installer and the update download it with curl, which marks no file as
+quarantined.
+
 `run uninstall` removes the runner of one backend from the device:
 
 1. It asks the backend, when it can reach it, to revoke the device, so the
@@ -518,7 +613,12 @@ Raw process environment selection follows these rules:
 | `env` with `inheritEnv: true` | Overlay supplied values on the device environment. |
 | Null value in an overlay | Remove that inherited variable. |
 
-The device environment is the runner's own environment without the names
+The device environment is the user's login environment: at its start the
+runner runs the account's login shell, `SHELL` or the account's entry when
+unset, as an interactive login shell, `-i -l -c`, and takes the environment
+it prints, as VS Code resolves a shell's environment; a shell that fails or
+takes over 10 s leaves the runner's own environment, and the log says so.
+From that it takes away the names
 that begin with `DEMI_` and, on Windows, those that begin with `=`, the
 hidden per-drive directories such as `=C:` that cmd keeps and no program may
 be given back; Windows' `Path` is the shell's `PATH`. Those configure the runner, such as

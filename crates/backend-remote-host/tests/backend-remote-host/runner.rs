@@ -1660,9 +1660,11 @@ async fn a_busy_native_command_blocks_neither_the_runner_nor_its_abort_and_a_sec
         .await
         .expect("a second runner ends")
         .unwrap();
-    assert_eq!(second.status.code(), Some(1));
+    // Nothing comes of starting it again, so a service manager does not
+    // (`runner.md` § Starting with the computer).
+    assert_eq!(second.status.code(), Some(0));
     assert!(
-        String::from_utf8_lossy(&second.stderr).contains("already active"),
+        String::from_utf8_lossy(&second.stderr).contains("another runner of this installation is running"),
         "{second:?}"
     );
     shell.abort(&spinning.command_id).await.unwrap();

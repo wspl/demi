@@ -9,7 +9,9 @@ use std::path::{Path, PathBuf};
 use std::process::Output;
 use std::time::Duration;
 
-use demi_backend_remote_host::testing::{DetachedRunners, runner_binary};
+use demi_backend_remote_host::testing::{
+    DetachedRunners, login_shell_stand_in, runner_binary, service_manager_stand_in,
+};
 use demi_command_protocol::{TARGETS, VERSION, host_target};
 use demi_provider_common::testing::MockVendor;
 use demi_runner_protocol::release::{
@@ -242,6 +244,11 @@ impl Installations {
         shell
             .env("HOME", self.home.path())
             .env("DEMI_RUNNER_NAME", DEVICE)
+            .env(
+                demi_runner_protocol::SERVICE_MANAGER_STAND_IN,
+                service_manager_stand_in(self.home.path()),
+            )
+            .env("SHELL", login_shell_stand_in(self.home.path()))
             .env_remove("DEMI_INSTALLATION_ID");
         shell
     }
@@ -448,6 +455,38 @@ async fn pairs(
         String::from_utf8_lossy(&errors)
     );
     printed
+}
+
+/// An installer shows why the device will not start its runner by itself
+/// after a restart, as its runner says it (`runner.md` § Starting with the
+/// computer); here the directory of the runner's registration is a file.
+// Several seconds: the installer downloads this build's runner (170 MB)
+// and starts it.
+#[cfg(any(target_os = "macos", target_os = "linux"))]
+#[tokio::test]
+async fn an_installer_shows_why_the_device_will_not_start_its_runner_by_itself() {
+    let releases = Releases::new(runner_binary());
+    releases.publish("initial");
+    let harness = Harness::new().with_runner_releases(releases.path());
+    let (backend, master) = harness.start_set_up().await;
+    let installations = Installations::new();
+    let state = installations.state(&format!("{}/", backend.url));
+    let registrations = if cfg!(target_os = "macos") {
+        installations.home.path().join("Library/LaunchAgents")
+    } else {
+        installations.home.path().join(".config/systemd/user")
+    };
+    std::fs::create_dir_all(registrations.parent().unwrap()).unwrap();
+    std::fs::write(&registrations, "not a directory").unwrap();
+    let printed = installations.install(&backend, &master).await;
+    let shown = printed
+        .lines()
+        .find_map(|line| line.strip_prefix("This device will not start Demi by itself after a restart: "))
+        .unwrap_or_else(|| panic!("{printed}"));
+    assert!(shown.contains("could not be written"), "{printed}");
+    says_paired(&printed, &state);
+    drop(installations);
+    backend.close().await;
 }
 
 /// The installation's active runner: its endpoint and its release.
@@ -1052,6 +1091,7 @@ async fn ask_socket(
             shell: None,
             managed: None,
             installation: None,
+            autostart_unavailable: None,
         },
         instance: 1,
         jobs: Vec::new(),

@@ -4351,7 +4351,7 @@ test('moving a conversation into a project on its Host shows the project at once
   const product = useProduct()
   const cloud = productState({ devices: [{
     id: 'cloud', name: 'Cloud', kind: 'managed', platform: 'linux', claimedAt: '2026-09-10T00:00:00.000Z', lastSeenAt: null,
-    state: 'online', home: null, installed: [], startCommand: null, os: null, runnerVersion: null, downloadPercent: null, mark: null, route: 'automatic',
+    state: 'online', home: null, installed: [], startCommand: null, autostartUnavailable: null, os: null, runnerVersion: null, downloadPercent: null, mark: null, route: 'automatic',
   }] }).devices
   product.read = {
     ...product.read!,

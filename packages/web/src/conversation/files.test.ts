@@ -34,7 +34,7 @@ function laptop(name: string) {
     state: 'offline' as const,
     home: '/home/ada',
     installed: [],
-    startCommand: null,
+    startCommand: null, autostartUnavailable: null,
     os: null,
     runnerVersion: null, downloadPercent: null,
     mark: { logo: 'tux' as const, number: 1 },

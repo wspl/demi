@@ -49,7 +49,7 @@ beforeEach(() => {
       state: 'online',
       home: '/Users/ada',
       installed: [],
-      startCommand: null,
+      startCommand: null, autostartUnavailable: null,
       os: null,
       runnerVersion: null, downloadPercent: null,
       mark: { logo: 'apple', number: index + 1 },

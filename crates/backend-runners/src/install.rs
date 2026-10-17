@@ -12,7 +12,7 @@
 
 use std::path::Path;
 
-use demi_runner_protocol::console::{PAIRED, PAIRING_CODE, REMOVAL};
+use demi_runner_protocol::console::{HANDED_OVER, NO_AUTOSTART, PAIRED, PAIRING_CODE, REMOVAL};
 use demi_runner_protocol::release::{ReleaseError, RunnerRelease};
 use demi_runner_protocol::wire::RunnerPlatform;
 use demi_web_api_protocol::devices::InstallCommands;
@@ -220,6 +220,8 @@ pub fn shell_script(backend: &Url, release: &RunnerRelease) -> String {
         .replace("@PAIRING@", &sh(PAIRING_CODE))
         .replace("@PAIRED@", &sh(PAIRED))
         .replace("@REMOVAL@", &sh(REMOVAL))
+        .replace("@NO_AUTOSTART@", &sh(NO_AUTOSTART))
+        .replace("@HANDED_OVER@", &sh(HANDED_OVER))
         .replace("@CASES@", &cases.join("\n"))
 }
 
@@ -250,6 +252,8 @@ pub fn powershell_script(backend: &Url, release: &RunnerRelease) -> String {
         .replace("@PAIRING@", &powershell(PAIRING_CODE))
         .replace("@PAIRED@", &powershell(PAIRED))
         .replace("@REMOVAL@", &powershell(REMOVAL))
+        .replace("@NO_AUTOSTART@", &powershell(NO_AUTOSTART))
+        .replace("@HANDED_OVER@", &powershell(HANDED_OVER))
         .replace("@ARTIFACTS@", &artifacts.join("\n"))
 }
 
@@ -262,6 +266,8 @@ base=@BASE@
 pairing_prefix=@PAIRING@
 paired_prefix=@PAIRED@
 removal_prefix=@REMOVAL@
+no_autostart_prefix=@NO_AUTOSTART@
+handed_over=@HANDED_OVER@
 case "$(uname -s):$(uname -m)" in
   Darwin:arm64) target=aarch64-apple-darwin ;;
   Darwin:x86_64) target=x86_64-apple-darwin ;;
@@ -400,13 +406,14 @@ fi
 # while this installer waits for pairing.
 trap - EXIT
 cleanup
-# Shows the runner's log as pairing goes: each pairing code the runner
+# Shows the runner's log as pairing goes: why the device will not start the
+# runner by itself, when it will not, each pairing code the runner
 # receives, then the device's name and the removal command once it is
 # paired. Only complete lines are read; of the codes read at once, only the
 # last is still live.
 # Reads the complete lines of the file "$1" from byte $seen on and moves
-# $seen past them, keeping the last code, name and removal command they
-# name.
+# $seen past them, keeping the last code, name, removal command and reason
+# they name.
 read_lines() {
   size=$(size_of "$1")
   lines=0
@@ -421,6 +428,8 @@ read_lines() {
         "$pairing_prefix"*) code=${line#"$pairing_prefix"} ;;
         "$paired_prefix"*) name=${line#"$paired_prefix"} ;;
         "$removal_prefix"*) removal=${line#"$removal_prefix"} ;;
+        "$no_autostart_prefix"*) unstarted=${line#"$no_autostart_prefix"} ;;
+        "$handed_over"*) [ -n "$handed" ] || handed=$(date +%s) ;;
       esac
     done <<CHUNK
 $chunk
@@ -429,6 +438,11 @@ CHUNK
 }
 begin=$seen
 shown=
+unstarted=
+# When the runner this installer started handed over to the service
+# manager's (runner.md § Starting with the computer), from which on the
+# installation's own status says whether a runner runs.
+handed=
 while :; do
   code=
   name=
@@ -444,6 +458,10 @@ while :; do
   fi
   previous_size=$previous_now
   read_lines "$log"
+  if [ -n "$unstarted" ]; then
+    printf 'This device will not start Demi by itself after a restart: %s\n' "$unstarted"
+    unstarted=
+  fi
   if [ -n "$removal" ]; then
     printf 'Paired as %s\nTo remove this runner, run: %s\n' "$name" "$removal"
     exit 0
@@ -458,8 +476,23 @@ while :; do
   fi
   if [ -n "$pid" ]; then
     alive=$(kill -0 "$pid" 2>/dev/null && echo yes || echo no)
-  else
+    # It may have handed over after the log was read; the lines stay for
+    # the next round to read.
+    if [ "$alive" = no ] && [ -z "$handed" ] && [ -f "$log" ] &&
+      tail -c +"$((begin + 1))" "$log" | grep -qF "$handed_over"; then
+      handed=$(date +%s)
+    fi
+    if [ -n "$handed" ]; then
+      pid=
+    fi
+  fi
+  if [ -z "$pid" ]; then
     alive=$("$state/run" status >/dev/null 2>&1 && echo yes || echo no)
+    # The manager's runner takes the installation a moment after the
+    # handover.
+    if [ "$alive" = no ] && [ -n "$handed" ] && [ $(($(date +%s) - handed)) -lt 15 ]; then
+      alive=yes
+    fi
   fi
   if [ "$alive" = no ]; then
     echo 'The runner stopped:' >&2
@@ -481,6 +514,11 @@ $demiRegistration = @REGISTRATION@
 $demiPairingPrefix = @PAIRING@
 $demiPairedPrefix = @PAIRED@
 $demiRemovalPrefix = @REMOVAL@
+$demiNoAutostartPrefix = @NO_AUTOSTART@
+$demiHandedOver = @HANDED_OVER@
+# When the runner this installer started handed over to the service
+# manager's (runner.md § Starting with the computer).
+$demiHanded = $null
 $demiArtifacts = @{
 @ARTIFACTS@
 }
@@ -662,7 +700,10 @@ try {
       [IO.File]::WriteAllText($demiBackendFile, $demiBackend + [Environment]::NewLine, $demiUtf8)
       [IO.File]::WriteAllText((Join-Path $demiState 'release-id'), $demiRelease + [Environment]::NewLine, $demiUtf8)
       $demiLauncher = @'
-param([ValidateSet('run', 'start', 'status', 'drain', 'uninstall')][string]$Action = 'run')
+param(
+  [ValidateSet('run', 'start', 'status', 'drain', 'uninstall')][string]$Action = 'run',
+  [Parameter(ValueFromRemainingArguments)][string[]]$Rest = @()
+)
 $ErrorActionPreference = 'Stop'
 $demiState = $PSScriptRoot
 $demiBackend = [IO.File]::ReadAllText((Join-Path $demiState 'backend-url')).Trim()
@@ -672,7 +713,7 @@ $demiPreviousRelease = $env:DEMI_RELEASE_ID
 try {
   $env:DEMI_HOME = $demiState
   $env:DEMI_RELEASE_ID = $demiRelease
-  & (Join-Path $demiState "releases/$demiRelease/demi-runner.exe") $Action --backend $demiBackend
+  & (Join-Path $demiState "releases/$demiRelease/demi-runner.exe") $Action --backend $demiBackend @Rest
   $demiExit = $LASTEXITCODE
 } finally {
   $env:DEMI_HOME = $demiPreviousHome
@@ -736,6 +777,10 @@ exit $demiExit
           $demiName = $demiLine.Substring($demiPairedPrefix.Length)
         } elseif ($demiLine.StartsWith($demiRemovalPrefix)) {
           $demiRemoval = $demiLine.Substring($demiRemovalPrefix.Length)
+        } elseif ($demiLine.StartsWith($demiHandedOver)) {
+          if (-not $demiHanded) { $demiHanded = [DateTime]::UtcNow }
+        } elseif ($demiLine.StartsWith($demiNoAutostartPrefix)) {
+          Write-Output ('This device will not start Demi by itself after a restart: ' + $demiLine.Substring($demiNoAutostartPrefix.Length))
         }
       }
     }
@@ -752,7 +797,16 @@ exit $demiExit
       }
       $demiShown = $demiCode
     }
-    $demiAlive = if ($demiProcess) { -not $demiProcess.HasExited } else { (Invoke-DemiControl 'status') -eq 0 }
+    # The runner it started may have handed over after the log was read.
+    if ($demiProcess -and $demiProcess.HasExited -and -not $demiHanded) {
+      $demiTail = [Text.Encoding]::UTF8.GetString((Read-DemiLog $demiLog $demiBegin))
+      if ($demiTail.Contains($demiHandedOver)) { $demiHanded = [DateTime]::UtcNow }
+    }
+    $demiAlive = if ($demiProcess -and -not $demiHanded) {
+      -not $demiProcess.HasExited
+    } else {
+      ((Invoke-DemiControl 'status') -eq 0) -or ($demiHanded -and ([DateTime]::UtcNow - $demiHanded).TotalSeconds -lt 15)
+    }
     if (-not $demiAlive) {
       throw ('The runner stopped:' + [Environment]::NewLine + [Text.Encoding]::UTF8.GetString((Read-DemiLog $demiLog $demiBegin)))
     }

@@ -6,6 +6,7 @@ import type { Component } from 'vue'
 import type { ModelSettings } from '../agent/model-selection'
 import type { TagTone } from '../ui/Tag.vue'
 import type { SentenceText, TitleText } from '../ui/ui-text'
+import type { AutostartUnavailable } from '../devices/autostart'
 import type { DeviceMark } from '../devices/mark'
 import type { DeviceState } from '../devices/state'
 import type { DirectStatus } from '../devices/direct'
@@ -107,6 +108,11 @@ export interface SettingsDevice extends DeviceReport {
   seen?: string
   /** How to start its runner again; its page's header gives it while it is offline. */
   start?: DeviceStart | null
+  /**
+   * Why it will not start its runner by itself after a restart, as its
+   * runner last said; its page's header gives it. Null when it does.
+   */
+  autostartUnavailable?: AutostartUnavailable | null
   /** The device's home directory, which a location under it is written from as `~`. */
   home?: string | null
   /** When it was paired, as an ISO 8601 timestamp. */

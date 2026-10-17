@@ -90,7 +90,8 @@ impl ReadBlob for NoBlobs {
 /// 0.1.22-dev.20261016T095626Z's, before each account had the size of its
 /// Cloud disks, 0.1.22's, before a ledger row could be an image's, and
 /// 0.1.25's, which 0.1.23 and 0.1.24 shipped too, before an entry had its
-/// Image Generation switch.
+/// Image Generation switch and a device why it will not start its runner by
+/// itself.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -252,9 +253,12 @@ ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cl
 
 /// From 0.1.25's control schema to the current one: an entry whose
 /// provider makes images has an Image Generation switch, on for every entry
-/// stored before (`providers.md` § Provider management).
+/// stored before (`providers.md` § Provider management); a device keeps why
+/// it will not start its runner by itself, which no device stored before
+/// has said (`runner.md` § Starting with the computer).
 const CONTROL_FROM_0_1_25: &str = "
 ALTER TABLE providers ADD COLUMN image_generation INTEGER NOT NULL DEFAULT 1 CHECK (image_generation IN (0, 1));
+ALTER TABLE devices ADD COLUMN autostart_unavailable TEXT;
 ";
 
 /// From 0.1.22's control schema to 0.1.25's: a usage ledger row may
@@ -572,7 +576,7 @@ DELETE FROM permission_requests WHERE kind = 'permission'
     for (id, owner, path) in moving {
         let id = demi_web_api_protocol::ids::ConversationId::try_from(id.as_str()).map_err(corrupt)?;
         let owner = demi_web_api_protocol::ids::UserId::try_from(owner).map_err(corrupt)?;
-        let cloud = crate::devices::cloud_device_in(transaction, &owner, now).map_err(storage)?;
+        let cloud = crate::devices::cloud_device_before_0_1_25_in(transaction, &owner, now).map_err(storage)?;
         let selected = crate::selection::select_directory(transaction, &id, &cloud, &path, now)
             .map_err(storage)?
             .map_err(|reason| corrupt_text(&format!("a Cloud directory is unselectable: {reason:?}")))?;
@@ -3053,7 +3057,12 @@ CREATE TABLE devices (
   -- The home its runner last reported (sessions-and-targets.md § Resolve a
   -- target); none before its runner first reported one since the release
   -- that began keeping it.
-  home TEXT
+  home TEXT,
+  -- Why the device will not start its runner by itself after a restart, as
+  -- its runner last reported it, JSON, autostart reason format 1, the
+  -- runner wire's `AutostartUnavailable` (runner.md § Starting with the
+  -- computer); none when it does, or before its runner first said.
+  autostart_unavailable TEXT
 ) STRICT;
 CREATE UNIQUE INDEX devices_one_machine ON devices (user_id, machine) WHERE kind = 'managed';
 
@@ -6523,6 +6532,35 @@ mod tests {
             .query_row("SELECT image_generation FROM providers WHERE id = 'entry-1'", [], |row| row.get(0))
             .unwrap();
         assert!(on);
+    }
+
+    /// A device stored by 0.1.25 keeps its record and has said nothing yet
+    /// of starting its runner by itself (`runner.md` § Starting with the
+    /// computer), which its runner's next hello records.
+    /// Planted defect this catches: a migration that leaves the column out,
+    /// so reading any device of an upgraded server fails.
+    /// One small database, milliseconds.
+    #[test]
+    fn a_device_of_0_1_25_has_said_nothing_of_starting_by_itself() {
+        let (_directory, path, mut connection) =
+            database(include_str!("schema/control-0.1.25.sql"));
+        connection
+            .execute_batch(
+                "INSERT INTO users (id, email, nickname, password_hash, role, created_at)
+                   VALUES ('user-1', 'a@example.test', 'A', 'hash', 'master', 1);
+                 INSERT INTO devices (id, user_id, kind, name, platform, claimed_at)
+                   VALUES ('device-1', 'user-1', 'user', 'laptop', 'darwin', 1);",
+            )
+            .unwrap();
+        CONTROL.apply(&mut connection, &path, &NoBlobs).unwrap();
+        let (name, said): (String, Option<String>) = connection
+            .query_row(
+                "SELECT name, autostart_unavailable FROM devices WHERE id = 'device-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!((name.as_str(), said), ("laptop", None));
     }
 
     #[test]

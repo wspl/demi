@@ -25,7 +25,7 @@ use demi_backend_remote_host::{
     socket_frame,
 };
 use demi_host_interface::{HostIdentity, HostKey};
-use demi_runner_protocol::wire::{self, HostArtifact, Inbound, OperatingSystem};
+use demi_runner_protocol::wire::{self, AutostartUnavailable, HostArtifact, Inbound, OperatingSystem};
 use demi_runner_protocol::values::BackendUrl;
 use demi_web_api_protocol::devices::{DeviceDto, DeviceKind, DeviceLogo, DeviceMark, DeviceState};
 use demi_web_api_protocol::ids::{DeviceId, UserId};
@@ -488,12 +488,11 @@ impl Devices {
         link: Link,
         driver: LinkDriver,
         seen: DeviceRecorder,
-        installation: Option<String>,
-        target: Option<String>,
+        reported: Reported,
     ) -> Serving {
         let slot = self.slot(device);
-        slot.installation.replace(installation);
-        slot.target.replace(target);
+        slot.installation.replace(reported.installation);
+        slot.target.replace(reported.target);
         slot.link.send_replace(DeviceLink::Online(link.clone()));
         tracing::info!(device = %device, "runner connected");
         Serving {
@@ -546,6 +545,7 @@ impl Devices {
             runner_version: device.runner_version,
             route: device.route,
             start_command,
+            autostart_unavailable: device.autostart_unavailable,
         }
     }
 
@@ -606,6 +606,15 @@ impl Devices {
             tracing::warn!(error = &error as &dyn std::error::Error, "the devices the shutdown disconnected were not recorded");
         }
     }
+}
+
+/// What a device's runner reported in its hello that the backend keeps for
+/// the device while it runs.
+pub struct Reported {
+    /// Its installation directory.
+    pub installation: Option<String>,
+    /// The target whose executables it runs.
+    pub target: Option<String>,
 }
 
 /// A bound connection, served over its socket by the task that adopted it.
@@ -715,7 +724,8 @@ impl DeviceRecorder {
     }
 
     /// Records what `device`'s runner said in its hello: its operating
-    /// system, its release, its instance and its home, and that it was
+    /// system, its release, its instance, its home and why it will not
+    /// start by itself after a restart, and that it was
     /// connected just now, and advances the execution contexts the report
     /// changes (`sessions-and-targets.md` § Resolve a target). Answers the
     /// directories the runner resolves before a paired device's first home
@@ -728,10 +738,11 @@ impl DeviceRecorder {
         version: String,
         instance: u64,
         home: String,
+        autostart_unavailable: Option<AutostartUnavailable>,
     ) -> Option<FirstHome> {
         let first = match self
             .control
-            .set_device_runner(device.clone(), os, version, instance, home)
+            .set_device_runner(device.clone(), os, version, instance, home, autostart_unavailable)
             .await
         {
             Ok(first) => first,
