@@ -9,7 +9,7 @@ use demi_runner_protocol::files::SubscriptionKind;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use demi_shared_types::Nullable;
+use demi_shared_types::{Nullable, ReadAt};
 
 use crate::files::AbsolutePath;
 
@@ -67,4 +67,18 @@ pub struct WatchSubject {
 #[serde(deny_unknown_fields)]
 pub struct WorkflowsQuery {
     pub directory: AbsolutePath,
+    /// See [`ReadAfterQuery`].
+    #[serde(default, rename = "readAfter", deserialize_with = "crate::query::read_at")]
+    pub read_after: Option<ReadAt>,
+}
+
+/// `?readAfter=<epoch>.<number>` of `GET /conversations/:id/workflows`:
+/// the answer must have been read at that number or later, as the page's
+/// watch went live there; the backend searches again when what it keeps
+/// was read before it.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ReadAfterQuery {
+    #[serde(default, rename = "readAfter", deserialize_with = "crate::query::read_at")]
+    pub read_after: Option<ReadAt>,
 }

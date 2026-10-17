@@ -182,7 +182,7 @@ pub(super) async fn workflows(
         .of(&user.id)
         .call(move |shard, _| async move {
             shard
-                .device_workflows(&device.id, query.directory.as_str())
+                .device_workflows(&device.id, query.directory.as_str(), query.read_after.as_ref())
                 .await
                 .map_err(|refusal| match refusal {
                     DeviceWorkflowsRefusal::Offline => ApiError::device_offline(),

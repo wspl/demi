@@ -47,6 +47,7 @@ impl ProjectFiles {
                         Ok(found)
                     })
                 }),
+                |_| None,
                 subscribe(shard.clone()),
             )
         };
@@ -65,6 +66,7 @@ impl ProjectFiles {
                         })
                     })
                 }),
+                |found| Some(&found.read_at),
                 subscribe(shard.clone()),
             )
         };
@@ -100,6 +102,7 @@ impl ProjectFiles {
                         })
                     })
                 }),
+                |_| None,
                 subscribe(shard.clone()),
             )
         };
