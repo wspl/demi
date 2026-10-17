@@ -142,7 +142,7 @@ not provided.
 
 ## User preferences
 
-`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastWorkflow?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, multiAccountWarned?, hiddenProviders?, hiddenModels?, smallModel?, smallModelSameProvider? } }`
+`GET /api/settings/preferences` returns `{ preferences: { appearance, shortcuts, lastModel?, lastWorkflow?, lastProjectHost?, language?, locale?, contextLimits?, sendWhileRunning?, resumeAtRetry?, resumeAfterRestart?, resumeWhenHostBack?, multiAccountWarned?, hiddenProviders?, hiddenModels?, smallModel?, smallModelSameProvider? } }`
 for the signed-in user. These objects contain saved overrides; absent values use
 the web app's defaults. `PATCH` accepts any subset of appearance fields
 (`theme`, `tone`, `accent`, `fontSize`) and shortcut keys (`new`, `sidebar`,
@@ -155,10 +155,13 @@ itself at that time ([The unfinished turn](../agent/failures-and-recovery.md#the
 absent means `false`. `resumeAfterRestart` is whether a turn a
 deployment, an upgrade or a restart interrupted goes on by itself once the
 backend is back ([The unfinished turn](../agent/failures-and-recovery.md#the-unfinished-turn));
-absent means `true`. `multiAccountWarned` is true once the user went on
+absent means `true`. `resumeWhenHostBack` is whether a turn its offline
+Host left goes on by itself once that Host is back, once
+([A Host that was away](../agent/failures-and-recovery.md)); absent means
+`true`. `multiAccountWarned` is true once the user went on
 past the dialog about using several subscription accounts
 ([Account rotation](../providers/providers.md#account-rotation)), which
-then never shows again. Settings › Agent shows `sendWhileRunning`, `resumeAfterRestart` as *Resume after Demi
+then never shows again. Settings › Agent shows `sendWhileRunning`, `resumeWhenHostBack` as *Resume when a device is back online*, `resumeAfterRestart` as *Resume after Demi
 restarts* and `resumeAtRetry` as *Resume after a usage
 limit resets*, and so does the error record of such a failure, as *Resume at
 09:00* ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)). `smallModel` is the model settings Settings › Agent chose for small jobs, `{ providerId, modelId, thinkingEffort }`, absent for Automatic, and `smallModelSameProvider` whether small requests stay on the conversation's provider, absent means `false` ([Small model](../providers/models.md#small-model)). `hiddenProviders`, provider entry ids, and `hiddenModels`,
