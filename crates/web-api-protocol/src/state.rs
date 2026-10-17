@@ -67,6 +67,9 @@ pub struct ProductState {
     pub instructions: String,
     /// The user's credentials in name order, without their values.
     pub credentials: Vec<CredentialDto>,
+    /// The user's port forwards, oldest first, each with what its Listen On
+    /// runner last announced of it.
+    pub port_forwards: Vec<crate::port_forwards::PortForwardDto>,
     /// The user's automations, newest first, each with its latest runs.
     pub automations: Vec<AutomationDto>,
     /// The runs that notified and whose conversation the user has not
@@ -195,6 +198,12 @@ pub enum SyncEvent {
     /// credentials, without their values.
     Credentials {
         credentials: Vec<CredentialDto>,
+    },
+    /// A port forward was added, changed or removed, or its Listen On
+    /// runner announced a new state of it: the user's forwards.
+    PortForwards {
+        #[serde(rename = "portForwards")]
+        port_forwards: Vec<crate::port_forwards::PortForwardDto>,
     },
     /// An automation was created, changed or deleted, or one of its runs
     /// started, ended or was read: the user's automations, as the product

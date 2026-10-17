@@ -12,6 +12,12 @@
     "routeFailed": "경로를 변경할 수 없습니다",
     "resetNotStarted": "초기화를 시작하지 못했습니다. 연결을 확인하고 다시 시도하십시오."
   },
+  "portForwards": {
+    "addFailed": "전달을 추가할 수 없습니다",
+    "saveFailed": "전달을 변경할 수 없습니다",
+    "removeFailed": "전달을 제거할 수 없습니다",
+    "retryFailed": "다시 시도할 수 없습니다"
+  },
   "plugins": {
     "turnOnFailed": "플러그인을 켤 수 없습니다",
     "turnOffFailed": "플러그인을 끌 수 없습니다"

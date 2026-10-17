@@ -26,6 +26,7 @@ pub mod panel;
 pub mod passkeys;
 pub mod permissions;
 pub mod plugins;
+pub mod port_forwards;
 pub mod providers;
 pub mod push;
 pub mod query;

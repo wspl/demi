@@ -40,6 +40,7 @@ mod page_client;
 mod panel;
 mod permissions;
 mod plugins;
+mod port_forwards;
 mod provider_cli;
 mod providers;
 mod query;
@@ -418,6 +419,12 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             "/conversations/{id}/move-to-conversations",
             post(automations::move_to_conversations),
         )
+        .route("/port-forwards", get(port_forwards::list).post(port_forwards::create))
+        .route(
+            "/port-forwards/{id}",
+            patch(port_forwards::patch).delete(port_forwards::delete),
+        )
+        .route("/port-forwards/{id}/retry", post(port_forwards::retry))
         .route("/credentials", get(credentials::list).post(credentials::create))
         .route("/credentials/{id}/values", get(credentials::values))
         .route(

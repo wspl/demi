@@ -49,11 +49,11 @@ use crate::access::{HostRole, ReachableHost};
 use crate::transition::ChangeRefusal;
 
 const SUMMARY: &str =
-    "The hosts this conversation reaches: list them, show the primary one, run a command on another, pair a computer, attach or detach the user's devices, move this conversation to another host.";
+    "The hosts this conversation reaches: list them, show the primary one, run a command on another, pair a computer, attach or detach the user's devices, move this conversation to another host, forward a port from one host to another.";
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Lists the computers this conversation can reach, its primary Host and the devices attached to it, and runs a command on another one; lists the user's devices and attaches or detaches one; moves this conversation to another host and directory; pairs a computer you can run commands on, such as one you reach by ssh, with the user's account. Use it when a task involves a second machine: fetching a file from the user's laptop, checking a server, or running something where a particular device is.";
+const ENTRY: &str = "Lists the computers this conversation can reach, its primary Host and the devices attached to it, and runs a command on another one; lists the user's devices and attaches or detaches one; moves this conversation to another host and directory; pairs a computer you can run commands on with the user's account; forwards a port of one Host to another, as ssh -L does. Use it when a task involves a second machine: fetching a file from the user's laptop, checking a server, running something where a particular device is, or reaching a service on another Host.";
 
 /// The path of `demi host pair`, which always brings a host the
 /// conversation may not reach (`permissions.md` § Hosts).
@@ -80,7 +80,7 @@ const SHELL_SUMMARY: &str = "Run a script in another host's bash, as ssh does: `
 /// The input of a leaf that takes none, such as `demi host list`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub(crate) struct NoArgs {}
+pub struct NoArgs {}
 
 /// The input of `demi host attach`.
 #[derive(Deserialize, JsonSchema)]
@@ -154,6 +154,12 @@ struct ShellArgs {
 pub fn host_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
     GroupBuilder::new("host", SUMMARY)
         .index_entry(ENTRY)
+        .permission(
+            crate::forward_commands::MANAGE,
+            crate::forward_commands::MANAGE_ACTION,
+            crate::forward_commands::MANAGE_DESCRIPTION,
+        )
+        .group(crate::forward_commands::forward_group(shard.clone()))
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
                 .input::<NoArgs>()

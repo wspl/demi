@@ -75,6 +75,47 @@
     "lastSeen": "Last seen",
     "none": "No devices"
   },
+  "portForwards": {
+    "title": "Port Forwarding",
+    "description": "Programs on one of your Hosts reach a port on another, as through ssh -L.",
+    "yours": "Your Forwards",
+    "add": "Add Forward",
+    "loading": "Loading port forwards…",
+    "none": "No port forwards",
+    "unknownHost": "Unknown Host",
+    "state": {
+      "off": "Off",
+      "chooseHost": "Choose a Host to connect to.",
+      "offline": "{host} is offline",
+      "starting": "Starting…",
+      "portInUse": "Port {port} is in use on {host}",
+      "direct": "Direct · 1 connection | Direct · {count} connections",
+      "relay": "Relay · 1 connection | Relay · {count} connections",
+      "and": ", ",
+      "idle": "Idle"
+    },
+    "page": {
+      "name": "Name",
+      "nameProblem": "Enter a name of up to {max} characters.",
+      "on": "On",
+      "onDescription": "While it’s on, it runs whenever its Listen On Host is online.",
+      "listenOn": "Listen On",
+      "connectTo": "Connect To",
+      "host": "Host",
+      "listenDescription": "Programs on this Host connect to 127.0.0.1 at the port.",
+      "port": "Port",
+      "portProblem": "Enter a port from 1 to 65535.",
+      "connectDescription": "This Host opens each connection.",
+      "chooseHost": "Choose a Host",
+      "address": "Address",
+      "addressDescription": "Any host:port this Host can reach.",
+      "tryAgain": "Try Again",
+      "removeThis": "Remove this forward",
+      "remove": "Remove Forward…",
+      "removeTitle": "Remove “{name}”?",
+      "removeBody": "It stops listening, and its open connections end."
+    }
+  },
   "keyboard": {
     "title": "Keyboard",
     "description": "Click Change, then press the new keys.",
@@ -256,6 +297,9 @@
       "keywords": "add device,pairing code,claim,revoke,runner,machine",
       "cloudKeywords": "cloud,reset environment",
       "storageKeywords": "disk,space"
+    },
+    "portForwards": {
+      "keywords": "port forward,tunnel,ssh -L,localhost,listen,connect,ollama"
     },
     "archived": {
       "keywords": "archive,restore,conversation"
