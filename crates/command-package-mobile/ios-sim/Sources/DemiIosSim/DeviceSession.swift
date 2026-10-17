@@ -33,6 +33,16 @@ enum Turn: String {
 
   var landscape: Bool { self == .landscapeLeft || self == .landscapeRight }
 
+  /// The quarter turns clockwise the device's frame is drawn at.
+  var frameTurns: Int {
+    switch self {
+    case .portrait: return 0
+    case .landscapeLeft: return 3
+    case .portraitUpsideDown: return 2
+    case .landscapeRight: return 1
+    }
+  }
+
   /// How the framebuffer's portrait picture is shown upright.
   var picture: CGImagePropertyOrientation {
     switch self {
@@ -215,16 +225,14 @@ final class DeviceSession: @unchecked Sendable {
 
   // MARK: The frame
 
-  /// The device's frame for a view of `area` pixels, turned as the picture
-  /// is, with the radius of the screen's corners in its pixels; that
+  /// The device's frame for a view of `area` pixels at `backing` pixels
+  /// per point, turned as the picture is, with the radius of the screen's corners in its pixels; that
   /// radius alone, in the screen's upright points, when Xcode installed no
   /// frame for the device type.
-  func frame(area: CGSize) throws -> ([String: Any], Data?) {
+  func frame(area: CGSize, backing: Double) throws -> ([String: Any], Data?) {
     let (turn, surface) = lock.withLock { (self.turn, self.surface) }
     let looks = DeviceLooks(simulator: simulator)
-    if let drawn = try drawFrame(
-      looks: looks, screenPoints: portraitPoints, orientation: turn.picture, area: area, context: pictures.context)
-    {
+    if let drawn = try drawFrame(looks: looks, screenPoints: portraitPoints, quarterTurns: turn.frameTurns, area: area, backing: backing) {
       return (
         [
           "width": drawn.width, "height": drawn.height,
@@ -237,7 +245,7 @@ final class DeviceSession: @unchecked Sendable {
       )
     }
     let pixels = surface.map { CGSize(width: IOSurfaceGetWidth($0), height: IOSurfaceGetHeight($0)) } ?? .zero
-    let radius = looks.cornerRadius(screenPixels: pixels)
+    let radius = looks.cornerRadius(pixels: pixels, screenPoints: portraitPoints)
     let scale = pixels.width > 0 ? portraitPoints.width / pixels.width : 0
     return (["cornerRadius": radius * scale], nil)
   }

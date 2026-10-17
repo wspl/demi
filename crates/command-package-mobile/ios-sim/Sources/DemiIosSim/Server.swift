@@ -134,7 +134,8 @@ final class Server: @unchecked Sendable {
     case "recordStop":
       return (["durationMs": try await session.recordStop()], nil)
     case "frame":
-      return try session.frame(area: CGSize(width: double(params["width"]), height: double(params["height"])))
+      return try session.frame(
+        area: CGSize(width: double(params["width"]), height: double(params["height"])), backing: double(params["scale"]))
     case "captureStart":
       try session.captureStart(
         capture: UInt32((params["capture"] as? NSNumber)?.uint32Value ?? 0),

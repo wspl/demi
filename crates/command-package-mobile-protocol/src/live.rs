@@ -58,9 +58,9 @@ pub enum LiveViewerMessage {
     Ack(#[garde(dive)] LiveAck),
     Keyframe(#[garde(dive)] LiveKeyframe),
     Release(#[garde(dive)] LiveRelease),
-    /// The view lays `device` out in `width` × `height` device pixels and
-    /// asks for its frame at that size; asked again when its laid-out size
-    /// changes.
+    /// The view lays `device` out in `width` × `height` device pixels, at
+    /// `scale` device pixels per CSS pixel, and asks for its frame at that
+    /// size; asked again when its laid-out size changes.
     Frame {
         #[garde(skip)]
         device: DeviceId,
@@ -68,6 +68,8 @@ pub enum LiveViewerMessage {
         width: u32,
         #[garde(range(min = 1, max = 16384))]
         height: u32,
+        #[garde(range(min = 0.25, max = 8.0))]
+        scale: f64,
     },
 }
 

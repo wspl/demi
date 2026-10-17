@@ -15,7 +15,7 @@ use tokio_util::sync::CancellationToken;
 use demi_command_package_mobile_protocol::mobile::{Appearance, Orientation, MobilePlatform, PowerState};
 
 use crate::driver::{
-    Button, Device, DeviceCapture, Driver, DriverError, Frame, KeyPress, Png, Points, RawElement,
+    Button, Device, DeviceCapture, Driver, DriverError, Frame, FrameArea, KeyPress, Png, Points, RawElement,
     Recording, Result, Screen, Simulator, TouchPhase,
 };
 
@@ -368,9 +368,9 @@ impl Device for FakeDevice {
 
     /// Xcode installs no frame for a fake device: the view draws an outline
     /// around a screen whose corners have a 55-point radius.
-    fn frame(&self, area: (u32, u32)) -> BoxFuture<'_, Result<Frame>> {
+    fn frame(&self, area: FrameArea) -> BoxFuture<'_, Result<Frame>> {
         Box::pin(async move {
-            self.log(format!("frame {}x{}", area.0, area.1));
+            self.log(format!("frame {}x{}@{}", area.width, area.height, area.scale));
             Ok(Frame::Undrawn { corner_radius: 55.0 })
         })
     }
