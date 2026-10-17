@@ -391,29 +391,30 @@ impl SearchIndexes {
         indexed: IndexedConversation,
     ) -> Result<(), StorageError> {
         let conversation = conversation.clone();
-        let rows = self
-            .with(user, move |connection| {
-                let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                let mut rows = remove_rows(&transaction, &conversation)?;
-                transaction.execute("INSERT INTO conversations (id) VALUES (?1)", [conversation.as_str()])?;
-                insert_title(&transaction, &conversation, &indexed.title)?;
-                rows += 1;
-                for agent in &indexed.agents {
-                    set_version(&transaction, &conversation, agent.agent, agent.version)?;
-                    for message in &agent.messages {
-                        insert_text(&transaction, &conversation, agent.agent, message)?;
-                    }
-                    rows += agent.messages.len();
+        let indexes = self.clone();
+        self.with(user, move |connection| {
+            let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            let mut rows = remove_rows(&transaction, &conversation)?;
+            transaction.execute("INSERT INTO conversations (id) VALUES (?1)", [conversation.as_str()])?;
+            insert_title(&transaction, &conversation, &indexed.title)?;
+            rows += 1;
+            for agent in &indexed.agents {
+                set_version(&transaction, &conversation, agent.agent, agent.version)?;
+                for message in &agent.messages {
+                    insert_text(&transaction, &conversation, agent.agent, message)?;
                 }
-                transaction.commit()?;
-                Ok(rows)
-            })
-            .await?;
-        self.record(|work| {
-            work.whole += 1;
-            work.rows += count_of(rows);
-        });
-        Ok(())
+                rows += agent.messages.len();
+            }
+            transaction.commit()?;
+            // Within the user's turn, so a search that sees the rows
+            // sees their work counted too.
+            indexes.record(|work| {
+                work.whole += 1;
+                work.rows += count_of(rows);
+            });
+            Ok(())
+        })
+        .await
     }
 
     /// Applies one save's `change` to the rows of its agent, in one
@@ -432,73 +433,70 @@ impl SearchIndexes {
         change: TranscriptChange,
     ) -> Result<bool, StorageError> {
         let conversation = conversation.clone();
-        let applied = self
-            .with(user, move |connection| {
-                let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-                if !holds(&transaction, &conversation)? {
-                    return Ok(None);
+        let indexes = self.clone();
+        self.with(user, move |connection| {
+            let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+            if !holds(&transaction, &conversation)? {
+                return Ok(false);
+            }
+            let held = held_version(&transaction, &conversation, change.agent)?.unwrap_or_default();
+            if held != change.before {
+                return Ok(false);
+            }
+            let (id, agent) = (conversation.as_str(), integer(change.agent));
+            let mut rows = transaction
+                .prepare_cached("DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND position >= ?3")?
+                .execute(params![id, agent, integer(change.version.blocks)])?;
+            for written in &change.written {
+                let (block, position) = (written.block.as_str(), count(written.position));
+                rows += transaction
+                    .prepare_cached(
+                        "DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND position = ?3 AND block <> ?4",
+                    )?
+                    .execute(params![id, agent, position, block])?;
+                let held: Option<(i64, String, String, i64)> = transaction
+                    .prepare_cached(
+                        "SELECT position, kind, text, time FROM texts WHERE conversation = ?1 AND agent = ?2 AND block = ?3",
+                    )?
+                    .query_row(params![id, agent, block], |row| {
+                        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+                    })
+                    .optional()?;
+                let unchanged = match (&held, &written.text) {
+                    (Some((at, kind, held, time)), Some(text)) => {
+                        *at == position
+                            && kind == text.kind.as_str()
+                            && *held == text.text
+                            && *time == text.time.as_millisecond()
+                    }
+                    (None, None) => true,
+                    _ => false,
+                };
+                if unchanged {
+                    continue;
                 }
-                let held = held_version(&transaction, &conversation, change.agent)?.unwrap_or_default();
-                if held != change.before {
-                    return Ok(None);
-                }
-                let (id, agent) = (conversation.as_str(), integer(change.agent));
-                let mut rows = transaction
-                    .prepare_cached("DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND position >= ?3")?
-                    .execute(params![id, agent, integer(change.version.blocks)])?;
-                for written in &change.written {
-                    let (block, position) = (written.block.as_str(), count(written.position));
+                if held.is_some() {
                     rows += transaction
-                        .prepare_cached(
-                            "DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND position = ?3 AND block <> ?4",
-                        )?
-                        .execute(params![id, agent, position, block])?;
-                    let held: Option<(i64, String, String, i64)> = transaction
-                        .prepare_cached(
-                            "SELECT position, kind, text, time FROM texts WHERE conversation = ?1 AND agent = ?2 AND block = ?3",
-                        )?
-                        .query_row(params![id, agent, block], |row| {
-                            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-                        })
-                        .optional()?;
-                    let unchanged = match (&held, &written.text) {
-                        (Some((at, kind, held, time)), Some(text)) => {
-                            *at == position
-                                && kind == text.kind.as_str()
-                                && *held == text.text
-                                && *time == text.time.as_millisecond()
-                        }
-                        (None, None) => true,
-                        _ => false,
-                    };
-                    if unchanged {
-                        continue;
-                    }
-                    if held.is_some() {
-                        rows += transaction
-                            .prepare_cached("DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND block = ?3")?
-                            .execute(params![id, agent, block])?;
-                    }
-                    if let Some(text) = &written.text {
-                        let message = IndexedMessage {
-                            block: written.block.clone(),
-                            position: written.position,
-                            text: text.clone(),
-                        };
-                        insert_text(&transaction, &conversation, change.agent, &message)?;
-                        rows += 1;
-                    }
+                        .prepare_cached("DELETE FROM texts WHERE conversation = ?1 AND agent = ?2 AND block = ?3")?
+                        .execute(params![id, agent, block])?;
                 }
-                set_version(&transaction, &conversation, change.agent, change.version)?;
-                transaction.commit()?;
-                Ok(Some(rows))
-            })
-            .await?;
-        let Some(rows) = applied else {
-            return Ok(false);
-        };
-        self.record(|work| work.rows += count_of(rows));
-        Ok(true)
+                if let Some(text) = &written.text {
+                    let message = IndexedMessage {
+                        block: written.block.clone(),
+                        position: written.position,
+                        text: text.clone(),
+                    };
+                    insert_text(&transaction, &conversation, change.agent, &message)?;
+                    rows += 1;
+                }
+            }
+            set_version(&transaction, &conversation, change.agent, change.version)?;
+            transaction.commit()?;
+            // Within the user's turn, as in `index`.
+            indexes.record(|work| work.rows += count_of(rows));
+            Ok(true)
+        })
+        .await
     }
 
     /// Replaces the conversation's title row alone. Answers false, changing
