@@ -5,7 +5,8 @@
 
 use bytes::Bytes;
 use demi_provider_common::{
-    images::{ImageAnswer, ImageCall, ImageCredential, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, read_data_answer, table, xai},
+    images::{ImageAnswer, ImageCall, ImageCredential, ImageFailure, ImageMaker, ImageModelInfo, ImageRequest, ImageVendor, read_data_answer, subscription_models, xai},
+    media_catalog::{Catalog, Subscription},
     json_body, read_http_failure,
 };
 use futures_util::future::BoxFuture;
@@ -58,10 +59,14 @@ impl ImageMaker for GrokProvider {
         ImageVendor::Xai
     }
 
-    /// xAI's table of the models the subscription accepted: the proxy's
-    /// listing answers 404.
-    fn models<'a>(&'a self, _: &'a reqwest::Client) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
-        Box::pin(std::future::ready(Ok(table(ImageVendor::Xai))))
+    /// The catalog's models of a Grok subscription, those it accepted: the
+    /// proxy's listing answers 404.
+    fn models<'a>(
+        &'a self,
+        _: &'a reqwest::Client,
+        catalog: &'a Catalog,
+    ) -> BoxFuture<'a, Result<Vec<ImageModelInfo>, ImageFailure>> {
+        Box::pin(std::future::ready(Ok(subscription_models(catalog, Subscription::Grok))))
     }
 
     /// The proxy refuses a model it does not have rather than answer with
@@ -73,6 +78,7 @@ impl ImageMaker for GrokProvider {
     fn make<'a>(
         &'a self,
         http: &'a reqwest::Client,
+        _: &'a Catalog,
         request: ImageRequest,
     ) -> BoxFuture<'a, ImageAnswer> {
         Box::pin(async move {

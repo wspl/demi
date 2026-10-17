@@ -23,6 +23,7 @@ demi-command-protocol = { path = "../command-protocol" }
 demi-command-sdk = { path = "../command-sdk" }
 demi-command-package-fetch-protocol = { path = "../command-package-fetch-protocol" }
 demi-shared-cli = { path = "../shared-cli", features = ["host-allocator"] }
+demi-shared-types = { path = "../shared-types" }
 # A body's charset, which the page names in its Content-Type.
 encoding_rs = "0.8"
 # HTML to Markdown on html5ever, the HTML parser of Servo: headings, lists,

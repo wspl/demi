@@ -12,6 +12,7 @@
 //! the `testing` feature, scripted runtimes and a scripted vendor for tests.
 
 mod body;
+mod conditional;
 mod contract;
 pub mod credentials;
 mod endpoint;
@@ -19,6 +20,7 @@ mod failure;
 mod http_record;
 pub mod images;
 pub mod kept;
+pub mod media_catalog;
 pub mod models_dev;
 mod model_words;
 pub mod oauth;

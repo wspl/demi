@@ -43,6 +43,7 @@ use demi_backend_runners::prefetch::Prefetches;
 use demi_backend_runners::public_url::PublicUrl;
 use demi_runner_protocol::direct::StunUrl;
 use demi_plugin_interface::PluginFactory;
+use demi_provider_common::media_catalog::MediaCatalog;
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_shared_types::Clock;
 use demi_web_api_protocol::settings::InstanceMode;
@@ -76,6 +77,8 @@ pub struct Services {
     pub push: Pusher,
     pub vault: Vault,
     pub assembly: Arc<ProviderAssembly>,
+    /// The catalog of image and video models (`media-models.md`).
+    pub media: MediaCatalog,
     /// The vendor's Claude Code releases, which the CLI on the Claude Code machine follows.
     pub claude_releases: ClaudeReleases,
     /// The outcome of the CLI installs no conversation asked for.
@@ -157,6 +160,11 @@ pub struct Services {
 pub struct ProviderSetup {
     pub families: FamilyRegistry,
     pub models_dev_url: url::Url,
+    /// The media catalog of the build's branch; none keeps the release's
+    /// copy (`media-models.md` § Versions).
+    pub media_catalog_url: Option<url::Url>,
+    /// The media catalog the release carries, or a test's.
+    pub media_catalog: Arc<demi_provider_common::media_catalog::Catalog>,
     /// The Claude Code distribution.
     pub claude_releases: url::Url,
     pub logins: LoginTiming,
@@ -390,6 +398,8 @@ impl Services {
             providers.models_dev_url,
             providers.clock.clone(),
         );
+        let media = MediaCatalog::new(http.clone(), providers.media_catalog_url, providers.media_catalog);
+        media.start(&edge);
         let claude_releases =
             ClaudeReleases::new(&providers.claude_releases, edge.clone(), clock.clone())
                 .map_err(ServicesError::Http)?;
@@ -429,6 +439,7 @@ impl Services {
             blobs,
             vault,
             assembly,
+            media,
             claude_releases,
             cli_installs: CliInstalls::default(),
             claude_machine: std::sync::OnceLock::new(),
@@ -471,11 +482,12 @@ impl Services {
         })
     }
 
-    /// Cancels the logins, and drains the catalog refreshes and quota
+    /// Cancels the logins, drains the catalog refreshes and quota
     /// writes, before storage closes.
     pub async fn close_providers(&self) {
         self.logins.close().await;
         self.assembly.close().await;
+        self.media.close();
     }
 
     /// The services over storage in `data`, for tests: no provider family is
@@ -506,6 +518,8 @@ impl Services {
         let providers = ProviderSetup {
             families: FamilyRegistry::default(),
             models_dev_url: ModelsDevClient::DEFAULT_URL.parse().unwrap(),
+            media_catalog_url: None,
+            media_catalog: demi_provider_common::media_catalog::Catalog::carried(),
             claude_releases: demi_backend_providers::llm::claude_releases::DEFAULT_RELEASES_URL
                 .parse()
                 .unwrap(),

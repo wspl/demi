@@ -1,0 +1,5108 @@
+{
+  "updated": "2026-10-17T22:00:00Z",
+  "models": [
+    {
+      "vendor": "openai",
+      "id": "gpt-image-2.5-sunburst",
+      "kind": "image",
+      "name": "GPT-Image-2.5 Sunburst",
+      "description": "Most capable model for image generation and editing",
+      "aliasOf": "gpt-image-2.5-sunburst-2026-09-08",
+      "subscriptions": [
+        "chatgpt"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-image-2.5-sunburst-2026-09-08",
+      "kind": "image",
+      "name": "GPT-Image-2.5 Sunburst",
+      "description": "Dated snapshot of gpt-image-2.5-sunburst",
+      "released": "2026-09-08",
+      "image": {
+        "customSize": {
+          "multipleOf": 16,
+          "maxEdge": 3840,
+          "maxRatio": 3,
+          "minPixels": 655360,
+          "maxPixels": 8294400
+        },
+        "edits": true,
+        "transparent": true
+      },
+      "subscriptions": [
+        "chatgpt"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst",
+        "https://developers.openai.com/api/docs/changelog",
+        "https://developers.openai.com/api/docs/guides/image-generation"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-image-2.5-flare",
+      "kind": "image",
+      "name": "GPT-Image-2.5 Flare",
+      "description": "Fast, high-quality everyday image generation",
+      "aliasOf": "gpt-image-2.5-flare-2026-09-08",
+      "subscriptions": [
+        "chatgpt"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-image-2.5-flare"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-image-2.5-flare-2026-09-08",
+      "kind": "image",
+      "name": "GPT-Image-2.5 Flare",
+      "description": "Dated snapshot of gpt-image-2.5-flare",
+      "released": "2026-09-08",
+      "image": {
+        "customSize": {
+          "multipleOf": 16,
+          "maxEdge": 3840,
+          "maxRatio": 3,
+          "minPixels": 655360,
+          "maxPixels": 8294400
+        },
+        "edits": true,
+        "transparent": true
+      },
+      "subscriptions": [
+        "chatgpt"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-image-2.5-flare",
+        "https://developers.openai.com/api/docs/changelog",
+        "https://developers.openai.com/api/docs/guides/image-generation"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-image-2",
+      "kind": "image",
+      "name": "GPT-Image-2",
+      "description": "State-of-the-art image generation model",
+      "aliasOf": "gpt-image-2-2026-04-21",
+      "subscriptions": [
+        "chatgpt"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-image-2"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-image-2-2026-04-21",
+      "kind": "image",
+      "name": "GPT-Image-2",
+      "description": "Dated snapshot of gpt-image-2",
+      "released": "2026-04-21",
+      "image": {
+        "customSize": {
+          "multipleOf": 16,
+          "maxEdge": 3840,
+          "maxRatio": 3,
+          "minPixels": 655360,
+          "maxPixels": 8294400
+        },
+        "edits": true,
+        "transparent": true
+      },
+      "subscriptions": [
+        "chatgpt"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-image-2",
+        "https://developers.openai.com/api/docs/changelog",
+        "https://developers.openai.com/api/docs/guides/image-generation"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-image-1.5",
+      "kind": "image",
+      "name": "GPT-Image-1.5",
+      "description": "Previous image generation model",
+      "aliasOf": "gpt-image-1.5-2025-12-16",
+      "subscriptions": [
+        "chatgpt"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-image-1.5"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-image-1.5-2025-12-16",
+      "kind": "image",
+      "name": "GPT-Image-1.5",
+      "description": "Dated snapshot of gpt-image-1.5",
+      "released": "2025-12-16",
+      "image": {
+        "sizes": [
+          "1024x1024",
+          "1536x1024",
+          "1024x1536"
+        ],
+        "edits": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.009,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.013,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.013,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1536x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.034,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.05,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.05,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1536x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.133,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.2,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.2,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1536x1024"
+          }
+        ],
+        "page": "https://developers.openai.com/api/docs/models/gpt-image-1.5"
+      },
+      "subscriptions": [
+        "chatgpt"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-image-1.5",
+        "https://developers.openai.com/api/docs/changelog"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "chatgpt-image-latest",
+      "kind": "image",
+      "name": "chatgpt-image-latest",
+      "description": "Previous image model used in ChatGPT",
+      "released": "2025-12-16",
+      "image": {
+        "sizes": [
+          "1024x1024",
+          "1536x1024",
+          "1024x1536"
+        ],
+        "edits": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.009,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.013,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.013,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1536x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.034,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.05,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.05,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1536x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.133,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.2,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.2,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1536x1024"
+          }
+        ],
+        "page": "https://developers.openai.com/api/docs/models/chatgpt-image-latest"
+      },
+      "subscriptions": [
+        "chatgpt"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/models/chatgpt-image-latest",
+        "https://developers.openai.com/api/docs/changelog"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-image-1-mini",
+      "kind": "image",
+      "name": "GPT-Image-1 Mini",
+      "description": "Cost-efficient version of gpt-image-1",
+      "released": "2025-10-06",
+      "image": {
+        "sizes": [
+          "1024x1024",
+          "1536x1024",
+          "1024x1536"
+        ],
+        "edits": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.005,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.006,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.006,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1536x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.011,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.015,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.015,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1536x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.036,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.052,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.052,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1536x1024"
+          }
+        ],
+        "page": "https://developers.openai.com/api/docs/models/gpt-image-1-mini"
+      },
+      "subscriptions": [
+        "chatgpt"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-image-1-mini",
+        "https://developers.openai.com/api/docs/changelog"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-image-1",
+      "kind": "image",
+      "name": "GPT-Image-1",
+      "description": "Previous image generation model, before gpt-image-1.5",
+      "released": "2025-04-23",
+      "image": {
+        "sizes": [
+          "1024x1024",
+          "1536x1024",
+          "1024x1536"
+        ],
+        "edits": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.011,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.016,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.016,
+            "currency": "usd",
+            "quality": "low",
+            "size": "1536x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.042,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.063,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.063,
+            "currency": "usd",
+            "quality": "medium",
+            "size": "1536x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.167,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1024x1024"
+          },
+          {
+            "unit": "image",
+            "amount": 0.25,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1024x1536"
+          },
+          {
+            "unit": "image",
+            "amount": 0.25,
+            "currency": "usd",
+            "quality": "high",
+            "size": "1536x1024"
+          }
+        ],
+        "page": "https://developers.openai.com/api/docs/models/gpt-image-1"
+      },
+      "subscriptions": [
+        "chatgpt"
+      ],
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-image-1",
+        "https://developers.openai.com/api/docs/changelog"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "gemini-nano-banana-2.1",
+      "kind": "image",
+      "name": "Gemini Nano Banana 2.1",
+      "description": "Nano Banana 2.1: the high-efficiency workhorse for image generation and conversational editing",
+      "released": "2026-10-06",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "1:4",
+          "1:8",
+          "2:3",
+          "3:2",
+          "3:4",
+          "4:1",
+          "4:3",
+          "4:5",
+          "5:4",
+          "8:1",
+          "9:16",
+          "16:9",
+          "21:9"
+        ],
+        "resolutions": [
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "edits": true,
+        "maxInputImages": 14
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.0336,
+            "currency": "usd",
+            "resolution": "1K"
+          },
+          {
+            "unit": "image",
+            "amount": 0.0504,
+            "currency": "usd",
+            "resolution": "2K"
+          },
+          {
+            "unit": "image",
+            "amount": 0.113,
+            "currency": "usd",
+            "resolution": "4K"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/gemini-nano-banana-2.1",
+        "https://ai.google.dev/gemini-api/docs/image-generation",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/deprecations"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "gemini-3.1-flash-lite-image",
+      "kind": "image",
+      "name": "Gemini 3.1 Flash Lite Image (Nano Banana 2 Lite)",
+      "description": "Nano Banana 2 Lite: the fastest and cheapest Gemini image model",
+      "released": "2026-06-30",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "3:4",
+          "4:3",
+          "4:5",
+          "5:4",
+          "9:16",
+          "16:9",
+          "21:9"
+        ],
+        "resolutions": [
+          "1K"
+        ],
+        "edits": true,
+        "maxInputImages": 14
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.0336,
+            "currency": "usd",
+            "resolution": "1K"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite-image",
+        "https://ai.google.dev/gemini-api/docs/image-generation",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/deprecations"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "gemini-3.1-flash-image",
+      "kind": "image",
+      "name": "Gemini 3.1 Flash Image (Nano Banana 2)",
+      "description": "Nano Banana 2: the previous-generation high-efficiency workhorse",
+      "released": "2026-05-28",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "1:4",
+          "1:8",
+          "2:3",
+          "3:2",
+          "3:4",
+          "4:1",
+          "4:3",
+          "4:5",
+          "5:4",
+          "8:1",
+          "9:16",
+          "16:9",
+          "21:9"
+        ],
+        "resolutions": [
+          "0.5K",
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "edits": true,
+        "maxInputImages": 14
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.045,
+            "currency": "usd",
+            "resolution": "0.5K"
+          },
+          {
+            "unit": "image",
+            "amount": 0.067,
+            "currency": "usd",
+            "resolution": "1K"
+          },
+          {
+            "unit": "image",
+            "amount": 0.101,
+            "currency": "usd",
+            "resolution": "2K"
+          },
+          {
+            "unit": "image",
+            "amount": 0.151,
+            "currency": "usd",
+            "resolution": "4K"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-image",
+        "https://ai.google.dev/gemini-api/docs/image-generation",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/deprecations"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "gemini-3-pro-image",
+      "kind": "image",
+      "name": "Gemini 3 Pro Image (Nano Banana Pro)",
+      "description": "Nano Banana Pro: the premium choice for the most complex visual tasks",
+      "released": "2026-05-28",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "3:4",
+          "4:3",
+          "4:5",
+          "5:4",
+          "9:16",
+          "16:9",
+          "21:9"
+        ],
+        "resolutions": [
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "edits": true,
+        "maxInputImages": 14
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.134,
+            "currency": "usd",
+            "resolution": "1K"
+          },
+          {
+            "unit": "image",
+            "amount": 0.134,
+            "currency": "usd",
+            "resolution": "2K"
+          },
+          {
+            "unit": "image",
+            "amount": 0.24,
+            "currency": "usd",
+            "resolution": "4K"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/gemini-3-pro-image",
+        "https://ai.google.dev/gemini-api/docs/image-generation",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/deprecations"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "gemini-2.5-flash-image",
+      "kind": "image",
+      "name": "Gemini 2.5 Flash Image (Nano Banana)",
+      "description": "Nano Banana: the legacy pioneer of the series",
+      "released": "2025-10-02",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "2:3",
+          "3:2",
+          "3:4",
+          "4:3",
+          "4:5",
+          "5:4",
+          "9:16",
+          "16:9",
+          "21:9"
+        ],
+        "edits": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.039,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-image",
+        "https://ai.google.dev/gemini-api/docs/image-generation",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/deprecations"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-image-2.0",
+      "kind": "image",
+      "name": "Grok Imagine Image 2.0",
+      "description": "Precise image generation and editing, built for real creative work",
+      "released": "2026-08-07",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "3:4",
+          "4:3",
+          "9:16",
+          "16:9",
+          "2:3",
+          "3:2",
+          "9:19.5",
+          "19.5:9",
+          "9:20",
+          "20:9",
+          "1:2",
+          "2:1",
+          "21:9",
+          "5:2"
+        ],
+        "resolutions": [
+          "1k",
+          "2k"
+        ],
+        "edits": true,
+        "maxInputImages": 5
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.04,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.x.ai/developers/pricing"
+      },
+      "subscriptions": [
+        "grok"
+      ],
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-image-2.0",
+        "https://x.ai/news/grok-imagine-image-2",
+        "https://docs.x.ai/developers/model-capabilities/images/generation",
+        "https://docs.x.ai/developers/model-capabilities/images/multi-image-editing",
+        "https://docs.x.ai/developers/pricing"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-image-quality",
+      "kind": "image",
+      "name": "Grok Imagine Image Quality",
+      "description": "Retires on November 2, 2026; grok-imagine-image-2.0 covers its uses at a lower price",
+      "released": "2026-04-03",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "3:4",
+          "4:3",
+          "9:16",
+          "16:9",
+          "2:3",
+          "3:2",
+          "9:19.5",
+          "19.5:9",
+          "9:20",
+          "20:9",
+          "1:2",
+          "2:1",
+          "21:9",
+          "5:2"
+        ],
+        "resolutions": [
+          "1k",
+          "2k"
+        ],
+        "edits": true,
+        "maxInputImages": 5
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.05,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.x.ai/developers/pricing"
+      },
+      "subscriptions": [
+        "grok"
+      ],
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-image-quality",
+        "https://docs.x.ai/developers/release-notes",
+        "https://docs.x.ai/developers/model-capabilities/images/generation",
+        "https://docs.x.ai/developers/model-capabilities/images/multi-image-editing",
+        "https://docs.x.ai/developers/pricing"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-image-quality-20260403",
+      "kind": "image",
+      "name": "Grok Imagine Image Quality",
+      "aliasOf": "grok-imagine-image-quality",
+      "subscriptions": [
+        "grok"
+      ],
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-image-quality"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-image-quality-latest",
+      "kind": "image",
+      "name": "Grok Imagine Image Quality",
+      "aliasOf": "grok-imagine-image-quality",
+      "subscriptions": [
+        "grok"
+      ],
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-image-quality"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-image-pro",
+      "kind": "image",
+      "name": "Grok Imagine Image Quality",
+      "aliasOf": "grok-imagine-image-quality",
+      "subscriptions": [
+        "grok"
+      ],
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-image-quality"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-image",
+      "kind": "image",
+      "name": "Grok Imagine Image",
+      "description": "Lowest-cost image model, from $0.02 an image",
+      "released": "2026-03-02",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "3:4",
+          "4:3",
+          "9:16",
+          "16:9",
+          "2:3",
+          "3:2",
+          "9:19.5",
+          "19.5:9",
+          "9:20",
+          "20:9",
+          "1:2",
+          "2:1",
+          "21:9",
+          "5:2"
+        ],
+        "resolutions": [
+          "1k",
+          "2k"
+        ],
+        "edits": true,
+        "maxInputImages": 5
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.02,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.x.ai/developers/pricing"
+      },
+      "subscriptions": [
+        "grok"
+      ],
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-image",
+        "https://x.ai/api/imagine",
+        "https://docs.x.ai/developers/model-capabilities/images/generation",
+        "https://docs.x.ai/developers/model-capabilities/images/multi-image-editing",
+        "https://docs.x.ai/developers/pricing"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-image-2026-03-02",
+      "kind": "image",
+      "name": "Grok Imagine Image",
+      "aliasOf": "grok-imagine-image",
+      "subscriptions": [
+        "grok"
+      ],
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-image"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-video-1.5",
+      "kind": "video",
+      "name": "Grok Imagine Video 1.5",
+      "description": "Highest quality, references, voices, and pinned frames",
+      "released": "2026-05-30",
+      "video": {
+        "durationRange": {
+          "min": 1,
+          "max": 15
+        },
+        "resolutions": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "aspectRatios": [
+          "1:1",
+          "16:9",
+          "9:16",
+          "4:3",
+          "3:4",
+          "3:2",
+          "2:3",
+          "21:9",
+          "5:2"
+        ],
+        "firstFrame": true,
+        "lastFrame": true,
+        "maxReferenceImages": 14,
+        "audio": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "second",
+            "amount": 0.08,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.x.ai/developers/pricing"
+      },
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-video-1.5",
+        "https://docs.x.ai/developers/model-capabilities/video/overview",
+        "https://docs.x.ai/developers/model-capabilities/video/generation",
+        "https://docs.x.ai/developers/pricing"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-video-1.5-preview",
+      "kind": "video",
+      "name": "Grok Imagine Video 1.5",
+      "aliasOf": "grok-imagine-video-1.5",
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-video-1.5"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-video-1.5-2026-05-30",
+      "kind": "video",
+      "name": "Grok Imagine Video 1.5",
+      "aliasOf": "grok-imagine-video-1.5",
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-video-1.5"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-video-1.5-lite",
+      "kind": "video",
+      "name": "Grok Imagine Video 1.5 Lite",
+      "description": "Lowest price, text and image to video",
+      "video": {
+        "durationRange": {
+          "min": 1,
+          "max": 15
+        },
+        "resolutions": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "aspectRatios": [
+          "1:1",
+          "16:9",
+          "9:16",
+          "4:3",
+          "3:4",
+          "3:2",
+          "2:3",
+          "21:9",
+          "5:2"
+        ],
+        "firstFrame": true,
+        "lastFrame": false,
+        "maxReferenceImages": 0,
+        "audio": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "second",
+            "amount": 0.02,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.x.ai/developers/pricing"
+      },
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-video-1.5-lite",
+        "https://docs.x.ai/developers/model-capabilities/video/overview",
+        "https://docs.x.ai/developers/model-capabilities/video/generation",
+        "https://docs.x.ai/developers/pricing"
+      ]
+    },
+    {
+      "vendor": "xai",
+      "id": "grok-imagine-video",
+      "kind": "video",
+      "name": "Grok Imagine Video",
+      "description": "Video editing and extension",
+      "video": {
+        "durationRange": {
+          "min": 1,
+          "max": 15
+        },
+        "resolutions": [
+          "480p",
+          "720p"
+        ],
+        "aspectRatios": [
+          "1:1",
+          "16:9",
+          "9:16",
+          "4:3",
+          "3:4",
+          "3:2",
+          "2:3",
+          "21:9",
+          "5:2"
+        ],
+        "firstFrame": true,
+        "lastFrame": false,
+        "maxReferenceImages": 7,
+        "audio": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "second",
+            "amount": 0.05,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.x.ai/developers/pricing"
+      },
+      "sources": [
+        "https://docs.x.ai/developers/models/grok-imagine-video",
+        "https://docs.x.ai/developers/model-capabilities/video/overview",
+        "https://docs.x.ai/developers/model-capabilities/video/generation",
+        "https://docs.x.ai/developers/pricing"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "gemini-omni-1.1-flash",
+      "kind": "video",
+      "name": "Gemini Omni Flash",
+      "description": "Fast video generation, editing, keyframe interpolation, and extension with native audio.",
+      "released": "2026-08-27",
+      "video": {
+        "durationRange": {
+          "min": 3,
+          "max": 10
+        },
+        "resolutions": [
+          "360p",
+          "720p",
+          "1080p",
+          "4k"
+        ],
+        "aspectRatios": [
+          "16:9",
+          "9:16"
+        ],
+        "firstFrame": true,
+        "lastFrame": true,
+        "audio": true
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/gemini-omni-flash",
+        "https://ai.google.dev/gemini-api/docs/omni",
+        "https://ai.google.dev/gemini-api/docs/changelog",
+        "https://ai.google.dev/gemini-api/docs/deprecations",
+        "https://ai.google.dev/gemini-api/docs/pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionInputTokens",
+            "amount": 1.5,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 17.5,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      }
+    },
+    {
+      "vendor": "google",
+      "id": "veo-3.1-generate-preview",
+      "kind": "video",
+      "name": "Veo 3.1",
+      "released": "2025-10-15",
+      "video": {
+        "durations": [
+          4,
+          6,
+          8
+        ],
+        "resolutions": [
+          "720p",
+          "1080p",
+          "4k"
+        ],
+        "aspectRatios": [
+          "16:9",
+          "9:16"
+        ],
+        "firstFrame": true,
+        "lastFrame": true,
+        "maxReferenceImages": 3,
+        "audio": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "second",
+            "amount": 0.4,
+            "currency": "usd",
+            "resolution": "720p"
+          },
+          {
+            "unit": "second",
+            "amount": 0.4,
+            "currency": "usd",
+            "resolution": "1080p"
+          },
+          {
+            "unit": "second",
+            "amount": 0.6,
+            "currency": "usd",
+            "resolution": "4k"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/veo-3.1-generate-preview",
+        "https://ai.google.dev/gemini-api/docs/video",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/deprecations"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "veo-3.1-fast-generate-preview",
+      "kind": "video",
+      "name": "Veo 3.1 Fast",
+      "released": "2025-10-15",
+      "video": {
+        "durations": [
+          4,
+          6,
+          8
+        ],
+        "resolutions": [
+          "720p",
+          "1080p",
+          "4k"
+        ],
+        "aspectRatios": [
+          "16:9",
+          "9:16"
+        ],
+        "firstFrame": true,
+        "lastFrame": true,
+        "maxReferenceImages": 3,
+        "audio": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "second",
+            "amount": 0.1,
+            "currency": "usd",
+            "resolution": "720p"
+          },
+          {
+            "unit": "second",
+            "amount": 0.12,
+            "currency": "usd",
+            "resolution": "1080p"
+          },
+          {
+            "unit": "second",
+            "amount": 0.3,
+            "currency": "usd",
+            "resolution": "4k"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/veo-3.1-generate-preview",
+        "https://ai.google.dev/gemini-api/docs/video",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/deprecations"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "veo-3.1-lite-generate-preview",
+      "kind": "video",
+      "name": "Veo 3.1 Lite",
+      "released": "2026-03-31",
+      "video": {
+        "durations": [
+          4,
+          6,
+          8
+        ],
+        "resolutions": [
+          "720p",
+          "1080p"
+        ],
+        "aspectRatios": [
+          "16:9",
+          "9:16"
+        ],
+        "firstFrame": true,
+        "lastFrame": true,
+        "maxReferenceImages": 0,
+        "audio": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "second",
+            "amount": 0.05,
+            "currency": "usd",
+            "resolution": "720p"
+          },
+          {
+            "unit": "second",
+            "amount": 0.08,
+            "currency": "usd",
+            "resolution": "1080p"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/veo-3.1-generate-preview",
+        "https://ai.google.dev/gemini-api/docs/video",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/deprecations"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-4o-mini-tts",
+      "kind": "audio",
+      "name": "GPT-4o Mini TTS",
+      "description": "Text-to-speech model powered by GPT-4o Mini",
+      "aliasOf": "gpt-4o-mini-tts-2025-12-15",
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-4o-mini-tts",
+        "https://developers.openai.com/api/docs/changelog"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-4o-mini-tts-2025-12-15",
+      "kind": "audio",
+      "name": "GPT-4o Mini TTS",
+      "description": "Dated snapshot of gpt-4o-mini-tts",
+      "released": "2025-12-15",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": [
+          "alloy",
+          "ash",
+          "ballad",
+          "coral",
+          "echo",
+          "fable",
+          "nova",
+          "onyx",
+          "sage",
+          "shimmer",
+          "verse",
+          "marin",
+          "cedar"
+        ],
+        "languages": [
+          "Afrikaans",
+          "Arabic",
+          "Armenian",
+          "Azerbaijani",
+          "Belarusian",
+          "Bosnian",
+          "Bulgarian",
+          "Catalan",
+          "Chinese",
+          "Croatian",
+          "Czech",
+          "Danish",
+          "Dutch",
+          "English",
+          "Estonian",
+          "Finnish",
+          "French",
+          "Galician",
+          "German",
+          "Greek",
+          "Hebrew",
+          "Hindi",
+          "Hungarian",
+          "Icelandic",
+          "Indonesian",
+          "Italian",
+          "Japanese",
+          "Kannada",
+          "Kazakh",
+          "Korean",
+          "Latvian",
+          "Lithuanian",
+          "Macedonian",
+          "Malay",
+          "Marathi",
+          "Maori",
+          "Nepali",
+          "Norwegian",
+          "Persian",
+          "Polish",
+          "Portuguese",
+          "Romanian",
+          "Russian",
+          "Serbian",
+          "Slovak",
+          "Slovenian",
+          "Spanish",
+          "Swahili",
+          "Swedish",
+          "Tagalog",
+          "Tamil",
+          "Thai",
+          "Turkish",
+          "Ukrainian",
+          "Urdu",
+          "Vietnamese",
+          "Welsh"
+        ],
+        "instructions": true,
+        "formats": [
+          "mp3",
+          "opus",
+          "aac",
+          "flac",
+          "wav",
+          "pcm"
+        ]
+      },
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-4o-mini-tts",
+        "https://developers.openai.com/api/docs/guides/text-to-speech",
+        "https://developers.openai.com/api/docs/changelog"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionInputTokens",
+            "amount": 0.6,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 12.0,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://developers.openai.com/api/docs/models/gpt-4o-mini-tts"
+      }
+    },
+    {
+      "vendor": "openai",
+      "id": "gpt-4o-mini-tts-2025-03-20",
+      "kind": "audio",
+      "name": "GPT-4o Mini TTS",
+      "description": "Previous dated snapshot of gpt-4o-mini-tts",
+      "released": "2025-03-20",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "languages": [
+          "Afrikaans",
+          "Arabic",
+          "Armenian",
+          "Azerbaijani",
+          "Belarusian",
+          "Bosnian",
+          "Bulgarian",
+          "Catalan",
+          "Chinese",
+          "Croatian",
+          "Czech",
+          "Danish",
+          "Dutch",
+          "English",
+          "Estonian",
+          "Finnish",
+          "French",
+          "Galician",
+          "German",
+          "Greek",
+          "Hebrew",
+          "Hindi",
+          "Hungarian",
+          "Icelandic",
+          "Indonesian",
+          "Italian",
+          "Japanese",
+          "Kannada",
+          "Kazakh",
+          "Korean",
+          "Latvian",
+          "Lithuanian",
+          "Macedonian",
+          "Malay",
+          "Marathi",
+          "Maori",
+          "Nepali",
+          "Norwegian",
+          "Persian",
+          "Polish",
+          "Portuguese",
+          "Romanian",
+          "Russian",
+          "Serbian",
+          "Slovak",
+          "Slovenian",
+          "Spanish",
+          "Swahili",
+          "Swedish",
+          "Tagalog",
+          "Tamil",
+          "Thai",
+          "Turkish",
+          "Ukrainian",
+          "Urdu",
+          "Vietnamese",
+          "Welsh"
+        ],
+        "formats": [
+          "mp3",
+          "opus",
+          "aac",
+          "flac",
+          "wav",
+          "pcm"
+        ]
+      },
+      "sources": [
+        "https://developers.openai.com/api/docs/models/gpt-4o-mini-tts",
+        "https://developers.openai.com/api/docs/guides/text-to-speech",
+        "https://developers.openai.com/api/docs/changelog"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "tts-1-hd",
+      "kind": "audio",
+      "name": "TTS-1 HD",
+      "description": "Text-to-speech model optimized for quality",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": [
+          "alloy",
+          "ash",
+          "coral",
+          "echo",
+          "fable",
+          "onyx",
+          "nova",
+          "sage",
+          "shimmer"
+        ],
+        "languages": [
+          "Afrikaans",
+          "Arabic",
+          "Armenian",
+          "Azerbaijani",
+          "Belarusian",
+          "Bosnian",
+          "Bulgarian",
+          "Catalan",
+          "Chinese",
+          "Croatian",
+          "Czech",
+          "Danish",
+          "Dutch",
+          "English",
+          "Estonian",
+          "Finnish",
+          "French",
+          "Galician",
+          "German",
+          "Greek",
+          "Hebrew",
+          "Hindi",
+          "Hungarian",
+          "Icelandic",
+          "Indonesian",
+          "Italian",
+          "Japanese",
+          "Kannada",
+          "Kazakh",
+          "Korean",
+          "Latvian",
+          "Lithuanian",
+          "Macedonian",
+          "Malay",
+          "Marathi",
+          "Maori",
+          "Nepali",
+          "Norwegian",
+          "Persian",
+          "Polish",
+          "Portuguese",
+          "Romanian",
+          "Russian",
+          "Serbian",
+          "Slovak",
+          "Slovenian",
+          "Spanish",
+          "Swahili",
+          "Swedish",
+          "Tagalog",
+          "Tamil",
+          "Thai",
+          "Turkish",
+          "Ukrainian",
+          "Urdu",
+          "Vietnamese",
+          "Welsh"
+        ],
+        "formats": [
+          "mp3",
+          "opus",
+          "aac",
+          "flac",
+          "wav",
+          "pcm"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 30,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://developers.openai.com/api/docs/pricing"
+      },
+      "sources": [
+        "https://developers.openai.com/api/docs/models/tts-1-hd",
+        "https://developers.openai.com/api/docs/guides/text-to-speech",
+        "https://developers.openai.com/api/docs/pricing"
+      ]
+    },
+    {
+      "vendor": "openai",
+      "id": "tts-1",
+      "kind": "audio",
+      "name": "TTS-1",
+      "description": "Text-to-speech model optimized for speed",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": [
+          "alloy",
+          "ash",
+          "coral",
+          "echo",
+          "fable",
+          "onyx",
+          "nova",
+          "sage",
+          "shimmer"
+        ],
+        "languages": [
+          "Afrikaans",
+          "Arabic",
+          "Armenian",
+          "Azerbaijani",
+          "Belarusian",
+          "Bosnian",
+          "Bulgarian",
+          "Catalan",
+          "Chinese",
+          "Croatian",
+          "Czech",
+          "Danish",
+          "Dutch",
+          "English",
+          "Estonian",
+          "Finnish",
+          "French",
+          "Galician",
+          "German",
+          "Greek",
+          "Hebrew",
+          "Hindi",
+          "Hungarian",
+          "Icelandic",
+          "Indonesian",
+          "Italian",
+          "Japanese",
+          "Kannada",
+          "Kazakh",
+          "Korean",
+          "Latvian",
+          "Lithuanian",
+          "Macedonian",
+          "Malay",
+          "Marathi",
+          "Maori",
+          "Nepali",
+          "Norwegian",
+          "Persian",
+          "Polish",
+          "Portuguese",
+          "Romanian",
+          "Russian",
+          "Serbian",
+          "Slovak",
+          "Slovenian",
+          "Spanish",
+          "Swahili",
+          "Swedish",
+          "Tagalog",
+          "Tamil",
+          "Thai",
+          "Turkish",
+          "Ukrainian",
+          "Urdu",
+          "Vietnamese",
+          "Welsh"
+        ],
+        "formats": [
+          "mp3",
+          "opus",
+          "aac",
+          "flac",
+          "wav",
+          "pcm"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 15,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://developers.openai.com/api/docs/pricing"
+      },
+      "sources": [
+        "https://developers.openai.com/api/docs/models/tts-1",
+        "https://developers.openai.com/api/docs/guides/text-to-speech",
+        "https://developers.openai.com/api/docs/pricing"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "gemini-3.8-flash-tts",
+      "kind": "audio",
+      "name": "Gemini 3.8 Flash TTS",
+      "released": "2026-09-22",
+      "description": "Flagship creative text-to-speech model for studio-grade voice fidelity, expressive acting, and regional dialects across 130 languages.",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Acehnese (Arab script)",
+          "Afrikaans",
+          "Akan",
+          "Amharic",
+          "Armenian",
+          "Assamese",
+          "Awadhi",
+          "Balinese",
+          "Bangla",
+          "Banjar (Arab script)",
+          "Banjar (Latn script)",
+          "Bashkir",
+          "Basque",
+          "Belarusian",
+          "Bemba",
+          "Bhojpuri",
+          "Bosnian",
+          "Buginese",
+          "Bulgarian",
+          "Burmese",
+          "Cantonese",
+          "Catalan",
+          "Cebuano",
+          "Central Kurdish",
+          "Chhattisgarhi",
+          "Chinese (Hans script)",
+          "Chinese (Hant script)",
+          "Crimean Tatar",
+          "Croatian",
+          "Czech",
+          "Danish",
+          "Dutch",
+          "Dyula",
+          "Dzongkha",
+          "Egyptian Arabic",
+          "English",
+          "Estonian",
+          "Filipino",
+          "Finnish",
+          "French",
+          "Galician",
+          "Ganda",
+          "Georgian",
+          "German",
+          "Greek",
+          "Guarani",
+          "Gujarati",
+          "Haitian Creole",
+          "Halh Mongolian",
+          "Hausa",
+          "Hebrew",
+          "Hindi",
+          "Hungarian",
+          "Icelandic",
+          "Igbo",
+          "Iloko",
+          "Indonesian",
+          "Iranian Persian",
+          "Italian",
+          "Japanese",
+          "Javanese",
+          "Kabyle",
+          "Kamba",
+          "Kannada",
+          "Kashmiri (Arab script)",
+          "Kashmiri (Deva script)",
+          "Kazakh",
+          "Khmer",
+          "Kikuyu",
+          "Kinyarwanda",
+          "Kongo",
+          "Korean",
+          "Kyrgyz",
+          "Lao",
+          "Latgalian",
+          "Lingala",
+          "Lithuanian",
+          "Luxembourgish",
+          "Macedonian",
+          "Magahi",
+          "Maithili",
+          "Malayalam",
+          "Maltese",
+          "Manipuri",
+          "Marathi",
+          "Minangkabau (Arab script)",
+          "Minangkabau (Latn script)",
+          "Mizo",
+          "Nepali (individual language)",
+          "Nigerian Fulfulde",
+          "North Azerbaijani",
+          "Northern Sotho",
+          "Northern Uzbek",
+          "Norwegian Bokmål",
+          "Norwegian Nynorsk",
+          "Nyanja",
+          "Occitan",
+          "Odia (individual language)",
+          "Pangasinan",
+          "Persian (Afghanistan)",
+          "Polish",
+          "Portuguese",
+          "Punjabi",
+          "Romanian",
+          "Russian",
+          "Santali",
+          "Serbian",
+          "Sindhi",
+          "Sinhala",
+          "Slovak",
+          "Slovenian",
+          "Somali",
+          "South Azerbaijani",
+          "Southern Pashto",
+          "Southern Sotho",
+          "Spanish",
+          "Standard Arabic (Arab script)",
+          "Standard Arabic (Latn script)",
+          "Standard Latvian",
+          "Standard Malay",
+          "Swahili (individual language)",
+          "Swati",
+          "Swedish",
+          "Tajik",
+          "Tamil",
+          "Telugu",
+          "Thai",
+          "Tigrinya",
+          "Tosk Albanian",
+          "Turkish",
+          "Uyghur",
+          "Vietnamese"
+        ],
+        "instructions": true,
+        "formats": [
+          "wav",
+          "pcm",
+          "mulaw",
+          "alaw"
+        ]
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-tts",
+        "https://ai.google.dev/gemini-api/docs/speech-generation",
+        "https://ai.google.dev/gemini-api/docs/models",
+        "https://ai.google.dev/gemini-api/docs/changelog",
+        "https://ai.google.dev/gemini-api/docs/pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionInputTokens",
+            "amount": 0.5,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 9.0,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      }
+    },
+    {
+      "vendor": "google",
+      "id": "gemini-3.8-flash-lite-tts",
+      "kind": "audio",
+      "name": "Gemini 3.8 Flash-Lite TTS",
+      "released": "2026-09-22",
+      "description": "Fast, cost-efficient text-to-speech model built for high-throughput production workloads across 101 languages.",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Acehnese (Arab script)",
+          "Afrikaans",
+          "Akan",
+          "Amharic",
+          "Armenian",
+          "Assamese",
+          "Awadhi",
+          "Balinese",
+          "Bangla",
+          "Banjar (Latn script)",
+          "Basque",
+          "Belarusian",
+          "Bhojpuri",
+          "Bosnian",
+          "Buginese",
+          "Bulgarian",
+          "Cantonese",
+          "Catalan",
+          "Cebuano",
+          "Central Kurdish",
+          "Chhattisgarhi",
+          "Chinese (Hans script)",
+          "Chinese (Hant script)",
+          "Croatian",
+          "Czech",
+          "Danish",
+          "Dutch",
+          "Egyptian Arabic",
+          "English",
+          "Estonian",
+          "Filipino",
+          "French",
+          "Galician",
+          "Ganda",
+          "Georgian",
+          "German",
+          "Greek",
+          "Gujarati",
+          "Haitian Creole",
+          "Halh Mongolian",
+          "Hausa",
+          "Hebrew",
+          "Hindi",
+          "Hungarian",
+          "Icelandic",
+          "Iloko",
+          "Indonesian",
+          "Iranian Persian",
+          "Italian",
+          "Japanese",
+          "Javanese",
+          "Kamba",
+          "Kannada",
+          "Kashmiri (Arab script)",
+          "Kashmiri (Deva script)",
+          "Kazakh",
+          "Khmer",
+          "Kikuyu",
+          "Kinyarwanda",
+          "Kongo",
+          "Korean",
+          "Kyrgyz",
+          "Lao",
+          "Lingala",
+          "Macedonian",
+          "Magahi",
+          "Maithili",
+          "Malayalam",
+          "Maltese",
+          "Manipuri",
+          "Marathi",
+          "Minangkabau (Arab script)",
+          "Mizo",
+          "Nepali (individual language)",
+          "Nigerian Fulfulde",
+          "North Azerbaijani",
+          "Northern Sotho",
+          "Northern Uzbek",
+          "Norwegian Bokmål",
+          "Norwegian Nynorsk",
+          "Nyanja",
+          "Odia (individual language)",
+          "Persian (Afghanistan)",
+          "Polish",
+          "Portuguese",
+          "Punjabi",
+          "Romanian",
+          "Russian",
+          "Santali",
+          "Serbian",
+          "Sinhala",
+          "Slovak",
+          "South Azerbaijani",
+          "Southern Pashto",
+          "Spanish",
+          "Standard Arabic (Arab script)",
+          "Standard Arabic (Latn script)",
+          "Standard Latvian",
+          "Standard Malay",
+          "Tamil",
+          "Telugu",
+          "Turkish",
+          "Vietnamese"
+        ],
+        "instructions": true,
+        "formats": [
+          "wav",
+          "pcm",
+          "mulaw",
+          "alaw"
+        ]
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash-lite-tts",
+        "https://ai.google.dev/gemini-api/docs/speech-generation",
+        "https://ai.google.dev/gemini-api/docs/models",
+        "https://ai.google.dev/gemini-api/docs/changelog",
+        "https://ai.google.dev/gemini-api/docs/pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionInputTokens",
+            "amount": 0.5,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 6.0,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      }
+    },
+    {
+      "vendor": "google",
+      "id": "gemini-3.1-flash-tts-preview",
+      "kind": "audio",
+      "name": "Gemini 3.1 Flash TTS Preview",
+      "released": "2026-04-15",
+      "description": "Legacy text-to-speech preview model.",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": [
+          "Zephyr",
+          "Puck",
+          "Charon",
+          "Kore",
+          "Fenrir",
+          "Leda",
+          "Orus",
+          "Aoede",
+          "Callirrhoe",
+          "Autonoe",
+          "Enceladus",
+          "Iapetus",
+          "Umbriel",
+          "Algieba",
+          "Despina",
+          "Erinome",
+          "Algenib",
+          "Rasalgethi",
+          "Laomedeia",
+          "Achernar",
+          "Alnilam",
+          "Schedar",
+          "Gacrux",
+          "Pulcherrima",
+          "Achird",
+          "Zubenelgenubi",
+          "Vindemiatrix",
+          "Sadachbia",
+          "Sadaltager",
+          "Sulafat"
+        ],
+        "instructions": true,
+        "formats": [
+          "pcm"
+        ]
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-tts-preview",
+        "https://ai.google.dev/gemini-api/docs/speech-generation",
+        "https://ai.google.dev/gemini-api/docs/models",
+        "https://ai.google.dev/gemini-api/docs/changelog"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "gemini-2.5-pro-preview-tts",
+      "kind": "audio",
+      "name": "Gemini 2.5 Pro TTS",
+      "released": "2025-05-20",
+      "description": "High-fidelity speech synthesis optimized for quality in structured workflows like podcasts and audiobooks.",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": [
+          "Zephyr",
+          "Puck",
+          "Charon",
+          "Kore",
+          "Fenrir",
+          "Leda",
+          "Orus",
+          "Aoede",
+          "Callirrhoe",
+          "Autonoe",
+          "Enceladus",
+          "Iapetus",
+          "Umbriel",
+          "Algieba",
+          "Despina",
+          "Erinome",
+          "Algenib",
+          "Rasalgethi",
+          "Laomedeia",
+          "Achernar",
+          "Alnilam",
+          "Schedar",
+          "Gacrux",
+          "Pulcherrima",
+          "Achird",
+          "Zubenelgenubi",
+          "Vindemiatrix",
+          "Sadachbia",
+          "Sadaltager",
+          "Sulafat"
+        ],
+        "instructions": true,
+        "formats": [
+          "pcm"
+        ]
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-pro-preview-tts",
+        "https://ai.google.dev/gemini-api/docs/speech-generation",
+        "https://ai.google.dev/gemini-api/docs/models",
+        "https://ai.google.dev/gemini-api/docs/deprecations",
+        "https://ai.google.dev/gemini-api/docs/pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionInputTokens",
+            "amount": 1.0,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 20.0,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      }
+    },
+    {
+      "vendor": "google",
+      "id": "gemini-2.5-flash-preview-tts",
+      "kind": "audio",
+      "name": "Gemini 2.5 Flash TTS",
+      "released": "2025-05-20",
+      "description": "Fast and controllable text-to-speech for low-latency, cost-efficient applications and real-time assistants.",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": [
+          "Zephyr",
+          "Puck",
+          "Charon",
+          "Kore",
+          "Fenrir",
+          "Leda",
+          "Orus",
+          "Aoede",
+          "Callirrhoe",
+          "Autonoe",
+          "Enceladus",
+          "Iapetus",
+          "Umbriel",
+          "Algieba",
+          "Despina",
+          "Erinome",
+          "Algenib",
+          "Rasalgethi",
+          "Laomedeia",
+          "Achernar",
+          "Alnilam",
+          "Schedar",
+          "Gacrux",
+          "Pulcherrima",
+          "Achird",
+          "Zubenelgenubi",
+          "Vindemiatrix",
+          "Sadachbia",
+          "Sadaltager",
+          "Sulafat"
+        ],
+        "instructions": true,
+        "formats": [
+          "pcm"
+        ]
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/gemini-2.5-flash-preview-tts",
+        "https://ai.google.dev/gemini-api/docs/speech-generation",
+        "https://ai.google.dev/gemini-api/docs/models",
+        "https://ai.google.dev/gemini-api/docs/deprecations",
+        "https://ai.google.dev/gemini-api/docs/pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionInputTokens",
+            "amount": 0.5,
+            "currency": "usd"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 10.0,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      }
+    },
+    {
+      "vendor": "google",
+      "id": "lyria-3.5",
+      "kind": "audio",
+      "name": "Lyria 3.5",
+      "released": "2026-09-03",
+      "description": "Our flagship music generation model, optimized for full-length songs with complex structural coherence.",
+      "audio": {
+        "makes": [
+          "music"
+        ],
+        "lyrics": true,
+        "instrumental": true,
+        "formats": [
+          "mp3",
+          "wav"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "song",
+            "amount": 0.08,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/lyria-3.5",
+        "https://ai.google.dev/gemini-api/docs/music-generation",
+        "https://ai.google.dev/gemini-api/docs/models",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/deprecations"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "lyria-3-pro-preview",
+      "kind": "audio",
+      "name": "Lyria 3 Pro",
+      "released": "2026-03-25",
+      "description": "Previous generation music generation model for full-length songs.",
+      "audio": {
+        "makes": [
+          "music"
+        ],
+        "formats": [
+          "mp3"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "song",
+            "amount": 0.08,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/lyria-3-pro-preview",
+        "https://ai.google.dev/gemini-api/docs/models",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/deprecations"
+      ]
+    },
+    {
+      "vendor": "google",
+      "id": "lyria-3-clip-preview",
+      "kind": "audio",
+      "name": "Lyria 3 Clip",
+      "released": "2026-03-25",
+      "description": "Optimized for generating short musical clips, loops, and previews up to 30 seconds.",
+      "audio": {
+        "makes": [
+          "music"
+        ],
+        "durations": [
+          30
+        ],
+        "formats": [
+          "mp3"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "song",
+            "amount": 0.04,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://ai.google.dev/gemini-api/docs/pricing"
+      },
+      "sources": [
+        "https://ai.google.dev/gemini-api/docs/models/lyria-3-clip-preview",
+        "https://ai.google.dev/gemini-api/docs/music-generation",
+        "https://ai.google.dev/gemini-api/docs/models",
+        "https://ai.google.dev/gemini-api/docs/pricing",
+        "https://ai.google.dev/gemini-api/docs/deprecations"
+      ]
+    },
+    {
+      "vendor": "byteplus",
+      "id": "dola-seedream-5-0-flash-260915",
+      "kind": "image",
+      "name": "Dola Seedream 5.0 Flash",
+      "image": {
+        "edits": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.018,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ]
+    },
+    {
+      "vendor": "byteplus",
+      "id": "dola-seedream-5-0-pro-260628",
+      "kind": "image",
+      "name": "Dola Seedream 5.0 Pro",
+      "image": {
+        "edits": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.045,
+            "currency": "usd",
+            "resolution": "1.5K or lower"
+          },
+          {
+            "unit": "image",
+            "amount": 0.09,
+            "currency": "usd",
+            "resolution": "higher than 1.5K"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ]
+    },
+    {
+      "vendor": "byteplus",
+      "id": "seedream-5-0-260128",
+      "kind": "image",
+      "name": "Seedream 5.0 lite",
+      "image": {
+        "edits": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.035,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ]
+    },
+    {
+      "vendor": "byteplus",
+      "id": "seedream-5-0-lite-260128",
+      "kind": "image",
+      "name": "Seedream 5.0 lite",
+      "aliasOf": "seedream-5-0-260128",
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ]
+    },
+    {
+      "vendor": "byteplus",
+      "id": "seedream-4-5-251128",
+      "kind": "image",
+      "name": "Seedream 4.5",
+      "image": {
+        "edits": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.04,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ]
+    },
+    {
+      "vendor": "byteplus",
+      "id": "seedream-4-0-250828",
+      "kind": "image",
+      "name": "Seedream 4.0",
+      "image": {
+        "edits": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.03,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ]
+    },
+    {
+      "vendor": "byteplus",
+      "id": "dreamina-seedance-2-5-260628",
+      "kind": "video",
+      "name": "Dreamina Seedance 2.5",
+      "video": {
+        "durationRange": {
+          "min": 4,
+          "max": 30
+        },
+        "resolutions": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 10.7,
+            "currency": "usd",
+            "resolution": "480p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 10.7,
+            "currency": "usd",
+            "resolution": "720p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 11.7,
+            "currency": "usd",
+            "resolution": "1080p"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      }
+    },
+    {
+      "vendor": "byteplus",
+      "id": "dreamina-seedance-2-0-mini-260615",
+      "kind": "video",
+      "name": "Dreamina Seedance 2.0 Mini",
+      "video": {
+        "durationRange": {
+          "min": 4,
+          "max": 15
+        },
+        "resolutions": [
+          "480p",
+          "720p"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 3.5,
+            "currency": "usd",
+            "resolution": "480p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 3.5,
+            "currency": "usd",
+            "resolution": "720p"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      }
+    },
+    {
+      "vendor": "byteplus",
+      "id": "dreamina-seedance-2-0-260128",
+      "kind": "video",
+      "name": "Dreamina Seedance 2.0",
+      "video": {
+        "durationRange": {
+          "min": 4,
+          "max": 15
+        },
+        "resolutions": [
+          "480p",
+          "720p",
+          "1080p",
+          "4K"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 7.0,
+            "currency": "usd",
+            "resolution": "480p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 7.0,
+            "currency": "usd",
+            "resolution": "720p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 7.7,
+            "currency": "usd",
+            "resolution": "1080p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 4.0,
+            "currency": "usd",
+            "resolution": "4K"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      }
+    },
+    {
+      "vendor": "byteplus",
+      "id": "dreamina-seedance-2-0-fast-260128",
+      "kind": "video",
+      "name": "Dreamina Seedance 2.0 Fast",
+      "video": {
+        "durationRange": {
+          "min": 4,
+          "max": 15
+        },
+        "resolutions": [
+          "480p",
+          "720p"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 5.6,
+            "currency": "usd",
+            "resolution": "480p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 5.6,
+            "currency": "usd",
+            "resolution": "720p"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      }
+    },
+    {
+      "vendor": "byteplus",
+      "id": "seedance-1-5-pro-251215",
+      "kind": "video",
+      "name": "Seedance 1.5 Pro",
+      "video": {
+        "durationRange": {
+          "min": 4,
+          "max": 12
+        },
+        "resolutions": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ]
+    },
+    {
+      "vendor": "byteplus",
+      "id": "seedance-1-0-pro-fast-251015",
+      "kind": "video",
+      "name": "Seedance 1.0 Pro Fast",
+      "video": {
+        "durationRange": {
+          "min": 2,
+          "max": 12
+        },
+        "resolutions": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "firstFrame": true,
+        "lastFrame": false
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 1.0,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      }
+    },
+    {
+      "vendor": "byteplus",
+      "id": "seedance-1-0-pro-250528",
+      "kind": "video",
+      "name": "Seedance 1.0 Pro",
+      "video": {
+        "durationRange": {
+          "min": 2,
+          "max": 12
+        },
+        "resolutions": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 2.5,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
+      }
+    },
+    {
+      "vendor": "minimax",
+      "id": "MiniMax-H3",
+      "kind": "video",
+      "name": "MiniMax H3",
+      "description": "Next-gen open general-purpose multimodal video model",
+      "video": {
+        "durationRange": {
+          "min": 4,
+          "max": 15
+        },
+        "resolutions": [
+          "768P",
+          "2K"
+        ],
+        "aspectRatios": [
+          "21:9",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "firstFrame": true,
+        "lastFrame": true,
+        "maxReferenceImages": 9
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "second",
+            "amount": 0.08,
+            "currency": "usd",
+            "resolution": "768P"
+          },
+          {
+            "unit": "second",
+            "amount": 0.13,
+            "currency": "usd",
+            "resolution": "2K"
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/models-intro",
+        "https://platform.minimax.io/docs/api-reference/video-generation-v2-create",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ]
+    },
+    {
+      "vendor": "minimax",
+      "id": "MiniMax-H3-Max",
+      "kind": "video",
+      "name": "MiniMax H3 Max",
+      "description": "High-speed video model post-trained by fal.ai on MiniMax H3, optimized for high-speed generation",
+      "video": {
+        "durationRange": {
+          "min": 5,
+          "max": 15
+        },
+        "resolutions": [
+          "480P",
+          "768P"
+        ],
+        "aspectRatios": [
+          "21:9",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "firstFrame": true,
+        "lastFrame": true,
+        "maxReferenceImages": 9
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "second",
+            "amount": 0.05,
+            "currency": "usd",
+            "resolution": "480P"
+          },
+          {
+            "unit": "second",
+            "amount": 0.08,
+            "currency": "usd",
+            "resolution": "768P"
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/models-intro",
+        "https://platform.minimax.io/docs/api-reference/video-generation-v2-create",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ]
+    },
+    {
+      "vendor": "minimax",
+      "id": "MiniMax-Hailuo-2.3",
+      "kind": "video",
+      "name": "MiniMax Hailuo 2.3",
+      "description": "Text to Video & Image to Video",
+      "video": {
+        "durations": [
+          6,
+          10
+        ],
+        "resolutions": [
+          "768P",
+          "1080P"
+        ],
+        "firstFrame": true
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/models-intro",
+        "https://platform.minimax.io/docs/api-reference/video-generation-t2v",
+        "https://platform.minimax.io/docs/api-reference/video-generation-i2v",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "video",
+            "amount": 0.28,
+            "currency": "usd",
+            "resolution": "768P",
+            "duration": 6
+          },
+          {
+            "unit": "video",
+            "amount": 0.56,
+            "currency": "usd",
+            "resolution": "768P",
+            "duration": 10
+          },
+          {
+            "unit": "video",
+            "amount": 0.49,
+            "currency": "usd",
+            "resolution": "1080P",
+            "duration": 6
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      }
+    },
+    {
+      "vendor": "minimax",
+      "id": "MiniMax-Hailuo-2.3-Fast",
+      "kind": "video",
+      "name": "MiniMax Hailuo 2.3 Fast",
+      "description": "Image to Video",
+      "video": {
+        "durations": [
+          6,
+          10
+        ],
+        "resolutions": [
+          "768P",
+          "1080P"
+        ],
+        "firstFrame": true
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/models-intro",
+        "https://platform.minimax.io/docs/api-reference/video-generation-i2v",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "video",
+            "amount": 0.19,
+            "currency": "usd",
+            "resolution": "768P",
+            "duration": 6
+          },
+          {
+            "unit": "video",
+            "amount": 0.32,
+            "currency": "usd",
+            "resolution": "768P",
+            "duration": 10
+          },
+          {
+            "unit": "video",
+            "amount": 0.33,
+            "currency": "usd",
+            "resolution": "1080P",
+            "duration": 6
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      }
+    },
+    {
+      "vendor": "minimax",
+      "id": "MiniMax-Hailuo-02",
+      "kind": "video",
+      "name": "MiniMax Hailuo 02",
+      "description": "Text to Video & Image to Video",
+      "video": {
+        "durations": [
+          6,
+          10
+        ],
+        "resolutions": [
+          "512P",
+          "768P",
+          "1080P"
+        ],
+        "firstFrame": true
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/models-intro",
+        "https://platform.minimax.io/docs/api-reference/video-generation-t2v",
+        "https://platform.minimax.io/docs/api-reference/video-generation-i2v",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "video",
+            "amount": 0.1,
+            "currency": "usd",
+            "resolution": "512P",
+            "duration": 6
+          },
+          {
+            "unit": "video",
+            "amount": 0.15,
+            "currency": "usd",
+            "resolution": "512P",
+            "duration": 10
+          },
+          {
+            "unit": "video",
+            "amount": 0.28,
+            "currency": "usd",
+            "resolution": "768P",
+            "duration": 6
+          },
+          {
+            "unit": "video",
+            "amount": 0.56,
+            "currency": "usd",
+            "resolution": "768P",
+            "duration": 10
+          },
+          {
+            "unit": "video",
+            "amount": 0.49,
+            "currency": "usd",
+            "resolution": "1080P",
+            "duration": 6
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      }
+    },
+    {
+      "vendor": "minimax",
+      "id": "image-01",
+      "kind": "image",
+      "name": "image-01",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "16:9",
+          "4:3",
+          "3:2",
+          "2:3",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
+        "customSize": {
+          "multipleOf": 8,
+          "maxEdge": 2048
+        }
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.0035,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/api-reference/image-generation-t2i",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ]
+    },
+    {
+      "vendor": "minimax",
+      "id": "speech-2.8-hd",
+      "kind": "audio",
+      "name": "speech-2.8-hd",
+      "description": "Ultra-realistic quality featuring sound tags",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Persian",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Filipino",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Tamil",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 100,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/models-intro",
+        "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ]
+    },
+    {
+      "vendor": "minimax",
+      "id": "speech-2.8-turbo",
+      "kind": "audio",
+      "name": "speech-2.8-turbo",
+      "description": "Seamless speed meets natural flow",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Persian",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Filipino",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Tamil",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 60,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/models-intro",
+        "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ]
+    },
+    {
+      "vendor": "minimax",
+      "id": "speech-2.6-hd",
+      "kind": "audio",
+      "name": "speech-2.6-hd",
+      "description": "Ultimate Similarity, Ultra-High Quality",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Persian",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Filipino",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Tamil",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 100,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/models-intro",
+        "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ]
+    },
+    {
+      "vendor": "minimax",
+      "id": "speech-2.6-turbo",
+      "kind": "audio",
+      "name": "speech-2.6-turbo",
+      "description": "Ultimate Value, Low latency",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Persian",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Filipino",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Tamil",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 60,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/models-intro",
+        "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ]
+    },
+    {
+      "vendor": "minimax",
+      "id": "speech-02-hd",
+      "kind": "audio",
+      "name": "speech-02-hd",
+      "description": "Stronger replication similarity, High quality voice generation",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 100,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/models-intro",
+        "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ]
+    },
+    {
+      "vendor": "minimax",
+      "id": "speech-02-turbo",
+      "kind": "audio",
+      "name": "speech-02-turbo",
+      "description": "Superior rhythm and stability, Low latency",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 60,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://platform.minimax.io/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/guides/models-intro",
+        "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
+        "https://platform.minimax.io/docs/pricing/overview"
+      ]
+    },
+    {
+      "vendor": "elevenlabs",
+      "id": "eleven_v4",
+      "kind": "audio",
+      "name": "Eleven v4",
+      "description": "Our most emotionally rich, expressive speech synthesis model",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "af",
+          "ar",
+          "hy",
+          "as",
+          "ast",
+          "az",
+          "be",
+          "bn",
+          "bs",
+          "bg",
+          "my",
+          "yue",
+          "ca",
+          "ceb",
+          "hr",
+          "cs",
+          "da",
+          "nl",
+          "en",
+          "et",
+          "fil",
+          "fi",
+          "fr",
+          "gl",
+          "ka",
+          "de",
+          "el",
+          "gu",
+          "ha",
+          "he",
+          "hi",
+          "hu",
+          "is",
+          "id",
+          "ga",
+          "it",
+          "ja",
+          "jv",
+          "kn",
+          "kk",
+          "ko",
+          "ky",
+          "lv",
+          "ln",
+          "lt",
+          "lb",
+          "mk",
+          "ms",
+          "ml",
+          "mt",
+          "zh",
+          "mi",
+          "mr",
+          "mn",
+          "ne",
+          "no",
+          "oc",
+          "or",
+          "ps",
+          "fa",
+          "pl",
+          "pt",
+          "pa",
+          "ro",
+          "ru",
+          "sr",
+          "sd",
+          "sk",
+          "sl",
+          "so",
+          "es",
+          "sw",
+          "sv",
+          "tg",
+          "ta",
+          "te",
+          "th",
+          "tr",
+          "uk",
+          "ur",
+          "uz",
+          "vi",
+          "cy",
+          "yo"
+        ],
+        "instructions": true,
+        "formats": [
+          "mp3",
+          "opus",
+          "pcm",
+          "wav",
+          "ulaw",
+          "alaw"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 80,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://elevenlabs.io/pricing/api"
+      },
+      "sources": [
+        "https://elevenlabs.io/docs/overview/models",
+        "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
+        "https://elevenlabs.io/pricing/api"
+      ]
+    },
+    {
+      "vendor": "elevenlabs",
+      "id": "eleven_v4_turbo",
+      "kind": "audio",
+      "name": "Eleven v4 Turbo",
+      "description": "Our most expressive, real-time speech synthesis model",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "af",
+          "ar",
+          "hy",
+          "as",
+          "ast",
+          "az",
+          "be",
+          "bn",
+          "bs",
+          "bg",
+          "my",
+          "yue",
+          "ca",
+          "ceb",
+          "hr",
+          "cs",
+          "da",
+          "nl",
+          "en",
+          "et",
+          "fil",
+          "fi",
+          "fr",
+          "gl",
+          "ka",
+          "de",
+          "el",
+          "gu",
+          "ha",
+          "he",
+          "hi",
+          "hu",
+          "is",
+          "id",
+          "ga",
+          "it",
+          "ja",
+          "jv",
+          "kn",
+          "kk",
+          "ko",
+          "ky",
+          "lv",
+          "ln",
+          "lt",
+          "lb",
+          "mk",
+          "ms",
+          "ml",
+          "mt",
+          "zh",
+          "mi",
+          "mr",
+          "mn",
+          "ne",
+          "no",
+          "oc",
+          "or",
+          "ps",
+          "fa",
+          "pl",
+          "pt",
+          "pa",
+          "ro",
+          "ru",
+          "sr",
+          "sd",
+          "sk",
+          "sl",
+          "so",
+          "es",
+          "sw",
+          "sv",
+          "tg",
+          "ta",
+          "te",
+          "th",
+          "tr",
+          "uk",
+          "ur",
+          "uz",
+          "vi",
+          "cy",
+          "yo"
+        ],
+        "formats": [
+          "mp3",
+          "opus",
+          "pcm",
+          "wav",
+          "ulaw",
+          "alaw"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 40,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://elevenlabs.io/pricing/api"
+      },
+      "sources": [
+        "https://elevenlabs.io/docs/overview/models",
+        "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
+        "https://elevenlabs.io/pricing/api"
+      ]
+    },
+    {
+      "vendor": "elevenlabs",
+      "id": "eleven_v3",
+      "kind": "audio",
+      "name": "Eleven v3",
+      "description": "Human-like and expressive speech generation",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "af",
+          "ar",
+          "hy",
+          "as",
+          "ast",
+          "az",
+          "be",
+          "bn",
+          "bs",
+          "bg",
+          "my",
+          "yue",
+          "ca",
+          "ceb",
+          "ny",
+          "hr",
+          "cs",
+          "da",
+          "nl",
+          "en",
+          "et",
+          "fil",
+          "fi",
+          "fr",
+          "gl",
+          "ka",
+          "de",
+          "el",
+          "gu",
+          "ha",
+          "he",
+          "hi",
+          "hu",
+          "is",
+          "id",
+          "ga",
+          "it",
+          "ja",
+          "jv",
+          "kn",
+          "kk",
+          "ky",
+          "ko",
+          "lv",
+          "ln",
+          "lt",
+          "lb",
+          "mk",
+          "ms",
+          "ml",
+          "mt",
+          "zh",
+          "mi",
+          "mr",
+          "mn",
+          "ne",
+          "no",
+          "oc",
+          "or",
+          "ps",
+          "fa",
+          "pl",
+          "pt",
+          "pa",
+          "ro",
+          "ru",
+          "sr",
+          "sd",
+          "sk",
+          "sl",
+          "so",
+          "es",
+          "sw",
+          "sv",
+          "tg",
+          "ta",
+          "te",
+          "th",
+          "tr",
+          "uk",
+          "ur",
+          "uz",
+          "vi",
+          "cy",
+          "yo"
+        ],
+        "formats": [
+          "mp3",
+          "opus",
+          "pcm",
+          "wav",
+          "ulaw",
+          "alaw"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 80,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://elevenlabs.io/pricing/api"
+      },
+      "sources": [
+        "https://elevenlabs.io/docs/overview/models",
+        "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
+        "https://elevenlabs.io/pricing/api"
+      ]
+    },
+    {
+      "vendor": "elevenlabs",
+      "id": "eleven_v3_conversational",
+      "kind": "audio",
+      "name": "Eleven v3 Conversational",
+      "description": "Our most expressive, realtime speech synthesis model",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "af",
+          "ar",
+          "hy",
+          "as",
+          "ast",
+          "az",
+          "be",
+          "bn",
+          "bs",
+          "bg",
+          "my",
+          "yue",
+          "ca",
+          "ceb",
+          "ny",
+          "hr",
+          "cs",
+          "da",
+          "nl",
+          "en",
+          "et",
+          "fil",
+          "fi",
+          "fr",
+          "gl",
+          "ka",
+          "de",
+          "el",
+          "gu",
+          "ha",
+          "he",
+          "hi",
+          "hu",
+          "is",
+          "id",
+          "ga",
+          "it",
+          "ja",
+          "jv",
+          "kn",
+          "kk",
+          "ky",
+          "ko",
+          "lv",
+          "ln",
+          "lt",
+          "lb",
+          "mk",
+          "ms",
+          "ml",
+          "mt",
+          "zh",
+          "mi",
+          "mr",
+          "mn",
+          "ne",
+          "no",
+          "oc",
+          "or",
+          "ps",
+          "fa",
+          "pl",
+          "pt",
+          "pa",
+          "ro",
+          "ru",
+          "sr",
+          "sd",
+          "sk",
+          "sl",
+          "so",
+          "es",
+          "sw",
+          "sv",
+          "tg",
+          "ta",
+          "te",
+          "th",
+          "tr",
+          "uk",
+          "ur",
+          "uz",
+          "vi",
+          "cy",
+          "yo"
+        ],
+        "formats": [
+          "mp3",
+          "opus",
+          "pcm",
+          "wav",
+          "ulaw",
+          "alaw"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 40,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://elevenlabs.io/pricing/api"
+      },
+      "sources": [
+        "https://elevenlabs.io/docs/overview/models",
+        "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
+        "https://elevenlabs.io/pricing/api"
+      ]
+    },
+    {
+      "vendor": "elevenlabs",
+      "id": "eleven_multilingual_v2",
+      "kind": "audio",
+      "name": "Eleven Multilingual v2",
+      "description": "Our lifelike model with rich emotional expression",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "en",
+          "ja",
+          "zh",
+          "de",
+          "hi",
+          "fr",
+          "ko",
+          "pt",
+          "it",
+          "es",
+          "id",
+          "nl",
+          "tr",
+          "fil",
+          "pl",
+          "sv",
+          "bg",
+          "ro",
+          "ar",
+          "cs",
+          "el",
+          "fi",
+          "hr",
+          "ms",
+          "sk",
+          "da",
+          "ta",
+          "uk",
+          "ru"
+        ],
+        "formats": [
+          "mp3",
+          "opus",
+          "pcm",
+          "wav",
+          "ulaw",
+          "alaw"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 80,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://elevenlabs.io/pricing/api"
+      },
+      "sources": [
+        "https://elevenlabs.io/docs/overview/models",
+        "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
+        "https://elevenlabs.io/pricing/api"
+      ]
+    },
+    {
+      "vendor": "elevenlabs",
+      "id": "eleven_flash_v2_5",
+      "kind": "audio",
+      "name": "Eleven Flash v2.5",
+      "description": "Ultra-fast model optimized for real-time use",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "en",
+          "ja",
+          "zh",
+          "de",
+          "hi",
+          "fr",
+          "ko",
+          "pt",
+          "it",
+          "es",
+          "id",
+          "nl",
+          "tr",
+          "fil",
+          "pl",
+          "sv",
+          "bg",
+          "ro",
+          "ar",
+          "cs",
+          "el",
+          "fi",
+          "hr",
+          "ms",
+          "sk",
+          "da",
+          "ta",
+          "uk",
+          "ru",
+          "hu",
+          "no",
+          "vi"
+        ],
+        "formats": [
+          "mp3",
+          "opus",
+          "pcm",
+          "wav",
+          "ulaw",
+          "alaw"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 40,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://elevenlabs.io/pricing/api"
+      },
+      "sources": [
+        "https://elevenlabs.io/docs/overview/models",
+        "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
+        "https://elevenlabs.io/pricing/api"
+      ]
+    },
+    {
+      "vendor": "elevenlabs",
+      "id": "eleven_flash_v2",
+      "kind": "audio",
+      "name": "Eleven Flash v2",
+      "description": "Ultra-fast model optimized for real-time use",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "en"
+        ],
+        "formats": [
+          "mp3",
+          "opus",
+          "pcm",
+          "wav",
+          "ulaw",
+          "alaw"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 40,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://elevenlabs.io/pricing/api"
+      },
+      "sources": [
+        "https://elevenlabs.io/docs/overview/models",
+        "https://elevenlabs.io/docs/api-reference/text-to-speech/convert",
+        "https://elevenlabs.io/pricing/api"
+      ]
+    },
+    {
+      "vendor": "elevenlabs",
+      "id": "music_v2_5",
+      "kind": "audio",
+      "name": "Eleven Music v2.5",
+      "description": "Our most advanced music model. Studio-grade generation from text prompts, composition plans and previously generated songs",
+      "audio": {
+        "makes": [
+          "music"
+        ],
+        "durationRange": {
+          "min": 3,
+          "max": 600
+        },
+        "lyrics": true,
+        "instrumental": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "minute",
+            "amount": 0.15,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://elevenlabs.io/pricing/api"
+      },
+      "sources": [
+        "https://elevenlabs.io/docs/overview/models",
+        "https://elevenlabs.io/docs/api-reference/music/compose",
+        "https://elevenlabs.io/pricing/api"
+      ]
+    },
+    {
+      "vendor": "elevenlabs",
+      "id": "music_v2",
+      "kind": "audio",
+      "name": "Eleven Music v2",
+      "description": "Studio-grade music generation from text prompts, composition plans and previously generated songs",
+      "audio": {
+        "makes": [
+          "music"
+        ],
+        "durationRange": {
+          "min": 3,
+          "max": 600
+        },
+        "lyrics": true,
+        "instrumental": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "minute",
+            "amount": 0.15,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://elevenlabs.io/pricing/api"
+      },
+      "sources": [
+        "https://elevenlabs.io/docs/overview/models",
+        "https://elevenlabs.io/docs/api-reference/music/compose",
+        "https://elevenlabs.io/pricing/api"
+      ]
+    },
+    {
+      "vendor": "elevenlabs",
+      "id": "music_v1",
+      "kind": "audio",
+      "name": "Eleven Music v1",
+      "description": "Studio-grade music generation from text prompts",
+      "audio": {
+        "makes": [
+          "music"
+        ],
+        "durationRange": {
+          "min": 3,
+          "max": 600
+        },
+        "instrumental": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "minute",
+            "amount": 0.15,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://elevenlabs.io/pricing/api"
+      },
+      "sources": [
+        "https://elevenlabs.io/docs/overview/models",
+        "https://elevenlabs.io/docs/api-reference/music/compose",
+        "https://elevenlabs.io/pricing/api"
+      ]
+    },
+    {
+      "vendor": "elevenlabs",
+      "id": "eleven_text_to_sound_v2",
+      "kind": "audio",
+      "name": "Eleven Sound Effects v2",
+      "description": "Sound effects generation from text prompts",
+      "audio": {
+        "makes": [
+          "effect"
+        ],
+        "durationRange": {
+          "min": 0.5,
+          "max": 30
+        },
+        "loops": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "minute",
+            "amount": 0.12,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://elevenlabs.io/pricing/api"
+      },
+      "sources": [
+        "https://elevenlabs.io/docs/overview/models",
+        "https://elevenlabs.io/docs/api-reference/text-to-sound-effects/convert",
+        "https://elevenlabs.io/pricing/api"
+      ]
+    },
+    {
+      "vendor": "stability",
+      "id": "stable-audio-3",
+      "kind": "audio",
+      "name": "Stable Audio 3.0",
+      "description": "Fast, Best-Quality, Long-Form Music & Audio Generation",
+      "audio": {
+        "makes": [
+          "music",
+          "effect"
+        ],
+        "durationRange": {
+          "min": 1,
+          "max": 380
+        },
+        "formats": [
+          "mp3",
+          "wav"
+        ]
+      },
+      "sources": [
+        "https://platform.stability.ai/docs/api-reference",
+        "https://platform.stability.ai/pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "song",
+            "amount": 0.08,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://platform.stability.ai/pricing"
+      }
+    },
+    {
+      "vendor": "stability",
+      "id": "stable-audio-2.5",
+      "kind": "audio",
+      "name": "Stable Audio 2.5",
+      "description": "Fast, Long-Form Music & Audio Generation",
+      "audio": {
+        "makes": [
+          "music",
+          "effect"
+        ],
+        "durationRange": {
+          "min": 1,
+          "max": 190
+        },
+        "formats": [
+          "mp3",
+          "wav"
+        ]
+      },
+      "sources": [
+        "https://platform.stability.ai/docs/api-reference",
+        "https://platform.stability.ai/pricing"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "song",
+            "amount": 0.08,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://platform.stability.ai/pricing"
+      }
+    },
+    {
+      "vendor": "stability",
+      "id": "stable-audio-2",
+      "kind": "audio",
+      "name": "Stable Audio 2.0",
+      "description": "High-Quality Audio Generation",
+      "audio": {
+        "makes": [
+          "music",
+          "effect"
+        ],
+        "durationRange": {
+          "min": 1,
+          "max": 190
+        },
+        "formats": [
+          "mp3",
+          "wav"
+        ]
+      },
+      "sources": [
+        "https://platform.stability.ai/docs/api-reference"
+      ]
+    },
+    {
+      "vendor": "byteplus",
+      "id": "seed-audio-1.0",
+      "kind": "audio",
+      "name": "Audio 1.0",
+      "description": "Audio generation from reference audio, a reference image or a natural-language description, up to 120 seconds",
+      "audio": {
+        "makes": [
+          "speech",
+          "effect"
+        ],
+        "voices": "listed",
+        "languages": [
+          "English",
+          "Chinese",
+          "Japanese",
+          "Korean",
+          "Mexican Spanish",
+          "Indonesian",
+          "German",
+          "Brazilian Portuguese",
+          "French",
+          "Thai",
+          "Vietnamese",
+          "Malay",
+          "Filipino",
+          "Italian",
+          "Russian",
+          "Dutch",
+          "Polish",
+          "Turkish",
+          "Swedish",
+          "Castilian Spanish"
+        ],
+        "instructions": true,
+        "durationRange": {
+          "max": 120
+        },
+        "formats": [
+          "wav",
+          "mp3",
+          "pcm",
+          "ogg_opus"
+        ]
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/byteplusvoice/seedaudio-01"
+      ]
+    },
+    {
+      "vendor": "byteplus",
+      "id": "seed-tts-2.0",
+      "kind": "audio",
+      "name": "TTS 2.0",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "instructions": true,
+        "formats": [
+          "mp3",
+          "ogg_opus",
+          "pcm"
+        ]
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/byteplusvoice/unidirectional_tts_http",
+        "https://docs.byteplus.com/en/docs/byteplusvoice/texttospeechv2"
+      ]
+    },
+    {
+      "vendor": "byteplus",
+      "id": "seed-tts-1.0",
+      "kind": "audio",
+      "name": "TTS 1.0",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "formats": [
+          "mp3",
+          "ogg_opus",
+          "pcm"
+        ]
+      },
+      "sources": [
+        "https://docs.byteplus.com/en/docs/byteplusvoice/unidirectional_tts_http"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedream-5-0-flash-260915",
+      "kind": "image",
+      "name": "Doubao Seedream 5.0 Flash",
+      "image": {
+        "resolutions": [
+          "1K",
+          "1.5K",
+          "2K"
+        ],
+        "customSize": {
+          "maxRatio": 16,
+          "minPixels": 921600,
+          "maxPixels": 4624220
+        },
+        "edits": true,
+        "maxInputImages": 10
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.12,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh",
+        "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedream-5-0-pro-260628",
+      "kind": "image",
+      "name": "Doubao Seedream 5.0 Pro",
+      "image": {
+        "resolutions": [
+          "1K",
+          "1.5K",
+          "2K"
+        ],
+        "customSize": {
+          "maxRatio": 16,
+          "minPixels": 921600,
+          "maxPixels": 4624220
+        },
+        "edits": true,
+        "maxInputImages": 10
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.3,
+            "currency": "cny",
+            "resolution": "1.5K or lower"
+          },
+          {
+            "unit": "image",
+            "amount": 0.6,
+            "currency": "cny",
+            "resolution": "higher than 1.5K"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh",
+        "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedream-5-0-260128",
+      "kind": "image",
+      "name": "Doubao Seedream 5.0 lite",
+      "image": {
+        "resolutions": [
+          "2K",
+          "3K",
+          "4K"
+        ],
+        "customSize": {
+          "maxRatio": 16,
+          "minPixels": 3686400,
+          "maxPixels": 16777216
+        },
+        "edits": true,
+        "maxInputImages": 14
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.22,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh",
+        "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedream-5-0-lite-260128",
+      "kind": "image",
+      "name": "Doubao Seedream 5.0 lite",
+      "aliasOf": "doubao-seedream-5-0-260128",
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedream-4-5-251128",
+      "kind": "image",
+      "name": "Doubao Seedream 4.5",
+      "image": {
+        "resolutions": [
+          "2K",
+          "4K"
+        ],
+        "customSize": {
+          "maxRatio": 16,
+          "minPixels": 3686400,
+          "maxPixels": 16777216
+        },
+        "edits": true,
+        "maxInputImages": 14
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.25,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh",
+        "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedream-4-0-250828",
+      "kind": "image",
+      "name": "Doubao Seedream 4.0",
+      "image": {
+        "resolutions": [
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "customSize": {
+          "maxRatio": 16,
+          "minPixels": 921600,
+          "maxPixels": 16777216
+        },
+        "edits": true,
+        "maxInputImages": 14
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.2,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh",
+        "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedance-2-5-260628",
+      "kind": "video",
+      "name": "Doubao Seedance 2.5",
+      "video": {
+        "durationRange": {
+          "min": 4,
+          "max": 30
+        },
+        "resolutions": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 70,
+            "currency": "cny",
+            "resolution": "480p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 70,
+            "currency": "cny",
+            "resolution": "720p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 77,
+            "currency": "cny",
+            "resolution": "1080p"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedance-2-0-mini-260615",
+      "kind": "video",
+      "name": "Doubao Seedance 2.0 mini",
+      "video": {
+        "durationRange": {
+          "min": 4,
+          "max": 15
+        },
+        "resolutions": [
+          "480p",
+          "720p"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 23,
+            "currency": "cny",
+            "resolution": "480p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 23,
+            "currency": "cny",
+            "resolution": "720p"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedance-2-0-260128",
+      "kind": "video",
+      "name": "Doubao Seedance 2.0",
+      "video": {
+        "durationRange": {
+          "min": 4,
+          "max": 15
+        },
+        "resolutions": [
+          "480p",
+          "720p",
+          "1080p",
+          "4k"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 46,
+            "currency": "cny",
+            "resolution": "480p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 46,
+            "currency": "cny",
+            "resolution": "720p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 51,
+            "currency": "cny",
+            "resolution": "1080p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 26,
+            "currency": "cny",
+            "resolution": "4k"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedance-2-0-fast-260128",
+      "kind": "video",
+      "name": "Doubao Seedance 2.0 fast",
+      "video": {
+        "durationRange": {
+          "min": 4,
+          "max": 15
+        },
+        "resolutions": [
+          "480p",
+          "720p"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 37,
+            "currency": "cny",
+            "resolution": "480p"
+          },
+          {
+            "unit": "millionOutputTokens",
+            "amount": 37,
+            "currency": "cny",
+            "resolution": "720p"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedance-1-0-pro-fast-251015",
+      "kind": "video",
+      "name": "Doubao Seedance 1.0 pro fast",
+      "video": {
+        "durationRange": {
+          "min": 2,
+          "max": 12
+        },
+        "resolutions": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "firstFrame": true,
+        "lastFrame": false
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 4.2,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "doubao-seedance-1-0-pro-250528",
+      "kind": "video",
+      "name": "Doubao Seedance 1.0 pro",
+      "video": {
+        "durationRange": {
+          "min": 2,
+          "max": 12
+        },
+        "resolutions": [
+          "480p",
+          "720p",
+          "1080p"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionOutputTokens",
+            "amount": 15,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "seed-audio-1.0",
+      "kind": "audio",
+      "name": "豆包音频生成模型1.0",
+      "description": "音频生成：通过参考音频、参考图片或自然语言描述生成定制化音频，单次最长 120 秒",
+      "audio": {
+        "makes": [
+          "speech",
+          "effect"
+        ],
+        "voices": "listed",
+        "languages": [
+          "中文",
+          "英文",
+          "日语",
+          "韩语",
+          "墨西哥-西班牙语",
+          "西班牙语",
+          "德语",
+          "法语",
+          "巴西-葡萄牙语",
+          "泰语",
+          "越南语",
+          "马来语",
+          "菲律宾语",
+          "意大利语",
+          "俄语",
+          "荷兰语",
+          "波兰语",
+          "土耳其语"
+        ],
+        "instructions": true,
+        "durationRange": {
+          "max": 120
+        },
+        "formats": [
+          "wav",
+          "mp3",
+          "pcm",
+          "ogg_opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "minute",
+            "amount": 1,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/DoubaoVoice/Billinginstructions-21?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/DoubaoVoice/audio-generation-http?lang=zh",
+        "https://docs.volcengine.com/docs/DoubaoVoice/Billinginstructions-21?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "seed-tts-2.0",
+      "kind": "audio",
+      "name": "豆包语音合成模型2.0",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "instructions": true,
+        "formats": [
+          "mp3",
+          "ogg_opus",
+          "pcm"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 300,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://docs.volcengine.com/docs/DoubaoVoice/Billinginstructions-21?lang=zh"
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/DoubaoVoice/HTTPChunkedSSEUnidirectionalStreaming-V3?lang=zh",
+        "https://docs.volcengine.com/docs/DoubaoVoice/Billinginstructions-21?lang=zh"
+      ]
+    },
+    {
+      "vendor": "volcengine",
+      "id": "seed-tts-1.0",
+      "kind": "audio",
+      "name": "豆包语音合成模型1.0",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "formats": [
+          "mp3",
+          "ogg_opus",
+          "pcm"
+        ]
+      },
+      "sources": [
+        "https://docs.volcengine.com/docs/DoubaoVoice/HTTPChunkedSSEUnidirectionalStreaming-V3?lang=zh"
+      ]
+    }
+  ]
+}

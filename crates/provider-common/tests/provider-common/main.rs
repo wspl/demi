@@ -4,13 +4,14 @@
 //! durations and token claims, failure codes, records and their reading over
 //! a scripted vendor, credentials that never print, the credential pool with
 //! its refresh protocol and account operations, an account's quota snapshot,
-//! and the models.dev document. The scripted runtime that the tests above
-//! providers run on has no tests of its own: every test that scripts a model
-//! fails when it breaks.
+//! the models.dev document and the catalog of image and video models. The
+//! scripted runtime that the tests above providers run on has no tests of
+//! its own: every test that scripts a model fails when it breaks.
 
 mod chat_completions;
 mod credentials;
 mod failures;
+mod media_catalog;
 mod models_dev;
 mod oauth;
 mod quota;
