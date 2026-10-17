@@ -1,21 +1,41 @@
+import { GlobalRegistrator } from '@happy-dom/global-registrator'
 import { afterEach, beforeEach, expect, test } from 'bun:test'
-import { createPinia, disposePinia, setActivePinia } from 'pinia'
-import { nextTick } from 'vue'
-import { useSession } from '../auth/session'
-import { identitySchema } from '../api/generated/web-api'
-import { readLocalState } from '../state/local'
-import { useResources } from '../state/resources'
-import { useProduct } from '../state/product'
-import { conversationSummary, productState } from '../__tests__/product-state'
 import type { PanelTab } from '@demicodes/web-ui/agent/panel-tabs'
-import { useConversations } from './store'
-import { useWorkPanel } from './work'
+
+// The work store on a page of happy-dom, whose width the tests turn between
+// the desktop's and a phone's (`phone.ts`); the panel's routes are stubbed.
+// A few ms each, besides the start of the page.
+
+GlobalRegistrator.register({ url: 'http://127.0.0.1:3271/chat' })
+
+/** The phone switch: `turn` changes it and tells the page, as a resize past 768 px does. */
+class Width extends EventTarget {
+  matches = false
+  turn(phone: boolean): void {
+    this.matches = phone
+    this.dispatchEvent(Object.assign(new Event('change'), { matches: phone }))
+  }
+}
+const width = new Width()
+Object.defineProperty(window, 'matchMedia', { value: () => width, configurable: true })
+
+const { createPinia, disposePinia, setActivePinia } = await import('pinia')
+const { nextTick } = await import('vue')
+const { useSession } = await import('../auth/session')
+const { identitySchema } = await import('../api/generated/web-api')
+const { readLocalState } = await import('../state/local')
+const { useResources } = await import('../state/resources')
+const { useProduct } = await import('../state/product')
+const { conversationSummary, productState } = await import('../__tests__/product-state')
+const { useConversations } = await import('./store')
+const { useWorkPanel } = await import('./work')
 
 const storageDescriptor = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
 const saved = new Map<string, string>()
 let pinia: ReturnType<typeof createPinia>
 
 beforeEach(() => {
+  width.matches = false
   saved.clear()
   Object.defineProperty(globalThis, 'localStorage', {
     configurable: true,
@@ -323,4 +343,78 @@ test('a tab its kind asks to show opens the closed panel and is selected once, a
   useProduct().read = summary(4)
   await settled()
   expect([reloaded.stateFor(id).open, reloaded.stateFor(id).history.at(-1)]).toEqual([true, 'b1'])
+})
+
+// Production: on a phone, where the panel covers the conversation, opening a
+// conversation from the sidebar sometimes brought its panel up full screen by
+// itself: the phone read the open state the desktop saved for it, and a tab
+// the agent showed while the user was in another conversation opened it once
+// the page read that conversation's panel.
+test('on a phone a conversation comes up without its panel; only a show while the user is on it opens it, and the desktop keeps its choice', async () => {
+  signIn('one')
+  const conversations = useConversations()
+  // The page keeps one new conversation: each is saved before the next.
+  const [a, b] = [0, 1].map(() => {
+    const id = conversations.create()
+    conversations.items.find((item) => item.id === id)!.persistence = 'synced'
+    return id
+  }) as [string, string]
+  // The desktop left A's panel open.
+  useResources().local.workPanelOpen = { [a]: true }
+  const browserTab = (shows: number): PanelTab[] => [
+    { id: 'b1', kind: 'browser', data: { url: 'https://a.test/', tab: 't1', shows } },
+    { id: 'b2', kind: 'browser', data: { url: 'https://b.test/', tab: 't2' } },
+  ]
+  const stored: Record<string, { revision: number; tabs: PanelTab[] }> = {
+    [a]: { revision: 1, tabs: [] },
+    [b]: { revision: 1, tabs: browserTab(1) },
+  }
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const id = new URL(String(input), 'http://page.test').pathname.split('/')[3]!
+    return Response.json(stored[id])
+  }) as typeof fetch
+  const product = useProduct()
+  const summaries = () => productState({
+    conversations: [a, b].map((id) => conversationSummary(id, '', { panelRevision: stored[id]!.revision })),
+    plugins: [{ id: 'browser', name: 'Browser', description: 'A browser.', enabled: true, packages: [] }],
+  })
+  product.read = summaries()
+  const work = useWorkPanel()
+  width.turn(true)
+  const open = (id: string) => {
+    work.shown(id)
+    work.load(id)
+    return settled()
+  }
+
+  await open(a)
+  expect(work.stateFor(a).open).toBe(false)
+  // The agent showed b1 in B before the user came to it: it waits in the strip, selected.
+  await open(b)
+  expect([work.stateFor(b).open, work.stateFor(b).history.at(-1)]).toEqual([false, 'b1'])
+  // Shown again while the user is on B, it opens.
+  work.select(b, 'b2')
+  stored[b] = { revision: 2, tabs: browserTab(2) }
+  product.read = summaries()
+  await settled()
+  expect([work.stateFor(b).open, work.stateFor(b).history.at(-1)]).toEqual([true, 'b1'])
+  // Left with its panel open, B comes back without it.
+  await open(a)
+  await open(b)
+  expect(work.stateFor(b).open).toBe(false)
+  // Shown again while the user looks at A's panel, A's stays and B comes up closed.
+  await open(a)
+  work.setOpen(work.stateFor(a), true)
+  stored[b] = { revision: 3, tabs: browserTab(3) }
+  product.read = summaries()
+  await settled()
+  expect(work.stateFor(a).open).toBe(true)
+  await open(b)
+  expect(work.stateFor(b).open).toBe(false)
+
+  // At the desktop's width A's panel is open as the desktop left it, and nothing the phone did was saved.
+  width.turn(false)
+  expect(work.stateFor(a).open).toBe(true)
+  await settled()
+  expect(readLocalState('one').workPanelOpen).toEqual({ [a]: true })
 })

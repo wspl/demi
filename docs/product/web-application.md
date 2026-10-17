@@ -409,6 +409,14 @@ conversation; the panel button covers the screen with the work panel, and
   of what the user just chose: Rename, Search, a new browser tab's address,
   a filter the user opened. Opening or starting a conversation leaves the
   composer unfocused.
+- **The panel opens when asked.** On a phone the work panel covers the
+  conversation, so it opens only by the panel button, a control that opens
+  something in it, or the agent showing a tab while the user looks at that
+  conversation. Opening, switching to or starting a conversation shows the
+  conversation, never its panel: the per-conversation open state is the
+  desktop's, a show that came while the user was elsewhere waits in the
+  strip, and nothing a conversation remembers brings the panel up as it
+  opens.
 - **One phone scale.** Every control on a phone is drawn at the phone's
   size, not the desktop's with a larger invisible target: a button, an
   icon, a row, a tab, a switch and their text take the phone metrics
