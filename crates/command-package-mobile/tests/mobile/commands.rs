@@ -61,13 +61,13 @@ fn reference(elements: &serde_json::Value, label: &str) -> String {
 async fn every_command_acts_in_screenshot_pixels() {
     let mobile = Mobile::start().await;
 
-    // list: the Host's simulators, and that Android is not here yet.
+    // list: the Host's simulators, and why Android has none.
     let listed = mobile.run(CHAT, "list", json!({})).await.json();
     assert_eq!(listed["devices"].as_array().unwrap().len(), 5);
     assert_eq!(listed["unavailable"][0]["platform"], "android");
     assert_eq!(
         listed["unavailable"][0]["reason"],
-        "Android emulators aren’t available yet in this version of Demi"
+        "no Android SDK; install Android Studio, or set ANDROID_HOME to the SDK's directory"
     );
     // As text, a row per simulator, its id first as open takes it, its name
     // last; why Android has none is a warning.
@@ -82,7 +82,7 @@ async fn every_command_acts_in_screenshot_pixels() {
          UDID-3       ios       iOS 26.5  shut down  -       iPhone Air     iPhone Air\n\
          UDID-4       ios       iOS 26.5  shut down  -       iPad Air       iPad Air\n"
     );
-    assert_eq!(text.stderr, "demi mobile list: warning: Android emulators aren’t available yet in this version of Demi\n");
+    assert_eq!(text.stderr, "demi mobile list: warning: no Android SDK; install Android Studio, or set ANDROID_HOME to the SDK's directory\n");
 
     // open: boots a simulator that was shut down; the screenshot's long side is 1568.
     let opened = mobile.run(CHAT, "open", json!({ "device": "iPhone 17" })).await.json();
@@ -264,14 +264,14 @@ async fn a_device_open_elsewhere_is_refused() {
     assert_eq!(foreign.failure().0, "device_not_found");
 }
 
-/// A name no simulator has says the Host runs no Android emulators yet.
+/// A name no simulator has says why the Host runs no Android emulators.
 #[tokio::test(start_paused = true)]
 async fn an_unknown_device_names_what_the_host_cannot_run() {
     let mobile = Mobile::start().await;
     let missing = mobile.run(CHAT, "open", json!({ "device": "Pixel 9" })).await;
     let (code, message) = missing.failure();
     assert_eq!(code, "device_not_found");
-    assert!(message.contains("Android emulators aren’t available yet in this version of Demi"), "{message}");
+    assert!(message.contains("no Android SDK; install Android Studio, or set ANDROID_HOME to the SDK's directory"), "{message}");
 }
 
 /// A name two simulators share is refused, naming both by their ids, so

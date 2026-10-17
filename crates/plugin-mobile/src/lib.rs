@@ -87,6 +87,11 @@ fn live_stream() -> Stream {
             "A notice's code when the viewer's input did not reach the device.",
             live::INPUT_FAILED,
         )
+        .constant(
+            "LIVE_NO_FOCUSED_FIELD",
+            "A notice's code when the viewer's text found no focused field; its message is that text.",
+            live::NO_FOCUSED_FIELD,
+        )
 }
 
 /// The plugin's `demi mobile` group.

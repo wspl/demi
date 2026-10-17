@@ -23,6 +23,10 @@ pub enum DriverError {
     Lost(String),
     #[error("{0}")]
     Failed(String),
+    /// Text a US keyboard cannot type found no focused field to go into,
+    /// which an iPhone needs (`mobile.md` § Commands): the text.
+    #[error("{0:?} has no keys on a US keyboard, and there is no focused text field to add it to")]
+    NoFocusedField(String),
 }
 
 pub type Result<T> = std::result::Result<T, DriverError>;
@@ -197,16 +201,31 @@ pub trait DeviceCapture: Send + 'static {
     fn encoding(&self, bitrate: u32, fps: u32);
 }
 
+/// What a driver tells of a boot it starts, which the device table records
+/// (`mobile.md` § Lifetime): the simulator is Demi's from the moment its
+/// boot begins, so one whose boot fails halfway is still Demi's to shut
+/// down.
+pub trait Booting: Send + Sync {
+    /// The boot began, with this mark (`Simulator::boot`).
+    fn began(&self, boot: u64);
+    /// A boot that failed was undone: the simulator is shut down again.
+    fn undone(&self);
+}
+
 /// A platform's simulators.
 pub trait Driver: Send + Sync + 'static {
     fn platform(&self) -> MobilePlatform;
     /// Why this Host cannot run the platform's simulators, or none.
     fn unavailable(&self) -> Option<String>;
     fn list(&self) -> BoxFuture<'_, Result<Vec<Simulator>>>;
-    /// Boots a shut-down simulator without a window.
-    fn boot<'a>(&'a self, native_id: &'a str) -> BoxFuture<'a, Result<()>>;
+    /// Boots a shut-down simulator without a window, telling `booting` as
+    /// the boot begins; one that fails is shut down again, and `booting`
+    /// hears that it was.
+    fn boot<'a>(&'a self, native_id: &'a str, booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>>;
     fn shutdown<'a>(&'a self, native_id: &'a str) -> BoxFuture<'a, Result<()>>;
-    /// Attaches a booted simulator for `conversation`, turned portrait.
+    /// Attaches a booted simulator for `conversation`: turned portrait
+    /// where the platform cannot say how it is turned, as iOS cannot;
+    /// as it is where it can, as Android's emulator can.
     fn attach<'a>(
         &'a self,
         conversation: &'a str,
@@ -232,7 +251,13 @@ pub trait Device: Send + Sync + 'static {
     fn swipe(&self, from: Points, to: Points) -> BoxFuture<'_, Result<()>>;
     fn press(&self, button: Button) -> BoxFuture<'_, Result<()>>;
     fn key(&self, key: KeyPress) -> BoxFuture<'_, Result<()>>;
-    fn text<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>>;
+    /// Types `keys` as a US hardware keyboard would, each released again,
+    /// Shift included, whatever becomes of the typing.
+    fn type_keys<'a>(&'a self, keys: &'a [crate::keys::Typed]) -> BoxFuture<'a, Result<()>>;
+    /// Enters `text`, which a US keyboard cannot type, into the focused
+    /// field as the platform allows (`mobile.md` § Commands); returns once
+    /// the app took it.
+    fn insert<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Result<()>>;
     /// Sets the text of the field at `at` at once.
     fn set_value<'a>(&'a self, at: Points, text: &'a str) -> BoxFuture<'a, Result<()>>;
     fn orient(&self, orientation: Orientation) -> BoxFuture<'_, Result<()>>;
@@ -252,6 +277,11 @@ pub trait Device: Send + Sync + 'static {
     ) -> BoxFuture<'_, Result<Box<dyn DeviceCapture>>>;
     /// Lets go of the device, restoring what attaching changed.
     fn detach(&self) -> BoxFuture<'_, Result<()>>;
+    /// The `adb` serial of an open Android emulator, which the agent's own
+    /// `adb` commands take; none for a platform without one.
+    fn serial(&self) -> Option<String> {
+        None
+    }
 }
 
 /// A platform this Host cannot run, which says why (`mobile.md` § Scope).
@@ -273,7 +303,7 @@ impl Driver for Absent {
         Box::pin(async { Ok(Vec::new()) })
     }
 
-    fn boot<'a>(&'a self, _native_id: &'a str) -> BoxFuture<'a, Result<()>> {
+    fn boot<'a>(&'a self, _native_id: &'a str, _booting: &'a dyn Booting) -> BoxFuture<'a, Result<()>> {
         Box::pin(async { Err(DriverError::Failed(self.reason.clone())) })
     }
 

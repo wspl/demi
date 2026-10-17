@@ -41,6 +41,8 @@ const PPS: [u8; 4] = [0x28, 0xee, 0x3c, 0xb0];
 pub struct Heard {
     /// Each request, its method and its parameters, in order.
     pub requests: Vec<(String, Value)>,
+    /// The number of requests, which a test waits on.
+    pub count: watch::Sender<usize>,
 }
 
 /// A helper the test plays: two booted iPhones, each of whose captures
@@ -151,6 +153,9 @@ async fn serve(
     recording: usize,
 ) {
     let mut buffer = BytesMut::new();
+    // The field's text, and whether it has the focus, which a tap gives it.
+    let mut field = String::new();
+    let mut focused = false;
     'reading: loop {
         while buffer.len() >= 4 {
             let length = u32::from_be_bytes(buffer[..4].try_into().unwrap()) as usize;
@@ -164,7 +169,11 @@ async fn serve(
             let id = request["id"].clone();
             let method = request["method"].as_str().unwrap().to_owned();
             let params = request["params"].clone();
-            heard.lock().unwrap().requests.push((method.clone(), params.clone()));
+            {
+                let mut heard = heard.lock().unwrap();
+                heard.requests.push((method.clone(), params.clone()));
+                heard.count.send_modify(|count| *count += 1);
+            }
             let udid = params["udid"].as_str().unwrap_or_default().to_owned();
             let result = match method.as_str() {
                 "attach" => json!({ "points": { "width": 402, "height": 874 }, "pixels": { "width": 1206, "height": 2622 } }),
@@ -195,6 +204,18 @@ async fn serve(
                     })
                 }
                 "frame" => json!({ "cornerRadius": 55.0 }),
+                "tap" => {
+                    focused = true;
+                    json!({})
+                }
+                "setValue" => {
+                    field = params["text"].as_str().unwrap_or_default().to_owned();
+                    json!({})
+                }
+                "tree" => json!({ "elements": [{
+                    "role": "text field", "value": field, "focused": focused,
+                    "frame": { "x": 20.0, "y": 100.0, "width": 360.0, "height": 40.0 },
+                }] }),
                 _ => json!({}),
             };
             let reply = serde_json::to_vec(&json!({ "id": id, "result": result })).unwrap();
@@ -354,4 +375,91 @@ async fn the_view_gets_the_frame_the_helper_draws_or_the_outline() {
         }
         other => panic!("the outline came as {other:?}"),
     }
+}
+
+/// The viewer's typing reaches an iPhone's focused field as the characters
+/// it is, in any layout and from any input method: a German keyboard's ü
+/// and a Chinese input method's 東京 are added to the end of the field's
+/// value through accessibility, as a simulator takes no text into its
+/// pasteboard, and what a US keyboard types is typed. Planted defects this
+/// catches: the key's US character typed instead of ü, the composed text
+/// refused, or the field's value replaced rather than added to. One fake
+/// helper, milliseconds.
+#[tokio::test]
+async fn the_viewers_typing_in_any_layout_or_input_method_reaches_an_iphones_field() {
+    let helper = FakeHelper::new(0);
+    let mobile = Mobile::start_ios(helper.clone()).await;
+    let device = mobile.open(CHAT, "UDID-A").await;
+    mobile.run(CHAT, "tap", json!({ "device": device, "at": ["200", "120"] })).await.json();
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": device })).await;
+    let key = |action: &str, key: &str, code: &str| {
+        let mut input = json!({ "type": "key", "action": action, "key": key, "code": code, "keyCode": 0, "modifiers": 0, "repeat": false, "location": 0, "altGraph": false });
+        if action == "down" {
+            input["text"] = json!(key);
+        }
+        json!({ "type": "input", "device": device, "input": input })
+    };
+    page.send(key("down", "ü", "BracketLeft")).await;
+    page.send(key("up", "ü", "BracketLeft")).await;
+    page.send(key("down", "z", "KeyY")).await;
+    page.send(key("up", "z", "KeyY")).await;
+    page.send(json!({ "type": "input", "device": device, "input": { "type": "text", "text": "東京" } })).await;
+    let mut asked = helper.heard.lock().unwrap().count.subscribe();
+    let entered = async {
+        loop {
+            let set = helper.requests("setValue");
+            if set.len() == 2 {
+                return set;
+            }
+            asked.changed().await.unwrap();
+        }
+    };
+    let set = tokio::time::timeout(std::time::Duration::from_secs(10), entered).await.expect("the text is added");
+    let texts: Vec<&str> = set.iter().map(|params| params["text"].as_str().unwrap()).collect();
+    assert_eq!(texts, ["ü", "ü東京"]);
+    // At the focused field's centre.
+    assert_eq!((set[0]["x"].as_f64(), set[0]["y"].as_f64()), (Some(200.0), Some(120.0)));
+    // z, on the key a US keyboard has y on, is typed as z.
+    assert_eq!(helper.requests("type"), [json!({ "udid": "UDID-A", "keys": [[0x1d, false]] })]);
+    assert!(helper.requests("key").is_empty(), "a key's release went to the simulator: {:?}", helper.requests("key"));
+}
+
+/// The viewer's text that finds no focused field on an iPhone is told to
+/// the view as that reason, quoting the viewer's own text, so the panel
+/// says why in its own words rather than that the input did not arrive.
+/// Planted defect this catches: the refusal sent as the generic
+/// input_failed. One fake helper, milliseconds.
+#[tokio::test]
+async fn the_view_says_when_its_text_has_no_focused_field() {
+    use demi_command_package_mobile_protocol::live::NO_FOCUSED_FIELD;
+    let helper = FakeHelper::new(0);
+    let mobile = Mobile::start_ios(helper.clone()).await;
+    let device = mobile.open(CHAT, "UDID-A").await;
+    let mut page = Page::open(&mobile, CHAT).await;
+    page.send(json!({ "type": "hello", "platform": "mac" })).await;
+    page.send(json!({ "type": "watch", "device": device })).await;
+    page.send(json!({ "type": "input", "device": device, "input": { "type": "text", "text": "東京" } })).await;
+    let notice = tokio::time::timeout(std::time::Duration::from_secs(10), page.until("notice"))
+        .await
+        .expect("the view is told");
+    let LiveModuleMessage::Notice(notice) = notice else { unreachable!() };
+    assert_eq!((notice.code.as_str(), notice.message.as_str()), (NO_FOCUSED_FIELD, "東京"));
+    assert!(helper.requests("setValue").is_empty());
+}
+
+/// Text a US keyboard cannot type needs a focused field on an iPhone, as
+/// it is added to that field's value: without one, `type` fails saying so
+/// and changes nothing. Planted defect this catches: the text set on
+/// whatever element comes first, or dropped without a word. One fake
+/// helper, milliseconds.
+#[tokio::test]
+async fn text_without_us_keys_needs_a_focused_field_on_an_iphone() {
+    let helper = FakeHelper::new(0);
+    let mobile = Mobile::start_ios(helper.clone()).await;
+    let device = mobile.open(CHAT, "UDID-A").await;
+    let (_, message) = mobile.run(CHAT, "type", json!({ "device": device, "text": "東京" })).await.failure();
+    assert!(message.contains("no focused text field to add it to"), "{message}");
+    assert!(helper.requests("setValue").is_empty());
 }

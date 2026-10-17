@@ -90,7 +90,7 @@ impl MobileError {
             Self::Io(_) => MobileErrorCode::IoError,
             Self::Failed(_) => MobileErrorCode::DriverError,
             Self::Driver(DriverError::Lost(_)) => MobileErrorCode::DeviceLost,
-            Self::Driver(DriverError::Failed(_)) => MobileErrorCode::DriverError,
+            Self::Driver(DriverError::Failed(_) | DriverError::NoFocusedField(_)) => MobileErrorCode::DriverError,
             Self::Cancelled => MobileErrorCode::Cancelled,
         }
     }

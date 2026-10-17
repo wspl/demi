@@ -7,8 +7,8 @@
  * controller runs its calls.
  */
 import type { Component } from 'vue'
-import { Camera, Circle, House, Lock, RotateCcw, RotateCw, Square, SunMoon, Volume1, Volume2 } from '@lucide/vue'
-import type { OnDevice, PressButton, RecordDevice, RotateDevice } from '../generated/plugin'
+import { ArrowLeft, Camera, Circle, House, Lock, RotateCcw, RotateCw, Square, SunMoon, Volume1, Volume2 } from '@lucide/vue'
+import type { MobilePlatform, OnDevice, PressButton, RecordDevice, RotateDevice } from '../generated/plugin'
 
 /** A page method's call: its name and parameters. */
 export type DeviceCall =
@@ -24,6 +24,7 @@ export type ControlLabel =
   | 'toolbar.rotateRight'
   | 'toolbar.appearance'
   | 'toolbar.home'
+  | 'toolbar.back'
   | 'toolbar.lock'
   | 'toolbar.volumeUp'
   | 'toolbar.volumeDown'
@@ -46,6 +47,8 @@ export interface DeviceControl {
   group?: boolean
   /** Whether it shows as pressed, as Record does while recording. */
   pressed?(state: ControlState): boolean
+  /** The one platform whose devices have it, as only Android has Back. */
+  platform?: MobilePlatform
 }
 
 function fixed(label: ControlLabel, icon: Component, call: (device: string) => DeviceCall, group = false): DeviceControl {
@@ -57,6 +60,10 @@ export const DEVICE_CONTROLS: readonly DeviceControl[] = [
   fixed('toolbar.rotateRight', RotateCw, (device) => ({ method: 'rotate', params: { device, turn: 'right' } })),
   fixed('toolbar.appearance', SunMoon, (device) => ({ method: 'toggleAppearance', params: { device } })),
   fixed('toolbar.home', House, (device) => ({ method: 'press', params: { device, button: 'home' } }), true),
+  {
+    ...fixed('toolbar.back', ArrowLeft, (device) => ({ method: 'press', params: { device, button: 'back' } })),
+    platform: 'android',
+  },
   fixed('toolbar.lock', Lock, (device) => ({ method: 'press', params: { device, button: 'lock' } })),
   fixed('toolbar.volumeUp', Volume2, (device) => ({ method: 'press', params: { device, button: 'volume-up' } })),
   fixed('toolbar.volumeDown', Volume1, (device) => ({ method: 'press', params: { device, button: 'volume-down' } })),
@@ -68,3 +75,8 @@ export const DEVICE_CONTROLS: readonly DeviceControl[] = [
     pressed: ({ recording }) => recording,
   },
 ]
+
+/** The controls of a device of `platform`, none of another platform's own. */
+export function deviceControls(platform: MobilePlatform | null): readonly DeviceControl[] {
+  return DEVICE_CONTROLS.filter((control) => control.platform === undefined || control.platform === platform)
+}

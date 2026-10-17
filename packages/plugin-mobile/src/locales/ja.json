@@ -45,6 +45,7 @@
     "capture_failed": "シミュレータの画面を表示できませんでした。",
     "capture_unavailable": "このデバイスではシミュレータの画面を表示できません。",
     "input_failed": "入力がシミュレータに届きませんでした。",
+    "no_focused_field": "「{text}」を入力するテキストフィールドが選択されていません。",
     "conversation_not_found": "この会話はもう存在しません。",
     "conversation_archived": "この会話はアーカイブされています。",
     "conversation_busy": "会話がビジー状態です。しばらくしてからもう一度お試しください。",

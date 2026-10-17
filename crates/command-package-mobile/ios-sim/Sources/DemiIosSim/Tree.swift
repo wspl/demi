@@ -22,6 +22,7 @@ struct Tree {
     let native = try simulator.uiAutomation(backend: .accessibility)
     var keys = AXKeys.defaultSet
     keys.insert(.focused)
+    keys.insert(.placeholder)
     let options = AccessibilityRequestOptions(
       format: .complete, keys: keys, remoteContentOptions: AccessibilityRemoteContentOptions())
     let read = try await native.describe(.frontmost, options: options)
@@ -61,7 +62,9 @@ struct Tree {
       let description = object["role_description"] as? String
       role = (description?.isEmpty == false ? description : nil) ?? type
       label = object["label"] as? String
-      value = (object["value"] as? String) ?? (object["value"] as? NSNumber)?.stringValue
+      // An empty field's value reads as its placeholder, which is no text.
+      let read = (object["value"] as? String) ?? (object["value"] as? NSNumber)?.stringValue
+      value = read == (object["placeholder"] as? String) ? nil : read
       identifier = object["identifier"] as? String
       let frame = object["frame"] as? [String: Any] ?? [:]
       func number(_ key: String) -> Double { (frame[key] as? NSNumber)?.doubleValue ?? 0 }

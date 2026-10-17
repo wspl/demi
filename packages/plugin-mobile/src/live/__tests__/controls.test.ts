@@ -3,8 +3,8 @@ import { computed, effectScope, shallowRef } from 'vue'
 import { LIVE_CONTROL_FRAME, type ConversationPlugin, type PluginCallError, type UserStreamHandlers } from '@demicodes/plugin-sdk'
 import type { LiveModuleMessage, LiveViewerMessage } from '../../generated/plugin'
 import { mobileApi } from '../../devices'
-import { MobileDevicesController } from '../controller'
-import { DEVICE_CONTROLS } from '../controls'
+import { MobileDevicesController, noticeText } from '../controller'
+import { DEVICE_CONTROLS, deviceControls } from '../controls'
 import { MobileSession } from '../session'
 
 // The device toolbar's controls and the agent's activity on the page's side
@@ -65,7 +65,7 @@ test('each toolbar control calls the page method of the command that does the sa
     { pictures: async () => false, platform: 'mac' },
   ))!
   const saved: Array<string | null> = []
-  for (const control of DEVICE_CONTROLS) {
+  for (const control of deviceControls('android')) {
     saved.push(await controller.run(control.call('m1', { recording: false })))
   }
   // Record again, now that it records: Stop Recording.
@@ -81,6 +81,7 @@ test('each toolbar control calls the page method of the command that does the sa
     ['rotate', { device: 'm1', turn: 'right' }],
     ['toggleAppearance', { device: 'm1' }],
     ['press', { device: 'm1', button: 'home' }],
+    ['press', { device: 'm1', button: 'back' }],
     ['press', { device: 'm1', button: 'lock' }],
     ['press', { device: 'm1', button: 'volume-up' }],
     ['press', { device: 'm1', button: 'volume-down' }],
@@ -89,8 +90,10 @@ test('each toolbar control calls the page method of the command that does the sa
     ['record', { device: 'm1', action: 'stop' }],
   ])
   // Screenshot answers the file the content saves on the user's computer.
-  expect(saved).toEqual([null, null, null, null, null, null, null, '/scratch/mobile/m1.png', null])
+  expect(saved).toEqual([null, null, null, null, null, null, null, null, '/scratch/mobile/m1.png', null])
   expect(reported).toEqual([])
+  // An iPhone has no Back button: its toolbar leaves Back out.
+  expect(deviceControls('ios').map((control) => control.label({ recording: false }))).not.toContain('toolbar.back')
 })
 
 function framed(message: LiveModuleMessage): Uint8Array {
@@ -261,4 +264,29 @@ test('the view asks for the frame of its laid-out size and pixel ratio once, aga
   streams[0]!.data(framed({ type: 'frame', device: 'm2', orientation: 'landscape-left', frame: outline }))
   expect(session.state.frame).toEqual({ device: 'm2', orientation: 'landscape-left', frame: outline })
   session.close()
+})
+
+test('text that found no focused field is told in the panel’s own words, quoting the viewer’s text', async () => {
+  const streams: UserStreamHandlers[] = []
+  const reported: Error[] = []
+  const scope = effectScope()
+  const controller = scope.run(() => new MobileDevicesController(
+    mobileApi(plugin([], streams)),
+    { report: (_, error) => void reported.push(error as Error), defect: (_, error) => { throw error } },
+    { pictures: async () => true, platform: 'mac' },
+  ))!
+  await Promise.resolve()
+  await Promise.resolve()
+  controller.session.showing('m1')
+  streams[0]!.data(framed({ type: 'notice', code: 'no_focused_field', message: 'Grüße 東京' }))
+  streams[0]!.data(framed({ type: 'notice', code: 'input_failed', message: 'the helper ended' }))
+  controller.dispose()
+  scope.stop()
+  expect(reported.map((error) => error.message)).toEqual([
+    noticeText('no_focused_field', 'Grüße 東京'),
+    noticeText('input_failed', 'the helper ended'),
+  ])
+  expect(reported[0]!.message).toContain('Grüße 東京')
+  // The Host's own error text never reaches the page.
+  expect(reported[1]!.message).not.toContain('the helper ended')
 })

@@ -24,7 +24,7 @@ use tokio_util::{
 };
 
 use demi_command_package_mobile_protocol::{
-    live::{INPUT_FAILED, LiveDevice, LiveModuleMessage, LiveViewerMessage},
+    live::{INPUT_FAILED, LiveDevice, NO_FOCUSED_FIELD, LiveModuleMessage, LiveViewerMessage},
     mobile::{DeviceId, Orientation},
 };
 use demi_command_protocol::{CommandError, Completion};
@@ -205,6 +205,9 @@ struct Held {
     /// The finger on the screen, where it is.
     finger: Option<Points>,
     keys: Vec<u32>,
+    /// The keys down whose character went in as text, by their code: their
+    /// release has nothing to release.
+    typed: Vec<String>,
 }
 
 /// Delivers one viewer's input to the device it watches.
@@ -213,8 +216,16 @@ struct DeviceInput {
 }
 
 impl DeviceInput {
-    async fn failed(&self, error: crate::driver::DriverError) {
-        self.notices.notice(INPUT_FAILED, &error.to_string()).await;
+    /// Tells the viewer that its input did not arrive: text that found no
+    /// field to go into quoting the viewer's own `text` whole, which the
+    /// page shows in words of its own.
+    async fn failed(&self, error: crate::driver::DriverError, text: Option<&str>) {
+        match (error, text) {
+            (crate::driver::DriverError::NoFocusedField(_), Some(text)) => {
+                self.notices.notice(NO_FOCUSED_FIELD, text).await
+            }
+            (error, _) => self.notices.notice(INPUT_FAILED, &error.to_string()).await,
+        }
     }
 }
 
@@ -249,8 +260,32 @@ impl Deliver for DeviceInput {
     ) -> impl std::future::Future<Output = ()> + Send {
         let device = target.device.clone();
         let step = finger(held, &message);
+        // A key that types a character, in whatever layout the viewer's
+        // keyboard has, enters that character, as the viewer's text does;
+        // the others, Enter, the arrows, the modifiers and the shortcuts,
+        // are pressed as keys.
+        let character = match &message {
+            ViewerInput::Key {
+                action: KeyAction::Down,
+                code,
+                text: Some(text),
+                ..
+            } => {
+                held.typed.push(code.clone());
+                Some(text.clone())
+            }
+            ViewerInput::Key {
+                action: KeyAction::Up,
+                code,
+                ..
+            } if held.typed.contains(code) => {
+                held.typed.retain(|typed| typed != code);
+                return futures_util::future::Either::Left(std::future::ready(()));
+            }
+            _ => None,
+        };
         let key = match &message {
-            ViewerInput::Key { action, code, .. } => keys::usage(code).map(|usage| KeyPress {
+            ViewerInput::Key { action, code, .. } if character.is_none() => keys::usage(code).map(|usage| KeyPress {
                 usage,
                 down: *action == KeyAction::Down,
             }),
@@ -265,22 +300,22 @@ impl Deliver for DeviceInput {
         }
         let text = match message {
             ViewerInput::Text { text } => Some(text),
-            _ => None,
+            _ => character,
         };
-        async move {
+        futures_util::future::Either::Right(async move {
             let delivered = if let Some((phase, at)) = step {
                 device.touch(phase, at).await
             } else if let Some(press) = key {
                 device.key(press).await
-            } else if let Some(text) = text {
-                device.text(&text).await
+            } else if let Some(text) = &text {
+                keys::enter(&device, text).await
             } else {
                 Ok(())
             };
             if let Err(error) = delivered {
-                self.failed(error).await;
+                self.failed(error, text.as_deref()).await;
             }
-        }
+        })
     }
 
     fn release(
@@ -651,11 +686,11 @@ async fn frame(watched: &mut Watched, writer: &Writer<LiveModuleMessage>) {
         return;
     }
     let frame = match watched.open.device.frame(area).await {
-        Ok(frame) => crate::frame::live(frame, &watched.open.model, orientation),
+        Ok(frame) => crate::frame::live(frame, watched.open.platform, &watched.open.model, orientation),
         Err(error) => {
             // The outline stands in for a frame the driver could not draw.
             tracing::warn!("{}'s frame was not drawn: {error}", watched.open.name);
-            crate::frame::outline(0.0, &watched.open.model, orientation)
+            crate::frame::outline(0.0, watched.open.platform, &watched.open.model, orientation)
         }
     };
     watched.framed = Some((area, orientation));

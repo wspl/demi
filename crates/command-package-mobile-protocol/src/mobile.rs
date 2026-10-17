@@ -404,6 +404,10 @@ pub struct OpenResult {
     pub platform: MobilePlatform,
     pub os: String,
     pub native_id: String,
+    /// The `adb` serial of an Android emulator, such as `emulator-5554`,
+    /// which `adb -s` takes.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub serial: Option<String>,
     pub orientation: Orientation,
     /// The screenshot's size.
     pub width: u32,

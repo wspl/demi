@@ -7,14 +7,14 @@ use base64::Engine as _;
 
 use demi_command_package_mobile_protocol::{
     live::{LiveButtonMark, LiveFrame, LiveRect, LiveSide},
-    mobile::Orientation,
+    mobile::{MobilePlatform, Orientation},
 };
 
 use crate::driver::Frame;
 
-/// The frame as the view takes it, for a device of `model` turned to
-/// `orientation`.
-pub fn live(frame: Frame, model: &str, orientation: Orientation) -> LiveFrame {
+/// The frame as the view takes it, for a device of `platform` and `model`
+/// turned to `orientation`.
+pub fn live(frame: Frame, platform: MobilePlatform, model: &str, orientation: Orientation) -> LiveFrame {
     match frame {
         Frame::Drawn {
             png,
@@ -34,28 +34,32 @@ pub fn live(frame: Frame, model: &str, orientation: Orientation) -> LiveFrame {
             },
             corner_radius: corner_radius.clamp(0.0, 4096.0),
         },
-        Frame::Undrawn { corner_radius } => outline(corner_radius, model, orientation),
+        Frame::Undrawn { corner_radius } => outline(corner_radius, platform, model, orientation),
     }
 }
 
 /// An outline around a screen whose corners have `corner_radius` points,
 /// with the buttons of the model's kind.
-pub fn outline(corner_radius: f64, model: &str, orientation: Orientation) -> LiveFrame {
+pub fn outline(corner_radius: f64, platform: MobilePlatform, model: &str, orientation: Orientation) -> LiveFrame {
     LiveFrame::Outline {
         corner_radius: corner_radius.clamp(0.0, 4096.0),
-        buttons: portrait_buttons(model)
+        buttons: portrait_buttons(platform, model)
             .into_iter()
             .map(|mark| turned(mark, orientation))
             .collect(),
     }
 }
 
-/// Where a model's buttons are, held upright: an iPad's top button and its
-/// volume on the right; an iPhone's Action button and volume on the left,
-/// its side button on the right, as Xcode's frames place them.
-fn portrait_buttons(model: &str) -> Vec<LiveButtonMark> {
+/// Where a model's buttons are, held upright: an Android phone's power
+/// button above its volume rocker on the right, as on a Pixel; an iPad's
+/// top button and its volume on the right; an iPhone's Action button and
+/// volume on the left, its side button on the right, as Xcode's frames
+/// place them.
+fn portrait_buttons(platform: MobilePlatform, model: &str) -> Vec<LiveButtonMark> {
     let mark = |side, start, length| LiveButtonMark { side, start, length };
-    if model.starts_with("iPad") {
+    if platform == MobilePlatform::Android {
+        vec![mark(LiveSide::Right, 0.2, 0.06), mark(LiveSide::Right, 0.3, 0.13)]
+    } else if model.starts_with("iPad") {
         vec![
             mark(LiveSide::Top, 0.78, 0.08),
             mark(LiveSide::Right, 0.1, 0.05),

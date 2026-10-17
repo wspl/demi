@@ -11,6 +11,7 @@ import {
 } from '@demicodes/plugin-sdk'
 import type { DeviceStream, MobileSession } from './session'
 import { areaPoint, devicePoint, frameRoom, placeInFrame, placeScreen, type Placement, type Size } from './view'
+import { insertedText } from './typed'
 import { t } from '../locales/text'
 
 /**
@@ -230,6 +231,19 @@ function key(event: KeyboardEvent, action: 'down' | 'up'): void {
   props.session.input(keyInput(action, event))
 }
 
+function inserted(event: Event): void {
+  if (!(event instanceof InputEvent)) {
+    return
+  }
+  const text = insertedText(event)
+  if (text) {
+    props.session.input({ type: 'text', text })
+  }
+  if (keys.value && !event.isComposing) {
+    keys.value.value = ''
+  }
+}
+
 function composed(event: CompositionEvent): void {
   if (event.data) {
     props.session.input({ type: 'text', text: event.data })
@@ -299,6 +313,7 @@ function composed(event: CompositionEvent): void {
       spellcheck="false"
       @keydown="key($event, 'down')"
       @keyup="key($event, 'up')"
+      @input="inserted"
       @compositionend="composed"
       @blur="session.release()"
     >

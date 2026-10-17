@@ -132,6 +132,13 @@ opt-level = 3
 [profile.dev.package.blake2]
 opt-level = 3
 
+# An Android emulator's live view turns every picture from RGB into YUV
+# with the openh264 crate before Cisco's library encodes it (`mobile.md`
+# § Android); unoptimized, that alone holds a 1080 × 2400 view far below
+# the emulator's 60 frames a second.
+[profile.dev.package.openh264]
+opt-level = 3
+
 # Small executables, since every paired device downloads each one
 # (`builds-and-releases.md` § Build profiles). Measured on aarch64-apple-darwin,
 # runner and demi-commands: thin LTO at opt-level 3 36.0 and 23.8 MiB in 79 s;

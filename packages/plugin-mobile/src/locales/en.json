@@ -45,6 +45,7 @@
     "capture_failed": "The simulator’s screen couldn’t be shown.",
     "capture_unavailable": "This device can’t show the simulator’s screen.",
     "input_failed": "Your input didn’t reach the simulator.",
+    "no_focused_field": "There’s no focused text field to add “{text}” to.",
     "conversation_not_found": "This conversation no longer exists.",
     "conversation_archived": "This conversation is archived.",
     "conversation_busy": "The conversation is busy. Try again in a moment.",

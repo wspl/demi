@@ -26,6 +26,10 @@ pub const CAPTURE_FAILED: &str = "capture_failed";
 pub const CAPTURE_UNAVAILABLE: &str = "capture_unavailable";
 /// A notice's code when the viewer's input did not reach the device.
 pub const INPUT_FAILED: &str = "input_failed";
+/// A notice's code when the viewer's text, which a US keyboard cannot type,
+/// found no focused field to add it to; the notice's message is that text,
+/// the viewer's own, which the page quotes.
+pub const NO_FOCUSED_FIELD: &str = "no_focused_field";
 
 /// The view's arguments: none; the page and the service speak over the
 /// stream.
@@ -226,7 +230,8 @@ pub enum LiveModuleMessage {
     },
     Heartbeat(#[garde(dive)] LiveHeartbeat),
     /// Something the viewer asked for failed; the stream goes on:
-    /// [`CAPTURE_FAILED`], [`CAPTURE_UNAVAILABLE`] or [`INPUT_FAILED`].
+    /// [`CAPTURE_FAILED`], [`CAPTURE_UNAVAILABLE`], [`INPUT_FAILED`] or
+    /// [`NO_FOCUSED_FIELD`].
     Notice(#[garde(dive)] LiveNotice),
 }
 
