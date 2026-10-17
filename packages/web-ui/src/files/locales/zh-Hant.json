@@ -5,7 +5,8 @@
     "refresh": "重新整理",
     "download": "下載",
     "clear": "清除",
-    "dismiss": "關閉"
+    "dismiss": "關閉",
+    "openFile": "開啟檔案"
   },
   "reading": "正在讀取…",
   "gone": "它已不存在。",
@@ -184,6 +185,7 @@
     "selectFile": "選取已變更的檔案",
     "previousNotKept": "未保留先前的內容。",
     "changeNotKept": "未保留此變更的內容。",
+    "binaryNotKept": "Demi 會保留對話中變更的文字，但不保留圖片或其他二進位檔案。",
     "onNoBranch": "不在任何分支上",
     "committed": "已提交",
     "workingTree": "工作樹",

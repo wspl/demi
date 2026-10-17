@@ -37,6 +37,7 @@ fn shell_tool(release: oneshot::Receiver<()>) -> (String, Invoke) {
                             original: BlobRef::of(text(2).as_bytes()),
                             modified: BlobRef::of(text(3).as_bytes()),
                         }),
+                        binary: false,
                     }],
                 }
             })

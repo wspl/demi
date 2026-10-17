@@ -48,6 +48,11 @@ export function uncopiedFile(file: Omit<EditedFile, 'edits'>): EditedFile {
   return { ...file, edits: [{}] }
 }
 
+/** `file` as edit tracking records a binary file: one edit, its contents not kept because it is binary. */
+export function binaryFile(file: Omit<EditedFile, 'edits'>): EditedFile {
+  return { ...file, edits: [{ binary: true }] }
+}
+
 /**
  * `blocks` as one run of steps, as the backend stores it (`rendering.md`
  * § Work groups): each carries the id of the run's first block, which the
@@ -76,6 +81,7 @@ export function listedFile(commandId: string, file: EditedFile): ChangedFile {
       segment,
       ...(file.kind === 'added' && segment === 0 ? { created: true } : {}),
       ...(edit.copies ? { copies: edit.copies } : {}),
+      ...(edit.binary ? { binary: true } : {}),
     })),
   }
 }
@@ -922,7 +928,7 @@ export const fileChangeCases: { variant: string, width?: number, block: ToolCall
   {
     variant: 'contents unavailable',
     block: fileChangeCase('unavailable', 'Update the binary asset', [
-      uncopiedFile({ path: 'assets/logo.png', kind: 'modified', added: 0, removed: 0 }),
+      binaryFile({ path: 'assets/logo.png', kind: 'modified', added: 0, removed: 0 }),
     ]),
   },
   {
@@ -1014,7 +1020,7 @@ export function changesDemoBlocks(): Block[] {
     imageLine(1, 480, 300, 16_078),
     blobImage(galleryBlobs.chart),
     [
-      uncopiedFile({ path: 'out/login-diff.png', kind: 'added', added: 0, removed: 0 }),
+      binaryFile({ path: 'out/login-diff.png', kind: 'added', added: 0, removed: 0 }),
       editedFile({ path: 'scripts/snapshot-diff.ts', kind: 'modified', added: 4, removed: 1 }),
     ],
   )

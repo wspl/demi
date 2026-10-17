@@ -1,9 +1,9 @@
 //! What `demi image` does (`images.md`): reads the call's prompt and, for
 //! an edit, its images from the Host the command runs on; asks the
 //! Providers service for one image; decodes it whole and writes it to
-//! stdout; and says on stderr what came back, with a warning for each
-//! option the result did not honour. A failure is told in the design's
-//! words.
+//! stdout in the format asked for, PNG by default; and says on stderr what
+//! came back, with a warning for each option the result did not honour. A
+//! failure is told in the design's words.
 
 use std::io::Cursor;
 
@@ -14,12 +14,13 @@ use demi_plugin_interface::{
     PluginPort, PortFailure, PortRefusal,
 };
 use demi_shared_types::Timestamp;
-use image::{GenericImageView as _, ImageFormat, ImageReader, Limits};
+use demi_shared_types::whole_image;
+use image::{DynamicImage, GenericImageView as _, ImageFormat};
 use jiff::tz::TimeZone;
 use serde::de::DeserializeOwned;
 use serde_json::Value;
 
-use crate::commands::{EditArgs, GenerateArgs, ListedModel, Listing, ModelsArgs};
+use crate::commands::{EditArgs, Format, GenerateArgs, ListedModel, Listing, ModelsArgs};
 
 /// The largest image an edit sends.
 const MAX_IMAGE_BYTES: u64 = 16 * 1024 * 1024;
@@ -38,13 +39,13 @@ pub(crate) async fn run(invocation: RpcInvocation, port: &PluginPort) -> Result<
         Some("generate") => {
             let args: GenerateArgs = decode(&invocation)?;
             let ask = ask(port, args.prompt, args.model, args.aspect, args.transparent).await?;
-            make(&invocation, port, ask).await
+            make(&invocation, port, ask, args.format.unwrap_or_default()).await
         }
         Some("edit") => {
             let args: EditArgs = decode(&invocation)?;
             let mut ask = ask(port, args.prompt, args.model, args.aspect, args.transparent).await?;
             ask.images = read_images(port, &args.image).await?;
-            make(&invocation, port, ask).await
+            make(&invocation, port, ask, args.format.unwrap_or_default()).await
         }
         Some("models") => {
             let _: ModelsArgs = decode(&invocation)?;
@@ -156,62 +157,107 @@ async fn read_images(port: &PluginPort, paths: &[String]) -> Result<Vec<ImageInp
         .collect()
 }
 
-/// What the decoded image is: its format's name, its size, and whether a
-/// pixel of it is transparent, which an alpha channel alone does not say.
-struct Decoded {
+/// The image as written: its bytes when they are not the vendor's, its
+/// format's name, its size, and whether a pixel of it is transparent,
+/// which an alpha channel alone does not say.
+struct Finished {
+    encoded: Option<Vec<u8>>,
     name: &'static str,
     width: u32,
     height: u32,
     transparent: bool,
 }
 
-/// `bytes` decoded whole as a PNG, JPEG or WebP image within
-/// [`MAX_DECODE_BYTES`]; none for anything else, or one cut or corrupt.
-fn decode_image(bytes: &[u8]) -> Option<Decoded> {
-    let (format, name) = match image::guess_format(bytes).ok()? {
-        ImageFormat::Png => (ImageFormat::Png, "PNG"),
-        ImageFormat::Jpeg => (ImageFormat::Jpeg, "JPEG"),
-        ImageFormat::WebP => (ImageFormat::WebP, "WebP"),
-        _ => return None,
+/// Why the vendor's image was not written.
+enum Unfinished {
+    /// Not a PNG, JPEG or WebP image, or one cut or corrupt.
+    Unreadable,
+    /// It decoded but did not encode in the format asked for.
+    Unencoded(image::ImageError),
+}
+
+/// `bytes`, decoded whole as a PNG, JPEG or WebP image within
+/// [`MAX_DECODE_BYTES`], as an image in `format`: encoded again when the
+/// vendor sent another format (`images.md` § Commands). A JPEG has no
+/// alpha channel, so one is written opaque.
+fn finish(bytes: &[u8], format: Format) -> Result<Finished, Unfinished> {
+    let sent = match image::guess_format(bytes) {
+        Ok(sent @ (ImageFormat::Png | ImageFormat::Jpeg | ImageFormat::WebP)) => sent,
+        _ => return Err(Unfinished::Unreadable),
     };
-    let mut reader = ImageReader::with_format(Cursor::new(bytes), format);
-    let mut limits = Limits::default();
-    limits.max_alloc = Some(MAX_DECODE_BYTES);
-    reader.limits(limits);
-    let image = reader.decode().ok()?;
-    let transparent = image.color().has_alpha() && image.pixels().any(|(_, _, pixel)| pixel.0[3] < u8::MAX);
-    Some(Decoded {
+    // A picture cut short is refused before it is converted, as the JPEG
+    // decoder would fill it in.
+    let image = whole_image::decode(bytes, sent, MAX_DECODE_BYTES).map_err(|_| Unfinished::Unreadable)?;
+    let target = match format {
+        Format::Png => ImageFormat::Png,
+        Format::Jpeg => ImageFormat::Jpeg,
+        Format::Webp => ImageFormat::WebP,
+    };
+    let name = format_name(format);
+    let alpha = image.color().has_alpha() && target != ImageFormat::Jpeg;
+    let transparent = alpha && image.pixels().any(|(_, _, pixel)| pixel.0[3] < u8::MAX);
+    let (width, height) = image.dimensions();
+    let encoded = if sent == target {
+        None
+    } else {
+        // JPEG and WebP take 8-bit samples; PNG takes the image as it is.
+        let written = match (target, alpha) {
+            (ImageFormat::Png, _) => image,
+            (_, true) => DynamicImage::ImageRgba8(image.to_rgba8()),
+            (_, false) => DynamicImage::ImageRgb8(image.to_rgb8()),
+        };
+        let mut out = Cursor::new(Vec::new());
+        written.write_to(&mut out, target).map_err(Unfinished::Unencoded)?;
+        Some(out.into_inner())
+    };
+    Ok(Finished {
+        encoded,
         name,
-        width: image.width(),
-        height: image.height(),
+        width,
+        height,
         transparent,
     })
 }
 
-/// Asks for the image, writes it to stdout, and says what came back.
-async fn make(invocation: &RpcInvocation, port: &PluginPort, ask: ImageAsk) -> Result<u8, PluginError> {
+/// Asks for the image, writes it to stdout in `format`, and says what came
+/// back.
+async fn make(invocation: &RpcInvocation, port: &PluginPort, ask: ImageAsk, format: Format) -> Result<u8, PluginError> {
     let aspect = ask.aspect;
     let transparent = ask.transparent;
     let made = match port.make_image(ask).await {
         Ok(made) => made,
         Err(PortFailure::Refused(PortRefusal::Image { refusal })) => {
-            return Err(PluginError::failed(words(&refusal, invocation)));
+            return Err(PluginError::failed(words(&refusal, aspect, invocation)));
         }
         Err(failure) => return Err(failure.into()),
     };
-    let unreadable = || PluginError::failed(format!("{} returned an image that could not be read", made.vendor));
     let bytes = made.bytes.clone().into_bytes();
     // Decoding takes the thread for a while; the shard's thread never
     // blocks (`plugins.md` § Rules for a plugin in process).
-    let decoded = tokio::task::spawn_blocking(move || decode_image(&bytes))
+    let finished = tokio::task::spawn_blocking(move || finish(&bytes, format))
         .await
         .map_err(|error| PluginError::failed(format!("the image's decoding stopped: {error}")))?;
-    let Some(Decoded { name, width, height, transparent: has_transparency }) = decoded else {
-        return Err(unreadable());
+    let Finished { encoded, name, width, height, transparent: has_transparency } = match finished {
+        Ok(finished) => finished,
+        Err(Unfinished::Unreadable) => {
+            return Err(PluginError::failed(format!("{} returned an image that could not be read", made.vendor)));
+        }
+        Err(Unfinished::Unencoded(error)) => {
+            return Err(PluginError::failed(format!("the image could not be written as {name}: {error}", name = format_name(format))));
+        }
     };
     let rpc = port.rpc();
-    rpc.stdout(made.bytes.into_bytes()).await?;
-    let mut said = format!("{width}×{height} {name} from {} ({}", made.model, made.vendor);
+    match encoded {
+        Some(encoded) => rpc.stdout(encoded).await?,
+        None => rpc.stdout(made.bytes.into_bytes()).await?,
+    }
+    // A model the vendor does not confirm is the one asked of, not the one
+    // that answered (`images.md` § Commands).
+    let mut said = if made.confirmed {
+        format!("{width}×{height} {name} from {} ({}", made.model, made.vendor)
+    } else {
+        format!("{width}×{height} {name}, asked of {} ({}", made.model, made.vendor)
+    };
     if let Some(account) = &made.account {
         said.push_str(&format!(", {account}"));
     }
@@ -234,22 +280,33 @@ async fn make(invocation: &RpcInvocation, port: &PluginPort, ask: ImageAsk) -> R
     Ok(0)
 }
 
+fn format_name(format: Format) -> &'static str {
+    match format {
+        Format::Png => "PNG",
+        Format::Jpeg => "JPEG",
+        Format::Webp => "WebP",
+    }
+}
+
 async fn models(invocation: &RpcInvocation, port: &PluginPort) -> Result<u8, PluginError> {
     let models = match port.image_models().await {
         Ok(models) => models,
         Err(PortFailure::Refused(PortRefusal::Image { refusal })) => {
-            return Err(PluginError::failed(words(&refusal, invocation)));
+            return Err(PluginError::failed(words(&refusal, None, invocation)));
         }
         Err(failure) => return Err(failure.into()),
     };
     let listed: Vec<ListedModel> = models
         .into_iter()
-        .enumerate()
-        .map(|(index, model)| ListedModel {
+        .map(|model| ListedModel {
             id: model.id,
             provider: model.provider,
             provider_id: model.provider_id,
-            default: index == 0,
+            released: model.released,
+            description: model.description,
+            takes: model.takes,
+            confirmed: model.confirmed,
+            default: model.default,
         })
         .collect();
     let rpc = port.rpc();
@@ -261,13 +318,37 @@ async fn models(invocation: &RpcInvocation, port: &PluginPort) -> Result<u8, Plu
     if listed.is_empty() {
         return Err(PluginError::failed(NO_PROVIDER));
     }
-    let rows: Vec<[String; 2]> = listed.into_iter().map(|model| [model.id, model.provider]).collect();
-    rpc.stdout(table(&rows)).await?;
+    let rows: Vec<[String; 5]> = listed
+        .iter()
+        .map(|model| {
+            [
+                model.id.clone(),
+                model.provider.clone(),
+                model.released.clone(),
+                if model.default { "default".to_owned() } else { String::new() },
+                format!("{}; takes {}", model.description, model.takes),
+            ]
+        })
+        .collect();
+    // An entry whose vendor cannot confirm the model that answered says so
+    // once, under its last model.
+    let mut text = String::new();
+    for (index, line) in table(&rows).lines().enumerate() {
+        text.push_str(line);
+        text.push('\n');
+        let model = &listed[index];
+        let last = listed.get(index + 1).is_none_or(|next| next.provider_id != model.provider_id);
+        if last && !model.confirmed {
+            text.push_str(&format!("  {} does not confirm which of these models answers a call\n", model.provider));
+        }
+    }
+    rpc.stdout(text).await?;
     Ok(0)
 }
 
-/// The words of a refusal (`images.md` § Accounts and failures).
-fn words(refusal: &ImageRefusal, invocation: &RpcInvocation) -> String {
+/// The words of a refusal (`images.md` § Accounts and failures); a refused
+/// shape names `aspect`, the one asked for.
+fn words(refusal: &ImageRefusal, aspect: Option<ImageAspect>, invocation: &RpcInvocation) -> String {
     match refusal {
         ImageRefusal::NoProvider => NO_PROVIDER.to_owned(),
         ImageRefusal::UnknownModel { model } => {
@@ -285,6 +366,10 @@ fn words(refusal: &ImageRefusal, invocation: &RpcInvocation) -> String {
         }
         ImageRefusal::UsedUp { vendor, resets_at: None } => format!("{vendor}'s usage limit is reached"),
         ImageRefusal::Refused { vendor, message } => format!("{vendor} refused the request: {message}"),
+        ImageRefusal::Shape { vendor, takes } => {
+            let asked = aspect.map_or_else(|| "shape asked for".to_owned(), |aspect| format!("{}:{}", aspect.width, aspect.height));
+            format!("{vendor} takes no {asked} (it takes {})", takes.join(", "))
+        }
         ImageRefusal::Expired { vendor, account: Some(account) } => {
             format!("the {vendor} sign-in for {account} has expired; sign in again in Settings › Providers")
         }

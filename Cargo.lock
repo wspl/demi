@@ -3405,6 +3405,7 @@ dependencies = [
  "base64 0.22.1",
  "bytes",
  "garde",
+ "image",
  "jiff",
  "schemars",
  "serde",

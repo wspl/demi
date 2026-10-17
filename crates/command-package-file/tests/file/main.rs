@@ -751,6 +751,74 @@ fn facts(media_type: &str, name: Option<&str>, size: Option<(u32, u32)>) -> Medi
     }
 }
 
+/// A picture of `width` × `height` noisy pixels in `format`, which no
+/// encoder squeezes into a few bytes, so a cut one ends inside its pixels.
+fn noisy(width: u32, height: u32, format: image::ImageFormat) -> Vec<u8> {
+    let pixels = image::RgbImage::from_fn(width, height, |x, y| {
+        let seed = x.wrapping_mul(2_654_435_761) ^ y.wrapping_mul(40_503);
+        image::Rgb([seed as u8, (seed >> 8) as u8, (seed >> 16) as u8])
+    });
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    pixels.write_to(&mut bytes, format).unwrap();
+    bytes.into_inner()
+}
+
+/// About 0.5 s here: the program starts and views twice.
+///
+/// A picture whose header reads but whose data ends early, as a writer cut
+/// short leaves it, fails with the design's words and reaches the job as
+/// nothing, while whole pictures beside it are shown: a JPEG with bytes
+/// after its end that hold a start-of-scan marker, a progressive JPEG and
+/// an animated WebP.
+/// Planted defects this catch: the line printed from the header alone, so
+/// the model is promised a picture it never sees; a JPEG judged by its
+/// last start-of-scan marker anywhere in the file, which refuses the one
+/// with a trailer.
+#[tokio::test]
+async fn demi_file_view_refuses_a_picture_cut_short() {
+    tokio::time::timeout(Duration::from_secs(15), async {
+        let (root, service) = service_with(&[]).await;
+        let cwd = root.path().to_str().unwrap();
+        let whole = noisy(64, 48, image::ImageFormat::Png);
+        std::fs::write(root.path().join("whole.png"), &whole).unwrap();
+        std::fs::write(root.path().join("fox.png"), &whole[..whole.len() / 2]).unwrap();
+        let jpeg = noisy(64, 48, image::ImageFormat::Jpeg);
+        std::fs::write(root.path().join("fox.jpg"), &jpeg[..jpeg.len() / 2]).unwrap();
+        let client = service.client();
+        let types = Some(&["image/png", "image/jpeg", "image/webp"][..]);
+        let none = || Stdin { chunks: Vec::new(), live: false };
+
+        // Whole pictures the check must not refuse.
+        let mut trailed = jpeg.clone();
+        trailed.extend_from_slice(b"trailer \xff\xda\x00\x08 no end marker after it");
+        let progressive = include_bytes!("fixtures/progressive.jpg").to_vec();
+        let animated = include_bytes!("fixtures/animated.webp").to_vec();
+        for (name, bytes) in [("trailed.jpg", &trailed), ("progressive.jpg", &progressive), ("animated.webp", &animated)] {
+            std::fs::write(root.path().join(name), bytes).unwrap();
+        }
+        let (code, viewed) = view(client, cwd, &["trailed.jpg", "progressive.jpg", "animated.webp"], "test-model", types, none()).await;
+        assert_eq!((code, viewed.stderr.as_str()), (0, ""));
+        assert_eq!(
+            viewed.media,
+            [
+                (facts("image/jpeg", None, Some((64, 48))), Bytes::from(trailed)),
+                (facts("image/jpeg", None, Some((32, 24))), Bytes::from(progressive)),
+                (facts("image/webp", None, Some((16, 12))), Bytes::from(animated)),
+            ]
+        );
+
+        let (code, viewed) = view(client, cwd, &["fox.png", "whole.png", "fox.jpg"], "test-model", types, none()).await;
+        assert_eq!(code, 1);
+        assert_eq!(viewed.media, [(facts("image/png", None, Some((64, 48))), Bytes::from(whole))]);
+        assert_eq!(
+            viewed.stderr,
+            "demi file view: fox.png: the image is cut short\ndemi file view: fox.jpg: the image is cut short\n"
+        );
+    })
+    .await
+    .unwrap();
+}
+
 const PDF: &[u8] = b"%PDF-1.7\n1 0 obj\n<<>>\nendobj\n%%EOF\n";
 
 /// About 1 s here: the program starts and views twelve times.

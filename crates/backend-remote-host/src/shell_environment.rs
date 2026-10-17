@@ -1263,9 +1263,13 @@ pub fn edited_file(
         added: u32::try_from(file.added).unwrap_or(u32::MAX),
         removed: u32::try_from(file.removed).unwrap_or(u32::MAX),
         outside: false,
-        edits: (0..file.edits.len())
-            .map(|segment| EditSegment {
+        edits: file
+            .edits
+            .iter()
+            .enumerate()
+            .map(|(segment, recorded)| EditSegment {
                 copies: copies(segment),
+                binary: recorded.binary,
             })
             .collect(),
     }

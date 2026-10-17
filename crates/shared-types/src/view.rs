@@ -313,6 +313,12 @@ pub struct FileEdit {
     #[schemars(with = "EditCopies")]
     #[garde(skip)]
     pub copies: Option<EditCopies>,
+    /// No copies were kept because a side is binary, which edit tracking
+    /// never keeps (`edit-tracking.md` § Rationale), as against a side over
+    /// the limits; the Change view says so.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(skip)]
+    pub binary: bool,
 }
 
 serde_plain::derive_display_from_serialize!(EditKind);
@@ -349,6 +355,12 @@ pub struct EditSegment {
     #[schemars(with = "EditCopies")]
     #[garde(skip)]
     pub copies: Option<EditCopies>,
+    /// No copies were kept because a side is binary, which edit tracking
+    /// never keeps (`edit-tracking.md` § Rationale), as against a side over
+    /// the limits; the Change view says so.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[garde(skip)]
+    pub binary: bool,
 }
 
 /// The two sides of an edit segment, blobs of the conversation owner's

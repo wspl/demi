@@ -15,7 +15,7 @@ bench = false
 [dependencies]
 demi-host-interface = { path = "../host-interface" }
 demi-plugin-interface = { path = "../plugin-interface" }
-demi-shared-types = { path = "../shared-types" }
+demi-shared-types = { path = "../shared-types", features = ["whole-image"] }
 # What an image is, its size and whether it has an alpha channel, read
 # from its header.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }

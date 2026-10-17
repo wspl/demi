@@ -11,6 +11,7 @@
 
 use std::sync::Arc;
 
+use demi_provider_common::images::ImageModelInfo;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::providers::{Accounts, LoginState, ProviderAnswer};
 use reqwest::StatusCode;
@@ -24,6 +25,16 @@ use crate::families::{Directory, ImageScript, LoginScript, QuotaScript, Scripted
 use crate::subagents::{Scripts, say, shell, tree_among};
 use crate::support::Harness;
 use crate::usage::{Row, rows};
+
+/// The scripted family's image models, its default first and the other
+/// newer, so the list shows the newer first and marks the default.
+const PICTURES: &[ImageModelInfo] = &[
+    ImageModelInfo::new("picture-1", "2026-01-05", "Best pictures", "any shape"),
+    ImageModelInfo::new("picture-2", "2026-06-01", "Faster pictures", "1:1"),
+];
+
+/// A second family's image model.
+const DRAWINGS: &[ImageModelInfo] = &[ImageModelInfo::new("drawing-1", "2026-02-01", "Line drawings", "1:1")];
 
 /// A `device` family whose accounts make images of `models` as `images`
 /// scripts them, and the scripts of its logins.
@@ -65,7 +76,7 @@ fn image_rows(harness: &Harness) -> Vec<Row> {
 #[tokio::test]
 async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_files() {
     let made = demi_agent_store::testing::speckled(700, 700).into_bytes();
-    let images = Arc::new(ImageScript::new(&["picture-1", "picture-2"], made.clone()));
+    let images = Arc::new(ImageScript::new(PICTURES, made.clone()));
     let logins = image_family(&images);
     let scripts = Arc::new(Scripts::default());
     let harness = Harness::new().with_file_package();
@@ -133,7 +144,10 @@ async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_
         "demi image edit: notes.txt: not a PNG, JPEG or WebP image\nexit=1\n",
         "demi image generate: no provider makes \"nope\"; demi image models lists them\nexit=1\n",
         "700×700 PNG from picture-2 (Scripted, first@example.test)\n",
-        &format!("picture-1  {}\npicture-2  {}", entry.label, entry.label),
+        &format!(
+            "picture-2  {label}  2026-06-01           Faster pictures; takes 1:1\npicture-1  {label}  2026-01-05  default  Best pictures; takes any shape",
+            label = entry.label
+        ),
     ] {
         assert_shows(&asked, shown);
     }
@@ -261,7 +275,7 @@ async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_
 #[tokio::test]
 async fn a_used_up_account_under_balanced_moves_the_call_to_the_other_and_none_left_fails_in_words() {
     let made = demi_agent_store::testing::png(8, 8, 2).into_bytes();
-    let images = Arc::new(ImageScript::new(&["picture-1"], made.clone()));
+    let images = Arc::new(ImageScript::new(&PICTURES[..1], made.clone()));
     let logins = image_family(&images);
     let scripts = Arc::new(Scripts::default());
     let (harness, backend, master, _device, _root, _tree) =
@@ -325,8 +339,8 @@ async fn a_used_up_account_under_balanced_moves_the_call_to_the_other_and_none_l
 #[tokio::test]
 async fn an_entry_with_image_generation_off_is_never_chosen_and_says_why() {
     let made = demi_agent_store::testing::png(8, 8, 2).into_bytes();
-    let first_images = Arc::new(ImageScript::new(&["picture-1"], made.clone()));
-    let second_images = Arc::new(ImageScript::new(&["drawing-1"], made.clone()));
+    let first_images = Arc::new(ImageScript::new(&PICTURES[..1], made.clone()));
+    let second_images = Arc::new(ImageScript::new(DRAWINGS, made.clone()));
     let logins = image_family(&first_images);
     let second = ScriptedSubscription {
         login: logins.login.clone(),
@@ -390,7 +404,7 @@ async fn an_entry_with_image_generation_off_is_never_chosen_and_says_why() {
     socket.chat("m1", "Draw a fox").await;
     let asked = last_root(&scripts);
     for shown in [
-        "8×8 PNG from drawing-1 (Scripted, first@example.test)\ndrawing-1  Second\n",
+        "8×8 PNG from drawing-1 (Scripted, first@example.test)\ndrawing-1  Second  2026-02-01  default  Line drawings; takes 1:1\n",
         "demi image generate: \"picture-1\" is First's, whose image generation is off in Settings › Providers\nexit=1",
     ] {
         assert_shows(&asked, shown);
