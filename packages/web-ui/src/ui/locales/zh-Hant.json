@@ -18,7 +18,8 @@
   },
   "requestId": "請求 ID：{id}",
   "errorNotice": {
-    "providerResponse": "供應商回應"
+    "providerResponse": "供應商回應",
+    "headers": "標頭"
   },
   "updateFailed": {
     "title": "無法更新此頁面",

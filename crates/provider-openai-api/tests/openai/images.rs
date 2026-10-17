@@ -220,7 +220,7 @@ async fn an_openai_keys_failures_read_as_a_spent_limit_a_refused_key_a_policy_bl
     assert_eq!(fail().await, ImageFailure::UsageLimit { retry_at: None });
     assert_eq!(fail().await, ImageFailure::UsageLimit { retry_at: None });
     let refused = fail().await;
-    assert!(matches!(&refused, ImageFailure::KeyRefused { message } if message.starts_with("Incorrect API key provided")), "{refused:?}");
+    assert!(matches!(&refused, ImageFailure::KeyRefused { message, .. } if message.starts_with("Incorrect API key provided")), "{refused:?}");
     assert_eq!(refused.outcome(), "auth_expired");
     match fail().await {
         ImageFailure::Refused { message, .. } => assert_eq!(message, "Your request was rejected as a result of our safety system."),

@@ -18,7 +18,8 @@
   },
   "requestId": "요청 ID: {id}",
   "errorNotice": {
-    "providerResponse": "제공업체 응답"
+    "providerResponse": "제공업체 응답",
+    "headers": "헤더"
   },
   "updateFailed": {
     "title": "이 페이지를 업데이트할 수 없습니다",

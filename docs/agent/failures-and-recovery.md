@@ -17,6 +17,7 @@ decisions read, and diagnostics, which the user and support read:
 | `rate_limited` | The backend's own request rate limit refused the attempt before it reached the vendor ([Rate limit](../providers/usage-and-quota.md#rate-limit)) | No |
 | `overloaded` | A transient failure: HTTP 5xx, a timeout, a network or socket failure | Yes |
 | An authentication code | A missing, invalid or expired credential, or one that could not be refreshed | No |
+| `permission_denied` | The vendor knows the credential and refuses this request with it: a plan without API access, a model or a region the account may not use | No |
 | `context_length_exceeded` | The request holds more tokens than the model accepts | Once, after compaction ([Retries](#retries)) |
 | `request_too_large` | The request's body or its number of images is more than the vendor accepts | No ([Retries](#retries)) |
 | A vendor's own code | Any other failure the vendor named | No |
@@ -38,7 +39,7 @@ window or spend cap, or a seat or member whose use is turned off, and never
 for a 429 that only throttles, whose text says *not your usage limit* (CLI 2.1.296, against a
 scripted vendor, three runs each). Each is `usage_limit`, and no wording
 stands in for these signs. Otherwise an HTTP failure gets its code from its status:
-401 and 403 are `auth_expired`, 429 is `rate_limit`, 408, 409, 425 and every 5xx are
+401 is `auth_expired` and 403 is `permission_denied`, 429 is `rate_limit`, 408, 409, 425 and every 5xx are
 `overloaded`, and 413 is `request_too_large`, as is a 400 whose text
 mentions `too many images`, `many-image`, `request too large` or `payload too
 large`: the first two are the Anthropic API's refusals of a request with more
@@ -58,6 +59,21 @@ match the vendor's own code stands:
 | `quota`, `rate`, a word starting with `ratelimit` | `rate_limit` |
 | `auth`, `authentication`, `authorization`, or `invalid` or `expired` before or after an API, access or auth key or token | `auth_expired` |
 | a word starting with `overload`, `unavailable`, `server error`, `internal error`, `api error`, `timeout`, `timed out`, `fetch failed`, `network`, `socket`, a word starting with `econn` | `overloaded` |
+
+A 403 says the vendor knows the credential: CommandCode answers a key whose
+Go plan has no API access with 403 `upgrade_required`, *Your Go plan doesn't
+include API access*, while the same key lists the models. Calling that an
+expired sign-in sends the user to sign in again, which changes nothing; the
+headline says the provider refused the request, and the vendor's own words
+below it say why. A vendor that answers an expired credential with 403
+instead of 401 shows the same headline with its own words, which say so.
+
+The headline of an `auth_expired` failure names the credential the entry
+holds, which the page knows from the entry the block's model selection
+names: a subscription's is its sign-in, *The provider's sign-in expired or
+was refused*, with Open Providers when its account is signed out
+([Failure facts](../backend/backend.md#failure-facts)), and an API key
+entry's is its key, *The provider refused the API key*, never a sign-in.
 
 Words count only whole, so `generate` is not `rate`, and `limit` or `usage`
 alone decides nothing: an invalid request whose message mentions a limit, or
@@ -93,6 +109,12 @@ wants to know: when it works again. The diagnostics therefore carry
 | `stream` | An error event inside a streamed response, or a frame Demi could not decode | The frame's text as received: the SSE `data` payload, the WebSocket message, or a CLI's output line; for Claude Code, its failing assistant line and its `result` line as received, joined by a newline, since the reset time is only on the first and `api_error` on both |
 | `http` | A request the vendor answered with a failure status | JSON `{ "status", "headers", "body" }`: the status code; every response header as a `[name, value]` pair, with the name in lowercase, sorted by name, and a repeated header kept as separate pairs in the order they arrived; and the body text as received |
 | `transport`, `unknown` | No answer from the vendor | Absent |
+
+The failed turn shows the record under **Provider Response** with what the
+vendor said first: for an `http` record, its status as *HTTP 403*, then its
+body, a JSON body indented, and its headers last, folded under *Headers*,
+since a body such as *Your Go plan doesn't include API access* is the reason
+and the headers rarely matter; Copy copies the record as stored.
 
 Headers are sorted so that two records of the same response are equal, whatever
 order the HTTP stack reports them in. Apart from that order and the lowercase

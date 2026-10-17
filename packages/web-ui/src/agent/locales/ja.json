@@ -110,6 +110,7 @@
     "stepsNotShared": "{count} 件のステップは共有されていません",
     "turnFailed": "ターンが失敗しました。",
     "failureResets": "{failure}{reset}されます。",
+    "apiKeyRefused": "プロバイダーが API キーを拒否しました。",
     "signedOut": "{provider} が {account} をサインアウトしました。設定 › プロバイダーでもう一度サインインしてください。",
     "work": {
       "ran": "{count} 件のコマンドを実行",

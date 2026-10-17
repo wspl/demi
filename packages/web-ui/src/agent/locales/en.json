@@ -110,6 +110,7 @@
     "stepsNotShared": "{count} step not shared | {count} steps not shared",
     "turnFailed": "The turn failed.",
     "failureResets": "{failure} {reset}.",
+    "apiKeyRefused": "The provider refused the API key.",
     "signedOut": "{provider} signed {account} out. Sign it in again in Settings › Providers.",
     "work": {
       "ran": "ran {count} command | ran {count} commands",

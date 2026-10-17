@@ -30,6 +30,8 @@ withDefaults(
     facts?: readonly SentenceText[]
     /** What the source sent, in full, behind a disclosure: the vendor's own payload. */
     raw?: string | null
+    /** The response's headers, under the payload, folded under Headers: they rarely say why. */
+    rawHeaders?: string | null
     /** The single action's label; the caller decides what it does. */
     action?: TitleText
     /** What the copy control puts on the clipboard; no control without it. */
@@ -40,6 +42,7 @@ withDefaults(
   {
     detail: null,
     raw: null,
+    rawHeaders: null,
     facts: () => [],
     copyText: null,
     requestId: null,
@@ -47,6 +50,7 @@ withDefaults(
 )
 defineEmits<{ action: [] }>()
 const rawOpen = ref(false)
+const headersOpen = ref(false)
 </script>
 
 <template>
@@ -99,6 +103,22 @@ const rawOpen = ref(false)
               <pre
                 class="whitespace-pre-wrap break-words font-mono text-[11px] leading-4 text-on-danger-muted"
               >{{ raw }}</pre>
+              <template v-if="rawHeaders">
+                <button
+                  type="button"
+                  class="mt-2 flex cursor-default items-center gap-1 text-detail leading-[18px] text-on-danger-muted hover:text-on-danger"
+                  :aria-expanded="headersOpen"
+                  @click="headersOpen = !headersOpen"
+                >
+                  {{ t('errorNotice.headers') }}
+                  <FoldChevron :open="headersOpen" :size="ICON_PX.in12" />
+                </button>
+                <Fold :open="headersOpen">
+                  <pre
+                    class="mt-1 whitespace-pre-wrap break-words font-mono text-[11px] leading-4 text-on-danger-muted"
+                  >{{ rawHeaders }}</pre>
+                </Fold>
+              </template>
             </ScrollArea>
           </Fold>
         </template>
