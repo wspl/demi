@@ -433,7 +433,12 @@ Cloudflare's 100 seconds, which once ended such a call with
 `pipe refused (524)`, and its body keeps itself alive while the call says
 nothing ([Pipes and output](runner.md#pipes-and-output)). A stdout pipe handed to a job on another device that then
 fails ends the call with 1 and its cause on stderr, as any failing relayed
-pipe does, below.
+pipe does, below. A call's stdout lives until all of it has
+reached the calling process: a call that ends while its output is still on
+its way, as a large image written with `> fox.png` to a slow disk is, ends
+when the last byte is written, however long that takes. Its stdin ending,
+read or unread, when the handler returns, ends nothing else; only the
+call's cancellation or a pipe that fails ends its stdout early.
 
 A handler ends with an exit status. A handler's error is a runtime error,
 written as GNU tools write theirs: the command's path, the object it concerns

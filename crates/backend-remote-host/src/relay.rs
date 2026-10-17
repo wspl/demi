@@ -70,7 +70,19 @@ pub(crate) struct CallEntry {
     /// The first cause that stopped the call.
     cause: RefCell<Option<Stop>>,
     live: RefCell<Live>,
-    pipes: RefCell<Vec<Pipe>>,
+    pipes: RefCell<Option<CallPipes>>,
+}
+
+/// The pipes a call relays, once minted.
+struct CallPipes {
+    stdout: Pipe,
+    stdin: Option<Pipe>,
+}
+
+impl CallPipes {
+    fn iter(&self) -> impl Iterator<Item = &Pipe> {
+        std::iter::once(&self.stdout).chain(&self.stdin)
+    }
 }
 
 /// The call's live input: one chunk requested at a time.
@@ -87,8 +99,27 @@ impl CallEntry {
             stopped: CancellationToken::new(),
             cause: RefCell::new(None),
             live: RefCell::new(Live::Idle),
-            pipes: RefCell::new(Vec::new()),
+            pipes: RefCell::new(None),
         })
+    }
+
+    /// Ends the call's finite standard input as finished, read or unread:
+    /// the handler took what it wanted, so the process's upload is answered
+    /// as a whole one rather than failed, and its stdout goes on to its end
+    /// (`commands.md` § Handle an rpc call).
+    fn finish_input(&self) {
+        let pipes = self.pipes.borrow();
+        let Some(stdin) = pipes.as_ref().and_then(|pipes| pipes.stdin.as_ref()) else {
+            return;
+        };
+        match stdin.reader() {
+            // A reader in this process that lets go drains the pipe.
+            Ok(reader) => drop(reader),
+            // A reader already taken drained the pipe as it let go, a pipe
+            // that is over stays as it ended, and one handed to a device is
+            // that device's to end.
+            Err(PipeError::Taken(_) | PipeError::Settled | PipeError::AlreadyFixed(_)) => {}
+        }
     }
 
     /// Stops the call; a cause after the first changes nothing. A relayed
@@ -102,6 +133,7 @@ impl CallEntry {
             .pipes
             .borrow()
             .iter()
+            .flat_map(CallPipes::iter)
             .find_map(Pipe::failure)
             .map(|failure| Stop::Ended(failure.reason().to_owned()));
         let cause = failed.unwrap_or(cause);
@@ -109,7 +141,7 @@ impl CallEntry {
         *self.cause.borrow_mut() = Some(cause);
         self.stopped.cancel();
         self.end_live_input();
-        for pipe in self.pipes.borrow().iter() {
+        for pipe in self.pipes.borrow().iter().flat_map(CallPipes::iter) {
             pipe.fail(&reason);
         }
     }
@@ -223,6 +255,7 @@ pub(crate) fn start(link: &Link, call: RpcCall) {
             }
         };
         relaying.with_state(|state| state.remove_call(&call_id));
+        entry.finish_input();
         entry.stop(Stop::Ended("rpc call ended".into()));
         let exit = Inbound::RpcExit {
             call_id: call_id.clone(),
@@ -280,10 +313,10 @@ async fn run(
     let stdout = link.pipes().to_device(link.device());
     stdout.hold_source().map_err(|error| error.to_string())?;
     let stdin = call.stdin.then(|| link.pipes().from_device(link.device()));
-    entry
-        .pipes
-        .borrow_mut()
-        .extend([Some(stdout.clone()), stdin.clone()].into_iter().flatten());
+    *entry.pipes.borrow_mut() = Some(CallPipes {
+        stdout: stdout.clone(),
+        stdin: stdin.clone(),
+    });
     if let Some(cause) = entry.cause() {
         return Err(cause.text().into());
     }
