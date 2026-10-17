@@ -680,7 +680,7 @@ its lowest effort, and a conversation he holds with DeepSeek V4 gets its title
 from Haiku as well.
 
 Settings › Agent › Small Model chooses it. **Automatic**, the default, shows
-the model it resolves to beside it, *Automatic (Claude Haiku 5.5)*; the menu
+the model it resolves to after it, on the same line in smaller, secondary text and in parentheses, *Automatic (Claude Haiku 5.5)*; the menu
 under it lists every model of the user's entries, grouped by entry as the
 model menu groups them, with the model's efforts, as the profile editor's
 menu does. A chosen model is kept as model settings

@@ -103,13 +103,21 @@ its format merely has an alpha channel.
 A vendor's model can be made through more than one entry: `gpt-image-2`
 through a ChatGPT subscription or an OpenAI API key, `grok-imagine-image`
 through a Grok subscription or an xAI key. Settings › Agent › Image
-Generation, under Small Model, has one row for each vendor an entry of the
-user makes images for, OpenAI, Google and xAI, each with a menu of
-**Automatic**, the default, and that vendor's image-making entries; beside
-Automatic the row shows the entry it resolves to, *Automatic (ChatGPT ·
-alex@example.com)*, as Small Model does: the first entry Automatic would
+Generation, under Small Model, has one row for each vendor Demi makes
+images with, OpenAI, Google and xAI, always all three, each with a menu of
+**Automatic**, the default, and that vendor's image-making entries; after
+*Automatic*, on the same line in smaller, secondary text, the row names
+the entry it resolves to by the entry's name alone, in parentheses,
+*Automatic (Codex)*, as
+Small Model does, and the menu names each entry's account the same way
+after its name: the first entry Automatic would
 try, judged by all but the model, its switch, its sign-in or key and its
-limit, as the row names no model.
+limit, as the row names no model. A vendor none of whose entries can make
+images, because the user has none or switched them off, shows *Automatic*
+with *Not available* after it, as small and a menu holding *Add Provider…*, which
+opens Settings › Providers, so the user learns what Demi can make images
+with and where to enable it, as macOS keeps a setting it cannot use in its
+place, dimmed.
 
 - **Automatic** takes the vendor's subscription entries first, then its
   API-key entries, each kind in the order of Settings › Providers, and
