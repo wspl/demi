@@ -240,10 +240,12 @@ async fn an_agent_lists_the_menus_models_and_changes_profiles_under_the_permissi
     socket.chat("m3", "Delete it").await;
     let asked = last_root(&scripts);
     assert_shows(&asked, "deleted profile explore\n");
+    // The table goes to stdout and the warning to stderr, which reach the
+    // output in either order; last, the warning has no line end after it.
     assert_shows(&asked, "NAME  SOURCE  MODEL  EFFORT  DESCRIPTION");
     assert_shows(
         &asked,
-        "demi agent profiles list: warning: the user has no enabled subagent profile; demi agent spawn without --profile inherits the parent\n",
+        "demi agent profiles list: warning: the user has no enabled subagent profile; demi agent spawn without --profile inherits the parent",
     );
     assert!(synced(&mut page).await.profiles.is_empty());
 

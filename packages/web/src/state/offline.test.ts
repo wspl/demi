@@ -202,7 +202,10 @@ test('a page that reaches the backend shows the copy until the snapshot, and rea
   transcripts.set(FIRST, [message('first-1', 'Fix the login'), message('first-2', 'And the tests'), message('first-3', 'Since then')])
   openPage()
   await signedIn()
-  // The copy, before the channel's first snapshot.
+  // The copy, before the channel's first snapshot. The page signs in once
+  // the backend answers, and shows the copy once the database answers,
+  // whichever comes first.
+  await waitFor(() => titles().length > 0, () => 'the page shows no copy')
   expect(titles()).toEqual(['First', 'Second', 'Third'])
   channels.last().connect(backendState({ [FIRST]: 'Renamed' }))
   expect(titles()).toEqual(['Renamed'])
