@@ -149,8 +149,14 @@ export interface KeptSpec<T> {
   root?: string
   /** For a listing: the view shows its entries' sizes and times, so it follows them too. */
   details?: boolean
-  /** Reads it; `held` is the version kept, which a read may answer unchanged with. */
-  read(held: string | null): Promise<Read<T>>
+  /**
+   * Reads it; `held` is the version kept, which a read may answer unchanged
+   * with. `after` is the highest number the entry's live watch started at,
+   * null while none is live: a source that keeps answers of its own, as the
+   * backend keeps the workflows, answers one read at that number or later,
+   * since one read before it is stale to the page however current it is.
+   */
+  read(held: string | null, after: ReadAt | null): Promise<Read<T>>
   /** The characters of text it holds. */
   size(value: T): number
   /** The version of `value`, which the next read names; none without versions. */
@@ -286,6 +292,26 @@ class Entry<T> {
   /** How many times its subscriptions went live, all told. */
   lives(): number {
     return this.subscriptions.value.reduce((sum, subscription) => sum + subscription.lives, 0)
+  }
+
+  /**
+   * The number a read must be taken at or after to hold against its live
+   * watch: the highest `since` of the subscriptions the Host watches now;
+   * null while none is, or while they are of different runs, whose numbers
+   * compare with nothing.
+   */
+  readAfter(now: number): ReadAt | null {
+    let after: ReadAt | null = null
+    for (const subscription of this.subscriptions.value) {
+      const { epoch, since } = subscription
+      if (!subscription.watching(now) || epoch === null)
+        continue
+      if (after !== null && after.epoch !== epoch)
+        return null
+      if (after === null || since > after.number)
+        after = { epoch, number: since }
+    }
+    return after
   }
 
   /** What it subscribes to: the subjects its answer depends on. */
@@ -431,7 +457,7 @@ export class HostFiles implements WatchListener {
     const reading = (async () => {
       let answered = false
       try {
-        const answer = await read(entry.version)
+        const answer = await read(entry.version, entry.readAfter(Date.now()))
         entry.readAt = answer.readAt
         // Unchanged: the answer kept is the Host's, and nothing a view shows changes.
         if (!('unchanged' in answer)) {

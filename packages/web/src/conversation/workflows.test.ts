@@ -70,7 +70,7 @@ beforeEach(() => {
   let cwd = '/home/ada/repo-a'
   globalThis.fetch = (async (input) => {
     const path = String(input)
-    if (path === `/api/conversations/${CONVERSATION}/workflows`) {
+    if (path.split('?')[0] === `/api/conversations/${CONVERSATION}/workflows`) {
       read.push(path)
       // The backend reads the conversation's directory as it is now.
       cwd = useProduct().snapshot!.conversations[0]!.cwd
@@ -189,5 +189,45 @@ test('a new conversation in a Cloud project reads its project’s workflows and 
   await until(() => list.value.state === 'read')
   expect(conversation.workflow).toEqual({ type: 'workflow', id: 'review' })
   expect(product.snapshot!.workspaces[0]!.lastWorkflow).toEqual({ type: 'workflow', id: 'review' })
+  scope.stop()
+})
+
+test('a watch that went live after the list was read reads it once more, after its number, and then rests', async () => {
+  // The backend answers from the search it keeps, with that search's
+  // number, unless the page asks for one read at or after a number: then it
+  // searches again and answers with the new one.
+  // A conversation and directory of its own: the kept files and the
+  // watches of the page outlive a test.
+  const other = '7b2e3d4c-5f60-4b7c-9d8e-0f1a2b3c4d5e'
+  channels.last().send({ type: 'conversation', conversation: conversationSummary(other, 'Other', {
+    cwd: '/home/ada/repo-c',
+    target: { kind: 'device', deviceId: LAPTOP, path: '/home/ada/repo-c' },
+  }) })
+  const asked: string[] = []
+  globalThis.fetch = (async (input) => {
+    const url = new URL(String(input), 'http://backend')
+    if (url.pathname !== `/api/conversations/${other}/workflows`)
+      throw new Error(`Unexpected request: ${url}`)
+    asked.push(url.search)
+    // On a later turn, as a network answer comes: a page that asks again
+    // without end then still lets the test see it.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    const after = url.searchParams.get('readAfter')
+    return Response.json(workflowsOf('/home/ada/repo-c', asked.length), { headers: { 'x-demi-read-at': after ?? 'e.10' } })
+  }) as typeof fetch
+  const store = useConversations()
+  const scope = effectScope()
+  const list = scope.run(() => createApp({}).runWithContext(() =>
+    useConversationWorkflows(() => store.items.find((item) => item.id === other)!)))!
+  await until(() => list.value.state === 'read')
+  await until(() => sockets.length > 0)
+  sockets[0]!.dispatchEvent(new Event('open'))
+  await until(() => sockets[0]!.sent.length > 0)
+  const key = sockets[0]!.sent.flatMap((message) => message.subscriptions ?? [])[0]!.key
+  // The Host watches the folder from 11, after the answer held, read at 10.
+  sockets[0]!.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'live', key, since: 11, epoch: 'e' }) }))
+  await until(() => asked.length > 2)
+  expect(asked).toEqual(['', '?readAfter=e.11'])
+  expect(list.value).toEqual({ state: 'read', workflows: workflowsOf('/home/ada/repo-c', 2).workflows })
   scope.stop()
 })
