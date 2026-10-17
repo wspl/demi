@@ -1081,7 +1081,9 @@ html[data-theme="light"] .file-pill {
   border-radius: var(--composer-shell-radius);
 }
 
-/* The row under the box: the model, then the context, at its right edge. It
+/* The row under the box: the model, then the context, at its right edge. On a
+   narrow phone the model's chip alone gives way, its name cut short, so the
+   row's other controls stay whole and nothing leaves the screen. It
    stands one inset under the box, inside the 12px the dock keeps around the
    composer. The row's controls are chips with their own padding, so its ends
    are the box's edges: the first control's mark stands under the attach
@@ -1098,6 +1100,7 @@ html[data-theme="light"] .file-pill {
 /* What stands at the row's left end, such as the workflow and the saved
    messages' entries. */
 .composer-below-start {
+  flex-shrink: 0;
   margin-inline-end: auto;
 }
 

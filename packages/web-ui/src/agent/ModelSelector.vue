@@ -66,40 +66,44 @@ const labelText = computed(() => {
 </script>
 
 <template>
-  <div class="flex">
+  <!-- Where the row has no room for the whole chip, it gives way: its text is cut short with an
+       ellipsis, the model's name in the ready chip, and the level, the marks and the chevron stay. -->
+  <div class="flex min-w-0">
     <span
       v-if="load === 'loading'"
-      class="relative inline-flex h-chip items-center overflow-hidden px-2 text-chrome text-fg-subtle"
+      class="relative inline-flex h-chip min-w-0 items-center overflow-hidden px-2 text-chrome text-fg-subtle"
       role="status"
       :aria-label="labelText"
     >
-      <IndeterminateSpinner :size="icons.chip" />
-      <span class="whitespace-nowrap pl-1.5">{{ labelText }}</span>
+      <IndeterminateSpinner :size="icons.chip" class="shrink-0" />
+      <span class="min-w-0 truncate pl-1.5">{{ labelText }}</span>
     </span>
     <span
       v-else-if="load === 'failed'"
-      class="relative inline-flex h-chip items-center overflow-hidden pl-2 text-chrome text-on-danger"
+      class="relative inline-flex h-chip min-w-0 items-center overflow-hidden pl-2 text-chrome text-on-danger"
       role="alert"
       :aria-label="labelText"
     >
       <CircleX :size="icons.chip" class="shrink-0" />
-      <span class="whitespace-nowrap pl-1.5">{{ labelText }}</span>
-      <Button size="sm" class="ml-1.5" @click="emit('retry')">{{ shared('common.retry') }}</Button>
+      <span class="min-w-0 truncate pl-1.5">{{ labelText }}</span>
+      <Button size="sm" class="ml-1.5 shrink-0" @click="emit('retry')">{{ shared('common.retry') }}</Button>
     </span>
     <Dropdown
       v-else-if="state.kind === 'ready' || state.kind === 'unavailable'"
       :overlay-store="appOverlayStore"
       variant="ghost"
+      width="shrink"
       :trigger-label="t('models.model')"
     >
       <template #trigger="{ isOpen }">
-        <span class="relative inline-flex items-center overflow-hidden">
+        <span class="relative inline-flex min-w-0 items-center overflow-hidden">
           <!-- The name sits a step above the chip's tone and the level a step below it, so the
                two stay two steps apart whether the chip is subtle (closed) or body (open). -->
-          <span class="inline-flex items-center gap-1 whitespace-nowrap">
-            <span :class="isOpen ? 'text-fg-body' : 'text-fg-muted'">{{ state.label }}</span>
+          <span class="inline-flex min-w-0 items-center gap-1 whitespace-nowrap">
+            <span class="min-w-0 truncate" :class="isOpen ? 'text-fg-body' : 'text-fg-muted'">{{ state.label }}</span>
             <span
               v-if="reasoningLabel"
+              class="shrink-0"
               :class="isOpen ? 'text-fg-subtle' : 'text-fg-faint'"
             >{{ reasoningLabel }}</span>
           </span>
