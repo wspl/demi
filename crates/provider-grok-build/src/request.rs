@@ -17,7 +17,7 @@ use serde::Serialize;
 use crate::auth::Credentials;
 
 /// The Grok CLI release whose identity the provider's requests carry.
-pub(crate) const CLIENT_VERSION: &str = "1.0.5";
+pub(crate) const CLIENT_VERSION: &str = "1.0.62";
 
 /// The JSON body of `request`. The proxy reads images but no PDFs or
 /// video, and takes no output limit or service tier.

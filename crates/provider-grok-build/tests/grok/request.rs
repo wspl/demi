@@ -53,7 +53,7 @@ async fn a_run_posts_to_the_chat_proxy_with_the_grok_clis_identity() {
         ("x-authenticateresponse", "authenticate-response"),
         ("x-grok-client-identifier", "grok-shell"),
         ("x-grok-client-mode", "interactive"),
-        ("x-grok-client-version", "1.0.5"),
+        ("x-grok-client-version", "1.0.62"),
         ("x-userid", "user-1"),
         ("x-grok-user-id", "user-1"),
         ("x-email", "user@example.com"),
