@@ -75,6 +75,47 @@
     "lastSeen": "最後上線",
     "none": "沒有裝置"
   },
+  "portForwards": {
+    "title": "連接埠轉送",
+    "description": "讓一台主機上的程式連到另一台主機的連接埠，就像 ssh -L。",
+    "yours": "轉送",
+    "add": "加入轉送",
+    "loading": "正在載入連接埠轉送…",
+    "none": "沒有連接埠轉送",
+    "unknownHost": "未知的主機",
+    "state": {
+      "off": "關閉",
+      "chooseHost": "請選擇要連線的主機。",
+      "offline": "{host} 已離線",
+      "starting": "正在啟動…",
+      "portInUse": "連接埠 {port} 在 {host} 上已被占用",
+      "direct": "直接 · {count} 個連線",
+      "relay": "中繼 · {count} 個連線",
+      "and": "，",
+      "idle": "閒置"
+    },
+    "page": {
+      "name": "名稱",
+      "nameProblem": "請輸入不超過 {max} 個字元的名稱。",
+      "on": "開啟",
+      "onDescription": "開啟時，只要監聽主機在線上就會運作。",
+      "listenOn": "監聽",
+      "connectTo": "連線至",
+      "host": "主機",
+      "listenDescription": "此主機上的程式連到 127.0.0.1 的這個連接埠。",
+      "port": "連接埠",
+      "portProblem": "請輸入 1 到 65535 之間的連接埠。",
+      "connectDescription": "由此主機開啟每個連線。",
+      "chooseHost": "選擇主機",
+      "address": "位址",
+      "addressDescription": "此主機可連到的任何 host:port。",
+      "tryAgain": "再試一次",
+      "removeThis": "移除此轉送",
+      "remove": "移除轉送…",
+      "removeTitle": "要移除「{name}」嗎？",
+      "removeBody": "它會停止監聽，開啟中的連線將結束。"
+    }
+  },
   "keyboard": {
     "title": "鍵盤",
     "description": "按一下「變更」，然後按下新的按鍵。",
@@ -256,6 +297,9 @@
       "keywords": "新增裝置,配對碼,認領,撤銷,執行器,電腦",
       "cloudKeywords": "雲端,重設環境",
       "storageKeywords": "磁碟,空間"
+    },
+    "portForwards": {
+      "keywords": "連接埠轉送,通道,ssh -L,localhost,監聽,連線,ollama"
     },
     "archived": {
       "keywords": "封存,取消封存,對話"

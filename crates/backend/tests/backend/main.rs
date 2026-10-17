@@ -38,6 +38,7 @@ mod failed_turns;
 mod families;
 mod files;
 mod forks;
+mod forwards;
 mod handoff;
 mod history;
 mod history_commands;

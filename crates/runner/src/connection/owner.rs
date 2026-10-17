@@ -154,6 +154,8 @@ struct Owner<'r> {
     /// The pages' peers the backend introduced on this connection
     /// (`direct-channel.md`), which end with it.
     direct: Direct,
+    /// The user's port forwards on this connection, which end with it.
+    forwarding: Option<crate::forward::Forwarding>,
     /// The manifests installed on this connection, which end with it.
     manifests: Manifests,
 }
@@ -182,7 +184,9 @@ pub async fn serve(
         registered.management.draining.clone(),
         transport.cancellation().child_token(),
     );
+    let (listed, forwards) = crate::forward::forward_list();
     let operations = HostOperations {
+        forwards,
         home: registered.runner.identity.home_dir.clone(),
         watches: host.watches().clone(),
         streams: streams.opener(),
@@ -193,6 +197,13 @@ pub async fn serve(
     let (direct, driver) = demi_runner_direct::direct(Arc::new(operations), Addresses::Interfaces);
     // The peers' thread ends once the connection lets go of `direct`.
     driver.spawn()?;
+    let forwarding = crate::forward::Forwarding::new(
+        listed,
+        direct.clone(),
+        registered.pipes.clone(),
+        transport.control.clone(),
+        transport.cancellation(),
+    );
     let mut owner = Owner {
         registered,
         kept,
@@ -209,6 +220,7 @@ pub async fn serve(
         cached: registered.cached.clone(),
         revoke_asked: false,
         direct,
+        forwarding: Some(forwarding),
         manifests: Manifests::default(),
     };
     let result = owner.run(&mut transport).await;
@@ -615,6 +627,18 @@ impl Owner<'_> {
                 });
             }
             Inbound::DirectCandidate { peer, candidate } => self.direct.candidate(&peer, candidate),
+            Inbound::Forwards { .. }
+            | Inbound::ForwardRetry { .. }
+            | Inbound::ForwardConnect { .. }
+            | Inbound::ForwardOpened { .. }
+            | Inbound::ForwardRefused { .. }
+            | Inbound::DirectDialed { .. }
+            | Inbound::DirectDialRefused { .. } => {
+                if let Some(forwarding) = &self.forwarding {
+                    // Each of these is a forward's message.
+                    let _ = forwarding.handle(message);
+                }
+            }
             Inbound::DirectClose { peer } => self.direct.close(&peer),
             // The relay probe is answered at once, ahead of the connection's
             // bulk output, so its round trip is the path's own.
@@ -851,7 +875,9 @@ impl Owner<'_> {
         self.kept.disconnected();
         self.kept.jobs.end_spawns();
         // Without the backend the runner can no longer hear that a page
-        // went away (`direct-channel.md` § Who may connect).
+        // went away (`direct-channel.md` § Who may connect), and its
+        // forwards end with the connection that told it of them.
+        self.forwarding = None;
         self.direct.close_all();
         tokio::join!(self.host.close(), self.streams.close(), self.volumes.close());
         // State writes finish, since a claimed token must not be lost, and a

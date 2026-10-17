@@ -724,7 +724,7 @@ pub enum Inbound {
         #[garde(length(min = 1))]
         sdp: String,
         #[garde(dive)]
-        introduction: crate::direct::Introduction,
+        introduction: crate::direct::Introduced,
         /// The STUN servers the runner asks, from its local network
         /// sockets, for the address the internet sees it at; none keeps
         /// the peer to one network.
@@ -749,10 +749,63 @@ pub enum Inbound {
         #[garde(skip)]
         id: u32,
     },
-    /// The page's signaling socket closed: the runner closes the peer.
+    /// The page's signaling socket closed, or the other runner's peer
+    /// ended: the runner closes the peer.
     DirectClose {
         #[garde(length(min = 1))]
         peer: String,
+    },
+    /// The other runner's answer to this runner's `direct_dial`, with its
+    /// candidates; its later ones come as `direct_candidate`.
+    DirectDialed {
+        id: String,
+        #[garde(length(min = 1))]
+        sdp: String,
+    },
+    /// The backend did not introduce this runner to the other.
+    DirectDialRefused {
+        id: String,
+        code: crate::direct::DialRefusal,
+        message: String,
+    },
+    /// Every forward this runner is an end of (`port-forwarding.md`), as
+    /// the connection begins and whenever one of them, or the presence of
+    /// a device at its other end, changes.
+    Forwards {
+        #[garde(dive)]
+        forwards: Vec<crate::forward::Forward>,
+        /// The STUN servers the runner asks, as a page's peer does, when it
+        /// offers a peer to another runner.
+        #[garde(length(max = crate::direct::MAX_STUN_URLS))]
+        stun: Vec<crate::direct::StunUrl>,
+    },
+    /// The user asks the Listen On runner to try forward `forward`'s port
+    /// again.
+    ForwardRetry {
+        #[garde(length(min = 1))]
+        forward: String,
+    },
+    /// A connection of forward `forward` on the relay: the runner connects
+    /// to the forward's address, writes what `input` carries to it, and
+    /// what it reads into `output`.
+    ForwardConnect {
+        #[garde(length(min = 1))]
+        forward: String,
+        input: PipeRef,
+        output: PipeRef,
+    },
+    /// The answer to `forward_open`: the connection's pipes, from the
+    /// Listen On runner's side.
+    ForwardOpened {
+        id: String,
+        input: PipeRef,
+        output: PipeRef,
+    },
+    /// The connection is refused at once: the Connect To Host is offline or
+    /// stopped, or the forward no longer runs.
+    ForwardRefused {
+        id: String,
+        message: String,
     },
 }
 
@@ -1193,6 +1246,43 @@ pub enum Outbound {
         #[garde(custom(conversation_name))]
         conversation: String,
         open: bool,
+    },
+    /// Asks the backend to introduce this runner to the runner of `device`,
+    /// the other end of a forward, as peer `peer`, with this runner's offer;
+    /// `direct_dialed` or `direct_dial_refused` answers.
+    DirectDial {
+        id: String,
+        #[garde(length(min = 1))]
+        peer: String,
+        #[garde(length(min = 1))]
+        device: String,
+        #[garde(length(min = 1))]
+        sdp: String,
+    },
+    /// Peer `peer`, which the backend introduced to another runner, ended:
+    /// the other runner closes its side.
+    DirectClosed {
+        #[garde(length(min = 1))]
+        peer: String,
+    },
+    /// What forward `forward` is on this runner, its Listen On, now: none
+    /// once it no longer listens.
+    ForwardState {
+        #[garde(length(min = 1))]
+        forward: String,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        state: Option<crate::forward::ForwardRunState>,
+    },
+    /// A connection of forward `forward` that goes through the relay; the
+    /// backend answers `forward_opened` or `forward_refused`.
+    ForwardOpen {
+        id: String,
+        #[garde(length(min = 1))]
+        forward: String,
     },
     /// Every artifact this runner's cache holds, once the connection is
     /// online and whenever an install or a retirement changes them

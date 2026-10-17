@@ -1,11 +1,13 @@
-//! One peer: a page's WebRTC connection to the runner (`direct-channel.md`
-//! § Making the channel). It owns its UDP sockets, its str0m connection and
-//! its channels, each an operation; it learns the addresses the internet
-//! sees its sockets at and offers them to the page, and checks the
-//! candidates the page trickles after its offer. It gives up when it has
-//! not connected within [`CONNECT_TIMEOUT`], and ends when its connection
-//! fails or the runner closes it. Its end closes its sockets and ends its
-//! operations.
+//! One peer (`direct-channel.md` § Making the channel): a WebRTC connection
+//! the backend introduced, with a page that offered, with another runner
+//! that offered, or with another runner this one offers to
+//! (`port-forwarding.md` § The path of a connection). Whichever role it
+//! has, it owns its UDP sockets, its str0m connection and its channels; it
+//! learns the addresses the internet sees its sockets at and offers them to
+//! the other side, and checks the candidates the other side trickles. It
+//! gives up when it has not connected within [`CONNECT_TIMEOUT`], and ends
+//! when its connection fails or the runner closes it. Its end closes its
+//! sockets and ends its channels' work.
 
 use std::collections::{HashMap, HashSet};
 use std::future::poll_fn;
@@ -13,27 +15,28 @@ use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use std::task::Poll;
 
-use bytes::Bytes;
 use demi_runner_protocol::direct::{
     CONNECT_TIMEOUT, ChannelError, ChannelErrorCode, ChannelHeader, Introduction, MAX_CHANNELS,
-    PROBE_LABEL, QUEUE_BYTES, StunUrl, WriteEnd,
+    PROBE_LABEL, QUEUE_BYTES, StunUrl,
 };
-use demi_runner_protocol::files::FileWatchRequest;
+use demi_runner_protocol::forward::{ForwardHeader, PairReason, PairSide};
 use garde::Validate;
-use str0m::change::SdpOffer;
-use str0m::channel::{ChannelData, ChannelId};
+use str0m::change::{SdpAnswer, SdpOffer, SdpPendingOffer};
+use str0m::channel::{ChannelConfig, ChannelData, ChannelId};
 use str0m::crypto::CryptoProvider;
 use str0m::net::{Protocol, Receive};
 use str0m::{Candidate, Event, IceConnectionState, Input, Output as RtcOutput, Rtc, RtcConfig};
 use tokio::net::UdpSocket;
-use tokio::sync::mpsc;
+use tokio::sync::{mpsc, watch};
 use tokio::task::JoinSet;
 use tokio::time::Instant;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
+use crate::channel::{Channel, Kind, Phase};
+use crate::forward::{ForwardChannel, Took};
 use crate::gathering::{self, Gathering};
-use crate::operation::{self, Input as PageInput, OUTPUT_MESSAGES, Operations, Output, refusal};
+use crate::operation::{self, Input as ChannelInput, OUTPUT_MESSAGES, Operations, Output, refusal};
 
 /// The most bytes str0m queues on all of a peer's channels together: room
 /// for a full queue on several channels at once. Each channel keeps its own
@@ -43,6 +46,8 @@ const SCTP_BUFFER: usize = 4 * QUEUE_BYTES;
 const DATAGRAM_BYTES: usize = 2048;
 /// Datagrams received that wait for the peer's loop.
 const DATAGRAMS: usize = 1024;
+/// The label of a channel that carries a forwarded connection.
+const FORWARD_LABEL: &str = "forward";
 
 /// The time str0m reads, which is tokio's clock, so a paused clock pauses
 /// a peer too.
@@ -50,24 +55,83 @@ fn now() -> std::time::Instant {
     Instant::now().into_std()
 }
 
-/// A peer made from a page's offer, before it serves.
+/// What the other side's channels carry.
+#[derive(Clone)]
+pub(crate) enum Behaviour {
+    /// A page's operations, which the runner carries out for the
+    /// introducing user.
+    Page {
+        operations: Arc<dyn Operations>,
+        introduction: Arc<Introduction>,
+    },
+    /// Forwarded connections that the runner of `device` opens, which this
+    /// runner connects as their forwards' Connect To.
+    Runner {
+        operations: Arc<dyn Operations>,
+        device: String,
+    },
+    /// Nothing: this side offered, and opens every channel itself.
+    Offerer,
+}
+
+/// Where a peer is: connecting, connected, or ended, with why a direct
+/// path failed when it failed (`port-forwarding.md` § What the user sees).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PeerStatus {
+    Connecting,
+    Connected,
+    /// Ended; why, unless the runner closed it.
+    Ended(Option<PairReason>),
+}
+
+/// A channel this side opens, with what it carries.
+pub(crate) struct LocalOpen {
+    pub(crate) config: ChannelConfig,
+    pub(crate) kind: Kind,
+    pub(crate) first: Option<Output>,
+    pub(crate) input: mpsc::UnboundedSender<ChannelInput>,
+    pub(crate) output: mpsc::Receiver<Output>,
+    pub(crate) cancel: CancellationToken,
+    pub(crate) credit: bool,
+    /// Closes the channel at once (`Channel::abort_on`).
+    pub(crate) abort: Option<CancellationToken>,
+    /// The channel's id, once str0m gave it one, for its consumer's grants.
+    pub(crate) id: tokio::sync::oneshot::Sender<(ChannelId, mpsc::UnboundedSender<(ChannelId, usize)>)>,
+}
+
+/// What the other side says after the offer.
+pub(crate) enum Remote {
+    /// A candidate it found after the offer or the answer.
+    Candidate(String),
+    /// Its answer, to a peer this side offered.
+    Answer(String),
+}
+
+/// A peer made, before it serves.
 pub(crate) struct Peer {
     rtc: Rtc,
     sockets: Vec<Arc<UdpSocket>>,
-    operations: Arc<dyn Operations>,
-    introduction: Arc<Introduction>,
+    behaviour: Behaviour,
     stun: Vec<StunUrl>,
+    /// This side's offer, which the other side's answer completes.
+    offered: Option<SdpPendingOffer>,
+    /// The other side offered an address the internet sees it at.
+    remote_public: bool,
 }
 
-/// What a served peer hears from the page and tells it after the answer.
-pub(crate) struct Trickle {
-    /// The candidates the page found after its offer.
-    pub(crate) remote: mpsc::UnboundedReceiver<String>,
-    /// The candidates the peer finds after its answer.
+/// What a served peer hears from the other side and tells it and the
+/// runner.
+pub(crate) struct Signals {
+    /// The other side's answer and candidates.
+    pub(crate) remote: mpsc::UnboundedReceiver<Remote>,
+    /// The candidates this side finds after its offer or answer.
     pub(crate) found: mpsc::UnboundedSender<String>,
+    /// The channels this side opens.
+    pub(crate) local: mpsc::UnboundedReceiver<LocalOpen>,
+    pub(crate) status: watch::Sender<PeerStatus>,
 }
 
-/// Why an offer made no peer.
+/// Why no peer was made.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum OfferError {
     #[error("the offer is not one the runner can answer: {0}")]
@@ -76,73 +140,122 @@ pub(crate) enum OfferError {
     Sockets(std::io::Error),
 }
 
+/// A connection with one socket on each of `addresses`, on a port the
+/// system picks, offered as its candidates.
+async fn bind(
+    addresses: Vec<Ipv4Addr>,
+    provider: Arc<CryptoProvider>,
+) -> Result<(Rtc, Vec<Arc<UdpSocket>>), OfferError> {
+    let mut rtc = RtcConfig::new()
+        .set_crypto_provider(provider)
+        .set_sctp_max_buffered_amount(SCTP_BUFFER)
+        .build(now());
+    let mut sockets = Vec::new();
+    let mut unbound = None;
+    for address in addresses {
+        match UdpSocket::bind(SocketAddr::from((address, 0))).await {
+            Ok(socket) => {
+                let local = socket.local_addr().map_err(OfferError::Sockets)?;
+                match Candidate::host(local, "udp") {
+                    Ok(candidate) => {
+                        rtc.add_local_candidate(candidate);
+                        sockets.push(Arc::new(socket));
+                    }
+                    // An address ICE does not take, such as a link-local
+                    // one, is not offered.
+                    Err(error) => tracing::debug!("{local} is not offered: {error}"),
+                }
+            }
+            // An address that went away meanwhile is not offered.
+            Err(error) => unbound = Some(error),
+        }
+    }
+    if sockets.is_empty() {
+        let error = unbound.unwrap_or_else(|| std::io::Error::other("no address to bind"));
+        return Err(OfferError::Sockets(error));
+    }
+    Ok((rtc, sockets))
+}
+
+/// Whether an SDP candidate names an address the internet sees its side at.
+fn is_public(candidate: &str) -> bool {
+    candidate.contains(" typ srflx")
+}
+
 impl Peer {
-    /// Binds one socket on each of `addresses`, on a port the system picks,
-    /// and answers `offer` with them as its candidates; once it serves, it
-    /// asks the STUN servers `stun` for more.
+    /// Answers `offer` with a new peer whose channels carry what
+    /// `behaviour` says; once it serves, it asks the STUN servers `stun`
+    /// for more candidates.
     pub(crate) async fn answer(
         offer: &str,
         addresses: Vec<Ipv4Addr>,
         provider: Arc<CryptoProvider>,
-        operations: Arc<dyn Operations>,
-        introduction: Arc<Introduction>,
+        behaviour: Behaviour,
         stun: Vec<StunUrl>,
     ) -> Result<(Self, String), OfferError> {
-        let offer =
+        let parsed =
             SdpOffer::from_sdp_string(offer).map_err(|error| OfferError::Invalid(error.to_string()))?;
-        let mut rtc = RtcConfig::new()
-            .set_crypto_provider(provider)
-            .set_sctp_max_buffered_amount(SCTP_BUFFER)
-            .build(now());
-        let mut sockets = Vec::new();
-        let mut unbound = None;
-        for address in addresses {
-            match UdpSocket::bind(SocketAddr::from((address, 0))).await {
-                Ok(socket) => {
-                    let local = socket.local_addr().map_err(OfferError::Sockets)?;
-                    match Candidate::host(local, "udp") {
-                        Ok(candidate) => {
-                            rtc.add_local_candidate(candidate);
-                            sockets.push(Arc::new(socket));
-                        }
-                        // An address ICE does not take, such as a
-                        // link-local one, is not offered.
-                        Err(error) => tracing::debug!("{local} is not offered: {error}"),
-                    }
-                }
-                // An address that went away meanwhile is not offered.
-                Err(error) => unbound = Some(error),
-            }
-        }
-        if sockets.is_empty() {
-            let error = unbound.unwrap_or_else(|| std::io::Error::other("no address to bind"));
-            return Err(OfferError::Sockets(error));
-        }
+        let (mut rtc, sockets) = bind(addresses, provider).await?;
         let answer = rtc
             .sdp_api()
-            .accept_offer(offer)
+            .accept_offer(parsed)
             .map_err(|error| OfferError::Invalid(error.to_string()))?;
         let peer = Self {
             rtc,
             sockets,
-            operations,
-            introduction,
+            behaviour,
             stun,
+            offered: None,
+            remote_public: offer.lines().any(is_public),
         };
         Ok((peer, answer.to_sdp_string()))
     }
 
+    /// Offers a new peer, whose channels this side opens; the other side's
+    /// answer arrives as [`Remote::Answer`] once it serves.
+    pub(crate) async fn offer(
+        addresses: Vec<Ipv4Addr>,
+        provider: Arc<CryptoProvider>,
+        stun: Vec<StunUrl>,
+    ) -> Result<(Self, String), OfferError> {
+        let (mut rtc, sockets) = bind(addresses, provider).await?;
+        let mut changes = rtc.sdp_api();
+        // A first channel, so that the offer carries one: the probe
+        // channel, as a page's is.
+        changes.add_channel_with_config(probe_config());
+        let (offer, pending) = changes
+            .apply()
+            .expect("an offer with a channel has a change to apply");
+        let peer = Self {
+            rtc,
+            sockets,
+            behaviour: Behaviour::Offerer,
+            stun,
+            offered: Some(pending),
+            remote_public: false,
+        };
+        Ok((peer, offer.to_sdp_string()))
+    }
+
     /// Serves the peer until it gives up, fails or `cancel` closes it.
-    pub(crate) async fn serve(self, cancel: CancellationToken, trickle: Trickle) {
+    pub(crate) async fn serve(self, cancel: CancellationToken, signals: Signals) {
         let Self {
             mut rtc,
             sockets,
-            operations,
-            introduction,
+            behaviour,
             stun,
+            mut offered,
+            mut remote_public,
         } = self;
-        let Trickle { mut remote, found } = trickle;
+        let Signals {
+            mut remote,
+            found,
+            mut local,
+            status,
+        } = signals;
+        let crossing = !stun.is_empty();
         let mut remote_open = true;
+        let mut local_open = true;
         // The servers' addresses, resolved beside the peer's start; the
         // requests go once they are known.
         let (resolved, mut resolving) = tokio::sync::oneshot::channel();
@@ -152,48 +265,53 @@ impl Peer {
         }));
         let mut gathering = Gathering::default();
         let mut servers_known = false;
+        let mut found_public = false;
         let (datagrams, mut received) = mpsc::channel(DATAGRAMS);
         let _readers: Vec<AbortOnDropHandle<()>> = sockets
             .iter()
             .map(|socket| AbortOnDropHandle::new(tokio::spawn(read(socket.clone(), datagrams.clone()))))
             .collect();
         drop(datagrams);
+        let (took, mut taken) = mpsc::unbounded_channel();
         let mut served = Served {
             channels: HashMap::new(),
             probes: HashSet::new(),
             tasks: JoinSet::new(),
-            operations,
-            introduction,
+            behaviour,
             connected: false,
+            took,
         };
         let give_up = Instant::now() + CONNECT_TIMEOUT;
         let end = loop {
             let timeout = match served.drain(&mut rtc, &sockets).await {
                 Ok(Some(timeout)) => timeout,
-                Ok(None) => break "the connection closed",
+                Ok(None) => break failed("the connection closed"),
                 Err(error) => {
                     tracing::debug!("a direct peer failed: {error}");
-                    break "the connection failed";
+                    break failed("the connection failed");
                 }
             };
+            if served.connected && *status.borrow() == PeerStatus::Connecting {
+                status.send_replace(PeerStatus::Connected);
+            }
             if served.pump(&mut rtc) {
                 // What was written goes out now, not at str0m's next timer.
                 if let Err(error) = rtc.handle_input(Input::Timeout(now())) {
                     tracing::debug!("a direct peer failed: {error}");
-                    break "the connection failed";
+                    break failed("the connection failed");
                 }
                 continue;
             }
             let resend = gathering.next();
             let woke = tokio::select! {
                 biased;
-                () = cancel.cancelled() => break "the runner closed it",
+                () = cancel.cancelled() => break End::Closed,
                 () = tokio::time::sleep_until(give_up), if !served.connected => {
-                    break "it did not connect in time";
+                    break End::TimedOut;
                 }
                 datagram = received.recv() => match datagram {
                     Some(datagram) => Wake::Datagram(datagram),
-                    None => break "its sockets closed",
+                    None => break failed("its sockets closed"),
                 },
                 servers = &mut resolving, if !servers_known => {
                     servers_known = true;
@@ -205,98 +323,166 @@ impl Peer {
                     gathering.resend().await;
                     continue;
                 }
-                candidate = remote.recv(), if remote_open => match candidate {
-                    Some(candidate) => Wake::Remote(candidate),
+                said = remote.recv(), if remote_open => match said {
+                    Some(said) => Wake::Remote(said),
                     None => {
                         remote_open = false;
                         continue;
                     }
                 },
+                opened = local.recv(), if local_open => match opened {
+                    Some(opened) => {
+                        served.open(&mut rtc, opened);
+                        Wake::Timeout
+                    }
+                    None => {
+                        local_open = false;
+                        continue;
+                    }
+                },
+                Some((id, bytes)) = taken.recv() => {
+                    if let Some(channel) = served.channels.get_mut(&id) {
+                        channel.took(bytes);
+                    }
+                    continue;
+                }
                 () = tokio::time::sleep_until(Instant::from_std(timeout)) => Wake::Timeout,
                 () = served.output_ready() => Wake::Output,
             };
             let input = match &woke {
-                Wake::Remote(candidate) => {
+                Wake::Remote(Remote::Candidate(candidate)) => {
+                    remote_public |= is_public(candidate);
                     match Candidate::from_sdp_string(candidate) {
                         Ok(candidate) => rtc.add_remote_candidate(candidate),
                         // A candidate ICE cannot use, such as a browser's
                         // name for its address, is passed over.
-                        Err(error) => tracing::debug!("a page's candidate is passed over: {error}"),
+                        Err(error) => tracing::debug!("a candidate is passed over: {error}"),
                     }
                     Input::Timeout(now())
                 }
-                Wake::Datagram(datagram) if datagram_is_answer(&mut gathering, datagram, &mut rtc, &found) => {
+                Wake::Remote(Remote::Answer(answer)) => {
+                    let Some(pending) = offered.take() else {
+                        tracing::debug!("an answer to a peer that offered nothing is passed over");
+                        continue;
+                    };
+                    remote_public |= answer.lines().any(is_public);
+                    let accepted = SdpAnswer::from_sdp_string(answer)
+                        .map_err(|error| error.to_string())
+                        .and_then(|answer| {
+                            rtc.sdp_api()
+                                .accept_answer(pending, answer)
+                                .map_err(|error| error.to_string())
+                        });
+                    if let Err(error) = accepted {
+                        tracing::debug!("a direct peer's answer is refused: {error}");
+                        break failed("its answer could not be taken");
+                    }
                     Input::Timeout(now())
                 }
                 Wake::Datagram(datagram) => {
-                    let Ok(contents) = datagram.contents.as_slice().try_into() else {
-                        // Not a datagram of the connection's.
-                        continue;
-                    };
-                    Input::Receive(
-                        now(),
-                        Receive {
-                            proto: Protocol::Udp,
-                            source: datagram.source,
-                            destination: datagram.destination,
-                            contents,
-                        },
-                    )
+                    if let Some(mapped) = gathering.answer(datagram.destination, &datagram.contents) {
+                        if offer_public(mapped, datagram.destination, &mut rtc, &found) {
+                            found_public = true;
+                        }
+                        Input::Timeout(now())
+                    } else {
+                        let Ok(contents) = datagram.contents.as_slice().try_into() else {
+                            // Not a datagram of the connection's.
+                            continue;
+                        };
+                        Input::Receive(
+                            now(),
+                            Receive {
+                                proto: Protocol::Udp,
+                                source: datagram.source,
+                                destination: datagram.destination,
+                                contents,
+                            },
+                        )
+                    }
                 }
                 Wake::Timeout => Input::Timeout(now()),
                 Wake::Output => continue,
             };
             if let Err(error) = rtc.handle_input(input) {
                 tracing::debug!("a direct peer failed: {error}");
-                break "the connection failed";
+                break failed("the connection failed");
             }
         };
-        tracing::debug!("a direct peer ended: {end}");
-        // The page hears the close at once, rather than when its checks of
-        // a peer gone quiet give up.
+        tracing::debug!("a direct peer ended: {end:?}");
+        let reason = match end {
+            End::Closed => None,
+            _ if served.connected => Some(PairReason::Dropped),
+            _ if !crossing => Some(PairReason::NotOffered),
+            _ if !found_public => Some(PairReason::Network {
+                side: PairSide::Browser,
+            }),
+            _ if !remote_public => Some(PairReason::Network {
+                side: PairSide::Device,
+            }),
+            _ => Some(PairReason::Unreachable),
+        };
+        status.send_replace(PeerStatus::Ended(reason));
+        // The other side hears the close at once, rather than when its
+        // checks of a peer gone quiet give up.
         if rtc.is_alive() && rtc.close().is_ok() {
             // What could not be sent no longer matters.
             let _ = served.drain(&mut rtc, &sockets).await;
         }
         rtc.disconnect();
-        // The operations end with their channels: their tasks abort, and
-        // each channel's drop ends what it holds.
+        // The channels' work ends with them: their tasks abort, and each
+        // channel's drop ends what it holds.
         drop(served);
     }
+}
+
+/// How a peer's loop ended.
+#[derive(Debug)]
+enum End {
+    /// The runner closed it.
+    Closed,
+    /// It did not connect in time.
+    TimedOut,
+    Failed,
+}
+
+/// A peer's loop ends failed, which the runner's log says why.
+fn failed(why: &str) -> End {
+    tracing::debug!("a direct peer failed: {why}");
+    End::Failed
 }
 
 /// What woke a peer's loop.
 enum Wake {
     Datagram(Datagram),
-    /// A candidate the page trickled.
-    Remote(String),
+    Remote(Remote),
     Timeout,
     Output,
 }
 
-/// Whether `datagram` is a STUN server's answer to the peer's gathering;
-/// the address it names is the peer's, offered to the page when it is new.
-fn datagram_is_answer(
-    gathering: &mut Gathering,
-    datagram: &Datagram,
+/// Offers the address a STUN server saw the socket at `base` at, `mapped`,
+/// to the other side when it is new; whether it was.
+fn offer_public(
+    mapped: SocketAddr,
+    base: SocketAddr,
     rtc: &mut Rtc,
     found: &mpsc::UnboundedSender<String>,
 ) -> bool {
-    let Some(mapped) = gathering.answer(datagram.destination, &datagram.contents) else {
-        return false;
-    };
-    match Candidate::server_reflexive(mapped, datagram.destination, "udp") {
+    match Candidate::server_reflexive(mapped, base, "udp") {
         // A candidate the peer had already, such as the same address another
         // server named, is not offered again.
         Ok(candidate) => {
             if let Some(added) = rtc.add_local_candidate(candidate) {
-                // A page that went no longer needs it.
+                // A side that went no longer needs it.
                 let _ = found.send(added.to_sdp_string());
             }
+            true
         }
-        Err(error) => tracing::debug!("{mapped} is not offered: {error}"),
+        Err(error) => {
+            tracing::debug!("{mapped} is not offered: {error}");
+            false
+        }
     }
-    true
 }
 
 struct Datagram {
@@ -332,76 +518,17 @@ async fn read(socket: Arc<UdpSocket>, datagrams: mpsc::Sender<Datagram>) {
     }
 }
 
-/// A peer's channels and the operations they carry.
+/// A peer's channels and the work they carry.
 struct Served {
     channels: HashMap<ChannelId, Channel>,
     /// The page's probe channels, which echo what they carry.
     probes: HashSet<ChannelId>,
-    /// Each operation's task, which aborts with the peer.
+    /// Each channel's work, which aborts with the peer.
     tasks: JoinSet<()>,
-    operations: Arc<dyn Operations>,
-    introduction: Arc<Introduction>,
+    behaviour: Behaviour,
     connected: bool,
-}
-
-/// One channel, from its open to its close.
-struct Channel {
-    phase: Phase,
-    /// The message for the page that waits for room.
-    pending: Option<Output>,
-    /// The operation's messages; none once it ended, or for a channel
-    /// refused at once.
-    output: Option<mpsc::Receiver<Output>>,
-    /// The channel's queue has room for another of the operation's
-    /// messages.
-    room: bool,
-    /// Ends the operation: cancelled when the channel goes.
-    cancel: CancellationToken,
-}
-
-/// Where a channel is.
-enum Phase {
-    /// Waiting for the page's header.
-    Header,
-    /// Carrying out the operation; the page's later messages go to it.
-    Running {
-        kind: Kind,
-        input: mpsc::UnboundedSender<PageInput>,
-    },
-    /// The operation ended, or the channel was refused: it closes once its
-    /// messages are out.
-    Closing,
-}
-
-/// What a running operation takes after its header.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Kind {
-    /// Bytes, then `{ end: true }`.
-    Write,
-    /// Bytes only.
-    Stream,
-    /// `paths` messages only.
-    Watch,
-    /// Nothing more.
-    Request,
-}
-
-impl Drop for Channel {
-    fn drop(&mut self) {
-        self.cancel.cancel();
-    }
-}
-
-impl Channel {
-    fn closing(message: Output) -> Self {
-        Self {
-            phase: Phase::Closing,
-            pending: Some(message),
-            output: None,
-            room: false,
-            cancel: CancellationToken::new(),
-        }
-    }
+    /// Where a credited channel's consumer says what it took.
+    took: mpsc::UnboundedSender<(ChannelId, usize)>,
 }
 
 impl Served {
@@ -439,20 +566,56 @@ impl Served {
         }
     }
 
+    /// Opens a channel of this side's.
+    fn open(&mut self, rtc: &mut Rtc, open: LocalOpen) {
+        let LocalOpen {
+            config,
+            kind,
+            first,
+            input,
+            output,
+            cancel,
+            credit,
+            abort,
+            id,
+        } = open;
+        // An opener that went has nothing for the channel to carry.
+        if id.is_closed() {
+            return;
+        }
+        let made = rtc.direct_api().create_data_channel(config);
+        // The opener went meanwhile: its channel closes as it ends.
+        let _ = id.send((made, self.took.clone()));
+        let mut channel = Channel::opening(kind, first, input, output, cancel, credit);
+        if let Some(abort) = abort {
+            channel.abort_on(abort);
+        }
+        self.channels.insert(made, channel);
+    }
+
     /// Takes one event; false once the connection is over.
     fn event(&mut self, rtc: &mut Rtc, event: Event) -> bool {
         match event {
             Event::Connected => self.connected = true,
             Event::IceConnectionStateChange(IceConnectionState::Disconnected) => return false,
             Event::Closed => return false,
-            // The page's probe channel carries no operation: each message
-            // goes back as it came (`direct-channel.md` § Measuring the
-            // paths).
+            Event::ChannelOpen(id, _) if self.channels.contains_key(&id) => {
+                // A channel this side opened.
+                if let Some(channel) = self.channels.get_mut(&id) {
+                    channel.opened();
+                }
+            }
+            // The other side's probe channel carries no operation: each
+            // message goes back as it came (`direct-channel.md` § Measuring
+            // the paths).
             Event::ChannelOpen(id, label) if label == PROBE_LABEL => {
                 self.probes.insert(id);
             }
             Event::ChannelOpen(id, _) => {
-                if self.channels.len() >= MAX_CHANNELS {
+                if matches!(self.behaviour, Behaviour::Offerer) {
+                    // The side that offered opens every channel itself.
+                    rtc.direct_api().close_data_channel(id);
+                } else if self.channels.len() >= MAX_CHANNELS {
                     let busy = ChannelError::new(
                         ChannelErrorCode::Busy,
                         503,
@@ -460,14 +623,7 @@ impl Served {
                     );
                     self.channels.insert(id, Channel::closing(refusal(busy)));
                 } else {
-                    let channel = Channel {
-                        phase: Phase::Header,
-                        pending: None,
-                        output: None,
-                        room: false,
-                        cancel: CancellationToken::new(),
-                    };
-                    self.channels.insert(id, channel);
+                    self.channels.insert(id, Channel::awaiting_header());
                 }
                 if let Some(mut channel) = rtc.channel(id) {
                     channel.set_buffered_amount_low_threshold(QUEUE_BYTES / 2);
@@ -481,7 +637,7 @@ impl Served {
                 }
             }
             Event::ChannelData(data) => self.data(data),
-            // The page closed it: its operation ends.
+            // The other side closed it: its work ends.
             Event::ChannelClose(id) => {
                 self.channels.remove(&id);
                 self.probes.remove(&id);
@@ -491,13 +647,23 @@ impl Served {
         true
     }
 
-    /// One message of the page's on a channel.
+    /// One message of the other side's on a channel.
     fn data(&mut self, data: ChannelData) {
         let Some(channel) = self.channels.get_mut(&data.id) else {
             return;
         };
-        match &channel.phase {
-            Phase::Header => {
+        if !matches!(channel.phase, Phase::Header) {
+            channel.receive(data.binary, data.data);
+            return;
+        }
+        let (input, inputs) = mpsc::unbounded_channel();
+        let (outputs, output) = mpsc::channel(OUTPUT_MESSAGES);
+        let cancel = channel.cancel.clone();
+        match &self.behaviour {
+            Behaviour::Page {
+                operations,
+                introduction,
+            } => {
                 let header = (!data.binary)
                     .then(|| serde_json::from_slice::<ChannelHeader>(&data.data).ok())
                     .flatten()
@@ -517,95 +683,61 @@ impl Served {
                     ChannelHeader::Watch { .. } => Kind::Watch,
                     _ => Kind::Request,
                 };
-                let (input, inputs) = mpsc::unbounded_channel();
-                let (outputs, output) = mpsc::channel(OUTPUT_MESSAGES);
                 self.tasks.spawn(operation::run(
-                    self.operations.clone(),
-                    self.introduction.clone(),
+                    operations.clone(),
+                    introduction.clone(),
                     header,
                     inputs,
                     outputs,
-                    channel.cancel.clone(),
+                    cancel,
                 ));
-                channel.phase = Phase::Running { kind, input };
-                channel.output = Some(output);
-                channel.room = true;
+                channel.run(kind, input, output, false);
             }
-            Phase::Running { kind, input } => {
-                match page_message(*kind, data.binary, Bytes::from(data.data)) {
-                    Some(message) => {
-                        // An operation that ended takes nothing more.
-                        let _ = input.send(message);
-                    }
-                    None => {
-                        // A message the operation cannot read ends it.
-                        channel.cancel.cancel();
-                        channel.output = None;
-                        channel.phase = Phase::Closing;
-                    }
-                }
+            Behaviour::Runner { operations, device } => {
+                let header = (!data.binary)
+                    .then(|| serde_json::from_slice::<ForwardHeader>(&data.data).ok())
+                    .flatten()
+                    .filter(|header| header.validate().is_ok());
+                let Some(header) = header else {
+                    // A channel that is no forwarded connection's carries
+                    // nothing between runners.
+                    channel.phase = Phase::Closing;
+                    return;
+                };
+                let abort = CancellationToken::new();
+                let forwarded = ForwardChannel {
+                    input: inputs,
+                    output: outputs,
+                    took: Took {
+                        id: data.id,
+                        sender: self.took.clone(),
+                    },
+                    cancel,
+                    abort: abort.clone(),
+                };
+                self.tasks.spawn(crate::forward::serve(
+                    operations.clone(),
+                    device.clone(),
+                    header,
+                    forwarded,
+                ));
+                channel.run(Kind::Forward, input, output, true);
+                channel.abort_on(abort);
             }
-            Phase::Closing => {}
+            Behaviour::Offerer => channel.phase = Phase::Closing,
         }
     }
 
-    /// Writes each channel's waiting messages while its queue has room; a
-    /// channel whose operation ended closes once its queue is empty. Whether
-    /// it wrote or closed any, which str0m then has to send.
+    /// Writes each channel's waiting messages while it has room; a channel
+    /// whose work ended closes once its queue is empty. Whether it wrote or
+    /// closed any, which str0m then has to send.
     fn pump(&mut self, rtc: &mut Rtc) -> bool {
         let mut wrote = false;
         let mut closed = Vec::new();
         for (id, channel) in &mut self.channels {
-            let Some(mut sending) = rtc.channel(*id) else {
-                closed.push(*id);
-                continue;
-            };
-            loop {
-                if channel.pending.is_none()
-                    && let Some(output) = &mut channel.output
-                {
-                    match output.try_recv() {
-                        Ok(message) => channel.pending = Some(message),
-                        Err(mpsc::error::TryRecvError::Empty) => {}
-                        Err(mpsc::error::TryRecvError::Disconnected) => {
-                            channel.output = None;
-                            channel.phase = Phase::Closing;
-                        }
-                    }
-                }
-                let Some(message) = &channel.pending else {
-                    break;
-                };
-                let queued = sending.buffered_amount();
-                if queued > 0 && queued + message.len() > QUEUE_BYTES {
-                    break;
-                }
-                let written = match message {
-                    Output::Text(text) => sending.write(false, text.as_bytes()),
-                    Output::Binary(bytes) => sending.write(true, bytes),
-                };
-                match written {
-                    Ok(true) => {
-                        channel.pending = None;
-                        wrote = true;
-                    }
-                    // Every channel's queue together is full.
-                    Ok(false) => break,
-                    Err(error) => {
-                        tracing::debug!("a direct channel failed: {error}");
-                        closed.push(*id);
-                        break;
-                    }
-                }
-            }
-            channel.room = channel.pending.is_none()
-                && channel.output.is_some()
-                && sending.buffered_amount() < QUEUE_BYTES;
-            let done = matches!(channel.phase, Phase::Closing)
-                && channel.pending.is_none()
-                && channel.output.is_none()
-                && sending.buffered_amount() == 0;
-            if done {
+            let pumped = channel.pump(rtc, *id);
+            wrote |= pumped.wrote;
+            if pumped.done {
                 closed.push(*id);
             }
         }
@@ -618,28 +750,13 @@ impl Served {
         changed
     }
 
-    /// Resolves once a channel with room has a message from its operation,
-    /// or its operation ended.
+    /// Resolves once a channel with room has a message from its work, or
+    /// its work ended.
     async fn output_ready(&mut self) {
         poll_fn(|context| {
             for channel in self.channels.values_mut() {
-                if !channel.room {
-                    continue;
-                }
-                let Some(output) = &mut channel.output else {
-                    continue;
-                };
-                match output.poll_recv(context) {
-                    Poll::Ready(Some(message)) => {
-                        channel.pending = Some(message);
-                        return Poll::Ready(());
-                    }
-                    Poll::Ready(None) => {
-                        channel.output = None;
-                        channel.phase = Phase::Closing;
-                        return Poll::Ready(());
-                    }
-                    Poll::Pending => {}
+                if channel.poll_output(context).is_ready() {
+                    return Poll::Ready(());
                 }
             }
             Poll::Pending
@@ -648,19 +765,44 @@ impl Served {
     }
 }
 
-/// What a page's message after the header means to an operation of `kind`;
-/// none for one it does not take.
-fn page_message(kind: Kind, binary: bool, data: Bytes) -> Option<PageInput> {
-    match (kind, binary) {
-        (Kind::Write | Kind::Stream, true) => Some(PageInput::Bytes(data)),
-        (Kind::Write, false) => serde_json::from_slice::<WriteEnd>(&data)
-            .ok()
-            .filter(|end| end.end)
-            .map(|_| PageInput::End),
-        (Kind::Watch, false) => serde_json::from_slice::<FileWatchRequest>(&data)
-            .ok()
-            .filter(|request| request.validate().is_ok())
-            .map(PageInput::Watch),
-        _ => None,
+/// The probe channel's settings, unordered and never retransmitted, as the
+/// page's (`direct-channel.md` § Measuring the paths).
+pub(crate) fn probe_config() -> ChannelConfig {
+    ChannelConfig {
+        label: PROBE_LABEL.into(),
+        ordered: false,
+        reliability: str0m::channel::Reliability::MaxRetransmits { retransmits: 0 },
+        ..Default::default()
     }
+}
+
+/// A channel this side opens for a forwarded connection of `forward`,
+/// credited, whose first message is its header.
+pub(crate) fn forward_open(
+    forward: &str,
+) -> (LocalOpen, tokio::sync::oneshot::Receiver<(ChannelId, mpsc::UnboundedSender<(ChannelId, usize)>)>, mpsc::UnboundedReceiver<ChannelInput>, mpsc::Sender<Output>, CancellationToken, CancellationToken) {
+    let header = ForwardHeader::Forward {
+        forward: forward.to_owned(),
+    };
+    let header = serde_json::to_string(&header).expect("a header serializes");
+    let (input, inputs) = mpsc::unbounded_channel();
+    let (outputs, output) = mpsc::channel(OUTPUT_MESSAGES);
+    let (id, named) = tokio::sync::oneshot::channel();
+    let cancel = CancellationToken::new();
+    let abort = CancellationToken::new();
+    let open = LocalOpen {
+        config: ChannelConfig {
+            label: FORWARD_LABEL.into(),
+            ..Default::default()
+        },
+        kind: Kind::Forward,
+        first: Some(Output::Text(header)),
+        input,
+        output,
+        cancel: cancel.clone(),
+        credit: true,
+        abort: Some(abort.clone()),
+        id,
+    };
+    (open, named, inputs, outputs, cancel, abort)
 }

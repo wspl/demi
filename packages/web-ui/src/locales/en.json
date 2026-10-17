@@ -173,6 +173,8 @@
     "invalid_answer_too_large": "The value of “{field}” can be at most {limitBytes}.",
     "credential_not_found": "The credential wasn’t found.",
     "credential_name_taken": "Another credential has this name.",
+    "port_forward_name_taken": "A forward named {name} already exists.",
+    "port_forward_not_found": "This port forward no longer exists.",
     "credential_fields_differ": "A credential with this name has other fields.",
     "credential_removed": "The credential was removed.",
     "passkey_expired": "The passkey request expired. Try again.",

@@ -176,7 +176,7 @@ input, which the multi-worker control service also relies on
 - **Personal instructions:** `user_instructions` stores the
   [personal instructions](../agent/instructions.md#personal-instructions) of
   each user who has any: user and text. Saving an empty text deletes the row.
-- **Devices and workspaces:** `devices` stores ownership, kind, name, the
+- **Devices and workspaces:** `port_forwards` stores each forward of a user: its name, its Listen On device and port, its Connect To device and address, and whether it is on ([Port forwarding](../execution/port-forwarding.md)). `devices` stores ownership, kind, name, the
   home its runner last reported,
   platform, the operating system (with a Linux distribution's os-release `ID`) and architecture and the runner release its runner last reported, the device's
   [mark](../product/conversations.md#conversations-and-projects) number, given when its runner first reports its system and again when its logo changes, how pages reach it (`route`: `automatic`, the default, `direct` or `server`), the hash of the device's current token, claim and last-seen

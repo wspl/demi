@@ -60,6 +60,8 @@ pub struct HostOperations {
     pub backend: mpsc::Sender<wire::Frame>,
     /// The connection's end, which ends every operation.
     pub closed: CancellationToken,
+    /// The forwards this runner is an end of, as the backend last said.
+    pub forwards: crate::forward::ForwardList,
 }
 
 /// An open direct stream as the backend knows it: reported open before it
@@ -387,6 +389,23 @@ impl Operations for HostOperations {
                 stream: stream.stream.clone(),
                 held: Box::new(stream),
             }
+        })
+    }
+
+    fn forward(&self, forward: String, from: String) -> Answer<demi_runner_direct::Forwarded> {
+        let target = crate::forward::connect_target_of(&self.forwards, &forward, &from);
+        Box::pin(async move {
+            let (address, ended) = target.ok_or_else(|| {
+                ChannelError::new(
+                    ChannelErrorCode::HostOperationFailed,
+                    404,
+                    "This Host connects no such forward",
+                )
+            })?;
+            let tcp = demi_runner_direct::connect_target(&address, &ended)
+                .await
+                .map_err(|error| ChannelError::new(ChannelErrorCode::HostOperationFailed, 502, error.to_string()))?;
+            Ok(demi_runner_direct::Forwarded { tcp, ended })
         })
     }
 }

@@ -10,6 +10,7 @@ mod environment;
 #[cfg(windows)]
 mod detached;
 mod direct;
+mod forward;
 mod host_log;
 mod management;
 mod registration;

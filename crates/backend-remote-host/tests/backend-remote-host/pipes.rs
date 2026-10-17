@@ -175,6 +175,19 @@ async fn a_missing_end_times_out_a_lost_device_fails_its_pipes_an_early_reader_d
     early.done().await.unwrap();
 }
 
+/// A forwarded connection's pipes have its 10 s deadline, not the pipes'
+/// window (`port-forwarding.md` § A port forward).
+#[tokio::test(flavor = "local", start_paused = true)]
+async fn a_pipe_minted_with_a_deadline_of_its_own_fails_when_its_ends_miss_it() {
+    let pipes = Pipes::new(Duration::from_secs(120));
+    let started = tokio::time::Instant::now();
+    let lonely = pipes.mint_within(Some("a"), Some("b"), Duration::from_secs(10));
+    let _source = pipes.claim_source(lonely.id(), "a").unwrap();
+    let failed = lonely.done().await.unwrap_err().to_string();
+    assert!(failed.contains("an end never arrived"), "{failed}");
+    assert_eq!(started.elapsed(), Duration::from_secs(10));
+}
+
 #[tokio::test(flavor = "local", start_paused = true)]
 async fn the_arrival_window_ends_once_both_ends_are_there_however_quiet() {
     let pipes = Pipes::new(Duration::from_millis(40));

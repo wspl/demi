@@ -58,6 +58,7 @@ export function productState(parts: Partial<z.input<typeof productStateSchema>> 
     run: 'run-1',
     automations: [],
     automationsUnread: 0,
+    portForwards: [],
     ...parts,
   })
 }

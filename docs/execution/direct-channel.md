@@ -31,6 +31,8 @@ networks map each outgoing connection to a new address (symmetric NAT) or
 block UDP; the relay then serves everything, and the device's page says
 why.
 
+Two runners use the same channel for a [port forward](port-forwarding.md#the-path-of-a-connection), introduced by the backend as a page and a runner are.
+
 ## What goes direct
 
 Only operations whose bytes are large or whose round trips the user feels,

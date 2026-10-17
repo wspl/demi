@@ -33,6 +33,7 @@ demi-web-api-protocol = { path = "../web-api-protocol" }
 bytes.workspace = true
 futures-util.workspace = true
 http.workspace = true
+garde.workspace = true
 schemars.workspace = true
 serde.workspace = true
 serde_json.workspace = true

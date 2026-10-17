@@ -1,29 +1,22 @@
-//! A page in process (`testing`): a str0m offerer on `127.0.0.1` that
-//! connects to a runner's peers as a browser does and speaks the channels'
-//! protocol, its offer delivered to the runner directly or through the
-//! backend's signaling.
+//! A page in process (`testing`): the runner's own offering peer on
+//! `127.0.0.1`, which connects to a runner's peers as a browser does and
+//! speaks the channels' protocol as a page does, its offer delivered to the
+//! runner directly or through the backend's signaling.
 
-use std::collections::HashMap;
-use std::net::SocketAddr;
-use std::sync::Arc;
-use std::time::Duration;
+use std::net::Ipv4Addr;
+use std::sync::{Arc, Mutex};
 
 use bytes::Bytes;
-use demi_runner_protocol::direct::Introduction;
-use str0m::change::SdpAnswer;
-use str0m::channel::{ChannelConfig, ChannelId, Reliability};
-use str0m::net::{Protocol, Receive};
-use str0m::{Candidate, Event, IceConnectionState, Input, Output, Rtc, RtcConfig};
-use tokio::net::UdpSocket;
-use tokio::sync::{mpsc, oneshot, watch};
-use tokio::time::Instant;
+use demi_runner_protocol::direct::{Introduced, Introduction};
+use str0m::channel::ChannelConfig;
+use tokio::sync::{mpsc, watch};
+use tokio_util::sync::CancellationToken;
 use tokio_util::task::AbortOnDropHandle;
 
+use crate::channel::Kind;
+use crate::operation::{Input, OUTPUT_MESSAGES, Output};
+use crate::peer::{LocalOpen, Peer, PeerStatus, Remote, Signals, probe_config};
 use crate::{Direct, Refused};
-
-fn now() -> std::time::Instant {
-    Instant::now().into_std()
-}
 
 /// A message the runner sent on a channel, or its close.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -42,36 +35,38 @@ impl Heard {
     }
 }
 
-enum Command {
-    Open {
-        config: ChannelConfig,
-        heard: mpsc::UnboundedSender<Heard>,
-        opened: oneshot::Sender<ChannelId>,
-    },
-    Send {
-        id: ChannelId,
-        binary: bool,
-        data: Vec<u8>,
-    },
-    Close {
-        id: ChannelId,
-    },
-}
-
 /// The page's peer.
 pub struct Page {
-    commands: mpsc::UnboundedSender<Command>,
+    local: mpsc::UnboundedSender<LocalOpen>,
     /// Whether the connection stands: true once it connected, false once it
     /// failed or closed.
     pub connected: watch::Receiver<Option<bool>>,
     _task: AbortOnDropHandle<()>,
+    _status: AbortOnDropHandle<()>,
 }
 
 /// A channel of the page's.
 pub struct PageChannel {
-    id: ChannelId,
-    commands: mpsc::UnboundedSender<Command>,
-    heard: mpsc::UnboundedReceiver<Heard>,
+    sending: Mutex<Option<mpsc::UnboundedSender<Output>>>,
+    heard: mpsc::UnboundedReceiver<Input>,
+}
+
+/// An offer's SDP without its candidates, and its first candidate as a
+/// browser trickles it.
+fn without_candidates(sdp: &str) -> (String, Option<String>) {
+    let mut first = None;
+    let kept = sdp
+        .lines()
+        .filter(|line| match line.strip_prefix("a=") {
+            Some(candidate) if candidate.starts_with("candidate") => {
+                first.get_or_insert_with(|| candidate.to_owned());
+                false
+            }
+            _ => true,
+        })
+        .map(|line| format!("{line}\r\n"))
+        .collect();
+    (kept, first)
 }
 
 impl Page {
@@ -79,7 +74,8 @@ impl Page {
     /// carries it, and serves the connection the answer makes.
     pub async fn offer(direct: &Direct, peer: &str, introduction: Introduction) -> Result<Self, Refused> {
         Self::connect(async |offer| {
-            let answered = direct.offer(peer.into(), offer, introduction, Vec::new()).await?;
+            let introduced = Introduced::Page { page: introduction };
+            let answered = direct.offer(peer.into(), offer, introduced, Vec::new()).await?;
             Ok(answered.sdp)
         })
         .await
@@ -90,18 +86,16 @@ impl Page {
     /// reach the other until the page trickles its own after the answer, as
     /// a browser does: the runner's checks to it then make the connection.
     pub async fn trickled(direct: &Direct, peer: &str, introduction: Introduction) -> Result<Self, Refused> {
-        let (page, candidate) = Self::make(false, async |offer| {
-            let answered = direct.offer(peer.into(), offer, introduction, Vec::new()).await?;
-            let answer: String = answered
-                .sdp
-                .lines()
-                .filter(|line| !line.starts_with("a=candidate"))
-                .map(|line| format!("{line}\r\n"))
-                .collect();
-            Ok(answer)
+        let mut trickled = None;
+        let page = Self::make(async |offer| {
+            let (offer, candidate) = without_candidates(&offer);
+            trickled = candidate;
+            let introduced = Introduced::Page { page: introduction };
+            let answered = direct.offer(peer.into(), offer, introduced, Vec::new()).await?;
+            Ok(without_candidates(&answered.sdp).0)
         })
         .await?;
-        direct.candidate(peer, candidate);
+        direct.candidate(peer, trickled.expect("the page's offer names its address"));
         Ok(page)
     }
 
@@ -109,45 +103,59 @@ impl Page {
     /// answer it gives back, as the backend's signaling does, and serves the
     /// connection the answer makes.
     pub async fn connect<E>(answer: impl AsyncFnOnce(String) -> Result<String, E>) -> Result<Self, E> {
-        Ok(Self::make(true, answer).await?.0)
+        Self::make(answer).await
     }
 
-    /// The page, with its socket's candidate in its offer or added after the
-    /// answer, and that candidate as the page trickles it.
-    async fn make<E>(
-        in_offer: bool,
-        answer: impl AsyncFnOnce(String) -> Result<String, E>,
-    ) -> Result<(Self, String), E> {
-        let socket = UdpSocket::bind("127.0.0.1:0").await.unwrap();
-        let local = socket.local_addr().unwrap();
-        let mut rtc = RtcConfig::new()
-            .set_crypto_provider(Arc::new(str0m::crypto::from_feature_flags()))
-            .build(now());
-        let candidate = Candidate::host(local, "udp").unwrap();
-        let mut trickled = None;
-        if in_offer {
-            trickled = rtc.add_local_candidate(candidate.clone()).map(Candidate::to_sdp_string);
-        }
-        let mut changes = rtc.sdp_api();
-        // A first channel, so that the offer carries one, as the page's.
-        changes.add_channel("first".into());
-        let (offer, pending) = changes.apply().unwrap();
-        let answer = answer(offer.to_sdp_string()).await?;
-        let answer = SdpAnswer::from_sdp_string(&answer).unwrap();
-        rtc.sdp_api().accept_answer(pending, answer).unwrap();
-        if !in_offer {
-            trickled = rtc.add_local_candidate(candidate).map(Candidate::to_sdp_string);
-        }
-        let trickled = trickled.expect("the page's candidate is its first");
-        let (commands, received) = mpsc::unbounded_channel();
-        let (connected, watching) = watch::channel(None);
-        let task = AbortOnDropHandle::new(tokio::spawn(serve(rtc, socket, received, connected)));
-        let page = Self {
-            commands,
-            connected: watching,
-            _task: task,
+    async fn make<E>(answer: impl AsyncFnOnce(String) -> Result<String, E>) -> Result<Self, E> {
+        let provider = Arc::new(str0m::crypto::from_feature_flags());
+        let (made, offer) = Peer::offer(vec![Ipv4Addr::LOCALHOST], provider, Vec::new())
+            .await
+            .expect("the page binds 127.0.0.1");
+        let answer = answer(offer).await?;
+        let (remote, heard) = mpsc::unbounded_channel();
+        // The answer goes ahead of every candidate the test trickles.
+        remote.send(Remote::Answer(answer)).expect("the peer is not served yet");
+        let (found, _found) = mpsc::unbounded_channel();
+        let (local, opened) = mpsc::unbounded_channel();
+        let (status, mut watching) = watch::channel(PeerStatus::Connecting);
+        let signals = Signals {
+            remote: heard,
+            found,
+            local: opened,
+            status,
         };
-        Ok((page, trickled))
+        let cancel = CancellationToken::new();
+        let task = AbortOnDropHandle::new(tokio::spawn(async move {
+            // The answer is taken before the page's sender goes.
+            let _remote = remote;
+            made.serve(cancel, signals).await;
+        }));
+        let (connected, connection) = watch::channel(None);
+        let status = AbortOnDropHandle::new(tokio::spawn(async move {
+            loop {
+                let seen = watching.borrow_and_update().clone();
+                match seen {
+                    PeerStatus::Connecting => {}
+                    PeerStatus::Connected => {
+                        connected.send_replace(Some(true));
+                    }
+                    PeerStatus::Ended(_) => {
+                        connected.send_replace(Some(false));
+                        return;
+                    }
+                }
+                if watching.changed().await.is_err() {
+                    connected.send_replace(Some(false));
+                    return;
+                }
+            }
+        }));
+        Ok(Self {
+            local,
+            connected: connection,
+            _task: task,
+            _status: status,
+        })
     }
 
     /// Waits until the connection stands, or answers that it failed.
@@ -177,54 +185,75 @@ impl Page {
         channel
     }
 
-    /// Opens the probe channel, unordered and never retransmitted, as the
+    /// Opens a probe channel, unordered and never retransmitted, as the
     /// page's (`direct-channel.md` § Measuring the paths).
     pub async fn probe(&self) -> PageChannel {
-        self.channel(ChannelConfig {
-            label: demi_runner_protocol::direct::PROBE_LABEL.into(),
-            ordered: false,
-            reliability: Reliability::MaxRetransmits { retransmits: 0 },
-            ..Default::default()
-        })
-        .await
+        self.channel(probe_config()).await
     }
 
     async fn channel(&self, config: ChannelConfig) -> PageChannel {
-        let (heard, hearing) = mpsc::unbounded_channel();
-        let (opened, open) = oneshot::channel();
-        self.commands.send(Command::Open { config, heard, opened }).unwrap();
+        let (input, heard) = mpsc::unbounded_channel();
+        let (sending, mut unbounded) = mpsc::unbounded_channel::<Output>();
+        let (outputs, output) = mpsc::channel(OUTPUT_MESSAGES);
+        // The test's sends are not async: they wait here for the channel's
+        // room.
+        tokio::spawn(async move {
+            while let Some(message) = unbounded.recv().await {
+                if outputs.send(message).await.is_err() {
+                    return;
+                }
+            }
+        });
+        let (id, named) = tokio::sync::oneshot::channel();
+        let open = LocalOpen {
+            config,
+            kind: Kind::Raw,
+            first: None,
+            input,
+            output,
+            cancel: CancellationToken::new(),
+            credit: false,
+            abort: None,
+            id,
+        };
+        self.local.send(open).expect("the page serves its peer");
+        named.await.expect("the channel opens");
         PageChannel {
-            id: open.await.expect("the channel opens"),
-            commands: self.commands.clone(),
-            heard: hearing,
+            sending: Mutex::new(Some(sending)),
+            heard,
         }
     }
 }
 
 impl PageChannel {
+    fn send(&self, message: Output) {
+        if let Some(sending) = &*self.sending.lock().expect("the channel's sender is whole") {
+            // A channel that closed takes nothing more.
+            let _ = sending.send(message);
+        }
+    }
+
     pub fn text(&self, text: &str) {
-        let _ = self.commands.send(Command::Send {
-            id: self.id,
-            binary: false,
-            data: text.as_bytes().to_vec(),
-        });
+        self.send(Output::Text(text.to_owned()));
     }
 
     pub fn binary(&self, data: &[u8]) {
-        let _ = self.commands.send(Command::Send {
-            id: self.id,
-            binary: true,
-            data: data.to_vec(),
-        });
+        self.send(Output::Binary(Bytes::copy_from_slice(data)));
     }
 
+    /// Closes the channel once what was sent is out.
     pub fn close(&self) {
-        let _ = self.commands.send(Command::Close { id: self.id });
+        self.sending.lock().expect("the channel's sender is whole").take();
     }
 
     /// The runner's next message, or its close.
     pub async fn next(&mut self) -> Heard {
-        self.heard.recv().await.unwrap_or(Heard::Closed)
+        match self.heard.recv().await {
+            Some(Input::Text(text)) => Heard::Text(text),
+            Some(Input::Bytes(bytes)) => Heard::Binary(bytes),
+            Some(Input::End | Input::Watch(_)) => unreachable!("a raw channel hears messages as they come"),
+            None => Heard::Closed,
+        }
     }
 
     /// The bytes the runner sends until it closes the channel.
@@ -235,136 +264,6 @@ impl PageChannel {
                 Heard::Binary(chunk) => bytes.extend_from_slice(&chunk),
                 Heard::Closed => return bytes,
                 Heard::Text(text) => panic!("expected bytes, heard {text}"),
-            }
-        }
-    }
-}
-
-async fn serve(
-    mut rtc: Rtc,
-    socket: UdpSocket,
-    mut commands: mpsc::UnboundedReceiver<Command>,
-    connected: watch::Sender<Option<bool>>,
-) {
-    let local = socket.local_addr().unwrap();
-    let mut channels: HashMap<ChannelId, mpsc::UnboundedSender<Heard>> = HashMap::new();
-    let mut opening: HashMap<ChannelId, oneshot::Sender<ChannelId>> = HashMap::new();
-    // What waits to go, in order: a message, or with none a channel's
-    // close, which follows the messages sent before it.
-    let mut unsent: Vec<(ChannelId, Option<(bool, Vec<u8>)>)> = Vec::new();
-    let mut buffer = vec![0; 2048];
-    loop {
-        // What waits for room goes out first, in order.
-        let waiting = std::mem::take(&mut unsent);
-        for (id, message) in waiting {
-            // A channel's messages go in order: one that waits holds the rest.
-            if unsent.iter().any(|(waiting, _)| *waiting == id) {
-                unsent.push((id, message));
-                continue;
-            }
-            let Some((binary, data)) = message else {
-                rtc.direct_api().close_data_channel(id);
-                continue;
-            };
-            let written = rtc
-                .channel(id)
-                .map(|mut channel| channel.write(binary, &data).unwrap_or(false))
-                .unwrap_or(true);
-            if !written {
-                unsent.push((id, Some((binary, data))));
-            }
-        }
-        let timeout = loop {
-            if !rtc.is_alive() {
-                connected.send_replace(Some(false));
-                return;
-            }
-            match rtc.poll_output().unwrap() {
-                Output::Timeout(timeout) => break timeout,
-                Output::Transmit(transmit) => {
-                    let _ = socket.send_to(&transmit.contents, transmit.destination).await;
-                }
-                Output::Event(event) => match event {
-                    Event::Connected => {
-                        connected.send_replace(Some(true));
-                    }
-                    Event::Closed | Event::IceConnectionStateChange(IceConnectionState::Disconnected) => {
-                        connected.send_replace(Some(false));
-                        return;
-                    }
-                    Event::ChannelOpen(id, _) => {
-                        if let Some(opened) = opening.remove(&id) {
-                            let _ = opened.send(id);
-                        }
-                    }
-                    Event::ChannelData(data) => {
-                        if let Some(heard) = channels.get(&data.id) {
-                            let message = if data.binary {
-                                Heard::Binary(Bytes::from(data.data))
-                            } else {
-                                Heard::Text(String::from_utf8(data.data).unwrap())
-                            };
-                            let _ = heard.send(message);
-                        }
-                    }
-                    Event::ChannelClose(id) => {
-                        if let Some(heard) = channels.remove(&id) {
-                            let _ = heard.send(Heard::Closed);
-                        }
-                    }
-                    _ => {}
-                },
-            }
-        };
-        let wait = Instant::from_std(timeout).max(Instant::now());
-        let retry = if unsent.is_empty() {
-            wait
-        } else {
-            wait.min(Instant::now() + Duration::from_millis(1))
-        };
-        tokio::select! {
-            command = commands.recv() => {
-                match command {
-                    Some(Command::Open { config, heard, opened }) => {
-                        let id = rtc.direct_api().create_data_channel(config);
-                        channels.insert(id, heard);
-                        opening.insert(id, opened);
-                    }
-                    Some(Command::Send { id, binary, data }) => unsent.push((id, Some((binary, data)))),
-                    Some(Command::Close { id }) => unsent.push((id, None)),
-                    None => return,
-                }
-                // What the command queued goes out now, not at str0m's next
-                // timer.
-                if rtc.handle_input(Input::Timeout(now())).is_err() {
-                    connected.send_replace(Some(false));
-                    return;
-                }
-            }
-            received = socket.recv_from(&mut buffer) => {
-                let (length, source): (usize, SocketAddr) = received.unwrap();
-                let Ok(contents) = buffer[..length].try_into() else {
-                    continue;
-                };
-                let receive = Receive {
-                    proto: Protocol::Udp,
-                    source,
-                    destination: local,
-                    contents,
-                };
-                let handled = rtc
-                    .handle_input(Input::Receive(now(), receive))
-                    .and_then(|()| rtc.handle_input(Input::Timeout(now())));
-                if handled.is_err() {
-                    connected.send_replace(Some(false));
-                    return;
-                }
-            }
-            () = tokio::time::sleep_until(retry) => {
-                if rtc.handle_input(Input::Timeout(now())).is_err() {
-                    connected.send_replace(Some(false));
-                    return;
-                }
             }
         }
     }

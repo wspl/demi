@@ -35,6 +35,7 @@ import GalleryUsers from './GalleryUsers.vue'
 import GallerySubagents from './GallerySubagents.vue'
 import GalleryAgent from './GalleryAgent.vue'
 import GalleryAbout from './GalleryAbout.vue'
+import GalleryPortForwards from './GalleryPortForwards.vue'
 import { slow } from '../fixtures/slow'
 import { APP_ICON } from '@demicodes/web-ui/assets/app-icon'
 
@@ -386,6 +387,8 @@ function resetShortcuts() {
     @revoke="revokeDevice"
     @rename="devices.rename"
   />
+
+  <GalleryPortForwards v-else-if="tab === 'portForwards'" />
 
   <SettingsKeyboard
     v-else-if="tab === 'keyboard'"

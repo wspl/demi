@@ -29,6 +29,7 @@ mod path;
 pub mod permissions;
 pub mod plugin_secrets;
 pub mod plugin_values;
+pub mod port_forwards;
 pub mod providers;
 pub mod push;
 pub mod references;

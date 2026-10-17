@@ -63,12 +63,12 @@ test('each role may give only the roles below its own', () => {
   expect(assignableRoles('user')).toEqual([])
 })
 
-test('the rail lists Users after Devices for the master and admins, not for a user', () => {
+test('the rail lists Users after Devices and Port Forwarding for the master and admins, not for a user', () => {
   const ids = (role: UserRole) =>
     withUsersSection(settingsSections(), role).flatMap((group) => group.items.map((item) => item.id))
   expect(ids('master')).toContain('users')
   expect(ids('admin')).toContain('users')
   expect(ids('user')).not.toContain('users')
   const rail = ids('master')
-  expect(rail[rail.indexOf('devices') + 1]).toBe('users')
+  expect(rail.slice(rail.indexOf('devices'), rail.indexOf('devices') + 3)).toEqual(['devices', 'portForwards', 'users'])
 })

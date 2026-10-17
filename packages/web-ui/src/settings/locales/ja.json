@@ -75,6 +75,47 @@
     "lastSeen": "最終確認",
     "none": "デバイスはありません"
   },
+  "portForwards": {
+    "title": "ポート転送",
+    "description": "あるホストのプログラムから別のホストのポートに、ssh -L のように接続できます。",
+    "yours": "転送",
+    "add": "転送を追加",
+    "loading": "ポート転送を読み込み中…",
+    "none": "ポート転送はありません",
+    "unknownHost": "不明なホスト",
+    "state": {
+      "off": "オフ",
+      "chooseHost": "接続先のホストを選択してください。",
+      "offline": "{host} はオフラインです",
+      "starting": "開始中…",
+      "portInUse": "ポート {port} は {host} で使用中です",
+      "direct": "直接 · {count} 件の接続",
+      "relay": "リレー · {count} 件の接続",
+      "and": "、",
+      "idle": "待機中"
+    },
+    "page": {
+      "name": "名前",
+      "nameProblem": "{max} 文字以内の名前を入力してください。",
+      "on": "オン",
+      "onDescription": "オンの間、待ち受けるホストがオンラインなら動作します。",
+      "listenOn": "待ち受け",
+      "connectTo": "接続先",
+      "host": "ホスト",
+      "listenDescription": "このホストのプログラムは 127.0.0.1 のこのポートに接続します。",
+      "port": "ポート",
+      "portProblem": "1 から 65535 までのポートを入力してください。",
+      "connectDescription": "このホストが各接続を開きます。",
+      "chooseHost": "ホストを選択",
+      "address": "アドレス",
+      "addressDescription": "このホストから到達できる host:port。",
+      "tryAgain": "再試行",
+      "removeThis": "この転送を削除",
+      "remove": "転送を削除…",
+      "removeTitle": "「{name}」を削除しますか？",
+      "removeBody": "待ち受けを停止し、開いている接続は終了します。"
+    }
+  },
   "keyboard": {
     "title": "キーボード",
     "description": "「変更」をクリックして、新しいキーを押します。",
@@ -256,6 +297,9 @@
       "keywords": "デバイスを追加,ペアリングコード,登録,アクセスを取り消す,ランナー,マシン",
       "cloudKeywords": "クラウド,環境をリセット",
       "storageKeywords": "ディスク,容量"
+    },
+    "portForwards": {
+      "keywords": "ポート転送,トンネル,ssh -L,localhost,待ち受け,接続,ollama"
     },
     "archived": {
       "keywords": "アーカイブ,復元,チャット"

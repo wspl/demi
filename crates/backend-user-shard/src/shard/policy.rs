@@ -16,7 +16,7 @@ use demi_backend_database::sequences;
 use demi_backend_host_access::host_commands::{pairing_code, reachable, resolve_host};
 use demi_backend_host_access::root_of;
 use demi_backend_plugins::Lost;
-use demi_backend_remote_host::{DirectAdmission, JobOrigin, LinkPolicy, PackageEvent};
+use demi_backend_remote_host::{DirectAdmission, ForwardEvent, JobOrigin, LinkPolicy, PackageEvent};
 use demi_backend_runners::host_key::conversation_of;
 use demi_backend_database::permissions::AskedHost;
 use demi_backend_permissions::Need;
@@ -274,6 +274,13 @@ impl LinkPolicy for ShardPolicy {
                 }
             }
         })
+    }
+
+    fn forward_event(&self, event: ForwardEvent) {
+        // A shard that is closing serves no forward.
+        if let Ok(shard) = self.shard() {
+            shard.forward_event(&self.device, event);
+        }
     }
 }
 
