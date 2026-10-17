@@ -132,8 +132,8 @@ function choose(clicked: T | undefined) {
               'auto-cols-[minmax(0,1fr)] min-w-[calc(var(--segment-least)*var(--segments)+4px)]',
               // 3em of the label's size, with the segment's padding; a phone pads its segments wider.
               size === 'sm'
-                ? '[--segment-least:calc(3*var(--text-control-xs)+--spacing(3))] phone:[--segment-least:calc(3*var(--text-control-xs)+--spacing(6))]'
-                : '[--segment-least:calc(3*var(--text-control-sm)+--spacing(4))] phone:[--segment-least:calc(3*var(--text-control-sm)+--spacing(6))]',
+                ? '[--segment-least:calc(3*var(--text-control-xs)+--spacing(3))] phone:[--segment-least:calc(3*var(--text-control-xs)+--spacing(4))]'
+                : '[--segment-least:calc(3*var(--text-control-sm)+--spacing(4))] phone:[--segment-least:calc(3*var(--text-control-sm)+--spacing(4))]',
             ],
         disabled ? 'pointer-events-none cursor-not-allowed opacity-40' : '',
       ]"
@@ -163,10 +163,11 @@ function choose(clicked: T | undefined) {
         :tabindex="disabled ? undefined : index === selectedIndex ? 0 : -1"
         class="relative z-10 inline-flex min-w-0 cursor-default select-none items-center justify-center gap-1 whitespace-nowrap rounded-[5px] transition-colors duration-200 ease-out"
         :class="[
-          // A phone draws either size at its segment's height (`base.css`).
+          // A phone draws either size at its segment's height (`base.css`), its label 8 px from each side, so a
+          // toolbar's Commits and Conversation stay whole beside Back and Forward on a 320 px phone.
           iconOnly
             ? (size === 'sm' ? 'size-5 phone:size-segment' : 'size-segment')
-            : (size === 'sm' ? 'px-1.5 py-0.5 text-control-xs leading-4 phone:h-segment phone:px-3 phone:py-0' : 'h-segment px-2 text-control-sm phone:px-3'),
+            : (size === 'sm' ? 'px-1.5 py-0.5 text-control-xs leading-4 phone:h-segment phone:px-2 phone:py-0' : 'h-segment px-2 text-control-sm phone:px-2'),
           model === option.value ? 'text-fg-emphasis' : 'text-fg-subtle hover:text-fg',
         ]"
         @click.stop="choose(option.value)"

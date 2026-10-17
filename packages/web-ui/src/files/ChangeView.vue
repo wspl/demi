@@ -555,7 +555,7 @@ function pick(path: string): void {
         </Tooltip>
       </div>
       <!-- It gives way before the controls at the right, scrolling in its own box, as on a phone. -->
-      <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 min-w-0" />
+      <Segmented v-model="mode" :options="modeOptions" size="sm" class="ml-1 min-w-0 phone:ml-0" />
       <!-- On a phone the file's controls take a second row, the branch at its start, rather than crowd the first. -->
       <div class="hidden h-0 basis-full phone:block" aria-hidden="true" />
       <!-- The file's controls keep to the right, whether or not a file is shown. -->
@@ -568,13 +568,15 @@ function pick(path: string): void {
           :branches="branchList"
         />
         <!-- All Changes, then each edit of the request in turn, as GitHub picks a pull request's commits. -->
-        <div v-if="mode === 'conversation' && edits.length > 1" class="flex shrink-0 items-center">
-          <Tooltip :content="t('changes.previousEdit')">
+        <!-- It gives way as the branch does, its label cut short, so the row's buttons and the tree's toggle after
+             them never break onto a row of their own. -->
+        <div v-if="mode === 'conversation' && edits.length > 1" class="flex min-w-0 items-center">
+          <Tooltip :content="t('changes.previousEdit')" class="shrink-0">
             <IconButton :icon="ChevronLeft" variant="ghost" :aria-label="t('changes.previousEdit')" :disabled="previousEdit === undefined" @click="showEdit(previousEdit)" />
           </Tooltip>
-          <Dropdown :overlay-store="appOverlayStore" variant="ghost" size="sm">
+          <Dropdown :overlay-store="appOverlayStore" variant="ghost" size="sm" width="shrink">
             <template #trigger>
-              <span class="whitespace-nowrap">{{ editLabel }}</span>
+              <span class="block min-w-0 truncate">{{ editLabel }}</span>
             </template>
             <template #content="{ close }">
               <Menu
@@ -586,7 +588,7 @@ function pick(path: string): void {
               />
             </template>
           </Dropdown>
-          <Tooltip :content="t('changes.nextEdit')">
+          <Tooltip :content="t('changes.nextEdit')" class="shrink-0">
             <IconButton :icon="ChevronRight" variant="ghost" :aria-label="t('changes.nextEdit')" :disabled="nextEdit === undefined" @click="showEdit(nextEdit)" />
           </Tooltip>
         </div>
