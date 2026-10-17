@@ -4,6 +4,7 @@
 //! real connection on 127.0.0.1 in tens of milliseconds; the give-up and
 //! heartbeat tests pause the clock.
 
+mod forward;
 mod operations;
 
 use std::collections::BTreeMap;
@@ -14,7 +15,7 @@ use bytes::Bytes;
 use demi_command_protocol::{CommandLocale, PackageArtifact, PackageDescriptor};
 use demi_runner_direct::{Addresses, Direct, direct, offered};
 use demi_runner_protocol::direct::{
-    Introduction, MAX_CHANNELS, MAX_PEERS, OfferRefusal, ServiceBinding, StunUrl,
+    Introduced, Introduction, MAX_CHANNELS, MAX_PEERS, OfferRefusal, ServiceBinding, StunUrl,
 };
 use tokio::net::UdpSocket;
 use tokio_util::task::AbortOnDropHandle;
@@ -288,8 +289,9 @@ async fn a_peer_keeps_at_most_its_channels_and_the_runner_its_peers() {
     let direct = runner(&fake);
     let page = connected(&direct, "p1").await;
     let mut held = Vec::new();
-    // The offer's first channel is one of the peer's.
-    for _ in 1..MAX_CHANNELS {
+    // The offer's first channel is the probe channel, which carries no
+    // operation and is none of them.
+    for _ in 0..MAX_CHANNELS {
         // A watch that says nothing stays open.
         let mut watch = page.open(header("watch", json!({}))).await;
         assert_eq!(watch.next().await.json(), json!({ "ok": true }));
@@ -402,7 +404,8 @@ async fn a_peer_offers_the_page_the_public_address_a_stun_server_saw_it_at() {
     let stun: StunUrl = format!("stun:{server}").parse().unwrap();
     let mut found = None;
     let mut page = Page::connect(async |offer| {
-        let answered = direct.offer("p1".into(), offer, introduction(), vec![stun]).await?;
+        let introduced = Introduced::Page { page: introduction() };
+        let answered = direct.offer("p1".into(), offer, introduced, vec![stun]).await?;
         found = Some(answered.candidates);
         Ok::<_, demi_runner_direct::Refused>(answered.sdp)
     })

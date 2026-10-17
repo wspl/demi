@@ -11,6 +11,7 @@ use bytes::Bytes;
 use demi_runner_protocol::direct::{
     ChannelError, ChannelErrorCode, ChannelHeader, ChannelRefusal, Introduction, Listed,
     MESSAGE_BYTES, Opened, QUEUE_BYTES, ReadOpened, ServiceBinding, TextOpened, WATCH_HEARTBEAT,
+    WriteEnd,
 };
 use demi_runner_protocol::files::{DirectoryEntry, FileWatchMessage, FileWatchRequest};
 use demi_runner_protocol::wire::ReadAt;
@@ -110,16 +111,42 @@ pub trait Operations: Send + Sync + 'static {
     /// the channel's end drops it on every path: the stream's end, the
     /// page's, the peer's close and the runner's.
     fn stream_activity(&self, conversation: &str, name: &str) -> BoxFuture<'static, StreamActivity>;
+    /// A connection of forward `forward` that the runner of device `from`
+    /// opened over its peer (`port-forwarding.md` § The path of a
+    /// connection): the runner's connection to the forward's address, as
+    /// its Connect To; refused when this runner connects no forward of that
+    /// id whose other end is `from`.
+    fn forward(&self, forward: String, from: String) -> Answer<crate::Forwarded>;
 }
 
-/// What the page sends on a channel after its header.
+/// What the other side sends on a channel after its header.
 #[derive(Debug)]
 pub(crate) enum Input {
     Bytes(Bytes),
-    /// A `write`'s bytes are complete.
+    /// A `write`'s bytes are complete, or a forwarded connection's side
+    /// ended.
     End,
     /// A `watch`'s message.
     Watch(FileWatchRequest),
+    /// A text message as it came, to a test's page.
+    Text(String),
+}
+
+/// What a text message after the header means to a consumer of `kind`;
+/// none for one it does not take.
+pub(crate) fn text_input(kind: crate::channel::Kind, data: &[u8]) -> Option<Input> {
+    use crate::channel::Kind;
+    match kind {
+        Kind::Write | Kind::Forward => serde_json::from_slice::<WriteEnd>(data)
+            .ok()
+            .filter(|end| end.end)
+            .map(|_| Input::End),
+        Kind::Watch => serde_json::from_slice::<FileWatchRequest>(data)
+            .ok()
+            .filter(|request| garde::Validate::validate(request).is_ok())
+            .map(Input::Watch),
+        Kind::Stream | Kind::Request | Kind::Raw => None,
+    }
 }
 
 /// A message for the page.
@@ -364,7 +391,7 @@ fn write_body(input: mpsc::UnboundedReceiver<Input>) -> ByteStream {
         match input.recv().await {
             Some(Input::Bytes(bytes)) => Some((Ok(bytes), Some(input))),
             Some(Input::End) => None,
-            Some(Input::Watch(_)) | None => {
+            Some(Input::Watch(_) | Input::Text(_)) | None => {
                 let cut = io::Error::new(
                     io::ErrorKind::UnexpectedEof,
                     "the page ended the write before its last byte",
@@ -381,7 +408,7 @@ fn stream_input(input: mpsc::UnboundedReceiver<Input>) -> ByteStream {
         loop {
             match input.recv().await? {
                 Input::Bytes(bytes) => return Some((Ok(bytes), input)),
-                Input::End | Input::Watch(_) => {}
+                Input::End | Input::Watch(_) | Input::Text(_) => {}
             }
         }
     }))
@@ -412,7 +439,7 @@ async fn watch_messages(
                         // The watch ended first; its end follows.
                         let _ = requests.send(request);
                     }
-                    Some(Input::Bytes(_) | Input::End) => {}
+                    Some(Input::Bytes(_) | Input::End | Input::Text(_)) => {}
                 }
                 continue;
             }

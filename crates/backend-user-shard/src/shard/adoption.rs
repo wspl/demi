@@ -179,7 +179,9 @@ impl Shard {
         // once, as the connection reads its socket. What the connection
         // queued meanwhile leaves after the welcome.
         let _ = send(&mut socket, &welcome).await;
+        self.forwards_presence(&device.id, true).await;
         serving.serve(socket).await;
+        self.forwards_presence(&device.id, false).await;
     }
 
     /// Takes the socket of a runner a claim just paired with `device`, and
@@ -213,11 +215,14 @@ impl Shard {
         }
         // The claim that waits for this answer may have gone; the runner is
         // paired all the same.
+        let id = device.id.clone();
         let _ = bound.send(
             self.devices()
                 .dto(device, self.services().public_url.get()),
         );
+        self.forwards_presence(&id, true).await;
         serving.serve(socket).await;
+        self.forwards_presence(&id, false).await;
     }
 
     /// Publishes a new connection of the device under the shard's policy,
@@ -492,6 +497,8 @@ impl Shard {
             .map(|workspace| workspace.name.clone())
             .collect();
         self.devices().revoke(&device, projects);
+        // The forwards it was an end of went with it.
+        self.forwards_changed().await;
         Ok(removal)
     }
 
@@ -525,6 +532,8 @@ impl Shard {
         for conversation in changed.conversations {
             self.mark(Part::Conversation(conversation));
         }
+        // Its route decides whether its forwards' runners talk directly.
+        self.forwards_changed().await;
         Ok(Some(
             self.devices()
                 .dto(changed.device, self.services().public_url.get()),

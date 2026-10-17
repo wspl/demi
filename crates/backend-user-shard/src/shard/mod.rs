@@ -30,6 +30,7 @@ mod plugins;
 
 pub use self::plugins::ReloadRefusal;
 mod policy;
+pub mod port_forwards;
 pub mod subagents;
 
 pub(crate) use self::page_socket::{PageEnd, PageGone, PageSocket, PageStream};
@@ -150,6 +151,9 @@ pub struct Shard {
     credential_waits: demi_backend_permissions::Waits,
     /// What rearms the expiry of the user's credentials.
     credential_expiry: credentials::CredentialExpiry,
+    /// What the user's runners announced of their forwards, and the peers
+    /// introduced between two of them.
+    forwards: port_forwards::ForwardsHeld,
     /// The user's automations' scheduler, change watches and URL calls.
     automations: crate::automations::Automations,
     /// Each conversation's timer for the retry time of its root's failed
@@ -221,6 +225,7 @@ impl Shard {
             pending_watches: PendingWatches::default(),
             credential_waits: demi_backend_permissions::Waits::default(),
             credential_expiry: credentials::CredentialExpiry::default(),
+            forwards: port_forwards::ForwardsHeld::default(),
             automations: crate::automations::Automations::default(),
             retry_resumes: RetryResumes::default(),
             notifications: Notifications::default(),

@@ -91,7 +91,7 @@ impl ReadBlob for NoBlobs {
 /// Cloud disks, 0.1.22's, before a ledger row could be an image's, and
 /// 0.1.25's, which 0.1.23 and 0.1.24 shipped too, before an entry had its
 /// Image Generation switch and a device why it will not start its runner by
-/// itself.
+/// itself, and 0.1.27's, before the users' port forwards.
 /// The schemas with the subagent
 /// limits, without Detect Title, with the kept limits and with the plugins'
 /// secrets and read states no server keeps, but development databases do,
@@ -239,6 +239,10 @@ pub(crate) const CONTROL: Schema = Schema {
             sql: include_str!("schema/control-0.1.25.sql"),
             migration: Migration::Sql(CONTROL_FROM_0_1_25),
         },
+        Shipped {
+            sql: include_str!("schema/control-0.1.27.sql"),
+            migration: Migration::Sql(CONTROL_FROM_0_1_27),
+        },
     ],
 };
 
@@ -251,7 +255,25 @@ ALTER TABLE users ADD COLUMN cloud_system_gb INTEGER NOT NULL DEFAULT 16 CHECK (
 ALTER TABLE users ADD COLUMN cloud_home_gb INTEGER NOT NULL DEFAULT 16 CHECK (cloud_home_gb BETWEEN 1 AND 1024);
 ";
 
-/// From 0.1.25's control schema to the current one: an entry whose
+/// From 0.1.27's control schema to the current one: the users' port
+/// forwards (`port-forwarding.md`), none before.
+const CONTROL_FROM_0_1_27: &str = "
+CREATE TABLE port_forwards (
+  id                TEXT PRIMARY KEY,
+  user_id           TEXT NOT NULL REFERENCES users (id),
+  name              TEXT NOT NULL,
+  listen_device_id  TEXT NOT NULL REFERENCES devices (id),
+  listen_port       INTEGER NOT NULL CHECK (listen_port BETWEEN 1 AND 65535),
+  connect_device_id TEXT REFERENCES devices (id),
+  connect_address   TEXT NOT NULL,
+  enabled           INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  created_at        INTEGER NOT NULL,
+  UNIQUE (user_id, name)
+) STRICT;
+CREATE INDEX port_forwards_of_user ON port_forwards (user_id, created_at);
+";
+
+/// From 0.1.25's control schema to 0.1.27's: an entry whose
 /// provider makes images has an Image Generation switch, on for every entry
 /// stored before (`providers.md` § Provider management); a device keeps why
 /// it will not start its runner by itself, which no device stored before
@@ -3103,6 +3125,24 @@ CREATE TABLE workspaces (
 ) STRICT;
 CREATE INDEX workspaces_order ON workspaces (user_id, sort_order);
 CREATE UNIQUE INDEX workspaces_directory ON workspaces (user_id, device_id, path);
+
+-- Each user's port forwards (port-forwarding.md): a name unique among the
+-- user's, the Listen On device and its port there, the Connect To device,
+-- none until the user chooses one, and the `host:port` it connects to, and
+-- whether the forward is on.
+CREATE TABLE port_forwards (
+  id                TEXT PRIMARY KEY,
+  user_id           TEXT NOT NULL REFERENCES users (id),
+  name              TEXT NOT NULL,
+  listen_device_id  TEXT NOT NULL REFERENCES devices (id),
+  listen_port       INTEGER NOT NULL CHECK (listen_port BETWEEN 1 AND 65535),
+  connect_device_id TEXT REFERENCES devices (id),
+  connect_address   TEXT NOT NULL,
+  enabled           INTEGER NOT NULL CHECK (enabled IN (0, 1)),
+  created_at        INTEGER NOT NULL,
+  UNIQUE (user_id, name)
+) STRICT;
+CREATE INDEX port_forwards_of_user ON port_forwards (user_id, created_at);
 
 -- Each choice a user made about a plugin (`plugins.md` § A user's plugins):
 -- a plugin with no row is on.

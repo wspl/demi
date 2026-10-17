@@ -10,6 +10,7 @@ import {
   KeyRound,
   Keyboard,
   Monitor,
+  Network,
   ScrollText,
   Settings2,
   Sparkles,
@@ -148,6 +149,12 @@ export function settingsSections(): SettingsNavGroup[] {
           ],
         },
         {
+          id: 'portForwards',
+          label: t('portForwards.title'),
+          icon: Network,
+          keywords: words(t('sections.portForwards.keywords')),
+        },
+        {
           id: 'archived',
           label: t('archived.title'),
           icon: Archive,
@@ -202,17 +209,17 @@ export function usersSection(): SettingsNavItem {
   }
 }
 
-/** The rail with Users after Devices, for a user whose role manages accounts; the rail unchanged for a user's. */
+/** The rail with Users after Devices and Port Forwarding, for a user whose role manages accounts; the rail unchanged for a user's. */
 export function withUsersSection(groups: SettingsNavGroup[], role: UserRole): SettingsNavGroup[] {
   if (role === 'user') {
     return groups
   }
   const users = usersSection()
   return groups.map((group) =>
-    group.items.some((item) => item.id === 'devices')
+    group.items.some((item) => item.id === 'portForwards')
       ? {
           ...group,
-          items: group.items.flatMap((item) => (item.id === 'devices' ? [item, users] : [item])),
+          items: group.items.flatMap((item) => (item.id === 'portForwards' ? [item, users] : [item])),
         }
       : group,
   )

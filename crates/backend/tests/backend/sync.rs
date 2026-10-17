@@ -157,6 +157,7 @@ async fn the_snapshot_is_the_users_product_state() {
             providers: Vec::new(),
             workspaces: Vec::new(),
             devices: Vec::new(),
+            port_forwards: Vec::new(),
             // The URL runners connect to: without a configured one, the
             // backend's own address.
             public_url: format!("{}/", backend.url),

@@ -167,6 +167,9 @@ impl LinkPolicy for CommandPolicy {
         self.package_events.send_modify(|events| events.push(event));
         Box::pin(async {})
     }
+
+    // These runners forward no port.
+    fn forward_event(&self, _: crate::ForwardEvent) {}
 }
 
 /// A device whose runner is the test: connections to it are [`TestLink`]s.

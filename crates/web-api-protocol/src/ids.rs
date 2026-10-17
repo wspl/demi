@@ -28,6 +28,12 @@ demi_shared_types::id!(
 );
 
 demi_shared_types::id!(
+    /// One of a user's port forwards (`port-forwarding.md`), which the
+    /// backend assigns and its name can change under.
+    PortForwardId
+);
+
+demi_shared_types::id!(
     /// A device login in progress, which the backend names when it starts.
     LoginId
 );

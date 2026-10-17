@@ -20,7 +20,7 @@ use demi_backend_runners::command_context::{Reported, reported};
 use demi_backend_user_shard::shard::page_socket::{
     PageEnd, PageSocket, PageSocketKind, PageSocketOrigin, PageStream, open_page_socket,
 };
-use demi_runner_protocol::direct::{CONNECT_TIMEOUT, Introduction, OfferRefusal};
+use demi_runner_protocol::direct::{CONNECT_TIMEOUT, Introduced, Introduction, OfferRefusal};
 use demi_web_api_protocol::devices::{DeviceKind, DirectMessage, DirectRequest, Unanswered};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{DeviceId, UserId};
@@ -322,7 +322,7 @@ impl Signaling {
                     color_scheme,
                 };
                 let link = shard.devices().link(&device)?;
-                let offer = link.direct_offer(&peer, sdp, introduction, stun);
+                let offer = link.direct_offer(&peer, sdp, Introduced::Page { page: introduction }, stun);
                 let answered = match tokio::time::timeout(ANSWER_TIMEOUT, offer).await {
                     Ok(Ok(answer)) => Ok(answer),
                     Ok(Err(_)) => return None,

@@ -2164,6 +2164,7 @@ dependencies = [
  "demi-shared-types",
  "demi-web-api-protocol",
  "futures-util",
+ "garde",
  "http",
  "rusqlite",
  "schemars",

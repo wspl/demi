@@ -1003,14 +1003,17 @@ demi-runner (executable: connection, registration, Host log, composition)
 
 #### `runner-direct`
 
-- **Owns:** the runner's side of [direct channels](../execution/direct-channel.md):
-  the peers the backend introduces, their UDP sockets on `127.0.0.1` and the
-  local network's addresses, ICE, DTLS and SCTP through str0m, the
-  operations' headers and flow control, on a thread of its own off the
-  runner's control thread.
+- **Owns:** the runner's side of [direct channels](../execution/direct-channel.md),
+  with a page or with another runner ([Port forwarding](../execution/port-forwarding.md)):
+  the peers the backend introduces, offering or answering, their UDP sockets
+  on `127.0.0.1` and the local network's addresses, ICE, DTLS and SCTP
+  through str0m, the operations' headers and the one flow control every
+  channel uses, a file operation's or a forwarded TCP connection's, on a
+  thread of its own off the runner's control thread.
 - **Public boundary:** the peers' handle the runner drives with the backend's
-  `direct_*` messages, and the trait through which it carries out an
-  operation: the Host operations and service streams the runner supplies.
+  `direct_*` messages, a forwarded connection's channel as a byte stream
+  both ways, and the trait through which it carries out an operation: the
+  Host operations and service streams the runner supplies.
 - **Must not:** know the backend connection, jobs or commands; carry out an
   operation in a way of its own, rather than through what the runner
   supplies.
@@ -1495,7 +1498,11 @@ demi-backend (executable: configuration, composition)
   reserves with the runner's own; its local endpoint answers the management
   requests (`status`, `drain`) beside the dispatcher's commands. It keeps a
   service resident while it holds conversation state and forwards the
-  conversation release, through `runner-command-packages`.
+  conversation release, through `runner-command-packages`; the user's
+  [port forwards](../execution/port-forwarding.md) whose Listen On is this
+  Host, their listeners, the path of each connection and the states it
+  announces, and the connections it opens for forwards whose Connect To is
+  this Host.
 - **Public boundary:** the executable; the crate has no library. Its test
   binary drives the built program, as a backend does; the open-file test, a
   binary of its own, runs the runner libraries in its process. Behavior:

@@ -976,6 +976,9 @@ impl LinkPolicy for AdmitsDirectStreams {
     fn package_event(&self, _: demi_backend_remote_host::PackageEvent) -> LocalBoxFuture<'static, ()> {
         Box::pin(async {})
     }
+
+    // This runner forwards no port.
+    fn forward_event(&self, _: demi_backend_remote_host::ForwardEvent) {}
 }
 
 /// A direct stream the runner reports is known as a stream the backend
@@ -2102,6 +2105,9 @@ impl LinkPolicy for Refusing {
     fn package_event(&self, _: demi_backend_remote_host::PackageEvent) -> LocalBoxFuture<'static, ()> {
         Box::pin(async {})
     }
+
+    // This runner forwards no port.
+    fn forward_event(&self, _: demi_backend_remote_host::ForwardEvent) {}
 }
 
 #[tokio::test(flavor = "local")]
