@@ -642,6 +642,7 @@ mod tests {
         let segment = |original: Option<String>, modified: Option<String>| CopyPaths {
             original,
             modified,
+            binary: false,
         };
         // Two edits of one file share the copy between them; a created file
         // has no copy before its first; a binary copy is not text.

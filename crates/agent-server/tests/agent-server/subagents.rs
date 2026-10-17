@@ -2360,7 +2360,7 @@ async fn a_childs_lists_hold_only_what_it_changed_in_its_own_directory() {
         added: 1,
         removed: 0,
         outside: false,
-        edits: vec![EditSegment { copies: None }],
+        edits: vec![EditSegment { copies: None, binary: false }],
     };
     shells
         .last()

@@ -281,6 +281,15 @@ export function selectionCopies(file: RequestFile, index: number | null): EditCo
 }
 
 /**
+ * Whether a selection shows no sides because the file is binary, which edit
+ * tracking never keeps (`file-previews.md`, Conversation mode): the edit's
+ * own mark, or for All Changes any edit's, as the backend recorded why.
+ */
+export function selectionIsBinary(file: RequestFile, index: number | null): boolean {
+  return index !== null ? file.edits[index]?.binary === true : file.edits.some((edit) => edit.binary === true)
+}
+
+/**
  * Whether two readings of a request's files hold the same files and edits.
  * The request is read anew on each frame of a turn, so the same files come
  * as new objects; a view compares them by what they hold and keeps what it

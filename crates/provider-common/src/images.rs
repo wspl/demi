@@ -31,13 +31,44 @@ pub trait ImageMaker: Send + Sync {
     /// How the user knows the vendor, such as `ChatGPT`.
     fn vendor(&self) -> &'static str;
 
-    /// The image models, the default first. Neither vendor lists them, so
-    /// the list is the provider's own.
-    fn models(&self) -> &'static [&'static str];
+    /// The image models, each with what the vendor publishes of it.
+    /// Neither vendor lists them, so the list is the provider's own.
+    fn models(&self) -> &'static [ImageModelInfo];
+
+    /// The model a call that names none takes, one of [`Self::models`].
+    fn default_model(&self) -> &'static str;
+
+    /// Whether the model that answered is known to be the one asked for.
+    /// A vendor whose answer does not name it, the ChatGPT backend's, is
+    /// shown as asked, not confirmed (`images.md` § Commands).
+    fn confirms_model(&self) -> bool;
 
     /// Makes one image for the provider's account, sending with `http`, the
     /// client of the shard that asks.
     fn make<'a>(&'a self, http: &'a reqwest::Client, request: ImageRequest) -> BoxFuture<'a, ImageAnswer>;
+}
+
+/// An image model a provider offers, with what its vendor publishes of
+/// it, so the agent picks a model and a shape from the list
+/// (`images.md` § Commands).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImageModelInfo {
+    pub id: &'static str,
+    /// The vendor's release date, `YYYY-MM-DD`: a dated ID's is its
+    /// snapshot's, an alias's that of the model it named when the list was
+    /// made.
+    pub released: &'static str,
+    /// What the vendor says the model is for, in one line.
+    pub description: &'static str,
+    /// The sizes or shapes it takes, and what the vendor says of its
+    /// formats.
+    pub takes: &'static str,
+}
+
+impl ImageModelInfo {
+    pub const fn new(id: &'static str, released: &'static str, description: &'static str, takes: &'static str) -> Self {
+        Self { id, released, description, takes }
+    }
 }
 
 /// How one image call ended, with the windows of the account's quota its
@@ -125,6 +156,9 @@ pub enum ImageFailure {
     SignIn(AuthFailure),
     /// The vendor refused the prompt or an image, in its own words.
     Refused { message: String, code: Option<ErrorCode> },
+    /// The vendor refused the shape asked for, naming the shapes it takes,
+    /// in its own order.
+    Shape { takes: Vec<String>, code: Option<ErrorCode> },
     /// The vendor failed, or did not answer in time.
     Unanswered { cause: String, code: Option<ErrorCode> },
 }
@@ -135,7 +169,7 @@ impl ImageFailure {
         let code = match self {
             Self::UsageLimit { .. } => Some(ErrorCode::UsageLimit),
             Self::SignIn(failure) => failure.failure().code,
-            Self::Refused { code, .. } | Self::Unanswered { code, .. } => code.clone(),
+            Self::Refused { code, .. } | Self::Shape { code, .. } | Self::Unanswered { code, .. } => code.clone(),
         };
         code.map_or_else(|| "failed".to_owned(), |code| code.as_str().to_owned())
     }

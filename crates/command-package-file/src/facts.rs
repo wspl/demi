@@ -1,16 +1,36 @@
 //! What a medium's header says of it (`shell-tool.md` § What `demi file view`
 //! shows): an image's size in pixels as a web browser shows it, and a
 //! video's size and length where its container's header gives them. The
-//! handler reads them once, and they travel with the medium record.
+//! handler reads them once, and they travel with the medium record. Before
+//! that, an image is decoded whole, so a picture cut short is refused
+//! rather than shown to the model as its header promises.
 
 use std::io::Cursor;
 
 use bytes::Bytes;
 use demi_command_protocol::MediumFacts;
+use demi_shared_types::whole_image::{self, Undecodable};
 use image::{ImageDecoder, ImageFormat, ImageReader, Limits, metadata::Orientation};
 
 /// The most memory reading an image's header may take.
 const MAX_HEADER_ALLOC: u64 = 64 * 1024 * 1024;
+
+/// The most memory decoding an image whole may take: a 16 MiB file of
+/// about 11,000 × 11,000 pixels.
+const MAX_DECODE_ALLOC: u64 = 512 * 1024 * 1024;
+
+/// Decodes `bytes`, an image of `media_type`, whole, so a line printed for
+/// it is a picture the model will see (`shell-tool.md` § Media the model
+/// views). A type the decoder does not read is taken as it is.
+pub(crate) fn decode_whole(bytes: &[u8], media_type: &str) -> Result<(), Undecodable> {
+    let Some(format) = ImageFormat::from_mime_type(media_type) else {
+        return Ok(());
+    };
+    match whole_image::decode(bytes, format, MAX_DECODE_ALLOC) {
+        Ok(_) | Err(Undecodable::Unknown) => Ok(()),
+        Err(undecodable) => Err(undecodable),
+    }
+}
 
 /// The facts of `bytes`, a medium of `media_type` named `name` when it is a
 /// document; only the header is read, and one that does not read says

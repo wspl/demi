@@ -271,6 +271,8 @@ impl Recording {
         if before.same(&after) || matches!(after, Contents::NotFile) {
             return Ok(());
         }
+        // A file over the edit limit is binary by its first bytes.
+        let large_binary = matches!(after, Contents::Unavailable(_)) && opening_binary(path);
         let path = path.to_string_lossy().into_owned();
         let index = match self.journal.files.iter().position(|file| file.path == path) {
             Some(index) => index,
@@ -326,16 +328,15 @@ impl Recording {
             return Ok(());
         }
         let copy_bytes = if merge { 0 } else { original.len() } + after.len();
-        if !original.text_or_missing()
-            || !after.text_or_missing()
-            || self.journal.bytes_copied + copy_bytes > EDIT_JOB_BYTES
-        {
-            self.unavailable(index);
+        // A binary side is never kept, whatever its size (`is_binary`).
+        let binary = original.binary() || after.binary() || large_binary;
+        if binary || !original.text_or_missing() || !after.text_or_missing() || self.journal.bytes_copied + copy_bytes > EDIT_JOB_BYTES {
+            self.unavailable(index, binary);
             return Ok(());
         }
         if !merge && self.journal.next_segment >= EDIT_JOB_SEGMENTS {
             self.journal.files_truncated = true;
-            self.unavailable(index);
+            self.unavailable(index, false);
             return Ok(());
         }
         let copies = if merge {
@@ -356,6 +357,7 @@ impl Recording {
                         .to_string_lossy()
                         .into_owned(),
                 ),
+                binary: false,
             }
         };
         if !merge && let (Some(path), Contents::Bytes(bytes, _)) = (&copies.original, &original) {
@@ -377,10 +379,13 @@ impl Recording {
         Ok(())
     }
 
-    fn unavailable(&mut self, index: usize) {
+    /// The file's edits as one whose copies were not kept, `binary` when a
+    /// side is binary.
+    fn unavailable(&mut self, index: usize, binary: bool) {
         self.journal.files[index].edits = vec![EditCopies {
             original: None,
             modified: None,
+            binary,
         }];
     }
 }
@@ -400,7 +405,7 @@ impl Drop for Recording {
                     .iter()
                     .position(|file| Path::new(&file.path) == path)
                 {
-                    self.unavailable(index);
+                    self.unavailable(index, false);
                 }
             }
         }
@@ -499,6 +504,15 @@ impl FileStamp {
     }
 }
 
+/// Whether the file at `path`, one over the edit limit, is binary by its
+/// first bytes; one that cannot be read is not known to be.
+fn opening_binary(path: &Path) -> bool {
+    let mut opening = Vec::new();
+    crate::descriptors::retry_blocking(|| File::open(path))
+        .and_then(|file| file.take(8 * 1024).read_to_end(&mut opening).map(|_| ()))
+        .is_ok_and(|()| demi_command_protocol::is_binary(&opening))
+}
+
 /// Whether a lookup failed because nothing is at the path: a path below a
 /// file names nothing either (`edit-tracking.md` § Recording actual writes).
 fn absent(error: &io::Error) -> bool {
@@ -542,6 +556,10 @@ impl Contents {
             | (Self::Bytes(_, Some(left)), Self::Unavailable(Some(right))) => left == right,
             _ => false,
         }
+    }
+
+    fn binary(&self) -> bool {
+        matches!(self, Self::Bytes(bytes, _) if demi_command_protocol::is_binary(bytes))
     }
 
     fn text_or_missing(&self) -> bool {

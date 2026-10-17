@@ -395,6 +395,10 @@ $ ffmpeg -loglevel error -i demo.mp4 -vf fps=1/5 frame-%02d.png && demi file vie
 [image 3: image/png, 1920 × 1080 px, 799410 bytes]
 ```
 
+`demi file view` reads each file whole before it prints its line, so a
+picture that does not decode whole, such as one a writer cut short, fails
+the command at once, `demi file view: fox.png: the image is cut short`,
+and is never attached; a line it prints is a picture the model will see.
 The result shows this output and attaches the three images after it, in
 that order; the page shows them under the call's row
 ([Media a tool returned](../product/file-previews.md#media-a-tool-returned)).

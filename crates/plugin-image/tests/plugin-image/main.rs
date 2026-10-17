@@ -8,8 +8,8 @@ mod support;
 
 use std::io::Cursor;
 
-use demi_plugin_interface::{ImageKind, ImageRefusal, MadeImage, PortRefusal};
-use image::{ImageFormat, Rgb, RgbImage};
+use demi_plugin_interface::{ImageKind, ImageModel, ImageRefusal, MadeImage, PortRefusal};
+use image::{GenericImageView as _, ImageFormat, Rgb, RgbImage};
 
 use crate::support::{Plugged, local};
 
@@ -29,7 +29,30 @@ fn made(bytes: Vec<u8>) -> MadeImage {
         provider: "Codex".into(),
         vendor: "ChatGPT".into(),
         account: Some("alex@example.com".into()),
+        // The ChatGPT backend's answer names no model.
+        confirmed: false,
     }
+}
+
+/// `bytes` as Grok answers them, which confirms the model.
+fn from_grok(bytes: Vec<u8>) -> MadeImage {
+    MadeImage {
+        bytes: bytes.into(),
+        model: "grok-imagine-image".into(),
+        provider: "Grok Build".into(),
+        vendor: "Grok".into(),
+        account: Some("alex@example.com".into()),
+        confirmed: true,
+    }
+}
+
+/// A JPEG of `width`×`height` px, as Grok answers one.
+fn jpeg(width: u32, height: u32) -> Vec<u8> {
+    let mut bytes = Cursor::new(Vec::new());
+    RgbImage::from_pixel(width, height, Rgb([200, 30, 30]))
+        .write_to(&mut bytes, ImageFormat::Jpeg)
+        .unwrap();
+    bytes.into_inner()
 }
 
 /// A PNG of `width`×`height` px with an alpha channel, each pixel's alpha
@@ -132,12 +155,12 @@ fn an_opaque_image_with_an_alpha_channel_warns_and_an_unnamed_account_stays_unna
             (code, stderr.as_str()),
             (
                 0,
-                "6×4 PNG from gpt-image-2 (ChatGPT)\ndemi image generate: warning: asked for a transparent background, got an opaque image\n"
+                "6×4 PNG, asked of gpt-image-2 (ChatGPT)\ndemi image generate: warning: asked for a transparent background, got an opaque image\n"
             )
         );
         plugged.answer(|_| Ok(made(rgba_png(6, 4, 0))));
         let (code, _, stderr) = plugged.run(&["image", "generate", "a fox", "--transparent"]).await;
-        assert_eq!((code, stderr.as_str()), (0, "6×4 PNG from gpt-image-2 (ChatGPT, alex@example.com)\n"));
+        assert_eq!((code, stderr.as_str()), (0, "6×4 PNG, asked of gpt-image-2 (ChatGPT, alex@example.com)\n"));
     });
 }
 
@@ -161,7 +184,7 @@ fn an_edit_reads_its_images_beside_the_shell_and_names_one_it_cannot_send() {
         let answer = png(8, 8);
         plugged.answer(move |_| Ok(made(answer.clone())));
         let (code, stdout, stderr) = plugged.run(&["image", "edit", "rounder ears", "fox.png", "/photos/cat.jpg"]).await;
-        assert_eq!((code, stderr.as_str()), (0, "8×8 PNG from gpt-image-2 (ChatGPT, alex@example.com)\n"));
+        assert_eq!((code, stderr.as_str()), (0, "8×8 PNG, asked of gpt-image-2 (ChatGPT, alex@example.com)\n"));
         assert_eq!(stdout, png(8, 8));
         let asked = plugged.demi.images_asked.borrow().last().cloned().unwrap();
         let sent: Vec<(ImageKind, Vec<u8>)> =
@@ -181,5 +204,135 @@ fn an_edit_reads_its_images_beside_the_shell_and_names_one_it_cannot_send() {
         plugged.host_files(None);
         let (code, _, stderr) = plugged.run(&["image", "edit", "x", "fox.png"]).await;
         assert_eq!((code, stderr.as_str()), (1, "demi image edit: the Host is not running\n"));
+    });
+}
+
+/// The bytes written are the format asked for, PNG by default, whatever
+/// the vendor sent: Grok's JPEG is written as a PNG, a PNG as JPEG or WebP
+/// on request, and a JPEG asked for with a transparent background is sent
+/// as asked and warns, as a JPEG holds no transparency.
+/// Planted defect this catches: the vendor's bytes passed on as they came,
+/// so a file named fox.png holds a JPEG.
+#[test]
+fn the_image_is_written_in_the_format_asked_for_whatever_the_vendor_sent() {
+    local(async {
+        let plugged = Plugged::new();
+        plugged.answer(|_| Ok(from_grok(jpeg(8, 6))));
+        let (code, stdout, stderr) = plugged.run(&["image", "generate", "a fox"]).await;
+        assert_eq!((code, stderr.as_str()), (0, "8×6 PNG from grok-imagine-image (Grok, alex@example.com)\n"));
+        assert_eq!(image::guess_format(&stdout).unwrap(), ImageFormat::Png);
+        assert_eq!(image::load_from_memory(&stdout).unwrap().dimensions(), (8, 6));
+
+        plugged.answer(|_| Ok(made(rgba_png(6, 4, 0))));
+        for (format, written, name) in [("jpeg", ImageFormat::Jpeg, "JPEG"), ("webp", ImageFormat::WebP, "WebP")] {
+            let (code, stdout, stderr) =
+                plugged.run(&["image", "generate", "a fox", "--transparent", "--format", format]).await;
+            assert_eq!(image::guess_format(&stdout).unwrap(), written);
+            let said = format!("6×4 {name}, asked of gpt-image-2 (ChatGPT, alex@example.com)\n");
+            let warned = "demi image generate: warning: asked for a transparent background, got an opaque image\n";
+            let expected = if written == ImageFormat::Jpeg { format!("{said}{warned}") } else { said };
+            assert_eq!((code, stderr), (0, expected));
+        }
+        // The two transparent asks went to the vendor as asked.
+        assert!(plugged.demi.images_asked.borrow().iter().skip(1).all(|asked| asked.transparent));
+    });
+}
+
+/// A model the vendor does not confirm is named as asked of, and one it
+/// confirms as the one the image came from.
+/// Planted defect this catches: ChatGPT's request read as a confirmed model.
+#[test]
+fn a_model_chatgpt_cannot_confirm_is_named_as_asked_of() {
+    local(async {
+        let plugged = Plugged::new();
+        plugged.answer(|_| Ok(made(png(1254, 1254))));
+        let (_, _, stderr) = plugged.run(&["image", "generate", "a fox"]).await;
+        assert_eq!(stderr, "1254×1254 PNG, asked of gpt-image-2 (ChatGPT, alex@example.com)\n");
+        plugged.answer(|_| Ok(from_grok(png(4, 4))));
+        let (_, _, stderr) = plugged.run(&["image", "generate", "a fox"]).await;
+        assert_eq!(stderr, "4×4 PNG from grok-imagine-image (Grok, alex@example.com)\n");
+    });
+}
+
+/// A shape the vendor refuses fails with the shape asked for and the
+/// shapes the vendor named, in its order.
+/// Planted defect this catches: the refusal told without the shapes, or
+/// with a list of Demi's own.
+#[test]
+fn a_refused_shape_names_the_shapes_the_vendor_takes() {
+    local(async {
+        let plugged = Plugged::new();
+        plugged.answer(|_| {
+            Err(PortRefusal::Image {
+                refusal: ImageRefusal::Shape {
+                    vendor: "Grok".into(),
+                    takes: vec!["1:1".into(), "3:4".into(), "19.5:9".into()],
+                },
+            })
+        });
+        let (code, stdout, stderr) = plugged.run(&["image", "generate", "an otter", "--aspect", "4:5"]).await;
+        assert_eq!(
+            (code, stdout.len(), stderr.as_str()),
+            (1, 0, "demi image generate: Grok takes no 4:5 (it takes 1:1, 3:4, 19.5:9)\n")
+        );
+    });
+}
+
+/// The listing shows each model's entry, release date, the default by its
+/// mark, what the vendor says it is for and what it takes; an entry whose
+/// vendor cannot confirm the model says so once, under its last model.
+/// Planted defect this catches: the default read from the first line, or
+/// the note repeated on every model.
+#[test]
+fn the_model_listing_shows_dates_the_default_descriptions_and_what_each_takes() {
+    local(async {
+        let plugged = Plugged::new();
+        let model = |id: &str, provider: &str, released: &str, default: bool, confirmed: bool| ImageModel {
+            id: id.into(),
+            provider: provider.into(),
+            provider_id: provider.to_lowercase(),
+            vendor: provider.into(),
+            released: released.into(),
+            description: format!("About {id}"),
+            takes: "1:1 or 16:9".into(),
+            default,
+            confirmed,
+        };
+        plugged.demi.image_models.replace(vec![
+            model("new-one", "Codex", "2026-09-08", false, false),
+            model("old-one", "Codex", "2026-04-21", true, false),
+            model("grok-one", "Grok", "2026-08-07", false, true),
+        ]);
+        let (code, stdout, _) = plugged.run(&["image", "models"]).await;
+        assert_eq!(code, 0);
+        assert_eq!(
+            String::from_utf8(stdout).unwrap(),
+            "new-one   Codex  2026-09-08           About new-one; takes 1:1 or 16:9\n\
+             old-one   Codex  2026-04-21  default  About old-one; takes 1:1 or 16:9\n  \
+             Codex does not confirm which of these models answers a call\n\
+             grok-one  Grok   2026-08-07           About grok-one; takes 1:1 or 16:9\n"
+        );
+    });
+}
+
+/// A vendor's JPEG cut short, which the JPEG decoder would fill with gray,
+/// fails and writes nothing rather than becoming a PNG of a half picture.
+/// Planted defect this catches: the conversion that trusts the decoder.
+#[test]
+fn a_cut_jpeg_from_the_vendor_is_not_converted() {
+    local(async {
+        let plugged = Plugged::new();
+        let mut bytes = Cursor::new(Vec::new());
+        RgbImage::from_fn(64, 48, |x, y| Rgb([(x * 4) as u8, (y * 5) as u8, (x ^ y) as u8]))
+            .write_to(&mut bytes, ImageFormat::Jpeg)
+            .unwrap();
+        let whole = bytes.into_inner();
+        let cut = whole[..whole.len() * 2 / 3].to_vec();
+        plugged.answer(move |_| Ok(from_grok(cut.clone())));
+        let (code, stdout, stderr) = plugged.run(&["image", "generate", "a fox"]).await;
+        assert_eq!(
+            (code, stdout.len(), stderr.as_str()),
+            (1, 0, "demi image generate: Grok returned an image that could not be read\n")
+        );
     });
 }

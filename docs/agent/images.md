@@ -21,8 +21,8 @@ user's own subscription, as the agent's turns do.
 ## Commands
 
 ```text
-demi image generate <prompt> [--model <id>] [--aspect <W:H>] [--transparent]
-demi image edit <prompt> <image>... [--model <id>] [--aspect <W:H>] [--transparent]
+demi image generate <prompt> [--model <id>] [--aspect <W:H>] [--transparent] [--format png|jpeg|webp]
+demi image edit <prompt> <image>... [--model <id>] [--aspect <W:H>] [--transparent] [--format png|jpeg|webp]
 demi image models
 ```
 
@@ -33,7 +33,10 @@ demi image models
   `demi browser screenshot` writes its PNG
   ([Images and large outputs](../browser/browser.md#images-and-large-outputs)):
   `> fox.png` saves it, and `| demi file view` shows it to the model. Several
-  images are several calls.
+  images are several calls. The bytes are PNG unless `--format` asks for
+  JPEG or WebP, whatever the vendor sent: the plugin decodes the vendor's
+  image anyway and encodes it again when the formats differ, so a file
+  named `fox.png` is always a PNG.
 - **An edit's images** are paths on the Host the command runs on, an
   attached Host's inside `demi host shell` included, relative to the
   shell's directory; the plugin reads them with the port's file reads
@@ -43,14 +46,31 @@ demi image models
 - **`--model`** names an image model that `demi image models` lists, and
   with it the provider entry that makes it. Without it, the call takes the
   first entry, in the order of Settings › Providers, that makes images, and
-  that entry's first model.
+  that entry's default model.
 - **`--aspect`** asks for a shape, such as `16:9`; **`--transparent`** asks
-  for a transparent background, which needs PNG or WebP.
+  for a transparent background, which needs PNG or WebP. A vendor that
+  refuses a shape answers with the shapes it takes, and the call fails
+  saying so, in the vendor's words and not from a list of Demi's, so a
+  vendor that adds shapes needs no change: `demi image generate: Grok takes
+  no 4:5 (it takes 1:1, 3:4, 4:3, 9:16, 16:9, …)`.
 - `models` prints one line per image model of the user's entries, the
-  entry's name beside it, the default first.
+  entry's name beside it, grouped by entry, each entry's newest first by the vendor's release date, which
+  each line shows, the default marked *default*, and what the vendor says the
+  model is for, *newest, highest quality*, *faster and cheaper*, or *dated
+  snapshot of gpt-image-2.5-sunburst*, and what it takes: its sizes or
+  shapes, such as any `W×H` up to 3840 on the long edge for `gpt-image-2`
+  or the three fixed sizes of `gpt-image-1`, and the shapes Grok's take; so
+  the agent picks a model and a shape from the list instead of searching
+  the web. The help gives the commands and their options only, no advice
+  on when to use which; a provider that cannot confirm
+  the model that answered says so once under its models.
 
 On success, stderr says what came back, as a screenshot says what it
-captured: `1254×1254 PNG from gpt-image-2 (ChatGPT, alex@example.com)`. The
+captured: `1254×1254 PNG from gpt-image-2 (ChatGPT, alex@example.com)`; a
+provider that cannot confirm the model, ChatGPT's, writes *asked of*
+instead of *from*: `1254×1254 PNG, asked of gpt-image-2.5-sunburst
+(ChatGPT)`, so neither the agent nor the user reads a request as a
+confirmed model. The
 account is named only to a user who manages the entry; a user of a shared
 instance's entries reads `(ChatGPT)`, as the account is the administrator's
 ([Scope](../providers/providers.md#scope)). The image is decoded before a
@@ -86,17 +106,20 @@ not a guarantee; Grok refuses a model it does not have.
 | Headers | The account's headers the provider sends for inference | The access token as `Authorization: Bearer` |
 | Generate body | `prompt`, `model`, `background` (`transparent` or `opaque`), `quality: "auto"`, `size` (`auto`, or a size of the asked aspect) | `prompt`, `model`, `aspect_ratio` when asked, `response_format: "b64_json"` |
 | Edit body | The same, with `images: [{ image_url: "data:<type>;base64,…" }]` | The same, with `images: [{ url: "data:<type>;base64,…", type: "image_url" }]` |
-| Models, the first the default | `gpt-image-2`, `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`, `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`, `gpt-image-2.5-flare-2026-09-08`, `gpt-image-1.5`, `gpt-image-1.5-2025-12-16`, `gpt-image-1`, `gpt-image-1-mini`, `chatgpt-image-latest` | `grok-imagine-image`, `grok-imagine-image-2026-03-02`, `grok-imagine-image-2.0`, `grok-imagine-image-quality`, `grok-imagine-image-quality-20260403`, `grok-imagine-image-quality-latest`, `grok-imagine-image-pro` |
+| Models (default first here; listed newest first by release date) | `gpt-image-2`, `gpt-image-2-2026-04-21`, `gpt-image-2.5-sunburst`, `gpt-image-2.5-sunburst-2026-09-08`, `gpt-image-2.5-flare`, `gpt-image-2.5-flare-2026-09-08`, `gpt-image-1.5`, `gpt-image-1.5-2025-12-16`, `gpt-image-1`, `gpt-image-1-mini`, `chatgpt-image-latest` | `grok-imagine-image`, `grok-imagine-image-2026-03-02`, `grok-imagine-image-2.0`, `grok-imagine-image-quality`, `grok-imagine-image-quality-20260403`, `grok-imagine-image-quality-latest`, `grok-imagine-image-pro` |
 | Result | `data[0].b64_json`, PNG | `data[0].b64_json`, PNG or JPEG |
 
-Each provider that makes images states its models and makes one image for one
-account; the backend chooses the entry and the account. Neither vendor lists
+Each provider that makes images states its models, each with the vendor's
+published one-line description, and makes one image for one account; the backend chooses the entry and the account. Neither vendor lists
 its image models with the subscription's token (Grok's
 `/v1/image-generation-models` answers 404 there, the ChatGPT backend refuses
 every listing route), so each provider's list is the vendor's published IDs,
-dated snapshots and aliases included, and changes with a Demi release. The
-ChatGPT list is the default Codex itself sends, then the newest; Grok's are
-those the subscription accepted, each tried once; the retired `dall-e-*` and
+dated snapshots and aliases included, each with the release date the
+vendor publishes (an alias such as `chatgpt-image-latest` takes that of the
+model it names at the time of the list), and changes with a Demi release. The
+ChatGPT default is the one Codex itself sends, and Grok's the first its
+subscription answers by default; Grok's models are those the subscription
+accepted, each tried once; the retired `dall-e-*` and
 `grok-2-image*` are left out. A Grok answer by URL is never used: the URL
 refused an immediate download. These request shapes are those of the
 vendors' own CLIs, checked against both subscriptions in October 2026.
