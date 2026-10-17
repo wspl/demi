@@ -65,10 +65,14 @@ printf '%s\n' "$*" >> "$here/service-manager-calls"
 # A test names a manager that refuses to start the runner: launchd's
 # loading starts the agent's runner, as its kickstart does.
 refuses() { [ -n "$DEMI_TEST_MANAGER_REFUSES" ] && exit 1; }
+# The runner is told its installation on its command line too, which
+# `DEMI_HOME` already names to it, so that `DetachedRunners` finds it there:
+# a test's launcher may run the built runner, whose path names no
+# installation, and such a runner was never stopped.
 start() {
   refuses
   if [ -x "$DEMI_HOME/run" ]; then
-    DEMI_SUPERVISED=1 "$DEMI_HOME/run" run --log < /dev/null > /dev/null 2>&1 &
+    DEMI_SUPERVISED=1 "$DEMI_HOME/run" run --log --home "$DEMI_HOME" < /dev/null > /dev/null 2>&1 &
   fi
 }
 case "$1 $2" in
