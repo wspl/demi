@@ -52,7 +52,7 @@ beforeEach(async () => {
         compatible: false,
         endpoint: null,
         hasApiKey: true,
-        rotation: 'manual' as const,
+        rotation: 'manual' as const, imageGeneration: true,
         models: null,
         createdAt: '2026-09-10T00:00:00.000Z',
         details: { type: 'failed', message: 'Not read in this test' },
@@ -107,7 +107,7 @@ beforeEach(async () => {
         compatible: body.source === 'compatible',
         endpoint: null,
         hasApiKey: false,
-        rotation: 'manual' as const,
+        rotation: 'manual' as const, imageGeneration: true,
         models: null,
         createdAt: '2026-09-11T00:00:00.000Z',
       }
@@ -295,7 +295,7 @@ test('the page shows an entry’s kind and effective endpoint as the read model 
     compatible,
     endpoint,
     hasApiKey: true,
-    rotation: 'manual' as const,
+    rotation: 'manual' as const, imageGeneration: true,
     models: null,
     createdAt: '2026-09-10T00:00:00.000Z',
     details: { type: 'failed' as const, message: 'Not read in this test' },
@@ -604,6 +604,52 @@ test('a failed save is a toast; the input stays and the next change resends it',
   ).toBe('Retained name')
 })
 
+// The Image Generation switch shows its new value while it saves; a save
+// that fails puts it back to the backend's with the toast, and the next
+// edit does not send the failed value again. Cost: a stubbed backend, a
+// few milliseconds.
+test('a switch that fails to save returns to the backend\'s value with a toast, and later edits leave it out', async () => {
+  state.providers[0]!.details = {
+    type: 'read',
+    auth: { status: 'authenticated' },
+    runtime: { status: 'ready' },
+    accounts: [],
+    active: null,
+    quota: null,
+    quotaCapability: { type: 'none' },
+    cliPackage: null,
+    makesImages: true,
+  }
+  channels.last().send({ type: 'providers', providers: state.providers })
+  const settings = useProviderSettings()
+  const entry = () => settings.providers.find((candidate) => candidate.id === 'configured')!
+  const answer = Promise.withResolvers<Response>()
+  const bodies: Record<string, unknown>[] = []
+  write = (body) => {
+    bodies.push(body)
+    return answer.promise
+  }
+  settings.change(entry(), { imageGeneration: false })
+  expect(entry().imageGeneration).toBe(false)
+
+  answer.resolve(
+    Response.json({ requestId: 'req_test000000000001', code: 'invalid_body', message: 'The network is offline.' }, { status: 400 }),
+  )
+  await idle()
+  expect(entry().imageGeneration).toBe(true)
+  expect(toasts.at(-1)).toMatchObject({ title: 'Could Not Save the Provider', tone: 'danger' })
+
+  write = async (body) => {
+    bodies.push(body)
+    state.providers[0]!.label = String(body.label)
+    return Response.json({})
+  }
+  settings.change(entry(), { name: 'Renamed' })
+  await idle()
+  expect(bodies).toEqual([{ imageGeneration: false }, { label: 'Renamed' }])
+  expect(entry().imageGeneration).toBe(true)
+})
+
 test('a saved change is not read back: the catalog follows the channel\'s entry, read once', async () => {
   const settings = useProviderSettings()
   await useProduct().loadModels()
@@ -638,7 +684,7 @@ test('Activate moves the Active mark at once, and a refused switch moves it back
     compatible: false,
     endpoint: null,
     hasApiKey: false,
-    rotation: 'manual' as const,
+    rotation: 'manual' as const, imageGeneration: true,
     models: null,
     createdAt: '2026-09-10T00:00:00.000Z',
     details: {
@@ -649,7 +695,7 @@ test('Activate moves the Active mark at once, and a refused switch moves it back
       active: 'a',
       quota: null,
       quotaCapability: { type: 'none' },
-      cliPackage: null,
+      cliPackage: null, makesImages: false,
     },
   })
   channels.last().send({ type: 'providers', providers: state.providers })
@@ -729,7 +775,7 @@ test('a start the entry’s running sign-in holds opens that sign-in, whose fail
     providerType: 'codex',
     label: 'Codex',
     hasApiKey: false,
-    rotation: 'manual' as const,
+    rotation: 'manual' as const, imageGeneration: true,
   }
   state.providers.push(entry)
   // Another page of the user's started it.
@@ -835,7 +881,7 @@ test('an account whose sign-in the vendor refused reads as signed out, and Sign 
     providerType: 'claude-code',
     label: 'Claude',
     hasApiKey: false,
-    rotation: 'manual' as const,
+    rotation: 'manual' as const, imageGeneration: true,
     details: {
       type: 'read' as const,
       auth: { status: 'authenticated' as const },
@@ -844,7 +890,7 @@ test('an account whose sign-in the vendor refused reads as signed out, and Sign 
       active: 'first',
       quota: null,
       quotaCapability: { type: 'none' as const },
-      cliPackage: null,
+      cliPackage: null, makesImages: false,
     },
   })
   channels.last().send({ type: 'providers', providers: state.providers })
@@ -870,7 +916,7 @@ test('a completed sign-in says done the moment the page learns it, and an accoun
     providerType: 'codex',
     label: 'Codex',
     hasApiKey: false,
-    rotation: 'manual' as const,
+    rotation: 'manual' as const, imageGeneration: true,
     details: {
       type: 'read' as const,
       auth: { status: 'authenticated' as const },
@@ -879,7 +925,7 @@ test('a completed sign-in says done the moment the page learns it, and an accoun
       active: 'first',
       quota: null,
       quotaCapability: { type: 'none' as const },
-      cliPackage: null,
+      cliPackage: null, makesImages: false,
     },
   })
   state.providers.push(entry(['first']))

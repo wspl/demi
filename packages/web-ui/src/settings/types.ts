@@ -325,6 +325,11 @@ export interface SettingsProviderEntry {
   accounts: SettingsProviderAccount[]
   /** A subscription's rotation; absent for an API key. */
   rotation?: SettingsRotation
+  /**
+   * The Image Generation switch: whether the agent's images may come from
+   * this provider; absent for one whose provider makes no images.
+   */
+  imageGeneration?: boolean
   /** The vendor supports a free quota request when an account becomes visible. */
   autoRefreshUsage?: boolean
   /** The vendor mark (`providerLogo`); null falls back to an initial. */

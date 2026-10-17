@@ -494,6 +494,7 @@
     "saving": "Saving…",
     "addAccount": "Add Account",
     "showInMenu": "Show in model menu",
+    "imageGeneration": "Image Generation",
     "state": {
       "setup": "Not set up",
       "signedOut": "Signed out",

@@ -493,7 +493,11 @@ account.
 once, in the order In Order uses and the list shows. `PATCH
 /api/providers/:id` takes `rotation`, `manual`, `in_order` or `balanced`
 ([Account rotation](../providers/providers.md#account-rotation)); an entry
-with fewer than two accounts keeps `manual` (400 `rotation_needs_accounts`).
+with fewer than two accounts keeps `manual` (400 `rotation_needs_accounts`). It also takes `imageGeneration`,
+a boolean, the entry's Image Generation switch, for an entry whose provider
+makes images (400 otherwise); each entry carries `imageGeneration` and its
+provider's details `makesImages`
+([Provider management](../providers/providers.md#provider-management)).
 `DELETE …/accounts/:credentialId` removes any account, the active one
 included, and answers `{ active }`, the account now active or null when the
 entry has none left

@@ -465,6 +465,8 @@ export function mockProviders(): MockProvider[] {
     provider({
       id: 'codex', name: 'Codex', kind: 'subscription', family: 'codex',
       catalogFetched: null,
+      // Its provider makes images, so its page has the Image Generation switch, on.
+      imageGeneration: true,
       // Two accounts, so Rotation shows here too; removing both signs it out.
       accounts: [
         {
@@ -506,6 +508,8 @@ export function mockProviders(): MockProvider[] {
         name: 'Grok Build',
         kind: 'subscription',
         family: 'grok-build',
+        // Its images are turned off, so the agent's come from Codex.
+        imageGeneration: false,
         // Signed in and reachable from the backend: its active account can be tested.
         accounts: [
           { id: 'g1', label: 'alex@example.com', plan: 'XPremium', active: true, quota: [] },

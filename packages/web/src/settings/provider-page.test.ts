@@ -367,3 +367,40 @@ test('the warning about several accounts asks before the second account and a ro
     app.unmount()
   }
 })
+
+// A provider that makes images has the Image Generation switch, which
+// tells the host the new value; one that makes none has no switch
+// (`providers.md` § Provider management). Tens of milliseconds.
+test('the Image Generation switch shows only for a provider that makes images and tells the host its new value', async () => {
+  const changes: Partial<SettingsProviderEntry>[] = []
+  const providers = shallowRef<SettingsProviderEntry[]>([{ ...subscription([]), imageGeneration: true }])
+  const element = document.createElement('div')
+  document.body.append(element)
+  const app = createApp({
+    render: () =>
+      h(SettingsProvidersPage, {
+        providers: providers.value,
+        vendors: [],
+        overlayStore: createOverlayStore(),
+        selectedId: 'claude',
+        detailOpen: true,
+        saveModel: async () => {},
+        onChange: (_provider: SettingsProviderEntry, change: Partial<SettingsProviderEntry>) => changes.push(change),
+      }),
+  })
+  app.mount(element)
+  const imageSwitch = () =>
+    document.querySelector<HTMLElement>('[role="switch"][aria-label="Image Generation"]') ?? undefined
+  try {
+    await until(() => imageSwitch() !== undefined, 'the switch shows')
+    expect(imageSwitch()!.getAttribute('aria-checked')).toBe('true')
+    imageSwitch()!.click()
+    await until(() => changes.length === 1, 'the change is told')
+    expect(changes).toEqual([{ imageGeneration: false }])
+
+    providers.value = [subscription([])]
+    await until(() => imageSwitch() === undefined, 'the switch goes')
+  } finally {
+    app.unmount()
+  }
+})

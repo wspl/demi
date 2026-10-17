@@ -233,6 +233,12 @@ pub struct ProviderPatch {
     #[schemars(with = "Rotation")]
     #[garde(skip)]
     pub rotation: Option<Rotation>,
+    /// The entry's Image Generation switch (`providers.md` § Provider
+    /// management).
+    #[serde(default, with = "unwrap_or_skip")]
+    #[schemars(with = "bool")]
+    #[garde(skip)]
+    pub image_generation: Option<bool>,
 }
 
 /// An entry as the web app sees it: its family, label, kind, endpoint, vendor
@@ -274,6 +280,9 @@ pub struct ProviderDto {
     pub models: Option<ConfiguredModels>,
     /// Which account each agent uses; `manual` for an API-key entry.
     pub rotation: Rotation,
+    /// Whether the entry makes images when its provider can
+    /// ([`ProviderDetails::makes_images`]); on from the start.
+    pub image_generation: bool,
     pub created_at: Timestamp,
 }
 
@@ -345,6 +354,9 @@ pub struct ProviderDetails {
     #[schemars(with = "Nullable<QuotaSnapshot>")]
     pub quota: Option<QuotaSnapshot>,
     pub quota_capability: QuotaCapability,
+    /// Whether the entry's provider makes images, so its page shows the
+    /// Image Generation switch.
+    pub makes_images: bool,
     /// The command package that installs the CLI the provider's requests
     /// start on the Claude Code machine, such as `demi.claude-code`; null
     /// when its requests are HTTP.

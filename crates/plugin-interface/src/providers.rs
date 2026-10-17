@@ -105,6 +105,14 @@ pub enum ImageRefusal {
     /// No entry makes the model asked for.
     #[error("no provider makes \"{model}\"")]
     UnknownModel { model: String },
+    /// Every entry that could make images has its Image Generation off;
+    /// it names them, as Settings › Providers does.
+    #[error("image generation is off for {}", providers.join(", "))]
+    AllOff { providers: Vec<String> },
+    /// The model asked for is made by an entry whose Image Generation is
+    /// off, which it names.
+    #[error("\"{model}\" is {provider}'s, whose image generation is off")]
+    Off { model: String, provider: String },
     /// Every account the call could take is used up, until the moment
     /// named, when known.
     #[error("{vendor}'s usage limit is reached")]

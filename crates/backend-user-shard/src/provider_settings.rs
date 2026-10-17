@@ -66,6 +66,10 @@ pub enum ProviderRefusal {
     /// accounts.
     #[error("Rotation needs at least two accounts")]
     RotationNeedsAccounts,
+    /// An Image Generation switch for an entry whose provider makes no
+    /// images; it names the entry.
+    #[error("{0} doesn’t make images.")]
+    MakesNoImages(String),
     /// A model list that names one id twice; it names the id.
     #[error("models: the model ID {0:?} appears twice")]
     DuplicateModel(String),
@@ -274,10 +278,30 @@ impl Services {
                 return Err(ProviderRefusal::RotationNeedsAccounts);
             }
         }
+        if patch.image_generation.is_some() {
+            // An entry whose provider cannot be built yet, such as one
+            // without its key, shows no switch either: its details say it
+            // makes no images, so the build's error has nothing to add here.
+            let makes_images = self
+                .assembly
+                .provider_for(&entry)
+                .await
+                .is_ok_and(|provider| provider.images().is_some());
+            if !makes_images {
+                return Err(ProviderRefusal::MakesNoImages(entry.label.clone()));
+            }
+        }
         let label = patch.label.map(|label| label.into_string());
         let updated = self
             .vault
-            .update(entry.id.clone(), label, family, config, patch.rotation)
+            .update(
+                entry.id.clone(),
+                label,
+                family,
+                config,
+                patch.rotation,
+                patch.image_generation,
+            )
             .await?
             .ok_or(ProviderRefusal::NotFound)?;
         if reconfigures {
