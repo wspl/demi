@@ -34,7 +34,7 @@ import SettingsRow from '@demicodes/web-ui/settings/SettingsRow.vue'
 import Tooltip from '@demicodes/web-ui/ui/Tooltip.vue'
 import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { effortIcon } from '@demicodes/web-ui/agent/reasoning'
 import { THINKING_OFF } from '@demicodes/web-ui/agent/model-selection'
 import type { HostDeviceOption } from '@demicodes/web-ui/hosts/types'
@@ -242,6 +242,27 @@ const triggerDefaultOpen = ref(true)
 const triggerGhostClosed = ref(false)
 const triggerGhostOpen = ref(true)
 const triggerSmClosed = ref(false)
+const triggerFieldPlain = ref(false)
+const triggerFieldDetail = ref(false)
+const triggerFieldNarrow = ref(false)
+
+/**
+ * The image entries a field with a detail offers, as Settings › Agent's
+ * Image Generation rows do: Automatic, which names the entry it takes after
+ * it, then each entry with its account after its name, and one without an
+ * account, which reads its name alone. A chosen entry's trigger is its
+ * name alone.
+ */
+const detailEntries = [
+  { id: 'codex', name: 'Codex', account: 'name@example.com' },
+  { id: 'chatgpt', name: 'ChatGPT', account: 'name@work.example.com' },
+  { id: 'openai', name: 'OpenAI', account: null },
+] as const
+const detailChoice = ref<string | null>(null)
+const detailChosen = computed(() => detailEntries.find((entry) => entry.id === detailChoice.value))
+/** What Automatic resolves to, in brackets that stay whole while the name inside truncates. */
+const detailAutomatic = { text: 'Codex', open: '(', close: ')' }
+const detailHaiku = { text: 'Claude Haiku 5.5', open: '(', close: ')' }
 
 const effortItems: MenuChoice[] = [
   { id: 'low', icon: effortIcon('low'), label: 'Low' },
@@ -725,10 +746,45 @@ function openSharedMenu(row: string, event: MouseEvent): void {
               @click="triggerSmClosed = !triggerSmClosed"
             >Menu</DropdownTrigger>
           </GallerySpecimen>
+          <GallerySpecimen variant="field">
+            <div class="w-48">
+              <DropdownTrigger
+                variant="field"
+                size="sm"
+                :is-open="triggerFieldPlain"
+                @click="triggerFieldPlain = !triggerFieldPlain"
+              ><span class="min-w-0 truncate">Automatic</span></DropdownTrigger>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="field · detail">
+            <div class="w-48">
+              <DropdownTrigger
+                variant="field"
+                size="sm"
+                :detail="detailHaiku"
+                :is-open="triggerFieldDetail"
+                @click="triggerFieldDetail = !triggerFieldDetail"
+              ><span class="min-w-0 truncate">Automatic</span></DropdownTrigger>
+            </div>
+          </GallerySpecimen>
+          <GallerySpecimen variant="field · detail · narrow">
+            <div class="w-36">
+              <DropdownTrigger
+                variant="field"
+                size="sm"
+                :detail="detailHaiku"
+                :is-open="triggerFieldNarrow"
+                @click="triggerFieldNarrow = !triggerFieldNarrow"
+              ><span class="min-w-0 truncate">Automatic</span></DropdownTrigger>
+            </div>
+          </GallerySpecimen>
         </div>
       </GallerySection>
 
-      <GallerySection title="Dropdown" note="Trigger plus slotted Menu.">
+      <GallerySection
+        title="Dropdown"
+        note="Trigger plus slotted Menu. A field’s value may carry a detail after it on the same line, smaller and in the secondary color: what Automatic resolves to, in brackets, Automatic (Codex), whose brackets stay whole while the name inside truncates. Both sit on one text baseline. A menu row shows its detail the same way, an entry’s account after its name; a choice without one, such as OpenAI here, reads its name alone. The detail truncates first, the name only once the detail is gone; field and row keep their height."
+      >
         <div class="specimen-row specimen-row-wide items-start">
           <GallerySpecimen variant="default · md · actions">
             <Dropdown variant="default" :overlay-store="appOverlayStore">
@@ -800,6 +856,43 @@ function openSharedMenu(row: string, event: MouseEvent): void {
               </template>
             </Dropdown>
           </GallerySpecimen>
+          <GallerySpecimen variant="field · detail">
+            <div class="w-56">
+              <Dropdown
+                variant="field"
+                size="sm"
+                width="fill"
+                trigger-label="OpenAI"
+                :detail="detailChosen ? undefined : detailAutomatic"
+                :overlay-store="appOverlayStore"
+              >
+                <template #trigger>
+                  <span class="min-w-0 truncate">{{ detailChosen?.name ?? 'Automatic' }}</span>
+                </template>
+                <template #content="{ close }">
+                  <Menu>
+                    <MenuItem
+                      label="Automatic"
+                      :detail="detailAutomatic"
+                      choice
+                      :is-selected="!detailChosen"
+                      @select="detailChoice = null; close()"
+                    />
+                    <MenuDivider />
+                    <MenuItem
+                      v-for="entry in detailEntries"
+                      :key="entry.id"
+                      :label="entry.name"
+                      :detail="entry.account ?? undefined"
+                      choice
+                      :is-selected="detailChoice === entry.id"
+                      @select="detailChoice = entry.id; close()"
+                    />
+                  </Menu>
+                </template>
+              </Dropdown>
+            </div>
+          </GallerySpecimen>
           <GallerySpecimen variant="custom trigger">
             <Dropdown :overlay-store="appOverlayStore">
               <template #trigger="{ isOpen }">
@@ -856,6 +949,46 @@ function openSharedMenu(row: string, event: MouseEvent): void {
                 </Menu>
               </template>
             </Dropdown>
+          </GallerySpecimen>
+        </GalleryOverlayWell>
+        <GalleryOverlayWell size="lg">
+          <GallerySpecimen variant="pinned open · detail">
+            <div class="w-56">
+              <Dropdown
+                variant="field"
+                size="sm"
+                width="fill"
+                trigger-label="OpenAI"
+                :detail="detailChosen ? undefined : detailAutomatic"
+                :overlay-store="appOverlayStore"
+                open
+              >
+                <template #trigger>
+                  <span class="min-w-0 truncate">{{ detailChosen?.name ?? 'Automatic' }}</span>
+                </template>
+                <template #content>
+                  <Menu>
+                    <MenuItem
+                      label="Automatic"
+                      :detail="detailAutomatic"
+                      choice
+                      :is-selected="!detailChosen"
+                      @select="detailChoice = null"
+                    />
+                    <MenuDivider />
+                    <MenuItem
+                      v-for="entry in detailEntries"
+                      :key="entry.id"
+                      :label="entry.name"
+                      :detail="entry.account ?? undefined"
+                      choice
+                      :is-selected="detailChoice === entry.id"
+                      @select="detailChoice = entry.id"
+                    />
+                  </Menu>
+                </template>
+              </Dropdown>
+            </div>
           </GallerySpecimen>
         </GalleryOverlayWell>
       </GallerySection>

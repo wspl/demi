@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { Feather } from '@lucide/vue'
+import { Feather, Plus } from '@lucide/vue'
 import type { OverlayStore } from '../overlay/overlayStore'
 import type { ModelInfo, ProviderInfo } from '../transport/protocol'
 import { t } from '../locales/text'
@@ -21,6 +21,7 @@ import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import type { ImageEntryChoices, SmallModelChoice } from './types'
 import type { ImageEntryOption, ImageVendorRow } from './image-entries'
+import type { InlineDetailText } from '../ui/inline-detail'
 
 /**
  * How the agent works for the user (`models.md` § Small model,
@@ -43,8 +44,13 @@ const props = defineProps<{
    * null when it resolves none for the page, so Automatic shows alone.
    */
   automaticModel: string | null
-  /** A row for each vendor an entry of the user makes images for; none hides the group. */
+  /** A row for each vendor Demi makes images with, always all three. */
   imageVendors: ImageVendorRow[]
+}>()
+
+const emit = defineEmits<{
+  /** Add Provider… in a vendor's menu that no entry makes images for: the host opens Settings › Providers. */
+  addProvider: []
 }>()
 
 const smallModel = defineModel<SmallModelChoice | null>('smallModel', { required: true })
@@ -59,16 +65,28 @@ const settings = computed<ModelSettings | null>(() =>
   smallModel.value ? { ...smallModel.value, serviceTierId: null } : null,
 )
 
-/** Automatic's name, with the model it resolves to beside it when the backend says. */
-const automatic = computed(() =>
-  props.automaticModel ? t('settings.agent.automaticResolved', { model: props.automaticModel }) : t('settings.agent.automatic'),
-)
-const automaticChoice = computed(() => ({ label: automatic.value, icon: Feather }))
+/**
+ * What Automatic resolves to, after it in the language's brackets,
+ * `Automatic (Codex)`: the brackets are cut from the language's own
+ * pattern, so the text inside can truncate while they stay whole.
+ */
+function resolution(text: string): InlineDetailText {
+  const marker = '\u0000'
+  const [open = '', close = ''] = t('settings.agent.automaticResolution', { detail: marker }).split(marker)
+  return { text, open, close }
+}
+
+/** Automatic, with the model it resolves to after it when the backend says. */
+const automaticChoice = computed(() => ({
+  label: t('settings.agent.automatic'),
+  icon: Feather,
+  detail: props.automaticModel ? resolution(props.automaticModel) : undefined,
+}))
 
 const label = computed<ModelChoiceLabel>(() =>
   settings.value
     ? modelChoiceLabel(settings.value, props.providers, props.catalogModels)
-    : { name: automatic.value, effort: '', fast: false },
+    : { name: t('settings.agent.automatic'), effort: '', fast: false },
 )
 
 /**
@@ -96,11 +114,16 @@ function chosenEntry(row: ImageVendorRow): ImageEntryOption | undefined {
   return row.entries.find((entry) => entry.id === imageEntries.value[row.vendor])
 }
 
-/** Automatic's name, with the entry it takes now beside it when one can. */
-function automaticEntry(row: ImageVendorRow): string {
-  return row.automatic
-    ? t('settings.agent.automaticResolved', { model: row.automatic.label })
-    : t('settings.agent.automatic')
+/**
+ * What Automatic resolves to, after it: the name of the entry it takes now,
+ * never its account; Not available for a vendor none of whose entries
+ * makes images; nothing while its entries do but none can now.
+ */
+function automaticDetail(row: ImageVendorRow): InlineDetailText | undefined {
+  if (row.automatic) {
+    return resolution(row.automatic.name)
+  }
+  return row.entries.length ? undefined : resolution(t('settings.agent.notAvailable'))
 }
 
 /** Chooses `entry` for `row`'s vendor, or Automatic for null. */
@@ -130,6 +153,7 @@ const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() =>
           size="sm"
           width="shrink"
           :trigger-label="t('settings.agent.model')"
+          :detail="settings ? undefined : automaticChoice.detail"
         >
           <template #trigger>
             <ModelChoiceTrigger :label="label" :missing="missing" />
@@ -156,7 +180,6 @@ const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() =>
       </SettingsRow>
     </SettingsGroup>
     <SettingsGroup
-      v-if="imageVendors.length"
       :title="t('settings.agent.imageGeneration')"
       :description="t('settings.agent.imageGenerationDescription')"
     >
@@ -167,21 +190,32 @@ const sendOptions = computed<readonly SegmentedOption<SendWhileRunning>[]>(() =>
           size="sm"
           width="shrink"
           :trigger-label="row.name"
+          :detail="chosenEntry(row) ? undefined : automaticDetail(row)"
         >
-          <template #trigger>{{ chosenEntry(row)?.label ?? automaticEntry(row) }}</template>
+          <template #trigger>
+            <span class="min-w-0 overflow-clip text-ellipsis whitespace-nowrap">{{ chosenEntry(row)?.name ?? t('settings.agent.automatic') }}</span>
+          </template>
           <template #content="{ close }">
             <Menu>
               <MenuItem
-                :label="automaticEntry(row)"
+                :label="t('settings.agent.automatic')"
+                :detail="automaticDetail(row)"
                 choice
                 :is-selected="!chosenEntry(row)"
                 @select="chooseEntry(row, null); close()"
               />
-              <MenuDivider v-if="row.entries.length" />
+              <MenuDivider />
+              <MenuItem
+                v-if="!row.entries.length"
+                :icon="Plus"
+                :label="t('settings.agent.addProvider')"
+                @select="emit('addProvider'); close()"
+              />
               <MenuItem
                 v-for="entry in row.entries"
                 :key="entry.id"
-                :label="entry.label"
+                :label="entry.name"
+                :detail="entry.account ?? undefined"
                 choice
                 :is-selected="chosenEntry(row)?.id === entry.id"
                 @select="chooseEntry(row, entry.id); close()"

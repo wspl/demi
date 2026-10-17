@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { ChevronDown } from '@lucide/vue'
 import Button from './Button.vue'
+import InlineDetail from './InlineDetail.vue'
+import type { InlineDetailText } from './inline-detail'
 import { pressOnKey } from './button-events'
 import { useIconPx } from './icon-metrics'
 
@@ -10,6 +12,13 @@ import { useIconPx } from './icon-metrics'
  * shows text. Each is as wide as what it holds unless it is made wider; then
  * the value stays at the start and the chevron moves to the end, so a
  * stretched button still reads as a picker, not as an action.
+ *
+ * A `field` may carry a `detail` (InlineDetail): what its value stands
+ * for, after it on the same line and baseline, smaller and in the
+ * secondary color, such as what Automatic resolves to, `Automatic (Claude
+ * Haiku 5.5)`. The field keeps its height; the detail truncates first, and
+ * the value only once the detail is gone. Only a field shows a value, so
+ * only a field draws a detail.
  */
 export type DropdownVariant = 'default' | 'ghost' | 'field'
 export type DropdownSize = 'sm' | 'md'
@@ -20,6 +29,8 @@ withDefaults(defineProps<{
   size?: DropdownSize
   ariaLabel?: string
   disabled?: boolean
+  /** What a `field`'s value stands for, after it in smaller secondary text. */
+  detail?: InlineDetailText
 }>(), {
   variant: 'default',
   size: 'md',
@@ -61,10 +72,11 @@ const icons = useIconPx()
         : isOpen ? 'bg-active' : 'bg-hover hover:bg-active',
     ]"
   >
-    <slot />
+    <InlineDetail v-if="detail" :detail="detail"><slot /></InlineDetail>
+    <slot v-else />
     <ChevronDown
       :size="icons.chip"
-      class="shrink-0 text-fg-subtle transition-transform duration-200 ease-out"
+      class="ml-auto shrink-0 text-fg-subtle transition-transform duration-200 ease-out"
       :class="isOpen ? 'rotate-180' : ''"
     />
   </span>
