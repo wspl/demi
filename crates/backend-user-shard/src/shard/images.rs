@@ -46,31 +46,58 @@ fn failed(error: impl ToString) -> PortFailure {
     refused(ImageRefusal::Failed { message: error.to_string() })
 }
 
-/// The user's entries that make images, in the order of Settings ›
-/// Providers: each subscription entry the user has on, with an account,
-/// whose provider makes images.
-async fn makers(shard: &Shard) -> Result<Vec<Maker>, PortFailure> {
+/// The user's entries whose providers make images, in the order of
+/// Settings › Providers: each subscription entry the user has on, with an
+/// account, whose provider makes images; `on` those whose Image Generation
+/// is on, `off` the others (`providers.md` § Provider management).
+struct Makers {
+    on: Vec<Maker>,
+    off: Vec<Maker>,
+}
+
+impl Makers {
+    /// Why none makes images: every one that could is off, or there is none.
+    fn none(&self) -> ImageRefusal {
+        if self.off.is_empty() {
+            ImageRefusal::NoProvider
+        } else {
+            ImageRefusal::AllOff {
+                providers: self.off.iter().map(|maker| maker.entry.label.clone()).collect(),
+            }
+        }
+    }
+}
+
+async fn makers(shard: &Shard) -> Result<Makers, PortFailure> {
     let services = shard.services();
     let preferences = services.control.preferences(shard.user().clone()).await.map_err(failed)?;
-    let mut makers = Vec::new();
+    let mut makers = Makers { on: Vec::new(), off: Vec::new() };
     for entry in entries(shard).await.map_err(failed)? {
         let signed_in = matches!(entry.credential, EntryCredential::Subscription { active: Some(_), .. });
         if !signed_in || preferences.hides_provider(&entry.id) {
             continue;
         }
         let provider = services.assembly.provider_for(&entry).await.map_err(failed)?;
-        if provider.images().is_some() {
-            makers.push(Maker { entry, provider });
+        if provider.images().is_none() {
+            continue;
         }
+        let on = entry.image_generation;
+        let maker = Maker { entry, provider };
+        if on { makers.on.push(maker) } else { makers.off.push(maker) }
     }
     Ok(makers)
 }
 
-/// The image models of the user's entries, the default first.
+/// The image models of the user's entries whose Image Generation is on,
+/// the default first; when every entry that could make images is off, the
+/// refusal that says so.
 pub(crate) async fn image_models(shard: &Shard) -> Result<Vec<ImageModel>, PortFailure> {
     let makers = makers(shard).await?;
+    if makers.on.is_empty() && !makers.off.is_empty() {
+        return Err(refused(makers.none()));
+    }
     let mut models = Vec::new();
-    for maker in &makers {
+    for maker in &makers.on {
         let images = maker.images();
         for model in images.models() {
             models.push(ImageModel {
@@ -94,15 +121,27 @@ pub(crate) async fn make_image(
     ask: ImageAsk,
     cancel: &CancellationToken,
 ) -> Result<MadeImage, PortFailure> {
-    let makers = makers(shard).await?;
+    let mut makers = makers(shard).await?;
+    let makes = |maker: &Maker, model: &str| maker.images().models().contains(&model);
     let (maker, model) = match &ask.model {
-        Some(model) => makers
-            .into_iter()
-            .find(|maker| maker.images().models().contains(&model.as_str()))
-            .map(|maker| (maker, model.clone()))
-            .ok_or_else(|| refused(ImageRefusal::UnknownModel { model: model.clone() }))?,
+        Some(model) => match makers.on.iter().position(|maker| makes(maker, model)) {
+            Some(index) => (makers.on.swap_remove(index), model.clone()),
+            None => {
+                let refusal = match makers.off.iter().find(|maker| makes(maker, model)) {
+                    Some(maker) => ImageRefusal::Off {
+                        model: model.clone(),
+                        provider: maker.entry.label.clone(),
+                    },
+                    None => ImageRefusal::UnknownModel { model: model.clone() },
+                };
+                return Err(refused(refusal));
+            }
+        },
         None => {
-            let maker = makers.into_iter().next().ok_or_else(|| refused(ImageRefusal::NoProvider))?;
+            if makers.on.is_empty() {
+                return Err(refused(makers.none()));
+            }
+            let maker = makers.on.swap_remove(0);
             let model = maker.images().models()[0].to_owned();
             (maker, model)
         }

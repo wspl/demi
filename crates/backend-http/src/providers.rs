@@ -61,7 +61,7 @@ pub(super) fn refused(refusal: ProviderRefusal) -> ApiError {
         ProviderRefusal::NotConfiguring => return ApiError::forbidden(message),
         ProviderRefusal::NotFound => return ApiError::provider_not_found(),
         ProviderRefusal::Busy => return ApiError::provider_busy(),
-        ProviderRefusal::Wire { .. } | ProviderRefusal::Key(_) => {
+        ProviderRefusal::Wire { .. } | ProviderRefusal::Key(_) | ProviderRefusal::MakesNoImages(_) => {
             return ApiError::invalid_body(message);
         }
         ProviderRefusal::UnknownFamily(_) => {

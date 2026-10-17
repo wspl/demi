@@ -494,6 +494,7 @@
     "saving": "正在保存…",
     "addAccount": "添加账户",
     "showInMenu": "在模型菜单中显示",
+    "imageGeneration": "图像生成",
     "state": {
       "setup": "未设置",
       "signedOut": "已退出登录",

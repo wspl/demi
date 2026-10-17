@@ -235,7 +235,13 @@ async fn make(invocation: &RpcInvocation, port: &PluginPort, ask: ImageAsk) -> R
 }
 
 async fn models(invocation: &RpcInvocation, port: &PluginPort) -> Result<u8, PluginError> {
-    let models = port.image_models().await?;
+    let models = match port.image_models().await {
+        Ok(models) => models,
+        Err(PortFailure::Refused(PortRefusal::Image { refusal })) => {
+            return Err(PluginError::failed(words(&refusal, invocation)));
+        }
+        Err(failure) => return Err(failure.into()),
+    };
     let listed: Vec<ListedModel> = models
         .into_iter()
         .enumerate()
@@ -267,6 +273,12 @@ fn words(refusal: &ImageRefusal, invocation: &RpcInvocation) -> String {
         ImageRefusal::UnknownModel { model } => {
             format!("no provider makes \"{model}\"; demi image models lists them")
         }
+        ImageRefusal::AllOff { providers } => {
+            format!("image generation is off for {}; turn it on in Settings › Providers", listed(providers))
+        }
+        ImageRefusal::Off { model, provider } => {
+            format!("\"{model}\" is {provider}'s, whose image generation is off in Settings › Providers")
+        }
         ImageRefusal::UsedUp { vendor, resets_at: Some(moment) } => {
             let zone = TimeZone::get(&invocation.context.locale.time_zone).unwrap_or(TimeZone::UTC);
             format!("{vendor}'s usage limit is reached, resetting at {}", clock_time(*moment, &zone))
@@ -281,6 +293,16 @@ fn words(refusal: &ImageRefusal, invocation: &RpcInvocation) -> String {
         }
         ImageRefusal::Unanswered { vendor, cause } => format!("{vendor} did not answer: {cause}"),
         ImageRefusal::Failed { message } => message.clone(),
+    }
+}
+
+/// `names` as a sentence lists them: `ChatGPT`, `ChatGPT and Grok`,
+/// `A, B and C`.
+fn listed(names: &[String]) -> String {
+    match names {
+        [] => String::new(),
+        [one] => one.clone(),
+        [rest @ .., last] => format!("{} and {last}", rest.join(", ")),
     }
 }
 

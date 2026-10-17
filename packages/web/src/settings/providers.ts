@@ -323,7 +323,21 @@ export const useProviderSettings = defineStore('provider-settings', () => {
       return
     }
     perform(provider.id, { kind: 'saving' }, async () => {
-      await patch(provider, {
+      try {
+        await save(changes)
+      } catch (error) {
+        // A switch that did not save goes back to what the backend keeps,
+        // as Activate does; a typed field keeps its text for the next try.
+        const kept = { ...edits.value[provider.id] }
+        delete kept.imageGeneration
+        edits.value[provider.id] = kept
+        throw error
+      }
+      delete edits.value[provider.id]
+    })
+
+    function save(changes: Partial<SettingsProviderEntry>): Promise<void> {
+      return patch(provider, {
         ...(changes.name !== undefined ? { label: changes.name } : {}),
         // Only a compatible API's protocol and endpoint are edited; an
         // emptied endpoint or key is removed, as the API's null does.
@@ -331,6 +345,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
         ...(changes.baseUrl !== undefined ? { baseUrl: changes.baseUrl || null } : {}),
         ...(changes.apiKey !== undefined ? { apiKey: changes.apiKey || null } : {}),
         ...(changes.rotation !== undefined ? { rotation: changes.rotation } : {}),
+        ...(changes.imageGeneration !== undefined ? { imageGeneration: changes.imageGeneration } : {}),
         ...(changes.modelSource
           ? {
               models:
@@ -340,8 +355,7 @@ export const useProviderSettings = defineStore('provider-settings', () => {
             }
           : {}),
       })
-      delete edits.value[provider.id]
-    })
+    }
   }
 
   function removeProvider(id: string): Promise<void> {
