@@ -30,6 +30,8 @@ import { pageUnderSettings, useSettingsAddress } from './settings/address'
 import TargetDialog from './targets/TargetDialog.vue'
 import WorkPane from './conversation/WorkPane.vue'
 import ChatPage from './conversation/ChatPage.vue'
+import AutomationsPage from './automations/AutomationsPage.vue'
+import { useAutomations } from './automations/store'
 import { useConversations } from './conversation/store'
 import { useConversationNavigation } from './conversation/navigation'
 import { useWorkPanel } from './conversation/work'
@@ -68,6 +70,7 @@ watch(
 const mediaViewer = provideMediaViewer()
 const session = useSession()
 const conversations = useConversations()
+const automations = useAutomations()
 const resources = useResources()
 const passkeyOffer = usePasskeyOffer()
 /**
@@ -87,6 +90,7 @@ const sidebarConversations = computed(() =>
       unread: conversation.unread,
       needsYou: conversation.needsYou,
       device: resources.conversationDevice(conversation.target),
+      automations: automations.wakers(conversation.id),
     }),
   ),
 )
@@ -156,6 +160,11 @@ watch(
       pairing.close()
     }
   },
+)
+/** The Automations page, or an automation, is open in the main area. */
+const automationsOpen = computed(() => pageRoute.value.path.startsWith('/automations'))
+const openAutomation = computed(() =>
+  typeof pageRoute.value.params.automation === 'string' ? pageRoute.value.params.automation : undefined,
 )
 const activeId = computed(() =>
   typeof pageRoute.value.params.id === 'string' ? pageRoute.value.params.id : null,
@@ -288,6 +297,7 @@ useAppShortcuts(
           :active-id="activeId"
           :list-status="conversations.listStatus"
           :section-entries="resources.sectionEntries"
+          :automations="{ count: automations.unread, open: automationsOpen }"
           :new-shortcut="resources.keys.find((binding) => binding.id === 'new')?.keys"
           :search-shortcut="resources.keys.find((binding) => binding.id === 'search')?.keys"
           @search="searchOpen = true"
@@ -302,12 +312,14 @@ useAppShortcuts(
           @archive="conversations.archive"
           @delete="conversations.remove"
           @open-settings="settingsAddress.open"
+          @open-automations="router.push('/automations')"
           @hand-off-to-phone="handoffOpen = true"
           @sign-out="signOut"
         />
       </template>
       <!-- Signed in, every address shows the chat: its own, or the one settings opened over. -->
-      <ChatPage :id="activeId ?? undefined" />
+      <AutomationsPage v-if="automationsOpen" :id="openAutomation" />
+      <ChatPage v-else :id="activeId ?? undefined" />
       <template #aside>
         <!-- The panel belongs to the open conversation; the frame shows it only while one is open. -->
         <WorkPane

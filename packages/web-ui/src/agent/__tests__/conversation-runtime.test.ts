@@ -747,19 +747,21 @@ test('the handshake\'s frames are applied once the session opens and are not kep
 
 test('a session that refuses to open is a failure told once', async () => {
   const current = state()
-  const refusal = 'Choose a model for the conversation before opening it'
+  // A record that holds no model opens as ready, not failed: the refusal
+  // here is another one.
+  const refusal = 'The provider is no longer available'
   let connects = 0
   const runtime = new ConversationRuntime({
     state: current,
     connect: async () => {
       connects += 1
-      return clientHarness({ type: 'error', message: refusal, code: 'model_not_selected', requestId: 'req_socket0000000001' }).client
+      return clientHarness({ type: 'error', message: refusal, code: 'provider_not_found', requestId: 'req_socket0000000001' }).client
     },
   })
   await expect(runtime.connect()).rejects.toThrow(refusal)
   expect(current.load).toBe('failed')
   // In the page's words for its code, with the socket's request.
-  expect({ ...current.lastError }).toEqual({ message: 'Choose a model for this conversation first.', requestId: 'req_socket0000000001' })
+  expect({ ...current.lastError }).toEqual({ message: 'The provider wasn’t found.', requestId: 'req_socket0000000001' })
   expect(connects).toBe(1)
   runtime.dispose()
 })

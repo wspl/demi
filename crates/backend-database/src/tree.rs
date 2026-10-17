@@ -2008,6 +2008,7 @@ pub(crate) mod tests {
             model: test_model(),
             content: text("hi"),
             preamble: None,
+            automation: None,
             entries: Vec::new(),
         })
     }

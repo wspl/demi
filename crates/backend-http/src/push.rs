@@ -9,6 +9,7 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use demi_backend_accounts::push::PushError;
+use demi_backend_page_sync::Part;
 use demi_backend_user_shard::services::Services;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::push::{PushKey, PushSubscriptionBody};
@@ -34,21 +35,25 @@ pub(super) async fn subscribe(
 ) -> Result<StatusCode, ApiError> {
     services
         .push
-        .subscribe(user.id, session.id, body)
+        .subscribe(user.id.clone(), session.id, body)
         .await
         .map_err(|error| match error {
             PushError::Storage(error) => ApiError::from(error),
             PushError::Taken => ApiError::new(StatusCode::CONFLICT, ErrorCode::PushEndpointTaken, error.to_string()),
             PushError::NotPublic(_) => ApiError::invalid_body(error.to_string()),
         })?;
+    // Each session says whether its browser has notifications on.
+    services.sync.mark(&user.id, Part::Sessions);
     Ok(StatusCode::NO_CONTENT)
 }
 
 /// `DELETE /push/subscription`: the caller's session's, if it has one.
 pub(super) async fn unsubscribe(
     State(services): State<Arc<Services>>,
+    AuthUser(user): AuthUser,
     session: CurrentSession,
 ) -> Result<StatusCode, ApiError> {
     services.push.unsubscribe(session.id).await?;
+    services.sync.mark(&user.id, Part::Sessions);
     Ok(StatusCode::NO_CONTENT)
 }

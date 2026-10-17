@@ -204,6 +204,14 @@ impl Shard {
         self.stop_idle(id);
         demi_backend_permissions::changed(self.permission_shard(), id);
         demi_backend_permissions::withdrawn(self.permission_shard(), id);
+        // The automations that wake it pause, saying why.
+        let shard = self.this();
+        let id = id.clone();
+        self.tasks().spawn_local(async move {
+            shard
+                .automation_target_gone(&id, demi_web_api_protocol::automations::PauseReason::ConversationArchived)
+                .await;
+        });
     }
 
     /// Deletes the user's project `id` as one transition (`conversations.md`

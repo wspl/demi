@@ -28,6 +28,7 @@ fn replayed_text(text: &str) -> String {
         model: model.clone(),
         content: vec![UserContentBlock::Text { text: text.into() }],
         preamble: None,
+        automation: None,
     });
     let view = ModelView::of(0, &[message], &HeldMedia::default()).expect("no media to hold");
     let items = replay(&RequestView::new(
@@ -158,6 +159,7 @@ fn a_messages_reference_and_attachment_record_reach_the_model_as_their_text() {
             UserContentBlock::Attachment(attachment.clone()),
         ],
         preamble: None,
+        automation: None,
     });
     let view = ModelView::of(0, &[message], &HeldMedia::default()).expect("no media to hold");
     assert_eq!(

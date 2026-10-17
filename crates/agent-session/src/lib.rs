@@ -51,9 +51,9 @@ use demi_conversation_socket_protocol::{AbortResult, AgentCode, Refusal, Transcr
 use demi_provider_common::{Ahead, ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
-    AgentMessage, Block, BlockId, Clock, CommandId, ContextUsage, ErrorBlock, ModelSelection, NodeId, PendingCall,
+    AgentMessage, AutomationMark, Block, BlockId, Clock, CommandId, ContextUsage, ErrorBlock, ModelSelection, NodeId, PendingCall,
     PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ShellToolView, ShellViewStatus,
-    ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
+    Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -773,6 +773,26 @@ impl AgentSession {
         })
     }
 
+    /// The automation's run whose message is the latest the user or an
+    /// automation sent this agent, with when it came: every turn it starts
+    /// or that continues from it works for that run, until the user writes
+    /// again, in a message or a steer (`automations.md` § What a run
+    /// sends). None when the user's own is the latest, or neither came.
+    pub fn automation_input(&self) -> Option<(AutomationMark, Timestamp)> {
+        self.shared.read(|core| {
+            core.transcript
+                .blocks()
+                .iter()
+                .rev()
+                .find_map(|block| match block {
+                    Block::User(user) => Some(user.automation.clone().map(|mark| (mark, user.created_at))),
+                    Block::Steer(_) => Some(None),
+                    _ => None,
+                })
+                .flatten()
+        })
+    }
+
     pub fn queued_messages(&self) -> Vec<QueuedMessage> {
         self.shared.read(SessionCore::queued_messages)
     }
@@ -855,13 +875,24 @@ impl AgentSession {
         self.shared.update(|core| core.media.absorb(media));
     }
 
-    /// Submits a message (`runtime.md` § Messages and the queue).
+    /// Submits a message the user wrote (`runtime.md` § Messages and the
+    /// queue).
     pub fn send(
         &self,
         content: Vec<UserContentBlock>,
         id: TurnId,
     ) -> Result<ActionHandle, AdmissionError> {
-        self.shared.update(|core| core.admit_send(id, content))
+        self.send_message(QueuedMessage {
+            id,
+            content,
+            automation: None,
+        })
+    }
+
+    /// Submits a message, which may be an automation's run's
+    /// (`automations.md` § What a run sends).
+    pub fn send_message(&self, message: QueuedMessage) -> Result<ActionHandle, AdmissionError> {
+        self.shared.update(|core| core.admit_send(message))
     }
 
     /// Rewinds the last input turn and runs it again

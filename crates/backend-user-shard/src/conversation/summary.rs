@@ -125,6 +125,7 @@ impl Shard {
             unread_permission_requests: record.unread_permission_requests,
             permissions_revision,
             shares,
+            automation: record.filed,
         })
     }
 }

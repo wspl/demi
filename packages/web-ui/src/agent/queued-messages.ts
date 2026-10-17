@@ -1,4 +1,4 @@
-import type { QueuedMessage, UserContentBlock } from '@demicodes/protocol'
+import type { AutomationMark, QueuedMessage, UserContentBlock } from '@demicodes/protocol'
 
 export interface QueueDividerBlock {
   type: 'queue_divider'
@@ -11,6 +11,8 @@ export interface QueuedRenderBlock {
   id: string
   queueId: string
   content: UserContentBlock[]
+  /** The automation's run that queued it; none for the user's own. */
+  automation?: AutomationMark
 }
 
 /** The queue's messages as the list shows them, under its divider: a message row for each entry, drawn from its content. */
@@ -20,5 +22,6 @@ export function queuedMessagesToRenderBlocks(queue: readonly QueuedMessage[]): Q
     id: `queued:${item.id}`,
     queueId: item.id,
     content: item.content,
+    automation: item.automation,
   }))
 }

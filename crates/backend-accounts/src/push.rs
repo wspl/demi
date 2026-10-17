@@ -282,12 +282,12 @@ impl Pusher {
         message: &PushMessage,
         subscriptions: &[StoredPushSubscription],
         contact: &str,
-    ) {
+    ) -> bool {
         let body = match serde_json::to_vec(message) {
             Ok(body) => body,
             Err(error) => {
                 tracing::error!("a push message did not serialize: {error}");
-                return;
+                return false;
             }
         };
         join_all(
@@ -295,16 +295,19 @@ impl Pusher {
                 .iter()
                 .map(|subscription| self.deliver_one(user, subscription, &body, contact)),
         )
-        .await;
+        .await
+        .contains(&true)
     }
 
-    async fn deliver_one(&self, user: &UserId, subscription: &StoredPushSubscription, body: &[u8], contact: &str) {
+    /// Sends `body` to the subscription; answers whether its push service
+    /// said it is gone and it was removed.
+    async fn deliver_one(&self, user: &UserId, subscription: &StoredPushSubscription, body: &[u8], contact: &str) -> bool {
         let endpoint = match subscription.endpoint.as_str().parse::<http::Uri>() {
             Ok(endpoint) => endpoint,
             Err(error) => {
                 // A URL `PushEndpoint` parsed is a URI too.
                 tracing::error!(%user, "a push endpoint is not a URI: {error}");
-                return;
+                return false;
             }
         };
         let request = WebPushBuilder::new(
@@ -326,23 +329,33 @@ impl Pusher {
             }
             Err(error) => {
                 tracing::error!(%user, "a push message was not encrypted: {error}");
-                return;
+                return false;
             }
         };
         match self.transport.post(request).await {
-            Ok(status) if status.is_success() => {}
+            Ok(status) if status.is_success() => false,
             Ok(StatusCode::NOT_FOUND | StatusCode::GONE) => {
                 tracing::info!(%user, "a push subscription is gone, and is removed");
-                if let Err(error) = self
+                match self
                     .control
                     .delete_gone_push_subscription(subscription.session.clone(), subscription.endpoint.clone())
                     .await
                 {
-                    tracing::warn!(%user, "a gone push subscription was not removed: {error}");
+                    Ok(()) => true,
+                    Err(error) => {
+                        tracing::warn!(%user, "a gone push subscription was not removed: {error}");
+                        false
+                    }
                 }
             }
-            Ok(status) => tracing::warn!(%user, %status, "a push service refused a message"),
-            Err(error) => tracing::warn!(%user, "a push message was not sent: {error}"),
+            Ok(status) => {
+                tracing::warn!(%user, %status, "a push service refused a message");
+                false
+            }
+            Err(error) => {
+                tracing::warn!(%user, "a push message was not sent: {error}");
+                false
+            }
         }
     }
 }

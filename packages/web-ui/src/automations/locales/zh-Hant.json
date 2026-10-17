@@ -1,0 +1,168 @@
+{
+  "page": {
+    "title": "自動化",
+    "description": "在指定時間、指令輸出變化時或 URL 被呼叫時啟動智慧體。",
+    "new": "新增自動化",
+    "newName": "新增自動化",
+    "empty": "沒有自動化",
+    "emptyHint": "在任一對話中請智慧體建立，或點一下「新增自動化」。",
+    "paused": "已暫停",
+    "unread": "已通知，尚未打開",
+    "failed": "上次執行失敗",
+    "openSidebar": "顯示側邊欄"
+  },
+  "editor": {
+    "rename": "重新命名",
+    "name": "名稱",
+    "on": "開啟",
+    "pausedHint": "已暫停。開啟前只會透過「立即執行」執行。",
+    "runNow": "立即執行",
+    "delete": "刪除自動化⋯",
+    "deleteTitle": "刪除「{name}」？",
+    "deleteBody": "其執行的對話會保留，並加入側邊欄。",
+    "deleteAction": "刪除",
+    "next": "下次執行：{when}。",
+    "pausedBecause": {
+      "conversation_archived": "因其對話已封存而暫停。",
+      "conversation_deleted": "因其對話已刪除而暫停。"
+    }
+  },
+  "trigger": {
+    "title": "觸發條件",
+    "kind": "啟動",
+    "time": "在指定時間",
+    "change": "輸出變化時",
+    "url": "URL 被呼叫時",
+    "repeat": "重複",
+    "once": "一次",
+    "repeating": "每隔",
+    "cron": "Cron",
+    "moment": "日期與時間",
+    "momentHint": "格式如 2026-10-18 08:00。",
+    "momentInvalid": "請依 2026-10-18 08:00 的格式輸入日期與時間。",
+    "interval": "每隔",
+    "intervalInvalid": "請輸入 1 或更大的整數。",
+    "units": {
+      "minutes": "分鐘",
+      "hours": "小時",
+      "days": "天"
+    },
+    "expression": "Cron 運算式",
+    "expressionHint": "分、時、日、月、星期：{words}。",
+    "expressionInvalid": "請輸入五個欄位，例如 0 9 * * 1-5。",
+    "timeZone": "時區",
+    "command": "指令",
+    "commandHint": "在目標目錄中執行。輸出或結束狀態變化時啟動一次執行；第一次檢查只記錄結果。",
+    "checkEvery": "檢查間隔",
+    "cloudCost": "每次檢查都在雲端執行並喚醒它，檢查越頻繁，雲端越會持續執行。",
+    "address": "位址",
+    "secret": "密鑰",
+    "secretHidden": "密鑰，已隱藏",
+    "regenerate": "重新產生密鑰",
+    "regenerateTitle": "重新產生密鑰？",
+    "regenerateBody": "之後使用目前密鑰的呼叫都會被拒絕。",
+    "regenerateAction": "重新產生",
+    "stripe": "Stripe 簽署密鑰",
+    "stripeHint": "Stripe 使用自己的密鑰：貼到這裡，即可接受 Stripe 簽署的事件。",
+    "daily": "每天",
+    "dailyTime": "時間",
+    "days": "日期",
+    "clockInvalid": "請以 09:00 的格式輸入時間。",
+    "limit": "每天最多執行",
+    "limitHint": "達到後，之後的變化和呼叫到午夜前都不會啟動執行。",
+    "noLimit": "不限",
+    "limitInvalid": "請輸入不小於 1 的整數，或留空。",
+    "addressHint": "其他系統向它傳送 POST 請求即可啟動一次執行。",
+    "secretHint": "以 Authorization: Bearer <secret> 傳送，或貼到 GitHub Webhook 的 Secret 欄位。",
+    "show": "顯示密鑰",
+    "hide": "隱藏密鑰",
+    "stripePaste": "貼上密鑰"
+  },
+  "target": {
+    "title": "目標",
+    "host": "裝置",
+    "project": "專案",
+    "noProject": "無",
+    "conversation": "對話",
+    "new": "每次執行新增對話",
+    "existing": "現有對話",
+    "newHint": "每次執行都會開始一個空白對話，它只知道提示詞寫的內容。",
+    "existingHint": "每次執行都會傳一則訊息喚醒它，它會帶著既有的全部內容繼續。",
+    "pick": "選擇對話",
+    "noConversations": "{host} 上沒有對話",
+    "offline": "離線"
+  },
+  "prompt": {
+    "title": "提示詞",
+    "hint": "每次執行傳送的內容，像你寫給智慧體那樣寫。",
+    "placeholder": "檢查昨天失敗的付款，如果有就通知我。"
+  },
+  "model": {
+    "label": "模型",
+    "hint": "新對話以此模型開始；現有對話保留自己的模型。",
+    "choose": "選擇模型",
+    "missing": "執行需要模型才能建立新對話。"
+  },
+  "runs": {
+    "title": "執行紀錄",
+    "none": "還沒有執行。",
+    "never": "從未執行",
+    "last": "{when}{status}",
+    "open": "打開對話",
+    "moved": "已在對話中",
+    "status": {
+      "running": "執行中",
+      "done": "已完成",
+      "notified": "已通知",
+      "skipped": "已略過",
+      "failed": "失敗"
+    },
+    "note": {
+      "offline": "{device} 當時離線",
+      "limit": "已達每天 {limit} 次的上限，此後又有 {calls} 次呼叫",
+      "targetGone": "其對話已封存或刪除",
+      "timedOut": "指令執行超過 60 秒",
+      "commandFailed": "指令失敗：{message}",
+      "noModel": "未選擇模型"
+    }
+  },
+  "notify": {
+    "off": "執行會透過通知告訴你結果，但你所有瀏覽器的通知都已關閉。",
+    "turnOn": "開啟通知"
+  },
+  "words": {
+    "interval": {
+      "minutes": "每分鐘 | 每 {count} 分鐘",
+      "hours": "每小時 | 每 {count} 小時",
+      "days": "每天 | 每 {count} 天"
+    },
+    "daily": "每天 {time}",
+    "weekdays": "平日 {time}",
+    "weekly": "每{day} {time}",
+    "onChange": "{interval}，有變化時",
+    "url": "URL",
+    "newConversation": "新對話",
+    "existing": "「{title}」",
+    "days": "{days} {time}",
+    "existingGone": "已刪除的對話"
+  },
+  "bar": {
+    "label": "自動化執行",
+    "automation": "自動化",
+    "move": "移到對話",
+    "moveShort": "移動"
+  },
+  "mark": {
+    "chip": "{count} 個自動化 | {count} 個自動化",
+    "bolt": "有自動化會喚醒此對話"
+  },
+  "failed": {
+    "create": "無法建立自動化",
+    "save": "無法儲存自動化",
+    "run": "無法執行自動化",
+    "delete": "無法刪除自動化",
+    "secret": "無法顯示密鑰",
+    "regenerate": "無法重新產生密鑰",
+    "move": "無法移動對話"
+  }
+}

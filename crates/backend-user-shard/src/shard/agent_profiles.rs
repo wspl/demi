@@ -165,7 +165,7 @@ impl Shard {
     /// menu offers, or of `current`, the profile's own, when it names only
     /// an effort or a tier. The save path then checks them against the
     /// entry's catalog as it checks the settings page's.
-    async fn chosen_model(
+    pub(crate) async fn chosen_model(
         &self,
         choice: ModelChoice,
         current: Option<&ModelSettings>,

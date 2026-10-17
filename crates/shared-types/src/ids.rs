@@ -164,6 +164,16 @@ crate::id!(
     CommandId
 );
 crate::id!(
+    /// An automation (`automations.md`): 128 random bits as 32 lowercase
+    /// hexadecimal digits, which its URL trigger's address names, so the
+    /// address cannot be guessed.
+    AutomationId
+);
+crate::id!(
+    /// One run of an automation, which the backend assigns.
+    AutomationRunId
+);
+crate::id!(
     /// A message edit, which the web app chooses so that a repeated request
     /// is recognized.
     OperationId

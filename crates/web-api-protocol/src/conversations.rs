@@ -254,6 +254,13 @@ pub struct ConversationSummary {
     /// (`web-api-conversations.md` § Sharing).
     #[garde(skip)]
     pub shares: Vec<ConversationShare>,
+    /// The automation's run the conversation is filed under, which keeps it
+    /// out of the sidebar until the user sends it a message or moves it
+    /// (`automations.md` § Runs); null for an ordinary conversation.
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<crate::automations::FiledRun>")]
+    #[garde(skip)]
+    pub automation: Option<crate::automations::FiledRun>,
 }
 
 /// The latest ended turn of a conversation's root (`web-api-conversations.md` § Sidebar

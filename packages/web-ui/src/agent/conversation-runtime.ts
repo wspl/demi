@@ -537,8 +537,15 @@ export class ConversationRuntime {
         if (!(error instanceof ConversationSocketError)) {
           this.client.value = null
           this.opening = null
-          this.options.state.load = 'failed'
-          this.options.state.lastError = shownError(error)
+          // A record that holds no model opens no session until one is
+          // chosen: the opening stops at its first step, its transcript
+          // shown, as one with no session does; it did not fail.
+          if (errorCode(error) === 'model_not_selected') {
+            this.options.state.load = 'ready'
+          } else {
+            this.options.state.load = 'failed'
+            this.options.state.lastError = shownError(error)
+          }
           throw error
         }
       }

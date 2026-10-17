@@ -2226,6 +2226,7 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
         [QueuedMessage {
             id: turn("t4"),
             content: text(&fourth),
+            automation: None,
         }]
     );
     let steers = session.pending_steers();

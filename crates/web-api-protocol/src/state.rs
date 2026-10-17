@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::auth::UserDto;
+use crate::automations::AutomationDto;
 use crate::cloud::CloudStatus;
 use crate::conversations::ConversationSummary;
 use crate::credentials::CredentialDto;
@@ -66,6 +67,11 @@ pub struct ProductState {
     pub instructions: String,
     /// The user's credentials in name order, without their values.
     pub credentials: Vec<CredentialDto>,
+    /// The user's automations, newest first, each with its latest runs.
+    pub automations: Vec<AutomationDto>,
+    /// The runs that notified and whose conversation the user has not
+    /// opened since, of any age: the sidebar's count.
+    pub automations_unread: u32,
     /// The user's passkeys and WebAuthn user handle.
     pub passkeys: PasskeyList,
     /// The relying party's id of the backend's passkeys, as `GET /setup`
@@ -189,6 +195,15 @@ pub enum SyncEvent {
     /// credentials, without their values.
     Credentials {
         credentials: Vec<CredentialDto>,
+    },
+    /// An automation was created, changed or deleted, or one of its runs
+    /// started, ended or was read: the user's automations, as the product
+    /// state carries them.
+    Automations {
+        automations: Vec<AutomationDto>,
+        /// As the product state's `automations_unread`.
+        #[serde(rename = "automationsUnread")]
+        automations_unread: u32,
     },
     /// A passkey was added, renamed, removed or signed in with: the user's
     /// passkeys, as `GET /auth/passkeys` lists them.
