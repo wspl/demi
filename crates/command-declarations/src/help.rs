@@ -8,7 +8,7 @@ use crate::{Group, Leaf, Node, StdinRead, parse::placeholder};
 
 /// The paragraph the capability index opens with: what every command does
 /// unless its own help says otherwise (`commands.md` § Help).
-pub const HELP_DEFAULTS: &str = "Unless a command states otherwise: success prints raw text on stdout, failure writes an error message to stderr and exits non-zero. Pass --help at any level to print a command's documentation. Usage uses <placeholders> for values and [brackets] for optional arguments. Quote values containing spaces. Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. Use --name=value for option values beginning with --, and -- before positional values beginning with --. Read text with the standard tools; file view alone shows you an image, a video or a PDF, from a file or a pipe.";
+pub const HELP_DEFAULTS: &str = "Unless a command states otherwise: success prints its data on stdout, a list as a table under a header row and one object as Key: value lines, and --json, where usage offers it, prints the same as JSON; warnings and errors go to stderr, and a failure exits 1, a usage error 2. Pass --help at any level to print a command's documentation. Usage uses <placeholders> for values and [brackets] for optional arguments. Quote values containing spaces. Stdin bodies use a quoted heredoc, pipe, or input redirection; they have no command-line option. Use --name=value for option values beginning with --, and -- before positional values beginning with --. Read text with the standard tools; file view alone shows you an image, a video or a PDF, from a file or a pipe.";
 
 /// The paragraph after [`HELP_DEFAULTS`] that introduces the groups'
 /// entries (`system-prompt.md` § Capability index).
@@ -147,122 +147,164 @@ impl<B> Leaf<B> {
 }
 
 impl<B> Node<B> {
-    /// The help of this node: a group's lists its subcommands with their
-    /// summaries, and a command's gives its full usage; `path` is the
-    /// command line that names this node.
+    /// The help of this node, as command-line programs print it
+    /// (`commands.md` § Output): `Usage:` first, then what it does, then a
+    /// group's commands or a command's arguments, options and stdin; `path`
+    /// is the command line that names this node.
     pub fn help(&self, path: &str) -> String {
-        let mut lines = vec![format!("{path}: {}", self.summary())];
-        if let Some(leaf) = self.leaf() {
-            lines.extend([String::new(), "Usage:".into(), String::new()]);
-            let invocation = leaf.usage(path);
-            if let Some(field) = &leaf.stdin_field {
-                // A stdin field that is also a positional has both forms.
-                if leaf.is_positional(field) {
-                    lines.push(format!("  {invocation}"));
+        let mut sections = Vec::new();
+        match self {
+            Node::Group(group) => {
+                sections.push(format!("Usage: {path} <command>"));
+                sections.push(group.summary.clone());
+                if let Some(details) = &group.details {
+                    sections.push(details.clone());
                 }
-                lines.extend([
-                    format!("  {} <<'EOF'", leaf.usage_of(path, false)),
-                    format!("  <{field}>"),
-                    "  EOF".into(),
-                ]);
-            } else {
-                lines.push(format!("  {invocation}"));
-            }
-            if let Some(success) = leaf
-                .success_output
-                .as_ref()
-                .filter(|value| !value.is_empty())
-            {
-                lines.push(format!("    Success output: {success}"));
-            } else if leaf.json_output().is_some() {
-                lines.push("    Success output: raw text by default; machine-readable JSON when --json is passed".into());
-            }
-            if let Some(failure) = leaf
-                .failure_output
-                .as_ref()
-                .filter(|value| !value.is_empty())
-            {
-                lines.push(format!("    Failure output: {failure}"));
-            }
-            if let Some(permission) = &leaf.permission {
-                lines.push(format!("    Permission: needs the user's permission ({permission}) in each conversation; without it, the command fails at once and the user is asked."));
-            }
-            if let Some(properties) = leaf.properties() {
-                let fields: Vec<_> = properties
+                let commands: Vec<(String, String)> = group
+                    .subcommands
                     .iter()
-                    .filter(|(field, _)| leaf.stdin_field.as_ref() != Some(*field))
+                    .map(|child| (child.name().to_owned(), child.summary().to_owned()))
                     .collect();
-                if !fields.is_empty() {
-                    lines.push("    Parameters:".into());
-                    for (field, schema) in fields {
-                        let source = source(leaf, field);
-                        let required = if leaf.required(field) {
-                            "required"
-                        } else {
-                            "optional"
-                        };
-                        let repeatable = if matches!(source, Source::Option | Source::Positional)
-                            && schema.get("type").and_then(Value::as_str) == Some("array")
-                        {
-                            ", repeatable"
-                        } else {
-                            ""
-                        };
-                        let option = if leaf.positional_option(field) {
-                            format!(", or --{field} <{}>", placeholder(field, schema))
-                        } else {
-                            String::new()
-                        };
-                        lines.push(format!(
-                            "      {} ({required}{repeatable}{option}){}",
-                            syntax(field, schema, source),
-                            description(schema)
-                        ));
+                sections.push(listing("Commands:", &commands));
+            }
+            Node::Leaf(leaf) => {
+                let mut usage = Vec::new();
+                if let Some(field) = &leaf.stdin_field {
+                    // A stdin field that is also a positional has both forms.
+                    if leaf.is_positional(field) {
+                        usage.push(leaf.usage(path));
+                    }
+                    usage.extend([
+                        format!("{} <<'EOF'", leaf.usage_of(path, false)),
+                        format!("<{field}>"),
+                        "EOF".into(),
+                    ]);
+                } else {
+                    usage.push(leaf.usage(path));
+                }
+                sections.push(format!("Usage: {}", usage.join("\n       ")));
+                sections.push(leaf.summary.clone());
+                let mut arguments = Vec::new();
+                let mut options = Vec::new();
+                let mut stdin = Vec::new();
+                for (field, schema) in leaf.properties().into_iter().flatten() {
+                    let source = source(leaf, field);
+                    let mut notes = Vec::new();
+                    if leaf.stdin_field.as_ref() == Some(field) {
+                        match &leaf.stdin_read {
+                            None if leaf.is_positional(field) => {
+                                notes.push(format!("not read when given as <{field}>"));
+                            }
+                            None => {}
+                            Some(read) => {
+                                let words = match read {
+                                    StdinRead::Unless(_) => "not read with",
+                                    StdinRead::With(_) => "read only with",
+                                };
+                                let options: Vec<String> =
+                                    read.options().iter().map(|option| format!("--{option}")).collect();
+                                notes.push(format!("{words} {}", options.join(" or ")));
+                            }
+                        }
+                        stdin.push((format!("<{field}>"), with_notes(schema, notes)));
+                        if !leaf.is_positional(field) {
+                            continue;
+                        }
+                        notes = Vec::new();
+                    }
+                    if source != Source::Option {
+                        notes.push(
+                            if leaf.required_on_line(field) { "required" } else { "optional" }.to_owned(),
+                        );
+                    }
+                    if matches!(source, Source::Option | Source::Positional)
+                        && schema.get("type").and_then(Value::as_str) == Some("array")
+                    {
+                        notes.push("repeatable".into());
+                    }
+                    if leaf.positional_option(field) {
+                        notes.push(format!("or --{field} <{}>", placeholder(field, schema)));
+                    }
+                    if leaf.required(field) && source == Source::Option {
+                        notes.push("required".into());
+                    }
+                    let entry = (syntax(field, schema, source), with_notes(schema, notes));
+                    match source {
+                        Source::Positional | Source::Rest => {
+                            // In the order the usage line shows them: the
+                            // positionals, then the rest field.
+                            let order = leaf
+                                .positionals
+                                .iter()
+                                .flatten()
+                                .position(|positional| positional == field)
+                                .unwrap_or(usize::MAX);
+                            arguments.push((order, entry));
+                        }
+                        Source::Option | Source::Stdin => options.push(entry),
                     }
                 }
-                if let Some(field) = &leaf.stdin_field {
-                    let condition = match &leaf.stdin_read {
-                        None if leaf.is_positional(field) => {
-                            format!(", not read when given as <{field}>")
-                        }
-                        None => String::new(),
-                        Some(read) => {
-                            let words = match read {
-                                StdinRead::Unless(_) => "not read with",
-                                StdinRead::With(_) => "read only with",
-                            };
-                            let options: Vec<String> =
-                                read.options().iter().map(|option| format!("--{option}")).collect();
-                            format!(", {words} {}", options.join(" or "))
-                        }
-                    };
-                    lines.push(format!(
-                        "    Stdin body: {field}{condition}{}",
-                        description(&properties[field])
-                    ));
+                if leaf.json_output().is_some() {
+                    options.push(("--json".into(), "Print JSON instead of text".into()));
+                }
+                arguments.sort_by_key(|(order, _)| *order);
+                let arguments: Vec<_> = arguments.into_iter().map(|(_, entry)| entry).collect();
+                for (title, entries) in [("Arguments:", &arguments), ("Options:", &options), ("Stdin:", &stdin)] {
+                    if !entries.is_empty() {
+                        sections.push(listing(title, entries));
+                    }
+                }
+                let mut notes = Vec::new();
+                if let Some(success) = leaf.success_output.as_ref().filter(|value| !value.is_empty()) {
+                    notes.push(format!("Output: {success}"));
+                }
+                if let Some(failure) = leaf.failure_output.as_ref().filter(|value| !value.is_empty()) {
+                    notes.push(format!("Failure: {failure}"));
+                }
+                if let Some(permission) = &leaf.permission {
+                    notes.push(format!("Permission: needs the user's permission ({permission}) in each conversation; without it, the command fails at once and the user is asked."));
+                }
+                if leaf.media {
+                    notes.push("Media: shows you images, videos and PDFs, attached to the result that reports the command's end, whatever its stdout is.".into());
+                }
+                if !notes.is_empty() {
+                    sections.push(notes.join("\n"));
                 }
             }
-            if leaf.json_output().is_some() {
-                lines.push("    --json: emits machine-readable JSON for this command".into());
-            }
-            if leaf.media {
-                lines.push("    Shows you media: images, videos and PDFs, attached to the result that reports the command's end, whatever its stdout is".into());
-            }
         }
-        if let Node::Group(group) = self {
-            if let Some(details) = &group.details {
-                lines.extend([String::new(), details.clone()]);
-            }
-            lines.extend([String::new(), "Subcommands:".into()]);
-            for child in &group.subcommands {
-                lines.push(format!("  {path} {} — {}", child.name(), child.summary()));
-            }
-        }
-        lines.join("\n")
+        sections.join("\n\n")
     }
 }
 
-#[derive(Eq, PartialEq)]
+/// A titled list of names and what each is, the names aligned in a column,
+/// as `Commands:`, `Arguments:` and `Options:` print.
+fn listing(title: &str, entries: &[(String, String)]) -> String {
+    let width = entries.iter().map(|(name, _)| name.chars().count()).max().unwrap_or(0);
+    let mut lines = vec![title.to_owned()];
+    for (name, meaning) in entries {
+        let line = format!("  {name:width$}  {meaning}");
+        lines.push(line.trim_end().to_owned());
+    }
+    lines.join("\n")
+}
+
+/// A field's description followed by its notes in parentheses, such as
+/// `File path (required)`.
+fn with_notes(schema: &Value, notes: Vec<String>) -> String {
+    let description = schema
+        .get("description")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .unwrap_or_default()
+        .trim_end_matches('.');
+    match (description.is_empty(), notes.is_empty()) {
+        (_, true) => description.to_owned(),
+        (true, false) => format!("({})", notes.join(", ")),
+        (false, false) => format!("{description} ({})", notes.join(", ")),
+    }
+}
+
+#[derive(Clone, Copy, Eq, PartialEq)]
 enum Source {
     Positional,
     Stdin,
@@ -294,13 +336,4 @@ fn syntax(field: &str, schema: &Value, source: Source) -> String {
         _ if schema.get("type").and_then(Value::as_str) == Some("boolean") => format!("--{field}"),
         _ => format!("--{field} <{}>", placeholder(field, schema)),
     }
-}
-
-fn description(schema: &Value) -> String {
-    schema
-        .get("description")
-        .and_then(Value::as_str)
-        .filter(|value| !value.is_empty())
-        .map(|value| format!(" - {value}"))
-        .unwrap_or_default()
 }

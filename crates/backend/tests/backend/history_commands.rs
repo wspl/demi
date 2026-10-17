@@ -353,12 +353,11 @@ async fn a_read_stops_at_about_eight_thousand_characters_and_cuts_a_longer_messa
     assert!(pages[3].contains("  2000\t2000"), "{}", pages[3]);
     assert!(!pages[3].contains("Page "), "{}", pages[3]);
     assert_eq!(scripted, 15_000);
-    // A time of this year has no year.
-    assert!(read.contains(&format!("[{first} user · Sep 24, 8:00 AM]")), "{read}");
-    // The rest of the message, its last page, which names no next one, and
-    // its time of another year with the year.
+    // A time is an instant in UTC, as every command prints one.
+    assert!(read.contains(&format!("[{first} user · 2026-09-24T08:00:00Z]")), "{read}");
+    // The rest of the message, its last page, which names no next one.
     let rest = result(&backend, &master, "t3").await;
-    assert!(rest.contains(&format!("[{message} user · Sep 24, 2026, 8:00 AM]\nddd")), "{rest}");
+    assert!(rest.contains(&format!("[{message} user · 2026-09-24T08:00:00Z]\nddd")), "{rest}");
     assert_eq!(first_page + shown(&rest), 9_000, "{cut}\n{rest}");
     assert!(!rest.contains("Page "), "{rest}");
     backend.close().await;
@@ -401,9 +400,9 @@ async fn a_subagent_reads_its_own_transcript_and_its_parent_opens_its_report() {
     assert!(child.contains("Find the build flag"), "{child}");
     assert!(!child.contains(" user · "), "{child}");
     // Its search finds its own brief and command, not the root's rows.
-    assert!(child.contains("] Find the build flag, the **release** **switch**"), "{child}");
-    assert!(child.contains(" command] Look for the **release** **switch** · exit 0 · "), "{child}");
-    assert!(child.contains("Page 1 of 1"), "{child}");
+    assert!(child.contains("  Find the build flag, the **release** **switch**"), "{child}");
+    assert!(child.contains("  Look for the **release** **switch** · exit 0 · "), "{child}");
+    assert!(child.contains("demi conversation history search: note: page 1 of 1"), "{child}");
     assert!(!child.contains("switch** for me"), "the root's message is the root's: {child}");
     // Nor does the product's search show a subagent's rows, which the
     // index holds since the child's search found them.
@@ -475,52 +474,60 @@ async fn an_agent_searches_its_history_for_every_word_or_any_and_pages_the_hits(
             // like an option included.
             shell(
                 "t7",
-                "line=$(demi conversation history search -- --release | tail -n 1) && eval \"${line#*next: }\"",
+                "line=$(demi conversation history search -- --release 2>&1 >/dev/null | tail -n 1) && eval \"${line#*next: }\"",
             ),
+            shell("t8", "demi conversation history search --json staging"),
             say("found"),
         ],
     );
     socket.chat("find", "Find what I said").await;
 
-    // Every word, the newest first, five to a page: each hit's index, who
-    // and when, its text with the words marked, and the message before and
-    // after it.
+    // Every word, the newest first, five to a page: a row for each hit,
+    // its index, who and when and its text with the words marked, between
+    // rows of the message before and after it; the page on stderr.
     let first = result(&backend, &master, "t1").await;
     let newest = at("rule 5");
-    assert!(first.contains(&format!("\n{newest} · user · ")), "{first}");
-    assert!(first.contains(&format!("  [{newest} user] The **README** **feature** **list** keeps rule 5\n")), "{first}");
-    assert!(first.contains(&format!("  [{} agent] Answer 4\n", at("Answer 4"))), "{first}");
-    assert!(first.contains(&format!("  [{} agent] Answer 5\n", at("Answer 5"))), "{first}");
+    assert_eq!(row(&first, newest)[1..3], ["yes", "user"], "{first}");
+    assert!(text_of(&first, newest).starts_with("The **README** **feature** **list** keeps rule 5"), "{first}");
+    assert_eq!(row(&first, at("Answer 4"))[1..3], ["no", "agent"], "{first}");
+    assert_eq!(text_of(&first, at("Answer 5")), "Answer 5", "{first}");
     assert!(!first.contains("rule 0") && !first.contains("Only the README"), "{first}");
     assert!(
-        first.contains("Page 1 of 2 · next: demi conversation history search --page 2 -- README feature list"),
+        first.contains("demi conversation history search: note: page 1 of 2; next: demi conversation history search --page 2 -- README feature list"),
         "{first}"
     );
     let second = result(&backend, &master, "t2").await;
-    assert!(second.contains(&format!("  [{} user] The **README** **feature** **list** keeps rule 0", at("rule 0"))), "{second}");
-    assert!(second.ends_with("Page 2 of 2"), "{second}");
+    assert!(text_of(&second, at("rule 0")).starts_with("The **README** **feature** **list** keeps rule 0"), "{second}");
+    assert!(second.contains("note: page 2 of 2"), "{second}");
     assert!(!second.contains("rule 1 "), "{second}");
     // Any word, case aside: the message with only one of them too.
     let any = result(&backend, &master, "t3").await;
-    assert!(any.contains("  [") && any.contains("] Only the **README** here"), "{any}");
-    assert!(any.contains("Page 1 of 2 · next: demi conversation history search --any --page 2 -- readme LIST"), "{any}");
+    assert!(any.contains("  Only the **README** here"), "{any}");
+    assert!(any.contains("note: page 1 of 2; next: demi conversation history search --any --page 2 -- readme LIST"), "{any}");
     // A word of two Chinese characters, inside a longer text.
     let chinese = result(&backend, &master, "t4").await;
-    assert!(chinese.contains(&format!("  [{} user] 模块**路径**不对", at("模块路径不对"))), "{chinese}");
-    assert!(chinese.ends_with("Page 1 of 1"), "{chinese}");
+    assert_eq!(text_of(&chinese, at("模块路径不对")), "模块**路径**不对", "{chinese}");
+    assert!(chinese.contains("note: page 1 of 1"), "{chinese}");
+    // Nothing found: the header alone.
     let none = result(&backend, &master, "t5").await;
-    assert!(none.contains("Nothing of this transcript holds every one of: nowhere"), "{none}");
+    assert!(none.trim_end().ends_with("output:\nINDEX  HIT  AUTHOR  TIME  TEXT") && !none.contains("note:"), "{none}");
     let release = result(&backend, &master, "t7").await;
-    assert!(release.contains("] Build 0 with **--release**"), "{release}");
-    assert!(release.ends_with("Page 2 of 2"), "{release}");
+    assert!(release.contains("  Build 0 with **--release**"), "{release}");
+    assert!(release.contains("note: page 2 of 2"), "{release}");
     // A command by its title, with how it ended.
     let command = result(&backend, &master, "t6").await;
     let call = blocks
         .iter()
         .position(|block| matches!(block, Block::ToolCall(call) if call.tool_use_id == "t0"))
         .unwrap();
-    assert!(command.contains(&format!("\n{call} · command · ")), "{command}");
-    assert!(command.contains(&format!("  [{call} command] Deploy the **staging** server · exit 0 · ")), "{command}");
+    assert_eq!(row(&command, call)[1..3], ["yes", "command"], "{command}");
+    assert!(text_of(&command, call).starts_with("Deploy the **staging** server · exit 0 · "), "{command}");
+    // The same rows as JSON, an array.
+    let json = result(&backend, &master, "t8").await;
+    let rows: serde_json::Value = serde_json::from_str(json.lines().last().unwrap()).expect(&json);
+    assert_eq!(rows[1]["index"], call, "{json}");
+    assert_eq!((rows[1]["hit"].as_bool(), rows[1]["author"].as_str()), (Some(true), Some("command")), "{json}");
+    assert!(rows[1]["text"].as_str().unwrap().starts_with("Deploy the **staging** server · exit 0 · "), "{json}");
     backend.close().await;
 }
 
@@ -594,7 +601,7 @@ async fn an_agent_narrows_its_history_search_by_who_wrote_it_and_when() {
             // The continuation of a filtered search runs as it is printed.
             shell(
                 "t4",
-                "line=$(demi conversation history search --from user --oldest README | tail -n 1) && echo \"$line\" && eval \"${line#*next: }\"",
+                "line=$(demi conversation history search --from user --oldest README 2>&1 >/dev/null | tail -n 1) && echo \"$line\" && eval \"${line#*next: }\"",
             ),
             shell("t5", &format!("demi conversation history search --after {drafted} --before {} README", notes[0])),
             shell("t6", "demi conversation history search --before 2026-09-25 README"),
@@ -609,10 +616,12 @@ async fn an_agent_narrows_its_history_search_by_who_wrote_it_and_when() {
     );
     socket.chat("find", "Find what I asked").await;
 
+    // Each hit's index and author, from its row.
     let heads = |text: &str| -> Vec<String> {
         text.lines()
-            .filter(|line| line.split(" · ").next().is_some_and(|first| first.parse::<usize>().is_ok()))
-            .map(|line| line.split(" · ").take(2).collect::<Vec<_>>().join(" · "))
+            .map(|line| line.split_whitespace().collect::<Vec<_>>())
+            .filter(|cells| cells.len() > 2 && cells[0].parse::<usize>().is_ok() && cells[1] == "yes")
+            .map(|cells| format!("{} · {}", cells[0], cells[2]))
             .collect()
     };
     // The user's messages alone, the newest first: no answer and no
@@ -620,7 +629,7 @@ async fn an_agent_narrows_its_history_search_by_who_wrote_it_and_when() {
     let user = result(&backend, &master, "t1").await;
     let newest: Vec<usize> = notes.iter().rev().copied().collect();
     assert_eq!(heads(&user), users(&newest), "{user}");
-    assert!(user.contains("Page 1 of 2 · next: demi conversation history search --from user --page 2 -- README"), "{user}");
+    assert!(user.contains("note: page 1 of 2; next: demi conversation history search --from user --page 2 -- README"), "{user}");
     // The agent's texts and commands alone.
     let agent = result(&backend, &master, "t2").await;
     assert_eq!(
@@ -633,11 +642,11 @@ async fn an_agent_narrows_its_history_search_by_who_wrote_it_and_when() {
     assert_eq!(heads(&oldest), users(&[draft, shorten, notes[0], notes[1], notes[2]]), "{oldest}");
     let second = result(&backend, &master, "t4").await;
     assert!(
-        second.contains("Page 1 of 2 · next: demi conversation history search --from user --oldest --page 2 -- README\n"),
+        second.contains("note: page 1 of 2; next: demi conversation history search --from user --oldest --page 2 -- README\n"),
         "{second}"
     );
     assert_eq!(heads(&second), users(&notes[3..]), "{second}");
-    assert!(second.ends_with("Page 2 of 2"), "{second}");
+    assert!(second.contains("note: page 2 of 2"), "{second}");
     // Between two blocks, neither included.
     let between = result(&backend, &master, "t5").await;
     assert_eq!(
@@ -661,17 +670,17 @@ async fn an_agent_narrows_its_history_search_by_who_wrote_it_and_when() {
     );
     // A read of one side prints its messages alone, each with its index.
     let read = result(&backend, &master, "t8").await;
-    assert!(read.contains(&format!("[{draft} user · Sep 24, 4:00 PM]\nDraft the README intro\n")), "{read}");
-    assert!(read.contains(&format!("[{shorten} user · Sep 25, 2:00 AM]\nShorten the README intro")), "{read}");
+    assert!(read.contains(&format!("[{draft} user · 2026-09-24T08:00:00Z]\nDraft the README intro\n")), "{read}");
+    assert!(read.contains(&format!("[{shorten} user · 2026-09-24T18:00:00Z]\nShorten the README intro")), "{read}");
     assert!(!read.contains(" agent · ") && !read.contains(" command: "), "{read}");
     // The agent's side is its texts and its command lines, as a search
     // counts them.
     let read = result(&backend, &master, "t9").await;
     assert!(
-        read.contains(&format!("[{drafted} agent · Sep 24, 4:00 PM]\nThe README intro is drafted\n[{rewrite} command: Rewrite the README intro · exit 0 · ")),
+        read.contains(&format!("[{drafted} agent · 2026-09-24T08:00:00Z]\nThe README intro is drafted\n[{rewrite} command: Rewrite the README intro · exit 0 · ")),
         "{read}"
     );
-    assert!(read.contains(&format!("[{shorter} agent · Sep 25, 2:00 AM]\nThe README intro is shorter")), "{read}");
+    assert!(read.contains(&format!("[{shorter} agent · 2026-09-24T18:00:00Z]\nThe README intro is shorter")), "{read}");
     assert!(!read.contains(" user · "), "{read}");
     backend.close().await;
 }
@@ -714,4 +723,21 @@ async fn an_open_stopped_while_it_reads_a_file_saves_nothing() {
     assert!(opened.contains("before: \n"), "the stopped call wrote: {opened}");
     assert!(opened.contains("/0-a1-spec.md"), "{opened}");
     backend.close().await;
+}
+
+/// The cells of the row of block `index` of a search's table, the time and
+/// the text split at their spaces too.
+fn row(printed: &str, index: usize) -> Vec<&str> {
+    printed
+        .lines()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>())
+        .find(|cells| cells.first() == Some(&index.to_string().as_str()))
+        .unwrap_or_else(|| panic!("no row of {index} in {printed}"))
+}
+
+/// The text of the row of block `index`: the cells after its time.
+fn text_of(printed: &str, index: usize) -> String {
+    let cells = row(printed, index);
+    assert!(cells[3].ends_with('Z'), "{printed}");
+    cells[4..].join(" ")
 }

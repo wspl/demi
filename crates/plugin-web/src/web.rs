@@ -10,7 +10,7 @@ use demi_command_package_fetch_protocol::{
 use demi_host_interface::{GroupBuilder, LeafBuilder};
 use demi_plugin_interface::{CommandPlugin, Placement, PortHandled};
 
-use crate::search::{DEFAULT_COUNT, MAX_COUNT, SearchArgs, SearchResults};
+use crate::search::{DEFAULT_COUNT, MAX_COUNT, SearchArgs, SearchedPage};
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
@@ -28,7 +28,7 @@ fn web_group() -> GroupBuilder {
         .leaf(
             LeafBuilder::rpc(
                 "search",
-                "Search the web for one to four queries, run at once, and list the pages found, merged in turn: each page's title, domain, date, URL and up to three lines that matter. Searches with the user's Exa account or API key from Settings › Web Search, or anonymously within a shared limit.",
+                "Search the web for one to four queries, run at once, and list the pages found, merged in turn: each page's title, domain, date, URL and up to three lines that matter. Cite the pages you use as Markdown links. Searches with the user's Exa account or API key from Settings › Web Search, or anonymously within a shared limit.",
             )
             .input::<SearchArgs>()
             .positionals(["query"])
@@ -36,9 +36,9 @@ fn web_group() -> GroupBuilder {
                 "count",
                 format!("How many pages to list in all, 1 to {MAX_COUNT}; default {DEFAULT_COUNT}"),
             )
-            .json_output::<SearchResults>()
+            .json_output::<Vec<SearchedPage>>()
             .success_output(
-                "a line saying that what follows is untrusted web content, then the pages, numbered, and a line asking to cite the pages used as Markdown links; or \"No pages found. Try other words or fewer filters.\"",
+                "a line saying that what follows is untrusted web content, then the pages, numbered; or \"No pages found. Try other words or fewer filters.\"",
             )
             .failure_output(
                 "an option the search cannot honour without an Exa API key, the anonymous limit, the account's rate limit or credit, an expired sign-in, or Exa not answering within 30 s, each named on stderr with exit status 1",

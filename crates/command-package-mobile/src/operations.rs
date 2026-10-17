@@ -3,6 +3,7 @@
 //! return once the device took them; `screenshot` and `inspect` first wait
 //! for a settled picture.
 
+use demi_shared_types::output::warning;
 use std::{sync::Arc, time::Duration};
 
 use bytes::Bytes;
@@ -118,7 +119,13 @@ pub async fn run(
             (MobileOperation::List(_), _) => {
                 let listed = devices.list(call.conversation).await?;
                 let text = text::list(&listed);
-                Outcome::result(&listed, text)
+                let mut outcome = Outcome::result(&listed, text)?;
+                outcome.notes = listed
+                    .unavailable
+                    .iter()
+                    .map(|unavailable| warning("demi mobile list", &unavailable.reason).trim_end().to_owned())
+                    .collect();
+                Ok(outcome)
             }
             (MobileOperation::Open(input), _) => open_device(devices, call, &input.device).await,
             (MobileOperation::Close(input), Some(open)) => {

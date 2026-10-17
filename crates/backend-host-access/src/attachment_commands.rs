@@ -23,9 +23,11 @@ use demi_backend_database::conversations::ConversationDb;
 use demi_backend_database::{StorageError, sequences};
 use demi_backend_remote_host::collect_pipe;
 use demi_runner_protocol::wire::FileHash;
-use demi_host_interface::text::table;
 use demi_host_interface::{ByteRange, Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
-use demi_shared_types::{BlobRef, PixelSize, Sequence, preview_media_type};
+use demi_shared_types::{
+    BlobRef, PixelSize, Sequence, preview_media_type,
+    output::{Cell, Table},
+};
 use demi_web_api_protocol::attachments::ATTACHMENT_MAX_BYTES;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId};
 use schemars::JsonSchema;
@@ -57,13 +59,8 @@ struct UploadArgs {
     path: Vec<String>,
 }
 
-/// `demi attachment upload --json`: the attachments stored, in the order of
-/// their paths.
-#[derive(Serialize, JsonSchema)]
-struct Uploaded {
-    attachments: Vec<UploadedAttachment>,
-}
-
+/// An attachment of `demi attachment upload --json`, which lists them in
+/// the order of their paths.
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 struct UploadedAttachment {
@@ -84,8 +81,8 @@ pub fn attachment_group(shard: Weak<dyn HostShard>) -> GroupBuilder {
             LeafBuilder::rpc("upload", UPLOAD_SUMMARY)
                 .input::<UploadArgs>()
                 .positionals(["path"])
-                .json_output::<Uploaded>()
-                .success_output("one line per file: its number, path, media type and size, such as `a3  out/login.png  image/png  421888 bytes`")
+                .json_output::<Vec<UploadedAttachment>>()
+                .success_output("a table of the files uploaded: each one's attachment id, such as a3, its media type, size and path")
                 .failure_output("a file that cannot be uploaded writes its path and why to stderr; the others are still uploaded, and the command exits 1")
                 .bind(TypedRpc::new(verb(shard, upload))),
         )
@@ -122,29 +119,22 @@ async fn upload(
         }
     }
     let printed = if invocation.json {
-        let answer = Uploaded {
-            attachments: uploaded,
-        };
-        let json = serde_json::to_string(&answer)
+        let json = serde_json::to_string(&uploaded)
             .map_err(|error| RpcError::Failed(error.to_string()))?;
         format!("{json}\n")
     } else {
-        let rows: Vec<[String; 4]> = uploaded
-            .into_iter()
-            .map(|attachment| {
-                [
-                    attachment.id,
-                    attachment.path,
-                    attachment.media_type,
-                    format!("{} bytes", attachment.size),
-                ]
-            })
-            .collect();
-        table(&rows)
+        let mut table = Table::new(["id", "media type", "size (bytes)", "path"]);
+        for attachment in &uploaded {
+            table.row::<Cell>([
+                attachment.id.as_str().into(),
+                attachment.media_type.as_str().into(),
+                attachment.size.into(),
+                attachment.path.as_str().into(),
+            ]);
+        }
+        table.render()
     };
-    if !printed.is_empty() {
-        port.stdout(printed).await?;
-    }
+    port.stdout(printed).await?;
     Ok(u8::from(failed))
 }
 

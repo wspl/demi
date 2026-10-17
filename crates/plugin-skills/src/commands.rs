@@ -8,6 +8,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 
 use demi_host_interface::{GroupBuilder, LeafBuilder, RpcInvocation};
+use demi_shared_types::output::{Cell, Table, warning};
 use demi_plugin_interface::{
     CommandPlugin, Placement, PluginError, PluginPort, PortHandled,
 };
@@ -18,7 +19,7 @@ use serde_json::Value;
 
 use crate::origin::Origin;
 use crate::sources::{self, Source, SourceState};
-use crate::{Fetched, SkillsState, State};
+use crate::{Fetched, State};
 
 /// The group's category: what the user allows a conversation.
 const MANAGE: &str = "skills.manage";
@@ -65,9 +66,8 @@ pub(crate) fn commands() -> CommandPlugin {
         .leaf(
             LeafBuilder::rpc("list", "Every skill source of the user with its skills, whether each is on, and whether an update is available.")
                 .input::<ListArgs>()
-                .json_output::<SkillsState>()
-                .success_output("each source with its commit, failure or available update, then its skills, or JSON matching { sources } when --json is passed")
-                .failure_output("never fails on live data")
+                .json_output::<Vec<SourceState>>()
+                .success_output("a table of the skills of every source: name, source, commit, whether it is on, the source whose skill of that name is on, and description; on stderr, a source that is updating, failed or has an update; with --json, the sources with their skills")
                 .bind(PortHandled),
         )
         .leaf(
@@ -182,46 +182,46 @@ async fn list(
     port: &PluginPort,
 ) -> Result<Printed, PluginError> {
     let listed = state.state(port).await?;
+    // What a source's row cannot say: that it is being fetched, failed or
+    // has an update, told on stderr.
+    let command = invocation.path.join(" ");
+    for source in &listed.sources {
+        let mut notes = Vec::new();
+        if source.fetching {
+            notes.push("updating".to_owned());
+        }
+        if let Some(failure) = &source.failure {
+            notes.push(format!("the last fetch failed: {}", failure.message));
+        }
+        if source.update_available {
+            notes.push("an update is available".to_owned());
+        }
+        if source.skills.is_empty() {
+            notes.push("no skills".to_owned());
+        }
+        for note in notes {
+            port.rpc().stderr(warning(&command, &format!("{}: {note}", source.origin))).await?;
+        }
+    }
     if invocation.json {
-        let mut text = serde_json::to_string(&listed).expect("the state encodes as JSON");
+        let mut text = serde_json::to_string(&listed.sources).expect("the state encodes as JSON");
         text.push('\n');
         return Ok(Ok(text));
     }
-    if listed.sources.is_empty() {
-        return Ok(Ok("No skill sources.\n".into()));
-    }
-    let mut text = String::new();
+    let mut table = Table::new(["name", "source", "commit", "enabled", "taken by", "description"]);
     for source in &listed.sources {
-        text.push_str(&source_line(source));
         for skill in &source.skills {
-            let on = if skill.enabled { "on " } else { "off" };
-            text.push_str(&format!("  {on}  {} — {}", skill.name, skill.description));
-            if let Some(origin) = &skill.taken_by {
-                text.push_str(&format!(" (a skill of this name from {origin} is on)"));
-            }
-            text.push('\n');
+            table.row::<Cell>([
+                skill.name.as_str().into(),
+                source.origin.as_str().into(),
+                source.commit.as_deref().map(short).into(),
+                skill.enabled.into(),
+                skill.taken_by.as_deref().into(),
+                skill.description.as_str().into(),
+            ]);
         }
     }
-    Ok(Ok(text))
-}
-
-/// A source's line: its origin, then its commit, its failure, whether a
-/// fetch runs and whether an update is available.
-fn source_line(source: &SourceState) -> String {
-    let mut parts = vec![source.origin.clone()];
-    if let Some(commit) = &source.commit {
-        parts.push(format!("at {}", short(commit)));
-    }
-    if source.fetching {
-        parts.push("updating".into());
-    }
-    if let Some(failure) = &source.failure {
-        parts.push(format!("failed: {}", failure.message));
-    }
-    if source.update_available {
-        parts.push("update available".into());
-    }
-    format!("{}\n", parts.join(", "))
+    Ok(Ok(table.render()))
 }
 
 async fn add(state: &Rc<State>, args: SkillsArgs, port: &PluginPort) -> Result<Printed, PluginError> {

@@ -119,9 +119,9 @@ An empty message fails. `--profile` names one of the user's
 `--model` option: the model and the provider runtime come from the profile or
 the parent.
 
-With `--json`, `abort`, `send`, `show`, `list`, and `profiles list` return
-`{ id, aborted }`, `{ id, accepted }`, `{ agent }`, `{ tree }`, and
-`{ profiles }`, and `fork` returns `{ subagentId }` as `spawn` does; `models`, `profiles show` and the profile changes return what
+With `--json`, `abort` and `send` return `{ id, aborted }` and
+`{ id, accepted }`, `show` the agent as an object, `list` and `profiles
+list` arrays ([Output](../execution/commands.md#output)), and `fork` returns `{ subagentId }` as `spawn` does; `models`, `profiles show` and the profile changes return what
 [Managing profiles](#managing-profiles) gives them.
 
 ### Command help
@@ -378,37 +378,37 @@ nearest second.
 
 ### `demi agent list`
 
-Renders the session tree of this conversation from the root down, marking the
-caller's own position. Live agents show phase, elapsed and last-event ages,
-profile, description, execution, and activity, and are in spawn order, the
-order of their numbers.
-Each node's archived children follow its live ones, newest first, with their
-closed phase and age:
+Lists the agents of this conversation's tree as a table, the root first and
+then each agent in spawn order, the order of their numbers
+([Output](../execution/commands.md#output)). Elapsed and idle times are
+seconds, the spans that tell a working agent from a stuck one, since the
+caller has no other clock for the target:
 
 ```text
-● 0  (root session)
-├─● 1  running  up 4m  last-event 8s ago  profile=(inherit)  "refactor auth"  execution=provider_streaming  activity=streaming
-│ ├─● 3  running  up 1m  last-event 5s ago  profile=(inherit)  "search call sites"  execution=tool_executing  activity=grep call sites ← you
-│ └─○ 4  archived (completed 3m ago)  "update tests"
-└─● 2  running  up 2m  last-event 40s ago  profile=(inherit)  "write docs"  execution=waiting  activity=waiting
+ID  PARENT  STATUS   PROFILE  EXECUTION           ELAPSED (S)  IDLE (S)  DESCRIPTION
+0   -       running  -        -                   -            -         -
+1   0       running  -        provider_streaming  240          8         refactor auth
+3   1       running  -        tool_executing      60           5         search call sites
+2   0       running  -        waiting             120          40        write docs
 ```
 
-The root renders its identity only: it is not a `demi agent` job and has no
-supervisor telemetry. `--json` is `{ tree }`: the same nodes as a flat list in
-the same order. Each entry names its `subagentId`, `parentSessionId`, kind
-(`root`, `live`, or `archived`), description, profile, and phase; an archived
-entry carries `closedAgoMs`, and `self` marks the caller. Every age is relative
-to the query instant. It is a snapshot, not a wait, and not for polling loops.
+The root is listed for its place only: it is not a `demi agent` job and has
+no supervisor telemetry. Archived agents are listed with `--all`, with the
+status they closed with, `completed`, `error` or `aborted`. `--json` is the
+same agents as an array, each with its `id`, `parent`, kind
+(`root`, `live` or `archived`), description, profile, status, execution,
+activity, instants and spans, and `self: true` on the caller's own entry.
+It is a snapshot, not a wait, and not for polling loops.
 
 ### `demi agent show <id>`
 
 The session-content read, valid for any agent of the tree except the root.
-An archived child shows its description, its phase, how it closed
-(`completed`, `error` or `aborted`), how long ago, and its result or failure
-with the bound of a completion; the rest is for live agents. Every
-duration is relative to the query instant, never a wall-clock timestamp. The
-caller has no other clock for the target; this snapshot is how it tells motion
-from stall.
+An archived child shows its description, how it closed (`completed`,
+`error` or `aborted`), when, and its result or failure with the bound of a
+completion; the rest is for live agents. Points in time are instants, and
+the spans that tell motion from stall, elapsed, idle and how long the
+current execution has lasted, are seconds, since the caller has no other
+clock for the target.
 
 It returns only:
 
@@ -433,20 +433,26 @@ It returns only:
   long ago it was produced.
 
 ```text
-id: 5
-parent: 1
-description: check the token parser
-profile: (inherit)
-phase: running
-elapsed: 14m
-execution: tool_executing (for 12m)
-last-event: 12m ago
-activity: run the integration suite
-recent tool calls (last 2):
-  [completed in 3s, ended 12m ago] list call sites of parseToken
-  [executing for 12m] run the integration suite
-last assistant text (13m ago):
-Found 14 call sites; running the integration suite next.
+ID: 5
+Parent: 1
+Status: running
+Profile: -
+Description: check the token parser
+Directory: .
+Started: 2026-10-17T09:00:00Z
+Elapsed (s): 840
+Execution: tool_executing
+Execution for (s): 720
+Last event: 2026-10-17T09:02:00Z
+Idle (s): 720
+Activity: run the integration suite
+Recent tool calls:
+  STATUS     STARTED               DURATION (S)  ENDED                 TITLE
+  completed  2026-10-17T09:01:57Z  3             2026-10-17T09:02:00Z  list call sites of parseToken
+  executing  2026-10-17T09:02:00Z  720           -                     run the integration suite
+Last assistant text at: 2026-10-17T09:01:00Z
+Last assistant text:
+  Found 14 call sites; running the integration suite next.
 ```
 
 A target whose last event was 8 seconds ago is working. A `tool_executing`
@@ -454,8 +460,8 @@ state that has lasted 12 minutes on the same title is stuck. Counts without
 ages cannot tell those apart.
 
 It does not return tool output bodies, file contents, thinking, or older turns.
-A missing ID fails. `--json` is `{ agent }` with the same fields,
-durations as millisecond offsets from now.
+A missing ID fails. `--json` is the agent as an object with the same
+fields, instants as RFC 3339 and spans in milliseconds.
 
 `show` is for deciding the next action, such as `send` or `abort`. It is not a
 completion channel or a polling loop. The supervisor delivers completion
@@ -809,30 +815,35 @@ runtime, made for the child's model selection
 The model reads the settings when it runs `demi agent profiles list`, which the
 agent server answers at call time from the user's current settings:
 
-- While subagents are on: each enabled profile's name and description, in
-  name order, with what is missing for an unavailable one, or a line saying
-  that the user has no enabled profile and that children inherit. A disabled
-  profile is not listed.
-- While subagents are off: one line saying that subagents are turned off in
-  settings and that `demi agent spawn` fails until the user turns them on.
-  No profile is listed, since none can be used.
+- While subagents are on: a table of the profiles a spawn in this
+  conversation can use, in name order: those of the conversation's
+  workflow when it runs one, else each enabled profile of the user's; each
+  row names the profile, its source, the workflow's name or `user`, the
+  model it runs, `inherited` for the parent's, its effort, and its
+  description. A disabled profile is not listed.
+- While subagents are off: the header row alone, and a warning on stderr
+  that subagents are turned off in settings and that `demi agent spawn`
+  fails until the user turns them on.
 
 The command succeeds in both cases: it reports the settings, and off is a
-setting, not a failure. `--json` returns `{ enabled, profiles }`: `enabled`
-is the Subagent switch, and `profiles` is
-`[{ name, description, unavailable }]`, empty while subagents are off, where
-`unavailable` is null or the message a spawn would fail with. It shows
-neither the model nor the prompt of a profile; the description says what the
-user wants the model to know. Like `list` and `show`, it is a read that every
-node's group has, spawn-restricted or not.
+setting, not a failure. `--json` returns the profiles as an array, each with
+`unavailable` null or the message a spawn would fail with; an unavailable
+profile's row shows `-` for its model. `profiles show <name>` finds a
+profile the same way, the workflow's first, and prints every field,
+instructions included. `profiles create` in a conversation that runs a
+workflow creates the user's profile and warns that a spawn in that
+conversation takes only the workflow's. Like `list` and `show`, they are
+reads that every node's group has, spawn-restricted or not.
 
 ```text
 $ demi agent profiles list
-explore   Use for finding code, call sites and documentation; it reports and changes nothing.
-reviewer  Use to review a finished change before reporting it.
+NAME      SOURCE  MODEL            EFFORT  DESCRIPTION
+explore   user    claude-opus-5-5  low     Use for finding code, call sites and documentation; it reports and changes nothing.
+reviewer  user    inherited        -       Use to review a finished change before reporting it.
 
 $ demi agent profiles list # after the user turns subagents off
-Subagents are turned off in settings; demi agent spawn fails until the user turns them on.
+NAME  SOURCE  MODEL  EFFORT  DESCRIPTION
+demi agent profiles list: warning: subagents are turned off in settings; demi agent spawn fails until the user turns them on
 ```
 
 The prompt names the command rather than the list: the harness guide tells

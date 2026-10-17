@@ -62,7 +62,7 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
     let png = PNG.len();
     assert!(
         output.contains(&format!(
-            "a1  login.png    image/png      {png} bytes\na2  ../notes.md  text/markdown  8 bytes\n"
+            "ID  MEDIA TYPE     SIZE (BYTES)  PATH\na1  image/png      {png:<12}  login.png\na2  text/markdown  8             ../notes.md\n"
         )),
         "{output}"
     );
@@ -131,7 +131,7 @@ async fn upload_stores_each_file_as_the_next_attachment_and_names_each_one_it_ca
         .await;
     assert_eq!(
         shown_output(&again.received[0]),
-        "{\"attachments\":[{\"id\":\"a3\",\"path\":\"notes.md\",\"mediaType\":\"text/markdown\",\"size\":8}]}\n"
+        "[{\"id\":\"a3\",\"path\":\"notes.md\",\"mediaType\":\"text/markdown\",\"size\":8}]\n"
     );
     let kept = backend
         .get(&format!("/api/blobs/{}", first.blob), Some(&master))
@@ -218,7 +218,7 @@ async fn a_job_on_an_attached_host_uploads_that_hosts_file() {
     let result = &uploaded.received[0];
     assert_eq!(
         shown_output(result),
-        format!("a1  shot.png  image/png  {} bytes\n", PNG.len()),
+        format!("ID  MEDIA TYPE  SIZE (BYTES)  PATH\na1  image/png   {:<12}  shot.png\n", PNG.len()),
         "{result}"
     );
     let attachment: ConversationAttachment = backend.get(&attachment, Some(&master)).await.json();
@@ -250,7 +250,7 @@ async fn a_file_uploaded_again_is_hashed_on_the_host_and_its_bytes_not_read_agai
             .await;
         assert_eq!(
             shown_output(&uploaded.received[0]),
-            format!("{number}  shot.png  image/png  {} bytes\n", PNG.len())
+            format!("ID  MEDIA TYPE  SIZE (BYTES)  PATH\n{number}  image/png   {:<12}  shot.png\n", PNG.len())
         );
     }
     // The file's bytes went to the backend once, the first time.

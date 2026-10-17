@@ -19,8 +19,7 @@ fn two_queries_printed() -> String {
         "{UNTRUSTED}\n\n\
          1. Announcing Vite 7 · vite.dev · 2026-06-24\n   https://www.vite.dev/blog/announcing-vite7\n   Vite 7 makes Rolldown the default bundler for build.\n   {long}\n   Third line.\n\
          2. Announcing Rolldown 1.0 · voidzero.dev\n   https://voidzero.dev/posts/announcing-rolldown-1-0\n   Rolldown reached 1.0.\n\
-         3. v1.0.1 · github.com · 2026-05-08\n   https://github.com/rolldown/rolldown/releases/tag/v1.0.1\n\n\
-         Cite the pages you use as Markdown links.\n"
+         3. v1.0.1 · github.com · 2026-05-08\n   https://github.com/rolldown/rolldown/releases/tag/v1.0.1\n"
     )
 }
 
@@ -200,12 +199,12 @@ fn json_lists_the_pages_and_nothing_found_says_so() {
         let printed: Value = serde_json::from_str(&stdout).unwrap();
         assert_eq!(
             printed,
-            json!({ "results": [{
+            json!([{
                 "title": "Announcing Rolldown 1.0",
                 "url": "https://voidzero.dev/posts/announcing-rolldown-1-0",
                 "published": null,
                 "highlights": ["Rolldown reached 1.0."],
-            }] })
+            }])
         );
         let (code, stdout, _) = plugged.run(&["web", "search", "nothing at all"]).await;
         assert_eq!((code, stdout.as_str()), (0, "No pages found. Try other words or fewer filters.\n"));

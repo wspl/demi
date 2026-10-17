@@ -10,6 +10,7 @@
 //! The model is the scripted family of the subagent scenarios; the device
 //! is a real runner. No test calls a real model.
 
+use crate::agent_profiles::assert_shows;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -171,11 +172,11 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
     assert_eq!(answered.status, StatusCode::NO_CONTENT, "{}", String::from_utf8_lossy(&answered.body));
     socket.until_idle().await;
     let returned = last_asked(&scripts, FIRST);
-    assert!(
-        returned.contains(
-            "Saved credential \u{201c}Deploy key\u{201d} (key: secret, user: visible), kept for 1 day."
-        ),
-        "{returned}"
+    // What was saved, as labelled lines: never a value.
+    assert_shows(&returned, "Name: Deploy key\nKeep until: ");
+    assert_shows(
+        &returned,
+        "Allowed: yes\nFields:\n  NAME  KIND     VALUE  LABEL\n  key   secret   -      API key\n  user  visible  -      User\n",
     );
     assert!(returned.contains("exit=0"), "{returned}");
     assert_eq!(std::fs::read_to_string(format!("{root}/key.txt")).unwrap(), SECRET);
@@ -205,8 +206,13 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
     );
     socket.chat("m2", "What credentials are there?").await;
     let shown = last_asked(&scripts, FIRST);
-    assert!(shown.contains("user (visible: User): alex"), "{shown}");
-    assert!(shown.contains("this conversation may use it"), "{shown}");
+    // A row per credential; one credential as labelled lines, its fields
+    // a table, the visible value shown and the secret one never.
+    assert_shows(&shown, "NAME        FIELDS    KEEP UNTIL            ALLOWED\nDeploy key  key,user  ");
+    assert_shows(
+        &shown,
+        "Allowed: yes\nFields:\n  NAME  KIND     VALUE  LABEL\n  key   secret   -      API key\n  user  visible  alex   User\nNote:\n  To deploy the site\n",
+    );
     assert!(shown.contains(r#"\"value\":\"alex\""#), "{shown}");
     assert!(!shown.contains(SECRET), "{shown}");
 

@@ -91,14 +91,27 @@ async fn a_chosen_workflows_profiles_replace_the_users_and_one_whose_model_no_en
     *fixture.product.workflow.borrow_mut() = review_team();
     let mut client = fixture.opened().await;
 
+    let unavailable = "profile \"slow\" is unavailable: no provider entry of the user's offers model \"deep-model\"; change the profile's model in /p/.demi/workflows/review.yaml, or ask the user to add a provider that offers it";
     let (text, listing) = both(&fixture, "profiles list", json!({})).await;
     assert_eq!(
         text,
-        "Workflow Review Team:\nexplore  Finds code.\nslow     Thinks long.\n         profile \"slow\" is unavailable: no provider entry of the user's offers model \"deep-model\"; change the profile's model in /p/.demi/workflows/review.yaml, or ask the user to add a provider that offers it\n"
+        "NAME     SOURCE       MODEL       EFFORT  DESCRIPTION\nexplore  Review Team  fast-model  -       Finds code.\nslow     Review Team  -           -       Thinks long.\n"
     );
-    assert_eq!(listing["enabled"], json!(true));
-    assert_eq!(listing["choice"], json!({ "type": "workflow", "id": "review" }));
-    assert_eq!(listing["workflow"], json!("Review Team"));
+    assert_eq!(
+        listing[1],
+        json!({ "name": "slow", "workflow": "Review Team", "model": null, "effort": null, "inherited": false, "description": "Thinks long.", "unavailable": unavailable })
+    );
+    // Every profile the list names, show finds: the workflow's, not only
+    // the user's settings', which once told "no profile" for each.
+    let (shown, json) = both(&fixture, "profiles show", json!({ "name": "slow" })).await;
+    assert_eq!(
+        shown,
+        format!("Name: slow\nSource: Review Team\nDescription: Thinks long.\nStatus: unavailable\nUnavailable: {unavailable}\nModel: -\nProvider: -\nEffort: -\nTier: -\nContext (tokens): -\nSpawning: no\nEnabled: yes\nInstructions: -\n")
+    );
+    assert_eq!(json["workflow"], "Review Team");
+    let (shown, _) = both(&fixture, "profiles show", json!({ "name": "explore" })).await;
+    assert!(shown.contains("\nModel: fast-model\n") && shown.contains("\nContext (tokens): 300000\n"), "{shown}");
+    assert!(shown.ends_with("Instructions:\n  Read and report.\n"), "{shown}");
 
     // The user's profiles are not this conversation's.
     assert_eq!(
@@ -142,13 +155,19 @@ async fn no_subagents_and_an_unavailable_workflow_refuse_every_spawn_with_their_
     for args in [json!({ "prompt": "task x" }), json!({ "prompt": "task x", "profile": "explore" })] {
         assert_eq!(refused_spawn(&fixture, args).await, off);
     }
-    let (text, listing) = both(&fixture, "profiles list", json!({})).await;
+    // Why nothing is listed is a warning on stderr; stdout is the empty
+    // table.
+    let listed = agent(&fixture.server, &root(), "profiles list", json!({})).await;
     assert_eq!(
-        text,
-        "Subagents are turned off for this conversation; demi agent spawn fails until the user chooses Global Workflow or a workflow in the composer's Workflow menu.\n"
+        (listed.code, listed.stdout.as_str(), listed.stderr.as_str()),
+        (
+            0,
+            "NAME  SOURCE  MODEL  EFFORT  DESCRIPTION\n",
+            "demi agent profiles list: warning: subagents are turned off for this conversation; demi agent spawn fails until the user chooses Global Workflow or a workflow in the composer's Workflow menu\n"
+        )
     );
-    assert_eq!(listing["enabled"], json!(false));
-    assert_eq!(listing["choice"], json!({ "type": "none" }));
+    let (_, listing) = both(&fixture, "profiles list", json!({})).await;
+    assert_eq!(listing, json!([]));
 
     *fixture.product.workflow.borrow_mut() = ConversationProfiles::Unavailable {
         id: "review".into(),
@@ -158,10 +177,10 @@ async fn no_subagents_and_an_unavailable_workflow_refuse_every_spawn_with_their_
         refused_spawn(&fixture, json!({ "prompt": "task x" })).await,
         "demi agent spawn: this conversation's workflow \"review\" is unavailable: it is no longer in the project's .demi/workflows/; do this work in this session, or ask the user to choose another in the composer's Workflow menu.\n"
     );
-    let (text, _) = both(&fixture, "profiles list", json!({})).await;
+    let listed = agent(&fixture.server, &root(), "profiles list", json!({})).await;
     assert_eq!(
-        text,
-        "This conversation's workflow \"review\" is unavailable: it is no longer in the project's .demi/workflows/; demi agent spawn fails until the user chooses another in the composer's Workflow menu.\n"
+        listed.stderr,
+        "demi agent profiles list: warning: this conversation's workflow \"review\" is unavailable: it is no longer in the project's .demi/workflows/; demi agent spawn fails until the user chooses another in the composer's Workflow menu\n"
     );
     assert!(fixture.store.numbered(1).is_none());
     assert!(model.requests().is_empty());
@@ -196,20 +215,32 @@ async fn workflows_list_marks_the_choice_and_check_names_the_line_and_field_that
     ]);
     let _client = fixture.opened().await;
 
-    let (text, _) = both(&fixture, "workflows list", json!({})).await;
+    let (text, listing) = both(&fixture, "workflows list", json!({})).await;
     assert_eq!(
         text,
-        "Workflows in /p/.demi/workflows; this conversation uses the workflow Review Team (review).\n  docs    Docs Review\n* review  Review Team\n"
+        "ID      CURRENT  STATUS     PATH                            NAME\ndocs    no       available  /p/.demi/workflows/docs.yaml    Docs Review\nreview  yes      available  /p/.demi/workflows/review.yaml  Review Team\n"
     );
+    assert_eq!(listing[1], json!({ "id": "review", "name": "Review Team", "path": "/p/.demi/workflows/review.yaml", "current": true, "unavailable": null }));
 
     let good = agent(&fixture.server, &root(), "workflows check", json!({ "file": ".demi/workflows/docs.yaml" })).await;
     assert_eq!(good.code, 0, "{good:?}");
-    assert_eq!(good.stdout, ".demi/workflows/docs.yaml reads: Docs Review, profiles reader.\n");
+    assert_eq!(
+        good.stdout,
+        "File: .demi/workflows/docs.yaml\nName: Docs Review\nProfiles:\n  ID      DESCRIPTION\n  reader  Reads the docs.\n"
+    );
+    let (_, checked) = both(&fixture, "workflows check", json!({ "file": ".demi/workflows/docs.yaml" })).await;
+    assert_eq!(
+        checked,
+        json!({ "file": ".demi/workflows/docs.yaml", "name": "Docs Review", "profiles": [{ "id": "reader", "description": "Reads the docs." }], "warning": null })
+    );
     let task_title = agent(&fixture.server, &root(), "workflows check", json!({ "file": ".demi/workflows/port.yaml" })).await;
     assert_eq!(task_title.code, 0, "{task_title:?}");
     assert_eq!(
-        task_title.stdout,
-        ".demi/workflows/port.yaml reads: Payments: lead + worker, no profiles.\nWarning: the name Payments: lead + worker has a colon, a plus sign or brackets; the Workflow menu shows it as a menu item, the way of working in a few words, such as Review Team or Parallel Development.\n"
+        (task_title.stdout.as_str(), task_title.stderr.as_str()),
+        (
+            "File: .demi/workflows/port.yaml\nName: Payments: lead + worker\nProfiles:\n  ID  DESCRIPTION\n",
+            "demi agent workflows check: warning: the name Payments: lead + worker has a colon, a plus sign or brackets; the Workflow menu shows it as a menu item, the way of working in a few words, such as Review Team or Parallel Development.\n"
+        )
     );
     let bad = agent(&fixture.server, &root(), "workflows check", json!({ "file": ".demi/workflows/bad.yaml" })).await;
     assert!(

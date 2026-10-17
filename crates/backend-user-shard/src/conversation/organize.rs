@@ -10,11 +10,12 @@ use std::rc::{Rc, Weak};
 use demi_backend_database::conversation_index::RecordChange;
 use demi_backend_host_access::host_commands::conversation_of;
 use demi_host_interface::{Call, GroupBuilder, LeafBuilder, RpcError, RpcPort, TypedRpc};
+use demi_shared_types::output::Table;
 use demi_web_api_protocol::conversations::TITLE_MAX;
 use demi_web_api_protocol::text::Trimmed;
 use futures_util::future::LocalBoxFuture;
 use schemars::JsonSchema;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use super::history::history_group;
 use crate::shard::Shard;
@@ -34,7 +35,7 @@ const ENTRY: &str = "Renames this conversation and lists the user's projects, ea
 
 const RENAME_SUMMARY: &str = "Rename this conversation, as its title in the user's sidebar.";
 
-const PROJECTS_SUMMARY: &str = "The user's projects: name, id, Host, directory.";
+const PROJECTS_SUMMARY: &str = "List the user's projects: id, Host, directory and name.";
 
 
 /// The input of `demi conversation rename`.
@@ -67,6 +68,7 @@ pub(crate) fn conversation_group(shard: Weak<Shard>) -> GroupBuilder {
             LeafBuilder::rpc("projects", PROJECTS_SUMMARY)
                 .input::<NoArgs>()
                 .permission(ORGANIZE)
+                .json_output::<Vec<ListedProject>>()
                 .bind(TypedRpc::new(verb(shard.clone(), projects))),
         )
         .group(history_group(shard))
@@ -113,25 +115,47 @@ async fn rename(shard: Rc<Shard>, call: Call<RenameArgs>, port: RpcPort) -> Resu
     Ok(0)
 }
 
-async fn projects(shard: Rc<Shard>, _call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
+/// A project as `demi conversation projects` lists it.
+#[derive(Serialize, JsonSchema)]
+struct ListedProject {
+    id: String,
+    name: String,
+    /// The name of the Host it is on.
+    host: String,
+    /// Its directory on that Host.
+    directory: String,
+}
+
+async fn projects(shard: Rc<Shard>, call: Call<NoArgs>, port: RpcPort) -> Result<u8, RpcError> {
     let workspaces = shard
         .services()
         .control
         .workspaces(shard.user().clone())
         .await
         .map_err(failed)?;
-    if workspaces.is_empty() {
-        port.stdout("The user has no projects.\n").await?;
+    let mut projects = Vec::new();
+    for workspace in &workspaces {
+        projects.push(ListedProject {
+            id: workspace.id.to_string(),
+            name: workspace.name.clone(),
+            host: shard.host_name(&workspace.device).await,
+            directory: workspace.path.clone(),
+        });
+    }
+    if call.invocation.json {
+        let text = serde_json::to_string(&projects).map_err(failed)?;
+        port.stdout(text + "\n").await?;
         return Ok(0);
     }
-    let mut lines = Vec::new();
-    for workspace in &workspaces {
-        let host = shard.host_name(&workspace.device).await;
-        lines.push(format!(
-            "{}  {}  {host}  {}",
-            workspace.name, workspace.id, workspace.path
-        ));
+    let mut table = Table::new(["id", "host", "directory", "name"]);
+    for project in &projects {
+        table.row([
+            project.id.as_str(),
+            project.host.as_str(),
+            project.directory.as_str(),
+            project.name.as_str(),
+        ]);
     }
-    port.stdout(format!("{}\n", lines.join("\n"))).await?;
+    port.stdout(table.render()).await?;
     Ok(0)
 }

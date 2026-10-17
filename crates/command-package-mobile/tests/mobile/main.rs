@@ -151,6 +151,13 @@ impl Mobile {
         collect(output).await
     }
 
+    /// `demi mobile <operation>` without `--json`, as its agent runs it.
+    pub async fn run_text(&self, conversation: &str, operation: &str, args: Value) -> Answer {
+        let (_input, output) =
+            self.invoke(conversation, operation, args, CommandCaller::agent(1), None).await;
+        collect(output).await
+    }
+
     /// The agent's operation, started: the caller may cancel it, as the
     /// runner does when the agent's command is interrupted.
     pub async fn begin(
@@ -159,6 +166,17 @@ impl Mobile {
         operation: &str,
         args: Value,
         caller: CommandCaller,
+    ) -> (demi_command_sdk::CommandInput, demi_command_sdk::CommandOutput) {
+        self.invoke(conversation, operation, args, caller, Some(true)).await
+    }
+
+    async fn invoke(
+        &self,
+        conversation: &str,
+        operation: &str,
+        args: Value,
+        caller: CommandCaller,
+        json: Option<bool>,
     ) -> (demi_command_sdk::CommandInput, demi_command_sdk::CommandOutput) {
         let request = Invocation {
             operation: format!("mobile.{operation}"),
@@ -177,7 +195,7 @@ impl Mobile {
             cwd: self.root.path().to_str().unwrap().into(),
             env: BTreeMap::new(),
             edits: None,
-            json: Some(true),
+            json,
             live_input: None,
             viewable: None,
         };

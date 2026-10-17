@@ -21,7 +21,7 @@ use super::{
     profile_commands::{PROFILES_CATEGORY, profiles_group},
     workflow_commands::workflows_group,
     shell_output::shell_group,
-    tree::{ShownAgent, StartInput, Tree, TreeEntry},
+    tree::{ShownAgent, StartInput, Tree, TreeEntry, list_text},
 };
 
 /// The one description of a spawn's brief (`subagents.md` § Command help).
@@ -40,14 +40,14 @@ const FORK_SUMMARY: &str = "Start a new child from what one of your own children
 /// How to write a fork's message, the field it reads from stdin.
 const FORK_MESSAGE: &str = "The fork's next user message, which it reads after the source's history: what to do now with what the source found, such as \"Fix it as you described\", with what the source did not know (where to work, which branch, what to verify) and the exact shape of the last assistant text it should return.";
 
-const LIST_SUMMARY: &str = "Render the whole session tree from the root down, marking your own position. Live agents show phase, ages, execution, and activity; each node's archived (finished, revivable by its parent) children render beneath it. Every age is relative to now. A read, not a wait — not for polling loops.";
+const LIST_SUMMARY: &str = "List the agents of this conversation's tree from the root down, each node's children after it: status, profile, execution, seconds since start and since the last event, and description; --all adds the archived children (finished, revivable by their parent). A read, not a wait — not for polling loops.";
 
 /// The `--profile` option's description, which names no profile: the help
 /// is rendered once per tree, and the profiles change with the user's
 /// settings (`subagents.md` § Command help).
 const PROFILE_OPTION: &str = "The name of one of the user's subagent profiles. Without it the child inherits your model, prompt, Host and commands; `demi agent profiles list` lists the profiles, with when to use each, that may fit the task better.";
 
-const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state, recent tool titles with durations, last assistant text; for an archived one, how and when it closed with its result or failure. Every duration is relative to now — use the ages to tell motion from stall. Omits tool outputs, file contents, and older turns. Several ids show each in order; --json takes one. A read, not a wait — not for polling loops.";
+const SHOW_SUMMARY: &str = "Bounded snapshot of any agent in the tree (root excluded): for a live one, execution state, recent tool titles with durations, last assistant text; for an archived one, how and when it closed with its result or failure. Idle (s), the seconds since its last event, and Execution for (s) tell motion from stall. Omits tool outputs, file contents, and older turns. Several ids show each in order; --json takes one. A read, not a wait — not for polling loops.";
 
 /// The input of `demi agent spawn`.
 #[derive(Deserialize, JsonSchema)]
@@ -114,10 +114,13 @@ struct ForkArgs {
     description: Option<String>,
 }
 
-/// The input of `demi agent list`, which takes none.
+/// The input of `demi agent list`.
 #[derive(Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-struct ListArgs {}
+struct ListArgs {
+    /// Also list the archived children, which only history keeps.
+    all: Option<bool>,
+}
 
 /// The input of `demi agent show`.
 #[derive(Deserialize, JsonSchema)]
@@ -153,17 +156,6 @@ struct Aborted {
     aborted: bool,
 }
 
-/// `demi agent list --json`.
-#[derive(Serialize, JsonSchema)]
-struct Listing {
-    tree: Vec<TreeEntry>,
-}
-
-/// `demi agent show --json`.
-#[derive(Serialize, JsonSchema)]
-struct Shown {
-    agent: ShownAgent,
-}
 
 /// A node's commands: the product's, with the `demi agent` and `demi shell`
 /// groups grafted under a `demi` group, replacing any `agent` or `shell`
@@ -213,7 +205,6 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
                 .describe("profile", PROFILE_OPTION)
                 .stdin_field("prompt")
                 .success_output("stdout is \"subagentId: <id>\"; creation succeeded, not necessarily execution")
-                .failure_output("non-zero exit with the creation failure reason on stderr")
                 .json_output::<Started>()
                 .bind(TypedRpc::new(verb(server.clone(), spawn))),
         );
@@ -257,7 +248,6 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
                     .describe("profile", PROFILE_OPTION)
                     .stdin_field("message")
                     .success_output("stdout is \"subagentId: <id>\", the new child's; creation succeeded, not necessarily execution")
-                    .failure_output("non-zero exit with the creation failure reason on stderr")
                     .json_output::<Started>()
                     .bind(TypedRpc::new(verb(server.clone(), fork))),
             );
@@ -265,14 +255,15 @@ fn agent_group<H: HostResolver>(server: Weak<AgentServer<H>>, can_spawn: bool) -
     group
         .leaf(
             LeafBuilder::rpc("list", LIST_SUMMARY)
-                .json_output::<Listing>()
+                .input::<ListArgs>()
+                .json_output::<Vec<TreeEntry>>()
                 .bind(TypedRpc::new(verb(server.clone(), list))),
         )
         .leaf(
             LeafBuilder::rpc("show", SHOW_SUMMARY)
                 .input::<ShowArgs>()
                 .positionals(["id"])
-                .json_output::<Shown>()
+                .json_output::<ShownAgent>()
                 .bind(TypedRpc::new(verb(server.clone(), show))),
         )
         .group(profiles_group(server.clone()))
@@ -474,16 +465,11 @@ async fn list<H: HostResolver>(call: Invoked<H, ListArgs>, port: RpcPort) -> Res
         Ok(listing) => listing,
         Err(error) => return fail(&error),
     };
+    let entries = listing.entries(&call.caller, call.args.all == Some(true));
     if call.json {
-        return json(
-            &port,
-            &Listing {
-                tree: listing.entries(&call.caller),
-            },
-        )
-        .await;
+        return json(&port, &entries).await;
     }
-    out(&port, format!("{}\n", listing.render(&call.caller))).await
+    out(&port, list_text(&entries)).await
 }
 
 async fn show<H: HostResolver>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Result<u8, RpcError> {
@@ -504,7 +490,7 @@ async fn show<H: HostResolver>(call: Invoked<H, ShowArgs>, port: RpcPort) -> Res
             }
         };
         if call.json {
-            return json(&port, &Shown { agent: snapshot }).await;
+            return json(&port, &snapshot).await;
         }
         out(&port, text).await?;
     }

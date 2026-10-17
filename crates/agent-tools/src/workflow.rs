@@ -50,7 +50,7 @@ Fields:
     description   When an agent should use it: one line of 1 to 500 characters, which demi agent profiles list shows. Required.
     instructions  Added to the child's system prompt after Demi's own: what this kind of subagent is for and how it works. Up to 65,536 characters. Optional.
     spawning      true lets its children spawn children of their own. Optional, false by default.
-    model         A model id demi providers list lists; the first of the user's provider entries that offers it serves it. Optional: without it, the child runs on its parent's model.
+    model         A model id of an entry demi providers show shows; the first of the user's provider entries that offers it serves it. Optional: without it, the child runs on its parent's model.
     effort        An effort the model lists, or off for no thinking. Optional, the model's first effort by default; needs model.
     tier          A service tier the model offers, such as fast. Optional, the vendor's default tier by default; needs model.
     context       The context window its children use: full, 500K, 300K or 200K, as the model offers them, or default for the user's context limit on the model. Optional, default by default; any but default needs model.

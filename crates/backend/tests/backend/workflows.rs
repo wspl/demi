@@ -53,6 +53,13 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
     let alpha = backend.pair(&master, "alpha").await;
     let provider = anthropic_at(&backend, &master, &vendor, "/alpha").await;
     create(&backend, &master, FIRST).await;
+    harness
+        .control_database()
+        .execute(
+            "INSERT INTO permission_grants (conversation_id, category, granted_at) VALUES (?1, 'agent.profiles', 1)",
+            [FIRST],
+        )
+        .unwrap();
 
     let repo = alpha.runner.home_dir().join("repo");
     let web = repo.join("web");
@@ -137,7 +144,11 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
     );
     let turn = work
         .turn(vec![
-            shell("t1", "demi agent profiles list; demi agent spawn --profile slow <<< 'Think'", 15_000),
+            shell(
+                "t1",
+                "demi agent profiles list; demi agent spawn --profile slow <<< 'Think'; demi agent profiles create mine --description Mine. </dev/null",
+                15_000,
+            ),
             say("listed"),
         ])
         .await;
@@ -166,7 +177,17 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
         "profile \"slow\" is unavailable: no provider entry of the user's offers model \"nowhere-model\"; change the profile's model in {review}, or ask the user to add a provider that offers it"
     );
     let received = &turn.received[0];
-    assert!(received.contains("Workflow Review Team:\nexplore  Finds code.\nslow     Thinks long.\n"), "{received}");
+    assert!(
+        received.contains("NAME     SOURCE       MODEL            EFFORT  DESCRIPTION\nexplore  Review Team  claude-opus-4-8  low     Finds code.\nslow     Review Team  -                -       Thinks long.\n"),
+        "{received}"
+    );
+    // A profile made here is the user's, which no spawn here takes: the
+    // command says so.
+    assert!(received.contains("Name: mine\nSource: user\n"), "{received}");
+    assert!(
+        received.contains("demi agent profiles create: warning: this conversation runs workflow Review Team, so demi agent spawn here takes only its profiles; \"mine\" is for the user's other conversations"),
+        "{received}"
+    );
     assert!(received.contains(&format!("demi agent spawn: {unavailable}")), "{received}");
 
     // No Subagents: the workflow leaves the block, and spawns fail.
