@@ -722,6 +722,18 @@ Every family that refreshes follows one protocol:
    use the stored tokens. On failure, read again: if the version moved, use the
    tokens the winner stored; if not, report the failure.
 
+A refresh that has asked the vendor runs to its end apart from whoever asked
+for it: a caller that goes away, a page whose connection drops or a command
+that is cancelled, stops waiting, and the refresh still stores what the
+vendor answered; a backend shutting down waits for the refreshes under
+way to store their answers before it closes. A refresh gives the vendor
+60 seconds to answer, as the inference client sets no deadline of its own. The vendor may have spent the old refresh token the moment
+it answered, so a dropped answer would leave only a dead token behind. For
+example, on 16 October a page asked for the Exa sign-in's state, which
+renewed its token; the page's connection dropped 86 ms later, the renewal
+was dropped with it, and the page's next connection renewed with the spent
+token and was refused.
+
 The versioned replace is what keeps the workers of a multi-worker deployment,
 and the users of a shared account, from invalidating each other's tokens. The
 refresh turn only saves needless vendor calls within one backend.

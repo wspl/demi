@@ -59,6 +59,10 @@ impl AuthFailure {
         match error {
             RenewError::Account(error) => Self::of_account(family, error),
             RenewError::Refresh(message) => Self::new(family, AuthReason::Refresh(message)),
+            RenewError::Unanswered => Self::new(
+                family,
+                AuthReason::Refresh(format!("{family} did not answer the token refresh in time")),
+            ),
         }
     }
 
