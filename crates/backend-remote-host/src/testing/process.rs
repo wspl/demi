@@ -49,7 +49,12 @@ pub const SERVICE_MANAGER_CALLS: &str = "service-manager-calls";
 /// the background, as the manager's runner; loading an agent starts none,
 /// where launchd's would find the lock held and end, so that no runner of
 /// the stand-in's outlives the test's. With `DEMI_TEST_MANAGER_REFUSES`
-/// set, it refuses every command. On Windows it answers every command with
+/// set, it refuses every command that would start the runner (a kickstart,
+/// loading an agent, `systemctl --user start` or `restart`) and does every
+/// other command, as a
+/// manager that registered the installation but cannot start it: refusing
+/// every command would fail the registration on Linux, where the runner
+/// then never asks for a start. On Windows it answers every command with
 /// success.
 pub fn service_manager_stand_in(directory: &Path) -> PathBuf {
     #[cfg(unix)]
@@ -57,16 +62,18 @@ pub fn service_manager_stand_in(directory: &Path) -> PathBuf {
         const SCRIPT: &str = r#"#!/bin/sh
 here=$(dirname "$0")
 printf '%s\n' "$*" >> "$here/service-manager-calls"
-# A test names a manager that refuses every command.
-[ -z "$DEMI_TEST_MANAGER_REFUSES" ] || exit 1
+# A test names a manager that refuses to start the runner: launchd's
+# loading starts the agent's runner, as its kickstart does.
+refuses() { [ -n "$DEMI_TEST_MANAGER_REFUSES" ] && exit 1; }
 start() {
+  refuses
   if [ -x "$DEMI_HOME/run" ]; then
     DEMI_SUPERVISED=1 "$DEMI_HOME/run" run --log < /dev/null > /dev/null 2>&1 &
   fi
 }
 case "$1 $2" in
   'launchctl print') test -e "$here/loaded" ;;
-  'launchctl bootstrap') : > "$here/loaded" ;;
+  'launchctl bootstrap') refuses; : > "$here/loaded" ;;
   'launchctl bootout') rm -f "$here/loaded" ;;
   'launchctl kickstart') test -e "$here/loaded" && start ;;
   'systemctl --user') case "$3" in start|restart) start ;; esac ;;
