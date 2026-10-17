@@ -16,6 +16,8 @@ import { ICON_PX } from './icon-metrics'
 import { disabledTooltip } from './disabled'
 import { focusByPage } from './focus-by-page'
 import type { SentenceText, TitleText } from './ui-text'
+import InlineDetail from './InlineDetail.vue'
+import type { InlineDetailText } from './inline-detail'
 import {
   createSubmenuController,
   menuLayoutKey,
@@ -34,6 +36,14 @@ defineOptions({ inheritAttrs: false })
 const props = withDefaults(defineProps<{
   icon?: Component
   label?: TitleText
+  /**
+   * What the label stands for, after it on the same line and baseline,
+   * smaller and in the secondary color, as a field's (InlineDetail): what
+   * Automatic resolves to, in brackets, or an entry's account. The row
+   * keeps its height; the detail truncates first, the label only once the
+   * detail is gone.
+   */
+  detail?: InlineDetailText
   /**
    * A muted word at the row's end, right-aligned, with no parentheses: a
    * setting's value (`Medium`), a state (`Offline`) or a path (`LAN`).
@@ -296,7 +306,10 @@ const toneClass = computed(() => {
       </span>
       <span class="menu-cell-label on-fill" :class="faded ? 'faded' : ''">
         <slot>
-          <span class="min-w-0 truncate"><HighlightText :text="label ?? ''" :indexes="typedPrefix" /></span>
+          <InlineDetail v-if="detail" :detail="detail">
+            <span class="min-w-0 overflow-clip text-ellipsis whitespace-nowrap"><HighlightText :text="label ?? ''" :indexes="typedPrefix" /></span>
+          </InlineDetail>
+          <span v-else class="min-w-0 truncate"><HighlightText :text="label ?? ''" :indexes="typedPrefix" /></span>
         </slot>
       </span>
       <TruncatedText v-if="value" class="menu-cell-value text-right text-fg-subtle" :class="{ 'opacity-60': valueFaint }" :text="value" />

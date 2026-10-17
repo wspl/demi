@@ -7,6 +7,7 @@ import type { SettingsProviderEntry } from '@demicodes/web-ui/settings/types'
 import { demoProviders } from '../fixtures/catalog'
 import { mockProviders } from '../fixtures/settings'
 import { galleryMessages } from '../fixtures/send-while-running'
+import { productWould } from '../product-would'
 import {
   galleryAutomaticImageEntries,
   galleryAutomaticModel,
@@ -49,5 +50,6 @@ const imageVendors = computed(() => {
     :catalog-models="smallModelCatalog"
     :automatic-model="galleryAutomaticModel(state)"
     :image-vendors="imageVendors"
+    @add-provider="productWould('Open Settings › Providers')"
   />
 </template>

@@ -4,6 +4,7 @@ import type { OverlayStore } from '../overlay/overlayStore'
 import { disabledTooltip } from './disabled'
 import Popover from './Popover.vue'
 import DropdownTrigger from './DropdownTrigger.vue'
+import type { InlineDetailText } from './inline-detail'
 import type { DropdownSize, DropdownVariant } from './DropdownTrigger.vue'
 import { menuRootKey } from './menu-context'
 import Tooltip from './Tooltip.vue'
@@ -49,6 +50,8 @@ const props = withDefaults(defineProps<{
   disabledReason?: SentenceText
   /** A `field` trigger wants `fill`. */
   width?: DropdownWidth
+  /** What a `field` trigger's value stands for, after it in smaller secondary text (DropdownTrigger). */
+  detail?: InlineDetailText
 }>(), {
   side: 'bottom',
   offset: 4,
@@ -100,13 +103,13 @@ defineExpose({ open, close })
 </script>
 
 <template>
-  <!-- A button-style dropdown is a field (`data-field`): a settings row that has
+  <!-- A button-style or field dropdown is a field (`data-field`): a settings row that has
        dropped it under the label stretches it across the row. -->
   <Tooltip
     :content="tooltipContent"
     :disabled="!tooltipContent"
     tag="div"
-    :data-field="props.variant === 'default' || undefined"
+    :data-field="props.variant === 'default' || props.variant === 'field' || undefined"
     class="relative"
     :class="widthClasses.wrapper"
     :open-delay-ms="80"
@@ -125,6 +128,7 @@ defineExpose({ open, close })
           :size="props.size"
           :aria-label="props.triggerLabel"
           :disabled="props.disabled"
+          :detail="props.detail"
           class="w-full"
         >
           <slot name="trigger" :is-open="isOpen" />

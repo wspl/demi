@@ -484,7 +484,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Agent · Only the Conversation’s Provider"
-        note="With small requests kept on the conversation’s provider, the page cannot know which model Automatic resolves to, so it reads Automatic alone. Turning the switch off names it again."
+        note="With small requests kept on the conversation’s provider, the page cannot know which model Automatic resolves to, so it reads Automatic alone. Turning the switch off names it again, after Automatic in smaller secondary text. Image Generation always has its three rows: OpenAI reads Automatic (Codex), the entry’s name alone, and its menu names each entry’s account after it; Google, for which no entry makes images, and xAI, whose one entry has Image Generation off, read Automatic (Not available), and their menus offer Add Provider…, which opens Settings › Providers."
       >
         <div class="max-w-3xl rounded-xl border border-line bg-surface p-6">
           <GalleryAgent :state="smallModelSameProvider" />

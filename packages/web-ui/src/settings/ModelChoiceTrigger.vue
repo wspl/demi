@@ -20,7 +20,8 @@ defineProps<{
   <span class="flex min-w-0 items-center gap-1.5">
     <TriangleAlert v-if="missing" :size="ICON_PX.in24" class="shrink-0 text-on-warning" :aria-label="missing" />
     <span class="flex min-w-0 items-center gap-1">
-      <span class="min-w-0 truncate">{{ label.name }}</span>
+      <!-- Clipped, not hidden, so the name keeps its text baseline beside an inline detail (InlineDetail). -->
+      <span class="min-w-0 overflow-clip text-ellipsis whitespace-nowrap">{{ label.name }}</span>
       <span v-if="label.effort" class="shrink-0 text-fg-subtle">{{ label.effort }}</span>
       <Zap v-if="label.fast" :size="ICON_PX.in24" class="shrink-0" :aria-label="t('profile.fast')" />
     </span>
