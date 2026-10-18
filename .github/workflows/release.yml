@@ -148,8 +148,8 @@ jobs:
           # only by its hash.
           security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
           runner=".cache/native-target/${{ matrix.target }}/release/demi-runner"
-          codesign --force --sign EC331D9849FAB753102595F45DA7244AE6036D32 --keychain "$keychain" --identifier sh.demi.runner --timestamp=none "$runner"
-          codesign --verify -R='identifier "sh.demi.runner" and certificate root = H"ec331d9849fab753102595f45da7244ae6036d32"' "$runner"
+          codesign --force --sign 250817EDB3EADABE250D5271ABB40DBD8B5984E9 --keychain "$keychain" --identifier sh.demi.runner --timestamp=none "$runner"
+          codesign --verify -R='identifier "sh.demi.runner" and certificate root = H"250817edb3eadabe250d5271abb40dbd8b5984e9"' "$runner"
           security delete-keychain "$keychain"
       # Packaging compresses each program into the cache, by its SHA-256,
       # where the server release finds the copies made, so it compresses

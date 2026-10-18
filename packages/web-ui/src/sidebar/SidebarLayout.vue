@@ -44,7 +44,7 @@ import { sidebarDrawerKey } from './sidebar-drawer'
  * own layers, such as the conversation's dock over its transcript, stay
  * under the drawer and its scrim, whatever their z-index.
  */
-withDefaults(defineProps<{ label?: string }>(), { label: 'Demi' })
+withDefaults(defineProps<{ label?: string }>(), { label: 'demi' })
 const emit = defineEmits<{
   resizeEnd: [width: number]
   asideResizeEnd: [share: number]

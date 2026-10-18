@@ -21,7 +21,7 @@ defineProps<{
       class="flex h-full w-full shrink-0 flex-col md:w-[28rem] lg:w-[32rem]"
     >
       <div class="select-none px-8 pt-8 lg:px-14">
-        <span class="text-chrome font-medium text-fg-emphasis">Demi</span>
+        <span class="text-chrome font-medium text-fg-emphasis">demi</span>
       </div>
       <ScrollArea
         class="flex-1"

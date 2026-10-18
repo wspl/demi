@@ -554,7 +554,7 @@ so that no runner compiles two targets or two groups one after the other:
 | Web | `ubuntu-26.04` | `bun run build`: the published packages, then the web app that imports them |
 
 The runner job of each Apple target signs the runner before packaging it,
-with Demi's self-signed code-signing certificate, *Demi Code Signing*, and
+with Demi's self-signed code-signing certificate, *demi Code Signing*, and
 the identifier `sh.demi.runner`, and checks that the signature satisfies
 that identifier and that certificate, so every release has the same
 designated requirement ([Starting with the computer](../execution/runner.md#starting-with-the-computer)).

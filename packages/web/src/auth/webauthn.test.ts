@@ -80,7 +80,7 @@ test('without the JSON helpers, the options reach the browser as bytes and its n
   })
 
   const created = await createPasskey({
-    rp: { id: 'demi.example', name: 'Demi' },
+    rp: { id: 'demi.example', name: 'demi' },
     user: { id: 'AQI', name: 'ana@example.com', displayName: 'Ana' },
     challenge: '-_8-Pw',
     pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
