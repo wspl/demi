@@ -1595,26 +1595,16 @@ impl Plugin for SignIns {
 
 /// The backend's server log as `main` sets it up, for this test's thread and
 /// the shard threads its backend starts, until it is closed.
-///
-/// Its subscriber is the thread's, while other tests run beside it with none.
-/// tracing-core decides once per call site whether anyone listens, when the
-/// site is first hit, and while one dispatcher alone is registered it asks
-/// only the default of the thread that hit it: a site another test's thread
-/// hit first, with no subscriber, would never log here. A second registered
-/// dispatcher, which listens to nothing, makes it ask every dispatcher, so
-/// each event is offered to the subscriber of the thread that logs it.
 pub struct ServerLogCapture {
     writer: demi_backend_database::server_log::ServerLogWriter,
     _default: tracing::subscriber::DefaultGuard,
-    _second: tracing::Dispatch,
 }
 
 impl ServerLogCapture {
     pub fn open(harness: &Harness) -> Self {
         use tracing_subscriber::layer::SubscriberExt as _;
         let (writer, layer) = demi_backend_database::server_log::open(&harness.data_dir()).unwrap();
-        let second = tracing::Dispatch::new(tracing::subscriber::NoSubscriber::default());
-        let default = tracing::subscriber::set_default(
+        let default = demi_log_capture::capture(
             tracing_subscriber::registry()
                 .with(layer)
                 .with(tracing_subscriber::filter::LevelFilter::INFO),
@@ -1622,7 +1612,6 @@ impl ServerLogCapture {
         Self {
             writer,
             _default: default,
-            _second: second,
         }
     }
 

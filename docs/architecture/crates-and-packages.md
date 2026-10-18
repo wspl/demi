@@ -93,6 +93,15 @@ receives them. Both ends of a wire link it, or the generator reads it to write
 the web app's TypeScript. A contract crate has no async runtime and no IO.
 [Contracts](contracts.md) owns the rules these crates follow.
 
+#### `log-capture`
+
+- **Owns:** a test's capture of what one test logs, `capture(subscriber)`,
+  which keeps a dispatcher registered for the whole process that listens to
+  nothing, so the logging library never decides once, for every thread, from
+  the one test that happened to log first; a test that reads its logs uses
+  it as a dev-dependency.
+- **Does not own:** the product's logging, which each binary sets up.
+
 #### `shared-types`
 
 - **Owns:** the data the web app, the agent and the backend share, and a
@@ -1867,6 +1876,7 @@ A line names a workspace member by its directory.
 
 ```text
 shared-types -> none
+log-capture -> none
 command-protocol -> none
 conversation-socket-protocol -> shared-types
 command-sdk -> shared-artifacts, command-protocol

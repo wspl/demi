@@ -50,6 +50,7 @@ members = [
   "crates/command-package-file",
   "crates/command-package-file-protocol",
   "crates/shared-gates",
+  "crates/log-capture",
   "crates/backend-remote-host",
   "crates/machine-manager",
   "crates/machine-manager-protocol",

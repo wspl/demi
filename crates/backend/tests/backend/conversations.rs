@@ -1662,7 +1662,7 @@ async fn a_conversation_sockets_open_and_end_are_logged_with_why_it_ended() {
     // The backend's log as `main` writes it; here it serves this test's
     // thread and the shard threads its backend starts.
     let _log =
-        tracing::subscriber::set_default(tracing_subscriber::fmt().with_writer(file).finish());
+        demi_log_capture::capture(tracing_subscriber::fmt().with_writer(file).finish());
     let harness = Harness::new();
     let (backend, master) = harness.start_set_up().await;
     create(&backend, &master, FIRST).await;

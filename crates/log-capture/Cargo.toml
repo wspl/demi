@@ -1,0 +1,15 @@
+[package]
+name = "demi-log-capture"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lib]
+# Only ever a dev-dependency; its users' tests exercise it.
+test = false
+doctest = false
+bench = false
+
+[dependencies]
+tracing.workspace = true

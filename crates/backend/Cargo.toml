@@ -142,6 +142,8 @@ demi-command-package-browser-chrome = { path = "../command-package-browser-chrom
 demi-command-sdk = { path = "../command-sdk", features = ["testing"] }
 chromiumoxide = "=0.9.1"
 demi-shared-artifacts = { path = "../shared-artifacts", features = ["testing"] }
+# The scenarios that read the backend's log capture it.
+demi-log-capture = { path = "../log-capture" }
 # The Claude Code scenarios install a scripted CLI in a Cloud runner's
 # artifact cache, as the runner installs a download.
 demi-runner-command-packages = { path = "../runner-command-packages" }

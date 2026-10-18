@@ -1978,6 +1978,7 @@ dependencies = [
  "demi-conversation-socket-protocol",
  "demi-host-interface",
  "demi-live-view-protocol",
+ "demi-log-capture",
  "demi-machine-manager-protocol",
  "demi-plugin-audio",
  "demi-plugin-browser",
@@ -2306,6 +2307,7 @@ dependencies = [
  "demi-command-protocol",
  "demi-conversation-socket-protocol",
  "demi-host-interface",
+ "demi-log-capture",
  "demi-plugin-file",
  "demi-plugin-interface",
  "demi-provider-common",
@@ -2826,6 +2828,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-log-capture"
+version = "0.1.27"
+dependencies = [
+ "tracing",
+]
+
+[[package]]
 name = "demi-machine-manager"
 version = "0.1.27"
 dependencies = [
@@ -3326,6 +3335,7 @@ dependencies = [
  "bytes",
  "demi-command-protocol",
  "demi-command-sdk",
+ "demi-log-capture",
  "demi-runner-command-packages",
  "demi-runner-process",
  "demi-runner-protocol",

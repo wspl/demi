@@ -312,7 +312,7 @@ async fn a_renewal_that_fails_without_invalid_grant_keeps_the_sign_in() {
 async fn a_refusal_that_echoes_a_secret_names_no_more_than_an_oauth_code() {
     within(async {
         let log = Log::default();
-        let _logging = tracing::subscriber::set_default(
+        let _logging = demi_log_capture::capture(
             tracing_subscriber::fmt()
                 .with_writer(log.clone())
                 .with_ansi(false)

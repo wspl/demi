@@ -578,7 +578,7 @@ async fn without_a_matching_image_copy_a_service_starts_from_a_download() {
         // here the default on this thread, where the registry's tasks run.
         let logged = Logged::default();
         let subscriber = tracing_subscriber::registry().with(logged.clone());
-        let _default = tracing::subscriber::set_default(subscriber);
+        let _default = demi_log_capture::capture(subscriber);
         let (damaged, damaged_path) = fixture(root.path(), 0).await;
         let (absent, absent_path) = fixture(root.path(), 1).await;
         let image = root.path().join("image");

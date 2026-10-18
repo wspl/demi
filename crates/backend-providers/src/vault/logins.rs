@@ -1029,6 +1029,7 @@ mod tests {
         let clock = Arc::new(TokioClock::new("2026-09-24T08:00:00.000Z".parse().unwrap()));
         let Backend {
             _data,
+            control,
             sync,
             flows,
             master,
@@ -1048,7 +1049,10 @@ mod tests {
             )
         };
 
-        // The first start holds the new entry and waits for the entries.
+        // The first start holds the new entry and waits for the entries,
+        // which the database reads only once the test lets it: a read left
+        // free could answer before the first poll looks for it.
+        let database = testing::hold(&control).await;
         let mut first = Box::pin(start());
         assert!(futures_util::poll!(&mut first).is_pending());
         let Err(LoginRefusal::Busy(Some(id))) = start().await else {
@@ -1071,7 +1075,9 @@ mod tests {
             ));
         }
 
-        // Its start fails, and both tabs learn it, with the starting request.
+        // Its start reads the entries and fails, and both tabs learn it,
+        // with the starting request.
+        drop(database);
         let refused = first.await.unwrap_err();
         assert!(matches!(refused, LoginRefusal::NoLoginFlow(_)), "{refused:?}");
         for tab in [&one, &other] {
@@ -1137,6 +1143,7 @@ mod tests {
     /// `families`.
     struct Backend {
         _data: tempfile::TempDir,
+        control: ControlService,
         vault: Vault,
         sync: SyncRegistry,
         flows: Arc<LoginFlows>,
@@ -1189,6 +1196,7 @@ mod tests {
         );
         Backend {
             _data: data,
+            control,
             vault,
             sync,
             flows,
@@ -1238,6 +1246,7 @@ mod tests {
             sync,
             flows,
             master,
+            ..
         } = backend(families, clock.clone(), timing).await;
         let page = sync.watch(&master);
         let request = RequestId::try_from("req_starting".to_owned()).unwrap();
