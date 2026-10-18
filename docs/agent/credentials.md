@@ -45,13 +45,20 @@ could use it after the user allowed it there.
 | --- | --- |
 | Name | What the user and the agent call it, 1 to 80 characters, unique among the user's credentials: *Google API key*, *GitHub token for deploys* |
 | Fields | One to ten, each a name (lowercase letters, digits, `_` and `-`), a label the card and Settings show, a kind, and a value. A **secret** field is typed hidden and left out of `list` and `show`, which print its name and kind only; an agent reads it with `read`, as advice suggests into a pipe or a variable. A **visible** field, such as a user name or a host, is shown to an agent as it is |
-| Keep until | *Always*, or a time: a credential kept for a while is destroyed when the time comes. The agent decides it with the request's `--keep`, `1h` (the default), `1d`, `30d` or `always`, as it knows what the secret is for: a key used once to add a provider is kept an hour, a deploy token the user asks it to keep using is kept always. The card says it, *Kept for 1 hour* or *Kept until you remove it*, and offers no choice, as a form does not ask how long its data is kept; Settings › Credentials changes it later |
+| Keep until | *Always*, or a time: a credential kept for a while is destroyed when the time comes. The agent decides it with the request's `--keep`, `1h` (the default), `1d`, `30d` or `always`, as it knows what the secret is for: a key used once to add a provider is kept an hour, a deploy token the user asks it to keep using is kept always. The card says it, *Kept for 1 hour* or *Kept until you remove it*, and offers no choice, as a form does not ask how long its data is kept; in Settings › Credentials a credential kept for a while says when it goes and offers **Keep Always** |
 | Note | The reason it was asked for, editable |
 
 The user's credentials are the user's, not a conversation's: one kept *Always*
 serves every conversation the user allows it in. They are listed, created,
 edited and removed in **Settings › Credentials**, by name, with each field's
-label and kind, *Kept until* and *Last used*; a secret field shows dots and an
+label and kind, *Kept until* and *Last used*. Its editor asks for no more than
+a credential is, as the Passwords app's does: the name and the note, then one
+row for each field, its label and its value side by side, every input of the
+editor starting and ending at the same edges, the field's name for `read`
+under its label, and a menu at the row's end that makes it secret or visible
+and deletes it. A credential kept for a while says under its note when it
+goes, *Removed today at 18:00*, beside **Keep Always**; one kept always says
+nothing of it; a secret field shows dots and an
 eye that reveals its value to the user, once the user confirmed it is them,
 as Safari's and Chrome's password managers ask before showing a password:
 the eye asks for the password, or a passkey when the account has one,

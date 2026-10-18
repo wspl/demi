@@ -74,7 +74,7 @@
       "hours": "{hours} 小时",
       "hoursMinutes": "{hours} 小时 {minutes} 分钟"
     },
-    "retry": {
+    "when": {
       "Resets": {
         "today": "{clock} 重置",
         "weekday": "{weekday} {clock} 重置",
@@ -89,6 +89,11 @@
         "today": "{clock} 重置",
         "weekday": "{weekday} {clock} 重置",
         "day": "{day} {clock} 重置"
+      },
+      "Removed": {
+        "today": "将于今天 {clock} 移除",
+        "weekday": "将于{weekday} {clock} 移除",
+        "day": "将于 {day} {clock} 移除"
       }
     },
     "reset": {

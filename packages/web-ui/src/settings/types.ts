@@ -12,7 +12,7 @@ import type { DeviceState } from '../devices/state'
 import type { DirectStatus } from '../devices/direct'
 import type { DeviceReport } from '../devices/report'
 import type { DeviceStart } from '../devices/installation'
-import type { CredentialFieldView, CredentialKeep } from '../permissions/types'
+import type { CredentialFieldView } from '../permissions/types'
 import type { HandoffHost } from '../auth/handoff'
 import type { VerificationHost } from '../auth/verification'
 
@@ -591,8 +591,8 @@ export type CredentialRevealOutcome =
 export interface SettingsCredentialDraft {
   name: string
   note: string
-  /** How long to keep it from now; null leaves a saved credential's time as it is. */
-  keep: CredentialKeep | null
+  /** `always` for a new credential, or one the user chose Keep Always for; null leaves a saved credential's time as it is. */
+  keep: 'always' | null
   fields: SettingsCredentialDraftField[]
 }
 

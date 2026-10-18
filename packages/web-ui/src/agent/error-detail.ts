@@ -1,7 +1,7 @@
 import type { ProviderErrorDiagnostics } from '@demicodes/protocol'
 import { z } from 'zod'
 import { codeText } from '../infra/errors'
-import { formatRetryAt } from '../ui/dates'
+import { formatVerbAt } from '../ui/dates'
 import type { SentenceText } from '../ui/ui-text'
 import { t } from './locales/text'
 import type { CredentialKind } from './credential-kinds'
@@ -28,7 +28,7 @@ export function failureHeadline(
   const failure = words ?? t('transcript.turnFailed')
   return retryAt === null
     ? failure
-    : t('transcript.failureResets', { failure, reset: formatRetryAt('Resets', retryAt, now) })
+    : t('transcript.failureResets', { failure, reset: formatVerbAt('Resets', retryAt, now) })
 }
 
 /**
