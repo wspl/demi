@@ -4,6 +4,7 @@
     "answerRequest": "요청에 응답할 수 없습니다",
     "changeWorkPanel": "작업 패널을 변경할 수 없습니다",
     "saveDraft": "초안을 저장할 수 없습니다",
+    "sendComment": "댓글을 보낼 수 없습니다",
     "saveMessage": "메시지를 저장할 수 없습니다",
     "editMessage": "메시지를 편집할 수 없습니다",
     "deleteMessage": "메시지를 삭제할 수 없습니다",

@@ -28,6 +28,7 @@ function shown(side: SideRecord & { record: SideQuestion }): ShownSideQuestion {
     start: record.start,
     end: record.end,
     quote: record.quote,
+    picture: record.picture ?? null,
     question: record.question,
     title: record.title,
     folded: record.folded,

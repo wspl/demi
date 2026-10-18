@@ -1,4 +1,4 @@
-import type { Block, ProviderFailureFacts } from '@demicodes/protocol'
+import type { Block, MediaSource, ProviderFailureFacts } from '@demicodes/protocol'
 import type { HeldTranscript } from '../../transport/protocol'
 import { toolCallTitle } from '../block-helpers'
 import { quotedWords } from '../send-to-conversation'
@@ -22,6 +22,12 @@ export interface ShownSideQuestion {
   start: number
   end: number
   quote: string
+  /**
+   * The picture a side question about a picture asks of, whose place among
+   * the block's pictures `start` and `end` are (`comments-and-ask.md`
+   * § Images); absent for words.
+   */
+  picture?: MediaSource | null
   /** The first question; a follow-up is a `user` block of its transcript. */
   question: string
   /** The small model's title; null until it has one, when the card says Ask. */
@@ -44,6 +50,7 @@ export interface NewSideQuestion {
   start: number
   end: number
   quote: string
+  picture?: MediaSource | null
   question: string
 }
 
@@ -168,12 +175,18 @@ export function cardContent(question: ShownSideQuestion): CardContent {
 /**
  * The side question's conversation as its full window shows it: its own
  * turns only, the first message drawn as the user's question with its
- * quote, without the instruction the model reads, the history before it
- * being the conversation's own.
+ * quote, the asked picture for one about a picture, without the
+ * instruction the model reads, the history before it being the
+ * conversation's own.
  */
 export function shownTurns(question: ShownSideQuestion): HeldBlock[] {
-  return (ownBlocks(question) ?? []).map((block, index) =>
-    index === 0 && block.type === 'user'
-      ? { ...block, content: [{ type: 'text', text: `${quotedWords(question.quote).text}\n\n${question.question}` }] }
-      : block)
+  // A picture shows as a comment's does: a small copy as the quote, the question under it.
+  const first = (block: Extract<HeldBlock, { type: 'user' }>): HeldBlock => question.picture
+    ? {
+        ...block,
+        content: [],
+        comments: [{ id: `${block.id}-picture`, blockId: question.blockId, start: question.start, end: question.end, at: 0, quote: question.quote, picture: question.picture, text: question.question }],
+      }
+    : { ...block, content: [{ type: 'text', text: `${quotedWords(question.quote).text}\n\n${question.question}` }] }
+  return (ownBlocks(question) ?? []).map((block, index) => (index === 0 && block.type === 'user' ? first(block) : block))
 }

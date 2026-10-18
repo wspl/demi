@@ -126,3 +126,16 @@ test('the full window shows the side questions own turns, the first as the quest
   const first = turns[0]!
   expect(first.type === 'user' && first.content).toEqual([{ type: 'text', text: '> stale\n\nWhy stale?' }])
 })
+
+// A side question about a picture (`comments-and-ask.md` § Images): its
+// first message shows the picture as its quote, as a comment's bubble
+// does, with the question under it and no instruction.
+test('the full window shows a picture side question\'s first message as the picture quoted with the question', () => {
+  const picture = { type: 'ref', ref: 'ab'.repeat(32), mediaType: 'image/png' } as const
+  const asked = { ...question([user('q1', after(1), 'The user asks this aside…\n\nWhich connection?', 'side')], false), quote: 'The chart', start: 1, end: 2, picture, question: 'Which connection?' }
+  const [first] = shownTurns(asked)
+  expect(first?.type === 'user' && [first.content, first.comments]).toEqual([
+    [],
+    [{ id: 'q1-picture', blockId: 'reply', start: 1, end: 2, at: 0, quote: 'The chart', picture, text: 'Which connection?' }],
+  ])
+})

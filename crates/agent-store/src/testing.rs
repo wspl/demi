@@ -1540,6 +1540,7 @@ pub mod store_contract {
                 start: 4,
                 end: 19,
                 quote: "the same timeout".into(),
+                picture: None,
                 question: question.into(),
                 asked_at: Timestamp::from_millisecond(at).expect("the time is in range"),
             }),

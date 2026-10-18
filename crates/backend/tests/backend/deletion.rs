@@ -273,6 +273,26 @@ async fn the_collection_after_a_deletion_keeps_what_a_fork_names_and_what_is_you
         )
         .await;
     assert_eq!(saved.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&saved.body));
+    // A picture a waiting comment of the fork's draft quotes
+    // (`comments-and-ask.md` § Images), which the draft's rule holds too.
+    let quoted = upload(&backend, &master, "quoted.png", "image/png", &png(5)).await;
+    let commented = backend
+        .put(
+            &format!("/api/conversations/{SECOND}/draft"),
+            &master,
+            json!({
+                "base": 0,
+                "text": "",
+                "files": [],
+                "comments": [{
+                    "id": "c1", "blockId": text, "start": 0, "end": 1, "at": 0, "quote": "Seen",
+                    "picture": { "type": "ref", "ref": quoted.sha256, "mediaType": "image/png" },
+                    "text": "Which one is this?",
+                }],
+            }),
+        )
+        .await;
+    assert_eq!(commented.status, StatusCode::OK, "{}", String::from_utf8_lossy(&commented.body));
     // A day and an hour later, a blob written an hour ago, whose row is
     // not written yet.
     harness.clock.advance(DAY + SignedDuration::from_hours(1));
@@ -295,6 +315,7 @@ async fn the_collection_after_a_deletion_keeps_what_a_fork_names_and_what_is_you
     backend.until_collected(&master).await;
     assert!(blob_path(&harness, &master, &named).exists());
     assert!(blob_path(&harness, &master, kept.sha256.as_str()).exists());
+    assert!(blob_path(&harness, &master, quoted.sha256.as_str()).exists());
     assert!(young.exists());
     assert!(!blob_path(&harness, &master, unsent.sha256.as_str()).exists());
     let unsent_records: i64 = harness

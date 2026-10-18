@@ -4,7 +4,7 @@
 //! page reads by its pages with `?node=` and follows on the conversation's
 //! socket, as a subagent's.
 
-use demi_shared_types::{BlockId, MAX_SAFE_INTEGER, NodeId, Nullable, Timestamp, is_blank};
+use demi_shared_types::{BlockId, MAX_SAFE_INTEGER, MediaSource, NodeId, Nullable, Timestamp, is_blank};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -23,8 +23,14 @@ pub struct SideQuestion {
     pub start: u64,
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub end: u64,
-    /// The asked words.
+    /// The asked words; a picture's alt text or name for a side question
+    /// about a picture.
     pub quote: String,
+    /// The picture a side question about a picture asks of, whose place
+    /// among the block's pictures `start` and `end` are, as a comment on a
+    /// picture's (`comments-and-ask.md` § Images); absent for words.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub picture: Option<MediaSource>,
     /// The first question; a follow-up is a `user` block of its transcript.
     pub question: String,
     /// The small model's title; null until it wrote one, when the card says
@@ -66,6 +72,10 @@ pub struct AskRequest {
     pub end: u64,
     #[garde(length(min = 1))]
     pub quote: String,
+    /// The picture asked of, for a side question about a picture.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[garde(dive)]
+    pub picture: Option<MediaSource>,
     #[garde(custom(not_blank))]
     pub question: String,
 }

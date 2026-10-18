@@ -39,7 +39,7 @@ import { hasAcceptedSubmission } from '@demicodes/web-ui/agent/submission'
 import { runningSubagents, subagentJobFields } from '@demicodes/web-ui/agent/subagents'
 import { workToStop } from '@demicodes/web-ui/hosts/move-question'
 import { runningTerminals } from '@demicodes/web-ui/agent/terminals'
-import { agentWorks, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
+import { agentWorks, chooseSendWay, turnStartingMessage, type SendWay } from '@demicodes/web-ui/agent/send-way'
 import {
   composerAttachmentFromFile,
   composerRemoteAttachment,
@@ -274,6 +274,12 @@ export const useConversations = defineStore('conversations', () => {
    * user).
    */
   const wishes = new Map<string, 'recall' | 'sendNow'>()
+  /**
+   * The messages on their way that a comment's Send Now made, each holding
+   * that comment alone: one not delivered leaves no failed message, its
+   * comment going back to the waiting ones (`comments-and-ask.md` § Comments).
+   */
+  const commentSends = new Set<string>()
   /** The draft storage failures this page reported, each once. */
   const storageReported = new Set<'save' | 'restore' | 'unreadable'>()
 
@@ -614,7 +620,7 @@ export const useConversations = defineStore('conversations', () => {
             },
       base: !local && unsaved ? recordSync.base(conversation) : null,
       text: unsaved ? conversation.draft : '',
-      comments: unsaved ? conversation.comments.map((comment) => ({ ...comment })) : [],
+      comments: unsaved ? conversation.comments.map((comment) => structuredClone(toRaw(comment))) : [],
       notSaved: conversation.notSaved.map((row) => structuredClone(toRaw(row))),
       // A conversation with a record holds its model settings there.
       model: local ? { ...conversation.model } : null,
@@ -1011,6 +1017,7 @@ export const useConversations = defineStore('conversations', () => {
         return conversation.comments
       },
       add: (comment) => setComments(conversation, [...conversation.comments, comment]),
+      sendNow: (comment) => void sendComment(conversation, comment),
       edit: (id, text) => setComments(conversation, conversation.comments.map((each) => (each.id === id ? { ...each, text } : each))),
       remove: (id) => setComments(conversation, conversation.comments.filter((each) => each.id !== id)),
     }
@@ -2274,6 +2281,28 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
+   * Send Now on a new comment (`comments-and-ask.md` § Comments): a message
+   * holding this comment alone goes at once, as the composer's Return would
+   * send one, steering or waiting in the queue while the agent works; the
+   * comments waiting in the draft and its text and files stay as they are.
+   */
+  async function sendComment(conversation: Conversation, comment: MessageComment): Promise<void> {
+    // Refused, it waits with the others rather than being lost.
+    if (conversation.archived) {
+      setComments(conversation, [...conversation.comments, comment])
+      return
+    }
+    const way = chooseSendWay(agentWorks(conversation.phase, conversation.pendingSends), preferences.sendWhileRunning, false)
+    const pending = addPendingSend(conversation, way, '', [], { comments: [comment] })
+    commentSends.add(pending.id)
+    try {
+      await deliverInOrder(conversation, pending)
+    } finally {
+      commentSends.delete(pending.id)
+    }
+  }
+
+  /**
    * Save for Later (`conversations.md` § Saved for later): the composer's message,
    * its files included, stands at the top of the list and leaves the
    * composer at once, under the id the page gives it, once its files are
@@ -2509,6 +2538,12 @@ export const useConversations = defineStore('conversations', () => {
           conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== pending.id)
           refill(conversation, pending.text, pending.fileIds)
           setComments(conversation, pending.comments)
+        } else if (commentSends.has(pending.id)) {
+          // A comment's Send Now not delivered: its comment waits with the
+          // others again, the draft and they as they were, and says why.
+          conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== pending.id)
+          setComments(conversation, [...conversation.comments, ...pending.comments])
+          report(t('failures.sendComment'), error)
         } else {
           // Its row comes back, undelivered with the reason: a draft the
           // composer holds is not to be replaced, and the message is not lost.

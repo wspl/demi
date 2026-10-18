@@ -11,10 +11,21 @@ export interface TextAnchor {
   end: number
 }
 
-/** Whether a text node belongs to the reply, not to a control set into it. */
+/**
+ * A picture of a reply as it renders: an image, or the box that stands in a
+ * Host image's place while its file is read or when it is missing
+ * (`imagePlaceholderHtml`), which is a picture too, so the pictures after it
+ * keep their places as it loads.
+ */
+const PICTURE = 'img, [role="img"]'
+
+/**
+ * Whether a text node belongs to the reply's words: not to a control set
+ * into it, nor to a picture's stand-in, whose alt text goes as its file loads.
+ */
 function ownText(node: Node): boolean {
   const parent = node.parentElement
-  return parent !== null && parent.closest('button, [data-no-anchor]') === null
+  return parent !== null && parent.closest(`button, [data-no-anchor], ${PICTURE}`) === null
 }
 
 function textNodes(root: HTMLElement): Text[] {
@@ -117,4 +128,61 @@ export function liveOf(range: Range | StaticRangeInit): Range | null {
 export function staticOf(range: Range): StaticRangeInit {
   const { startContainer, startOffset, endContainer, endOffset } = range
   return { startContainer, startOffset, endContainer, endOffset }
+}
+
+/**
+ * The pictures of a reply's text block `root` as it renders them, in order
+ * (`comments-and-ask.md` § Images): its images and the stand-ins of those
+ * still being read or missing, leaving out an icon, which the page hides
+ * from assistive technology, and those of a control or card set into it, as
+ * a side question's answer. A comment on a picture names it by its place
+ * among them.
+ */
+export function picturesOf(root: HTMLElement): Element[] {
+  return [...root.querySelectorAll(PICTURE)].filter((picture) => picture.closest('button, [data-no-anchor], [aria-hidden="true"]') === null)
+}
+
+/** The offset in `root`'s own text where `element` stands: the length of the reply's words before it. */
+function offsetBefore(root: HTMLElement, element: Element): number {
+  let count = 0
+  for (const node of textNodes(root)) {
+    if (element.compareDocumentPosition(node) & Node.DOCUMENT_POSITION_FOLLOWING)
+      break
+    count += node.length
+  }
+  return count
+}
+
+/**
+ * Where the picture `picture` of `root` stands (`comments-and-ask.md`
+ * § Images): its place among the block's pictures, and `at`, the offset in
+ * the block's text where it stands, by which its comment takes its place
+ * among the block's others in reading order; null for a picture the block
+ * does not hold.
+ */
+export function pictureAnchor(root: HTMLElement, picture: Element): (TextAnchor & { at: number }) | null {
+  const place = picturesOf(root).indexOf(picture)
+  return place < 0 ? null : { start: place, end: place + 1, at: offsetBefore(root, picture) }
+}
+
+/**
+ * What a comment on `image` quotes for a reader without the picture: its
+ * alt text, else the name of the file it shows, else its address's last
+ * part, else *Image*.
+ */
+export function pictureQuote(image: HTMLImageElement): string {
+  const named = image.closest('[data-attachment-image]')?.getAttribute('data-attachment-image')
+    ?? image.getAttribute('data-host-file')?.split('/').at(-1)
+    ?? image.src.split(/[/?#]/).filter(Boolean).at(-1)
+  return image.alt.trim() || named?.trim() || 'Image'
+}
+
+/**
+ * The picture `anchor` names in `root`, by its place among the block's
+ * pictures, when it is still the picture `quote` names; null while it is
+ * not drawn, as a Host image being read, or when the reply holds another.
+ */
+export function pictureOf(root: HTMLElement, anchor: TextAnchor, quote: string): HTMLImageElement | null {
+  const image = picturesOf(root)[anchor.start]
+  return image instanceof HTMLImageElement && pictureQuote(image) === quote ? image : null
 }

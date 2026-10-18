@@ -13,6 +13,7 @@ import type { CopiedMessage } from './message-input/copied-message'
 import { restingTargets, type SendTargets } from './send-to-conversation'
 import { t } from './locales/text'
 import { t as shared } from '../locales/text'
+import { reportError } from '../infra/errors'
 
 /**
  * Send to Conversation's submenu: a search field over every conversation,
@@ -24,7 +25,8 @@ import { t as shared } from '../locales/text'
  */
 const props = defineProps<{
   targets: SendTargets
-  words: () => CopiedMessage
+  /** What goes, read as a conversation is picked; a picture's once the page keeps its bytes. */
+  words: () => CopiedMessage | Promise<CopiedMessage>
 }>()
 
 const { query, view, retry } = useConversationSearch(() => props.targets.search, () => restingTargets(props.targets))
@@ -39,7 +41,15 @@ const looks = computed(() => new Map(rows.value.map((row) => {
 })))
 
 function send(to: string | null): void {
-  props.targets.send(to, props.words())
+  const words = props.words()
+  if (!(words instanceof Promise)) {
+    props.targets.send(to, words)
+    return
+  }
+  words.then(
+    (taken) => props.targets.send(to, taken),
+    (error) => reportError(t('transcript.sendFailed'), error, { userVisible: true }),
+  )
 }
 
 const lookOf = (row: SearchRow) => looks.value.get(row.conversationId)

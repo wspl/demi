@@ -38,9 +38,17 @@ use crate::{
     server::{AgentServer, commands::with_runtime_groups},
 };
 
-/// What makes a question a side question, between the asked words and the
-/// question in its first message (`comments-and-ask.md` § Side questions).
-pub const SIDE_INSTRUCTION: &str = "The user asks this aside from the conversation, about the words quoted above. Answer briefly, in a few sentences. Read and check what you need, but change nothing: write no file and run no command that changes the Host.";
+/// What makes a question a side question, between what it asks about and
+/// the question in its first message (`comments-and-ask.md` § Side
+/// questions): about the words quoted above it, or about the picture its
+/// first message carries before it (§ Images), which is all that differs.
+pub fn side_instruction(about_picture: bool) -> String {
+    let subject = if about_picture { "the picture above" } else { "the words quoted above" };
+    format!(
+        "The user asks this aside from the conversation, about {subject}. Answer briefly, in a few sentences. \
+         Read and check what you need, but change nothing: write no file and run no command that changes the Host."
+    )
+}
 
 /// Why a side question was not asked, followed up or retried.
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
@@ -146,20 +154,29 @@ impl<H: HostResolver> Side<H> {
 }
 
 /// The first message of the side question `of`: the asked words as a
-/// quote, the instruction, then the question.
+/// quote, or the asked picture as an image the message carries, the
+/// instruction, then the question.
 fn first_message(id: TurnId, of: &SideOf) -> QueuedMessage {
-    let text = format!("{}\n\n{SIDE_INSTRUCTION}\n\n{}", markdown_quote(&of.quote), of.question);
+    let content = match &of.picture {
+        None => vec![UserContentBlock::Text {
+            text: format!("{}\n\n{}\n\n{}", markdown_quote(&of.quote), side_instruction(false), of.question),
+        }],
+        Some(source) => vec![
+            UserContentBlock::Image { source: source.clone() },
+            UserContentBlock::Text { text: format!("{}\n\n{}", side_instruction(true), of.question) },
+        ],
+    };
     QueuedMessage {
         comments: Vec::new(),
         id,
-        content: vec![UserContentBlock::Text { text }],
+        content,
         automation: None,
     }
 }
 
 /// Whether two side questions ask the same of the same words, whenever.
 fn asks_the_same(a: &SideOf, b: &SideOf) -> bool {
-    (&a.block, a.start, a.end, &a.quote, &a.question) == (&b.block, b.start, b.end, &b.quote, &b.question)
+    (&a.block, a.start, a.end, &a.quote, &a.picture, &a.question) == (&b.block, b.start, b.end, &b.quote, &b.picture, &b.question)
 }
 
 impl<H: HostResolver> Tree<H> {

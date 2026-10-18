@@ -1998,12 +1998,14 @@ impl SessionCore {
             .cloned()
             .collect();
         for action in &self.pending {
-            if let ActionKind::Send { content, .. } = &action.kind {
+            if let ActionKind::Send { content, comments, .. } = &action.kind {
                 referenced.extend(media::content_references(content).cloned());
+                referenced.extend(media::comment_references(comments).cloned());
             }
         }
         for steer in self.inputs.pending_steers() {
             referenced.extend(media::content_references(&steer.content).cloned());
+            referenced.extend(media::comment_references(&steer.comments).cloned());
         }
         if let Activity::Running(run) = &self.activity {
             referenced.extend(run.unwritten_media.iter().cloned());

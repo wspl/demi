@@ -89,6 +89,13 @@ pub fn file_extension_support(
     Some(listed)
 }
 
+/// Whether `model` is known to read at least one image type.
+pub fn model_accepts_images(model: &Model) -> bool {
+    IMAGE_FILE_EXTENSIONS.into_iter().any(|extension| {
+        file_extension_support(model.accepted_extensions.as_deref(), extension) == Some(true)
+    })
+}
+
 /// Whether `model` is known to read at least one video type.
 pub fn model_accepts_video(model: &Model) -> bool {
     VIDEO_FILE_EXTENSIONS.into_iter().any(|extension| {

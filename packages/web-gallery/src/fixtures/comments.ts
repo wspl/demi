@@ -1,8 +1,11 @@
 import type { Block } from '@demicodes/protocol'
 import { demoModel } from './blocks'
+import { galleryBlobs } from './blobs'
 
 /** The reply the Comments specimens comment on, as the approved prototype drew it. */
 export const COMMENTED_REPLY = `Uploads fail on slow connections because the client gives up long before the server does. The upload request runs under the same 30-second timeout as every other API call, so a 40 MB video on a 3G connection is cut off part of the way through, and the retry starts again from the first byte.
+
+![The upload cut off at 30 seconds](attachment:a6)
 
 The server already supports resumable uploads: it keeps each received chunk for 24 hours and answers \`HEAD /uploads/:id\` with the offset it has. The client never asks for it.
 
@@ -13,6 +16,12 @@ Three changes fix it:
 - **Back off between retries.** Wait 1, 2, 4 and then 8 seconds, with some jitter, and stop after five attempts so a dead connection does not drain the battery.`
 
 export const COMMENTED_REPLY_ID = 'comments-reply'
+
+/** The reply's picture, its first (`comments-and-ask.md` § Images), as a comment or a side question names it. */
+export const REPLY_PICTURE = { start: 0, end: 1, quote: 'The upload cut off at 30 seconds' } as const
+
+/** Where the reply's picture is, the blob of its attachment `a6`. */
+export const REPLY_PICTURE_SOURCE = { type: 'ref', ref: galleryBlobs.chart, mediaType: 'image/png' } as const
 
 const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString()
 

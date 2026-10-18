@@ -6,12 +6,12 @@ use demi_agent_store::{
 };
 use demi_agent_transcript::{RequestView, replay};
 use demi_provider_common::{
-    InferenceItem, MediaBytes, RequestLimits, ResultPart, ToolDefinition, ToolResultKinds,
+    InferenceItem, MediaBytes, Medium, RequestLimits, ResultPart, ToolDefinition, ToolResultKinds,
     UserPart,
 };
 use demi_shared_types::{
     Attachment, B64Bytes, BlobRef, Block, BlockId, CommandId, CommandReport,
-    CompactionBoundaryBlock, CompactionMarkerBlock, DocumentSource, FileExtension,
+    CompactionBoundaryBlock, CompactionMarkerBlock, DocumentSource, FileExtension, MediaSource, MessageComment,
     RedactedThinkingBlock, ReportEvent, StoppedBy, ThinkingBlock, Timestamp, ToolCallBlock,
     ToolCallStatus, ToolMediaSource, ToolResultContentBlock, TurnId, UserBlock, UserContentBlock,
     WakeupBlock, WakeupPlacement, attachment_tag,
@@ -131,6 +131,44 @@ fn reasoning_between_the_last_boundary_and_its_marker_is_marked_as_kept_past_a_s
     );
     // Without a summary, nothing is kept past one.
     assert_eq!(kept(&compacted[5..]), [("after".to_owned(), false)]);
+}
+
+/// A picture by its address goes as an image only to a model that reads
+/// images, as one by its blob does (`comments-and-ask.md` § Images): a model
+/// without image input reads the note naming it, its comment after it.
+#[test]
+fn a_picture_by_its_address_reaches_only_a_model_that_reads_images() {
+    let url = "https://example.com/chart.png";
+    for (model, image) in [
+        (model_reading("stub", "sees", &[FileExtension::Png]), UserPart::Image(Medium::Url(url.into()))),
+        (test_model(), UserPart::Text(format!("[image:{url}, not sent: the model does not accept it]"))),
+    ] {
+        let message = Block::User(UserBlock {
+            comments: vec![MessageComment {
+                id: "c1".into(),
+                block_id: BlockId::try_from("r1").unwrap(),
+                start: 0,
+                end: 1,
+                at: 0,
+                quote: "The chart".into(),
+                picture: Some(MediaSource::Url { url: url.into() }),
+                text: "Which connection?".into(),
+            }],
+            entries: Vec::new(),
+            id: BlockId::try_from("u1").unwrap(),
+            turn_id: TurnId::try_from("t1").unwrap(),
+            created_at: Timestamp::UNIX_EPOCH,
+            model: model.clone(),
+            content: Vec::new(),
+            preamble: None,
+            automation: None,
+        });
+        let view = ModelView::of(0, &[message], &HeldMedia::default()).expect("no media to hold");
+        assert_eq!(
+            replay(&RequestView::new(&view, &model.model, RequestLimits::default(), &[])).items,
+            [InferenceItem::UserMessage { content: vec![image, UserPart::Text("Which connection?".into())] }]
+        );
+    }
 }
 
 /// A reference names a file on a paired device; the model reads the

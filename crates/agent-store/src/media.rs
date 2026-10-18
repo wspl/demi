@@ -11,7 +11,7 @@ use std::collections::{HashMap, HashSet};
 use demi_provider_common::{MediaBytes, ResultPart};
 use demi_shared_types::{
     B64Bytes, BlobRef, Block, DocumentSource, GoneCause, MediaSource, ModelMediaKind,
-    ToolCallBlock, ToolMediaSource, ToolResultContentBlock, ToolView, UserContentBlock,
+    MessageComment, ToolCallBlock, ToolMediaSource, ToolResultContentBlock, ToolView, UserContentBlock,
 };
 use futures_util::{StreamExt as _, TryStreamExt as _, future::LocalBoxFuture, stream};
 
@@ -172,12 +172,19 @@ fn content_sources(content: &[UserContentBlock]) -> impl Iterator<Item = Source<
     })
 }
 
-/// The media of a block: a message's or a steer's, a tool result's, those
-/// command reports carry, or those of the messages a compaction kept.
+/// The pictures a message's or a steer's comments quote (`comments-and-ask.md`
+/// § Images), which the model reads before its content.
+fn comment_sources(comments: &[MessageComment]) -> impl Iterator<Item = Source<'_>> {
+    comments.iter().filter_map(|comment| comment.picture.as_ref().map(Source::Media))
+}
+
+/// The media of a block: a message's or a steer's, its comments' pictures
+/// included, a tool result's, those command reports carry, or those of the
+/// messages a compaction kept.
 fn sources(block: &Block) -> Vec<Source<'_>> {
     match block {
-        Block::User(user) => content_sources(&user.content).collect(),
-        Block::Steer(steer) => content_sources(&steer.content).collect(),
+        Block::User(user) => comment_sources(&user.comments).chain(content_sources(&user.content)).collect(),
+        Block::Steer(steer) => comment_sources(&steer.comments).chain(content_sources(&steer.content)).collect(),
         Block::CompactionBoundary(boundary) => boundary
             .kept
             .iter()
@@ -235,6 +242,12 @@ pub fn block_blobs(block: &Block) -> impl Iterator<Item = &BlobRef> {
 /// as a queued message's.
 pub fn content_references(content: &[UserContentBlock]) -> impl Iterator<Item = &BlobRef> {
     content_sources(content).filter_map(Source::reference)
+}
+
+/// The blobs of the pictures `comments` quote (`comments-and-ask.md` §
+/// Images), which a message waiting to be sent or a draft keeps.
+pub fn comment_references(comments: &[MessageComment]) -> impl Iterator<Item = &BlobRef> {
+    comment_sources(comments).filter_map(Source::reference)
 }
 
 /// Stores the media of a tool's result as the result enters the transcript

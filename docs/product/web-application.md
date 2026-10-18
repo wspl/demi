@@ -293,7 +293,8 @@ own objects, such as the file browser's files, declare theirs the same way
   the page's menu replaces: a link *Open Link*, which opens it in a new tab
   of the user's browser as a click does, *Open in Work Panel*, which opens
   it in a tab of the conversation's browser, and *Copy Link*; a picture
-  *Copy Image* and *Save Image*; a code block *Copy Code*; text the user
+  *Copy Image* and *Save Image*, and, in the agent's reply, Comment, Ask
+  and Send to Conversation ([Images](comments-and-ask.md#images)); a code block *Copy Code*; text the user
   selected, when the pointer is on the selection, *Copy*.
 - **A link to an object**, a file, a commit or an agent, has that object's
   own menu, the one its row or tab has, with *Open*, which acts as clicking

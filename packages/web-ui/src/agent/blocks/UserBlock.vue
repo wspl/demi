@@ -8,7 +8,7 @@ import { useCopy } from '../../composables/useCopy'
 import { vContextMenu, type ContextMenuDeclaration } from '../../ui/context-menu'
 import { sendEntry, textWords, useSendTargets } from '../send-to-conversation'
 import { contentCopy, type CopiedMessage } from '../message-input/copied-message'
-import { withComments } from '../comments/comments'
+import { commentsContent } from '../comments/comments'
 import { messageSchema } from '../message-editor/extensions'
 import { useMessageClipboard } from '../message-editor/message-clipboard'
 import { parseUserMarkdown } from '../../markdown/user-markdown'
@@ -27,6 +27,8 @@ import { composerCapsule, composerTransfer, contentMessage, provideTransfers } f
 import SentMessage from '../message-editor/SentMessage.vue'
 import StreamedMarkdown from '../../ui/StreamedMarkdown.vue'
 import type { ComposerAttachment } from '../message-input/attachments'
+import type { MediaSource } from '@demicodes/protocol'
+import { useMediaAddress } from '../media-source'
 
 const props = defineProps<{
   content: readonly MessageEditContent[]
@@ -47,9 +49,9 @@ const props = defineProps<{
   /**
    * The comments sent with the message (`comments-and-ask.md` § Sending
    * them): each quoted text as a quote block followed by its comment,
-   * before the message's own text.
+   * before the message's own text; a picture's as a small copy of it.
    */
-  comments?: readonly { id: string; quote: string; text: string }[]
+  comments?: readonly { id: string; quote: string; picture?: MediaSource | null; text: string }[]
   /** Keep the hover actions visible (a catalog specimen, not a hover). */
   actionsPinned?: boolean
   /** Allows editing an explicitly submitted user message. */
@@ -69,6 +71,10 @@ const props = defineProps<{
    */
   origin?: MessageOrigin | null
 }>()
+
+/** Where a picture comment's picture loads from, which the bubble shows as its quote. */
+const mediaAddress = useMediaAddress()
+
 
 const emit = defineEmits<{
   recall: []
@@ -97,15 +103,17 @@ function copySource(): CopySource {
     return sent.value?.clipboardItem()
   }
   const schema = messageSchema()
+  // The comments' marks come first, as their pictures' files do.
+  const lead = contentMessage(commentsContent(props.comments))
   const { markdown, capsules } = message.value
-  const doc = schema.nodeFromJSON(parseUserMarkdown(withComments(markdown, props.comments), capsules))
+  const text = lead.markdown && markdown ? `${lead.markdown}\n\n${markdown}` : lead.markdown || markdown
+  const doc = schema.nodeFromJSON(parseUserMarkdown(text, [...lead.capsules, ...capsules]))
   return clipboard.item(clipboard.forms(schema, doc.content))
 }
 
-/** The message as Send to Conversation takes it: its files, and its comments before its text. */
+/** The message as Send to Conversation takes it: its comments before its text, their pictures as files with its own. */
 function sentWords(): CopiedMessage {
-  const copy = contentCopy(props.content)
-  return { ...copy, text: withComments(copy.text, props.comments ?? []) }
+  return contentCopy([...commentsContent(props.comments ?? []), ...props.content])
 }
 
 // A message not yet confirmed shows how far each of its files' uploads has
@@ -300,7 +308,10 @@ useResizeObserver(bodyRef, measure)
             <!-- The quoted text is the reply's words as they rendered, never read as Markdown again. -->
             <div v-if="comments?.length" class="markdown-body" :class="message.markdown || message.capsules.length ? 'mb-[var(--markdown-block-gap)]' : ''" data-sent-comments>
               <template v-for="comment in comments" :key="comment.id">
-                <blockquote><p class="whitespace-pre-wrap">{{ comment.quote }}</p></blockquote>
+                <blockquote v-if="comment.picture" data-comment-picture>
+                  <img :src="mediaAddress(comment.picture)" :alt="comment.quote" class="max-h-24 max-w-40 rounded-md object-contain">
+                </blockquote>
+                <blockquote v-else><p class="whitespace-pre-wrap">{{ comment.quote }}</p></blockquote>
                 <p class="whitespace-pre-wrap">{{ comment.text }}</p>
               </template>
             </div>

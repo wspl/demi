@@ -4,6 +4,7 @@
     "answerRequest": "リクエストに応答できませんでした",
     "changeWorkPanel": "作業パネルを変更できませんでした",
     "saveDraft": "下書きを保存できませんでした",
+    "sendComment": "コメントを送信できませんでした",
     "saveMessage": "メッセージを保存できませんでした",
     "editMessage": "メッセージを編集できませんでした",
     "deleteMessage": "メッセージを削除できませんでした",

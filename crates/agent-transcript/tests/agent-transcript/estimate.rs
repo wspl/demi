@@ -215,16 +215,17 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
             text_tokens("shoot\n{}\nimage/png") + 1_800
         ]
     );
-    // A model that reads neither type: the texts, and the image it
-    // fetches by URL.
+    // A model that reads neither type: the texts, the image by its URL too,
+    // which it does not read either.
     assert_eq!(
         weigh(&blind, unlimited),
         [
             text_tokens(&format!(
-                "{}\nhttps://example.com/a.png\n{}",
+                "{}\n{}\n{}",
                 unread("image", "image/png"),
+                unread("image", "https://example.com/a.png"),
                 unread("document", "doc.pdf")
-            )) + 1_600,
+            )),
             text_tokens(&format!("shoot\n{{}}\n{}", unread("image", "image/png")))
         ]
     );
@@ -283,8 +284,10 @@ fn a_messages_long_comments_weigh_what_the_replay_bound_keeps() {
         id: "c1".into(),
         block_id: "t1".try_into().unwrap(),
         start: 0,
+        at: 0,
         end: 50_000,
         quote: format!("{}{}", "a".repeat(8_000), "b".repeat(41_998)),
+        picture: None,
         text: "Why?".into(),
     }];
     let view = ModelView::of(0, std::slice::from_ref(&block), &HeldMedia::default()).unwrap();

@@ -298,13 +298,17 @@ pub struct NodeRecord {
 /// questions): the root's text block its history ends at, the character
 /// offsets of the asked words in the block's text as the page renders it,
 /// the words, as a comment keeps them, the user's question, and when it was
-/// asked, the start of its first round.
+/// asked, the start of its first round. A side question about a picture
+/// has the picture, and its place among the block's pictures as `start`
+/// and `end`, as a comment on a picture does (`comments-and-ask.md`
+/// § Images).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SideOf {
     pub block: BlockId,
     pub start: u64,
     pub end: u64,
     pub quote: String,
+    pub picture: Option<demi_shared_types::MediaSource>,
     pub question: String,
     pub asked_at: Timestamp,
 }

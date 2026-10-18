@@ -76,6 +76,12 @@ export interface ContextMenuDeclaration {
    * Copy in its menu, and on the selection's toolbar (`selectionTools`).
    */
   selectionEntries?: (text: string) => readonly ContextMenuEntry[]
+  /**
+   * What the object offers for a picture in it, a group after the
+   * picture's Copy Image and Save Image, as a reply's Comment, Ask and
+   * Send to Conversation (`comments-and-ask.md` § Images).
+   */
+  pictureEntries?: (image: HTMLImageElement) => readonly ContextMenuEntry[]
 }
 
 /** What `vContextMenu` takes: a declaration, its entries alone, or nothing for no menu. */
@@ -189,9 +195,13 @@ export function inTextField(target: Element): boolean {
   return target.closest(TEXT_FIELD) !== null
 }
 
-/** Text whose long press, on a phone, is the system's selection (`ContextMenuDeclaration.text`). */
+/**
+ * Text whose long press, on a phone, is the system's selection
+ * (`ContextMenuDeclaration.text`); a picture in it is no text, and its long
+ * press opens its menu.
+ */
 function inSelectableText(target: Element): boolean {
-  return target.closest('[data-context-text]') !== null
+  return !(target instanceof HTMLImageElement) && target.closest('[data-context-text]') !== null
 }
 
 /** The selected text when the pointer is on it, or from the keyboard when it is in `target`. */
@@ -287,8 +297,11 @@ export function composeContextMenu(ask: ContextMenuAsk, services: ContextMenuSer
     const declaration = declarations.get(el)
     if (ask.longPress && parts.length === 0 && !content && !declaration && el.matches(CONTROL))
       return null
-    if (content)
-      parts.push(() => [...content()])
+    if (content) {
+      // The object the walk ends at adds what it offers for a picture in it.
+      const picture = el instanceof HTMLImageElement ? el : null
+      parts.push(() => [...content(), ...(picture ? [asked[0]?.pictureEntries?.(picture) ?? []] : [])])
+    }
     if (declaration) {
       asked.push(declaration)
       objects.push(el)

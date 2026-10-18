@@ -56,7 +56,7 @@ pub use block::{
     client_blocks, WakeupPlacement,
 };
 pub use bytes::B64Bytes;
-pub use comment::{MessageComment, comments_markdown, markdown_quote};
+pub use comment::{MessageComment, comments_content, markdown_quote};
 pub use cost::{Cost, Currency};
 pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};
 pub use content::{
@@ -89,7 +89,7 @@ pub use media::{
 pub use model::{
     ATTACHMENT_FILE_EXTENSIONS, FileExtension, IMAGE_FILE_EXTENSIONS, modality_extensions, Model, ModelSelection, THINKING_OFF,
     ThinkingCapability, ThinkingConfig, ThinkingSummary, TokenUsage, VIDEO_FILE_EXTENSIONS,
-    file_extension_support, model_accepts_video,
+    file_extension_support, model_accepts_images, model_accepts_video,
 };
 pub use provider_state::{
     AccountInfo, AudioKind, AudioShape, AuthState, ImageShape, LoginPending, LoginStage, MediaKind, MediaShapes, RefusedCode,

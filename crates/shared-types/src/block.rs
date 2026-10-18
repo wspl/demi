@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::{
-    AgentMessage, AutomationId, AutomationRunId, BlockId, CommandId, MAX_SAFE_INTEGER, MessageComment, ModelSelection, comments_markdown, Nullable, ProviderErrorDiagnostics,
+    AgentMessage, AutomationId, AutomationRunId, BlockId, CommandId, MAX_SAFE_INTEGER, MessageComment, ModelSelection, comments_content, Nullable, ProviderErrorDiagnostics,
     QuotaWindowName, Timestamp, TokenUsage, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 
@@ -281,14 +281,14 @@ pub struct UserBlock {
 }
 
 impl UserBlock {
-    /// The texts the model reads before the message's content, in order: the
-    /// preamble, then the comments sent with it (`transcript.md` § Block
-    /// types).
-    pub fn lead_texts(&self) -> Vec<String> {
+    /// What the model reads before the message's content, in order: the
+    /// preamble, then the comments sent with it, a picture's as its image
+    /// (`transcript.md` § Block types).
+    pub fn lead_content(&self) -> Vec<UserContentBlock> {
         self.preamble
             .iter()
-            .cloned()
-            .chain(comments_markdown(&self.comments))
+            .map(|text| UserContentBlock::Text { text: text.clone() })
+            .chain(comments_content(&self.comments))
             .collect()
     }
 }

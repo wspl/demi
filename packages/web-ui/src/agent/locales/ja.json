@@ -7,7 +7,9 @@
     "remove": "コメントを削除",
     "sent": "送信済み",
     "writeFirst": "先にコメントを入力してください。",
-    "title": "コメント"
+    "title": "コメント",
+    "sendNow": "今すぐ送信",
+    "pictureFailed": "画像にコメントできませんでした"
   },
   "ask": {
     "ask": "質問",
@@ -18,7 +20,8 @@
     "collapse": "折りたたむ",
     "expand": "展開",
     "thinking": "思考中…",
-    "retry": "再試行"
+    "retry": "再試行",
+    "pictureFailed": "画像について質問できませんでした"
   },
   "transcript": {
     "accountSwitch": {
@@ -157,7 +160,8 @@
     },
     "copyMessage": "メッセージをコピー",
     "sendToConversation": "チャットに送る",
-    "sendToNew": "新しいチャット"
+    "sendToNew": "新しいチャット",
+    "sendFailed": "会話に送信できませんでした"
   },
   "subagents": {
     "mainAgent": "メインエージェント",
