@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch, type ComponentPublicInstance } from 'vue'
 import {
+  TAB_MIN_PX,
   TAB_TRANSITION,
   TAB_WIDTH_MS,
   afterEnterTab,
@@ -24,16 +25,21 @@ import { usePhone } from '../ui/phone'
 const FADE_PX = 24
 
 /**
- * The row every tab bar uses. Tabs fit their content up to their maximum width; when they outgrow the
- * row the strip scrolls with no scrollbar and fades out at whichever edge
- * has more behind it. A tab mark that edge cuts stays under the fade's solid
+ * The row every tab bar uses. Its tabs share its room equally (`TabItem`):
+ * each fits its content up to its maximum width, the room a shorter one
+ * leaves goes to the others, and none is narrower than `TAB_MIN_PX`, so a
+ * long title never widens its tab past the others' and selecting a tab
+ * changes no tab's width. When they cannot all fit at that least width the
+ * strip scrolls with no scrollbar and fades out at whichever edge
+ * has more behind it, and the host's `overflow` slot, such as a button that
+ * lists every tab, shows at the strip's end. A tab mark that edge cuts stays under the fade's solid
  * start, so a mark at an edge shows whole or not at all, never sliced.
  * The selected tab always shows whole, its close control included, and no
  * fade lies over it: whenever the selected tab changes, a tab enters, the
  * strip resizes or the selected tab does (as when its title arrives), the
  * strip scrolls until that tab shows whole with a fade's width beside it,
  * and where the view has no room for that, the fades give way beside the
- * tab. No tab is wider than the strip has room for (`--tab-room`), so a
+ * tab. No tab is wider than the strip's view, so a very
  * narrow strip truncates its title instead of cutting it. Unselected tabs
  * may lie under the fades. The
  * scroll is the strip's own, timed and eased like the tab motion, and aimed
@@ -45,8 +51,9 @@ const FADE_PX = 24
  * The host passes its `TabItem`s as children and sizes the strip in its row.
  * The `leading` slot holds tabs that stand ahead of them and never scroll,
  * such as the work panel's pinned tabs: elements of `role="tab"` like the
- * children, in the same tab list, which give way before the strip's own tabs,
- * their titles truncating down to what their own minimum width keeps.
+ * children, in the same tab list, each of one width whatever is selected,
+ * which the strip's own tabs never squeeze. A divider parts them from the
+ * strip's own tabs while there are any.
  *
  * `surface` is what the row sits on. On the base surface the active tab is
  * raised to the surface color; on a raised surface it is pressed to the base
@@ -82,8 +89,10 @@ const props = withDefaults(defineProps<{
 }>(), {
   surface: 'base',
 })
-const colors = computed(() =>
-  props.surface === 'base'
+// The tabs' colors, and the least width a tab keeps (`TabItem`).
+const vars = computed(() => ({
+  '--tab-min': `${TAB_MIN_PX}px`,
+  ...(props.surface === 'base'
     ? {
         '--tab-row': 'var(--surface-base)',
         '--tab-active': 'var(--surface)',
@@ -93,8 +102,8 @@ const colors = computed(() =>
         '--tab-row': 'var(--surface)',
         '--tab-active': 'var(--surface-base)',
         '--tab-hover': 'var(--surface-base)',
-      },
-)
+      }),
+}))
 const phone = usePhone()
 const root = ref<HTMLElement | null>(null)
 const list = ref<HTMLElement | null>(null)
@@ -105,6 +114,8 @@ const fades = ref<HTMLElement | null>(null)
 let watchedTab: HTMLElement | null = null
 const moreBefore = ref(false)
 const moreAfter = ref(false)
+/** Whether the tabs cannot all fit at their least width, so the strip scrolls and shows its `overflow` slot. */
+const overflowing = ref(false)
 let resizeObserver: ResizeObserver | null = null
 let mutationObserver: MutationObserver | null = null
 let scrollFrame: number | null = null
@@ -193,34 +204,35 @@ function updateEdges(): void {
 }
 
 /**
- * The least the leading tabs take once they have given way, with the gap
- * after them. Their present width would not do: it is what the strip's tabs
- * leave them, so a room measured from it would shrink the tabs in their place.
+ * The widest a tab may be, the strip's view (`--tab-room`), so a very narrow
+ * strip cuts its selected tab's title rather than the tab; and whether the
+ * tabs overflow. They do when they cannot all fit at their least width in
+ * the strip's width after the leading tabs and their divider, which keep
+ * their width, and before the `overflow` slot: read without it, so its
+ * showing never changes the answer. A tab on its way out is not counted.
  */
-function leadingMinimum(): number {
-  const lead = leading.value
-  if (!lead || !list.value) {
-    return 0
-  }
-  // Read in one layout and put back before anything paints or observes it.
-  lead.style.width = 'min-content'
-  const width = lead.offsetWidth
-  lead.style.width = ''
-  return width + stripGap(list.value)
-}
-
-/** The width a tab may take: the strip's own, less the leading tabs at their least. */
 function measureRoom(): void {
   const strip = root.value
-  if (!strip) {
+  const view = fades.value
+  const own = el.value
+  if (!strip || !view || !own) {
     return
   }
-  // On a phone the leading tabs scroll away with the rest, so a tab may take the whole view.
-  const leadingTabs = phone.value ? 0 : leadingMinimum()
-  const room = `${Math.max(0, strip.clientWidth - leadingTabs)}px`
+  let room: number
+  if (phone.value) {
+    // On a phone no tab shrinks and the leading tabs scroll away with the rest: a tab may take the whole view.
+    room = strip.clientWidth
+    overflowing.value = (list.value?.scrollWidth ?? 0) > strip.clientWidth
+  } else {
+    room = view.clientWidth
+    const tabs = tabElements().length
+    const base = strip.clientWidth - (view.getBoundingClientRect().left - strip.getBoundingClientRect().left)
+    overflowing.value = tabs * TAB_MIN_PX + Math.max(0, tabs - 1) * stripGap(own) > base
+  }
+  const value = `${room}px`
   // Unchanged, it is not written again: writing it resizes the tabs, which the observer reports.
-  if (strip.style.getPropertyValue('--tab-room') !== room) {
-    strip.style.setProperty('--tab-room', room)
+  if (strip.style.getPropertyValue('--tab-room') !== value) {
+    strip.style.setProperty('--tab-room', value)
   }
 }
 
@@ -481,16 +493,17 @@ onMounted(() => {
     return
   }
   resizeObserver = new ResizeObserver(resized)
-  for (const watched of [root.value, leading.value]) {
+  for (const watched of [root.value, leading.value, fades.value]) {
     if (watched) {
       resizeObserver.observe(watched)
     }
   }
   // A tab becoming active, a leading one included, or tabs coming and going,
-  // is what moves the view; any other change, such as a title that widens a
-  // tab, moves the marks.
+  // is what moves the view, and tabs coming and going may make them overflow;
+  // any other change, such as a title that widens a tab, moves the marks.
   mutationObserver = new MutationObserver((records) => {
     if (tabsChanged(strip, records, (node) => node instanceof HTMLElement)) {
+      measureRoom()
       revealActive()
     } else {
       updateEdges()
@@ -506,7 +519,7 @@ onMounted(() => {
   revealActive()
 })
 
-// The leading tabs' least width changes with their marks and badges, and they come and go with the host's.
+// The leading tabs' width changes with their marks and badges, and they come and go with the host's.
 watch(leading, (now, before) => {
   if (before) {
     resizeObserver?.unobserve(before)
@@ -535,29 +548,37 @@ defineExpose({ el })
 </script>
 
 <template>
-  <div ref="root" class="flex min-w-0 items-center" :style="colors">
+  <div ref="root" class="flex min-w-0 items-center" :style="vars">
     <!-- On a phone the fades' frame: the whole tab list scrolls inside it, so the fades stay put
          over the row's ends. -->
-    <div class="flex min-w-0 shrink phone:relative phone:isolate">
+    <div class="flex min-w-0 shrink grow phone:relative phone:isolate">
     <!-- One tab list holds the leading tabs and the strip's own, so the keyboard and assistive
          technology meet them as one row of tabs. On a phone it is what scrolls. -->
     <div
       ref="list"
       role="tablist"
-      class="flex min-w-0 shrink items-center gap-1 phone:overflow-x-auto phone:overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+      class="flex min-w-0 shrink grow items-center gap-0.5 phone:overflow-x-auto phone:overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
       @keydown="onKeydown"
       @scroll.passive="updateEdges"
     >
-    <!-- The leading tabs give way first: their shrink outweighs the strip's a hundredfold. On a
-         phone they keep their width and scroll with the rest. -->
-    <div v-if="$slots.leading" ref="leading" class="flex shrink-[100] items-center gap-1 phone:shrink-0">
+    <!-- The leading tabs keep their width, the same gap apart as the strip's own tabs; on a phone
+         they scroll with the rest. -->
+    <div v-if="$slots.leading" ref="leading" class="flex shrink-0 items-center gap-0.5">
       <slot name="leading" />
     </div>
-    <!-- Its own stacking context, so the fades lie over the scrolled tabs and nothing else. On a
-         phone it takes its tabs' whole width and the view holds the fades. -->
+    <!-- The divider after the leading tabs, while the strip has a tab of its own after it. -->
+    <span
+      v-if="$slots.leading"
+      aria-hidden="true"
+      data-leading-divider
+      class="mx-0.5 hidden h-3.5 w-px shrink-0 bg-line [&:has(+*_[role=tab])]:block"
+    />
+    <!-- Its own stacking context, so the fades lie over the scrolled tabs and nothing else. It takes
+         the room the leading tabs leave, which its tabs share. On a phone it takes its tabs' whole
+         width and the view holds the fades. -->
     <div
       ref="fades"
-      class="relative isolate min-w-0 shrink [--fade-after:0px] [--fade-before:0px] phone:static phone:isolation-auto phone:shrink-0"
+      class="relative isolate min-w-0 shrink grow [--fade-after:0px] [--fade-before:0px] phone:static phone:isolation-auto phone:shrink-0 phone:grow-0"
     >
     <TransitionGroup
       :ref="bindEl"
@@ -594,6 +615,9 @@ defineExpose({ el })
     />
     </div>
     </div>
+    </div>
+    <div v-if="overflowing && $slots.overflow" class="ml-1 flex shrink-0 items-center">
+      <slot name="overflow" />
     </div>
   </div>
 </template>

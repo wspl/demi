@@ -11,6 +11,7 @@
   "reading": "Reading…",
   "gone": "It’s no longer there.",
   "browser": {
+    "enclosingFolders": "Enclosing Folders",
     "device": "Device",
     "up": "Up",
     "places": "Places",

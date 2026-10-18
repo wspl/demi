@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { t } from './locales/text'
 import { t as shared } from '../locales/text'
-import { computed, nextTick, ref, shallowRef, watch, type Component } from 'vue'
-import { ArrowLeftToLine, ArrowRightToLine, ChevronLeft, CopyX, PanelRightClose, X } from '@lucide/vue'
+import { computed, h, nextTick, ref, shallowRef, watch, type Component, type FunctionalComponent } from 'vue'
+import { ArrowLeftToLine, ArrowRightToLine, ChevronDown, ChevronLeft, CopyX, PanelRightClose, X } from '@lucide/vue'
+import { appOverlayStore } from '../overlay/appOverlay'
+import Dropdown from '../ui/Dropdown.vue'
 import IconButton from '../ui/IconButton.vue'
+import IndeterminateSpinner from '../ui/IndeterminateSpinner.vue'
+import Menu from '../ui/Menu.vue'
 import Tooltip from '../ui/Tooltip.vue'
-import TruncatedText from '../ui/TruncatedText.vue'
 import TabItem from './TabItem.vue'
 import TabStrip from './TabStrip.vue'
 import { vContextMenu, type ContextMenuEntry, type ContextMenuGroup } from '../ui/context-menu'
+import { ICON_PX } from '../ui/icon-metrics'
+import type { MenuListItem } from '../ui/menu-context'
 import { usePhone } from '../ui/phone'
-import { isKeptStartCut } from '../ui/truncation'
 import type { TitleText } from '../ui/ui-text'
 import { tabsToClose, type TabCloseScope } from './tab-close'
 import { keptContents, pinnedData, shownSelection, type PanelState, type PinnedTabs } from './panel-tabs'
@@ -120,11 +124,33 @@ function closeScope(id: string, scope: TabCloseScope): void {
   emit('closeTabs', tabsToClose(props.panel.tabs, id, scope))
 }
 
-/** Whether a pinned tab, by its element, shows less than its whole title. */
-function pinnedTitleCut(tab: HTMLElement): boolean {
-  const title = tab.querySelector<HTMLElement>('[data-pinned-title]')
-  return title !== null && isKeptStartCut(title)
+/** A tab's mark as the strip draws it, as an icon of the list of every tab: its spinner, its picture or its kind's mark. */
+function listMark(mark: Component | null, data: unknown, picture: string | null, busy: boolean): FunctionalComponent {
+  return () => busy
+    ? h(IndeterminateSpinner, { size: ICON_PX.markIn28 })
+    : picture
+      ? h('img', { src: picture, alt: '', width: ICON_PX.markIn28, height: ICON_PX.markIn28, draggable: false })
+      : mark ? h(mark, { data }) : null
 }
+
+/** Every tab, the pinned ones first, by its mark and title, as the strip's list shows them. */
+const listedTabs = computed<MenuListItem[]>(() => [
+  ...pinnedTabs.value.map((item) => ({
+    id: item.kind.kind,
+    label: item.kind.title(item.data),
+    icon: listMark(item.kind.mark, item.data, null, false),
+  })),
+  ...tabs.value.map((item) => ({
+    id: item.tab.id,
+    label: item.title,
+    icon: listMark(
+      item.kind?.mark ?? null,
+      item.data,
+      item.kind?.icon?.(item.data, item.tab.id) ?? null,
+      item.kind?.busy?.(item.data, item.tab.id) ?? false,
+    ),
+  })),
+])
 
 /**
  * A tab's menu: what its kind offers, then the Close commands, as a web
@@ -183,36 +209,28 @@ function reorder(from: number, to: number): void {
         :still="replacing"
         @reorder="reorder"
       >
-        <!-- The pinned tabs lead the strip and give way before its tabs: in a narrow panel the titles of
-             those not selected truncate to their first few characters, then leave their marks and badges
-             alone, so the strip keeps room for its selected tab. A selected pinned tab keeps its title
-             whole, as the strip's selected tab does, and the strip's tabs narrow and scroll beside it. A
-             pinned tab is a grid so that its smallest width is its mark and badge, never a cut badge. It is
-             a tab as the strip's own are: a press selects it, as do Enter and Space, and the arrows reach it. -->
+        <!-- The pinned tabs lead the strip in one shape whatever is selected: the mark and the badge,
+             such as Change's counts, with the title in the tooltip and for assistive technology, so
+             selecting one widens nothing and a long title never crowds the strip's tabs. Each is a tab
+             as the strip's own are: a press selects it, as do Enter and Space, and the arrows reach it. -->
         <template v-if="pinnedTabs.length" #leading>
-          <!-- As a tab of the strip, it names itself in a tooltip over the whole tab, here only while its title is cut. -->
           <Tooltip
             v-for="item in pinnedTabs"
             :key="item.kind.kind"
             tag="span"
             :content="item.kind.title(item.data)"
-            :disabled="item.kind.kind === selection"
-            :show-if="pinnedTitleCut"
             placement="bottom"
             role="tab"
             tabindex="0"
             :aria-selected="item.kind.kind === selection"
-            class="grid h-tab grid-flow-col auto-cols-auto items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome select-none hover:bg-surface-base hover:text-fg"
-            :class="item.kind.kind === selection
-              ? 'grid-cols-[auto_auto] bg-surface-base text-fg-emphasis'
-              : 'grid-cols-[auto_minmax(0,auto)] text-fg-subtle'"
+            class="flex h-tab items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 text-chrome select-none hover:bg-surface-base hover:text-fg"
+            :class="item.kind.kind === selection ? 'bg-surface-base text-fg-emphasis' : 'text-fg-subtle'"
             @pointerdown.left="emit('select', item.kind.kind)"
             @keydown.enter.self="emit('select', item.kind.kind)"
             @keydown.space.self.prevent="emit('select', item.kind.kind)"
           >
             <component :is="item.kind.mark" :data="item.data" />
-            <span v-if="item.kind.kind === selection">{{ item.kind.title(item.data) }}</span>
-            <TruncatedText v-else data-pinned-title :text="item.kind.title(item.data)" keeps-start no-tooltip />
+            <span class="sr-only">{{ item.kind.title(item.data) }}</span>
             <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
           </Tooltip>
         </template>
@@ -229,6 +247,28 @@ function reorder(from: number, to: number): void {
         >
           <template v-if="item.kind" #mark><component :is="item.kind.mark" :data="item.data" /></template>
         </TabItem>
+        <!-- With more tabs than fit, a list of every tab, as VS Code's Show Opened Editors: picking one selects it. -->
+        <template #overflow>
+          <Dropdown :overlay-store="appOverlayStore">
+            <template #trigger="{ isOpen }">
+              <Tooltip :content="t('panel.allTabs')">
+                <IconButton
+                  :icon="ChevronDown"
+                  variant="ghost"
+                  :aria-label="t('panel.allTabs')"
+                  :pressed="isOpen"
+                />
+              </Tooltip>
+            </template>
+            <template #content="{ close }">
+              <Menu
+                :items="listedTabs"
+                :selected-id="selection ?? undefined"
+                @select="(id) => { emit('select', id); close() }"
+              />
+            </template>
+          </Dropdown>
+        </template>
       </TabStrip>
       <Tooltip v-if="!phone" :content="t('session.closePanel')" class="shrink-0">
         <IconButton :icon="PanelRightClose" variant="ghost" :aria-label="t('session.closePanel')" @click="emit('close')" />

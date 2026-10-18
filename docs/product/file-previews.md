@@ -67,7 +67,12 @@ GitHub a file's own bar over its contents:
   it; and only the tree: the path bar says where the file is on the Host, wherever
   that is. A path typed relative to nothing still starts from the
   workspace, and `~` names the home. A bar too narrow for every name turns the
-  crumbs farthest from the file into their glyphs first, as it does now.
+  crumbs farthest from the file into their glyphs first; when even the
+  glyphs do not fit, the middle folders go behind one ellipsis crumb,
+  **Enclosing Folders**, whose menu lists them and opens the one picked, so
+  the first crumb and the file stay whole, as Finder's path bar keeps its
+  ends; then the file's name is cut short, then shown as its glyph. No crumb
+  is ever cut in half.
 - **The file's bar** stands over what the file shows, the width of the file's
   side, not over the tree, 36 pixels tall. On its left, what the file is: its
   kind's full name, the language for text as the editor knows it,

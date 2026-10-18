@@ -11,6 +11,7 @@
   "reading": "正在读取…",
   "gone": "它已不存在。",
   "browser": {
+    "enclosingFolders": "上层文件夹",
     "device": "设备",
     "up": "上一级",
     "places": "位置",

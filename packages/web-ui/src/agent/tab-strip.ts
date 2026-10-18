@@ -10,6 +10,13 @@ import { prefersReducedMotion } from '../ui/stream-reveal'
  */
 export const iconTabsKey: InjectionKey<true> = Symbol('icon-tabs')
 
+/**
+ * The least width a strip's tab keeps, its mark, a few characters of its
+ * title and its close slot (`web-application.md` § Work panel, The strip):
+ * the strip scrolls before a tab narrows further.
+ */
+export const TAB_MIN_PX = 88
+
 export const TAB_TRANSITION = 'tabs'
 export const TAB_WIDTH_MS = 200
 
@@ -18,16 +25,16 @@ const enterWidths = new WeakMap<HTMLElement, number>()
 
 function measureOpenWidth(tab: HTMLElement): number {
   const prevWidth = tab.style.width
-  const prevShrink = tab.style.flexShrink
+  const prevFlex = tab.style.flex
   const prevMin = tab.style.minWidth
-  // No inline width: the tab's own class width, shrunk as its strip shrinks its tabs, is what it opens to.
+  // No inline width or flex: the width the strip's sharing gives the tab is what it opens to.
   tab.style.width = ''
-  tab.style.flexShrink = ''
+  tab.style.flex = ''
   tab.style.minWidth = ''
   void tab.offsetWidth
   const width = tab.getBoundingClientRect().width
   tab.style.width = prevWidth
-  tab.style.flexShrink = prevShrink
+  tab.style.flex = prevFlex
   tab.style.minWidth = prevMin
   return width
 }
@@ -166,7 +173,7 @@ export function cutMarkCover(
 
 function clearWidthLock(tab: HTMLElement): void {
   tab.style.width = ''
-  tab.style.flexShrink = ''
+  tab.style.flex = ''
   tab.style.transition = ''
 }
 
@@ -199,7 +206,7 @@ export function enterTab(el: Element): void {
   }
   const width = measureOpenWidth(tab)
   enterWidths.set(tab, width)
-  tab.style.flexShrink = '0'
+  tab.style.flex = '0 0 auto'
   tab.style.transition = 'none'
   tab.style.width = '0'
   void tab.offsetWidth
@@ -219,7 +226,7 @@ export function afterEnterTab(el: Element): void {
   tab.style.width = ''
   tab.style.minWidth = ''
   tab.style.overflow = ''
-  tab.style.flexShrink = ''
+  tab.style.flex = ''
   tab.style.opacity = ''
   tab.style.transition = ''
 }
@@ -240,8 +247,9 @@ function stillLeaving(parent: HTMLElement): boolean {
 }
 
 /**
- * Holds `tab` and each other tab that stays at its width, all read before
- * any is written, so the strip is laid out once and not once per tab.
+ * Holds `tab` and each other tab that stays at its width, out of the strip's
+ * sharing (`flex: 0 0 auto`), all read before any is written, so the strip
+ * is laid out once and not once per tab.
  */
 function lockWidths(tab: HTMLElement): void {
   const siblings = [...tab.parentElement?.children ?? []].filter(
@@ -251,7 +259,7 @@ function lockWidths(tab: HTMLElement): void {
   const widths = held.map((each) => each.getBoundingClientRect().width)
   held.forEach((each, index) => {
     each.style.width = `${widths[index]}px`
-    each.style.flexShrink = '0'
+    each.style.flex = '0 0 auto'
   })
 }
 
@@ -274,7 +282,7 @@ function releaseStrip(parent: HTMLElement | null): void {
   for (const tab of tabs) {
     tab.style.transition = 'none'
     tab.style.width = ''
-    tab.style.flexShrink = ''
+    tab.style.flex = ''
   }
   void parent.offsetWidth
   const to = tabs.map((tab) => tab.getBoundingClientRect().width)
@@ -291,7 +299,7 @@ function releaseStrip(parent: HTMLElement | null): void {
 
   for (let index = 0; index < tabs.length; index++) {
     const tab = tabs[index]!
-    tab.style.flexShrink = '0'
+    tab.style.flex = '0 0 auto'
     tab.style.width = `${from[index]}px`
   }
   void parent.offsetWidth

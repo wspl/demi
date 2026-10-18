@@ -328,6 +328,7 @@
     "label": "浏览器地址"
   },
   "panel": {
+    "allTabs": "显示所有标签页",
     "more": "更多",
     "windowHeight": "窗口高度",
     "closeOthers": "关闭其他",

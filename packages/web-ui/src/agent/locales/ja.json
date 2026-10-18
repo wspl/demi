@@ -328,6 +328,7 @@
     "label": "ブラウザーのアドレス"
   },
   "panel": {
+    "allTabs": "すべてのタブを表示",
     "more": "その他",
     "windowHeight": "ウィンドウの高さ",
     "closeOthers": "その他を閉じる",

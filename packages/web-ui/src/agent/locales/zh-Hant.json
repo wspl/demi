@@ -328,6 +328,7 @@
     "label": "瀏覽器網址"
   },
   "panel": {
+    "allTabs": "顯示所有分頁",
     "more": "更多",
     "windowHeight": "視窗高度",
     "closeOthers": "關閉其他",

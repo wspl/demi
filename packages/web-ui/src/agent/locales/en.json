@@ -328,6 +328,7 @@
     "label": "Browser address"
   },
   "panel": {
+    "allTabs": "Show All Tabs",
     "more": "More",
     "windowHeight": "Window height",
     "closeOthers": "Close Others",

@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, nextTick, provide, ref, watch } from 'vue'
-import { ChevronRight } from '@lucide/vue'
+import { computed, h, nextTick, provide, ref, watch } from 'vue'
+import { ChevronRight, Ellipsis } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
 import { appOverlayStore } from '../overlay/appOverlay'
+import Menu from '../ui/Menu.vue'
+import type { MenuListItem } from '../ui/menu-context'
 import Popover from '../ui/Popover.vue'
 import { pressOnKey } from '../ui/button-events'
 import Tooltip from '../ui/Tooltip.vue'
@@ -35,8 +37,11 @@ import type { FileBrowserSource } from './types'
  * time from the left, the name kept in a tooltip; the last crumb keeps its
  * name longest. The widest name still shown, when it would be the next to go,
  * is cut short with an ellipsis to fill the room instead, so the bar is never
- * left half empty (`fitCrumbs`). When even the glyphs overflow, the bar keeps
- * its right end and clips its left.
+ * left half empty. When even the glyphs overflow, the middle folders go
+ * behind one ellipsis item, as in Finder's path bar, so the first and the
+ * last crumbs stay whole and no crumb is ever cut in half at an edge
+ * (`fitCrumbs`). The ellipsis lists the folders it stands for: one picked
+ * goes there in `navigate` mode, and opens its own crumb's menu in `browse`.
  */
 const props = withDefaults(
   defineProps<{
@@ -92,6 +97,48 @@ function onCrumbClick(path: string): void {
 
 function closeMenu(): void {
   menuCrumb.value = null
+  hiddenOpen.value = false
+}
+
+// The ellipsis item and the menu of the crumbs it stands for.
+const ellipsisEl = ref<HTMLElement | null>(null)
+const hiddenOpen = ref(false)
+const hiddenCrumbs = computed(() => {
+  const hidden = fit.value.hidden
+  return hidden ? crumbs.value.slice(hidden.from, hidden.from + hidden.count) : []
+})
+const hiddenItems = computed<MenuListItem[]>(() => hiddenCrumbs.value.map((crumb) => ({
+  id: crumb.path,
+  label: crumb.name,
+  icon: () => h(FileIcon, { name: crumb.name, isDirectory: true, icon: crumb.icon }),
+})))
+
+// A function ref: a plain one inside the crumbs' loop would collect an array.
+function bindEllipsis(el: unknown): void {
+  ellipsisEl.value = el instanceof HTMLElement ? el : null
+}
+
+function isHidden(index: number): boolean {
+  const hidden = fit.value.hidden
+  return hidden !== null && index >= hidden.from && index < hidden.from + hidden.count
+}
+
+function onEllipsisClick(): void {
+  const open = hiddenOpen.value
+  closeMenu()
+  hiddenOpen.value = !open
+}
+
+function pickHidden(path: string): void {
+  hiddenOpen.value = false
+  if (props.mode === 'navigate') {
+    emit('navigate', path)
+    return
+  }
+  // In `browse` the folder opens what lies beside it, as its crumb would, under the ellipsis.
+  if (ellipsisEl.value) {
+    menuCrumb.value = { path, el: ellipsisEl.value }
+  }
 }
 
 function pick(path: string): void {
@@ -122,7 +169,7 @@ const crumbs = computed(() => pathCrumbs(props.path, props.source))
 const CRUMB_LAYOUT = 'flex h-5 shrink-0 items-center gap-1 rounded px-1 text-chrome phone:justify-center phone:h-hit-sm phone:min-w-hit-sm phone:px-1.5'
 const icons = useIconPx()
 
-const fit = ref<CrumbFit>({ collapsed: 0, clipped: false, truncated: null })
+const fit = ref<CrumbFit>({ collapsed: 0, hidden: null, clipped: false, truncated: null })
 
 /** An element's layout width: what a transform on an ancestor, such as a dialog opening, does not scale. */
 function width(el: Element | null, scale: number): number {
@@ -145,7 +192,12 @@ function measure(): void {
   const available = bar.value.clientWidth -
     Number.parseFloat(style.paddingLeft) -
     Number.parseFloat(style.paddingRight)
-  fit.value = fitCrumbs(widths, width(ruler.value.querySelector('[data-separator]'), scale), available)
+  fit.value = fitCrumbs(
+    widths,
+    width(ruler.value.querySelector('[data-separator]'), scale),
+    width(ruler.value.querySelector('[data-ellipsis]'), scale),
+    available,
+  )
 }
 
 // The bar's width, and the ruler's for names that change width as the path or a font does.
@@ -214,6 +266,32 @@ watch(() => props.path, () => {
     <!-- Clipped, the row ends at its right edge, so what overflows is the left. -->
     <div class="flex min-w-0 items-center overflow-hidden" :class="fit.clipped ? 'justify-end' : ''">
       <template v-for="(crumb, index) in crumbs" :key="crumb.path">
+        <template v-if="fit.hidden?.from === index">
+          <ChevronRight
+            v-if="index > 0"
+            :size="icons.chip"
+            class="shrink-0 text-fg-faint"
+          />
+          <Tooltip :content="t('browser.enclosingFolders')" :disabled="hiddenOpen" class="shrink-0">
+            <span
+              :ref="bindEllipsis"
+              role="button"
+              data-crumb-ellipsis
+              tabindex="0"
+              :aria-label="t('browser.enclosingFolders')"
+              aria-haspopup="menu"
+              :aria-expanded="hiddenOpen"
+              class="text-fg-muted transition-colors duration-200 ease-out hover:bg-hover hover:text-fg"
+              :class="[CRUMB_LAYOUT, hiddenOpen || (menuCrumb && menuCrumb.el === ellipsisEl) ? 'bg-hover text-fg' : '']"
+              @click.stop="onEllipsisClick"
+              @keydown="pressOnKey"
+              @keyup="pressOnKey"
+            >
+              <Ellipsis :size="icons.chip" />
+            </span>
+          </Tooltip>
+        </template>
+        <template v-if="!isHidden(index)">
         <ChevronRight
           v-if="index > 0"
           :size="icons.chip"
@@ -255,11 +333,13 @@ watch(() => props.path, () => {
             >
           </span>
         </Tooltip>
+        </template>
       </template>
     </div>
     <!-- Every crumb both ways and a separator, out of sight, so the bar knows what fits. -->
     <div ref="ruler" class="pointer-events-none invisible absolute left-0 top-0 flex w-max items-center" aria-hidden="true">
       <span data-separator class="flex shrink-0"><ChevronRight :size="icons.chip" /></span>
+      <span data-ellipsis class="flex"><span :class="CRUMB_LAYOUT"><Ellipsis :size="icons.chip" /></span></span>
       <span v-for="(crumb, index) in crumbs" :key="crumb.path" data-crumb class="flex">
         <span :class="CRUMB_LAYOUT">
           <FileIcon :name="crumb.name" :is-directory="!(leaf === 'file' && index === crumbs.length - 1)" />
@@ -288,6 +368,17 @@ watch(() => props.path, () => {
         :current="menuCrumb?.path"
         @pick="pick"
       />
+    </Popover>
+    <Popover
+      :overlay-store="appOverlayStore"
+      :is-open="hiddenOpen"
+      :anchor-el="ellipsisEl"
+      :ignore-els="ellipsisEl ? [ellipsisEl] : []"
+      :offset="4"
+      sheet
+      @close="hiddenOpen = false"
+    >
+      <Menu :items="hiddenItems" @select="pickHidden" />
     </Popover>
   </div>
 </template>
