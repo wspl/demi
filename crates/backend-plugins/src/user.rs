@@ -1278,8 +1278,10 @@ impl RequestPort {
             PortMessage::OauthStart => PortAnswer::AuthorizationUrl {
                 url: shared.oauth_start(self.plugin, &self.cancel).await?,
             },
-            PortMessage::OauthToken => PortAnswer::AccessToken {
-                token: shared.oauth_token(self.plugin, &self.cancel).await?,
+            PortMessage::OauthToken { refused } => PortAnswer::AccessToken {
+                token: shared
+                    .oauth_token(self.plugin, refused.as_deref(), &self.cancel)
+                    .await?,
             },
             PortMessage::OauthSignOut => {
                 shared.oauth_sign_out(self.plugin, &self.cancel).await?;

@@ -439,10 +439,15 @@ impl Shared {
     }
 
     /// A live access token of the user's sign-in to plugin `plugin`'s
-    /// vendor, renewed first when it expires within a minute.
+    /// vendor, renewed first when it expires within a minute, or when it is
+    /// the `refused` one the vendor's resource server refused. A `refused`
+    /// token already replaced, by another renewal or a new sign-in, answers
+    /// the current one: the renewals take turns, so one refusal seen by
+    /// several requests renews once.
     pub(crate) async fn oauth_token(
         self: &Rc<Self>,
         plugin: usize,
+        refused: Option<&str>,
         cancel: &CancellationToken,
     ) -> Result<String, PortFailure> {
         self.oauth(plugin)?;
@@ -450,10 +455,20 @@ impl Shared {
         let Some((tokens, revision)) = self.stored_tokens(plugin).await? else {
             return Err(PortFailure::Refused(PortRefusal::SignedOut));
         };
-        if !self.due(&tokens) {
-            return Ok(tokens.access_token.expose().to_owned());
+        let current = tokens.access_token.expose();
+        let forced = refused == Some(current);
+        if !forced && !self.due(&tokens) {
+            return Ok(current.to_owned());
         }
         let Some(refresh) = tokens.refresh_token.clone() else {
+            if forced {
+                // Refused but not expired: the sign-in stays, as after any
+                // refusal of a request, until its token expires.
+                return Err(vendor(
+                    "the authorization server gave no refresh token to renew the refused sign-in"
+                        .into(),
+                ));
+            }
             return self.signed_out(plugin, revision).await;
         };
         // From here the renewal is the shard's: it holds the turn and stores

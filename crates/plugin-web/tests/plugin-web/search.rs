@@ -212,8 +212,7 @@ fn json_lists_the_pages_and_nothing_found_says_so() {
 }
 
 /// Each failure prints its words: the anonymous limit, the account's rate
-/// limit with the seconds of Retry-After, no credit, and a sign-in Exa
-/// refuses, which signs the user out, after which searches are anonymous.
+/// limit with the seconds of Retry-After, and no credit.
 #[test]
 fn each_failure_prints_its_words() {
     local(async {
@@ -244,24 +243,104 @@ fn each_failure_prints_its_words() {
             "demi web search: your Exa account has no credit left\n"
         );
 
-        let refused = Plugged::new(FakeExa::new(Exa {
+    });
+}
+
+/// Exa refuses a stale access token with 401: the plugin host renews it
+/// once, the request goes once more with the new one, and the user stays
+/// signed in. When the renewed token is refused too, the search fails with
+/// Exa's words, still signed in.
+#[test]
+fn a_refused_token_renews_once_and_the_request_goes_again() {
+    local(async {
+        let plugged = Plugged::new(FakeExa::new(Exa {
             pages: pages(),
             token: Some("live-token"),
             ..Exa::default()
         }));
-        refused.sign_in("revoked-token");
-        let changes = refused.demi.changes();
-        let (code, _, stderr) = refused.run(TWO_QUERIES).await;
+        plugged.sign_in("stale-token");
+        *plugged.demi.renewal.borrow_mut() = Ok("live-token".into());
+        let (code, stdout, stderr) = plugged.run(TWO_QUERIES).await;
+        assert_eq!((code, stdout, stderr.as_str()), (0, two_queries_printed(), ""));
+        assert_eq!(plugged.demi.renewals.get(), 1);
+        // The refused `initialize`, and the one sent again.
+        assert_eq!(plugged.exa.asked("initialize"), 2);
+        assert_eq!(plugged.demi.access_token.borrow().as_deref(), Some("live-token"));
+
+        plugged.exa.0.borrow_mut().token = Some("another-token");
+        *plugged.demi.renewal.borrow_mut() = Ok("renewed-token".into());
+        let (code, _, stderr) = plugged.run(&["web", "search", "vite rolldown"]).await;
+        assert_eq!(code, 1);
+        assert_eq!(
+            stderr,
+            "demi web search: Exa did not answer: HTTP 401, {\"error\":\"invalid_token\"}\n"
+        );
+        assert_eq!(plugged.demi.renewals.get(), 2);
+        let exa = plugged.exa.0.borrow();
+        let sent: Vec<&str> = exa
+            .mcp_headers
+            .iter()
+            .rev()
+            .take(2)
+            .map(|headers| headers["authorization"].as_str())
+            .collect();
+        assert_eq!(sent, ["Bearer renewed-token", "Bearer live-token"]);
+        assert_eq!(plugged.demi.access_token.borrow().as_deref(), Some("renewed-token"));
+    });
+}
+
+/// A 403 is Exa's failure, not the sign-in's: nothing is renewed, the
+/// search fails with what Exa said, and the next search is signed in.
+#[test]
+fn a_forbidden_search_keeps_the_sign_in() {
+    local(async {
+        let plugged = Plugged::new(FakeExa::new(Exa {
+            pages: pages(),
+            token: Some("live-token"),
+            refuse: Some((403, vec![])),
+            ..Exa::default()
+        }));
+        plugged.sign_in("live-token");
+        let changes = plugged.demi.changes();
+        let (code, _, stderr) = plugged.run(TWO_QUERIES).await;
+        assert_eq!(code, 1);
+        assert_eq!(stderr, "demi web search: Exa did not answer: HTTP 403, {}\n");
+        assert_eq!(plugged.demi.renewals.get(), 0);
+        assert_eq!(plugged.demi.changes(), changes);
+
+        plugged.exa.0.borrow_mut().refuse = None;
+        let (code, stdout, _) = plugged.run(TWO_QUERIES).await;
+        assert_eq!((code, stdout), (0, two_queries_printed()));
+        let authorization = plugged.exa.0.borrow().mcp_headers.last().unwrap()["authorization"].clone();
+        assert_eq!(authorization, "Bearer live-token");
+    });
+}
+
+/// A refused token whose renewal Exa refuses with `invalid_grant`: the
+/// plugin host forgets the sign-in, the search fails with the words for an
+/// expired sign-in, and the next search is anonymous.
+#[test]
+fn a_refused_token_exa_will_not_renew_expires_the_sign_in() {
+    local(async {
+        let plugged = Plugged::new(FakeExa::new(Exa {
+            pages: pages(),
+            token: Some("live-token"),
+            ..Exa::default()
+        }));
+        plugged.sign_in("revoked-token");
+        let changes = plugged.demi.changes();
+        let (code, _, stderr) = plugged.run(TWO_QUERIES).await;
         assert_eq!(code, 1);
         assert_eq!(
             stderr,
             "demi web search: the Exa sign-in has expired; sign in again in Settings › Web Search\n"
         );
-        assert_eq!(*refused.demi.access_token.borrow(), None);
-        assert!(refused.demi.changes() > changes, "the page shows the user signed out");
-        let (code, stdout, _) = refused.run(TWO_QUERIES).await;
+        assert_eq!(plugged.demi.renewals.get(), 1);
+        assert_eq!(*plugged.demi.access_token.borrow(), None);
+        assert!(plugged.demi.changes() > changes, "the page shows the user signed out");
+        let (code, stdout, _) = plugged.run(TWO_QUERIES).await;
         assert_eq!((code, stdout), (0, two_queries_printed()));
-        let exa = refused.exa.0.borrow();
+        let exa = plugged.exa.0.borrow();
         assert!(!exa.mcp_headers.last().unwrap().contains_key("authorization"));
     });
 }

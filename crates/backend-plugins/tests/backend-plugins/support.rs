@@ -620,6 +620,7 @@ impl PortProbe {
             "send",
             "sign_in",
             "token",
+            "renew",
             "sign_out",
         ] {
             page = page.method(Method::new::<Map<String, Value>, Value>(method, Scope::User));
@@ -699,6 +700,7 @@ impl Plugin for Operations {
                 }
                 "sign_in" => json!({ "url": port.oauth_start().await? }),
                 "token" => json!({ "token": port.oauth_token().await? }),
+                "renew" => json!({ "token": port.oauth_renew(&text("refused").unwrap()).await? }),
                 "sign_out" => {
                     port.oauth_sign_out().await?;
                     Value::Null
