@@ -6,6 +6,7 @@ import type { ContextRowKind, ContextUsage, InstructionEntry } from '@demicodes/
 import ProviderQuota from '../settings/ProviderQuota.vue'
 import Button from '../ui/Button.vue'
 import Dropdown from '../ui/Dropdown.vue'
+import Fold from '../ui/Fold.vue'
 import FoldChevron from '../ui/FoldChevron.vue'
 import { ICON_PX, useIconPx } from '../ui/icon-metrics'
 import IconButton from '../ui/IconButton.vue'
@@ -251,14 +252,17 @@ const ringColor = computed(() => {
                       :style="{ width: width(row.tokens) }"
                     />
                   </div>
-                  <ul v-if="listOpen" class="mt-2">
-                    <li v-for="row in rows" :key="row.kind" class="context-row">
-                      <span class="size-2 rounded-[2px]" :class="ROW_COLORS[row.kind]" />
-                      <span class="min-w-0 truncate text-fg-body">{{ row.label }}</span>
-                      <span class="text-right tabular-nums text-fg-body">{{ tokensLabel(row.tokens, row.estimated) }}</span>
-                      <span class="text-right tabular-nums text-fg-subtle">{{ usage?.window ? formatShare(row.tokens, usage.window) : '' }}</span>
-                    </li>
-                  </ul>
+                  <!-- The list opens and closes by height, as every disclosure does (Fold). -->
+                  <Fold :open="listOpen">
+                    <ul class="pt-2">
+                      <li v-for="row in rows" :key="row.kind" class="context-row">
+                        <span class="size-2 rounded-[2px]" :class="ROW_COLORS[row.kind]" />
+                        <span class="min-w-0 truncate text-fg-body">{{ row.label }}</span>
+                        <span class="text-right tabular-nums text-fg-body">{{ tokensLabel(row.tokens, row.estimated) }}</span>
+                        <span class="text-right tabular-nums text-fg-subtle">{{ usage?.window ? formatShare(row.tokens, usage.window) : '' }}</span>
+                      </li>
+                    </ul>
+                  </Fold>
                 </div>
                 <!-- The last line of the context section: its Compact ends where the
                      figures above it end. -->

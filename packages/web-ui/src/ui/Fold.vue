@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue'
+import { nextTick, ref, useTemplateRef, watch } from 'vue'
 import { FOLD_MS } from './fold'
 
 /**
@@ -12,16 +12,32 @@ const props = defineProps<{
 }>()
 
 const opened = ref(props.open)
-watch(() => props.open, (open) => {
-  if (open)
-    opened.value = true
+/**
+ * Whether the panel is drawn open. A first open mounts the content closed and
+ * has the browser lay it out so before opening it: content that appears in
+ * the same style change that grows its row gives the transition nothing to
+ * grow from, and the panel jumped open instead.
+ */
+const expanded = ref(props.open)
+const root = useTemplateRef<HTMLElement>('root')
+watch(() => props.open, async (open) => {
+  if (!open || opened.value) {
+    expanded.value = open
+    return
+  }
+  opened.value = true
+  await nextTick()
+  // Reading a layout value makes the browser compute the closed state now.
+  void root.value?.offsetHeight
+  expanded.value = props.open
 })
 </script>
 
 <template>
   <div
+    ref="root"
     class="fold"
-    :class="open ? 'is-open' : ''"
+    :class="expanded ? 'is-open' : ''"
     :style="{ '--fold-ms': `${FOLD_MS}ms` }"
   >
     <div class="fold-clip overflow-hidden" :inert="!open">
