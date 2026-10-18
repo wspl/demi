@@ -56,7 +56,9 @@ empty one:
 ## Goal
 ## Constraints and preferences
 Quote every limit, permission and rule the user set exactly, with the scope
-they gave it.
+they gave it: a remark about one task, such as \"this check doesn't need a
+subagent\" said of one check, is quoted with that task and is not a rule for
+all work.
 ## Decisions
 What was decided and why, and what was ruled out.
 ## Files and code
