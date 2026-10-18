@@ -14,10 +14,7 @@ use http::{
 };
 use serde::Serialize;
 
-use crate::auth::Credentials;
-
-/// The Grok CLI release whose identity the provider's requests carry.
-pub(crate) const CLIENT_VERSION: &str = "1.0.62";
+use crate::{auth::Credentials, releases::GrokReleases};
 
 /// The JSON body of `request`. The proxy reads images but no PDFs or
 /// video, and takes no output limit or service tier.
@@ -61,8 +58,9 @@ struct StreamOptions {
 }
 
 /// The headers every request of the account carries: its session and the
-/// identity of the Grok CLI, whose chat proxy Demi talks to.
-pub(crate) fn identity_headers(credentials: &Credentials) -> HeaderMap {
+/// identity of the Grok CLI, whose chat proxy Demi talks to, in the newest
+/// release `releases` knows.
+pub(crate) fn identity_headers(credentials: &Credentials, releases: &GrokReleases) -> HeaderMap {
     let mut headers = HeaderMap::new();
     headers.insert(AUTHORIZATION, credentials.access_token.bearer());
     headers.insert("x-xai-token-auth", HeaderValue::from_static("xai-grok-cli"));
@@ -70,10 +68,7 @@ pub(crate) fn identity_headers(credentials: &Credentials) -> HeaderMap {
         "x-authenticateresponse",
         HeaderValue::from_static("authenticate-response"),
     );
-    headers.insert(
-        "x-grok-client-version",
-        HeaderValue::from_static(CLIENT_VERSION),
-    );
+    headers.insert("x-grok-client-version", releases.current());
     headers.insert(
         "x-grok-client-identifier",
         HeaderValue::from_static("grok-shell"),
@@ -104,8 +99,12 @@ pub(crate) fn identity_headers(credentials: &Credentials) -> HeaderMap {
 
 /// The headers of an inference request: the identity's, the model, and the
 /// session, request and turn the proxy groups the conversation by.
-pub(crate) fn inference_headers(credentials: &Credentials, request: &RequestIds) -> HeaderMap {
-    let mut headers = identity_headers(credentials);
+pub(crate) fn inference_headers(
+    credentials: &Credentials,
+    releases: &GrokReleases,
+    request: &RequestIds,
+) -> HeaderMap {
+    let mut headers = identity_headers(credentials, releases);
     let ids = [
         ("x-grok-model-override", request.model_id.as_str()),
         ("x-grok-session-id", request.session_id.as_str()),

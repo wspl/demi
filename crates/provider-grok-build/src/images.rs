@@ -40,7 +40,7 @@ impl Shared {
         refused: Option<Secret>,
     ) -> Result<(HeaderMap, Option<Secret>), AuthFailure> {
         let credentials = self.auth.credentials(http, refused.as_ref()).await?;
-        Ok((identity_headers(&credentials), Some(credentials.access_token)))
+        Ok((identity_headers(&credentials, &self.releases), Some(credentials.access_token)))
     }
 }
 

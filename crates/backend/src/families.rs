@@ -19,7 +19,7 @@ use demi_provider_common::media::MediaVendor;
 use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
 use demi_provider_elevenlabs::{ElevenLabsConfig, ElevenLabsProvider};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
-use demi_provider_grok_build::{GrokConfig, GrokProvider};
+use demi_provider_grok_build::{GrokConfig, GrokProvider, GrokReleases};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
 use demi_shared_types::{AudioShape, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
@@ -40,7 +40,7 @@ pub fn builtin() -> FamilyRegistry {
         .with("claude-code", ClaudeCodeFamily)
         .with("codex", CodexFamily::default())
         .with("google", GoogleFamily)
-        .with("grok-build", GrokBuildFamily)
+        .with("grok-build", GrokBuildFamily::new())
         .with(MEDIA_FAMILY, MediaFamily)
         .with("openai", OpenAiFamily)
 }
@@ -256,7 +256,20 @@ impl ProviderFamily for CodexFamily {
 
 /// The `grok-build` family: Grok accounts on the chat proxy of Grok's own
 /// CLI, signed in by device authorization at `auth.x.ai`.
-struct GrokBuildFamily;
+struct GrokBuildFamily {
+    /// The newest stable Grok CLI release, one for the whole backend, made
+    /// with the client and clock of the first provider's arguments: the
+    /// backend's shared services', the same for every provider.
+    releases: OnceLock<GrokReleases>,
+}
+
+impl GrokBuildFamily {
+    fn new() -> Self {
+        Self {
+            releases: OnceLock::new(),
+        }
+    }
+}
 
 impl ProviderFamily for GrokBuildFamily {
     fn credential(&self) -> CredentialKind {
@@ -268,7 +281,11 @@ impl ProviderFamily for GrokBuildFamily {
             return Err(FamilyError::WrongCredential);
         };
         let (account, quota) = bound(subscription.account);
-        let config = GrokConfig::new(account);
+        let releases = self.releases.get_or_init(|| {
+            let url = GrokReleases::URL.parse().expect("the pointer URL parses");
+            GrokReleases::new(url, args.services_http.clone(), args.clock.clone())
+        });
+        let config = GrokConfig::new(account, releases.clone());
         let provider = GrokProvider::new(config, subscription.pool, quota, args.http, args.clock);
         Ok(Arc::new(provider))
     }

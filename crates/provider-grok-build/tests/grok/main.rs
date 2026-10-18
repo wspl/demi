@@ -9,6 +9,7 @@ mod videos;
 mod login;
 mod models;
 mod quota;
+mod releases;
 mod request;
 
 use std::sync::Arc;
@@ -20,7 +21,8 @@ use demi_provider_common::{
     quota::MemorySnapshots,
     testing::{FixedClock, MockResponse, MockVendor, RecordedRequest, jwt},
 };
-use demi_provider_grok_build::{GrokConfig, GrokProvider};
+use demi_provider_grok_build::{GrokConfig, GrokProvider, GrokReleases};
+use demi_shared_types::Clock;
 use serde_json::{Value, json};
 
 pub(crate) const NOW: &str = "2026-09-18T14:00:00.000Z";
@@ -65,16 +67,42 @@ pub(crate) async fn pool_with(secret: String) -> MemoryCredentialPool {
     pool
 }
 
-/// A provider whose chat proxy and issuer are the scripted vendor.
+/// The pointer to the newest stable Grok CLI release, on the scripted
+/// vendor.
+pub(crate) const STABLE: &str = "/cli/stable";
+
+/// The newest Grok CLI releases as the scripted vendor's pointer names
+/// them, believed by `clock`.
+pub(crate) fn releases_at(vendor: &MockVendor, clock: Arc<dyn Clock>) -> GrokReleases {
+    GrokReleases::new(vendor.url(STABLE).parse().unwrap(), reqwest::Client::new(), clock)
+}
+
+/// A provider whose chat proxy and issuer are the scripted vendor. Its
+/// pointer is at port 0, which refuses at once, so every request names the
+/// built-in release and the vendor sees only the provider's requests.
 pub(crate) fn provider(
     vendor: &MockVendor,
     pool: &MemoryCredentialPool,
     account: Option<&str>,
 ) -> GrokProvider {
-    let mut config = GrokConfig::new(account.map(str::to_owned));
+    let clock: Arc<dyn Clock> = Arc::new(FixedClock(NOW.parse().unwrap()));
+    let url = "http://127.0.0.1:0/cli/stable".parse().unwrap();
+    let releases = GrokReleases::new(url, reqwest::Client::new(), clock.clone());
+    provider_at(vendor, pool, account, clock, releases)
+}
+
+/// [`provider`], reading the time from `clock` and the newest release from
+/// `releases`.
+pub(crate) fn provider_at(
+    vendor: &MockVendor,
+    pool: &MemoryCredentialPool,
+    account: Option<&str>,
+    clock: Arc<dyn Clock>,
+    releases: GrokReleases,
+) -> GrokProvider {
+    let mut config = GrokConfig::new(account.map(str::to_owned), releases);
     config.proxy_url = vendor.url("/v1").parse().unwrap();
     config.issuer_url = vendor.url("").parse().unwrap();
-    let clock = Arc::new(FixedClock(NOW.parse().unwrap()));
     // No idle-connection timer, so a paused clock only moves at the login's
     // own waits.
     let http = reqwest::Client::builder()
