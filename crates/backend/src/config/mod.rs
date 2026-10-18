@@ -19,6 +19,7 @@ use demi_backend_blobs::store::{S3Config, Storage};
 use demi_backend_cloud::tuning::CloudTuning;
 use demi_backend_providers::llm::claude_releases::DEFAULT_RELEASES_URL;
 use demi_backend_providers::llm::families::FamilyRegistry;
+use demi_backend_providers::vault::entries::SeededAccount;
 use demi_backend_providers::vault::logins::LoginTiming;
 use demi_backend_runners::native::NativeCatalog;
 use demi_plugin_interface::PluginFactory;
@@ -66,6 +67,11 @@ pub struct Config {
     /// Validate the configuration as a start would, then exit
     #[arg(long)]
     pub check_config: bool,
+    /// Development only: the Codex sign-in the master account's first
+    /// entry is signed in with, which `xtask dev` writes
+    /// (`backend.md` § One-command development backend)
+    #[arg(long, hide = true, value_name = "FILE")]
+    pub dev_codex_account: Option<PathBuf>,
     /// The server release root [default: the directory above the one that
     /// holds this executable]
     #[arg(long, env = "DEMI_RELEASE", value_name = "DEMI_RELEASE")]
@@ -208,6 +214,9 @@ pub enum ConfigError {
     S3Unused(&'static str),
     #[error("{0}")]
     S3(#[from] demi_backend_blobs::store::S3ConfigError),
+    /// The reason never quotes the file, which holds tokens.
+    #[error("--dev-codex-account {}: {reason}", path.display())]
+    DevCodexAccount { path: PathBuf, reason: String },
 }
 
 impl Config {
@@ -291,6 +300,11 @@ impl Config {
             self.machines_socket.clone(),
         );
         config.instance_secret = instance_secret;
+        config.master_account = self
+            .dev_codex_account
+            .as_deref()
+            .map(|path| dev_codex_account(path, config.clock.now()))
+            .transpose()?;
         config.runner_socket = Some(self.runner_socket.clone());
         config.manage_socket = Some(self.manage_socket.clone());
         config.storage = self.storage()?;
@@ -307,6 +321,24 @@ impl Config {
         config.stun = self.stun_urls.0.clone();
         Ok(config)
     }
+}
+
+/// The Codex entry the file at `path` signs in, as the master account's
+/// first entry.
+fn dev_codex_account(path: &Path, now: demi_shared_types::Timestamp) -> Result<SeededAccount, ConfigError> {
+    let failed = |reason: String| ConfigError::DevCodexAccount {
+        path: path.to_owned(),
+        reason,
+    };
+    let text = std::fs::read_to_string(path).map_err(|error| failed(error.to_string()))?;
+    let account = demi_provider_codex::development_account(&text, now)
+        .map_err(|error| failed(error.to_string()))?;
+    Ok(SeededAccount {
+        family: "codex".into(),
+        label: "Codex".into(),
+        account,
+        source: "development".into(),
+    })
 }
 
 /// Everything `Backend::start` needs: the configured values, and the parts a
@@ -342,6 +374,9 @@ pub struct BackendConfig {
     /// The instance secret; without it, the one in the data directory, which
     /// the first start creates.
     pub instance_secret: Option<InstanceSecret>,
+    /// The account the master account's first entry is signed in with when
+    /// setup creates it; a development backend's only.
+    pub master_account: Option<SeededAccount>,
     /// Delivers email verification codes; without it, an email change answers
     /// `mail_unavailable`.
     pub account_mail: Option<Arc<dyn AccountMail>>,
@@ -421,6 +456,7 @@ impl BackendConfig {
             runner_releases: None,
             storage: Storage::Local,
             instance_secret: None,
+            master_account: None,
             account_mail: None,
             clock: Arc::new(SystemClock),
             shards: ShardPlacement::Threads(NonZeroUsize::MIN),

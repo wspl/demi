@@ -924,6 +924,23 @@ DEMI_DEV_PROVIDER_ACCEPTED_EXTENSIONS=png,jpg,jpeg,gif,webp
 A turn with that model is a real request and costs what the vendor charges;
 automated tests never use it.
 
+`DEMI_DEV_CODEX_AUTH`, the path of a Codex CLI sign-in such as
+`~/.codex/auth.json` (a leading `~/` is the developer's home), seeds a
+**Codex** entry signed in as that account, beside or instead of the four
+above, so a product check has a real model the developer already pays for.
+`xtask` reads the file and passes the account to the backend with a
+development-only start flag; the backend seals it with its own vault, the one
+that seals every account, when it creates the master account. It takes the
+access token, the ID token that names the account, and the account ID, never
+the refresh token, so Demi never renews the sign-in and the Codex CLI's own
+stays valid; once the access token expires the entry says its sign-in ended,
+and `codex login` followed by a run with a fresh data directory brings it
+back, as a kept one keeps the account its first run sealed. A path that cannot be
+read, or a file without an access token, stops the command before it builds
+anything, naming the path. No token is ever printed. `bun browse`'s `up`
+passes the variable from `.env` as it passes the others
+([bun browse](../delivery/browse.md)).
+
 `DEMI_DEV_ECHO=1` adds the echo model: an entry of the `anthropic` family
 labeled **Echo** that points at the echo endpoint, with the one configured
 model `echo`, which answers `hello` with `Echo: hello` without calling any

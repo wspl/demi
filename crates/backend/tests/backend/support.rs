@@ -359,6 +359,8 @@ pub struct Harness {
     /// Where the backends send push messages instead of the internet's
     /// push services.
     push_transport: Option<Arc<dyn demi_backend_accounts::push::PushTransport>>,
+    /// The account setup signs the master's first entry in with.
+    master_account: Option<demi_backend_providers::vault::entries::SeededAccount>,
 }
 
 impl Harness {
@@ -416,7 +418,18 @@ impl Harness {
             sign_in_fixture: None,
             shards: None,
             push_transport: None,
+            master_account: None,
         }
+    }
+
+    /// Backends whose setup signs the master's first entry in with
+    /// `account`, as a development backend's does.
+    pub fn with_master_account(
+        mut self,
+        account: demi_backend_providers::vault::entries::SeededAccount,
+    ) -> Self {
+        self.master_account = Some(account);
+        self
     }
 
     /// Backends whose skills plugin fetches `repos` for the origins
@@ -703,6 +716,7 @@ impl Harness {
         config.manage_socket = self.manage_socket.clone();
         config.object_counts = self.objects.clone();
         config.push_transport = self.push_transport.clone();
+        config.master_account = self.master_account.clone();
         assert!(
             self.release.is_none() || self.server_release.is_none(),
             "a harness loads a workspace package or a server release, not both"

@@ -99,7 +99,11 @@ conversation no longer runs, its subagents and background jobs included.
   `demi.net.offline()` cuts the network of the Chromium context only, not
   that of a `demi.webkit()` page.
   `up` copies the user's `.env` into the slot for the backend and `down`
-  deletes it. That `.env` names the development model with the file types
+  deletes it. That `.env` can also name the developer's Codex CLI sign-in
+  (`DEMI_DEV_CODEX_AUTH`), which the backend's first run in the slot seals
+  as a Codex entry, so a check sends its message to a real model the
+  developer already pays for; `down({ wipe: true })` lets the next `up`
+  seal a newer sign-in. That `.env` names the development model with the file types
   it reads (`DEMI_DEV_PROVIDER_ACCEPTED_EXTENSIONS`), so a check that shows
   the model an image sees it attached; a model whose types are left unknown
   is shown no file, and a check would then report a refusal that says

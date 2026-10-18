@@ -250,6 +250,7 @@ impl Backend {
             claude_releases: config.claude_releases,
             logins: config.logins,
             clock: config.clock,
+            master_account: config.master_account,
         };
         let (machines, deaths) = MachinesClient::new(config.machines_socket);
         let keys = ServiceKeys {
@@ -674,25 +675,24 @@ impl Backend {
         identity: &str,
         secret: String,
     ) -> demi_web_api_protocol::ids::ProviderId {
-        use demi_provider_common::credentials::{
-            AccountMeta, CredentialPool as _, MemoryCredentialPool, credential_id_for,
-        };
-        let staged = MemoryCredentialPool::new();
-        let id = credential_id_for(Some(identity), label);
-        let meta = AccountMeta {
-            id: id.clone(),
+        use demi_backend_providers::vault::entries::SeededAccount;
+        use demi_provider_common::credentials::{AccountLabel, NewAccount};
+        let seeded = SeededAccount {
+            family: family.to_owned(),
             label: label.to_owned(),
-            detail: None,
-            updated_at: self.services.clock.now(),
+            account: NewAccount {
+                secret: Some(secret),
+                label: AccountLabel {
+                    label: label.to_owned(),
+                    detail: None,
+                    identity_key: Some(identity.to_owned()),
+                },
+            },
             source: "login:code".into(),
-            identity_key: Some(identity.to_owned()),
-            signed_out: false,
         };
-        staged.write(meta, Some(secret)).await.expect("a pool in memory stores");
-        staged.set_active(&id).await.expect("a pool in memory selects");
         self.services
             .vault
-            .create_subscription(owner.clone(), family.to_owned(), label.to_owned(), &staged)
+            .seed(owner.clone(), &seeded, self.services.clock.now())
             .await
             .expect("the vault stores the entry")
             .expect("the owner has no entry of the family")

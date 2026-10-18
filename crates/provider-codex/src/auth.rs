@@ -7,8 +7,8 @@ use std::{sync::Arc, time::Duration};
 use demi_provider_common::{
     Secret,
     credentials::{
-        AccountDocument, AccountLabel, AuthFailure, AuthReason, CredentialPool, SecretDocument,
-        read_secret, renew,
+        AccountDocument, AccountLabel, AuthFailure, AuthReason, CredentialPool, NewAccount,
+        SecretDecodeError, SecretDocument, decode_secret, read_secret, renew,
     },
     oauth::{TokenRefusal, decode_json_response, jwt_claims},
     wire::{Reported, ReportedString},
@@ -32,12 +32,15 @@ const STALENESS: Duration = Duration::from_secs(8 * 24 * 60 * 60);
 
 /// The Codex family's secret document: the ChatGPT sign-in's tokens, the
 /// account they act for, and when they were last refreshed. Demi defines it;
-/// it is not the Codex CLI's `auth.json`.
+/// it is not the Codex CLI's `auth.json`. A sign-in without a refresh token,
+/// as a development one has none, is never refreshed: it is used until its
+/// access token expires, and then it has ended.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct CodexSecret {
     pub(crate) access_token: Secret,
-    pub(crate) refresh_token: Secret,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(crate) refresh_token: Option<Secret>,
     pub(crate) id_token: Secret,
     pub(crate) account_id: AccountId,
     pub(crate) last_refresh: Timestamp,
@@ -173,6 +176,46 @@ impl CodexSecret {
         let stale = now - self.last_refresh.as_millisecond() >= millis(STALENESS);
         expiring || stale
     }
+
+    /// Whether a sign-in without a refresh token has ended at `now`: its
+    /// access token expired by its `exp` claim, or a request was `refused`
+    /// with it. A sign-in with a refresh token never ends this way.
+    fn ended(&self, now: Timestamp, refused: Option<&Secret>) -> bool {
+        if self.refresh_token.is_some() {
+            return false;
+        }
+        let still_refused = refused.is_some_and(|token| self.access_token == *token);
+        still_refused || expiry(&self.access_token).is_some_and(|expiry| expiry <= now)
+    }
+}
+
+/// The Codex sign-in a development backend is started with
+/// (`backend.md` § One-command development backend): the tokens of a Codex
+/// CLI sign-in without its refresh token, so that Demi never renews it and
+/// the CLI's own stays valid.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct DevelopmentSignIn {
+    access_token: Secret,
+    id_token: Secret,
+    account_id: AccountId,
+}
+
+/// The account the development sign-in `text` holds, signed in at `now`;
+/// what is wrong with the text otherwise, which never quotes a token.
+pub fn development_account(text: &str, now: Timestamp) -> Result<NewAccount, SecretDecodeError> {
+    let sign_in: DevelopmentSignIn = decode_secret(text)?;
+    let secret = CodexSecret {
+        access_token: sign_in.access_token,
+        refresh_token: None,
+        id_token: sign_in.id_token,
+        account_id: sign_in.account_id,
+        last_refresh: now,
+    };
+    Ok(NewAccount {
+        label: secret.label(),
+        secret: Some(secret.encode()),
+    })
 }
 
 fn millis(duration: Duration) -> i64 {
@@ -228,10 +271,21 @@ impl CodexAuth {
             .map_err(|error| AuthFailure::of_account(FAMILY, error))
     }
 
+    /// The account's stored sign-in, unless it has ended.
+    pub(crate) async fn signed_in(&self) -> Result<CodexSecret, AuthFailure> {
+        let stored = self.stored().await?;
+        match stored.ended(self.clock.now(), None) {
+            true => Err(AuthFailure::new(FAMILY, AuthReason::SignedOut)),
+            false => Ok(stored),
+        }
+    }
+
     /// The credentials of a request, refreshed first when the sign-in is
     /// due, or when it still holds the access token a request was `refused`
     /// with, as with HTTP 401. A refresh that waited behind another uses the
-    /// other's tokens unless they are due as well.
+    /// other's tokens unless they are due as well. A sign-in without a
+    /// refresh token is never refreshed: it is used as it is until it has
+    /// ended.
     pub(crate) async fn credentials(
         &self,
         http: &demi_provider_common::ProviderHttp,
@@ -240,17 +294,20 @@ impl CodexAuth {
         let doc = self.document()?;
         let needs_refresh = |secret: &CodexSecret| {
             let still_refused = refused.is_some_and(|token| secret.access_token == *token);
-            still_refused || secret.due(self.clock.now())
+            secret.refresh_token.is_some() && (still_refused || secret.due(self.clock.now()))
         };
         let refresh = Refresh {
             http: http.clone(),
             token_url: self.token_url.clone(),
             clock: self.clock.clone(),
         };
-        let renewed = renew(doc.into(), needs_refresh, |secret| refresh.run(secret)).await;
-        renewed
-            .map(|secret| secret.credentials())
-            .map_err(|error| AuthFailure::of_renewal(FAMILY, error))
+        let renewed = renew(doc.into(), needs_refresh, |secret| refresh.run(secret))
+            .await
+            .map_err(|error| AuthFailure::of_renewal(FAMILY, error))?;
+        if renewed.ended(self.clock.now(), refused) {
+            return Err(AuthFailure::new(FAMILY, AuthReason::SignedOut));
+        }
+        Ok(renewed.credentials())
     }
 }
 
@@ -266,10 +323,15 @@ impl Refresh {
     /// Asks the sign-in service for new tokens. A refreshed sign-in keeps
     /// the tokens the answer does not replace and the account it acts for.
     async fn run(self, secret: CodexSecret) -> Result<CodexSecret, String> {
+        // `credentials` refreshes only a sign-in that holds a refresh token,
+        // and no refresh takes one away.
+        let Some(refresh_token) = &secret.refresh_token else {
+            return Err("The Codex sign-in has no refresh token".into());
+        };
         let body = serde_json::json!({
             "client_id": CLIENT_ID,
             "grant_type": "refresh_token",
-            "refresh_token": secret.refresh_token.expose(),
+            "refresh_token": refresh_token.expose(),
         });
         let response = self
             .http
@@ -296,7 +358,7 @@ impl Refresh {
             .map_err(|error| format!("Codex token refresh failed: {error}"))?;
         Ok(CodexSecret {
             access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token.unwrap_or(secret.refresh_token),
+            refresh_token: tokens.refresh_token.or(secret.refresh_token),
             id_token: tokens.id_token.unwrap_or(secret.id_token),
             account_id: secret.account_id,
             last_refresh: self.clock.now(),

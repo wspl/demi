@@ -14,7 +14,8 @@ use demi_backend_database::providers::{
 use demi_backend_page_sync::{Part, SyncRegistry};
 use demi_provider_common::Secret;
 use demi_provider_common::credentials::{
-    CredentialPool, MemoryCredentialPool, RefreshGates, decode_secret,
+    AccountMeta, CredentialPool, MemoryCredentialPool, NewAccount, RefreshGates,
+    credential_id_for, decode_secret,
 };
 use demi_shared_types::{AudioShape, ImageShape, MediaKind, MediaShapes, Timestamp, VideoShape, WireApi};
 use demi_web_api_protocol::auth::{Role, UserDto};
@@ -53,6 +54,21 @@ struct Shared {
 /// How many announced account changes a follower may fall behind before it
 /// misses some: they come from the user's own clicks in Settings.
 const ACCOUNT_CHANGES_KEPT: usize = 64;
+
+/// An account a subscription entry is created with outside a sign-in: the
+/// development backend's Codex sign-in, which the master account is created
+/// with (`backend.md` § One-command development backend), and a suite's
+/// account whose vendor sign-in cannot run.
+#[derive(Debug, Clone)]
+pub struct SeededAccount {
+    /// The entry's family, such as `codex`.
+    pub family: String,
+    /// The entry's label, such as `Codex`.
+    pub label: String,
+    pub account: NewAccount,
+    /// Where the account came from, as its record names it.
+    pub source: String,
+}
 
 /// A provider entry, read and decoded.
 #[derive(Debug, Clone, PartialEq)]
@@ -573,6 +589,34 @@ impl Vault {
             self.mark_changed(&row.owner);
         }
         row.map(|row| self.decode(row)).transpose()
+    }
+
+    /// Publishes `seeded` as the one account of a new entry of `owner`'s,
+    /// as a sign-in would have published it; `None` when the owner already
+    /// holds the family's subscription entry.
+    pub async fn seed(
+        &self,
+        owner: UserId,
+        seeded: &SeededAccount,
+        now: Timestamp,
+    ) -> Result<Option<ProviderEntry>, StorageError> {
+        let NewAccount { secret, label } = seeded.account.clone();
+        let id = credential_id_for(label.identity_key.as_deref(), &label.label);
+        let meta = AccountMeta {
+            id: id.clone(),
+            label: label.label,
+            detail: label.detail,
+            updated_at: now,
+            source: seeded.source.clone(),
+            identity_key: label.identity_key,
+            signed_out: false,
+        };
+        let staged = MemoryCredentialPool::new();
+        // A pool held in memory never fails to answer.
+        staged.write(meta, secret).await.expect("a pool in memory stores");
+        staged.set_active(&id).await.expect("a pool in memory selects");
+        self.create_subscription(owner, seeded.family.clone(), seeded.label.clone(), &staged)
+            .await
     }
 
     /// Replaces the entry's label, family, configuration, rotation or media

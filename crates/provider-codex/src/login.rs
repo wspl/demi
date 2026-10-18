@@ -74,7 +74,7 @@ impl CodexKit {
             })?;
         let secret = CodexSecret {
             access_token: tokens.access_token,
-            refresh_token: tokens.refresh_token,
+            refresh_token: Some(tokens.refresh_token),
             id_token: tokens.id_token,
             account_id,
             last_refresh: self.clock.now(),

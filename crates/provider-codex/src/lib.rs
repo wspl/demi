@@ -45,6 +45,7 @@ use reqwest::Url;
 
 use crate::{auth::CodexAuth, login::CodexKit, quota::CodexQuota};
 
+pub use auth::development_account;
 pub use failure::read_codex_failure;
 pub use releases::CodexReleases;
 
@@ -234,7 +235,7 @@ impl Provider for CodexProvider {
     /// infers.
     fn auth_status(&self) -> BoxFuture<'_, AuthState> {
         Box::pin(async {
-            match self.shared.auth.stored().await {
+            match self.shared.auth.signed_in().await {
                 Ok(secret) => AuthState::Authenticated {
                     account_label: Some(secret.label().label),
                 },

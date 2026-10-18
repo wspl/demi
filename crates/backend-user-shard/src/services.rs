@@ -28,7 +28,7 @@ use demi_backend_providers::llm::catalog_cache::ModelCatalogCache;
 use demi_backend_providers::llm::claude_releases::ClaudeReleases;
 use demi_backend_providers::llm::families::FamilyRegistry;
 use demi_backend_providers::llm::vendors::VendorCatalog;
-use demi_backend_providers::vault::entries::{ConfigReseal, Vault};
+use demi_backend_providers::vault::entries::{ConfigReseal, SeededAccount, Vault};
 use demi_backend_providers::vault::logins::{LoginFlows, LoginTiming};
 use demi_backend_providers::vault::operations::ProviderOperations;
 use demi_backend_providers::vault::quotas::AccountQuotas;
@@ -76,6 +76,10 @@ pub struct Services {
     /// The users' push subscriptions, and the sending to them.
     pub push: Pusher,
     pub vault: Vault,
+    /// The account setup signs the master account's first entry in with,
+    /// a development backend's only (`backend.md` § One-command development
+    /// backend).
+    pub master_account: Option<SeededAccount>,
     pub assembly: Arc<ProviderAssembly>,
     /// The catalog of image and video models (`media-models.md`).
     pub media: MediaCatalog,
@@ -171,6 +175,8 @@ pub struct ProviderSetup {
     pub claude_releases: url::Url,
     pub logins: LoginTiming,
     pub clock: Arc<dyn Clock>,
+    /// The account the master account's first entry is signed in with.
+    pub master_account: Option<SeededAccount>,
 }
 
 /// The keys the services seal and hash under, which the executable derives
@@ -439,6 +445,7 @@ impl Services {
             search,
             blobs,
             vault,
+            master_account: providers.master_account,
             assembly,
             media,
             claude_releases,
@@ -527,6 +534,7 @@ impl Services {
                 .unwrap(),
             logins: LoginTiming::default(),
             clock,
+            master_account: None,
         };
         // No manager listens there: a Cloud a test uses fails to start.
         let (machines, _deaths) =

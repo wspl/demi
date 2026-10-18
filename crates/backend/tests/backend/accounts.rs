@@ -893,3 +893,47 @@ async fn a_page_learns_a_login_completed_no_sooner_than_its_account() {
     assert!(matches!(learned_end(&mut page, &id).await, LoginState::Completed { .. }));
     backend.close().await;
 }
+
+/// The development backend's Codex sign-in (`backend.md` § One-command
+/// development backend): setup creates the master account with a Codex
+/// entry signed in as it, its tokens sealed.
+#[tokio::test]
+async fn setup_signs_the_masters_codex_entry_in_with_the_development_sign_in() {
+    use demi_backend_providers::vault::entries::SeededAccount;
+    use demi_provider_common::testing::jwt;
+    let access = jwt(&json!({ "exp": 4_102_444_800_i64, "https://api.openai.com/auth": { "chatgpt_account_id": "acct-dev" } }));
+    let sign_in = json!({
+        "accessToken": access,
+        "idToken": jwt(&json!({ "email": "dev@example.com" })),
+        "accountId": "acct-dev",
+    });
+    let account =
+        demi_provider_codex::development_account(&sign_in.to_string(), "2026-09-24T08:00:00Z".parse().unwrap())
+            .unwrap();
+    let harness = Harness::new().with_master_account(SeededAccount {
+        family: "codex".into(),
+        label: "Codex".into(),
+        account,
+        source: "development".into(),
+    });
+    let (backend, master) = harness.start_set_up().await;
+
+    let providers = backend.get("/api/providers", Some(&master)).await.json::<Providers>().providers;
+    let entries: Vec<_> = providers
+        .iter()
+        .map(|entry| (entry.kind, entry.provider_type.as_str(), entry.label.as_str()))
+        .collect();
+    assert_eq!(entries, [(CredentialKind::Subscription, "codex", "Codex")]);
+    let accounts = backend
+        .get(&format!("/api/providers/{}/accounts", providers[0].id), Some(&master))
+        .await
+        .json::<Accounts>();
+    let labels: Vec<&str> = accounts.accounts.iter().map(|account| account.label.as_str()).collect();
+    assert_eq!(labels, ["dev@example.com"]);
+    assert_eq!(accounts.active.as_ref().map(|id| id.as_str()), Some(accounts.accounts[0].id.as_str()));
+    let sealed: Vec<u8> = harness
+        .control_database()
+        .query_row("SELECT secret FROM provider_credentials", [], |row| row.get(0))
+        .unwrap();
+    assert!(!sealed.windows(access.len()).any(|window| window == access.as_bytes()));
+}
