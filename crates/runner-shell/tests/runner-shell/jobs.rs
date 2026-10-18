@@ -342,7 +342,7 @@ async fn kill_ends_a_job_whose_utility_a_system_call_holds() {
     assert_eq!(unsafe { libc::mkfifo(path.as_ptr(), 0o600) }, 0);
     let scope = Scope::new(CancellationToken::new(), None);
     let mut job = Job::start(
-        "cat fifo".into(),
+        "printf profiled; cat fifo".into(),
         root.path().into(),
         crate::home(root.path()),
         false,
@@ -351,7 +351,10 @@ async fn kill_ends_a_job_whose_utility_a_system_call_holds() {
     )
     .await
     .unwrap();
-    // Past its last check, `cat` is in the `open()` that only a writer ends.
+    // The login shell opens its profile before the script runs, which
+    // counts as an opening too; after `printf`, the one left is `cat`'s.
+    // Past its last check, `cat` is then in the `open()` only a writer ends.
+    output_until(&mut job, &mut String::new(), "profiled").await;
     tokio::time::timeout(Duration::from_secs(60), async {
         while scope.activity().opening() == 0 {
             tokio::time::sleep(Duration::from_millis(1)).await;

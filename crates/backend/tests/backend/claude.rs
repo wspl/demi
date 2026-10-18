@@ -713,7 +713,13 @@ async fn a_machine_with_a_cli_starts_it_at_once_while_the_release_pointer_is_rea
     let (answer_pointer, held) = watch::channel(false);
     distribution.respond_at("/releases/latest", MockResponse::status(503).held(held));
     let id = start_login(&backend, &master, LOGIN, new_entry.clone()).await;
-    distribution.received(1).await;
+    // The read follows the Claude Code machine's boot, which a first
+    // launch of a newly built runner can make longer than `received`'s
+    // five seconds: the request is the event, and the deadline guards
+    // only against a hang.
+    tokio::time::timeout(PATIENCE, distribution.requested(1))
+        .await
+        .expect("the sign-in reads the pointer");
     assert!(matches!(
         login_state(&backend, &master, &id).await,
         LoginState::Pending { .. }
