@@ -22,6 +22,7 @@ fn sign_in(kind: MediaKind) -> &'static str {
     match kind {
         MediaKind::Image => "sign in to ChatGPT or Grok, or add an OpenAI, xAI or Google key",
         MediaKind::Video => "sign in to Grok, or add an xAI or Google key or a compatible API with a video shape",
+        MediaKind::Audio => "add an OpenAI, Google or ElevenLabs key or a compatible API with an audio shape",
     }
 }
 
@@ -31,6 +32,7 @@ pub fn refusal_words(kind: MediaKind, refusal: &MediaRefusal, aspect: Option<Ima
     let generation = match kind {
         MediaKind::Image => "image generation",
         MediaKind::Video => "video generation",
+        MediaKind::Audio => "audio generation",
     };
     let zone = || TimeZone::get(&invocation.context.locale.time_zone).unwrap_or(TimeZone::UTC);
     match refusal {
@@ -68,6 +70,13 @@ pub fn refusal_words(kind: MediaKind, refusal: &MediaRefusal, aspect: Option<Ima
             format!("the {vendor} sign-in has expired; ask your administrator to sign in again")
         }
         MediaRefusal::Unanswered { vendor, cause } => format!("{vendor} did not answer: {cause}"),
+        MediaRefusal::NeedsVoice { vendor, model } => {
+            format!("{vendor} needs --voice; demi audio voices --model {model} lists them")
+        }
+        MediaRefusal::Kind { model, asked, makes } => {
+            let made: Vec<String> = makes.iter().map(|kind| kind.words().to_owned()).collect();
+            format!("\"{model}\" makes no {}; it makes {}", asked.words(), listed(&made))
+        }
         MediaRefusal::JobFailed { vendor, message } => format!("{vendor} failed the video: {message}"),
         MediaRefusal::JobExpired { vendor } => format!("the job expired at {vendor} before it ran"),
         MediaRefusal::StillRunning { vendor, job, seconds } => {

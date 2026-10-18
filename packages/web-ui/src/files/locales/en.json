@@ -210,5 +210,10 @@
       "warning": "Warning",
       "caution": "Caution"
     }
+  },
+  "audioPlayer": {
+    "play": "Play {name}",
+    "pause": "Pause {name}",
+    "seek": "Position in {name}"
   }
 }

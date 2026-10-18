@@ -88,7 +88,7 @@ import { galleryBrowser, type GalleryBrowser } from '../fixtures/live-browser'
 import { galleryConversationFiles, namedFilesMarkdown } from '../fixtures/message-files'
 import GalleryMessageFiles from '../components/GalleryMessageFiles.vue'
 import GalleryAgentLinks from '../components/GalleryAgentLinks.vue'
-import { attachmentMarkdown, edgedImagesMarkdown, fiveMediaMarkdown, listAttachmentMarkdown, loneImageMarkdown, twoMediaMarkdown } from '../fixtures/attachments'
+import { attachmentMarkdown, audioAttachmentMarkdown, edgedImagesMarkdown, fiveMediaMarkdown, listAttachmentMarkdown, loneImageMarkdown, twoMediaMarkdown } from '../fixtures/attachments'
 import { productWould } from '../product-would'
 import { useGalleryShares } from '../fixtures/sharing'
 import { useAgentContext } from '../agent-context'
@@ -2107,6 +2107,9 @@ onBeforeUnmount(() => {
         </GallerySpecimen>
         <GallerySpecimen variant="a run of five, wrapping" wide>
           <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="fiveMediaMarkdown" />
+        </GallerySpecimen>
+        <GallerySpecimen variant="a voice-over, played where it is" wide>
+          <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="audioAttachmentMarkdown" />
         </GallerySpecimen>
         <GallerySpecimen variant="links, a missing number, a recording of unknown size" wide>
           <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="attachmentMarkdown" />

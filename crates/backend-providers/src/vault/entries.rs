@@ -16,11 +16,11 @@ use demi_provider_common::Secret;
 use demi_provider_common::credentials::{
     CredentialPool, MemoryCredentialPool, RefreshGates, decode_secret,
 };
-use demi_shared_types::{ImageShape, MediaKind, MediaShapes, Timestamp, VideoShape, WireApi};
+use demi_shared_types::{AudioShape, ImageShape, MediaKind, MediaShapes, Timestamp, VideoShape, WireApi};
 use demi_web_api_protocol::auth::{Role, UserDto};
 use demi_web_api_protocol::ids::{CredentialId, ProviderId, UserId};
 use demi_web_api_protocol::providers::{
-    ConfiguredModels, CredentialKind, EntryMedia, ImageMedia, ProviderDto, Rotation, SetupPart, VideoMedia,
+    AudioMedia, ConfiguredModels, CredentialKind, EntryMedia, ImageMedia, ProviderDto, Rotation, SetupPart, VideoMedia,
 };
 use demi_web_api_protocol::settings::InstanceMode;
 use demi_web_api_protocol::text::EndpointUrl;
@@ -70,6 +70,9 @@ pub struct ProviderEntry {
     /// Whether the entry makes videos when its provider can: its Video
     /// Generation switch.
     pub video_generation: bool,
+    /// Whether the entry makes audio when its provider can: its Audio
+    /// Generation switch.
+    pub audio_generation: bool,
 }
 
 /// How an entry authenticates.
@@ -149,6 +152,15 @@ pub struct ApiKeyConfig {
     )]
     #[garde(skip)]
     pub video_shape: Option<VideoShape>,
+    /// A compatible entry's audio shape, which its user chose, as its image
+    /// shape is.
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "unwrap_or_skip"
+    )]
+    #[garde(skip)]
+    pub audio_shape: Option<AudioShape>,
 }
 
 impl ApiKeyConfig {
@@ -248,6 +260,7 @@ impl ProviderEntry {
         match kind {
             MediaKind::Image => self.image_generation,
             MediaKind::Video => self.video_generation,
+            MediaKind::Audio => self.audio_generation,
         }
     }
 
@@ -284,6 +297,10 @@ impl ProviderEntry {
                 video: VideoMedia {
                     shape: shapes.video,
                     enabled: self.video_generation,
+                },
+                audio: AudioMedia {
+                    shape: shapes.audio,
+                    enabled: self.audio_generation,
                 },
                 catalog,
             },
@@ -659,6 +676,7 @@ impl Vault {
             created_at: row.created_at,
             image_generation: row.image_generation,
             video_generation: row.video_generation,
+            audio_generation: row.audio_generation,
         })
     }
 

@@ -5,7 +5,8 @@ use bytes::Bytes;
 use demi_provider_common::ProviderHttp;
 use demi_provider_common::media::MediaFailure;
 use demi_provider_common::testing::{FixedClock, MockResponse, MockVendor};
-use demi_provider_common::videos::{DOWNLOAD_LIMIT, download};
+use demi_provider_common::media::ANSWER_LIMIT;
+use demi_provider_common::videos::download;
 use http::HeaderMap;
 
 /// A video past 256 MiB fails as it arrives, without a length announced
@@ -19,7 +20,7 @@ async fn a_video_past_the_limit_fails_as_it_arrives() {
     let vendor = MockVendor::start().await;
     let mebibyte = Bytes::from(vec![0_u8; 1024 * 1024]);
     let mut response = MockResponse::status(200);
-    for _ in 0..=DOWNLOAD_LIMIT / mebibyte.len() {
+    for _ in 0..=ANSWER_LIMIT / mebibyte.len() {
         response = response.chunk(mebibyte.clone());
     }
     vendor.respond_at("/video.mp4", response);

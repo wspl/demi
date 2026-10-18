@@ -54,6 +54,7 @@ demi-plugin-skills = { path = "../plugin-skills" }
 demi-plugin-web = { path = "../plugin-web" }
 demi-plugin-image = { path = "../plugin-image" }
 demi-plugin-video = { path = "../plugin-video" }
+demi-plugin-audio = { path = "../plugin-audio" }
 demi-plugin-changes = { path = "../plugin-changes" }
 demi-plugin-file-browser = { path = "../plugin-file-browser" }
 demi-command-package-browser-protocol = { path = "../command-package-browser-protocol" }
@@ -65,6 +66,7 @@ demi-provider-anthropic-api = { path = "../provider-anthropic-api" }
 demi-provider-claude-code = { path = "../provider-claude-code" }
 demi-provider-codex = { path = "../provider-codex" }
 demi-provider-google = { path = "../provider-google" }
+demi-provider-elevenlabs = { path = "../provider-elevenlabs" }
 demi-provider-grok-build = { path = "../provider-grok-build" }
 demi-provider-openai-api = { path = "../provider-openai-api" }
 demi-web-api-protocol = { path = "../web-api-protocol" }

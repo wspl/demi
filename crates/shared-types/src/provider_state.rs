@@ -97,25 +97,97 @@ impl VideoShape {
 serde_plain::derive_display_from_serialize!(VideoShape);
 serde_plain::derive_fromstr_from_deserialize!(VideoShape);
 
+/// How an entry's API makes audio, its *audio shape* (`audio.md`
+/// § Vendors): a vendor entry's is its vendor's, a compatible entry's the
+/// one its user chose, or none. A shape makes some of speech, music and
+/// sound effects.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+pub enum AudioShape {
+    /// `…/audio/speech`, as OpenAI's API serves it and compatible servers
+    /// such as vLLM-Omni do.
+    #[serde(rename = "openai-speech")]
+    OpenaiSpeech,
+    /// Gemini's speech and Lyria's music, through the Interactions API.
+    #[serde(rename = "gemini")]
+    Gemini,
+    /// ElevenLabs' speech, music and sound effects.
+    #[serde(rename = "elevenlabs")]
+    Elevenlabs,
+}
+
+impl AudioShape {
+    /// The shapes a compatible entry may choose.
+    pub const CHOSEN: [Self; 1] = [Self::OpenaiSpeech];
+
+    /// The kinds of audio it makes.
+    pub fn makes(self) -> &'static [AudioKind] {
+        match self {
+            Self::OpenaiSpeech => &[AudioKind::Speech],
+            Self::Gemini => &[AudioKind::Speech, AudioKind::Music],
+            Self::Elevenlabs => &[AudioKind::Speech, AudioKind::Music, AudioKind::Effect],
+        }
+    }
+
+    /// How a call of `kind` names it, such as `Lyria takes no --duration`.
+    pub fn name(self, kind: AudioKind) -> &'static str {
+        match (self, kind) {
+            (Self::OpenaiSpeech, _) => "OpenAI Speech",
+            (Self::Gemini, AudioKind::Music) => "Lyria",
+            (Self::Gemini, _) => "Gemini",
+            (Self::Elevenlabs, _) => "ElevenLabs",
+        }
+    }
+}
+
+serde_plain::derive_display_from_serialize!(AudioShape);
+serde_plain::derive_fromstr_from_deserialize!(AudioShape);
+
+/// What an audio model makes, and what a call of `demi audio` asks for
+/// (`audio.md` § Commands).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioKind {
+    Speech,
+    Music,
+    Effect,
+}
+
+impl AudioKind {
+    pub const ALL: [Self; 3] = [Self::Speech, Self::Music, Self::Effect];
+
+    /// As a sentence says it: `speech`, `music`, `sound effects`.
+    pub fn words(self) -> &'static str {
+        match self {
+            Self::Speech => "speech",
+            Self::Music => "music",
+            Self::Effect => "sound effects",
+        }
+    }
+}
+
+serde_plain::derive_display_from_serialize!(AudioKind);
+serde_plain::derive_fromstr_from_deserialize!(AudioKind);
+
 /// The kinds of media an entry may make, each with its shape and switch
-/// (`media.md` § Which entries make which media). Audio joins as its
-/// commands are built.
+/// (`media.md` § Which entries make which media).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum MediaKind {
     Image,
     Video,
+    Audio,
 }
 
 impl MediaKind {
-    pub const ALL: [Self; 2] = [Self::Image, Self::Video];
+    pub const ALL: [Self; 3] = [Self::Image, Self::Video, Self::Audio];
 
     /// The word for what the kind makes, as a sentence uses it: `images`,
-    /// `videos`.
+    /// `videos`, `audio`.
     pub fn plural(self) -> &'static str {
         match self {
             Self::Image => "images",
             Self::Video => "videos",
+            Self::Audio => "audio",
         }
     }
 
@@ -124,6 +196,7 @@ impl MediaKind {
         match self {
             Self::Image => "Image Generation",
             Self::Video => "Video Generation",
+            Self::Audio => "Audio Generation",
         }
     }
 }
@@ -140,6 +213,8 @@ pub struct MediaShapes {
     pub image: Option<ImageShape>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video: Option<VideoShape>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<AudioShape>,
 }
 
 impl MediaShapes {
@@ -148,6 +223,7 @@ impl MediaShapes {
         match kind {
             MediaKind::Image => self.image.is_some(),
             MediaKind::Video => self.video.is_some(),
+            MediaKind::Audio => self.audio.is_some(),
         }
     }
 }

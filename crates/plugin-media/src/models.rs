@@ -8,6 +8,7 @@
 use demi_host_interface::RpcInvocation;
 use demi_plugin_interface::{EntryStatus, MediaModel, PluginError, PluginPort};
 use demi_shared_types::MediaKind;
+use demi_shared_types::thousands;
 use demi_shared_types::output::{Cell, Fields, Table, instant, note, warning};
 use schemars::JsonSchema;
 use serde::Serialize;
@@ -91,16 +92,28 @@ pub async fn models(invocation: &RpcInvocation, port: &PluginPort, kind: MediaKi
     let text = if invocation.json {
         json_line(&ModelsOutput::List(listed))
     } else {
-        let mut table = Table::new(["id", "vendor", "released", "entry", "name"]);
+        // An audio model's kinds are what a call chooses it by, so the
+        // list says them (`audio.md` § Commands).
+        let audio = kind == MediaKind::Audio;
+        let mut columns = vec!["id", "vendor", "released", "entry", "name"];
+        if audio {
+            columns.insert(1, "kinds");
+        }
+        let mut table = Table::new(columns);
         for listed in &listed {
             let model = &listed.model;
-            table.row::<Cell>([
+            let mut row: Vec<Cell> = vec![
                 model.id.as_str().into(),
                 model.vendor.as_deref().into(),
                 model.released.as_deref().into(),
                 listed.entry.as_deref().into(),
                 model.name.as_deref().into(),
-            ]);
+            ];
+            if audio {
+                let kinds: Vec<String> = model.audio.iter().flat_map(|audio| &audio.kinds).map(ToString::to_string).collect();
+                row.insert(1, (!kinds.is_empty()).then(|| kinds.join(", ")).as_deref().into());
+            }
+            table.row(row);
         }
         table.render()
     };
@@ -151,6 +164,7 @@ fn show(kind: MediaKind, listed: &ListedModel) -> String {
     match kind {
         MediaKind::Image => image_facts(&mut fields, model),
         MediaKind::Video => video_facts(&mut fields, model),
+        MediaKind::Audio => audio_facts(&mut fields, model),
     }
     fields.field("Price page", model.price.as_ref().and_then(|price| price.page.as_deref()));
     let rates = model.price.as_ref().map(|price| &price.rates[..]).unwrap_or_default();
@@ -230,15 +244,7 @@ fn image_facts(fields: &mut Fields, model: &MediaModel) {
 /// references and sound.
 fn video_facts(fields: &mut Fields, model: &MediaModel) {
     let video = model.video.clone().unwrap_or_default();
-    let durations = match (&video.durations, video.min_duration, video.max_duration) {
-        (Some(durations), _, _) if !durations.is_empty() => {
-            Some(durations.iter().map(|seconds| format!("{seconds} s")).collect::<Vec<_>>().join(", "))
-        }
-        (_, Some(min), Some(max)) => Some(format!("{min} to {max} s")),
-        (_, Some(min), None) => Some(format!("at least {min} s")),
-        (_, None, Some(max)) => Some(format!("at most {max} s")),
-        _ => None,
-    };
+    let durations = durations(video.durations.as_deref(), video.min_duration, video.max_duration);
     fields
         .field("Durations", durations)
         .field("Aspect ratios", joined(video.aspect_ratios.as_deref()))
@@ -247,6 +253,43 @@ fn video_facts(fields: &mut Fields, model: &MediaModel) {
         .field("Last frame", video.last_frame)
         .field("Max reference images", video.max_reference_images)
         .field("Sound", video.audio);
+}
+
+/// What an audio model makes and takes: its kinds, voices, languages,
+/// instructions, lengths, lyrics, instrumentals, loops and formats.
+fn audio_facts(fields: &mut Fields, model: &MediaModel) {
+    let audio = model.audio.clone().unwrap_or_default();
+    let kinds: Vec<String> = audio.kinds.iter().map(|kind| kind.to_string()).collect();
+    let voices = match (&audio.voices, audio.voices_listed) {
+        (Some(voices), _) if !voices.is_empty() => Some(voices.join(", ")),
+        (_, Some(true)) => Some(format!("listed by demi audio voices --model {}", model.id)),
+        _ => None,
+    };
+    let durations = durations(audio.durations.as_deref(), audio.min_duration, audio.max_duration);
+    fields
+        .field("Kinds", joined(Some(&kinds)))
+        .field("Voices", voices)
+        .field("Languages", joined(audio.languages.as_deref()))
+        .field("Instructions", audio.instructions)
+        .field("Longest text", audio.max_characters.map(|characters| format!("{} characters", thousands(u64::from(characters)))))
+        .field("Durations", durations)
+        .field("Lyrics", audio.lyrics)
+        .field("Instrumental", audio.instrumental)
+        .field("Loops", audio.loops)
+        .field("Formats", joined(audio.formats.as_deref()));
+}
+
+/// Lengths as a model takes them: the only ones, or a range.
+fn durations(only: Option<&[u32]>, min: Option<f64>, max: Option<f64>) -> Option<String> {
+    match (only, min, max) {
+        (Some(durations), _, _) if !durations.is_empty() => {
+            Some(durations.iter().map(|seconds| format!("{seconds} s")).collect::<Vec<_>>().join(", "))
+        }
+        (_, Some(min), Some(max)) => Some(format!("{min} to {max} s")),
+        (_, Some(min), None) => Some(format!("at least {min} s")),
+        (_, None, Some(max)) => Some(format!("at most {max} s")),
+        _ => None,
+    }
 }
 
 /// Why an entry would or would not make a call now, in the list's words.

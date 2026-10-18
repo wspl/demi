@@ -95,6 +95,7 @@ async fn an_xai_key_lists_its_video_models_asks_in_the_xai_shape_and_downloads_w
         vendor_id: Some("xai".into()),
         makes_images: false,
         makes_videos: true,
+        makes_audio: false,
     };
     let provider = OpenAiProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())));
     let maker = provider.videos().expect("an xAI key makes videos");

@@ -12,11 +12,10 @@ use bytes::Bytes;
 use demi_shared_types::{Clock, Cost, TokenUsage, VideoShape};
 use futures_util::future::BoxFuture;
 use http::HeaderMap;
-use http::header::LOCATION;
 use reqwest::Url;
 
 use crate::images::{Aspect, InputImage};
-use crate::media::{MediaAnswer, MediaCall, MediaCredential, MediaFailure, MediaMaker, unreadable};
+use crate::media::{Ask, Holding, MediaAnswer, MediaCall, MediaCredential, MediaMaker, follow, read_within};
 use crate::read_http_failure;
 
 /// A provider's video role.
@@ -159,21 +158,13 @@ pub struct Done {
     pub usage: Option<TokenUsage>,
 }
 
-/// The largest video a download takes, read as it arrives: a vendor's
-/// longest, 15 seconds at 1080p, is tens of MiB (`videos.md` § The job).
-pub const DOWNLOAD_LIMIT: usize = 256 * 1024 * 1024;
-
-/// How many redirects a download follows, as reqwest's own policy does.
-const REDIRECTS: usize = 10;
-
 /// Downloads `url`, within the request deadline. The entry's `key`
 /// headers go only to an address of the origin of the entry's `endpoint`,
 /// never to another host's, a storage bucket's or a redirect's to another
-/// origin, which each get the request without them; so redirects are
-/// followed here, each hop's headers chosen by its origin. A video over
-/// [`DOWNLOAD_LIMIT`] fails. A refusal is told in the vendor's words
-/// under `label`; an address is no account's, so nothing is renewed and
-/// no limit is read from it.
+/// origin, which each get the request without them ([`follow`]). A video
+/// over [`ANSWER_LIMIT`] fails as it arrives. A refusal is told in the
+/// vendor's words under `label`; an address is no account's, so nothing is
+/// renewed and no limit is read from it.
 pub async fn download(
     label: &'static str,
     clock: &dyn Clock,
@@ -191,41 +182,12 @@ pub async fn download(
         quota: None,
     };
     let result = crate::media::within_deadline(async {
-        let http = http.without_redirects().map_err(crate::media::transport)?;
-        let origin = endpoint.origin();
-        let mut url = url.clone();
-        for _ in 0..=REDIRECTS {
-            let headers = if url.origin() == origin { key.clone() } else { HeaderMap::new() };
-            let mut response = http.get(url.clone()).headers(headers).send().await.map_err(crate::media::transport)?;
-            let status = response.status();
-            if status.is_redirection() {
-                let location = response.headers().get(LOCATION).and_then(|location| location.to_str().ok());
-                if let Some(next) = location.and_then(|location| url.join(location).ok()) {
-                    url = next;
-                    continue;
-                }
-            }
-            if !status.is_success() {
-                return Err(call.refusal(response).await);
-            }
-            if response.content_length().is_some_and(|length| length > DOWNLOAD_LIMIT as u64) {
-                return Err(too_large());
-            }
-            let mut body = Vec::new();
-            while let Some(chunk) = response.chunk().await.map_err(crate::media::transport)? {
-                if body.len() + chunk.len() > DOWNLOAD_LIMIT {
-                    return Err(too_large());
-                }
-                body.extend_from_slice(&chunk);
-            }
-            return Ok(Bytes::from(body));
+        let response = follow(http, &Ask::get(url), &key, endpoint).await?;
+        if !response.status().is_success() {
+            return Err(call.refusal(response).await);
         }
-        Err(unreadable(format!("its video's address redirected more than {REDIRECTS} times")))
+        read_within(response, Holding::File, "video").await
     })
     .await;
     MediaAnswer { result, observed: Vec::new() }
-}
-
-fn too_large() -> MediaFailure {
-    unreadable(format!("its video is over {} MiB", DOWNLOAD_LIMIT / (1024 * 1024)))
 }

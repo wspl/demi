@@ -144,6 +144,7 @@ impl Family {
                 vendor_id: Some("openai".to_owned()),
                 makes_images: false,
                 makes_videos: false,
+                makes_audio: false,
             };
             OpenAiProvider::new(config, clock.clone())
         };
@@ -164,6 +165,7 @@ impl Family {
                     base_url: Some(vendor.url("/v1beta").parse().unwrap()),
                     makes_images: false,
                     makes_videos: false,
+                    makes_audio: false,
                 };
                 GoogleProvider::new(config, clock).runtime(env)
             }

@@ -58,6 +58,7 @@ members = [
   "crates/provider-claude-code",
   "crates/provider-codex",
   "crates/provider-google",
+  "crates/provider-elevenlabs",
   "crates/provider-grok-build",
   "crates/provider-openai-api",
   "crates/runner",

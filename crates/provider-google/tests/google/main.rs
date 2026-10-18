@@ -3,6 +3,7 @@
 //! its cancellation, what it says about itself, and a Gemini key's images
 //! and videos. No test calls the real vendor.
 
+mod audio;
 mod images;
 mod request;
 mod stream;
@@ -25,6 +26,7 @@ pub(crate) fn provider_at(vendor: &MockVendor, base: &str) -> GoogleProvider {
         base_url: Some(vendor.url(base).parse().unwrap()),
         makes_images: false,
         makes_videos: false,
+        makes_audio: false,
     };
     GoogleProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }

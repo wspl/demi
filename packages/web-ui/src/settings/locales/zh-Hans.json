@@ -548,7 +548,16 @@
       "videoGeneration": "视频生成",
       "videos": "视频",
       "addVideo": "添加视频模型",
-      "noVideos": "还没有视频模型"
+      "noVideos": "还没有视频模型",
+      "audio": "音频",
+      "audioGeneration": "音频生成",
+      "addAudio": "添加音频模型",
+      "noAudio": "还没有音频模型",
+      "kinds": {
+        "speech": "语音",
+        "music": "音乐",
+        "effect": "音效"
+      }
     },
     "state": {
       "setup": "未设置",
@@ -587,6 +596,7 @@
       "keyPaste": "粘贴你的 API 密钥",
       "test": "测试连接",
       "testDescription": "向第一个已启用的文本模型发送一条简短的聊天消息。",
+      "testMediaDescription": "用 API 密钥读取供应商的模型列表。",
       "testing": "正在测试…",
       "connected": "已连接",
       "failed": "失败",

@@ -60,7 +60,7 @@ import SettingsPage from './SettingsPage.vue'
 import SettingsRow from './SettingsRow.vue'
 import SettingsSplit from './SettingsSplit.vue'
 import { useListReorder } from '../ui/useListReorder'
-import { hasTextModel, testedModel } from './tested-model'
+import { canTest, hasTextModel, testedModel } from './tested-model'
 import { formatDate } from '../ui/dates'
 import {
   COMPATIBLE_MEDIA_SHAPES,
@@ -74,6 +74,7 @@ import {
   type SettingsEntryMedia,
   type SettingsMediaShape,
   type SettingsMediaKind,
+  type SettingsAudioKind,
   type SettingsModelDraft,
   type SettingsModelSearch,
   type SettingsQuotaRefresh,
@@ -474,6 +475,17 @@ const MEDIA_WORDS: Record<SettingsMediaKind, {
     add: () => t('providers.media.addVideo'),
     none: () => t('providers.media.noVideos'),
   },
+  audio: {
+    title: () => t('providers.media.audio'),
+    generation: () => t('providers.media.audioGeneration'),
+    add: () => t('providers.media.addAudio'),
+    none: () => t('providers.media.noAudio'),
+  },
+}
+
+/** What an audio model makes, as its row names it: Speech, Music · Sound Effects. */
+function kindWords(kinds: readonly SettingsAudioKind[]): string {
+  return kinds.map((kind) => t(`providers.media.kinds.${kind}`)).join(', ')
 }
 
 function changeMedia(
@@ -575,10 +587,10 @@ watch(testingAccounts, (now, before) => {
 })
 
 // Why the selected provider cannot be tested right now, for the button's tooltip.
-/** Why Test Connection is unavailable: no text model to send its chat message to, or none enabled. */
+/** Why Test Connection is unavailable: no text model to send its chat message to, or none enabled; an entry of media alone always has its key to test. */
 const testBlockReason = computed(() => {
   const provider = selected.value
-  if (!provider || testedModel(provider)) {
+  if (!provider || canTest(provider)) {
     return undefined
   }
   return hasTextModel(provider) ? t('providers.connection.enableModel') : t('providers.connection.noTextModel')
@@ -1031,7 +1043,7 @@ function endpointCheck(value: string) {
                       :icon="Plug"
                       :aria-label="t('providers.account.test')"
                       :operation="providerOperation(selected.id, { kind: 'account', accountId: account.id, action: 'test' })"
-                      :disabled="!testedModel(selected)"
+                      :disabled="!canTest(selected)"
                       :disabled-reason="testBlockReason"
                       @click="emit('test', selected, account.id)"
                   /></Tooltip>
@@ -1186,7 +1198,7 @@ function endpointCheck(value: string) {
               <SettingsRow
                 v-if="selected.kind === 'api_key'"
                 :label="t('providers.connection.test')"
-                :description="t('providers.connection.testDescription')"
+                :description="selected.makesText === false ? t('providers.connection.testMediaDescription') : t('providers.connection.testDescription')"
               >
                 <!-- The provider's own words in full, under the row; the page does not paraphrase them. -->
                 <template
@@ -1251,7 +1263,7 @@ function endpointCheck(value: string) {
                     :disabled="
                       selected.configured === false ||
                       busy(selected.id) ||
-                      !testedModel(selected)
+                      !canTest(selected)
                     "
                     :disabled-reason="testBlockReason"
                     @click="emit('test', selected)"
@@ -1308,8 +1320,9 @@ function endpointCheck(value: string) {
 
             <!-- Models. A subscription's list is whatever the vendor serves, so it is refreshed, never
                edited; a vendor key chooses between the catalog and a manual list; a bare endpoint only
-               has the manual list. Every kind chooses which of its models the pickers offer. -->
-            <SettingsGroup>
+               has the manual list. Every kind chooses which of its models the pickers offer. An entry
+               of media alone has no text models, so no Models. -->
+            <SettingsGroup v-if="selected.makesText !== false">
               <template #header>
                 <header class="flex h-7 select-none items-center gap-2">
                   <h3
@@ -1543,6 +1556,9 @@ function endpointCheck(value: string) {
                     compact
                     :muted="!selected.media[kind].enabled"
                   >
+                    <span v-if="m.kinds?.length" class="select-none text-[12px] text-fg-subtle">{{
+                      kindWords(m.kinds)
+                    }}</span>
                     <Tooltip :content="t('providers.models.edit')"
                       ><IconButton
                         size="sm"
@@ -1569,6 +1585,9 @@ function endpointCheck(value: string) {
                     compact
                     :muted="!selected.media[kind].enabled"
                   >
+                    <span v-if="m.kinds?.length" class="select-none text-[12px] text-fg-subtle">{{
+                      kindWords(m.kinds)
+                    }}</span>
                     <span v-if="m.released" class="select-none text-[12px] tabular-nums text-fg-subtle">{{
                       formatDate(m.released)
                     }}</span>

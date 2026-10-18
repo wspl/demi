@@ -210,5 +210,10 @@
       "warning": "警告",
       "caution": "注意"
     }
+  },
+  "audioPlayer": {
+    "play": "{name} を再生",
+    "pause": "{name} を一時停止",
+    "seek": "{name} の再生位置"
   }
 }

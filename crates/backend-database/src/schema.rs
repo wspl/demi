@@ -255,11 +255,12 @@ pub(crate) const CONTROL: Schema = Schema {
 /// longer choose an entry per vendor's images, which the order and the
 /// switches say instead (`media.md` § Which entry makes a call), so a
 /// saved choice is dropped; an entry whose provider makes videos has a
-/// Video Generation switch, on for every entry stored before; and a usage
-/// ledger row may be a video's, with the seconds made and the cost the
-/// vendor reported (`usage-and-quota.md` § Usage ledger), which SQLite's
-/// checks let in only on a table made again, its rows as they were with
-/// null for both.
+/// Video Generation switch, and one whose provider makes audio an Audio
+/// Generation switch, each on for every entry stored before; and a usage
+/// ledger row may be a video's or an audio file's, with the seconds made
+/// and the cost the vendor reported (`usage-and-quota.md` § Usage ledger),
+/// which SQLite's checks let in only on a table made again, its rows as
+/// they were with null for both.
 const CONTROL_FROM_0_1_27: &str = "
 CREATE TABLE port_forwards (
   id                TEXT PRIMARY KEY,
@@ -299,13 +300,14 @@ CREATE UNIQUE INDEX providers_one_subscription ON providers (owner_user_id, prov
 UPDATE user_preferences SET preferences = json_remove(preferences, '$.imageEntries')
   WHERE json_type(preferences, '$.imageEntries') IS NOT NULL;
 ALTER TABLE providers ADD COLUMN video_generation INTEGER NOT NULL DEFAULT 1 CHECK (video_generation IN (0, 1));
+ALTER TABLE providers ADD COLUMN audio_generation INTEGER NOT NULL DEFAULT 1 CHECK (audio_generation IN (0, 1));
 CREATE TABLE usage_ledger_media (
   id                    TEXT PRIMARY KEY,
   user_id               TEXT NOT NULL REFERENCES users (id),
   conversation_id       TEXT NOT NULL,
   agent                 INTEGER CHECK (agent >= 0),
   turn_id               TEXT,
-  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title', 'image', 'video')),
+  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title', 'image', 'video', 'audio')),
   provider_id           TEXT NOT NULL,
   account_id            TEXT,
   model_id              TEXT NOT NULL,
@@ -3730,6 +3732,9 @@ CREATE TABLE providers (
   -- Whether the entry makes videos when its provider can (providers.md
   -- § Provider management); on from the start.
   video_generation     INTEGER NOT NULL DEFAULT 1 CHECK (video_generation IN (0, 1)),
+  -- Whether the entry makes audio when its provider can; on from the
+  -- start.
+  audio_generation     INTEGER NOT NULL DEFAULT 1 CHECK (audio_generation IN (0, 1)),
   CHECK ((credential_kind = 'api_key') = (config IS NOT NULL)),
   CHECK (credential_kind = 'subscription' OR active_credential_id IS NULL)
 ) STRICT;
@@ -3779,7 +3784,7 @@ CREATE TABLE usage_ledger (
   -- Null for a request outside a session, such as a title.
   agent                 INTEGER CHECK (agent >= 0),
   turn_id               TEXT,
-  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title', 'image', 'video')),
+  purpose               TEXT CHECK (purpose IN ('turn', 'compaction', 'title', 'image', 'video', 'audio')),
   provider_id           TEXT NOT NULL,
   -- Null for an API key.
   account_id            TEXT,
@@ -6707,14 +6712,14 @@ mod tests {
     }
 
     /// A database of 0.1.27's control schema keeps each ledger row whole,
-    /// with no seconds and no cost, takes a video's row with both, and its
-    /// entries make videos, as a new entry does (`usage-and-quota.md`
-    /// § Usage ledger, `providers.md` § Provider management). Planted
-    /// defects: the purpose's check left as it was, the columns copied out
-    /// of order, or a switch that starts off.
+    /// with no seconds and no cost, takes a video's and an audio file's row
+    /// with both, and its entries make videos and audio, as a new entry
+    /// does (`usage-and-quota.md` § Usage ledger, `providers.md` § Provider
+    /// management). Planted defects: the purpose's check left as it was,
+    /// the columns copied out of order, or a switch that starts off.
     /// One small database, milliseconds.
     #[test]
-    fn a_ledger_of_0_1_27_stays_whole_and_takes_a_videos_row_and_its_entries_make_videos() {
+    fn a_ledger_of_0_1_27_stays_whole_and_takes_video_and_audio_rows_and_its_entries_make_both() {
         let (_directory, path, mut connection) = database(include_str!("schema/control-0.1.27.sql"));
         let row = "'row-1', 'user-1', 'conversation-1', 2, 'turn-1', 'image', 'entry-1', 'account-1', 'model-1', \
             'request-1', 'vendor-1', 1, 2, 3, 4, 5, 'answered', '[]', 10, 20";
@@ -6733,7 +6738,10 @@ mod tests {
                 "INSERT INTO usage_ledger (id, user_id, conversation_id, purpose, provider_id, model_id, ended_at,
                      media_seconds, cost, cost_currency)
                    VALUES ('row-2', 'user-1', 'conversation-1', 'video', 'entry-1', 'grok-imagine-video', 30,
-                     5.04, 0.25, 'usd');",
+                     5.04, 0.25, 'usd');
+                 INSERT INTO usage_ledger (id, user_id, conversation_id, purpose, provider_id, model_id, ended_at,
+                     media_seconds)
+                   VALUES ('row-3', 'user-1', 'conversation-1', 'audio', 'entry-1', 'music_v2', 40, 15.02);",
             )
             .unwrap();
         let kept: String = connection
@@ -6751,10 +6759,12 @@ mod tests {
             kept,
             "row-1user-1conversation-12turn-1imageentry-1account-1model-1request-1vendor-112345answered[]1020nonenonenone"
         );
-        let video: bool = connection
-            .query_row("SELECT video_generation FROM providers WHERE id = 'entry-1'", [], |row| row.get(0))
+        let (video, audio): (bool, bool) = connection
+            .query_row("SELECT video_generation, audio_generation FROM providers WHERE id = 'entry-1'", [], |row| {
+                Ok((row.get(0)?, row.get(1)?))
+            })
             .unwrap();
-        assert!(video);
+        assert!(video && audio);
     }
 
     /// A ledger row of 0.1.22 keeps every column

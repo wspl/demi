@@ -407,6 +407,26 @@ impl ProductPort for TestProduct {
         none()
     }
 
+    fn make_audio<'a>(
+        &'a self,
+        _: &'a ConversationId,
+        _: Option<&'a demi_host_interface::JobCaller>,
+        _: demi_plugin_interface::AudioAsk,
+        _: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<demi_plugin_interface::MadeAudio, PortFailure>> {
+        none()
+    }
+
+    fn audio_voices<'a>(
+        &'a self,
+        _: &'a ConversationId,
+        _: String,
+        _: Option<String>,
+        _: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<demi_plugin_interface::AudioVoices, PortFailure>> {
+        none()
+    }
+
     fn put_blob(&self, _: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, PortFailure>> {
         none()
     }

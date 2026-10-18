@@ -205,7 +205,7 @@ export function provider(
     enabled: true,
     models: [],
     accounts: [],
-    media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true } },
+    media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
     autoRefreshUsage: partial.kind === 'subscription',
     logo: providerLogo({ kind: partial.kind, providerType: partial.family, vendorId: partial.vendorId ?? null }),
     ...partial,
@@ -214,7 +214,21 @@ export function provider(
 
 /** models.dev vendors one of Demi's runtimes can speak to, with their marks. */
 export interface MockVendor extends SettingsVendor {
-  family: 'anthropic' | 'openai' | 'google'
+  family: 'anthropic' | 'openai' | 'google' | 'media'
+}
+
+/** ElevenLabs' audio models, as the media catalog lists them, which an ElevenLabs entry's Audio shows. */
+export const elevenLabsAudio: MockProvider['media']['audio'] = {
+  shape: 'elevenlabs',
+  enabled: true,
+  models: [
+    { id: 'eleven_v4', name: 'Eleven v4', released: null, kinds: ['speech'] },
+    { id: 'eleven_v3', name: 'Eleven v3', released: null, kinds: ['speech'] },
+    { id: 'eleven_multilingual_v2', name: 'Eleven Multilingual v2', released: null, kinds: ['speech'] },
+    { id: 'eleven_flash_v2_5', name: 'Eleven Flash v2.5', released: null, kinds: ['speech'] },
+    { id: 'music_v2_5', name: 'Eleven Music v2.5', released: null, kinds: ['music'] },
+    { id: 'eleven_text_to_sound_v2', name: 'Eleven Sound Effects v2', released: null, kinds: ['effect'] },
+  ],
 }
 
 export const mockVendors: MockVendor[] = [
@@ -233,6 +247,15 @@ export const mockVendors: MockVendor[] = [
     wireApi: 'openai-responses',
     baseUrl: 'https://api.openai.com/v1',
     logo: vendorLogo('openai')
+  },
+  {
+    // A vendor of media alone, from the media catalog: it speaks its own API.
+    id: 'elevenlabs',
+    name: 'ElevenLabs',
+    family: 'media',
+    wireApi: null,
+    baseUrl: 'https://api.elevenlabs.io',
+    logo: vendorLogo('elevenlabs')
   },
   {
     id: 'google',
@@ -474,7 +497,7 @@ export function mockProviders(): MockProvider[] {
         { id: 'gpt-image-2', name: 'GPT-Image-2', released: '2026-04-21' },
         { id: 'gpt-image-1.5', name: 'GPT-Image-1.5', released: '2025-12-16' },
         { id: 'gpt-image-1-mini', name: 'GPT-Image-1 Mini', released: '2025-10-06' },
-      ] }, video: { shape: null, enabled: true } },
+      ] }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
       // Two accounts, so Rotation shows here too; removing both signs it out.
       accounts: [
         {
@@ -528,7 +551,7 @@ export function mockProviders(): MockProvider[] {
             { id: 'grok-imagine-video-1.5', name: 'Grok Imagine Video 1.5', released: '2026-05-30' },
             { id: 'grok-imagine-video-1.5-lite', name: 'Grok Imagine Video 1.5 Lite', released: null },
             { id: 'grok-imagine-video', name: 'Grok Imagine Video', released: null },
-          ] },
+          ] }, audio: { shape: null, enabled: true },
         },
         // Signed in and reachable from the backend: its active account can be tested.
         accounts: [
@@ -629,7 +652,12 @@ export function mockProviders(): MockProvider[] {
         { id: 'gpt-image-2', name: 'GPT-Image-2', released: '2026-04-21' },
         { id: 'gpt-image-1.5', name: 'GPT-Image-1.5', released: '2025-12-16' },
         { id: 'gpt-image-1-mini', name: 'GPT-Image-1 Mini', released: '2025-10-06' },
-      ] }, video: { shape: null, enabled: true } },
+      ] }, video: { shape: null, enabled: true }, audio: { shape: 'openai-speech', enabled: true, models: [
+        { id: 'gpt-4o-mini-tts-2025-12-15', name: 'GPT-4o Mini TTS', released: '2025-12-15', kinds: ['speech'] },
+        { id: 'gpt-4o-mini-tts-2025-03-20', name: 'GPT-4o Mini TTS', released: '2025-03-20', kinds: ['speech'] },
+        { id: 'tts-1-hd', name: 'TTS-1 HD', released: null, kinds: ['speech'] },
+        { id: 'tts-1', name: 'TTS-1', released: null, kinds: ['speech'] },
+      ] } },
       state: 'error', detail: '401 · Incorrect API key provided', catalogFetched: ago(3 * DAY),
       models: [
         model(
@@ -672,6 +700,13 @@ export function mockProviders(): MockProvider[] {
       ],
     }),
     provider({
+      // A vendor of media alone: its key and its Audio, no Models; its test reads its models.
+      id: 'elevenlabs', name: 'ElevenLabs', kind: 'api_key', family: 'media', vendorId: 'elevenlabs',
+      baseUrl: 'https://api.elevenlabs.io', apiKey: 'sk_example-not-a-real-key', makesText: false,
+      testPassed: true, testedWith: 'Eleven v4', testedIn: '286 ms',
+      media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: elevenLabsAudio },
+    }),
+    provider({
       id: 'kimi', name: 'Kimi', kind: 'api_key', family: 'anthropic', vendorId: 'moonshotai',
       baseUrl: 'https://api.moonshot.cn/anthropic', wireApi: 'anthropic-messages', apiKey: 'sk-example-not-a-real-key', testedIn: '412 ms',
       modelSource: 'manual',
@@ -695,8 +730,8 @@ export function mockProviders(): MockProvider[] {
       baseUrl: 'http://localhost:11434/v1', wireApi: 'openai-chat', apiKey: '',
       modelSource: 'manual', state: 'unreachable', detail: 'connect ECONNREFUSED 127.0.0.1:11434',
       // Ollama serves OpenAI's image requests too, so the user chose that shape and added an
-      // image model; it serves no videos, so its video shape stays None.
-      media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true } },
+      // image model; it serves no videos or speech, so its video and audio shapes stay None.
+      media: { image: { shape: 'openai-images', enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true } },
       models: [
         model({
           id: 'qwen3:32b',
@@ -778,17 +813,22 @@ export function incompleteProviders(): MockProvider[] {
 }
 
 /**
- * Whether the entry lacks a part it cannot infer without, as the backend
- * says (`models.md` § A provider is in the list from the start): a vendor's
- * key, a compatible API's endpoint, whose key is optional, a model, or a
- * subscription's account.
+ * Whether the entry lacks a part it cannot infer without, as the backend's
+ * `ProviderEntry::missing` says and the product shows it from the catalog's
+ * `setup` availability (`models.md` § A provider is in the list from the
+ * start): a vendor's key, a compatible API's endpoint, whose key is
+ * optional, a subscription's account, and models only where the entry's
+ * user keeps its list: a compatible API's, or a vendor's list the user made
+ * and emptied. A vendor's own list, and an entry of media alone, which has
+ * no text models, never lack them.
  */
 export function isIncomplete(entry: SettingsProviderEntry): boolean {
   if (entry.kind === 'subscription') {
     return !entry.accounts.length
   }
   const reaches = entry.compatible ? entry.baseUrl !== '' : entry.keyConfigured === true
-  return !reaches || !entry.models.length
+  const keepsList = entry.compatible || entry.modelSource === 'manual'
+  return !reaches || (keepsList && !entry.models.length)
 }
 
 /** The models.dev models the Add Model specimens search, as the backend's search answers. */

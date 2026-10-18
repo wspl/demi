@@ -452,10 +452,13 @@ cancelling the request stops the probe. An unknown account is
 no data returns null, not a fabricated percentage
 ([Vendor quota](../providers/usage-and-quota.md#vendor-quota)). Reading status
 never invokes inference.
-`POST /api/providers/:id/test` takes `{ modelId, credentialId? }` and tests
+`POST /api/providers/:id/test` takes `{ modelId?, credentialId? }` and tests
 with that account, in use or not; an unknown account is `account_not_found`.
-The test is of a text model: it sends one short request to the model, the
-first enabled text model on the page, and an entry with no text model shows
+An entry of media alone, such as ElevenLabs, is tested with its key alone,
+by reading its vendor's model list, which costs nothing, so no model is
+needed and a key the vendor refuses shows the vendor's reason.
+Any other entry's test is of a text model: it sends one short request to the
+model, the first enabled text model on the page, and an entry with no text model shows
 **Test Connection** unavailable, saying the test sends a chat message and the
 entry has no text model, since an image costs money to make. It answers `{ type: "passed", model }`
 when the provider answers, or `{ type: "failed", message, model? }` with the

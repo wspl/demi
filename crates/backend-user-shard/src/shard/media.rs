@@ -2,7 +2,8 @@
 //! (`media.md`, `plugins.md` § The contract): the models of one kind the
 //! user's entries offer, each with every fact the catalog of media models
 //! states and the entries that offer it; one image made through an entry's
-//! account or key; and one video's job, from its ask to its download.
+//! account or key; one video's job, from its ask to its download; and one
+//! audio file, with the voices a speech model speaks in.
 //!
 //! Which entry makes a call (`media.md` § Which entry makes a call): the
 //! one `--provider` names, which fails the call when it cannot; otherwise
@@ -31,16 +32,18 @@ use demi_backend_providers::vault::entries::{EntryCredential, ProviderEntry};
 use demi_backend_host_access::root_of;
 use demi_host_interface::{JobCaller, PortError};
 use demi_plugin_interface::{
-    AskedVideo, CustomSizeRule, EntryStatus, ImageAsk, ImageFacts, MadeImage, MadeVideo, MediaListing, MediaModel,
+    AskedVideo, AudioAsk, AudioFacts, AudioFileFormat, AudioOption, AudioVoices, MadeAudio, PcmShape, VoiceInfo,
+    CustomSizeRule, EntryStatus, ImageAsk, ImageFacts, MadeImage, MadeVideo, MediaListing, MediaModel,
     MediaPrice, MediaRefusal, MediaUnlisted, ModelEntry, PortFailure, PortRefusal, PriceRate, Unable, VideoAsk,
     VideoFacts, VideoResolution, VideoStep,
 };
 use demi_provider_common::credentials::AuthReason;
+use demi_provider_common::audio::{self, AudioFormatAsk, AudioRequest};
 use demi_provider_common::images::{Aspect, ImageRequest, InputImage};
 use demi_provider_common::media::{MediaFailure, MediaModelInfo, MediaVendor};
-use demi_provider_common::media_catalog::{self, Catalog, Currency, Modality, PriceUnit};
+use demi_provider_common::media_catalog::{self, AudioOutput, Catalog, Currency, Modality, PriceUnit, Voices};
 use demi_provider_common::videos::{self, Done, JobState, Resolution, VideoOption, VideoRequest};
-use demi_shared_types::{MediaKind, Model, QuotaWindow, Rotation, Timestamp, TurnId, mp4};
+use demi_shared_types::{AudioKind, MediaKind, Model, QuotaWindow, Rotation, Timestamp, TurnId, mp4};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId};
 use demi_web_api_protocol::providers::EntryMediaModel;
 use futures_util::StreamExt as _;
@@ -228,7 +231,7 @@ async fn standing(services: &Services, route: &Route, model: &str) -> Result<Sta
 }
 
 /// Each entry's models of `kind`, by entry id, newest first, for the
-/// settings page's Images and Videos sections (`providers.md` § Provider
+/// settings page's Images, Videos and Audio sections (`providers.md` § Provider
 /// management): whether or not its switch for the kind is on, and an alias
 /// left out beside the model it names. An entry whose models could not be
 /// listed has none here; the agent's listing says why.
@@ -260,6 +263,7 @@ pub async fn entry_media_models(
                     id: described.id,
                     name: described.name.unwrap_or_else(|| model.id.clone()),
                     released: described.released,
+                    kinds: described.audio.map(|audio| audio.kinds).unwrap_or_default(),
                 }
             })
             .collect();
@@ -475,6 +479,7 @@ fn described(
             aliases: Vec::new(),
             image: None,
             video: None,
+            audio: (kind == MediaKind::Audio).then(|| AudioFacts { kinds: listed.kinds.clone(), ..AudioFacts::default() }),
             price: None,
             entries,
         };
@@ -507,6 +512,31 @@ fn described(
         last_frame: video.last_frame,
         max_reference_images: video.max_reference_images,
         audio: video.audio,
+    });
+    let audio = (kind == MediaKind::Audio).then(|| {
+        let known = catalog.audio(model);
+        let kinds = audio_kinds(catalog, Some(vendor), listed);
+        let Some(known) = known else {
+            return AudioFacts { kinds, ..AudioFacts::default() };
+        };
+        AudioFacts {
+            kinds,
+            voices: match &known.voices {
+                Some(Voices::Named(names)) => Some(names.clone()),
+                _ => None,
+            },
+            voices_listed: known.voices.as_ref().map(|voices| matches!(voices, Voices::Listed(_))),
+            languages: known.languages.clone(),
+            instructions: known.instructions,
+            max_characters: known.max_characters,
+            durations: known.durations.clone(),
+            min_duration: known.duration_range.and_then(|range| range.min),
+            max_duration: known.duration_range.and_then(|range| range.max),
+            lyrics: known.lyrics,
+            instrumental: known.instrumental,
+            loops: known.loops,
+            formats: known.formats.clone(),
+        }
     });
     let price = catalog.price(model).map(|price| MediaPrice {
         rates: price
@@ -551,9 +581,31 @@ fn described(
         aliases,
         image,
         video,
+        audio,
         price,
         entries,
     }
+}
+
+/// The kinds of audio `listed` makes: what the catalog states of it for
+/// `vendor`, else what its listing says, such as a compatible entry's
+/// shape's kinds; empty when neither says.
+fn audio_kinds(catalog: &Catalog, vendor: Option<MediaVendor>, listed: &MediaModelInfo) -> Vec<AudioKind> {
+    let made = vendor
+        .and_then(|vendor| catalog.model(vendor.id(), &listed.id))
+        .and_then(|model| catalog.audio(model))
+        .and_then(|audio| audio.makes.as_ref());
+    let kinds: Vec<AudioKind> = made
+        .into_iter()
+        .flatten()
+        .filter_map(|output| match output {
+            AudioOutput::Speech => Some(AudioKind::Speech),
+            AudioOutput::Music => Some(AudioKind::Music),
+            AudioOutput::Effect => Some(AudioKind::Effect),
+            AudioOutput::Other => None,
+        })
+        .collect();
+    if kinds.is_empty() { listed.kinds.clone() } else { kinds }
 }
 
 /// A unit as the listing names it; none for one this backend does not
@@ -673,6 +725,67 @@ pub(crate) async fn make_video(
     }
 }
 
+/// Makes the audio `ask` names for `conversation`, as [`make_image`] makes
+/// an image: one request, answered within the call (`audio.md`
+/// § Vendors).
+pub(crate) async fn make_audio(
+    shard: &Shard,
+    conversation: &ConversationId,
+    caller: Option<&JobCaller>,
+    ask: AudioAsk,
+    cancel: &CancellationToken,
+) -> Result<MadeAudio, PortFailure> {
+    let request = AudioRequest {
+        kind: ask.kind,
+        model: ask.model.clone(),
+        text: ask.text,
+        voice: ask.voice,
+        instructions: ask.instructions,
+        speed: ask.speed,
+        duration: ask.duration,
+        instrumental: ask.instrumental,
+        seed: ask.seed,
+        looped: ask.looped,
+        format: match ask.format {
+            AudioFileFormat::Mp3 => AudioFormatAsk::Mp3,
+            AudioFileFormat::Wav => AudioFormatAsk::Wav,
+            AudioFileFormat::Opus => AudioFormatAsk::Opus,
+            AudioFileFormat::Flac => AudioFormatAsk::Flac,
+        },
+    };
+    let call = Call {
+        shard,
+        conversation,
+        caller,
+        kind: MediaKind::Audio,
+        model: ask.model,
+        provider: ask.provider,
+    };
+    let asking = AudioCall { request };
+    tokio::select! {
+        made = call.make(&asking) => made,
+        () = cancel.cancelled() => Err(PortError::Ended("the call was stopped".into()).into()),
+    }
+}
+
+/// The voices of speech model `model`, as the entry a call of it would
+/// take now lists them, read when asked (`audio.md` § Vendors); a listing
+/// is no call, and writes no ledger row.
+pub(crate) async fn audio_voices(
+    shard: &Shard,
+    conversation: &ConversationId,
+    model: String,
+    search: Option<String>,
+    cancel: &CancellationToken,
+) -> Result<AudioVoices, PortFailure> {
+    let call = Call { shard, conversation, caller: None, kind: MediaKind::Audio, model, provider: None };
+    let asking = VoicesCall { search };
+    tokio::select! {
+        voices = call.make(&asking) => voices,
+        () = cancel.cancelled() => Err(PortError::Ended("the call was stopped".into()).into()),
+    }
+}
+
 fn input_image(image: demi_plugin_interface::ImageInput) -> InputImage {
     InputImage {
         media_type: image.kind.media_type(),
@@ -786,9 +899,17 @@ impl Call<'_> {
                 continue;
             };
             let name = sent(&route);
+            let listed = routes
+                .iter()
+                .zip(&offered)
+                .find(|(offering, _)| offering.entry.id == route.entry.id)
+                .and_then(|(_, listing)| listing.iter().find(|model| model.id == name))
+                .cloned()
+                .unwrap_or_else(|| MediaModelInfo::id(&name));
             let making = Making {
                 shard,
                 catalog: &catalog,
+                listed,
                 manages,
                 turn: self.caller.and_then(|caller| caller.turn.clone()),
                 route: &route,
@@ -833,10 +954,16 @@ impl Call<'_> {
     }
 }
 
-/// What a call of one kind sends an entry's maker: an image's one request,
-/// or a video's ask.
+/// What a call of one kind sends an entry's maker: an image's or an audio
+/// file's one request, a video's ask, or a listing of voices.
 trait Asking {
     type Made;
+
+    /// Why the call cannot be sent to `maker` at all, told before anything
+    /// is sent; most calls have nothing to check.
+    fn check(&self, _making: &Making<'_>, _maker: &MakerOf) -> Result<(), MediaRefusal> {
+        Ok(())
+    }
 
     /// Sends the call's request as `making.name` to `maker`, on `account`
     /// or with the entry's key, and keeps its ledger row; `label` names
@@ -893,6 +1020,125 @@ impl Asking for ImageCall {
             vendor: images.name().to_owned(),
             account: label,
             confirmed: images.confirms_model(),
+        })
+    }
+}
+
+/// An audio file's one request.
+struct AudioCall {
+    request: AudioRequest,
+}
+
+impl Asking for AudioCall {
+    type Made = MadeAudio;
+
+    /// A model that makes another kind, and speech without a voice for a
+    /// vendor that has no default one, fail before anything is sent.
+    fn check(&self, making: &Making<'_>, maker: &MakerOf) -> Result<(), MediaRefusal> {
+        let audio = maker.audio().expect("an audio call's maker makes audio");
+        let kinds = audio_kinds(making.catalog, audio.vendor(), &making.listed);
+        if !kinds.is_empty() && !kinds.contains(&self.request.kind) {
+            return Err(MediaRefusal::Kind { model: making.name.clone(), asked: self.request.kind, makes: kinds });
+        }
+        if self.request.kind == AudioKind::Speech && self.request.voice.is_none() && audio.needs_voice() {
+            return Err(MediaRefusal::NeedsVoice { vendor: audio.name().to_owned(), model: making.name.clone() });
+        }
+        Ok(())
+    }
+
+    async fn send(
+        &self,
+        making: &Making<'_>,
+        maker: &MakerOf,
+        account: Option<&CredentialId>,
+        label: Option<String>,
+    ) -> Result<MadeAudio, MediaFailure> {
+        let audio = maker.audio().expect("an audio call's maker makes audio");
+        let (mut row, span) = making.open_row("audio", account);
+        let request = AudioRequest { model: making.name.clone(), ..self.request.clone() };
+        let unsent = audio::unsent(audio.shape(), &request)
+            .into_iter()
+            .map(|option| match option {
+                audio::AudioOption::Instructions => AudioOption::Instructions,
+                audio::AudioOption::Speed => AudioOption::Speed,
+                audio::AudioOption::Duration => AudioOption::Duration,
+                audio::AudioOption::Instrumental => AudioOption::Instrumental,
+                audio::AudioOption::Seed => AudioOption::Seed,
+                audio::AudioOption::Loop => AudioOption::Loop,
+            })
+            .collect();
+        let answer = audio.make(&making.http(), making.catalog, request).instrument(span.clone()).await;
+        row.observe(&answer.observed);
+        let made = answer.result;
+        match &made {
+            Ok(made) => {
+                let row = row.row();
+                row.outcome = "answered".to_owned();
+                row.usage = made.usage;
+                row.vendor_id = made.vendor_id.clone();
+                row.cost = made.cost;
+                // A file this does not read is the plugin's to refuse; its
+                // row keeps no seconds.
+                row.media_seconds = match made.pcm {
+                    Some(pcm) => Some(pcm.seconds(made.bytes.len())),
+                    None => demi_shared_types::audio::read(&made.bytes).ok().map(|facts| facts.seconds),
+                };
+            }
+            Err(failure) => row.row().outcome = failure.outcome(),
+        }
+        span.in_scope(|| tracing::info!(outcome = %row.row().outcome, "an audio call ended"));
+        row.write().await;
+        let made = made?;
+        Ok(MadeAudio {
+            bytes: made.bytes.into(),
+            pcm: made.pcm.map(|pcm| PcmShape { sample_rate: pcm.sample_rate(), channels: pcm.channels(), bits: pcm.bits() }),
+            model: making.name.clone(),
+            provider: making.route.entry.label.clone(),
+            vendor: audio.name().to_owned(),
+            account: label,
+            shape: audio.shape().name(self.request.kind).to_owned(),
+            unsent,
+            cost: made.cost,
+        })
+    }
+}
+
+/// A listing of a speech model's voices: no request that is paid for, so
+/// it writes no ledger row.
+struct VoicesCall {
+    search: Option<String>,
+}
+
+impl Asking for VoicesCall {
+    type Made = AudioVoices;
+
+    async fn send(
+        &self,
+        making: &Making<'_>,
+        maker: &MakerOf,
+        _: Option<&CredentialId>,
+        _: Option<String>,
+    ) -> Result<AudioVoices, MediaFailure> {
+        let audio = maker.audio().expect("a listing of voices is an audio maker's");
+        let voices = audio
+            .voices(&making.http(), making.catalog, &making.name, self.search.as_deref())
+            .await?;
+        Ok(AudioVoices {
+            model: making.name.clone(),
+            provider: making.route.entry.label.clone(),
+            vendor: audio.name().to_owned(),
+            voices: voices.map(|voices| {
+                voices
+                    .into_iter()
+                    .map(|voice| VoiceInfo {
+                        id: voice.id,
+                        name: voice.name,
+                        languages: voice.languages,
+                        description: voice.description,
+                        own: voice.own,
+                    })
+                    .collect()
+            }),
         })
     }
 }
@@ -1135,6 +1381,8 @@ struct Making<'a> {
     shard: &'a Shard,
     /// What the model takes, as the call's catalog says.
     catalog: &'a Catalog,
+    /// The model as the entry's listing names it.
+    listed: MediaModelInfo,
     route: &'a Route,
     /// The name the model is sent as.
     name: String,
@@ -1161,6 +1409,7 @@ impl Making<'_> {
         let entry = &self.route.entry;
         let vendor = self.route.media().name().to_owned();
         if !self.route.subscription() {
+            asking.check(&self, &self.route.maker).map_err(refused)?;
             return asking
                 .send(&self, &self.route.maker, None, None)
                 .await
@@ -1222,6 +1471,7 @@ impl Making<'_> {
             let Some(maker) = assembly.maker(entry, &provider, self.route.kind) else {
                 return Err(refused(MediaRefusal::NoProvider));
             };
+            asking.check(&self, &maker).map_err(refused)?;
             let sent = asking.send(&self, &maker, Some(&account), label.clone()).await;
             // The call's account counts no longer: its request ended, and a
             // video's job, once asked for, is the vendor's.

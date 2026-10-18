@@ -6,6 +6,7 @@
 
 mod cancellation;
 mod failures;
+mod audio;
 mod images;
 mod request;
 mod videos;
@@ -51,6 +52,7 @@ pub(crate) fn provider_of(
         vendor_id: vendor_id.map(str::to_owned),
         makes_images: false,
         makes_videos: false,
+        makes_audio: false,
     };
     OpenAiProvider::new(config, Arc::new(FixedClock(NOW.parse().unwrap())))
 }

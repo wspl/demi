@@ -1,14 +1,14 @@
 //! What every kind of a provider's media role has in common (`media.md`):
 //! the vendor whose models it makes, the models it lists, how a request to
 //! the vendor is sent within its deadline with the account's or the key's
-//! credentials, and how a refusal reads. The image and video roles
-//! ([`crate::images`], [`crate::videos`]) build on it; the backend chooses
-//! the entry and the account.
+//! credentials, and how a refusal reads. The image, video and audio roles
+//! ([`crate::images`], [`crate::videos`], [`crate::audio`]) build on it; the
+//! backend chooses the entry and the account.
 
 use std::time::Duration;
 
 use bytes::Bytes;
-use demi_shared_types::{Clock, QuotaWindow, Timestamp};
+use demi_shared_types::{AudioKind, Clock, QuotaWindow, Timestamp};
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, StatusCode};
 use reqwest::Url;
@@ -28,6 +28,141 @@ use crate::{
 /// each (`videos.md` § A call is a job).
 pub const REQUEST_TIMEOUT: Duration = Duration::from_secs(120);
 
+/// The largest file an answer may hold, counted as it arrives: a video's
+/// longest, 15 seconds at 1080p, is tens of MiB, and ten minutes of
+/// 44.1 kHz stereo PCM about 106 MiB (`videos.md` § The job, `audio.md`
+/// § Vendors). A file sent as base64 inside JSON is counted as decoded.
+pub const ANSWER_LIMIT: usize = 256 * 1024 * 1024;
+
+/// What room a JSON answer whose file is base64 has around it: its other
+/// fields, such as a model's words.
+const JSON_ROOM: usize = 1024 * 1024;
+
+/// How many redirects a request follows, as reqwest's own policy does.
+const REDIRECTS: usize = 10;
+
+/// How an answer's body holds its file, which says how much of it is read.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Holding {
+    /// The body is the file: at most [`ANSWER_LIMIT`] bytes.
+    File,
+    /// The body is JSON, a file in it base64: at most the base64 of
+    /// [`ANSWER_LIMIT`] bytes and the room around it. The file, once
+    /// decoded, is checked with [`within_limit`].
+    Json,
+}
+
+impl Holding {
+    fn limit(self) -> usize {
+        match self {
+            Self::File => ANSWER_LIMIT,
+            Self::Json => ANSWER_LIMIT.div_ceil(3) * 4 + JSON_ROOM,
+        }
+    }
+}
+
+/// The failure of an answer whose file is over [`ANSWER_LIMIT`]; `what` is
+/// the file, such as `video`.
+pub fn too_large(what: &str) -> MediaFailure {
+    unreadable(format!("its {what} is over {} MiB", ANSWER_LIMIT / (1024 * 1024)))
+}
+
+/// `file`, decoded from an answer's base64, when it is within
+/// [`ANSWER_LIMIT`].
+pub fn within_limit(file: Bytes, what: &str) -> Result<Bytes, MediaFailure> {
+    if file.len() > ANSWER_LIMIT {
+        return Err(too_large(what));
+    }
+    Ok(file)
+}
+
+/// The body of `response`, read as it arrives and failing as soon as it
+/// is past what `holding` allows, a `Content-Length` over it failing before
+/// a byte is read; `what` names the file.
+pub(crate) async fn read_within(mut response: reqwest::Response, holding: Holding, what: &str) -> Result<Bytes, MediaFailure> {
+    let limit = holding.limit();
+    if response.content_length().is_some_and(|length| length > limit as u64) {
+        return Err(too_large(what));
+    }
+    let mut body = Vec::with_capacity(response.content_length().map_or(0, |length| length as usize));
+    while let Some(chunk) = response.chunk().await.map_err(transport)? {
+        if body.len() + chunk.len() > limit {
+            return Err(too_large(what));
+        }
+        body.extend_from_slice(&chunk);
+    }
+    Ok(Bytes::from(body))
+}
+
+/// A request a media call sends: its method, its address and its body
+/// with its media type, when it has one.
+#[derive(Debug, Clone)]
+pub struct Ask {
+    pub method: http::Method,
+    pub url: Url,
+    pub body: Option<(String, Bytes)>,
+}
+
+impl Ask {
+    pub fn get(url: &Url) -> Self {
+        Self { method: http::Method::GET, url: url.clone(), body: None }
+    }
+
+    pub fn delete(url: &Url) -> Self {
+        Self { method: http::Method::DELETE, url: url.clone(), body: None }
+    }
+
+    pub fn post_json(url: &Url, body: Bytes) -> Self {
+        Self::post(url, "application/json", body)
+    }
+
+    pub fn post(url: &Url, content_type: &str, body: Bytes) -> Self {
+        Self { method: http::Method::POST, url: url.clone(), body: Some((content_type.to_owned(), body)) }
+    }
+}
+
+/// Sends `ask`, following its redirects here rather than in the client, so
+/// each hop's headers are chosen by its origin: `key`, the credential's
+/// headers, goes only to an address of `origin`, never to another host's,
+/// such as a storage bucket's, which gets the request without it. reqwest
+/// drops only `Authorization` across hosts, not a vendor's own key header
+/// such as `xi-api-key` or `x-goog-api-key`. A 303, and a 301 or a 302 of a
+/// `POST`, is followed with a `GET` and no body, as browsers and reqwest do;
+/// a 307 or a 308 with the same method and body.
+pub(crate) async fn follow(
+    http: &crate::ProviderHttp,
+    ask: &Ask,
+    key: &HeaderMap,
+    origin: &Url,
+) -> Result<reqwest::Response, MediaFailure> {
+    let http = http.without_redirects().map_err(transport)?;
+    let origin = origin.origin();
+    let (mut method, mut url, mut body) = (ask.method.clone(), ask.url.clone(), ask.body.clone());
+    for _ in 0..=REDIRECTS {
+        let headers = if url.origin() == origin { key.clone() } else { HeaderMap::new() };
+        let mut request = http.request(method.clone(), url.clone()).headers(headers);
+        if let Some((content_type, bytes)) = &body {
+            request = request.header(http::header::CONTENT_TYPE, content_type.as_str()).body(bytes.clone());
+        }
+        let response = request.send().await.map_err(transport)?;
+        let status = response.status();
+        if !status.is_redirection() {
+            return Ok(response);
+        }
+        let location = response.headers().get(http::header::LOCATION).and_then(|location| location.to_str().ok());
+        let Some(next) = location.and_then(|location| url.join(location).ok()) else {
+            return Ok(response);
+        };
+        let keeps_method = matches!(status, StatusCode::TEMPORARY_REDIRECT | StatusCode::PERMANENT_REDIRECT);
+        if !keeps_method && (status == StatusCode::SEE_OTHER || method == http::Method::POST) {
+            method = http::Method::GET;
+            body = None;
+        }
+        url = next;
+    }
+    Err(unreadable(format!("its address redirected more than {REDIRECTS} times")))
+}
+
 /// A vendor whose media models a provider makes, by its id in the catalog
 /// of media models: a subscription's (ChatGPT's are OpenAI's, Grok's
 /// xAI's) or a key's. A compatible entry's maker has none: what it makes is
@@ -37,17 +172,19 @@ pub enum MediaVendor {
     OpenAi,
     Google,
     Xai,
+    Elevenlabs,
 }
 
 impl MediaVendor {
-    pub const ALL: [Self; 3] = [Self::OpenAi, Self::Google, Self::Xai];
+    pub const ALL: [Self; 4] = [Self::OpenAi, Self::Google, Self::Xai, Self::Elevenlabs];
 
-    /// Its id in the catalog and on models.dev.
+    /// Its id in the catalog, and on models.dev for a vendor it lists.
     pub fn id(self) -> &'static str {
         match self {
             Self::OpenAi => "openai",
             Self::Google => "google",
             Self::Xai => "xai",
+            Self::Elevenlabs => "elevenlabs",
         }
     }
 
@@ -62,6 +199,7 @@ impl MediaVendor {
             Self::OpenAi => "OpenAI",
             Self::Google => "Google",
             Self::Xai => "xAI",
+            Self::Elevenlabs => "ElevenLabs",
         }
     }
 }
@@ -117,6 +255,10 @@ pub struct MediaModelInfo {
     pub released: Option<String>,
     /// What the listing says the model is for.
     pub description: Option<String>,
+    /// For an audio model, the kinds its listing says it makes, such as a
+    /// compatible entry's, whose shape says them; empty when the listing
+    /// says none, and the catalog's are read instead.
+    pub kinds: Vec<AudioKind>,
 }
 
 impl MediaModelInfo {
@@ -127,6 +269,7 @@ impl MediaModelInfo {
             name: None,
             released: None,
             description: None,
+            kinds: Vec::new(),
         }
     }
 }
@@ -227,29 +370,34 @@ impl MediaCall<'_> {
         F: FnMut(Option<Secret>) -> Fut,
         Fut: Future<Output = Result<(HeaderMap, Option<Secret>), AuthFailure>>,
     {
-        let request = |headers: HeaderMap| {
-            http.post(url.clone())
-                .headers(headers)
-                .header(http::header::CONTENT_TYPE, "application/json")
-                .body(body.clone())
-        };
-        self.send(request, credentials).await.and_then(|answered| Ok(answered.body))
+        self.send(http, Ask::post_json(url, body), Holding::Json, credentials).await.and_then(|answered| Ok(answered.body))
     }
 
-    /// Sends the request `request` builds with the headers `credentials`
-    /// gives, and answers the vendor's success, all within
-    /// [`REQUEST_TIMEOUT`]. For an account, a request refused with HTTP 401
-    /// is sent again once, with the credentials renewed past the token it
-    /// was refused with; `credentials` answers the headers and that token,
-    /// none for a key, which is never renewed.
-    pub async fn send<B, F, Fut>(&self, request: B, credentials: F) -> MediaAnswer<Answered>
+    /// As [`MediaCall::post_json`], for an answer whose body is the file
+    /// itself, such as a speech's audio, read within [`ANSWER_LIMIT`].
+    pub async fn post_json_for_file<F, Fut>(&self, http: &crate::ProviderHttp, url: &Url, body: Bytes, credentials: F) -> MediaAnswer<Bytes>
     where
-        B: Fn(HeaderMap) -> crate::RequestBuilder,
+        F: FnMut(Option<Secret>) -> Fut,
+        Fut: Future<Output = Result<(HeaderMap, Option<Secret>), AuthFailure>>,
+    {
+        self.send(http, Ask::post_json(url, body), Holding::File, credentials).await.and_then(|answered| Ok(answered.body))
+    }
+
+    /// Sends `ask` with the headers `credentials` gives, and answers the
+    /// vendor's success, its body read within what `holding` allows, all
+    /// within [`REQUEST_TIMEOUT`]. The headers go only to the origin of
+    /// `ask`'s address, the entry's endpoint's, its redirects followed by
+    /// [`follow`]. For an account, a request refused with HTTP 401 is sent
+    /// again once, with the credentials renewed past the token it was
+    /// refused with; `credentials` answers the headers and that token, none
+    /// for a key, which is never renewed.
+    pub async fn send<F, Fut>(&self, http: &crate::ProviderHttp, ask: Ask, holding: Holding, credentials: F) -> MediaAnswer<Answered>
+    where
         F: FnMut(Option<Secret>) -> Fut,
         Fut: Future<Output = Result<(HeaderMap, Option<Secret>), AuthFailure>>,
     {
         let mut observed = Vec::new();
-        let call = self.attempts(request, credentials, &mut observed);
+        let call = self.attempts(http, &ask, holding, credentials, &mut observed);
         let result = within_deadline(call).await;
         MediaAnswer { result, observed }
     }
@@ -258,24 +406,36 @@ impl MediaCall<'_> {
     /// listing of a key's models, within [`REQUEST_TIMEOUT`]; a refusal
     /// reads as a call's does.
     pub async fn get(&self, http: &crate::ProviderHttp, url: &Url, headers: HeaderMap) -> Result<Bytes, MediaFailure> {
+        self.get_if_served(http, url, headers, false).await.map(|body| body.unwrap_or_default())
+    }
+
+    /// As [`MediaCall::get`], but none when `optional` and the endpoint
+    /// has no such route, answering 404 or 405, as a compatible server
+    /// without an optional route does.
+    pub async fn get_if_served(&self, http: &crate::ProviderHttp, url: &Url, headers: HeaderMap, optional: bool) -> Result<Option<Bytes>, MediaFailure> {
         within_deadline(async {
-            let response = http.get(url.clone()).headers(headers).send().await.map_err(transport)?;
-            if !response.status().is_success() {
+            let response = follow(http, &Ask::get(url), &headers, url).await?;
+            let status = response.status();
+            if optional && (status == StatusCode::NOT_FOUND || status == StatusCode::METHOD_NOT_ALLOWED) {
+                return Ok(None);
+            }
+            if !status.is_success() {
                 return Err(self.refusal(response).await);
             }
-            response.bytes().await.map_err(transport)
+            read_within(response, Holding::Json, "answer").await.map(Some)
         })
         .await
     }
 
-    async fn attempts<B, F, Fut>(
+    async fn attempts<F, Fut>(
         &self,
-        request: B,
+        http: &crate::ProviderHttp,
+        ask: &Ask,
+        holding: Holding,
         mut credentials: F,
         observed: &mut Vec<QuotaWindow>,
     ) -> Result<Answered, MediaFailure>
     where
-        B: Fn(HeaderMap) -> crate::RequestBuilder,
         F: FnMut(Option<Secret>) -> Fut,
         Fut: Future<Output = Result<(HeaderMap, Option<Secret>), AuthFailure>>,
     {
@@ -283,7 +443,7 @@ impl MediaCall<'_> {
         let mut retried = false;
         loop {
             let (headers, token) = credentials(refused.take()).await.map_err(MediaFailure::SignIn)?;
-            let response = request(headers).send().await.map_err(transport)?;
+            let response = follow(http, ask, &headers, &ask.url).await?;
             let status = response.status();
             if let Some(quota) = self.quota {
                 let reported = quota.observe(Observation::Response {
@@ -303,7 +463,7 @@ impl MediaCall<'_> {
             if !status.is_success() {
                 return Err(self.refusal(response).await);
             }
-            let body = response.bytes().await.map_err(transport)?;
+            let body = read_within(response, holding, "answer").await?;
             return Ok(Answered { status, body });
         }
     }
@@ -384,7 +544,9 @@ pub fn unreadable(cause: String) -> MediaFailure {
 }
 
 /// What a vendor said in a refusal's body: `error.message`, `error` when
-/// it is text, or `message`; a body of none of these is its text, trimmed.
+/// it is text, `message`, or `detail`, as ElevenLabs and other FastAPI
+/// servers answer, text, an object's `message` or a validation list's first
+/// `msg`; a body of none of these is its text, trimmed.
 pub fn vendor_message(body: &str) -> Option<String> {
     #[derive(Deserialize)]
     struct Refusal {
@@ -392,6 +554,8 @@ pub fn vendor_message(body: &str) -> Option<String> {
         error: Option<serde_json::Value>,
         #[serde(default)]
         message: Option<String>,
+        #[serde(default)]
+        detail: Option<serde_json::Value>,
     }
     let trimmed = body.trim();
     if trimmed.is_empty() {
@@ -400,15 +564,17 @@ pub fn vendor_message(body: &str) -> Option<String> {
     let Ok(refusal) = serde_json::from_str::<Refusal>(trimmed) else {
         return Some(trimmed.to_owned());
     };
-    let said = match refusal.error {
-        Some(serde_json::Value::String(text)) => Some(text),
-        Some(serde_json::Value::Object(error)) => error
-            .get("message")
-            .and_then(serde_json::Value::as_str)
-            .map(str::to_owned),
+    let text_of = |value: &serde_json::Value, field: &str| match value {
+        serde_json::Value::String(text) => Some(text.clone()),
+        serde_json::Value::Object(object) => object.get(field).and_then(serde_json::Value::as_str).map(str::to_owned),
         _ => None,
     };
-    Some(said.or(refusal.message).unwrap_or_else(|| trimmed.to_owned()))
+    let said = refusal.error.as_ref().and_then(|error| text_of(error, "message"));
+    let detail = refusal.detail.as_ref().and_then(|detail| match detail {
+        serde_json::Value::Array(items) => items.first().and_then(|item| text_of(item, "msg")),
+        detail => text_of(detail, "message"),
+    });
+    Some(said.or(refusal.message).or(detail).unwrap_or_else(|| trimmed.to_owned()))
 }
 
 /// A Unix time in seconds, as OpenAI's and xAI's listings give `created`,

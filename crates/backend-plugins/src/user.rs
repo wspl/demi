@@ -24,7 +24,7 @@ use demi_backend_page_sync::{Part, UserMarks};
 use demi_command_declarations::NativeOperation;
 use demi_host_interface::{CommandSet, GroupBuilder, JobCaller, PortError, RpcPort};
 use demi_plugin_interface::{
-    AskedVideo, ImageAsk, MadeImage, MediaListing, MediaRefusal, VideoAsk, VideoStep,
+    AskedVideo, AudioAsk, AudioVoices, ImageAsk, MadeAudio, MadeImage, MediaListing, MediaRefusal, VideoAsk, VideoStep,
     CallKind, DirectoryPath, HostDirectory, HostFile, HostRead, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
     PortRefusal, Reply, Request, Scope, StoredValue,
@@ -108,6 +108,27 @@ pub trait ProductPort {
         ask: VideoAsk,
         cancel: &'a CancellationToken,
     ) -> LocalBoxFuture<'a, Result<(AskedVideo, VideoJob), PortFailure>>;
+
+    /// Makes the audio `ask` names for the conversation, through the entry
+    /// the providers choose; its usage ledger row names the agent and the
+    /// turn of `caller`.
+    fn make_audio<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        caller: Option<&'a JobCaller>,
+        ask: AudioAsk,
+        cancel: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<MadeAudio, PortFailure>>;
+
+    /// The voices of speech model `model`, as the entry a call of it takes
+    /// lists them, narrowed by `search` (`audio.md` § Vendors).
+    fn audio_voices<'a>(
+        &'a self,
+        conversation: &'a ConversationId,
+        model: String,
+        search: Option<String>,
+        cancel: &'a CancellationToken,
+    ) -> LocalBoxFuture<'a, Result<AudioVoices, PortFailure>>;
 
     /// Stores `bytes` in the user's blob namespace.
     fn put_blob(&self, bytes: B64Bytes) -> LocalBoxFuture<'_, Result<BlobRef, PortFailure>>;
@@ -1282,6 +1303,14 @@ impl RequestPort {
                 self.video.replace(Some(job));
                 PortAnswer::VideoAsked { asked }
             }
+            PortMessage::MakeAudio { ask } => PortAnswer::Audio {
+                audio: product
+                    .make_audio(self.conversation()?, self.caller.as_ref(), ask, &self.cancel)
+                    .await?,
+            },
+            PortMessage::AudioVoices { model, search } => PortAnswer::AudioVoices {
+                voices: product.audio_voices(self.conversation()?, model, search, &self.cancel).await?,
+            },
             PortMessage::VideoProgress => {
                 // Taken out for the wait, so no borrow is held across it.
                 let Some(mut job) = self.video.take() else {

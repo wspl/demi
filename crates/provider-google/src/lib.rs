@@ -4,8 +4,9 @@
 //! video is a real inline part and thought summaries, thought signatures and
 //! thinking token counts arrive as fields of their own. It reads its
 //! failure records by the standard reading. The key of a Gemini API vendor
-//! entry also makes images and, with Veo, videos.
+//! entry also makes images, videos with Veo, and speech and music.
 
+mod audio;
 mod images;
 mod request;
 mod stream;
@@ -16,6 +17,7 @@ use std::sync::Arc;
 use demi_provider_common::{
     Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, read_http_failure,
+    audio::AudioMaker,
     images::ImageMaker,
     videos::VideoMaker,
 };
@@ -49,6 +51,9 @@ pub struct GoogleConfig {
     /// Whether the key makes videos with Veo: an entry of the Gemini API
     /// vendor.
     pub makes_videos: bool,
+    /// Whether the key makes speech and music: an entry of the Gemini API
+    /// vendor.
+    pub makes_audio: bool,
 }
 
 impl GoogleConfig {
@@ -63,6 +68,8 @@ pub struct GoogleProvider {
     images: Option<images::KeyImages>,
     /// The key's video role, for a Gemini API entry with its key.
     videos: Option<videos::KeyVideos>,
+    /// The key's audio role, for a Gemini API entry with its key.
+    audio: Option<audio::KeyAudio>,
 }
 
 /// What the provider and all its runtimes share.
@@ -94,7 +101,8 @@ impl GoogleProvider {
         });
         let key = config.api_key.clone().map(|key| images::GeminiKey::new(key, base_url.clone(), clock.clone()));
         let images = key.clone().filter(|_| config.makes_images).map(images::KeyImages);
-        let videos = key.filter(|_| config.makes_videos).map(videos::KeyVideos);
+        let videos = key.clone().filter(|_| config.makes_videos).map(videos::KeyVideos);
+        let audio = key.filter(|_| config.makes_audio).map(audio::KeyAudio);
         Self {
             shared: Arc::new(Shared {
                 api_key: config.api_key.as_ref().map(Secret::header_value),
@@ -103,6 +111,7 @@ impl GoogleProvider {
             }),
             images,
             videos,
+            audio,
         }
     }
 }
@@ -135,6 +144,10 @@ impl Provider for GoogleProvider {
 
     fn videos(&self) -> Option<&dyn VideoMaker> {
         self.videos.as_ref().map(|videos| videos as &dyn VideoMaker)
+    }
+
+    fn audio(&self) -> Option<&dyn AudioMaker> {
+        self.audio.as_ref().map(|audio| audio as &dyn AudioMaker)
     }
 
     fn read_failure(

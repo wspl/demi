@@ -210,5 +210,10 @@
       "warning": "경고",
       "caution": "주의"
     }
+  },
+  "audioPlayer": {
+    "play": "{name} 재생",
+    "pause": "{name} 일시 정지",
+    "seek": "{name} 재생 위치"
   }
 }

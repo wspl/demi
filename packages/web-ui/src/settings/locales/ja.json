@@ -548,7 +548,16 @@
       "videoGeneration": "動画生成",
       "videos": "動画",
       "addVideo": "動画モデルを追加",
-      "noVideos": "動画モデルはまだありません"
+      "noVideos": "動画モデルはまだありません",
+      "audio": "オーディオ",
+      "audioGeneration": "オーディオ生成",
+      "addAudio": "オーディオモデルを追加",
+      "noAudio": "オーディオモデルはまだありません",
+      "kinds": {
+        "speech": "音声",
+        "music": "音楽",
+        "effect": "効果音"
+      }
     },
     "state": {
       "setup": "未設定",
@@ -587,6 +596,7 @@
       "keyPaste": "API キーを貼り付け",
       "test": "接続をテスト",
       "testDescription": "有効な最初のテキストモデルに短いチャットメッセージを 1 件送信します。",
+      "testMediaDescription": "API キーでベンダーのモデル一覧を読み込みます。",
       "testing": "テスト中…",
       "connected": "接続済み",
       "failed": "失敗",

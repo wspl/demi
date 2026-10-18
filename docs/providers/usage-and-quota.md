@@ -56,7 +56,7 @@ says so ([Vendor quota](#vendor-quota)).
 | `user_id`, `conversation_id` | Whose call it was |
 | `agent` | The number of the session in the conversation's tree, 0 for the root ([Subagents](../agent/subagents.md)); null for a request outside a session, such as a title |
 | `turn_id` | The turn the call belongs to: for a command's call, such as an image, the turn whose shell call started the command's job, even when the job outlives it; null outside a turn |
-| `purpose` | `turn`, `compaction`, `title`, `image` ([Image generation](../agent/images.md)) or `video` ([Video generation](../agent/videos.md)): what the call was for |
+| `purpose` | `turn`, `compaction`, `title`, `image` ([Image generation](../agent/images.md)), `video` ([Video generation](../agent/videos.md)) or `audio` ([Audio generation](../agent/audio.md)): what the call was for |
 | `provider_id`, `account_id`, `model_id` | The provider entry, its subscription account (null for an API key) and the model |
 | `request_id` | Demi's id of the request, under which the server log holds its course |
 | `vendor_id` | The vendor's id of the call, such as a Messages API message id, when the vendor gives one |

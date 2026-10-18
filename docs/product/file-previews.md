@@ -353,7 +353,7 @@ link's color, as GitHub shows it.
 | `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
 | `commit:3f2a9c1`, a commit of the repository the agent that wrote it worked in, by its id or at least 7 of its first hex digits | Opens the Change view in Commits mode on that commit ([Commits mode](../execution/edit-tracking.md#commits-mode)) | Its alt text |
 | `agent:4`, an agent of the conversation ([Linking an agent](../agent/subagents.md#linking-an-agent)) | Opens the Agents window on that agent's tab | Its alt text |
-| `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image or a video in the [media viewer](#the-media-viewer), any other file as a download | An image shows; a video shows its first frame with a play mark, at an image's bounds, and a click plays it in the viewer |
+| `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image or a video in the [media viewer](#the-media-viewer), audio in its inline player, any other file as a download | An image shows; a video shows its first frame with a play mark, at an image's bounds, and a click plays it in the viewer; audio shows as an inline player with its name, length, play and a seek bar, as a voice message does in Messages, and plays where it is |
 | `data:` URL | Shown as text | Shown as it is |
 | Anything else | Shown as text | Its alt text |
 

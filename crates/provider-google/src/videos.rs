@@ -12,7 +12,7 @@ use demi_provider_common::{
     endpoint_url,
     images::InputImage,
     json_body,
-    media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
+    media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
     media_catalog::Catalog,
     videos::{self, Done, JobState, VideoMaker, VideoRequest},
 };
@@ -80,7 +80,7 @@ impl VideoMaker for KeyVideos {
             let url = endpoint_url(key.base(), &format!("/{job}"));
             let headers = key.headers();
             key.call()
-                .send(|headers| http.get(url.clone()).headers(headers), |_| {
+                .send(http, Ask::get(&url), Holding::Json, |_| {
                     std::future::ready(Ok((headers.clone(), None)))
                 })
                 .await

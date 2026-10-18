@@ -1,0 +1,27 @@
+[package]
+name = "demi-provider-elevenlabs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish.workspace = true
+
+
+[lib]
+# No doc examples: rustdoc has nothing to test. The tests are in
+# tests/elevenlabs, so the library needs no test harness of its own.
+doctest = false
+test = false
+bench = false
+
+[dependencies]
+demi-shared-types = { path = "../shared-types" }
+demi-provider-common = { path = "../provider-common" }
+bytes.workspace = true
+futures-util.workspace = true
+reqwest = { workspace = true, features = ["rustls"] }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+demi-provider-common = { path = "../provider-common", features = ["testing"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

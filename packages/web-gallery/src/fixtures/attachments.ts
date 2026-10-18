@@ -16,6 +16,7 @@ const attachments: Record<string, { name: string; mediaType: string; blob: strin
   a7: { name: 'demo.mp4', mediaType: 'video/mp4', blob: galleryBlobs.unsizedRecording },
   a8: { name: 'settings-light.png', mediaType: 'image/png', blob: galleryBlobs.whiteScreen },
   a10: { name: 'settings-dark.png', mediaType: 'image/png', blob: galleryBlobs.darkScreen },
+  a11: { name: 'welcome.mp3', mediaType: 'audio/mpeg', blob: galleryBlobs.voiceOver },
 }
 
 /**
@@ -93,6 +94,17 @@ export const fiveMediaMarkdown = `Each step, from the form to the chart:
 ![The timeline of the steps](attachment:a5)
 ![The weekly chart](attachment:a6)
 ![The flow from sign-in to the dashboard](attachment:a2)
+`
+
+/**
+ * A reply with a voice-over the agent made: it plays where it is, in its
+ * inline player, as an image and as a link alike.
+ */
+export const audioAttachmentMarkdown = `The voice-over for the intro, in Coral's voice:
+
+![Welcome back](attachment:a11)
+
+Named in a sentence, it plays in place too: [welcome.mp3](attachment:a11)
 `
 
 /**

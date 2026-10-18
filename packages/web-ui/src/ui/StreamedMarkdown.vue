@@ -16,6 +16,8 @@ import { attachmentDrag } from '@demicodes/web-ui/agent/message-input/copied-mes
 import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
 import { GitCommitHorizontal, Link } from '@lucide/vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
+import AudioPlayer from '@demicodes/web-ui/files/AudioPlayer.vue'
+import { ATTACHMENT_AUDIO_ATTRIBUTE } from '@demicodes/web-ui/markdown/render'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { useContentScrollers } from '@demicodes/web-ui/composables/useContentScrollers'
@@ -115,11 +117,14 @@ interface Places {
   codeBlocks: HTMLElement[]
   linkIcons: HTMLElement[]
   agentLinks: HTMLElement[]
+  /** The places of audio attachments' inline players. */
+  audios: HTMLElement[]
   media: (HTMLImageElement | HTMLVideoElement)[]
 }
 const codeBlocks = shallowRef<HTMLElement[]>([])
 const linkIcons = shallowRef<HTMLElement[]>([])
 const agentLinks = shallowRef<HTMLElement[]>([])
+const audios = shallowRef<HTMLElement[]>([])
 /** The message's pictures, each a tile with its preview on hover. */
 const pictures = shallowRef<MessagePicture[]>([])
 /** Each medium's picture, kept while its render shows, so its loaded size stays with it. */
@@ -140,6 +145,7 @@ function placesIn(nodes: readonly ChildNode[], fresh: readonly ChildNode[]): Pla
     codeBlocks: within('.code-block'),
     linkIcons: within('[data-file-icon], [data-commit-icon], [data-link-icon]'),
     agentLinks: within('[data-agent-link]'),
+    audios: within(`[${ATTACHMENT_AUDIO_ATTRIBUTE}]`),
     media: elements.flatMap((element) => messagePictures(element).map((picture) => picture.element)),
   }
 }
@@ -155,6 +161,7 @@ useMarkdownBlocks({
     codeBlocks.value = found.flatMap((places) => places.codeBlocks)
     linkIcons.value = found.flatMap((places) => places.linkIcons)
     agentLinks.value = found.flatMap((places) => places.agentLinks)
+    audios.value = found.flatMap((places) => places.audios)
     pictures.value = found.flatMap((places) => places.media).map((medium) => {
       const picture = pictureOf.get(medium) ?? messagePicture(medium)
       pictureOf.set(medium, picture)
@@ -216,6 +223,9 @@ function onMediumLoad(event: Event): void {
     :size="picture.size"
     :caption="picture.caption"
   />
+  <Teleport v-for="(place, index) in audios" :key="index" :to="place">
+    <AudioPlayer :src="place.getAttribute(ATTACHMENT_AUDIO_ATTRIBUTE) ?? ''" :name="place.dataset.audioName ?? ''" />
+  </Teleport>
   <AgentLinkMark
     v-for="(link, index) in agentLinks"
     :key="index"

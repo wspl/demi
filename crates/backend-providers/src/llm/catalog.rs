@@ -103,6 +103,10 @@ impl ProviderAssembly {
         provider: &Result<Arc<dyn Provider>, AssemblyError>,
         refresh: bool,
     ) -> ProviderModelList {
+        // An entry of media alone has no text models to list.
+        if !self.makes_text(entry) {
+            return unfetched(Vec::new(), Vec::new());
+        }
         let vendor = match &entry.credential {
             EntryCredential::ApiKey(config) => {
                 // The model menu's are the text models; an image model of
@@ -191,6 +195,7 @@ impl ProviderAssembly {
             // The media service fills them, which knows the media catalog.
             image_models: Vec::new(),
             video_models: Vec::new(),
+            audio_models: Vec::new(),
             source_fetched_at: catalog.source_fetched_at,
             stale: catalog.stale,
             warnings: catalog.warnings,
@@ -248,10 +253,12 @@ mod tests {
                 models,
                 image_shape: None,
                 video_shape: None,
+                audio_shape: None,
             }),
             created_at: Timestamp::UNIX_EPOCH,
             image_generation: true,
             video_generation: true,
+            audio_generation: true,
         }
     }
 

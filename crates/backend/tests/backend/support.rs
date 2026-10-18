@@ -60,10 +60,21 @@ use tokio_util::sync::CancellationToken;
 use crate::machines::ScriptedManager;
 
 /// The media catalog of every test backend: what it states of the scripted
-/// families' image models (`images.rs`), with a field no backend knows.
+/// families' image models (`images.rs`), with a field no backend knows,
+/// and its vendors of media alone, ElevenLabs, whose shape the backend
+/// builds, and Stability AI, whose shape it does not (`audio.rs`).
 pub const MEDIA_CATALOG: &str = r#"{
   "updated": "2026-09-01T00:00:00Z",
+  "vendors": [
+    { "id": "elevenlabs", "name": "ElevenLabs", "endpoint": "https://api.elevenlabs.io",
+      "doc": "https://elevenlabs.io/docs/api-reference" },
+    { "id": "stability", "name": "Stability AI", "endpoint": "https://api.stability.ai" }
+  ],
   "models": [
+    { "vendor": "elevenlabs", "id": "eleven_v3", "kind": "audio", "name": "Eleven v3", "released": "2026-02-01",
+      "audio": { "makes": ["speech"], "voices": "listed", "maxCharacters": 5000 } },
+    { "vendor": "elevenlabs", "id": "music_v1", "kind": "audio", "name": "Eleven Music", "released": "2025-08-05",
+      "audio": { "makes": ["music"] } },
     { "vendor": "openai", "id": "picture-1", "kind": "image", "name": "Picture 1",
       "description": "Best pictures", "released": "2026-01-05",
       "image": { "aspectRatios": ["1:1", "16:9"], "edits": true },

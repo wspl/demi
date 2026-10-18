@@ -18,7 +18,7 @@ use serde_json::{Map, Value};
 use tokio_util::sync::CancellationToken;
 
 use crate::{
-    AskedVideo, ImageAsk, MadeImage, MediaListing, VideoAsk, VideoStep,
+    AskedVideo, AudioAsk, AudioVoices, ImageAsk, MadeAudio, MadeImage, MediaListing, VideoAsk, VideoStep,
     CallKind, DirectoryPath, EntryKind, HostDirectory, HostEntry, HostFile, HostRead, Plugin,
     PluginError, PluginId, PluginPort, PluginTransport, PortAnswer, PortFailure, PortMessage,
     PortRefusal, Reply, Request, SecretName, StoredSecret, StoredValue, WebRequest, WebResponse,
@@ -87,6 +87,12 @@ pub type ImageRequests = Box<dyn Fn(&ImageAsk) -> Result<MadeImage, PortRefusal>
 /// How a test answers the plugin's video asks.
 pub type VideoRequests = Box<dyn Fn(&VideoAsk) -> Result<AskedVideo, PortRefusal>>;
 
+/// How a test answers a request for audio: the audio made, or a refusal.
+pub type AudioRequests = Box<dyn Fn(&AudioAsk) -> Result<MadeAudio, PortRefusal>>;
+
+/// How a test answers a listing of a model's voices.
+pub type VoiceRequests = Box<dyn Fn(&str, Option<&str>) -> Result<AudioVoices, PortRefusal>>;
+
 /// A package call a plugin made.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PackageCall {
@@ -100,8 +106,9 @@ pub struct PackageCall {
 /// Host directories, the files of the conversation's primary Host, the
 /// package calls a test answers, how often the plugin marked its state
 /// as changed, the conversation's work panel, the plugin's secrets, the
-/// outbound requests a test answers, the user's sign-in, and the image
-/// models and images of the user's provider entries a test answers.
+/// outbound requests a test answers, the user's sign-in, and the media
+/// models, images, videos, audio and voices of the user's provider entries
+/// a test answers.
 pub struct TestDemi {
     /// The plugin whose port this is, which names its directories' paths.
     pub plugin: RefCell<PluginId>,
@@ -141,6 +148,10 @@ pub struct TestDemi {
     pub videos_asked: RefCell<Vec<VideoAsk>>,
     /// What each wait for the job answers, in order.
     pub video_steps: RefCell<VecDeque<Result<VideoStep, PortRefusal>>>,
+    pub audio_requests: RefCell<Option<AudioRequests>>,
+    /// Each audio file the plugin asked for.
+    pub audio_asked: RefCell<Vec<AudioAsk>>,
+    pub voice_requests: RefCell<Option<VoiceRequests>>,
     /// Woken at each port message the plugin sends.
     answered: tokio::sync::Notify,
 }
@@ -178,6 +189,9 @@ impl TestDemi {
             video_requests: RefCell::default(),
             videos_asked: RefCell::default(),
             video_steps: RefCell::default(),
+            audio_requests: RefCell::default(),
+            audio_asked: RefCell::default(),
+            voice_requests: RefCell::default(),
             answered: tokio::sync::Notify::new(),
         }
     }
@@ -441,6 +455,18 @@ impl TestDemi {
             PortMessage::VideoProgress => {
                 let step = self.video_steps.borrow_mut().pop_front().expect("the test scripts each step of the job");
                 PortAnswer::VideoProgress { step: step? }
+            }
+            PortMessage::MakeAudio { ask } => {
+                let requests = self.audio_requests.borrow();
+                let answer = requests.as_ref().expect("the test answers audio requests");
+                let answer = answer(&ask);
+                self.audio_asked.borrow_mut().push(ask);
+                PortAnswer::Audio { audio: answer? }
+            }
+            PortMessage::AudioVoices { model, search } => {
+                let requests = self.voice_requests.borrow();
+                let answer = requests.as_ref().expect("the test answers voice listings");
+                PortAnswer::AudioVoices { voices: answer(&model, search.as_deref())? }
             }
         };
         Ok(answer)

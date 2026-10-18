@@ -116,7 +116,7 @@ test('a report the backend stored in its own spelling is not sent again', async 
 /** The provider entry `stub`, as the product state lists it. */
 const stub = {
   id: 'stub', kind: 'api_key' as const, providerType: 'stub', label: 'Stub',
-  wireApi: null, vendorId: null, compatible: false, endpoint: null, hasApiKey: true, rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' }, models: null, createdAt: '2026-09-09T00:00:00.000Z',
+  wireApi: null, vendorId: null, compatible: false, endpoint: null, hasApiKey: true, rotation: 'manual' as const, media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: { shape: null, enabled: true }, catalog: '2026-09-01T00:00:00.000Z' }, models: null, createdAt: '2026-09-09T00:00:00.000Z',
   details: { type: 'failed' as const, message: 'Not read in this test' },
 }
 
@@ -135,7 +135,7 @@ function catalogModel(id: string) {
 
 test("a model or an entry the user turns off is saved in the user's preferences, and every page's menus leave it out", async () => {
   catalog = { providers: [{
-    providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '1970-01-01T00:00:00.000Z', imageModels: [], videoModels: [], stale: false,
+    providerId: 'stub', displayName: 'Stub', sourceFetchedAt: '1970-01-01T00:00:00.000Z', imageModels: [], videoModels: [], audioModels: [], stale: false,
     warnings: [], auth: { status: 'unknown' }, runtime: { status: 'ready' }, cliPackage: null,
     availability: { type: 'available' }, models: [catalogModel('a'), catalogModel('b')],
   }], smallModel: null }

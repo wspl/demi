@@ -15,10 +15,11 @@ use demi_provider_common::{RuntimeEnv, VendorPolicy};
 use demi_provider_common::models_dev::ModelsDevClient;
 use demi_provider_common::images::ImageMaker;
 use demi_provider_common::media::MediaModelInfo;
+use demi_provider_common::audio::AudioMaker;
 use demi_provider_common::videos::VideoMaker;
 use demi_provider_common::quota::QuotaSnapshotStore;
 use demi_provider_common::{Provider, ProviderRuntime, Secret};
-use demi_shared_types::{Clock, ImageShape, VideoShape, WireApi};
+use demi_shared_types::{AudioShape, Clock, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
 use url::Url;
 
@@ -42,6 +43,14 @@ pub trait ProviderFamily: Send + Sync + 'static {
     /// The provider of one entry and account.
     fn provider(&self, args: FamilyArgs) -> Result<Arc<dyn Provider>, FamilyError>;
 
+    /// Whether the family's entries make text: false for the family of the
+    /// vendors that make media alone, whose entries have no text models
+    /// and are never in the model menu (`providers.md` § Media-only
+    /// vendors).
+    fn makes_text(&self) -> bool {
+        true
+    }
+
     /// How a vendor entry of the family makes images, by the models.dev id
     /// of its vendor, none for a subscription (`media.md` § Which entries
     /// make which media); none when it makes none. A compatible entry's is
@@ -53,6 +62,12 @@ pub trait ProviderFamily: Send + Sync + 'static {
     /// How a vendor entry of the family makes videos, as
     /// [`ProviderFamily::image_shape`] says it of images.
     fn video_shape(&self, _vendor_id: Option<&str>) -> Option<VideoShape> {
+        None
+    }
+
+    /// How a vendor entry of the family makes audio, as
+    /// [`ProviderFamily::image_shape`] says it of images.
+    fn audio_shape(&self, _vendor_id: Option<&str>) -> Option<AudioShape> {
         None
     }
 
@@ -131,6 +146,9 @@ pub struct ApiKeyArgs {
     /// compatible entry, whose videos are the registry's
     /// [`CompatibleVideos`].
     pub video_shape: Option<VideoShape>,
+    /// How the vendor entry makes audio, as its family says; none for a
+    /// compatible entry, whose audio is the registry's [`CompatibleAudio`].
+    pub audio_shape: Option<AudioShape>,
 }
 
 /// What a compatible entry whose image shape is OpenAI Images makes its
@@ -165,6 +183,22 @@ pub struct CompatibleVideosArgs {
 /// Builds a compatible entry's video role in its shape, one implementation
 /// of each shape for every endpoint that speaks it.
 pub type CompatibleVideos = Arc<dyn Fn(CompatibleVideosArgs) -> Arc<dyn VideoMaker> + Send + Sync>;
+
+/// What a compatible entry whose audio shape is OpenAI Speech makes its
+/// speech with.
+pub struct CompatibleAudioArgs {
+    /// The entry's name, which its failures name.
+    pub name: String,
+    pub key: Option<Secret>,
+    pub base: Url,
+    /// The audio models its user added.
+    pub models: Vec<MediaModelInfo>,
+    pub clock: Arc<dyn Clock>,
+}
+
+/// Builds a compatible entry's audio role, one implementation for every
+/// endpoint that speaks OpenAI Speech.
+pub type CompatibleAudio = Arc<dyn Fn(CompatibleAudioArgs) -> Arc<dyn AudioMaker> + Send + Sync>;
 
 /// A subscription entry's accounts: the pool bound to the entry, and the
 /// account the provider stands for, when the entry has one.
@@ -210,6 +244,7 @@ pub struct FamilyRegistry {
     families: BTreeMap<String, Arc<dyn ProviderFamily>>,
     compatible_images: Option<CompatibleImages>,
     compatible_videos: Option<CompatibleVideos>,
+    compatible_audio: Option<CompatibleAudio>,
 }
 
 impl FamilyRegistry {
@@ -247,6 +282,18 @@ impl FamilyRegistry {
     /// no family speaking their shapes.
     pub fn compatible_videos(&self) -> Option<&CompatibleVideos> {
         self.compatible_videos.as_ref()
+    }
+
+    /// The registry with `audio` making a compatible entry's speech.
+    pub fn with_compatible_audio(mut self, audio: CompatibleAudio) -> Self {
+        self.compatible_audio = Some(audio);
+        self
+    }
+
+    /// What makes a compatible entry's speech; none in a registry that has
+    /// no family speaking OpenAI Speech.
+    pub fn compatible_audio(&self) -> Option<&CompatibleAudio> {
+        self.compatible_audio.as_ref()
     }
 
     /// The names of the subscription families, in order.

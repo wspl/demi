@@ -3,13 +3,16 @@
 //! speaking the Responses API or, for OpenAI-compatible endpoints, Chat
 //! Completions, with the typed vendor policy its entry names and the
 //! standard reading of its failure records; an OpenAI or xAI vendor
-//! entry's key also makes images, and an xAI vendor entry's key videos.
+//! entry's key also makes images, an xAI vendor entry's key videos, and an
+//! OpenAI vendor entry's key speech.
 
+mod audio;
 mod images;
 mod request;
 mod run;
 mod videos;
 
+pub use audio::compatible_audio;
 pub use images::compatible_images;
 pub use videos::compatible_videos;
 
@@ -18,6 +21,7 @@ use std::sync::Arc;
 use demi_provider_common::{
     Capabilities, InferenceRequest, Provider, ProviderRun, ProviderRuntime,
     RequestLimits, ToolResultKinds, RuntimeEnv, RuntimeError, Secret, VendorPolicy, endpoint_url, read_http_failure,
+    audio::AudioMaker,
     images::ImageMaker,
     media::MediaVendor,
     videos::VideoMaker,
@@ -58,6 +62,9 @@ pub struct OpenAiConfig {
     /// Whether the entry's key makes videos, as its vendor's video shape
     /// says: an xAI key's does.
     pub makes_videos: bool,
+    /// Whether the entry's key makes speech, as its vendor's audio shape
+    /// says: an OpenAI key's does.
+    pub makes_audio: bool,
 }
 
 impl OpenAiConfig {
@@ -72,6 +79,8 @@ pub struct OpenAiProvider {
     images: Option<images::KeyImages>,
     /// The key's video role, for an xAI entry with its key.
     videos: Option<videos::KeyVideos>,
+    /// The key's audio role, for an OpenAI entry with its key.
+    audio: Option<audio::KeyAudio>,
 }
 
 /// What the provider and all its runtimes share.
@@ -109,6 +118,11 @@ impl OpenAiProvider {
             .clone()
             .filter(|_| config.makes_videos)
             .map(|key| videos::KeyVideos::xai(key, &base, clock.clone()));
+        let audio = config
+            .api_key
+            .clone()
+            .filter(|_| config.makes_audio)
+            .map(|key| audio::KeyAudio::openai(key, &base, clock.clone()));
         let signature_tag = Arc::from(format!("{}:", vendor.unwrap_or(COMPATIBLE)));
         Self {
             shared: Arc::new(Shared {
@@ -121,6 +135,7 @@ impl OpenAiProvider {
             }),
             images,
             videos,
+            audio,
         }
     }
 }
@@ -157,6 +172,10 @@ impl Provider for OpenAiProvider {
 
     fn videos(&self) -> Option<&dyn VideoMaker> {
         self.videos.as_ref().map(|videos| videos as &dyn VideoMaker)
+    }
+
+    fn audio(&self) -> Option<&dyn AudioMaker> {
+        self.audio.as_ref().map(|audio| audio as &dyn AudioMaker)
     }
 
     fn read_failure(

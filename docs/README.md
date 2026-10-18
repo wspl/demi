@@ -49,6 +49,7 @@ layout and interaction; these documents do not repeat it.
 - [Skills](agent/skills.md): the Agent Skills format, user skills from git sources, project skills from the repository, the catalog the model sees, and the settings section.
 - [Web search and fetch](agent/web.md): `demi web search` through the user's Exa account, a key or anonymously; `demi web fetch` from the Host; the sign-in and untrusted content.
 - [Generated media](agent/media.md): which entries make images, videos and audio, how a call chooses its entry, and what the agent is told.
+- [Audio generation](agent/audio.md): `demi audio speech`, `music` and `effect` through an OpenAI, Google or ElevenLabs key or a compatible API, one file to stdout.
 - [Video generation](agent/videos.md): `demi video generate` through a Grok subscription, an xAI or Google key or a compatible API, a job waited for within the call, one MP4 to stdout.
 - [Image generation](agent/images.md): `demi image generate` and `edit` through the user's ChatGPT or Grok subscription, one image to stdout, options asked and results checked.
 - [Credentials](agent/credentials.md): named secrets an agent asks the user for and uses on a Host without reading them: requests, fields, keeping, allowances, reading, and Settings › Credentials.

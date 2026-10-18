@@ -1,12 +1,13 @@
 //! The port's Providers service (`plugins.md` § The contract, `media.md`):
 //! the media models of one kind of the user's provider entries with what
 //! the catalog states of each and the entries that offer it, one image
-//! made through an entry's account or key, and one video's job, asked for
-//! and then followed to its video. The backend chooses the entry and the
+//! made through an entry's account or key, one video's job, asked for and
+//! then followed to its video, and one audio file with the voices a speech
+//! model speaks in. The backend chooses the entry and the
 //! account, rotates them, renews their sign-in, runs the job and records
 //! the call in the usage ledger; no token or key reaches the plugin.
 
-use demi_shared_types::{B64Bytes, Cost, Timestamp};
+use demi_shared_types::{AudioKind, B64Bytes, Cost, Timestamp};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -58,6 +59,9 @@ pub struct MediaModel {
     /// What a video model takes, as the catalog states it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub video: Option<VideoFacts>,
+    /// What an audio model makes and takes, as the catalog states it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub audio: Option<AudioFacts>,
     /// What it costs through a key, as the catalog states it.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price: Option<MediaPrice>,
@@ -117,6 +121,51 @@ pub struct VideoFacts {
     /// Whether it makes sound.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub audio: Option<bool>,
+}
+
+/// What an audio model makes and takes; a fact the vendor does not state
+/// is absent, which means unknown.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioFacts {
+    /// What it makes: speech, music or sound effects, as the catalog or its
+    /// entry says; empty when nothing says.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub kinds: Vec<AudioKind>,
+    /// For speech, its built-in voices by name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voices: Option<Vec<String>>,
+    /// For speech, whether the vendor lists its voices, which `demi audio
+    /// voices` reads.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voices_listed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub languages: Option<Vec<String>>,
+    /// For speech, whether it takes instructions on the delivery.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<bool>,
+    /// For speech, the longest text one call takes, in characters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_characters: Option<u32>,
+    /// For music and effects, the only durations it makes, in seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub durations: Option<Vec<u32>>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub min_duration: Option<f64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub max_duration: Option<f64>,
+    /// For music, whether it takes lyrics.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lyrics: Option<bool>,
+    /// For music, whether it makes an instrumental on request.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instrumental: Option<bool>,
+    /// For effects, whether it makes a sound that loops.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub loops: Option<bool>,
+    /// The formats it returns, such as `mp3`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub formats: Option<Vec<String>>,
 }
 
 /// The sizes a model takes besides any fixed ones.
@@ -429,6 +478,143 @@ pub struct MadeVideo {
     pub cost: Option<Cost>,
 }
 
+/// One audio file to make: speech from the text, or music or a sound
+/// effect from the prompt; an option left out is the vendor's default
+/// (`audio.md` § Commands).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioAsk {
+    pub kind: AudioKind,
+    /// The text to read aloud, or the prompt.
+    pub text: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voice: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub instructions: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed: Option<f64>,
+    /// Seconds.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+    #[serde(default)]
+    pub instrumental: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
+    /// A sound that loops.
+    #[serde(default)]
+    pub looped: bool,
+    pub format: AudioFileFormat,
+    /// An audio model `demi audio models` lists.
+    pub model: String,
+    /// The entry to make it through, as [`ImageAsk::provider`] names one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider: Option<String>,
+}
+
+/// The formats `--format` asks for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum AudioFileFormat {
+    #[default]
+    Mp3,
+    Wav,
+    Opus,
+    Flac,
+}
+
+impl AudioFileFormat {
+    /// As a call's line names it, such as `MP3`.
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Mp3 => "MP3",
+            Self::Wav => "WAV",
+            Self::Opus => "Opus",
+            Self::Flac => "FLAC",
+        }
+    }
+}
+
+/// An option of `demi audio`, as a shape that has no field for it is said
+/// not to take it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum AudioOption {
+    Instructions,
+    Speed,
+    Duration,
+    Instrumental,
+    Seed,
+    Loop,
+}
+
+/// Raw PCM's shape: signed little-endian samples, interleaved by channel.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PcmShape {
+    pub sample_rate: u32,
+    pub channels: u16,
+    pub bits: u16,
+}
+
+/// The audio made, as the vendor sent it, with who made it, the options
+/// its shape had no field for and what it cost.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MadeAudio {
+    /// As the vendor sent it; the plugin reads what it is.
+    pub bytes: B64Bytes,
+    /// Raw PCM's shape, for a vendor that sent no file, which the plugin
+    /// wraps as WAV; none for a file.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pcm: Option<PcmShape>,
+    pub model: String,
+    pub provider: String,
+    pub vendor: String,
+    /// The account, as [`MadeImage::account`] names it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub account: Option<String>,
+    /// The shape's name for the call's kind, such as `Lyria`, which a
+    /// warning of an option it has no field for names.
+    pub shape: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unsent: Vec<AudioOption>,
+    /// The cost the vendor reported, in its documented unit; none
+    /// otherwise.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cost: Option<Cost>,
+}
+
+/// The voices of a speech model, as the entry a call of it takes lists
+/// them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioVoices {
+    pub model: String,
+    pub provider: String,
+    pub vendor: String,
+    /// None for an entry that lists none, whose `--voice` is sent as given.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub voices: Option<Vec<VoiceInfo>>,
+}
+
+/// A voice, as `demi audio voices` lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VoiceInfo {
+    /// What `--voice` takes.
+    pub id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub languages: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Whether it is the account's own, such as a cloned voice, rather
+    /// than the vendor's; none when the vendor does not say.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub own: Option<bool>,
+}
+
 /// Why a named entry cannot make a model now.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase", deny_unknown_fields)]
@@ -503,6 +689,13 @@ pub enum MediaRefusal {
     /// The job expired at the vendor before it ran.
     #[error("the job expired at {vendor} before it ran")]
     JobExpired { vendor: String },
+    /// A speech call named no voice and the vendor has no default one.
+    #[error("{vendor} needs a voice")]
+    NeedsVoice { vendor: String, model: String },
+    /// The model makes no audio of the kind asked for; `makes` are the
+    /// kinds it does.
+    #[error("\"{model}\" makes no {asked}")]
+    Kind { model: String, asked: AudioKind, makes: Vec<AudioKind> },
     /// The job had not finished when the call's bound, `seconds` from the
     /// ask, passed; it still runs at the vendor under its id `job`.
     #[error("the job {job} is still running at {vendor}")]

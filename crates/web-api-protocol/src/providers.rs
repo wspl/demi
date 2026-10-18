@@ -4,7 +4,7 @@
 //! material.
 
 use demi_shared_types::{
-    AccountInfo, AuthState, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection, VideoShape,
+    AccountInfo, AudioKind, AudioShape, AuthState, FileExtension, ImageShape, LoginStage, MediaKind, ModelSelection, VideoShape,
     Nullable, ProviderModel, QuotaSnapshot, RequestId, RuntimeState, Timestamp, WireApi,
 };
 use garde::Validate;
@@ -40,8 +40,8 @@ serde_plain::derive_fromstr_from_deserialize!(CredentialKind);
 pub use demi_shared_types::Rotation;
 
 /// What a configured model makes (`providers.md` § Provider management):
-/// text, the model menu's, unless its user added it as an image or video
-/// model of a compatible entry with a shape for that kind.
+/// text, the model menu's, unless its user added it as an image, video or
+/// audio model of a compatible entry with a shape for that kind.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ModelKind {
@@ -49,6 +49,7 @@ pub enum ModelKind {
     Text,
     Image,
     Video,
+    Audio,
 }
 
 impl ModelKind {
@@ -58,6 +59,7 @@ impl ModelKind {
             Self::Text => None,
             Self::Image => Some(MediaKind::Image),
             Self::Video => Some(MediaKind::Video),
+            Self::Audio => Some(MediaKind::Audio),
         }
     }
 }
@@ -279,6 +281,8 @@ pub struct MediaPatch {
     pub image: Option<ImageMediaPatch>,
     #[serde(default)]
     pub video: Option<VideoMediaPatch>,
+    #[serde(default)]
+    pub audio: Option<AudioMediaPatch>,
 }
 
 /// A change of how an entry makes images: `shape`, a compatible entry's
@@ -307,12 +311,26 @@ pub struct VideoMediaPatch {
     pub enabled: Option<bool>,
 }
 
+/// A change of how an entry makes audio: `shape`, a compatible entry's
+/// only, null for none; `enabled`, its Audio Generation switch, for an
+/// entry that makes audio.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct AudioMediaPatch {
+    #[serde(default, with = "double_option")]
+    #[schemars(with = "Option<Nullable<AudioShape>>")]
+    pub shape: Option<Option<AudioShape>>,
+    #[serde(default)]
+    pub enabled: Option<bool>,
+}
+
 impl MediaPatch {
     /// The switch the patch sets for `kind`.
     pub fn enabled(&self, kind: MediaKind) -> Option<bool> {
         match kind {
             MediaKind::Image => self.image.as_ref().and_then(|image| image.enabled),
             MediaKind::Video => self.video.as_ref().and_then(|video| video.enabled),
+            MediaKind::Audio => self.audio.as_ref().and_then(|audio| audio.enabled),
         }
     }
 }
@@ -323,6 +341,7 @@ impl MediaPatch {
 pub struct EntryMedia {
     pub image: ImageMedia,
     pub video: VideoMedia,
+    pub audio: AudioMedia,
     /// When the media catalog that describes its models was published: a
     /// newer catalog changes it, so the page reads the entry's media models
     /// again (`web-api-settings.md` § Models).
@@ -348,6 +367,17 @@ pub struct VideoMedia {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<VideoShape>")]
     pub shape: Option<VideoShape>,
+    pub enabled: bool,
+}
+
+/// How an entry makes audio: its shape, null when it makes none, and its
+/// Audio Generation switch, on from the start.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioMedia {
+    #[serde(deserialize_with = "Option::deserialize")]
+    #[schemars(with = "Nullable<AudioShape>")]
+    pub shape: Option<AudioShape>,
     pub enabled: bool,
 }
 
@@ -528,8 +558,13 @@ pub struct QuotaAnswer {
 #[derive(Debug, Deserialize, JsonSchema, Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TestRequest {
-    #[garde(length(min = 1))]
-    pub model_id: String,
+    /// The text model the test sends its message to; absent for an entry
+    /// of media alone, whose key is checked through its vendor's list of
+    /// models (`providers.md` § Media-only vendors).
+    #[serde(default, with = "unwrap_or_skip")]
+    #[schemars(with = "String")]
+    #[garde(inner(length(min = 1)))]
+    pub model_id: Option<String>,
     #[serde(default, with = "unwrap_or_skip")]
     #[schemars(with = "CredentialId")]
     #[garde(skip)]
@@ -829,6 +864,9 @@ pub struct CatalogProvider {
     /// The video models the entry offers, as `image_models` lists its
     /// image models.
     pub video_models: Vec<EntryMediaModel>,
+    /// The audio models the entry offers, each with its kinds, as
+    /// `image_models` lists its image models.
+    pub audio_models: Vec<EntryMediaModel>,
     /// When the source was last downloaded; the Unix epoch for a configured
     /// list, and for a catalog no refresh has filled.
     pub source_fetched_at: Timestamp,
@@ -840,7 +878,7 @@ pub struct CatalogProvider {
     pub availability: Availability,
 }
 
-/// An image or video model of an entry as Settings › Providers lists it.
+/// A media model of an entry as Settings › Providers lists it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct EntryMediaModel {
@@ -851,6 +889,10 @@ pub struct EntryMediaModel {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub released: Option<String>,
+    /// For an audio model, what it makes, speech, music or sound effects,
+    /// as the catalog or its entry's shape says; empty for an image or a
+    /// video model, and for an audio model nothing says it of.
+    pub kinds: Vec<AudioKind>,
 }
 
 /// A catalog model with the selection the backend built from it, so the

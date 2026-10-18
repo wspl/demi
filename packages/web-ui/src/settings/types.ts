@@ -23,10 +23,10 @@ import type { VerificationHost } from '../auth/verification'
  */
 export type SmallModelChoice = Pick<ModelSettings, 'providerId' | 'modelId' | 'thinkingEffort'>
 
-/** A kind of media an entry may make (`media.md` § Which entries make which media); audio joins as its commands are built. */
-export type SettingsMediaKind = 'image' | 'video'
+/** A kind of media an entry may make (`media.md` § Which entries make which media), in the order its sections follow. */
+export type SettingsMediaKind = 'image' | 'video' | 'audio'
 
-export const SETTINGS_MEDIA_KINDS: readonly SettingsMediaKind[] = ['image', 'video']
+export const SETTINGS_MEDIA_KINDS: readonly SettingsMediaKind[] = ['image', 'video', 'audio']
 
 /** How an entry's API makes images: a vendor entry's is its vendor's, a compatible API's the one its user chose. */
 export type SettingsImageShape = 'chatgpt' | 'grok' | 'openai-images' | 'gemini'
@@ -34,10 +34,17 @@ export type SettingsImageShape = 'chatgpt' | 'grok' | 'openai-images' | 'gemini'
 /** How an entry's API makes videos, as `SettingsImageShape` says of images. */
 export type SettingsVideoShape = 'grok' | 'xai-videos' | 'veo' | 'openai-videos' | 'openrouter-videos'
 
+/** How an entry's API makes audio, as `SettingsImageShape` says of images. */
+export type SettingsAudioShape = 'openai-speech' | 'gemini' | 'elevenlabs'
+
+/** What an audio model makes (`audio.md` § Commands). */
+export type SettingsAudioKind = 'speech' | 'music' | 'effect'
+
 /** Each kind's shapes. */
 export interface SettingsMediaShapes {
   image: SettingsImageShape
   video: SettingsVideoShape
+  audio: SettingsAudioShape
 }
 
 /** A shape of any kind. */
@@ -53,12 +60,15 @@ export const MEDIA_SHAPE_LABELS: Record<SettingsMediaShape, string> = {
   veo: 'Veo',
   'openai-videos': 'OpenAI Videos',
   'openrouter-videos': 'OpenRouter Videos',
+  'openai-speech': 'OpenAI Speech',
+  elevenlabs: 'ElevenLabs',
 }
 
 /** The shapes a compatible API may choose for each kind, besides none, in the menu's order. */
 export const COMPATIBLE_MEDIA_SHAPES: { readonly [K in SettingsMediaKind]: readonly SettingsMediaShapes[K][] } = {
   image: ['openai-images'],
   video: ['xai-videos', 'openai-videos', 'openrouter-videos'],
+  audio: ['openai-speech'],
 }
 
 /** A vendor's media model as an entry's section lists it, never edited. */
@@ -67,6 +77,8 @@ export interface SettingsMediaModel {
   name: string
   /** `YYYY-MM-DD`; null when nobody states it. */
   released: string | null
+  /** An audio model's kinds, which its row names; absent for another kind. */
+  kinds?: SettingsAudioKind[]
 }
 
 /** How an entry makes one kind of media: its shape, null for none, and its switch. */
@@ -270,7 +282,8 @@ export const COMPATIBLE_WIRE_APIS: readonly SettingsWireApi[] = [
 export interface SettingsVendor {
   id: string
   name: string
-  wireApi: SettingsWireApi
+  /** The protocol its entries speak; null for a vendor of media alone, such as ElevenLabs, which speaks its own. */
+  wireApi: SettingsWireApi | null
   /** Null when the runtime knows the vendor's endpoint itself. */
   baseUrl: string | null
   /** The vendor mark (`vendorLogo`); null falls back to an initial. */
@@ -305,6 +318,8 @@ export type SettingsModelSearch = (query: string, signal: AbortSignal) => Promis
 /** A model a provider offers, as the page lists and toggles it. */
 export interface SettingsProviderModel extends SettingsModelDraft {
   enabled: boolean
+  /** An audio model's kinds, as its host knows them, which its row names; absent for another kind. */
+  kinds?: SettingsAudioKind[]
 }
 
 export interface SettingsQuotaWindow {
@@ -354,6 +369,13 @@ export interface SettingsProviderEntry {
    * its endpoint is shown, never edited. Fixed with the entry.
    */
   compatible: boolean
+  /**
+   * Whether it makes text: false for a vendor of media alone, such as
+   * ElevenLabs (`providers.md` § Media-only vendors), whose page has no
+   * Models and whose key Test Connection checks through its media models.
+   * Absent means it does.
+   */
+  makesText?: boolean
   /** Where its requests go; empty for a compatible API not given an endpoint yet. */
   baseUrl: string
   wireApi: SettingsWireApi

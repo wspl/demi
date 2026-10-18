@@ -12,7 +12,7 @@ use demi_provider_common::{
     FormBody, Secret, endpoint_url,
     images::{Aspect, InputImage},
     json_body,
-    media::{MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
+    media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
     media_catalog::Catalog,
     videos::{self, Done, JobState, Resolution, VideoMaker, VideoRequest, xai},
 };
@@ -20,7 +20,7 @@ use demi_shared_types::{Clock, Cost, Currency, VideoShape};
 use futures_util::future::BoxFuture;
 use reqwest::{
     Url,
-    header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap},
+    header::{AUTHORIZATION, HeaderMap},
 };
 use serde::{Deserialize, Serialize};
 
@@ -71,13 +71,10 @@ impl KeyVideos {
 
     /// Sends what `request` builds with the key's headers and answers the
     /// vendor's success.
-    async fn send<B>(&self, request: B) -> MediaAnswer<Bytes>
-    where
-        B: Fn(HeaderMap) -> demi_provider_common::RequestBuilder,
-    {
+    async fn send(&self, http: &demi_provider_common::ProviderHttp, ask: Ask) -> MediaAnswer<Bytes> {
         let headers = self.headers();
         key_call(self.shape_is_xai(), &*self.clock)
-            .send(request, |_| std::future::ready(Ok((headers.clone(), None))))
+            .send(http, ask, Holding::Json, |_| std::future::ready(Ok((headers.clone(), None))))
             .await
             .and_then(|answered| Ok(answered.body))
     }
@@ -133,25 +130,19 @@ impl VideoMaker for KeyVideos {
                 VideoShape::OpenaiVideos => {
                     let url = self.url("/videos");
                     let (content_type, body) = openai_form(&openai_fields(&request));
-                    let post = |headers| {
-                        http.post(url.clone())
-                            .headers(headers)
-                            .header(CONTENT_TYPE, content_type.as_str())
-                            .body(body.clone())
-                    };
-                    self.send(post)
+                    self.send(http, Ask::post(&url, &content_type, body))
                         .await
                         .and_then(|body| read_id(&body))
                 }
                 VideoShape::OpenrouterVideos => {
                     let url = self.url("/videos");
                     let body = Bytes::from(openrouter_body(&request));
-                    self.send(|headers| json_post(http, &url, headers, &body)).await.and_then(|body| read_id(&body))
+                    self.send(http, Ask::post_json(&url, body)).await.and_then(|body| read_id(&body))
                 }
                 VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo => {
                     let url = self.url("/videos/generations");
                     let body = xai::encode(&request);
-                    self.send(|headers| json_post(http, &url, headers, &body))
+                    self.send(http, Ask::post_json(&url, body))
                         .await
                         .and_then(|body| xai::read_asked(&body))
                 }
@@ -162,7 +153,7 @@ impl VideoMaker for KeyVideos {
     fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: &'a str) -> BoxFuture<'a, MediaAnswer<JobState>> {
         Box::pin(async move {
             let url = self.url(&format!("/videos/{job}"));
-            let answer = self.send(|headers| http.get(url.clone()).headers(headers)).await;
+            let answer = self.send(http, Ask::get(&url)).await;
             match self.shape() {
                 VideoShape::OpenaiVideos => {
                     let content = self.url(&format!("/videos/{job}/content"));
@@ -196,7 +187,7 @@ impl VideoMaker for KeyVideos {
         }
         Some(Box::pin(async move {
             let url = self.url(&format!("/videos/{job}"));
-            self.send(|headers| http.delete(url.clone()).headers(headers)).await.and_then(|_| Ok(()))
+            self.send(http, Ask::delete(&url)).await.and_then(|_| Ok(()))
         }))
     }
 }
@@ -219,13 +210,6 @@ pub fn compatible_videos(
         base: base.clone(),
         clock,
     })
-}
-
-fn json_post(http: &demi_provider_common::ProviderHttp, url: &Url, headers: HeaderMap, body: &Bytes) -> demi_provider_common::RequestBuilder {
-    http.post(url.clone())
-        .headers(headers)
-        .header(CONTENT_TYPE, "application/json")
-        .body(body.clone())
 }
 
 /// The id of the job an OpenAI Videos or OpenRouter ask answers.
