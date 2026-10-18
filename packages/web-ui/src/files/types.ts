@@ -50,13 +50,14 @@ export type FileBrowserLinkBreak = { kind: 'missing' } | { kind: 'unreadable'; r
 /**
  * Why a directory could not be listed, a file read or written. `kind` picks
  * the copy; `message` is shown as the detail. `exists` is a file an upload
- * was not to replace. `not-found`, `binary` and `too-large` are what the
+ * was not to replace; `not-repository`, a history read of a folder outside
+ * any Git repository. `not-found`, `binary` and `too-large` are what the
  * Host answered of the path, nothing there, a file that is not text, one
  * too large to read as text: the kept files keep each as an answer, never
  * as a failure (`plugin-pages.md` § What the service keeps).
  */
 export interface FileBrowserFailure {
-  kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'exists' | 'other'
+  kind: 'not-found' | 'permission' | 'offline' | 'binary' | 'too-large' | 'exists' | 'not-repository' | 'other'
   message?: SentenceText
   /** The request that failed, which the view shows with the failure. */
   requestId?: string | null

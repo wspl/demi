@@ -100,8 +100,8 @@ provideLiveCalls((toolUseId) => commandOf(undefined, toolUseId))
 /** A file a message names opens in the panel, full screen, as the product opens it. */
 const files = galleryConversationFiles(workspace.source, ({ path, line }) => {
   work.openIn({ intent: 'file', payload: line === null ? { path } : { path, line } })
-}, ({ commit }) => {
-  work.openIn({ intent: 'commit', payload: { commit } })
+}, ({ commit, root }) => {
+  work.openIn({ intent: 'commit', payload: { commit, ...(root === undefined ? {} : { root }) } })
 }, ({ path }) => {
   work.openIn({ intent: 'file', payload: { path, tree: true } })
 }, (id, { name, size, url }) => {

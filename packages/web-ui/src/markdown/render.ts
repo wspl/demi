@@ -4,7 +4,7 @@ import { baseName } from '@demicodes/utils'
 import type { MarkdownRenderOptions, MessageAttachment, MessageFileTarget, MessageFiles } from './types'
 import type { HostImage } from '../files/host-image'
 import { codeBlockHtml } from './highlight'
-import { WEB_LINK_REL, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
+import { WEB_LINK_REL, commitFolder, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
 import { attachmentBlockAt, attachmentBlockStart } from './attachment-block'
 import { codeFileTarget } from './code-paths'
 import { linkedAgent } from '../agent/agent-links'
@@ -34,9 +34,10 @@ function fileLink({ path, line }: MessageFileTarget, attributes = ''): string {
   return `<a href="${escapeHtml(path)}" data-file-link${at}${attributes}>`
 }
 
-/** A link that opens a commit's changes. */
-function commitLink(commit: string, href: string, attributes = ''): string {
-  return `<a href="${escapeHtml(href)}" data-commit-link="${escapeHtml(commit)}"${attributes}>`
+/** A link that opens a commit's changes, in the repository of the folder `root` when the link names one. */
+function commitLink(commit: string, root: string | null, href: string, attributes = ''): string {
+  const folder = root === null ? '' : ` data-commit-root="${escapeHtml(root)}"`
+  return `<a href="${escapeHtml(href)}" data-commit-link="${escapeHtml(commit)}"${folder}${attributes}>`
 }
 
 /**
@@ -324,8 +325,14 @@ const messageRenderer: RendererObject = {
       return agentLink(agent, body, tight)
     // A commit opens its changes; nobody to open it, its text alone.
     const commit = linkedCommit(token.href)
-    if (commit !== null)
-      return activeOptions?.files?.openCommit ? link((attributes) => commitLink(commit, token.href, attributes), linkIcon('data-commit-icon')) : body
+    if (commit !== null) {
+      const files = activeOptions?.files
+      // A folder is read as a relative link's path is; one that names nothing, such as `~/` before the home is known, is text.
+      const root = commit.folder === null || !files ? null : commitFolder(commit.folder, files)
+      if (!files?.openCommit || (commit.folder !== null && root === null))
+        return body
+      return link((attributes) => commitLink(commit.commit, root, token.href, attributes), linkIcon('data-commit-icon'))
+    }
     // A file nobody opens is named as text.
     const files = activeOptions?.files
     const target = files?.open ? messageFileTarget(token.href, files) : null

@@ -129,10 +129,12 @@ order:
   `#L` and a line to point at one, `[runner.md](docs/execution/runner.md#L438)`
   ([Files named in messages](../product/file-previews.md#files-named-in-messages));
   a subagent a link to its number, `[File icons](agent:4)`
-  ([Linking an agent](subagents.md#linking-an-agent)); a commit of the
-  working directory's repository a link whose text says what the commit did
-  and whose target is its id, `[Fix the cart total](commit:3f2a9c1)`, which
-  opens its changes ([Commits mode](../execution/edit-tracking.md#commits-mode)).
+  ([Linking an agent](subagents.md#linking-an-agent)); a commit a link
+  whose text says what the commit did and whose target is its id,
+  `[Fix the cart total](commit:3f2a9c1)`, with its repository's folder
+  before it, `commit:src/v8@86229da`, when that repository is not the
+  working directory's, which opens its changes
+  ([Commits mode](../execution/edit-tracking.md#commits-mode)).
   The entry stands on its own and shows the wrong form beside the right one,
   `` `docs/execution/runner.md` `` and `` `3f2a9c1` `` against the links: a
   model writes paths and ids as code by habit, from terminals and code
