@@ -8,7 +8,7 @@ use demi_provider_common::{MediaBytes, Medium, ToolDefinition};
 use demi_shared_types::{
     MessageComment,
     B64Bytes, Block, DocumentSource, INSTRUCTIONS_SOURCE, Model, ModelMediaKind, ResponseBlock,
-    ToolResultContentBlock, UserContentBlock, comments_markdown,
+    ToolResultContentBlock, UserContentBlock, comments_content,
 };
 
 use super::{
@@ -160,8 +160,8 @@ fn usage_anchor(blocks: &[Block]) -> Option<(usize, u64)> {
 /// The text a block's estimate counts, and the weight of its media.
 fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
     let text = match block {
-        Block::User(user) => return with_comments(content_estimate(&user.content, request), &user.comments),
-        Block::Steer(steer) => return with_comments(content_estimate(&steer.content, request), &steer.comments),
+        Block::User(user) => return with_comments(content_estimate(&user.content, request), &user.comments, request),
+        Block::Steer(steer) => return with_comments(content_estimate(&steer.content, request), &steer.comments, request),
         Block::ToolCall(call) => {
             let mut lines = vec![
                 Cow::Borrowed(call.tool_name.as_str()),
@@ -230,13 +230,15 @@ pub fn content_tokens(content: &[UserContentBlock], request: &RequestView) -> u6
     text_tokens(&text) + media
 }
 
-/// A message's or a steer's estimate with its comments before its content,
-/// bounded as replay bounds them.
-fn with_comments((text, media): (String, u64), comments: &[MessageComment]) -> (String, u64) {
-    match comments_markdown(comments) {
-        Some(comments) => (format!("{}\n{text}", bound_text(&comments)), media),
-        None => (text, media),
+/// A message's or a steer's estimate with its comments before its content:
+/// their text parts, each bounded as replay bounds it, and their pictures.
+fn with_comments((text, media): (String, u64), comments: &[MessageComment], request: &RequestView) -> (String, u64) {
+    let lead = comments_content(comments);
+    if lead.is_empty() {
+        return (text, media);
     }
+    let (lead_text, lead_media) = content_estimate(&lead, request);
+    (format!("{lead_text}\n{text}"), media + lead_media)
 }
 
 /// A message's content: one line per part, and the weight of its media.

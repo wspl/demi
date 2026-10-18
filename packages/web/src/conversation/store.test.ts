@@ -560,6 +560,32 @@ test('a page saves only the drafts it changed, so another tab\'s saved draft sta
   }
 })
 
+// A waiting comment on a picture reaches the web browser's storage as
+// IndexedDB takes it: a copy whose picture is no Vue proxy, which IndexedDB
+// cannot clone (`comments-and-ask.md` § Images).
+test('a draft holding a comment on a picture is written as IndexedDB can store it', async () => {
+  const stored: unknown[] = []
+  const written = spyOn(draftStorage, 'writeDraft').mockImplementation(async (_user, _id, draft) => {
+    // As IndexedDB's put clones what it stores.
+    stored.push(structuredClone(draft))
+  })
+  const signedOut = useSession().current
+  useSession().current = { status: 'signedIn', user: productState().user }
+  try {
+    const store = useConversations()
+    const id = store.create()
+    const conversation = store.items.find((item) => item.id === id)!
+    const picture: MessageComment = { id: 'c1', blockId: 'b1', start: 0, end: 1, at: 12, quote: 'The chart', picture: { type: 'url', url: 'https://example.com/chart.png' }, text: 'Which one?' }
+    conversation.draft = 'And the rest?'
+    store.commenting(conversation).add(picture)
+    await nextTick()
+    expect(stored.at(-1)).toMatchObject({ comments: [picture] })
+  } finally {
+    useSession().current = signedOut
+    written.mockRestore()
+  }
+})
+
 test('a completed earlier preference write cannot discard a newer model selection', async () => {
   const preferences = usePreferences()
   const started = deferred<void>()
@@ -1364,8 +1390,8 @@ test('Recall puts a steer back into the empty composer, its file a capsule attac
 // Its comments go with it (`comments-and-ask.md` § Sending them): the draft's
 // own waiting comments stay as they are, and Undo sends the recalled ones
 // again. Before, they joined the draft's and Undo sent the message without them.
-const recalledComment = { id: 'c-recalled', blockId: 'text-1', start: 0, end: 7, quote: 'Uploads', text: 'Which ones?' }
-const ownComment = { id: 'c-own', blockId: 'text-1', start: 8, end: 12, quote: 'fail', text: 'Since when?' }
+const recalledComment = { id: 'c-recalled', blockId: 'text-1', start: 0, end: 7, at: 0, quote: 'Uploads', text: 'Which ones?' }
+const ownComment = { id: 'c-own', blockId: 'text-1', start: 8, end: 12, at: 8, quote: 'fail', text: 'Since when?' }
 test.each<{ holds: string; draft: string; comments: MessageComment[] }>([
   { holds: 'a draft', draft: 'My own draft', comments: [] },
   { holds: 'a waiting comment', draft: '', comments: [ownComment] },
@@ -1517,6 +1543,79 @@ test('two messages sent in a row while the first is unconfirmed both show at onc
     expect(shownRows(conversation)).toEqual({ turn: [], waiting: [`message:${two}`] })
   } finally {
     steer.mockRestore()
+    submit.mockRestore()
+    connect.mockRestore()
+    restoreFetch()
+  }
+})
+
+// Send Now in a comment's box (`comments-and-ask.md` § Comments): a message
+// holding that comment alone goes at once, as the composer's send would, a
+// steer while the agent works; the other waiting comments and the typed
+// draft stay as they are.
+test.each([
+  { phase: 'idle', way: 'submit' },
+  { phase: 'running', way: 'steer' },
+] as const)('Send Now on a comment while the agent is $phase sends it alone as a $way and keeps the draft and the other comments', async ({ phase, way }) => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  const restoreFetch = answerOpening(id)
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const sent: { way: string; content: unknown; comments: readonly MessageComment[] }[] = []
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async (content, _id, comments = []) => {
+    sent.push({ way: 'submit', content, comments })
+  })
+  const steer = spyOn(ConversationRuntime.prototype, 'steer').mockImplementation(async (content, _id, comments = []) => {
+    sent.push({ way: 'steer', content, comments })
+  })
+  try {
+    await chooseStubModel(conversation)
+    conversation.phase = phase
+    const other: MessageComment = { id: 'c1', blockId: 'b1', start: 0, end: 4, at: 0, quote: 'Uplo', text: 'Smaller?' }
+    const now: MessageComment = { id: 'c2', blockId: 'b1', start: 0, end: 1, at: 0, quote: 'Chart', picture: { type: 'url', url: 'https://example.com/chart.png' }, text: 'Which one?' }
+    conversation.comments = [other]
+    conversation.draft = 'My own draft'
+    store.commenting(conversation).sendNow!(now)
+    await waitFor(() => sent.length === 1, () => 'nothing was sent')
+    expect(sent).toEqual([{ way, content: [], comments: [now] }])
+    expect(conversation.draft).toBe('My own draft')
+    expect(conversation.comments).toEqual([other])
+  } finally {
+    steer.mockRestore()
+    submit.mockRestore()
+    connect.mockRestore()
+    restoreFetch()
+  }
+})
+
+// A comment's Send Now the session refuses leaves no failed message: the
+// comment waits with the others again, after them, and the typed draft is
+// as it was (`comments-and-ask.md` § Comments).
+test('Send Now on a comment the session refuses puts the comment back with the waiting ones and leaves no failed message', async () => {
+  const store = useConversations()
+  const id = store.create()
+  await store.activate(id)
+  const conversation = store.items.find((item) => item.id === id)!
+  const restoreFetch = answerOpening(id)
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockRejectedValue(new Error('The model is not available.'))
+  const errors = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    await chooseStubModel(conversation)
+    const other: MessageComment = { id: 'c1', blockId: 'b1', start: 0, end: 4, at: 0, quote: 'Uplo', text: 'Smaller?' }
+    const now: MessageComment = { id: 'c2', blockId: 'b1', start: 6, end: 9, at: 6, quote: 'fai', text: 'Since when?' }
+    conversation.comments = [other]
+    conversation.draft = 'My own draft'
+    store.commenting(conversation).sendNow!(now)
+    await waitFor(() => conversation.comments.length === 2, () => 'the comment did not come back')
+    expect(submit).toHaveBeenCalledTimes(1)
+    expect(conversation.pendingSends).toEqual([])
+    expect(conversation.comments).toEqual([other, now])
+    expect(conversation.draft).toBe('My own draft')
+  } finally {
+    errors.mockRestore()
     submit.mockRestore()
     connect.mockRestore()
     restoreFetch()
@@ -3844,8 +3943,8 @@ test('waiting comments sync with the draft, and a send or a steer carries them i
   const store = useConversations()
   const current = store.items.find((item) => item.id === FIRST)!
   addStubProvider()
-  const later = { id: 'c-later', blockId: 'text-1', start: 40, end: 66, quote: 'the same 30-second timeout', text: 'Its own timeout?' }
-  const earlier = { id: 'c-earlier', blockId: 'text-1', start: 4, end: 29, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }
+  const later = { id: 'c-later', blockId: 'text-1', start: 40, end: 66, at: 40, quote: 'the same 30-second timeout', text: 'Its own timeout?' }
+  const earlier = { id: 'c-earlier', blockId: 'text-1', start: 4, end: 29, at: 4, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }
   serverDrafts.set(FIRST, { revision: 1, text: 'Otherwise go ahead', files: [], comments: [], replaced: null })
   records[0]!.draftRevision = 1
   const originalFetch = globalThis.fetch
@@ -4161,8 +4260,8 @@ test('a comment saved while an earlier draft save is on its way survives Save fo
   const signOut = signIn()
   const { store, first } = await openWithSaved([])
   const held = holdWrites({ drafts: true })
-  const earlier = { id: 'c0', blockId: 'text-1', start: 8, end: 12, quote: 'fail', text: 'Since when?' }
-  const comment = { id: 'c1', blockId: 'text-1', start: 0, end: 7, quote: 'Uploads', text: 'Which ones?' }
+  const earlier = { id: 'c0', blockId: 'text-1', start: 8, end: 12, at: 8, quote: 'fail', text: 'Since when?' }
+  const comment = { id: 'c1', blockId: 'text-1', start: 0, end: 7, at: 0, quote: 'Uploads', text: 'Which ones?' }
   try {
     // A comment is saved at once; its save is on its way.
     store.commenting(first).add(earlier)

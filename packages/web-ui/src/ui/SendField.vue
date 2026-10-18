@@ -19,6 +19,12 @@ const props = defineProps<{
   focus?: boolean
   /** It stands on its own over the page, on the overlay's surface, rather than in a card. */
   floating?: boolean
+  /**
+   * What was sent stays until the owner takes it, as a question about a
+   * picture until the picture is kept: the owner empties the field, and it
+   * sends nothing meanwhile.
+   */
+  holding?: boolean
 }>()
 
 const text = defineModel<string>({ default: '' })
@@ -37,10 +43,11 @@ onMounted(() => {
 })
 
 function send(): void {
-  if (empty.value)
+  if (empty.value || props.holding)
     return
   emit('send', text.value.trim())
-  text.value = ''
+  if (props.holding === undefined)
+    text.value = ''
 }
 
 function onKeydown(event: KeyboardEvent): void {
@@ -77,7 +84,7 @@ defineExpose({ focus: () => field.value?.focus({ preventScroll: true }) })
         :icon="ArrowUp"
         :variant="empty ? 'ghost' : 'accent'"
         circle
-        :disabled="empty"
+        :disabled="empty || holding"
         :aria-label="sendLabel"
         @mousedown.prevent
         @click="send"

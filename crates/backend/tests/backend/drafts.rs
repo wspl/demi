@@ -327,8 +327,10 @@ fn comment(id: &str, start: u64, quote: &str, text: &str) -> MessageComment {
         id: id.into(),
         block_id: BlockId::try_from("text-1").unwrap(),
         start,
+        at: start,
         end: start + quote.chars().count() as u64,
         quote: quote.into(),
+        picture: None,
         text: text.into(),
     }
 }

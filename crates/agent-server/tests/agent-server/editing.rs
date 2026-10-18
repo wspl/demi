@@ -886,8 +886,10 @@ fn two_comments(reply: &BlockId) -> Vec<MessageComment> {
         id: id.into(),
         block_id: reply.clone(),
         start: 0,
+        at: 0,
         end: quote.chars().count() as u64,
         quote: quote.into(),
+        picture: None,
         text: text.into(),
     };
     vec![
@@ -955,6 +957,77 @@ async fn a_steers_comments_reach_the_model_as_quotes_before_its_text() {
         panic!("{:?}", held.blocks)
     };
     assert_eq!(steer.comments, comments);
+}
+
+/// A comment on a picture of the reply, sent with a text comment, as
+/// `comments-and-ask.md` § Images has the model read it: the text comment's
+/// quote and comment, then the picture as an image the message carries,
+/// read from its blob, then its comment, then the message's own text. A
+/// model that reads no images gets a note naming the picture in its place.
+#[tokio::test(flavor = "local")]
+async fn a_picture_comment_reaches_the_model_as_the_image_then_its_comment() {
+    for reads_images in [true, false] {
+        let script = ScriptedRuntime::new([said("Uploads fail because"), said("Starting at 1 MB")]);
+        let blobs = MemoryBlobs::new();
+        let store = MemoryTreeStore::with_blobs(blobs.clone());
+        let fixture = Fixture::with(&script, store, ServerConfig::default());
+        let reads: &[FileExtension] = if reads_images { &[FileExtension::Png] } else { &[] };
+        fixture.resolver.select(model_reading("stub", "test-model", reads));
+        let png = B64Bytes::new(vec![0x89, b'P', b'N', b'G']);
+        let blob = blobs.put(png.clone()).await.unwrap();
+        let mut client = fixture.opened().await;
+        client.send(send("m1", "Why do uploads fail?")).await;
+        client.next_until(is_idle).await;
+        let reply = session_of(&fixture).transcript().blocks[1].id().clone();
+        let [_, timeout] = two_comments(&reply).try_into().unwrap();
+        let picture = MessageComment {
+            id: "c3".into(),
+            block_id: reply.clone(),
+            start: 0,
+            at: 120,
+            end: 1,
+            quote: "The upload cut off".into(),
+            picture: Some(MediaSource::Ref {
+                r#ref: blob.clone(),
+                media_type: "image/png".into(),
+                width: None,
+                height: None,
+            }),
+            text: "Is this the 3G test?".into(),
+        };
+        client
+            .send(ClientFrame::Send {
+                message_id: crate::support::turn("m2"),
+                content: client_text("Otherwise go ahead"),
+                comments: vec![timeout, picture],
+            })
+            .await;
+        client.next_until(is_idle).await;
+
+        let requests = script.requests();
+        let Some(InferenceItem::UserMessage { content }) = requests[1].items.get(2) else {
+            panic!("{:#?}", requests[1].items)
+        };
+        assert_eq!(
+            content[0],
+            UserPart::Text("> the same 30-second timeout\n\nShould uploads get their own?".into())
+        );
+        if reads_images {
+            assert_eq!(
+                content[1],
+                UserPart::Image(Medium::Bytes(MediaBytes { data: png, media_type: "image/png".into() }))
+            );
+        } else {
+            assert!(
+                matches!(&content[1], UserPart::Text(note) if note.starts_with("[image:") && note.contains("not sent")),
+                "{content:#?}"
+            );
+        }
+        assert_eq!(
+            content[2..],
+            [UserPart::Text("Is this the 3G test?".into()), UserPart::Text("Otherwise go ahead".into())]
+        );
+    }
 }
 
 /// Fork copies a message's comments with it (`comments-and-ask.md` §

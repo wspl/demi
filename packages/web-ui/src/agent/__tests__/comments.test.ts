@@ -1,5 +1,5 @@
 import { GlobalRegistrator } from '@happy-dom/global-registrator'
-import { afterEach, expect, test } from 'bun:test'
+import { afterEach, expect, spyOn, test } from 'bun:test'
 
 // Comments on a reply's words (`comments-and-ask.md`): Comment on selected
 // words saves the comment with its quote and where it stands; the reply
@@ -93,7 +93,7 @@ async function reply(options: { waiting: MessageComment[]; sent: MessageComment[
   return { host, waiting, sent, added, layer, text: host.querySelector('p')!.firstChild as Text }
 }
 
-const chunks: MessageComment = { id: 'c1', blockId: 'text-1', start: START, end: START + 25, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }
+const chunks: MessageComment = { id: 'c1', blockId: 'text-1', start: START, end: START + 25, at: START, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }
 
 test('Comment on words selected in a reply saves them with where they stand, and waits while the reply is written', async () => {
   const page = await reply({ waiting: [], sent: [] })
@@ -118,7 +118,7 @@ test('Comment on words selected in a reply saves them with where they stand, and
   await nextTick()
   field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
   await nextTick()
-  expect(page.added.map(({ id: _id, ...rest }) => rest)).toEqual([{ blockId: 'text-1', start: START, end: START + 25, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }])
+  expect(page.added.map(({ id: _id, ...rest }) => rest)).toEqual([{ blockId: 'text-1', start: START, end: START + 25, at: START, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }])
 })
 
 test('a waiting comment marks its words, and once a message sent it the mark is dimmer', async () => {
@@ -228,7 +228,7 @@ test('a shared page shows a message\'s quotes and comments, and no mark on the r
 test('a steer carries its comments: its bubble shows each quote and comment, waiting and once the agent read it, and the reply\'s mark is dimmer', async () => {
   const { default: AgentMessageList } = await import('../AgentMessageList.vue')
   const { before, comment, model, createdAt } = await commentedHistory()
-  const later = { ...comment, id: 'c2', start: 0, end: 7, quote: 'Uploads', text: 'Which ones?' }
+  const later = { ...comment, id: 'c2', start: 0, end: 7, at: 0, quote: 'Uploads', text: 'Which ones?' }
   const content = [{ type: 'text' as const, text: 'Otherwise go ahead.' }]
   const props = {
     conversationId: 'c',
@@ -339,4 +339,304 @@ test('an anchor across code and a link finds the same words after the reply is d
   // Drawn again: the code block's words in spans of their colors, its Copy just used.
   const after = draw('<span>let</span> <span>size</span> = <span>4</span>', 'Copied')
   expect(rangeOf(after, anchor)?.toString()).toBe('tch with the retry')
+})
+
+const CHART = 'https://example.com/chart.png'
+
+/** A reply holding `pictures`, each `[alt, src]`, with the comments layer over it; `draw` draws it again. */
+async function pictured(pictures: readonly (readonly [string, string])[], options: { waiting: MessageComment[]; sendNow?: (comment: MessageComment) => void; keep?: import('../comments/pictures').KeepPicture }) {
+  const { provideKeepPicture } = await import('../comments/pictures')
+  const host = document.createElement('div')
+  document.body.append(host)
+  const shown = ref(pictures)
+  const waiting = ref(options.waiting)
+  const added: MessageComment[] = []
+  const rows = ref<HTMLElement | null>(null)
+  const layer = ref<InstanceType<typeof ReplyComments>>()
+  const app = createApp(defineComponent({
+    setup: () => {
+      if (options.keep)
+        provideKeepPicture(options.keep)
+      return () => h('div', { ref: rows, style: 'position: relative' }, [
+      h('div', { 'data-reply-text': 'text-1' }, [
+        // A picture of the Host is one whose address is the page's own.
+        h('div', { class: 'markdown-body' }, [h('p', 'Here is the chart.'), ...shown.value.map(([alt, src]) => h('p', [h('img', { key: `${alt}${src}`, alt, src, ...(src.startsWith('/') ? { 'data-host-file': `/work${src}` } : {}) })]))]),
+      ]),
+      h(ReplyComments, {
+        ref: layer,
+        root: rows.value,
+        sent: [],
+        commenting: {
+          get waiting() {
+            return waiting.value
+          },
+          add: (comment: MessageComment) => {
+            added.push(comment)
+            waiting.value = [...waiting.value, comment]
+          },
+          sendNow: options.sendNow,
+          edit: () => {},
+          remove: (id: string) => (waiting.value = waiting.value.filter((each) => each.id !== id)),
+        },
+      }),
+    ])
+    },
+  }))
+  app.mount(host)
+  unmount = () => app.unmount()
+  const settle = async () => {
+    await nextTick()
+    await frame()
+    await nextTick()
+  }
+  await settle()
+  return {
+    host,
+    added,
+    layer,
+    settle,
+    draw: async (next: readonly (readonly [string, string])[]) => {
+      shown.value = next
+      await settle()
+    },
+  }
+}
+
+/** Opens Comment from the menu of the reply's picture `index` and types `text` into its box. */
+async function commentOnPicture(page: Awaited<ReturnType<typeof pictured>>, index: number, text: string): Promise<HTMLTextAreaElement> {
+  const replyRoot = page.host.querySelector<HTMLElement>('[data-reply-text]')!
+  const image = replyRoot.querySelectorAll('img')[index]!
+  const tools = page.layer.value!.pictureTools({ blockId: 'text-1', root: replyRoot }, image, () => false)
+  // Without side questions, the picture takes Comment alone.
+  expect(tools.map((tool) => tool.label)).toEqual(['Comment'])
+  const [comment] = tools
+  comment!.run!()
+  await page.settle()
+  const field = page.host.querySelector('textarea')!
+  field.value = text
+  field.dispatchEvent(new Event('input'))
+  await nextTick()
+  return field
+}
+
+// A comment on a picture of the reply (`comments-and-ask.md` § Images):
+// Comment in its menu opens the box, and the comment keeps the picture by
+// its place among the reply's pictures, its alt text as its words, and the
+// picture itself; the reply outlines it.
+test('Comment on a picture of the reply saves it by its place with the picture as its quote, and outlines it', async () => {
+  const page = await pictured([['The login page', 'https://example.com/login.png'], ['The chart', CHART]], { waiting: [] })
+  const field = await commentOnPicture(page, 1, 'Which connection?')
+  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await page.settle()
+  await page.settle()
+  expect(page.added.map(({ id: _id, ...rest }) => rest)).toEqual([
+    { blockId: 'text-1', start: 1, end: 2, at: 18, quote: 'The chart', picture: { type: 'url', url: CHART }, text: 'Which connection?' },
+  ])
+  expect([...page.host.querySelectorAll('[data-picture-outline]')].map((each) => each.getAttribute('data-picture-outline'))).toEqual(['comment'])
+})
+
+// Return comments; ⌘Return (Control-Return elsewhere) sends the comment
+// alone at once, leaving the waiting ones as they are (`comments-and-ask.md`
+// § Comments).
+test('in a comment\'s box Command-Return sends it alone now and adds nothing to the waiting comments', async () => {
+  const sentNow: MessageComment[] = []
+  const page = await pictured([['The chart', CHART]], { waiting: [], sendNow: (comment) => sentNow.push(comment) })
+  const field = await commentOnPicture(page, 0, 'Now, please.')
+  const buttons = [...page.host.querySelectorAll('[data-comment-field] [role="button"], [data-comment-field] button')].map((button) => button.textContent?.trim())
+  expect(buttons).toContain('Send Now')
+  expect(buttons).toContain('Comment')
+  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', metaKey: true, ctrlKey: true, bubbles: true }))
+  await page.settle()
+  await page.settle()
+  expect(sentNow.map(({ text, picture }) => ({ text, picture }))).toEqual([{ text: 'Now, please.', picture: { type: 'url', url: CHART } }])
+  expect(page.added).toEqual([])
+  expect(page.host.querySelector('textarea')).toBeNull()
+})
+
+// The anchor names the picture by its place and its words: drawn again, it
+// finds its picture in new elements; a reply whose picture at that place is
+// another picture shows no outline.
+test('a picture comment finds its picture after the reply is drawn again, and none once the picture there is another', async () => {
+  const comment: MessageComment = { id: 'c1', blockId: 'text-1', start: 1, end: 2, at: 1, quote: 'The chart', picture: { type: 'url', url: CHART }, text: 'Which?' }
+  const page = await pictured([['The login page', 'https://example.com/login.png'], ['The chart', CHART]], { waiting: [comment] })
+  const outlined = () => page.host.querySelectorAll('[data-picture-outline]').length
+  expect(outlined()).toBe(1)
+  await page.draw([['The login page', 'https://example.com/login-2x.png'], ['The chart', `${CHART}?v=2`]])
+  expect(outlined()).toBe(1)
+  await page.draw([['The login page', 'https://example.com/login.png'], ['The signup page', 'https://example.com/signup.png']])
+  expect(outlined()).toBe(0)
+})
+
+// The bubble of a message sent with a comment on a picture shows a small
+// copy of the picture as the quote, then the comment (`comments-and-ask.md`
+// § Images).
+test('a message sent with a picture comment shows the picture as its quote', async () => {
+  const root = document.createElement('div')
+  document.body.append(root)
+  const app = createApp(defineComponent({
+    setup: () => {
+      provideBlobUrl((source) => `blob:${source}`)
+      return () => h(UserBlock, {
+        content: [{ type: 'text', text: 'Otherwise go ahead.' }],
+        comments: [{ id: 'c1', quote: 'The chart', picture: { type: 'ref', ref: 'ab'.repeat(32), mediaType: 'image/png' }, text: 'Which connection?' }],
+      })
+    },
+  }))
+  app.mount(root)
+  unmount = () => app.unmount()
+  await nextTick()
+  const quoted = root.querySelector<HTMLImageElement>('[data-comment-picture] img')
+  expect([quoted?.getAttribute('src'), quoted?.getAttribute('alt')]).toEqual([`blob:${'ab'.repeat(32)}`, 'The chart'])
+  const text = root.textContent!.replace(/\s+/g, ' ')
+  expect(text.indexOf('Which connection?')).toBeLessThan(text.indexOf('Otherwise go ahead.'))
+})
+
+// Comments go in reading order, words and pictures together
+// (`comments-and-ask.md` § Sending them): a comment on words before the
+// reply's first picture goes before the comment on that picture, whichever
+// was made first.
+test('a comment on words before a picture goes before the comment on the picture', async () => {
+  const { inReadingOrder } = await import('../comments/comments')
+  const page = await pictured([['The chart', CHART]], { waiting: [] })
+  const field = await commentOnPicture(page, 0, 'Which connection?')
+  field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await page.settle()
+  await page.settle()
+  const words = page.host.querySelector('[data-reply-text] p')!.firstChild as Text
+  const range = document.createRange()
+  range.setStart(words, 8)
+  range.setEnd(words, 17)
+  window.getSelection()!.removeAllRanges()
+  window.getSelection()!.addRange(range)
+  const replyRoot = page.host.querySelector<HTMLElement>('[data-reply-text]')!
+  page.layer.value!.selectionTools({ blockId: 'text-1', root: replyRoot }, () => false)[0]!.run!()
+  await page.settle()
+  const box = page.host.querySelector('textarea')!
+  box.value = 'Which chart?'
+  box.dispatchEvent(new Event('input'))
+  await nextTick()
+  box.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+  await page.settle()
+  expect(page.added.map((comment) => comment.quote)).toEqual(['The chart', 'the chart'])
+  expect(inReadingOrder(page.added, ['text-1']).map((comment) => comment.quote)).toEqual(['the chart', 'The chart'])
+})
+
+// A Host image still being read stands as a box with its alt text, and is a
+// picture as the image it becomes is (`comments-and-ask.md` § Images): a
+// later picture keeps its place, even of the same alt, and the words after
+// the box keep their offsets as it loads.
+test('a picture still being read counts as a picture, so a later picture and later words keep their anchors as it loads', async () => {
+  const { anchorOfText, pictureAnchor, pictureOf, rangeOf } = await import('../comments/anchors')
+  const { imagePlaceholderHtml } = await import('../../markdown/image-placeholder')
+  const draw = (first: string) => {
+    const root = document.createElement('div')
+    root.innerHTML = `<p>Before ${first} middle <img alt="Chart" src="https://example.com/b.png"> after</p>`
+    document.body.append(root)
+    return root
+  }
+  const loading = draw(imagePlaceholderHtml('Chart'))
+  const second = loading.querySelector('img')!
+  const anchor = pictureAnchor(loading, second)!
+  expect(anchor).toEqual({ start: 1, end: 2, at: 'Before  middle '.length })
+  expect(pictureOf(loading, anchor, 'Chart')).toBe(second)
+  const words = anchorOfText(loading, 'after')!
+  const loaded = draw('<img alt="Chart" src="https://example.com/a.png">')
+  expect(pictureOf(loaded, anchor, 'Chart')?.getAttribute('src')).toBe('https://example.com/b.png')
+  expect(rangeOf(loaded, words)?.toString()).toBe('after')
+})
+
+// A message's comment on a picture goes with Copy Message and Send to
+// Conversation as the message's own pictures go (`comments-and-ask.md`
+// § Images): the picture as a file, before its comment and the message's text.
+test('Copy Message and Send to Conversation take a picture comment\'s picture as a file before its comment', async () => {
+  const menus = await import('../../ui/context-menu')
+  const { provideSendTargets } = await import('../send-to-conversation')
+  const { provideMediaViewer } = await import('../../files/media-viewer')
+  const { readCopiedMessage, COPIED_MESSAGE_ATTRIBUTE } = await import('../message-input/copied-message')
+  const written: ClipboardItem[][] = []
+  Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { write: async (items: ClipboardItem[]) => void written.push(items) } })
+  const opened: import('../../ui/context-menu').ContextMenuOpening[] = []
+  const uninstall = menus.installContextMenus({
+    phone: () => false,
+    services: { copy: () => {}, copyImage: () => {}, save: () => {}, openLink: () => {} },
+    open: (opening) => {
+      opened.push(opening)
+      return true
+    },
+  })
+  const sent: import('../message-input/copied-message').CopiedMessage[] = []
+  const sha = 'ab'.repeat(32)
+  const comments = [{ id: 'c1', quote: 'The chart', picture: { type: 'ref' as const, ref: sha, mediaType: 'image/png' }, text: 'Which connection?' }]
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp(defineComponent({
+    setup: () => {
+      provideBlobUrl((source) => `blob:${source}`)
+      provideMediaViewer()
+      provideSendTargets({ recent: () => [], search: async () => [], describe: () => null, shown: () => 'here', send: (_to, words) => void sent.push(words) })
+      return () => h(UserBlock, { content: [{ type: 'text', text: 'Otherwise go ahead.' }], comments, editable: true })
+    },
+  }))
+  app.mount(host)
+  unmount = () => {
+    app.unmount()
+    uninstall()
+  }
+  await nextTick()
+  host.querySelector('[data-sent-comments]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: 10, clientY: 10, button: 2 }))
+  const rows = opened[0]!.menu.groups().flat()
+  await rows.find((row) => row.label === 'Copy Message')!.run!()
+  await new Promise((resolve) => setTimeout(resolve))
+  const html = await (await written[0]![0]!.getType('text/html')).text()
+  const holder = document.createElement('div')
+  holder.innerHTML = html
+  const copied = readCopiedMessage(holder.querySelector(`[${COPIED_MESSAGE_ATTRIBUTE}]`)!.getAttribute(COPIED_MESSAGE_ATTRIBUTE))
+  const submenu = document.createElement('div')
+  document.body.append(submenu)
+  const menu = createApp({ render: () => rows.find((row) => row.label === 'Send to Conversation')!.submenu!() })
+  menu.mount(submenu)
+  await nextTick()
+  submenu.querySelector<HTMLElement>('[role=menuitem]')!.click()
+  menu.unmount()
+  for (const words of [copied!, sent[0]!]) {
+    expect(words.files.map((file) => file.type === 'stored' && file.sha256)).toEqual([sha])
+    expect(words.text.replace(/￼/g, '[file]')).toBe('[file]\n\nWhich connection?\n\nOtherwise go ahead.')
+  }
+})
+
+// A comment on a Host image keeps the picture's bytes before it is saved
+// (`comments-and-ask.md` § Images): until they are kept, the box stays open
+// with its text; a failure leaves both, says why, and the same press tries
+// again.
+test('a comment on a Host picture keeps its box and text until the picture is kept, and after a failure', async () => {
+  let attempts = 0
+  const kept = { sha256: 'cd'.repeat(32), mediaType: 'image/png' }
+  const page = await pictured([['The chart', '/chart.png']], {
+    waiting: [],
+    keep: async () => {
+      attempts += 1
+      if (attempts === 1)
+        throw new Error('The upload failed.')
+      return kept
+    },
+  })
+  const errors = spyOn(console, 'error').mockImplementation(() => {})
+  try {
+    const field = await commentOnPicture(page, 0, 'Which connection?')
+    field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await page.settle()
+    await page.settle()
+    expect(page.added).toEqual([])
+    const still = page.host.querySelector('textarea')
+    expect(still?.value).toBe('Which connection?')
+    still!.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+    await page.settle()
+    await page.settle()
+    expect(page.added.map(({ text, picture }) => ({ text, picture }))).toEqual([
+      { text: 'Which connection?', picture: { type: 'ref', ref: kept.sha256, mediaType: 'image/png' } },
+    ])
+    expect(page.host.querySelector('textarea')).toBeNull()
+  } finally {
+    errors.mockRestore()
+  }
 })

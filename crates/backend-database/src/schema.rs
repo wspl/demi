@@ -3936,14 +3936,17 @@ CREATE INDEX nodes_children ON nodes (parent_id, number);
 -- ends at, the character offsets of the asked words in the block's
 -- rendered text, the words, the question, when it was asked, the title the
 -- small model wrote, null until it wrote one, and whether its card is
--- folded. The tree store writes the row with its node; the title and the
--- fold are the backend's.
+-- folded. A side question about a picture (comments-and-ask.md § Images)
+-- has the picture, a media source as JSON, its place among the block's
+-- pictures as its offsets and its alt text as its words. The tree store
+-- writes the row with its node; the title and the fold are the backend's.
 CREATE TABLE side_questions (
   node_id      TEXT PRIMARY KEY REFERENCES nodes (id) ON DELETE CASCADE,
   block_id     TEXT NOT NULL CHECK (block_id <> ''),
   start_offset INTEGER NOT NULL CHECK (start_offset >= 0),
   end_offset   INTEGER NOT NULL CHECK (end_offset > start_offset),
   quote        TEXT NOT NULL CHECK (quote <> ''),
+  picture      TEXT CHECK (json_valid(picture)),
   question     TEXT NOT NULL CHECK (question <> ''),
   asked_at     INTEGER NOT NULL,
   title        TEXT CHECK (title <> ''),

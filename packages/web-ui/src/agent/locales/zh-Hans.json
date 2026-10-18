@@ -7,7 +7,9 @@
     "remove": "移除评论",
     "sent": "已发送",
     "writeFirst": "请先输入评论。",
-    "title": "评论"
+    "title": "评论",
+    "sendNow": "立即发送",
+    "pictureFailed": "无法评论图片"
   },
   "ask": {
     "ask": "提问",
@@ -18,7 +20,8 @@
     "collapse": "收起",
     "expand": "展开",
     "thinking": "正在思考…",
-    "retry": "重试"
+    "retry": "重试",
+    "pictureFailed": "无法就图片提问"
   },
   "transcript": {
     "accountSwitch": {
@@ -157,7 +160,8 @@
     },
     "copyMessage": "复制消息",
     "sendToConversation": "发送到对话",
-    "sendToNew": "新对话"
+    "sendToNew": "新对话",
+    "sendFailed": "无法发送到对话"
   },
   "subagents": {
     "mainAgent": "主智能体",

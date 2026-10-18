@@ -7,7 +7,9 @@
     "remove": "Remove Comment | Remove Comments",
     "sent": "Sent",
     "writeFirst": "Write a comment first.",
-    "title": "Comments"
+    "title": "Comments",
+    "sendNow": "Send Now",
+    "pictureFailed": "Could Not Comment on the Picture"
   },
   "ask": {
     "ask": "Ask",
@@ -18,7 +20,8 @@
     "collapse": "Collapse",
     "expand": "Expand",
     "thinking": "Thinking…",
-    "retry": "Retry"
+    "retry": "Retry",
+    "pictureFailed": "Could Not Ask About the Picture"
   },
   "transcript": {
     "accountSwitch": {
@@ -157,7 +160,8 @@
     },
     "copyMessage": "Copy Message",
     "sendToConversation": "Send to Conversation",
-    "sendToNew": "New Conversation"
+    "sendToNew": "New Conversation",
+    "sendFailed": "Could Not Send to Conversation"
   },
   "subagents": {
     "mainAgent": "Main agent",

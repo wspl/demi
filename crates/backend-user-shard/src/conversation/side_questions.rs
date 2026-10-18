@@ -110,6 +110,7 @@ impl Shard {
             start: request.start,
             end: request.end,
             quote: request.quote,
+            picture: request.picture,
             question: request.question,
             // The tree takes the time it starts the side at.
             asked_at: self.services().clock.now(),

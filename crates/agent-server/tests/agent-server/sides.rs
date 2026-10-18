@@ -3,11 +3,12 @@
 //! its replies, whose first request is the one the root would send next
 //! with the side's message, and which the root never learns of.
 
-use demi_agent_server::{SIDE_INSTRUCTION, testing::TestClient};
+use demi_agent_server::{side_instruction, testing::TestClient};
 use demi_agent_store::{ClosePhase, SideOf};
 use demi_conversation_socket_protocol::{ClientFrame, ServerFrame};
-use demi_provider_common::{InferenceItem, InferenceRequest, testing::{Turn, event}};
-use demi_shared_types::{Block, BlockId, NodeId, Timestamp};
+use demi_provider_common::{InferenceItem, InferenceRequest, Medium, UserPart, testing::{Turn, event}};
+use demi_shared_types::{Block, BlockId, FileExtension, MediaSource, NodeId, Timestamp};
+use demi_agent_store::testing::model_reading;
 use serde_json::json;
 
 use crate::subagents::{closed_phase, fixture, held_said, refused, root, root_receipts, said};
@@ -48,6 +49,7 @@ fn asking(block: BlockId, question: &str) -> SideOf {
         start: 10,
         end: 21,
         quote: "stale cache".into(),
+        picture: None,
         question: question.into(),
         asked_at: Timestamp::UNIX_EPOCH,
     }
@@ -72,7 +74,15 @@ fn before_message(next: &InferenceRequest, text: &str) -> usize {
 
 /// The root replied to its first message once, and its tree is open.
 async fn replied(model: &Model) -> (Fixture, TestClient<TestProduct>) {
+    replied_reading(model, &[]).await
+}
+
+/// [`replied`] with a model that reads `reads`, as one reading pictures.
+async fn replied_reading(model: &Model, reads: &[FileExtension]) -> (Fixture, TestClient<TestProduct>) {
     let fixture = fixture(model, TestProduct::default());
+    if !reads.is_empty() {
+        fixture.resolver.select(model_reading("stub", "test-model", reads));
+    }
     let client = fixture.opened().await;
     client.send(send("m1", FIRST)).await;
     until(|| model.root_requests().len() == 1).await;
@@ -128,7 +138,7 @@ async fn a_side_question_starts_from_the_roots_next_request_and_the_root_hears_o
     assert_eq!(side_request.items[..shared], next.items[..shared]);
     assert_eq!(
         last_user_text(side_request),
-        format!("> stale cache\n\n{SIDE_INSTRUCTION}\n\nWhy is it stale?")
+        format!("> stale cache\n\n{}\n\nWhy is it stale?", side_instruction(false))
     );
     // Its usage is the conversation's, under no agent.
     assert_eq!(side_request.agent, None);
@@ -138,7 +148,7 @@ async fn a_side_question_starts_from_the_roots_next_request_and_the_root_hears_o
     // message, never its instruction or its steps.
     let root_text = request_text(next);
     assert!(root_text.contains("Q: Why is it stale?\nA: Its TTL is an hour."), "{root_text}");
-    assert!(!root_text.contains(SIDE_INSTRUCTION), "{root_text}");
+    assert!(!root_text.contains(&side_instruction(false)), "{root_text}");
     assert!(root_receipts(&fixture).is_empty());
     let record = fixture.store.record(&side()).unwrap();
     assert_eq!((record.parent, record.side.is_some()), (Some(root()), true));
@@ -155,6 +165,42 @@ async fn a_side_question_starts_from_the_roots_next_request_and_the_root_hears_o
         frame,
         ServerFrame::SubagentTranscriptReset { subagent_id, .. } if *subagent_id == side()
     )));
+}
+
+// A side question about a picture of the reply (`comments-and-ask.md` §
+// Images): its first message carries the picture as its quote, then the
+// picture's instruction and the question, after the root's history as a
+// question about words has it. One short tree: a few milliseconds.
+#[tokio::test(flavor = "local")]
+async fn a_side_question_about_a_picture_carries_the_picture_as_its_quote() {
+    let model = Model::default();
+    model.root([said("Here is the chart.")]);
+    model.child(FIRST, [said("The 3G one.")]);
+    let (fixture, _client) = replied_reading(&model, &[FileExtension::Png]).await;
+    let block = last_text(&fixture);
+    let url = "https://example.com/chart.png";
+    let of = SideOf {
+        start: 0,
+        end: 1,
+        quote: "The chart".into(),
+        picture: Some(MediaSource::Url { url: url.into() }),
+        ..asking(block, "Which connection is this?")
+    };
+
+    fixture.server.ask(&conversation(), side(), of).await.expect("the side question starts");
+    until(|| closed_phase(&fixture, &side()).is_some()).await;
+
+    let asked = model.requests_of(FIRST);
+    let Some(InferenceItem::UserMessage { content }) = asked[0].items.last() else {
+        panic!("{:#?}", asked[0].items)
+    };
+    assert_eq!(
+        content[..],
+        [
+            UserPart::Image(Medium::Url(url.into())),
+            UserPart::Text(format!("{}\n\nWhich connection is this?", side_instruction(true))),
+        ]
+    );
 }
 
 // A side question runs while the root works, and the user's Stop of the

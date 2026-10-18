@@ -12,7 +12,7 @@
 use std::collections::BTreeSet;
 
 use demi_agent_store::CheckpointState;
-use demi_agent_store::media::content_references;
+use demi_agent_store::media::{comment_references, content_references};
 use demi_shared_types::{BlobRef, Timestamp};
 use demi_web_api_protocol::ids::{ConversationId, UserId};
 use rusqlite::{Connection, params};
@@ -126,6 +126,7 @@ pub fn conversation_blobs(connection: &Connection) -> Result<BTreeSet<BlobRef>, 
         let state: CheckpointState = json("nodes", "state", &row.get::<_, String>(0)?)?;
         for queued in &state.queue {
             blobs.extend(content_references(&queued.content).cloned());
+            blobs.extend(comment_references(&queued.comments).cloned());
         }
     }
     blobs.extend(

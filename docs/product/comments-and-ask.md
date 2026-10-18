@@ -21,14 +21,41 @@ user's own messages, tool calls and the reply's code blocks' controls offer
 none; text in a code block can be commented on.
 
 **Comment** opens a small box under the selection, a field, *Add a comment*,
-and a send button: Return saves, Shift-Return makes a new line, Escape
-cancels. A saved comment marks its text with a yellow tint and a solid yellow
+and two buttons, as GitHub's review offers *Add single comment* beside
+*Start a review*: **Comment**, the default, which adds the comment to the
+waiting ones, and **Send Now**, which sends a message holding this comment
+alone at once. Return comments, Command-Return (Control-Return elsewhere)
+sends now, Shift-Return makes a new line, Escape cancels. Send Now leaves
+the other waiting comments and the typed draft as they are, and while the
+agent works it steers or waits as the composer's send would
+([Steer or queue](turns.md#steer-or-queue)). A saved comment marks its text with a yellow tint and a solid yellow
 underline and puts a comment mark in the reply's right margin at that line.
 Pointing at the text or the mark shows a card with the comment as text and
 ghost **Edit** and **Delete** buttons at its right end; a click on the text
 edits nothing, and Edit turns the card into the field with **Save** and
 **Cancel**. On a phone, a tap on the text or the mark opens the card as a
 sheet.
+
+### Images
+
+A picture in the agent's reply, an image it showed from the Host, an
+attachment or a picture its Markdown drew, takes comments and side questions
+as its words do. Its menu, on a right-click or a phone's long press, holds
+*Copy Image* and *Save Image*, then **Comment**, **Ask** and **Send to
+Conversation** ([Context menus](web-application.md#context-menus)). Comment
+opens the same box under the picture; a saved comment outlines the picture in
+yellow and puts its mark in the margin at the picture's top. The comment
+points at the picture by its block and its place among the block's pictures,
+and keeps the picture itself as what it quotes, its alt text, file name or
+the end of its address as the quote's words: an attachment's picture by the
+attachment it already is, a Host image's bytes as they were when commented
+on, since the file may change, and a picture from the web as its bytes when
+its site lets the page read them, otherwise by its address, so the bubble shows a small
+copy of it as its quote, and the model reads the picture, as an image the
+message carries, and then the comment. Ask on a picture starts a side
+question whose first message carries the picture as its quote. Send to
+Conversation adds the picture to the other conversation's draft as an
+attachment. A video or a sound takes none of these yet.
 
 ## Waiting comments
 

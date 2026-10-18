@@ -8,7 +8,7 @@ import type { ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
 import { heldTranscript } from '@demicodes/web-ui/transport/protocol'
 import { askAnswer, askFailure, askHistory, askMessage, askScript, askStep, type AskScript } from '../fixtures/asks'
-import { COMMENTED_REPLY_ID, commentedConversation } from '../fixtures/comments'
+import { COMMENTED_REPLY_ID, REPLY_PICTURE, REPLY_PICTURE_SOURCE, commentedConversation } from '../fixtures/comments'
 import { WORKSPACE_ROOT } from '../fixtures/workspace'
 import { useTurnFlow } from '../turn-flow'
 import GalleryComposer from './GalleryComposer.vue'
@@ -22,11 +22,14 @@ import GalleryComposer from './GalleryComposer.vue'
  * follow-up, × folds the card into the margin's mark, the mark or the words
  * open it again, ↗ opens the whole side conversation in the subagent
  * window, and a failure's Retry runs the turn again. The answers are
- * scripted and arrive step by step; nothing reaches a backend. `seed` pins
- * a state, and every control still acts from it.
+ * scripted and arrive step by step; nothing reaches a backend. A picture of
+ * the reply takes a side question from its menu (right-click), outlined in
+ * purple, and the side conversation's first message carries the picture
+ * (`comments-and-ask.md` § Images). `seed` pins a state, and every control
+ * still acts from it.
  */
 const props = defineProps<{
-  seed: 'asking' | 'working' | 'answered' | 'follow-up' | 'folded' | 'failed' | 'live'
+  seed: 'asking' | 'working' | 'answered' | 'follow-up' | 'folded' | 'failed' | 'picture' | 'live'
 }>()
 
 const flow = useTurnFlow({ id: `asks-${props.seed}`, title: 'Slow uploads', cwd: WORKSPACE_ROOT, blocks: commentedConversation() })
@@ -43,6 +46,11 @@ const commenting: ReplyCommenting = {
   add: (comment) => (comments.value = [...comments.value, comment]),
   edit: (id, text) => (comments.value = comments.value.map((each) => (each.id === id ? { ...each, text } : each))),
   remove: (id) => (comments.value = comments.value.filter((each) => each.id !== id)),
+  // A message holding this comment alone, as the product's composer would send it.
+  sendNow: (comment) => {
+    const running = session.phase === 'running' || flow.startingTurn.value
+    ;(running ? flow.steer : flow.turn)([], { text: '', attachments: [] }, [comment])
+  },
 }
 
 /** A side question of the specimen: its record, its transcript, and the script its answers follow. */
@@ -107,7 +115,7 @@ function start(question: NewSideQuestion): GallerySide {
     script: askScript(question.question, asked++),
     turns: 1,
   }
-  side.blocks.push(askMessage(question.id, 0, question.quote, question.question))
+  side.blocks.push(askMessage(question.id, 0, question.quote, question.question, question.picture ?? null))
   sides.value = [...sides.value, side]
   return sideOf(question.id)!
 }
@@ -153,7 +161,9 @@ const asking: ReplyAsking = {
 /** The pinned state: the question on the reply's words, at the point `seed` names. */
 function applySeed(anchor: { start: number; end: number }): void {
   const quote = 'the same 30-second timeout'
-  const side = start({ id: `ask-${props.seed}`, blockId: COMMENTED_REPLY_ID, ...anchor, quote, question: 'Why is the timeout the same for uploads?' })
+  const side = props.seed === 'picture'
+    ? start({ id: 'ask-picture', blockId: COMMENTED_REPLY_ID, ...REPLY_PICTURE, picture: REPLY_PICTURE_SOURCE, question: 'Which connection was this measured on?' })
+    : start({ id: `ask-${props.seed}`, blockId: COMMENTED_REPLY_ID, ...anchor, quote, question: 'Why is the timeout the same for uploads?' })
   const id = side.question.id
   if (props.seed === 'asking') {
     side.working = true

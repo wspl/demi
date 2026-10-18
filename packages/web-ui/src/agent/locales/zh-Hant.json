@@ -7,7 +7,9 @@
     "remove": "移除註解",
     "sent": "已傳送",
     "writeFirst": "請先輸入註解。",
-    "title": "註解"
+    "title": "註解",
+    "sendNow": "立即傳送",
+    "pictureFailed": "無法評論圖片"
   },
   "ask": {
     "ask": "提問",
@@ -18,7 +20,8 @@
     "collapse": "收合",
     "expand": "展開",
     "thinking": "思考中…",
-    "retry": "重試"
+    "retry": "重試",
+    "pictureFailed": "無法就圖片提問"
   },
   "transcript": {
     "accountSwitch": {
@@ -157,7 +160,8 @@
     },
     "copyMessage": "複製訊息",
     "sendToConversation": "傳送到對話",
-    "sendToNew": "新對話"
+    "sendToNew": "新對話",
+    "sendFailed": "無法傳送到對話"
   },
   "subagents": {
     "mainAgent": "主智慧體",

@@ -18,6 +18,8 @@ use crate::conversations::{
     summaries,
 };
 use crate::support::{Session, TestBackend, eventually, Harness};
+use crate::uploads::{png, upload};
+use base64::{Engine, prelude::BASE64_STANDARD};
 
 const SIDE: &str = "5b0e7c1a-2f3d-4e6a-9b8c-7d6e5f4a3b2c";
 
@@ -163,6 +165,59 @@ async fn a_side_question_is_answered_beside_the_conversation_and_kept_with_its_r
     let backend = harness.start_at(address).await;
     let kept = listed(&backend, &master, FIRST).await.side_questions;
     assert_eq!(kept, [folded]);
+}
+
+// The user asks about a picture of the reply (`comments-and-ask.md` §
+// Images): the side's request carries the picture before the question, and
+// the listed side question keeps it with its place among the block's
+// pictures. A backend with a mock vendor: under a second.
+#[tokio::test]
+async fn a_side_question_about_a_picture_sends_the_picture_and_keeps_it() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(answer(&["Here is the chart."], 1, 1));
+    socket.chat("m1", "Show me the chart.").await;
+    let reply = socket
+        .live()
+        .await
+        .iter()
+        .rev()
+        .find(|block| matches!(block, Block::Text(_)))
+        .expect("the agent replied")
+        .id()
+        .to_string();
+
+    vendor.respond(answer(&["The 3G one."], 1, 1));
+    // The picture is a blob of the user's, as the page keeps one.
+    let chart = png(1);
+    let kept = upload(&backend, &master, "chart.png", "image/png", &chart).await;
+    let picture = json!({ "type": "ref", "ref": kept.sha256, "mediaType": "image/png" });
+    let asked = backend
+        .post(
+            &format!("/api/conversations/{FIRST}/side-questions"),
+            Some(&master),
+            json!({ "id": SIDE, "blockId": reply, "start": 0, "end": 1, "quote": "The chart", "picture": picture, "question": "Which connection?" }),
+        )
+        .await;
+    assert_eq!(asked.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&asked.body));
+    eventually("the side question answers", || async {
+        last_text(&agent_history(&backend, &master, FIRST, Some(SIDE)).await.0) == "The 3G one."
+    })
+    .await;
+    let side_body = body(&vendor.requests()[1]);
+    let last = side_body["messages"].as_array().unwrap().last().unwrap().clone();
+    assert_eq!(last["content"][0]["type"], "image", "{last}");
+    assert_eq!(last["content"][0]["source"]["data"], BASE64_STANDARD.encode(&chart), "{last}");
+    assert!(last["content"][1]["text"].as_str().unwrap().ends_with("Which connection?"), "{last}");
+    let kept = listed(&backend, &master, FIRST).await.side_questions;
+    assert_eq!(serde_json::to_value(&kept[0].picture).unwrap(), picture);
+    backend.close().await;
 }
 
 /// A Responses stream that answers `text`.

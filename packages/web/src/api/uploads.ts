@@ -1,5 +1,7 @@
 import type { ClaimFile, UploadedFile, UploadFile } from '@demicodes/web-ui/agent/message-input/attachments'
+import { readImage } from '@demicodes/web-ui/agent/message-editor/intake'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
+import type { KeepPicture } from '@demicodes/web-ui/agent/comments/pictures'
 import { coded, environmental } from '@demicodes/web-ui/infra/errors'
 import { apiError, apiRequest, apiUrl, invalidResponse, readResponse, untilReached } from './client'
 import { type AttachmentDto, attachmentAnswerSchema, attachmentCheckAnswerSchema } from './generated/web-api'
@@ -182,4 +184,22 @@ export const uploadAttachment: UploadFile = async (file, options) => {
     throw invalidResponse(sent.error)
   }
   return uploadedFile(sent.data.attachment)
+}
+
+/**
+ * Keeps a picture the page shows, a Host image's bytes at the version it
+ * shows or a picture of the web the page can read, as a blob of the user's
+ * (`comments-and-ask.md` § Images): an upload of its bytes, which sends none
+ * the user holds already. A comment and a side question quote it so, and
+ * Send to Conversation adds it to another draft.
+ */
+export const keepPicture: KeepPicture = async (src, name) => {
+  // Read as a pasted image is: the page's sign-in only for its own address, within a bounded time.
+  const bytes = await readImage(src)
+  if (!bytes) {
+    throw new Error('The page cannot read this picture.')
+  }
+  const file = new File([bytes], name, { type: bytes.type })
+  const upload = await uploadAttachment(file, { signal: new AbortController().signal, progress: () => {} })
+  return { sha256: upload.sha256, mediaType: upload.mediaType }
 }

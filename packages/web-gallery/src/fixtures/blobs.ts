@@ -1,6 +1,7 @@
 import type { EditCopies } from '@demicodes/protocol'
 import type { BlobUrl } from '@demicodes/web-ui/agent/media-source'
 import type { ReadCallChange } from '@demicodes/web-ui/files/changes'
+import type { KeepPicture } from '@demicodes/web-ui/agent/comments/pictures'
 
 /**
  * The gallery's stand-in for the backend's blob route: fixture files under
@@ -67,6 +68,16 @@ export const missingBlob = '0e'.repeat(32)
 
 /** Where a blob loads from in the gallery; one it does not hold fails to load at once. */
 export const galleryBlobUrl: BlobUrl = (ref) => blobs.get(ref) ?? 'data:,'
+
+/**
+ * The gallery's stand-in for keeping a picture as a blob of the user's
+ * (`KeepPicture`): its address under a made-up name, from its address, as
+ * content addressing names bytes, which the blob route then serves.
+ */
+export const keepGalleryPicture: KeepPicture = async (src) => {
+  const ref = [...src].reduce((hash, char) => (hash * 31 + char.charCodeAt(0)) >>> 0, 7).toString(16).padStart(8, '0').repeat(8)
+  return { sha256: fixture(ref, src), mediaType: 'image/png' }
+}
 
 /** Whether the gallery's blob route holds `ref`, as the user's blobs hold a file they sent. */
 export function galleryHoldsBlob(ref: string): boolean {

@@ -219,7 +219,7 @@ A draft is `{ revision, text, files, comments, replaced }`:
 | `revision` | How many times the draft changed: 0 before its first save, one more with every save, restore and dismissal |
 | `text` | The message's Markdown, with the attachment mark U+FFFC where each file's capsule stands |
 | `files` | The files in the order of their marks: an upload as `{ type: "upload", ref, fileName, mediaType, sha256, snippet? }`, the last three from its record, or a file on a paired device as `{ type: "remote_file", deviceId, path }` |
-| `comments` | The waiting comments, in the order they were saved, which the page shows and sends in reading order: `{ id, blockId, start, end, quote, text }`, the reply's text block, the selection's character offsets in its rendered text, the text it quotes and the comment ([Comments and side questions](comments-and-ask.md)) |
+| `comments` | The waiting comments, in the order they were saved, which the page shows and sends in reading order, by block and then `at`, where the comment stands in its block's text: a comment on words has its `start` there, a comment on a picture the length of the block's text before the picture, and a picture comes before words at the same place; a comment on a picture also carries `picture`, a `MediaSource`, and its `start` is the picture's place among its block's pictures, counting a picture still loading, `end` one more: `{ id, blockId, start, end, quote, text }`, the reply's text block, the selection's character offsets in its rendered text, the text it quotes and the comment ([Comments and side questions](comments-and-ask.md)) |
 | `replaced` | The version a save replaced without having been built on it, `{ revision, text, files, comments }` with the revision it had as the draft, or null |
 
 `GET /api/conversations/:id/draft` answers `{ draft }`; a conversation that
@@ -347,7 +347,8 @@ GET /api/conversations/c_81/side-questions
 ```
 
 The list is in the order asked; `title` is null until the small model names
-it. `POST /api/conversations/:id/side-questions` with `{ id, blockId, start,
+it. A side question about a picture carries `picture`, a `MediaSource`,
+null for words; its POST carries it too. `POST /api/conversations/:id/side-questions` with `{ id, blockId, start,
 end, quote, question }` asks one, the page choosing the `id`, and answers 201
 `{ sideQuestion }`; the same request again answers 200 with the same one, so
 a page that lost the answer sends it again safely. `PATCH

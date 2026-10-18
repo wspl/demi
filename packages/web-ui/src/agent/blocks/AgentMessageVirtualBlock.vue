@@ -136,7 +136,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       :content="block.content"
       :comments="block.comments"
       :origin="originOf(block.automation)"
-      :brief="childBrief(transcript?.node ?? null, block.content)"
+      :brief="block.comments?.length ? null : childBrief(transcript?.node ?? null, block.content)"
       :editable="editable"
       :versions="versions"
       @edit="emit('editUser', block.id)"

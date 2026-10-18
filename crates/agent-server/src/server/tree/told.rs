@@ -68,10 +68,15 @@ fn text_of(content: &[UserContentBlock]) -> String {
 }
 
 /// One side question's part of the block: its quoted words on one line,
-/// then each of `pairs` as its question and answer.
-fn section(quote: &str, pairs: &[(String, String)]) -> String {
-    let quote = quote.split_whitespace().collect::<Vec<_>>().join(" ");
-    let mut text = format!("On \"{quote}\":");
+/// or the picture it asks of by its alt text, then each of `pairs` as its
+/// question and answer.
+fn section(of: &SideOf, pairs: &[(String, String)]) -> String {
+    let quote = of.quote.split_whitespace().collect::<Vec<_>>().join(" ");
+    // A picture is named by its alt text, which a reader without it reads.
+    let mut text = match of.picture {
+        None => format!("On \"{quote}\":"),
+        Some(_) => format!("On the picture \"{quote}\":"),
+    };
     for (question, answer) in pairs {
         text.push_str(&format!("\nQ: {question}\nA: {answer}"));
     }
@@ -88,7 +93,7 @@ fn told(asked: &Asked, seen: &[&str]) -> usize {
         };
         let rest = asked.pairs.len() - count;
         let more = (1..=rest).rev().find(|&more| {
-            let told = format!("\n\n{}", section(&asked.of.quote, &asked.pairs[count..count + more]));
+            let told = format!("\n\n{}", section(&asked.of, &asked.pairs[count..count + more]));
             sections.ends_with(&told) || sections.contains(&format!("{told}\n\n"))
         });
         count += more.unwrap_or(0);
@@ -103,7 +108,7 @@ pub(super) fn untold(asked: &[Asked], seen: &[&str]) -> Option<String> {
         .iter()
         .filter_map(|asked| {
             let count = told(asked, seen);
-            (count < asked.pairs.len()).then(|| section(&asked.of.quote, &asked.pairs[count..]))
+            (count < asked.pairs.len()).then(|| section(&asked.of, &asked.pairs[count..]))
         })
         .collect();
     (!sections.is_empty()).then(|| format!("{TOLD}\n\n{}", sections.join("\n\n")))

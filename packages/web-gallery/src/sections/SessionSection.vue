@@ -141,6 +141,7 @@ import GalleryStreamingText from '../components/GalleryStreamingText.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryComments from '../components/GalleryComments.vue'
 import GalleryAsks from '../components/GalleryAsks.vue'
+import GalleryCommentBox from '../components/GalleryCommentBox.vue'
 import GalleryPhoneFrame from '../components/GalleryPhoneFrame.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
 import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
@@ -3370,6 +3371,19 @@ onBeforeUnmount(() => {
           <GalleryComments seed="sent" />
         </div>
       </GallerySection>
+      <GallerySection title="Comment Box" note="The box a new comment is written in: Comment, the default, adds it to the waiting comments (Return); Send Now sends a message holding this comment alone at once (⌘Return, Control-Return elsewhere), leaving the other waiting comments and the typed draft as they are, and steering or waiting in the queue while the agent works. Shift-Return makes a new line, Escape cancels. A side question's box keeps its single send.">
+        <GalleryCommentBox />
+      </GallerySection>
+      <GallerySection title="Comment on a Picture" note="A picture in the reply takes a comment from its menu (right-click, or a long press on a phone): Copy Image and Save Image, then Comment, Ask and Send to Conversation. The comment outlines the picture yellow and puts its mark in the margin at the picture's top; pointing at the picture or the mark shows the comment. It points at the picture by its block and its place among the block's pictures, and keeps the picture itself as its quote.">
+        <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
+          <GalleryComments seed="picture-waiting" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Sent Comment on a Picture" note="A message sent with a comment on a picture: its bubble shows a small copy of the picture as the quote, then the comment; the model reads the picture as an image the message carries, then the comment. The picture's outline stays, dimmer.">
+        <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
+          <GalleryComments seed="picture-sent" />
+        </div>
+      </GallerySection>
       <GallerySection title="Ask" note="A side question on a reply's words (`comments-and-ask.md` § Side questions), live from scratch: select words of the reply and choose Ask in the toolbar, after Comment, write a question and press Return. The words turn purple with a purple underline, and a card opens under their block on the page's background, its border the line color: a purple question mark, the title in secondary text, Ask until the small model's title arrives, and two ghost icon buttons, ↗ Open Full Conversation and × Collapse; then the question in bold and one status line while the answer is made, the step it runs, and the short answer. The conversation's own agent never learns of it. Hovering the words deepens them. The answers are scripted.">
         <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="live" />
@@ -3403,6 +3417,11 @@ onBeforeUnmount(() => {
       <GallerySection title="Ask · Failed" note="A failed answer shows the failure's words and its ID, as a turn's failure does, with Retry, which runs the turn again.">
         <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
           <GalleryAsks seed="failed" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Ask on a Picture" note="Ask from a picture's menu starts a side question whose first message carries the picture as its quote: the picture is outlined in purple and the card opens under it; ↗ shows the picture and the question as the side conversation's first message.">
+        <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
+          <GalleryAsks seed="picture" />
         </div>
       </GallerySection>
       <GallerySection title="Ask on a Phone" note="On a phone the selection's toolbar holds Comment, Ask and Send to Conversation; the card spans the reply's width, and ↗ opens the side conversation full screen. Each phone is live.">

@@ -498,8 +498,10 @@ async fn a_shared_message_keeps_the_comments_it_was_sent_with() {
         id: "c1".into(),
         block_id: reply,
         start: 0,
+        at: 0,
         end: 25,
         quote: "Upload in chunks of 4 MB.".into(),
+        picture: None,
         text: "4 MB feels large on 2G.".into(),
     };
     vendor.respond(answer(&["Starting at 1 MB."], 10, 2));

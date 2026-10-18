@@ -21,6 +21,7 @@ import UpdateFailedScreen from '@demicodes/web-ui/ui/UpdateFailedScreen.vue'
 import ConnectionBanner from '@demicodes/web-ui/ui/ConnectionBanner.vue'
 import MediaViewer from '@demicodes/web-ui/files/MediaViewer.vue'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
+import { provideKeepPicture } from '@demicodes/web-ui/agent/comments/pictures'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import DevicePairingDialog from '@demicodes/web-ui/devices/DevicePairingDialog.vue'
 import HandoffDialog from '@demicodes/web-ui/auth/HandoffDialog.vue'
@@ -43,7 +44,7 @@ import { useWorkPanel } from './conversation/work'
 import { useResources } from './state/resources'
 import { useSession } from './auth/session'
 import { claimDevice, useInstallCommands } from './devices/pairing'
-import { blobUrl } from './api/uploads'
+import { blobUrl, keepPicture } from './api/uploads'
 import { providePageHost } from '@demicodes/web-ui/plugins/page'
 import { productPageHost } from './plugins/host'
 import { useProduct } from './state/product'
@@ -53,6 +54,7 @@ import { useSessions } from './auth/handoff'
 import { usePasskeyOffer } from './auth/passkey-offer'
 import PasswordChoice from './auth/PasswordChoice.vue'
 provideBlobUrl(blobUrl)
+provideKeepPicture(keepPicture)
 /** How many recent conversations the search window lists before the user types. */
 const RECENT_CONVERSATIONS = 20
 const product = useProduct()

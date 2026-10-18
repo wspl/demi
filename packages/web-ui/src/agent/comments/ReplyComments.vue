@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, shallowRef, watch } from 'vue'
 import { MessageCircleQuestionMark, MessageSquare, MessageSquarePlus } from '@lucide/vue'
-import type { MessageComment } from '@demicodes/protocol'
+import type { MediaSource, MessageComment } from '@demicodes/protocol'
 import Popover from '../../ui/Popover.vue'
 import SendField from '../../ui/SendField.vue'
 import Tooltip from '../../ui/Tooltip.vue'
@@ -9,7 +9,10 @@ import { appOverlayStore } from '../../overlay/appOverlay'
 import { usePhone } from '../../ui/phone'
 import type { ContextMenuEntry } from '../../ui/context-menu'
 import { t } from '../locales/text'
-import { anchorOf, liveOf, rangeHas, rangeOf, staticOf, type TextAnchor } from './anchors'
+import { reportError } from '../../infra/errors'
+import { anchorOf, liveOf, pictureAnchor, pictureOf, pictureQuote, rangeHas, rangeOf, staticOf, type TextAnchor } from './anchors'
+import { pictureSource, useKeepPicture } from './pictures'
+import CommentField from './CommentField.vue'
 import type { MarkedComment, ReplyCommenting } from './comments'
 import { publishMarks, type MarkKind } from './highlights'
 import CommentItem from './CommentItem.vue'
@@ -24,7 +27,9 @@ import { cardContent, pageToRead, readKey, type ReplyAsking, type ShownSideQuest
  * pointer or pinned by a click, and the box a new one is written in under
  * its selection; each side question's words in purple, its card set into
  * the reply after the block holding the words' end, folded into a purple
- * mark in the margin. A reply is found by its text block's id
+ * mark in the margin. A comment or a side question on a picture outlines
+ * the picture in its color, its margin mark at the picture's top
+ * (`comments-and-ask.md` § Images). A reply is found by its text block's id
  * (`data-reply-text`), so the marks follow the rows the list draws as it
  * scrolls; a row it does not draw shows none.
  */
@@ -70,33 +75,91 @@ function replyRoot(blockId: string): HTMLElement | null {
   return props.root?.querySelector<HTMLElement>(`[data-reply-text="${CSS.escape(blockId)}"] .markdown-body`) ?? null
 }
 
-function liveRange(item: { blockId: string } & TextAnchor): Range | null {
+/** What a comment, a side question or the box stands on: words, or a picture by its place. */
+type Placed = { blockId: string; quote: string; picture?: unknown } & TextAnchor
+
+/** The live range of `item` as its reply renders now: its words, or the picture it names, whole. */
+function liveRange(item: Placed): Range | null {
   const at = replyRoot(item.blockId)
-  return at ? rangeOf(at, item) : null
+  if (!at)
+    return null
+  if (!item.picture)
+    return rangeOf(at, item)
+  const image = pictureOf(at, item, item.quote)
+  if (!image)
+    return null
+  const range = document.createRange()
+  range.selectNode(image)
+  return range
+}
+
+/** `item`'s live range while the reply still holds what it quotes: its words, or its picture, which `liveRange` checks. */
+function heldRange(item: Placed): Range | null {
+  const range = liveRange(item)
+  return range && (item.picture || range.toString() === item.quote) ? range : null
 }
 
 // --- The box under a selection, a new comment or a side question.
 
-const box = shallowRef<{ kind: 'comment' | 'ask'; blockId: string; quote: string } & TextAnchor | null>(null)
+/** The box: on words, or on a picture (`picture`), which it outlines as a comment's. */
+const box = shallowRef<{ kind: 'comment' | 'ask'; blockId: string; quote: string; picture: boolean; at: number } & TextAnchor | null>(null)
 const boxText = ref('')
+/** While the box's picture is being kept: the box stays open with its text meanwhile, and after a failure. */
+const boxBusy = ref(false)
+const keepPicture = useKeepPicture()
 
-function openBox(kind: 'comment' | 'ask', blockId: string, anchor: TextAnchor, quote: string): void {
+/** Opens the box on `anchor`, whose `at` is where it stands in the block's reading order. */
+function openBox(kind: 'comment' | 'ask', blockId: string, anchor: TextAnchor & { at: number }, quote: string, picture = false): void {
   window.getSelection()?.removeAllRanges()
   closeCard()
   boxText.value = ''
-  box.value = { kind, blockId, quote, ...anchor }
+  box.value = { kind, blockId, quote, picture, ...anchor }
 }
 
-function sendBox(text: string): void {
+/**
+ * Sends what the box holds: a side question, or a comment, which waits with
+ * the others, or, by Send Now, goes alone at once. A picture goes as where
+ * its bytes are, which for a Host image the page keeps first.
+ */
+async function sendBox(text: string, now = false): Promise<void> {
   const opened = box.value
-  box.value = null
-  if (!opened)
+  if (!opened || boxBusy.value)
     return
   const placed = { blockId: opened.blockId, start: opened.start, end: opened.end, quote: opened.quote }
-  if (opened.kind === 'ask')
-    props.asking?.ask({ id: crypto.randomUUID(), ...placed, question: text })
+  let picture: MediaSource | null = null
+  if (opened.picture) {
+    // The box keeps its text until the picture is kept; a failure leaves both, and says why.
+    boxBusy.value = true
+    try {
+      const at = replyRoot(opened.blockId)
+      const image = at ? pictureOf(at, opened, opened.quote) : null
+      if (!image)
+        throw new Error('The picture is no longer in the reply.')
+      picture = await pictureSource(image, keepPicture)
+    } catch (error) {
+      // A failure not about what was typed is a toast; the box keeps the text to send again.
+      if (box.value === opened)
+        reportError(t(opened.kind === 'ask' ? 'ask.pictureFailed' : 'comments.pictureFailed'), error, { userVisible: true })
+      return
+    } finally {
+      boxBusy.value = false
+    }
+    // Closed or opened elsewhere meanwhile: what it held is gone.
+    if (box.value !== opened)
+      return
+  }
+  box.value = null
+  boxText.value = ''
+  const pictured = picture ? { picture } : {}
+  if (opened.kind === 'ask') {
+    props.asking?.ask({ id: crypto.randomUUID(), ...placed, ...pictured, question: text })
+    return
+  }
+  const comment = { id: crypto.randomUUID(), ...placed, at: opened.at, ...pictured, text }
+  if (now && props.commenting.sendNow)
+    props.commenting.sendNow(comment)
   else
-    props.commenting.add({ id: crypto.randomUUID(), ...placed, text })
+    props.commenting.add(comment)
 }
 
 /**
@@ -129,12 +192,37 @@ function selectionTools(reply: { blockId: string; root: HTMLElement }, streaming
       return streaming()
     },
     disabledReason: t('comments.waitReply'),
-    run: () => openBox(kind, reply.blockId, anchor, quote),
+    run: () => openBox(kind, reply.blockId, { ...anchor, at: anchor.start }, quote),
   })
   return props.asking ? [tool('comment'), tool('ask')] : [tool('comment')]
 }
 
-defineExpose({ selectionTools })
+/**
+ * Comment and Ask for the picture `image` of the reply `reply`, the text
+ * block `blockId` whose rendered text is `root` (`comments-and-ask.md`
+ * § Images); disabled while the reply is being written, as for its words.
+ * None for a picture the reply does not hold, as one in a side question's
+ * card.
+ */
+function pictureTools(reply: { blockId: string; root: HTMLElement }, image: HTMLImageElement, streaming: () => boolean): ContextMenuEntry[] {
+  const at = reply.root.querySelector<HTMLElement>('.markdown-body')
+  const anchor = at ? pictureAnchor(at, image) : null
+  if (!anchor)
+    return []
+  const quote = pictureQuote(image)
+  const tool = (kind: 'comment' | 'ask') => ({
+    icon: kind === 'comment' ? MessageSquarePlus : MessageCircleQuestionMark,
+    label: kind === 'comment' ? t('comments.comment') : t('ask.ask'),
+    get disabled() {
+      return streaming()
+    },
+    disabledReason: t('comments.waitReply'),
+    run: () => openBox(kind, reply.blockId, anchor, quote, true),
+  })
+  return props.asking ? [tool('comment'), tool('ask')] : [tool('comment')]
+}
+
+defineExpose({ selectionTools, pictureTools })
 
 // --- The card: the comments under the pointer, or pinned open by a click.
 
@@ -306,6 +394,8 @@ watch(questions, (shown) => {
 
 const layer = ref<HTMLElement>()
 const markers = shallowRef<MarkerGroup[]>([])
+/** The outline of each picture a comment, a side question or the box stands on, over the list. */
+const outlines = shallowRef<{ key: string; kind: MarkKind; top: number; left: number; width: number; height: number }[]>([])
 const boxSpot = shallowRef<Spot | null>(null)
 /** Each mark's live range, for the pointer to find it. */
 /** Each mark's words, static (`liveOf`): a move of the list in the page leaves them where they are. */
@@ -337,6 +427,17 @@ function measure(): void {
     const rect = (narrow.value ? rects.at(-1) : rects[0]) ?? range.getBoundingClientRect()
     return { top: rect.top - base.top, height: rect.height }
   }
+  // A picture's mark stands at its top, a line's height.
+  const at = (range: Range, picture: unknown) => {
+    if (!picture)
+      return line(range)
+    return { top: range.getBoundingClientRect().top - base.top, height: 20 }
+  }
+  const nextOutlines: typeof outlines.value = []
+  const outline = (key: string, kind: MarkKind, range: Range) => {
+    const rect = range.getBoundingClientRect()
+    nextOutlines.push({ key, kind, top: rect.top - base.top, left: rect.left - base.left, width: rect.width, height: rect.height })
+  }
   const groupAt = (spot: { top: number; height: number }) => {
     let group = groups.find((each) => Math.abs(each.top - spot.top) < 6)
     if (!group) {
@@ -347,35 +448,43 @@ function measure(): void {
   }
   const open = card.value?.ids ?? sheet.value?.ids ?? []
   for (const comment of marked.value) {
-    const range = liveRange(comment)
-    // A block that no longer holds the text it quotes shows no mark.
-    if (!range || range.toString() !== comment.quote)
+    // A block that no longer holds the text or the picture it quotes shows no mark.
+    const range = heldRange(comment)
+    if (!range)
       continue
-    ranges[open.includes(comment.id) ? 'comment-active' : comment.sent ? 'comment-sent' : 'comment'].push(range)
+    const kind = open.includes(comment.id) ? 'comment-active' : comment.sent ? 'comment-sent' : 'comment'
+    if (comment.picture)
+      outline(comment.id, kind, range)
+    else
+      ranges[kind].push(range)
     nextHits.push({ id: comment.id, range: staticOf(range) })
-    groupAt(line(range)).comments.push(comment)
+    groupAt(at(range, comment.picture)).comments.push(comment)
   }
-  const placed = questions.value.map((question) => {
-    const live = liveRange(question)
-    // As a comment's: words the block no longer holds show no mark, and no card.
-    return { question, range: live && live.toString() === question.quote ? live : null }
-  })
+  // As a comment's: words or a picture the block no longer holds show no mark, and no card.
+  const placed = questions.value.map((question) => ({ question, range: heldRange(question) }))
   placeHosts(placed)
   for (const { question, range } of placed) {
     if (!range)
       continue
-    ranges[question.id === hoveredAsk.value ? 'ask-active' : 'ask'].push(range)
+    const kind = question.id === hoveredAsk.value ? 'ask-active' : 'ask'
+    if (question.picture)
+      outline(question.id, kind, range)
+    else
+      ranges[kind].push(range)
     nextAskHits.push({ id: question.id, range: staticOf(range) })
     if (question.folded)
-      groupAt(line(range)).asks.push(question)
+      groupAt(at(range, question.picture)).asks.push(question)
   }
   const boxed = box.value ? liveRange(box.value) : null
-  if (boxed)
+  if (boxed && box.value?.picture)
+    outline('box', 'comment-selection', boxed)
+  else if (boxed)
     ranges['comment-selection'].push(boxed)
   boxSpot.value = boxed ? spotUnder(boxed, base, BOX_WIDTH) : null
   hits = nextHits
   askHits = nextAskHits
   markers.value = groups.sort((a, b) => a.top - b.top)
+  outlines.value = nextOutlines
   publishMarks(owner, ranges)
 }
 
@@ -423,7 +532,8 @@ function onPointerLeave(): void {
 }
 
 function onClick(event: MouseEvent): void {
-  if (!window.getSelection()?.isCollapsed || (event.target as Element).closest('[data-reply-comments] > *, [data-ask-card], a, button'))
+  // A picture's click opens it in the viewer, as anywhere; its card shows under the pointer and from its mark.
+  if (!window.getSelection()?.isCollapsed || (event.target as Element).closest('[data-reply-comments] > *, [data-ask-card], a, button, img'))
     return
   const asking = askAt(event.clientX, event.clientY)
   if (asking) {
@@ -526,6 +636,14 @@ const countLabel = (count: number) => t('comments.count', { count }, count)
   <!-- What stands over the replies: the margin's comment marks, the card and the box. -->
   <div ref="layer" data-reply-comments class="pointer-events-none absolute inset-0 z-20">
     <div
+      v-for="frame in outlines"
+      :key="frame.key"
+      :data-picture-outline="frame.kind"
+      class="picture-outline absolute"
+      :class="`picture-outline-${frame.kind}`"
+      :style="{ top: `${frame.top}px`, left: `${frame.left}px`, width: `${frame.width}px`, height: `${frame.height}px` }"
+    />
+    <div
       v-for="group in markers"
       :key="group.key"
       class="pointer-events-auto absolute flex items-center gap-0.5"
@@ -584,14 +702,26 @@ const countLabel = (count: number) => t('comments.count', { count }, count)
       class="pointer-events-auto absolute"
       :style="{ top: `${boxSpot.top}px`, left: `${boxSpot.left}px`, width: `min(${BOX_WIDTH}px, calc(100% - 16px))` }"
     >
+      <CommentField
+        v-if="box.kind === 'comment'"
+        :key="`${box.blockId}-${box.start}`"
+        v-model="boxText"
+        :send-now="commenting.sendNow !== undefined"
+        :busy="boxBusy"
+        @comment="sendBox($event)"
+        @send-now="sendBox($event, true)"
+        @cancel="box = null"
+      />
       <SendField
+        v-else
         :key="`${box.blockId}-${box.start}`"
         v-model="boxText"
         floating
         focus
-        :placeholder="box.kind === 'ask' ? t('ask.placeholder') : t('comments.placeholder')"
-        :send-label="box.kind === 'ask' ? t('ask.ask') : t('comments.comment')"
-        @send="sendBox"
+        :holding="boxBusy"
+        :placeholder="t('ask.placeholder')"
+        :send-label="t('ask.ask')"
+        @send="sendBox($event)"
         @cancel="box = null"
       />
     </div>

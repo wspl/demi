@@ -11,6 +11,7 @@ import { vContextMenu, type ContextMenuDeclaration } from '../../ui/context-menu
 import { answerActions, answerMenuEntries } from '../answer-actions'
 import { quotedWords, sendEntry, useSendTargets } from '../send-to-conversation'
 import { useReplySelectionTools } from '../reply-selection'
+import { pictureWords, useKeepPicture } from '../comments/pictures'
 
 const props = withDefaults(defineProps<{
   /** The text block the reply is, which its selection's tools act on; absent, they offer nothing. */
@@ -36,6 +37,7 @@ const arrivals = useTextArrivals()
 
 const targets = useSendTargets()
 const tools = useReplySelectionTools()
+const keepPicture = useKeepPicture()
 const root = ref<HTMLElement>()
 const { copy } = useCopy(() => props.content)
 
@@ -50,8 +52,13 @@ const menu: ContextMenuDeclaration = {
   text: true,
   // The page's own tools act on the reply in place and come first; Send to Conversation, which opens a submenu, last.
   selectionEntries: (text) => [
-    ...(tools && props.blockId && root.value ? tools({ blockId: props.blockId, root: root.value }, () => props.isStreaming) : []),
+    ...(tools && props.blockId && root.value ? tools.selection({ blockId: props.blockId, root: root.value }, () => props.isStreaming) : []),
     ...(targets ? [sendEntry(targets, () => quotedWords(text))] : []),
+  ],
+  // A picture takes a comment and a side question as words do, and goes to another conversation as a file.
+  pictureEntries: (image) => [
+    ...(tools && props.blockId && root.value ? tools.picture({ blockId: props.blockId, root: root.value }, image, () => props.isStreaming) : []),
+    ...(targets ? [sendEntry(targets, () => pictureWords(image, keepPicture))] : []),
   ],
 }
 </script>

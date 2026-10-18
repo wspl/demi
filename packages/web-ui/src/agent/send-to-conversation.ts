@@ -70,7 +70,7 @@ export function quotedWords(text: string): CopiedMessage {
 }
 
 /** The Send to Conversation row, its submenu the search and the conversations; `words` is read as one is picked. */
-export function sendEntry(targets: SendTargets, words: () => CopiedMessage): ContextMenuEntry {
+export function sendEntry(targets: SendTargets, words: () => CopiedMessage | Promise<CopiedMessage>): ContextMenuEntry {
   return {
     icon: Send,
     label: t('transcript.sendToConversation'),

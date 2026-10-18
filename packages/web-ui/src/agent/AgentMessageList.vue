@@ -160,7 +160,10 @@ const sent = computed(() => [
   ...[...props.pendingSteers, ...props.queue, ...(props.pendingSubmissions ?? [])].flatMap((message) => message.comments ?? []),
 ])
 // A reply's selection offers Comment while the list takes comments.
-provideReplySelectionTools((reply, streaming) => comments.value?.selectionTools(reply, streaming) ?? [])
+provideReplySelectionTools({
+  selection: (reply, streaming) => comments.value?.selectionTools(reply, streaming) ?? [],
+  picture: (reply, image, streaming) => comments.value?.pictureTools(reply, image, streaming) ?? [],
+})
 
 /** Share on the answer the text block `blockId` ends, which its footer's button starts. */
 function answerShare(blockId: string): AnswerShare {

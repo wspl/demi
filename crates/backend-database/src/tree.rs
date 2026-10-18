@@ -183,14 +183,15 @@ impl AgentTreeStore for SqliteTreeStore {
                     )?;
                     if let Some(side) = &record.side {
                         transaction.execute(
-                            "INSERT INTO side_questions (node_id, block_id, start_offset, end_offset, quote, question, asked_at)
-                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                            "INSERT INTO side_questions (node_id, block_id, start_offset, end_offset, quote, picture, question, asked_at)
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                             params![
                                 record.id.as_str(),
                                 side.block.as_str(),
                                 integer(side.start),
                                 integer(side.end),
                                 side.quote,
+                                side.picture.as_ref().map(|picture| serde_json::to_string(picture).expect("a media source serializes")),
                                 side.question,
                                 side.asked_at.as_millisecond(),
                             ],
@@ -857,7 +858,7 @@ fn node_state(
 const NODE_COLUMNS: &str =
     "id, number, parent_id, description, profile, instructions, round, started_at, can_spawn,
      closed_phase, closed_at, result, failure, delivered, forked_from, cwd, cwd_device, cwd_under,
-     context_limit, started_by, side_questions.block_id AS side_block, start_offset, end_offset, quote,
+     context_limit, started_by, side_questions.block_id AS side_block, start_offset, end_offset, quote, picture,
      question, asked_at";
 
 /// The nodes with what a side question's node asks about.
@@ -909,6 +910,7 @@ fn side_of(row: &Row<'_>) -> Result<Option<SideOf>, StorageError> {
         start: decode(TABLE, "start_offset", u64::try_from(row.get::<_, i64>("start_offset")?))?,
         end: decode(TABLE, "end_offset", u64::try_from(row.get::<_, i64>("end_offset")?))?,
         quote: row.get("quote")?,
+        picture: super::side_questions::picture(row, TABLE)?,
         question: row.get("question")?,
         asked_at: instant(row, TABLE, "asked_at")?,
     }))

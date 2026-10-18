@@ -13,11 +13,11 @@ use demi_provider_common::{
     UserPart,
 };
 use demi_shared_types::{
-    comments_markdown,
+    comments_content,
     AgentMessage, AgentMessageEvent, B64Bytes, INSTRUCTIONS_SOURCE, BlobRef, Block, BlockId, CommandReport, CompletionOutcome,
     DocumentSource,
     PermissionOutcome,
-    FileExtension, MediaSource, Model, ModelMediaKind, Timestamp, ToolCallStatus, ToolMediaSource,
+    FileExtension, MediaSource, Model, ModelMediaKind, Timestamp, model_accepts_images, model_accepts_video, ToolCallStatus, ToolMediaSource,
     ToolCallBlock, ToolResultContentBlock, UserContentBlock, WakeupPlacement,
     attachment_tag, char_offset,
     file_extension_support, model_accepts_media_type,
@@ -84,11 +84,8 @@ pub fn replay(request: &RequestView) -> Replay {
         let kept_past_summary = kept.contains(&index);
         match block {
             Block::User(user) => {
-                let lead = user.lead_texts().into_iter().map(|text| bounded(&text));
-                let content = user.content.iter().map(|part| request.user_part(part));
-                items.push(InferenceItem::UserMessage {
-                    content: lead.chain(content).collect(),
-                });
+                let content = user.lead_content().iter().chain(&user.content).map(|part| request.user_part(part)).collect();
+                items.push(InferenceItem::UserMessage { content });
             }
             // The instructions are sent whole (`compaction.md` § Text bounds).
             Block::Context(context) => items.push(InferenceItem::UserMessage {
@@ -106,10 +103,10 @@ pub fn replay(request: &RequestView) -> Replay {
                 });
             }
             Block::Steer(steer) => items.push(InferenceItem::UserSteer {
-                content: comments_markdown(&steer.comments)
-                    .map(|text| bounded(&text))
-                    .into_iter()
-                    .chain(steer.content.iter().map(|part| request.user_part(part)))
+                content: comments_content(&steer.comments)
+                    .iter()
+                    .chain(&steer.content)
+                    .map(|part| request.user_part(part))
                     .collect(),
             }),
             Block::AgentMessage(receipt) => items.push(InferenceItem::UserSteer {
@@ -347,14 +344,27 @@ impl<'a> RequestView<'a> {
     }
 
     /// A message's image or video: its URL, which names no type, since the
-    /// vendor fetches what it names; or its held bytes, or its text.
+    /// vendor fetches what it names, for a model that reads that kind of
+    /// medium at all; or its held bytes; or its text.
     pub(crate) fn medium(
         &self,
         kind: ModelMediaKind,
         source: &MediaSource,
     ) -> Result<Medium, String> {
         match source {
-            MediaSource::Url { url } => Ok(Medium::Url(url.clone())),
+            MediaSource::Url { url } => {
+                let reads = match kind {
+                    ModelMediaKind::Image => model_accepts_images(self.model),
+                    ModelMediaKind::Video => model_accepts_video(self.model),
+                    // A document is never an address.
+                    ModelMediaKind::Document => false,
+                };
+                if reads {
+                    Ok(Medium::Url(url.clone()))
+                } else {
+                    Err(unsent(kind.name(), url, "the model does not accept it"))
+                }
+            }
             MediaSource::Ref {
                 r#ref, media_type, ..
             } => {

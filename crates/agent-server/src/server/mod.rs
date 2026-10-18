@@ -40,7 +40,7 @@ use tokio_util::task::TaskTracker;
 
 pub use connection::{Connection, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
-pub use tree::{AskError, QuiescenceWatch, SIDE_INSTRUCTION, Tree};
+pub use tree::{AskError, QuiescenceWatch, Tree, side_instruction};
 
 use tree::OpenError;
 

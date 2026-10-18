@@ -4,6 +4,7 @@
 //! replaced. Every change reads the row and writes it in one transaction, so
 //! two saves never build on the same revision.
 
+use demi_agent_store::media::comment_references;
 use demi_shared_types::{BlobRef, MessageComment};
 use demi_web_api_protocol::drafts::{
     ConversationDraft, DRAFT_BYTES_MAX, DraftFile, DraftWritten, ReplacedAction, ReplacedDraft,
@@ -340,12 +341,19 @@ pub(crate) fn draft_blobs(
             &row.get::<_, String>(0)?,
         )?);
     }
+    // A file the draft holds, or a picture one of its waiting comments quotes.
     Ok(versions
         .into_iter()
-        .flat_map(|version| version.files)
-        .filter_map(|file| match file {
-            DraftFile::Upload { sha256, .. } => Some(sha256),
-            DraftFile::RemoteFile { .. } => None,
+        .flat_map(|version| {
+            let pictures: Vec<BlobRef> = comment_references(&version.comments).cloned().collect();
+            version
+                .files
+                .into_iter()
+                .filter_map(|file| match file {
+                    DraftFile::Upload { sha256, .. } => Some(sha256),
+                    DraftFile::RemoteFile { .. } => None,
+                })
+                .chain(pictures)
         })
         .collect())
 }

@@ -1,4 +1,4 @@
-import type { Block } from '@demicodes/protocol'
+import type { Block, MediaSource, UserContentBlock } from '@demicodes/protocol'
 import { demoModel, shellView, withEnd } from './blocks'
 import { commentedConversation } from './comments'
 
@@ -16,7 +16,7 @@ export interface AskScript {
   answer: string
 }
 
-/** The scripts of the approved prototype (`proto/comments-and-ask`). */
+/** The scripts of the approved prototype (`proto/comments-and-ask`), and one for a question on the reply's picture. */
 const SCRIPTS: AskScript[] = [
   {
     title: 'Why uploads time out',
@@ -40,10 +40,17 @@ const SCRIPTS: AskScript[] = [
     ],
     answer: 'The server keeps the received chunks in its object store and drops them 24 hours after the last one arrived, not after the first. An upload that keeps making progress never expires.',
   },
+  {
+    title: 'Where the cut-off run was measured',
+    steps: [
+      { description: 'Find the network profile of the upload test', script: 'rg -n "profile" app/e2e/upload.spec.ts', output: "app/e2e/upload.spec.ts:9:  network: profiles.regular3G,\n" },
+    ],
+    answer: 'On the simulated 3G profile of the end-to-end upload test: about 750 kbit/s up, so the 40 MB video needs over seven minutes and the 30-second timeout cuts it off early.',
+  },
 ]
 
 /** Words that pick each script, in the order of `SCRIPTS`. */
-const TOPICS = [/timeout|30|client|why/i, /wait|retr|back ?off|attempt|total/i, /keep|chunk|server|stor|expire|24/i]
+const TOPICS = [/timeout|30|client|why/i, /wait|retr|back ?off|attempt|total/i, /keep|chunk|server|stor|expire|24/i, /connection|measured|picture/i]
 
 /** The script for a question: the one whose topic its words name, else the `index`th in turn. */
 export function askScript(question: string, index: number): AskScript {
@@ -60,8 +67,10 @@ let made = 0
 const at = () => new Date(Date.now() + made++).toISOString()
 
 /** A side question's message, as its transcript keeps it: the first quotes the words before the question. */
-export function askMessage(id: string, index: number, quote: string, question: string): Block {
+export function askMessage(id: string, index: number, quote: string, question: string, picture: MediaSource | null = null): Block {
   const quoted = quote.split('\n').map((line) => `> ${line}`).join('\n')
+  // A side question about a picture carries the picture before the question.
+  const first: UserContentBlock[] = picture ? [{ type: 'image', source: picture }, { type: 'text', text: question }] : [{ type: 'text', text: `${quoted}\n\n${question}` }]
   return {
     type: 'user',
     id: `${id}-q${index}`,
@@ -69,7 +78,7 @@ export function askMessage(id: string, index: number, quote: string, question: s
     turnId: index === 0 ? id : `${id}-turn${index}`,
     createdAt: at(),
     model: demoModel,
-    content: [{ type: 'text', text: index === 0 ? `${quoted}\n\n${question}` : question }],
+    content: index === 0 ? first : [{ type: 'text', text: question }],
     preamble: null,
   }
 }

@@ -33,7 +33,7 @@ use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
 pub(crate) use self::profiles::{Deleted, ListedProfile, ProfileAnswer};
-pub use self::sides::{AskError, SIDE_INSTRUCTION};
+pub use self::sides::{AskError, side_instruction};
 pub(crate) use self::supervisor::{ShownAgent, StartInput, TreeEntry, list_text};
 use self::{live::LiveOutput, sides::Side, supervisor::{Child, Summary}};
 use super::{AgentServer, ResolveError, commands, connection::Outbox};

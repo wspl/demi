@@ -16,16 +16,18 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import GalleryAppearanceMenu from './components/GalleryAppearanceMenu.vue'
 import GalleryLanguageMenu from './components/GalleryLanguageMenu.vue'
 import { useGalleryView } from './gallery-views'
-import { galleryBlobUrl } from './fixtures/blobs'
+import { galleryBlobUrl, keepGalleryPicture } from './fixtures/blobs'
 import { galleryConversationFiles } from './fixtures/message-files'
 import { createGalleryWorkspace } from './fixtures/workspace'
 import { productWould } from './product-would'
 import { provideSendTargets, type SendTargetLook } from '@demicodes/web-ui/agent/send-to-conversation'
+import { provideKeepPicture } from '@demicodes/web-ui/agent/comments/pictures'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { fixtureSearch, searchConversations } from './fixtures/search'
 import { galleryNav } from './router'
 
 provideBlobUrl(galleryBlobUrl)
+provideKeepPicture(keepGalleryPicture)
 // A transcript shown outside a session still names the gallery workspace's
 // files, as a conversation's does; a file a click opens says what the product would do.
 const workspace = createGalleryWorkspace()
