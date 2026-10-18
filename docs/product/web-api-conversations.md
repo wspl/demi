@@ -212,19 +212,20 @@ and the file's capsule moments after each save, and any of them can send the
 message. [Drafts](web-application.md#drafts) says when a page saves and what
 it shows.
 
-A draft is `{ revision, text, files, replaced }`:
+A draft is `{ revision, text, files, comments, replaced }`:
 
 | Field | Meaning |
 | --- | --- |
 | `revision` | How many times the draft changed: 0 before its first save, one more with every save, restore and dismissal |
 | `text` | The message's Markdown, with the attachment mark U+FFFC where each file's capsule stands |
 | `files` | The files in the order of their marks: an upload as `{ type: "upload", ref, fileName, mediaType, sha256, snippet? }`, the last three from its record, or a file on a paired device as `{ type: "remote_file", deviceId, path }` |
-| `replaced` | The version a save replaced without having been built on it, `{ revision, text, files }` with the revision it had as the draft, or null |
+| `comments` | The waiting comments, in the order they were saved, which the page shows and sends in reading order: `{ id, blockId, start, end, quote, text }`, the reply's text block, the selection's character offsets in its rendered text, the text it quotes and the comment ([Comments and side questions](comments-and-ask.md)) |
+| `replaced` | The version a save replaced without having been built on it, `{ revision, text, files, comments }` with the revision it had as the draft, or null |
 
 `GET /api/conversations/:id/draft` answers `{ draft }`; a conversation that
 never saved one has revision 0, empty text, no files and no replaced version.
 
-`PUT` takes `{ base, text, files }` and answers `{ draft }` as saved. `base` is
+`PUT` takes `{ base, text, files, comments }` and answers `{ draft }` as saved. `base` is
 the revision the page's text was built on. The request names an upload as a
 frame does, `{ type: "upload", ref, fileName }`, and a remote file as the
 frame does; the backend adds the upload's media type, content hash and

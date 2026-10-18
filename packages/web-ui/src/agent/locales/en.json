@@ -1,4 +1,14 @@
 {
+  "comments": {
+    "comment": "Comment",
+    "placeholder": "Add a comment",
+    "waitReply": "Wait for this reply to finish.",
+    "count": "{count} Comment | {count} Comments",
+    "remove": "Remove Comment | Remove Comments",
+    "sent": "Sent",
+    "writeFirst": "Write a comment first.",
+    "title": "Comments"
+  },
   "transcript": {
     "accountSwitch": {
       "usage": "{from} reached its usage limit. Continuing with {to}.",

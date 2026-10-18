@@ -225,6 +225,7 @@ async fn a_human_steer_waits_for_the_window_and_an_agent_message_ends_it() {
         let mut client = fixture.opened().await;
         client
             .send(ClientFrame::Send {
+                comments: Vec::new(),
                 message_id: "message-1".try_into().unwrap(),
                 content: client_text("Wait for the flag."),
             })
@@ -234,6 +235,7 @@ async fn a_human_steer_waits_for_the_window_and_an_agent_message_ends_it() {
         client.next_until(|frame| shows_call(frame, "flagged")).await;
         client
             .send(ClientFrame::Steer {
+                comments: Vec::new(),
                 steer_id: "steer-1".try_into().unwrap(),
                 content: client_text("Then look at the log."),
             })
@@ -346,6 +348,7 @@ async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_go
         let mut client = fixture.opened().await;
         client
             .send(ClientFrame::Send {
+                comments: Vec::new(),
                 message_id: "message-1".try_into().unwrap(),
                 content: client_text("Wait for go."),
             })
@@ -354,6 +357,7 @@ async fn send_now_on_a_steer_moves_the_command_to_the_background_and_the_turn_go
         client.next_until(|frame| shows_call(frame, "wait")).await;
         client
             .send(ClientFrame::Steer {
+                comments: Vec::new(),
                 steer_id: "steer-1".try_into().unwrap(),
                 content: client_text("Say go."),
             })
@@ -576,6 +580,7 @@ async fn a_resident_command_returns_once_quiet_reports_only_its_end_and_its_end_
         let started = tokio::time::Instant::now();
         client
             .send(ClientFrame::Send {
+                comments: Vec::new(),
                 message_id: "message-1".try_into().unwrap(),
                 content: client_text("Serve, then stop."),
             })
@@ -776,6 +781,7 @@ async fn the_end_report_of_a_command_a_look_waits_for_ends_no_window() {
         let mut client = fixture.opened().await;
         client
             .send(ClientFrame::Send {
+                comments: Vec::new(),
                 message_id: "message-1".try_into().unwrap(),
                 content: client_text("Serve, then wait."),
             })
@@ -1047,6 +1053,7 @@ async fn a_stop_ends_the_command_a_call_watches_with_its_output_and_leaves_one_a
         let mut client = fixture.opened().await;
         client
             .send(ClientFrame::Send {
+                comments: Vec::new(),
                 message_id: "message-1".try_into().unwrap(),
                 content: client_text("Serve, then wait."),
             })

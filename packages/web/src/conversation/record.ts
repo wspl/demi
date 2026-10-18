@@ -1,6 +1,6 @@
 import { errorMessage } from '@demicodes/web-ui/infra/errors'
 import { markRaw, type Raw } from 'vue'
-import type { ClientContent } from '@demicodes/protocol'
+import type { ClientContent, MessageComment } from '@demicodes/protocol'
 import { SerialQueue } from '@demicodes/utils'
 import type { HeadlineText } from '@demicodes/web-ui/ui/ui-text'
 import { Slot, type SlotChange } from '@demicodes/web-ui/infra/slot'
@@ -36,14 +36,19 @@ export interface ConversationRecord {
   saved: SavedMessage[]
 }
 
-/** A message's text and files, as a draft and a saved message hold them. */
-export interface Writing {
+/** A message's text and files, as a saved message holds them. */
+export interface Message {
   text: string
   files: DraftFile[]
 }
 
+/** What a draft holds: the message, and the comments waiting to be sent with it, which no saved message takes. */
+export interface Writing extends Message {
+  comments: MessageComment[]
+}
+
 /** A message the backend did not save, which the list shows as Not Saved until its user retries or deletes it. */
-export interface NotSaved extends Writing {
+export interface NotSaved extends Message {
   id: string
   /** Why it was not saved, as the backend or the page said it. */
   reason: string
@@ -72,7 +77,7 @@ export type RecordSlot = Slot<ConversationRecord, RecordMeta>
 /** A conversation's record as the page holds it before reading anything. */
 export function newRecord(): Raw<RecordSlot> {
   const slot = new Slot<ConversationRecord, RecordMeta>()
-  slot.replace({ draft: { revision: 0, text: '', files: [], replaced: null }, saved: [] })
+  slot.replace({ draft: { revision: 0, text: '', files: [], comments: [], replaced: null }, saved: [] })
   return markRaw(slot)
 }
 
@@ -84,12 +89,23 @@ function namedFile(file: DraftFile): ClientContent {
 }
 
 /** Whether `a` and `b` hold the same text and files. */
-function sameWriting(a: Writing, b: Writing): boolean {
+function sameMessage(a: Message, b: Message): boolean {
   return a.text === b.text && JSON.stringify(a.files.map(namedFile)) === JSON.stringify(b.files.map(namedFile))
 }
 
+/** Whether `a` and `b` hold the same text, files and comments. */
+function sameWriting(a: Writing, b: Writing): boolean {
+  return sameMessage(a, b) && JSON.stringify(a.comments) === JSON.stringify(b.comments)
+}
+
+/** A message with no text but blank space and no file, which no list keeps. */
+function isBlankMessage(message: Message): boolean {
+  return !message.text.trim() && message.files.length === 0
+}
+
+/** A draft with nothing to keep: a blank message and no comment. */
 function isBlank(writing: Writing): boolean {
-  return !writing.text.trim() && writing.files.length === 0
+  return isBlankMessage(writing) && writing.comments.length === 0
 }
 
 /**
@@ -98,7 +114,7 @@ function isBlank(writing: Writing): boolean {
  * `complete` says whether every file of the message is in.
  */
 export function composerWriting(
-  conversation: Pick<Conversation, 'draft' | 'files' | 'attachmentIds'>,
+  conversation: Pick<Conversation, 'draft' | 'files' | 'attachmentIds' | 'comments'>,
 ): { writing: Writing; complete: boolean } {
   const parts = conversation.draft.split(ATTACHMENT_MARK)
   let text = parts[0] ?? ''
@@ -116,7 +132,7 @@ export function composerWriting(
     }
     text += part
   })
-  return { writing: { text, files }, complete }
+  return { writing: { text, files, comments: [...conversation.comments] }, complete }
 }
 
 /** A composer's file as a draft holds it; none while its upload is not done. */
@@ -184,7 +200,7 @@ export function createRecordSync(options: {
 
   /** A writing as `seen` keeps it. */
   function held(writing: Writing): string {
-    return JSON.stringify([writing.text, writing.files.map(namedFile)])
+    return JSON.stringify([writing.text, writing.files.map(namedFile), writing.comments])
   }
 
   function clearTimer(id: string): void {
@@ -270,7 +286,7 @@ export function createRecordSync(options: {
     }
     const record = conversation.record
     const { writing } = composerWriting(conversation)
-    if ((seen.get(conversation.id) ?? held({ text: '', files: [] })) === held(writing)) {
+    if ((seen.get(conversation.id) ?? held({ text: '', files: [], comments: [] })) === held(writing)) {
       return
     }
     seen.set(conversation.id, held(writing))
@@ -285,7 +301,10 @@ export function createRecordSync(options: {
       return
     }
     const carries = { id: crypto.randomUUID(), ...writing, into: 'draft' as const }
-    const apply = (value: ConversationRecord) => ({ ...value, draft: { ...value.draft, text: writing.text, files: writing.files } })
+    const apply = (value: ConversationRecord) => ({
+      ...value,
+      draft: { ...value.draft, text: writing.text, files: writing.files, comments: writing.comments },
+    })
     if (unsent) {
       unsent.meta.carries = carries
       unsent.revise(apply)
@@ -341,7 +360,7 @@ export function createRecordSync(options: {
     try {
       const answer = await saveDraft(
         conversation.id,
-        { base: revision, text: writing.text, files: writing.files.map(namedFile) },
+        { base: revision, text: writing.text, files: writing.files.map(namedFile), comments: writing.comments },
         { signal, keepalive },
       )
       signal.throwIfAborted()
@@ -392,12 +411,12 @@ export function createRecordSync(options: {
     }
     if (carried && !isBlank(carried)) {
       const shown = record.shown.value!
-      const listed = shown.saved.some((message) => sameWriting(message, carried))
+      const listed = shown.saved.some((message) => sameMessage(message, carried))
       if (!listed && carried.into === 'draft') {
         if (!sameWriting(shown.draft, carried) && !typing.has(conversation.id)) {
           if (record.pending('draft').length === 0) {
             const again = record.change(
-              (value) => ({ ...value, draft: { ...value.draft, text: carried.text, files: carried.files } }),
+              (value) => ({ ...value, draft: { ...value.draft, text: carried.text, files: carried.files, comments: carried.comments } }),
               { parts: ['draft'], meta: { kind: 'typing', base: change.meta.base, answered: null, carries: carried } },
             )
             typing.set(conversation.id, again)
@@ -407,14 +426,16 @@ export function createRecordSync(options: {
         }
       } else if (!listed) {
         keepNotSaved(conversation, carried, error)
-        if (sameWriting(shown.draft, carried)) {
+        if (sameMessage(shown.draft, carried)) {
           // It stands in the list now: the composer, which would show it
-          // again, is emptied, a change of the draft as any.
+          // again, is emptied, a change of the draft as any; its comments
+          // stay waiting.
+          const comments = shown.draft.comments
           const empty = record.change(
             (value) => ({ ...value, draft: { ...value.draft, text: '', files: [] } }),
             {
               parts: ['draft'],
-              meta: { kind: 'typing', base: basis(conversation), answered: null, carries: { id: crypto.randomUUID(), text: '', files: [], into: 'draft' } },
+              meta: { kind: 'typing', base: basis(conversation), answered: null, carries: { id: crypto.randomUUID(), text: '', files: [], comments, into: 'draft' } },
             },
           )
           typing.set(conversation.id, empty)
@@ -426,7 +447,7 @@ export function createRecordSync(options: {
   }
 
   /** Keeps `writing` in the list as Not Saved, under its id, newest first. */
-  function keepNotSaved(conversation: Conversation, writing: Writing & { id: string }, error: unknown): void {
+  function keepNotSaved(conversation: Conversation, writing: Message & { id: string }, error: unknown): void {
     const row: NotSaved = { id: writing.id, text: writing.text, files: writing.files, reason: reasonOf(error) }
     conversation.notSaved = [row, ...conversation.notSaved.filter((each) => each.id !== row.id)]
   }
@@ -469,23 +490,45 @@ export function createRecordSync(options: {
    * the list under `id` and leaves the composer at once; the backend keeps
    * it and empties the draft with it, after the writes before it.
    */
-  function saveForLater(conversation: Conversation, id: string, writing: Writing): Promise<'landed' | 'waiting' | 'refused'> {
+  function saveForLater(conversation: Conversation, id: string, writing: Message): Promise<'landed' | 'waiting' | 'refused'> {
     const record = conversation.record
     // The message is the composer's: the change its user typed is in it.
     const unsent = typing.get(conversation.id)
     const built = unsent?.meta.base ?? builtOn.get(conversation.id) ?? record.revision('draft')
+    // The comments the change its user typed holds and the writes below it
+    // do not, such as one saved while an earlier save is on its way: the
+    // backend keeps the draft's comments as it has them, so these follow
+    // the save in a save of the emptied draft of their own.
+    const comments = unsent?.meta.carries?.comments
+    const unsaved = unsent && comments && JSON.stringify(comments) !== JSON.stringify(record.below(unsent)!.draft.comments)
     if (unsent) {
       record.leave([unsent])
       typing.delete(conversation.id)
       clearTimer(conversation.id)
     }
-    const message: SavedMessage = { id, ...writing, savedAt: new Date().toISOString() }
+    const message: SavedMessage = { id, text: writing.text, files: writing.files, savedAt: new Date().toISOString() }
+    // The draft's comments stay waiting there, as the backend keeps them.
     const change = record.change(
       (value) => ({ draft: { ...value.draft, text: '', files: [] }, saved: withSaved(value.saved, message) }),
-      { parts: ['draft', 'saved'], meta: { kind: 'save', base: built, answered: null, carries: { id, ...writing, into: 'list' } } },
+      {
+        parts: ['draft', 'saved'],
+        meta: { kind: 'save', base: built, answered: null, carries: { id, text: writing.text, files: writing.files, comments: [], into: 'list' } },
+      },
     )
+    const kept = unsaved
+      ? record.change(
+        (value) => ({ ...value, draft: { ...value.draft, text: '', files: [], comments } }),
+        {
+          parts: ['draft'],
+          meta: { kind: 'typing', base: change, answered: null, carries: { id: crypto.randomUUID(), text: '', files: [], comments, into: 'draft' } },
+        },
+      )
+      : null
+    if (kept) {
+      builtOn.set(conversation.id, kept)
+    }
     follow(conversation)
-    return write(conversation, change, t('failures.saveMessage'), async (signal) => {
+    const saved = write(conversation, change, t('failures.saveMessage'), async (signal) => {
       await options.persist(conversation)
       return saveFromDraft(
         conversation.id,
@@ -493,6 +536,22 @@ export function createRecordSync(options: {
         signal,
       )
     })
+    if (kept) {
+      // Saved once the save has gone, which it is built on; a change typed
+      // meanwhile carries the comments the composer shows, these among them.
+      void saved.then(() => {
+        if (!record.pending().includes(kept)) {
+          return
+        }
+        if (typing.has(conversation.id)) {
+          record.leave([kept])
+          return
+        }
+        typing.set(conversation.id, kept)
+        void save(conversation)
+      })
+    }
+    return saved
   }
 
   /**
@@ -513,8 +572,9 @@ export function createRecordSync(options: {
     }
     const becomes = crypto.randomUUID()
     const op = crypto.randomUUID()
+    // The draft's text and files go into the list; its comments stay waiting.
     const keptOf = (draft: ConversationDraft) =>
-      isBlank(draft) ? null : { id: becomes, text: draft.text, files: draft.files, into: 'list' as const }
+      isBlankMessage(draft) ? null : { id: becomes, text: draft.text, files: draft.files, comments: [], into: 'list' as const }
     let kept: RecordMeta['carries'] | undefined
     const change = record.change(
       (value) => {
@@ -559,11 +619,11 @@ export function createRecordSync(options: {
    * of a deletion, under a new id, and Retry of a message not saved, under
    * its own. It stands at the top of the list at once.
    */
-  function resave(conversation: Conversation, id: string, writing: Writing): Promise<'landed' | 'waiting' | 'refused'> {
-    const message: SavedMessage = { id, ...writing, savedAt: new Date().toISOString() }
+  function resave(conversation: Conversation, id: string, writing: Message): Promise<'landed' | 'waiting' | 'refused'> {
+    const message: SavedMessage = { id, text: writing.text, files: writing.files, savedAt: new Date().toISOString() }
     const change = conversation.record.change((value) => ({ ...value, saved: withSaved(value.saved, message) }), {
       parts: ['saved'],
-      meta: { kind: 'resave', base: null, answered: null, carries: { id, ...writing, into: 'list' } },
+      meta: { kind: 'resave', base: null, answered: null, carries: { id, text: writing.text, files: writing.files, comments: [], into: 'list' } },
     })
     return write(conversation, change, t('failures.saveMessage'), async (signal) => {
       const answer = await postSaved(conversation.id, { id, text: writing.text, files: writing.files.map(namedFile) }, signal)

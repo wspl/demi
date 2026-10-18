@@ -77,6 +77,7 @@ async fn a_steer_during_a_tool_reaches_the_next_request_and_a_withdrawn_one_caus
     assert_eq!(
         session.pending_steers(),
         [PendingSteer {
+            comments: Vec::new(),
             id: steer_id("s1"),
             turn_id: turn("t1"),
             model: test_model(),

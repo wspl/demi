@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from './locales/text'
 import { t as shared } from '../locales/text'
-import { computed, inject, ref, watch } from 'vue'
+import { computed, inject, ref, useSlots, watch } from 'vue'
 import { isFocusedElementEditable, useElementSize } from '@vueuse/core'
 import type { ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import { ArrowUp, File as FileIcon, HardDrive, NotebookPen, Paperclip, RotateCcw, Square, X } from '@lucide/vue'
@@ -294,6 +294,15 @@ const carrying = computed(() => {
   const ids = new Set(capsules.value.map((capsule) => capsule.id))
   return props.attachments.filter((item) => ids.has(item.id))
 })
+const slots = useSlots()
+/**
+ * What the page sends with the message besides its draft, such as a batch
+ * of comments, which its `context` slot shows inside the box: while it is
+ * there the box takes its multi-line layout, and Send sends it with the
+ * draft, or alone when the draft is empty. Read at each render and each
+ * send, as a slot is.
+ */
+const carriesContext = () => slots.context !== undefined
 const hasDraft = computed(
   () => shownEdit.value ? editHasContent(shownEdit.value)
     : !!draft.value.trim() || !!capsules.value.length,
@@ -421,7 +430,7 @@ const waitingSend = useSendOnceLoaded({
   blocked: () => sendDisabled.value,
   loading: () => modelsLoading.value,
   send: (asksOtherWay) => {
-    if (hasDraft.value && !shownEdit.value) {
+    if ((hasDraft.value || carriesContext()) && !shownEdit.value) {
       emit('submit', chooseSendWay(working.value, props.sendWhileRunning, asksOtherWay))
     }
   },
@@ -429,15 +438,16 @@ const waitingSend = useSendOnceLoaded({
 
 /** Sends the message; `asksOtherWay` for ⌘/Ctrl+Enter outside a code block, or a ⌘/Ctrl-click on the send button. */
 function submit(asksOtherWay: boolean) {
+  const sendsContext = !shownEdit.value && carriesContext()
   if (sendDisabled.value) {
-    if (hasDraft.value && !shownEdit.value) {
+    if ((hasDraft.value || sendsContext) && !shownEdit.value) {
       waitingSend.keep(asksOtherWay)
     }
     // Enter on a message that cannot go: the send button says why, unpointed.
     sendButton.value?.showReason()
     return
   }
-  if (!hasDraft.value) {
+  if (!hasDraft.value && !sendsContext) {
     return
   }
   if (shownEdit.value) {
@@ -602,10 +612,13 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
       </Teleport>
       <ComposerShell
         :focused="focused || props.focused"
-        :expanded="multiline"
+        :expanded="multiline || (!shownEdit && carriesContext())"
         :dropping="dropping"
         @drop-files="dropFiles"
       >
+        <template v-if="!shownEdit && carriesContext()" #context>
+          <slot name="context" />
+        </template>
         <template #editor="{ line }">
           <MessageEditor
             v-if="shownEdit"
@@ -780,7 +793,7 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
           <!-- A press on the send button takes no focus: the message keeps it. A ⌘/Ctrl-click sends
                the other way while the agent works. -->
           <Tooltip
-            v-if="hasDraft"
+            v-if="hasDraft || (!shownEdit && carriesContext())"
             :content="submitTip"
             :disabled="sendDisabled"
           >

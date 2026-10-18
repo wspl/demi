@@ -2224,6 +2224,7 @@ async fn input_that_arrives_during_a_pass_waits_outside_the_summary_for_the_firs
     assert_eq!(
         session.queued_messages(),
         [QueuedMessage {
+            comments: Vec::new(),
             id: turn("t4"),
             content: text(&fourth),
             automation: None,

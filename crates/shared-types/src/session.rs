@@ -116,6 +116,11 @@ pub struct QueuedMessage {
     pub id: TurnId,
     #[garde(dive)]
     pub content: Vec<UserContentBlock>,
+    /// The comments sent with it, which its `user` block keeps; omitted when
+    /// there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub comments: Vec<crate::MessageComment>,
     /// The automation's run that sent it, which its `user` block keeps;
     /// absent for a message the user wrote.
     #[serde(
@@ -162,4 +167,9 @@ pub struct PendingSteer {
     pub model: ModelSelection,
     #[garde(dive)]
     pub content: Vec<UserContentBlock>,
+    /// The comments it carries, which its `steer` block keeps; omitted when
+    /// there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub comments: Vec<crate::MessageComment>,
 }

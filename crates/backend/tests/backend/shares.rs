@@ -11,7 +11,8 @@ use std::sync::Arc;
 
 use demi_provider_common::testing::MockVendor;
 use demi_conversation_socket_protocol::{ServerFrame, TranscriptPatch};
-use demi_shared_types::{Block, SessionPhase};
+use demi_conversation_socket_protocol::{ClientContent, ClientFrame};
+use demi_shared_types::{Block, MessageComment, SessionPhase, TurnId};
 use demi_provider_common::testing::event;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::shares::{ShareAnswer, ShareKind, SharedConversation, SharedEntry, SharedTranscriptPage};
@@ -474,5 +475,60 @@ async fn shares_asked_at_once_answer_one_link() {
         .map(Result::unwrap)
         .collect();
     assert_eq!(lists, [token(&first)]);
+    backend.close().await;
+}
+
+// A message sent with comments on the first answer (`comments-and-ask.md`):
+// the share of its answer holds the message with its comments, which the
+// shared page shows as quotes. A second of a mock vendor.
+#[tokio::test]
+async fn a_shared_message_keeps_the_comments_it_was_sent_with() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(answer(&["Upload in chunks of 4 MB."], 10, 2));
+    socket.chat("m1", "Why do uploads fail?").await;
+    let reply = transcript(&backend, &master, FIRST).await.blocks[1].id().clone();
+    let comment = MessageComment {
+        id: "c1".into(),
+        block_id: reply,
+        start: 0,
+        end: 25,
+        quote: "Upload in chunks of 4 MB.".into(),
+        text: "4 MB feels large on 2G.".into(),
+    };
+    vendor.respond(answer(&["Starting at 1 MB."], 10, 2));
+    socket
+        .send(&ClientFrame::Send {
+            message_id: TurnId::try_from("m2").unwrap(),
+            content: vec![ClientContent::Text { text: "Otherwise go ahead".into() }],
+            comments: vec![comment.clone()],
+        })
+        .await;
+    socket.until_idle().await;
+    let own = transcript(&backend, &master, FIRST).await.blocks;
+    let second = own
+        .iter()
+        .rev()
+        .find(|block| matches!(block, Block::Text(_)))
+        .unwrap()
+        .id()
+        .clone();
+
+    let ShareAnswer::Answer { token, .. } =
+        shared(&share(&backend, &master, json!({ "kind": "answer", "blockId": second })).await)
+    else {
+        panic!("an answer's share")
+    };
+    let read = page(&backend, token.as_str(), "").await;
+    let SharedEntry::Block(Block::User(message)) = &read.blocks[0] else {
+        panic!("{:?}", read.blocks)
+    };
+    assert_eq!(message.comments, [comment]);
     backend.close().await;
 }

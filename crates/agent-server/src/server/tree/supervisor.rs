@@ -648,6 +648,7 @@ impl<H: HostResolver> Tree<H> {
 
     fn text_message(&self, text: String) -> QueuedMessage {
         QueuedMessage {
+            comments: Vec::new(),
             id: TurnId::try_from(self.ids.next_id()).expect("an id source never gives an empty id"),
             content: vec![UserContentBlock::Text { text }],
             automation: None,

@@ -19,7 +19,7 @@ Words used for session data:
 
 | Block | Written by | The model receives | The user sees it |
 | --- | --- | --- | --- |
-| `user` | A send or an edit: the submitted content and, for a subagent, its identity (`preamble`, [Child context](subagents.md#child-context)) | A user message: the preamble, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
+| `user` | A send or an edit: the submitted content, the comments sent with it (`comments`, each the quoted text and the comment, [Comments and side questions](../product/comments-and-ask.md)) and, for a subagent, its identity (`preamble`, [Child context](subagents.md#child-context)) | A user message: the preamble, then each comment as its quoted text in a `>` quote followed by the comment, then the content | Yes; the only editable block ([Message editing](message-editing.md)) |
 | `context` | The session before a provider request, with the text one context source answered ([Context](#context)), the source's name (`source`), and for the instructions source the list of what the text holds (`instructions`, [What the card lists](instructions.md#what-the-card-lists)) | A user message with its text | No |
 | `wakeup` | Command reports that arrived together, with the placement `new_turn` or `steer`: each report's command, its call's title and what it reports | The reports' text, as a user message or as a steer | As a notice row for each end it reports, none for progress ([Command reports](shell-tool.md#command-reports)) |
 | `steer` | A human steer, at a continuation boundary | A steer in the current turn | Yes |

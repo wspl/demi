@@ -728,22 +728,22 @@ test('a draft saved on one page reaches another, a save over a version the page 
   const other = openPage()
   other.start()
   try {
-    expect(await loadDraft(id, signal)).toEqual({ revision: 0, text: '', files: [], replaced: null })
+    expect(await loadDraft(id, signal)).toEqual({ revision: 0, text: '', files: [], comments: [], replaced: null })
     const trace = { type: 'remote_file', deviceId, path: join(runner.home, 'trace.txt') } as const
-    const first = (await saveDraft(id, { base: 0, text: `Fix the login ${ATTACHMENT_MARK}`, files: [trace] }, { signal })).draft
-    expect(first).toEqual({ revision: 1, text: `Fix the login ${ATTACHMENT_MARK}`, files: [trace], replaced: null })
+    const first = (await saveDraft(id, { base: 0, text: `Fix the login ${ATTACHMENT_MARK}`, files: [trace], comments: [] }, { signal })).draft
+    expect(first).toEqual({ revision: 1, text: `Fix the login ${ATTACHMENT_MARK}`, files: [trace], comments: [], replaced: null })
     // The other page learns of the save from the summary, then reads the draft.
     await pageShows(other, id, (summary) => summary.draftRevision === 1)
     expect(await loadDraft(id, signal)).toEqual(first)
 
     // Both pages type on revision 1 at once.
-    const mine = await saveDraft(id, { base: 1, text: 'Fix the login bug', files: [] }, { signal })
+    const mine = await saveDraft(id, { base: 1, text: 'Fix the login bug', files: [], comments: [] }, { signal })
     expect(mine).toMatchObject({ draft: { revision: 2, replaced: null }, revisions: { draft: 2, saved: 0 } })
-    const theirs = (await saveDraft(id, { base: 1, text: 'Fix the login test', files: [] }, { signal })).draft
-    expect(theirs).toEqual({ revision: 3, text: 'Fix the login test', files: [], replaced: { revision: 2, text: 'Fix the login bug', files: [] } })
+    const theirs = (await saveDraft(id, { base: 1, text: 'Fix the login test', files: [], comments: [] }, { signal })).draft
+    expect(theirs).toEqual({ revision: 3, text: 'Fix the login test', files: [], comments: [], replaced: { revision: 2, text: 'Fix the login bug', files: [], comments: [] } })
     // Restoring exchanges the two, so nothing is lost.
     const restored = (await changeReplacedDraft(id, { action: 'restore', revision: 2 }, signal)).draft
-    expect(restored).toEqual({ revision: 4, text: 'Fix the login bug', files: [], replaced: { revision: 3, text: 'Fix the login test', files: [] } })
+    expect(restored).toEqual({ revision: 4, text: 'Fix the login bug', files: [], comments: [], replaced: { revision: 3, text: 'Fix the login test', files: [], comments: [] } })
     // A page that still offers revision 2 is told the draft changed.
     const refused = await changeReplacedDraft(id, { action: 'dismiss', revision: 2 }, signal).catch((error: unknown) => error)
     expect(refused).toBeInstanceOf(ApiError)

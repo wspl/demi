@@ -5,6 +5,7 @@ import {
   type ClientContent,
   type ClientFrame,
   type EditRequest,
+  type MessageComment,
   type PendingCall,
   type PendingSteer,
   type ProviderErrorDiagnostics,
@@ -202,10 +203,10 @@ export class ConversationClient {
     return this.action('send', messageId, { type: 'send', messageId, content })
   }
 
-  /** Sends a message; resolves once it is in the transcript or the queue. */
-  submit(content: ClientContent[], messageId: string = createId()): Promise<void> {
+  /** Sends a message, with the comments it carries; resolves once it is in the transcript or the queue. */
+  submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
     return this.request(
-      { type: 'send', messageId, content },
+      { type: 'send', messageId, content, ...(comments.length > 0 ? { comments: [...comments] } : {}) },
       (event) => {
         const written = (event.type === 'transcript_reset' || event.type === 'transcript_patch')
           && this.writtenTurns.has(messageId)
@@ -339,8 +340,8 @@ export class ConversationClient {
   }
 
   /** Adds input to the running turn; resolves when the steer is accepted. */
-  steer(content: ClientContent[], steerId: string = createId()): Promise<void> {
-    return this.steerRequest(steerId, { type: 'steer', steerId, content })
+  steer(content: ClientContent[], steerId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
+    return this.steerRequest(steerId, { type: 'steer', steerId, content, ...(comments.length > 0 ? { comments: [...comments] } : {}) })
   }
 
   /**

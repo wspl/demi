@@ -1,5 +1,5 @@
 import { computed, onBeforeUnmount, reactive, shallowRef, watch } from 'vue'
-import type { AgentMessage, Block, ChangedFile, ContextUsage, UserContentBlock } from '@demicodes/protocol'
+import type { AgentMessage, Block, ChangedFile, ContextUsage, MessageComment, UserContentBlock } from '@demicodes/protocol'
 import { CHROME_ROLL_MS } from '@demicodes/web-ui/ui/chrome-roll'
 import type { ToolCallBlock } from '@demicodes/web-ui/agent/block-types'
 import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
@@ -290,8 +290,11 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     append({ ...block, run } as Block)
   }
 
-  /** A message's block; `turnId` is the id the message was sent with, which the server keeps as its turn's. */
-  function userBlock(content: UserContentBlock[], turnId = nextId('turn')): Block {
+  /**
+   * A message's block, with the comments it carries; `turnId` is the id the
+   * message was sent with, which the server keeps as its turn's.
+   */
+  function userBlock(content: UserContentBlock[], turnId = nextId('turn'), comments: readonly MessageComment[] = []): Block {
     return {
       type: 'user',
       id: nextId('user'),
@@ -299,6 +302,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       createdAt: now(),
       model: demoModel,
       content,
+      ...(comments.length > 0 ? { comments: [...comments] } : {}),
       preamble: null,
     }
   }
@@ -438,6 +442,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
         createdAt: now(),
         model: demoModel,
         content: pending.content,
+        comments: pending.comments,
       })
     }
     return true
@@ -707,10 +712,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     append({ type: 'resume', id: nextId('resume'), turnId: nextId('turn'), createdAt: now(), model: demoModel, reason: null })
   }
 
-  /** Send a message on the current transcript; its turn runs once the server confirms it. */
-  function turn(content: UserContentBlock[], message: SentMessage): void {
+  /** Send a message, with the comments it carries, on the current transcript; its turn runs once the server confirms it. */
+  function turn(content: UserContentBlock[], message: SentMessage, comments: readonly MessageComment[] = []): void {
     cancel()
-    const id = holdMessage(content, message, null)
+    const id = holdMessage(content, message, null, 'send', comments)
     afterUploads(id, message.ready, () => deliver(token, false))
   }
 
@@ -743,9 +748,15 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * delivery failed, as what it will be: the next message, a steer or a
    * queued message. Answers its id.
    */
-  function holdMessage(content: UserContentBlock[], message: SentMessage, error: string | null, way: SendWay = 'send'): string {
+  function holdMessage(
+    content: UserContentBlock[],
+    message: SentMessage,
+    error: string | null,
+    way: SendWay = 'send',
+    comments: readonly MessageComment[] = [],
+  ): string {
     const id = nextId('message')
-    pendingSubmissions.value = [...pendingSubmissions.value, { id, way, text: message.text, attachments: message.attachments, error }]
+    pendingSubmissions.value = [...pendingSubmissions.value, { id, way, text: message.text, attachments: message.attachments, comments, error }]
     contents.set(id, content)
     return id
   }
@@ -790,8 +801,13 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * the product sends it. Recall or Send Now pressed meanwhile is carried
    * out then.
    */
-  function deliverWaiting(content: UserContentBlock[], message: SentMessage, way: 'steer' | 'queue'): void {
-    const id = holdMessage(content, message, null, way)
+  function deliverWaiting(
+    content: UserContentBlock[],
+    message: SentMessage,
+    way: 'steer' | 'queue',
+    comments: readonly MessageComment[] = [],
+  ): void {
+    const id = holdMessage(content, message, null, way, comments)
     deliveries.set(id, window.setTimeout(() => arrive(id), nextDelivery()))
   }
 
@@ -814,7 +830,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       deliver(token, false)
       return
     }
-    const held = { id, content: dropSubmission(id) }
+    const held = { id, content: dropSubmission(id), comments: [...pending.comments ?? []] }
     if (pending.way === 'steer') {
       state.pendingSteers = [...state.pendingSteers, held]
     } else {
@@ -874,7 +890,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   function confirmMessage(): void {
     const pending = turnMessage()
     if (pending) {
-      append(userBlock(dropSubmission(pending.id), pending.id))
+      append(userBlock(dropSubmission(pending.id), pending.id, pending.comments))
     }
   }
 
@@ -1004,17 +1020,17 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
    * product sends it; a message on its way that starts a turn counts as
    * running.
    */
-  function steer(content: UserContentBlock[], message: SentMessage): void {
+  function steer(content: UserContentBlock[], message: SentMessage, comments: readonly MessageComment[] = []): void {
     if (!agentWorks(state.phase, pendingSubmissions.value)) {
-      turn(content, message)
+      turn(content, message, comments)
       return
     }
-    deliverWaiting(content, message, 'steer')
+    deliverWaiting(content, message, 'steer', comments)
   }
 
   /** A message sent while a turn runs waits in the queue, as the product's does, and shows there from the send. */
-  function queue(content: UserContentBlock[], message: SentMessage): void {
-    deliverWaiting(content, message, 'queue')
+  function queue(content: UserContentBlock[], message: SentMessage, comments: readonly MessageComment[] = []): void {
+    deliverWaiting(content, message, 'queue', comments)
   }
 
   /**
@@ -1100,10 +1116,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
     cutRound()
     for (const pending of state.pendingSteers) {
-      append(steerBlock(pending.content))
+      append(steerBlock(pending.content, pending.comments))
     }
     state.pendingSteers = []
-    append(userBlock(item.content, item.id))
+    append(userBlock(item.content, item.id, item.comments))
     runTurn(token)
   }
 
@@ -1122,7 +1138,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
     drop(id)
     cutRound()
-    append(steerBlock(pending.content))
+    append(steerBlock(pending.content, pending.comments))
     thinkThenReply(token, WAIT_MS, THINK_2)
   }
 
@@ -1142,7 +1158,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   }
 
-  function steerBlock(content: UserContentBlock[]): Block {
+  function steerBlock(content: UserContentBlock[], comments: readonly MessageComment[] = []): Block {
     return {
       type: 'steer',
       id: nextId('steer'),
@@ -1150,6 +1166,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       createdAt: now(),
       model: demoModel,
       content,
+      ...(comments.length > 0 ? { comments: [...comments] } : {}),
     }
   }
 

@@ -5,7 +5,7 @@ use std::{collections::BTreeMap, rc::Rc, sync::Arc};
 
 use demi_conversation_socket_protocol::{TranscriptPatch, TranscriptVersion, Versions};
 use demi_provider_common::{AccountSwitch, ToolCall};
-use demi_shared_types::{AutomationMark, 
+use demi_shared_types::{AutomationMark, MessageComment, 
     AbortBlock, AccountSwitchBlock, AgentMessage, AgentMessageBlock, Block, BlockId, Clock, CompactionBoundaryBlock,
     CompactionMarkerBlock, ContextBlock, ErrorBlock, InstructionEntry, KeptMessage, ModelSelection, ProviderErrorDiagnostics,
     RedactedThinkingBlock, ResponseBlock, ResumeBlock, SteerBlock, TextBlock, ThinkingBlock,
@@ -101,6 +101,7 @@ impl TranscriptLog {
         turn_id: TurnId,
         model: &ModelSelection,
         content: Vec<UserContentBlock>,
+        comments: Vec<MessageComment>,
         preamble: Option<String>,
         automation: Option<AutomationMark>,
     ) {
@@ -111,6 +112,7 @@ impl TranscriptLog {
             created_at,
             model: model.clone(),
             content,
+            comments,
             preamble,
             automation,
             entries: Vec::new(),
@@ -147,6 +149,7 @@ impl TranscriptLog {
         turn_id: TurnId,
         model: &ModelSelection,
         content: Vec<UserContentBlock>,
+        comments: Vec<MessageComment>,
     ) {
         let created_at = self.clock.now();
         self.append(Block::Steer(SteerBlock {
@@ -155,6 +158,7 @@ impl TranscriptLog {
             created_at,
             model: model.clone(),
             content,
+            comments,
             entries: Vec::new(),
         }));
     }

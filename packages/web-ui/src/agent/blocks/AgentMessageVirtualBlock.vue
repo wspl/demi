@@ -134,6 +134,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-else-if="block.type === 'user'"
       v-bind="attrs"
       :content="block.content"
+      :comments="block.comments"
       :origin="originOf(block.automation)"
       :brief="childBrief(transcript?.node ?? null, block.content)"
       :editable="editable"
@@ -144,12 +145,14 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-else-if="block.type === 'steer'"
       v-bind="attrs"
       :content="block.content"
+      :comments="block.comments"
       :editable="false"
     />
     <UserBlock
       v-else-if="block.type === 'pending_steer'"
       v-bind="attrs"
       :content="block.content"
+      :comments="block.comments"
       :pending="waitingAs(block)"
       @recall="emit('recallSteer', block.pendingSteerId)"
       @send-now="emit('interruptPendingSteer', block.pendingSteerId)"
@@ -158,6 +161,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       v-else-if="block.type === 'queued_message'"
       v-bind="attrs"
       :content="block.content"
+      :comments="block.comments"
       :origin="originOf(block.automation)"
       :pending="waitingAs(block)"
       @recall="emit('recallQueued', block.queueId)"
@@ -205,6 +209,7 @@ function sendSubmissionNow(submission: PendingSubmissionState): void {
       />
       <AssistantTextBlock
         v-else-if="block.type === 'text'"
+        :block-id="block.id"
         :content="block.text"
         :is-streaming="isTextStreaming"
         :show-footer="showAssistantFooter"

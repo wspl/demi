@@ -341,6 +341,7 @@ impl Shard {
         tree.root()
             .session()
             .send_message(QueuedMessage {
+                comments: Vec::new(),
                 id: turn,
                 content: vec![UserContentBlock::Text { text }],
                 automation: Some(AutomationMark {

@@ -2002,6 +2002,7 @@ pub(crate) mod tests {
 
     pub(crate) fn user(block: &str) -> Block {
         Block::User(UserBlock {
+            comments: Vec::new(),
             id: block.try_into().unwrap(),
             turn_id: TurnId::try_from("t1").unwrap(),
             created_at: Timestamp::UNIX_EPOCH,

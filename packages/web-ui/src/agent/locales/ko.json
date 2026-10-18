@@ -1,4 +1,14 @@
 {
+  "comments": {
+    "comment": "댓글",
+    "placeholder": "댓글 추가",
+    "waitReply": "이 답변이 끝날 때까지 기다려 주세요.",
+    "count": "댓글 {count}개",
+    "remove": "댓글 삭제",
+    "sent": "보냄",
+    "writeFirst": "먼저 댓글을 입력하세요.",
+    "title": "댓글"
+  },
   "transcript": {
     "accountSwitch": {
       "usage": "{from} 계정이 사용 한도에 도달하여 {to} 계정으로 계속합니다.",

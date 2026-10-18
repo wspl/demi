@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { PlaceholderText } from '@demicodes/web-ui/ui/ui-text'
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, useSlots, watch } from 'vue'
 import { previewMediaType, type ContextUsage, type UserContentBlock } from '@demicodes/protocol'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import type { WorkflowChoice, WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
@@ -448,6 +448,8 @@ function deleteSaved(id: string) {
   })
 }
 
+const slots = useSlots()
+
 /**
  * Hands the message `text` with the files `sent` on the way the composer
  * chose, and lets its files go from the composer, those still uploading
@@ -455,7 +457,8 @@ function deleteSaved(id: string) {
  */
 function handOn(text: string, sent: ComposerAttachment[], way: SendWay): boolean {
   const content = joinMessageContent(text, sent.map(sentBlocks))
-  if (!content.length) {
+  // What the `context` slot shows goes with the message, so it may go without text.
+  if (!content.length && !slots.context) {
     return false
   }
   const waiting = sent.filter((item) => isComposerFile(item) && item.phase !== 'ready')
@@ -738,7 +741,11 @@ onBeforeUnmount(() => {
     @stop="emit('stop')"
     @compact="compact"
     @open-instruction="demoOpenInstruction($event, productWould)"
-  />
+  >
+    <template v-if="$slots.context" #context>
+      <slot name="context" />
+    </template>
+  </SessionComposer>
   <RemoteFilePicker
     ref="remotePicker"
     :overlay-store="appOverlayStore"

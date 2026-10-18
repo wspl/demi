@@ -51,6 +51,7 @@ use demi_conversation_socket_protocol::{AbortResult, AgentCode, Refusal, Transcr
 use demi_provider_common::{Ahead, ProviderFailure, ProviderRuntime};
 use demi_shared_gates::SerialGate;
 use demi_shared_types::{
+    MessageComment,
     AgentMessage, AutomationMark, Block, BlockId, Clock, CommandId, ContextUsage, ErrorBlock, ModelSelection, NodeId, PendingCall,
     PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase, ShellToolView, ShellViewStatus,
     Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
@@ -885,6 +886,7 @@ impl AgentSession {
         self.send_message(QueuedMessage {
             id,
             content,
+            comments: Vec::new(),
             automation: None,
         })
     }
@@ -976,7 +978,18 @@ impl AgentSession {
     /// Adds input to the running turn at its next boundary
     /// (`runtime.md` § Steers).
     pub fn steer(&self, content: Vec<UserContentBlock>, id: BlockId) -> Result<(), SteerError> {
-        self.shared.update(|core| core.steer(id, content))
+        self.steer_with_comments(content, Vec::new(), id)
+    }
+
+    /// A steer that carries comments on the reply's words, which the model
+    /// reads before its content (`comments-and-ask.md` § Sending them).
+    pub fn steer_with_comments(
+        &self,
+        content: Vec<UserContentBlock>,
+        comments: Vec<MessageComment>,
+        id: BlockId,
+    ) -> Result<(), SteerError> {
+        self.shared.update(|core| core.steer(id, content, comments))
     }
 
     /// Withdraws a pending steer; an id that is not pending changes nothing.

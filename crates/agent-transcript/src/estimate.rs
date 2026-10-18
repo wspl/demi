@@ -6,8 +6,9 @@ use std::borrow::Cow;
 
 use demi_provider_common::{MediaBytes, Medium, ToolDefinition};
 use demi_shared_types::{
+    MessageComment,
     B64Bytes, Block, DocumentSource, INSTRUCTIONS_SOURCE, Model, ModelMediaKind, ResponseBlock,
-    ToolResultContentBlock, UserContentBlock,
+    ToolResultContentBlock, UserContentBlock, comments_markdown,
 };
 
 use super::{
@@ -159,8 +160,8 @@ fn usage_anchor(blocks: &[Block]) -> Option<(usize, u64)> {
 /// The text a block's estimate counts, and the weight of its media.
 fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
     let text = match block {
-        Block::User(user) => return content_estimate(&user.content, request),
-        Block::Steer(steer) => return content_estimate(&steer.content, request),
+        Block::User(user) => return with_comments(content_estimate(&user.content, request), &user.comments),
+        Block::Steer(steer) => return with_comments(content_estimate(&steer.content, request), &steer.comments),
         Block::ToolCall(call) => {
             let mut lines = vec![
                 Cow::Borrowed(call.tool_name.as_str()),
@@ -227,6 +228,15 @@ fn block_estimate(block: &Block, request: &RequestView) -> (String, u64) {
 pub fn content_tokens(content: &[UserContentBlock], request: &RequestView) -> u64 {
     let (text, media) = content_estimate(content, request);
     text_tokens(&text) + media
+}
+
+/// A message's or a steer's estimate with its comments before its content,
+/// bounded as replay bounds them.
+fn with_comments((text, media): (String, u64), comments: &[MessageComment]) -> (String, u64) {
+    match comments_markdown(comments) {
+        Some(comments) => (format!("{}\n{text}", bound_text(&comments)), media),
+        None => (text, media),
+    }
 }
 
 /// A message's content: one line per part, and the weight of its media.

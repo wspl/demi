@@ -42,6 +42,9 @@ import { transcriptPictures } from './transcript-pictures'
 import { versionPlaces, type VersionChoice } from './versions'
 import type { HeldBlock } from '@demicodes/conversation-client'
 import type { StepsNotSharedRow } from './pending-steers'
+import ReplyComments from './comments/ReplyComments.vue'
+import { sentComments, type ReplyCommenting } from './comments/comments'
+import { provideReplySelectionTools } from './reply-selection'
 
 const props = withDefaults(defineProps<{
   conversationId: string
@@ -101,6 +104,13 @@ const props = withDefaults(defineProps<{
   summaries?: Record<string, number>
   /** A share's runs of steps it does not hold, each a line after the row it follows (`sharing.md` § Steps not shared). */
   stepsNotShared?: readonly StepsNotSharedRow[]
+  /**
+   * The comments waiting in the conversation's draft and what to do with
+   * them: the replies take comments and show the marks of these and of the
+   * ones its messages sent (`comments-and-ask.md`). Absent, as on a share's
+   * page or in a subagent's window, the replies take none and show no mark.
+   */
+  commenting?: ReplyCommenting
 }>(), {
   // Vue reads an absent boolean prop as false; a list given no window is a whole transcript.
   atStart: true,
@@ -133,6 +143,17 @@ const emit = defineEmits<{
 }>()
 
 const { states: forkStates, run: forkMessage } = useMessageForks(() => props.fork, () => props.conversationId)
+
+/** Where the rows stand, which the comments' marks are drawn over. */
+const rowsRoot = ref<HTMLElement | null>(null)
+const comments = ref<InstanceType<typeof ReplyComments>>()
+/** The comments the messages sent, those still on their way or waiting for the agent included, which mark their replies dimmer. */
+const sent = computed(() => [
+  ...props.blocks.flatMap(sentComments),
+  ...[...props.pendingSteers, ...props.queue, ...(props.pendingSubmissions ?? [])].flatMap((message) => message.comments ?? []),
+])
+// A reply's selection offers Comment while the list takes comments.
+provideReplySelectionTools((reply, streaming) => comments.value?.selectionTools(reply, streaming) ?? [])
 
 /** Share on the answer the text block `blockId` ends, which its footer's button starts. */
 function answerShare(blockId: string): AnswerShare {
@@ -438,7 +459,8 @@ defineExpose({
         class="w-full px-[var(--session-gutter,0px)] pt-2"
         :style="{ paddingBottom: 'var(--transcript-clearance)' }"
       >
-        <div class="relative w-full" :style="{ height: `${totalSize}px` }">
+        <div ref="rowsRoot" class="relative w-full" :style="{ height: `${totalSize}px` }">
+          <ReplyComments v-if="commenting" ref="comments" :root="rowsRoot" :commenting="commenting" :sent="sent" />
           <div
             v-for="item in virtualItems"
             :key="String(item.key)"

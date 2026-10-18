@@ -11,13 +11,14 @@ use demi_agent_transcript::{
 use demi_provider_common::{RequestLimits, ToolDefinition};
 use demi_shared_types::{
     B64Bytes, BlobRef, Block, CompactionBoundaryBlock, CompactionMarkerBlock, DocumentSource,
-    FileExtension, MediaSource, Model, ResponseBlock, TextBlock, Timestamp, TokenUsage,
+    FileExtension, MediaSource, MessageComment, Model, ResponseBlock, TextBlock, Timestamp, TokenUsage,
     ToolCallBlock, ToolCallStatus, ToolMediaSource, ToolResultContentBlock, TurnId, UserBlock,
     UserContentBlock,
 };
 
 fn user(id: &str, text: &str) -> Block {
     Block::User(UserBlock {
+        comments: Vec::new(),
         entries: Vec::new(),
         id: id.try_into().unwrap(),
         turn_id: TurnId::try_from("turn").unwrap(),
@@ -132,6 +133,7 @@ fn a_medium_weighs_what_the_request_to_its_model_carries() {
     let document = B64Bytes::from(vec![1; 40_000]);
     let screenshot = B64Bytes::from(vec![2; 1_800_000]);
     let message = Block::User(UserBlock {
+        comments: Vec::new(),
         entries: Vec::new(),
         id: "u".try_into().unwrap(),
         turn_id: TurnId::try_from("turn").unwrap(),
@@ -268,6 +270,33 @@ fn without_an_anchor_the_system_prompt_and_the_tools_count() {
     );
     let answered = [history[0].clone(), response("r1", 1_234)];
     assert_eq!(estimate_with(&answered, 1_000_000, &prompt, &tools), 1_384);
+}
+
+/// A message's comments weigh what replay carries of them: comments quoting
+/// 50,000 characters weigh their first and last 8,000 and the truncation
+/// line, before the message's text.
+#[test]
+fn a_messages_long_comments_weigh_what_the_replay_bound_keeps() {
+    let mut block = user("u1", "Otherwise go ahead");
+    let Block::User(message) = &mut block else { unreachable!() };
+    message.comments = vec![MessageComment {
+        id: "c1".into(),
+        block_id: "t1".try_into().unwrap(),
+        start: 0,
+        end: 50_000,
+        quote: format!("{}{}", "a".repeat(8_000), "b".repeat(41_998)),
+        text: "Why?".into(),
+    }];
+    let view = ModelView::of(0, std::slice::from_ref(&block), &HeldMedia::default()).unwrap();
+    let model = test_model().model;
+    let request = RequestView::new(&view, &model, RequestLimits::default(), &[]);
+    // "> " and the quote, a blank line, the comment: 50,006 characters.
+    let replayed = format!(
+        "> {}\n\n[... truncated 34006 characters ...]\n\n{}\n\nWhy?\nOtherwise go ahead",
+        "a".repeat(7_998),
+        "b".repeat(7_994)
+    );
+    assert_eq!(block_tokens(&block, &request), text_tokens(&replayed));
 }
 
 /// A text weighs what replay carries of it: a pasted log of 50,000

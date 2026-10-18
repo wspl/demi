@@ -29,7 +29,7 @@ use demi_provider_common::{
     ProviderRuntime, RequestBlock, RequestLimits, ToolDefinition,
 };
 use demi_shared_types::{
-    AutomationMark,
+    AutomationMark, MessageComment,
     AgentAccount, AgentMessage, BlobRef, Block, BlockId, Clock, CommandId, CommandReport, FailureSource, ReportEvent,
     ModelSelection, NodeId, PendingCall, PendingSteer, ProviderErrorDiagnostics, QueuedMessage, SessionPhase,
     ShellToolView, ShellViewStatus, Timestamp, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
@@ -260,6 +260,8 @@ pub(super) enum ActionKind {
     /// A message: appends a `user` block and runs a turn.
     Send {
         content: Vec<UserContentBlock>,
+        /// The comments sent with it, which its `user` block keeps.
+        comments: Vec<MessageComment>,
         /// The automation's run that sent it, which its `user` block keeps.
         automation: Option<AutomationMark>,
     },
@@ -643,11 +645,11 @@ impl SessionCore {
         message: QueuedMessage,
     ) -> Result<ActionHandle, AdmissionError> {
         self.refuse_admission()?;
-        let QueuedMessage { id, content, automation } = message;
+        let QueuedMessage { id, content, comments, automation } = message;
         if self.knows_turn(&id) {
             return Ok(ActionHandle::ended(ActionEnd::Duplicate));
         }
-        Ok(self.push_action(ActionKind::Send { content, automation }, id))
+        Ok(self.push_action(ActionKind::Send { content, comments, automation }, id))
     }
 
     /// Admits a retry, a resume or a compaction pass.
@@ -871,9 +873,9 @@ impl SessionCore {
         self.reject_edit(EditError::Closed);
         if began {
             self.record_stop(CancelReason::Shutdown);
-        } else if let ActionKind::Send { content, automation } = kind {
+        } else if let ActionKind::Send { content, comments, automation } = kind {
             self.pending.push_front(PendingAction {
-                kind: ActionKind::Send { content, automation },
+                kind: ActionKind::Send { content, comments, automation },
                 turn: turn.clone(),
                 reply: None,
             });
@@ -1151,9 +1153,10 @@ impl SessionCore {
         self.pending
             .iter()
             .filter_map(|action| match &action.kind {
-                ActionKind::Send { content, automation } => Some(QueuedMessage {
+                ActionKind::Send { content, comments, automation } => Some(QueuedMessage {
                     id: action.turn.clone(),
                     content: content.clone(),
+                    comments: comments.clone(),
                     automation: automation.clone(),
                 }),
                 _ => None,
@@ -1168,6 +1171,7 @@ impl SessionCore {
         &mut self,
         id: BlockId,
         content: Vec<UserContentBlock>,
+        comments: Vec<MessageComment>,
     ) -> Result<(), SteerError> {
         let turn = self.steerable_turn()?;
         self.inputs.add(Input::Steer(PendingSteer {
@@ -1175,6 +1179,7 @@ impl SessionCore {
             turn_id: turn,
             model: self.model.clone(),
             content,
+            comments,
         }));
         Ok(())
     }
@@ -1333,7 +1338,7 @@ impl SessionCore {
             match input {
                 Input::Steer(steer) => {
                     self.transcript
-                        .push_steer(steer.id, turn.clone(), &steer.model, steer.content);
+                        .push_steer(steer.id, turn.clone(), &steer.model, steer.content, steer.comments);
                 }
                 Input::Report(..) if reports.is_empty() => {}
                 Input::Report(..) => {
@@ -1499,11 +1504,12 @@ impl SessionCore {
         &mut self,
         turn: TurnId,
         content: Vec<UserContentBlock>,
+        comments: Vec<MessageComment>,
         preamble: Option<String>,
         automation: Option<AutomationMark>,
     ) {
         self.transcript
-            .push_user(turn, &self.model, content, preamble, automation);
+            .push_user(turn, &self.model, content, comments, preamble, automation);
         if let Activity::Running(run) = &mut self.activity {
             run.unwritten_media.clear();
         }

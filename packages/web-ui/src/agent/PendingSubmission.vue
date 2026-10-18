@@ -31,6 +31,7 @@ const markdown = computed(() => sentMarkdown(props.text, props.attachments.lengt
     <UserBlock
       :content="markdown ? [{ type: 'text', text: markdown }] : []"
       :attachments="attachments"
+      :comments="comments"
       :editable="false"
       :pending="pending"
       @recall="emit('recall')"

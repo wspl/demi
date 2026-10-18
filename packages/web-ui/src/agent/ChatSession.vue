@@ -20,6 +20,7 @@ import {
   type MessageEditState,
 } from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
+import type { ReplyCommenting } from './comments/comments'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import { DOCK_WINDOW_SHARE } from '@demicodes/web-ui/agent/dock-window'
@@ -168,6 +169,11 @@ const props = withDefaults(defineProps<{
    * names, which such a failure's record offers; absent, it offers none.
    */
   resumeAtRetry?: boolean
+  /**
+   * The comments waiting in the draft and what to do with them, which the
+   * replies take (`comments-and-ask.md`); absent, they take none.
+   */
+  commenting?: ReplyCommenting
   /**
    * Whether calls and folded runs show the files they changed as pills; the
    * product shows none for a conversation outside a project
@@ -738,6 +744,7 @@ watch(
             :fork="fork"
             :share="share ? (blockId) => sharing.start({ kind: 'answer', blockId }) : undefined"
             :edit-target-id="messageEdit?.request.targetBlockId"
+            :commenting="commenting"
             @retry-submission="(id) => emit('retrySubmission', id)"
             :bottom-offset="surface?.dockHeight ?? 0"
             :persisted-scroll-state="conversation.scroll ?? undefined"

@@ -1,49 +1,36 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, provide, ref, shallowRef } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/vue'
-import { Check } from '@lucide/vue'
-import { appOverlayStore } from '../overlay/appOverlay'
-import { useCopy } from '../composables/useCopy'
 import { stackAbove } from '../overlay/stacking'
-import Button from './Button.vue'
-import Popover from './Popover.vue'
-import { ICON_PX } from './icon-metrics'
-import { menuRootKey } from './menu-context'
 import { usePhone } from './phone'
-import { selectionTools, type ContextMenuEntry, type SelectionTools } from './context-menu'
-import { t as shared } from '../locales/text'
+import { selectionTools, type SelectionTools } from './context-menu'
+import SelectionToolRow from './SelectionToolRow.vue'
 
 /**
  * The text selection's toolbar (`web-application.md` § Context menus),
  * which the app mounts once at its root: while a selection holds text in
  * one object that offers tools for it, as a message does
- * (`selectionTools`), a row of its tools stands by it, Copy first, then the
- * object's, such as Send to Conversation. On the desktop it stands above
- * the selection, once the mouse that drags it is released, with a divider
- * between tools, as the system's edit menu has; on a phone
- * under it, clear of the system's callout above. A tool with a submenu
- * opens it from its button, on a phone as a sheet; while it is open the
- * toolbar keeps the selection it opened for, though the focus moving into
- * its search field ends the selection on the page.
+ * (`selectionTools`), a row of its tools stands by it: on the desktop those
+ * that act in place, such as Comment, the right-click menu holding Copy
+ * and the rest; on a phone every one the object offers, such as Send to
+ * Conversation, Copy being the system's callout's. On the desktop it stands above
+ * the selection, once the mouse that drags it is released; on a phone
+ * under it, clear of the system's callout above. While a tool's submenu is
+ * open (SelectionToolRow) the toolbar keeps the selection it opened for,
+ * though the focus moving into its search field ends the selection on the page.
  */
 
 const phone = usePhone()
 const tools = shallowRef<SelectionTools | null>(null)
 /** A mouse holds the selection it drags: the toolbar waits for its release. */
 const dragging = ref(false)
-/** The tool whose submenu is open, which holds the toolbar where it is. */
-const opened = shallowRef<{ entry: ContextMenuEntry; button: HTMLElement } | null>(null)
-
-let copiedText = ''
-const { copy, copied } = useCopy(() => copiedText)
+/** A tool's submenu is open, which holds the toolbar where it is. */
+const holding = ref(false)
 
 function read(): void {
-  if (opened.value)
+  if (holding.value)
     return
-  tools.value = selectionTools(window.getSelection(), (text) => {
-    copiedText = text
-    void copy()
-  })
+  tools.value = selectionTools(window.getSelection(), phone.value)
 }
 
 const listeners = new AbortController()
@@ -60,6 +47,23 @@ onMounted(() => {
   }, { capture: true, signal })
 })
 onBeforeUnmount(() => listeners.abort())
+
+/**
+ * A selection whose text the page renders again, as a reply that streams
+ * does, collapses without a `selectionchange` in Chrome: the page's change
+ * of the selected text is read as the selection's, so the toolbar never
+ * stands for text that went.
+ */
+watch(tools, (now, _before, onCleanup) => {
+  const around = now?.range.commonAncestorContainer
+  // The object the text is in, whose part holding the text may itself be replaced.
+  const element = (around instanceof Element ? around : around?.parentElement)?.closest('[data-context-menu]')
+  if (!element)
+    return
+  const observer = new MutationObserver(read)
+  observer.observe(element, { childList: true, subtree: true, characterData: true })
+  onCleanup(() => observer.disconnect())
+})
 
 const shown = computed(() => tools.value !== null && !dragging.value)
 
@@ -88,61 +92,22 @@ const { floatingStyles } = useFloating(reference, floating, {
 })
 const z = stackAbove()
 
-/** A tool chosen: one with a submenu opens it, any other acts. */
-function choose(entry: ContextMenuEntry, event: Event): void {
-  if (entry.submenu) {
-    opened.value = { entry, button: event.currentTarget as HTMLElement }
-    return
-  }
-  void entry.run?.()
+function hold(now: boolean): void {
+  holding.value = now
+  if (!now)
+    read()
 }
-
-function closeSubmenu(): void {
-  opened.value = null
-  read()
-}
-// A row chosen in the submenu ends it, as a menu's row does.
-provide(menuRootKey, { dismiss: closeSubmenu })
-
-const isCopy = (index: number) => index === 0
 </script>
 
 <template>
   <Teleport to="body">
-    <!-- The toolbar takes no press from the selection: a press on it keeps the text selected. -->
     <div
       v-if="shown && tools"
       ref="floating"
       data-selection-toolbar
-      class="overlay-shell flex items-center gap-0.5 rounded-lg p-1"
       :style="{ ...floatingStyles, zIndex: z() }"
-      @mousedown.prevent
-      @touchstart.prevent
     >
-      <template v-for="(entry, index) in tools.entries" :key="entry.label">
-      <!-- A divider between tools, as the system's edit menu has. -->
-      <div v-if="index > 0" class="h-4 w-px bg-line-subtle" aria-hidden="true" />
-      <Button
-        size="sm"
-        variant="ghost"
-        :pressed="opened?.entry === entry"
-        @pointerup="(event: PointerEvent) => event.pointerType === 'touch' && choose(entry, event)"
-        @click="(event: MouseEvent) => choose(entry, event)"
-      >
-        <component :is="isCopy(index) && copied ? Check : entry.icon" v-if="entry.icon" :size="ICON_PX.in28" aria-hidden="true" />
-        {{ isCopy(index) && copied ? shared('common.copied') : entry.label }}
-      </Button>
-      </template>
+      <SelectionToolRow :entries="tools.entries" @holding="hold" />
     </div>
   </Teleport>
-  <Popover
-    v-if="opened?.entry.submenu"
-    :overlay-store="appOverlayStore"
-    is-open
-    :anchor-el="opened.button"
-    sheet
-    @close="closeSubmenu"
-  >
-    <component :is="opened.entry.submenu" />
-  </Popover>
 </template>

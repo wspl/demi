@@ -27,6 +27,7 @@ test('a saved edit keeps its operation, its files and the separate composer draf
     local: null,
     base: 4,
     text: 'unrelated composer draft',
+    comments: [],
     model: { providerId: 'provider', modelId: 'model', thinkingEffort: null, serviceTierId: null },
     files: [],
     scroll: null,
@@ -86,7 +87,7 @@ test('a draft of release 0.1.21 reads with its message on its way as a list of o
     [['user', 'sending'], { ...record, pendingSend: sent }],
     [['user', 'idle'], { ...record, pendingSend: null, text: 'typed' }],
   ])
-  expect((await readDraft('user', 'sending'))?.pendingSends).toEqual([sent])
+  expect((await readDraft('user', 'sending'))?.pendingSends).toEqual([{ ...sent, comments: [] }])
   expect(await readDraft('user', 'idle')).toMatchObject({ pendingSends: [], text: 'typed' })
 })
 
@@ -111,7 +112,7 @@ test('a record that does not read is set aside, and every other draft is restore
 // failing until a reload. An IndexedDB in memory; milliseconds.
 
 const draft = (text: string): SavedDraft => ({
-  pendingSends: [], notSaved: [], base: null, local: null, text, model: null, files: [], scroll: null,
+  pendingSends: [], notSaved: [], base: null, local: null, text, comments: [], model: null, files: [], scroll: null,
 })
 
 /** The connections the page opens to the draft database, in order. */

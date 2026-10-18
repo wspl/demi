@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { schemaRefusal } from '@demicodes/protocol'
+import { messageCommentSchema, schemaRefusal } from '@demicodes/protocol'
 import { conversationSummarySchema, draftFileSchema, workflowChoiceSchema } from '../api/generated/web-api'
 import { messageEditStateSchema } from '@demicodes/web-ui/agent/message-editing'
 import { modelSettingsSchema } from '@demicodes/web-ui/agent/model-selection'
@@ -43,6 +43,8 @@ export const draftSchema = z.object({
       id: z.uuid(),
       text: z.string(),
       fileIds: z.array(z.string()),
+      /** The comments it carries (`comments-and-ask.md` § Sending them). */
+      comments: z.array(messageCommentSchema),
       error: z.string().nullable(),
       /** The message saved for later it was sent from, which a retry sends again from the list as the same turn. */
       saved: z.string().optional(),
@@ -75,6 +77,8 @@ export const draftSchema = z.object({
     .nullable(),
   /** The composer's text, when the backend does not have it. */
   text: z.string(),
+  /** The comments waiting with that text, when the backend does not have them. */
+  comments: z.array(messageCommentSchema),
   /** The model settings of a conversation without a record; null for one with a record, which holds them. */
   model: modelSettingsSchema.nullable(),
   /**
@@ -104,38 +108,56 @@ export type SavedFile = z.infer<typeof fileSchema>
  * record's shape, whose upgrade turns the previous release's records into
  * the new one (`web-application.md` § Persistence and adapters).
  */
-const DRAFTS_VERSION = 2
+const DRAFTS_VERSION = 3
 
 /** A message on its way as release 0.1.21 stored it: one per conversation, or none. */
 const pendingSendV1Schema = z.looseObject({
-  pendingSend: draftSchema.shape.pendingSends.element.nullable(),
+  pendingSend: draftSchema.shape.pendingSends.element.omit({ comments: true }).nullable(),
+})
+
+/** A record as version 2 stored it, before a draft held comments. */
+const draftV2Schema = z.looseObject({
+  pendingSends: z.array(z.looseObject({})),
 })
 
 /**
  * Upgrades the draft database from `oldVersion`: a new one gets its store;
  * one of 0.1.21 (version 1) turns each record's `pendingSend` into the list
- * `pendingSends`. A record of another shape stays as it was, and its read
- * reports it.
+ * `pendingSends`; one of version 2 gives each record and each message on
+ * its way no comments, which a draft held none of then. A record of another
+ * shape stays as it was, and its read reports it.
  */
 function upgradeDrafts(request: IDBOpenDBRequest, oldVersion: number): void {
   if (oldVersion < 1) {
     request.result.createObjectStore('drafts')
     return
   }
-  if (oldVersion < 2) {
-    const cursors = request.transaction!.objectStore('drafts').openCursor()
-    cursors.onsuccess = () => {
-      const cursor = cursors.result
-      if (!cursor) {
-        return
-      }
-      const old = pendingSendV1Schema.safeParse(cursor.value)
+  const cursors = request.transaction!.objectStore('drafts').openCursor()
+  cursors.onsuccess = () => {
+    const cursor = cursors.result
+    if (!cursor) {
+      return
+    }
+    let value: unknown = cursor.value
+    if (oldVersion < 2) {
+      const old = pendingSendV1Schema.safeParse(value)
       if (old.success) {
         const { pendingSend, ...rest } = old.data
-        cursor.update({ ...rest, pendingSends: pendingSend ? [pendingSend] : [] })
+        value = { ...rest, pendingSends: pendingSend ? [pendingSend] : [] }
       }
-      cursor.continue()
     }
+    const before = draftV2Schema.safeParse(value)
+    if (before.success) {
+      value = {
+        ...before.data,
+        comments: [],
+        pendingSends: before.data.pendingSends.map((pending) => ({ ...pending, comments: [] })),
+      }
+    }
+    if (value !== cursor.value) {
+      cursor.update(value)
+    }
+    cursor.continue()
   }
 }
 

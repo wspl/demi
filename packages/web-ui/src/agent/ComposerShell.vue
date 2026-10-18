@@ -25,6 +25,10 @@ import { transferCopiedMessage } from './message-input/copied-message'
  * for later). A toggle in the midst turns the glide around from where it is
  * drawn; reduced motion shows the change at once.
  *
+ * The `context` slot is a row at the top of the box, for what the message
+ * carries besides its text, such as a batch of comments; the owner opens the
+ * shell while it shows, so the row stands over the message.
+ *
  * The message's line comes first. The editor slot hears what the line offers
  * its text (`line`), so a message that outgrows it opens the shell instead of
  * running off its end.
@@ -123,9 +127,13 @@ onBeforeUnmount(() => {
       :class="[
         showDrop ? 'outline-transparent' : focused ? 'outline-line-focus' : 'outline-line',
         expanded ? 'composer-shell-expanded' : 'composer-shell-capsule',
+        $slots.context ? 'composer-shell-context' : '',
       ]"
       :data-dropping="showDrop ? '' : undefined"
     >
+      <div v-if="$slots.context" class="composer-context flex flex-wrap items-start gap-1">
+        <slot name="context" />
+      </div>
       <div class="composer-attach">
         <slot name="attach" />
       </div>

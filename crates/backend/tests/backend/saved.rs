@@ -117,7 +117,7 @@ async fn put_draft(backend: &TestBackend, session: &Session, base: u64, text: &s
         .put(
             &format!("/api/conversations/{FIRST}/draft"),
             session,
-            json!({ "base": base, "text": text, "files": files }),
+            json!({ "base": base, "text": text, "files": files, "comments": [] }),
         )
         .await;
     assert_eq!(saved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&saved.body));

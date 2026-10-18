@@ -18,7 +18,7 @@ use demi_conversation_socket_protocol::{
     ServerFrame, SteerOutcome,
 };
 use demi_provider_common::Ahead;
-use demi_shared_types::{BlockId, NodeId, SessionPhase, TurnId};
+use demi_shared_types::{BlockId, NodeId, QueuedMessage, SessionPhase, TurnId};
 use tokio::sync::mpsc::{self, error::TrySendError};
 
 use super::{
@@ -340,6 +340,7 @@ impl<H: HostResolver> Connection<H> {
             ClientFrame::Send {
                 message_id,
                 content,
+                comments,
             } => {
                 let (content, media) = match resolve_message(&*self.resolver, content).await {
                     Ok(resolved) => resolved,
@@ -351,18 +352,24 @@ impl<H: HostResolver> Connection<H> {
                 session.hold_media(media);
                 // The session reports the action's course as events; the
                 // handle is not needed.
-                if let Err(error) = session.send(content, message_id) {
+                let message = QueuedMessage {
+                    id: message_id,
+                    content,
+                    comments,
+                    automation: None,
+                };
+                if let Err(error) = session.send_message(message) {
                     self.reject(kind, error.refusal());
                     return false;
                 }
                 return true;
             }
-            ClientFrame::Steer { steer_id, content } => {
+            ClientFrame::Steer { steer_id, content, comments } => {
                 let outcome = match resolve_message(&*self.resolver, content).await {
                     Ok((content, media)) => {
                         session.hold_media(media);
                         session
-                            .steer(content, steer_id.clone())
+                            .steer_with_comments(content, comments, steer_id.clone())
                             .map_err(|error| error.refusal())
                     }
                     Err(error) => Err(error.refusal()),

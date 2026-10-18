@@ -2,9 +2,10 @@ import { computed, markRaw, reactive, type Raw, ref, toRaw, watch } from 'vue'
 import { defineStore } from 'pinia'
 import { SerialQueue, deferred, moveBefore } from '@demicodes/utils'
 import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
-import type { ClientContent } from '@demicodes/protocol'
+import type { ClientContent, MessageComment } from '@demicodes/protocol'
+import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
-import type { TranscriptReveal } from '@demicodes/web-ui/agent/history'
+import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { ConversationRuntime, RemovalRefusedError, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
 import {
@@ -127,7 +128,7 @@ function isEmptyDraft(conversation: Conversation): boolean {
  * the toast whose Undo sends the message again.
  */
 type TakenBack =
-  | { kind: 'refilled'; text: string; fileIds: string[] }
+  | { kind: 'refilled'; text: string; fileIds: string[]; comments: MessageComment[] }
   | { kind: 'recalled'; toast: string }
 
 /** `state` with the conversation `id` as `change` makes it; one that is gone stays gone. */
@@ -442,6 +443,7 @@ export const useConversations = defineStore('conversations', () => {
       lastError: null,
       draft: '',
       draftShown: 0,
+      comments: [],
       record: newRecord(),
       notSaved: [],
       files: [],
@@ -610,6 +612,7 @@ export const useConversations = defineStore('conversations', () => {
             },
       base: !local && unsaved ? recordSync.base(conversation) : null,
       text: unsaved ? conversation.draft : '',
+      comments: unsaved ? conversation.comments.map((comment) => ({ ...comment })) : [],
       notSaved: conversation.notSaved.map((row) => structuredClone(toRaw(row))),
       // A conversation with a record holds its model settings there.
       model: local ? { ...conversation.model } : null,
@@ -862,6 +865,7 @@ export const useConversations = defineStore('conversations', () => {
           }
         }
         conversation.draft = draft.text
+        conversation.comments = draft.comments
         conversation.files = draft.files.map(savedAttachment)
         // The files of the message, in the order of its capsules; the rest
         // are those of the sends not yet accepted.
@@ -978,8 +982,40 @@ export const useConversations = defineStore('conversations', () => {
   function showWriting(conversation: Conversation, writing: Writing): void {
     const files = writing.files.map((file) => draftAttachment(conversation, file))
     conversation.draft = writing.text
+    conversation.comments = [...writing.comments]
     uploads.showFiles(conversation, files)
     conversation.draftShown += 1
+  }
+
+  /**
+   * Changes the comments waiting in the conversation's draft
+   * (`comments-and-ask.md` § Waiting comments), which the draft saves at
+   * once, a change made in one step rather than typed.
+   */
+  function setComments(conversation: Conversation, comments: MessageComment[]): void {
+    if (conversation.archived) {
+      return
+    }
+    conversation.comments = comments
+    saveDrafts()
+    void recordSync.save(conversation).catch((error) => report(t('failures.saveDraft'), error))
+  }
+
+  /** What the replies' comments do in the conversation's draft (`ReplyCommenting`). */
+  function commenting(conversation: Conversation): ReplyCommenting {
+    return {
+      get waiting() {
+        return conversation.comments
+      },
+      add: (comment) => setComments(conversation, [...conversation.comments, comment]),
+      edit: (id, text) => setComments(conversation, conversation.comments.map((each) => (each.id === id ? { ...each, text } : each))),
+      remove: (id) => setComments(conversation, conversation.comments.filter((each) => each.id !== id)),
+    }
+  }
+
+  /** × on the composer's pill: every waiting comment goes. */
+  function clearComments(conversation: Conversation): void {
+    setComments(conversation, [])
   }
 
 
@@ -2218,13 +2254,18 @@ export const useConversations = defineStore('conversations', () => {
       conversation.archived ||
       // A file whose upload failed is retried or removed in the composer first.
       messageFiles(conversation).some((file) => isComposerFile(file) && file.phase === 'failed') ||
-      (!conversation.draft.trim() && !conversation.attachmentIds.length)
+      (!conversation.draft.trim() && !conversation.attachmentIds.length && !conversation.comments.length)
     ) {
       return
     }
-    const pending = addPendingSend(conversation, way, conversation.draft, messageFiles(conversation).map((file) => file.id))
+    // In the order the conversation reads them, as the pill lists them.
+    const comments = inReadingOrder(conversation.comments, latestBlocks(conversation.history).map((block) => block.id))
+    // The waiting comments go with the message, whether it steers or queues.
+    const fileIds = messageFiles(conversation).map((file) => file.id)
+    const pending = addPendingSend(conversation, way, conversation.draft, fileIds, { comments })
     conversation.draft = ''
     conversation.attachmentIds = []
+    conversation.comments = []
     await deliverInOrder(conversation, pending)
   }
 
@@ -2280,7 +2321,8 @@ export const useConversations = defineStore('conversations', () => {
         void recordSync.saveForLater(conversation, crypto.randomUUID(), composerWriting(conversation).writing)
       }
       conversation.notSaved = conversation.notSaved.filter((row) => row !== notSaved)
-      showWriting(conversation, notSaved)
+      // The comments waiting meanwhile stay; a message of the list has none.
+      showWriting(conversation, { ...notSaved, comments: conversation.comments })
     } else if (message) {
       void recordSync.edit(conversation, message)
     } else {
@@ -2309,7 +2351,7 @@ export const useConversations = defineStore('conversations', () => {
       ...conversation.files,
       ...files.filter((file) => !conversation.files.some((held) => held.id === file.id)),
     ]
-    const pending = addPendingSend(conversation, way, message.text, files.map((file) => file.id), id)
+    const pending = addPendingSend(conversation, way, message.text, files.map((file) => file.id), { saved: id })
     recordSync.hideSent(conversation, id, pending.id)
     void deliverInOrder(conversation, pending)
   }
@@ -2353,13 +2395,25 @@ export const useConversations = defineStore('conversations', () => {
     void recordSync.resave(conversation, row.id, row)
   }
 
-  /** Holds a message as sent and not yet confirmed, after those still on their way; answers it as the conversation holds it. */
-  function addPendingSend(conversation: Conversation, way: SendWay, text: string, fileIds: string[], saved?: string): PendingSend {
+  /**
+   * Holds a message as sent and not yet confirmed, after those still on
+   * their way, with the comments it carries or the message saved for later
+   * it is; answers it as the conversation holds it.
+   */
+  function addPendingSend(
+    conversation: Conversation,
+    way: SendWay,
+    text: string,
+    fileIds: string[],
+    { comments = [], saved }: { comments?: MessageComment[]; saved?: string } = {},
+  ): PendingSend {
     if (conversation.persistence === 'draft') {
       conversation.persistence = 'pending'
     }
     const id = crypto.randomUUID()
-    conversation.pendingSends = [...conversation.pendingSends, { id, way, text, fileIds, error: null, ...(saved ? { saved } : {}) }]
+    // Plain copies: the page keeps its messages on their way in the web browser's storage.
+    const carried = comments.map((comment) => ({ ...comment }))
+    conversation.pendingSends = [...conversation.pendingSends, { id, way, text, fileIds, comments: carried, error: null, ...(saved ? { saved } : {}) }]
     return conversation.pendingSends.find((pending) => pending.id === id)!
   }
 
@@ -2432,7 +2486,7 @@ export const useConversations = defineStore('conversations', () => {
       // Each file where its capsule stands in the text.
       const content = joinMessageContent(pending.text, references.map((reference) => [reference]))
       const runtime = await runtimeFor(conversation)
-      await (way === 'steer' ? runtime.steer(content, pending.id) : runtime.submit(content, pending.id))
+      await (way === 'steer' ? runtime.steer(content, pending.id, pending.comments) : runtime.submit(content, pending.id, pending.comments))
       clearSubmission(conversation, pending.id)
     } catch (error) {
       // The page let the conversations go, as a sign-out does, or the message is no longer one to send.
@@ -2445,11 +2499,12 @@ export const useConversations = defineStore('conversations', () => {
           // One from the list the user took back meanwhile is listed again.
           dropSubmission(conversation, pending.id)
           recordSync.unsend(conversation, pending.id)
-        } else if (wish === 'recall' && isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
+        } else if (wish === 'recall' && isEmptyMessage(conversation.draft, conversation.attachmentIds.length) && conversation.comments.length === 0) {
           // One the user took back meanwhile goes back into the empty
-          // composer as it was, its files with it.
+          // composer as it was, its files and its comments with it.
           conversation.pendingSends = conversation.pendingSends.filter((each) => each.id !== pending.id)
           refill(conversation, pending.text, pending.fileIds)
+          setComments(conversation, pending.comments)
         } else {
           // Its row comes back, undelivered with the reason: a draft the
           // composer holds is not to be replaced, and the message is not lost.
@@ -2622,7 +2677,9 @@ export const useConversations = defineStore('conversations', () => {
     const steer = conversation.pendingSteers.find((each) => each.id === id)
     const waiting = steer ?? conversation.queue.find((each) => each.id === id)
     const removal = runtimeFor(conversation).then((runtime) => runtime.removeWaiting(id))
-    const back = waiting ? takeBack(conversation, contentCopy(waiting.content), steer ? 'steer' : 'queue', removal) : null
+    const back = waiting
+      ? takeBack(conversation, { copy: contentCopy(waiting.content), comments: waiting.comments ?? [] }, steer ? 'steer' : 'queue', removal)
+      : null
     void removal
       .catch((error) => {
         if (back) {
@@ -2638,17 +2695,28 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Gives a message Recall took back to the user (`turns.md` § Steer or
    * queue): into the composer when it is empty, its files coming back as a
-   * paste brings them, without their bytes; otherwise the draft stays as it
-   * is, and a toast's Undo sends the message again the way it was sent, once
-   * its removal is done.
+   * paste brings them, without their bytes, and its comments waiting again
+   * (`comments-and-ask.md` § Sending them); otherwise, comments waiting
+   * there included, the draft stays as it is, and a toast's Undo sends the
+   * message again the way it was sent, its comments with it, once its
+   * removal is done.
    */
-  function takeBack(conversation: Conversation, copy: CopiedMessage, way: 'steer' | 'queue', removal: Promise<void>): TakenBack {
-    if (!isEmptyMessage(conversation.draft, conversation.attachmentIds.length)) {
+  function takeBack(
+    conversation: Conversation,
+    message: { copy: CopiedMessage; comments: MessageComment[] },
+    way: 'steer' | 'queue',
+    removal: Promise<void>,
+  ): TakenBack {
+    if (!isEmptyMessage(conversation.draft, conversation.attachmentIds.length) || conversation.comments.length > 0) {
       // A removal that fails dismisses this one.
-      const toast = showRecalled(() => void removal.then(() => resend(conversation, copy, way), () => {}))
+      const toast = showRecalled(() => void removal.then(() => resend(conversation, message, way), () => {}))
       return { kind: 'recalled', toast }
     }
-    return { kind: 'refilled', ...pasteAtEnd(conversation, copy) }
+    const comments = message.comments.map((comment) => ({ ...comment }))
+    if (comments.length > 0) {
+      setComments(conversation, comments)
+    }
+    return { kind: 'refilled', ...pasteAtEnd(conversation, message.copy), comments }
   }
 
   /**
@@ -2730,12 +2798,17 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Takes back what `takeBack` did once the removal failed, as the row comes
    * back: the toast goes, and the composer it refilled is empty again,
-   * unless the user changed it since, when it stays as they left it.
+   * unless the user changed it since, when it stays as they left it; the
+   * comments it gave back leave the draft, those the user changed since
+   * included.
    */
   function giveBack(conversation: Conversation, back: TakenBack): void {
     if (back.kind === 'recalled') {
       dismissToast(back.toast)
       return
+    }
+    if (back.comments.length > 0) {
+      setComments(conversation, conversation.comments.filter((each) => !back.comments.some((taken) => taken.id === each.id)))
     }
     if (conversation.draft !== back.text || conversation.attachmentIds.join('\n') !== back.fileIds.join('\n')) {
       return
@@ -2748,12 +2821,12 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Undo on the toast of a message Recall took back: it is sent again the
-   * way it was, its files attached again without their bytes, as one the
-   * composer sent.
+   * way it was, its files attached again without their bytes and its
+   * comments with it, as one the composer sent.
    */
-  function resend(conversation: Conversation, copy: CopiedMessage, way: 'steer' | 'queue'): void {
-    const pasted = pasteMessage(copy, null, pasteHost(conversation))
-    const pending = addPendingSend(conversation, way, pasted.markdown, pasted.capsules.map((capsule) => capsule.id))
+  function resend(conversation: Conversation, message: { copy: CopiedMessage; comments: MessageComment[] }, way: 'steer' | 'queue'): void {
+    const pasted = pasteMessage(message.copy, null, pasteHost(conversation))
+    const pending = addPendingSend(conversation, way, pasted.markdown, pasted.capsules.map((capsule) => capsule.id), { comments: message.comments })
     void deliverInOrder(conversation, pending)
   }
 
@@ -2962,6 +3035,8 @@ export const useConversations = defineStore('conversations', () => {
     settleStartingWorkflow,
     send,
     retrySend,
+    commenting,
+    clearComments,
     editVersion: (conversation: Conversation) =>
       cache.get(conversation.id)?.runtime?.transcriptVersion() ?? null,
     submitEdit: (conversation: Conversation) => submitMessageEdit(editHost(conversation)),

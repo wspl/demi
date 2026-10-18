@@ -768,6 +768,7 @@ async fn send(
     act(
         client,
         ClientFrame::Send {
+            comments: Vec::new(),
             message_id: id.clone(),
             content: client_text(text),
         },

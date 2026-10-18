@@ -278,29 +278,31 @@ function select(node: Node, start: number, end: number, endNode: Node = node): v
   document.dispatchEvent(new Event('selectionchange'))
 }
 
-test('a selection in a message gets a toolbar with Copy and what the message offers for it; any other selection gets none', async () => {
-  const copied: string[] = []
+test('a selection in a message gets a toolbar with what acts on it in place, the right-click menu holding Copy and the rest; any other selection gets none', async () => {
   page(() => h('div', [
+    message({ selectionEntries: (text) => [{ ...entry(`Comment on “${text}”`), inPlace: true }, entry(`Send “${text}”`)] }),
     message({ selectionEntries: (text) => [entry(`Send “${text}”`)] }),
-    message(),
     h('p', { id: 'outside' }, 'A heading of the page'),
     h(SelectionToolbar),
   ]))
   await nextTick()
   const [first, second] = document.querySelectorAll('#text')
   select(first!.firstChild!, 0, 3)
-  expect(menus.selectionTools(window.getSelection(), (text) => copied.push(text))?.entries.map((tool) => tool.label)).toEqual(['Copy', 'Send “See”'])
+  expect(menus.selectionTools(window.getSelection(), false)?.entries.map((tool) => tool.label)).toEqual(['Comment on “See”'])
   await nextTick()
   const toolbar = () => document.querySelector('[data-selection-toolbar]')
-  expect(toolbar()?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Copy Send “See”')
-  // Across two messages, in a message that offers nothing, or outside any: no toolbar.
+  expect(toolbar()?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Comment on “See”')
+  // A phone has no right-click: its toolbar holds every tool the message offers, Copy being the system's.
+  expect(menus.selectionTools(window.getSelection(), true)?.entries.map((tool) => tool.label)).toEqual(['Comment on “See”', 'Send “See”'])
+  // Across two messages, in a message that offers nothing in place, or outside any: no toolbar.
   select(first!.firstChild!, 0, 3, second!.firstChild!)
-  expect(menus.selectionTools(window.getSelection(), () => {})).toBeNull()
+  expect(menus.selectionTools(window.getSelection(), false)).toBeNull()
   select(second!.firstChild!, 0, 3)
-  expect(menus.selectionTools(window.getSelection(), () => {})).toBeNull()
-  select(byId('outside').firstChild!, 0, 6)
+  expect(menus.selectionTools(window.getSelection(), false)).toBeNull()
   await nextTick()
   expect(toolbar()).toBeNull()
+  select(byId('outside').firstChild!, 0, 6)
+  expect(menus.selectionTools(window.getSelection(), true)).toBeNull()
 })
 
 test('a context menu opened in a dialog stands on it and leaves it open', async () => {

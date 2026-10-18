@@ -308,9 +308,12 @@ own objects, such as the file browser's files, declare theirs the same way
 - **Send to Conversation** takes words to another conversation, as iOS's
   Share takes them to another app. The user's own message has it, on its
   bubble or on text selected in it, and so does text selected in the
-  agent's reply; the text selection's toolbar offers it too, the toolbar
-  that stands by a selection in a message, above it on the desktop and
-  under it on a phone, with Copy and Send to Conversation. Its submenu
+  agent's reply. The text selection's toolbar, which stands by a selection
+  in the agent's reply, above it on the desktop and under it on a phone,
+  holds the tools that act on the selection in place, **Comment**
+  ([Comments and side questions](comments-and-ask.md)); on a phone, which
+  has no right-click, it adds Send to Conversation, and the system's own
+  callout offers Copy. Its submenu
   starts with a search field over every conversation, the archived ones
   included, then, while the field is empty, *New Conversation*, which makes
   one in the current project, then the eight conversations the user was last active in,
@@ -343,10 +346,9 @@ Messages does, and a scroll that starts first cancels it. A message's text
 is the exception: its long press selects words, with the system's own
 handles and callout, as in Safari, since a page cannot add to the system's
 menu and a long press cannot both select and open a menu. Once a selection
-holds text in a message, a toolbar stands under it, clear of the system's
-callout above it, and offers Copy and Send to Conversation, as Notion's
-page does on an iPhone; it is the text selection's toolbar the desktop
-shows above a selection in a message, with the same tools. The rest of a message's menu is its
+holds text in the agent's reply, a toolbar stands under it, clear of the
+system's callout above it, as Notion's page does on an iPhone: the text
+selection's toolbar, with Send to Conversation added. The rest of a message's menu is its
 footer's buttons, which a phone shows at rest. A control's long press opens
 nothing, and a text field keeps the system's.
 

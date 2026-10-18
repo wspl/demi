@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, jest, setSystemTime, spyOn, test } from 'bun:test'
 import { deferred, waitFor } from '@demicodes/utils'
-import type { ClientContent, ServerFrame } from '@demicodes/protocol'
+import type { ClientContent, MessageComment, ServerFrame } from '@demicodes/protocol'
 import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agent/conversation-runtime'
 import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
 import { rowKey } from '@demicodes/web-ui/agent/row-key'
@@ -133,7 +133,7 @@ let serverDrafts: Map<string, ConversationDraft>
  * another revision; a restore exchanges the replaced version with the draft.
  */
 function draftRoute(id: string, method: string, action: boolean, body: Record<string, unknown>): Response {
-  const current = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], replaced: null }
+  const current = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], comments: [], replaced: null }
   let next: ConversationDraft
   if (method === 'GET') {
     return Response.json({ draft: current })
@@ -142,9 +142,9 @@ function draftRoute(id: string, method: string, action: boolean, body: Record<st
     if (!replaced || replaced.revision !== body.revision) {
       return Response.json({ requestId: 'req_test000000000001', code: 'draft_changed', message: 'The replaced version changed' }, { status: 409 })
     }
-    const { text, files } = current
+    const { text, files, comments } = current
     next = body.action === 'restore'
-      ? { revision: current.revision + 1, text: replaced.text, files: replaced.files, replaced: { revision: current.revision, text, files } }
+      ? { revision: current.revision + 1, text: replaced.text, files: replaced.files, comments: replaced.comments, replaced: { revision: current.revision, text, files, comments } }
       : { ...current, revision: current.revision + 1, replaced: null }
   } else {
     const files = (body.files as ClientContent[]).map((file): DraftFile =>
@@ -153,9 +153,10 @@ function draftRoute(id: string, method: string, action: boolean, body: Record<st
       revision: current.revision + 1,
       text: body.text as string,
       files,
+      comments: body.comments as MessageComment[],
       replaced: body.base === current.revision
         ? current.replaced
-        : { revision: current.revision, text: current.text, files: current.files },
+        : { revision: current.revision, text: current.text, files: current.files, comments: current.comments },
     }
   }
   serverDrafts.set(id, next)
@@ -183,7 +184,7 @@ function revisionsOf(id: string) {
 function savedRoute(id: string, method: string, path: string, body: Record<string, unknown>): Response {
   const summary = records.find((item) => item.id === id)!
   const messages = serverSaved.get(id) ?? []
-  const current = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], replaced: null }
+  const current = serverDrafts.get(id) ?? { revision: 0, text: '', files: [], comments: [], replaced: null }
   const raise = () => {
     summary.savedRevision += 1
     summary.saved = serverSaved.get(id)!.length
@@ -209,7 +210,7 @@ function savedRoute(id: string, method: string, path: string, body: Record<strin
       return Response.json({ requestId: 'req_test000000000001', code: 'saved_not_found', message: 'No such message saved for later' }, { status: 404 })
     }
     const rest = messages.filter((message) => message !== moved)
-    const draft = { revision: current.revision + 1, text: moved.text, files: moved.files, replaced: current.replaced }
+    const draft = { revision: current.revision + 1, text: moved.text, files: moved.files, comments: current.comments, replaced: current.replaced }
     serverDrafts.set(id, draft)
     summary.draftRevision = draft.revision
     serverSaved.set(id, current.text.trim() || current.files.length
@@ -226,7 +227,7 @@ function savedRoute(id: string, method: string, path: string, body: Record<strin
     raise()
   }
   if (messageId === 'from-draft') {
-    const draft = { revision: current.revision + 1, text: '', files: [], replaced: current.replaced }
+    const draft = { revision: current.revision + 1, text: '', files: [], comments: current.comments, replaced: current.replaced }
     serverDrafts.set(id, draft)
     summary.draftRevision = draft.revision
     return Response.json({ message, draft, revisions: revisionsOf(id) }, { status: 201 })
@@ -1337,12 +1338,13 @@ async function withRemovals(check: (
 test('Recall puts a steer back into the empty composer, its file a capsule attached without uploading it', async () => {
   await withRemovals(async (conversation, removal) => {
     const store = useConversations()
-    conversation.pendingSteers = [withPicture('second')]
+    conversation.pendingSteers = [{ ...withPicture('second'), comments: [recalledComment] }]
     const focusRequests = store.composerFocusRequests
     store.recall(conversation, 'second')
     expect(shownRows(conversation).waiting).toEqual([])
-    // At once, before the session answers.
+    // At once, before the session answers, its comments waiting again.
     expect(conversation.draft).toBe(`Compare ${ATTACHMENT_MARK} with the old one`)
+    expect(conversation.comments).toEqual([recalledComment])
     expect(conversation.attachmentIds).toHaveLength(1)
     const file = conversation.files.find((each) => each.id === conversation.attachmentIds[0])
     expect(file).toMatchObject({ name: 'before.png' })
@@ -1359,19 +1361,29 @@ test('Recall puts a steer back into the empty composer, its file a capsule attac
 // With a draft in the composer, Recall keeps the draft as it is and the
 // message is not put back; a toast's Undo sends it again the way it was
 // sent (`turns.md` § Steer or queue).
-test('Recall with a draft in the composer keeps it untouched, and the toast\'s Undo sends the message again to the queue', async () => {
+// Its comments go with it (`comments-and-ask.md` § Sending them): the draft's
+// own waiting comments stay as they are, and Undo sends the recalled ones
+// again. Before, they joined the draft's and Undo sent the message without them.
+const recalledComment = { id: 'c-recalled', blockId: 'text-1', start: 0, end: 7, quote: 'Uploads', text: 'Which ones?' }
+const ownComment = { id: 'c-own', blockId: 'text-1', start: 8, end: 12, quote: 'fail', text: 'Since when?' }
+test.each<{ holds: string; draft: string; comments: MessageComment[] }>([
+  { holds: 'a draft', draft: 'My own draft', comments: [] },
+  { holds: 'a waiting comment', draft: '', comments: [ownComment] },
+])('Recall with $holds in the composer keeps it untouched, and the toast\'s Undo sends the message again to the queue, its comments with it', async ({ draft, comments }) => {
   await withRemovals(async (conversation, removal) => {
     const store = useConversations()
-    const sent: ClientContent[][] = []
-    const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async (content) => {
-      sent.push(content)
+    const sent: [ClientContent[], readonly MessageComment[]][] = []
+    const submit = spyOn(ConversationRuntime.prototype, 'submit').mockImplementation(async (content, _id, carried = []) => {
+      sent.push([content, carried])
     })
     try {
-      conversation.draft = 'My own draft'
-      conversation.queue = [withPicture('queued')]
+      conversation.draft = draft
+      conversation.comments = comments
+      conversation.queue = [{ ...withPicture('queued'), comments: [recalledComment] }]
       store.recall(conversation, 'queued')
       expect(shownRows(conversation).waiting).toEqual([])
-      expect(conversation.draft).toBe('My own draft')
+      expect(conversation.draft).toBe(draft)
+      expect(conversation.comments).toEqual(comments)
       expect(conversation.attachmentIds).toEqual([])
       const recalled = toasts.at(-1)
       expect(recalled).toMatchObject({ title: 'Message Recalled', tone: 'success', action: { label: 'Undo' } })
@@ -1380,12 +1392,12 @@ test('Recall with a draft in the composer keeps it untouched, and the toast\'s U
       conversation.queue = []
       recalled?.action?.run()
       await waitFor(() => sent.length === 1, () => 'the message was not sent again')
-      expect(sent[0]).toEqual([
+      expect(sent[0]).toEqual([[
         { type: 'text', text: 'Compare ' },
         { type: 'upload', ref: 'att-held', fileName: 'before.png' },
         { type: 'text', text: ' with the old one' },
-      ])
-      expect(conversation.draft).toBe('My own draft')
+      ], [recalledComment]])
+      expect([conversation.draft, conversation.comments]).toEqual([draft, comments])
       expect(removal.sendBytes).not.toHaveBeenCalled()
     } finally {
       submit.mockRestore()
@@ -3360,7 +3372,7 @@ test('the list waits for the new conversations this web browser keeps, so a relo
     expect(store.listStatus).toBe('loading')
     const now = '2026-09-09T00:00:00.000Z'
     listed.resolve({ drafts: [{
-      messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null, notSaved: [],
+      messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null, notSaved: [], comments: [],
       text: 'Fix the login bug',
       local: {
         phase: 'draft',
@@ -3393,7 +3405,7 @@ test('unsent drafts lead the list, newest first, live and after a reload whether
 
   // The drafts as this web browser's storage gives them back, in no particular order.
   const kept = [older, newer].map((id): draftStorage.SavedDraft => ({
-    messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null, notSaved: [],
+    messageEdit: null, pendingSends: [], base: null, model: null, files: [], scroll: null, notSaved: [], comments: [],
     text: id === older ? 'Older draft' : 'Newer draft',
     local: {
       phase: 'draft',
@@ -3692,7 +3704,7 @@ test('a draft another page saved shows in a composer at rest; one its user is ty
   const signOut = signIn()
   jest.useFakeTimers()
   try {
-    serverDrafts.set(FIRST, { revision: 1, text: 'Fix the login', files: [], replaced: null })
+    serverDrafts.set(FIRST, { revision: 1, text: 'Fix the login', files: [], comments: [], replaced: null })
     records[0]!.draftRevision = 1
     const store = useConversations()
     const current = store.items.find((item) => item.id === FIRST)!
@@ -3716,7 +3728,7 @@ test('a draft another page saved shows in a composer at rest; one its user is ty
     // revision its text came from, so the backend keeps what it replaces.
     jest.advanceTimersByTime(DRAFT_SAVE_DELAY_MS)
     await until(() => current.record.revision('draft') === 4, 'the save is answered')
-    expect(draftSaves().map((request) => request.body)).toEqual([{ base: 2, text: 'Fix the login bug', files: [] }])
+    expect(draftSaves().map((request) => request.body)).toEqual([{ base: 2, text: 'Fix the login bug', files: [], comments: [] }])
     expect([current.draft, current.record.pending('draft'), current.record.read.value?.draft.replaced?.text]).toEqual(['Fix the login bug', [], 'Fix the login test, again'])
 
     // Restore brings the replaced version back and offers the one it displaced.
@@ -3754,7 +3766,7 @@ test.each([
   const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
   const submit = spyOn(ConversationRuntime.prototype, 'submit')
   try {
-    serverDrafts.set(FIRST, { revision: 1, text: 'Fix the login', files: [], replaced: null })
+    serverDrafts.set(FIRST, { revision: 1, text: 'Fix the login', files: [], comments: [], replaced: null })
     records[0]!.draftRevision = 1
     const store = useConversations()
     const current = store.items.find((item) => item.id === FIRST)!
@@ -3779,7 +3791,7 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
   const store = useConversations()
   const current = store.items.find((item) => item.id === FIRST)!
   addStubProvider()
-  serverDrafts.set(FIRST, { revision: 1, text: 'Ship it', files: [], replaced: null })
+  serverDrafts.set(FIRST, { revision: 1, text: 'Ship it', files: [], comments: [], replaced: null })
   records[0]!.draftRevision = 1
   const originalFetch = globalThis.fetch
   globalThis.fetch = (async (input, init) => {
@@ -3803,19 +3815,83 @@ test('a send empties the draft everywhere once the backend accepts it, and a cha
     // Until the backend accepts the message the draft stays, however long
     // that takes, and another page edits it meanwhile.
     expect(current.draft).toBe('')
-    serverDrafts.set(FIRST, { revision: 2, text: 'Ship it today', files: [], replaced: null })
+    serverDrafts.set(FIRST, { revision: 2, text: 'Ship it today', files: [], comments: [], replaced: null })
     jest.advanceTimersByTime(DRAFT_SAVE_DELAY_MS)
     await settle()
     expect(draftSaves()).toEqual([])
     accepted.resolve()
     await sending
     await until(() => draftSaves().length === 1, 'the draft is cleared')
-    expect(draftSaves()[0]!.body).toEqual({ base: 1, text: '', files: [] })
+    expect(draftSaves()[0]!.body).toEqual({ base: 1, text: '', files: [], comments: [] })
     await until(() => current.record.revision('draft') === 3, 'the clear is answered')
     const read = current.record.read.value?.draft
     expect([current.draft, read?.text, read?.replaced?.text]).toEqual(['', '', 'Ship it today'])
   } finally {
     jest.useRealTimers()
+    submit.mockRestore()
+    connect.mockRestore()
+    globalThis.fetch = originalFetch
+    signOut()
+  }
+})
+
+// Comments wait in the draft as its text does (`comments-and-ask.md`
+// § Waiting comments): another page's show here, one saved here is saved at
+// once, and Send carries them, in the order the conversation reads them,
+// with the typed text, emptying the draft once the backend accepts it.
+test('waiting comments sync with the draft, and a send or a steer carries them in reading order and empties them everywhere', async () => {
+  const signOut = signIn()
+  const store = useConversations()
+  const current = store.items.find((item) => item.id === FIRST)!
+  addStubProvider()
+  const later = { id: 'c-later', blockId: 'text-1', start: 40, end: 66, quote: 'the same 30-second timeout', text: 'Its own timeout?' }
+  const earlier = { id: 'c-earlier', blockId: 'text-1', start: 4, end: 29, quote: 'Upload in chunks of 4 MB.', text: 'Smaller?' }
+  serverDrafts.set(FIRST, { revision: 1, text: 'Otherwise go ahead', files: [], comments: [], replaced: null })
+  records[0]!.draftRevision = 1
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const path = String(input)
+    if (path.startsWith('/api/models')) return Response.json(stubCatalog())
+    if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
+    if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
+    if (path.endsWith('/transcript')) return Response.json(EMPTY_PAGE)
+    return originalFetch(input, init)
+  }) as typeof fetch
+  const connect = spyOn(ConversationRuntime.prototype, 'connect').mockResolvedValue()
+  const submit = spyOn(ConversationRuntime.prototype, 'submit').mockResolvedValue()
+  const steer = spyOn(ConversationRuntime.prototype, 'steer').mockResolvedValue()
+  try {
+    await useProduct().loadModels(true)
+    await store.activate(FIRST)
+    // Another page saves a comment: this page's composer shows it waiting.
+    serverDrafts.set(FIRST, { ...serverDrafts.get(FIRST)!, revision: 2, comments: [later] })
+    records[0]!.draftRevision = 2
+    await changed(FIRST)
+    await until(() => current.comments.length === 1, 'the other page\'s comment waits here')
+    // A comment saved here goes to the backend at once, with the text.
+    store.commenting(current).add(earlier)
+    await until(() => draftSaves().length === 1, 'the comment is saved')
+    expect(draftSaves()[0]!.body).toEqual({ base: 2, text: 'Otherwise go ahead', files: [], comments: [later, earlier] })
+    await until(() => current.record.revision('draft') === 3, 'the save is answered')
+
+    await store.send(current)
+    expect(submit.mock.calls.map((call) => [call[0], call[2]])).toEqual([
+      [[{ type: 'text', text: 'Otherwise go ahead' }], [earlier, later]],
+    ])
+    expect(current.comments).toEqual([])
+    await until(() => draftSaves().length === 2, 'the draft is cleared')
+    expect(draftSaves()[1]!.body).toEqual({ base: 3, text: '', files: [], comments: [] })
+
+    // While the agent works, a steer carries its comments as a message does.
+    await until(() => current.record.revision('draft') === 4, 'the clearing is answered')
+    store.commenting(current).add(later)
+    current.draft = 'Then this'
+    await store.send(current, 'steer')
+    expect(steer.mock.calls.map((call) => [call[0], call[2]])).toEqual([[[{ type: 'text', text: 'Then this' }], [later]]])
+    expect(submit.mock.calls).toHaveLength(1)
+    expect(current.comments).toEqual([])
+  } finally {
+    steer.mockRestore()
     submit.mockRestore()
     connect.mockRestore()
     globalThis.fetch = originalFetch
@@ -3835,7 +3911,7 @@ test('a draft saved while its pasted files attach restores them attaching, and t
   // The first page's claims never answer: it closes while they are under way.
   let restoreFetch = answerClaims(new Promise(() => {}))
   try {
-    serverDrafts.set(FIRST, { revision: 1, text: '', files: [], replaced: null })
+    serverDrafts.set(FIRST, { revision: 1, text: '', files: [], comments: [], replaced: null })
     records[0]!.draftRevision = 1
     let store = useConversations()
     let current = store.items.find((item) => item.id === FIRST)!
@@ -3883,7 +3959,7 @@ test('a page that closes while typing leaves its text to the next page, which ta
   const kept = spyOn(draftStorage, 'writeLastWords').mockImplementation(() => {})
   let words: draftStorage.LastWords | undefined
   try {
-    serverDrafts.set(FIRST, { revision: 1, text: 'Fix the lo', files: [], replaced: null })
+    serverDrafts.set(FIRST, { revision: 1, text: 'Fix the lo', files: [], comments: [], replaced: null })
     records[0]!.draftRevision = 1
     let store = useConversations()
     let current = store.items.find((item) => item.id === FIRST)!
@@ -3898,13 +3974,13 @@ test('a page that closes while typing leaves its text to the next page, which ta
     disposePinia(pinia)
 
     // Its save on close arrived; its IndexedDB record holds an older text.
-    serverDrafts.set(FIRST, { revision: 2, text: 'Fix the login bug', files: [], replaced: null })
+    serverDrafts.set(FIRST, { revision: 2, text: 'Fix the login bug', files: [], comments: [], replaced: null })
     records[0]!.draftRevision = 2
     pinia = createPinia()
     setActivePinia(pinia)
     signOut = signIn({
       messageEdit: null, pendingSends: [], local: null, base: 1, text: 'Fix the lo',
-      model: null, files: [], scroll: null, notSaved: [],
+      model: null, files: [], scroll: null, notSaved: [], comments: [],
     })
     const taken = spyOn(draftStorage, 'takeLastWords').mockReturnValue(words ?? null)
     jest.useFakeTimers()
@@ -4055,7 +4131,7 @@ test('Save for Later lists the composer\'s message at once under the id its requ
   const signOut = signIn()
   try {
     serveHistory()
-    serverDrafts.set(FIRST, { revision: 1, text: 'Check prod’s DNS', files: [], replaced: null })
+    serverDrafts.set(FIRST, { revision: 1, text: 'Check prod’s DNS', files: [], comments: [], replaced: null })
     records[0]!.draftRevision = 1
     const store = useConversations()
     const first = store.items.find((item) => item.id === FIRST)!
@@ -4076,6 +4152,39 @@ test('Save for Later lists the composer\'s message at once under the id its requ
     await readAgain(first)
     expect([first.draft, listed(first), first.record.pending()]).toEqual(['', ['Check prod’s DNS next'], []])
   } finally {
+    signOut()
+  }
+})
+
+// Cost: no timer but the page's own save delay; each held request is passed on by the test.
+test('a comment saved while an earlier draft save is on its way survives Save for Later', async () => {
+  const signOut = signIn()
+  const { store, first } = await openWithSaved([])
+  const held = holdWrites({ drafts: true })
+  const earlier = { id: 'c0', blockId: 'text-1', start: 8, end: 12, quote: 'fail', text: 'Since when?' }
+  const comment = { id: 'c1', blockId: 'text-1', start: 0, end: 7, quote: 'Uploads', text: 'Which ones?' }
+  try {
+    // A comment is saved at once; its save is on its way.
+    store.commenting(first).add(earlier)
+    await until(() => held.waiting.length === 1, 'the first comment\'s save reaches the backend')
+    // The user types, saves another comment, and saves the message for later before the first save is answered.
+    first.draft = 'Check the logs'
+    store.commenting(first).add(comment)
+    const saving = store.saveForLater(first)
+    await until(() => listed(first).length === 1, 'the message stands in the list')
+    expect([first.draft, listed(first), first.comments]).toEqual(['', ['Check the logs'], [earlier, comment]])
+    await held.waiting[0]!.pass()
+    await until(() => held.waiting.length === 2, 'the save for later reaches the backend')
+    await held.waiting[1]!.pass()
+    await saving
+    await until(() => held.waiting.length === 3, 'the comment follows in a save of its own')
+    expect(held.waiting[2]!.body).toMatchObject({ text: '', files: [], comments: [earlier, comment] })
+    await held.waiting[2]!.pass()
+    await readAgain(first)
+    expect([first.draft, listed(first), first.comments, serverDrafts.get(FIRST)!.comments])
+      .toEqual(['', ['Check the logs'], [earlier, comment], [earlier, comment]])
+  } finally {
+    held.restore()
     signOut()
   }
 })
