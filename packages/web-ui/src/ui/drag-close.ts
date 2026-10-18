@@ -1,7 +1,8 @@
 /**
- * How a drag on a bottom sheet (`Sheet.vue`) or the sidebar's drawer
- * (SidebarLayout) ends, as iOS's and Android's end theirs: a flick toward
- * closing closes it however short the pull, a flick back keeps it, and
+ * How a drag on a bottom sheet (`Sheet.vue`), the sidebar's drawer or the
+ * full-screen work panel (`finger-drag.ts`) ends, as iOS's and Android's
+ * end theirs: a flick toward closing closes it however short the pull, a
+ * flick back keeps it, and
  * otherwise it closes once pulled past 30% of its size and springs back
  * short of that.
  */

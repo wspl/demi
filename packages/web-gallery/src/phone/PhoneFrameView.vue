@@ -287,6 +287,7 @@ onMounted(async () => {
         :conversation="session"
         has-provider
         :aside-open="work.open.value"
+        :panel-tabs="work.panel.value.tabs.length"
         :select-edit="work.selectEdit"
         :files="files"
         :primary-host="primaryHost"

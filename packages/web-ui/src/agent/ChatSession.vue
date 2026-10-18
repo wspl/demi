@@ -9,7 +9,7 @@ import { provideMessageFiles } from '../markdown/message-files'
 import type { ConversationFiles } from '../markdown/types'
 import { computed, nextTick, ref, toRaw, watch } from 'vue'
 import { useResizeObserver } from '@vueuse/core'
-import { ArrowRightLeft, ChevronDown, Ellipsis, PanelLeft, PanelRight, Play, EthernetPort, Settings2, Share, TextCursorInput } from '@lucide/vue'
+import { ArrowRightLeft, ChevronDown, Ellipsis, Menu as MenuLines, PanelRight, Play, EthernetPort, Settings2, Share, TextCursorInput } from '@lucide/vue'
 import type { InstructionEntry, TranscriptVersion } from '@demicodes/protocol'
 import {
   beginMessageEdit,
@@ -61,6 +61,7 @@ import StatusDot from '../ui/StatusDot.vue'
 import AutomationsChip from '../automations/AutomationsChip.vue'
 import type { AutomationLink } from '../automations/types'
 import { usePhone } from '../ui/phone'
+import { tabCountIcon } from '../ui/tab-count-icon'
 import { useSidebarDrawer } from '../sidebar/sidebar-drawer'
 import { DEVICE_STATE_LABEL, DEVICE_STATE_TONE } from '../devices/state'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
@@ -99,6 +100,8 @@ const props = withDefaults(defineProps<{
   shares?: readonly ExistingShare[]
   /** Whether the app frame's work panel is open; absent when the host has none. */
   asideOpen?: boolean
+  /** How many tabs the work panel has, its pinned ones aside, which the phone's panel button shows. */
+  panelTabs?: number
   /**
    * The conversation as the sidebar lists it: on a phone its title sheet
    * offers the sidebar row's menu for it. Absent, as for a conversation not
@@ -175,6 +178,7 @@ const props = withDefaults(defineProps<{
   // Vue reads an absent boolean prop as false, which would offer Open panel
   // where there is no panel; absent stays undefined.
   asideOpen: undefined,
+  panelTabs: 0,
   resumeAtRetry: undefined,
   filePills: true,
 })
@@ -296,12 +300,16 @@ const TITLE_MAX_PX = 260
 const TITLE_ACTION_PX = 28 + 4
 const renaming = ref(false)
 
-// A phone shows one top bar (`SidebarLayout`): the sidebar's button, the
-// title, which opens the title sheet with what the desktop's header shows
-// beside the title, and the panel's button.
+// A phone shows one top bar (`SidebarLayout`): the sidebar's button, drawn
+// as the three lines of a phone app's conversation list; the title, which
+// opens the title sheet with what the desktop's header shows beside the
+// title; and the panel's button, drawn as the panel's tabs are counted on a
+// phone browser's tab button.
 const phone = usePhone()
 const drawer = useSidebarDrawer()
 const titleSheetOpen = ref(false)
+/** The panel button's icon: the panel's tabs as a phone browser draws its tab button. */
+const tabsIcon = computed(() => tabCountIcon(props.panelTabs))
 /** Where the title sheet shows the conversation's place, while it is open. */
 const workspaceTarget = ref<HTMLElement | null>(null)
 /** The primary Host's state on the title, while it is not ready to run. */
@@ -541,9 +549,9 @@ watch(
     >
       <IconButton
         v-if="drawer"
-        :icon="PanelLeft"
+        :icon="MenuLines"
         variant="ghost"
-        :aria-label="t('session.openSidebar')"
+        :aria-label="t('session.conversations')"
         @click="drawer.open()"
       />
       <!-- The title is centered between the bar's two buttons, whichever of them shows. -->
@@ -565,9 +573,9 @@ watch(
       </button>
       <IconButton
         v-if="asideOpen !== undefined"
-        :icon="PanelRight"
+        :icon="tabsIcon"
         variant="ghost"
-        :aria-label="t('session.openPanel')"
+        :aria-label="panelTabs > 0 ? t('session.tabsOpen', { count: panelTabs }) : t('session.tabs')"
         @click="emit('openAside')"
       />
       <span v-else class="size-hit shrink-0" />

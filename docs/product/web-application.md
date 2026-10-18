@@ -472,7 +472,14 @@ For example, on an iPhone the user sees one bar over the conversation, the
 sidebar button, the title and the panel button, and nothing else above the
 transcript; a tap on the title opens a sheet of what can be done with the
 conversation; the panel button covers the screen with the work panel, and
-*‹ Conversation* comes back.
+its back button, or a swipe from the left edge, comes back. The two buttons
+say what they open in a phone's own terms, since a phone has no columns for
+a split-view icon to stand for: the sidebar button is the three lines
+ChatGPT's, Claude's and Gemini's iPhone apps open their conversation lists
+with, named *Conversations*, and the panel button is the work panel's tabs
+as a phone browser draws its tabs, a rounded square holding how many tabs
+the strip has besides its pinned ones, as Chrome's and Safari's tab buttons
+do, named *Tabs, 3 open*, and empty, named *Tabs*, while it has none.
 
 - **The page stays put.** It never zooms, drifts or bounces: the viewport
   forbids zoom, the page blocks pinches and overscroll, the app is the
@@ -544,8 +551,14 @@ conversation; the panel button covers the screen with the work panel, and
   sidebar row's own menu, without Open, and *Runs On*, the Host and the
   working directory. Rename asks in a dialog.
 - **Whole-screen panels.** The work panel slides over the whole screen, its
-  bar *‹ Conversation*, its tabs in a strip that scrolls sideways, and the
-  strip's controls; the Agents and Running windows rise as whole-screen
+  bar a back button drawn as its chevron alone, named *Back to Conversation*
+  for screen readers, its tabs in a strip that scrolls sideways, and the
+  strip's controls. A rightward drag from the screen's left edge takes the
+  panel back, as iOS's own back swipe does: the panel follows the finger
+  over the conversation, which shows beneath it, and settles by the
+  drawer's rule below, past 30% of the width or with a flick it goes on
+  sliding away, otherwise it springs back; from the panel the left edge is
+  this drag, not the sidebar's; the Agents and Running windows rise as whole-screen
   sheets. Their tab strips show each tab as its icon, with its status dot,
   and only the selected tab adds its name, so five agents fit on an iPhone
   as they would not by name, as Chrome narrows its tabs to their icons and

@@ -17,7 +17,8 @@ export const PHONE_QUERY = '(max-width: 767px)'
  * A phone's screen edges are the app's: a touch that starts this close to
  * the left or right edge never takes the browser back or forward
  * (`phone-page.ts`), and one at the left edge that moves right opens the
- * sidebar's drawer (SidebarLayout).
+ * sidebar's drawer, or takes the full-screen work panel back while it is
+ * open (SidebarLayout).
  */
 export const SCREEN_EDGE_PX = 16
 

@@ -328,6 +328,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :edit-version="store.editVersion(conversation)"
     :message-edit="conversation.messageEdit"
     :aside-open="work.stateFor(conversation.id).open"
+    :panel-tabs="work.stateFor(conversation.id).panel.tabs.length"
     @update:message-edit="conversation.messageEdit = $event"
     @regenerate="store.regenerate(conversation, $event)"
     @switch-version="(id, to) => store.switchVersion(conversation!, id, to)"
