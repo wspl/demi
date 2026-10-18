@@ -193,6 +193,33 @@ test('a pill or a file link opens what it names, and on what the panel already s
   expect(state.panel.history.at(-1)).toBe('change')
 })
 
+test('a link’s Open in Work Panel opens its page in a new tab of the conversation’s browser with the panel shown, and Show in Files asks the File view for its tree', () => {
+  signIn('one')
+  const plugin = (id: string) => ({ id, name: id, description: 'A plugin.', enabled: true, packages: [] })
+  useProduct().read = productState({ plugins: [plugin('browser'), plugin('file-browser')] })
+  const work = useWorkPanel()
+  const state = work.stateFor('a')
+  expect(work.canOpen('web')).toBe(true)
+
+  work.openIn('a', { intent: 'web', payload: { url: 'https://example.com/docs' } })
+  expect(state.open).toBe(true)
+  const opened = state.panel.tabs.filter((tab) => tab.kind === 'browser')
+  expect(opened.map((tab) => tab.data)).toEqual([{ url: 'https://example.com/docs' }])
+  expect(state.panel.history.at(-1)).toBe(opened[0]!.id)
+  // Another page is another tab, as a browser opens each link in a tab of its own.
+  work.openIn('a', { intent: 'web', payload: { url: 'https://example.com/api' } })
+  expect(state.panel.tabs.filter((tab) => tab.kind === 'browser').map((tab) => tab.data)).toEqual([
+    { url: 'https://example.com/docs' },
+    { url: 'https://example.com/api' },
+  ])
+
+  work.setOpen(state, false)
+  work.openIn('a', { intent: 'file', payload: { path: '/work/src/a.ts', tree: true } })
+  expect(state.open).toBe(true)
+  expect(state.panel.history.at(-1)).toBe('file')
+  expect(state.pinned.file).toMatchObject({ path: '/work/src/a.ts', tree: true })
+})
+
 /**
  * Answers the work panel's routes as the backend does, from `stored`,
  * counting its reads and keeping each change it was sent.

@@ -211,6 +211,14 @@ watch(
   },
   { immediate: true },
 )
+/** A link's Open in Work Panel: a new tab of the shown conversation's browser, while a page the user has on opens one. */
+const openInWorkPanel = computed(() => {
+  const conversationId = activeId.value
+  if (conversationId === null || !work.canOpen('web')) {
+    return undefined
+  }
+  return (url: string) => work.openIn(conversationId, { intent: 'web', payload: { url } })
+})
 const asideOpen = computed({
   get: () => activeId.value !== null && work.stateFor(activeId.value).open,
   set: (open: boolean) => {
@@ -417,7 +425,7 @@ useAppShortcuts(
     <RouterView />
   </div>
   <!-- The page's one context menu, which the root handler opens for whatever declares one. -->
-  <ContextMenu />
+  <ContextMenu :open-in-work-panel="openInWorkPanel" />
   <!-- The text selection's toolbar, by a selection in a message. -->
   <SelectionToolbar />
   <ToastHost :below="APP_BAR_PX + (session.signedIn && product.connection ? CONNECTION_BANNER_PX : 0)" />

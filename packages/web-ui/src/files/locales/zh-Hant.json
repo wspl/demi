@@ -4,6 +4,8 @@
     "forward": "前進",
     "refresh": "重新整理",
     "download": "下載",
+    "showInFiles": "在檔案樹中顯示",
+    "copyPath": "複製路徑",
     "clear": "清除",
     "dismiss": "關閉",
     "openFile": "開啟檔案"
@@ -165,6 +167,7 @@
   },
   "changes": {
     "commits": "提交",
+    "copyCommitHash": "複製提交雜湊",
     "conversation": "對話",
     "diff": "差異",
     "preview": "預覽",

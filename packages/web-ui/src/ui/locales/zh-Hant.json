@@ -43,6 +43,7 @@
   "contextMenu": {
     "open": "開啟",
     "openLink": "開啟連結",
+    "openInWorkPanel": "在工作面板中開啟",
     "copyLink": "複製連結",
     "copyImage": "複製圖片",
     "saveImage": "儲存圖片",

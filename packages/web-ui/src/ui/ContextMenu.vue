@@ -18,6 +18,13 @@ import { closeContextMenu, installContextMenus, showContextMenu, shownContextMen
  * or sheet it opened in (ContextMenuLayer). A chosen row dismisses it
  * itself (`menuRootKey`).
  */
+const props = defineProps<{
+  /**
+   * Opens a web page in a new tab of the conversation's browser, the work
+   * panel shown, while a conversation is shown whose panel takes one.
+   */
+  openInWorkPanel?: (url: string) => void
+}>()
 
 let copied: CopySource
 const copier = useCopy(() => copied)
@@ -47,6 +54,10 @@ const services: ContextMenuServices = {
   copyImage: (image) => copy(new ClipboardItem({ 'image/png': pngOf(image) })),
   save: (url, name) => downloadUrl(url, name),
   openLink: (url) => window.open(url, '_blank', 'noopener,noreferrer'),
+  // Read as each menu opens: the conversation shown changes.
+  get openInWorkPanel() {
+    return props.openInWorkPanel
+  },
 }
 
 let uninstall: (() => void) | null = null

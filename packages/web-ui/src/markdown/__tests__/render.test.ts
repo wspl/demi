@@ -68,6 +68,7 @@ test('code in a message\'s link drops code\'s look, its icon already saying what
   const agents: MessageAgents = {
     find: (number) => (number === 4 ? { number: 4, description: 'File icons', run: null } : null),
     open: () => {},
+    stop: () => {},
   }
   const html = renderMarkdown(
     '[`after.png`](out/after.png) [`3f2a9c1`](commit:3f2a9c1) [`docs`](https://example.com) [`icons`](agent:4) `plain`',
@@ -159,6 +160,7 @@ test('a link to an agent shows its mark and opens it; a number the conversation 
   const agents: MessageAgents = {
     find: (number) => (number === 4 ? { number: 4, description: 'File icons', run: null } : null),
     open: () => {},
+    stop: () => {},
   }
   expect(renderMarkdown('I gave the icons to [File icons](agent:4) and the rest to [Fonts](agent:9).', { files, agents }))
     .toBe('<p>I gave the icons to <span role="button" tabindex="0" class="agent-link icon-link" data-agent-link="4" data-keeps-windows><span class="icon-lead"><span class="agent-link-mark" data-agent-mark="4"></span>File</span> icons</span> and the rest to <span class="agent-link-missing" data-agent-link="9">Fonts</span>.</p>\n')
@@ -170,6 +172,7 @@ test('a link that starts with an icon keeps no space before ASCII punctuation th
   const agents: MessageAgents = {
     find: (number) => ({ number, description: 'cwd check', run: null }),
     open: () => {},
+    stop: () => {},
   }
   const classes = (markdown: string) => [...renderMarkdown(markdown, { files, agents }).matchAll(/class="((?:agent-link )?icon-link[^"]*)"/g)].map((match) => match[1])
   // "cwd check;" reads as written, not "cwd check ;".

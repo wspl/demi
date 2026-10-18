@@ -1,7 +1,10 @@
 import type { MemoryDirectory, MemoryFileSource } from '@demicodes/web-ui/files/memory-source'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
+import { baseName } from '@demicodes/utils'
+import { readCommitHash } from '@demicodes/web-ui/files/history'
+import { productWould } from '../product-would'
 import { galleryAttachment } from './attachments'
-import { LINKED_COMMIT } from './history'
+import { LINKED_COMMIT, sharedHistory } from './history'
 
 /** Whether `path` is a file of the memory tree `root`, as a Host's stat says. */
 function isFile(root: MemoryDirectory, path: string): boolean {
@@ -17,12 +20,15 @@ function isFile(root: MemoryDirectory, path: string): boolean {
  * conversation's do: images at the workspace's paths load from `source`,
  * attachments from the gallery's blobs, and a file a click opens goes to
  * `open`, and a commit a link names to `openCommit`. The Host's answer about a reply's inline code paths is the
- * gallery's: the files of its demo workspace, answered at once.
+ * gallery's: the files of its demo workspace, answered at once. A file link's Show in Files goes to
+ * `showInFiles`, which outside a panel says what the product would do, and a commit link's Copy Commit
+ * Hash reads the gallery's one repository.
  */
 export function galleryConversationFiles(
   source: MemoryFileSource,
   open: NonNullable<ConversationFiles['open']>,
   openCommit: NonNullable<ConversationFiles['openCommit']>,
+  showInFiles: NonNullable<ConversationFiles['showInFiles']> = ({ path }) => productWould(`Show ${baseName(path)} in the File View’s Tree`),
 ): ConversationFiles {
   return {
     openCommit,
@@ -31,6 +37,8 @@ export function galleryConversationFiles(
     attachment: galleryAttachment,
     codeFiles: (paths) => new Set(paths.filter((path) => isFile(source.root, path))),
     open,
+    showInFiles,
+    commitHash: ({ commit }) => readCommitHash(sharedHistory.source, commit),
   }
 }
 

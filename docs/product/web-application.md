@@ -290,11 +290,22 @@ own objects, such as the file browser's files, declare theirs the same way
 ([Plugin pages](../architecture/plugin-pages.md)).
 
 - **Content** has the entries the browser's own menu would give it, which
-  the page's menu replaces: a link *Open Link* and *Copy Link*; a picture
+  the page's menu replaces: a link *Open Link*, which opens it in a new tab
+  of the user's browser as a click does, *Open in Work Panel*, which opens
+  it in a tab of the conversation's browser, and *Copy Link*; a picture
   *Copy Image* and *Save Image*; a code block *Copy Code*; text the user
-  selected, when the pointer is on the selection, *Copy*. A link to a file,
-  an agent or a commit, which has no address to copy, has *Open* alone,
-  which acts as clicking it does.
+  selected, when the pointer is on the selection, *Copy*.
+- **A link to an object**, a file, a commit or an agent, has that object's
+  own menu, the one its row or tab has, with *Open*, which acts as clicking
+  the link does, first: a file *Open*, *Show in Files*, which opens the File
+  view's tree with the file selected and in view, *Copy Path*, its absolute
+  path on the Host, and *Download*; a commit *Open* and *Copy Commit Hash*,
+  the full hash; an agent *Open*, *Stop Agent*, dimmed once it is done, as
+  a menu dims what cannot be done now, and *Copy Agent ID*. The row or tab the object has elsewhere offers the same entries,
+  less what it already is: a file row in the tree has *Copy Path* and
+  *Download*, a commit row in Commits mode *Copy Commit Hash*, an agent's tab
+  *Stop Agent*, *Copy Agent ID* and *Close Tab*. Whatever the link sits in
+  adds its own group below, as a link adds to its message.
 - **An object** has the actions it already offers elsewhere, in the same
   order and with the same names: its row's controls, its footer, its
   preview. A conversation row has what its row's menu holds, Pin, Rename and Archive among them; a tab its
@@ -304,7 +315,10 @@ own objects, such as the file browser's files, declare theirs the same way
   what its preview offers. An entry names its object where the menu also
   holds another's, *Copy Message* beside *Copy Link*. A menu is another
   way to an action, as in macOS's Finder, never the only one, so it adds
-  none of its own, but one: *Send to Conversation*, below.
+  none of its own, but these: copying what names an object, *Copy Path*,
+  *Copy Commit Hash* and *Copy Agent ID*, which no control shows, as
+  Finder's Copy as Pathname is its menu's alone; and *Send to
+  Conversation*, below.
 - **Send to Conversation** takes words to another conversation, as iOS's
   Share takes them to another app. The user's own message has it, on its
   bubble or on text selected in it, and so does text selected in the

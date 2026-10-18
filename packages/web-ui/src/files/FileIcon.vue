@@ -55,6 +55,7 @@ watch(
     :height="size"
     class="max-w-none shrink-0"
     alt=""
+    aria-hidden="true"
     draggable="false"
   />
   <!-- The outline stands in the glyph's footprint, so a row's width does not change when the theme loads. -->

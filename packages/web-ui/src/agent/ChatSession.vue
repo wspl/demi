@@ -57,7 +57,7 @@ import MenuItem from '../ui/MenuItem.vue'
 import MenuEntries from '../ui/MenuEntries.vue'
 import { selectionEntries } from '../sidebar/selection-menu'
 import ConversationDeleteDialog from '../sidebar/ConversationDeleteDialog.vue'
-import { copyId } from './copy-id'
+import { copyId } from '../infra/copy-id'
 import StatusDot from '../ui/StatusDot.vue'
 import AutomationsChip from '../automations/AutomationsChip.vue'
 import type { AutomationLink } from '../automations/types'
@@ -531,6 +531,13 @@ provideMessageAgents(() => ({
       activeSubagentId.value = next.activeId
     } else {
       close()
+    }
+  },
+  // Stop Agent in the link's menu stops it as its tab's does; the conversation's own agent has no tab to stop.
+  stop: (number) => {
+    const agent = shownAgents.value.find((candidate) => candidate.number === number)
+    if (agent) {
+      emit('abortSubagent', agent.id)
     }
   },
 }))

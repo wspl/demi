@@ -37,6 +37,10 @@ const messageFiles = galleryConversationFiles(workspace.source, ({ path, line, r
     : `Open ${baseName(path)}${line === null ? '' : ` at Line ${line}`}${where}`)
 }, ({ commit }) => productWould(`Show Commit ${commit} in Change`))
 provideMessageFiles(() => ({ ...messageFiles, cwd: workspace.root }))
+/** A link's Open in Work Panel: the product opens a tab of the conversation's browser. */
+function openInWorkPanel(url: string): void {
+  productWould(`Open ${url} in a New Tab of the Conversation’s Browser`)
+}
 const mediaViewer = provideMediaViewer()
 // Send to Conversation lists the search window's conversations; a pick says what the product would do.
 const sendable = searchConversations()
@@ -135,7 +139,7 @@ const mainClass = computed(() => {
     </ScrollArea>
   </SidebarLayout>
   <!-- The page's one context menu, which the root handler opens for whatever declares one. -->
-  <ContextMenu />
+  <ContextMenu :open-in-work-panel="openInWorkPanel" />
   <!-- The text selection's toolbar, by a selection in a message. -->
   <SelectionToolbar />
   <ToastHost />

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { t } from './locales/text'
 import { computed, nextTick, ref, watch } from 'vue'
-import { Bot, CircleStop, Copy, X } from '@lucide/vue'
+import { Bot, CircleStop, X } from '@lucide/vue'
 import type { InstructionEntry } from '@demicodes/protocol'
 import { vContextMenu, type ContextMenuGroup } from '../ui/context-menu'
 import RegionStatus from '../ui/RegionStatus.vue'
@@ -19,7 +19,7 @@ import { latestBlocks, shownWindow, windowEdges, type TranscriptReveal } from '.
 import type { UsageLimits } from './context-usage'
 import { loadedInstructions } from './instructions'
 import { refusedForSize } from './session-status'
-import { copyId } from './copy-id'
+import { agentMenu } from './agent-menu'
 
 const props = withDefaults(
   defineProps<{
@@ -119,28 +119,23 @@ function agentOf(id: string): SubagentRecord | undefined {
   return tabs.value.find((agent) => agent.id === id)
 }
 
-/** A tab's menu: stop its agent, copy its number, close its tab once the agent is done. */
+/** A tab's menu: its agent's, a link's less Open, then Close Tab once the agent is done. */
 function tabMenu(id: string): () => ContextMenuGroup[] {
-  return () => [
-    [
-      { icon: CircleStop, label: t('subagents.stopAgent'), disabled: agentOf(id)?.phase !== 'running', run: () => emit('abortAgent', id) },
-      { icon: Copy, label: t('subagents.copyId'), run: () => copyAgentId(id) },
-    ],
-    [{ icon: X, label: t('subagents.closeTab'), disabled: agentOf(id)?.phase === 'running', run: () => closeTab(id) }],
-  ]
+  return () => {
+    const agent = agentOf(id)
+    if (!agent) {
+      return []
+    }
+    return [
+      ...agentMenu({ number: agent.number, running: agent.phase === 'running' }, { stop: () => emit('abortAgent', id) }),
+      [{ icon: X, label: t('subagents.closeTab'), disabled: agent.phase === 'running', run: () => closeTab(id) }],
+    ]
+  }
 }
 
 /** What acts on every agent. */
 function stripMenu(): ContextMenuGroup[] {
   return [[{ icon: CircleStop, label: t('subagents.stopAll'), disabled: !anyRunning.value, run: () => emit('abort') }]]
-}
-
-// The number the `demi agent` commands take, not the record's id.
-function copyAgentId(id: string): void {
-  const agent = agentOf(id)
-  if (agent) {
-    void copyId(String(agent.number))
-  }
 }
 
 // A finished child's tab puts it away; a running one's tab stays until the child is stopped.

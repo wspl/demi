@@ -29,6 +29,8 @@ import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selectio
 import { useMessageAttachments } from './attachments'
 import { lookupCodeFiles } from '../api/code-files'
 import type { ConversationFiles } from '@demicodes/web-ui/markdown/types'
+import { FileBrowserError } from '@demicodes/web-ui/files/types'
+import { readCommitHash } from '@demicodes/web-ui/files/history'
 import type { MessageForkRequest } from '@demicodes/web-ui/agent/message-fork'
 import type { Conversation } from '../state/types'
 import { conversationShareService } from './sharing'
@@ -242,9 +244,19 @@ const files = computed<ConversationFiles | undefined>(() => {
     open: work.canOpen('file')
       ? ({ path, line, root }) => work.openIn(current.id, { intent: 'file', payload: { path, ...(line === null ? {} : { line }), ...(root === undefined ? {} : { root }) } })
       : undefined,
+    showInFiles: work.canOpen('file')
+      ? ({ path, root }) => work.openIn(current.id, { intent: 'file', payload: { path, tree: true, ...(root === undefined ? {} : { root }) } })
+      : undefined,
     openCommit: work.canOpen('commit')
       ? ({ commit, root }) => work.openIn(current.id, { intent: 'commit', payload: { commit, ...(root === undefined ? {} : { root }) } })
       : undefined,
+    commitHash: async ({ commit, root }) => {
+      const history = conversationFiles(current.id).history(root)
+      if (!history) {
+        throw new FileBrowserError('offline')
+      }
+      return readCommitHash(history, commit)
+    },
     codeFiles: (paths) => lookupCodeFiles(current.id, paths, primaryHost.value?.state ?? 'offline'),
     ...(attachments.value ? { attachment: attachments.value } : {}),
   }

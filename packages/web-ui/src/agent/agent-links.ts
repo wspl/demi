@@ -20,6 +20,8 @@ export interface MessageAgents {
   find(number: number): MessageAgent | null
   /** A click on the link of agent `number`. */
   open(number: number): void
+  /** Stop Agent in the link's menu: agent `number` and its subtree, while it runs. */
+  stop(number: number): void
 }
 
 /** The agent a link's target names, such as 4 for `agent:4`; null for any other target. */

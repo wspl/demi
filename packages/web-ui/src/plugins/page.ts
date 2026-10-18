@@ -321,6 +321,7 @@ export interface PanelKind<Data, Session = undefined> {
     file?(payload: IntentPayloads['file'], current: Data | null): Data
     edit?(payload: IntentPayloads['edit'], current: Data | null): Data
     commit?(payload: IntentPayloads['commit'], current: Data | null): Data
+    web?(payload: IntentPayloads['web'], current: Data | null): Data
   }
 }
 

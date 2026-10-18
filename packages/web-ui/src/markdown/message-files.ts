@@ -3,6 +3,10 @@ import { transcriptRowOf, type MediaSequence, type MediaViewerState } from '../f
 import { messagePicture } from './media-run'
 import { HOST_FILE_ATTRIBUTE } from './render'
 import type { MessageAgents } from '../agent/agent-links'
+import { agentMenu } from '../agent/agent-menu'
+import { downloadUrl } from '../files/download'
+import { commitMenu, fileMenu } from '../files/object-menus'
+import type { ContextMenuGroup } from '../ui/context-menu'
 import type { MessageFiles } from './types'
 
 const messageFilesKey: InjectionKey<() => MessageFiles | undefined> = Symbol('message-files')
@@ -101,6 +105,50 @@ export function openMessageLink(
   event.preventDefault()
   const line = Number(link.getAttribute('data-line'))
   files.open({ path: link.getAttribute('href') ?? '', line: line > 0 ? line : null })
+}
+
+/** A commit's id written whole, SHA-1's or SHA-256's, which needs no reading to be the full hash. */
+const FULL_HASH = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/
+
+/**
+ * The menu of the object a message's link names (`web-application.md`
+ * § Context menus), the one its row or tab has, Open first, which clicks the
+ * link: a file's, a commit's or an agent's, from the conversation's `files`
+ * and `agents` as they are when it opens. Null for any other link, such as
+ * an attachment's, whose click is its Open.
+ */
+export function messageLinkMenu(
+  link: Element,
+  files: MessageFiles | undefined,
+  agents: MessageAgents | undefined,
+): (() => readonly ContextMenuGroup[]) | null {
+  if (!(link instanceof HTMLElement))
+    return null
+  const open = () => link.click()
+  if (link.matches('[data-agent-link][role="button"]') && agents) {
+    const number = Number(link.getAttribute('data-agent-link'))
+    return () => agentMenu(
+      { number, running: agents.find(number)?.run?.phase === 'running' },
+      { open, stop: () => agents.stop(number) },
+    )
+  }
+  if (link.matches('a[data-commit-link]')) {
+    const commit = link.getAttribute('data-commit-link') ?? ''
+    const resolve = files?.commitHash
+    const hash = FULL_HASH.test(commit) ? () => commit : resolve ? () => resolve({ commit }) : undefined
+    return () => commitMenu({ open, ...(hash ? { hash } : {}) })
+  }
+  if (link.matches('a[data-file-link]')) {
+    const path = link.getAttribute('href') ?? ''
+    const contents = files?.contents
+    const showInFiles = files?.showInFiles
+    return () => fileMenu(path, {
+      open,
+      ...(showInFiles ? { showInFiles: () => showInFiles({ path }) } : {}),
+      ...(contents ? { download: () => downloadUrl(contents.url(path, { download: true })) } : {}),
+    })
+  }
+  return null
 }
 
 /** Return or Space on an agent's link, inline text that acts as a button, clicks it as on a button. */

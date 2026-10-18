@@ -43,6 +43,7 @@
   "contextMenu": {
     "open": "Open",
     "openLink": "Open Link",
+    "openInWorkPanel": "Open in Work Panel",
     "copyLink": "Copy Link",
     "copyImage": "Copy Image",
     "saveImage": "Save Image",

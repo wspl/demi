@@ -4,6 +4,8 @@
     "forward": "앞으로",
     "refresh": "새로 고침",
     "download": "다운로드",
+    "showInFiles": "파일 트리에서 보기",
+    "copyPath": "경로 복사",
     "clear": "지우기",
     "dismiss": "닫기",
     "openFile": "파일 열기"
@@ -165,6 +167,7 @@
   },
   "changes": {
     "commits": "커밋",
+    "copyCommitHash": "커밋 해시 복사",
     "conversation": "대화",
     "diff": "Diff",
     "preview": "미리 보기",

@@ -7,7 +7,7 @@ import { FileIcon, ICON_PX, baseName, definePage, type PanelKind } from '@demico
 import { PLUGIN } from './generated/plugin'
 import { t } from './locales/text'
 import FileTab from './FileTab.vue'
-import { fileDataSchema, firstFileData, showFile, type FileData } from './data'
+import { fileDataSchema, firstFileData, openFile, type FileData } from './data'
 
 /** The file's own icon once the view shows one, a plain file before. */
 const FileMark = defineComponent({
@@ -26,7 +26,7 @@ export const fileKind: PanelKind<FileData> = {
   content: FileTab,
   pinned: { data: firstFileData },
   intents: {
-    file: (payload, current) => showFile(current ?? firstFileData(), payload.path, payload.line, payload.root),
+    file: (payload, current) => openFile(current ?? firstFileData(), payload),
   },
 }
 

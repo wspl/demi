@@ -4,6 +4,8 @@
     "forward": "進む",
     "refresh": "更新",
     "download": "ダウンロード",
+    "showInFiles": "ファイルツリーで表示",
+    "copyPath": "パスをコピー",
     "clear": "クリア",
     "dismiss": "閉じる",
     "openFile": "ファイルを開く"
@@ -165,6 +167,7 @@
   },
   "changes": {
     "commits": "コミット",
+    "copyCommitHash": "コミットハッシュをコピー",
     "conversation": "チャット",
     "diff": "差分",
     "preview": "プレビュー",

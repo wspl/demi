@@ -43,6 +43,7 @@
   "contextMenu": {
     "open": "開く",
     "openLink": "リンクを開く",
+    "openInWorkPanel": "作業パネルで開く",
     "copyLink": "リンクをコピー",
     "copyImage": "画像をコピー",
     "saveImage": "画像を保存",

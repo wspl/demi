@@ -286,9 +286,10 @@ function reopen(): Promise<void> {
 }
 
 // A tab whose browser tab the browser lost opens again once shown, as a web browser reloads a tab it
-// discarded; one whose reopening failed waits for its Retry.
+// discarded, and one the page made, as a link's Open in Work Panel does, opens its browser tab
+// (`bind` answers for a panel tab that has none); one whose opening failed waits for its Retry.
 watch(
-  () => props.shown && props.data.closed === true && !props.data.failure,
+  () => props.shown && (props.data.closed === true || props.data.tab === undefined) && !props.data.failure,
   (lost) => {
     if (lost) {
       void reopen()

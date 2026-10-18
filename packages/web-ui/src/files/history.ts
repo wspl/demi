@@ -5,9 +5,9 @@
  * its first parent. A host serves each as a kept entry it follows, so a
  * commit, a checkout or a new branch made anywhere shows at once.
  */
-import type { Showing } from './file-cache'
+import { failureShown, type Showing } from './file-cache'
 import type { ChangeFile, ChangeSides } from './changes'
-import type { FileContents } from './types'
+import { FileBrowserError, type FileContents } from './types'
 
 /** The local branches, most recently committed first, and the one checked out, or the commit a detached HEAD names. */
 export interface BranchList {
@@ -63,6 +63,28 @@ export interface CommitHistorySource {
   showSides(commit: string, path: string, from?: string): Showing<ChangeSides>
   /** Each file as `commit` has it, by its path relative to the root, for previews and Download; absent when the host serves no bytes. */
   contents?(commit: string): FileContents
+}
+
+/**
+ * The full hash of the commit `commit`, an id or an abbreviation, as the
+ * history reads it now, as a link's Copy Commit Hash asks; the commit is
+ * held only for the read. Rejects with a `FileBrowserError` when the
+ * repository has no such commit or it could not be read.
+ */
+export async function readCommitHash(history: CommitHistorySource, commit: string): Promise<string> {
+  const showing = history.showCommit(commit)
+  try {
+    await showing.retry()
+    const failure = failureShown(showing.entry)
+    if (failure)
+      throw new FileBrowserError(failure.kind, failure.message, { requestId: failure.requestId ?? null })
+    const id = showing.entry.value?.commit.id
+    if (id === undefined)
+      throw new FileBrowserError('not-found')
+    return id
+  } finally {
+    showing.release()
+  }
 }
 
 /** A commit's id as people read it: its first seven hex digits. */

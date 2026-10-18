@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import type { IntentPayloads } from '@demicodes/plugin-sdk'
 
 /**
  * A file the view showed, with the directory its tree was rooted at then
@@ -31,6 +32,11 @@ export const fileDataSchema = z.object({
   back: z.array(fileEntrySchema),
   /** The files left by Back, latest last. */
   forward: z.array(fileEntrySchema),
+  /**
+   * Show in Files asked to see the file in the view's tree: the view shows
+   * the tree with the file selected and in view, once, and drops it.
+   */
+  tree: z.literal(true).optional(),
 })
 export type FileData = z.infer<typeof fileDataSchema>
 
@@ -69,6 +75,18 @@ export function showFile(data: FileData, path: string, line?: number, root?: str
     back: data.path ? [...data.back, entryOf(data)] : data.back,
     forward: [],
   }
+}
+
+/** The view showing `path` as the `file` intent asks: in the tree too when `tree`, as Show in Files asks. */
+export function openFile(data: FileData, payload: IntentPayloads['file']): FileData {
+  const shown = showFile(data, payload.path, payload.line, payload.root)
+  return payload.tree ? { ...shown, tree: true } : shown
+}
+
+/** The view as it is once its tree showed the file Show in Files asked for. */
+export function treeShown(data: FileData): FileData {
+  const { tree: _shown, ...rest } = data
+  return rest
 }
 
 /** The view showing what it showed before, under the directory it had then, the current file kept for Forward. */
