@@ -17,7 +17,7 @@ pub const MAX_LINE_BYTES: usize = 1 << 20;
 /// The wire's version, which the manager's `hello` names. The backend and
 /// the manager of a deployment run one release, so a change to any message
 /// changes it (`managed-hosts.md` § Control and ownership).
-pub const VERSION: u32 = 3;
+pub const VERSION: u32 = 4;
 
 /// A request: an id the client chooses, which its reply names, and the call.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
@@ -135,7 +135,7 @@ pub struct WakeParams {
 
 /// Which managed machine a sandbox runs (`managed-hosts.md` § The Claude
 /// Code machine): a user's Cloud, or the Claude Code machine, which has a
-/// memory limit of its own.
+/// memory limit of its own and keeps only its current generation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SandboxMachine {
@@ -149,6 +149,9 @@ pub enum SandboxMachine {
 pub struct HibernateParams {
     #[garde(length(min = 1))]
     pub device_id: String,
+    /// Which machine the device is, whose generations the save keeps.
+    #[garde(skip)]
+    pub machine: SandboxMachine,
 }
 
 /// Publish the running device's storage while preserving its processes.
@@ -157,6 +160,9 @@ pub struct HibernateParams {
 pub struct CheckpointParams {
     #[garde(length(min = 1))]
     pub device_id: String,
+    /// Which machine the device is, whose generations the save keeps.
+    #[garde(skip)]
+    pub machine: SandboxMachine,
 }
 
 /// Publish a clean system on `base_version` at `capacity`'s system bytes
@@ -173,6 +179,9 @@ pub struct ResetParams {
     pub base_version: String,
     #[garde(skip)]
     pub capacity: Capacity,
+    /// Which machine the device is, whose generations the save keeps.
+    #[garde(skip)]
+    pub machine: SandboxMachine,
 }
 
 /// A message from the manager: the reply to a request, or the death of a

@@ -25,7 +25,7 @@ use crate::{
         clone::clone_sparse,
         durable::{remove_tree, sync, write_json},
         base, ext4, skeleton,
-        store::ImagePair,
+        store::{ImagePair, Retention},
         working::{WorkingPair, new_generation},
     },
     tools::ToolError,
@@ -50,13 +50,14 @@ pub enum DeviceOp {
         machine: SandboxMachine,
         capacity: Capacity,
     },
-    /// Stop and save; also what `reconcile` and shutdown do to every device.
-    Hibernate,
-    Checkpoint,
+    /// Stop and save; also what shutdown does to every device.
+    Hibernate { retention: Retention },
+    Checkpoint { retention: Retention },
     Reset {
         operation: String,
         base: BaseVersion,
         capacity: Capacity,
+        retention: Retention,
     },
 }
 
@@ -156,16 +157,17 @@ impl DeviceWorker {
                 machine,
                 capacity,
             } => self.wake(&boot, machine, capacity).await,
-            DeviceOp::Hibernate => {
+            DeviceOp::Hibernate { retention } => {
                 self.stop().await?;
-                self.save().await
+                self.save(retention).await
             }
-            DeviceOp::Checkpoint => self.checkpoint().await,
+            DeviceOp::Checkpoint { retention } => self.checkpoint(retention).await,
             DeviceOp::Reset {
                 operation,
                 base,
                 capacity,
-            } => self.reset(&operation, &base, capacity).await,
+                retention,
+            } => self.reset(&operation, &base, capacity, retention).await,
         }
     }
 
@@ -175,8 +177,9 @@ impl DeviceWorker {
         if let Err(error) = outcome {
             tracing::error!(device = %self.device, "machines: Cloud runtime wait failed: {error}");
         }
+        // No request named the machine: the save removes no fallback.
         let recovered = match self.stop().await {
-            Ok(()) => self.save().await,
+            Ok(()) => self.save(Retention::Previous).await,
             Err(error) => Err(error),
         };
         if let Err(error) = recovered {
@@ -213,13 +216,14 @@ impl DeviceWorker {
         Ok(())
     }
 
-    /// Publishes the working pair, which no sandbox may be writing.
-    async fn save(&mut self) -> Result<(), OpError> {
+    /// Publishes the working pair, which no sandbox may be writing, keeping
+    /// the older generations `retention` names.
+    async fn save(&mut self, retention: Retention) -> Result<(), OpError> {
         if self.runtime.is_some() {
             return Err(OpError::ActiveWriter);
         }
         self.working
-            .save(&self.core.tools, &self.core.store, &self.device)
+            .save(&self.core.tools, &self.core.store, &self.device, retention)
             .await?;
         Ok(())
     }
@@ -237,7 +241,7 @@ impl DeviceWorker {
         if self.runtime.is_some() {
             return Ok(());
         }
-        self.save().await?;
+        self.save(Retention::of(machine)).await?;
         let state = match self.committed().await? {
             Some(state) => state,
             None => self.initialize(&self.base.clone(), capacity).await?,
@@ -379,7 +383,8 @@ impl DeviceWorker {
             for volume in Volume::ALL {
                 sync(off, images.get(volume))?;
             }
-            store.publish(off, &device, &published, images.as_deref())?;
+            // The device's first generation: there is no older one to keep.
+            store.publish(off, &device, &published, images.as_deref(), Retention::Current)?;
             Ok(())
         })
         .await?;
@@ -389,7 +394,7 @@ impl DeviceWorker {
     /// Publishes the running pair without stopping its processes: pause,
     /// the frozen window, resume, then publication of the copies. A thaw or
     /// resume that fails ends the sandbox and reports its death.
-    async fn checkpoint(&mut self) -> Result<(), OpError> {
+    async fn checkpoint(&mut self, retention: Retention) -> Result<(), OpError> {
         if self.runtime.is_none() {
             return Ok(());
         }
@@ -397,7 +402,7 @@ impl DeviceWorker {
             return Err(OpError::NoWorkingManifest);
         };
         let stage = Stage::create(&self.core, "checkpoint").await?;
-        let published = self.checkpoint_into(state, stage.path()).await;
+        let published = self.checkpoint_into(state, stage.path(), retention).await;
         stage.remove().await;
         published
     }
@@ -406,11 +411,15 @@ impl DeviceWorker {
         &mut self,
         state: MachineImageState,
         stage: &Path,
+        retention: Retention,
     ) -> Result<(), OpError> {
         let sandbox = self
             .runtime
             .as_ref()
             .expect("the checkpoint checked for a sandbox");
+        // Trimmed while the filesystems are still writable, so the copies
+        // the frozen window makes hold only what the Cloud holds.
+        sandbox.trim().await;
         let (captured, mut cleanup) = match sandbox.pause(&self.core).await {
             // Pausing failed: nothing is frozen, and the failure is reported
             // once the sandbox is resumed.
@@ -445,7 +454,10 @@ impl DeviceWorker {
         let store = self.core.store.clone();
         let device = self.device.clone();
         let copies = ImagePair::in_directory(stage);
-        blocking::run(move |off| store.publish(off, &device, &saved, copies.as_deref())).await?;
+        blocking::run(move |off| {
+            store.publish(off, &device, &saved, copies.as_deref(), retention)
+        })
+        .await?;
         Ok(())
     }
 
@@ -456,6 +468,7 @@ impl DeviceWorker {
         operation: &str,
         base: &BaseVersion,
         capacity: Capacity,
+        retention: Retention,
     ) -> Result<(), OpError> {
         let manifest = self.core.store.bases().join(base).join("manifest.json");
         let imported = blocking::run(move |_| fs_err::metadata(manifest)).await;
@@ -467,7 +480,7 @@ impl DeviceWorker {
             Err(error) => return Err(error.into()),
         }
         self.stop().await?;
-        self.save().await?;
+        self.save(retention).await?;
         let state = match self.committed().await? {
             Some(state) => state,
             None => self.initialize(base, capacity).await?,
@@ -477,7 +490,7 @@ impl DeviceWorker {
         }
         let stage = Stage::create(&self.core, "reset").await?;
         let published = self
-            .publish_reset(state, operation, base, capacity, stage.path())
+            .publish_reset(state, operation, base, capacity, retention, stage.path())
             .await;
         stage.remove().await;
         published
@@ -489,6 +502,7 @@ impl DeviceWorker {
         operation: &str,
         base: &BaseVersion,
         capacity: Capacity,
+        retention: Retention,
         stage: &Path,
     ) -> Result<(), OpError> {
         let system = ImagePair::in_directory(stage).system;
@@ -512,7 +526,7 @@ impl DeviceWorker {
                 system: system.as_path(),
                 home: home.as_path(),
             };
-            store.publish(off, &device, &reset, sources)?;
+            store.publish(off, &device, &reset, sources, retention)?;
             Ok(())
         })
         .await

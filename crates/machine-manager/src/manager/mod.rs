@@ -42,7 +42,10 @@ mod linux {
             slots::{Slot, SlotPool},
         },
         recovery,
-        sandbox::runsc::Runsc, server::MachineService, storage::store::ImageStore, tools::Tools,
+        sandbox::runsc::Runsc,
+        server::MachineService,
+        storage::store::{ImageStore, Retention},
+        tools::Tools,
     };
 
     /// Commands waiting for one device's worker. A full queue holds back the
@@ -203,7 +206,11 @@ mod linux {
             let outcomes =
                 futures_util::future::join_all(workers.into_iter().map(|worker| async move {
                     let (reply, answer) = oneshot::channel();
-                    let op = DeviceOp::Hibernate;
+                    // The manager's own save names no machine and removes
+                    // no fallback.
+                    let op = DeviceOp::Hibernate {
+                        retention: Retention::Previous,
+                    };
                     worker
                         .send(DeviceCommand::Run { op, reply })
                         .await
@@ -257,12 +264,18 @@ mod linux {
                 }
                 MachineCall::Hibernate(params) => {
                     let device = DeviceId::parse(params.device_id)?;
-                    self.run(&device, DeviceOp::Hibernate).await?;
+                    let op = DeviceOp::Hibernate {
+                        retention: Retention::of(params.machine),
+                    };
+                    self.run(&device, op).await?;
                     Ok(reply::<HibernateParams>(()))
                 }
                 MachineCall::Checkpoint(params) => {
                     let device = DeviceId::parse(params.device_id)?;
-                    self.run(&device, DeviceOp::Checkpoint).await?;
+                    let op = DeviceOp::Checkpoint {
+                        retention: Retention::of(params.machine),
+                    };
+                    self.run(&device, op).await?;
                     Ok(reply::<CheckpointParams>(()))
                 }
                 MachineCall::Reset(params) => {
@@ -272,6 +285,7 @@ mod linux {
                         operation: params.operation_id,
                         base,
                         capacity: params.capacity,
+                        retention: Retention::of(params.machine),
                     };
                     self.run(&device, op).await?;
                     Ok(reply::<ResetParams>(()))

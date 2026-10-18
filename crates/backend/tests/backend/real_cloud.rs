@@ -1022,6 +1022,7 @@ async fn a_checkpoint_with_chrome_open_saves_both_images_with_what_a_mapping_wro
     manager
         .call(CheckpointParams {
             device_id: device.clone(),
+            machine: demi_machine_manager_protocol::SandboxMachine::Cloud,
         })
         .await
         .unwrap();

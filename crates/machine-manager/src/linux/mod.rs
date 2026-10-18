@@ -1,6 +1,6 @@
 //! The Linux interfaces the manager uses instead of administration tools
 //! (`managed-hosts.md` § Linux control): mounts, loop devices, filesystem
-//! freezes and namespace threads.
+//! freezes and trims, and namespace threads.
 
 pub mod freeze;
 pub mod loopdev;
@@ -8,6 +8,7 @@ pub mod mount;
 #[cfg(test)]
 pub(crate) mod testing;
 pub mod thread_ns;
+pub mod trim;
 
 use std::{io, path::Path};
 

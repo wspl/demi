@@ -95,7 +95,7 @@ example, the backend hibernates a Cloud, and later the manager reports that
 another device's sandbox exited:
 
 ```text
-backend -> manager   {"id":"7","op":"hibernate","params":{"deviceId":"<device>"}}
+backend -> manager   {"id":"7","op":"hibernate","params":{"deviceId":"<device>","machine":"cloud"}}
 manager -> backend   {"type":"ok","id":"7","result":null}
 manager -> backend   {"type":"death","deviceId":"<other device>"}
 ```
@@ -507,8 +507,14 @@ atomic publication that release packaging uses
 | Manager, backend, or host restart | Fence earlier writers, thaw surviving mounts where necessary, recover filesystems, then save or start. |
 | Save fails or storage is full | Keep working data and the error; release execution resources where safe and block a stale boot. |
 
-The immutable store retains the current and previous generations and removes
-older generation directories after durable publication. Removing a directory
+The immutable store retains the current and previous generations of a
+user's Cloud and removes older generation directories after durable
+publication: the previous generation is the user's work as it was at the
+save before, there when the current one turns out damaged. The Claude Code
+machine retains its current generation alone, since what it holds, the
+CLI's versions and each account's sign-in, is either downloaded again or
+signed in again, and no one would go back to an older copy of it
+([The Claude Code machine](#the-claude-code-machine)). Removing a directory
 removes only its links: an image that a newer generation also links, such as
 the home a reset carried forward, keeps its data. Staging data is removable
 only after reconciliation establishes that no pending operation needs it;
@@ -601,8 +607,19 @@ across users; everything else about a user's Cloud lives in that user's shard.
 
 A Cloud's two writable filesystems have a fixed capacity, which the backend
 names in each wake from its account's setting, and never grow while it runs. Each image is a sparse file, so a
-capacity costs the host only what the Cloud writes: a 16 GiB home with 300 MB
-in it takes about 300 MB. For example, a Cloud first made with 1 GiB, or one
+capacity costs the host only what the Cloud holds: a 16 GiB home with 300 MB
+in it takes about 300 MB, however much it wrote and deleted before. A file
+deleted inside the Cloud frees its blocks in the filesystem but not in the
+image file the host keeps, which only a discard gives back: the image's
+loop device turns a discard into a hole punched in the file. So before an
+image is saved, by a hibernation or a checkpoint, the manager runs `fstrim`
+on its host mount, while the mount is still writable and before the frozen
+window, and every copy keeps the image's holes. For example, the Claude Code
+machine's home held 720 MB, its old CLI versions and temporary files deleted
+long since, in an image of 3.2 GB; trimmed, the image takes about 720 MB, and
+each saved copy of it as much.
+
+A Cloud first made with 1 GiB, or one
 whose administrator raised its home to 32 GiB, is enlarged at its next wake,
 before its images are mounted: the manager extends the working copy's file and
 runs `resize2fs` on it, then records the capacity read from the superblock. An

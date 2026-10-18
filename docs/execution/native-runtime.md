@@ -1051,6 +1051,28 @@ objects. Interrupted publication can leave unreferenced blobs, but it cannot
 expose a partial release or overwrite an existing version's meaning. Multipart
 ETags must not be treated as SHA-256 checksums.
 
+The store keeps the packages of the release the backend runs and of the one
+before it, and nothing older. Each release publishes its packages anew, so
+without a bound the store grows by every release's executables, about 150 MB
+a release, while no runner asks for them: a runner updates to the backend's
+release as it connects ([Runner releases](#runner-releases)), and the
+release before stays for the runners still on it until they do. So as the
+backend starts, once its release's packages are published, it records its
+release in the store, `native/releases/<version>.json`, naming the version of
+each package and the SHA-256 of each runner executable the release holds. It
+then keeps its own record and the newest other one by the time each was
+written, which is the release that ran before it, a rollback's included,
+and removes every other record, every mapping no kept record names, every
+descriptor no kept mapping names, and every blob that neither a kept
+descriptor nor a kept record names, the blobs an interrupted publication
+left among them. Two records written in the same millisecond are ordered by
+their versions. Pruning reads each mapping and descriptor a kept record
+names, and when one is missing, as after damage to the store, it removes
+nothing and logs what it found missing: what a kept release still has is
+never taken for what no release names. On the
+server whose disk filled, the store held 1.8 GB of the packages of twenty
+releases; it keeps about 300 MB.
+
 Under the store's `native/` keys
 ([The object store](../backend/storage.md#the-object-store)), an executable
 is `native/blobs/<sha256>`, a descriptor's canonical JSON is

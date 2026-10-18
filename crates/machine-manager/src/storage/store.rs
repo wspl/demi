@@ -14,7 +14,9 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use demi_machine_manager_protocol::{DeviceId, GenerationId, MachineImageState, Volume};
+use demi_machine_manager_protocol::{
+    DeviceId, GenerationId, MachineImageState, SandboxMachine, Volume,
+};
 
 use super::durable::{remove_tree, sync, write_json};
 use crate::blocking::OffLoop;
@@ -54,6 +56,29 @@ impl ImagePair<PathBuf> {
         ImagePair {
             system: &self.system,
             home: &self.home,
+        }
+    }
+}
+
+/// Which committed generations a publication keeps beside the new one
+/// (`managed-hosts.md` § Save a generation).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Retention {
+    /// The generation the new one replaces stays, there when the new one
+    /// turns out damaged: a user's Cloud, and a save the manager makes on
+    /// its own, which names no machine.
+    Previous,
+    /// The new generation alone: the Claude Code machine, whose contents
+    /// are downloaded or signed in again.
+    Current,
+}
+
+impl Retention {
+    /// The retention of `machine`'s generations.
+    pub fn of(machine: SandboxMachine) -> Self {
+        match machine {
+            SandboxMachine::Cloud => Self::Previous,
+            SandboxMachine::ClaudeCode => Self::Current,
         }
     }
 }
@@ -116,16 +141,18 @@ impl ImageStore {
     }
 
     /// Commits `state`'s generation with `sources` as its images, then keeps
-    /// only it and the generation it replaces. Each source is linked, so it
-    /// must be on this filesystem and must never be written again; its
-    /// producer has synced it. A failure before the new `current.json` leaves
-    /// the committed generation as it was and no stage behind.
+    /// only it and, as `retention` says, the generation it replaces. Each
+    /// source is linked, so it must be on this filesystem and must never be
+    /// written again; its producer has synced it. A failure before the new
+    /// `current.json` leaves the committed generation as it was and no stage
+    /// behind.
     pub fn publish(
         &self,
         off: &OffLoop,
         device: &DeviceId,
         state: &MachineImageState,
         sources: ImagePair<&Path>,
+        retention: Retention,
     ) -> Result<(), StoreError> {
         let previous = self.read(off, device)?;
         let directory = self.root.join(device);
@@ -151,13 +178,15 @@ impl ImageStore {
         crate::fault::point("generation-renamed");
         write_json(off, &directory.join("current.json"), state)?;
         sync(off, &directory)?;
-        // Keep the fallback generation; older ones and stale stages go, which
-        // removes only their links to images a newer generation may share.
+        // Keep the fallback generation where the retention has one; older
+        // ones and stale stages go, which removes only their links to images
+        // a newer generation may share.
+        let fallback = previous.filter(|_| retention == Retention::Previous);
         for entry in fs_err::read_dir(&generations)? {
             let entry = entry?;
             let name = entry.file_name();
             let keep = name == state.generation.as_str()
-                || previous
+                || fallback
                     .as_ref()
                     .is_some_and(|previous| name == previous.generation.as_str());
             if !keep && entry.file_type()?.is_dir() {
@@ -224,13 +253,13 @@ mod tests {
         let pair = sources.as_deref();
         assert_eq!(store.read(&off, &device).unwrap(), None);
         store
-            .publish(&off, &device, &state("first"), pair.clone())
+            .publish(&off, &device, &state("first"), pair.clone(), Retention::Previous)
             .unwrap();
 
         std::fs::remove_file(&sources.home).unwrap();
         assert!(
             store
-                .publish(&off, &device, &state("partial"), pair.clone())
+                .publish(&off, &device, &state("partial"), pair.clone(), Retention::Previous)
                 .is_err()
         );
         assert_eq!(store.read(&off, &device).unwrap(), Some(state("first")));
@@ -243,13 +272,13 @@ mod tests {
             std::fs::copy(committed.get(volume), sources.get(volume)).unwrap();
         }
         store
-            .publish(&off, &device, &state("second"), pair.clone())
+            .publish(&off, &device, &state("second"), pair.clone(), Retention::Previous)
             .unwrap();
         std::fs::remove_file(&sources.system).unwrap();
         std::fs::remove_file(&sources.home).unwrap();
         let second = store.images(&device, &state("second").generation);
         store
-            .publish(&off, &device, &state("third"), second.as_deref())
+            .publish(&off, &device, &state("third"), second.as_deref(), Retention::Previous)
             .unwrap();
         assert_eq!(generations(&store.root), ["second", "third"]);
         assert_eq!(store.read(&off, &device).unwrap(), Some(state("third")));
@@ -268,7 +297,7 @@ mod tests {
         std::fs::write(&sources.system, "system").unwrap();
         std::fs::write(&sources.home, "home").unwrap();
         store
-            .publish(&off, &device, &state("first"), sources.as_deref())
+            .publish(&off, &device, &state("first"), sources.as_deref(), Retention::Previous)
             .unwrap();
         let committed = store.images(&device, &state("first").generation);
         for volume in Volume::ALL {
