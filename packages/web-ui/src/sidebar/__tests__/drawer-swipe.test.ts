@@ -16,6 +16,7 @@ await import('../../__tests__/vue-components')
 const { createApp, defineComponent, h, nextTick, ref } = await import('vue')
 const { default: SidebarLayout } = await import('../SidebarLayout.vue')
 const { useSidebarDrag } = await import('../useSidebarDrag')
+const { installPhonePage } = await import('../../ui/phone-page')
 
 const DRAWER_WIDTH = 320
 
@@ -220,6 +221,114 @@ test('a move down from the edge, or a swipe right away from it, draws no drawer'
   touch(page, 'touchend', 20)
   await nextTick()
   expect([open.value, shown(drawer)]).toEqual([false, false])
+})
+
+// Over the full-screen work panel the left edge is the panel's: a rightward
+// swipe from it takes the panel back to the conversation beneath, following
+// the finger and settling by the drawer's rule (`web-application.md` § The
+// phone layout, "Whole-screen panels"), and draws no drawer.
+
+/** The work panel open full screen on a phone; `panel` is the element a finger touches. */
+async function openPanel(content: () => ReturnType<typeof h> = () => h('aside', { class: 'panel' }, 'Work panel')) {
+  const open = ref(false)
+  const asideOpen = ref(true)
+  const host = document.createElement('div')
+  document.body.append(host)
+  const app = createApp(defineComponent(() => () => h(SidebarLayout, {
+    open: open.value,
+    'onUpdate:open': (value: boolean) => {
+      open.value = value
+    },
+    asideOpen: asideOpen.value,
+    'onUpdate:asideOpen': (value: boolean) => {
+      asideOpen.value = value
+    },
+  }, {
+    sidebar: () => h('nav', 'Conversations'),
+    default: () => h('div', 'Conversation'),
+    aside: content,
+  })))
+  app.mount(host)
+  unmount = () => app.unmount()
+  await nextTick()
+  const drawer = host.querySelector<HTMLElement>('[data-region]')!
+  const panel = host.querySelector<HTMLElement>('aside.panel')!
+  const frame = host.querySelector<HTMLElement>('.frame-aside')!
+  return { open, asideOpen, drawer, panel, frame }
+}
+
+/** Where the panel stands now: px right of its place, or null in place, and whether it follows a finger. */
+function panelAt(frame: HTMLElement) {
+  const pull = frame.style.getPropertyValue('--aside-pull')
+  return { pull: pull === '' ? null : Number.parseFloat(pull), held: frame.hasAttribute('data-pulled') }
+}
+
+test('a swipe right from the left edge drags the panel after the finger, and a lift past 30% of the width takes it back', async () => {
+  const { asideOpen, open, drawer, panel, frame } = await openPanel()
+  const t = drawIn(panel, [14, 400], [60, 402], [130, 404])
+  await nextTick()
+  expect(panelAt(frame)).toEqual({ pull: 126, held: true })
+  touch(panel, 'touchend', t + 200)
+  await nextTick()
+  expect(asideOpen.value).toBe(false)
+  // It goes on sliding away from where the finger left it, eased; the drawer stayed closed.
+  expect(panelAt(frame)).toEqual({ pull: 126, held: false })
+  expect([open.value, shown(drawer)]).toEqual([false, false])
+})
+
+test('a short or held pull on the panel springs it back, and a flick of one takes it back', async () => {
+  const short = await openPanel()
+  const t = drawIn(short.panel, [20, 400], [100, 400])
+  // 96 px is short of 30% of the 390 px screen, and the finger stood still before the lift.
+  touch(short.panel, 'touchend', t + 200)
+  await nextTick()
+  expect(short.asideOpen.value).toBe(true)
+  expect(panelAt(short.frame)).toEqual({ pull: null, held: false })
+  unmount?.()
+
+  const flicked = await openPanel()
+  touch(flicked.panel, 'touchstart', 0, [4, 400])
+  touch(flicked.panel, 'touchmove', 16, [64, 400])
+  touch(flicked.panel, 'touchend', 20)
+  await nextTick()
+  expect(flicked.asideOpen.value).toBe(false)
+})
+
+test('over the panel the edge is the panel\'s swipe: the drawer neither shows nor opens, and a swipe away from the edge drags nothing', async () => {
+  const { asideOpen, open, drawer, panel, frame } = await openPanel()
+  const t = drawIn(panel, [14, 400], [60, 400], [200, 400])
+  await nextTick()
+  expect([shown(drawer), drawer.hasAttribute('data-pulled')]).toEqual([false, false])
+  touch(panel, 'touchend', t + 4)
+  await nextTick()
+  expect([asideOpen.value, open.value]).toEqual([false, false])
+  unmount?.()
+
+  const away = await openPanel()
+  touch(away.panel, 'touchstart', 0, [40, 400])
+  touch(away.panel, 'touchmove', 16, [200, 400])
+  touch(away.panel, 'touchend', 20)
+  await nextTick()
+  expect([away.asideOpen.value, panelAt(away.frame)]).toEqual([true, { pull: null, held: false }])
+})
+
+test('a short flick from the edge takes the panel back and clicks nothing under the finger', async () => {
+  // The phone's page gives an edge touch that lifts within 10 px its click (`phone-page.ts`); the drag takes it at 8.
+  const stopPage = installPhonePage()
+  try {
+    let clicks = 0
+    const { asideOpen, panel } = await openPanel(() => h('aside', { class: 'panel' }, [
+      h('button', { onClick: () => clicks++ }, 'Under the finger'),
+    ]))
+    const button = panel.querySelector('button')!
+    touch(button, 'touchstart', 0, [4, 400])
+    touch(button, 'touchmove', 10, [13, 400])
+    touch(button, 'touchend', 12)
+    await nextTick()
+    expect([asideOpen.value, clicks]).toEqual([false, 0])
+  } finally {
+    stopPage()
+  }
 })
 
 test('a finger dragged along a row never reorders the list, while a mouse does', async () => {

@@ -29,8 +29,10 @@ import { resolvePanelTab, type PanelTabKind } from './panel-kinds/kind'
  * closes or the panel binds other kinds, as for another conversation.
  *
  * On a phone it takes the whole screen (SidebarLayout) under one bar of its
- * own: Conversation, which goes back to the conversation as it was, the
- * strip, and the strip's controls; the desktop's close control is that back.
+ * own: a back button, its chevron alone and named Back to Conversation,
+ * which goes back to the conversation as it was, as a swipe from the
+ * screen's left edge does (SidebarLayout); the strip; and the strip's
+ * controls. The desktop's close control is that back.
  */
 const props = withDefaults(defineProps<{
   /** The selection and the user's tabs. */
@@ -194,15 +196,14 @@ function reorder(from: number, to: number): void {
       class="flex shrink-0 items-center gap-1"
       :class="phone ? 'h-[calc(2.75rem+var(--safe-top))] pl-1 pr-1.5 pt-[var(--safe-top)]' : 'h-11 pl-2 pr-3'"
     >
-      <button
+      <!-- The chevron alone, as a phone's own back button with no room for a title; its name says where it goes. -->
+      <IconButton
         v-if="phone"
-        type="button"
-        class="flex h-hit shrink-0 select-none items-center gap-0.5 rounded-md pr-1.5 text-[15px] text-fg-body active:bg-active"
+        :icon="ChevronLeft"
+        variant="ghost"
+        :aria-label="t('session.backToConversation')"
         @click="emit('close')"
-      >
-        <ChevronLeft :size="20" class="shrink-0" />
-        {{ t('session.backToConversation') }}
-      </button>
+      />
       <TabStrip
         class="min-w-0 grow"
         surface="raised"

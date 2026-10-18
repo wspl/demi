@@ -3582,6 +3582,7 @@ onBeforeUnmount(() => {
                 @revealed="frameReveal = null"
                 @reveal="(at) => (frameReveal = at)"
                 :aside-open="panelAsideOpen"
+                :panel-tabs="panelWork.panel.value.tabs.length"
                 :share="shareService"
                 :shares="sessionShares"
                 :select-edit="panelWork.selectEdit"

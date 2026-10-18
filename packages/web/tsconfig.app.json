@@ -22,6 +22,9 @@
       "@demicodes/web-ui/*": [
         "../web-ui/src/*"
       ],
+      "@demicodes/plugin-browser/*": [
+        "../plugin-browser/src/*"
+      ],
       "@demicodes/*": [
         "../*/src/index.ts"
       ]
