@@ -279,8 +279,12 @@ at the page's root takes each `contextmenu` event and each long press,
 walks from the element under the pointer up to the root, and gathers
 the entries of the content it passes and of the first object it meets;
 each is a group, and dividers part the groups. Content, a link, a picture,
-a code block, a selection, adds to the object around it, as the link adds
-to its message above. An object ends the walk: a file row's menu is the
+a code block, adds to the object around it, as the link adds
+to its message above. A selection is the exception: it ends the walk, as
+Safari's and Notes' menus on selected text hold only what acts on the
+selection, so a menu never offers *Copy* beside *Copy Message* or two *Send
+to Conversation* entries that act on different things; the message's own
+entries stay in its footer and in its menu where no text is selected. An object ends the walk: a file row's menu is the
 file's, never also its tree's, as Finder's menu on a file holds no New
 Folder; the tree's own menu opens on its empty space, where no row is. An
 object whose menu should hold an entry of its container, as a tab's holds

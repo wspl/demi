@@ -20,6 +20,15 @@ finish.*, as a mark set on text that is still changing would move. The
 user's own messages, tool calls and the reply's code blocks' controls offer
 none; text in a code block can be commented on.
 
+A right-click, or a long press, keeps the selection, as it does in every
+Mac app: the context menu opens with the selection's entries first, and the
+selection stays highlighted while the menu is open and after it closes
+without a choice. A right-click anywhere over a selected block, a gap
+between its lines or the margin of a list item included, is a click on the
+selection, not on the message around it. The toolbar steps aside while a
+menu is open, as one control for the selection is enough, and comes back
+when the menu closes with the selection still there.
+
 **Comment** opens a small box under the selection, a field, *Add a comment*,
 and two buttons, as GitHub's review offers *Add single comment* beside
 *Start a review*: **Comment**, the default, which adds the comment to the
