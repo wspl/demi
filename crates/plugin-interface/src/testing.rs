@@ -138,6 +138,12 @@ pub struct TestDemi {
     pub sent: RefCell<Vec<WebRequest>>,
     /// The access token of the user's sign-in; none while signed out.
     pub access_token: RefCell<Option<String>>,
+    /// What a renewal of a refused access token answers: the new token, or
+    /// a refusal; [`PortRefusal::SignedOut`] forgets the sign-in, as the
+    /// vendor's `invalid_grant` makes the host do.
+    pub renewal: RefCell<Result<String, PortRefusal>>,
+    /// How many refused access tokens were renewed.
+    pub renewals: Cell<u32>,
     /// The models of each kind of the user's provider entries.
     pub media_models: RefCell<BTreeMap<MediaKind, MediaListing>>,
     pub image_requests: RefCell<Option<ImageRequests>>,
@@ -183,6 +189,8 @@ impl TestDemi {
             web_requests: RefCell::default(),
             sent: RefCell::default(),
             access_token: RefCell::default(),
+            renewal: RefCell::new(Err(PortRefusal::SignedOut)),
+            renewals: Cell::new(0),
             media_models: RefCell::default(),
             image_requests: RefCell::default(),
             images_asked: RefCell::default(),
@@ -424,13 +432,28 @@ impl TestDemi {
             PortMessage::OauthStart => PortAnswer::AuthorizationUrl {
                 url: "https://auth.example.test/authorize?state=test".into(),
             },
-            PortMessage::OauthToken => PortAnswer::AccessToken {
-                token: self
-                    .access_token
-                    .borrow()
-                    .clone()
-                    .ok_or(PortRefusal::SignedOut)?,
-            },
+            PortMessage::OauthToken { refused } => {
+                let current = self.access_token.borrow().clone().ok_or(PortRefusal::SignedOut)?;
+                // As the host: a plain call, or one naming a token already
+                // replaced, answers the current token without renewing.
+                if refused.as_ref() != Some(&current) {
+                    return Ok(PortAnswer::AccessToken { token: current });
+                }
+                self.renewals.set(self.renewals.get() + 1);
+                let renewed = self.renewal.borrow().clone();
+                match renewed {
+                    Ok(token) => {
+                        self.access_token.replace(Some(token.clone()));
+                        PortAnswer::AccessToken { token }
+                    }
+                    Err(PortRefusal::SignedOut) => {
+                        self.access_token.replace(None);
+                        self.changed.set(self.changed.get() + 1);
+                        return Err(PortRefusal::SignedOut);
+                    }
+                    Err(refusal) => return Err(refusal),
+                }
+            }
             PortMessage::OauthSignOut => {
                 self.access_token.replace(None);
                 PortAnswer::Done

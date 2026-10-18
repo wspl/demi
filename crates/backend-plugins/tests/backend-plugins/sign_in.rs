@@ -2,8 +2,9 @@
 //! authorization server: Demi registers once, a user's sign-in exchanges
 //! its code with its PKCE verifier, the tokens renew at their revision and
 //! spend each refresh token once, a renewal runs to its end when its
-//! caller goes away, only a refused refresh token signs the user out, and
-//! signing out revokes them.
+//! caller goes away, an access token the vendor's resource server refused
+//! renews once however many requests name it, only a refused refresh token
+//! signs the user out, and signing out revokes them.
 
 use demi_backend_plugins::testing::{Authority, AuthorizationServer};
 use demi_backend_plugins::{Callback, CallbackError, Registry, UserPlugins};
@@ -135,6 +136,48 @@ async fn a_user_signs_in_once_registered_and_the_token_renews_spending_its_refre
         let revoked = sign_in.server.revoked();
         assert_eq!(revoked.len(), 2, "{revoked:?}");
         assert!(revoked[0].starts_with("refresh-") && revoked[1] == renewed, "{revoked:?}");
+        assert_eq!(token(&plugins).await, Err(PortRefusal::SignedOut));
+    })
+    .await;
+}
+
+async fn renew(plugins: &UserPlugins, refused: &str) -> Result<String, PortRefusal> {
+    match call(plugins, "probe", "renew", json!({ "refused": refused })).await {
+        Ok(answer) => Ok(answer["token"].as_str().unwrap().to_owned()),
+        answer => Err(refusal(answer)),
+    }
+}
+
+/// A plugin whose request the resource server refused names the refused
+/// access token: the host renews it though it has not expired, once for
+/// two requests refused at once and never for a token already replaced,
+/// which answers the current one. A refused refresh token signs out.
+#[tokio::test(flavor = "local")]
+async fn a_refused_access_token_renews_once_and_a_replaced_one_answers_the_current() {
+    within(async {
+        let sign_in = SignIn::start().await;
+        let alice = sign_in.backend.user("alice").await;
+        let plugins = sign_in.backend.plugins(&alice);
+        sign_in.signed_in(&plugins).await;
+        let refused = token(&plugins).await.unwrap();
+
+        sign_in.server.hold_refreshes(true);
+        let released = async {
+            sign_in.server.until_refreshes(1).await;
+            sign_in.server.hold_refreshes(false);
+        };
+        let (one, two, ()) = tokio::join!(renew(&plugins, &refused), renew(&plugins, &refused), released);
+        let renewed = one.unwrap();
+        assert_ne!(renewed, refused);
+        assert_eq!(two.unwrap(), renewed);
+        assert_eq!(sign_in.server.refreshes(), 1);
+        // A refusal answered late for the old token.
+        assert_eq!(renew(&plugins, &refused).await.unwrap(), renewed);
+        assert_eq!(sign_in.server.refreshes(), 1);
+        assert_eq!(token(&plugins).await.unwrap(), renewed);
+
+        sign_in.server.refuse_refreshes();
+        assert_eq!(renew(&plugins, &renewed).await, Err(PortRefusal::SignedOut));
         assert_eq!(token(&plugins).await, Err(PortRefusal::SignedOut));
     })
     .await;

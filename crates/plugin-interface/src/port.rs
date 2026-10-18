@@ -126,8 +126,13 @@ pub enum PortMessage {
     /// answers the authorization URL the page opens.
     OauthStart,
     /// A live access token of the user's sign-in, renewed first when it
-    /// expires within a minute.
-    OauthToken,
+    /// expires within a minute, or when it is the `refused` one the
+    /// vendor's resource server refused; a `refused` token already
+    /// replaced answers the current one without renewing.
+    OauthToken {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        refused: Option<String>,
+    },
     /// Revokes the user's sign-in at the vendor when it offers revocation,
     /// and forgets it either way.
     OauthSignOut,
@@ -807,7 +812,19 @@ impl PluginPort {
     /// A live access token of the user's sign-in; [`PortRefusal::SignedOut`]
     /// when the user is not signed in.
     pub async fn oauth_token(&self) -> Result<String, PortFailure> {
-        match self.ask(PortMessage::OauthToken).await? {
+        self.access_token(None).await
+    }
+
+    /// The access token to send in place of `refused`, which the vendor's
+    /// resource server refused with 401: renewed now, or the current one
+    /// when `refused` was already replaced. [`PortRefusal::SignedOut`] when
+    /// the vendor refused the refresh token, which forgets the sign-in.
+    pub async fn oauth_renew(&self, refused: &str) -> Result<String, PortFailure> {
+        self.access_token(Some(refused.to_owned())).await
+    }
+
+    async fn access_token(&self, refused: Option<String>) -> Result<String, PortFailure> {
+        match self.ask(PortMessage::OauthToken { refused }).await? {
             PortAnswer::AccessToken { token } => Ok(token),
             answer => Err(unexpected("oauth_token", &answer)),
         }

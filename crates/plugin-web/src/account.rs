@@ -7,7 +7,7 @@
 //! finds the sign-in gone while that value says otherwise fails once with
 //! the words for an expired sign-in, rather than turning anonymous unsaid.
 
-use demi_plugin_interface::{PluginError, PluginPort, PortFailure, PortRefusal, Scope, SecretName};
+use demi_plugin_interface::{PluginError, PluginPort, PortFailure, PortRefusal, SecretName};
 use serde_json::json;
 
 use crate::search::Failure;
@@ -112,13 +112,4 @@ pub(crate) async fn forget_sign_in(port: &PluginPort) -> Result<bool, PluginErro
         Err(error) => return Err(error.into()),
     }
     Ok(true)
-}
-
-/// Exa refused the token: the plugin host forgets the sign-in, and the
-/// page shows the user signed out.
-pub(crate) async fn expired(port: &PluginPort) -> Result<Failure, PluginError> {
-    port.oauth_sign_out().await?;
-    forget_sign_in(port).await?;
-    port.changed(Scope::User).await?;
-    Ok(Failure::Expired)
 }

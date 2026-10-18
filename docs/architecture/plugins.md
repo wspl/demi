@@ -505,7 +505,18 @@ host runs the flow, one for every such plugin:
    next call renews again. The log names each refused renewal's HTTP status
    and OAuth `error` code when it is one OAuth defines, `other` otherwise,
    never the vendor's text, its description or a token, so a lost
-   sign-in can be traced.
+   sign-in can be traced. A plugin whose request the vendor's resource
+   server refuses with 401 asks the token operation to renew now, naming the
+   access token it was refused, and sends the request once more with the
+   renewed one; when that token was already replaced, as by another
+   worker's renewal or a new sign-in, the refusal says nothing of the
+   current one, and the operation answers it as it answers any call, renewed
+   only when it expires within a minute. A refusal never signs out: only the refresh token's
+   refusal above forgets a sign-in, so a 403, an access token revoked by
+   mistake or a refusal answered late for an old token leaves the sign-in
+   as it is, and the request fails with what the vendor said. A sign-in the
+   vendor gave no refresh token has nothing to renew: the refused request
+   fails, and the sign-in stays until its access token expires.
 5. **Sign out.** Forgets the tokens, then revokes them at the vendor when it
    offers revocation. A sign-out, and a renewal the vendor refused, mark the
    plugin's user state changed as the callback does, so no page goes on

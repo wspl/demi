@@ -175,7 +175,7 @@ pub(crate) async fn call(
                     return Err(refused(WebReason::ExaUnavailable, failure.to_string()));
                 }
                 // A key has no sign-in to be refused.
-                Err(SearchError::TokenRefused) => unreachable!("a key search has no token"),
+                Err(SearchError::SignedOut) => unreachable!("a key search has no token"),
                 Err(SearchError::Port(failure)) => return Err(failure.into()),
             };
             let saved = port.secret(account::key_name()).await?;

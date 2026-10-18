@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::account::{self, Way};
-use crate::mcp::Mcp;
+use crate::mcp::{Bearer, Mcp};
 
 /// How many pages a search lists when `--count` names none.
 pub const DEFAULT_COUNT: u32 = 8;
@@ -143,8 +143,9 @@ pub(crate) enum Failure {
 /// A search's failure, or one of the port's.
 pub(crate) enum SearchError {
     Failed(Failure),
-    /// Exa refused the sign-in's token.
-    TokenRefused,
+    /// Exa refused the sign-in's token, and the plugin host, asked to
+    /// renew it, could not and forgot the sign-in.
+    SignedOut,
     Port(PortFailure),
 }
 
@@ -188,8 +189,9 @@ impl Kind {
 }
 
 /// The failure a response of `status` other than success stands for when
-/// searching `kind`'s way; [`SearchError::TokenRefused`] for a refused
-/// sign-in.
+/// searching `kind`'s way. A sign-in's token Exa refuses is Exa's failure:
+/// the request went once more with a renewed token before this, and the
+/// sign-in stays (`plugins.md` § OAuth sign-in).
 pub(crate) fn status_failure(response: &WebResponse, kind: Kind) -> SearchError {
     let failure = match (response.status, kind) {
         (429, Kind::Anonymous) => Failure::AnonymousLimit,
@@ -202,7 +204,6 @@ pub(crate) fn status_failure(response: &WebResponse, kind: Kind) -> SearchError 
         },
         (402, Kind::Key | Kind::Account) => Failure::NoCredit,
         (401 | 403, Kind::Key) => Failure::KeyRefused,
-        (401 | 403, Kind::Account) => return SearchError::TokenRefused,
         (status, _) => Failure::Vendor(format!("HTTP {status}{}", body_excerpt(response))),
     };
     SearchError::Failed(failure)
@@ -244,8 +245,9 @@ pub(crate) async fn run(
     let pages = match found {
         Ok(pages) => pages,
         Err(SearchError::Failed(failure)) => return Err(PluginError::failed(failure)),
-        Err(SearchError::TokenRefused) => {
-            return Err(PluginError::failed(account::expired(port).await?));
+        Err(SearchError::SignedOut) => {
+            account::forget_sign_in(port).await?;
+            return Err(PluginError::failed(Failure::Expired));
         }
         Err(SearchError::Port(failure)) => return Err(failure.into()),
     };
@@ -287,7 +289,10 @@ async fn search(
                 .map(|query| crate::rest::search(port, key, query, deadline));
             join_all(searches).await
         }
-        Way::Account(token) => mcp.search(port, Some(token), &queries, deadline).await?,
+        Way::Account(token) => {
+            let bearer = Bearer::new(token.clone());
+            mcp.search(port, Some(&bearer), &queries, deadline).await?
+        }
         Way::Anonymous => mcp.search(port, None, &queries, deadline).await?,
     };
     let lists = lists.into_iter().collect::<Result<Vec<_>, _>>()?;
