@@ -518,6 +518,13 @@ impl Backend {
         self.services.search.work()
     }
 
+    /// Overwrites the user's search index with bytes that do not open, in
+    /// the index's own turn for the user.
+    #[cfg(feature = "testing")]
+    pub async fn corrupt_search_index(&self, user: &demi_web_api_protocol::ids::UserId) {
+        self.services.search.corrupt(user).await.expect("the search index is overwritten");
+    }
+
     /// Holds every migration of a conversation's database from now on,
     /// until the hold is released.
     #[cfg(feature = "testing")]

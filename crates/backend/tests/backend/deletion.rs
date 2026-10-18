@@ -23,7 +23,9 @@ use crate::conversations::{
     FIRST, SECOND, Socket, answer, anthropic, choose, create, on_device, send, summaries,
     transcript,
 };
-use crate::support::{Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend, eventually};
+use crate::support::{
+    Harness, MASTER_EMAIL, MASTER_PASSWORD, Session, TestBackend, alive, eventually, waits_for_a_signal,
+};
 use crate::uploads::{png, upload, with_upload};
 use crate::work::shell;
 
@@ -69,15 +71,6 @@ async fn found(backend: &TestBackend, session: &Session, query: &str) -> Vec<Str
         .collect()
 }
 
-fn alive(pid: &str) -> bool {
-    std::process::Command::new("kill")
-        .args(["-0", pid])
-        .stderr(std::process::Stdio::null())
-        .status()
-        .unwrap()
-        .success()
-}
-
 // About two seconds: a real device runs the command the deletion stops.
 #[tokio::test]
 async fn deleting_a_running_conversation_stops_its_command_and_nothing_finds_it_after() {
@@ -93,8 +86,8 @@ async fn deleting_a_running_conversation_stops_its_command_and_nothing_finds_it_
     socket.open().await;
     let mut page = backend.sync(&master).await;
     page.snapshot().await;
-    let command = "sh -c \"echo \\$\\$ > cmd.pid; exec /bin/sleep 30\"";
-    vendor.respond(shell("t1", command, 30_000));
+    let command = waits_for_a_signal("cmd.pid");
+    vendor.respond(shell("t1", &command, 30_000));
     socket.send(&send("m1", "Wait")).await;
     let pid = Path::new(&root).join("cmd.pid");
     eventually("the command runs", || {

@@ -356,11 +356,7 @@ async fn a_reset_index_is_filled_again_at_once_past_a_conversation_that_cannot_b
             [],
         )
         .unwrap();
-    let index = harness
-        .data_dir()
-        .join("search")
-        .join(format!("{}.sqlite", master.user.id.as_str()));
-    std::fs::write(&index, b"not a database at all, and long enough to be read as a header").unwrap();
+    backend.corrupt_search_index(&master.user.id).await;
     eventually("the reset index is filled again", || async {
         search(&backend, &master, "foxtrot").await == foxtrot
     })

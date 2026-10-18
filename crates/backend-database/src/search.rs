@@ -300,6 +300,19 @@ impl SearchIndexes {
         add(&mut self.0.work.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
     }
 
+    /// Overwrites `user`'s index with bytes SQLite does not read, in the
+    /// user's turn, so no operation opens the file between its truncation
+    /// and its write and finds an empty file it would make a valid index.
+    #[cfg(any(test, feature = "testing"))]
+    pub async fn corrupt(&self, user: &UserId) -> Result<(), StorageError> {
+        let _turn = self.0.turns.acquire(user.clone()).await;
+        // Each operation's connection closed with its WAL checkpointed, so
+        // the file holds the index alone; garbage in it does not open.
+        let path = self.0.directory.join(format!("{user}.sqlite"));
+        tokio::fs::write(&path, b"not a database at all, and long enough to be read as a header").await?;
+        Ok(())
+    }
+
     /// Each user whose index is deleted and built again empty from now on,
     /// whose conversations the backend then indexes again.
     pub fn resets(&self) -> broadcast::Receiver<UserId> {
@@ -1242,10 +1255,7 @@ mod tests {
             .index(&user(), &conversation(1), indexed("Kept", &[]))
             .await
             .unwrap();
-        // Each operation's connection closed with its WAL checkpointed, so
-        // the file holds the index alone; garbage in it does not open.
-        let path = directory.join(format!("{}.sqlite", user()));
-        std::fs::write(&path, b"not a database at all, and long enough to be read as a header").unwrap();
+        indexes.corrupt(&user()).await.unwrap();
         assert_eq!(indexes.conversations(&user()).await.unwrap(), vec![]);
         indexes
             .index(&user(), &conversation(2), indexed("Rebuilt", &[]))
