@@ -354,3 +354,124 @@ async fn the_status_names_the_account_and_an_unreadable_or_absent_one_is_reporte
     );
     assert!(vendor.requests().is_empty());
 }
+
+/// A sign-in without a refresh token, as the development backend's
+/// (`providers.md` § Token refresh).
+fn unrenewable(access: &str, last_refresh: &str) -> String {
+    json!({
+        "accessToken": access,
+        "idToken": crate::secret_id_token(),
+        "accountId": "acct-1",
+        "lastRefresh": last_refresh,
+    })
+    .to_string()
+}
+
+#[tokio::test]
+async fn a_sign_in_without_a_refresh_token_is_used_until_its_access_token_expires() {
+    // Expiring within five minutes and last refreshed long ago, it is still
+    // used as it is: nothing could refresh it.
+    let vendor = MockVendor::start().await;
+    vendor.respond_at(RESPONSES, completed());
+    let expiring = access_token(NOW_SECONDS + 60);
+    let pool = pool_with(unrenewable(&expiring, "2026-08-01T00:00:00.000Z")).await;
+    let events = run(
+        runtime_of(&provider(&vendor, &pool, TransportMode::Sse)).as_mut(),
+        inference_request(),
+    )
+    .await;
+    assert!(matches!(events.last(), Some(ProviderEvent::Response(_))), "{events:?}");
+    let requests = vendor.requests();
+    let paths: Vec<&str> = requests.iter().map(|request| request.uri.path()).collect();
+    assert_eq!(paths, [RESPONSES]);
+    assert_eq!(
+        requests[0].header("authorization"),
+        Some(format!("Bearer {expiring}").as_str())
+    );
+
+    // Once its access token expired, the sign-in has ended: the entry says
+    // so and a run fails without calling the vendor.
+    let ended = "Codex signed the account out. Sign in to it again";
+    let vendor = MockVendor::start().await;
+    let pool = pool_with(unrenewable(&access_token(NOW_SECONDS - 1), NOW)).await;
+    let provider = provider(&vendor, &pool, TransportMode::Sse);
+    assert_eq!(
+        provider.auth_status().await,
+        AuthState::Unauthenticated {
+            message: Some(ended.into())
+        }
+    );
+    let events = run(runtime_of(&provider).as_mut(), inference_request()).await;
+    let [ProviderEvent::Error(failure)] = events.as_slice() else {
+        panic!("{events:?}");
+    };
+    assert_eq!(
+        (failure.code.as_ref(), failure.message.as_str()),
+        (Some(&ErrorCode::AuthExpired), ended)
+    );
+    assert!(vendor.requests().is_empty());
+}
+
+#[tokio::test]
+async fn a_sign_in_without_a_refresh_token_refused_with_401_has_ended_without_a_refresh() {
+    let vendor = MockVendor::start().await;
+    vendor.respond_at(RESPONSES, MockResponse::status(401));
+    let pool = pool_with(unrenewable(&fresh_token(), NOW)).await;
+    let events = run(
+        runtime_of(&provider(&vendor, &pool, TransportMode::Sse)).as_mut(),
+        inference_request(),
+    )
+    .await;
+    let Some(ProviderEvent::Error(failure)) = events.last() else {
+        panic!("{events:?}");
+    };
+    assert_eq!(
+        (failure.code.as_ref(), failure.message.as_str()),
+        (
+            Some(&ErrorCode::AuthExpired),
+            "Codex signed the account out. Sign in to it again"
+        )
+    );
+    let requests = vendor.requests();
+    let paths: Vec<&str> = requests.iter().map(|request| request.uri.path()).collect();
+    assert_eq!(paths, [RESPONSES]);
+}
+
+#[test]
+fn a_development_sign_in_becomes_an_account_without_a_refresh_token() {
+    let sign_in = json!({
+        "accessToken": fresh_token(),
+        "idToken": crate::secret_id_token(),
+        "accountId": "acct-1",
+    });
+    let account = demi_provider_codex::development_account(&sign_in.to_string(), NOW.parse().unwrap())
+        .unwrap();
+    assert_eq!(
+        (account.label.label.as_str(), account.label.identity_key.as_deref()),
+        ("dev@example.com", Some("acct-1"))
+    );
+    let stored: Value = serde_json::from_str(&account.secret.unwrap()).unwrap();
+    assert_eq!(
+        stored,
+        json!({
+            "accessToken": fresh_token(),
+            "idToken": crate::secret_id_token(),
+            "accountId": "acct-1",
+            "lastRefresh": NOW,
+        })
+    );
+
+    // A refresh token is refused, never kept, and never quoted.
+    let mut renewable = sign_in.clone();
+    renewable["refreshToken"] = json!("refresh-secret");
+    let error = demi_provider_codex::development_account(&renewable.to_string(), NOW.parse().unwrap())
+        .err()
+        .unwrap()
+        .to_string();
+    assert!(!error.contains("refresh-secret"), "{error}");
+    let without_access = json!({ "idToken": crate::secret_id_token(), "accountId": "acct-1" });
+    let error = demi_provider_codex::development_account(&without_access.to_string(), NOW.parse().unwrap())
+        .err()
+        .unwrap();
+    assert_eq!(error.path, ".");
+}

@@ -8,6 +8,7 @@
 //! through the web API.
 
 mod account;
+mod codex;
 mod echo;
 mod provider;
 
@@ -29,6 +30,7 @@ use tokio_util::sync::CancellationToken;
 
 use crate::native::{self, Executable, development_package};
 use account::Account;
+use codex::CodexSignIn;
 use provider::DevProvider;
 
 /// The one model of the echo entry.
@@ -87,6 +89,8 @@ pub enum Error {
     DevProvider(String),
     #[error("{0}")]
     Account(String),
+    #[error("{0}")]
+    Codex(String),
     #[error("a command program's development release: {0}")]
     Release(#[from] crate::native::Error),
     #[error(transparent)]
@@ -100,6 +104,9 @@ pub enum Error {
 struct Seed {
     account: Account,
     provider: Option<DevProvider>,
+    /// The developer's Codex sign-in, which the backend signs the master
+    /// account's Codex entry in with as it creates the account.
+    codex: Option<CodexSignIn>,
     /// Whether the echo model runs and has an entry.
     echo: bool,
 }
@@ -109,6 +116,7 @@ pub fn run(options: Options) -> Result<(), Error> {
     let seed = Seed {
         account: Account::read(var).map_err(Error::Account)?,
         provider: DevProvider::read(var).map_err(Error::DevProvider)?,
+        codex: CodexSignIn::read(var, std::env::home_dir()).map_err(Error::Codex)?,
         echo: echo::enabled(var).map_err(Error::Seed)?,
     };
     crate::interruptible(|cancel| develop(options, seed, cancel))?
@@ -230,6 +238,7 @@ async fn session(
         &public,
         &socket,
         &release,
+        seed.codex.as_ref(),
     )?);
 
     let http = reqwest::Client::builder().no_proxy().build()?;
@@ -312,6 +321,13 @@ async fn seed_data(
             provider.model()
         ));
     }
+    if let Some(codex) = &seed.codex {
+        models.push_str(&format!(
+            "\x20 Model:   the Codex entry's models, signed in as the Codex CLI's account of\n\
+             \x20          {}\n",
+            codex.path.display()
+        ));
+    }
     if let Some(echo) = echo {
         let entry = create_entry(http, origin, &cookies, &echo_entry(echo)).await?;
         models.push_str(&format!(
@@ -320,7 +336,8 @@ async fn seed_data(
     }
     if models.is_empty() {
         models.push_str(
-            "\x20 Model:   none; set DEMI_DEV_PROVIDER_* or DEMI_DEV_ECHO=1 in .env to add one\n",
+            "\x20 Model:   none; set DEMI_DEV_PROVIDER_*, DEMI_DEV_CODEX_AUTH or DEMI_DEV_ECHO=1 in\n\
+             \x20          .env to add one\n",
         );
     }
     Ok(models)
@@ -431,13 +448,15 @@ async fn manager_socket(manager: &mut dyn ChildWrapper) -> Result<String, Error>
 
 /// Starts the backend executable on the data directory `data`, with the
 /// variables the web app contract suite gives it, in isolated mode, its
-/// public URL `public`.
+/// public URL `public`, which signs the master account's Codex entry in with
+/// `codex` as it creates the account.
 fn spawn_backend(
     data: &Path,
     port: u16,
     public: &str,
     socket: &str,
     release: &Path,
+    codex: Option<&CodexSignIn>,
 ) -> Result<Box<dyn ChildWrapper>, Error> {
     let mut command = program("demi-backend");
     command
@@ -449,6 +468,12 @@ fn spawn_backend(
         .env("DEMI_BACKEND_PUBLIC_URL", public)
         .env("DEMI_MACHINE_MANAGER_SOCKET", socket)
         .stdin(Stdio::null());
+    if let Some(codex) = codex {
+        command
+            .command_mut()
+            .arg("--dev-codex-account")
+            .arg(codex.backend_file());
+    }
     Ok(command.spawn()?)
 }
 

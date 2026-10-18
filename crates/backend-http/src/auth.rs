@@ -60,6 +60,12 @@ pub(super) async fn setup(
             "This instance has its master account",
         ));
     };
+    if let Some(account) = &services.master_account {
+        services
+            .vault
+            .seed(user.id.clone(), account, services.clock.now())
+            .await?;
+    }
     let session = services
         .sessions
         .open(user.id.clone(), user_agent(&headers))

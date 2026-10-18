@@ -703,7 +703,7 @@ the family's requests and refreshes need:
 
 | Family | The secret document holds |
 |---|---|
-| `codex` | The ChatGPT sign-in's tokens, the account they act for, and the time of the last refresh |
+| `codex` | The ChatGPT sign-in's tokens, the refresh token optional, the account they act for, and the time of the last refresh |
 | `grok-build` | The OAuth tokens and their expiry, the issuer and client that issued them, the team or organization the tokens act for, and the user's ID and email |
 | `claude-code` | Nothing: the CLI keeps the sign-in in the account's directory; the record keeps the account's ID and email as public metadata. A record an earlier release wrote still holds the tokens until their [handover](claude-code.md#accounts-and-sign-in) |
 
@@ -768,7 +768,7 @@ refresh turn only saves needless vendor calls within one backend.
 
 | Family | Refreshes when |
 |---|---|
-| `codex` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes, or the sign-in was last refreshed 8 or more days ago |
+| `codex` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes, or the sign-in was last refreshed 8 or more days ago; a sign-in without a refresh token is used as it is until its access token expires, and then it has ended |
 | `grok-build` | A request was refused with HTTP 401 and its access token is still the stored one, or the stored access token expires within 5 minutes; a sign-in without a refresh token is used as it is |
 | `claude-code` | Never: the CLI renews its own sign-in ([Accounts and sign-in](claude-code.md#accounts-and-sign-in)) |
 
