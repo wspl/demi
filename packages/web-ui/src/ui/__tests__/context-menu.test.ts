@@ -111,20 +111,18 @@ test('a link in a message has its own entries first, then the message’s, and n
   expect(services.copied).toEqual(['bun run test'])
 })
 
-test('the selection under the pointer leads with Copy and what its object offers for it', () => {
+test('the selection under the pointer has its own menu: Copy and what its object offers for it, nothing else', () => {
   page(() => message({ selectionEntries: (text) => [entry(`Send “${text}”`)] }))
   const { opened, services } = install()
   const range = document.createRange()
   range.selectNodeContents(byId('link'))
   window.getSelection()!.addRange(range)
-  // Where the selection is drawn: the pointer at (40, 50) is on it, (400, 50) is not.
+  // Where the selection is drawn: the pointer at (40, 50) is on it. Off it, and between its lines, are layout's, which the Chromium test (selection-menu.test.ts) checks.
   range.getClientRects = () => [new DOMRect(30, 40, 60, 20)] as unknown as DOMRectList
   rightClick(byId('link'))
-  expect(labels(opened[0])).toEqual([['Copy', 'Send “the docs”'], ['Open Link', 'Copy Link'], ['Copy Message', 'Fork']])
+  expect(labels(opened[0])).toEqual([['Copy', 'Send “the docs”']])
   opened[0]!.menu.groups()[0]![0]!.run?.()
   expect(services.copied).toEqual(['the docs'])
-  rightClick(byId('text'), { clientX: 400 })
-  expect(labels(opened[1])).toEqual([['Copy Message', 'Fork']])
 })
 
 test('a picture has Copy Image and Save Image, and an icon, which the page hides as decoration, has none', () => {

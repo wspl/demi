@@ -10,10 +10,10 @@ import type { SentenceText, TitleText } from './ui-text'
  * The page's context menus (`web-application.md` § Context menus): one
  * handler at the page's root (`installContextMenus`) takes each
  * `contextmenu` event, the menu key and Shift-F10, and on a phone each long
- * press, and walks from the element under the pointer up to the root. On
- * the way it gathers the entries of content the browser's own menu would
- * offer, the selection under the pointer, a link, a picture, a code block,
- * and a link to an object (a file, a commit, an agent), whose group is that
+ * press. Over selected text the menu is the selection's alone, which ends
+ * the walk before it starts; elsewhere it walks from the element under the
+ * pointer up to the root. On the way it gathers the entries of content the
+ * browser's own menu would offer, a link, a picture, a code block, and a link to an object (a file, a commit, an agent), whose group is that
  * object's own menu as the renderer around it answers it (`vLinkMenus`),
  * and it stops at the first object, an element that declares its menu
  * (`vContextMenu`), whose entries come last: an object's menu never holds
@@ -204,7 +204,13 @@ function inSelectableText(target: Element): boolean {
   return !(target instanceof HTMLImageElement) && target.closest('[data-context-text]') !== null
 }
 
-/** The selected text when the pointer is on it, or from the keyboard when it is in `target`. */
+/**
+ * The selection when the pointer is over it, or from the keyboard when it is
+ * in `target`: over its selected text, or within its bounds where the
+ * browser's own selection takes the point as inside it, a gap between its
+ * lines or the margin of a list item included (the caret the point gives
+ * lies within it); blank space outside its bounds never is.
+ */
 function selectionUnder(ask: ContextMenuAsk): string | null {
   const selection = window.getSelection()
   if (!selection || selection.isCollapsed || selection.rangeCount === 0)
@@ -216,9 +222,44 @@ function selectionUnder(ask: ContextMenuAsk): string | null {
   const point = ask.point
   if (point === null)
     return ask.target.contains(range.commonAncestorContainer) || range.intersectsNode(ask.target) ? text : null
-  const on = [...range.getClientRects()].some((rect) =>
+  const onText = [...range.getClientRects()].some((rect) =>
     point.x >= rect.left && point.x <= rect.right && point.y >= rect.top && point.y <= rect.bottom)
-  return on ? text : null
+  if (onText)
+    return text
+  // The caret snaps blank space beside the selection, such as a message's padding, to its nearest end: only a point within the selection's own bounds counts.
+  const bounds = range.getBoundingClientRect()
+  if (point.x < bounds.left || point.x > bounds.right || point.y < bounds.top || point.y > bounds.bottom)
+    return null
+  const caret = caretAt(point)
+  return caret && range.isPointInRange(caret.node, caret.offset) ? text : null
+}
+
+/** The caret position a click at `point` gives, as the browser's own selection reads it. */
+function caretAt(point: { x: number; y: number }): { node: Node; offset: number } | null {
+  // Safari before 26 has only the older, non-standard caretRangeFromPoint.
+  if (typeof document.caretPositionFromPoint === 'function') {
+    const caret = document.caretPositionFromPoint(point.x, point.y)
+    return caret ? { node: caret.offsetNode, offset: caret.offset } : null
+  }
+  const caret = document.caretRangeFromPoint(point.x, point.y)
+  return caret ? { node: caret.startContainer, offset: caret.startOffset } : null
+}
+
+/**
+ * The selection's menu, which ends the walk (`web-application.md` §
+ * Context menus): Copy, then what the object around `target` offers for
+ * `text`, its selected text, and nothing of the object's own menu. Its rows
+ * are read as it opens, from the selection as it is then, so they agree
+ * with each other whatever becomes of the selection meanwhile, as when the
+ * focus moving into a submenu's field ends it.
+ */
+function selectionMenu(target: Element, text: string, services: ContextMenuServices): ComposedMenu {
+  let object: Element | null = target
+  while (object && !declarations.has(object))
+    object = object.parentElement
+  const offered = object ? declarations.get(object)?.selectionEntries?.(text) ?? [] : []
+  const group: ContextMenuGroup = [{ icon: Copy, label: shared('common.copy'), run: () => services.copy(text) }, ...offered]
+  return { groups: () => [group], objects: object ? [object] : [], opened: () => {}, closed: () => {} }
 }
 
 /**
@@ -275,23 +316,18 @@ function contentGroup(el: Element, services: ContextMenuServices): ContextMenuGr
 }
 
 /**
- * The menu for `ask`: the selection under the pointer, then each content
- * element from the target up gives a group, up to the first object, whose
- * groups end the menu. Null when nothing does, and on a
+ * The menu for `ask`: the selection's alone when the pointer is over it;
+ * else each content element from the target up gives a group, up to the
+ * first object, whose groups end the menu. Null when nothing does, and on a
  * long press when a control comes first that has no menu of its own.
  */
 export function composeContextMenu(ask: ContextMenuAsk, services: ContextMenuServices): ComposedMenu | null {
+  const selected = selectionUnder(ask)
+  if (selected !== null)
+    return selectionMenu(ask.target, selected, services)
   const parts: (() => ContextMenuGroup[])[] = []
   const asked: ContextMenuDeclaration[] = []
   const objects: Element[] = []
-  const selected = selectionUnder(ask)
-  if (selected !== null) {
-    // The object the walk ends at adds what it offers for its selected text.
-    parts.push(() => [[
-      { icon: Copy, label: shared('common.copy'), run: () => services.copy(selected) },
-      ...(asked[0]?.selectionEntries?.(selected) ?? []),
-    ]])
-  }
   for (let el: Element | null = ask.target; el; el = el.parentElement) {
     const content = contentGroups(el, services)
     const declaration = declarations.get(el)

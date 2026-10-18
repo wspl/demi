@@ -3,7 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vu
 import { autoUpdate, flip, offset, shift, useFloating } from '@floating-ui/vue'
 import { stackAbove } from '../overlay/stacking'
 import { usePhone } from './phone'
-import { selectionTools, type SelectionTools } from './context-menu'
+import { selectionTools, shownContextMenu, type SelectionTools } from './context-menu'
 import SelectionToolRow from './SelectionToolRow.vue'
 
 /**
@@ -15,7 +15,10 @@ import SelectionToolRow from './SelectionToolRow.vue'
  * and the rest; on a phone every one the object offers, such as Send to
  * Conversation, Copy being the system's callout's. On the desktop it stands above
  * the selection, once the mouse that drags it is released; on a phone
- * under it, clear of the system's callout above. While a tool's submenu is
+ * under it, clear of the system's callout above. It shows once the
+ * selection is made, already where it stands, and steps aside while a
+ * context menu is open, the one control for the selection then, coming back
+ * as it closes on the selection still there. While a tool's submenu is
  * open (SelectionToolRow) the toolbar keeps the selection it opened for,
  * though the focus moving into its search field ends the selection on the page.
  */
@@ -65,7 +68,7 @@ watch(tools, (now, _before, onCleanup) => {
   onCleanup(() => observer.disconnect())
 })
 
-const shown = computed(() => tools.value !== null && !dragging.value)
+const shown = computed(() => tools.value !== null && !dragging.value && shownContextMenu.value === null)
 
 const reference = computed(() => {
   const range = tools.value?.range
@@ -83,7 +86,9 @@ const reference = computed(() => {
 })
 
 const floating = ref<HTMLElement>()
-const { floatingStyles } = useFloating(reference, floating, {
+const { floatingStyles, isPositioned } = useFloating(reference, floating, {
+  // Drawn only once placed: before its first placement it stands at the page's corner.
+  open: shown,
   placement: computed(() => (phone.value ? 'bottom' : 'top')),
   strategy: 'fixed',
   // A phone's selection has its handles below its last line, which the toolbar clears.
@@ -105,7 +110,7 @@ function hold(now: boolean): void {
       v-if="shown && tools"
       ref="floating"
       data-selection-toolbar
-      :style="{ ...floatingStyles, zIndex: z() }"
+      :style="{ ...floatingStyles, zIndex: z(), visibility: isPositioned ? undefined : 'hidden' }"
     >
       <SelectionToolRow :entries="tools.entries" @holding="hold" />
     </div>

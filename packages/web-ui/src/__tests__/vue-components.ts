@@ -31,6 +31,24 @@ export const vueSingleFileComponents: BunPlugin = {
 }
 plugin(vueSingleFileComponents)
 
+/**
+ * Builds a Chromium test's page without the modules that gather files with
+ * Vite's `import.meta.glob`, which Bun lacks: the file icons' theme, as
+ * below, and the vendors' logos; a file and a vendor then show no mark.
+ */
+export const withoutViteGlobs: BunPlugin = {
+  name: 'without Vite globs',
+  setup(build) {
+    build.onLoad({ filter: /[/\\]files[/\\]file-icon-theme\.ts$/ }, () => ({
+      contents: `import { shallowRef } from 'vue'
+export const fileIconTheme = shallowRef(null)
+export const ensureFileIconTheme = () => {}
+export const fileIconUrl = async () => null`,
+      loader: 'ts',
+    }))
+  },
+}
+
 // The file icons' theme gathers its glyphs with Vite's `import.meta.glob`,
 // which Bun lacks: in a test there is no theme, and a file shows no icon.
 void mock.module('@demicodes/web-ui/files/file-icon-theme', () => ({

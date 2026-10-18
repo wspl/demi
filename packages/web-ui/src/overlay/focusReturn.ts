@@ -4,7 +4,10 @@ import { focusByPage } from '../ui/focus-by-page'
 /**
  * What had the focus before it went to nothing, as a press on something that
  * takes no focus (an icon button, a sidebar row) sends it, until anything
- * takes the focus again. One pair of listeners for the whole page.
+ * takes the focus again or the user selects text, where they now are: a
+ * message field given the focus back would take the selection away, as a
+ * menu opened on selected words and closed would end it.
+ * One set of listeners for the whole page.
  */
 const useFocusLostToNothing = createSharedComposable(() => {
   let lost: HTMLElement | null = null
@@ -13,6 +16,10 @@ const useFocusLostToNothing = createSharedComposable(() => {
   })
   useEventListener(document, 'focusin', () => {
     lost = null
+  })
+  useEventListener(document, 'selectionchange', () => {
+    if (lost && document.getSelection()?.isCollapsed === false)
+      lost = null
   })
   return () => (lost?.isConnected ? lost : null)
 })
