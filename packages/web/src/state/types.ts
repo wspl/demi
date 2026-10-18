@@ -22,7 +22,9 @@ import type { SubagentRecord } from '@demicodes/web-ui/agent/subagents'
 import type { TerminalRecord } from '@demicodes/web-ui/agent/terminals'
 import type { Raw } from 'vue'
 import type { Slot } from '@demicodes/web-ui/infra/slot'
-import type { AttachedHost, ConversationShare, ConversationTarget, DeviceKind, FiledRun, WorkflowChoice } from '../api/generated/web-api'
+import type { AttachedHost, ConversationShare, ConversationTarget, DeviceKind, FiledRun, SideQuestion, WorkflowChoice } from '../api/generated/web-api'
+import type { HeldTranscript } from '@demicodes/web-ui/transport/protocol'
+import type { RunRevision } from './revisions'
 import type { NotSaved, RecordSlot } from '../conversation/record'
 import type { PersistedScrollState } from '@demicodes/web-ui/composables/useBlockVirtualizer'
 import type { SavedDraft, SavedFile } from '../conversation/drafts'
@@ -120,6 +122,14 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   /** The devices the conversation's agents attached, as a slot whose revision is the summary's `hostsRevision`: a summary with a higher one reads them again. */
   attachedHosts: Raw<Slot<AttachedHost[]>>
   subagents: SubagentRecord[]
+  /**
+   * Its side questions as this page last read them, each with the
+   * transcript the page holds of it (`comments-and-ask.md` § Side
+   * questions), in the order they were asked.
+   */
+  sides: SideRecord[]
+  /** The revision of the side questions' list the page holds; null before the first read. */
+  sidesHeld: RunRevision | null
   terminals: TerminalRecord[]
   load: SessionLoad
   pendingAction: PendingAction
@@ -148,4 +158,41 @@ export interface Device extends DeviceReport {
 
 export type Project = SidebarProject & {
   deviceId: string
+}
+
+/**
+ * One side question of a conversation: the backend's record and what the
+ * page holds of its side conversation, which the socket's frames keep live
+ * while its node is open and the transcript routes read by its node.
+ */
+export interface SideRecord {
+  id: string
+  /**
+   * The backend's record; null for a side question whose frames came before
+   * the list named it, as another page's question's do, which the page
+   * holds until the list it reads next names it.
+   */
+  record: SideQuestion | null
+  history: HeldTranscript
+  failures: Record<string, ProviderFailureFacts>
+  sessionPhase: SessionPhase
+  pendingCalls: PendingCall[]
+  waitingSince: number | null
+  /** The page's question, follow-up or Retry is on its way. */
+  sending: boolean
+  /** The folds and openings of its card on their way, one at a time; none while none is. */
+  folding: SideFolding | null
+}
+
+/**
+ * The folds of a side question's card the page sent, one write at a time:
+ * the user's latest choice, which the card shows whatever an earlier write
+ * or a read answers meanwhile, and what the backend last confirmed, which a
+ * refused last write goes back to.
+ */
+export interface SideFolding {
+  intent: boolean
+  confirmed: boolean
+  writes: number
+  chain: Promise<void>
 }

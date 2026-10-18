@@ -21,6 +21,8 @@ import {
 } from './message-editing'
 import AgentMessageList from '@demicodes/web-ui/agent/AgentMessageList.vue'
 import type { ReplyCommenting } from './comments/comments'
+import type { ReplyAsking } from './comments/asks'
+import SideQuestionWindow from './comments/SideQuestionWindow.vue'
 import SessionSurface from '@demicodes/web-ui/agent/SessionSurface.vue'
 import SessionDock from '@demicodes/web-ui/agent/SessionDock.vue'
 import { DOCK_WINDOW_SHARE } from '@demicodes/web-ui/agent/dock-window'
@@ -175,6 +177,12 @@ const props = withDefaults(defineProps<{
    */
   commenting?: ReplyCommenting
   /**
+   * The conversation's side questions and what to do with them, which the
+   * replies take and whose full conversation opens in the subagent window
+   * (`comments-and-ask.md` § Side questions); absent, they take none.
+   */
+  asking?: ReplyAsking
+  /**
    * Whether calls and folded runs show the files they changed as pills; the
    * product shows none for a conversation outside a project
    * (`edit-tracking.md` § What the conversation shows). Absent, they show.
@@ -283,6 +291,16 @@ provideCommandRevealer((commandId) => {
 const terminals = useDockTerminals(() => props.conversation)
 /** The window of the transcript the list shows, and where it stands. */
 const shown = computed(() => shownWindow(props.conversation.history, props.conversation.shownAt))
+
+/** The side question whose whole conversation the subagent window shows; ↗ on its card opens it. */
+const fullAsk = ref<string | null>(null)
+const fullQuestion = computed(() => props.asking?.questions.find((question) => question.id === fullAsk.value) ?? null)
+const shownAsking = computed<ReplyAsking | undefined>(() => props.asking && {
+  ...props.asking,
+  openFull: (id: string) => {
+    fullAsk.value = id
+  },
+})
 const shownEdges = computed(() => windowEdges(props.conversation.history, shown.value))
 const shownLatest = computed(() => shown.value === latestWindow(props.conversation.history) || shownEdges.value.atEnd)
 /**
@@ -752,6 +770,7 @@ watch(
             :share="share ? (blockId) => sharing.start({ kind: 'answer', blockId }) : undefined"
             :edit-target-id="messageEdit?.request.targetBlockId"
             :commenting="commenting"
+            :asking="shownAsking"
             @retry-submission="(id) => emit('retrySubmission', id)"
             :bottom-offset="surface?.dockHeight ?? 0"
             :persisted-scroll-state="conversation.scroll ?? undefined"
@@ -842,6 +861,12 @@ watch(
             @compact-agent="(id) => emit('compactSubagent', id)"
             @refresh-limits="(providerId, account, automatic) => emit('refreshLimits', providerId, account, automatic)"
             @open-instruction="(entry) => emit('openInstruction', entry)"
+          />
+          <SideQuestionWindow
+            v-if="asking"
+            :question="fullQuestion"
+            @close="fullAsk = null"
+            @read="(id, at) => asking?.read(id, at)"
           />
           <TerminalPanel
             v-model:active-id="activeTerminalId"

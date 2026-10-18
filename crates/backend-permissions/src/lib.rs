@@ -27,7 +27,7 @@ use demi_backend_database::permissions::{
     AnswerProblem, Answered, AskedHost, Asked, AskingAgent, Checked, CredentialAsk, CredentialRead,
     Needed, PermissionRefusal, StoredAsk, StoredRequest, Undecided,
 };
-use demi_backend_page_sync::{Part, UserMarks};
+use demi_backend_page_sync::{Part, Revisions, UserMarks};
 use demi_command_declarations::Category;
 use demi_host_interface::{RpcError, RpcInvocation};
 use demi_shared_types::{AgentMessage, AgentMessageEvent, BlockId, NodeId, PermissionOutcome};
@@ -170,22 +170,6 @@ impl Drop for Wait {
                 Err(error) => tracing::warn!(%request, "a credential request was not withdrawn: {error}"),
             }
         }));
-    }
-}
-
-/// How many times each conversation's requests changed since the shard
-/// started; a conversation without an entry has changed none
-/// (`web-api-conversations.md` § Conversation permissions).
-#[derive(Default)]
-pub struct Revisions(RefCell<HashMap<ConversationId, u64>>);
-
-impl Revisions {
-    pub fn of(&self, conversation: &ConversationId) -> u64 {
-        self.0.borrow().get(conversation).copied().unwrap_or(0)
-    }
-
-    fn raise(&self, conversation: &ConversationId) {
-        *self.0.borrow_mut().entry(conversation.clone()).or_default() += 1;
     }
 }
 

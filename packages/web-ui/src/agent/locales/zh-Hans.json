@@ -9,6 +9,17 @@
     "writeFirst": "请先输入评论。",
     "title": "评论"
   },
+  "ask": {
+    "ask": "提问",
+    "placeholder": "就此提问",
+    "followUpPlaceholder": "继续追问",
+    "reply": "回复",
+    "openFull": "打开完整对话",
+    "collapse": "收起",
+    "expand": "展开",
+    "thinking": "正在思考…",
+    "retry": "重试"
+  },
   "transcript": {
     "accountSwitch": {
       "usage": "{from} 已达到用量限额，改用 {to} 继续。",

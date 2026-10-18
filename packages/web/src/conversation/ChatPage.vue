@@ -24,6 +24,7 @@ import { useProduct } from '../state/product'
 import { usePreferences } from '../state/preferences'
 import { useWorkPanel } from './work'
 import { usePermissions } from './permissions'
+import { useSideQuestions } from './side-questions'
 import { conversationFiles } from './files'
 import type { EditSelectionHandler } from '@demicodes/web-ui/agent/edit-selection'
 import { useMessageAttachments } from './attachments'
@@ -69,6 +70,7 @@ const product = useProduct()
 const preferences = usePreferences()
 const work = useWorkPanel()
 const permissions = usePermissions()
+const sideQuestions = useSideQuestions()
 /**
  * The open conversation, from the address the page shows: under open
  * settings, that is the address they opened over, not the settings' own.
@@ -157,6 +159,9 @@ watch(
   (id) => {
     if (id) {
       permissions.follow(id)
+      if (conversation.value) {
+        sideQuestions.follow(conversation.value)
+      }
     }
   },
   { immediate: true },
@@ -267,6 +272,14 @@ const card = useContextCard(() => files.value?.open)
 
 /** What the replies' comments do in the conversation's draft; an archived conversation takes none. */
 const commenting = computed(() => (conversation.value ? store.commenting(conversation.value) : undefined))
+/** The side questions on the replies; a conversation without a backend record has none yet. */
+const asking = computed(() => {
+  const shown = conversation.value
+  return shown && shown.persistence === 'synced' && !shown.archived
+    ? sideQuestions.asking(shown, (id, at) =>
+        readHistory(at === 'latest' ? store.history.readLatest(shown, id) : store.history.readBefore(shown, id)))
+    : undefined
+})
 
 /** What the header's menu and an answer's footer share with, once the conversation has a record and the page knows the backend's public address. */
 const share = computed(() => {
@@ -305,6 +318,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :select-edit="selectEdit"
     :file-pills="conversation.projectId !== null"
     :commenting="conversation.archived ? undefined : commenting"
+    :asking="asking"
     :files="files"
     :primary-host="primaryHost"
     :permission-requests="permissions.stateFor(conversation.id).requests"

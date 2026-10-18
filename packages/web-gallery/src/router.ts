@@ -18,6 +18,7 @@ import MarkdownSection from './sections/MarkdownSection.vue'
 import RoadmapSection from './sections/RoadmapSection.vue'
 import PhoneSection from './sections/PhoneSection.vue'
 import PhoneFrameView from './phone/PhoneFrameView.vue'
+import AsksFrameView from './phone/AsksFrameView.vue'
 import AutomationsSection from './sections/AutomationsSection.vue'
 import AutomationsFrameView from './phone/AutomationsFrameView.vue'
 import { t } from './locales/text'
@@ -97,6 +98,7 @@ export const router = createRouter({
     { path: '/phone', component: PhoneSection, meta: { layout: 'catalog' } },
     { path: '/phone-frame', component: PhoneFrameView, meta: { layout: 'frame' } },
     { path: '/automations-frame', component: AutomationsFrameView, meta: { layout: 'frame' } },
+    { path: '/asks-frame', component: AsksFrameView, meta: { layout: 'frame' } },
     { path: '/:pathMatch(.*)*', redirect: '/overview' },
   ],
 })

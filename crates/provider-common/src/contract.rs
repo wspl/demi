@@ -319,6 +319,13 @@ pub type ProviderRun<'a> = LocalBoxStream<'a, ProviderEvent>;
 pub struct InferenceRequest {
     /// The owning session.
     pub session_id: String,
+    /// The session a provider keys its prompt cache and its routing by,
+    /// when it is not `session_id`: a side question sends its
+    /// conversation's, so its request reads the conversation's cache
+    /// (`comments-and-ask.md` § Side questions). None for every other
+    /// request. A provider whose session is state of its own, such as a CLI's
+    /// resumed session, keeps `session_id` for that state.
+    pub affinity: Option<String>,
     /// The turn the request belongs to; continuations inside a turn share it.
     pub turn_id: String,
     /// This request, unique per attempt.
@@ -359,6 +366,14 @@ pub struct InferenceRequest {
     /// the root; none for a request that is no session's, such as a title
     /// request.
     pub agent: Option<u64>,
+}
+
+impl InferenceRequest {
+    /// The session the provider keys its prompt cache, its routing and its
+    /// conversation headers by: the affinity, else the session itself.
+    pub fn cache_session(&self) -> &str {
+        self.affinity.as_deref().unwrap_or(&self.session_id)
+    }
 }
 
 /// What a request is for (`usage-and-quota.md` § Usage ledger).

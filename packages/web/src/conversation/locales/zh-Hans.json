@@ -31,7 +31,12 @@
     "requestNotAccepted": "对话未接受该请求。",
     "fieldsNotUpdated": "部分字段未更新。",
     "readPermissions": "无法读取权限",
-    "readFileWatch": "无法读取文件监视的消息"
+    "readFileWatch": "无法读取文件监视的消息",
+    "readSideQuestions": "无法读取旁问",
+    "askSideQuestion": "无法提问",
+    "sendFollowUp": "无法发送追问",
+    "retrySideQuestion": "无法重试",
+    "foldSideQuestion": "无法更改旁问"
   },
   "drafts": {
     "storeFailed": "此浏览器无法存储你的草稿。",

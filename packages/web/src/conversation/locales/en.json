@@ -31,7 +31,12 @@
     "requestNotAccepted": "The conversation didn’t accept the request.",
     "fieldsNotUpdated": "Some fields weren’t updated.",
     "readPermissions": "Could Not Read Permissions",
-    "readFileWatch": "Could Not Read a Message of the File Watch"
+    "readFileWatch": "Could Not Read a Message of the File Watch",
+    "readSideQuestions": "Could Not Read Side Questions",
+    "askSideQuestion": "Could Not Ask",
+    "sendFollowUp": "Could Not Send the Follow-Up",
+    "retrySideQuestion": "Could Not Retry",
+    "foldSideQuestion": "Could Not Change the Side Question"
   },
   "drafts": {
     "storeFailed": "This browser couldn’t store your drafts.",

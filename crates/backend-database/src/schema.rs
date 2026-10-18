@@ -1364,7 +1364,7 @@ pub(crate) const CONVERSATION: Schema = Schema {
         },
         Shipped {
             sql: include_str!("schema/conversation-0.1.27.sql"),
-            migration: Migration::Sql(CONVERSATION_FROM_0_1_27),
+            migration: Migration::Code(conversation_from_0_1_27),
         },
     ],
 };
@@ -1386,8 +1386,13 @@ ALTER TABLE running_commands ADD COLUMN unsent TEXT;
 
 /// From 0.1.27's conversation schema to the current one: the sequences
 /// gain `device`, which numbers the conversation's simulators
-/// (`mobile.md` § Commands); every sequence keeps its next number.
-const CONVERSATION_FROM_0_1_27: &str = "
+/// (`mobile.md` § Commands); every sequence keeps its next number. A node
+/// may have no number, a side question's (`comments-and-ask.md` § Side
+/// questions), whose row the new `side_questions` holds; every node of
+/// 0.1.27 is an agent and keeps its number.
+fn conversation_from_0_1_27(transaction: &Transaction<'_>, _: &dyn ReadBlob) -> rusqlite::Result<()> {
+    transaction.execute_batch(
+        "
 CREATE TABLE sequences_next (
   name TEXT PRIMARY KEY CHECK (name IN ('command', 'agent', 'tab', 'attachment', 'device')),
   next INTEGER NOT NULL CHECK (next >= 1)
@@ -1395,7 +1400,45 @@ CREATE TABLE sequences_next (
 INSERT INTO sequences_next (name, next) SELECT name, next FROM sequences;
 DROP TABLE sequences;
 ALTER TABLE sequences_next RENAME TO sequences;
-";
+",
+    )?;
+    // The nodes' NOT NULL on `number` goes. Making the table again would
+    // drop the table every block row names, which cascades while foreign
+    // keys are on, as they are in a migration's transaction; its columns
+    // stay as they are, so its text changes in place, the procedure SQLite
+    // gives for a change of constraints alone (lang_altertable.html § 7),
+    // to the current schema's own text. Every row keeps its number, which
+    // the integrity check proves the new text accepts.
+    let start = CONVERSATION_V1
+        .find("CREATE TABLE nodes (")
+        .expect("the conversation schema makes the nodes table");
+    let end = start + CONVERSATION_V1[start..].find(") STRICT;").expect("the table ends") + ") STRICT".len();
+    let version: i64 = transaction.pragma_query_value(None, "schema_version", |row| row.get(0))?;
+    transaction.pragma_update(None, "writable_schema", true)?;
+    transaction.execute(
+        "UPDATE sqlite_schema SET sql = ?1 WHERE type = 'table' AND name = 'nodes'",
+        [&CONVERSATION_V1[start..end]],
+    )?;
+    transaction.pragma_update(None, "schema_version", version + 1)?;
+    transaction.pragma_update(None, "writable_schema", false)?;
+    let start = CONVERSATION_V1
+        .find("CREATE TABLE side_questions (")
+        .expect("the conversation schema makes the side questions' table");
+    let end = start
+        + CONVERSATION_V1[start..]
+            .find("CREATE INDEX side_questions_in_order")
+            .expect("the table's index follows it");
+    let index_end = end + CONVERSATION_V1[end..].find(";\n").expect("the index ends") + 1;
+    transaction.execute_batch(&CONVERSATION_V1[start..index_end])?;
+    let problems: Vec<String> = transaction
+        .prepare("PRAGMA integrity_check")?
+        .query_map([], |row| row.get(0))?
+        .collect::<rusqlite::Result<_>>()?;
+    if problems != ["ok"] {
+        return Err(corrupt_text(&format!("the nodes fail their check: {problems:?}")));
+    }
+    Ok(())
+}
 
 /// From 0.1.22-dev.20261015T134426Z's control schema, which a server keeps
 /// data of, to the one whose quota snapshots (format 2) give each window a
@@ -3830,7 +3873,9 @@ CREATE TABLE attachments (
 const CONVERSATION_V1: &str = r"
 CREATE TABLE nodes (
   id               TEXT PRIMARY KEY,
-  number           INTEGER NOT NULL UNIQUE CHECK (number >= 0),
+  -- The agent's number, 0 for the root; null for a side question's node,
+  -- which is no agent and has its row in side_questions.
+  number           INTEGER UNIQUE CHECK (number >= 0),
   parent_id        TEXT REFERENCES nodes (id) ON DELETE CASCADE,
   description      TEXT NOT NULL,
   profile          TEXT,
@@ -3885,6 +3930,26 @@ CREATE TABLE nodes (
 -- One root per tree.
 CREATE UNIQUE INDEX nodes_root ON nodes ((parent_id IS NULL)) WHERE parent_id IS NULL;
 CREATE INDEX nodes_children ON nodes (parent_id, number);
+
+-- Each side question (comments-and-ask.md § Side questions), by its node, a
+-- child of the root without a number: the root's text block its history
+-- ends at, the character offsets of the asked words in the block's
+-- rendered text, the words, the question, when it was asked, the title the
+-- small model wrote, null until it wrote one, and whether its card is
+-- folded. The tree store writes the row with its node; the title and the
+-- fold are the backend's.
+CREATE TABLE side_questions (
+  node_id      TEXT PRIMARY KEY REFERENCES nodes (id) ON DELETE CASCADE,
+  block_id     TEXT NOT NULL CHECK (block_id <> ''),
+  start_offset INTEGER NOT NULL CHECK (start_offset >= 0),
+  end_offset   INTEGER NOT NULL CHECK (end_offset > start_offset),
+  quote        TEXT NOT NULL CHECK (quote <> ''),
+  question     TEXT NOT NULL CHECK (question <> ''),
+  asked_at     INTEGER NOT NULL,
+  title        TEXT CHECK (title <> ''),
+  folded       INTEGER NOT NULL DEFAULT 0 CHECK (folded IN (0, 1))
+) STRICT, WITHOUT ROWID;
+CREATE INDEX side_questions_in_order ON side_questions (asked_at, node_id);
 
 -- The next number of each sequence the model sees in the conversation: a
 -- number is advanced past in its own transaction before it is given out,

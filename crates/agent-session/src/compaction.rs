@@ -894,7 +894,7 @@ impl SessionRuntime for CopyRuntime {
     }
 
     /// The summary request is its session's agent's.
-    fn agent(&self) -> u64 {
+    fn agent(&self) -> Option<u64> {
         self.session.agent()
     }
 

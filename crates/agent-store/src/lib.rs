@@ -66,7 +66,7 @@ pub trait AgentTreeStore {
     ) -> LocalBoxFuture<'a, Result<Option<NodeRecord>, StoreError>>;
 
     /// A node's direct children in spawn order, which is the order of their
-    /// numbers, live and archived alike.
+    /// numbers, live and archived alike; a side question is no child.
     fn children<'a>(
         &'a self,
         parent: &'a NodeId,
@@ -75,8 +75,12 @@ pub trait AgentTreeStore {
     /// Every subagent of the tree, at any depth, live and closed, in the
     /// order of their numbers, each with the model selection its checkpoint
     /// saved: what a tree that opens keeps of its children
-    /// (`subagents.md` § Protocol).
+    /// (`subagents.md` § Protocol). A side question is no subagent.
     fn subagents(&self) -> LocalBoxFuture<'_, Result<Vec<StoredSubagent>, StoreError>>;
+
+    /// Every side question of the tree (`comments-and-ask.md` § Side
+    /// questions), live and closed, in the order they were asked.
+    fn sides(&self) -> LocalBoxFuture<'_, Result<Vec<NodeRecord>, StoreError>>;
 
     /// The node's record and its first checkpoint in one commit, so that a
     /// node the process loses before its first turn still has the message
@@ -101,14 +105,14 @@ pub trait AgentTreeStore {
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
     /// Makes a closed node live again in one commit: a new round, which
-    /// starts at `started_at`, and the reviving message queued in its
-    /// checkpoint.
+    /// starts at `started_at`, and the reviving message, if any, queued in
+    /// its checkpoint; a side question's Retry revives it with none.
     fn reopen_node<'a>(
         &'a self,
         id: &'a NodeId,
         round: u64,
         started_at: Timestamp,
-        message: QueuedMessage,
+        message: Option<QueuedMessage>,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>>;
 
     /// Changes the child `id`'s working directory to `cwd`, as `demi agent
@@ -241,7 +245,8 @@ pub struct NodeRecord {
     pub id: NodeId,
     /// The number the model knows the agent by: 0 for the root, then the
     /// conversation's agent sequence in spawn order (`runtime.md`
-    /// § Identifiers the model sees).
+    /// § Identifiers the model sees). A side question is no agent and takes
+    /// none: 0 here, and nothing in the store.
     pub number: u64,
     pub parent: Option<NodeId>,
     /// A short title; empty for the root.
@@ -281,6 +286,27 @@ pub struct NodeRecord {
     /// when it was set (`subagents.md` § Working directory); none for the
     /// root, whose directory is always the conversation's.
     pub cwd: Option<ChildDirectory>,
+    /// What a side question's node asks about; none for every agent. Its
+    /// parent is the root, it works in the conversation's directory as the
+    /// root does, and its can-spawn is the root's, so that its commands and
+    /// its system prompt are the root's (`comments-and-ask.md` § Side
+    /// questions).
+    pub side: Option<SideOf>,
+}
+
+/// What a side question asks about (`comments-and-ask.md` § Side
+/// questions): the root's text block its history ends at, the character
+/// offsets of the asked words in the block's text as the page renders it,
+/// the words, as a comment keeps them, the user's question, and when it was
+/// asked, the start of its first round.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SideOf {
+    pub block: BlockId,
+    pub start: u64,
+    pub end: u64,
+    pub quote: String,
+    pub question: String,
+    pub asked_at: Timestamp,
 }
 
 /// Where a conversation works: its primary Host's device, none for a Cloud
@@ -377,6 +403,7 @@ impl NodeRecord {
             forked_from: None,
             started_by: None,
             cwd: None,
+            side: None,
         }
     }
 }

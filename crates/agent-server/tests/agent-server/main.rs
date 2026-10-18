@@ -7,6 +7,7 @@ mod editing;
 mod fork;
 mod live;
 mod profiles;
+mod sides;
 mod subagents;
 mod support;
 mod title;

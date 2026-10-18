@@ -77,3 +77,111 @@ reads whole.
 
 A shared conversation shows the sent messages with their quotes and
 comments, and no marks on the replies.
+
+## Side questions
+
+The user asks about a reply's words without interrupting the conversation,
+as Claude Code's `/btw` and Codex's `/side` ask beside a session. For
+example, the reply says "All API calls share one client, created in
+`client.ts` with a 30-second timeout". The user selects those words, clicks
+**Ask** and writes "Is that really so?". The words turn purple with a purple
+underline, and a card opens under the block holding them: its header reads
+*Ask* until a small model titles it, *Shared API client timeout*, then the
+question in bold, one status line while the answer is made, *Reading
+client.ts…*, and then the short answer. The conversation's own agent goes on
+with its turn if it has one, and learns of the question only with the
+user's next message, as something the user wondered, never as a request
+([What the agent learns](#what-the-agent-learns)).
+
+**Where it starts.** The selection's toolbar offers **Ask** after
+**Comment**, on the same text and disabled in the same cases
+([Where comments come from](#where-comments-come-from)). It opens a small box
+under the selection, *Ask about this*, with a send button: Return sends,
+Shift-Return makes a new line, Escape cancels.
+
+**What the side conversation knows.** It starts from the conversation's
+history up to the end of the reply asked about, cut as a
+[Fork](../agent/conversation-fork.md#the-fork-seed) cuts it, the reply's
+response included, so the request reads as the conversation's next one
+would have at that point. When the conversation was compacted after that
+reply, the reply lives only in the summary, and the side conversation starts
+from the conversation's context as it stands, the summary and everything
+after it, as its next request would send it; the quoted words say what is
+asked about. It runs on the
+conversation's model, system prompt and tools, so its first request reads
+that history from the provider's prompt cache instead of paying for it again
+([Prompt cache](../providers/providers.md#prompt-cache)): it also sends what
+the provider keys its cache and its routing by as the conversation does, its
+session, prompt cache key and conversation headers, so a provider that
+routes by them sends the side question to the same cache. Its first user
+message, after that history, holds the quoted words, then what makes it a side
+question: the user asks this aside from the conversation; answer briefly, in a
+few sentences; read and check what is needed but change nothing, no file
+written and no command that changes the Host. This narrows it by instruction,
+as a profile narrows a child
+([Child context](../agent/subagents.md#child-context)); the Host does not
+enforce it. Then comes the question. A follow-up is the side conversation's
+next turn, after its own history, and keeps its model when the conversation's
+changes. It runs on the conversation's Host, through the conversation's host
+access, beside the conversation's turn and never waiting for it; its commands
+are its own, it starts no subagent and sends no message, `demi agent`
+answering that a side question cannot, and it appears in no agent list and
+takes no agent number.
+
+**What the agent learns.** A question the user had to ask aside says what
+they were unsure of, which the agent should know without taking it as a
+task. So when the user next sends a message, or steers, the conversation's
+agent receives, before it, the side questions asked since it last heard of
+them, as a `context` block of the side-questions source
+([Context](../agent/transcript.md#context)):
+
+```text
+The user asked these aside and was answered there; they show what the user was unsure of, for you to know, with no need to answer them again.
+
+On "All API calls share one client":
+Q: Is that really so?
+A: Yes. Every call goes through the one client in client.ts, with its 30-second timeout.
+Q: And for uploads?
+A: Uploads use it too, which is why a slow upload is cut off at 30 seconds.
+```
+
+One sentence says what these are; then each side question under its quoted
+words, each question the user asked in it, the first and every follow-up, in
+the order asked, with its final answer, cut by the replay bound when long
+([Text bounds](../agent/compaction.md#text-bounds)). A side question the
+agent heard of comes again only with a new follow-up, and then only the new
+questions and answers. Nothing reaches the agent before
+the user's next message, so a turn under way is never turned by it.
+
+**What the card shows.** Each question and its final answer, never the steps
+between them; while a turn works, the one status line names what it does.
+The header holds a purple question mark, the title in secondary text, and two
+ghost icon buttons at its right end: ↗, *Open Full Conversation*, and ×,
+*Collapse*. Below the last answer a bordered **Reply** opens a field with a
+send button for a follow-up; while the field is open the card's other
+controls still do what they say, and an empty field closes when a click lands
+outside the card. ↗ opens the side conversation, its steps included, in
+the window a subagent's opens in; it starts with the user's first question,
+drawn as the bubble of a message with its quote, since the history before
+it is the conversation's own and the side question's instruction is the
+product's, not the user's,
+([Product rendering](../agent/subagents.md#product-rendering)). × folds the
+card into a purple question mark in the reply's right margin at the asked
+line, where a comment's mark stands; a click on the mark or on the purple
+words opens the card again, scrolled into view. Hovering the purple words
+deepens them, as hovering a comment's does. A failed answer shows the
+failure's words and ID in the card, as a turn's failure does, with **Retry**.
+
+**Where it lives.** A side question belongs to its conversation: the backend
+keeps it, with its reply's block, offsets and quoted words as a comment keeps
+them ([Sending them](#sending-them)) and whether its card is folded; every page
+that shows the conversation shows it, and a page opened later reads it. It
+belongs to the reply's block: an edit or a regenerated reply that leaves the
+block on another branch hides its side questions with it, and switching back
+to that branch shows them again; they go only when the block itself is
+deleted. A Fork copies
+none, and shared pages show none. The usage ledger counts its turns under the
+conversation, as a subagent's are counted.
+
+**On a phone** the toolbar holds Comment, Ask and Send to Conversation; the
+card spans the reply's width, and ↗ opens the side conversation full screen.

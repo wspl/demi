@@ -1792,6 +1792,7 @@ impl SessionCore {
         let turn = self.request_turn.clone().unwrap_or_else(|| self.turn());
         InferenceRequest {
             session_id: self.id.to_string(),
+            affinity: self.runtime.affinity(),
             turn_id: turn.to_string(),
             request_id,
             model_id: self.model.model.id.clone(),
@@ -1814,7 +1815,7 @@ impl SessionCore {
             } else {
                 RequestPurpose::Turn
             },
-            agent: Some(self.runtime.agent()),
+            agent: self.runtime.agent(),
         }
     }
 
@@ -1878,6 +1879,7 @@ impl SessionCore {
             .collect::<Vec<_>>();
         InferenceRequest {
             session_id: self.id.to_string(),
+            affinity: self.runtime.affinity(),
             turn_id: String::new(),
             request_id,
             model_id: model.model.id.clone(),
@@ -1895,7 +1897,7 @@ impl SessionCore {
             cancel: CancellationToken::new(),
             account: self.account.clone(),
             purpose: RequestPurpose::Turn,
-            agent: Some(self.runtime.agent()),
+            agent: self.runtime.agent(),
         }
     }
 

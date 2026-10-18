@@ -53,7 +53,12 @@ const SHOW_RECENT_TOOLS: usize = 8;
 /// Why the root's directory does not change (`subagents.md` § Working
 /// directory).
 const ROOT_CWD: &str = "The main agent works in the conversation's directory; move the conversation with `demi host move` to work elsewhere.";
-const OWNER_CLOSING: &str = "owner session is closing";
+/// Why a side question starts no subagent, sends no message and keeps its
+/// directory (`comments-and-ask.md` § Side questions).
+const SIDE_SPAWNS: &str = "a side question cannot start subagents";
+const SIDE_SENDS: &str = "a side question cannot send messages to agents";
+const SIDE_CWD: &str = "a side question works in the conversation's directory and cannot change it";
+pub(super) const OWNER_CLOSING: &str = "owner session is closing";
 
 /// A child of the tree, live or closed, as an open's snapshot lists it
 /// (`subagents.md` § Protocol).
@@ -156,7 +161,7 @@ enum CloseKind {
 }
 
 /// Why a child's provider runtime could not be had.
-enum RuntimeError {
+pub(super) enum RuntimeError {
     /// The owner is closing, so it forks nothing.
     OwnerClosing,
     /// The product could not build a runtime for the child's provider
@@ -165,7 +170,7 @@ enum RuntimeError {
 }
 
 impl RuntimeError {
-    fn reason(self) -> String {
+    pub(super) fn reason(self) -> String {
         match self {
             Self::OwnerClosing => OWNER_CLOSING.to_owned(),
             Self::Unbuilt(reason) => reason,
@@ -242,6 +247,9 @@ impl<H: HostResolver> Tree<H> {
         }
         if caller == self.root.id() {
             return Ok(self.root.clone());
+        }
+        if self.is_side(caller) {
+            return Err(SIDE_SPAWNS.to_owned());
         }
         match self.child(caller) {
             Some(child) if !child.closing.get() => Ok(child.node.clone()),
@@ -428,6 +436,7 @@ impl<H: HostResolver> Tree<H> {
             forked_from: None,
             started_by: owner.session().executing_call(),
             cwd: Some(ChildDirectory { cwd, under: now }),
+            side: None,
         };
         let origin = Origin::New {
             record,
@@ -525,6 +534,7 @@ impl<H: HostResolver> Tree<H> {
             forked_from: Some(source.number),
             started_by: owner.session().executing_call(),
             cwd: Some(cwd),
+            side: None,
         };
         seed.state.queue.push(self.text_message(message));
         let origin = Origin::Forked {
@@ -558,7 +568,7 @@ impl<H: HostResolver> Tree<H> {
     /// serves the model's provider entry, else one the product builds for
     /// the entry. Either way the runtime is the child's own, and its session
     /// closes it.
-    async fn child_runtime(
+    pub(super) async fn child_runtime(
         &self,
         server: &AgentServer<H>,
         owner: &Node<H>,
@@ -624,7 +634,7 @@ impl<H: HostResolver> Tree<H> {
         let round = record.round + 1;
         let started_at = self.clock.now();
         self.store
-            .reopen_node(&id, round, started_at, self.text_message(message))
+            .reopen_node(&id, round, started_at, Some(self.text_message(message)))
             .await
             .map_err(|error| error.to_string())?;
         // The reopen queued the message in its checkpoint.
@@ -642,11 +652,11 @@ impl<H: HostResolver> Tree<H> {
             .ok_or_else(|| format!("subagent {id} is not in the store"))
     }
 
-    fn new_node_id(&self) -> NodeId {
+    pub(super) fn new_node_id(&self) -> NodeId {
         NodeId::try_from(self.ids.next_id()).expect("an id source never gives an empty id")
     }
 
-    fn text_message(&self, text: String) -> QueuedMessage {
+    pub(super) fn text_message(&self, text: String) -> QueuedMessage {
         QueuedMessage {
             comments: Vec::new(),
             id: TurnId::try_from(self.ids.next_id()).expect("an id source never gives an empty id"),
@@ -856,6 +866,7 @@ impl<H: HostResolver> Tree<H> {
     pub(crate) async fn directory_of(&self, caller: &NodeId) -> Result<String, String> {
         let node = self
             .live_agent(caller)
+            .or_else(|| self.side(caller).map(|side| side.node().clone()))
             .ok_or("this session is not in the agent directory")?;
         let now = node.placement().await.map_err(|error| error.to_string())?;
         Ok(node.directory_at(&now))
@@ -869,6 +880,9 @@ impl<H: HostResolver> Tree<H> {
     pub(crate) async fn change_cwd(&self, caller: &NodeId, dir: &str) -> Result<String, String> {
         if caller == self.root.id() {
             return Err(ROOT_CWD.to_owned());
+        }
+        if self.is_side(caller) {
+            return Err(SIDE_CWD.to_owned());
         }
         let child = self
             .child(caller)
@@ -1404,6 +1418,9 @@ impl<H: HostResolver> Tree<H> {
         target: &str,
         content: String,
     ) -> Result<u64, String> {
+        if self.is_side(caller) {
+            return Err(SIDE_SENDS.to_owned());
+        }
         let sender = self
             .node(caller)
             .ok_or("this session is not in the agent directory")?;
@@ -1859,7 +1876,7 @@ async fn supervision<H: HostResolver>(tree: Weak<Tree<H>>, child: Weak<Child<H>>
 
 /// Stops everything a session would still do: its running action, which
 /// records the stop, then the waiting ones.
-async fn stop_all(session: &AgentSession) {
+pub(super) async fn stop_all(session: &AgentSession) {
     while session.abort().await.target.is_some() {}
 }
 

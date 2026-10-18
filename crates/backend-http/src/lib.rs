@@ -56,6 +56,7 @@ mod search;
 mod sessions;
 mod settings;
 mod shares;
+mod side_questions;
 mod sidebar;
 mod streams;
 mod subagents;
@@ -341,6 +342,22 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             patch(conversations::patch).delete(conversations::delete),
         )
         .route("/conversations/{id}/fork", post(conversations::fork))
+        .route(
+            "/conversations/{id}/side-questions",
+            get(side_questions::list).post(side_questions::ask),
+        )
+        .route(
+            "/conversations/{id}/side-questions/{side}",
+            patch(side_questions::fold),
+        )
+        .route(
+            "/conversations/{id}/side-questions/{side}/messages",
+            post(side_questions::follow_up),
+        )
+        .route(
+            "/conversations/{id}/side-questions/{side}/retry",
+            post(side_questions::retry),
+        )
         .route("/conversations/{id}/shares", post(shares::create))
         .route(
             "/conversations/{id}/shares/{token}",

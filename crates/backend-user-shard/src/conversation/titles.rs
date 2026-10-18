@@ -1,7 +1,9 @@
 //! Generated conversation titles (`conversations.md` § Conversation titles): one
 //! small request beside the first turn, on the user's small model, which
 //! writes the title only while it is still the one the request began from.
-//! An archive or the shard's close aborts it.
+//! A side question's card is titled the same way, after its first question
+//! (`comments-and-ask.md` § Side questions). An archive or the shard's close
+//! aborts them.
 
 use tracing::Instrument as _;
 use std::cell::RefCell;
@@ -14,8 +16,9 @@ use demi_backend_database::control::ControlService;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::{Part, UserMarks};
 use demi_conversation_socket_protocol::ClientContent;
-use demi_shared_types::ModelSelection;
+use demi_shared_types::{ModelSelection, NodeId};
 use demi_web_api_protocol::ids::ConversationId;
+use futures_util::future::LocalBoxFuture;
 use tokio_util::sync::CancellationToken;
 use tokio_util::task::TaskTracker;
 
@@ -41,7 +44,14 @@ pub(crate) struct Titles {
     /// What stops each request in flight. A conversation has at most one,
     /// since only its first message's send starts one.
     in_flight: Rc<RefCell<HashMap<ConversationId, CancellationToken>>>,
+    /// What stops each side question's request in flight, by its
+    /// conversation and its node.
+    sides_in_flight: Rc<RefCell<HashMap<(ConversationId, NodeId), CancellationToken>>>,
 }
+
+/// What writes a side question's generated title, and answers whether it
+/// wrote it.
+pub(crate) type WriteSideTitle = Box<dyn FnOnce(String) -> LocalBoxFuture<'static, Result<(), StorageError>>>;
 
 impl Titles {
     pub(super) fn new(
@@ -56,7 +66,49 @@ impl Titles {
             marks,
             enabled,
             in_flight: Rc::default(),
+            sides_in_flight: Rc::default(),
         }
+    }
+
+    /// Starts a request titling the side question `side` of `conversation`
+    /// after `message`, the words it asks about with its question, on
+    /// `tasks`, and returns at once; `write` writes the title the request
+    /// brought. A failure is logged and writes nothing.
+    pub(crate) fn start_side(
+        &self,
+        tasks: &TaskTracker,
+        conversation: ConversationId,
+        side: NodeId,
+        selection: ModelSelection,
+        message: String,
+        write: WriteSideTitle,
+    ) {
+        if !self.enabled {
+            return;
+        }
+        let Some(small) = title_request(&message) else {
+            return;
+        };
+        let cancel = CancellationToken::new();
+        let key = (conversation.clone(), side);
+        self.sides_in_flight.borrow_mut().insert(key.clone(), cancel.clone());
+        let small_requests = self.small_requests.clone();
+        let in_flight = self.sides_in_flight.clone();
+        tasks.spawn_local(async move {
+            let titled = async {
+                let answer = small_requests.run(&conversation, &selection, small, cancel.clone()).await?;
+                match answer.as_deref().and_then(title_from_response) {
+                    Some(title) if !cancel.is_cancelled() => write(title).await?,
+                    _ => {}
+                }
+                Ok::<(), TitleFailure>(())
+            };
+            if let Err(failure) = titled.await {
+                tracing::warn!(%conversation, side = %key.1, %failure, "a side question's title request wrote nothing");
+            }
+            in_flight.borrow_mut().remove(&key);
+        }
+        .in_current_span());
     }
 
     /// Starts a request of the conversation `id` on `tasks` and returns at
@@ -92,16 +144,24 @@ impl Titles {
         .in_current_span());
     }
 
-    /// Aborts the request of the conversation `id`, as its archive does.
+    /// Aborts the requests of the conversation `id`, as its archive does.
     pub fn abort(&self, id: &ConversationId) {
         if let Some(cancel) = self.in_flight.borrow().get(id) {
             cancel.cancel();
+        }
+        for ((conversation, _), cancel) in self.sides_in_flight.borrow().iter() {
+            if conversation == id {
+                cancel.cancel();
+            }
         }
     }
 
     /// Aborts every request, as the shard's close does.
     pub(crate) fn abort_all(&self) {
         for cancel in self.in_flight.borrow().values() {
+            cancel.cancel();
+        }
+        for cancel in self.sides_in_flight.borrow().values() {
             cancel.cancel();
         }
     }

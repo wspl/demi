@@ -24,7 +24,7 @@ use std::{
 use demi_agent_session::{
     AgentMessageError, Continuation, ForkError, ModelSwitch, SessionConfig, fork_seed,
 };
-use demi_agent_store::{AgentTreeStore, Checkpoint, CheckpointUpdate, NodeRecord, StoreError};
+use demi_agent_store::{AgentTreeStore, Checkpoint, CheckpointUpdate, NodeRecord, SideOf, StoreError};
 use demi_agent_tools::{
     CALL_WINDOW_MS, ContextSource, HostResolver, INTERVAL_FLOOR_MS, ProfileModel, ShellEnvironmentFactory,
     SubagentSource, ToolsetSource, Unavailable,
@@ -40,7 +40,7 @@ use tokio_util::task::TaskTracker;
 
 pub use connection::{Connection, FrameRx, Outgoing};
 pub use content::{ContentError, ContentResolver, FileReference, ResolvedFiles};
-pub use tree::{QuiescenceWatch, Tree};
+pub use tree::{AskError, QuiescenceWatch, SIDE_INSTRUCTION, Tree};
 
 use tree::OpenError;
 
@@ -441,6 +441,28 @@ impl<H: HostResolver> AgentServer<H> {
             return Err(ForkError::NotRoot);
         }
         stored_fork_seed(store.as_ref(), source, end).await
+    }
+
+    /// Asks the side question `side` of the conversation `root`, whose tree
+    /// is open, about `of` (`comments-and-ask.md` § Side questions): its
+    /// history is the root's through `of`'s block, captured from the live
+    /// root in one step; the root goes on with whatever it does, and never
+    /// learns of it. The same question again under its id asks nothing;
+    /// answers whether this call asked it.
+    pub async fn ask(&self, root: &NodeId, side: NodeId, of: SideOf) -> Result<bool, AskError> {
+        self.tree(root).ok_or(AskError::NotOpen)?.ask(side, of).await
+    }
+
+    /// Sends the follow-up `text` to the side question `side` of the
+    /// conversation `root`, whose tree is open.
+    pub async fn ask_more(&self, root: &NodeId, side: NodeId, text: String) -> Result<(), AskError> {
+        self.tree(root).ok_or(AskError::NotOpen)?.ask_more(side, text).await
+    }
+
+    /// Runs the failed turn of the side question `side` of the conversation
+    /// `root`, whose tree is open, again.
+    pub async fn retry_side(&self, root: &NodeId, side: NodeId) -> Result<(), AskError> {
+        self.tree(root).ok_or(AskError::NotOpen)?.retry_side(side).await
     }
 
     /// Stores a Fork's seed as the first checkpoint of the new root

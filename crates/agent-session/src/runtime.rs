@@ -104,8 +104,17 @@ pub trait SessionRuntime {
 
     /// The node's number in the conversation's tree, 0 for the root, which
     /// its requests carry to the usage ledger (`usage-and-quota.md` § Usage
-    /// ledger).
-    fn agent(&self) -> u64;
+    /// ledger); none for a side question, which is no agent and counts
+    /// under its conversation alone (`comments-and-ask.md` § Side questions).
+    fn agent(&self) -> Option<u64>;
+
+    /// The session the node's requests name to their provider for its
+    /// prompt cache and its routing, when it is not the node's own: a side
+    /// question's is its conversation's root, whose cache its first request
+    /// reads (`comments-and-ask.md` § Side questions). None by default.
+    fn affinity(&self) -> Option<String> {
+        None
+    }
 
     /// The node's working directory now, where its `shell` calls start,
     /// read as a step starts without reaching its Host: the files a call of

@@ -5,7 +5,7 @@
 use std::{
     cell::{Cell, RefCell},
     collections::{HashMap, VecDeque},
-    rc::Rc,
+    rc::{Rc, Weak},
     sync::Arc,
     time::Duration,
 };
@@ -702,7 +702,9 @@ impl Fixture {
         clock: Arc<dyn Clock>,
     ) -> Self {
         let product = Rc::new(product);
-        let mut context = vec![product.clone() as Rc<dyn ContextSource>];
+        // The product's order: its own context, the side questions, then a plugin.
+        let told = Rc::new(SideQuestionsSource::default());
+        let mut context = vec![product.clone() as Rc<dyn ContextSource>, told.clone()];
         if let Some(plugin) = &product.plugin {
             context.push(plugin.clone());
         }
@@ -729,6 +731,7 @@ impl Fixture {
             // No product shows the conversations' statuses.
             status_changed: Rc::new(|_| {}),
         });
+        told.server.replace(Rc::downgrade(&server));
         Self {
             server,
             store,
@@ -1337,5 +1340,33 @@ impl ShellEnvironmentFactory<ScriptedHost> for ScriptedShells {
             }
             Ok(shell as Rc<dyn ShellEnvironment>)
         })
+    }
+}
+
+/// The side questions source as the product's: what the root's tree tells
+/// of its side questions (`comments-and-ask.md` § What the agent learns).
+#[derive(Default)]
+pub struct SideQuestionsSource {
+    server: RefCell<Weak<AgentServer<TestProduct>>>,
+}
+
+impl ContextSource for SideQuestionsSource {
+    fn name(&self) -> &str {
+        demi_shared_types::SIDE_QUESTIONS_SOURCE
+    }
+
+    fn context<'a>(
+        &'a self,
+        node: demi_agent_tools::NodeContext<'a>,
+        _: &'a TurnId,
+        seen: &'a [&'a str],
+    ) -> LocalBoxFuture<'a, Result<Option<demi_agent_tools::ContextAnswer>, String>> {
+        let told = self
+            .server
+            .borrow()
+            .upgrade()
+            .and_then(|server| server.tree(node.root))
+            .and_then(|tree| tree.side_questions_context(node.node, seen));
+        Box::pin(async move { Ok(told.map(demi_agent_tools::ContextAnswer::from)) })
     }
 }

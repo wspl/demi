@@ -359,6 +359,10 @@ pub struct ContextBlock {
 /// sends whole.
 pub const INSTRUCTIONS_SOURCE: &str = "instructions";
 
+/// The context source of what the user asked aside, in side questions
+/// (`comments-and-ask.md` § What the agent learns).
+pub const SIDE_QUESTIONS_SOURCE: &str = "side_questions";
+
 /// The context source of the conversation's execution context
 /// (`transcript.md` § Context), which also names what still runs after a
 /// compaction (`compaction.md` § What the model receives afterward); no

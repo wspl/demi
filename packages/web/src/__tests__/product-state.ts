@@ -69,7 +69,7 @@ export function conversationSummary(id: string, title: string | null = null, par
   return {
     id, title, pinned: false, archived: false, readRevision: 0, revision: 0, unread: false,
     pluginsChanged: false, onlyWaitsForHost: false, draftRevision: 0, saved: 0, savedRevision: 0, panelRevision: 0, hostsRevision: 0, lastAttachment: 0, pluginRevisions: [],
-    permissionRequests: 0, unreadPermissionRequests: 0, permissionsRevision: 0, cwd: '/home/demi', target: { kind: 'cloud' },
+    permissionRequests: 0, unreadPermissionRequests: 0, permissionsRevision: 0, sideQuestionsRevision: 0, cwd: '/home/demi', target: { kind: 'cloud' },
     contextVersion: 0, model: null, workflow: { type: 'default' }, createdAt: '2026-09-09T00:00:00.000Z', updatedAt: '2026-09-09T00:00:00.000Z',
     status: 'idle', lastTurn: null, shares: [], automation: null, ...parts,
   }

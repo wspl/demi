@@ -31,7 +31,12 @@
     "requestNotAccepted": "대화가 요청을 수락하지 않았습니다.",
     "fieldsNotUpdated": "일부 필드가 업데이트되지 않았습니다.",
     "readPermissions": "권한을 읽을 수 없습니다",
-    "readFileWatch": "파일 감시 메시지를 읽을 수 없습니다"
+    "readFileWatch": "파일 감시 메시지를 읽을 수 없습니다",
+    "readSideQuestions": "곁질문을 읽을 수 없습니다",
+    "askSideQuestion": "질문할 수 없습니다",
+    "sendFollowUp": "이어지는 질문을 보낼 수 없습니다",
+    "retrySideQuestion": "다시 시도할 수 없습니다",
+    "foldSideQuestion": "질문을 변경할 수 없습니다"
   },
   "drafts": {
     "storeFailed": "이 브라우저에서 초안을 저장할 수 없습니다.",

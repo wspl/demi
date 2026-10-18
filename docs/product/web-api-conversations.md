@@ -327,6 +327,50 @@ The conversation's summary carries `saved`, the count, and `savedRevision`,
 which every change raises; a page that shows the conversation reads the list
 again when the revision it holds is behind.
 
+## Side questions
+
+A conversation's [side questions](comments-and-ask.md#side-questions) reach a
+page by revision, as its permission requests do. The conversation's summary
+carries `sideQuestionsRevision`, which rises when one is asked, titled or
+folded; a page that shows the conversation reads the list again when it
+rises:
+
+```text
+GET /api/conversations/c_81/side-questions
+
+200 { "revision": 4,
+      "sideQuestions": [ { "id": "sq_7f2", "blockId": "b_19", "start": 112, "end": 151,
+                           "quote": "All API calls share one client",
+                           "question": "Is that really so?",
+                           "title": "Shared API client timeout",
+                           "folded": false, "askedAt": "2026-10-18T08:12:40Z" } ] }
+```
+
+The list is in the order asked; `title` is null until the small model names
+it. `POST /api/conversations/:id/side-questions` with `{ id, blockId, start,
+end, quote, question }` asks one, the page choosing the `id`, and answers 201
+`{ sideQuestion }`; the same request again answers 200 with the same one, so
+a page that lost the answer sends it again safely. `PATCH
+…/side-questions/:side` with `{ folded }` answers 200 `{ sideQuestion }`.
+`POST …/:side/messages` with `{ text }` asks a follow-up and `POST
+…/:side/retry` retries a failed turn, each answering 204.
+
+A side question's answers are its transcript, read by its pages with `GET
+…/transcript?node=<side>` and followed live in the frames a subagent's
+transcript comes in, `subagent_transcript_reset` and `_patch`, `phase`,
+`pending_calls`, `waiting` and `context_usage`, keyed by the side question's
+id; it has no `subagent` frame and no entry in `GET …/subagents`
+([Subagents and commands](#subagents-and-commands)).
+
+| Status | Code | When |
+| --- | --- | --- |
+| 404 | `conversation_not_found` | The conversation does not exist or is not the user's |
+| 409 | `conversation_archived` | The conversation is archived |
+| 404 | `side_question_not_found` | The conversation holds no side question with that id |
+| 409 | `side_question_conflict` | A side question with that id was asked with other values |
+| 400 | `invalid_side_question_target` | The block is not a finished text block of the agent's reply, or the offsets fall outside it |
+| 409 | `side_question_refused` | The side question cannot start now, as when its Host cannot be reached, with the cause |
+
 ## Conversation permissions
 
 A conversation's [permission requests](../agent/permissions.md) reach a page

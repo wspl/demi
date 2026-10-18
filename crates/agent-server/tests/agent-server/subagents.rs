@@ -1392,6 +1392,7 @@ pub(crate) fn child_record(
                 directory: "/workspace".into(),
             },
         }),
+        side: None,
     }
 }
 

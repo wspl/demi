@@ -31,7 +31,12 @@
     "requestNotAccepted": "對話未接受該請求。",
     "fieldsNotUpdated": "部分欄位未更新。",
     "readPermissions": "無法讀取權限",
-    "readFileWatch": "無法讀取檔案監看的訊息"
+    "readFileWatch": "無法讀取檔案監看的訊息",
+    "readSideQuestions": "無法讀取旁問",
+    "askSideQuestion": "無法提問",
+    "sendFollowUp": "無法傳送追問",
+    "retrySideQuestion": "無法重試",
+    "foldSideQuestion": "無法變更旁問"
   },
   "drafts": {
     "storeFailed": "此瀏覽器無法儲存你的草稿。",

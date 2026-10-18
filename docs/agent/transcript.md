@@ -79,13 +79,17 @@ the product supplies, in the product's order:
   answers new text or nothing. After a compaction, a source therefore tells
   the model again what the summary may have left out.
 - The product's order is the execution context, then the instructions, then
-  each plugin that is a context source.
+  the side questions, then each plugin that is a context source. The side
+  questions source answers only at the first request of a new input turn of
+  the conversation's root, and only with side questions asked since its last
+  block ([What the agent learns](../product/comments-and-ask.md#what-the-agent-learns)).
 - Each answer becomes one `context` block that names its source: `execution`
   for the conversation's execution context
   ([Switch the primary target](../execution/sessions-and-targets.md#switch-the-primary-target)),
   `instructions` for the user's personal instructions and the project's
   instruction files ([Instructions](instructions.md)), which also lists what
-  its text holds, or the id of the plugin that answered
+  its text holds, `side_questions` for what the user asked aside, or the id
+  of the plugin that answered
   ([Prompt text and context](../architecture/plugins.md#prompt-text-and-context)).
 - The blocks are appended before the request and saved at once, so a request
   never carries a context its transcript does not hold.

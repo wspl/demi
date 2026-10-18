@@ -146,6 +146,10 @@ pub enum ForkEnd<'a> {
     /// The newest completed text with no call before it still executing,
     /// which `demi agent fork` takes (`subagents.md` § Fork).
     Newest,
+    /// The completed text a side question asks about, with the response
+    /// that ended it (`comments-and-ask.md` § Side questions); see
+    /// [`fork_prefix`].
+    Side(&'a BlockId),
 }
 
 /// The blocks before the `user` block `target`, which an edit keeps.
@@ -161,19 +165,45 @@ pub fn before_user<'a>(blocks: &'a [Block], target: &BlockId) -> Result<&'a [Blo
 /// The blocks a Fork keeps, through the completed text block `end` names:
 /// none of them may be a call still executing.
 pub fn fork_prefix<'a>(blocks: &'a [Block], end: ForkEnd<'_>) -> Result<&'a [Block], CutError> {
-    let is_completed = |block: &Block| matches!(block, Block::Text(text) if text.forkable);
-    let index = match end {
-        ForkEnd::At(target) => blocks
+    let at = |target: &BlockId| {
+        blocks
             .iter()
             .position(|block| block.id() == target)
             .filter(|index| is_completed(&blocks[*index]))
-            .ok_or(CutError::NotCompletedText)?,
-        ForkEnd::Newest => {
-            let executing = blocks.iter().position(is_executing).unwrap_or(blocks.len());
-            blocks[..executing]
-                .iter()
-                .rposition(is_completed)
-                .ok_or(CutError::NothingCompleted)?
+            .ok_or(CutError::NotCompletedText)
+    };
+    let newest = |from: usize| {
+        let executing = blocks.iter().position(is_executing).unwrap_or(blocks.len());
+        blocks
+            .get(from..executing)
+            .unwrap_or_default()
+            .iter()
+            .rposition(is_completed)
+            .map(|index| from + index)
+    };
+    let index = match end {
+        ForkEnd::At(target) => at(target)?,
+        ForkEnd::Newest => newest(0).ok_or(CutError::NothingCompleted)?,
+        // A side question's history is what the conversation's next request
+        // would have sent after the reply, its response included, so it
+        // reads the conversation's prompt cache. Once a compaction
+        // summarized the reply, the reply is only in the summary, and the
+        // history is the conversation's context as it stands: the summary
+        // and what follows it, through the newest completed text, or
+        // through the compaction when no text followed it yet.
+        ForkEnd::Side(target) => {
+            let asked = at(target)?;
+            let end = match blocks[asked..].iter().rposition(is_compaction) {
+                None => asked,
+                Some(after) => {
+                    let compaction = asked + after;
+                    newest(compaction).unwrap_or(compaction)
+                }
+            };
+            match blocks.get(end + 1) {
+                Some(Block::Response(_)) if is_completed(&blocks[end]) => end + 1,
+                _ => end,
+            }
         }
     };
     let prefix = &blocks[..=index];
@@ -181,6 +211,10 @@ pub fn fork_prefix<'a>(blocks: &'a [Block], end: ForkEnd<'_>) -> Result<&'a [Blo
         return Err(CutError::UnfinishedToolCalls);
     }
     Ok(prefix)
+}
+
+fn is_completed(block: &Block) -> bool {
+    matches!(block, Block::Text(text) if text.forkable)
 }
 
 fn is_executing(block: &Block) -> bool {

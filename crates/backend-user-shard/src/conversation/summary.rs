@@ -95,7 +95,9 @@ impl Shard {
             .into_iter()
             .map(|share| ConversationShare::new(share.token, share.target))
             .collect();
+        let side_questions_revision = self.side_revisions().of(&record.id);
         Ok(ConversationSummary {
+            side_questions_revision,
             unread: facts.revision > record.read_revision,
             plugins_changed,
             only_waits_for_host,

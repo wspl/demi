@@ -198,8 +198,8 @@ impl SessionRuntime for TestRuntime {
         Box::pin(async move { news })
     }
 
-    fn agent(&self) -> u64 {
-        0
+    fn agent(&self) -> Option<u64> {
+        Some(0)
     }
 
     fn tools(&self) -> Arc<[ToolDefinition]> {

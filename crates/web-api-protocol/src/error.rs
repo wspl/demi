@@ -366,6 +366,17 @@ pub enum ErrorCode {
     /// The Fork's text is not a completed assistant text of the source's
     /// history.
     InvalidForkTarget,
+    /// The conversation has no side question of that id
+    /// (`comments-and-ask.md` § Side questions).
+    SideQuestionNotFound,
+    /// The side question's id belongs to another question.
+    SideQuestionConflict,
+    /// The side question's block is not a completed assistant text of the
+    /// conversation's history.
+    InvalidSideQuestionTarget,
+    /// The side question's conversation refused the follow-up or the Retry,
+    /// as a Retry with no failed turn to run again.
+    SideQuestionRefused,
     /// The caller has no upload of that id.
     UploadNotFound,
     /// Another live session's push subscription has that endpoint.

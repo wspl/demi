@@ -7,7 +7,9 @@
 
 mod live;
 mod profiles;
+mod sides;
 mod supervisor;
+mod told;
 
 use std::{
     cell::{Cell, RefCell},
@@ -31,8 +33,9 @@ use tokio::sync::watch;
 use tokio_util::task::{AbortOnDropHandle, TaskTracker};
 
 pub(crate) use self::profiles::{Deleted, ListedProfile, ProfileAnswer};
+pub use self::sides::{AskError, SIDE_INSTRUCTION};
 pub(crate) use self::supervisor::{ShownAgent, StartInput, TreeEntry, list_text};
-use self::{live::LiveOutput, supervisor::{Child, Summary}};
+use self::{live::LiveOutput, sides::Side, supervisor::{Child, Summary}};
 use super::{AgentServer, ResolveError, commands, connection::Outbox};
 use crate::{
     Node,
@@ -47,6 +50,13 @@ pub struct Tree<H: HostResolver> {
     /// directory (`subagents.md` § Topology and the agent directory). A
     /// closing child stays until its close is complete.
     children: RefCell<HashMap<NodeId, Rc<Child<H>>>>,
+    /// Every live side question, by its node (`comments-and-ask.md` § Side
+    /// questions): beside the agent directory, never in it.
+    sides: RefCell<HashMap<NodeId, Rc<Side<H>>>>,
+    /// What each closed side question ended with, which a page that
+    /// attaches receives, so a side question that finished while it was
+    /// away shows done and whole.
+    closed_sides: RefCell<HashMap<NodeId, sides::ClosedSide>>,
     /// Every child of the tree, live and closed, by number: read from the
     /// store when the tree opens, and changed in the step that changes a
     /// child, so an open's snapshot lists them without an await
@@ -384,6 +394,8 @@ impl<H: HostResolver> Tree<H> {
                 server: Rc::downgrade(server),
                 root: Rc::new(assembled.node),
                 children: RefCell::new(HashMap::new()),
+                sides: RefCell::new(HashMap::new()),
+                closed_sides: RefCell::new(HashMap::new()),
                 summaries: RefCell::new(summaries),
                 changes,
                 starts: KeyedSerialGate::new(),
@@ -419,15 +431,14 @@ impl<H: HostResolver> Tree<H> {
         &self.root
     }
 
-    /// The live node `id`: the root, or a child at any depth.
+    /// The live node `id`: the root, a child at any depth, or a side
+    /// question.
     pub fn node(&self, id: &NodeId) -> Option<Rc<Node<H>>> {
         if id == self.root.id() {
             return Some(self.root.clone());
         }
-        self.children
-            .borrow()
-            .get(id)
-            .map(|child| child.node().clone())
+        let child = self.children.borrow().get(id).map(|child| child.node().clone());
+        child.or_else(|| self.side(id).map(|side| side.node().clone()))
     }
 
     /// The `context_usage` of each live node, the root's, then each live
@@ -448,11 +459,14 @@ impl<H: HostResolver> Tree<H> {
         frames
     }
 
-    /// The tree's live nodes, the root first.
+    /// The tree's live nodes, the root first, then its children and its
+    /// side questions.
     pub fn nodes(&self) -> Vec<Rc<Node<H>>> {
         let children = self.children.borrow();
+        let sides = self.sides.borrow();
         std::iter::once(self.root.clone())
             .chain(children.values().map(|child| child.node().clone()))
+            .chain(sides.values().map(|side| side.node().clone()))
             .collect()
     }
 
@@ -492,6 +506,7 @@ impl<H: HostResolver> Tree<H> {
         let stop = async {
             self.root.session().stop_running(hold).await;
             self.abort_children_of(self.root.id()).await;
+            self.interrupt_sides(hold).await;
             self.root.end_shells().await;
         };
         // The reservation is polled first: it takes the free permits before
@@ -541,16 +556,10 @@ impl<H: HostResolver> Tree<H> {
         }
     }
 
-    /// The node whose shells hold `command`, the root or a live child.
+    /// The node whose shells hold `command`, the root, a live child or a
+    /// live side question.
     pub(crate) fn holder(&self, command: &CommandId) -> Option<Rc<Node<H>>> {
-        if self.root.holds(command) {
-            return Some(self.root.clone());
-        }
-        self.children
-            .borrow()
-            .values()
-            .find(|child| child.node().holds(command))
-            .map(|child| child.node().clone())
+        self.nodes().into_iter().find(|node| node.holds(command))
     }
 
     /// The shells that hold the conversation's command `command`: a live
@@ -668,7 +677,7 @@ impl<H: HostResolver> Tree<H> {
     /// command of it runs, which is the conversation's work as well
     /// (`resource-lifecycle.md` § Runtime).
     pub fn is_quiescent(&self) -> bool {
-        !self.works() && !self.live.runs_commands()
+        !self.works() && self.sides_quiescent() && !self.live.runs_commands()
     }
 
     /// A watch that wakes at each change that may make the tree quiescent or
@@ -733,6 +742,7 @@ impl<H: HostResolver> Tree<H> {
         for frame in root
             .into_iter()
             .chain(self.replay(placement))
+            .chain(self.replay_sides())
             .chain(self.live_commands())
         {
             // A frame the fresh outbox refuses belongs to a socket that is
@@ -752,6 +762,7 @@ impl<H: HostResolver> Tree<H> {
     ) -> Vec<ServerFrame> {
         std::iter::once(self.root_reset(from, edge))
             .chain(self.replay(placement))
+            .chain(self.replay_sides())
             .chain(self.live_commands())
             .collect()
     }
@@ -781,12 +792,16 @@ impl<H: HostResolver> Tree<H> {
             .into_iter()
             .map(|view| shell_output(None, view))
             .collect();
-        for child in self.descendants() {
-            let id = child.node().id();
+        let others = self
+            .descendants()
+            .iter()
+            .map(|child| child.node().clone())
+            .chain(self.sides.borrow().values().map(|side| side.node().clone()))
+            .collect::<Vec<_>>();
+        for node in others {
+            let id = node.id();
             frames.extend(
-                child
-                    .node()
-                    .live_views()
+                node.live_views()
                     .into_iter()
                     .map(|view| shell_output(Some(id.clone()), view)),
             );
@@ -812,6 +827,7 @@ impl<H: HostResolver> Tree<H> {
     ) -> Result<(), StoreError> {
         let continued = self.root.continue_from(continuation).await;
         self.restore_children(&self.root).await;
+        self.restore_sides().await;
         continued
     }
 
@@ -823,6 +839,9 @@ impl<H: HostResolver> Tree<H> {
         self.disposing.set(true);
         for child in self.children.borrow().values() {
             child.stop_supervision();
+        }
+        for side in self.sides.borrow().values() {
+            side.stop_supervision();
         }
         self.lifecycle.close();
         self.lifecycle.wait().await;
@@ -853,6 +872,7 @@ impl<H: HostResolver> Tree<H> {
             }
         });
         join_all(disposals).await;
+        self.dispose_sides().await;
         if let Err(error) = self.root.session().dispose().await {
             tracing::error!(root = %self.root.id(), %error, "the final checkpoint was not saved");
             self.sink.emit(ServerFrame::Error {
