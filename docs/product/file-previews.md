@@ -326,7 +326,13 @@ same, shows only in that theme. A click on `plot.py` opens it in
 the File view. A link to a Host file shows the file's
 icon before its name, the icon the file tree shows for it, so a file reads as
 a file and not as a page on the web, and a commit link shows the commit
-icon, Lucide's `git-commit-horizontal`, before its text. A link that starts with an icon, a
+icon, Lucide's `git-commit-horizontal`, in orange as Git's own mark is, before its text.
+Their color says where they lead: a link to a file or a commit leads into the
+conversation's own work and reads as part of the sentence, as an agent's link
+does, in the prose's color over a faint underline, while a web page's link
+keeps the accent color a link has on the web. One fixed color for each kind
+would meet the accent the user picks: with an orange accent, a web link would
+read as a commit. A link that starts with an icon, a
 file's icon, a commit's or an agent's mark ([Linking an agent](../agent/subagents.md#linking-an-agent)),
 is a small object in the sentence, as a mention is in Slack or Notion, so it
 keeps 0.2 em of space on each side, inside its hover fill where it has one

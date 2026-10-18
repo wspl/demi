@@ -250,6 +250,7 @@
   /* News that is not an outcome: a fixed blue, so it never takes the accent's hue. */
   --on-info: #60a5fa;
   --on-accent: #60a5fa;
+  --commit-mark: #fb923c;
   --on-highlight: #fde68a;
   /* Solid accent fill for primary controls; --on-accent stays a text color. */
   --accent-fill: #2b74dc;
@@ -358,6 +359,7 @@
   --on-attention: #ca8a04;
   --on-info: #2563eb;
   --on-accent: #2563eb;
+  --commit-mark: #c2410c;
   --on-highlight: #92400e;
   --accent-fill: var(--on-accent);
   --series-1: #3b82f6;
@@ -1670,6 +1672,26 @@ html[data-theme="light"] .file-pill {
 
 .markdown-body a:is(:hover, :focus-visible) {
   text-decoration-color: currentColor;
+}
+
+/* A file's and a commit's link lead into the conversation's own work, not off
+   to the web: they read as part of the sentence, as an agent's link does, in
+   the prose's color over a faint underline, and their icons tell them apart.
+   Only a web page's link keeps the accent, so the kinds stay apart whatever
+   accent the user picks (`docs/product/file-previews.md` § Files named in
+   messages). */
+.markdown-body a:is([data-file-link], [data-commit-link]) {
+  color: var(--fg-body);
+  text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.markdown-body a:is([data-file-link], [data-commit-link]):is(:hover, :focus-visible) {
+  text-decoration-color: currentColor;
+}
+
+/* The commit icon in Git's own orange. */
+.markdown-body [data-commit-icon] {
+  color: var(--commit-mark);
 }
 
 /* On a phone a link in running text, a file's or a page's alike, is a
