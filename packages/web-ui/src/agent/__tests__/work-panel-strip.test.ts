@@ -6,7 +6,8 @@ import { chromium, type Browser, type Page } from 'playwright'
 import { vueSingleFileComponents } from '../../__tests__/vue-components'
 
 // The work panel's tab strip keeps every tab's width and reach when crowded
-// (`web-application.md` § Work panel, The strip): selecting a tab changes no
+// (`web-application.md` § Work panel, The strip): the pinned tabs show their
+// kinds' own titles, whatever they show; selecting a tab changes no
 // tab's width, a long title, a selected one or the open file's name, never
 // widens its tab past its share, and with more tabs than fit a list of every
 // tab selects the one picked. Widths are layout, so this runs the product's
@@ -25,7 +26,7 @@ interface Box {
 
 declare global {
   interface Window {
-    /** Mounts a work panel `width` px wide with a page tab of each title, the `selected` one selected, and Change and File pinned. */
+    /** Mounts a work panel `width` px wide with a page tab of each title, the `selected` one selected, and Changes and Files pinned. */
     showPanel(options: { width: number; titles: string[]; selected: string; file?: string }): void
     /** Every tab of the strip, the pinned ones first. */
     tabBoxes(): Box[]
@@ -52,7 +53,7 @@ const kinds = [
   },
   {
     kind: 'file', schema: z.object({ path: z.string().optional() }), content: Nothing,
-    title: (data) => data.path ? 'File: ' + data.path : 'File',
+    title: (data) => data.path ? 'File: ' + data.path : 'Files',
     mark: defineComponent({ setup: () => () => h(File, { size: 16 }) }),
     pinned: { data: () => ({}) },
   },
@@ -120,7 +121,7 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     await browser?.close()
   })
 
-  async function panel(options: { titles: string[]; selected: string; file?: string }): Promise<Page> {
+  async function panel(options: { titles: string[]; selected: string; file?: string; width?: number }): Promise<Page> {
     const opened = await browser.newPage({ viewport: { width: 1000, height: 600 }, reducedMotion: 'reduce' })
     await opened.route('https://demi.test/', (route) => route.fulfill({ contentType: 'text/html', body: '<!doctype html><body></body>' }))
     await opened.goto('https://demi.test/')
@@ -157,12 +158,15 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
   test('a long title, selected or the open file\'s name, never widens its tab past the others\' share or the panel', async () => {
     const long = 'A page whose title runs on far longer than any tab could show in the panel, and then some more'
     const titles = ['Log', long, 'Pull request #42: Keep the session cookie on sign-out', 'Error log 2026']
-    const opened = await panel({ titles, selected: 'file', file: 'docs/2026-10-17-crowded-work-panel-regression-investigation-notes.md' })
+    // Wide enough that the cut titles share more than their least width.
+    const opened = await panel({ titles, selected: 'file', file: 'docs/2026-10-17-crowded-work-panel-regression-investigation-notes.md', width: 760 })
     const plain = await settled(opened)
     const view = await opened.evaluate(() => window.stripView())
-    const [, file, short, longTab, request, dashboard] = plain
-    // File shows its icon alone, its name in its tooltip, so no wider than tall.
-    expect(file!.width).toBeLessThanOrEqual(32)
+    const [change, file, short, longTab, request, dashboard] = plain
+    // The pinned tabs show their kinds' titles beside their icons, not the open file's name, which is File's tooltip.
+    expect(change!.name).toBe('Changes+4066−2005')
+    expect(file!.name).toBe('Files')
+    expect(file!.width).toBeGreaterThan(40)
     // The tabs whose titles are cut share the room equally, the long one no wider than the rest.
     expect(longTab!.width).toBeCloseTo(request!.width, 0)
     expect(longTab!.width).toBeCloseTo(dashboard!.width, 0)
@@ -191,7 +195,7 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     expect(await list.count()).toBe(1)
     await list.click()
     const rows = opened.getByRole('menuitem')
-    expect(await rows.allTextContents()).toEqual(['Changes', 'File', ...titles].map((title) => expect.stringContaining(title)))
+    expect(await rows.allTextContents()).toEqual(['Changes', 'Files', ...titles].map((title) => expect.stringContaining(title)))
     await rows.filter({ hasText: /^Page 3$/ }).click()
     expect(await opened.evaluate(() => window.selection())).toBe('Page 3')
     await opened.getByRole('menuitem').first().waitFor({ state: 'detached' })
@@ -202,6 +206,12 @@ describe.skipIf(!existsSync(chromium.executablePath()))('in Chromium', () => {
     expect(picked.selected).toBe(true)
     expect(picked.left).toBeGreaterThanOrEqual(view.left - 0.5)
     expect(picked.right).toBeLessThanOrEqual(view.right + 0.5)
+    // The titled pinned tabs leave the strip's tabs their least width, and the strip scrolls the rest out of view.
+    const [change, file, ...pages] = tabs
+    expect([change!.name, file!.name]).toEqual(['Changes+4066−2005', 'Files'])
+    for (const tab of pages)
+      expect(tab.width).toBeGreaterThanOrEqual(87.5)
+    expect(pages.some((tab) => tab.right > view.right + 0.5)).toBe(true)
     await opened.close()
   })
 })

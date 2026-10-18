@@ -36,7 +36,7 @@ const TITLES = [
 ]
 
 const workspace = createGalleryWorkspace()
-// Change and File pinned before the pages, as the product's panel has them; the
+// Changes and Files pinned before the pages, as the product's panel has them; the
 // pages are the conversation browser's, which has none open before Reset opens them.
 const work = useGalleryWork(null, {
   files: galleryFiles(workspace),
@@ -59,7 +59,7 @@ function closeTabs(ids: string[]): void {
   work.closeTabs(ids)
 }
 
-/** The pages beside Change and File, the first or the last selected. */
+/** The pages beside Changes and Files, the first or the last selected. */
 function reset(): void {
   work.reset()
   opened = 0
@@ -95,7 +95,7 @@ function selectMiddle(): void {
 
 /** The first page the strip cuts off, else the last one. */
 function selectCutOff(): void {
-  // The pages follow Change and File in the strip's tab list, in the scrolled part of it.
+  // The pages follow Changes and Files in the strip's tab list, in the scrolled part of it.
   const shown = [...frame.value?.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]') ?? []].slice(-ids().length)
   const strip = shown[0]?.parentElement
   if (!strip)
