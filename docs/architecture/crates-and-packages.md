@@ -534,7 +534,11 @@ the web app's TypeScript. A contract crate has no async runtime and no IO.
 - **Owns:**
   - a value read from a remote source and kept a while, read again in the
     background when stale and never waited for once known (`kept`), which the
-    Claude Code release pointer and the Codex client version both use;
+    Claude Code release pointer uses;
+  - the newest release of a vendor's CLI that a provider names in its
+    requests, read from its source and kept so (`release`), which the Codex
+    client version and the Grok CLI version both use, each saying only where
+    its version is read and how its answer names it;
   - the provider contract: `Provider`, one entry shared by every user and
     request (identity, capabilities, authentication status, models, failure
     reading, quota, accounts, its image role and `runtime`), and

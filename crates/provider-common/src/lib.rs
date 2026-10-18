@@ -30,6 +30,7 @@ mod model_words;
 pub mod oauth;
 pub mod openai_request;
 pub mod quota;
+pub mod release;
 mod secret;
 #[cfg(feature = "testing")]
 pub mod testing;

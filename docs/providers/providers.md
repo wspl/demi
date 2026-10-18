@@ -183,6 +183,18 @@ The WebSocket client is tokio-tungstenite, because the handshake must carry
 Codex's own headers. Grok Build sends Chat Completions through the chat proxy
 that Grok's own CLI uses.
 
+Every Grok Build request names a Grok CLI version in `x-grok-client-version`,
+and the proxy refuses one older than its minimum with HTTP 426, as it refused
+1.0.5 once it required 1.0.13. The provider therefore sends the newest stable
+release, as Grok's own install script finds it: the plain-text pointer
+`https://x.ai/cli/stable` (`1.0.62`), its first line a bare
+`MAJOR.MINOR.PATCH`, read with no account. The backend keeps it as it keeps
+Codex's version ([The Codex catalog](models.md#the-codex-catalog)): kept six
+hours, read again in the background, never waited for once known, the last
+one read kept when a read fails, and the version built into the provider used
+only until the first read succeeds; one version serves every Grok Build entry
+and account.
+
 ## Provider contract
 
 The contract has two roles. A **provider** is shared: one exists for each entry

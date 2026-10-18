@@ -23,7 +23,7 @@ use serde::{Deserialize, Deserializer, de};
 
 use crate::{
     auth::{Claims, GrokSecret, Issuer, Principal},
-    request::CLIENT_VERSION,
+    releases::GrokReleases,
 };
 
 /// The Grok CLI's OAuth client.
@@ -45,6 +45,8 @@ pub(crate) struct GrokKit {
     pub(crate) issuer: Url,
     /// The chat proxy, whose `/user` names the signed-in user.
     pub(crate) user_url: Url,
+    /// The Grok CLI release the sign-in requests name.
+    pub(crate) releases: GrokReleases,
     pub(crate) clock: Arc<dyn Clock>,
 }
 
@@ -66,19 +68,17 @@ impl AccountKit for GrokKit {
     }
 }
 
-/// The headers of the sign-in requests: the Grok CLI's version, and the
-/// surface the login runs on, which for Demi is always its user interface.
-fn oauth_headers() -> HeaderMap {
-    let mut headers = HeaderMap::new();
-    headers.insert(
-        "x-grok-client-version",
-        HeaderValue::from_static(CLIENT_VERSION),
-    );
-    headers.insert("x-grok-client-surface", HeaderValue::from_static("ui"));
-    headers
-}
-
 impl GrokKit {
+    /// The headers of the sign-in requests: the Grok CLI's version, and the
+    /// surface the login runs on, which for Demi is always its user
+    /// interface.
+    fn oauth_headers(&self) -> HeaderMap {
+        let mut headers = HeaderMap::new();
+        headers.insert("x-grok-client-version", self.releases.current());
+        headers.insert("x-grok-client-surface", HeaderValue::from_static("ui"));
+        headers
+    }
+
     async fn device_login(
         &self,
         pending: &(dyn Fn(LoginPending) + Send + Sync),
@@ -109,7 +109,7 @@ impl GrokKit {
                 &self.issuer,
                 "/oauth2/device/code",
             ))
-            .headers(oauth_headers())
+            .headers(self.oauth_headers())
             .form(&form)
             .send()
             .await
@@ -159,7 +159,7 @@ impl GrokKit {
                     &self.issuer,
                     "/oauth2/token",
                 ))
-                .headers(oauth_headers())
+                .headers(self.oauth_headers())
                 .form(&form)
                 .send()
                 .await
@@ -246,10 +246,7 @@ impl GrokKit {
         let mut headers = HeaderMap::new();
         headers.insert(AUTHORIZATION, access_token.bearer());
         headers.insert("x-xai-token-auth", HeaderValue::from_static("xai-grok-cli"));
-        headers.insert(
-            "x-grok-client-version",
-            HeaderValue::from_static(CLIENT_VERSION),
-        );
+        headers.insert("x-grok-client-version", self.releases.current());
         headers.insert(
             "x-grok-client-mode",
             HeaderValue::from_static("interactive"),

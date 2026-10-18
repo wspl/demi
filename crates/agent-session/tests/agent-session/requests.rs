@@ -24,7 +24,7 @@ use demi_provider_common::{
     testing::{MockResponse, MockVendor, jwt},
 };
 use demi_provider_google::{GoogleConfig, GoogleProvider};
-use demi_provider_grok_build::{GrokConfig, GrokProvider};
+use demi_provider_grok_build::{GrokConfig, GrokProvider, GrokReleases};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
 use demi_shared_types::{BlobRef, FileExtension, MediaSource, WireApi};
 use futures_util::{StreamExt as _, stream};
@@ -208,7 +208,14 @@ impl Family {
                     "clientId": "client-1", "userId": "user-1", "email": "user@example.com",
                 });
                 let pool = pool_with("cred-g", secret.to_string()).await;
-                let mut config = GrokConfig::new(Some("cred-g".into()));
+                // Port 0 refuses at once, so every request names the
+                // built-in release and the vendor sees no read of the pointer.
+                let releases = GrokReleases::new(
+                    "http://127.0.0.1:0/cli/stable".parse().unwrap(),
+                    reqwest::Client::new(),
+                    clock.clone(),
+                );
+                let mut config = GrokConfig::new(Some("cred-g".into()), releases);
                 config.proxy_url = vendor.url("/v1").parse().unwrap();
                 config.issuer_url = vendor.url("").parse().unwrap();
                 let snapshots = Arc::new(MemorySnapshots::new());

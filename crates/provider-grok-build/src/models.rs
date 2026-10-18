@@ -19,7 +19,7 @@ pub(crate) async fn list(shared: &Shared) -> Result<ProviderModelList, CatalogEr
         .credentials(&shared.http, None)
         .await
         .map_err(|failure| failure.catalog_error())?;
-    let mut headers = identity_headers(&credentials);
+    let mut headers = identity_headers(&credentials, &shared.releases);
     headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
     let response = shared
         .http

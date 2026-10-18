@@ -68,7 +68,7 @@ pub(crate) fn run(
             };
             let send = http
                 .post(shared.chat_url.clone())
-                .headers(request::inference_headers(&credentials, &ids))
+                .headers(request::inference_headers(&credentials, &shared.releases, &ids))
                 .body(body.clone())
                 .send();
             let sent = tokio::select! {

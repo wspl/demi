@@ -17,7 +17,7 @@ use http::{HeaderMap, HeaderValue, header::ACCEPT};
 use reqwest::Url;
 use serde::{Deserialize, Deserializer};
 
-use crate::{auth::GrokAuth, request::identity_headers};
+use crate::{auth::GrokAuth, releases::GrokReleases, request::identity_headers};
 
 /// The billing period type of a plan whose credits reset weekly.
 const WEEKLY_PERIOD: &str = "USAGE_PERIOD_TYPE_WEEKLY";
@@ -26,6 +26,7 @@ const WEEKLY_PERIOD: &str = "USAGE_PERIOD_TYPE_WEEKLY";
 pub(crate) struct GrokQuota {
     pub(crate) auth: Arc<GrokAuth>,
     pub(crate) http: demi_provider_common::ProviderHttp,
+    pub(crate) releases: GrokReleases,
     pub(crate) user_url: Url,
     pub(crate) billing_url: Url,
 }
@@ -44,7 +45,7 @@ impl QuotaSource for GrokQuota {
                 .credentials(&self.http, None)
                 .await
                 .map_err(|failure| failure.quota_error())?;
-            let mut headers = identity_headers(&credentials);
+            let mut headers = identity_headers(&credentials, &self.releases);
             headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
             let (user, billing) = tokio::try_join!(
                 self.fetch(&self.user_url, &headers),

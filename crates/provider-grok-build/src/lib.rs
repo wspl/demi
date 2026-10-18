@@ -13,9 +13,12 @@ mod images;
 mod login;
 mod models;
 mod quota;
+mod releases;
 mod request;
 mod run;
 mod videos;
+
+pub use releases::GrokReleases;
 
 use std::sync::Arc;
 
@@ -55,18 +58,22 @@ pub struct GrokConfig {
     /// The issuer device logins sign in at, `https://auth.x.ai` in the
     /// product. A signed-in account refreshes at the issuer it names.
     pub issuer_url: Url,
+    /// The newest stable Grok CLI release, the backend's one.
+    pub releases: GrokReleases,
 }
 
 impl GrokConfig {
     pub const PROXY_URL: &str = "https://cli-chat-proxy.grok.com/v1";
     pub const ISSUER_URL: &str = "https://auth.x.ai";
 
-    /// The product's configuration of an entry's provider for `account`.
-    pub fn new(account: Option<String>) -> Self {
+    /// The product's configuration of an entry's provider for `account`,
+    /// whose requests name the version `releases` knows.
+    pub fn new(account: Option<String>, releases: GrokReleases) -> Self {
         Self {
             account,
             proxy_url: Url::parse(Self::PROXY_URL).expect("the proxy URL parses"),
             issuer_url: Url::parse(Self::ISSUER_URL).expect("the issuer URL parses"),
+            releases,
         }
     }
 }
@@ -91,6 +98,8 @@ struct Shared {
     auth: Arc<GrokAuth>,
     quota: ProviderQuota,
     accounts: Accounts<GrokKit>,
+    /// The Grok CLI release every request names.
+    releases: GrokReleases,
     /// The client of the provider's own requests: catalogs, probes,
     /// refreshes outside a run and logins.
     http: demi_provider_common::ProviderHttp,
@@ -114,6 +123,7 @@ impl GrokProvider {
             http: http.clone(),
             issuer: config.issuer_url,
             user_url: user_url.clone(),
+            releases: config.releases.clone(),
             clock: clock.clone(),
         };
         user_url.set_query(Some("include=subscription"));
@@ -121,6 +131,7 @@ impl GrokProvider {
         let source = GrokQuota {
             auth: auth.clone(),
             http: http.clone(),
+            releases: config.releases.clone(),
             user_url,
             billing_url,
         };
@@ -134,6 +145,7 @@ impl GrokProvider {
                 auth,
                 quota: ProviderQuota::new(Box::new(source), snapshots, clock.clone()),
                 accounts: Accounts::new(pool, kit, clock.clone()),
+                releases: config.releases,
                 http,
                 clock,
             });
