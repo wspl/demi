@@ -89,11 +89,11 @@ function askOf(ask: Extract<PushMessage, { kind: 'permission' }>['ask'], words: 
 }
 
 /**
- * What a push without the page's words says: Demi, and the values the
+ * What a push without the page's words says: the wordmark demi, and the values the
  * push carries, as on a browser whose words were cleared.
  */
 const NO_WORDS: NotificationWords = {
-  untitled: 'Demi',
+  untitled: 'demi',
   turnStopped: '',
   saveCredential: '',
   allow: '',
@@ -116,7 +116,7 @@ export async function pushedNotification(
   const parsed = pushMessageSchema.safeParse(message)
   if (!parsed.success) {
     console.error('A push does not read', parsed.error)
-    return { title: 'Demi' }
+    return { title: 'demi' }
   }
   let words: NotificationWords | null = null
   try {

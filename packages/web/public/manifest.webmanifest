@@ -1,6 +1,6 @@
 {
-  "name": "Demi",
-  "short_name": "Demi",
+  "name": "demi",
+  "short_name": "demi",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

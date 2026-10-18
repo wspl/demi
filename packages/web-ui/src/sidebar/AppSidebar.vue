@@ -537,7 +537,7 @@ function selectProjectConversations(project: SidebarProject): void {
     <div class="flex h-11 shrink-0 items-center px-2">
       <span
         class="min-w-0 flex-1 truncate pl-2.5 text-chrome font-medium text-fg-emphasis phone:pl-3 phone:text-[17px] phone:font-semibold"
-      >Demi</span>
+      >demi</span>
     </div>
 
     <!-- Every block of the sidebar keeps 8px from both edges, so a row's background ends the same

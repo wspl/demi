@@ -38,7 +38,17 @@ What is never translated:
 - What people and models wrote: messages, replies, summaries and the titles
   a model gives conversations, which follow the language the user writes in
   ([Conversation titles](conversations.md#conversation-titles)).
-- Names: files, paths, commands, models, vendors, branches, accounts.
+- Names: files, paths, commands, models, vendors, branches, accounts, and
+  the product's own. In a sentence it is *Demi*, *Demi needs permission*,
+  *Add Demi to Your Home Screen*, and so are the license's names, the
+  *Demi License* and *The Demi Authors*. Where the name stands alone as the
+  product's mark, it is the wordmark *demi*, in lowercase in every language,
+  as Amazon's and Intel's logos are while their sentences say Amazon and
+  Intel: the sidebar's header, the end of the page's title, *整理季度报告
+  · demi*, the installed app's name under its icon and in the Dock, the
+  name beside the logo on the sign-in page, a notification's title when it
+  has none of its own, the name a passkey shows for the site, and the name of the certificate that
+  signs the Mac runner, *demi Code Signing*.
 - The gallery's notes, which document a section for the people building
   Demi, and the content of its fixtures, such as a specimen conversation's
   messages, which stand for what users write.

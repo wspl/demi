@@ -66,7 +66,7 @@ test('a push whose words cannot be read still shows, in the values it carries', 
     expect(shown.options?.body).toBe('Done.')
     expect(shown.options?.tag).toBe(`turn:${ID}:r2`)
     // One that does not read shows Demi.
-    expect((await pushedNotification({ kind: 'unknown' }, async () => WORDS)).title).toBe('Demi')
+    expect((await pushedNotification({ kind: 'unknown' }, async () => WORDS)).title).toBe('demi')
     expect(logged).toHaveBeenCalledTimes(2)
   } finally {
     logged.mockRestore()

@@ -13,7 +13,7 @@ let requests: string[]
 const challenge = {
   challengeId: 'challenge-1',
   options: {
-    rp: { id: 'demi.example', name: 'Demi' },
+    rp: { id: 'demi.example', name: 'demi' },
     user: { id: 'AQI', name: 'ana@example.com', displayName: 'Ana' },
     challenge: '-_8',
     pubKeyCredParams: [{ type: 'public-key', alg: -7 }],
