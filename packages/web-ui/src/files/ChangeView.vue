@@ -6,6 +6,7 @@ import { t as editorText } from '../editor/locales/text'
 import type { DocumentPlace } from '../markdown/document'
 import { appOverlayStore } from '../overlay/appOverlay'
 import Dropdown from '../ui/Dropdown.vue'
+import { usePhone } from '../ui/phone'
 import IconButton from '../ui/IconButton.vue'
 import Menu from '../ui/Menu.vue'
 import RegionNote from '../ui/RegionNote.vue'
@@ -553,6 +554,10 @@ function retry(): Promise<void> {
 const frame = ref<InstanceType<typeof TreeFrame> | null>(null)
 const icons = useIconPx()
 
+/** As the File view's bar: each control at the end keeps the distance its bar leaves above and below it. */
+const phone = usePhone()
+const endInset = computed(() => (phone.value ? (44 - 36) / 2 : (36 - 24) / 2))
+
 function pick(path: string): void {
   frame.value?.dismiss()
   selected.value = path
@@ -617,22 +622,17 @@ function pick(path: string): void {
           icon-only
           class="shrink-0"
         />
-        <Tooltip v-if="opens !== false" :content="t('changes.openFile')" class="shrink-0">
-          <IconButton
-            :icon="FileOutput"
-            variant="ghost"
-            :aria-label="t('changes.openFile')"
-            :disabled="!selectedChange || selectedChange.kind === 'deleted'"
-            @click="selectedChange && emit('open', selectedChange.path)"
-          />
-        </Tooltip>
       </div>
     </template>
     <template #default="{ overlap }">
     <div class="flex h-full min-h-0 flex-col">
+      <!-- The change's bar, as the File view's over a file (FileBar.vue): its
+           height, and at its end what can be done with the file, Open File as
+           the File view's Download, the same distance from every edge. -->
       <div
         v-if="heading && selectedChange"
-        class="flex h-8 shrink-0 select-none items-center gap-1.5 border-b border-line px-3 text-[12px] phone:h-row phone:gap-2 phone:text-[15px]"
+        class="flex h-9 shrink-0 select-none items-center gap-1.5 border-b border-line pl-3 text-[12px] phone:h-row phone:gap-2 phone:text-[15px]"
+        :style="{ paddingInlineEnd: `${overlap + endInset}px` }"
       >
         <FileIcon :name="heading.name" :is-directory="false" :size="icons.chip" class="shrink-0" />
         <span v-if="heading.from" class="min-w-0 truncate text-fg-muted">{{ heading.from }} →</span>
@@ -647,6 +647,16 @@ function pick(path: string): void {
         </span>
         <!-- The edit shown is named by its call's title; the file's name keeps its width first. -->
         <TruncatedText v-if="editAt !== null" class="ml-auto pl-2 text-fg-subtle" :text="edits[editAt]?.title ?? ''" />
+        <Tooltip v-if="opens !== false" :content="t('changes.openFile')" class="shrink-0" :class="{ 'ml-auto': editAt === null }">
+          <IconButton
+            :icon="FileOutput"
+            variant="ghost"
+            size="sm"
+            :aria-label="t('changes.openFile')"
+            :disabled="selectedChange.kind === 'deleted'"
+            @click="emit('open', selectedChange.path)"
+          />
+        </Tooltip>
       </div>
       <RegionNote
         v-if="unwatched"
