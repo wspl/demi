@@ -39,6 +39,11 @@
   "dot": {
     "needsYou": "需要你决定"
   },
+  "tab": {
+    "danger": "{count} 个出错",
+    "attention": "{count} 个待办",
+    "success": "{count} 个完成"
+  },
   "selection": {
     "open": "打开",
     "rename": "重命名",

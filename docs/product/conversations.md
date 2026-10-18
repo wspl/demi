@@ -70,6 +70,32 @@ agent's tab and link have no read state of their own and stay green once
 the agent finished. A Stop is the user's own decision, neither finished nor
 failed, and leaves the row settled ([Recovering an unfinished turn](turns.md#recovering-an-unfinished-turn)).
 
+The browser tab carries the same news, so a user working in another tab
+sees that something waits, as Gmail's and Slack's tabs show it. The page's
+title is the open conversation's title and the product's name,
+*整理季度报告 · demi*, or *demi* alone where no conversation is open.
+While any conversation's dot is green, red or yellow, the title starts with
+one count: of the one kind there is, *(2 done) 整理季度报告 · demi*,
+*(1 failed)*, *(1 to do)* for yellow, what waits for the user; and when
+there are several kinds, all of them as to do, *(4 to do)*, since one short
+count reads at a glance where a list does not. In Chinese *(2 个完成)*,
+*(1 个出错)*, *(1 个待办)* and *(4 个待办)*.
+The tab's icon wears one dot at its lower right, in the most urgent of those
+colors, red over yellow over green, with a ring of the tab strip's
+background around it, and none while nothing is new. The conversation open
+in a focused page is read as it happens and counts for nothing. An installed
+demi, on a Home Screen or in the Dock, shows the number of those
+conversations on its icon, as Mail counts unread mail, through the
+browser's app badge, and clears it at zero. All of it follows the sidebar's
+dots as they change, from the same state, never from a timer.
+
+They are a reminder to come back, so coming back clears them: when the
+user brings a page forward, its title count, its icon's dot and the app's
+badge go, and only what lights after that counts again, as a phone's
+notification badge clears once the app opens. The sidebar's dots stay
+until each conversation is opened, since they say which ones are still
+unread.
+
 The sidebar's two groups, Conversations and Projects, each fold under its
 label, as Finder's sidebar sections and Slack's do. A chevron after the
 label, in the label's faint color, points down while the group is open and
