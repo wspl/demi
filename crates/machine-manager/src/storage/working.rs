@@ -18,7 +18,7 @@ use demi_machine_manager_protocol::{DeviceId, GenerationId, MachineImageState};
 use super::{
     durable::{remove_tree, sync, write_json},
     ext4::{self, Ext4Error},
-    store::{ImagePair, ImageStore, StoreError, read_state},
+    store::{ImagePair, ImageStore, Retention, StoreError, read_state},
 };
 use crate::{
     blocking::{self, OffLoop},
@@ -76,14 +76,16 @@ impl WorkingPair {
         sync(off, &self.directory)
     }
 
-    /// Publishes the working pair as `device`'s new generation and removes
-    /// it; nothing happens without one. Nothing may write the images: each
-    /// is checked and synced, then linked into the generation.
+    /// Publishes the working pair as `device`'s new generation, keeping the
+    /// older ones `retention` names, and removes it; nothing happens without
+    /// one. Nothing may write the images: each is checked and synced, then
+    /// linked into the generation.
     pub async fn save(
         &self,
         tools: &Tools,
         store: &ImageStore,
         device: &DeviceId,
+        retention: Retention,
     ) -> Result<(), SaveError> {
         let pair = self.clone();
         let Some(state) = blocking::run(move |off| pair.manifest(off)).await? else {
@@ -102,7 +104,7 @@ impl WorkingPair {
         let store = store.clone();
         let device = device.clone();
         blocking::run(move |off| -> Result<(), SaveError> {
-            store.publish(off, &device, &saved, images.as_deref())?;
+            store.publish(off, &device, &saved, images.as_deref(), retention)?;
             fault::point("working-published");
             remove_tree(off, pair.directory())?;
             let parent = pair

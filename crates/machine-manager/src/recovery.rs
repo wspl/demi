@@ -13,6 +13,7 @@ use crate::{
     sandbox::{Sandbox, SandboxError, files::SandboxRecord},
     storage::{
         durable::{create_private, remove_tree},
+        store::Retention,
         working::{SaveError, WorkingPair},
     },
 };
@@ -84,7 +85,9 @@ pub async fn fence_and_save(core: &Core, running: &[DeviceId]) -> Result<(), Rec
             }
             Sandbox::recorded(core, record).close(core, &pair).await?;
         }
-        pair.save(&core.tools, &core.store, &device).await?;
+        // A save no request named the machine for removes no fallback.
+        pair.save(&core.tools, &core.store, &device, Retention::Previous)
+            .await?;
     }
     Ok(())
 }

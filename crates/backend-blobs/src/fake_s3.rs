@@ -1,14 +1,15 @@
 //! An S3-compatible service in memory, for the tests of what reaches the
-//! object store: puts, conditional creation, reads with their metadata, and
-//! deletes of one bucket's objects. It checks no signature. A test may hold
-//! its puts, to act while a write is under way.
+//! object store: puts, conditional creation, reads with their metadata,
+//! listings, and deletes of one bucket's objects, one at a time or in a
+//! batch. It checks no signature. A test may hold its puts, to act while a
+//! write is under way.
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::Bytes;
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use axum::response::{IntoResponse, Response};
 use object_store::ClientOptions;
@@ -22,6 +23,9 @@ use crate::store::S3Config;
 struct Object {
     bytes: Bytes,
     metadata: Vec<(HeaderName, HeaderValue)>,
+    /// The number of the put that wrote it, which its listed time counts
+    /// in milliseconds, so a later put lists as written later.
+    put: usize,
 }
 
 /// The bucket's objects, the keys of the objects created, in order, and
@@ -31,6 +35,17 @@ struct Bucket {
     objects: HashMap<String, Object>,
     written: Vec<String>,
     hold: Option<Hold>,
+}
+
+/// The time a listing gives the object of put number `put`: a fixed
+/// moment and as many milliseconds.
+fn listed_time(put: usize) -> String {
+    let (seconds, milliseconds) = (put / 1000, put % 1000);
+    format!(
+        "2026-09-24T08:{:02}:{:02}.{milliseconds:03}Z",
+        seconds / 60 % 60,
+        seconds % 60
+    )
 }
 
 /// Where each put reports its key as it arrives, and what it waits for.
@@ -92,6 +107,7 @@ impl FakeS3 {
     pub async fn start() -> Self {
         let objects = Objects::default();
         let app = Router::new()
+            .route("/{bucket}", axum::routing::any(bucket))
             .route("/{bucket}/{*key}", axum::routing::any(object))
             .with_state(objects.clone());
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -163,6 +179,64 @@ fn error(status: StatusCode, code: &str) -> Response {
     (status, [("content-type", "application/xml")], body).into_response()
 }
 
+/// The bucket's own requests: a listing of the keys under a prefix, which
+/// fits in one answer, and a batch delete.
+async fn bucket(
+    State(objects): State<Objects>,
+    method: Method,
+    Query(query): Query<HashMap<String, String>>,
+    body: Bytes,
+) -> Response {
+    match method {
+        Method::GET if query.get("list-type").is_some_and(|kind| kind == "2") => {
+            let prefix = query.get("prefix").map(String::as_str).unwrap_or_default();
+            let bucket = objects.lock().unwrap();
+            let listed: BTreeMap<_, _> = bucket
+                .objects
+                .iter()
+                .filter(|(key, _)| key.starts_with(prefix))
+                .collect();
+            let contents: String = listed
+                .into_iter()
+                .map(|(key, object)| {
+                    format!(
+                        "<Contents><Key>{key}</Key><Size>{}</Size><LastModified>{}</LastModified></Contents>",
+                        object.bytes.len(),
+                        listed_time(object.put)
+                    )
+                })
+                .collect();
+            let body = format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><ListBucketResult>{contents}<IsTruncated>false</IsTruncated></ListBucketResult>"
+            );
+            (StatusCode::OK, [("content-type", "application/xml")], body).into_response()
+        }
+        Method::POST if query.contains_key("delete") => {
+            // The request names each key as `<Key>…</Key>`; the backend's
+            // keys hold nothing XML escapes.
+            let request = String::from_utf8_lossy(&body);
+            let keys: Vec<&str> = request
+                .split("<Key>")
+                .skip(1)
+                .filter_map(|rest| rest.split_once("</Key>").map(|(key, _)| key))
+                .collect();
+            let mut bucket = objects.lock().unwrap();
+            let deleted: String = keys
+                .into_iter()
+                .map(|key| {
+                    bucket.objects.remove(key);
+                    format!("<Deleted><Key>{key}</Key></Deleted>")
+                })
+                .collect();
+            let body = format!(
+                "<?xml version=\"1.0\" encoding=\"UTF-8\"?><DeleteResult>{deleted}</DeleteResult>"
+            );
+            (StatusCode::OK, [("content-type", "application/xml")], body).into_response()
+        }
+        _ => error(StatusCode::METHOD_NOT_ALLOWED, "MethodNotAllowed"),
+    }
+}
+
 async fn object(
     State(objects): State<Objects>,
     method: Method,
@@ -202,11 +276,13 @@ async fn object(
                 .collect();
             let tag = etag(&body);
             bucket.written.push(key.clone());
+            let put = bucket.written.len();
             bucket.objects.insert(
                 key,
                 Object {
                     bytes: body,
                     metadata,
+                    put,
                 },
             );
             (StatusCode::OK, [("etag", tag)]).into_response()

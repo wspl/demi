@@ -139,6 +139,7 @@ async fn a_failure_reply_fails_its_call_and_the_connection_stays_usable() {
             client
                 .call(HibernateParams {
                     device_id: device("dev-9"),
+                    machine: demi_machine_manager_protocol::SandboxMachine::Cloud,
                 })
                 .await
         })

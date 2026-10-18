@@ -158,6 +158,15 @@ fn reset(device: &str, operation: &str, base: &BaseVersion) -> ResetParams {
         operation_id: operation.into(),
         base_version: base.to_string(),
         capacity: CAPACITY,
+        machine: SandboxMachine::Cloud,
+    }
+}
+
+/// A user's Cloud's hibernation.
+fn hibernate(device: &str) -> HibernateParams {
+    HibernateParams {
+        device_id: device.into(),
+        machine: SandboxMachine::Cloud,
     }
 }
 
@@ -294,9 +303,7 @@ async fn operations_on_a_stopped_device_answer_in_order() {
     isolate();
     let fixture = fixture();
     fixture
-        .call(HibernateParams {
-            device_id: "dev-1".into(),
-        })
+        .call(hibernate("dev-1"))
         .await
         .unwrap();
     let state = fixture
@@ -307,9 +314,7 @@ async fn operations_on_a_stopped_device_answer_in_order() {
         .unwrap();
     assert_eq!(state, serde_json::json!("stopped"));
     let error = fixture
-        .call(HibernateParams {
-            device_id: "dev/1".into(),
-        })
+        .call(hibernate("dev/1"))
         .await
         .unwrap_err();
     assert!(matches!(error, OpError::InvalidName(_)), "{error}");
@@ -318,9 +323,7 @@ async fn operations_on_a_stopped_device_answer_in_order() {
     // After shutdown, requests are refused.
     fixture.manager.close().await.unwrap();
     let error = fixture
-        .call(HibernateParams {
-            device_id: "dev-1".into(),
-        })
+        .call(hibernate("dev-1"))
         .await
         .unwrap_err();
     assert_eq!(error.to_string(), "the Cloud manager is stopping");
@@ -331,6 +334,11 @@ async fn operations_on_a_stopped_device_answer_in_order() {
 /// pair, before it mounts anything. The runsc that the failed start's close
 /// asks lists no sandbox.
 fn refused_wake(device: &str, capacity: Capacity) -> WakeParams {
+    refused_wake_of(device, capacity, SandboxMachine::Cloud)
+}
+
+/// [`refused_wake`] of `machine`.
+fn refused_wake_of(device: &str, capacity: Capacity, machine: SandboxMachine) -> WakeParams {
     WakeParams {
         device_id: device.into(),
         capacity,
@@ -339,8 +347,112 @@ fn refused_wake(device: &str, capacity: Capacity) -> WakeParams {
             "deviceToken": "token",
         }))
         .unwrap(),
-        machine: SandboxMachine::Cloud,
+        machine,
     }
+}
+
+/// The Claude Code machine keeps its current generation alone; a user's
+/// Cloud keeps the one before as well, its fallback.
+#[tokio::test(flavor = "local")]
+#[ignore = "needs root: run the Linux suite with --ignored as root"]
+async fn the_claude_code_machine_keeps_one_generation_where_a_cloud_keeps_two() {
+    isolate();
+    let fixture = fixture();
+    for (device, machine) in [
+        ("cloud", SandboxMachine::Cloud),
+        ("claude-code", SandboxMachine::ClaudeCode),
+    ] {
+        // Two saves, each of a working pair a wake staged.
+        for _ in 0..2 {
+            fixture
+                .call(refused_wake_of(device, CAPACITY, machine))
+                .await
+                .unwrap_err();
+            fixture
+                .call(HibernateParams {
+                    device_id: device.into(),
+                    machine,
+                })
+                .await
+                .unwrap();
+        }
+    }
+    assert_eq!(fixture.generations("cloud").len(), 2);
+    let current = fixture.state("claude-code").await.unwrap();
+    assert_eq!(
+        fixture.generations("claude-code"),
+        [current.generation.to_string()]
+    );
+}
+
+/// The blocks a file of `path` takes on its filesystem, in bytes.
+fn allocated(path: &Path) -> u64 {
+    std::fs::metadata(path).unwrap().blocks() * 512
+}
+
+/// A Cloud wrote a large file to its home and deleted it, then its manager
+/// stopped. The save that follows its recovery holds only what the home
+/// still holds: the deleted file's blocks were given back to the host.
+/// Cost: a 256 MiB home that 128 MiB fill and free; about a second.
+#[tokio::test(flavor = "local")]
+#[ignore = "needs root: run the Linux suite with --ignored as root"]
+async fn a_save_gives_back_the_space_of_what_the_cloud_deleted() {
+    use crate::{
+        linux::{loopdev, mount},
+        sandbox::files::{RuntimeDirectory, SandboxId, SandboxRecord},
+    };
+    const MIB: u64 = 1 << 20;
+    isolate();
+    let fixture = fixture();
+    let capacity = Capacity {
+        system_bytes: NonZeroU64::new(32 * MIB).unwrap(),
+        home_bytes: NonZeroU64::new(256 * MIB).unwrap(),
+    };
+    // A working pair staged; then the boot as a manager's stop left it: its
+    // record, and its home mounted where the sandbox had it.
+    fixture.call(refused_wake("dev-1", capacity)).await.unwrap_err();
+    let pair = fixture.data.join("working/dev-1");
+    let record = SandboxRecord {
+        id: SandboxId::new(),
+        slot: 0,
+    };
+    std::fs::write(pair.join("sandbox.json"), serde_json::to_vec(&record).unwrap()).unwrap();
+    let directory = RuntimeDirectory::new(fixture.core.config.runtime(), record.id.as_str());
+    let home = directory.volume(Volume::Home);
+    std::fs::create_dir_all(&home).unwrap();
+    let image = pair.join("home.ext4");
+    let mounted = (image.clone(), home.clone());
+    blocking::run(move |off| -> std::io::Result<()> {
+        let device = loopdev::attach(off, &mounted.0)?;
+        mount::ext4(off, &device.path(), &mounted.1)
+    })
+    .await
+    .unwrap();
+
+    // The Cloud writes 128 MiB that are not zeros, and deletes them.
+    let file = home.join("large");
+    let chunk: Vec<u8> = (0..MIB).map(|byte| (byte % 251 + 1) as u8).collect();
+    {
+        use std::io::Write as _;
+        let mut writing = std::fs::File::create(&file).unwrap();
+        for _ in 0..128 {
+            writing.write_all(&chunk).unwrap();
+        }
+        writing.sync_all().unwrap();
+    }
+    std::fs::remove_file(&file).unwrap();
+    rustix::fs::syncfs(std::fs::File::open(&home).unwrap()).unwrap();
+    assert!(allocated(&image) >= 128 * MIB, "{} bytes", allocated(&image));
+
+    // Recovery closes the boot and saves its pair.
+    fixture.call(ReconcileParams {}).await.unwrap();
+    let saved = fixture.state("dev-1").await.unwrap();
+    let images = fixture.generation("dev-1", &saved);
+    assert!(
+        allocated(&images.home) < 64 * MIB,
+        "the saved home takes {} bytes",
+        allocated(&images.home)
+    );
 }
 
 /// The text of `path` in the ext4 image `image`, as `debugfs` reads it.
@@ -373,7 +485,7 @@ async fn a_wake_enlarges_a_smaller_saved_pair_to_the_capacity_named_and_keeps_it
         home_bytes: NonZeroU64::new(16 * GIB).unwrap(),
     };
     fixture.call(refused_wake("dev-1", small)).await.unwrap_err();
-    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    fixture.call(hibernate("dev-1")).await.unwrap();
     let saved = fixture.state("dev-1").await.unwrap();
     assert_eq!((saved.system_bytes.get(), saved.home_bytes.get()), (GIB, GIB));
 
@@ -381,7 +493,7 @@ async fn a_wake_enlarges_a_smaller_saved_pair_to_the_capacity_named_and_keeps_it
     // be mounted, and the save records what each superblock says.
     let refused = fixture.call(refused_wake("dev-1", large)).await.unwrap_err();
     assert_eq!(refused.to_string(), "Cloud backend differs from configured allowlist");
-    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    fixture.call(hibernate("dev-1")).await.unwrap();
     let woken = fixture.state("dev-1").await.unwrap();
     assert_eq!((woken.system_bytes.get(), woken.home_bytes.get()), (16 * GIB, 16 * GIB));
     let images = fixture.generation("dev-1", &woken);
@@ -395,7 +507,7 @@ async fn a_wake_enlarges_a_smaller_saved_pair_to_the_capacity_named_and_keeps_it
 
     // A wake that names less keeps the larger images.
     fixture.call(refused_wake("dev-1", small)).await.unwrap_err();
-    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    fixture.call(hibernate("dev-1")).await.unwrap();
     let kept = fixture.state("dev-1").await.unwrap();
     assert_eq!((kept.system_bytes.get(), kept.home_bytes.get()), (16 * GIB, 16 * GIB));
 }
@@ -444,7 +556,7 @@ async fn an_enlargement_that_fails_midway_keeps_the_saved_pair_and_the_next_wake
         home_bytes: NonZeroU64::new(16 * GIB).unwrap(),
     };
     fixture.call(refused_wake("dev-1", small)).await.unwrap_err();
-    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    fixture.call(hibernate("dev-1")).await.unwrap();
     let saved = fixture.state("dev-1").await.unwrap();
     let images = fixture.generation("dev-1", &saved);
     let digest = |path: &Path| {
@@ -458,7 +570,7 @@ async fn an_enlargement_that_fails_midway_keeps_the_saved_pair_and_the_next_wake
     fixture.refuse_resize(true);
     let failed = fixture.call(refused_wake("dev-1", large)).await.unwrap_err();
     assert!(crate::server::chain(&failed).contains("resize2fs: refused"), "{}", crate::server::chain(&failed));
-    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    fixture.call(hibernate("dev-1")).await.unwrap();
     assert_eq!(fixture.state("dev-1").await.unwrap(), saved);
     let after: Vec<_> = Volume::ALL.iter().map(|volume| digest(images.get(*volume))).collect();
     assert_eq!(after, before);
@@ -467,7 +579,7 @@ async fn an_enlargement_that_fails_midway_keeps_the_saved_pair_and_the_next_wake
     fixture.refuse_resize(false);
     let refused = fixture.call(refused_wake("dev-1", large)).await.unwrap_err();
     assert_eq!(refused.to_string(), "Cloud backend differs from configured allowlist");
-    fixture.call(HibernateParams { device_id: "dev-1".into() }).await.unwrap();
+    fixture.call(hibernate("dev-1")).await.unwrap();
     let woken = fixture.state("dev-1").await.unwrap();
     assert_eq!((woken.system_bytes.get(), woken.home_bytes.get()), (16 * GIB, 16 * GIB));
     let images = fixture.generation("dev-1", &woken);

@@ -109,16 +109,17 @@ fn ok_replies_carry_their_operations_results() {
 #[test]
 fn requests_ignore_unknown_keys_and_refuse_malformed_values() {
     let device = r#""deviceId":"dev-1""#;
+    let machine = r#""machine":"cloud""#;
     let boot = r#""boot":{"backendUrl":"http://backend","deviceToken":"opaque"},"machine":"cloud""#;
     let capacity = r#""capacity":{"systemBytes":1,"homeBytes":2}"#;
     let accepted = [
-        format!(r#"{{"id":"1","op":"hibernate","params":{{{device}}},"trace":"x"}}"#),
-        format!(r#"{{"id":"1","op":"hibernate","params":{{{device},"force":true}}}}"#),
+        format!(r#"{{"id":"1","op":"hibernate","params":{{{device},{machine}}},"trace":"x"}}"#),
+        format!(r#"{{"id":"1","op":"hibernate","params":{{{device},{machine},"force":true}}}}"#),
         r#"{"id":"1","op":"reconcile","params":{"all":true}}"#.to_owned(),
         format!(r#"{{"id":"1","op":"wake","params":{{{device},{capacity},{boot}}}}}"#),
         // The pattern of a device id or base version is the operation's to check.
         format!(
-            r#"{{"id":"1","op":"reset","params":{{"deviceId":"../x","operationId":"o","baseVersion":"../b",{capacity}}}}}"#
+            r#"{{"id":"1","op":"reset","params":{{"deviceId":"../x","operationId":"o","baseVersion":"../b",{capacity},{machine}}}}}"#
         ),
     ];
     for line in &accepted {
@@ -126,13 +127,17 @@ fn requests_ignore_unknown_keys_and_refuse_malformed_values() {
     }
     let refused = [
         "not json".to_owned(),
-        r#"{"id":"1","op":"hibernate","params":{"deviceId":"dev-1"}} trailing"#.to_owned(),
+        r#"{"id":"1","op":"hibernate","params":{"deviceId":"dev-1","machine":"cloud"}} trailing"#
+            .to_owned(),
+        // Every save names the machine, whose generations it keeps.
+        format!(r#"{{"id":"1","op":"hibernate","params":{{{device}}}}}"#),
+        format!(r#"{{"id":"1","op":"checkpoint","params":{{{device},"machine":"printer"}}}}"#),
         r#"{"id":"1","op":"reboot","params":{}}"#.to_owned(),
         r#"{"id":"1","op":"hibernate"}"#.to_owned(),
         r#"{"op":"reconcile","params":{}}"#.to_owned(),
         r#"{"id":"","op":"reconcile","params":{}}"#.to_owned(),
-        r#"{"id":"1","op":"hibernate","params":{"deviceId":""}}"#.to_owned(),
-        r#"{"id":"1","op":"hibernate","params":{"deviceId":7}}"#.to_owned(),
+        r#"{"id":"1","op":"hibernate","params":{"deviceId":"","machine":"cloud"}}"#.to_owned(),
+        r#"{"id":"1","op":"hibernate","params":{"deviceId":7,"machine":"cloud"}}"#.to_owned(),
         format!(r#"{{"id":"1","op":"wake","params":{{{device}}}}}"#),
         format!(
             r#"{{"id":"1","op":"wake","params":{{{device},{capacity},"boot":{{"backendUrl":"http://backend","deviceToken":"opaque","command":"x"}},"machine":"cloud"}}}}"#
@@ -155,12 +160,14 @@ fn requests_ignore_unknown_keys_and_refuse_malformed_values() {
             r#"{{"id":"1","op":"wake","params":{{{device},"capacity":{{"systemBytes":1,"homeBytes":2,"swapBytes":3}},{boot}}}}}"#
         ),
         format!(
-            r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"o","baseVersion":"b"}}}}"#
+            r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"o","baseVersion":"b",{machine}}}}}"#
         ),
         format!(
-            r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"","baseVersion":"b",{capacity}}}}}"#
+            r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"","baseVersion":"b",{capacity},{machine}}}}}"#
         ),
-        format!(r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"o",{capacity}}}}}"#),
+        format!(
+            r#"{{"id":"1","op":"reset","params":{{{device},"operationId":"o",{capacity},{machine}}}}}"#
+        ),
     ];
     for line in &refused {
         assert!(decode_request(line).is_err(), "{line} decoded");

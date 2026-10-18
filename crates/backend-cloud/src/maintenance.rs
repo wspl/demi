@@ -106,6 +106,7 @@ impl dyn CloudShard {
             .machines
             .call(CheckpointParams {
                 device_id: device.to_string(),
+                machine: crate::machine::sandbox_machine(&machine.device),
             })
             .await;
         if let Some(link) = &link {

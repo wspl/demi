@@ -18,7 +18,7 @@ use super::{
 use crate::{
     blocking::{self, OffLoop},
     fault,
-    linux::{freeze, loopdev, mount},
+    linux::{freeze, loopdev, mount, trim},
     manager::Core,
     network::{
         NetworkError,
@@ -253,6 +253,14 @@ impl Sandbox {
         core.runsc.resume(&self.record.id).await
     }
 
+    /// Trims both working filesystems through their host mounts, so the
+    /// blocks the Cloud freed become holes in its images before they are
+    /// saved; a failure is logged and the save goes on.
+    pub async fn trim(&self) {
+        let directory = self.directory.clone();
+        blocking::run(move |off| trim_mounted(off, &directory)).await;
+    }
+
     /// The frozen window of a checkpoint, as one blocking job: freeze both
     /// filesystems, copy both working images into `stage` and sync the
     /// copies, then thaw. The guard thaws on every path, a panic included.
@@ -305,7 +313,13 @@ impl Sandbox {
             cgroup::fence(&self.record.id).await?;
         }
         let directory = self.directory.clone();
-        blocking::run(move |off| unmount_all(off, &directory)).await?;
+        blocking::run(move |off| {
+            // The save that follows every close keeps only what the Cloud
+            // holds; nothing writes the filesystems any more.
+            trim_mounted(off, &directory);
+            unmount_all(off, &directory)
+        })
+        .await?;
         core.network.detach(&self.slot).await?;
         let directory = self.directory.clone();
         let pair = working.clone();
@@ -372,6 +386,25 @@ async fn check(tools: &Tools, volume: Volume, image: &Path) -> Result<(), Sandbo
         ));
     }
     Ok(())
+}
+
+/// Trims each working filesystem mounted in `directory`; one that is not
+/// mounted, as after a failed start, is skipped. A failure is logged: an
+/// untrimmed image is saved whole, only larger.
+fn trim_mounted(off: &OffLoop, directory: &RuntimeDirectory) {
+    for volume in Volume::ALL {
+        let mount = directory.volume(volume);
+        let trimmed = match mount::mount_root(off, &mount) {
+            Ok(Some(true)) => trim::trim(off, &mount).map(Some),
+            Ok(_) => Ok(None),
+            Err(error) => Err(error),
+        };
+        match trimmed {
+            Ok(Some(bytes)) => tracing::debug!("machines: trimmed {bytes} bytes of {volume}"),
+            Ok(None) => {}
+            Err(error) => tracing::warn!("machines: the {volume} image stays untrimmed: {error}"),
+        }
+    }
 }
 
 fn thaw_if_mounted(off: &OffLoop, mount: &Path) -> io::Result<()> {

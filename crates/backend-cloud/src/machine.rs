@@ -56,6 +56,15 @@ use crate::CloudShard;
 use crate::capacity::CapacityPermit;
 use crate::client::MachinesError;
 
+/// The manager's name for the managed machine `device` is: whose memory
+/// limit its sandbox gets and whose generations its saves keep.
+pub(crate) fn sandbox_machine(device: &DeviceRecord) -> SandboxMachine {
+    match device.machine.unwrap_or(ManagedMachine::Cloud) {
+        ManagedMachine::Cloud => SandboxMachine::Cloud,
+        ManagedMachine::ClaudeCode => SandboxMachine::ClaudeCode,
+    }
+}
+
 /// The capacities the backend names for the disks of `device`, a managed
 /// machine (`managed-hosts.md` § Lifecycle and capacity): its account's
 /// Cloud storage, and always the default for the Claude Code machine.
@@ -582,6 +591,7 @@ impl dyn CloudShard {
             let device = &machine.device.id;
             let hibernate = HibernateParams {
                 device_id: device.to_string(),
+                machine: sandbox_machine(&machine.device),
             };
             // The boot's failure is the one reported; a save that fails too
             // is logged beside it.
@@ -611,10 +621,7 @@ impl dyn CloudShard {
                 backend_url,
                 device_token: token,
             },
-            machine: match machine.kind() {
-                ManagedMachine::Cloud => SandboxMachine::Cloud,
-                ManagedMachine::ClaudeCode => SandboxMachine::ClaudeCode,
-            },
+            machine: sandbox_machine(&machine.device),
         };
         let cloud = self.cloud_services();
         cloud.machines.call(wake).await?;
@@ -798,6 +805,7 @@ impl dyn CloudShard {
         self.flush(device).await;
         let hibernate = HibernateParams {
             device_id: device.to_string(),
+            machine: sandbox_machine(&machine.device),
         };
         let saved = self.cloud_services().machines.call(hibernate).await;
         self.devices().disconnect(device, "Cloud stopped");
@@ -876,6 +884,7 @@ impl dyn CloudShard {
         tracing::warn!(device = %device.id, "a running Cloud found no capacity at the start; it is saved and stopped");
         let hibernate = HibernateParams {
             device_id: device.id.to_string(),
+            machine: sandbox_machine(device),
         };
         self.cloud_services().machines.call(hibernate).await?;
         Ok(())

@@ -12,8 +12,9 @@ use std::sync::atomic::AtomicBool;
 
 use demi_backend_blobs::ObjectError;
 use demi_backend_blobs::store as objects;
-use demi_backend_runners::install::RunnerReleases;
+use demi_backend_runners::install::{RunnerReleases, read_runner_release};
 use demi_backend_runners::native::NativeCatalog;
+use demi_runner_protocol::release::RunnerRelease;
 use demi_backend_runners::publication::{PublicationError, publish_native, release_files};
 use demi_backend_cloud::CloudServices;
 use demi_backend_cloud::client::MachinesClient;
@@ -70,6 +71,8 @@ pub enum StartError {
     Objects(#[from] ObjectError),
     #[error(transparent)]
     Publication(#[from] PublicationError),
+    #[error("the release's runner release cannot be read: {0}")]
+    RunnerRelease(String),
     #[error(transparent)]
     Services(#[from] ServicesError),
     #[error("the shard threads cannot start: {0}")]
@@ -198,7 +201,18 @@ pub async fn publish_commands(
     let files = release_files(release).await?;
     let objects = objects::open(&config.data_dir, &config.storage).await?;
     let commands = release.join("commands");
-    Ok(publish_native(&commands, files, &objects, cancel).await?)
+    let runners = read_runner_release(&release.join("runners/manifest.json"), RunnerRelease::decode)
+        .await
+        .map_err(StartError::RunnerRelease)?;
+    Ok(publish_native(
+        &commands,
+        files,
+        demi_shared_artifacts::WORKSPACE_VERSION,
+        runners.as_ref(),
+        &objects,
+        cancel,
+    )
+    .await?)
 }
 
 impl Backend {

@@ -239,6 +239,7 @@ fn reset_params(machine: &Machine, operation: &ManagedOperation, capacity: Capac
         operation_id: operation.id.to_string(),
         base_version: operation.base_version.to_string(),
         capacity,
+        machine: crate::machine::sandbox_machine(&machine.device),
     }
 }
 
@@ -264,6 +265,7 @@ pub async fn recover_clouds(
             operation_id: operation.id.to_string(),
             base_version: operation.base_version.to_string(),
             capacity: crate::machine::capacity(control, &record).await?,
+            machine: crate::machine::sandbox_machine(&record),
         };
         // The reset stops a sandbox that still runs before its disk step.
         cloud.machines.call(params).await?;

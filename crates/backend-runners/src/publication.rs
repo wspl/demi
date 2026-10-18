@@ -16,7 +16,9 @@ use std::path::{Path as FilePath, PathBuf};
 use bytes::Bytes;
 use demi_backend_blobs::store::Objects;
 use demi_command_protocol::{PackageArtifact, PackageDescriptor};
-use demi_runner_protocol::release::{FilesLocation, SERVER_RELEASE, ServerRelease, compressed_file};
+use demi_runner_protocol::release::{
+    FilesLocation, RunnerRelease, SERVER_RELEASE, ServerRelease, compressed_file,
+};
 use object_store::path::Path;
 use object_store::{
     Attribute, Attributes, GetOptions, ObjectStore, PutMode, PutOptions, PutPayload,
@@ -25,6 +27,7 @@ use percent_encoding::{AsciiSet, NON_ALPHANUMERIC, utf8_percent_encode};
 use tokio_util::sync::CancellationToken;
 
 use crate::native::{Artifacts, NativeCatalog};
+use crate::retention::keep_releases;
 use crate::sourcing::{ReleaseArtifact, Sourcing};
 
 /// The key prefix of every command package object in the store
@@ -33,12 +36,12 @@ pub const PREFIX: &str = "native";
 
 /// The metadata keys of the SHA-256 and the size of what an object stands
 /// for.
-const SHA256: &str = "sha256";
+pub(crate) const SHA256: &str = "sha256";
 const SIZE: &str = "size";
 
 /// What a package key leaves unencoded in a version: what a URI component
 /// may carry as it is.
-const COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
+pub(crate) const COMPONENT: &AsciiSet = &NON_ALPHANUMERIC
     .remove(b'-')
     .remove(b'_')
     .remove(b'.')
@@ -70,6 +73,10 @@ pub enum PublicationError {
     Record { path: PathBuf, reason: String },
     #[error("an immutable native artifact object differs from the one in place: {0}")]
     Conflict(String),
+    #[error("the native store's object {key} is not valid: {reason}")]
+    Corrupt { key: String, reason: String },
+    #[error("the native store lacks what a kept release names: {0}")]
+    Missing(String),
     #[error("the object store failed: {0}")]
     Store(#[from] object_store::Error),
     #[error("native artifact publication was interrupted")]
@@ -94,17 +101,34 @@ pub async fn release_files(release: &FilePath) -> Result<FilesLocation, Publicat
 /// Publishes the releases in `commands`, a server release's `commands/`,
 /// into `objects`, and makes the catalog of them, which the conversations'
 /// commands bind to and whose executables come from `files`, the release's
-/// files. The backend accepts requests only once this completed; `cancel`
-/// interrupts it.
+/// files. Then it records server release `version`, whose runner release is
+/// `runners`, and removes the packages of older releases
+/// ([`crate::retention`]). The backend accepts requests only once this
+/// completed; `cancel` interrupts it.
 pub async fn publish_native(
     commands: &FilePath,
     files: FilesLocation,
+    version: &str,
+    runners: Option<&RunnerRelease>,
     objects: &Objects,
     cancel: &CancellationToken,
 ) -> Result<NativeCatalog, PublicationError> {
     let releases = releases(commands).await?;
     let verified = verify_all(&releases).await?;
     publish(&verified, &*objects.store, cancel).await?;
+    match keep_releases(&*objects.store, version, &verified, runners, cancel).await {
+        Ok(pruned) => tracing::info!(
+            records = pruned.records,
+            mappings = pruned.mappings,
+            descriptors = pruned.descriptors,
+            blobs = pruned.blobs,
+            "the native store keeps this release and the one before"
+        ),
+        Err(PublicationError::Cancelled) => return Err(PublicationError::Cancelled),
+        // What stays is only stored, never served wrongly; the next start
+        // prunes again.
+        Err(error) => tracing::warn!("the native store's older releases stay: {error}"),
+    }
     let mut executables = HashMap::new();
     for (release, descriptor) in releases.iter().zip(&verified) {
         for (target, artifact) in &descriptor.targets {
@@ -193,11 +217,7 @@ async fn publish(
         put_immutable(store, &named, body.clone(), &artifact, None, cancel).await?;
         // The package and version's meaning, published last: a conflicting
         // descriptor fails instead of changing what the version names.
-        let version = utf8_percent_encode(&descriptor.version, COMPONENT);
-        let claim = object(format!(
-            "{PREFIX}/packages/{}/{version}.json",
-            descriptor.id
-        ))?;
+        let claim = mapping(&descriptor.id, &descriptor.version)?;
         put_immutable(store, &claim, body, &artifact, None, cancel).await?;
     }
     Ok(())
@@ -240,9 +260,16 @@ async fn verify(release: &Release) -> Result<PackageDescriptor, PublicationError
     Ok(descriptor)
 }
 
+/// The mapping of package `id`'s `version`,
+/// `native/packages/<id>/<version>.json`, the version percent-encoded.
+pub(crate) fn mapping(id: &str, version: &str) -> Result<Path, PublicationError> {
+    let version = utf8_percent_encode(version, COMPONENT);
+    object(format!("{PREFIX}/packages/{id}/{version}.json"))
+}
+
 /// The object at `key`, which is taken as it is: a version's percent
 /// signs are part of its key.
-fn object(key: String) -> Result<Path, PublicationError> {
+pub(crate) fn object(key: String) -> Result<Path, PublicationError> {
     Path::parse(&key).map_err(|error| PublicationError::Release {
         directory: PathBuf::from(&key),
         reason: format!("no object key: {error}"),
@@ -337,6 +364,7 @@ mod tests {
     use std::sync::Arc;
 
     use demi_command_protocol::{ArtifactLocation, TARGETS};
+    use object_store::ObjectStoreExt as _;
     use object_store::aws::AmazonS3Builder;
     use sha2::{Digest as _, Sha256};
     use tempfile::TempDir;
@@ -359,6 +387,12 @@ mod tests {
 
     impl Fixture {
         fn new(targets: &[&str]) -> Self {
+            Self::release("1.0.0+build", targets, executable)
+        }
+
+        /// A release whose package is of `version` and whose executable for
+        /// a target is `executable`'s bytes.
+        fn release(version: &str, targets: &[&str], executable: impl Fn(&str) -> Vec<u8>) -> Self {
             let commands = tempfile::tempdir().unwrap();
             let files = tempfile::tempdir().unwrap();
             let release = commands.path().join("commands");
@@ -373,10 +407,10 @@ mod tests {
                 .unwrap();
                 std::fs::write(files.path().join(compressed_file("commands", target)), encoded)
                     .unwrap();
-                artifacts.insert((*target).to_owned(), serde_json::to_value(artifact(target)).unwrap());
+                artifacts.insert((*target).to_owned(), serde_json::to_value(artifact_of(&bytes)).unwrap());
             }
             let descriptor = serde_json::json!({
-                "id": "example.commands", "version": "1.0.0+build", "protocolVersion": 1,
+                "id": "example.commands", "version": version, "protocolVersion": 1,
                 "operations": ["fixture"], "targets": artifacts,
             });
             std::fs::write(release.join("descriptor.json"), descriptor.to_string()).unwrap();
@@ -388,8 +422,20 @@ mod tests {
         }
 
         async fn publish(&self, objects: &Objects) -> Result<NativeCatalog, PublicationError> {
+            self.publish_as(objects, "0.1.0", None).await
+        }
+
+        /// Publishes as server release `version`, whose runner release is
+        /// `runners`, starts.
+        async fn publish_as(
+            &self,
+            objects: &Objects,
+            version: &str,
+            runners: Option<&RunnerRelease>,
+        ) -> Result<NativeCatalog, PublicationError> {
             let cancel = CancellationToken::new();
-            publish_native(self.commands.path(), self.files(), objects, &cancel).await
+            publish_native(self.commands.path(), self.files(), version, runners, objects, &cancel)
+                .await
         }
     }
 
@@ -399,9 +445,12 @@ mod tests {
     }
 
     fn artifact(target: &str) -> PackageArtifact {
-        let bytes = executable(target);
+        artifact_of(&executable(target))
+    }
+
+    fn artifact_of(bytes: &[u8]) -> PackageArtifact {
         PackageArtifact {
-            sha256: hex::encode(Sha256::digest(&bytes)),
+            sha256: hex::encode(Sha256::digest(bytes)),
             size: bytes.len() as u64,
         }
     }
@@ -432,14 +481,21 @@ mod tests {
         let fixture = Fixture::new(TARGETS);
         let catalog = fixture.publish(&objects).await.unwrap();
         assert!(catalog.package("example.commands").is_some());
-        // Publishing stores no executable.
-        let written = fake.written();
+        // Publishing stores no executable; the release's record, which each
+        // start writes again, is not a package's.
+        let packages = || -> Vec<String> {
+            fake.written()
+                .into_iter()
+                .filter(|key| !key.starts_with("native/releases/"))
+                .collect()
+        };
+        let written = packages();
         assert_eq!(written.len(), 2, "{written:?}");
         assert!(written[0].starts_with("native/descriptors/"), "{written:?}");
         assert_eq!(written[1], CLAIM);
         // A second start finds its objects in place.
         fixture.publish(&objects).await.unwrap();
-        assert_eq!(fake.written().len(), 2);
+        assert_eq!(packages().len(), 2);
 
         // The same version naming other operations is refused, and the
         // version names what it named.
@@ -457,6 +513,139 @@ mod tests {
         let claim: serde_json::Value =
             serde_json::from_slice(&fake.object(CLAIM).unwrap()).unwrap();
         assert_eq!(claim["operations"], serde_json::json!(["fixture"]));
+    }
+
+    /// One server release of the pruning tests: its version, its package's
+    /// release, its runner release, the executables a runner's need and an
+    /// update store, and the keys of its record, mapping, descriptor and
+    /// the two executables, in that order.
+    struct Started {
+        fixture: Fixture,
+        version: String,
+        runners: RunnerRelease,
+        executables: [Vec<u8>; 2],
+        keys: Vec<Path>,
+    }
+
+    impl Started {
+        /// Server release `0.<index>.0`, whose package is `1.<index>.0`.
+        fn new(index: u32) -> Self {
+            let package = format!("1.{index}.0");
+            let bytes = format!("artifact of {package}").into_bytes();
+            let fixture = Fixture::release(&package, &TARGETS[..1], |_| bytes.clone());
+            let runner = format!("runner of {package}").into_bytes();
+            let runners = RunnerRelease {
+                release: "a".repeat(64),
+                wire: demi_runner_protocol::wire::VERSION,
+                command_protocol: demi_command_protocol::VERSION,
+                targets: [(TARGETS[0].to_owned(), artifact_of(&runner))].into(),
+            };
+            let version = format!("0.{index}.0");
+            let text = std::fs::read(fixture.commands.path().join("commands/descriptor.json")).unwrap();
+            let digest = PackageDescriptor::parse(serde_json::from_slice(&text).unwrap())
+                .unwrap()
+                .digest()
+                .unwrap();
+            let keys = vec![
+                object(format!("native/releases/{version}.json")).unwrap(),
+                mapping("example.commands", &package).unwrap(),
+                object(format!("native/descriptors/{digest}.json")).unwrap(),
+                blob(&artifact_of(&bytes).sha256).unwrap(),
+                blob(&artifact_of(&runner).sha256).unwrap(),
+            ];
+            Self {
+                fixture,
+                version,
+                runners,
+                executables: [bytes, runner],
+                keys,
+            }
+        }
+
+        /// The release's start, then what a runner's need and an update
+        /// store.
+        async fn start(&self, objects: &Objects) {
+            self.fixture
+                .publish_as(objects, &self.version, Some(&self.runners))
+                .await
+                .unwrap();
+            for stored in &self.executables {
+                let key = blob(&artifact_of(stored).sha256).unwrap();
+                objects.store.put(&key, stored.clone().into()).await.unwrap();
+            }
+        }
+
+        /// Which of its keys the store holds.
+        async fn held(&self, store: &dyn ObjectStore) -> Vec<bool> {
+            let mut held = Vec::new();
+            for key in &self.keys {
+                held.push(store.head(key).await.is_ok());
+            }
+            held
+        }
+    }
+
+    /// Both stores the pruning works on, a local one and the S3 fake.
+    fn both_stores(data: &FilePath, fake: &FakeS3) -> [(&'static str, Objects); 2] {
+        [
+            ("local", local(data)),
+            ("S3", Objects { store: Arc::new(fake.client()), signer: None }),
+        ]
+    }
+
+    /// Three releases start one after another, each with its package's
+    /// executable and its runner's stored, and a blob an interrupted
+    /// publication left beside them. The third's start removes the first's
+    /// record, mapping, descriptor and executables and the stray blob, and
+    /// keeps its own and the second's. A rollback to the second then keeps
+    /// the third, the release that ran before it. Local store and S3 alike.
+    #[tokio::test]
+    async fn a_start_keeps_its_release_and_the_one_before_and_removes_older_packages() {
+        let data = tempfile::tempdir().unwrap();
+        let fake = FakeS3::start().await;
+        for (name, objects) in &both_stores(data.path(), &fake) {
+            let store = &*objects.store;
+            let releases: Vec<_> = (1..=3).map(Started::new).collect();
+            releases[0].start(objects).await;
+            releases[1].start(objects).await;
+            let stray = blob(&"0".repeat(64)).unwrap();
+            store.put(&stray, Bytes::from_static(b"interrupted").into()).await.unwrap();
+            releases[2].start(objects).await;
+            assert_eq!(releases[0].held(store).await, [false; 5], "{name}: the first release stays");
+            assert_eq!(releases[1].held(store).await, [true; 5], "{name}: the release before goes");
+            assert_eq!(releases[2].held(store).await, [true; 5], "{name}: the release goes");
+            assert!(store.head(&stray).await.is_err(), "{name}: the stray blob stays");
+
+            releases[1].start(objects).await;
+            assert_eq!(releases[2].held(store).await, [true; 5], "{name}: the rolled-back release goes");
+        }
+    }
+
+    /// The store lost the descriptor of the release before, as damage would.
+    /// The next start cannot tell that release's executables from what no
+    /// release names, so it removes nothing: not those executables, not the
+    /// older release, not a stray blob.
+    #[tokio::test]
+    async fn a_start_on_a_store_that_lacks_a_kept_descriptor_removes_nothing() {
+        let data = tempfile::tempdir().unwrap();
+        let fake = FakeS3::start().await;
+        for (name, objects) in &both_stores(data.path(), &fake) {
+            let store = &*objects.store;
+            let releases: Vec<_> = (1..=3).map(Started::new).collect();
+            releases[0].start(objects).await;
+            releases[1].start(objects).await;
+            store.delete(&releases[1].keys[2]).await.unwrap();
+            let stray = blob(&"0".repeat(64)).unwrap();
+            store.put(&stray, Bytes::from_static(b"interrupted").into()).await.unwrap();
+            releases[2].start(objects).await;
+            assert_eq!(releases[0].held(store).await, [true; 5], "{name}: the older release went");
+            assert_eq!(
+                releases[1].held(store).await,
+                [true, true, false, true, true],
+                "{name}: the release before lost more"
+            );
+            assert!(store.head(&stray).await.is_ok(), "{name}: the stray blob went");
+        }
     }
 
     /// The first `demi file edit` on a laptop of a target: the runner asks
@@ -660,20 +849,20 @@ mod tests {
         let cancel = CancellationToken::new();
         let commands = tempfile::tempdir().unwrap();
         let files = || FilesLocation::Directory(commands.path().to_owned());
-        let catalog = publish_native(commands.path(), files(), &objects, &cancel)
+        let catalog = publish_native(commands.path(), files(), "0.1.0", None, &objects, &cancel)
             .await
             .unwrap();
         assert!(catalog.package(BROWSER_PACKAGE).is_none());
         assert!(!catalog.serves(BROWSER_PACKAGE, &[]));
         let absent = commands.path().join("absent");
-        let missing = publish_native(&absent, files(), &objects, &cancel).await;
+        let missing = publish_native(&absent, files(), "0.1.0", None, &objects, &cancel).await;
         assert!(
             matches!(missing, Err(PublicationError::Commands { .. })),
             "{:?}",
             missing.err()
         );
         std::fs::create_dir(commands.path().join("not a name")).unwrap();
-        let refused = publish_native(commands.path(), files(), &objects, &cancel).await;
+        let refused = publish_native(commands.path(), files(), "0.1.0", None, &objects, &cancel).await;
         assert!(
             matches!(refused, Err(PublicationError::Commands { .. })),
             "{:?}",

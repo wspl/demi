@@ -488,6 +488,7 @@ blobs/<userId>/<sha256>                uploads, transcript media, edit copies an
 native/blobs/<sha256>                  a command package's or the runner's executable
 native/descriptors/<digest>.json       a command package's descriptor
 native/packages/<id>/<version>.json    the descriptor a package version names
+native/releases/<version>.json         what a server release names: its package versions and runner executables
 ```
 
 `DEMI_STORAGE` chooses where the store lives, and the two choices are
