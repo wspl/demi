@@ -74,7 +74,7 @@ const renderedHtml = computed(() => {
 
 <template>
   <pre
-    class="whitespace-pre-wrap font-mono text-xs leading-5 text-fg-muted wrap-anywhere"
+    class="overflow-x-auto whitespace-pre font-mono text-xs leading-5 text-fg-muted"
     v-html="renderedHtml"
   />
 </template>
