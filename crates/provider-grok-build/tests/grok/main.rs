@@ -78,16 +78,16 @@ pub(crate) fn releases_at(vendor: &MockVendor, clock: Arc<dyn Clock>) -> GrokRel
 }
 
 /// A provider whose chat proxy and issuer are the scripted vendor. Its
-/// pointer is at port 0, which refuses at once, so every request names the
-/// built-in release and the vendor sees only the provider's requests.
+/// release is the built-in one, believed as read now, so every request
+/// names it, the vendor sees only the provider's requests, and no read's
+/// timeout moves a paused clock.
 pub(crate) fn provider(
     vendor: &MockVendor,
     pool: &MemoryCredentialPool,
     account: Option<&str>,
 ) -> GrokProvider {
     let clock: Arc<dyn Clock> = Arc::new(FixedClock(NOW.parse().unwrap()));
-    let url = "http://127.0.0.1:0/cli/stable".parse().unwrap();
-    let releases = GrokReleases::new(url, reqwest::Client::new(), clock.clone());
+    let releases = GrokReleases::built_in(clock.clone());
     provider_at(vendor, pool, account, clock, releases)
 }
 

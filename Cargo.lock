@@ -3255,6 +3255,7 @@ dependencies = [
  "async-stream",
  "bytes",
  "demi-provider-common",
+ "demi-provider-grok-build",
  "demi-shared-types",
  "futures-util",
  "http",

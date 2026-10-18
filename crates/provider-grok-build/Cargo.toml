@@ -14,9 +14,9 @@ test = false
 bench = false
 
 [features]
-# The body of a request (`testing`), for the tests of what sends this
-# provider's requests.
-testing = []
+# The body of a request and a release reader that reads nothing, for the
+# tests of this provider and of what sends its requests.
+testing = ["demi-provider-common/testing"]
 
 [dependencies]
 demi-shared-types = { path = "../shared-types" }
@@ -36,6 +36,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 demi-provider-common = { path = "../provider-common", features = ["testing"] }
+demi-provider-grok-build = { path = ".", features = ["testing"] }
 # The device login waits at least a second between polls; its tests run on
 # a paused clock.
 tokio = { workspace = true, features = ["test-util"] }

@@ -208,13 +208,9 @@ impl Family {
                     "clientId": "client-1", "userId": "user-1", "email": "user@example.com",
                 });
                 let pool = pool_with("cred-g", secret.to_string()).await;
-                // Port 0 refuses at once, so every request names the
-                // built-in release and the vendor sees no read of the pointer.
-                let releases = GrokReleases::new(
-                    "http://127.0.0.1:0/cli/stable".parse().unwrap(),
-                    reqwest::Client::new(),
-                    clock.clone(),
-                );
+                // Believed as read now, so every request names the built-in
+                // release and the vendor sees no read of the pointer.
+                let releases = GrokReleases::built_in(clock.clone());
                 let mut config = GrokConfig::new(Some("cred-g".into()), releases);
                 config.proxy_url = vendor.url("/v1").parse().unwrap();
                 config.issuer_url = vendor.url("").parse().unwrap();

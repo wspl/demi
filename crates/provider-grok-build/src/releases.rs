@@ -30,21 +30,34 @@ impl GrokReleases {
     /// The releases the pointer at `url` names, read with `http` and
     /// believed for six hours by `clock`.
     pub fn new(url: Url, http: reqwest::Client, clock: Arc<dyn Clock>) -> Self {
-        let source = ReleaseSource {
-            name: "Grok CLI",
-            url,
-            accept: "text/plain",
-            // The Grok CLI release built into the provider.
-            built_in: "1.0.62",
-            version: first_line,
-        };
-        Self(KeptRelease::new(source, http, clock))
+        Self(KeptRelease::new(source(url), http, clock))
+    }
+
+    /// The release built into the provider, believed by `clock` as read
+    /// now, so that a request reads no pointer while `clock` stays within
+    /// six hours.
+    #[cfg(feature = "testing")]
+    pub fn built_in(clock: Arc<dyn Clock>) -> Self {
+        let url = Self::URL.parse().expect("the pointer's address is a URL");
+        Self(KeptRelease::built_in(source(url), clock))
     }
 
     /// The version a request names now, as header text, reading the pointer
     /// again in the background when the version is stale.
     pub(crate) fn current(&self) -> HeaderValue {
         HeaderValue::from_str(&self.0.current()).expect("a version is header text")
+    }
+}
+
+/// The pointer at `url`.
+fn source(url: Url) -> ReleaseSource {
+    ReleaseSource {
+        name: "Grok CLI",
+        url,
+        accept: "text/plain",
+        // The Grok CLI release built into the provider.
+        built_in: "1.0.62",
+        version: first_line,
     }
 }
 

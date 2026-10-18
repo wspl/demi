@@ -69,6 +69,21 @@ impl KeptRelease {
         }))
     }
 
+    /// The release built into `source`, believed as read now by `clock`, so
+    /// that no read starts while `clock` stays within six hours: a test
+    /// whose requests name the built-in release opens no socket for it,
+    /// whose answer would differ by system and, on a paused clock, let the
+    /// read's timeout move the time.
+    #[cfg(feature = "testing")]
+    pub fn built_in(source: ReleaseSource, clock: Arc<dyn Clock>) -> Self {
+        let version = source.built_in.parse().expect("the built-in release is a version");
+        Self(Arc::new(Kept {
+            source,
+            http: reqwest::Client::new(),
+            newest: KeptRead::read_now(LIFETIME, clock, version),
+        }))
+    }
+
     /// The version a request names now, the last one read or the built-in
     /// one before a read succeeds. It starts no read.
     pub fn version(&self) -> String {
