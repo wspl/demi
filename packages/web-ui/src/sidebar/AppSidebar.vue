@@ -54,10 +54,10 @@ const props = defineProps<{
   activeId: string | null
   /** `loading` is a spinner, not a first-run empty list. */
   listStatus?: ListLoad
-  /** The entries between New and Archived, each opening its settings section. */
+  /** The entries after Search, before Automations and Archived, each opening its settings section. */
   sectionEntries?: readonly SidebarEntry[]
   /**
-   * The Automations entry under Archived (`automations.md` § Where the user
+   * The Automations entry above Archived, which ends the list (`automations.md` § Where the user
    * sees them): its count, the runs that notified and whose conversation
    * was not opened since, and whether its page is the one open; none
    * without the entry.
@@ -569,11 +569,6 @@ function selectProjectConversations(project: SidebarProject): void {
         @click="emit('openSettings', entry.section)"
       />
       <SidebarNavItem
-        :icon="Archive"
-        :label="t('nav.archived')"
-        @click="emit('openSettings', 'archived')"
-      />
-      <SidebarNavItem
         v-if="automations"
         :icon="Zap"
         :label="t('nav.automations')"
@@ -581,6 +576,11 @@ function selectProjectConversations(project: SidebarProject): void {
         :count-label="t('nav.unreadRuns', { count: automations.count })"
         :pressed="automations.open"
         @click="emit('openAutomations')"
+      />
+      <SidebarNavItem
+        :icon="Archive"
+        :label="t('nav.archived')"
+        @click="emit('openSettings', 'archived')"
       />
     </div>
 

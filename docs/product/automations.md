@@ -159,7 +159,8 @@ which stays where it is in the sidebar.
 
 ## Where the user sees them
 
-**Automations** in the sidebar, under Archived, opens the Automations page
+**Automations** in the sidebar, above Archived, which always ends the
+sidebar's entries, opens the Automations page
 in the main area. Its count is the runs that notified and whose
 conversation the user has not opened since.
 
