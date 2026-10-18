@@ -56,14 +56,17 @@ pub fn comments_markdown(comments: &[MessageComment]) -> Option<String> {
     }
     let pairs: Vec<String> = comments
         .iter()
-        .map(|comment| {
-            let quote: Vec<String> = comment
-                .quote
-                .lines()
-                .map(|line| if line.is_empty() { ">".to_owned() } else { format!("> {line}") })
-                .collect();
-            format!("{}\n\n{}", quote.join("\n"), comment.text)
-        })
+        .map(|comment| format!("{}\n\n{}", markdown_quote(&comment.quote), comment.text))
         .collect();
     Some(pairs.join("\n\n"))
+}
+
+/// `text` as a Markdown quote, each of its lines after `> `, an empty one as
+/// `>`: how the model reads the words a comment or a side question quotes.
+pub fn markdown_quote(text: &str) -> String {
+    let lines: Vec<String> = text
+        .lines()
+        .map(|line| if line.is_empty() { ">".to_owned() } else { format!("> {line}") })
+        .collect();
+    lines.join("\n")
 }

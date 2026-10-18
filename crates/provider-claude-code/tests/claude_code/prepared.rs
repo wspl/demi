@@ -173,6 +173,7 @@ async fn a_machine_holds_two_prepared_processes_and_a_third_closes_the_oldest() 
         let mut runtime = runtime_of(&provider, &placement);
         let prepared = InferenceRequest {
             session_id: session.into(),
+            affinity: None,
             ..request(answered())
         };
         runtime.prepare(prepared, Ahead::Opened).await;

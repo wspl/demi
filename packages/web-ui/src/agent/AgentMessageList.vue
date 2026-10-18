@@ -44,6 +44,7 @@ import type { HeldBlock } from '@demicodes/conversation-client'
 import type { StepsNotSharedRow } from './pending-steers'
 import ReplyComments from './comments/ReplyComments.vue'
 import { sentComments, type ReplyCommenting } from './comments/comments'
+import type { ReplyAsking } from './comments/asks'
 import { provideReplySelectionTools } from './reply-selection'
 
 const props = withDefaults(defineProps<{
@@ -111,6 +112,12 @@ const props = withDefaults(defineProps<{
    * page or in a subagent's window, the replies take none and show no mark.
    */
   commenting?: ReplyCommenting
+  /**
+   * The transcript's side questions and what to do with them: the replies
+   * take questions and show each one's words, card and fold
+   * (`comments-and-ask.md` § Side questions). Absent, they take none.
+   */
+  asking?: ReplyAsking
 }>(), {
   // Vue reads an absent boolean prop as false; a list given no window is a whole transcript.
   atStart: true,
@@ -460,7 +467,7 @@ defineExpose({
         :style="{ paddingBottom: 'var(--transcript-clearance)' }"
       >
         <div ref="rowsRoot" class="relative w-full" :style="{ height: `${totalSize}px` }">
-          <ReplyComments v-if="commenting" ref="comments" :root="rowsRoot" :commenting="commenting" :sent="sent" />
+          <ReplyComments v-if="commenting" ref="comments" :root="rowsRoot" :commenting="commenting" :sent="sent" :asking="asking" />
           <div
             v-for="item in virtualItems"
             :key="String(item.key)"

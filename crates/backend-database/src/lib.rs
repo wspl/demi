@@ -46,6 +46,7 @@ pub mod search;
 pub mod server_log;
 pub mod shares;
 pub mod sequences;
+pub mod side_questions;
 pub mod sidebar;
 mod sqlite;
 pub mod subagents;

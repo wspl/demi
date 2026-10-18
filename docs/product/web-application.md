@@ -324,8 +324,8 @@ own objects, such as the file browser's files, declare theirs the same way
   bubble or on text selected in it, and so does text selected in the
   agent's reply. The text selection's toolbar, which stands by a selection
   in the agent's reply, above it on the desktop and under it on a phone,
-  holds the tools that act on the selection in place, **Comment**
-  ([Comments and side questions](comments-and-ask.md)); on a phone, which
+  holds the tools that act on the selection in place, **Comment** and
+  **Ask** ([Comments and side questions](comments-and-ask.md)); on a phone, which
   has no right-click, it adds Send to Conversation, and the system's own
   callout offers Copy. Its submenu
   starts with a search field over every conversation, the archived ones

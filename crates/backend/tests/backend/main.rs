@@ -74,6 +74,7 @@ mod saved;
 mod search;
 mod settings;
 mod shares;
+mod side_questions;
 mod sign_in;
 mod skills;
 mod startup;

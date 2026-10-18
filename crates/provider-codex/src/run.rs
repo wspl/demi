@@ -33,7 +33,7 @@ pub(crate) fn run(
         if cancel.is_cancelled() {
             return;
         }
-        let session_id = request.session_id.clone();
+        let session_id = request.cache_session().to_owned();
         let request_id = request.request_id.clone();
         let model = request.model_id.clone();
         let websocket = shared.transport != TransportMode::Sse;

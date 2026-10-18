@@ -140,6 +140,8 @@ import GalleryBusyRequest from '../components/GalleryBusyRequest.vue'
 import GalleryStreamingText from '../components/GalleryStreamingText.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
 import GalleryComments from '../components/GalleryComments.vue'
+import GalleryAsks from '../components/GalleryAsks.vue'
+import GalleryPhoneFrame from '../components/GalleryPhoneFrame.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
 import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
 import GalleryModelPreference from '../components/GalleryModelPreference.vue'
@@ -3366,6 +3368,47 @@ onBeforeUnmount(() => {
       <GallerySection title="Sent Comments" note="A message sent with two comments: its bubble shows each quoted text as a quote, its comment under it, then the typed text, and the reply keeps their marks, dimmer; their card says Sent. A share's page shows the same bubble and no marks.">
         <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
           <GalleryComments seed="sent" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Ask" note="A side question on a reply's words (`comments-and-ask.md` § Side questions), live from scratch: select words of the reply and choose Ask in the toolbar, after Comment, write a question and press Return. The words turn purple with a purple underline, and a card opens under their block on the page's background, its border the line color: a purple question mark, the title in secondary text, Ask until the small model's title arrives, and two ghost icon buttons, ↗ Open Full Conversation and × Collapse; then the question in bold and one status line while the answer is made, the step it runs, and the short answer. The conversation's own agent never learns of it. Hovering the words deepens them. The answers are scripted.">
+        <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
+          <GalleryAsks seed="live" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Ask · Asking" note="Just asked: the card is titled Ask until the small model's title arrives, and its one status line says it thinks. Reply still asks a follow-up, × folds it and ↗ opens the side conversation.">
+        <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
+          <GalleryAsks seed="asking" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Ask · Working" note="Titled, while it works: the one status line names the step it runs, never the steps themselves; ↗ shows them all in the subagent window.">
+        <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
+          <GalleryAsks seed="working" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Ask · Answered" note="The question in bold and its short answer, with a bordered Reply below it.">
+        <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
+          <GalleryAsks seed="answered" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Ask · Follow-Up" note="Reply opened a field with a send button and a follow-up typed: Return sends it as the side conversation's next turn, Shift-Return makes a new line, Escape cancels; the card's other controls still do what they say, and an empty field closes when a click lands outside the card.">
+        <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
+          <GalleryAsks seed="follow-up" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Ask · Folded" note="× folded the card into a purple question mark in the reply's right margin at the asked line; a click on the mark or on the purple words opens the card again, scrolled into view.">
+        <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
+          <GalleryAsks seed="folded" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Ask · Failed" note="A failed answer shows the failure's words and its ID, as a turn's failure does, with Retry, which runs the turn again.">
+        <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
+          <GalleryAsks seed="failed" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Ask on a Phone" note="On a phone the selection's toolbar holds Comment, Ask and Send to Conversation; the card spans the reply's width, and ↗ opens the side conversation full screen. Each phone is live.">
+        <div class="flex flex-wrap gap-8">
+          <GalleryPhoneFrame path="/asks-frame" scene="answered" label="An answered side question" active />
+          <GalleryPhoneFrame path="/asks-frame" scene="folded" label="Folded into the margin" active />
         </div>
       </GallerySection>
       <GallerySection

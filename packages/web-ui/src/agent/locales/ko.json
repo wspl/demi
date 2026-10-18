@@ -9,6 +9,17 @@
     "writeFirst": "먼저 댓글을 입력하세요.",
     "title": "댓글"
   },
+  "ask": {
+    "ask": "질문",
+    "placeholder": "이 부분에 대해 질문",
+    "followUpPlaceholder": "이어서 질문",
+    "reply": "답장",
+    "openFull": "전체 대화 열기",
+    "collapse": "접기",
+    "expand": "펼치기",
+    "thinking": "생각 중…",
+    "retry": "다시 시도"
+  },
   "transcript": {
     "accountSwitch": {
       "usage": "{from} 계정이 사용 한도에 도달하여 {to} 계정으로 계속합니다.",

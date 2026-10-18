@@ -7,6 +7,7 @@
 //! behind, so it never queues. A part of the backend that follows a user's
 //! changes as a page does, the search index, watches them the same way.
 
+use std::cell::RefCell;
 use std::collections::{BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 
@@ -241,5 +242,24 @@ impl Drop for Registration {
                 channels.remove(&self.user);
             }
         }
+    }
+}
+
+/// How many times one part of each conversation changed since its shard
+/// started, which its summary carries (`web-api-sync.md` § Revisions counted
+/// in memory), such as its permission requests or its side questions; a
+/// conversation without an entry has changed none. It lives on the user's
+/// shard, which nothing else reaches.
+#[derive(Default)]
+pub struct Revisions(RefCell<HashMap<ConversationId, u64>>);
+
+impl Revisions {
+    pub fn of(&self, conversation: &ConversationId) -> u64 {
+        self.0.borrow().get(conversation).copied().unwrap_or(0)
+    }
+
+    /// Counts a change of `conversation`'s part.
+    pub fn raise(&self, conversation: &ConversationId) {
+        *self.0.borrow_mut().entry(conversation.clone()).or_default() += 1;
     }
 }

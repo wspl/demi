@@ -32,6 +32,7 @@ fn session_request(items: Vec<InferenceItem>, blocks: Vec<(usize, Vec<Value>)>) 
     assert_eq!(start, items.len(), "the blocks give every item");
     InferenceRequest {
         session_id: SESSION.into(),
+        affinity: None,
         blocks: blocks.into(),
         ..request(items)
     }

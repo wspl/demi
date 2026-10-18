@@ -249,6 +249,12 @@ pub struct ConversationSummary {
     /// memory).
     #[garde(range(max = MAX_SAFE_INTEGER))]
     pub permissions_revision: u64,
+    /// Rises with each change of the conversation's side questions in this
+    /// run of the backend, an Ask, a title written or a fold: a page reads
+    /// them only when this is newer than the revision it holds
+    /// (`web-api-sync.md` § Revisions counted in memory).
+    #[garde(range(max = MAX_SAFE_INTEGER))]
+    pub side_questions_revision: u64,
     /// The conversation's shares, its own and its answers', so the header
     /// and an answer open the share dialog on the existing link
     /// (`web-api-conversations.md` § Sharing).

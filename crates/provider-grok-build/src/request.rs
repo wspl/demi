@@ -136,7 +136,7 @@ impl RequestIds {
     pub(crate) fn of(request: &InferenceRequest) -> Self {
         Self {
             model_id: request.model_id.clone(),
-            session_id: request.session_id.clone(),
+            session_id: request.cache_session().to_owned(),
             request_id: request.request_id.clone(),
             turn_id: request.turn_id.clone(),
         }

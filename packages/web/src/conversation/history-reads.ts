@@ -42,6 +42,8 @@ export interface HistoryHolder {
   summaries: Record<string, number>
   shownAt: string | null
   subagents: HistoryAgent[]
+  /** A conversation's side questions, whose transcripts its routes read by their nodes as a subagent's; a share has none. */
+  sides?: HistoryAgent[]
 }
 
 /**
@@ -75,10 +77,12 @@ export function createHistoryReads<T extends HistoryHolder>(
     return readResponse(response, transcriptPageSchema)
   }
 
+  function agentOf(holder: T, node: string): HistoryAgent | undefined {
+    return holder.subagents.find((agent) => agent.id === node) ?? holder.sides?.find((side) => side.id === node)
+  }
+
   function historyOf(holder: T, node: string | null): HeldTranscript {
-    return node === null
-      ? holder.history
-      : holder.subagents.find((agent) => agent.id === node)?.history ?? EMPTY_TRANSCRIPT
+    return node === null ? holder.history : agentOf(holder, node)?.history ?? EMPTY_TRANSCRIPT
   }
 
   /** Takes `page` into the agent's history, with what it names beside its blocks. */
@@ -94,7 +98,7 @@ export function createHistoryReads<T extends HistoryHolder>(
       }
       return
     }
-    const agent = holder.subagents.find((candidate) => candidate.id === node)
+    const agent = agentOf(holder, node)
     if (agent) {
       agent.history = addPage(agent.history, page, live(holder, node))
       agent.failures = { ...agent.failures, ...failures }
@@ -139,7 +143,7 @@ export function createHistoryReads<T extends HistoryHolder>(
     if (node === null) {
       holder.history = keep(holder.history)
     } else {
-      const agent = holder.subagents.find((candidate) => candidate.id === node)
+      const agent = agentOf(holder, node)
       if (agent) {
         agent.history = keep(agent.history)
       }
@@ -207,7 +211,7 @@ export function createHistoryReads<T extends HistoryHolder>(
         holder.failures = { ...holder.failures, ...failures }
         return block
       }
-      const agent = holder.subagents.find((candidate) => candidate.id === node)
+      const agent = agentOf(holder, node)
       if (agent) {
         agent.history = withWholeBlock(agent.history, block)
         agent.failures = { ...agent.failures, ...failures }

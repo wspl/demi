@@ -9,6 +9,17 @@
     "writeFirst": "先にコメントを入力してください。",
     "title": "コメント"
   },
+  "ask": {
+    "ask": "質問",
+    "placeholder": "これについて質問",
+    "followUpPlaceholder": "続けて質問",
+    "reply": "返信",
+    "openFull": "会話全体を開く",
+    "collapse": "折りたたむ",
+    "expand": "展開",
+    "thinking": "思考中…",
+    "retry": "再試行"
+  },
   "transcript": {
     "accountSwitch": {
       "usage": "{from} が利用上限に達したため、{to} で続けます。",

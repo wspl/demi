@@ -22,8 +22,8 @@ use std::sync::Arc;
 
 use demi_agent_store::{AgentTreeStore, RunningCommand, SessionStore, StoredCommand, StoredOutput, StoredSubagent, Switched};
 use demi_agent_store::{
-    Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement, StoreError,
-    media::BlobStore,
+    Checkpoint, CheckpointState, CheckpointUpdate, ChildDirectory, ClosePhase, NodeClose, NodeRecord, Placement, SideOf,
+    StoreError, media::BlobStore,
 };
 use demi_backend_remote_host::decode_output;
 use demi_conversation_socket_protocol::{BlockVersions, PageAt, light_bytes, page, requests};
@@ -130,6 +130,10 @@ impl AgentTreeStore for SqliteTreeStore {
         })
     }
 
+    fn sides(&self) -> LocalBoxFuture<'_, Result<Vec<NodeRecord>, StoreError>> {
+        Box::pin(async move { self.db.call(|connection| sides(connection)).await.map_err(store_error) })
+    }
+
     fn create_node(
         &self,
         record: NodeRecord,
@@ -146,6 +150,8 @@ impl AgentTreeStore for SqliteTreeStore {
                         return Ok(Err(StoreError::Failed(format!("node {} already exists", record.id))));
                     }
                     let (phase, closed_at, result, failure) = close_columns(record.closed.as_ref());
+                    // A side question is no agent: its number is none.
+                    let number = record.side.is_none().then_some(integer(record.number));
                     transaction.execute(
                         "INSERT INTO nodes (id, number, parent_id, description, profile, instructions, round, started_at,
                            can_spawn, closed_phase, closed_at, result, failure, delivered, state,
@@ -153,7 +159,7 @@ impl AgentTreeStore for SqliteTreeStore {
                          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, 0, ?16, ?17, ?18, ?19, ?20, ?21)",
                         params![
                             record.id.as_str(),
-                            integer(record.number),
+                            number,
                             record.parent.as_ref().map(NodeId::as_str),
                             record.description,
                             record.profile,
@@ -175,6 +181,21 @@ impl AgentTreeStore for SqliteTreeStore {
                             record.started_by.as_ref().map(BlockId::as_str),
                         ],
                     )?;
+                    if let Some(side) = &record.side {
+                        transaction.execute(
+                            "INSERT INTO side_questions (node_id, block_id, start_offset, end_offset, quote, question, asked_at)
+                             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                            params![
+                                record.id.as_str(),
+                                side.block.as_str(),
+                                integer(side.start),
+                                integer(side.end),
+                                side.quote,
+                                side.question,
+                                side.asked_at.as_millisecond(),
+                            ],
+                        )?;
+                    }
                     if let Err(refused) = write_checkpoint(&transaction, &record.id, &initial, &completions)? {
                         return Ok(Err(refused));
                     }
@@ -234,7 +255,7 @@ impl AgentTreeStore for SqliteTreeStore {
         id: &'a NodeId,
         round: u64,
         started_at: Timestamp,
-        message: QueuedMessage,
+        message: Option<QueuedMessage>,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         let node = id.clone();
         Box::pin(async move {
@@ -245,9 +266,12 @@ impl AgentTreeStore for SqliteTreeStore {
                     let Some(state) = node_state(&transaction, &node)? else {
                         return Ok(false);
                     };
-                    let state = CheckpointState {
-                        queue: vec![message],
-                        ..state
+                    let state = match message {
+                        Some(message) => CheckpointState {
+                            queue: vec![message],
+                            ..state
+                        },
+                        None => state,
                     };
                     transaction.execute(
                         "UPDATE nodes SET round = ?2, started_at = ?3, closed_phase = NULL, closed_at = NULL,
@@ -829,22 +853,28 @@ fn node_state(
         .transpose()
 }
 
+/// The columns of a node's record, from [`NODES`].
 const NODE_COLUMNS: &str =
     "id, number, parent_id, description, profile, instructions, round, started_at, can_spawn,
      closed_phase, closed_at, result, failure, delivered, forked_from, cwd, cwd_device, cwd_under,
-     context_limit, started_by";
+     context_limit, started_by, side_questions.block_id AS side_block, start_offset, end_offset, quote,
+     question, asked_at";
+
+/// The nodes with what a side question's node asks about.
+const NODES: &str = "nodes LEFT JOIN side_questions ON side_questions.node_id = nodes.id";
 
 fn node_by_id(connection: &Connection, id: &NodeId) -> Result<Option<NodeRecord>, StorageError> {
     let mut statement =
-        connection.prepare(&format!("SELECT {NODE_COLUMNS} FROM nodes WHERE id = ?1"))?;
+        connection.prepare(&format!("SELECT {NODE_COLUMNS} FROM {NODES} WHERE id = ?1"))?;
     let mut rows = statement.query([id.as_str()])?;
     rows.next()?.map(node_row).transpose()
 }
 
-/// A node's direct children in spawn order, the order of their numbers.
+/// A node's direct children in spawn order, the order of their numbers; a
+/// side question is none.
 fn children_of(connection: &Connection, parent: &NodeId) -> Result<Vec<NodeRecord>, StorageError> {
     let mut statement = connection.prepare(&format!(
-        "SELECT {NODE_COLUMNS} FROM nodes WHERE parent_id = ?1 ORDER BY number"
+        "SELECT {NODE_COLUMNS} FROM {NODES} WHERE parent_id = ?1 AND number IS NOT NULL ORDER BY number"
     ))?;
     let mut rows = statement.query([parent.as_str()])?;
     let mut children = Vec::new();
@@ -854,10 +884,54 @@ fn children_of(connection: &Connection, parent: &NodeId) -> Result<Vec<NodeRecor
     Ok(children)
 }
 
-/// A `nodes` row, read from its columns in `NODE_COLUMNS`.
+/// The tree's side questions, in the order they were asked.
+fn sides(connection: &Connection) -> Result<Vec<NodeRecord>, StorageError> {
+    let mut statement = connection.prepare(&format!(
+        "SELECT {NODE_COLUMNS} FROM {NODES} WHERE side_questions.node_id IS NOT NULL ORDER BY asked_at, id"
+    ))?;
+    let mut rows = statement.query([])?;
+    let mut sides = Vec::new();
+    while let Some(row) = rows.next()? {
+        sides.push(node_row(row)?);
+    }
+    Ok(sides)
+}
+
+/// What a side question's node asks about, from its `side_questions` row;
+/// none for an agent, which has no number only if its row is missing.
+fn side_of(row: &Row<'_>) -> Result<Option<SideOf>, StorageError> {
+    const TABLE: &str = "side_questions";
+    let Some(block) = row.get::<_, Option<String>>("side_block")? else {
+        return Ok(None);
+    };
+    Ok(Some(SideOf {
+        block: decode(TABLE, "block_id", BlockId::try_from(block))?,
+        start: decode(TABLE, "start_offset", u64::try_from(row.get::<_, i64>("start_offset")?))?,
+        end: decode(TABLE, "end_offset", u64::try_from(row.get::<_, i64>("end_offset")?))?,
+        quote: row.get("quote")?,
+        question: row.get("question")?,
+        asked_at: instant(row, TABLE, "asked_at")?,
+    }))
+}
+
+/// A `nodes` row with its side question's, read from its columns in
+/// `NODE_COLUMNS`.
 fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
     const TABLE: &str = "nodes";
     let parent: Option<String> = row.get("parent_id")?;
+    let side = side_of(row)?;
+    // A side question takes no number, and every agent has one.
+    let number = match (row.get::<_, Option<i64>>("number")?, &side) {
+        (Some(number), None) => decode(TABLE, "number", u64::try_from(number))?,
+        (None, Some(_)) => 0,
+        _ => {
+            return Err(StorageError::Corrupt {
+                table: TABLE,
+                column: "number",
+                reason: "a node is an agent with a number or a side question without one".into(),
+            });
+        }
+    };
     let phase: Option<String> = row.get("closed_phase")?;
     let closed = match phase {
         None => None,
@@ -907,16 +981,17 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
             });
         }
     };
-    if cwd.is_some() != parent.is_some() {
+    // A side question works in the conversation's directory, as the root.
+    if cwd.is_some() != (parent.is_some() && side.is_none()) {
         return Err(StorageError::Corrupt {
             table: TABLE,
             column: "cwd",
-            reason: "a child has a working directory, and the root none".into(),
+            reason: "a child has a working directory, and the root and a side question none".into(),
         });
     }
     Ok(NodeRecord {
         id: decode(TABLE, "id", NodeId::try_from(row.get::<_, String>("id")?))?,
-        number: decode(TABLE, "number", u64::try_from(row.get::<_, i64>("number")?))?,
+        number,
         parent: parent
             .map(|parent| decode(TABLE, "parent_id", NodeId::try_from(parent)))
             .transpose()?,
@@ -941,6 +1016,7 @@ fn node_row(row: &Row<'_>) -> Result<NodeRecord, StorageError> {
             .map(|block| decode(TABLE, "started_by", BlockId::try_from(block)))
             .transpose()?,
         cwd,
+        side,
     })
 }
 
@@ -1239,10 +1315,13 @@ pub struct SavedVersion {
 
 /// The node's number, 0 for the root, and the saved version of its
 /// transcript, its current path's length as its block count; none when the
-/// tree has no such node.
+/// tree has no such agent, as for a side question, which the search index
+/// leaves out.
 fn node_version_of(transaction: &Transaction<'_>, node: &NodeId) -> Result<Option<(u64, SavedVersion)>, StorageError> {
     let row: Option<(i64, i64, i64)> = transaction
-        .prepare_cached(&format!("SELECT number, output_revision, {PATH_LENGTH} FROM nodes WHERE id = ?1"))?
+        .prepare_cached(&format!(
+            "SELECT number, output_revision, {PATH_LENGTH} FROM nodes WHERE id = ?1 AND number IS NOT NULL"
+        ))?
         .query_row([node.as_str()], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
         .optional()?;
     row.map(|(number, revision, blocks)| {
@@ -1258,10 +1337,10 @@ fn node_version_of(transaction: &Transaction<'_>, node: &NodeId) -> Result<Optio
 }
 
 /// The node's number, 0 for the root: the agent the search index keys its
-/// rows by; none when the tree has no such node.
+/// rows by; none when the tree has no such agent, as for a side question.
 pub fn agent_number(connection: &Connection, node: &NodeId) -> Result<Option<u64>, StorageError> {
     let number: Option<i64> = connection
-        .query_row("SELECT number FROM nodes WHERE id = ?1", [node.as_str()], |row| row.get(0))
+        .query_row("SELECT number FROM nodes WHERE id = ?1 AND number IS NOT NULL", [node.as_str()], |row| row.get(0))
         .optional()?;
     number.map(|number| decode("nodes", "number", u64::try_from(number))).transpose()
 }
@@ -1275,9 +1354,12 @@ pub fn search_versions(connection: &Connection) -> Result<BTreeMap<u64, SavedVer
         .collect())
 }
 
-/// Each node's id, number and the saved version of its transcript.
+/// Each agent's id, number and the saved version of its transcript; a side
+/// question is no agent, and nobody searches it.
 fn saved_nodes(connection: &Connection) -> Result<Vec<(NodeId, u64, SavedVersion)>, StorageError> {
-    let mut statement = connection.prepare(&format!("SELECT id, number, output_revision, {PATH_LENGTH} FROM nodes"))?;
+    let mut statement = connection.prepare(&format!(
+        "SELECT id, number, output_revision, {PATH_LENGTH} FROM nodes WHERE number IS NOT NULL"
+    ))?;
     let mut rows = statement.query([])?;
     let mut nodes = Vec::new();
     while let Some(row) = rows.next()? {
@@ -1838,7 +1920,7 @@ pub fn subagents(connection: &Connection) -> Result<Vec<Subagent>, StorageError>
          )
          SELECT {NODE_COLUMNS}, json_extract(state, '$.model') AS model,
            {STARTED_ON_PATH} AS started_on_path, id IN (SELECT id FROM on_path) AS on_path
-         FROM nodes WHERE parent_id IS NOT NULL ORDER BY number"
+         FROM {NODES} WHERE parent_id IS NOT NULL AND number IS NOT NULL ORDER BY number"
     ))?;
     let mut rows = statement.query([])?;
     let mut nodes = Vec::new();
@@ -1859,7 +1941,8 @@ pub fn subagents(connection: &Connection) -> Result<Vec<Subagent>, StorageError>
 /// § Versions): of the calls whose view names the command, the first, since a stored
 /// look at a command, from before such looks were removed, came after it;
 /// of calls equally early, the oldest agent's, since a fork's copy of its
-/// source's call keeps the call's time (`subagents.md` § Fork).
+/// source's call keeps the call's time (`subagents.md` § Fork), and a side
+/// question's copy comes after every agent's.
 pub fn command_call(
     connection: &Connection,
     command: &CommandId,
@@ -1868,7 +1951,7 @@ pub fn command_call(
         .query_row(
             "SELECT blocks.node_id, blocks.block FROM blocks JOIN nodes ON nodes.id = blocks.node_id
              WHERE json_extract(blocks.block, '$.view.commandId') = ?1
-             ORDER BY json_extract(blocks.block, '$.createdAt'), nodes.number LIMIT 1",
+             ORDER BY json_extract(blocks.block, '$.createdAt'), nodes.number IS NULL, nodes.number LIMIT 1",
             [command.as_str()],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
@@ -1973,6 +2056,7 @@ pub(crate) mod tests {
                     directory: "/w".to_owned(),
                 },
             }),
+            side: None,
         }
     }
 
@@ -2173,5 +2257,7 @@ pub(crate) mod tests {
         store_contract::the_blob_namespace_names_bytes_by_their_sha256(&tree).await;
         let (tree, _stores, _data) = store().await;
         store_contract::each_sequence_gives_its_numbers_once_in_order(&tree).await;
+        let (tree, _stores, _data) = store().await;
+        store_contract::a_side_question_is_no_subagent_and_keeps_what_it_asks(&tree).await;
     }
 }

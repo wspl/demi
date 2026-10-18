@@ -48,11 +48,14 @@ const RESTARTED: &str = "Demi resumed this turn after the backend restarted.";
 
 /// A node's place in its tree, which sets its lifecycle policy: a child
 /// resumes a turn the process interrupted and closes once it is quiescent;
-/// the root leaves both to its client.
+/// the root leaves both to its client. A side question closes once it is
+/// quiescent, and its interrupted turn is its card's to retry, as the
+/// root's is its client's (`comments-and-ask.md` § Side questions).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum NodeRole {
     Root,
     Child,
+    Side,
 }
 
 /// One live node: its role, its session, and its runtime, which holds its
@@ -643,11 +646,11 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         })
     }
 
-    /// A root's turns only: a child's result says what it could not do, and
-    /// its parent's turn decides (`failures-and-recovery.md` § The
-    /// unfinished turn).
+    /// A root's turns and a side question's, whose card offers Retry: a
+    /// child's result says what it could not do, and its parent's turn
+    /// decides (`failures-and-recovery.md` § The unfinished turn).
     fn user_recovers_turns(&self) -> bool {
-        self.node == self.root
+        self.node == self.root || self.record.borrow().side.is_some()
     }
 
     fn reserve_edit(&self) -> LocalBoxFuture<'_, Result<Option<Reservation>, String>> {
@@ -760,8 +763,15 @@ impl<H: HostResolver> SessionRuntime for NodeRuntime<H> {
         definitions()
     }
 
-    fn agent(&self) -> u64 {
-        self.agent
+    /// None for a side question, which is no agent.
+    fn agent(&self) -> Option<u64> {
+        self.record.borrow().side.is_none().then_some(self.agent)
+    }
+
+    /// A side question's requests name the root's session to their
+    /// provider, so they read the conversation's prompt cache.
+    fn affinity(&self) -> Option<String> {
+        self.record.borrow().side.is_some().then(|| self.root.to_string())
     }
 
     /// The commands the node's shells run, oldest first, each with its

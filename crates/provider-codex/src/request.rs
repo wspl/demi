@@ -52,7 +52,7 @@ pub(crate) fn encode(request: &InferenceRequest, websocket: bool) -> Encoded {
         store: false,
         stream: true,
         include: ["reasoning.encrypted_content"],
-        prompt_cache_key: prompt_cache_key(&request.session_id),
+        prompt_cache_key: prompt_cache_key(request.cache_session()),
         text: Text { verbosity: "low" },
         reasoning: responses_reasoning(request.thinking.as_ref(), SummaryOff::Auto),
         service_tier: request.service_tier_id.as_deref(),

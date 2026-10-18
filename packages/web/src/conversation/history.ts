@@ -14,7 +14,8 @@ export function createConversationHistoryReads(signal: () => AbortSignal, live: 
     signal,
     (conversation, node) => node === null
       ? live(conversation)
-      : conversation.subagents.find((agent) => agent.id === node)?.phase === 'running',
+      : conversation.subagents.find((agent) => agent.id === node)?.phase === 'running'
+        || conversation.sides.find((side) => side.id === node)?.sessionPhase === 'running',
     (conversation) => `/conversations/${encodeURIComponent(conversation.id)}/transcript`,
   )
   return {

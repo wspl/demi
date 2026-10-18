@@ -74,3 +74,8 @@ async fn a_compaction_keeps_the_versions_of_what_it_carries() {
 async fn a_rewrite_keeps_its_rows_and_a_switch_brings_them_back() {
     store_contract::a_rewrite_keeps_its_rows_and_a_switch_brings_them_back(&*MemoryTreeStore::new()).await;
 }
+
+#[tokio::test(flavor = "local")]
+async fn a_side_question_is_no_subagent_and_keeps_what_it_asks() {
+    store_contract::a_side_question_is_no_subagent_and_keeps_what_it_asks(&*MemoryTreeStore::new()).await;
+}

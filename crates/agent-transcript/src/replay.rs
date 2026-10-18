@@ -618,7 +618,7 @@ fn permission(outcome: PermissionOutcome) -> &'static str {
 /// `text` as the model receives it: whole when it holds at most 16,000
 /// scalar values, otherwise its first and last 8,000 around a line that
 /// counts the scalar values left out.
-pub(crate) fn bound_text(text: &str) -> Cow<'_, str> {
+pub fn bound_text(text: &str) -> Cow<'_, str> {
     let total = text.chars().count();
     if total <= REPLAY_CHARS {
         return Cow::Borrowed(text);

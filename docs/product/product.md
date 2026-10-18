@@ -18,6 +18,6 @@ its own tools to the CLI it drives
 - [Turns](turns.md): steer or queue, recovering an unfinished turn, following the agent's work, notifications.
 - [Automations](automations.md): starting the agent at a time, on a command's change or a URL's call, its runs, the Automations page and `demi automation`.
 - [Writing a message](composer.md): the composer, input methods, attachments.
-- [Comments and side questions](comments-and-ask.md): commenting on a reply's words, waiting comments in the draft, sending them.
+- [Comments and side questions](comments-and-ask.md): commenting on a reply's words, waiting comments in the draft, sending them; side questions.
 - [Sharing](sharing.md), [Localization](localization.md) and [File previews](file-previews.md).
 - [Provider management](../providers/providers.md#provider-management) in Settings, and the [web app's scope](web-application.md#web-app-scope).

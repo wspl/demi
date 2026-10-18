@@ -9,6 +9,17 @@
     "writeFirst": "請先輸入註解。",
     "title": "註解"
   },
+  "ask": {
+    "ask": "提問",
+    "placeholder": "就此提問",
+    "followUpPlaceholder": "繼續追問",
+    "reply": "回覆",
+    "openFull": "打開完整對話",
+    "collapse": "收合",
+    "expand": "展開",
+    "thinking": "思考中…",
+    "retry": "重試"
+  },
   "transcript": {
     "accountSwitch": {
       "usage": "{from} 已達使用上限，改用 {to} 繼續。",

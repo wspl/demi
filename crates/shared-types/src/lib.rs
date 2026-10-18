@@ -50,13 +50,13 @@ pub use agent_message::{
 };
 pub use block::{
     AbortBlock, AccountSwitchBlock, AgentMessageBlock, AutomationMark, Block, CommandEnd, CommandReport, CompactionBoundaryBlock, CompactionMarkerBlock,
-    ContextBlock, ErrorBlock, ErrorDevice, EXECUTION_SOURCE, SKILLS_SOURCE, INSTRUCTIONS_SOURCE, InstructionEntry, KeptMessage, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, ShellCommand, SteerBlock, StoppedBy,
+    ContextBlock, ErrorBlock, ErrorDevice, EXECUTION_SOURCE, SKILLS_SOURCE, INSTRUCTIONS_SOURCE, InstructionEntry, SIDE_QUESTIONS_SOURCE, KeptMessage, RedactedThinkingBlock, ReportEvent, ResponseBlock, ResumeBlock, ShellCommand, SteerBlock, StoppedBy,
     WORKING_DIRECTORY_SOURCE,
     TextBlock, ThinkingBlock, ToolCallBlock, ToolCallStatus, UserBlock, WakeupBlock, client_block,
     client_blocks, WakeupPlacement,
 };
 pub use bytes::B64Bytes;
-pub use comment::{MessageComment, comments_markdown};
+pub use comment::{MessageComment, comments_markdown, markdown_quote};
 pub use cost::{Cost, Currency};
 pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};
 pub use content::{

@@ -430,8 +430,8 @@ impl From<String> for ContextAnswer {
 /// § Context), such as the conversation's execution context, the
 /// instructions or a plugin.
 pub trait ContextSource {
-    /// The name its blocks record: `execution`, `instructions`, or a
-    /// plugin's id.
+    /// The name its blocks record: `execution`, `instructions`,
+    /// `side_questions`, or a plugin's id.
     fn name(&self) -> &str;
 
     /// What the node must learn now, or nothing. `seen` is the text of the

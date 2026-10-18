@@ -76,8 +76,9 @@ export function rangeOf(root: HTMLElement, anchor: TextAnchor): Range | null {
 }
 
 /** Whether the point lies on one of `range`'s line boxes. */
-export function rangeHas(range: Range, x: number, y: number): boolean {
-  for (const rect of range.getClientRects()) {
+export function rangeHas(range: Range | StaticRangeInit, x: number, y: number): boolean {
+  const live = liveOf(range)
+  for (const rect of live?.getClientRects() ?? []) {
     if (x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom)
       return true
   }
@@ -88,4 +89,32 @@ export function rangeHas(range: Range, x: number, y: number): boolean {
 export function anchorOfText(root: HTMLElement, text: string): TextAnchor | null {
   const start = textNodes(root).map((node) => node.data).join('').indexOf(text)
   return start < 0 ? null : { start, end: start + text.length }
+}
+
+/**
+ * `range` as it stands: the same words, still where they were. A list's
+ * rows are moved in the page as a whole, as a window opening beside them
+ * moves the list's ancestors, and a move collapses every live Range inside
+ * what moved, though its words are unchanged; where it stood, its nodes
+ * and offsets, still holds them, so the marks are kept so and read
+ * through this. Null when the nodes no longer hold those offsets.
+ */
+export function liveOf(range: Range | StaticRangeInit): Range | null {
+  if (range instanceof Range)
+    return range
+  try {
+    const live = document.createRange()
+    live.setStart(range.startContainer, range.startOffset)
+    live.setEnd(range.endContainer, range.endOffset)
+    return live
+  } catch {
+    // The text changed under the words: the next measure finds them again.
+    return null
+  }
+}
+
+/** Where `range` stands, which a move of its nodes in the page leaves as it is (`liveOf`). */
+export function staticOf(range: Range): StaticRangeInit {
+  const { startContainer, startOffset, endContainer, endOffset } = range
+  return { startContainer, startOffset, endContainer, endOffset }
 }

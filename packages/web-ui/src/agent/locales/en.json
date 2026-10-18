@@ -9,6 +9,17 @@
     "writeFirst": "Write a comment first.",
     "title": "Comments"
   },
+  "ask": {
+    "ask": "Ask",
+    "placeholder": "Ask about this",
+    "followUpPlaceholder": "Ask a follow-up",
+    "reply": "Reply",
+    "openFull": "Open Full Conversation",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "thinking": "Thinking…",
+    "retry": "Retry"
+  },
   "transcript": {
     "accountSwitch": {
       "usage": "{from} reached its usage limit. Continuing with {to}.",

@@ -131,6 +131,7 @@ impl Shard {
         let request_cancel = cancel.child_token();
         let request = InferenceRequest {
             session_id: "provider-test".into(),
+            affinity: None,
             turn_id: uuid::Uuid::new_v4().to_string(),
             request_id: uuid::Uuid::new_v4().to_string(),
             model_id: model.id,

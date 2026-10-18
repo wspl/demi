@@ -135,6 +135,7 @@ pub fn every_vendor_accepts(id: &str) -> bool {
 pub fn inference_request() -> InferenceRequest {
     InferenceRequest {
         session_id: "session-1".into(),
+        affinity: None,
         turn_id: "turn-1".into(),
         request_id: "request-1".into(),
         model_id: "model-1".into(),

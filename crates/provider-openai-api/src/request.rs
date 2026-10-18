@@ -39,7 +39,7 @@ pub(crate) fn responses(request: &InferenceRequest, policy: VendorPolicy, signat
         stream: true,
         store: false,
         include: ["reasoning.encrypted_content"],
-        prompt_cache_key: prompt_cache_key(&request.session_id),
+        prompt_cache_key: prompt_cache_key(request.cache_session()),
         max_output_tokens: request.max_output_tokens().map(|limit| limit.get()),
         instructions: (!is_blank(&request.system_prompt)).then_some(request.system_prompt.as_str()),
         tools: request

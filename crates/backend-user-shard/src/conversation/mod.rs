@@ -25,6 +25,7 @@ mod providers;
 pub(crate) mod restart_resume;
 pub(crate) mod retry_resume;
 mod runs_on;
+pub mod side_questions;
 pub mod search;
 pub mod settings;
 pub mod shares;
@@ -182,13 +183,14 @@ pub(crate) fn conversation_parts(
 }
 
 /// The context sources a node asks before each provider request, in order:
-/// the product's execution context, the instructions, then each plugin that
-/// is one, in registration order.
+/// the product's execution context, the instructions, the side questions,
+/// then each plugin that is one, in registration order.
 fn context_sources(shard: &Weak<Shard>, services: &Services) -> Rc<[Rc<dyn ContextSource>]> {
     let execution = Rc::new(ExecutionContext {
         shard: shard.clone(),
     }) as Rc<dyn ContextSource>;
     let instructions = Rc::new(Instructions::new(shard.clone())) as Rc<dyn ContextSource>;
+    let side_questions = Rc::new(side_questions::Told::new(shard.clone())) as Rc<dyn ContextSource>;
     let plugins = services
         .plugins
         .context_sources()
@@ -199,5 +201,5 @@ fn context_sources(shard: &Weak<Shard>, services: &Services) -> Rc<[Rc<dyn Conte
                 plugin,
             }) as Rc<dyn ContextSource>
         });
-    [execution, instructions].into_iter().chain(plugins).collect()
+    [execution, instructions, side_questions].into_iter().chain(plugins).collect()
 }

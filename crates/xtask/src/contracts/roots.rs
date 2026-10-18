@@ -84,7 +84,7 @@ pub fn web() -> Vec<Root> {
         panel,
         passkeys,
         permissions,
-        plugins, providers, push, saved, search, sessions, settings, shares, sidebar, state, subagents, usage, users, workflows, workspaces,
+        plugins, providers, push, saved, search, sessions, settings, shares, side_questions, sidebar, state, subagents, usage, users, workflows, workspaces,
     };
     vec![
         receives::<error::ErrorBody>(),
@@ -193,6 +193,11 @@ pub fn web() -> Vec<Root> {
         receives::<conversations::BatchAnswer>(),
         sends::<conversations::ForkRequest>(),
         receives::<conversations::ForkAnswer>(),
+        receives::<side_questions::SideQuestions>(),
+        sends::<side_questions::AskRequest>(),
+        sends::<side_questions::SideFollowUp>(),
+        sends::<side_questions::SideQuestionPatch>(),
+        receives::<side_questions::SideQuestionAnswer>(),
         sends::<shares::ShareTarget>(),
         receives::<shares::ShareAnswer>(),
         receives::<shares::SharedConversation>(),

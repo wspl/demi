@@ -31,7 +31,12 @@
     "requestNotAccepted": "チャットがリクエストを受け付けませんでした。",
     "fieldsNotUpdated": "一部の項目は更新されませんでした。",
     "readPermissions": "権限を読み取れませんでした",
-    "readFileWatch": "ファイル監視のメッセージを読み取れませんでした"
+    "readFileWatch": "ファイル監視のメッセージを読み取れませんでした",
+    "readSideQuestions": "サイドの質問を読み取れませんでした",
+    "askSideQuestion": "質問できませんでした",
+    "sendFollowUp": "続けての質問を送信できませんでした",
+    "retrySideQuestion": "再試行できませんでした",
+    "foldSideQuestion": "質問を変更できませんでした"
   },
   "drafts": {
     "storeFailed": "このブラウザーは下書きを保存できませんでした。",

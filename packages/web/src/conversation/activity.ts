@@ -7,6 +7,7 @@ import {
 } from '@demicodes/web-ui/transport/protocol'
 import { latestBlocks } from '@demicodes/web-ui/agent/history'
 import type { Conversation } from '../state/types'
+import { sideFor } from './side-records'
 import { findShellCall } from './terminals'
 import { isConversationActive } from '@demicodes/web-ui/agent/conversation-status'
 import { followFrame, isTerminalRunning } from '@demicodes/web-ui/agent/terminals'
@@ -65,9 +66,12 @@ export function applyConversationEvent(
     event.type === 'subagent_transcript_reset' ||
     event.type === 'subagent_transcript_patch'
   ) {
+    // A side question's node streams as a child's does, by its id, and is
+    // no child: a node the page knows as neither is a side question the
+    // list has not named yet, whose frames the page keeps for it.
     const child = conversation.subagents.find(
       (agent) => agent.id === event.subagentId,
-    )
+    ) ?? sideFor(conversation, event.subagentId)
     if (child) {
       if (event.type === 'subagent_transcript_reset') {
         child.history = resetTranscript(child.history, event)
@@ -78,11 +82,13 @@ export function applyConversationEvent(
     }
   } else if (event.type === 'pending_calls' && event.subagentId !== undefined) {
     const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
+      ?? sideFor(conversation, event.subagentId)
     if (child) {
       child.pendingCalls = event.pendingCalls
     }
   } else if (event.type === 'phase' && event.subagentId !== undefined) {
     const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
+      ?? sideFor(conversation, event.subagentId)
     if (child) {
       child.sessionPhase = event.phase
     }
@@ -94,6 +100,7 @@ export function applyConversationEvent(
     }
   } else if (event.type === 'waiting' && event.subagentId !== undefined) {
     const child = conversation.subagents.find((agent) => agent.id === event.subagentId)
+      ?? sideFor(conversation, event.subagentId)
     if (child) {
       child.waitingSince = event.since
     }

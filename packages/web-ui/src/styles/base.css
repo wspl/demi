@@ -1234,6 +1234,60 @@ html[data-theme="light"] .file-pill {
   opacity: 0.6;
 }
 
+/*
+ * Side questions on a reply's words (`comments-and-ask.md` § Side
+ * questions): the asked words in a purple tint with a purple underline,
+ * deeper under the pointer; the folded card's question mark in the margin
+ * takes the same purple, as does the card's header icon. The card itself
+ * has no purple: it stands on the page's background with the line color's
+ * border.
+ */
+:root,
+[data-theme="dark"] {
+  --ask-tint: rgb(192 132 252 / 0.2);
+  --ask-ink: rgb(216 180 254);
+  --ask-border: var(--color-line);
+}
+
+[data-theme="light"] {
+  --ask-tint: rgb(168 85 247 / 0.16);
+  --ask-ink: rgb(126 34 206);
+}
+
+::highlight(ask) {
+  background-color: rgb(192 132 252 / 0.2);
+  text-decoration: underline 2px rgb(192 132 252 / 0.9);
+}
+
+::highlight(ask-active) {
+  background-color: rgb(192 132 252 / 0.36);
+  text-decoration: underline 2px rgb(216 180 254);
+}
+
+[data-theme="light"] ::highlight(ask) {
+  background-color: rgb(168 85 247 / 0.16);
+  text-decoration-color: rgb(147 51 234);
+}
+
+[data-theme="light"] ::highlight(ask-active) {
+  background-color: rgb(168 85 247 / 0.32);
+  text-decoration-color: rgb(147 51 234);
+}
+
+.ask-marker {
+  color: var(--ask-ink);
+  background-color: var(--ask-tint);
+}
+
+/* A side question's card stands in the reply after the block holding the end of its words. */
+.markdown-body [data-ask-host] {
+  margin-top: var(--markdown-block-gap);
+}
+
+.markdown-body [data-ask-host]:empty {
+  display: none;
+}
+
 
 .composer-shell-expanded .composer-line-ruler {
   grid-area: ruler;

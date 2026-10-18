@@ -361,7 +361,7 @@ impl MemoryTreeStore {
             .borrow()
             .nodes
             .values()
-            .find(|node| node.record.number == number)
+            .find(|node| node.record.number == number && node.record.side.is_none())
             .map(|node| node.record.id.clone())
     }
 
@@ -590,7 +590,7 @@ impl AgentTreeStore for MemoryTreeStore {
             let mut children: Vec<&StoredNode> = stored
                 .nodes
                 .values()
-                .filter(|node| node.record.parent.as_ref() == Some(parent))
+                .filter(|node| node.record.parent.as_ref() == Some(parent) && node.record.side.is_none())
                 .collect();
             children.sort_by_key(|node| node.record.number);
             Ok(children
@@ -614,7 +614,7 @@ impl AgentTreeStore for MemoryTreeStore {
             let mut subagents: Vec<StoredSubagent> = stored
                 .nodes
                 .values()
-                .filter(|node| node.record.parent.is_some())
+                .filter(|node| node.record.parent.is_some() && node.record.side.is_none())
                 .map(|node| StoredSubagent {
                     record: node.record.clone(),
                     model: node.state.model.clone(),
@@ -623,6 +623,20 @@ impl AgentTreeStore for MemoryTreeStore {
                 .collect();
             subagents.sort_by_key(|subagent| subagent.record.number);
             Ok(subagents)
+        })
+    }
+
+    fn sides(&self) -> LocalBoxFuture<'_, Result<Vec<NodeRecord>, StoreError>> {
+        Box::pin(async move {
+            let stored = self.stored.borrow();
+            let mut sides: Vec<NodeRecord> = stored
+                .nodes
+                .values()
+                .filter(|node| node.record.side.is_some())
+                .map(|node| node.record.clone())
+                .collect();
+            sides.sort_by_key(|record| (record.side.as_ref().map(|side| side.asked_at), record.id.clone()));
+            Ok(sides)
         })
     }
 
@@ -681,7 +695,7 @@ impl AgentTreeStore for MemoryTreeStore {
         id: &'a NodeId,
         round: u64,
         started_at: Timestamp,
-        message: QueuedMessage,
+        message: Option<QueuedMessage>,
     ) -> LocalBoxFuture<'a, Result<(), StoreError>> {
         Box::pin(async move {
             let mut stored = self.stored.borrow_mut();
@@ -690,7 +704,9 @@ impl AgentTreeStore for MemoryTreeStore {
             node.record.delivered = false;
             node.record.round = round;
             node.record.started_at = started_at;
-            node.state.queue = vec![message];
+            if let Some(message) = message {
+                node.state.queue = vec![message];
+            }
             Ok(())
         })
     }
@@ -880,6 +896,7 @@ pub mod store_contract {
             forked_from: None,
             started_by: None,
             cwd: parent.map(|_| directory("/work")),
+            side: None,
         }
     }
 
@@ -1312,7 +1329,7 @@ pub mod store_contract {
 
         let resumed = Timestamp::from_millisecond(60_000).expect("the time is in range");
         store
-            .reopen_node(&id("child"), 2, resumed, message("m2"))
+            .reopen_node(&id("child"), 2, resumed, Some(message("m2")))
             .await
             .expect("the node reopens");
         let reopened = stored(store, "child").await.expect("the node exists");
@@ -1348,7 +1365,7 @@ pub mod store_contract {
             .await
             .expect("the node closes");
         store
-            .reopen_node(&id("child"), 2, Timestamp::UNIX_EPOCH, message("again"))
+            .reopen_node(&id("child"), 2, Timestamp::UNIX_EPOCH, Some(message("again")))
             .await
             .expect("the node reopens");
         store
@@ -1506,5 +1523,60 @@ pub mod store_contract {
         assert_eq!(children, ["early", "first", "second", "late"]);
         let early = stored(store, "early").await.expect("the node exists");
         assert_eq!((early.closed, early.delivered), (Some(close), false));
+    }
+
+    /// A side question's node is the root's, beside its children: no list of
+    /// children or subagents holds it, the list of side questions does, in
+    /// the order they were asked, and each keeps what it asks about; a
+    /// retry revives a closed one with its queue as it was.
+    pub async fn a_side_question_is_no_subagent_and_keeps_what_it_asks(store: &dyn AgentTreeStore) {
+        create(store, record("root", None, 0), update(Vec::new(), Vec::new())).await;
+        create(store, record("child", Some("root"), 1), update(Vec::new(), Vec::new())).await;
+        let side = |node: &str, at: i64, question: &str| NodeRecord {
+            cwd: None,
+            started_at: Timestamp::from_millisecond(at).expect("the time is in range"),
+            side: Some(crate::SideOf {
+                block: demi_shared_types::BlockId::try_from("text-1").expect("a block id is not empty"),
+                start: 4,
+                end: 19,
+                quote: "the same timeout".into(),
+                question: question.into(),
+                asked_at: Timestamp::from_millisecond(at).expect("the time is in range"),
+            }),
+            ..record(node, Some("root"), 0)
+        };
+        create(store, side("later", 2_000, "And uploads?"), update(Vec::new(), Vec::new())).await;
+        create(store, side("asked", 1_000, "Is that so?"), update(vec![message("waiting")], Vec::new())).await;
+
+        let children: Vec<String> = store
+            .children(&id("root"))
+            .await
+            .expect("the store lists children")
+            .into_iter()
+            .map(|node| node.id.to_string())
+            .collect();
+        assert_eq!(children, ["child"]);
+        let subagents: Vec<String> = store
+            .subagents()
+            .await
+            .expect("the store lists subagents")
+            .into_iter()
+            .map(|subagent| subagent.record.id.to_string())
+            .collect();
+        assert_eq!(subagents, ["child"]);
+        let sides = store.sides().await.expect("the store lists side questions");
+        assert_eq!(sides, [side("asked", 1_000, "Is that so?"), side("later", 2_000, "And uploads?")]);
+        assert_eq!(stored(store, "asked").await, Some(side("asked", 1_000, "Is that so?")));
+
+        let close = NodeClose {
+            phase: ClosePhase::Completed { result: String::new() },
+            at: Timestamp::from_millisecond(3_000).expect("the time is in range"),
+        };
+        store.close_node(&id("asked"), close).await.expect("the node closes");
+        let retried = Timestamp::from_millisecond(4_000).expect("the time is in range");
+        store.reopen_node(&id("asked"), 2, retried, None).await.expect("the node reopens");
+        let reopened = stored(store, "asked").await.expect("the node exists");
+        assert_eq!((reopened.closed, reopened.round), (None, 2));
+        assert_eq!(queue(store, "asked").await, [message("waiting")]);
     }
 }
