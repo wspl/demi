@@ -72,7 +72,10 @@ export interface IntentOutcome {
  * kind's and the kind, which alone knows what its data means, would show
  * the same data for the request, the tab stays as it is, its data the same
  * value, so a second click on a pill or a link leaves the panel showing it
- * (`web-application.md` § Work panel). Null when no kind opens the intent.
+ * (`web-application.md` § Work panel). A kind that keys its tabs selects the
+ * tab whose data has the request's key, where the strip holds one, as a
+ * second click on an attachment's card shows its tab again. Null when no
+ * kind opens the intent.
  */
 export function openIntent(
   shown: ShownPanel,
@@ -93,7 +96,12 @@ export function openIntent(
     if (tab && parsed?.success && sameData(parsed.data, opened(kind, request, parsed.data))) {
       return { selection: tab.id, pinned, created: null }
     }
-    const created = { id: crypto.randomUUID(), kind: kind.kind, data: opened(kind, request, null) }
+    const data = opened(kind, request, null)
+    const same = keyedTab(kind, shown.panel.tabs, data)
+    if (same) {
+      return { selection: same.id, pinned, created: null }
+    }
+    const created = { id: crypto.randomUUID(), kind: kind.kind, data }
     return { selection: created.id, pinned, created }
   }
   const stored = Object.hasOwn(pinned, kind.kind) ? kind.schema.safeParse(pinned[kind.kind]) : null
@@ -103,6 +111,22 @@ export function openIntent(
     return { selection, pinned, created: null }
   }
   return { selection: kind.kind, pinned: { ...pinned, [kind.kind]: data }, created: null }
+}
+
+/** The tab of `kind` among `tabs` whose data has the key of `data`, when the kind keys its tabs. */
+function keyedTab(kind: PanelKind<unknown, PanelSession | undefined>, tabs: readonly PanelTab[], data: unknown): PanelTab | null {
+  const { key } = kind
+  if (!key) {
+    return null
+  }
+  const wanted = key(data)
+  return tabs.find((tab) => {
+    if (tab.kind !== kind.kind) {
+      return false
+    }
+    const parsed = kind.schema.safeParse(tab.data)
+    return parsed.success && key(parsed.data) === wanted
+  }) ?? null
 }
 
 /** Whether a kind's data `next` changes nothing of `current`, field by field. */
@@ -121,6 +145,8 @@ function opened(kind: PanelKind<unknown, PanelSession | undefined>, request: Int
       return kind.intents?.commit?.(request.payload, current)
     case 'web':
       return kind.intents?.web?.(request.payload, current)
+    case 'attachment':
+      return kind.intents?.attachment?.(request.payload, current)
   }
 }
 

@@ -6,10 +6,11 @@ license.workspace = true
 publish.workspace = true
 
 [lib]
-# No tests of its own: it declares only its identity; no doc examples.
+# No tests of its own: it declares its identity and a panel kind that asks nothing of it; no doc examples.
 test = false
 doctest = false
 bench = false
 
 [dependencies]
 demi-plugin-interface = { path = "../plugin-interface" }
+futures-util.workspace = true

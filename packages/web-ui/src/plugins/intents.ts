@@ -30,6 +30,13 @@ export interface IntentPayloads {
    */
   commit: { commit: string; root?: string }
   /**
+   * An attachment of the conversation (`commands.md` § Attachment
+   * commands) that is no image, video or audio, as its block's card opens
+   * it (`file-previews.md` § Attachment blocks): its number, its file's
+   * name and size in bytes, and where its stored copy loads from.
+   */
+  attachment: { id: string; name: string; size: number; url: string }
+  /**
    * A web page, in a new tab of the conversation's browser, as a link's
    * Open in Work Panel opens it (`web-application.md` § Context menus).
    */

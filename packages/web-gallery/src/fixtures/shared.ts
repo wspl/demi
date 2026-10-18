@@ -23,7 +23,8 @@ export function sharedItems(): SharedItem[] {
       text: [
         'The health check timed out: the new build listens on port **3272**, and the check still asks **3271**. [Read the deploy logs](agent:3) found it in the job’s log.',
         '',
-        '![The failed check](attachment:a1)',
+        '<attachment id="a1" />',
+        '<attachment id="a3" />',
         '',
         'The port moved in [config.ts](src/server/config.ts#L12), in [Move the server port](commit:3f2a9c1). Point the check at 3272 and deploy again.',
       ].join('\n'),

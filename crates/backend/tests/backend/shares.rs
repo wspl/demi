@@ -219,7 +219,9 @@ async fn an_answers_share_holds_its_message_and_reply_alone_until_the_owner_stop
 
 /// The root's answer once its child reports.
 const SAID: &str =
-    "the helper said hi: ![The shot](attachment:a1), [the notes](attachment:a3), [a preview](attachment:a4-preview)";
+    "the helper said hi:\n\n<attachment id=\"a1\" />\n<attachment id=\"a3\" />\n<attachment id=\"a4-preview\" />\n\n\
+     The child's, named only as text: see <attachment id=\"a2\" /> mid-sentence, `<attachment id=\"a2\" />` in code,\n\n\
+     <!--\n<attachment id=\"a2\" />\n-->";
 
 /// The root's answer once its later child reports.
 const AFTER_LATER: &str = "after the later child";
@@ -356,6 +358,10 @@ async fn a_conversations_share_shows_what_was_said_and_its_media_as_they_were_un
     let bytes = public(&backend, &answer, &format!("/blobs/{}", named.blob), None).await;
     assert_eq!(bytes.body, *PNG);
     missed(&public(&backend, &answer, "/attachments/a3", None).await, "an attachment that did not exist");
+    // The child's attachment, which the answer names only as text, in a
+    // sentence, in code and in a comment, is not served, nor its bytes.
+    missed(&public(&backend, &answer, "/attachments/a2", None).await, "an attachment named only as text");
+    missed(&public(&backend, &answer, &format!("/blobs/{viewed}"), None).await, "the bytes of one named only as text");
     // A number past the column's range is no attachment, here and in the
     // conversation's own route.
     let past = "a9223372036854775808";

@@ -357,7 +357,9 @@ and lets the plugin that names a kind take part in its tabs:
   then sends the plugin a `panel_tab` request with the tab as it was when it
   was removed. The page never waits for the plugin. For example, the browser
   plugin closes the browser's tab of a panel tab its user removed. The user
-  creates no tab of a plugin's kind: the plugin does
+  creates a tab of a plugin's kind only through an intent the kind opens,
+  such as the file browser's `attachment` tab an attachment's card opens, and
+  the plugin then has nothing to do; otherwise the plugin creates them
   ([A browser tab in the panel](../browser/live-view.md#a-browser-tab-in-the-panel)).
 - **The plugin changes its own tabs.** Through the port, the plugin lists,
   creates, updates and removes the tabs of its kinds in the request's

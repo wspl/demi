@@ -52,6 +52,10 @@ export const galleryBlobs = {
   voiceOver: fixture('d5'.repeat(32), '/fixtures/preview/welcome.mp3'),
   /** A one-page PDF, for the documents a message carries. */
   guide: fixture('c4'.repeat(32), '/fixtures/preview/guide.pdf'),
+  /** A Markdown document: release notes with a list, a table and code. */
+  releaseNotes: fixture('d6'.repeat(32), '/fixtures/preview/release-notes.md'),
+  /** A ZIP archive, a file no preview shows. */
+  archive: fixture('e7'.repeat(32), '/fixtures/preview/app.zip'),
 }
 
 /**

@@ -4,7 +4,8 @@ import { baseName } from '@demicodes/utils'
 import type { MarkdownRenderOptions, MessageAttachment, MessageFileTarget, MessageFiles } from './types'
 import type { HostImage } from '../files/host-image'
 import { codeBlockHtml } from './highlight'
-import { WEB_LINK_REL, attachmentId, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
+import { WEB_LINK_REL, isHttpUrl, linkedCommit, messageFileTarget, messageImage } from './filePath'
+import { attachmentBlockAt, attachmentBlockStart } from './attachment-block'
 import { codeFileTarget } from './code-paths'
 import { linkedAgent } from '../agent/agent-links'
 import type { CopiedStoredFile } from '../agent/message-input/copied-message'
@@ -40,7 +41,7 @@ function commitLink(commit: string, href: string, attributes = ''): string {
 
 /**
  * The place of the icon a message's link wears before its text, which the
- * page fills (`StreamedMarkdown`): a Host file's or an attachment's file icon
+ * page fills (`StreamedMarkdown`): a Host file's icon
  * (`data-file-icon`, by the file's name), the commit icon (`data-commit-icon`)
  * or a web page's link icon (`data-link-icon`).
  */
@@ -48,7 +49,7 @@ function linkIcon(attribute: string): string {
   return `<span class="message-link-icon" ${attribute} aria-hidden="true"></span>`
 }
 
-/** The icon of a file named `name`, a Host file's or an attachment's. */
+/** The icon of a Host file named `name`. */
 function fileIcon(name: string): string {
   return linkIcon(`data-file-icon="${escapeHtml(name)}"`)
 }
@@ -154,7 +155,7 @@ function firstWord(html: string): string {
 }
 
 /**
- * The attribute of an attachment's link that holds the file as Demi's own
+ * The attribute of an attachment's image or video that holds the file as Demi's own
  * form of a copy holds it, which a drag of the link into a composer carries
  * (`copied-message.ts` § `attachmentDrag`).
  */
@@ -169,21 +170,17 @@ function attachmentFile(attachment: MessageAttachment): CopiedStoredFile {
 }
 
 /**
- * A link that opens an attachment: an image or a video large in the page's
- * viewer, where a video plays, and any other file as a download under its
- * name; an audio file is its inline player instead (`attachmentAudio`). One that opens the viewer is the viewer's control: a press on it
- * does not close the viewer, which shows the medium in place of the one it
- * shows (`KEEPS_WINDOWS`).
+ * The link around an attachment's image or video that opens it large in the
+ * page's viewer, where a video plays. It is the viewer's control: a press on
+ * it does not close the viewer, which shows the medium in place of the one
+ * it shows (`KEEPS_WINDOWS`).
  */
 function attachmentLink(attachment: MessageAttachment, attributes = ''): string {
   const url = escapeHtml(attachment.url)
   const name = escapeHtml(attachment.name)
   const file = ` ${ATTACHMENT_FILE_ATTRIBUTE}="${escapeHtml(JSON.stringify(attachmentFile(attachment)))}"`
-  if (attachment.mediaType.startsWith('image/'))
-    return `<a href="${url}" data-attachment-image="${name}"${file} ${KEEPS_WINDOWS}${attributes}>`
-  if (attachment.mediaType.startsWith('video/'))
-    return `<a href="${url}" data-attachment-video="${name}"${file} ${KEEPS_WINDOWS}${attributes}>`
-  return `<a href="${url}" download="${name}"${file}${attributes}>`
+  const kind = attachment.mediaType.startsWith('video/') ? 'video' : 'image'
+  return `<a href="${url}" data-attachment-${kind}="${name}"${file} ${KEEPS_WINDOWS}${attributes}>`
 }
 
 /**
@@ -197,16 +194,12 @@ function sizeAttributes(size: PixelSize | null): string {
 
 /**
  * An attachment's video as its first frame with a play mark over it, which
- * a click opens in the viewer to play; inside a link, it follows the link.
- * It is a tile, as an image is.
+ * a click opens in the viewer to play. It is a tile, as an image is.
  */
-function attachmentVideo(attachment: MessageAttachment, alt: string, title: string): string {
-  const video = `<video src="${escapeHtml(attachment.url)}" muted playsinline preload="metadata" aria-label="${alt}"${title}${sizeAttributes(declaredSize(attachment))}></video>`
+function attachmentVideo(attachment: MessageAttachment): string {
+  const video = `<video src="${escapeHtml(attachment.url)}" muted playsinline preload="metadata" aria-label="${escapeHtml(attachment.name)}"${sizeAttributes(declaredSize(attachment))}></video>`
   const mark = '<span class="media-play-mark" aria-hidden="true"></span>'
-  const wrapper = ' class="message-video"'
-  if (openLinks > 0)
-    return `<span${wrapper}>${video}${mark}</span>`
-  return `${attachmentLink(attachment, wrapper)}${video}${mark}</a>`
+  return `${attachmentLink(attachment, ' class="message-video"')}${video}${mark}</a>`
 }
 
 /** The attribute of an audio attachment's place, which holds its address, where `AudioPlayer` plays it. */
@@ -222,25 +215,48 @@ function attachmentAudio(attachment: MessageAttachment): string {
   return `<span class="message-audio" ${ATTACHMENT_AUDIO_ATTRIBUTE}="${escapeHtml(attachment.url)}" data-audio-name="${escapeHtml(attachment.name)}"></span>`
 }
 
+/** The attribute of the place of an attachment block's card, which holds the attachment's number, where `AttachmentCard` shows it. */
+export const ATTACHMENT_CARD_ATTRIBUTE = 'data-attachment-card'
+
+/** An attachment block's attachment when it is an image or a video, which stands as a tile among the message's media. */
+function blockMedium(id: string): MessageAttachment | null {
+  const lookup = activeOptions?.files?.attachment?.(id)
+  return lookup?.state === 'found' && /^(?:image|video)\//.test(lookup.attachment.mediaType) ? lookup.attachment : null
+}
+
+/** An attachment's image or video as a tile, its record's size its box before its bytes arrive, which a click opens large. */
+function attachmentTile(attachment: MessageAttachment): string {
+  if (attachment.mediaType.startsWith('video/'))
+    return attachmentVideo(attachment)
+  const image = `<img src="${escapeHtml(attachment.url)}" alt="${escapeHtml(attachment.name)}"${sizeAttributes(declaredSize(attachment))} />`
+  return `${attachmentLink(attachment)}${image}</a>`
+}
+
 /**
- * How a link or an image that names attachment `id` shows, around `body`,
- * its text or alt text: through `found` once the attachment is known; its
- * text with a line that says so for a number the conversation does not
- * have; its text alone while the page asks, or cannot.
+ * An attachment block, `raw` the line that names attachment `id`
+ * (`file-previews.md` § Attachment blocks): an image or a video as a lone
+ * tile, audio as its inline player, any other file, and one the page still
+ * asks for, as the place of its card; a number the conversation does not
+ * have says so in the block's place. While the page cannot ask, or asking
+ * failed, the line shows as its text.
  */
-function attachmentTarget(
-  id: string,
-  body: string,
-  found: (attachment: MessageAttachment) => string,
-): string {
+function attachmentBlock(id: string, raw: string): string {
   const lookup = activeOptions?.files?.attachment?.(id)
   switch (lookup?.state) {
-    case 'found':
-      return found(lookup.attachment)
+    case 'found': {
+      const { attachment } = lookup
+      if (/^(?:image|video)\//.test(attachment.mediaType))
+        return `<p class="media-lone">${attachmentTile(attachment)}</p>\n`
+      if (attachment.mediaType.startsWith('audio/'))
+        return `<p>${attachmentAudio(attachment)}</p>\n`
+      return `<div class="attachment-block" ${ATTACHMENT_CARD_ATTRIBUTE}="${id}"></div>\n`
+    }
+    case 'loading':
+      return `<div class="attachment-block" ${ATTACHMENT_CARD_ATTRIBUTE}="${id}"></div>\n`
     case 'missing':
-      return `${body} <span class="attachment-missing">No attachment ${escapeHtml(id)} in this conversation</span>`
+      return `<p class="attachment-missing">No attachment ${escapeHtml(id)} in this conversation</p>\n`
     default:
-      return body
+      return `<p>${escapeHtml(raw.trim())}</p>\n`
   }
 }
 
@@ -259,25 +275,6 @@ function imageSource(target: string): { src: string; path: string | null } | 'lo
   if (shown.state !== 'shown')
     return shown.state === 'loading' ? 'loading' : null
   return { src: shown.src, path: image.path }
-}
-
-/**
- * An attachment an image names: an image that a click shows large, a video's
- * first frame that a click plays large, each a tile whose box its record's
- * size gives before its bytes arrive, and any other file as a link that
- * downloads it, named by the alt text.
- */
-function attachmentMedium(attachment: MessageAttachment, token: Tokens.Image): string {
-  const alt = escapeHtml(token.text)
-  const title = token.title ? ` title="${escapeHtml(token.title)}"` : ''
-  if (attachment.mediaType.startsWith('video/'))
-    return attachmentVideo(attachment, alt, title)
-  if (attachment.mediaType.startsWith('audio/'))
-    return openLinks > 0 ? alt : attachmentAudio(attachment)
-  if (!attachment.mediaType.startsWith('image/'))
-    return openLinks > 0 ? alt : iconLink((attributes) => attachmentLink(attachment, attributes), fileIcon(attachment.name), alt, false)
-  const image = `<img src="${escapeHtml(attachment.url)}" alt="${alt}"${title}${sizeAttributes(declaredSize(attachment))} />`
-  return openLinks > 0 ? image : `${attachmentLink(attachment)}${image}</a>`
 }
 
 /**
@@ -322,12 +319,6 @@ const messageRenderer: RendererObject = {
       named ? iconLink(open, icon, body, tight) : `${open('')}${body}</a>`
     if (isHttpUrl(token.href))
       return link((attributes) => webLink(token.href, attributes), linkIcon('data-link-icon'))
-    const attachment = attachmentId(token.href)
-    if (attachment !== null)
-      return attachmentTarget(attachment, body, (found) =>
-        found.mediaType.startsWith('audio/') && openLinks === 0
-          ? attachmentAudio(found)
-          : link((attributes) => attachmentLink(found, attributes), fileIcon(found.name)))
     const agent = linkedAgent(token.href)
     if (agent !== null)
       return agentLink(agent, body, tight)
@@ -343,9 +334,6 @@ const messageRenderer: RendererObject = {
     return link((attributes) => fileLink(target, attributes), fileIcon(baseName(target.path)))
   },
   image(token) {
-    const attachment = attachmentId(token.href)
-    if (attachment !== null)
-      return attachmentTarget(attachment, escapeHtml(token.text), (found) => attachmentMedium(found, token))
     const source = imageSource(token.href)
     // A target that loads nothing is words; a Host image whose file is being
     // read or is not there keeps its place with its alt text in a box.
@@ -366,22 +354,12 @@ function isWhiteSpace(token: Token): boolean {
 }
 
 /**
- * Whether an image token shows a picture, or a video's first frame: an image
- * that loads, or an attachment that is an image or a video, also while the
- * page still asks for it. One that never shows, which leaves its alt text or
- * a download link, is words.
+ * Whether an image token shows a picture: one that loads, also while its
+ * Host file is read. One that never shows, which leaves its alt text, is
+ * words.
  */
 function showsMedium(token: Token): boolean {
-  if (token.type !== 'image')
-    return false
-  const href: string = token.href
-  const id = attachmentId(href)
-  if (id === null)
-    return imageSource(href) !== null
-  const lookup = activeOptions?.files?.attachment?.(id)
-  if (!lookup || lookup.state === 'missing')
-    return false
-  return lookup.state !== 'found' || /^(?:image|video)\//.test(lookup.attachment.mediaType)
+  return token.type === 'image' && imageSource(token.href) !== null
 }
 
 /** Whether an inline token is a medium of the message: an image that shows, or a link around one and nothing else. */
@@ -492,8 +470,9 @@ function joinMediaRuns(blocks: Token[]): void {
  * Gives each of a message's media, and each run of them, a block of its own,
  * in the message and in its lists and quotes: a lone image stands on its
  * own line, and images that follow each other stand side by side, whatever
- * words come before the first of them in its paragraph; any other text, a
- * list or a heading ends a run (`file-previews.md` § Files named in messages).
+ * words come before the first of them in its paragraph, an attachment
+ * block's image or video among them; any other text, a list or a heading
+ * ends a run (`file-previews.md` § Files named in messages).
  */
 function separateMedia(blocks: Token[]): void {
   for (let index = 0; index < blocks.length; index += 1) {
@@ -503,6 +482,8 @@ function separateMedia(blocks: Token[]): void {
         separateMedia(item.tokens)
     } else if (block?.type === 'blockquote') {
       separateMedia(block.tokens ?? [])
+    } else if (block?.type === ATTACHMENT_BLOCK && blockMedium(block.id) !== null) {
+      blocks[index] = mediaBlock([block])
     } else if (block?.type === 'paragraph' || block?.type === 'text') {
       const parts = splitAtMedia(block)
       if (parts) {
@@ -513,6 +494,9 @@ function separateMedia(blocks: Token[]): void {
   }
   joinMediaRuns(blocks)
 }
+
+/** The token of an attachment block (`attachment-block.ts`). */
+const ATTACHMENT_BLOCK = 'attachmentBlock'
 
 const agentMarked = markdownReader({ breaks: true, renderer: messageRenderer }, scrollingTable)
 // LaTeX math, rendered to HTML whose stylesheet comes with KaTeX (`math.ts`);
@@ -527,13 +511,31 @@ agentMarked.use({
     },
   },
   extensions: [{
+    // Ahead of an HTML block, which is shown as text, and cutting a
+    // paragraph short at its line, so a block on the line after words
+    // stands on its own.
+    name: ATTACHMENT_BLOCK,
+    level: 'block',
+    start: attachmentBlockStart,
+    tokenizer(src) {
+      const block = attachmentBlockAt(src)
+      return block ? { type: ATTACHMENT_BLOCK, raw: block.raw, id: block.id } : undefined
+    },
+    renderer(token) {
+      return attachmentBlock(token.id, token.raw)
+    },
+  }, {
     name: MEDIA,
     // Each medium is a tile (`media-run.ts` sizes it once the message's
     // width is known), lone or side by side with the others of its run.
     renderer(token) {
       const media = token.tokens ?? []
       const block = media.length === 1 ? 'media-lone' : 'media-run'
-      return `<p class="${block}">${media.map((medium) => this.parser.parseInline([medium])).join('')}</p>\n`
+      const tiles = media.map((medium) => {
+        const attachment = medium.type === ATTACHMENT_BLOCK ? blockMedium(medium.id) : null
+        return attachment ? attachmentTile(attachment) : this.parser.parseInline([medium])
+      })
+      return `<p class="${block}">${tiles.join('')}</p>\n`
     },
   }],
 })
@@ -550,13 +552,13 @@ export function messageCodeSpans(src: string): string[] {
 
 /**
  * The pictures a message shows that open in the media viewer, in order:
- * each image that loads and each attachment that is an image or a video,
- * named and sized as a click on it names and sizes it. An image inside a
- * link follows the link and is not among them; neither is one still being
- * asked for, or one that shows its alt text.
+ * each image that loads and each attachment block that is an image or a
+ * video, named and sized as a click on it names and sizes it. An image
+ * inside a link follows the link and is not among them; neither is one still
+ * being asked for, or one that shows its alt text.
  */
 export function messageMedia(src: string, files: MessageFiles | undefined): ShownMedium[] {
-  if (!src.includes('!['))
+  if (!src.includes('![') && !src.includes('<attachment'))
     return []
   const tokens = agentMarked.lexer(src)
   const linked = new Set<Token>()
@@ -566,26 +568,25 @@ export function messageMedia(src: string, files: MessageFiles | undefined): Show
   })
   const media: ShownMedium[] = []
   agentMarked.walkTokens(tokens, (token) => {
-    if (token.type !== 'image' || linked.has(token))
-      return
-    const id = attachmentId(token.href)
-    if (id === null) {
-      const image = messageImage(token.href, files)
-      const name = token.text || 'image'
-      if (image && 'url' in image)
-        media.push({ kind: 'image', src: image.url, name })
-      // A Host image is its file, which the viewer shows at the version the page keeps.
-      else if (image && files?.contents)
-        media.push({ kind: 'image', file: { path: image.path, contents: files.contents }, name })
+    if (token.type === ATTACHMENT_BLOCK) {
+      const lookup = files?.attachment?.(token.id)
+      if (lookup?.state !== 'found')
+        return
+      const { attachment } = lookup
+      const kind = attachment.mediaType.startsWith('image/') ? 'image' : attachment.mediaType.startsWith('video/') ? 'video' : null
+      if (kind)
+        media.push({ kind, src: attachment.url, name: attachment.name, size: declaredSize(attachment) })
       return
     }
-    const lookup = files?.attachment?.(id)
-    if (lookup?.state !== 'found')
+    if (token.type !== 'image' || linked.has(token))
       return
-    const { attachment } = lookup
-    const kind = attachment.mediaType.startsWith('image/') ? 'image' : attachment.mediaType.startsWith('video/') ? 'video' : null
-    if (kind)
-      media.push({ kind, src: attachment.url, name: attachment.name, size: declaredSize(attachment) })
+    const image = messageImage(token.href, files)
+    const name = token.text || 'image'
+    if (image && 'url' in image)
+      media.push({ kind: 'image', src: image.url, name })
+    // A Host image is its file, which the viewer shows at the version the page keeps.
+    else if (image && files?.contents)
+      media.push({ kind: 'image', file: { path: image.path, contents: files.contents }, name })
   })
   return media
 }

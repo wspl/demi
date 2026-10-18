@@ -704,7 +704,7 @@ The public routes take no session and ignore one:
 | `GET /shares/:token/transcript?before=\|after=\|around=` | A page of what the share holds, as [Pages](#pages) answers it, `instructions` always empty and `failures` absent; a step entry reads as `{ type: "steps_not_shared", count }` in its place |
 | `GET /shares/:token/transcript/blocks/:blockId` | One block whole, as the conversation's whole-block read answers it |
 | `GET /shares/:token/blobs/:sha256?type=` | A blob the share shows |
-| `GET /shares/:token/attachments/:attachment` | An attachment the share's text names as `attachment:a3` and that existed when it was taken, as [the conversation's attachment route](web-api-hosts.md#uploads-and-media) answers it; one uploaded later stays missing until Update Link |
+| `GET /shares/:token/attachments/:attachment` | An attachment the share's text names in an `<attachment id="a3" />` block and that existed when it was taken, as [the conversation's attachment route](web-api-hosts.md#uploads-and-media) answers it; one uploaded later stays missing until Update Link |
 
 A token that names no share, a node or block the share lacks, and a blob
 it does not show answer 404 `share_not_found`, the same for each, so the

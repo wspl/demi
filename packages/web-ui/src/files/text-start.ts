@@ -4,6 +4,15 @@ import { useShowing } from './showing'
 import type { FileContents } from './types'
 
 /**
+ * Whether a file whose first bytes are `bytes` is binary by the rule the
+ * text route refuses a file by (`shell-tool.md` § What `demi file view`
+ * shows): a NUL byte in its first 8 KiB.
+ */
+export function isBinary(bytes: Uint8Array): boolean {
+  return bytes.subarray(0, 8 * 1024).includes(0)
+}
+
+/**
  * The text of a file's first bytes (`file-previews.md` § Getting the bytes):
  * a character the cut splits is left out, as an editor that opens part of a
  * large file shows whole characters, and any other byte that is not UTF-8
@@ -13,7 +22,7 @@ import type { FileContents } from './types'
  * viewers, chosen by the file's name before its text is read.
  */
 export function decodeTextStart(bytes: Uint8Array): string | null {
-  if (bytes.subarray(0, 8 * 1024).includes(0))
+  if (isBinary(bytes))
     return null
   // Streaming keeps a sequence the cut splits for a next chunk that never comes.
   return new TextDecoder('utf-8').decode(bytes, { stream: true })

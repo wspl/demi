@@ -22,7 +22,7 @@ const files: MessageFiles = {
   cwd: '/work',
   contents,
   attachment: (id) => id === 'a1'
-    ? { state: 'found', attachment: { name: 'login.png', mediaType: 'image/png', sha256: '1'.repeat(64), url: '/blobs/1', width: 480, height: 300 } }
+    ? { state: 'found', attachment: { name: 'login.png', mediaType: 'image/png', sha256: '1'.repeat(64), url: '/blobs/1', size: 15822, width: 480, height: 300 } }
     : { state: 'missing' },
 }
 const context: TranscriptPicturesContext = {
@@ -49,7 +49,7 @@ const blocks: Block[] = [
     input: JSON.stringify({ script: 'demi file view a.png', description: 'Show the page' }),
     output: [{ type: 'text', text: 'ok' }, image('shot-1'), image('shot-2')],
   } as Block,
-  { ...base, type: 'text', id: 'x1', text: 'Done:\n\n![Chart](out/chart.png)\n![The login](attachment:a1)\n\n[a link](out/a.png)' },
+  { ...base, type: 'text', id: 'x1', text: 'Done:\n\n![Chart](out/chart.png)\n<attachment id=\"a1\" />\n\n[a link](out/a.png)' },
 ]
 
 test('the pictures of a transcript come in the order they stand: the user\'s, a call\'s, then the reply\'s', () => {

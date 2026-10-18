@@ -81,6 +81,11 @@ function kindName(path: string, shown: ShownFile, languageName: LanguageName): s
   return languageName(path) ?? t('kind.plainText')
 }
 
+/** What a file is, in full, by its name alone, as a card names it: *PDF Document*, *ZIP file*. */
+export function fileKindName(path: string): string {
+  return kindName(path, { as: 'card', size: null }, () => null)
+}
+
 /** The facts after a file's kind. */
 function facts(shown: ShownFile): string[] {
   switch (shown.as) {

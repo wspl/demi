@@ -37,14 +37,6 @@ export function linkedCommit(target: string): string | null {
   return /^commit:([0-9a-f]{7,64})$/i.exec(target.trim())?.[1] ?? null
 }
 
-/**
- * The attachment a target names, such as `a3` for `attachment:a3`
- * (`file-previews.md` § Files named in messages); null for any other target.
- */
-export function attachmentId(target: string): string | null {
-  return /^attachment:(a[1-9]\d*)$/.exec(target.trim())?.[1] ?? null
-}
-
 /** A target as written may be percent-encoded; one that does not decode stays as it is. */
 export function decodedTarget(value: string): string {
   try {

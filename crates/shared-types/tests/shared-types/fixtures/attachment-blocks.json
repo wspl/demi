@@ -1,0 +1,218 @@
+[
+  {
+    "case": "a block of its own",
+    "text": "Done:\n\n<attachment id=\"a3\" />\n",
+    "blocks": [
+      "a3"
+    ]
+  },
+  {
+    "case": "blocks on consecutive lines",
+    "text": "<attachment id=\"a3\" />\n<attachment id=\"a4\" />",
+    "blocks": [
+      "a3",
+      "a4"
+    ]
+  },
+  {
+    "case": "a block on the line after words, and words after it",
+    "text": "The report:\n<attachment id=\"a5\" />\nThat is all.",
+    "blocks": [
+      "a5"
+    ]
+  },
+  {
+    "case": "a block in a list item",
+    "text": "- the notes\n  <attachment id=\"a6\" />",
+    "blocks": [
+      "a6"
+    ]
+  },
+  {
+    "case": "a block in a nested list item",
+    "text": "- outer\n  - inner\n    <attachment id=\"a6\" />",
+    "blocks": [
+      "a6"
+    ]
+  },
+  {
+    "case": "a block in a quote",
+    "text": "> <attachment id=\"a7\" />",
+    "blocks": [
+      "a7"
+    ]
+  },
+  {
+    "case": "a quote right after a block",
+    "text": "<attachment id=\"a1\" />\n> <attachment id=\"a3\" />",
+    "blocks": [
+      "a1",
+      "a3"
+    ]
+  },
+  {
+    "case": "a list right after a block",
+    "text": "<attachment id=\"a1\" />\n- <attachment id=\"a3\" />",
+    "blocks": [
+      "a1",
+      "a3"
+    ]
+  },
+  {
+    "case": "a fence right after a block",
+    "text": "<attachment id=\"a1\" />\n```\n<attachment id=\"a3\" />\n```",
+    "blocks": [
+      "a1"
+    ]
+  },
+  {
+    "case": "a rule right after a block",
+    "text": "<attachment id=\"a1\" />\n---",
+    "blocks": [
+      "a1"
+    ]
+  },
+  {
+    "case": "CRLF line ends",
+    "text": "Here:\r\n<attachment id=\"a2\" />\r\n<attachment id=\"a4\" />\r\n",
+    "blocks": [
+      "a2",
+      "a4"
+    ]
+  },
+  {
+    "case": "trailing spaces",
+    "text": "<attachment id=\"a2\" />   \nnext",
+    "blocks": [
+      "a2"
+    ]
+  },
+  {
+    "case": "no space before />",
+    "text": "<attachment id=\"a2\"/>",
+    "blocks": [
+      "a2"
+    ]
+  },
+  {
+    "case": "three spaces of indentation after words",
+    "text": "text\n   <attachment id=\"a2\" />",
+    "blocks": [
+      "a2"
+    ]
+  },
+  {
+    "case": "four spaces of indentation after words is a paragraph's text",
+    "text": "text\n    <attachment id=\"a3\" />",
+    "blocks": []
+  },
+  {
+    "case": "indented code",
+    "text": "    <attachment id=\"a3\" />",
+    "blocks": []
+  },
+  {
+    "case": "fenced code",
+    "text": "```\n<attachment id=\"a3\" />\n```",
+    "blocks": []
+  },
+  {
+    "case": "inline code",
+    "text": "`<attachment id=\"a3\" />`",
+    "blocks": []
+  },
+  {
+    "case": "an HTML comment",
+    "text": "<!--\n<attachment id=\"a3\" />\n-->",
+    "blocks": []
+  },
+  {
+    "case": "an HTML block",
+    "text": "<div>\n<attachment id=\"a3\" />\n</div>",
+    "blocks": []
+  },
+  {
+    "case": "emphasis around it",
+    "text": "See **<attachment id=\"a3\" />** for the syntax.",
+    "blocks": []
+  },
+  {
+    "case": "emphasis alone on its line",
+    "text": "**<attachment id=\"a3\" />**",
+    "blocks": []
+  },
+  {
+    "case": "mid-sentence",
+    "text": "See <attachment id=\"a3\" /> for the notes.",
+    "blocks": []
+  },
+  {
+    "case": "words right before it",
+    "text": "x<attachment id=\"a3\" />",
+    "blocks": []
+  },
+  {
+    "case": "a heading",
+    "text": "# <attachment id=\"a3\" />",
+    "blocks": []
+  },
+  {
+    "case": "single quotes",
+    "text": "<attachment id='a3' />",
+    "blocks": []
+  },
+  {
+    "case": "a paired tag",
+    "text": "<attachment id=\"a3\"></attachment>",
+    "blocks": []
+  },
+  {
+    "case": "an opening tag without its slash",
+    "text": "<attachment id=\"a3\">",
+    "blocks": []
+  },
+  {
+    "case": "another attribute",
+    "text": "<attachment id=\"a3\" class=\"x\" />",
+    "blocks": []
+  },
+  {
+    "case": "a number with a leading zero",
+    "text": "<attachment id=\"a03\" />",
+    "blocks": []
+  },
+  {
+    "case": "a link or an image to an attachment",
+    "text": "![The shot](attachment:a1) and [the notes](attachment:a2)",
+    "blocks": []
+  },
+  {
+    "case": "a tag line right under a table is a row of the table",
+    "text": "| a | b |\n| - | - |\n| 1 | 2 |\n<attachment id=\"a3\" />",
+    "blocks": []
+  },
+  {
+    "case": "a tag after a table and a blank line",
+    "text": "| a | b |\n| - | - |\n| 1 | 2 |\n\n<attachment id=\"a3\" />",
+    "blocks": [
+      "a3"
+    ]
+  },
+  {
+    "case": "a tag in display math",
+    "text": "$$\n<attachment id=\"a3\" />\n$$",
+    "blocks": []
+  },
+  {
+    "case": "a lazy quote line",
+    "text": "> a\n<attachment id=\"a3\" />",
+    "blocks": [
+      "a3"
+    ]
+  },
+  {
+    "case": "a tag struck through",
+    "text": "~~<attachment id=\"a3\" />~~",
+    "blocks": []
+  }
+]

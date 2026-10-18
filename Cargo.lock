@@ -2992,6 +2992,7 @@ name = "demi-plugin-file-browser"
 version = "0.1.27"
 dependencies = [
  "demi-plugin-interface",
+ "futures-util",
 ]
 
 [[package]]

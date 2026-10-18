@@ -10,6 +10,7 @@ import { vLinkMenus, type LinkMenus } from '@demicodes/web-ui/ui/context-menu'
 import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
 import { hostImagePaths, useHostImagesAt } from '@demicodes/web-ui/markdown/host-images'
 import type { HostImage } from '@demicodes/web-ui/files/host-image'
+import type { MessageAttachment } from '@demicodes/web-ui/markdown/types'
 import { useMessageAgents } from '@demicodes/web-ui/agent/agent-links'
 import { useTranscript } from '@demicodes/web-ui/agent/edit-selection'
 import AgentLinkMark from '@demicodes/web-ui/agent/AgentLinkMark.vue'
@@ -18,7 +19,8 @@ import PicturePreview from '@demicodes/web-ui/ui/PicturePreview.vue'
 import { GitCommitHorizontal, Link } from '@lucide/vue'
 import FileIcon from '@demicodes/web-ui/files/FileIcon.vue'
 import AudioPlayer from '@demicodes/web-ui/files/AudioPlayer.vue'
-import { ATTACHMENT_AUDIO_ATTRIBUTE } from '@demicodes/web-ui/markdown/render'
+import AttachmentCard from '@demicodes/web-ui/files/AttachmentCard.vue'
+import { ATTACHMENT_AUDIO_ATTRIBUTE, ATTACHMENT_CARD_ATTRIBUTE } from '@demicodes/web-ui/markdown/render'
 import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { useMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { useContentScrollers } from '@demicodes/web-ui/composables/useContentScrollers'
@@ -111,8 +113,8 @@ function renderBlock(source: () => string): () => string {
 
 /**
  * The places of a render that components fill: each code block gets its
- * Copy, each link its icon (a file's or an attachment's file icon, a commit's
- * or a web page's), and each agent link its agent's mark
+ * Copy, each link its icon (a file's, a commit's or a web page's), each
+ * attachment block that is a card its card, and each agent link its agent's mark
  * and tip. A render replaces them; the component of each place moves into
  * the new one and keeps its state, as a code block's Copied.
  */
@@ -122,12 +124,15 @@ interface Places {
   agentLinks: HTMLElement[]
   /** The places of audio attachments' inline players. */
   audios: HTMLElement[]
+  /** The places of attachment blocks' cards. */
+  cards: HTMLElement[]
   media: (HTMLImageElement | HTMLVideoElement)[]
 }
 const codeBlocks = shallowRef<HTMLElement[]>([])
 const linkIcons = shallowRef<HTMLElement[]>([])
 const agentLinks = shallowRef<HTMLElement[]>([])
 const audios = shallowRef<HTMLElement[]>([])
+const cards = shallowRef<HTMLElement[]>([])
 /** The message's pictures, each a tile with its preview on hover. */
 const pictures = shallowRef<MessagePicture[]>([])
 /** Each medium's picture, kept while its render shows, so its loaded size stays with it. */
@@ -149,6 +154,7 @@ function placesIn(nodes: readonly ChildNode[], fresh: readonly ChildNode[]): Pla
     linkIcons: within('[data-file-icon], [data-commit-icon], [data-link-icon]'),
     agentLinks: within('[data-agent-link]'),
     audios: within(`[${ATTACHMENT_AUDIO_ATTRIBUTE}]`),
+    cards: within(`[${ATTACHMENT_CARD_ATTRIBUTE}]`),
     media: elements.flatMap((element) => messagePictures(element).map((picture) => picture.element)),
   }
 }
@@ -165,6 +171,7 @@ useMarkdownBlocks({
     linkIcons.value = found.flatMap((places) => places.linkIcons)
     agentLinks.value = found.flatMap((places) => places.agentLinks)
     audios.value = found.flatMap((places) => places.audios)
+    cards.value = found.flatMap((places) => places.cards)
     pictures.value = found.flatMap((places) => places.media).map((medium) => {
       const picture = pictureOf.get(medium) ?? messagePicture(medium)
       pictureOf.set(medium, picture)
@@ -181,6 +188,20 @@ watch(width, () => {
   if (root.value)
     fitMessageMedia(root.value)
 })
+
+/** The attachment a card's place names, as the conversation has it now; null while the page asks for it. */
+function cardAttachment(place: HTMLElement): { id: string; attachment: MessageAttachment | null } {
+  const id = place.getAttribute(ATTACHMENT_CARD_ATTRIBUTE) ?? ''
+  const lookup = files()?.attachment?.(id)
+  return { id, attachment: lookup?.state === 'found' ? lookup.attachment : null }
+}
+
+/** A card's click: the file opens in the work panel. */
+function openCard(place: HTMLElement): void {
+  const { id, attachment } = cardAttachment(place)
+  if (attachment)
+    files()?.openAttachment?.(id, attachment)
+}
 
 function onMediumLoad(event: Event): void {
   const medium = event.target
@@ -229,6 +250,13 @@ function onMediumLoad(event: Event): void {
   />
   <Teleport v-for="(place, index) in audios" :key="index" :to="place">
     <AudioPlayer :src="place.getAttribute(ATTACHMENT_AUDIO_ATTRIBUTE) ?? ''" :name="place.dataset.audioName ?? ''" />
+  </Teleport>
+  <Teleport v-for="(place, index) in cards" :key="index" :to="place">
+    <AttachmentCard
+      :file="cardAttachment(place).attachment"
+      :openable="files()?.openAttachment !== undefined"
+      @open="openCard(place)"
+    />
   </Teleport>
   <AgentLinkMark
     v-for="(link, index) in agentLinks"

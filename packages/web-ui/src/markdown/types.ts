@@ -13,6 +13,8 @@ export interface MessageAttachment {
   mediaType: string
   /** Where its bytes load from, shown as its media type. */
   url: string
+  /** Its size in bytes. */
+  size: number
   /** Its bytes' SHA-256 in the user's blobs, which a drag of it into a composer names it by. */
   sha256: string
   /**
@@ -93,6 +95,14 @@ export interface ConversationFiles {
    * shows its alt text.
    */
   attachment?(id: string): AttachmentLookup
+  /**
+   * Opens attachment `id`, a file that is no image, video or audio, in the
+   * work panel through the `attachment` intent, previewed from its copy
+   * (`file-previews.md` § Attachment blocks); absent while no plugin the
+   * user has on opens it, as on a share, and its card then only offers
+   * Download.
+   */
+  openAttachment?(id: string, attachment: MessageAttachment): void
   /**
    * Shows a commit a message links as `commit:3f2a9c1` in the Change view's
    * Commits mode, through the `commit` intent; absent while no plugin the

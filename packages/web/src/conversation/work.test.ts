@@ -220,6 +220,37 @@ test('a link’s Open in Work Panel opens its page in a new tab of the conversat
   expect(state.pinned.file).toMatchObject({ path: '/work/src/a.ts', tree: true })
 })
 
+// An attachment block's card opens its file in the work panel
+// (`file-previews.md` § Attachment blocks): a tab of its own named by its
+// file, which a later click on the card selects again, whatever the panel
+// shows meanwhile, instead of adding another (`plugin-pages.md` § Intents).
+// Planted defect this catches: a kind without a key, which adds a second
+// tab. A few ms.
+test('an attachment’s card opens it in a tab of its own, and a later click selects that tab again', () => {
+  signIn('one')
+  const plugin = (id: string) => ({ id, name: id, description: 'A plugin.', enabled: true, packages: [] })
+  useProduct().read = productState({ plugins: [plugin('file-browser')] })
+  const work = useWorkPanel()
+  const state = work.stateFor('a')
+  expect(work.canOpen('attachment')).toBe(true)
+  const report = { id: 'a3', name: 'report.pdf', size: 2516582, url: '/api/blobs/3?type=application%2Fpdf' }
+  const attachmentTabs = () => state.panel.tabs.filter((tab) => tab.kind === 'attachment')
+
+  work.openIn('a', { intent: 'attachment', payload: report })
+  expect(state.open).toBe(true)
+  expect(attachmentTabs().map((tab) => tab.data)).toEqual([report])
+  const first = attachmentTabs()[0]!.id
+  expect(state.panel.history.at(-1)).toBe(first)
+  // Another attachment is another tab, which the panel then shows.
+  work.openIn('a', { intent: 'attachment', payload: { ...report, id: 'a4', name: 'notes.md', size: 496 } })
+  expect(attachmentTabs().map((tab) => tab.data)).toMatchObject([{ name: 'report.pdf' }, { name: 'notes.md' }])
+  expect(state.panel.history.at(-1)).not.toBe(first)
+  // The first card again: its tab, not a third.
+  work.openIn('a', { intent: 'attachment', payload: report })
+  expect(attachmentTabs()).toHaveLength(2)
+  expect(state.panel.history.at(-1)).toBe(first)
+})
+
 /**
  * Answers the work panel's routes as the backend does, from `stored`,
  * counting its reads and keeping each change it was sent.
