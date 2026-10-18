@@ -11,7 +11,7 @@ const SUMMARY: &str = "Make speech, music and sound effects through the user's p
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Makes audio through the user's OpenAI, Google or ElevenLabs API key or a compatible API, with the model `--model` names: `speech` reads a text aloud in one voice, `music` makes a piece from a prompt, `effect` a sound effect; `voices` lists a speech model's voices, `models` the models with their kinds, prices and the entry a call takes. The bytes go to stdout, MP3 unless `--format` asks otherwise: `> voice.mp3` saves it; stderr says its length, format and model. Use it when the user asks for a voice-over, narration, music or a sound effect.";
+const ENTRY: &str = "Makes audio through the user's OpenAI, Google, ElevenLabs, MiniMax, BytePlus Speech or Doubao Speech API key or a compatible API, with the model `--model` names: `speech` reads a text aloud in one voice, `music` makes a piece from a prompt, `effect` a sound effect; `voices` lists a speech model's voices, `models` the models with their kinds, prices and the entry a call takes. The bytes go to stdout, MP3 unless `--format` asks otherwise: `> voice.mp3` saves it; stderr says its length, format and model. Use it when the user asks for a voice-over, narration, music or a sound effect.";
 
 const SPEECH_SUMMARY: &str = "Read the text aloud in one voice and write the audio's bytes to stdout; stderr says its length, format, model, entry and voice. An option the entry's API has no field for, a format the vendor does not make, or a result that differs from what was asked adds a warning and still succeeds.";
 const MUSIC_SUMMARY: &str = "Make one piece of music from the prompt, its lyrics, structure, tempo and style written in it as the vendor documents ([Verse], [Chorus]), and write the audio's bytes to stdout; stderr says its length, format, model and entry, with a warning for each option the entry's API has no field for.";
@@ -23,7 +23,7 @@ const TEXT: &str = "The text to read aloud; - reads it from stdin.";
 const PROMPT: &str = "What to make; - reads it from stdin.";
 const MODEL: &str = "The audio model, required: one `demi audio models` lists that makes this kind.";
 const PROVIDER: &str = "The entry to make it through, by its name in Settings or its id, when the user asked for one; without it, the first that can make the model now, in the order of Settings > Providers.";
-const VOICE: &str = "A voice `demi audio voices --model <id>` lists; the vendor's default without it, and ElevenLabs, which has none, needs it.";
+const VOICE: &str = "A voice `demi audio voices --model <id>` lists; the vendor's default without it; ElevenLabs and ByteDance's Seed speech, which have none, need it.";
 const INSTRUCTIONS: &str = "How to speak, such as a tone, a pace or an accent, for the models that take it.";
 const SPEED: &str = "A factor of the voice's speed, such as 1.2.";
 const SPEECH_FORMAT: &str = "The format to ask for; MP3 without it. A vendor that makes another says so on stderr; nothing is transcoded.";
@@ -38,7 +38,7 @@ const SHOWN: &str = "The model to show; without it, every model is listed.";
 
 const SUCCESS: &str = "the audio's bytes on stdout; on stderr a line such as `0:04 MP3 speech from gpt-4o-mini-tts (OpenAI), voice coral` or `0:15 MP3 music from music_v2 (ElevenLabs)`, with the cost where the vendor reports one, and a warning for each option the entry's API takes no field for, a format the vendor does not make, or a length more than a second from --duration";
 
-const FAILURE: &str = "no --model, no provider that makes audio, a model none makes or that makes another kind (with the kinds it makes), an entry --provider names that cannot make it now (with why and the entries that can), every entry that could used up, a refused API key, a refusal in the vendor's words, ElevenLabs speech without --voice, a vendor that did not answer in 120 s, or a file that is not audio this reads, each named on stderr with exit status 1";
+const FAILURE: &str = "no --model, no provider that makes audio, a model none makes or that makes another kind (with the kinds it makes), an entry --provider names that cannot make it now (with why and the entries that can), every entry that could used up, a refused API key, a refusal in the vendor's words, ElevenLabs or Seed speech without --voice, a vendor that did not answer in 120 s, or a file that is not audio this reads, each named on stderr with exit status 1";
 
 /// The formats music and effects are asked in.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Deserialize, JsonSchema)]

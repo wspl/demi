@@ -596,7 +596,7 @@
       "keyPaste": "API キーを貼り付け",
       "test": "接続をテスト",
       "testDescription": "有効な最初のテキストモデルに短いチャットメッセージを 1 件送信します。",
-      "testMediaDescription": "API キーでベンダーのモデル一覧を読み込みます。",
+      "testMediaDescription": "何も生成せずに、ベンダーで API キーを確認します。",
       "testing": "テスト中…",
       "connected": "接続済み",
       "failed": "失敗",

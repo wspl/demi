@@ -1992,12 +1992,14 @@ dependencies = [
  "demi-plugin-video",
  "demi-plugin-web",
  "demi-provider-anthropic-api",
+ "demi-provider-bytedance",
  "demi-provider-claude-code",
  "demi-provider-codex",
  "demi-provider-common",
  "demi-provider-elevenlabs",
  "demi-provider-google",
  "demi-provider-grok-build",
+ "demi-provider-minimax",
  "demi-provider-openai-api",
  "demi-runner-command-packages",
  "demi-runner-direct",
@@ -3137,6 +3139,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "demi-provider-bytedance"
+version = "0.1.27"
+dependencies = [
+ "base64 0.22.1",
+ "bytes",
+ "demi-provider-common",
+ "demi-shared-types",
+ "futures-util",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
 name = "demi-provider-claude-code"
 version = "0.1.27"
 dependencies = [
@@ -3267,6 +3284,21 @@ dependencies = [
  "serde_with",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "demi-provider-minimax"
+version = "0.1.27"
+dependencies = [
+ "bytes",
+ "demi-provider-common",
+ "demi-shared-types",
+ "futures-util",
+ "hex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

@@ -1,7 +1,8 @@
 # Video generation
 
 The agent makes videos with the `demi video` group, through the user's Grok
-subscription, an xAI or Google API key, or a compatible API that speaks one
+subscription, an xAI, Google, BytePlus ModelArk or Volcengine Ark API key,
+or a compatible API that speaks one
 of the video shapes. For example, a user asks for their logo to spin once:
 the agent runs `demi video models`, picks `grok-imagine-video-1.5`, then
 
@@ -22,9 +23,15 @@ video APIs. It asks for no permission, as `demi image` does not.
 
 ```text
 demi video generate <prompt> --model <id> [--image <path>] [--last-frame <path>] [--reference <path>]...
-                    [--duration <s>] [--aspect <W:H>] [--resolution 480p|720p|1080p|4k] [--audio | --no-audio] [--seed <n>]
+                    [--duration <s>] [--aspect <W:H>] [--resolution <height>p|<n>k] [--audio | --no-audio] [--seed <n>]
 demi video models [<model>]
 ```
+
+`--resolution` takes a height such as `720p` or `768p`, or `2k` or `4k`, any
+the vendor names, as models offer different ones: MiniMax's `768P` and
+`2K`, Veo's `4k`. One the catalog does not list for the model is sent with a
+warning, as any option is, and each vendor's request writes it as that
+vendor does, `768P` for MiniMax.
 
 - `generate` makes one video. A prompt of `-` is read from stdin.
 - **The video's bytes go to stdout**, as the vendor made them, an MP4:
@@ -96,28 +103,44 @@ each request here, the ask, every status read and the download.
 | xAI Videos | xAI key; a compatible API | `POST https://api.x.ai/v1/videos/generations` | `GET /v1/videos/<request_id>`, as Grok's | As Grok's |
 | Veo | Google key | `POST /v1beta/models/<model>:predictLongRunning` with `instances` and `parameters` | `GET /v1beta/<operation.name>` until `done` | `response.generateVideoResponse.generatedSamples[0].video.uri`, downloaded with the key, following redirects |
 | OpenAI Videos | a compatible API, such as vLLM-Omni or a reseller | `POST /v1/videos` | `GET /v1/videos/<id>`: `queued`, `in_progress`, `completed`, `failed` | `GET /v1/videos/<id>/content` |
+| Ark Tasks | BytePlus key, Volcengine key; a compatible API | `POST /api/v3/contents/generations/tasks` with `model` and `content`, the prompt as its `text` item | `GET /api/v3/contents/generations/tasks/<id>`: `queued`, `running`, `succeeded`, `failed`, `cancelled`, `expired` | `content.video_url`, kept 24 hours, downloaded without a header |
+| Hailuo | MiniMax key | For MiniMax-H3 models, `POST /v2/video_generation` with `model` and `content`, the prompt as its `text` item; for Hailuo 2.3 and 02, `POST /v1/video_generation` with `model` and `prompt`; the catalog names each model's | `GET /v2/query/video_generation/<task_id>`: `queued`, `running`, `succeeded`, `failed`; `GET /v1/query/video_generation?task_id=`: `Preparing`, `Queueing`, `Processing`, `Success`, `Fail` | `task.content.url`; a v1 task's `file_id`, whose `GET /v1/files/retrieve?file_id=` names its `file.download_url`, kept an hour; downloaded without a header |
 | OpenRouter Videos | a compatible API, OpenRouter | `POST /api/v1/videos` | `GET /api/v1/videos/<id>`: `pending`, `in_progress`, `completed`, `failed` | The completed answer's video address |
 
 How each option goes into each shape:
 
-| Option | Grok, xAI Videos | Veo | OpenAI Videos | OpenRouter Videos |
-| --- | --- | --- | --- | --- |
-| `--image` | `image: { url: "data:…" }` | `instances[0].image` | `input_reference` | `frame_images: [{ frame_type: "first_frame", … }]` |
-| `--last-frame` | `last_frame` | `instances[0].lastFrame` | — | `frame_type: "last_frame"` |
-| `--reference` | `reference_images` | `instances[0].referenceImages` | — | `input_references` |
-| `--duration` | `duration` | `parameters.durationSeconds` | `seconds`, a string | `duration` |
-| `--aspect` | `aspect_ratio` | `parameters.aspectRatio` | `size`, the vendor's size of that aspect at the resolution, 720p when none is asked, and of 16:9 when only a resolution is | `aspect_ratio` |
-| `--resolution` | `resolution` | `parameters.resolution` | in `size` | `resolution` |
-| `--audio`, `--no-audio` | `generate_audio` | — (Veo always makes sound) | — | `generate_audio` |
-| `--seed` | — | `parameters.seed` | — | `seed` |
+| Option | Grok, xAI Videos | Veo | OpenAI Videos | OpenRouter Videos | Ark Tasks | Hailuo |
+| --- | --- | --- | --- | --- | --- | --- |
+| `--image` | `image: { url: "data:…" }` | `instances[0].image` | `input_reference` | `frame_images: [{ frame_type: "first_frame", … }]` | a `content` item `{ type: "image_url", image_url: { url }, role: "first_frame" }` | v2: a `content` item `{ type: "image_url", image_url: { url }, role: "first_frame" }`; v1: `first_frame_image` |
+| `--last-frame` | `last_frame` | `instances[0].lastFrame` | — | `frame_type: "last_frame"` | the same, `role: "last_frame"` | v2: the same, `role: "last_frame"`; v1: `last_frame_image` |
+| `--reference` | `reference_images` | `instances[0].referenceImages` | — | `input_references` | the same, `role: "reference_image"` | v2: the same, `role: "reference_image"`; v1: — |
+| `--duration` | `duration` | `parameters.durationSeconds` | `seconds`, a string | `duration` | `duration` | `duration` |
+| `--aspect` | `aspect_ratio` | `parameters.aspectRatio` | `size`, the vendor's size of that aspect at the resolution, 720p when none is asked, and of 16:9 when only a resolution is | `aspect_ratio` | `ratio` | v2: `ratio`; v1: — |
+| `--resolution` | `resolution` | `parameters.resolution` | in `size` | `resolution` | `resolution` | `resolution`, as MiniMax writes it, such as `768P` |
+| `--audio`, `--no-audio` | `generate_audio` | — (Veo always makes sound) | — | `generate_audio` | `generate_audio` | — |
+| `--seed` | — | `parameters.seed` | — | `seed` | `seed` | — |
+
+Ark Tasks always sends `watermark: false`, so a video comes as the vendor
+makes it for its API, and a stopped call cancels its task while the task is
+still queued, the one state Ark cancels in.
 
 An option a shape has no field for is not sent, and the call warns
 `demi video generate: warning: Veo takes no --no-audio; the video has
 sound`; the result check says the rest. OpenAI's own Videos API and its
 Sora models were shut down on 2026-09-24, so no OpenAI key makes videos;
-the shape stays for the servers that kept it. BytePlus, Volcengine and
-MiniMax speak Ark Tasks and Hailuo, which come with those vendors' entries
-([Which entries make which media](media.md#which-entries-make-which-media)).
+the shape stays for the servers that kept it. BytePlus and Volcengine name
+a model differently, `doubao-seedance-2-5-260628` and
+`dreamina-seedance-2-5-260628`; Ark lists neither to an API key, so their
+video models are the catalog's, as MiniMax's are, which lists none. A
+stopped Hailuo call cancels a v2 task while it is still queued, `DELETE
+/v2/video_generation/<task_id>`, which on a finished task would delete its
+record instead; MiniMax cancels no v1 task. MiniMax's v1 answers HTTP 200 to
+a refused request, as for images, so its `base_resp` decides; v2 answers with
+the HTTP status and an `error` object, a failed task with `task.error`. v2
+needs a resolution, a duration and, for a video from text, a ratio, so a call
+that asks none sends the vendor's documented default resolution, `768P`, the
+model's shortest duration and `16:9`, and its summary names them, as it names
+what any call made.
 
 Each entry that makes videos has **Video Generation** on its page, below
 Images, with its video models newest first, as Images has; a compatible

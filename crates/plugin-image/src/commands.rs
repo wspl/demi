@@ -11,7 +11,7 @@ const SUMMARY: &str = "Make and edit images through the user's provider entries,
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Makes and edits images through the user's ChatGPT or Grok subscription, OpenAI, xAI or Google API key, or a compatible API: `generate` makes one from a prompt with the model `--model` names, `edit` from a prompt and images of the Host; `models` lists the models with their sizes, prices and the entry a call takes. The image's bytes go to stdout: `> icon.png` saves it, `| demi file view` shows it to you; stderr says what came back. Several images are several calls. Use it when the user asks for an image, an icon or an illustration, or to change one.";
+const ENTRY: &str = "Makes and edits images through the user's ChatGPT or Grok subscription, OpenAI, xAI, Google, MiniMax, BytePlus ModelArk or Volcengine Ark API key, or a compatible API: `generate` makes one from a prompt with the model `--model` names, `edit` from a prompt and images of the Host; `models` lists the models with their sizes, prices and the entry a call takes. The image's bytes go to stdout: `> icon.png` saves it, `| demi file view` shows it to you; stderr says what came back. Several images are several calls. Use it when the user asks for an image, an icon or an illustration, or to change one.";
 
 const GENERATE_SUMMARY: &str = "Make one image from the prompt and write its bytes to stdout; stderr says its size, format, model and entry. An option the result does not honour adds a warning and still succeeds.";
 

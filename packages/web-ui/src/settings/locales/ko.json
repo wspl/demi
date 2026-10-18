@@ -596,7 +596,7 @@
       "keyPaste": "API 키 붙여넣기",
       "test": "연결 테스트",
       "testDescription": "켜져 있는 첫 번째 텍스트 모델에 짧은 채팅 메시지를 하나 보냅니다.",
-      "testMediaDescription": "API 키로 공급업체의 모델 목록을 읽어 옵니다.",
+      "testMediaDescription": "아무것도 생성하지 않고 공급업체에서 API 키를 확인합니다.",
       "testing": "테스트 중…",
       "connected": "연결됨",
       "failed": "실패",

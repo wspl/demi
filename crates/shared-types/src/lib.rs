@@ -66,6 +66,7 @@ pub use content::{
 };
 pub use failure::{
     ContinueWith, FailureSource, NotExposedPort, OfflineDevice, ProviderErrorDiagnostics, ProviderFailureFacts, SignedOutAccount,
+    VendorTrace,
 };
 pub use context_limit::{
     CONTEXT_LIMIT_STEPS, ContextChoice, ContextLimitStep, ContextWordError, applied_context_limit,
@@ -92,7 +93,7 @@ pub use model::{
 };
 pub use provider_state::{
     AccountInfo, AudioKind, AudioShape, AuthState, ImageShape, LoginPending, LoginStage, MediaKind, MediaShapes, RefusedCode,
-    RuntimeState, VideoShape, WireApi,
+    RuntimeState, VideoResolution, VideoShape, WireApi,
 };
 pub use quota::{
     QuotaKind, QuotaPlan, QuotaScope, QuotaSeverity, QuotaSnapshot, QuotaUnit, QuotaWindow, QuotaWindowName,

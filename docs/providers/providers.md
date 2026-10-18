@@ -111,8 +111,9 @@ by its ID, so a refreshed set needs no code.
 
 ### Media-only vendors
 
-ElevenLabs and Stability AI make media and no text, so models.dev, a
-catalog of text models, lists neither. The backend offers them beside
+ElevenLabs, Stability AI, BytePlus ModelArk and ByteDance's two speech
+services, BytePlus Speech and Doubao Speech, sell media without a text
+model of models.dev, which lists none of them. The backend offers them beside
 models.dev's vendors, as the vendors of the
 [media catalog](media-models.md) that models.dev does not list, each with
 the endpoint the catalog names, `https://api.elevenlabs.io` for ElevenLabs.
@@ -121,7 +122,11 @@ creates an API-key entry, as for any vendor, whose page has its key, no
 Models section and the media sections its vendor makes: Audio for
 ElevenLabs. Its family is `media`, which makes no text request, so the
 entry is never in the model menu, and its key is checked by its vendor's
-media model list rather than a chat message. For example, Alex adds
+media model list rather than a chat message. A vendor whose API lists no
+model to its key, as ByteDance's do not, has its key checked by a request
+the vendor refuses for its body before making anything, such as an image
+request with an empty prompt: a refusal of the body passes the key, a
+refusal of the key fails it. For example, Alex adds
 ElevenLabs, pastes his key, and `demi audio models` lists `eleven_v4`,
 `music_v2` and `eleven_text_to_sound_v2` through it.
 

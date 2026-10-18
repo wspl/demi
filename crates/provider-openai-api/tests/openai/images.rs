@@ -220,8 +220,10 @@ async fn an_openai_keys_failures_read_as_a_spent_limit_a_refused_key_a_policy_bl
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
     let fail = async || maker.make(&http, &catalog(), request("gpt-image-2", None, Vec::new())).await.result.unwrap_err();
 
-    assert_eq!(fail().await, MediaFailure::UsageLimit { retry_at: None });
-    assert_eq!(fail().await, MediaFailure::UsageLimit { retry_at: None });
+    let quota = demi_shared_types::VendorTrace { code: Some("insufficient_quota".into()), id: None };
+    assert_eq!(fail().await, MediaFailure::UsageLimit { retry_at: None, trace: quota });
+    let billing = demi_shared_types::VendorTrace { code: Some("billing_hard_limit_reached".into()), id: None };
+    assert_eq!(fail().await, MediaFailure::UsageLimit { retry_at: None, trace: billing });
     let refused = fail().await;
     assert!(matches!(&refused, MediaFailure::KeyRefused { message, .. } if message.starts_with("Incorrect API key provided")), "{refused:?}");
     assert_eq!(refused.outcome(), "auth_expired");
@@ -316,7 +318,7 @@ async fn an_xai_key_lists_models_with_their_aliases_sends_its_shapes_and_reads_i
 
     let fail = async || maker.make(&http, &catalog(), request("grok-imagine-image-2.0", None, Vec::new())).await.result.unwrap_err();
     assert!(matches!(fail().await, MediaFailure::Shape { takes, .. } if takes == ["1:1", "3:4", "16:9"]));
-    assert_eq!(fail().await, MediaFailure::UsageLimit { retry_at: None });
+    assert_eq!(fail().await, MediaFailure::UsageLimit { retry_at: None, trace: Default::default() });
     assert!(matches!(fail().await, MediaFailure::KeyRefused { .. }));
     match fail().await {
         MediaFailure::Refused { message, .. } => assert_eq!(message, "Generated image rejected by content moderation."),

@@ -195,9 +195,9 @@ fn summary(command: &str, asked: &AskedVideo, video: &MadeVideo, facts: &mp4::Mp
         warn(format!("asked for {}:{}, got {got}", aspect.width, aspect.height));
     }
     if let Some(resolution) = wanted.resolution
-        && facts.width.min(facts.height) != resolution.short_side()
+        && !resolution.fits(facts.width, facts.height)
     {
-        warn(format!("asked for {}, got {got}", resolution.as_str()));
+        warn(format!("asked for {}, got {got}", resolution.lowercase()));
     }
     let audio_sent = !asked.unsent.contains(&VideoOption::Audio);
     match wanted.audio {

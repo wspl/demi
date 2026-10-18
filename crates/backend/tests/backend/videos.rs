@@ -57,7 +57,7 @@ fn video_family(videos: &Arc<VideoScript>) -> crate::accounts::Scripts {
 
 /// A harness whose jobs are read every 10 ms within `bound`, so a scenario
 /// sees each state at once.
-fn reading_within(bound: Duration) -> Harness {
+pub(crate) fn reading_within(bound: Duration) -> Harness {
     let mut harness = Harness::new();
     harness.media = MediaTuning { video_reads_every: Duration::from_millis(10), video_bound: bound };
     harness
@@ -97,7 +97,7 @@ async fn a_subscription_makes_a_video_told_as_its_job_moves_handing_on_only_befo
     let shown = ran(&scripts, &mut socket, "m1", "demi video generate 'a boat' --model clip-1; echo exit=$?").await;
     assert_shows(
         &shown,
-        "demi video generate: no provider makes videos; sign in to Grok, or add an xAI or Google key or a compatible API with a video shape, in Settings › Providers\nexit=1",
+        "demi video generate: no provider makes videos; sign in to Grok, or add an xAI, Google, MiniMax, BytePlus ModelArk or Volcengine Ark key or a compatible API with a video shape, in Settings › Providers\nexit=1",
     );
 
     logins.login.signs_in("first");
@@ -147,7 +147,7 @@ async fn a_subscription_makes_a_video_told_as_its_job_moves_handing_on_only_befo
     // A job the vendor fails, and one that expires there, are told in the
     // design's words; each is a failed row.
     videos.answer([
-        Ok(JobState::Failed { message: "Video generation failed".into() }),
+        Ok(JobState::Failed { message: "Video generation failed".into(), trace: Default::default() }),
         Ok(JobState::Expired),
     ]);
     let shown = ran(
@@ -187,7 +187,7 @@ async fn a_subscription_makes_a_video_told_as_its_job_moves_handing_on_only_befo
     // second job is asked of the other account.
     videos.used_up.lock().unwrap().clear();
     let asks = videos.asks().len();
-    videos.answer([Err(MediaFailure::UsageLimit { retry_at: None })]);
+    videos.answer([Err(MediaFailure::UsageLimit { retry_at: None, trace: Default::default() })]);
     let shown = ran(&scripts, &mut socket, "m5", "demi video generate 'x' --model clip-1 > d.mp4; echo exit=$?").await;
     assert_shows(&shown, "demi video generate: Grok's usage limit is reached\nexit=1");
     assert_eq!(videos.asks().len(), asks + 1);
@@ -298,7 +298,7 @@ async fn a_jobs_row_keeps_what_was_paid_and_is_written_once_whenever_the_bound_p
     // The vendor reports the job done and its cost; the download fails.
     videos.answer([Ok(VideoScript::done())]);
     *videos.download_fails.lock().unwrap() =
-        Some(MediaFailure::Unanswered { cause: "HTTP 502".into(), code: None });
+        Some(MediaFailure::Unanswered { cause: "HTTP 502".into(), code: None, trace: Default::default() });
     let shown = ran(&scripts, &mut socket, "m1", "demi video generate 'x' --model clip-1 > a.mp4; echo exit=$?").await;
     assert_shows(&shown, "exit=1");
     let row = video_rows(&harness).pop().unwrap();

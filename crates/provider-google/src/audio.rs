@@ -281,7 +281,7 @@ fn read_interaction(body: &[u8]) -> Result<MadeAudio, MediaFailure> {
         let said: Vec<&str> = outputs.iter().filter_map(|content| content.text.as_deref()).collect();
         return Err(match said.is_empty() {
             true => unreadable("its answer held no audio".to_owned()),
-            false => MediaFailure::Refused { message: said.join(" "), code: None },
+            false => MediaFailure::Refused { message: said.join(" "), code: None, trace: Default::default() },
         });
     };
     let bytes = within_limit(audio.data.clone().expect("an audio block with data").into_bytes(), "audio")?;

@@ -67,6 +67,8 @@ demi-provider-claude-code = { path = "../provider-claude-code" }
 demi-provider-codex = { path = "../provider-codex" }
 demi-provider-google = { path = "../provider-google" }
 demi-provider-elevenlabs = { path = "../provider-elevenlabs" }
+demi-provider-bytedance = { path = "../provider-bytedance" }
+demi-provider-minimax = { path = "../provider-minimax" }
 demi-provider-grok-build = { path = "../provider-grok-build" }
 demi-provider-openai-api = { path = "../provider-openai-api" }
 demi-web-api-protocol = { path = "../web-api-protocol" }

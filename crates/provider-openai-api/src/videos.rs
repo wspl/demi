@@ -14,9 +14,9 @@ use demi_provider_common::{
     json_body,
     media::{Ask, Holding, MediaAnswer, MediaFailure, MediaMaker, MediaModelInfo, MediaVendor, unreadable},
     media_catalog::Catalog,
-    videos::{self, Done, JobState, Resolution, VideoMaker, VideoRequest, xai},
+    videos::{self, Done, JobState, VideoMaker, VideoRequest, xai},
 };
-use demi_shared_types::{Clock, Cost, Currency, VideoShape};
+use demi_shared_types::{Clock, Cost, Currency, VendorTrace, VideoResolution, VideoShape};
 use futures_util::future::BoxFuture;
 use reqwest::{
     Url,
@@ -124,7 +124,7 @@ impl VideoMaker for KeyVideos {
         }
     }
 
-    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             match self.shape() {
                 VideoShape::OpenaiVideos => {
@@ -139,7 +139,7 @@ impl VideoMaker for KeyVideos {
                     let body = Bytes::from(openrouter_body(&request));
                     self.send(http, Ask::post_json(&url, body)).await.and_then(|body| read_id(&body))
                 }
-                VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo => {
+                VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo | VideoShape::ArkTasks | VideoShape::Hailuo => {
                     let url = self.url("/videos/generations");
                     let body = xai::encode(&request);
                     self.send(http, Ask::post_json(&url, body))
@@ -150,7 +150,8 @@ impl VideoMaker for KeyVideos {
         })
     }
 
-    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: &'a str) -> BoxFuture<'a, MediaAnswer<JobState>> {
+    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: demi_provider_common::videos::JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>  {
+        let job = job.id;
         Box::pin(async move {
             let url = self.url(&format!("/videos/{job}"));
             let answer = self.send(http, Ask::get(&url)).await;
@@ -160,7 +161,7 @@ impl VideoMaker for KeyVideos {
                     answer.and_then(|body| read_openai_state(&body, content))
                 }
                 VideoShape::OpenrouterVideos => answer.and_then(|body| read_openrouter_state(&body)),
-                VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo => {
+                VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo | VideoShape::ArkTasks | VideoShape::Hailuo => {
                     answer.and_then(|body| xai::read_state(&body))
                 }
             }
@@ -173,7 +174,7 @@ impl VideoMaker for KeyVideos {
     fn download<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, done: &'a Done) -> BoxFuture<'a, MediaAnswer<Bytes>> {
         let headers = match self.shape() {
             VideoShape::OpenaiVideos | VideoShape::OpenrouterVideos => self.headers(),
-            VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo => HeaderMap::new(),
+            VideoShape::Grok | VideoShape::XaiVideos | VideoShape::Veo | VideoShape::ArkTasks | VideoShape::Hailuo => HeaderMap::new(),
         };
         let label = if self.shape_is_xai() { "xAI" } else { "OpenAI" };
         Box::pin(videos::download(label, &*self.clock, http, &done.url, &self.base, headers))
@@ -181,7 +182,8 @@ impl VideoMaker for KeyVideos {
 
     /// OpenAI Videos' servers abort a job its `DELETE` names, as vLLM-Omni
     /// documents; xAI and OpenRouter document no cancellation.
-    fn cancel<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: &'a str) -> Option<BoxFuture<'a, MediaAnswer<()>>> {
+    fn cancel<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: demi_provider_common::videos::JobRef<'a>) -> Option<BoxFuture<'a, MediaAnswer<()>>>  {
+        let job = job.id;
         if self.shape() != VideoShape::OpenaiVideos {
             return None;
         }
@@ -248,12 +250,12 @@ fn openai_fields(request: &VideoRequest) -> OpenAiFields {
 /// resolution's, each side a multiple of 16: 1280×720 for 16:9 at 720p.
 /// Either alone takes the other's usual value, 16:9 or 720p; neither sends
 /// no size, so the server's default stands.
-fn openai_size(aspect: Option<Aspect>, resolution: Option<Resolution>) -> Option<String> {
+fn openai_size(aspect: Option<Aspect>, resolution: Option<VideoResolution>) -> Option<String> {
     if aspect.is_none() && resolution.is_none() {
         return None;
     }
     let aspect = aspect.unwrap_or(Aspect { width: 16, height: 9 });
-    let short = resolution.unwrap_or(Resolution::P720).short_side();
+    let short = resolution.unwrap_or(VideoResolution::Height(720)).short_side();
     let (long, short_part) = if aspect.width >= aspect.height {
         (aspect.width, aspect.height)
     } else {
@@ -294,6 +296,8 @@ struct OpenAiState {
 #[derive(Deserialize)]
 struct VendorError {
     message: String,
+    #[serde(default)]
+    code: Option<String>,
 }
 
 /// An OpenAI Videos job's state: `queued`, `in_progress`, `completed` with
@@ -306,8 +310,9 @@ fn read_openai_state(body: &[u8], content: Url) -> Result<JobState, MediaFailure
         "queued" => Ok(JobState::Queued),
         "in_progress" => Ok(JobState::Running { progress }),
         "completed" => Ok(JobState::Done(Done { url: content, cost: None, usage: None })),
-        "failed" => Ok(JobState::Failed {
-            message: state.error.map_or_else(|| "the job failed".to_owned(), |error| error.message),
+        "failed" => Ok(match state.error {
+            Some(error) => JobState::Failed { message: error.message, trace: VendorTrace { code: error.code, id: None } },
+            None => JobState::Failed { message: "the job failed".to_owned(), trace: VendorTrace::default() },
         }),
         other => Err(unreadable(format!("its job's state \"{other}\" is not one it documents"))),
     }
@@ -326,7 +331,7 @@ struct OpenRouterBody<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     aspect_ratio: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    resolution: Option<&'static str>,
+    resolution: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     generate_audio: Option<bool>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -367,7 +372,7 @@ fn openrouter_body(request: &VideoRequest) -> Vec<u8> {
         input_references: request.references.iter().map(|image| openrouter_image(image, None)).collect(),
         duration: request.duration,
         aspect_ratio: request.aspect.map(|aspect| aspect.to_string()),
-        resolution: request.resolution.map(Resolution::as_str),
+        resolution: request.resolution.map(VideoResolution::lowercase),
         generate_audio: request.audio,
         seed: request.seed,
     })
@@ -422,7 +427,7 @@ fn read_openrouter_state(body: &[u8]) -> Result<JobState, MediaFailure> {
                     .to_owned(),
                 _ => "the job failed".to_owned(),
             };
-            Ok(JobState::Failed { message })
+            Ok(JobState::Failed { message, trace: Default::default() })
         }
         other => Err(unreadable(format!("its job's state \"{other}\" is not one it documents"))),
     }

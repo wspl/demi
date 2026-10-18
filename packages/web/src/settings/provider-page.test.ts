@@ -533,9 +533,9 @@ test('a compatible API chooses its video shape and adds video models, and a vend
     shapeTrigger()!.click()
     await until(() => menuItems().length > 0, 'the shapes open')
     expect(menuItems().map((item) => item.textContent!.trim())).toEqual([
-      'None', 'xAI Videos', 'OpenAI Videos', 'OpenRouter Videos',
+      'None', 'xAI Videos', 'OpenAI Videos', 'Ark Tasks', 'OpenRouter Videos',
     ])
-    menuItems()[3]!.click()
+    menuItems()[4]!.click()
     await until(() => told.changes.length === 1, 'the shape is told')
     expect(told.changes).toEqual([
       { media: { image: { shape: null, enabled: true }, video: { shape: 'openrouter-videos', enabled: true }, audio: { shape: null, enabled: true } } },
@@ -685,7 +685,7 @@ test('a compatible API chooses OpenAI Speech and an entry of media alone shows i
     expect([...document.querySelectorAll('h3')].map((title) => title.textContent!.trim())).not.toContain('Models')
     expect(document.body.textContent).toContain('Speech')
     expect(document.body.textContent).toContain('Music')
-    expect(document.body.textContent).toContain('Reads the vendor’s list of models with the API key.')
+    expect(document.body.textContent).toContain('Checks the API key with the vendor without making anything.')
     expect(disabled(testButton()!)).toBe(false)
   } finally {
     vendor.unmount()

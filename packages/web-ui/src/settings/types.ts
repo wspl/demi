@@ -29,13 +29,13 @@ export type SettingsMediaKind = 'image' | 'video' | 'audio'
 export const SETTINGS_MEDIA_KINDS: readonly SettingsMediaKind[] = ['image', 'video', 'audio']
 
 /** How an entry's API makes images: a vendor entry's is its vendor's, a compatible API's the one its user chose. */
-export type SettingsImageShape = 'chatgpt' | 'grok' | 'openai-images' | 'gemini'
+export type SettingsImageShape = 'chatgpt' | 'grok' | 'openai-images' | 'gemini' | 'seedream' | 'minimax'
 
 /** How an entry's API makes videos, as `SettingsImageShape` says of images. */
-export type SettingsVideoShape = 'grok' | 'xai-videos' | 'veo' | 'openai-videos' | 'openrouter-videos'
+export type SettingsVideoShape = 'grok' | 'xai-videos' | 'veo' | 'openai-videos' | 'ark-tasks' | 'openrouter-videos' | 'hailuo'
 
 /** How an entry's API makes audio, as `SettingsImageShape` says of images. */
-export type SettingsAudioShape = 'openai-speech' | 'gemini' | 'elevenlabs'
+export type SettingsAudioShape = 'openai-speech' | 'gemini' | 'elevenlabs' | 'seed' | 'minimax'
 
 /** What an audio model makes (`audio.md` § Commands). */
 export type SettingsAudioKind = 'speech' | 'music' | 'effect'
@@ -59,15 +59,20 @@ export const MEDIA_SHAPE_LABELS: Record<SettingsMediaShape, string> = {
   'xai-videos': 'xAI Videos',
   veo: 'Veo',
   'openai-videos': 'OpenAI Videos',
+  'ark-tasks': 'Ark Tasks',
   'openrouter-videos': 'OpenRouter Videos',
   'openai-speech': 'OpenAI Speech',
   elevenlabs: 'ElevenLabs',
+  seedream: 'Seedream',
+  seed: 'Seed speech and Seed Audio',
+  minimax: 'MiniMax',
+  hailuo: 'Hailuo',
 }
 
 /** The shapes a compatible API may choose for each kind, besides none, in the menu's order. */
 export const COMPATIBLE_MEDIA_SHAPES: { readonly [K in SettingsMediaKind]: readonly SettingsMediaShapes[K][] } = {
   image: ['openai-images'],
-  video: ['xai-videos', 'openai-videos', 'openrouter-videos'],
+  video: ['xai-videos', 'openai-videos', 'ark-tasks', 'openrouter-videos'],
   audio: ['openai-speech'],
 }
 

@@ -16,7 +16,7 @@ use demi_provider_common::{
     media_catalog::Catalog,
     videos::{self, Done, JobState, VideoMaker, VideoRequest},
 };
-use demi_shared_types::VideoShape;
+use demi_shared_types::{VideoResolution, VideoShape};
 use futures_util::future::BoxFuture;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
@@ -54,7 +54,7 @@ impl VideoMaker for KeyVideos {
         VideoShape::Veo
     }
 
-    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             let key = &self.0;
             let url = key.models_url(Some(&format!("{}:predictLongRunning", request.model)));
@@ -74,7 +74,8 @@ impl VideoMaker for KeyVideos {
         })
     }
 
-    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: &'a str) -> BoxFuture<'a, MediaAnswer<JobState>> {
+    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: demi_provider_common::videos::JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>  {
+        let job = job.id;
         Box::pin(async move {
             let key = &self.0;
             let url = endpoint_url(key.base(), &format!("/{job}"));
@@ -142,7 +143,7 @@ struct Parameters {
     #[serde(skip_serializing_if = "Option::is_none")]
     duration_seconds: Option<u32>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    resolution: Option<&'static str>,
+    resolution: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     seed: Option<u64>,
 }
@@ -174,7 +175,7 @@ fn encode(request: &VideoRequest) -> Bytes {
         parameters: Parameters {
             aspect_ratio: request.aspect.map(|aspect| aspect.to_string()),
             duration_seconds: request.duration,
-            resolution: request.resolution.map(|resolution| resolution.as_str()),
+            resolution: request.resolution.map(VideoResolution::lowercase),
             seed: request.seed,
         },
     };
@@ -231,7 +232,7 @@ fn read_operation(body: &[u8]) -> Result<JobState, MediaFailure> {
         return Ok(JobState::Running { progress: None });
     }
     if let Some(error) = operation.error {
-        return Ok(JobState::Failed { message: error.message });
+        return Ok(JobState::Failed { message: error.message, trace: Default::default() });
     }
     let response = operation.response.and_then(|response| response.generate_video_response);
     let Some(response) = response else {
@@ -241,7 +242,7 @@ fn read_operation(body: &[u8]) -> Result<JobState, MediaFailure> {
         if response.rai_media_filtered_reasons.is_empty() {
             return Err(unreadable("its finished operation named no video".to_owned()));
         }
-        return Ok(JobState::Failed { message: response.rai_media_filtered_reasons.join("; ") });
+        return Ok(JobState::Failed { message: response.rai_media_filtered_reasons.join("; "), trace: Default::default() });
     };
     let url = Url::parse(&sample.video.uri)
         .map_err(|error| unreadable(format!("its video's address could not be read: {error}")))?;

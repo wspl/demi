@@ -24,7 +24,7 @@ impl Audio {
         let mut manifest = Manifest::new(
             PluginId::try_from("audio").expect("a valid plugin id"),
             "Audio Generation",
-            "Makes speech, music and sound effects through an OpenAI, Google or ElevenLabs key or a compatible API with demi audio.",
+            "Makes speech, music and sound effects through an OpenAI, Google, ElevenLabs, MiniMax, BytePlus Speech or Doubao Speech key or a compatible API with demi audio.",
         );
         manifest.commands = commands::commands().manifest_commands();
         Self { manifest }

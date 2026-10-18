@@ -233,7 +233,7 @@ async fn base64_audio_is_counted_as_decoded() {
     let answer = provider.audio().unwrap().make(&http, &catalog(), request(AudioKind::Speech, "gemini-3.1-flash-tts-preview")).await;
 
     match answer.result {
-        Err(MediaFailure::Unanswered { cause, code: None }) => assert_eq!(cause, "its audio is over 256 MiB"),
+        Err(MediaFailure::Unanswered { cause, code: None, .. }) => assert_eq!(cause, "its audio is over 256 MiB"),
         other => panic!("not refused for its size: {:?}", other.map(|made| made.bytes.len())),
     }
 }

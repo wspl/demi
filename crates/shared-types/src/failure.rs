@@ -169,3 +169,38 @@ pub struct ContinueWith {
     #[garde(skip)]
     pub label: String,
 }
+
+/// What a vendor's failure names to trace it (`images.md` § Accounts and
+/// failures): its own error code and its request or trace ID, such as
+/// OpenAI's `x-request-id`, MiniMax's `trace_id` or Seed speech's
+/// `X-Tt-Logid`, which the vendor's support asks for first.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VendorTrace {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub code: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+}
+
+impl VendorTrace {
+    /// Whether the failure named nothing to trace it by.
+    pub fn is_empty(&self) -> bool {
+        self.code.is_none() && self.id.is_none()
+    }
+
+    /// This trace, with what it lacks taken from `other`.
+    pub fn or(self, other: Self) -> Self {
+        Self { code: self.code.or(other.code), id: self.id.or(other.id) }
+    }
+
+    /// The trace as a failure's words end with it, `(code 1042, trace
+    /// 0a1b2c)` with a space before it; nothing when it names nothing.
+    pub fn words(&self) -> String {
+        let parts: Vec<String> = [self.code.as_ref().map(|code| format!("code {code}")), self.id.as_ref().map(|id| format!("trace {id}"))]
+            .into_iter()
+            .flatten()
+            .collect();
+        if parts.is_empty() { String::new() } else { format!(" ({})", parts.join(", ")) }
+    }
+}

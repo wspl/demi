@@ -8,7 +8,7 @@
 use std::time::Duration;
 
 use bytes::Bytes;
-use demi_shared_types::{AudioKind, Clock, QuotaWindow, Timestamp};
+use demi_shared_types::{AudioKind, Clock, QuotaWindow, Timestamp, VendorTrace};
 use futures_util::future::BoxFuture;
 use http::{HeaderMap, StatusCode};
 use reqwest::Url;
@@ -173,10 +173,33 @@ pub enum MediaVendor {
     Google,
     Xai,
     Elevenlabs,
+    /// BytePlus ModelArk, ByteDance's Ark outside China.
+    Byteplus,
+    /// Volcengine Ark (火山方舟), ByteDance's Ark in China.
+    Volcengine,
+    /// BytePlus Speech, ByteDance's speech outside China.
+    ByteplusSpeech,
+    /// Doubao Speech (豆包语音), ByteDance's speech in China.
+    DoubaoSpeech,
+    /// MiniMax outside China, `api.minimax.io`.
+    Minimax,
+    /// MiniMax in China, `api.minimax.cn`.
+    MinimaxCn,
 }
 
 impl MediaVendor {
-    pub const ALL: [Self; 4] = [Self::OpenAi, Self::Google, Self::Xai, Self::Elevenlabs];
+    pub const ALL: [Self; 10] = [
+        Self::OpenAi,
+        Self::Google,
+        Self::Xai,
+        Self::Elevenlabs,
+        Self::Byteplus,
+        Self::Volcengine,
+        Self::ByteplusSpeech,
+        Self::DoubaoSpeech,
+        Self::Minimax,
+        Self::MinimaxCn,
+    ];
 
     /// Its id in the catalog, and on models.dev for a vendor it lists.
     pub fn id(self) -> &'static str {
@@ -185,6 +208,12 @@ impl MediaVendor {
             Self::Google => "google",
             Self::Xai => "xai",
             Self::Elevenlabs => "elevenlabs",
+            Self::Byteplus => "byteplus",
+            Self::Volcengine => "volcengine",
+            Self::ByteplusSpeech => "byteplus-speech",
+            Self::DoubaoSpeech => "doubao-speech",
+            Self::Minimax => "minimax",
+            Self::MinimaxCn => "minimax-cn",
         }
     }
 
@@ -200,8 +229,25 @@ impl MediaVendor {
             Self::Google => "Google",
             Self::Xai => "xAI",
             Self::Elevenlabs => "ElevenLabs",
+            Self::Byteplus => "BytePlus ModelArk",
+            Self::Volcengine => "Volcengine Ark",
+            Self::ByteplusSpeech => "BytePlus Speech",
+            Self::DoubaoSpeech => "Doubao Speech",
+            Self::Minimax | Self::MinimaxCn => "MiniMax",
         }
     }
+}
+
+/// `vendor`'s models of `kind` in `catalog`, in its order, by the vendor's
+/// names: those of a key whose vendor lists none to it, as ByteDance's and
+/// MiniMax's do not, of which Test Connection names the first.
+pub fn catalog_models(catalog: &Catalog, vendor: MediaVendor, kind: MediaKind) -> Vec<MediaModelInfo> {
+    catalog
+        .models
+        .iter()
+        .filter(|model| model.vendor == vendor.id() && model.kind == kind)
+        .map(|model| MediaModelInfo { name: Some(model.name.clone()), ..MediaModelInfo::id(&model.id) })
+        .collect()
 }
 
 /// The models of `kind` that `subscription` makes, as the catalog lists
@@ -234,6 +280,18 @@ pub trait MediaMaker: Send + Sync {
         http: &'a crate::ProviderHttp,
         catalog: &'a Catalog,
     ) -> BoxFuture<'a, Result<Vec<MediaModelInfo>, MediaFailure>>;
+
+    /// Checks the key of an entry of media alone, as Test Connection does
+    /// (`providers.md` § Media-only vendors), and answers its models: by
+    /// reading the vendor's list of them, unless the vendor lists none to
+    /// the key, as ByteDance's do not, and checks it another way.
+    fn check_key<'a>(
+        &'a self,
+        http: &'a crate::ProviderHttp,
+        catalog: &'a Catalog,
+    ) -> BoxFuture<'a, Result<Vec<MediaModelInfo>, MediaFailure>> {
+        self.models(http, catalog)
+    }
 
     /// Whether the model that answered is known to be the one asked for.
     /// A vendor whose answer does not name it, the ChatGPT backend's, is
@@ -293,27 +351,57 @@ impl<T> MediaAnswer<T> {
     }
 }
 
-/// Why a vendor did not answer with what was asked.
+/// Why a vendor did not answer with what was asked. Each failure the
+/// vendor sent carries what it named to trace it, its own code and its
+/// request or trace ID, which the call's words end with (`images.md`
+/// § Accounts and failures).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum MediaFailure {
     /// The account or key is used up, until the moment the vendor named,
     /// if any.
-    UsageLimit { retry_at: Option<Timestamp> },
+    UsageLimit { retry_at: Option<Timestamp>, trace: VendorTrace },
     /// The account's sign-in could not be used or renewed.
     SignIn(AuthFailure),
     /// The vendor refused the entry's API key, in its own words; `code` is
     /// the failure's, `auth_expired` or `permission_denied`.
-    KeyRefused { message: String, code: ErrorCode },
+    KeyRefused { message: String, code: ErrorCode, trace: VendorTrace },
     /// The vendor refused the prompt or an image, in its own words.
-    Refused { message: String, code: Option<ErrorCode> },
+    Refused { message: String, code: Option<ErrorCode>, trace: VendorTrace },
     /// The vendor refused the shape asked for, naming the shapes it takes,
     /// in its own order.
-    Shape { takes: Vec<String>, code: Option<ErrorCode> },
+    Shape { takes: Vec<String>, code: Option<ErrorCode>, trace: VendorTrace },
     /// The vendor failed, or did not answer in time.
-    Unanswered { cause: String, code: Option<ErrorCode> },
+    Unanswered { cause: String, code: Option<ErrorCode>, trace: VendorTrace },
 }
 
 impl MediaFailure {
+    /// The failure with what it lacks of its trace taken from `trace`,
+    /// such as the request ID of the answer whose body named the failure.
+    pub fn traced(mut self, trace: VendorTrace) -> Self {
+        match &mut self {
+            Self::UsageLimit { trace: own, .. }
+            | Self::KeyRefused { trace: own, .. }
+            | Self::Refused { trace: own, .. }
+            | Self::Shape { trace: own, .. }
+            | Self::Unanswered { trace: own, .. } => *own = std::mem::take(own).or(trace),
+            Self::SignIn(_) => {}
+        }
+        self
+    }
+
+    /// What the vendor named to trace the failure; nothing for a sign-in
+    /// the backend could not use.
+    pub fn trace(&self) -> VendorTrace {
+        match self {
+            Self::UsageLimit { trace, .. }
+            | Self::KeyRefused { trace, .. }
+            | Self::Refused { trace, .. }
+            | Self::Shape { trace, .. }
+            | Self::Unanswered { trace, .. } => trace.clone(),
+            Self::SignIn(_) => VendorTrace::default(),
+        }
+    }
+
     /// How the call ended, as its usage ledger row says.
     pub fn outcome(&self) -> String {
         let code = match self {
@@ -359,6 +447,9 @@ pub struct MediaCall<'a> {
 pub struct Answered {
     pub status: StatusCode,
     pub body: Bytes,
+    /// The request or trace ID its headers name, which a failure the body
+    /// states is traced by.
+    pub trace_id: Option<String>,
 }
 
 impl MediaCall<'_> {
@@ -463,8 +554,9 @@ impl MediaCall<'_> {
             if !status.is_success() {
                 return Err(self.refusal(response).await);
             }
+            let trace_id = trace_id(response.headers());
             let body = read_within(response, holding, "answer").await?;
-            return Ok(Answered { status, body });
+            return Ok(Answered { status, body, trace_id });
         }
     }
 
@@ -473,14 +565,13 @@ impl MediaCall<'_> {
         let status = response.status();
         let failure = (self.used_up)(http_failure(response, self.label, self.reader, self.clock).await);
         let diagnostics = failure.diagnostics.as_deref();
+        let record = diagnostics.and_then(HttpFailureRecord::read);
+        let trace = record.as_ref().map(record_trace).unwrap_or_default();
         if failure.code == Some(ErrorCode::UsageLimit) {
             let retry_at = diagnostics.and_then(|diagnostics| (self.reader)(diagnostics, self.clock.now()).retry_at);
-            return MediaFailure::UsageLimit { retry_at };
+            return MediaFailure::UsageLimit { retry_at, trace };
         }
-        let body = diagnostics
-            .and_then(HttpFailureRecord::read)
-            .map(|record| record.body)
-            .unwrap_or_default();
+        let body = record.map(|record| record.body).unwrap_or_default();
         let said = vendor_message(&body);
         match self.credential {
             MediaCredential::Account { family } if status == StatusCode::UNAUTHORIZED => {
@@ -495,7 +586,7 @@ impl MediaCall<'_> {
                     .code
                     .filter(|code| matches!(code, ErrorCode::AuthExpired | ErrorCode::PermissionDenied))
                     .unwrap_or(ErrorCode::AuthExpired);
-                return MediaFailure::KeyRefused { message, code };
+                return MediaFailure::KeyRefused { message, code, trace };
             }
             _ => {}
         }
@@ -504,10 +595,10 @@ impl MediaCall<'_> {
                 Some(said) => format!("HTTP {}: {said}", status.as_u16()),
                 None => format!("HTTP {}", status.as_u16()),
             };
-            return MediaFailure::Unanswered { cause, code: failure.code };
+            return MediaFailure::Unanswered { cause, code: failure.code, trace };
         }
         let message = said.unwrap_or_else(|| format!("HTTP {}", status.as_u16()));
-        MediaFailure::Refused { message, code: failure.code }
+        MediaFailure::Refused { message, code: failure.code, trace }
     }
 }
 
@@ -518,6 +609,7 @@ pub(crate) async fn within_deadline<T>(call: impl Future<Output = Result<T, Medi
         Err(_) => Err(MediaFailure::Unanswered {
             cause: format!("no answer in {} s", REQUEST_TIMEOUT.as_secs()),
             code: Some(ErrorCode::Overloaded),
+            trace: VendorTrace::default(),
         }),
     }
 }
@@ -535,12 +627,85 @@ pub(crate) fn transport(error: impl Into<crate::SendError>) -> MediaFailure {
     MediaFailure::Unanswered {
         cause: crate::failure::transport_cause(error),
         code: Some(code),
+        trace: VendorTrace::default(),
     }
 }
 
 /// The failure of an answer that is not what the vendor documents.
 pub fn unreadable(cause: String) -> MediaFailure {
-    MediaFailure::Unanswered { cause, code: None }
+    MediaFailure::Unanswered { cause, code: None, trace: VendorTrace::default() }
+}
+
+/// The headers vendors name a request by, in the order they are read:
+/// OpenAI's and Ark's `x-request-id`, ByteDance speech's `X-Tt-Logid`,
+/// MiniMax's `Trace-Id`.
+const TRACE_HEADERS: [&str; 3] = ["x-request-id", "x-tt-logid", "trace-id"];
+
+/// The request or trace ID `headers` name.
+pub fn trace_id(headers: &HeaderMap) -> Option<String> {
+    TRACE_HEADERS.iter().find_map(|name| {
+        let value = headers.get(*name)?.to_str().ok()?.trim();
+        (!value.is_empty()).then(|| value.to_owned())
+    })
+}
+
+/// What a refused request's record names to trace it: the vendor's code,
+/// the body's `error.code`, or its `code` or `base_resp.status_code`, as a
+/// number other than the HTTP status, which says nothing more; and its
+/// request ID, the headers' ([`trace_id`]), the body's `request_id` or
+/// `trace_id`, or the one its message quotes, as Ark's and OpenAI's do.
+pub fn record_trace(record: &HttpFailureRecord) -> VendorTrace {
+    #[derive(Deserialize)]
+    struct Body {
+        #[serde(default)]
+        error: Option<serde_json::Value>,
+        #[serde(default)]
+        code: Option<serde_json::Value>,
+        #[serde(default)]
+        base_resp: Option<serde_json::Value>,
+        #[serde(default)]
+        request_id: Option<String>,
+        #[serde(default)]
+        trace_id: Option<String>,
+    }
+    let body = serde_json::from_str::<Body>(&record.body).ok();
+    let error_field = |field: &str| {
+        body.as_ref()
+            .and_then(|body| body.error.as_ref())
+            .and_then(|error| error.get(field))
+            .cloned()
+    };
+    // A code is an identifier; xAI's `code` holds its status's sentence,
+    // such as "Some resource has been exhausted", which names nothing.
+    let named = |value: serde_json::Value| match value {
+        serde_json::Value::String(text) if !text.is_empty() && !text.contains(char::is_whitespace) => Some(text),
+        serde_json::Value::Number(number) if number.as_u64() != Some(u64::from(record.status)) && number.as_i64() != Some(0) => {
+            Some(number.to_string())
+        }
+        _ => None,
+    };
+    let code = error_field("code")
+        .and_then(named)
+        .or_else(|| body.as_ref().and_then(|body| body.code.clone()).and_then(named))
+        .or_else(|| {
+            body.as_ref()
+                .and_then(|body| body.base_resp.as_ref())
+                .and_then(|base| base.get("status_code"))
+                .cloned()
+                .and_then(named)
+        });
+    let headers: HeaderMap = record
+        .headers
+        .iter()
+        .filter_map(|(name, value)| {
+            Some((http::HeaderName::from_bytes(name.as_bytes()).ok()?, http::HeaderValue::from_str(value).ok()?))
+        })
+        .collect();
+    let message = vendor_message(&record.body).unwrap_or_default();
+    let id = trace_id(&headers)
+        .or_else(|| body.as_ref().and_then(|body| body.request_id.clone().or_else(|| body.trace_id.clone())))
+        .or_else(|| crate::failure::request_id_in(&message));
+    VendorTrace { code, id }
 }
 
 /// What a vendor said in a refusal's body: `error.message`, `error` when

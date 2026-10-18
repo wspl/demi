@@ -434,3 +434,13 @@ fn words(text: &str) -> String {
     }
     out
 }
+
+/// The request ID a failure's message quotes, as OpenAI's `request ID
+/// req_…` and Ark's `Request ID: 0217…` do, which they ask users to quote.
+pub fn request_id_in(message: &str) -> Option<String> {
+    static REQUEST_ID: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        // A constant of this module; a test reads a message through it.
+        regex::Regex::new(r"(?i)request ID:? ([A-Za-z0-9_-]+)").expect("the request id pattern compiles")
+    });
+    REQUEST_ID.captures(message).map(|captures| captures[1].to_owned())
+}

@@ -1,5 +1,5 @@
 {
-  "updated": "2026-10-17T22:00:00Z",
+  "updated": "2026-10-18T00:00:00Z",
   "vendors": [
     {
       "id": "elevenlabs",
@@ -17,6 +17,37 @@
       "doc": "https://platform.stability.ai/docs/api-reference",
       "sources": [
         "https://platform.stability.ai/docs/api-reference"
+      ]
+    },
+    {
+      "id": "byteplus",
+      "name": "BytePlus ModelArk",
+      "endpoint": "https://ark.ap-southeast.bytepluses.com/api/v3",
+      "doc": "https://docs.byteplus.com/en/docs/modelark/base-url-and-authentication",
+      "sources": [
+        "https://docs.byteplus.com/en/docs/modelark/base-url-and-authentication",
+        "https://docs.byteplus.com/en/docs/modelark/image-generation-api",
+        "https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api"
+      ]
+    },
+    {
+      "id": "byteplus-speech",
+      "name": "BytePlus Speech",
+      "endpoint": "https://voice.ap-southeast-1.bytepluses.com",
+      "doc": "https://docs.byteplus.com/en/docs/byteplusvoice/unidirectional_tts_http",
+      "sources": [
+        "https://docs.byteplus.com/en/docs/byteplusvoice/unidirectional_tts_http",
+        "https://docs.byteplus.com/en/docs/byteplusvoice/seedaudio-01"
+      ]
+    },
+    {
+      "id": "doubao-speech",
+      "name": "Doubao Speech",
+      "endpoint": "https://openspeech.bytedance.com",
+      "doc": "https://docs.volcengine.com/docs/DoubaoVoice/HTTPChunkedSSEUnidirectionalStreaming-V3?lang=zh",
+      "sources": [
+        "https://docs.volcengine.com/docs/DoubaoVoice/HTTPChunkedSSEUnidirectionalStreaming-V3?lang=zh",
+        "https://docs.volcengine.com/docs/DoubaoVoice/audio-generation-http?lang=zh"
       ]
     }
   ],
@@ -39,7 +70,7 @@
       "vendor": "openai",
       "id": "gpt-image-2.5-sunburst-2026-09-08",
       "kind": "image",
-      "name": "GPT-Image-2.5 Sunburst",
+      "name": "GPT-Image-2.5 Sunburst (2026-09-08)",
       "description": "Most capable model for image generation and editing",
       "released": "2026-09-08",
       "image": {
@@ -116,7 +147,7 @@
       "vendor": "openai",
       "id": "gpt-image-2.5-flare-2026-09-08",
       "kind": "image",
-      "name": "GPT-Image-2.5 Flare",
+      "name": "GPT-Image-2.5 Flare (2026-09-08)",
       "description": "Fast, high-quality everyday image generation",
       "released": "2026-09-08",
       "image": {
@@ -193,7 +224,7 @@
       "vendor": "openai",
       "id": "gpt-image-2-2026-04-21",
       "kind": "image",
-      "name": "GPT-Image-2",
+      "name": "GPT-Image-2 (2026-04-21)",
       "description": "State-of-the-art image generation model",
       "released": "2026-04-21",
       "image": {
@@ -270,7 +301,7 @@
       "vendor": "openai",
       "id": "gpt-image-1.5-2025-12-16",
       "kind": "image",
-      "name": "GPT-Image-1.5",
+      "name": "GPT-Image-1.5 (2025-12-16)",
       "description": "Previous image generation model",
       "released": "2025-12-16",
       "image": {
@@ -1013,7 +1044,7 @@
       "vendor": "xai",
       "id": "grok-imagine-image-quality-20260403",
       "kind": "image",
-      "name": "Grok Imagine Image Quality",
+      "name": "Grok Imagine Image Quality (2026-04-03)",
       "aliasOf": "grok-imagine-image-quality",
       "subscriptions": [
         "grok"
@@ -1026,7 +1057,7 @@
       "vendor": "xai",
       "id": "grok-imagine-image-quality-latest",
       "kind": "image",
-      "name": "Grok Imagine Image Quality",
+      "name": "Grok Imagine Image Quality (latest)",
       "aliasOf": "grok-imagine-image-quality",
       "subscriptions": [
         "grok"
@@ -1039,7 +1070,7 @@
       "vendor": "xai",
       "id": "grok-imagine-image-pro",
       "kind": "image",
-      "name": "Grok Imagine Image Quality",
+      "name": "Grok Imagine Image Pro",
       "aliasOf": "grok-imagine-image-quality",
       "subscriptions": [
         "grok"
@@ -1105,7 +1136,7 @@
       "vendor": "xai",
       "id": "grok-imagine-image-2026-03-02",
       "kind": "image",
-      "name": "Grok Imagine Image",
+      "name": "Grok Imagine Image (2026-03-02)",
       "aliasOf": "grok-imagine-image",
       "subscriptions": [
         "grok"
@@ -1172,7 +1203,7 @@
       "vendor": "xai",
       "id": "grok-imagine-video-1.5-preview",
       "kind": "video",
-      "name": "Grok Imagine Video 1.5",
+      "name": "Grok Imagine Video 1.5 Preview",
       "aliasOf": "grok-imagine-video-1.5",
       "subscriptions": [
         "grok"
@@ -1186,7 +1217,7 @@
       "vendor": "xai",
       "id": "grok-imagine-video-1.5-2026-05-30",
       "kind": "video",
-      "name": "Grok Imagine Video 1.5",
+      "name": "Grok Imagine Video 1.5 (2026-05-30)",
       "aliasOf": "grok-imagine-video-1.5",
       "subscriptions": [
         "grok"
@@ -1527,7 +1558,7 @@
       "vendor": "openai",
       "id": "gpt-4o-mini-tts-2025-12-15",
       "kind": "audio",
-      "name": "GPT-4o Mini TTS",
+      "name": "GPT-4o Mini TTS (2025-12-15)",
       "description": "Text-to-speech model powered by GPT-4o Mini",
       "released": "2025-12-15",
       "audio": {
@@ -1646,7 +1677,7 @@
       "vendor": "openai",
       "id": "gpt-4o-mini-tts-2025-03-20",
       "kind": "audio",
-      "name": "GPT-4o Mini TTS",
+      "name": "GPT-4o Mini TTS (2025-03-20)",
       "description": "Previous dated snapshot of gpt-4o-mini-tts",
       "released": "2025-03-20",
       "audio": {
@@ -2575,7 +2606,28 @@
       "kind": "image",
       "name": "Dola Seedream 5.0 Flash",
       "image": {
-        "edits": true
+        "sizes": [
+          "2048x2048",
+          "2368x1776",
+          "1776x2368",
+          "2816x1584",
+          "1584x2816",
+          "2496x1664",
+          "1664x2496",
+          "3136x1344"
+        ],
+        "resolutions": [
+          "1K",
+          "1.5K",
+          "2K"
+        ],
+        "customSize": {
+          "maxRatio": 16,
+          "minPixels": 921600,
+          "maxPixels": 4624220
+        },
+        "edits": true,
+        "maxInputImages": 10
       },
       "price": {
         "rates": [
@@ -2589,8 +2641,10 @@
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/image-generation-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      ]
+      ],
+      "released": "2026-09-15"
     },
     {
       "vendor": "byteplus",
@@ -2598,7 +2652,28 @@
       "kind": "image",
       "name": "Dola Seedream 5.0 Pro",
       "image": {
-        "edits": true
+        "sizes": [
+          "2048x2048",
+          "2368x1776",
+          "1776x2368",
+          "2816x1584",
+          "1584x2816",
+          "2496x1664",
+          "1664x2496",
+          "3136x1344"
+        ],
+        "resolutions": [
+          "1K",
+          "1.5K",
+          "2K"
+        ],
+        "customSize": {
+          "maxRatio": 16,
+          "minPixels": 921600,
+          "maxPixels": 4624220
+        },
+        "edits": true,
+        "maxInputImages": 10
       },
       "price": {
         "rates": [
@@ -2619,8 +2694,10 @@
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/image-generation-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      ]
+      ],
+      "released": "2026-06-28"
     },
     {
       "vendor": "byteplus",
@@ -2628,7 +2705,28 @@
       "kind": "image",
       "name": "Seedream 5.0 lite",
       "image": {
-        "edits": true
+        "sizes": [
+          "2048x2048",
+          "2304x1728",
+          "1728x2304",
+          "2848x1600",
+          "1600x2848",
+          "2496x1664",
+          "1664x2496",
+          "3136x1344"
+        ],
+        "resolutions": [
+          "2K",
+          "3K",
+          "4K"
+        ],
+        "customSize": {
+          "maxRatio": 16,
+          "minPixels": 3686400,
+          "maxPixels": 16777216
+        },
+        "edits": true,
+        "maxInputImages": 14
       },
       "price": {
         "rates": [
@@ -2642,19 +2740,22 @@
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/image-generation-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      ]
+      ],
+      "released": "2026-01-28"
     },
     {
       "vendor": "byteplus",
       "id": "seedream-5-0-lite-260128",
       "kind": "image",
-      "name": "Seedream 5.0 lite",
+      "name": "Seedream 5.0 lite (retiring ID)",
       "aliasOf": "seedream-5-0-260128",
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      ]
+      ],
+      "released": "2026-01-28"
     },
     {
       "vendor": "byteplus",
@@ -2662,7 +2763,27 @@
       "kind": "image",
       "name": "Seedream 4.5",
       "image": {
-        "edits": true
+        "sizes": [
+          "2048x2048",
+          "2304x1728",
+          "1728x2304",
+          "2848x1600",
+          "1600x2848",
+          "2496x1664",
+          "1664x2496",
+          "3136x1344"
+        ],
+        "resolutions": [
+          "2K",
+          "4K"
+        ],
+        "customSize": {
+          "maxRatio": 16,
+          "minPixels": 3686400,
+          "maxPixels": 16777216
+        },
+        "edits": true,
+        "maxInputImages": 14
       },
       "price": {
         "rates": [
@@ -2676,8 +2797,10 @@
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/image-generation-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      ]
+      ],
+      "released": "2025-11-28"
     },
     {
       "vendor": "byteplus",
@@ -2685,7 +2808,28 @@
       "kind": "image",
       "name": "Seedream 4.0",
       "image": {
-        "edits": true
+        "sizes": [
+          "2048x2048",
+          "2304x1728",
+          "1728x2304",
+          "2848x1600",
+          "1600x2848",
+          "2496x1664",
+          "1664x2496",
+          "3136x1344"
+        ],
+        "resolutions": [
+          "1K",
+          "2K",
+          "4K"
+        ],
+        "customSize": {
+          "maxRatio": 16,
+          "minPixels": 921600,
+          "maxPixels": 16777216
+        },
+        "edits": true,
+        "maxInputImages": 14
       },
       "price": {
         "rates": [
@@ -2699,8 +2843,10 @@
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/image-generation-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      ]
+      ],
+      "released": "2025-08-28"
     },
     {
       "vendor": "byteplus",
@@ -2717,11 +2863,22 @@
           "720p",
           "1080p"
         ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
         "firstFrame": true,
-        "lastFrame": true
+        "lastFrame": true,
+        "maxReferenceImages": 30,
+        "audio": true
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
       ],
       "price": {
@@ -2746,7 +2903,8 @@
           }
         ],
         "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      }
+      },
+      "released": "2026-06-28"
     },
     {
       "vendor": "byteplus",
@@ -2762,11 +2920,22 @@
           "480p",
           "720p"
         ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
         "firstFrame": true,
-        "lastFrame": true
+        "lastFrame": true,
+        "maxReferenceImages": 9,
+        "audio": true
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
       ],
       "price": {
@@ -2785,7 +2954,8 @@
           }
         ],
         "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      }
+      },
+      "released": "2026-06-15"
     },
     {
       "vendor": "byteplus",
@@ -2801,13 +2971,24 @@
           "480p",
           "720p",
           "1080p",
-          "4K"
+          "4k"
+        ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
         ],
         "firstFrame": true,
-        "lastFrame": true
+        "lastFrame": true,
+        "maxReferenceImages": 9,
+        "audio": true
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
       ],
       "price": {
@@ -2838,7 +3019,8 @@
           }
         ],
         "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      }
+      },
+      "released": "2026-01-28"
     },
     {
       "vendor": "byteplus",
@@ -2854,11 +3036,22 @@
           "480p",
           "720p"
         ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
         "firstFrame": true,
-        "lastFrame": true
+        "lastFrame": true,
+        "maxReferenceImages": 9,
+        "audio": true
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
       ],
       "price": {
@@ -2877,7 +3070,8 @@
           }
         ],
         "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      }
+      },
+      "released": "2026-01-28"
     },
     {
       "vendor": "byteplus",
@@ -2894,13 +3088,25 @@
           "720p",
           "1080p"
         ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
         "firstFrame": true,
-        "lastFrame": true
+        "lastFrame": true,
+        "maxReferenceImages": 0,
+        "audio": true
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      ]
+      ],
+      "released": "2025-12-15"
     },
     {
       "vendor": "byteplus",
@@ -2917,23 +3123,24 @@
           "720p",
           "1080p"
         ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
         "firstFrame": true,
-        "lastFrame": false
+        "lastFrame": false,
+        "maxReferenceImages": 0
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
       ],
-      "price": {
-        "rates": [
-          {
-            "unit": "millionOutputTokens",
-            "amount": 1.0,
-            "currency": "usd"
-          }
-        ],
-        "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      }
+      "released": "2025-10-15"
     },
     {
       "vendor": "byteplus",
@@ -2950,11 +3157,21 @@
           "720p",
           "1080p"
         ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
         "firstFrame": true,
-        "lastFrame": true
+        "lastFrame": true,
+        "maxReferenceImages": 0
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/modelark/model-list",
+        "https://docs.byteplus.com/en/docs/modelark/create-video-generation-task-api",
         "https://docs.byteplus.com/en/docs/modelark/model-pricing"
       ],
       "price": {
@@ -2966,7 +3183,8 @@
           }
         ],
         "page": "https://docs.byteplus.com/en/docs/modelark/model-pricing"
-      }
+      },
+      "released": "2025-05-28"
     },
     {
       "vendor": "minimax",
@@ -2974,6 +3192,7 @@
       "kind": "video",
       "name": "MiniMax H3",
       "description": "Next-gen open general-purpose multimodal video model",
+      "released": "2026-07-31",
       "video": {
         "durationRange": {
           "min": 4,
@@ -2995,6 +3214,7 @@
         "lastFrame": true,
         "maxReferenceImages": 9
       },
+      "api": "v2",
       "price": {
         "rates": [
           {
@@ -3015,7 +3235,8 @@
       "sources": [
         "https://platform.minimax.io/docs/guides/models-intro",
         "https://platform.minimax.io/docs/api-reference/video-generation-v2-create",
-        "https://platform.minimax.io/docs/pricing/overview"
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://www.minimax.io/blog/minimax-h3"
       ]
     },
     {
@@ -3045,6 +3266,7 @@
         "lastFrame": true,
         "maxReferenceImages": 9
       },
+      "api": "v2",
       "price": {
         "rates": [
           {
@@ -3074,6 +3296,7 @@
       "kind": "video",
       "name": "MiniMax Hailuo 2.3",
       "description": "Text to Video & Image to Video",
+      "released": "2025-10-28",
       "video": {
         "durations": [
           6,
@@ -3089,8 +3312,10 @@
         "https://platform.minimax.io/docs/guides/models-intro",
         "https://platform.minimax.io/docs/api-reference/video-generation-t2v",
         "https://platform.minimax.io/docs/api-reference/video-generation-i2v",
-        "https://platform.minimax.io/docs/pricing/overview"
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/apis"
       ],
+      "api": "v1",
       "price": {
         "rates": [
           {
@@ -3124,6 +3349,7 @@
       "kind": "video",
       "name": "MiniMax Hailuo 2.3 Fast",
       "description": "Image to Video",
+      "released": "2025-10-28",
       "video": {
         "durations": [
           6,
@@ -3138,8 +3364,10 @@
       "sources": [
         "https://platform.minimax.io/docs/guides/models-intro",
         "https://platform.minimax.io/docs/api-reference/video-generation-i2v",
-        "https://platform.minimax.io/docs/pricing/overview"
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/apis"
       ],
+      "api": "v1",
       "price": {
         "rates": [
           {
@@ -3173,6 +3401,7 @@
       "kind": "video",
       "name": "MiniMax Hailuo 02",
       "description": "Text to Video & Image to Video",
+      "released": "2025-06-18",
       "video": {
         "durations": [
           6,
@@ -3183,14 +3412,18 @@
           "768P",
           "1080P"
         ],
-        "firstFrame": true
+        "firstFrame": true,
+        "lastFrame": true
       },
       "sources": [
         "https://platform.minimax.io/docs/guides/models-intro",
         "https://platform.minimax.io/docs/api-reference/video-generation-t2v",
         "https://platform.minimax.io/docs/api-reference/video-generation-i2v",
-        "https://platform.minimax.io/docs/pricing/overview"
+        "https://platform.minimax.io/docs/api-reference/video-generation-fl2v",
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
       ],
+      "api": "v1",
       "price": {
         "rates": [
           {
@@ -3236,7 +3469,8 @@
       "vendor": "minimax",
       "id": "image-01",
       "kind": "image",
-      "name": "image-01",
+      "name": "MiniMax Image-01",
+      "released": "2025-02-15",
       "image": {
         "aspectRatios": [
           "1:1",
@@ -3251,7 +3485,9 @@
         "customSize": {
           "multipleOf": 8,
           "maxEdge": 2048
-        }
+        },
+        "edits": true,
+        "maxInputImages": 1
       },
       "price": {
         "rates": [
@@ -3265,15 +3501,43 @@
       },
       "sources": [
         "https://platform.minimax.io/docs/api-reference/image-generation-t2i",
-        "https://platform.minimax.io/docs/pricing/overview"
+        "https://platform.minimax.io/docs/api-reference/image-generation-i2i",
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
+      ]
+    },
+    {
+      "vendor": "minimax",
+      "id": "image-01-live",
+      "kind": "image",
+      "name": "MiniMax Image-01 Live",
+      "description": "Generates images from a text prompt and a reference image.",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "16:9",
+          "4:3",
+          "3:2",
+          "2:3",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
+        "edits": true,
+        "maxInputImages": 1
+      },
+      "sources": [
+        "https://platform.minimax.io/docs/faq/models",
+        "https://platform.minimax.io/docs/api-reference/image-generation-i2i"
       ]
     },
     {
       "vendor": "minimax",
       "id": "speech-2.8-hd",
       "kind": "audio",
-      "name": "speech-2.8-hd",
+      "name": "MiniMax Speech 2.8 HD",
       "description": "Ultra-realistic quality featuring sound tags",
+      "released": "2026-01-23",
       "audio": {
         "makes": [
           "speech"
@@ -3344,15 +3608,17 @@
       "sources": [
         "https://platform.minimax.io/docs/guides/models-intro",
         "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
-        "https://platform.minimax.io/docs/pricing/overview"
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
       ]
     },
     {
       "vendor": "minimax",
       "id": "speech-2.8-turbo",
       "kind": "audio",
-      "name": "speech-2.8-turbo",
+      "name": "MiniMax Speech 2.8 Turbo",
       "description": "Seamless speed meets natural flow",
+      "released": "2026-01-23",
       "audio": {
         "makes": [
           "speech"
@@ -3423,15 +3689,17 @@
       "sources": [
         "https://platform.minimax.io/docs/guides/models-intro",
         "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
-        "https://platform.minimax.io/docs/pricing/overview"
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
       ]
     },
     {
       "vendor": "minimax",
       "id": "speech-2.6-hd",
       "kind": "audio",
-      "name": "speech-2.6-hd",
+      "name": "MiniMax Speech 2.6 HD",
       "description": "Ultimate Similarity, Ultra-High Quality",
+      "released": "2025-10-29",
       "audio": {
         "makes": [
           "speech"
@@ -3502,15 +3770,17 @@
       "sources": [
         "https://platform.minimax.io/docs/guides/models-intro",
         "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
-        "https://platform.minimax.io/docs/pricing/overview"
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
       ]
     },
     {
       "vendor": "minimax",
       "id": "speech-2.6-turbo",
       "kind": "audio",
-      "name": "speech-2.6-turbo",
+      "name": "MiniMax Speech 2.6 Turbo",
       "description": "Ultimate Value, Low latency",
+      "released": "2025-10-29",
       "audio": {
         "makes": [
           "speech"
@@ -3581,15 +3851,17 @@
       "sources": [
         "https://platform.minimax.io/docs/guides/models-intro",
         "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
-        "https://platform.minimax.io/docs/pricing/overview"
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
       ]
     },
     {
       "vendor": "minimax",
       "id": "speech-02-hd",
       "kind": "audio",
-      "name": "speech-02-hd",
+      "name": "MiniMax Speech 02 HD",
       "description": "Stronger replication similarity, High quality voice generation",
+      "released": "2025-04-02",
       "audio": {
         "makes": [
           "speech"
@@ -3657,15 +3929,17 @@
       "sources": [
         "https://platform.minimax.io/docs/guides/models-intro",
         "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
-        "https://platform.minimax.io/docs/pricing/overview"
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
       ]
     },
     {
       "vendor": "minimax",
       "id": "speech-02-turbo",
       "kind": "audio",
-      "name": "speech-02-turbo",
+      "name": "MiniMax Speech 02 Turbo",
       "description": "Superior rhythm and stability, Low latency",
+      "released": "2025-04-02",
       "audio": {
         "makes": [
           "speech"
@@ -3733,7 +4007,846 @@
       "sources": [
         "https://platform.minimax.io/docs/guides/models-intro",
         "https://platform.minimax.io/docs/api-reference/speech-t2a-http",
-        "https://platform.minimax.io/docs/pricing/overview"
+        "https://platform.minimax.io/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "MiniMax-H3",
+      "kind": "video",
+      "name": "MiniMax H3",
+      "description": "新一代开放通用多模态视频模型，支持文生 / 图生 / 首尾帧 / 多模态参考，768P / 2K 分辨率，4–15s 时长",
+      "released": "2026-07-31",
+      "video": {
+        "durationRange": {
+          "min": 4,
+          "max": 15
+        },
+        "resolutions": [
+          "768P",
+          "2K"
+        ],
+        "aspectRatios": [
+          "21:9",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "firstFrame": true,
+        "lastFrame": true,
+        "maxReferenceImages": 9
+      },
+      "api": "v2",
+      "price": {
+        "rates": [
+          {
+            "unit": "second",
+            "amount": 0.5,
+            "currency": "cny",
+            "resolution": "768P"
+          },
+          {
+            "unit": "second",
+            "amount": 0.8,
+            "currency": "cny",
+            "resolution": "2K"
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/guides/models-intro",
+        "https://platform.minimaxi.com/docs/api-reference/video-generation-v2-create",
+        "https://platform.minimaxi.com/docs/pricing/overview",
+        "https://www.minimax.io/blog/minimax-h3"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "MiniMax-H3-Max",
+      "kind": "video",
+      "name": "MiniMax H3 Max",
+      "description": "由 fal.ai 基于 MiniMax H3 后训练的极速视频生成模型，专为高速视频生成而优化",
+      "video": {
+        "durationRange": {
+          "min": 5,
+          "max": 15
+        },
+        "resolutions": [
+          "480P",
+          "768P"
+        ],
+        "aspectRatios": [
+          "21:9",
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16"
+        ],
+        "firstFrame": true,
+        "lastFrame": true,
+        "maxReferenceImages": 9
+      },
+      "api": "v2",
+      "price": {
+        "rates": [
+          {
+            "unit": "second",
+            "amount": 0.33,
+            "currency": "cny",
+            "resolution": "480P"
+          },
+          {
+            "unit": "second",
+            "amount": 0.5,
+            "currency": "cny",
+            "resolution": "768P"
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/guides/models-intro",
+        "https://platform.minimaxi.com/docs/api-reference/video-generation-v2-create",
+        "https://platform.minimaxi.com/docs/pricing/overview"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "MiniMax-Hailuo-2.3",
+      "kind": "video",
+      "name": "MiniMax Hailuo 2.3",
+      "description": "全新视频生成模型，肢体动作、面部表情、物理表现与指令遵循再度突破",
+      "released": "2025-10-28",
+      "video": {
+        "durations": [
+          6,
+          10
+        ],
+        "resolutions": [
+          "768P",
+          "1080P"
+        ],
+        "firstFrame": true
+      },
+      "api": "v1",
+      "price": {
+        "rates": [
+          {
+            "unit": "video",
+            "amount": 2.0,
+            "currency": "cny",
+            "resolution": "768P",
+            "duration": 6
+          },
+          {
+            "unit": "video",
+            "amount": 4.0,
+            "currency": "cny",
+            "resolution": "768P",
+            "duration": 10
+          },
+          {
+            "unit": "video",
+            "amount": 3.5,
+            "currency": "cny",
+            "resolution": "1080P",
+            "duration": 6
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/guides/models-intro",
+        "https://platform.minimaxi.com/docs/api-reference/video-generation-t2v",
+        "https://platform.minimaxi.com/docs/api-reference/video-generation-i2v",
+        "https://platform.minimaxi.com/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/apis"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "MiniMax-Hailuo-2.3-Fast",
+      "kind": "video",
+      "name": "MiniMax Hailuo 2.3 Fast",
+      "description": "全新图生视频模型，物理表现与指令遵循具佳，更快更优惠",
+      "released": "2025-10-28",
+      "video": {
+        "durations": [
+          6,
+          10
+        ],
+        "resolutions": [
+          "768P",
+          "1080P"
+        ],
+        "firstFrame": true
+      },
+      "api": "v1",
+      "price": {
+        "rates": [
+          {
+            "unit": "video",
+            "amount": 1.35,
+            "currency": "cny",
+            "resolution": "768P",
+            "duration": 6
+          },
+          {
+            "unit": "video",
+            "amount": 2.25,
+            "currency": "cny",
+            "resolution": "768P",
+            "duration": 10
+          },
+          {
+            "unit": "video",
+            "amount": 2.31,
+            "currency": "cny",
+            "resolution": "1080P",
+            "duration": 6
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/guides/models-intro",
+        "https://platform.minimaxi.com/docs/api-reference/video-generation-i2v",
+        "https://platform.minimaxi.com/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/apis"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "MiniMax-Hailuo-02",
+      "kind": "video",
+      "name": "MiniMax Hailuo 02",
+      "description": "新一代视频生成模型，1080p 原生，SOTA 指令遵循，极致物理表现",
+      "released": "2025-06-18",
+      "video": {
+        "durations": [
+          6,
+          10
+        ],
+        "resolutions": [
+          "512P",
+          "768P",
+          "1080P"
+        ],
+        "firstFrame": true,
+        "lastFrame": true
+      },
+      "api": "v1",
+      "price": {
+        "rates": [
+          {
+            "unit": "video",
+            "amount": 2.0,
+            "currency": "cny",
+            "resolution": "768P",
+            "duration": 6
+          },
+          {
+            "unit": "video",
+            "amount": 4.0,
+            "currency": "cny",
+            "resolution": "768P",
+            "duration": 10
+          },
+          {
+            "unit": "video",
+            "amount": 3.5,
+            "currency": "cny",
+            "resolution": "1080P",
+            "duration": 6
+          },
+          {
+            "unit": "video",
+            "amount": 0.6,
+            "currency": "cny",
+            "resolution": "512P",
+            "duration": 6
+          },
+          {
+            "unit": "video",
+            "amount": 1.0,
+            "currency": "cny",
+            "resolution": "512P",
+            "duration": 10
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/guides/models-intro",
+        "https://platform.minimaxi.com/docs/api-reference/video-generation-t2v",
+        "https://platform.minimaxi.com/docs/api-reference/video-generation-i2v",
+        "https://platform.minimaxi.com/docs/api-reference/video-generation-fl2v",
+        "https://platform.minimaxi.com/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "image-01",
+      "kind": "image",
+      "name": "MiniMax Image-01",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "16:9",
+          "4:3",
+          "3:2",
+          "2:3",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
+        "customSize": {
+          "multipleOf": 8,
+          "maxEdge": 2048
+        },
+        "edits": true,
+        "maxInputImages": 1
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.025,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "description": "图像生成模型，画面表现细腻，支持文生图、图生图",
+      "released": "2025-02-15",
+      "sources": [
+        "https://platform.minimaxi.com/docs/api-reference/image-generation-t2i",
+        "https://platform.minimaxi.com/docs/api-reference/image-generation-i2i",
+        "https://platform.minimaxi.com/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "image-01-live",
+      "kind": "image",
+      "name": "MiniMax Image-01 Live",
+      "description": "图像生成模型，手绘、卡通等画风增强，支持文生图并进行画风设置",
+      "image": {
+        "aspectRatios": [
+          "1:1",
+          "16:9",
+          "4:3",
+          "3:2",
+          "2:3",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
+        "edits": true,
+        "maxInputImages": 1
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "image",
+            "amount": 0.025,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/faq/models",
+        "https://platform.minimaxi.com/docs/api-reference/image-generation-t2i",
+        "https://platform.minimaxi.com/docs/api-reference/image-generation-i2i",
+        "https://platform.minimaxi.com/docs/pricing/overview"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "speech-2.8-hd",
+      "kind": "audio",
+      "name": "MiniMax Speech 2.8 HD",
+      "description": "新一代语音 HD 模型，情绪渲染融合语气词，重塑自然听感",
+      "released": "2026-01-23",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Persian",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Filipino",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Tamil",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 350,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/guides/models-intro",
+        "https://platform.minimaxi.com/docs/api-reference/speech-t2a-http",
+        "https://platform.minimaxi.com/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "speech-2.8-turbo",
+      "kind": "audio",
+      "name": "MiniMax Speech 2.8 Turbo",
+      "description": "新一代语音 Turbo 模型，极致生成速度，更自然逼真的音频效果",
+      "released": "2026-01-23",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Persian",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Filipino",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Tamil",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 200,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/guides/models-intro",
+        "https://platform.minimaxi.com/docs/api-reference/speech-t2a-http",
+        "https://platform.minimaxi.com/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "speech-2.6-hd",
+      "kind": "audio",
+      "name": "MiniMax Speech 2.6 HD",
+      "description": "极致音质与韵律表现，生成更快更自然",
+      "released": "2025-10-29",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Persian",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Filipino",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Tamil",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 350,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/guides/models-intro",
+        "https://platform.minimaxi.com/docs/api-reference/speech-t2a-http",
+        "https://platform.minimaxi.com/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "speech-2.6-turbo",
+      "kind": "audio",
+      "name": "MiniMax Speech 2.6 Turbo",
+      "description": "音质优异，超低时延，响应更灵敏",
+      "released": "2025-10-29",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Persian",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Filipino",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Tamil",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 200,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/guides/models-intro",
+        "https://platform.minimaxi.com/docs/api-reference/speech-t2a-http",
+        "https://platform.minimaxi.com/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "speech-02-hd",
+      "kind": "audio",
+      "name": "MiniMax Speech 02 HD",
+      "description": "语音 HD 模型，拥有出色的韵律和稳定性，复刻相似度和音质表现突出",
+      "released": "2025-04-02",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 350,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/guides/models-intro",
+        "https://platform.minimaxi.com/docs/api-reference/speech-t2a-http",
+        "https://platform.minimaxi.com/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
+      ]
+    },
+    {
+      "vendor": "minimax-cn",
+      "id": "speech-02-turbo",
+      "kind": "audio",
+      "name": "MiniMax Speech 02 Turbo",
+      "description": "语音 Turbo 模型，小语种能力增强，性能表现出色",
+      "released": "2025-04-02",
+      "audio": {
+        "makes": [
+          "speech"
+        ],
+        "voices": "listed",
+        "languages": [
+          "Chinese",
+          "Chinese,Yue",
+          "English",
+          "Arabic",
+          "Russian",
+          "Spanish",
+          "French",
+          "Portuguese",
+          "German",
+          "Turkish",
+          "Dutch",
+          "Ukrainian",
+          "Vietnamese",
+          "Indonesian",
+          "Japanese",
+          "Italian",
+          "Korean",
+          "Thai",
+          "Polish",
+          "Romanian",
+          "Greek",
+          "Czech",
+          "Finnish",
+          "Hindi",
+          "Bulgarian",
+          "Danish",
+          "Hebrew",
+          "Malay",
+          "Slovak",
+          "Swedish",
+          "Croatian",
+          "Hungarian",
+          "Norwegian",
+          "Slovenian",
+          "Catalan",
+          "Nynorsk",
+          "Afrikaans"
+        ],
+        "formats": [
+          "mp3",
+          "pcm",
+          "flac",
+          "wav",
+          "pcmu_raw",
+          "pcmu_wav",
+          "opus"
+        ]
+      },
+      "price": {
+        "rates": [
+          {
+            "unit": "millionCharacters",
+            "amount": 200,
+            "currency": "cny"
+          }
+        ],
+        "page": "https://platform.minimaxi.com/docs/pricing/overview"
+      },
+      "sources": [
+        "https://platform.minimaxi.com/docs/guides/models-intro",
+        "https://platform.minimaxi.com/docs/api-reference/speech-t2a-http",
+        "https://platform.minimaxi.com/docs/pricing/overview",
+        "https://platform.minimax.io/docs/release-notes/models"
       ]
     },
     {
@@ -4638,17 +5751,17 @@
       ]
     },
     {
-      "vendor": "byteplus",
+      "vendor": "byteplus-speech",
       "id": "seed-audio-1.0",
       "kind": "audio",
-      "name": "Audio 1.0",
+      "name": "Seed Audio 1.0",
       "description": "Audio generation from reference audio, a reference image or a natural-language description, up to 120 seconds",
+      "released": "2026-07-20",
       "audio": {
         "makes": [
           "speech",
           "effect"
         ],
-        "voices": "listed",
         "languages": [
           "English",
           "Chinese",
@@ -4683,19 +5796,55 @@
         ]
       },
       "sources": [
-        "https://docs.byteplus.com/en/docs/byteplusvoice/seedaudio-01"
-      ]
+        "https://docs.byteplus.com/en/docs/byteplusvoice/seedaudio-01",
+        "https://docs.byteplus.com/en/docs/byteplusvoice/audiopricing",
+        "https://seed.bytedance.com/en/blog/from-speech-to-audio-creation-introducing-the-seed-audio-1-0-audio-creation-model"
+      ],
+      "price": {
+        "rates": [
+          {
+            "unit": "minute",
+            "amount": 0.15,
+            "currency": "usd"
+          }
+        ],
+        "page": "https://docs.byteplus.com/en/docs/byteplusvoice/audiopricing"
+      }
     },
     {
-      "vendor": "byteplus",
+      "vendor": "byteplus-speech",
       "id": "seed-tts-2.0",
       "kind": "audio",
-      "name": "TTS 2.0",
+      "name": "Seed TTS 2.0",
+      "released": "2025-10-16",
       "audio": {
         "makes": [
           "speech"
         ],
-        "voices": "listed",
+        "voices": [
+          "en_female_stokie_uranus_bigtts",
+          "en_female_dacey_uranus_bigtts",
+          "en_male_tim_uranus_bigtts",
+          "en_male_alex_uranus_bigtts",
+          "zh_female_vv_uranus_bigtts",
+          "zh_female_xiaohe_uranus_bigtts",
+          "zh_male_m191_uranus_bigtts",
+          "zh_male_taocheng_uranus_bigtts",
+          "ja_female_minimi_uranus_bigtts",
+          "ja_male_bv524_uranus_bigtts",
+          "ko_female_bv546_uranus_bigtts",
+          "ko_male_bv545_uranus_bigtts",
+          "es_female_bv084_uranus_bigtts",
+          "es_male_guillem_uranus_bigtts",
+          "pt_female_mari_uranus_bigtts",
+          "pt_male_martins_uranus_bigtts",
+          "fr_female_fr_bv078_uranus_bigtts",
+          "fr_male_usseau_uranus_bigtts",
+          "de_female_bv081_uranus_bigtts",
+          "de_male_sven_uranus_bigtts",
+          "id_female_phulia_uranus_bigtts",
+          "id_male_bv160_uranus_bigtts"
+        ],
         "instructions": true,
         "formats": [
           "mp3",
@@ -4705,19 +5854,31 @@
       },
       "sources": [
         "https://docs.byteplus.com/en/docs/byteplusvoice/unidirectional_tts_http",
-        "https://docs.byteplus.com/en/docs/byteplusvoice/texttospeechv2"
+        "https://docs.byteplus.com/en/docs/byteplusvoice/tts-voice-list",
+        "https://www.volcengine.com/news"
       ]
     },
     {
-      "vendor": "byteplus",
+      "vendor": "byteplus-speech",
       "id": "seed-tts-1.0",
       "kind": "audio",
-      "name": "TTS 1.0",
+      "name": "Seed TTS 1.0",
       "audio": {
         "makes": [
           "speech"
         ],
-        "voices": "listed",
+        "voices": [
+          "en_female_anna_mars_bigtts",
+          "en_male_adam_mars_bigtts",
+          "en_female_sarah_mars_bigtts",
+          "en_male_smith_mars_bigtts",
+          "zh_female_shuangkuaisisi_moon_bigtts",
+          "zh_female_tianxinxiaomei_emo_v2_mars_bigtts",
+          "zh_female_yueyunv_mars_bigtts",
+          "multi_female_gaolengyujie_moon_bigtts",
+          "multi_zh_male_youyoujunzi_moon_bigtts",
+          "multi_male_M100_conversation_wvae_bigtts"
+        ],
         "formats": [
           "mp3",
           "ogg_opus",
@@ -4725,7 +5886,8 @@
         ]
       },
       "sources": [
-        "https://docs.byteplus.com/en/docs/byteplusvoice/unidirectional_tts_http"
+        "https://docs.byteplus.com/en/docs/byteplusvoice/unidirectional_tts_http",
+        "https://docs.byteplus.com/en/docs/byteplusvoice/voicelist"
       ]
     },
     {
@@ -4734,6 +5896,16 @@
       "kind": "image",
       "name": "Doubao Seedream 5.0 Flash",
       "image": {
+        "sizes": [
+          "2048x2048",
+          "2368x1776",
+          "1776x2368",
+          "2816x1584",
+          "1584x2816",
+          "2496x1664",
+          "1664x2496",
+          "3136x1344"
+        ],
         "resolutions": [
           "1K",
           "1.5K",
@@ -4761,7 +5933,8 @@
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
         "https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh",
         "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
-      ]
+      ],
+      "released": "2026-09-15"
     },
     {
       "vendor": "volcengine",
@@ -4769,6 +5942,16 @@
       "kind": "image",
       "name": "Doubao Seedream 5.0 Pro",
       "image": {
+        "sizes": [
+          "2048x2048",
+          "2368x1776",
+          "1776x2368",
+          "2816x1584",
+          "1584x2816",
+          "2496x1664",
+          "1664x2496",
+          "3136x1344"
+        ],
         "resolutions": [
           "1K",
           "1.5K",
@@ -4803,7 +5986,8 @@
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
         "https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh",
         "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
-      ]
+      ],
+      "released": "2026-06-28"
     },
     {
       "vendor": "volcengine",
@@ -4811,6 +5995,16 @@
       "kind": "image",
       "name": "Doubao Seedream 5.0 lite",
       "image": {
+        "sizes": [
+          "2048x2048",
+          "2304x1728",
+          "1728x2304",
+          "2848x1600",
+          "1600x2848",
+          "2496x1664",
+          "1664x2496",
+          "3136x1344"
+        ],
         "resolutions": [
           "2K",
           "3K",
@@ -4838,17 +6032,19 @@
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
         "https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh",
         "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
-      ]
+      ],
+      "released": "2026-01-28"
     },
     {
       "vendor": "volcengine",
       "id": "doubao-seedream-5-0-lite-260128",
       "kind": "image",
-      "name": "Doubao Seedream 5.0 lite",
+      "name": "Doubao Seedream 5.0 lite (retiring ID)",
       "aliasOf": "doubao-seedream-5-0-260128",
       "sources": [
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh"
-      ]
+      ],
+      "released": "2026-01-28"
     },
     {
       "vendor": "volcengine",
@@ -4856,6 +6052,16 @@
       "kind": "image",
       "name": "Doubao Seedream 4.5",
       "image": {
+        "sizes": [
+          "2048x2048",
+          "2304x1728",
+          "1728x2304",
+          "2848x1600",
+          "1600x2848",
+          "2496x1664",
+          "1664x2496",
+          "3136x1344"
+        ],
         "resolutions": [
           "2K",
           "4K"
@@ -4882,7 +6088,8 @@
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
         "https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh",
         "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
-      ]
+      ],
+      "released": "2025-11-28"
     },
     {
       "vendor": "volcengine",
@@ -4890,6 +6097,16 @@
       "kind": "image",
       "name": "Doubao Seedream 4.0",
       "image": {
+        "sizes": [
+          "2048x2048",
+          "2304x1728",
+          "1728x2304",
+          "2848x1600",
+          "1600x2848",
+          "2496x1664",
+          "1664x2496",
+          "3136x1344"
+        ],
         "resolutions": [
           "1K",
           "2K",
@@ -4917,7 +6134,8 @@
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
         "https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh",
         "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
-      ]
+      ],
+      "released": "2025-08-28"
     },
     {
       "vendor": "volcengine",
@@ -4934,8 +6152,18 @@
           "720p",
           "1080p"
         ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
         "firstFrame": true,
-        "lastFrame": true
+        "lastFrame": true,
+        "maxReferenceImages": 30,
+        "audio": true
       },
       "price": {
         "rates": [
@@ -4962,8 +6190,10 @@
       },
       "sources": [
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh",
         "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
-      ]
+      ],
+      "released": "2026-06-28"
     },
     {
       "vendor": "volcengine",
@@ -4979,8 +6209,18 @@
           "480p",
           "720p"
         ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
         "firstFrame": true,
-        "lastFrame": true
+        "lastFrame": true,
+        "maxReferenceImages": 9,
+        "audio": true
       },
       "price": {
         "rates": [
@@ -5001,8 +6241,10 @@
       },
       "sources": [
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh",
         "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
-      ]
+      ],
+      "released": "2026-06-15"
     },
     {
       "vendor": "volcengine",
@@ -5020,8 +6262,18 @@
           "1080p",
           "4k"
         ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
         "firstFrame": true,
-        "lastFrame": true
+        "lastFrame": true,
+        "maxReferenceImages": 9,
+        "audio": true
       },
       "price": {
         "rates": [
@@ -5054,8 +6306,10 @@
       },
       "sources": [
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh",
         "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
-      ]
+      ],
+      "released": "2026-01-28"
     },
     {
       "vendor": "volcengine",
@@ -5071,8 +6325,18 @@
           "480p",
           "720p"
         ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
         "firstFrame": true,
-        "lastFrame": true
+        "lastFrame": true,
+        "maxReferenceImages": 9,
+        "audio": true
       },
       "price": {
         "rates": [
@@ -5093,8 +6357,10 @@
       },
       "sources": [
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh",
         "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
-      ]
+      ],
+      "released": "2026-01-28"
     },
     {
       "vendor": "volcengine",
@@ -5111,23 +6377,24 @@
           "720p",
           "1080p"
         ],
-        "firstFrame": true,
-        "lastFrame": false
-      },
-      "price": {
-        "rates": [
-          {
-            "unit": "millionOutputTokens",
-            "amount": 4.2,
-            "currency": "cny"
-          }
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
         ],
-        "page": "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
+        "firstFrame": true,
+        "lastFrame": false,
+        "maxReferenceImages": 0
       },
       "sources": [
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh",
         "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
-      ]
+      ],
+      "released": "2025-10-15"
     },
     {
       "vendor": "volcengine",
@@ -5144,8 +6411,17 @@
           "720p",
           "1080p"
         ],
+        "aspectRatios": [
+          "16:9",
+          "4:3",
+          "1:1",
+          "3:4",
+          "9:16",
+          "21:9"
+        ],
         "firstFrame": true,
-        "lastFrame": true
+        "lastFrame": true,
+        "maxReferenceImages": 0
       },
       "price": {
         "rates": [
@@ -5159,21 +6435,23 @@
       },
       "sources": [
         "https://docs.volcengine.com/docs/ark/model-list?lang=zh",
+        "https://docs.volcengine.com/docs/ark/create-video-generation-task-api?lang=zh",
         "https://docs.volcengine.com/docs/ark/model-pricing?lang=zh"
-      ]
+      ],
+      "released": "2025-05-28"
     },
     {
-      "vendor": "volcengine",
+      "vendor": "doubao-speech",
       "id": "seed-audio-1.0",
       "kind": "audio",
       "name": "豆包音频生成模型1.0",
       "description": "音频生成：通过参考音频、参考图片或自然语言描述生成定制化音频，单次最长 120 秒",
+      "released": "2026-07-20",
       "audio": {
         "makes": [
           "speech",
           "effect"
         ],
-        "voices": "listed",
         "languages": [
           "中文",
           "英文",
@@ -5217,19 +6495,39 @@
       },
       "sources": [
         "https://docs.volcengine.com/docs/DoubaoVoice/audio-generation-http?lang=zh",
-        "https://docs.volcengine.com/docs/DoubaoVoice/Billinginstructions-21?lang=zh"
+        "https://docs.volcengine.com/docs/DoubaoVoice/Billinginstructions-21?lang=zh",
+        "https://seed.bytedance.com/en/blog/from-speech-to-audio-creation-introducing-the-seed-audio-1-0-audio-creation-model"
       ]
     },
     {
-      "vendor": "volcengine",
+      "vendor": "doubao-speech",
       "id": "seed-tts-2.0",
       "kind": "audio",
       "name": "豆包语音合成模型2.0",
+      "released": "2025-10-16",
       "audio": {
         "makes": [
           "speech"
         ],
-        "voices": "listed",
+        "voices": [
+          "zh_female_vv_uranus_bigtts",
+          "zh_female_xiaohe_uranus_bigtts",
+          "zh_male_m191_uranus_bigtts",
+          "zh_male_taocheng_uranus_bigtts",
+          "en_female_stokie_uranus_bigtts",
+          "en_female_dacey_uranus_bigtts",
+          "en_male_tim_uranus_bigtts",
+          "ja_female_bv024_uranus_bigtts",
+          "ja_male_yusuke_uranus_bigtts",
+          "ko_female_bv546_uranus_bigtts",
+          "ko_male_bv545_uranus_bigtts",
+          "es_female_romina_uranus_bigtts",
+          "es_male_mariano_uranus_bigtts",
+          "fr_female_fr_bv078_uranus_bigtts",
+          "fr_male_usseau_uranus_bigtts",
+          "de_female_bv081_uranus_bigtts",
+          "de_male_sven_uranus_bigtts"
+        ],
         "instructions": true,
         "formats": [
           "mp3",
@@ -5249,11 +6547,13 @@
       },
       "sources": [
         "https://docs.volcengine.com/docs/DoubaoVoice/HTTPChunkedSSEUnidirectionalStreaming-V3?lang=zh",
-        "https://docs.volcengine.com/docs/DoubaoVoice/Billinginstructions-21?lang=zh"
+        "https://docs.volcengine.com/docs/DoubaoVoice/Tonelist-1?lang=zh",
+        "https://docs.volcengine.com/docs/DoubaoVoice/Billinginstructions-21?lang=zh",
+        "https://www.volcengine.com/news"
       ]
     },
     {
-      "vendor": "volcengine",
+      "vendor": "doubao-speech",
       "id": "seed-tts-1.0",
       "kind": "audio",
       "name": "豆包语音合成模型1.0",
@@ -5261,7 +6561,16 @@
         "makes": [
           "speech"
         ],
-        "voices": "listed",
+        "voices": [
+          "zh_female_shuangkuaisisi_moon_bigtts",
+          "zh_female_tianxinxiaomei_emo_v2_mars_bigtts",
+          "zh_male_lengkugege_emo_v2_mars_bigtts",
+          "en_female_candice_emo_v2_mars_bigtts",
+          "en_male_adam_mars_bigtts",
+          "en_female_amanda_mars_bigtts",
+          "multi_female_maomao_conversation_wvae_bigtts",
+          "multi_male_M100_conversation_wvae_bigtts"
+        ],
         "formats": [
           "mp3",
           "ogg_opus",
@@ -5269,7 +6578,8 @@
         ]
       },
       "sources": [
-        "https://docs.volcengine.com/docs/DoubaoVoice/HTTPChunkedSSEUnidirectionalStreaming-V3?lang=zh"
+        "https://docs.volcengine.com/docs/DoubaoVoice/HTTPChunkedSSEUnidirectionalStreaming-V3?lang=zh",
+        "https://docs.volcengine.com/docs/DoubaoVoice/Tonelist-1?lang=zh"
       ]
     }
   ]

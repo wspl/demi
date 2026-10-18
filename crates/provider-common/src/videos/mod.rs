@@ -9,14 +9,41 @@
 pub mod xai;
 
 use bytes::Bytes;
-use demi_shared_types::{Clock, Cost, TokenUsage, VideoShape};
+use demi_shared_types::{Clock, Cost, TokenUsage, VendorTrace, VideoResolution, VideoShape};
 use futures_util::future::BoxFuture;
 use http::HeaderMap;
 use reqwest::Url;
+use serde::Serialize;
 
 use crate::images::{Aspect, InputImage};
 use crate::media::{Ask, Holding, MediaAnswer, MediaCall, MediaCredential, MediaMaker, follow, read_within};
+use crate::media_catalog::Catalog;
 use crate::read_http_failure;
+
+/// An item of a video ask's `content`, as Ark's tasks and MiniMax's v2
+/// take it: the prompt, or an image in its role.
+#[derive(Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Content {
+    Text { text: String },
+    ImageUrl { image_url: ImageUrl, role: &'static str },
+}
+
+#[derive(Debug, Serialize)]
+pub struct ImageUrl {
+    pub url: String,
+}
+
+/// `request`'s `content`: its prompt, then its first frame, its last frame
+/// and its references, each image as a data URL in its role.
+pub fn content(request: &VideoRequest) -> Vec<Content> {
+    let image = |image: &InputImage, role| Content::ImageUrl { image_url: ImageUrl { url: image.data_url() }, role };
+    let mut content = vec![Content::Text { text: request.prompt.clone() }];
+    content.extend(request.image.iter().map(|first| image(first, "first_frame")));
+    content.extend(request.last_frame.iter().map(|last| image(last, "last_frame")));
+    content.extend(request.references.iter().map(|reference| image(reference, "reference_image")));
+    content
+}
 
 /// A provider's video role.
 pub trait VideoMaker: MediaMaker {
@@ -24,11 +51,12 @@ pub trait VideoMaker: MediaMaker {
     /// ([`unsent`]).
     fn shape(&self) -> VideoShape;
 
-    /// Asks for the video `request` describes and answers the job's id.
-    fn ask<'a>(&'a self, http: &'a crate::ProviderHttp, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>>;
+    /// Asks for the video `request` describes and answers the job's id;
+    /// `catalog` says what the model takes.
+    fn ask<'a>(&'a self, http: &'a crate::ProviderHttp, catalog: &'a Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>>;
 
     /// Reads the state of the job `job` once.
-    fn state<'a>(&'a self, http: &'a crate::ProviderHttp, job: &'a str) -> BoxFuture<'a, MediaAnswer<JobState>>;
+    fn state<'a>(&'a self, http: &'a crate::ProviderHttp, job: JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>;
 
     /// Downloads the video of a finished job, with the entry's key where
     /// the vendor needs it.
@@ -36,9 +64,26 @@ pub trait VideoMaker: MediaMaker {
 
     /// Cancels the job `job`, for a vendor that can cancel one; none
     /// elsewhere, where the job runs to its end and is paid for.
-    fn cancel<'a>(&'a self, _http: &'a crate::ProviderHttp, _job: &'a str) -> Option<BoxFuture<'a, MediaAnswer<()>>> {
+    fn cancel<'a>(&'a self, _http: &'a crate::ProviderHttp, _job: JobRef<'a>) -> Option<BoxFuture<'a, MediaAnswer<()>>> {
         None
     }
+
+    /// The options `request` gives that its request has no field for,
+    /// which are not sent: its shape's ([`unsent`]), unless the maker's
+    /// models take different requests, as MiniMax's v1 and v2 do.
+    fn unsent(&self, _catalog: &Catalog, request: &VideoRequest) -> Vec<VideoOption> {
+        unsent(self.shape(), request)
+    }
+}
+
+/// A job a vendor took: its id at the vendor, and the model it makes as
+/// `catalog` states it, by which a vendor whose models take different
+/// requests, as MiniMax's do, reads its state.
+#[derive(Debug, Clone, Copy)]
+pub struct JobRef<'a> {
+    pub id: &'a str,
+    pub model: &'a str,
+    pub catalog: &'a Catalog,
 }
 
 /// One video to make; an option left out is the vendor's default.
@@ -55,41 +100,10 @@ pub struct VideoRequest {
     /// Seconds.
     pub duration: Option<u32>,
     pub aspect: Option<Aspect>,
-    pub resolution: Option<Resolution>,
+    pub resolution: Option<VideoResolution>,
     /// Whether the model makes sound.
     pub audio: Option<bool>,
     pub seed: Option<u64>,
-}
-
-/// The resolutions `--resolution` asks for.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Resolution {
-    P480,
-    P720,
-    P1080,
-    K4,
-}
-
-impl Resolution {
-    /// As the vendors and `--resolution` write it.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::P480 => "480p",
-            Self::P720 => "720p",
-            Self::P1080 => "1080p",
-            Self::K4 => "4k",
-        }
-    }
-
-    /// The shorter side of a picture of this resolution, in pixels.
-    pub fn short_side(self) -> u32 {
-        match self {
-            Self::P480 => 480,
-            Self::P720 => 720,
-            Self::P1080 => 1080,
-            Self::K4 => 2160,
-        }
-    }
 }
 
 /// An option of `demi video generate`.
@@ -113,8 +127,16 @@ pub fn unsent(shape: VideoShape, request: &VideoRequest) -> Vec<VideoOption> {
         VideoShape::Grok | VideoShape::XaiVideos => &[VideoOption::Seed],
         VideoShape::Veo => &[VideoOption::Audio],
         VideoShape::OpenaiVideos => &[VideoOption::LastFrame, VideoOption::Reference, VideoOption::Audio, VideoOption::Seed],
-        VideoShape::OpenrouterVideos => &[],
+        VideoShape::OpenrouterVideos | VideoShape::ArkTasks => &[],
+        // Both of MiniMax's requests; v1's lacks more, which its maker says.
+        VideoShape::Hailuo => &[VideoOption::Audio, VideoOption::Seed],
     };
+    unsent_of(lacks, request)
+}
+
+/// The options `request` gives among those a request `lacks`, in the order
+/// of the table.
+pub fn unsent_of(lacks: &[VideoOption], request: &VideoRequest) -> Vec<VideoOption> {
     let given = [
         (VideoOption::Image, request.image.is_some()),
         (VideoOption::LastFrame, request.last_frame.is_some()),
@@ -141,8 +163,9 @@ pub enum JobState {
     Running { progress: Option<u8> },
     /// Made, and where the video is.
     Done(Done),
-    /// The vendor failed the video, in its own words.
-    Failed { message: String },
+    /// The vendor failed the video, in its own words, with what it named
+    /// to trace the failure.
+    Failed { message: String, trace: VendorTrace },
     /// The job expired at the vendor before it ran.
     Expired,
 }

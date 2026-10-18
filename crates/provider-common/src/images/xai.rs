@@ -36,10 +36,10 @@ fn shapes_taken(message: &str) -> Option<Vec<String>> {
 /// `answer` with a refusal of the shape asked for told as the shapes xAI
 /// named, so a shape xAI adds needs no change (`images.md` § Commands).
 pub fn with_shapes(mut answer: MediaAnswer<MadeImage>) -> MediaAnswer<MadeImage> {
-    if let Err(MediaFailure::Refused { message, code }) = &answer.result
+    if let Err(MediaFailure::Refused { message, code, trace }) = &answer.result
         && let Some(takes) = shapes_taken(message)
     {
-        answer.result = Err(MediaFailure::Shape { takes, code: code.clone() });
+        answer.result = Err(MediaFailure::Shape { takes, code: code.clone(), trace: trace.clone() });
     }
     answer
 }

@@ -18,7 +18,7 @@ import {
 import {
   isIncomplete,
   mockVendors,
-  elevenLabsAudio,
+  vendorMedia,
   provider,
   searchMockModels,
   type MockProvider,
@@ -76,8 +76,10 @@ function select(id: string) {
 /** A vendor is picked alone: the entry joins the list at once, selected, with the vendor's own endpoint and catalog. */
 function addProvider(vendor: SettingsVendor) {
   const id = `p-${Date.now()}`
-  // A vendor of media alone, ElevenLabs here, makes no text: its entry has its Audio and no Models.
+  // A vendor of media alone, such as ElevenLabs or BytePlus ModelArk, makes no text: its entry has
+  // its media sections and no Models. Volcengine Ark makes text and media both.
   const mediaOnly = vendor.wireApi === null
+  const none = { shape: null, enabled: true }
   join(provider({
     id,
     name: vendor.name,
@@ -89,12 +91,8 @@ function addProvider(vendor: SettingsVendor) {
     modelSource: 'catalog',
     catalogFetched: new Date().toISOString(),
     logo: vendor.logo,
-    ...(mediaOnly
-      ? {
-          makesText: false,
-          media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: elevenLabsAudio },
-        }
-      : {}),
+    media: { image: none, video: none, audio: none, ...vendorMedia(vendor.id) },
+    ...(mediaOnly ? { makesText: false } : {}),
   }))
 }
 

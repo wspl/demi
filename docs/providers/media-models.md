@@ -23,7 +23,7 @@ business ([Providers](providers.md)).
 
 | Field | Meaning |
 |---|---|
-| `vendor`, `id` | The vendor, such as `openai`, `google`, `xai`, `byteplus` or `volcengine`, and the model's ID in its API; ByteDance's models are two vendors, BytePlus outside China and Volcengine (火山引擎: Ark and Doubao Speech) in China, as each has its own accounts, keys, model IDs and prices |
+| `vendor`, `id` | The vendor, such as `openai`, `google`, `xai`, `byteplus` or `volcengine`, and the model's ID in its API; ByteDance's models are four vendors, `byteplus` (BytePlus ModelArk) and `byteplus-speech` (BytePlus Speech) outside China, `volcengine` (火山方舟 Ark) and `doubao-speech` (豆包语音) in China, as each has its own console, keys, model IDs and prices |
 | `kind` | `image`, `video` or `audio` |
 | `name`, `description` | The vendor's name for the model and its one-line description |
 | `released` | The date the vendor released the model, so lists run from newest to oldest |
@@ -31,6 +31,7 @@ business ([Providers](providers.md)).
 | `image` | For an image model: the sizes it takes, as sizes (`1024x1536`), tiers (`2K`) or aspect ratios with resolutions, as the vendor states them; whether it edits, how many images it takes, whether it makes a transparent background |
 | `video` | For a video model: its durations, resolutions and aspect ratios; whether it takes a first frame, a last frame and reference images, and how many; whether it makes sound |
 | `audio` | For an audio model: what it makes, `speech`, `music` or `effect`, any of them; for speech its voices by name, or that the vendor lists them, its languages and whether it takes instructions on the delivery; for music and effects its durations, whether it takes lyrics, makes an instrumental or loops; the formats it returns |
+| `api` | For a vendor whose models take different requests, which one the model takes, read only by that vendor's requests: MiniMax's `v2` for MiniMax-H3 models, `v1` for Hailuo. A value the vendor's requests do not know, or no value where one is needed, fails the call as a catalog that cannot be read |
 | `price` | What one image, one video, one second, one minute, one song, a million characters or a million tokens of input, of cached input or of output costs, the tokens' kind, image or text, where the vendor prices them apart, as OpenAI prices gpt-image-2's image input at $8 and its text input at $5, in the currency the vendor charges in, US dollars or yuan, never converted, by size, quality, resolution or duration where the price depends on them, with the vendor's pricing page; a price the vendor states in credits is converted at the credit's price the same page states |
 | `subscriptions` | The subscriptions that make the model, `chatgpt` or `grok`, for the models a subscription takes without listing them ([Vendors](../agent/images.md#vendors)) |
 

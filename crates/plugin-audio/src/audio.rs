@@ -94,7 +94,7 @@ pub(crate) async fn run(invocation: RpcInvocation, port: &PluginPort) -> Result<
 /// what came back.
 async fn make(invocation: &RpcInvocation, port: &PluginPort, ask: AudioAsk) -> Result<u8, PluginError> {
     let command = format!("demi {}", invocation.path.join(" "));
-    let wanted = Wanted { kind: ask.kind, format: ask.format, duration: ask.duration, voice: ask.voice.clone() };
+    let wanted = Wanted { kind: ask.kind, format: ask.format, duration: ask.duration, voice: ask.voice.clone(), speed: ask.speed };
     let made = port
         .make_audio(ask)
         .await
@@ -135,6 +135,7 @@ struct Wanted {
     format: AudioFileFormat,
     duration: Option<f64>,
     voice: Option<String>,
+    speed: Option<f64>,
 }
 
 /// `0:04`, `1:30`: a length in minutes and seconds, to the nearest second.
@@ -196,6 +197,9 @@ fn summary(command: &str, made: &MadeAudio, facts: &AudioFacts, wanted: &Wanted)
             AudioOption::Loop => ("--loop", ""),
         };
         warn(format!("{} takes no {flag}{hint}", made.shape));
+    }
+    if let (Some(asked), Some(sent)) = (wanted.speed, made.speed) {
+        warn(format!("{} takes no --speed {asked}; sent {sent}, the nearest it takes", made.shape));
     }
     if !is(facts.format, wanted.format) {
         warn(format!("{} makes no {}; wrote {}", made.shape, wanted.format.name(), facts.format.name()));

@@ -89,7 +89,7 @@ async fn a_model_the_proxy_does_not_have_is_refused_in_its_words_and_a_402_uses_
         other => panic!("not a refusal: {other:?}"),
     }
     let failure = maker.make(&http, &catalog(), request("grok-imagine-image", Vec::new())).await.result.unwrap_err();
-    assert_eq!(failure, MediaFailure::UsageLimit { retry_at: None });
+    assert_eq!(failure, MediaFailure::UsageLimit { retry_at: None, trace: Default::default() });
 }
 
 /// A shape the proxy does not take fails with the shapes its refusal

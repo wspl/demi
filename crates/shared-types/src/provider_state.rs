@@ -44,6 +44,12 @@ pub enum ImageShape {
     /// Gemini's `generateContent`.
     #[serde(rename = "gemini")]
     Gemini,
+    /// ByteDance's Seedream through Ark's `…/images/generations`.
+    #[serde(rename = "seedream")]
+    Seedream,
+    /// MiniMax's `/v1/image_generation`.
+    #[serde(rename = "minimax")]
+    Minimax,
 }
 
 impl ImageShape {
@@ -76,11 +82,19 @@ pub enum VideoShape {
     /// OpenRouter's `…/videos` jobs.
     #[serde(rename = "openrouter-videos")]
     OpenrouterVideos,
+    /// Ark's `…/contents/generations/tasks`, as BytePlus and Volcengine
+    /// serve Seedance.
+    #[serde(rename = "ark-tasks")]
+    ArkTasks,
+    /// MiniMax's video generation, its H3 models' v2 tasks and Hailuo's v1
+    /// ones.
+    #[serde(rename = "hailuo")]
+    Hailuo,
 }
 
 impl VideoShape {
     /// The shapes a compatible entry may choose.
-    pub const CHOSEN: [Self; 3] = [Self::XaiVideos, Self::OpenaiVideos, Self::OpenrouterVideos];
+    pub const CHOSEN: [Self; 4] = [Self::XaiVideos, Self::OpenaiVideos, Self::ArkTasks, Self::OpenrouterVideos];
 
     /// How a call's words name it, such as `Veo takes no --seed`.
     pub fn name(self) -> &'static str {
@@ -90,12 +104,85 @@ impl VideoShape {
             Self::Veo => "Veo",
             Self::OpenaiVideos => "OpenAI Videos",
             Self::OpenrouterVideos => "OpenRouter Videos",
+            Self::ArkTasks => "Ark Tasks",
+            Self::Hailuo => "Hailuo",
         }
     }
 }
 
 serde_plain::derive_display_from_serialize!(VideoShape);
 serde_plain::derive_fromstr_from_deserialize!(VideoShape);
+
+/// The resolution a video is asked in, as `--resolution` writes it: a
+/// height, `768p`, or a count of thousands of pixels across, `2k`
+/// (`videos.md` § Commands). Each vendor's request writes it as that vendor
+/// does, `768P` for MiniMax.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(try_from = "String", into = "String")]
+#[schemars(with = "String", extend("pattern" = r"^[0-9]+[pPkK]$", "patternDescription" = "a height such as 720p, or 2k or 4k"))]
+pub enum VideoResolution {
+    /// The picture's height in pixels, its shorter side for a landscape
+    /// video, such as 720.
+    Height(u32),
+    /// Thousands of pixels across, such as 4 for `4k`.
+    K(u32),
+}
+
+impl VideoResolution {
+    /// As `--resolution` writes it: `768p`, `4k`.
+    pub fn lowercase(self) -> String {
+        match self {
+            Self::Height(height) => format!("{height}p"),
+            Self::K(thousands) => format!("{thousands}k"),
+        }
+    }
+
+    /// As MiniMax writes it: `768P`, `2K`.
+    pub fn uppercase(self) -> String {
+        self.lowercase().to_uppercase()
+    }
+
+    /// The shorter side of a 16:9 picture of it, in pixels: a height's own;
+    /// for `<n>k`, 540 n, as 4k is 3840×2160.
+    pub fn short_side(self) -> u32 {
+        match self {
+            Self::Height(height) => height,
+            Self::K(thousands) => thousands.saturating_mul(540),
+        }
+    }
+
+    /// Whether a picture of `width`×`height` is of it: its shorter side the
+    /// height asked; for `<n>k`, its longer side from 960 n to 1280 n
+    /// pixels, as vendors call 1920 to 2560 across 2K and 3840 to 4096 4K.
+    pub fn fits(self, width: u32, height: u32) -> bool {
+        match self {
+            Self::Height(asked) => width.min(height) == asked,
+            Self::K(thousands) => {
+                (thousands.saturating_mul(960)..=thousands.saturating_mul(1280)).contains(&width.max(height))
+            }
+        }
+    }
+}
+
+impl TryFrom<String> for VideoResolution {
+    type Error = String;
+
+    fn try_from(text: String) -> Result<Self, String> {
+        let unit = text.chars().last().map(|unit| unit.to_ascii_lowercase());
+        let number = text.get(..text.len().saturating_sub(1)).and_then(|digits| digits.parse::<u32>().ok()).filter(|n| *n > 0);
+        match (number, unit) {
+            (Some(height), Some('p')) => Ok(Self::Height(height)),
+            (Some(thousands), Some('k')) => Ok(Self::K(thousands)),
+            _ => Err(format!("{text:?} is no resolution: write a height such as 720p, or 2k or 4k")),
+        }
+    }
+}
+
+impl From<VideoResolution> for String {
+    fn from(resolution: VideoResolution) -> Self {
+        resolution.lowercase()
+    }
+}
 
 /// How an entry's API makes audio, its *audio shape* (`audio.md`
 /// § Vendors): a vendor entry's is its vendor's, a compatible entry's the
@@ -113,6 +200,13 @@ pub enum AudioShape {
     /// ElevenLabs' speech, music and sound effects.
     #[serde(rename = "elevenlabs")]
     Elevenlabs,
+    /// ByteDance's Seed speech and Seed Audio's sound effects, through a
+    /// BytePlus Speech or Doubao Speech key.
+    #[serde(rename = "seed")]
+    Seed,
+    /// MiniMax's speech, `/v1/t2a_v2`.
+    #[serde(rename = "minimax")]
+    Minimax,
 }
 
 impl AudioShape {
@@ -125,6 +219,8 @@ impl AudioShape {
             Self::OpenaiSpeech => &[AudioKind::Speech],
             Self::Gemini => &[AudioKind::Speech, AudioKind::Music],
             Self::Elevenlabs => &[AudioKind::Speech, AudioKind::Music, AudioKind::Effect],
+            Self::Seed => &[AudioKind::Speech, AudioKind::Effect],
+            Self::Minimax => &[AudioKind::Speech],
         }
     }
 
@@ -135,6 +231,9 @@ impl AudioShape {
             (Self::Gemini, AudioKind::Music) => "Lyria",
             (Self::Gemini, _) => "Gemini",
             (Self::Elevenlabs, _) => "ElevenLabs",
+            (Self::Seed, AudioKind::Speech) => "Seed speech",
+            (Self::Seed, _) => "Seed Audio",
+            (Self::Minimax, _) => "MiniMax speech",
         }
     }
 }

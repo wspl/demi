@@ -110,7 +110,7 @@ async fn an_agent_makes_an_image_to_a_file_and_to_file_view_and_edits_the_hosts_
     socket.chat("m1", "Draw a fox").await;
     assert_shows(
         &last_root(&scripts),
-        "demi image generate: no provider makes images; sign in to ChatGPT or Grok, or add an OpenAI, xAI or Google key, in Settings › Providers\nexit=1",
+        "demi image generate: no provider makes images; sign in to ChatGPT or Grok, or add an OpenAI, xAI, Google, MiniMax, BytePlus ModelArk or Volcengine Ark key, in Settings › Providers\nexit=1",
     );
 
     logins.login.signs_in("first");
