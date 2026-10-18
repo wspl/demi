@@ -1047,9 +1047,12 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
     let mut work = Driven::open(&backend, &master, &vendor, FIRST, &provider, "/work").await;
 
     // The far job reports on standard error at once and waits for a line,
-    // then runs a process of its own; the model's call returns once its
-    // output is quiet, while it runs.
-    let far = "printf \"ready\\n\" >&2; read line; printf \"%s\" \"$line\" > got.txt; sh -c \"echo \\$\\$ > far.pid; exec /bin/sleep 30\"";
+    // then runs a process of its own, which only a stop ends; the model's
+    // call returns once its output is quiet, while it runs.
+    let far = format!(
+        "printf \"ready\\n\" >&2; read line; printf \"%s\" \"$line\" > got.txt; {}",
+        crate::support::waits_for_a_signal("far.pid")
+    );
     let script = format!("demi host shell --host alpha '{far}'");
     let started = work.turn(vec![resident("t1", &script), say("waiting")]).await;
     let result = &started.received[0];
@@ -1156,14 +1159,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
 
     // Stopping the command stops the far job with it.
     let pid = std::fs::read_to_string(&pid).unwrap().trim().to_owned();
-    let alive = |pid: &str| {
-        std::process::Command::new("kill")
-            .args(["-0", pid])
-            .status()
-            .unwrap()
-            .success()
-    };
-    assert!(alive(&pid));
+    assert!(crate::support::alive(&pid));
     // `demi shell stop` stops it, from another shell of the conversation,
     // and waits until it has ended; a second stop is safe, and a number no
     // command has fails, while the others it names are still stopped, as
@@ -1206,7 +1202,7 @@ async fn demi_host_shell_shows_the_far_jobs_errors_as_they_come_takes_its_input_
         "{looked}"
     );
     crate::support::eventually("the far job ended", || {
-        let alive = alive(&pid);
+        let alive = crate::support::alive(&pid);
         async move { !alive }
     })
     .await;

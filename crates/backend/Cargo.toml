@@ -153,7 +153,8 @@ demi-runner-command-packages = { path = "../runner-command-packages" }
 demi-runner-process = { path = "../runner-process" }
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 # The installer scenarios interrupt an installer's process group, as a
-# terminal's Ctrl-C does.
+# terminal's Ctrl-C does, and scenarios that stop a process check that it
+# is gone with a signal 0.
 rustix = { version = "1", features = ["fs", "process"] }
 # The passkey scenarios' software authenticator and WebAuthn client, a
 # password manager's: discoverable passkeys that verify their user, backed

@@ -949,6 +949,12 @@ impl TestBackend {
         self.backend.search_work()
     }
 
+    /// Overwrites the user's search index with bytes that do not open, in
+    /// the index's own turn for the user.
+    pub async fn corrupt_search_index(&self, user: &demi_web_api_protocol::ids::UserId) {
+        self.backend.corrupt_search_index(user).await;
+    }
+
     /// Holds every migration of a conversation's database from now on,
     /// until the hold is released or dropped.
     pub fn hold_migrations(&self) -> demi_backend_database::conversations::MigrationHold {
@@ -1201,6 +1207,24 @@ pub fn device_utilities() -> String {
 /// How long a scenario waits for something that should come true before it
 /// fails as hung.
 pub const PATIENCE: Duration = Duration::from_secs(20);
+
+/// A shell command that writes its process id to `pid_file` and then reads
+/// a pipe it holds both ends of, which never ends, so only a signal, such as
+/// a stop, ends it, however long the machine takes.
+pub fn waits_for_a_signal(pid_file: &str) -> String {
+    format!("mkfifo {pid_file}.fifo; sh -c \"echo \\$\\$ > {pid_file}; exec cat 0<>{pid_file}.fifo\"")
+}
+
+/// Whether the process `pid` still exists, by a signal-0 `kill`.
+pub fn alive(pid: &str) -> bool {
+    let raw = pid.parse().unwrap_or_else(|_| panic!("not a process id: {pid:?}"));
+    let pid = rustix::process::Pid::from_raw(raw).unwrap_or_else(|| panic!("not a process id: {pid:?}"));
+    match rustix::process::test_kill_process(pid) {
+        Ok(()) => true,
+        Err(rustix::io::Errno::SRCH) => false,
+        Err(error) => panic!("process {pid:?} could not be checked: {error}"),
+    }
+}
 
 /// Lets `duration` pass at once for the timers on this test's runtime, such
 /// as the lifetime of a pairing code, which the backend's handler of a

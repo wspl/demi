@@ -319,12 +319,14 @@ async fn a_runner_that_cannot_register_says_why_in_its_hello() {
         };
         assert_eq!(Path::new(path), file);
         // The console says it in English, the path from `~`, where an
-        // installer reads it.
+        // installer reads it. Stopping the runner joins its console's
+        // readers, which may still be appending what it printed before the
+        // hello.
+        host.stop().await;
         let output = host.process.output();
         let sentence = said.sentence(&host.home().to_string_lossy());
         assert!(sentence.contains("~/"), "{sentence}");
         assert!(output.contains(&format!("{NO_AUTOSTART}{sentence}")), "{output}");
-        host.close().await;
     })
     .await
     .unwrap();
