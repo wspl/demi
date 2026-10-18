@@ -39,6 +39,11 @@
   "dot": {
     "needsYou": "判断が必要です"
   },
+  "tab": {
+    "danger": "失敗 {count} 件",
+    "attention": "要対応 {count} 件",
+    "success": "完了 {count} 件"
+  },
   "selection": {
     "open": "開く",
     "rename": "名前を変更",

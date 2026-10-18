@@ -39,6 +39,11 @@
   "dot": {
     "needsYou": "需要你決定"
   },
+  "tab": {
+    "danger": "{count} 個出錯",
+    "attention": "{count} 個待辦",
+    "success": "{count} 個完成"
+  },
   "selection": {
     "open": "開啟",
     "rename": "重新命名",

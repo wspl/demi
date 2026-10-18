@@ -39,6 +39,11 @@
   "dot": {
     "needsYou": "Needs your decision"
   },
+  "tab": {
+    "danger": "{count} failed",
+    "attention": "{count} to do",
+    "success": "{count} done"
+  },
   "selection": {
     "open": "Open",
     "rename": "Rename",

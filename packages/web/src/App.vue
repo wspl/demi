@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onScopeDispose, ref, watch } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import StartingScreen from '@demicodes/web-ui/ui/StartingScreen.vue'
 import SidebarLayout from '@demicodes/web-ui/sidebar/SidebarLayout.vue'
@@ -11,6 +11,8 @@ import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { useAppShortcuts } from '@demicodes/web-ui/composables/useAppShortcuts'
 import type { SidebarConversation, SidebarReorder } from '@demicodes/web-ui/sidebar/types'
 import AppSidebar from '@demicodes/web-ui/sidebar/AppSidebar.vue'
+import { followTabAttention } from '@demicodes/web-ui/sidebar/tab-attention'
+import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import ToastHost from '@demicodes/web-ui/ui/ToastHost.vue'
 import ContextMenu from '@demicodes/web-ui/ui/ContextMenu.vue'
 import SelectionToolbar from '@demicodes/web-ui/ui/SelectionToolbar.vue'
@@ -231,6 +233,18 @@ watch(
   },
   { immediate: true },
 )
+/** The page shows the signed-in product, with its sidebar; a sign-in page and a handoff code's do not. */
+const productShown = computed(() => session.signedIn && route.path !== '/handoff')
+// The tab says what the sidebar's dots say, and a sign-in page only its name
+// (`conversations.md` § Conversations and projects).
+onScopeDispose(followTabAttention({
+  conversations: () => (productShown.value ? sidebarConversations.value : []),
+  openId: () => activeId.value,
+  openTitle: () => {
+    const shown = productShown.value ? conversations.items.find((item) => item.id === activeId.value) : undefined
+    return shown ? conversationTitle(shown.title) : null
+  },
+}))
 const account = computed(() => ({
   id: resources.userId,
   name: resources.username,
@@ -301,7 +315,7 @@ useAppShortcuts(
     :on-retry="() => session.restore()"
   />
   <!-- A phone signed in opens a handoff code on its own page too, which goes on to the page the code opens. -->
-  <div v-else-if="session.signedIn && route.path !== '/handoff'" class="flex h-full flex-col">
+  <div v-else-if="productShown" class="flex h-full flex-col">
     <ConnectionBanner v-if="product.connection" :problem="product.connection" />
     <SidebarLayout
       class="min-h-0 flex-1"

@@ -190,6 +190,8 @@ const SIMPLIFIED: LanguageWriting = {
     ['File', '文件', 'Codex, ChatGPT, Claude, Apple'],
     ['+3 Files (the pill for the files a row has no room for)', '+3 个文件', 'GitHub’s and VS Code’s file counts; the figure and counter as in 3 个文件'],
     ['Folder', '文件夹', 'Codex, ChatGPT, Apple'],
+    ['To do (the tab’s count of what waits for the user, or of several kinds)', '待办', 'Chinese UI’s word for what waits on the user, as in to-do apps; 待处理 reads as a queue of work'],
+    ['Failed, Done (the tab’s counts)', '出错, 完成', '(1 个出错), (2 个完成): the counter 个 as in 3 个文件'],
   ],
 }
 
@@ -346,6 +348,8 @@ const TRADITIONAL: LanguageWriting = {
     ['File', '檔案', 'Codex, ChatGPT, Claude, Apple'],
     ['+3 Files (the pill for the files a row has no room for)', '+3 個檔案', 'GitHub’s and VS Code’s file counts; the counter 個 as in 3 個檔案'],
     ['Folder', '資料夾', 'Codex, ChatGPT. Apple’s 檔案夾 is less usual'],
+    ['To do (the tab’s count of what waits for the user, or of several kinds)', '待辦', 'As 待办 in 简体中文'],
+    ['Failed, Done (the tab’s counts)', '出錯, 完成', '(1 個出錯), (2 個完成)'],
   ],
 }
 
@@ -502,6 +506,8 @@ const JAPANESE: LanguageWriting = {
     ['File', 'ファイル', 'Codex, ChatGPT, Claude, Apple'],
     ['+3 Files (the pill for the files a row has no room for)', '+3 ファイル', 'GitHub’s and VS Code’s file counts; a pill has no room for 件の'],
     ['Folder', 'フォルダー', 'ChatGPT, Codex; the long vowel as Microsoft’s style guide has written it since 2008, one spelling everywhere, as in サーバー and ユーザー'],
+    ['To do (the tab’s count of what waits for the user, or of several kinds)', '要対応', '(要対応 2 件): what needs the user’s action, counted as 未読 3 件 is; やること reads as a chore list'],
+    ['Failed, Done (the tab’s counts)', '失敗, 完了', '(失敗 1 件), (完了 2 件)'],
   ],
 }
 
@@ -665,6 +671,8 @@ const KOREAN: LanguageWriting = {
     ['Load', '불러오기', 'ChatGPT, not 로드'],
     ['Disable (an account)', '비활성화', 'Not Apple’s 사용 안 함, an off switch'],
     ['Revoke (a device)', '페어링 해제', 'The pairing ends; 해지 is a contract’s'],
+    ['To do (the tab’s count of what waits for the user, or of several kinds)', '할 일', '(할 일 2개), counted as 읽지 않음 3개 is; the everyday word of to-do apps'],
+    ['Failed, Done (the tab’s counts)', '실패, 완료', '(실패 1개), (완료 2개)'],
   ],
 }
 

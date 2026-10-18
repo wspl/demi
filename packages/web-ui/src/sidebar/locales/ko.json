@@ -39,6 +39,11 @@
   "dot": {
     "needsYou": "결정이 필요합니다"
   },
+  "tab": {
+    "danger": "실패 {count}개",
+    "attention": "할 일 {count}개",
+    "success": "완료 {count}개"
+  },
   "selection": {
     "open": "열기",
     "rename": "이름 변경",

@@ -5,6 +5,7 @@ import SharedConversation from '@demicodes/web-ui/share/SharedConversation.vue'
 import SharedLinkMissing from '@demicodes/web-ui/share/SharedLinkMissing.vue'
 import type { SharedItem } from '@demicodes/web-ui/share/shared-items'
 import { t } from '@demicodes/web-ui/share/locales/text'
+import { pageTitle } from '@demicodes/web-ui/sidebar/tab-attention'
 import { provideBlobUrl } from '@demicodes/web-ui/agent/media-source'
 import { provideMediaViewer } from '@demicodes/web-ui/files/media-viewer'
 import { shownError, type ShownError } from '@demicodes/web-ui/infra/errors'
@@ -89,10 +90,12 @@ function readBeside(side: 'before' | 'after'): void {
 
 const attachments = { path: sharePath(props.token), blobUrl }
 const title = computed(() => share.value.state === 'found' ? share.value.share.title : null)
+// The tab names the shared conversation and the product, and counts nothing:
+// its reader has no sidebar (`conversations.md` § Conversations and projects).
 watchEffect(() => {
-  document.title = share.value.state === 'missing'
+  document.title = pageTitle(share.value.state === 'missing'
     ? t('share.missing')
-    : title.value?.trim() || t('share.untitled')
+    : title.value?.trim() || t('share.untitled'))
 })
 </script>
 
