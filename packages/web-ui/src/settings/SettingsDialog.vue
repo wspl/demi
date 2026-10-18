@@ -120,18 +120,30 @@ const filtered = computed(() => filterSettings(shownSections.value, query.value)
 const rail = ref<InstanceType<typeof ScrollArea>>()
 
 /**
- * Keeps the open section's row in view, as a sidebar does when it shows: a
+ * Shows the open section's row once, when it opens, as a sidebar does: a
  * dialog that opens on a section lower in the list scrolls just far enough
  * to show it, and a list that fits stays at its top. Nothing scrolls while
  * the row is whole in view, so a click on a visible row never moves the list.
- * The row is scrolled inside the rail's scroller alone, which ends below the
- * filter, so it never lands under it.
+ * After that the list stays where the user scrolls it: the sections are
+ * listed again whenever what they show changes, such as a device coming
+ * online, and that must not pull the list back to the open row. The row is
+ * scrolled inside the rail's scroller alone, which ends below the filter, so
+ * it never lands under it.
  */
+let revealed: { viewport: HTMLElement, section: SettingsTab } | null = null
 // `items` is a source too: a section a plugin adds comes after the first draw.
 watch([() => rail.value?.el, shown, narrow, items], ([viewport, section, isNarrow]) => {
-  if (!viewport || !section || isNarrow)
+  if (!viewport || !section || isNarrow) {
+    revealed = null
     return
-  viewport.querySelector(`[data-section="${CSS.escape(section)}"]`)?.scrollIntoView({ block: 'nearest' })
+  }
+  if (revealed?.viewport === viewport && revealed.section === section)
+    return
+  const row = viewport.querySelector(`[data-section="${CSS.escape(section)}"]`)
+  if (!row)
+    return
+  row.scrollIntoView({ block: 'nearest' })
+  revealed = { viewport, section }
 }, { flush: 'post' })
 
 /**
