@@ -1186,5 +1186,6 @@ async fn an_encoder_that_is_not_ciscos_build_is_refused() {
     assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0, "the refused file was kept");
     let asked = asked.lock().unwrap().clone();
     assert_eq!(asked.len(), 2);
-    assert!(asked[0].starts_with("GET /libopenh264-2.6.0-mac-arm64.dylib.bz2 "), "{asked:?}");
+    assert!(asked.iter().all(|line| line.starts_with("GET /libopenh264-2.6.0-") && line.contains(".bz2 ")), "{asked:?}");
+    assert_eq!(asked[0], asked[1], "the second use asks for the same file again");
 }

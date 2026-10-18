@@ -201,6 +201,10 @@ mod exit {
             let still = wanted.0.clone();
             let handle = self.0;
             let _waited = tokio::task::spawn_blocking(move || {
+                // Moves the whole `Handle`, which is Send, into the closure;
+                // naming only `handle.0` below would capture the bare
+                // pointer, which is not.
+                let handle = handle;
                 while still.load(Ordering::Relaxed) {
                     // SAFETY: the handle stays open while this closure owns it.
                     if unsafe { WaitForSingleObject(handle.0, 1000) } != WAIT_TIMEOUT {
