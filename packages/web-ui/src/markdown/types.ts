@@ -104,8 +104,9 @@ export interface ConversationFiles {
    */
   openAttachment?(id: string, attachment: MessageAttachment): void
   /**
-   * Shows a commit a message links as `commit:3f2a9c1` in the Change view's
-   * Commits mode, through the `commit` intent; absent while no plugin the
+   * Shows a commit a message links as `commit:3f2a9c1`, or as
+   * `commit:src/v8@86229da` in the repository of that folder, in the Change
+   * view's Commits mode, through the `commit` intent; absent while no plugin the
    * user has on opens it, so such a link shows as text.
    */
   openCommit?(target: MessageCommitTarget): void
@@ -118,7 +119,11 @@ export interface ConversationFiles {
   commitHash?(target: MessageCommitTarget): Promise<string>
 }
 
-/** A commit a message links, by its id or an abbreviation; `root` as a file's target has it. */
+/**
+ * A commit a message links, by its id or an abbreviation; `root`, the
+ * folder whose repository has it, the one the link names or else the
+ * directory of the agent that wrote it, absent for the conversation's.
+ */
 export interface MessageCommitTarget {
   commit: string
   root?: string

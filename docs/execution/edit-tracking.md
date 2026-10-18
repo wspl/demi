@@ -400,7 +400,8 @@ together. For example, Alex opens it on `~/shop`, checked out on
   with **Uncommitted Changes** and its count of files, a bare number, on one row too, the working tree against
   HEAD as before; another branch's list starts with its newest commit. A
   repository without commits shows Uncommitted Changes alone; outside a
-  repository the mode says *Not a Git repository*.
+  repository the mode says *Not a Git repository* in place of the change,
+  with no Retry: it is the folder's answer, not a failed read.
 - **Selecting** an item shows its files above and opens the first; a commit
   shows its changes against its first parent, a root commit everything
   added. Back and Forward revisit selections, as for files.
@@ -417,7 +418,13 @@ together. For example, Alex opens it on `~/shop`, checked out on
 - **A commit link**, `commit:3f2a9c1` in a message
   ([Links](../product/file-previews.md)), opens the Change view in Commits
   mode on that commit, in the repository of the agent that wrote it, in its
-  working directory when it wrote it. The list shows the branch it is on:
+  working directory when it wrote it. A commit of another repository names
+  that repository's folder before its id, `commit:src/v8@86229da`, as
+  GitHub writes `owner/repo@sha`: a relative folder is resolved as a
+  relative link's path is, and the mode opens on that folder's repository,
+  as when the user chooses it. A checkout of several repositories, such as
+  a gclient or repo workspace whose root is no repository, has its commits
+  in the ones below. The list shows the branch it is on:
   the one shown when that has it, else the checked-out one, else the most
   recently committed branch that has it. A commit on no local branch shows
   alone, its files above and the list replaced by *This commit is on no

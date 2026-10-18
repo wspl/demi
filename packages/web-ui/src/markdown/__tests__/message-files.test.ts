@@ -88,3 +88,31 @@ test('a render reads the same files while the conversation makes them anew, and 
   expect(rendered.value?.open).toBeUndefined()
   scope.stop()
 })
+
+test('a commit link opens its commit, in the repository of the folder it names before the id, resolved as a relative link’s path is', () => {
+  const commits: unknown[] = []
+  const withCommits: MessageFiles = { ...files, home: '/home/kim', openCommit: (target) => void commits.push(target) }
+  const viewer = createMediaViewer(() => ({ page: { width: 1440, height: 900 }, pixelRatio: 1 }))
+  document.body.innerHTML = renderMarkdown(
+    '[One](commit:3f2a9c1) [Two](commit:src/v8@86229da) [Three](commit:/repos/shop@3f2a9c1) [Four](commit:~/shop@3f2a9c1) [Five](commit:a@b@3f2a9c1)',
+    { files: withCommits },
+  )
+  for (const link of document.querySelectorAll('a[data-commit-link]')) {
+    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'target', { value: link })
+    openMessageLink(event, withCommits, viewer, undefined)
+  }
+  expect(commits).toEqual([
+    { commit: '3f2a9c1' },
+    { commit: '86229da', root: '/work/src/v8' },
+    { commit: '3f2a9c1', root: '/repos/shop' },
+    { commit: '3f2a9c1', root: '/home/kim/shop' },
+    // The id follows the last `@`.
+    { commit: '3f2a9c1', root: '/work/a@b' },
+  ])
+})
+
+test('a commit link whose folder names nothing yet, `~/` before the Host’s home is known, is its text', () => {
+  const html = renderMarkdown('[Fix](commit:~/shop@3f2a9c1)', { files: { ...files, openCommit: () => {} } })
+  expect(html).toBe('<p>Fix</p>\n')
+})

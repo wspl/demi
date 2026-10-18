@@ -38,8 +38,9 @@ export function childMessageFiles(files: MessageFiles, directory: string): Messa
     cwd: directory,
     ...(open ? { open: (target) => open({ ...target, root: directory }) } : {}),
     ...(showInFiles ? { showInFiles: (target) => showInFiles({ ...target, root: directory }) } : {}),
-    ...(openCommit ? { openCommit: (target) => openCommit({ ...target, root: directory }) } : {}),
-    ...(commitHash ? { commitHash: (target) => commitHash({ ...target, root: directory }) } : {}),
+    // A commit link that names its repository's folder keeps it.
+    ...(openCommit ? { openCommit: (target) => openCommit({ ...target, root: target.root ?? directory }) } : {}),
+    ...(commitHash ? { commitHash: (target) => commitHash({ ...target, root: target.root ?? directory }) } : {}),
   }
 }
 

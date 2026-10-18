@@ -37,7 +37,7 @@ const messageFiles = galleryConversationFiles(workspace.source, ({ path, line, r
   productWould(path === ''
     ? `Open the Folder ${baseName(root ?? workspace.root)}`
     : `Open ${baseName(path)}${line === null ? '' : ` at Line ${line}`}${where}`)
-}, ({ commit }) => productWould(`Show Commit ${commit} in Change`))
+}, ({ commit, root }) => productWould(`Show Commit ${commit} in Change${root === undefined ? '' : ` for ${baseName(root)}`}`))
 provideMessageFiles(() => ({ ...messageFiles, cwd: workspace.root }))
 /** A link's Open in Work Panel: the product opens a tab of the conversation's browser. */
 function openInWorkPanel(url: string): void {

@@ -7,7 +7,7 @@ import { agentMenu } from '../agent/agent-menu'
 import { downloadUrl } from '../files/download'
 import { commitMenu, fileMenu } from '../files/object-menus'
 import type { ContextMenuGroup } from '../ui/context-menu'
-import type { MessageFiles } from './types'
+import type { MessageCommitTarget, MessageFiles } from './types'
 
 const messageFilesKey: InjectionKey<() => MessageFiles | undefined> = Symbol('message-files')
 
@@ -96,7 +96,7 @@ export function openMessageLink(
   const commit = target?.closest('a[data-commit-link]')
   if (commit) {
     event.preventDefault()
-    files?.openCommit?.({ commit: commit.getAttribute('data-commit-link') ?? '' })
+    files?.openCommit?.(commitTarget(commit))
     return
   }
   const link = target?.closest('a[data-file-link]')
@@ -105,6 +105,13 @@ export function openMessageLink(
   event.preventDefault()
   const line = Number(link.getAttribute('data-line'))
   files.open({ path: link.getAttribute('href') ?? '', line: line > 0 ? line : null })
+}
+
+/** The commit a rendered commit link names, with the folder of its repository when the link names one. */
+function commitTarget(link: Element): MessageCommitTarget {
+  const commit = link.getAttribute('data-commit-link') ?? ''
+  const root = link.getAttribute('data-commit-root')
+  return root === null ? { commit } : { commit, root }
 }
 
 /** A commit's id written whole, SHA-1's or SHA-256's, which needs no reading to be the full hash. */
@@ -133,9 +140,9 @@ export function messageLinkMenu(
     )
   }
   if (link.matches('a[data-commit-link]')) {
-    const commit = link.getAttribute('data-commit-link') ?? ''
+    const target = commitTarget(link)
     const resolve = files?.commitHash
-    const hash = FULL_HASH.test(commit) ? () => commit : resolve ? () => resolve({ commit }) : undefined
+    const hash = FULL_HASH.test(target.commit) ? () => target.commit : resolve ? () => resolve(target) : undefined
     return () => commitMenu({ open, ...(hash ? { hash } : {}) })
   }
   if (link.matches('a[data-file-link]')) {

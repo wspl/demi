@@ -141,6 +141,13 @@ const shownCommit = useShowing(() => history.value, () => commit.value, (source,
 const commitDetails = computed(() => commit.value === null ? null : shownCommit.entry.value?.value ?? null)
 /** The selected item is a commit; else Uncommitted Changes, the working tree. */
 const showsCommit = computed(() => mode.value === 'commits' && commit.value !== null)
+/**
+ * Commits mode reads a folder outside any Git repository, as whichever read
+ * answers first says: the working tree's list, or the commit a link opened.
+ * It is the folder's answer, not a failed read, so it has no Retry.
+ */
+const outsideRepository = computed(() => mode.value === 'commits' && (workingTree.value.unavailable === 'no-repository'
+  || (showsCommit.value && shownCommit.entry.value?.failure?.kind === 'not-repository')))
 /** The item's file shown: the one selected, else its first. */
 const commitFile = computed(() => {
   const files = commitDetails.value?.files ?? []
@@ -150,6 +157,9 @@ const workingChange = computed(() => workingTree.value.files.find((file) => file
 const selectedChange = computed(() => {
   if (mode.value === 'conversation')
     return requestFile.value
+  // Outside a repository, Commits shows no file, only that it is none.
+  if (outsideRepository.value)
+    return null
   return showsCommit.value ? commitFile.value : workingChange.value
 })
 /** The file the sidebar marks as selected. */
@@ -272,7 +282,7 @@ const heading = computed(() => {
   return { folder, name: baseName(absolutePath.value), from, deleted: change.kind === 'deleted' }
 })
 const treeAvailable = computed(() => mode.value === 'commits'
-  ? workingTree.value.unavailable !== 'no-repository'
+  ? !outsideRepository.value
   : request.value !== null)
 const emptyText = computed(() => {
   // The view says it where the diff would be.
@@ -314,6 +324,8 @@ const idleText = computed(() => {
       return t('changes.selectInConversation')
     return request.value.files.length > 0 ? t('changes.selectFile') : t('changes.goneFromConversation')
   }
+  if (outsideRepository.value)
+    return t('changes.notGit')
   if (missingCommit.value)
     return noCommitText.value
   if (showsCommit.value)
@@ -431,6 +443,8 @@ const keptSides = computed(() => showsCommit.value ? commitSides : workingSides)
 
 /** The kept sides' state, as they say. */
 const workingState = computed<State>(() => {
+  if (outsideRepository.value)
+    return { phase: 'idle' }
   if (showsCommit.value && !commitDetails.value) {
     const entry = shownCommit.entry.value
     if (entry?.failure && entry.answer === null)

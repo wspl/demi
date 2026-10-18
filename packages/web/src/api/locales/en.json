@@ -6,6 +6,7 @@
     "exists": "Something with that name already exists.",
     "binary": "It isn’t text.",
     "tooLarge": "It’s too large.",
+    "notRepository": "It isn’t in a Git repository.",
     "other": "The Host didn’t answer.",
     "conversationBusy": "The conversation is changing its Host.",
     "selectDevice": "Select a connected device."

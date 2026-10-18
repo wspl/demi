@@ -29,12 +29,36 @@ function normalizeFilePath(rawPath: string): string {
   return withoutCurrentDirPrefix
 }
 
+/** A commit a link names: its id or an abbreviation, and the folder of its repository when the link names one. */
+export interface LinkedCommit {
+  commit: string
+  /** The folder as written, relative or absolute; null for the writing agent's working directory. */
+  folder: string | null
+}
+
 /**
- * The commit a link's target names, such as `3f2a9c1` for `commit:3f2a9c1`:
- * its id or at least 7 of its first hex digits; null for any other target.
+ * The commit a link's target names (`edit-tracking.md` § Commits mode):
+ * `commit:3f2a9c1`, its id or at least 7 of its first hex digits, or
+ * `commit:src/v8@86229da`, the repository's folder before the last `@`;
+ * null for any other target.
  */
-export function linkedCommit(target: string): string | null {
-  return /^commit:([0-9a-f]{7,64})$/i.exec(target.trim())?.[1] ?? null
+export function linkedCommit(target: string): LinkedCommit | null {
+  const match = /^commit:(?:(.+)@)?([0-9a-f]{7,64})$/i.exec(target.trim())
+  if (!match)
+    return null
+  return { commit: match[2]!, folder: match[1] === undefined ? null : decodedTarget(match[1]) }
+}
+
+/**
+ * The Host folder a commit link names, resolved as a relative link's path
+ * is: against the working directory, `~/` from the Host's home; null for a
+ * `~/` folder while the home is unknown.
+ */
+export function commitFolder(folder: string, places: MessagePlaces): string | null {
+  const named = places.home ? expandHome(folder, places.home) : folder
+  if (named.startsWith('~/') || named === '~')
+    return null
+  return resolveHostPath(places.cwd, normalizeFilePath(named))
 }
 
 /** A target as written may be percent-encoded; one that does not decode stays as it is. */

@@ -362,7 +362,7 @@ link's color, as GitHub shows it.
 | Relative path | Resolved against the working directory of the agent that wrote it, where its commands ran when it wrote it, the conversation's for the main agent ([Working directory](../agent/subagents.md#working-directory)); the file opens in the File view, and a `#L42` or `#L42-L50` after the path, or `:42`, opens it at line 42, scrolled there and marked for a moment as a search result is, in the file's source even where it has a preview, as GitHub's line links show the plain text | Resolved the same way and loaded from the Host |
 | Absolute path, a path starting `~/` from the Host's home, or a `file://` URL | The file at that path, opened in the File view | Loaded from the Host |
 | `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
-| `commit:3f2a9c1`, a commit of the repository the agent that wrote it worked in, by its id or at least 7 of its first hex digits | Opens the Change view in Commits mode on that commit ([Commits mode](../execution/edit-tracking.md#commits-mode)) | Its alt text |
+| `commit:3f2a9c1`, a commit of the repository the agent that wrote it worked in, by its id or at least 7 of its first hex digits; `commit:src/v8@86229da`, a commit of the repository in that folder, relative or absolute | Opens the Change view in Commits mode on that commit, in that repository ([Commits mode](../execution/edit-tracking.md#commits-mode)) | Its alt text |
 | `agent:4`, an agent of the conversation ([Linking an agent](../agent/subagents.md#linking-an-agent)) | Opens the Agents window on that agent's tab | Its alt text |
 | `data:` URL | Shown as text | Shown as it is |
 | Anything else | Shown as text | Its alt text |

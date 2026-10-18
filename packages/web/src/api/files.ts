@@ -64,6 +64,8 @@ function failureKind(error: ApiError): FileBrowserFailure['kind'] {
     return 'offline'
   if (error.code === 'file_exists')
     return 'exists'
+  if (error.code === 'not_repository')
+    return 'not-repository'
   if (error.code === 'not_text' || error.status === 415)
     return 'binary'
   if (error.code === 'file_too_large' || error.status === 413)
@@ -106,6 +108,8 @@ function failureSentence(error: ApiError, kind: FileBrowserFailure['kind']): Sen
       return t('files.binary')
     case 'too-large':
       return t('files.tooLarge')
+    case 'not-repository':
+      return t('files.notRepository')
     case 'other':
       return t('files.other')
   }

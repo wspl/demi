@@ -206,6 +206,22 @@ async fn the_history_routes_read_branches_a_log_and_a_commits_files_through_the_
     // Outside a repository, the history says so.
     let outside = device.get("/changes/branches").await;
     assert_eq!(outside.refusal(), (StatusCode::CONFLICT, ErrorCode::NotRepository));
+    // A repository below it, as a checkout of several has, is read by its
+    // folder, as a link `commit:v8@<id>` opens it.
+    let below = device.root.join("v8");
+    std::fs::create_dir(&below).unwrap();
+    git(&below, &["init", "-q", "-b", "main"]);
+    std::fs::write(below.join("b.txt"), "1\n").unwrap();
+    git(&below, &["add", "."]);
+    git(&below, &["commit", "-q", "-m", "Below"]);
+    let folder = below.to_str().unwrap().to_owned();
+    let log: Value = device.get(&format!("/changes/log?{}", query(&[("directory", &folder)]))).await.json();
+    let id = log["commits"][0]["id"].as_str().unwrap().to_owned();
+    let commit: Value = device.get(&format!("/changes/commit?{}", query(&[("directory", &folder), ("commit", &id[..7])]))).await.json();
+    assert_eq!(commit["commit"]["id"], json!(id));
+    let outside = device.get(&format!("/changes/commit?commit={}", &id[..7])).await;
+    assert_eq!(outside.refusal(), (StatusCode::CONFLICT, ErrorCode::NotRepository));
+    std::fs::remove_dir_all(&below).unwrap();
 
     git(&device.root, &["init", "-q", "-b", "main"]);
     std::fs::write(device.root.join("a.txt"), "1\n").unwrap();
