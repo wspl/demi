@@ -212,7 +212,8 @@ by who shows it. The SDK defines each intent and its payload:
 
 | Intent | Payload | Opened by the shell from |
 | --- | --- | --- |
-| `file` | `{ path }`, an absolute path on the conversation's Host | A file a message names ([Files named in messages](../product/file-previews.md#files-named-in-messages)), an attachment's capsule, a Host image |
+| `file` | `{ path, tree? }`, an absolute path on the conversation's Host; `tree: true` shows the file's row in the File view's tree, selected and in view, the tree shown if it was hidden | A file a message names ([Files named in messages](../product/file-previews.md#files-named-in-messages)), an attachment's capsule, a Host image; *Show in Files* on a file link |
+| `web` | `{ url }`, an `http` or `https` address | *Open in Work Panel* on a link in a reply ([Context menus](../product/web-application.md#context-menus)) |
 | `edit` | A request's changes: the agent (`node`, null for the conversation's own), the request, and a file with one call's edit of it (`{ call, segment }`) or null for All Changes ([A request](../execution/edit-tracking.md#a-request)) | A tool call's file pill, a request's changed-files line |
 
 To open an intent, the panel takes the first kind, in registration order, of

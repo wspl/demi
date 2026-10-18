@@ -5,7 +5,8 @@ import { md } from '@demicodes/web-ui/markdown/md'
 import { fitMessageMedia, fitMessageMedium, messagePicture, messagePictures, type MessagePicture } from '@demicodes/web-ui/markdown/media-run'
 import { useMarkdownRenderVersion } from '@demicodes/web-ui/markdown/render-version'
 import CodeBlockCopy from '@demicodes/web-ui/markdown/CodeBlockCopy.vue'
-import { openMessageLink, pressMessageLink, useMessageFiles, useRenderedFiles } from '@demicodes/web-ui/markdown/message-files'
+import { messageLinkMenu, openMessageLink, pressMessageLink, useMessageFiles, useRenderedFiles } from '@demicodes/web-ui/markdown/message-files'
+import { vLinkMenus, type LinkMenus } from '@demicodes/web-ui/ui/context-menu'
 import { replyCodeFiles } from '@demicodes/web-ui/markdown/code-files'
 import { hostImagePaths, useHostImagesAt } from '@demicodes/web-ui/markdown/host-images'
 import type { HostImage } from '@demicodes/web-ui/files/host-image'
@@ -57,6 +58,8 @@ const agents = useMessageAgents()
 const viewer = useMediaViewer()
 const transcript = useTranscript()
 const renderFiles = useRenderedFiles(files)
+/** A link to a file, a commit or an agent has that object's menu, as the conversation has it when the menu opens. */
+const linkMenus: LinkMenus = (link) => messageLinkMenu(link, files(), agents())
 // The files the reply's inline code names, asked about once it is complete.
 const codeFiles = computed(() => replyCodeFiles(props.content, props.streaming, renderFiles.value))
 
@@ -197,6 +200,7 @@ function onMediumLoad(event: Event): void {
   <div
     v-bind="$attrs"
     ref="root"
+    v-link-menus="linkMenus"
     class="markdown-body select-text"
     :class="streaming ? 'is-streaming' : ''"
     :aria-busy="streaming || undefined"

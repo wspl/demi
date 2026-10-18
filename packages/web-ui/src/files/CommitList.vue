@@ -11,6 +11,8 @@ import { commitSummary, shortCommit, type LoggedCommit } from './history'
 import { t as shared } from '../locales/text'
 import { t } from './locales/text'
 import { formatCount } from '../ui/numbers'
+import { vContextMenu } from '../ui/context-menu'
+import { commitMenu } from './object-menus'
 
 /**
  * One branch's commits under the Change view's files, newest first, as VS
@@ -22,7 +24,9 @@ import { formatCount } from '../ui/numbers'
  * list shows the branch checked out it starts with Uncommitted Changes and
  * its count of files (`uncommitted`). Older commits load as the list
  * scrolls to its end, while `more`. A click selects a row, as the arrows do
- * on the row after or before; null is Uncommitted Changes.
+ * on the row after or before; null is Uncommitted Changes. A commit's row
+ * has the commit's menu less Open, which the row already is: Copy Commit
+ * Hash (`commitMenu`).
  */
 const props = defineProps<{
   commits: readonly LoggedCommit[]
@@ -111,6 +115,7 @@ function files(count: number): string {
         class="block"
       >
         <div
+          v-context-menu="() => commitMenu({ hash: () => commit.id })"
           role="option"
           :aria-selected="selected === commit.id"
           class="flex h-7 shrink-0 cursor-default select-none items-center gap-1 rounded-md px-2 text-chrome transition-colors duration-200 ease-out phone:h-11 phone:text-[16px]"

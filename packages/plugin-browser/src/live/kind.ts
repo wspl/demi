@@ -43,6 +43,10 @@ export const browserTabKind: PanelKind<BrowserTabData, BrowserTabsController> = 
   // The page loads: the strip shows it as a web browser's tab does.
   busy: (data, tab, id) => tab.session.busy(id, data),
   content: BrowserTabContent,
+  // A link's Open in Work Panel: a new tab on its page, which the shown content asks the plugin to open (`bind`).
+  intents: {
+    web: (payload) => ({ url: payload.url }),
+  },
   // A web browser's tab menu: Reload the page.
   commands: (data, tab) => [
     {

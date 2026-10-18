@@ -696,6 +696,9 @@ const sessionFiles = galleryConversationFiles(workspace.source, ({ path, line })
 }, ({ commit }) => {
   panelWork.openIn({ intent: 'commit', payload: { commit } })
   view.value = 'panel'
+}, ({ path }) => {
+  panelWork.openIn({ intent: 'file', payload: { path, tree: true } })
+  view.value = 'panel'
 })
 // The tabs specimen starts on an empty strip, which only the agent's tabs fill.
 const exhibitWork = useWorkTabs('file', { browser: galleryBrowser([]) })

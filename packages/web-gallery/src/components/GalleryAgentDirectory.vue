@@ -35,6 +35,8 @@ const conversationFiles = galleryConversationFiles(workspace.source, ({ path, li
   work.openIn({ intent: 'file', payload: { path, ...(line === null ? {} : { line }), ...(root === undefined ? {} : { root }) } })
 }, ({ commit, root }) => {
   work.openIn({ intent: 'commit', payload: { commit, ...(root === undefined ? {} : { root }) } })
+}, ({ path, root }) => {
+  work.openIn({ intent: 'file', payload: { path, tree: true, ...(root === undefined ? {} : { root }) } })
 })
 provideMessageFiles(() => ({ ...conversationFiles, cwd: workspace.root }))
 

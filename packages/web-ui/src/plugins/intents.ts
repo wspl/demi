@@ -12,9 +12,10 @@ export interface IntentPayloads {
    * (`file-previews.md` § Files named in messages); an empty path shows the
    * directory's tree alone. `root` is the directory the view opens for, the
    * working directory of the agent that named the file; absent, the
-   * conversation's.
+   * conversation's. `tree`, as Show in Files asks, also shows the view's
+   * tree with the file selected and scrolled into view.
    */
-  file: { path: string; line?: number; root?: string }
+  file: { path: string; line?: number; root?: string; tree?: true }
   /**
    * A request's changes, as its line or a file pill under one of its calls
    * names them: the request, its file, and the edit of it or All Changes.
@@ -28,6 +29,11 @@ export interface IntentPayloads {
    * absent, the conversation's.
    */
   commit: { commit: string; root?: string }
+  /**
+   * A web page, in a new tab of the conversation's browser, as a link's
+   * Open in Work Panel opens it (`web-application.md` § Context menus).
+   */
+  web: { url: string }
 }
 
 export type IntentName = keyof IntentPayloads

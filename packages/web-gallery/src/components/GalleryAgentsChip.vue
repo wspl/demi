@@ -60,6 +60,13 @@ provideMessageAgents(() => ({
       close()
     }
   },
+  // Stop Agent in a link's menu stops it as its tab's does.
+  stop: (number) => {
+    const agent = props.agents.find((candidate) => candidate.number === number)
+    if (agent) {
+      emit('abortAgent', agent.id)
+    }
+  },
 }))
 const surface = ref<InstanceType<typeof SessionSurface>>()
 const createdAt = new Date(Date.now() - 60_000).toISOString()

@@ -43,6 +43,7 @@
   "contextMenu": {
     "open": "열기",
     "openLink": "링크 열기",
+    "openInWorkPanel": "작업 패널에서 열기",
     "copyLink": "링크 복사",
     "copyImage": "이미지 복사",
     "saveImage": "이미지 저장",

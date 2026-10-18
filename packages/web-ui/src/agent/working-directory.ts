@@ -32,12 +32,14 @@ export function blockDirectories(blocks: readonly Block[], current: string): Rea
  * there (`file-previews.md` § The File view's bars).
  */
 export function childMessageFiles(files: MessageFiles, directory: string): MessageFiles {
-  const { open, openCommit } = files
+  const { open, showInFiles, openCommit, commitHash } = files
   return {
     ...files,
     cwd: directory,
     ...(open ? { open: (target) => open({ ...target, root: directory }) } : {}),
+    ...(showInFiles ? { showInFiles: (target) => showInFiles({ ...target, root: directory }) } : {}),
     ...(openCommit ? { openCommit: (target) => openCommit({ ...target, root: directory }) } : {}),
+    ...(commitHash ? { commitHash: (target) => commitHash({ ...target, root: directory }) } : {}),
   }
 }
 

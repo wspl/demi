@@ -2,7 +2,7 @@
 import { errorMessage } from '../infra/errors'
 import RequestIdLine from '../ui/RequestIdLine.vue'
 import { computed, markRaw, nextTick, onBeforeUnmount, reactive, ref, shallowReactive, watch } from 'vue'
-import { Download, RefreshCw, Upload } from '@lucide/vue'
+import { RefreshCw, Upload } from '@lucide/vue'
 import { useElementSize } from '@vueuse/core'
 import type { ContextMenuDeclaration } from '../ui/context-menu'
 import { useFileDrop } from '../composables/useFileDrop'
@@ -22,6 +22,7 @@ import { followOnScreen } from './on-screen'
 import Tree from './Tree.vue'
 import UploadConflictDialog from './UploadConflictDialog.vue'
 import { downloadUrl } from './download'
+import { fileMenu } from './object-menus'
 import { droppedEntries, droppedItems, type DroppedEntry } from './dropped'
 import {
   clashPlacement,
@@ -50,7 +51,8 @@ import { DEFAULT_SORT, sortEntries } from './file-browser-state'
  * the caption's end lists every open directory again, turning while they
  * load.
  *
- * A right-click offers what the source can do there: a file downloads, and a
+ * A right-click offers what the source can do there: a file's path copies
+ * and the file downloads (`fileMenu`), and a
  * directory, or the empty space for the workspace itself, takes files
  * uploaded into it. Files and folders dragged in from the desktop upload
  * where they drop: into the directory under the pointer, the directory of a
@@ -190,11 +192,16 @@ watch(() => [props.source, props.root, props.selected], () => unfoldTo(props.sel
 // A row the host asked to see: scrolled to once the listings unfolding to it have put it in.
 const revealing = ref<string | null>(null)
 
-/** A folder the host goes to, as Finder's Go to Folder opens one: unfolded with the folders above it, its row scrolled to. */
-function reveal(path: string): void {
+/**
+ * A row the host goes to, as Finder's Go to Folder opens a folder and Show
+ * in Finder a file: unfolded to, with the folders above it, a folder's own
+ * listing opened, its row scrolled to.
+ */
+function reveal(path: string, isDirectory = true): void {
   unfoldTo(path)
   const target = normalizePath(path)
-  open(target)
+  if (isDirectory)
+    open(target)
   // The root heads the tree as its caption; it has no row to scroll to.
   revealing.value = target === normalizePath(props.root) ? null : target
 }
@@ -311,23 +318,24 @@ async function followLink(row: TreeRow): Promise<void> {
   }
 }
 
-// What a row's context menu offers: a file to download, or a directory to upload into; the tree's
-// empty space is its root directory. The row shows it while it is open.
+// What a row's context menu offers: a file's menu less what the row already is (Copy Path, and
+// Download where the source serves its bytes), or a directory to upload into; the tree's empty
+// space is its root directory. The row shows it while it is open.
 const menuRow = ref<string | null>(null)
 
 function rowMenu(row: TreeRow | null): ContextMenuDeclaration | null {
   const kind = row === null || row.isDirectory ? 'directory' : 'file'
   const path = row === null ? normalizePath(props.root) : row.path
   // With nothing to offer, no menu: a row is still its own object, which never takes the tree's.
-  if (kind === 'file' ? !props.source.contents : !props.source.upload)
+  if (kind === 'directory' && !props.source.upload)
     return row === null ? null : { entries: () => [] }
   return {
     opened: () => {
       menuRow.value = row === null ? null : path
     },
-    entries: () => [kind === 'file'
-      ? [{ icon: Download, label: t('actions.download'), run: () => download(path) }]
-      : [{ icon: Upload, label: t('tree.uploadFiles'), run: () => chooseFiles(path) }]],
+    entries: () => kind === 'file'
+      ? fileMenu(path, props.source.contents ? { download: () => download(path) } : {})
+      : [[{ icon: Upload, label: t('tree.uploadFiles'), run: () => chooseFiles(path) }]],
     closed: () => {
       menuRow.value = null
     },

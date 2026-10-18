@@ -4,6 +4,8 @@
     "forward": "前进",
     "refresh": "刷新",
     "download": "下载",
+    "showInFiles": "在文件树中显示",
+    "copyPath": "复制路径",
     "clear": "清除",
     "dismiss": "关闭",
     "openFile": "打开文件"
@@ -165,6 +167,7 @@
   },
   "changes": {
     "commits": "提交",
+    "copyCommitHash": "复制提交哈希",
     "conversation": "对话",
     "diff": "差异",
     "preview": "预览",

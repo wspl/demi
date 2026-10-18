@@ -1,5 +1,5 @@
 import { shallowRef, type Component, type Directive, type VNode } from 'vue'
-import { Copy, Download, ExternalLink, Link, SquareArrowOutUpRight } from '@lucide/vue'
+import { Copy, Download, ExternalLink, Link, PanelRight, SquareArrowOutUpRight } from '@lucide/vue'
 import type { CopySource } from '../composables/useCopy'
 import type { Operation } from './operations'
 import { t as shared } from '../locales/text'
@@ -13,6 +13,8 @@ import type { SentenceText, TitleText } from './ui-text'
  * press, and walks from the element under the pointer up to the root. On
  * the way it gathers the entries of content the browser's own menu would
  * offer, the selection under the pointer, a link, a picture, a code block,
+ * and a link to an object (a file, a commit, an agent), whose group is that
+ * object's own menu as the renderer around it answers it (`vLinkMenus`),
  * and it stops at the first object, an element that declares its menu
  * (`vContextMenu`), whose entries come last: an object's menu never holds
  * its container's. Each is a group, innermost first; the menu parts the
@@ -117,6 +119,42 @@ export interface ContextMenuServices {
   copyImage: (image: HTMLImageElement) => void
   save: (url: string, name: string) => void
   openLink: (url: string) => void
+  /**
+   * Opens a web page in a new tab of the conversation's browser, the work
+   * panel shown; absent where no conversation's panel takes one, and a link
+   * then has no Open in Work Panel.
+   */
+  openInWorkPanel?: (url: string) => void
+}
+
+/**
+ * The menu of the object a link inside a rendered text names, the one its
+ * row or tab declares (`web-application.md` § Context menus), read while
+ * the menu shows; null for a link it knows nothing of, which then has Open
+ * alone.
+ */
+export type LinkMenus = (link: Element) => (() => readonly ContextMenuGroup[]) | null
+
+const linkMenus = new WeakMap<Element, LinkMenus>()
+
+function declareLinkMenus(el: Element, value: LinkMenus | null | undefined): void {
+  if (value)
+    linkMenus.set(el, value)
+  else
+    linkMenus.delete(el)
+  el.toggleAttribute('data-link-menus', !!value)
+}
+
+/**
+ * Declares what the links to objects inside an element, a rendered message
+ * whose links are its HTML's, offer: each object's own menu. Unlike an
+ * object's menu it ends no walk, so the message around the link still adds
+ * its group below.
+ */
+export const vLinkMenus: Directive<Element, LinkMenus | null | undefined> = {
+  mounted: (el, binding) => declareLinkMenus(el, binding.value),
+  updated: (el, binding) => declareLinkMenus(el, binding.value),
+  unmounted: (el) => declareLinkMenus(el, null),
 }
 
 /** A menu the walk found: its groups, and the declarations it asked. */
@@ -140,7 +178,11 @@ export interface ContextMenuAsk {
 const TEXT_FIELD = 'input, textarea, select, [contenteditable]:not([contenteditable="false"])'
 /** A control: its long press opens nothing of what holds it. */
 const CONTROL = 'button, [role="button"], [role="switch"], [role="checkbox"], [role="radio"], [role="menuitem"], [role="option"], [role="slider"], summary, label'
-/** A link to a file, an agent, a commit or an attachment, which has no address to copy: its click is its Open. */
+/**
+ * A link to a file, an agent, a commit or an attachment, which has no
+ * address to copy: its menu is its object's, as the renderer around it
+ * answers it (`vLinkMenus`), else its click is its Open.
+ */
 const OBJECT_LINK = '[data-agent-link][role="button"], a[data-file-link], a[data-commit-link], a[data-attachment-image], a[data-attachment-video], a[download]'
 
 export function inTextField(target: Element): boolean {
@@ -169,20 +211,45 @@ function selectionUnder(ask: ContextMenuAsk): string | null {
   return on ? text : null
 }
 
-/** The entries the browser's own menu would give `el`, or null when it is no such content. */
-function contentGroup(el: Element, services: ContextMenuServices): ContextMenuGroup | null {
-  if (el.matches(OBJECT_LINK)) {
-    const link = el as HTMLElement
-    return [{ icon: SquareArrowOutUpRight, label: t('contextMenu.open'), run: () => link.click() }]
+/**
+ * The groups the browser's own menu would give `el`, or null when it is no
+ * such content; a link to an object gives that object's menu, as the
+ * renderer around it answers it.
+ */
+function contentGroups(el: Element, services: ContextMenuServices): (() => readonly ContextMenuGroup[]) | null {
+  if (!el.matches(OBJECT_LINK)) {
+    const group = contentGroup(el, services)
+    return group ? () => [group] : null
   }
+  const answer = el.closest('[data-link-menus]')
+  const menu = answer ? linkMenus.get(answer)?.(el) : null
+  if (menu)
+    return menu
+  if (!(el instanceof HTMLElement))
+    return null
+  return () => [[{ icon: SquareArrowOutUpRight, label: t('contextMenu.open'), run: () => el.click() }]]
+}
+
+/** Whether `url` is a page of the web, which a browser's tab opens. */
+function webPage(url: string): boolean {
+  return url.startsWith('https://') || url.startsWith('http://')
+}
+
+/** The entries the browser's own menu would give `el`, which is no link to an object, or null. */
+function contentGroup(el: Element, services: ContextMenuServices): ContextMenuGroup | null {
   if (el instanceof HTMLAnchorElement && el.href !== '') {
     const href = el.href
+    const inPanel = services.openInWorkPanel
     return [
       { icon: ExternalLink, label: t('contextMenu.openLink'), run: () => services.openLink(href) },
+      ...(inPanel && webPage(href)
+        ? [{ icon: PanelRight, label: t('contextMenu.openInWorkPanel'), run: () => inPanel(href) }]
+        : []),
       { icon: Link, label: t('contextMenu.copyLink'), run: () => services.copy(href) },
     ]
   }
-  if (el instanceof HTMLImageElement && el.currentSrc + el.src !== '') {
+  // An icon, which the page hides from assistive technology as decoration, is no picture to copy or save.
+  if (el instanceof HTMLImageElement && el.currentSrc + el.src !== '' && !el.closest('[aria-hidden="true"]')) {
     const src = el.currentSrc || el.src
     const name = el.alt || src.split(/[/?#]/).filter(Boolean).at(-1) || 'image'
     return [
@@ -216,12 +283,12 @@ export function composeContextMenu(ask: ContextMenuAsk, services: ContextMenuSer
     ]])
   }
   for (let el: Element | null = ask.target; el; el = el.parentElement) {
-    const content = contentGroup(el, services)
+    const content = contentGroups(el, services)
     const declaration = declarations.get(el)
     if (ask.longPress && parts.length === 0 && !content && !declaration && el.matches(CONTROL))
       return null
     if (content)
-      parts.push(() => [content])
+      parts.push(() => [...content()])
     if (declaration) {
       asked.push(declaration)
       objects.push(el)

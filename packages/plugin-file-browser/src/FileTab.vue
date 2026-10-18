@@ -7,9 +7,9 @@ const mode = ref<'preview' | 'source'>('preview')
 </script>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watch } from 'vue'
 import { FileView, joinPath, treeLayout, usePage } from '@demicodes/plugin-sdk'
-import { goBack, goForward, showFile, type FileData } from './data'
+import { goBack, goForward, showFile, treeShown, type FileData } from './data'
 import { t } from './locales/text'
 
 /**
@@ -40,11 +40,22 @@ const root = computed(() => props.data.root ?? workspace.value?.root ?? '/')
 function open(path: string): void {
   emit('update', showFile(props.data, path, undefined, props.data.root))
 }
+
+const view = ref<InstanceType<typeof FileView> | null>(null)
+// Show in Files: once the view shows the file, its tree shows it too. After the render, so the view has the file.
+watch([() => props.data.tree, view], ([tree, shown]) => {
+  if (!tree || !shown) {
+    return
+  }
+  emit('update', treeShown(props.data))
+  void shown.showInTree()
+}, { immediate: true, flush: 'post' })
 </script>
 
 <template>
   <FileView
     v-if="workspace"
+    ref="view"
     v-model:tree="treeLayout.open.value"
     v-model:tree-width="treeLayout.width.value"
     v-model:mode="mode"

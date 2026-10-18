@@ -4,6 +4,8 @@
     "forward": "Forward",
     "refresh": "Refresh",
     "download": "Download",
+    "showInFiles": "Show in Files",
+    "copyPath": "Copy Path",
     "clear": "Clear",
     "dismiss": "Dismiss",
     "openFile": "Open File"
@@ -165,6 +167,7 @@
   },
   "changes": {
     "commits": "Commits",
+    "copyCommitHash": "Copy Commit Hash",
     "conversation": "Conversation",
     "diff": "Diff",
     "preview": "Preview",

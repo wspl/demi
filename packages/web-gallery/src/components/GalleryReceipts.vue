@@ -54,6 +54,13 @@ provideMessageAgents(() => ({
       activeId.value = next.activeId
     }
   },
+  // Stop Agent in a link's menu stops it as its tab's does.
+  stop: (number) => {
+    const agent = props.agents.find((candidate) => candidate.number === number)
+    if (agent) {
+      emit('abortAgent', agent.id)
+    }
+  },
 }))
 </script>
 

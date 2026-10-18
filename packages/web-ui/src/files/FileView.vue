@@ -307,6 +307,22 @@ watch(() => props.path, () => {
   located.value = null
 })
 
+/**
+ * Show in Files: the tree, docked where it fits and over the file
+ * otherwise, with the file's row selected, unfolded to and scrolled into
+ * view.
+ */
+async function showInTree(): Promise<void> {
+  const path = props.path
+  if (path === null)
+    return
+  frame.value?.show()
+  await nextTick()
+  treeView.value?.reveal(path, false)
+}
+
+defineExpose({ showInTree })
+
 // A file the tree opened, whose link the tree has just read again.
 let openedFromTree: string | null = null
 

@@ -74,6 +74,12 @@ export interface ConversationFiles {
    */
   open?(target: MessageFileTarget): void
   /**
+   * Shows the file at a Host path in the File view's tree, selected and in
+   * view, through the `file` intent; absent while no plugin the user has on
+   * opens it, and a file link's menu then has no Show in Files.
+   */
+  showInFiles?(target: Pick<MessageFileTarget, 'path' | 'root'>): void
+  /**
    * Which of `paths`, the Host paths a reply's inline code names, are files
    * there, as the Host answered one question about them all: null until it
    * answered, or while it cannot, such as while the Cloud is stopped. A
@@ -93,6 +99,13 @@ export interface ConversationFiles {
    * user has on opens it, so such a link shows as text.
    */
   openCommit?(target: MessageCommitTarget): void
+  /**
+   * The full hash of the commit a message links by an abbreviation, as the
+   * repository the link's directory is in reads it; rejects when it has no
+   * such commit or cannot be read. Absent, a commit link's menu has no Copy
+   * Commit Hash.
+   */
+  commitHash?(target: MessageCommitTarget): Promise<string>
 }
 
 /** A commit a message links, by its id or an abbreviation; `root` as a file's target has it. */

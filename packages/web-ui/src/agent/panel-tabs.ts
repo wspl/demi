@@ -119,6 +119,8 @@ function opened(kind: PanelKind<unknown, PanelSession | undefined>, request: Int
       return kind.intents?.edit?.(request.payload, current)
     case 'commit':
       return kind.intents?.commit?.(request.payload, current)
+    case 'web':
+      return kind.intents?.web?.(request.payload, current)
   }
 }
 

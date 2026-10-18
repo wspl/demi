@@ -127,6 +127,19 @@ test('the selection under the pointer leads with Copy and what its object offers
   expect(labels(opened[1])).toEqual([['Copy Message', 'Fork']])
 })
 
+test('a picture has Copy Image and Save Image, and an icon, which the page hides as decoration, has none', () => {
+  const row = () => withDirectives(
+    h('div', { id: 'row' }, [h('img', { id: 'icon', src: '/icons/ts.svg', alt: '', 'aria-hidden': 'true' }), 'cart.ts']),
+    [[menus.vContextMenu, () => [[entry('Copy Path')]]]],
+  )
+  page(() => h('div', [row(), h('img', { id: 'picture', src: '/raw/chart.png', alt: 'chart' })]))
+  const { opened } = install()
+  rightClick(byId('icon'))
+  expect(labels(opened[0])).toEqual([['Copy Path']])
+  rightClick(byId('picture'))
+  expect(labels(opened[1])).toEqual([['Copy Image', 'Save Image']])
+})
+
 test('an object’s menu never holds its container’s', () => {
   page(() => declared({ entries: () => [[entry('Upload Files')]] }, withDirectives(h('div', { id: 'row' }, 'notes.md'), [[menus.vContextMenu, () => [[entry('Download')]]]]))({ id: 'tree' }))
   const { opened } = install()

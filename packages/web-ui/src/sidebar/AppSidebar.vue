@@ -15,7 +15,7 @@ import { focusedByKeyboard } from '@demicodes/web-ui/ui/active-row'
 import { focusByPage } from '@demicodes/web-ui/ui/focus-by-page'
 import { FOLD_MS } from '@demicodes/web-ui/ui/fold'
 import { usePhone } from '@demicodes/web-ui/ui/phone'
-import { copyId } from '../agent/copy-id'
+import { copyId } from '../infra/copy-id'
 import type {
   ListLoad,
   SidebarAccount,

@@ -101,11 +101,16 @@ page                         backend (panel, plugin-browser)            Host
  view: watch t3 ◀═══════════════════ browser user stream ═════════════▶ pictures, tab list
 ```
 
-- **Opening.** The panel opens no browser tab of its own: a tab appears
-  when the agent opens one, or when a page in a tab opens one
+- **Opening.** The panel has no New Tab button: a tab appears when the
+  agent opens one, when a page in a tab opens one
   ([Tabs a page opens](#tabs-a-page-opens)), as a device does
-  ([The live view](../mobile/mobile.md#the-live-view)). The agent knows
-  what the task needs a browser for; the user acts in the tabs it opened.
+  ([The live view](../mobile/mobile.md#the-live-view)), or when the user
+  chooses *Open in Work Panel* on a link in a reply
+  ([Context menus](../product/web-application.md#context-menus)). That
+  tab opens the link's address as a tab the agent opens would, and the
+  browser takes it as the tab shows, as it reopens a lost tab (below). The
+  agent knows what the task needs a browser for; the user acts in the tabs
+  it opened.
 - **Before the browser has the tab.** Opening a tab, or reopening one lost
   with the browser, can first need the Host and its browser started, which
   takes seconds on a stopped Cloud or a slow device. Until the browser has

@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { ref } from 'vue'
-import { Copy, FolderOpen, Pin, PinOff, TextCursorInput, Trash2 } from '@lucide/vue'
+import { Pin, PinOff, TextCursorInput, Trash2 } from '@lucide/vue'
 import AssistantTextBlock from '@demicodes/web-ui/agent/blocks/AssistantTextBlock.vue'
 import UserBlock from '@demicodes/web-ui/agent/blocks/UserBlock.vue'
 import Button from '@demicodes/web-ui/ui/Button.vue'
 import Dialog from '@demicodes/web-ui/ui/Dialog.vue'
 import { appOverlayStore } from '@demicodes/web-ui/overlay/appOverlay'
 import { vContextMenu, type ContextMenuGroup } from '@demicodes/web-ui/ui/context-menu'
+import { fileMenu } from '@demicodes/web-ui/files/object-menus'
 import { ago } from '../fixtures/time'
+import { LINKED_COMMIT } from '../fixtures/history'
 import { productWould } from '../product-would'
+import GalleryAgentLinks from './GalleryAgentLinks.vue'
 import GallerySpecimen from './GallerySpecimen.vue'
 
 /**
@@ -19,7 +22,7 @@ import GallerySpecimen from './GallerySpecimen.vue'
  */
 const createdAt = ago(4 * 60 * 1000)
 
-const reply = `The relogin test still reads the old cookie name. The [cookie reference](https://developer.mozilla.org/docs/Web/HTTP/Cookies) has the rename rules, and [router.ts](src/http/router.ts) sets the new one.
+const reply = `The relogin test still reads the old cookie name. The [cookie reference](https://developer.mozilla.org/docs/Web/HTTP/Cookies) has the rename rules, and [cookie.ts](src/auth/cookie.ts) sets the new one.
 
 ![The test pattern](assets/photo.png)
 
@@ -30,6 +33,9 @@ bun run test packages/web/src/auth.test.ts
 Select a few words of this paragraph: a right-click on them leads its menu with Copy and Send to Conversation, and on a phone the selection's toolbar stands under them with Send to Conversation. A conversation's reply adds Comment, which the toolbar offers on the desktop too (Session › Comments).`
 
 const user = [{ type: 'text' as const, text: 'The login test fails after the session cookie rename. Can you fix it?' }]
+
+/** A reply that links one object of each kind: a file, a commit, a running agent and a finished one, and a web page. */
+const objectLinks = `The rename is in [cookie.ts](src/auth/cookie.ts), committed as [Fix the cart total](commit:${LINKED_COMMIT}). [Find the cookie assertion](agent:1) still runs, and [Update helper comments](agent:4) finished. The [cookie reference](https://developer.mozilla.org/docs/Web/HTTP/Cookies) has the rules.`
 
 async function fork(): Promise<void> {
   productWould('Fork the Conversation from This Answer')
@@ -49,10 +55,11 @@ const rows = ref(initialRows())
 
 // A dialog holding an object with a menu: its menu stands on the dialog and leaves it open.
 const dialogOpen = ref(false)
-const dialogFileMenu = (): ContextMenuGroup[] => [[
-  { icon: FolderOpen, label: 'Show in File Browser', run: () => productWould('Show notes.md in the File Browser') },
-  { icon: Copy, label: 'Copy Path', run: () => productWould('Copy the Path of notes.md') },
-]]
+const dialogFileMenu = (): ContextMenuGroup[] => fileMenu('/Users/alex/Projects/shop/notes.md', {
+  open: () => productWould('Open notes.md'),
+  showInFiles: () => productWould('Show notes.md in the File View’s Tree'),
+  download: () => productWould('Download notes.md'),
+})
 
 /** A row's menu, as the sidebar's: Rename, Pin or Unpin, and Delete, which drops the row here. */
 function rowMenu(row: Row): () => ContextMenuGroup[] {
@@ -77,6 +84,9 @@ function rowMenu(row: Row): () => ContextMenuGroup[] {
         :regenerate="() => productWould('Regenerate This Answer')"
       />
     </div>
+  </GallerySpecimen>
+  <GallerySpecimen variant="links to objects: a file’s, a commit’s and an agent’s own menu, Open first, then the message’s" wide>
+    <GalleryAgentLinks :markdown="objectLinks" />
   </GallerySpecimen>
   <GallerySpecimen variant="text in the middle of a reply: no menu; a selection in it still gets the selection’s" wide>
     <div class="w-[40rem] max-w-full rounded-lg bg-surface ring-1 ring-line">

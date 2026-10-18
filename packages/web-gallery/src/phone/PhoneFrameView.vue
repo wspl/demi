@@ -102,6 +102,8 @@ const files = galleryConversationFiles(workspace.source, ({ path, line }) => {
   work.openIn({ intent: 'file', payload: line === null ? { path } : { path, line } })
 }, ({ commit }) => {
   work.openIn({ intent: 'commit', payload: { commit } })
+}, ({ path }) => {
+  work.openIn({ intent: 'file', payload: { path, tree: true } })
 })
 
 const devices: HostDeviceOption[] = shownAmong([
