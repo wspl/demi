@@ -1489,6 +1489,17 @@ function endpointCheck(value: string) {
                switch and the models its user added with the section's own Add. -->
             <template v-for="kind in mediaSections(selected)" :key="kind">
               <SettingsGroup :title="MEDIA_WORDS[kind].title()">
+              <!-- The kind's switch ends the section's title, as an entry's own switch ends its
+                   name, so the section stays one card: its shape, then its models. -->
+              <template v-if="selected.media[kind].shape" #actions>
+                <Switch
+                  :model-value="selected.media[kind].enabled"
+                  :aria-label="MEDIA_WORDS[kind].generation()"
+                  :disabled="fieldsLocked(selected)"
+                  size="sm"
+                  @update:model-value="changeMedia(selected, kind, { enabled: $event })"
+                />
+              </template>
               <SettingsRow v-if="selected.compatible" :label="t('providers.connection.protocol')">
                 <Dropdown
                   size="sm"
@@ -1520,21 +1531,11 @@ function endpointCheck(value: string) {
                   </template>
                 </Dropdown>
               </SettingsRow>
-                <SettingsRow v-if="selected.media[kind].shape" :label="MEDIA_WORDS[kind].generation()">
-                  <Switch
-                    :model-value="selected.media[kind].enabled"
-                    :aria-label="MEDIA_WORDS[kind].generation()"
-                    :disabled="fieldsLocked(selected)"
-                    size="sm"
-                    @update:model-value="changeMedia(selected, kind, { enabled: $event })"
-                  />
-                </SettingsRow>
-              </SettingsGroup>
               <!-- The kind's models in the same list as Models: a compatible API's are its user's,
                    each edited or removed, added with the list's own Add; a vendor's are its
                    vendor's, newest first, read and never edited. -->
-              <SettingsGroup v-if="selected.media[kind].shape">
                 <SettingsModelList
+                  v-if="selected.media[kind].shape"
                   v-model:filter="mediaFilter"
                   :filter-placeholder="t('providers.models.filterModels')"
                   :empty="mediaEmpty(selected, kind)"

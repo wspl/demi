@@ -1054,8 +1054,10 @@ for each kind of media it can make, **Images**, **Videos** and
 models rather than with its connection
 ([Which entries make which media](../agent/media.md#which-entries-make-which-media)).
 For example, Alex's OpenAI key entry shows its endpoint and key, its chat
-models, and under them *Images*: its **Image Generation** switch and the
-image models the key offers, newest first, each with its release date.
+models, and under them *Images*, one card of the image models the key
+offers, newest first, each with its release date, with the section's
+**Image Generation** switch at the end of its title, as a subscription's
+switch sits at the end of its name.
 
 - **A vendor entry** whose provider makes images, a ChatGPT or Grok
   subscription or an OpenAI, xAI or Google API key, shows the section with
