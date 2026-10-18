@@ -54,6 +54,15 @@ impl<T: Clone> KeptRead<T> {
         }
     }
 
+    /// `value`, as if read now: believed for `lifetime` by `clock`, so no
+    /// read starts while `clock` stays within it.
+    #[cfg(feature = "testing")]
+    pub fn read_now(lifetime: SignedDuration, clock: Arc<dyn Clock>, value: T) -> Self {
+        let kept = Self::new(lifetime, clock);
+        kept.state().value = Some((kept.clock.now(), value));
+        kept
+    }
+
     /// The value read within its lifetime, or a new read by `read`, which a
     /// concurrent caller waits for and shares. With `refresh`, only a read
     /// that finished after the call began answers without a new one. A
