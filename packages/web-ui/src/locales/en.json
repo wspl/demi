@@ -74,7 +74,7 @@
       "hours": "{hours}h",
       "hoursMinutes": "{hours}h {minutes}m"
     },
-    "retry": {
+    "when": {
       "Resets": {
         "today": "Resets at {clock}",
         "weekday": "Resets {weekday} at {clock}",
@@ -89,6 +89,11 @@
         "today": "resetting at {clock}",
         "weekday": "resetting {weekday} at {clock}",
         "day": "resetting {day} at {clock}"
+      },
+      "Removed": {
+        "today": "Removed today at {clock}",
+        "weekday": "Removed {weekday} at {clock}",
+        "day": "Removed {day} at {clock}"
       }
     },
     "reset": {

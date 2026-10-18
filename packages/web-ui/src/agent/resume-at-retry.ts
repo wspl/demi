@@ -1,5 +1,5 @@
 import { inject, provide, type InjectionKey } from 'vue'
-import { formatRetryAt } from '../ui/dates'
+import { formatVerbAt } from '../ui/dates'
 
 /**
  * The user's preference to resume a turn by itself at the time its failure
@@ -45,5 +45,5 @@ export function resumeAtLabel(
   if (!offered || !ownAgent || retryAt === null || Date.parse(retryAt) <= now) {
     return null
   }
-  return formatRetryAt('Resume', retryAt, new Date(now))
+  return formatVerbAt('Resume', retryAt, new Date(now))
 }

@@ -1,10 +1,4 @@
 {
-  "keep": {
-    "1h": "1 小时",
-    "1d": "1 天",
-    "30d": "30 天",
-    "always": "始终"
-  },
   "request": {
     "allowTitle": "允许此对话{action}？",
     "agentRan": "智能体运行了",

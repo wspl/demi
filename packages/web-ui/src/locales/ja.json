@@ -74,7 +74,7 @@
       "hours": "{hours} 時間",
       "hoursMinutes": "{hours} 時間 {minutes} 分"
     },
-    "retry": {
+    "when": {
       "Resets": {
         "today": "{clock} にリセット",
         "weekday": "{weekday} {clock} にリセット",
@@ -89,6 +89,11 @@
         "today": "{clock} にリセット",
         "weekday": "{weekday} {clock} にリセット",
         "day": "{day} {clock} にリセット"
+      },
+      "Removed": {
+        "today": "今日 {clock} に削除されます",
+        "weekday": "{weekday} {clock} に削除されます",
+        "day": "{day} {clock} に削除されます"
       }
     },
     "reset": {

@@ -33,7 +33,7 @@ export function demoCredentials(): SettingsCredential[] {
         { name: 'user', label: 'User name', kind: 'visible', value: 'alex@example.com' },
         { name: 'password', label: 'Password', kind: 'secret', value: null },
       ],
-      keepUntil: ahead(26 * 24 * 60 * 60_000),
+      keepUntil: ahead(60 * 60_000),
       lastUsedAt: ahead(-2 * 24 * 60 * 60_000),
     },
   ]

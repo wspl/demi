@@ -1,5 +1,5 @@
 import type { AccountSwitchBlock } from './block-types'
-import { formatRetryAt } from '../ui/dates'
+import { formatVerbAt } from '../ui/dates'
 import { t } from './locales/text'
 import { windowNameInSentence } from '../settings/window-name'
 
@@ -16,7 +16,7 @@ export function accountSwitchText(
 ): string {
   const { from, to } = block
   const window = block.window ? windowNameInSentence(block.window) : null
-  const reset = block.resetsAt ? formatRetryAt('resetting', block.resetsAt, now) : null
+  const reset = block.resetsAt ? formatVerbAt('resetting', block.resetsAt, now) : null
   if (window) {
     return reset === null
       ? t('transcript.accountSwitch.window', { from, to, window })

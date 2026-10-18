@@ -7,7 +7,6 @@ import type {
   SettingsCredential,
   SettingsCredentialDraft,
 } from '@demicodes/web-ui/settings/types'
-import { ahead } from '../fixtures/time'
 import { DEMO_CREDENTIAL_VALUES, type CredentialState } from '../fixtures/credentials'
 import { galleryVerification } from '../fixtures/handoff'
 
@@ -46,8 +45,6 @@ onBeforeUnmount(() => {
   }
 })
 
-const KEEP_MS = { '1h': 60 * 60_000, '1d': 24 * 60 * 60_000, '30d': 30 * 24 * 60 * 60_000 } as const
-
 async function saveCredential(id: string | null, draft: SettingsCredentialDraft) {
   await beat()
   if (props.state.credentials.some((credential) => credential.id !== id && credential.name.toLowerCase() === draft.name.toLowerCase())) {
@@ -62,8 +59,7 @@ async function saveCredential(id: string | null, draft: SettingsCredentialDraft)
     kind,
     value: kind === 'visible' ? (values[name] ?? '') : null,
   }))
-  const keepUntil =
-    draft.keep === null ? (existing?.keepUntil ?? null) : draft.keep === 'always' ? null : ahead(KEEP_MS[draft.keep])
+  const keepUntil = draft.keep === 'always' ? null : (existing?.keepUntil ?? null)
   if (existing) {
     Object.assign(existing, { name: draft.name, note: draft.note, fields, keepUntil })
     typed.set(existing.id, values)

@@ -539,7 +539,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Credential Editor · New"
-        note="A new credential: one empty hidden field, kept always. A field’s name is made from its label and shown under it. Create Credential stays off until the name, the labels and the values are filled; a problem shows under its field once the field is left. Add Field adds a card, up to ten; a card’s bin removes it, except the last."
+        note="A new credential: one empty hidden field, kept always, so nothing says when it goes. Every input starts and ends at the same edges. A field’s name is made from its label and shown under it. Create Credential stays off until the name, the labels and the values are filled; a problem shows under its input once the input is left. Add Field adds a row, up to ten; a row’s ⋯ menu makes it secret or visible and deletes it, except the last."
       >
         <GalleryOverlayWell size="tall">
           <Button v-if="!newCredentialEditor.open.value" size="md" @click="newCredentialEditor.open.value = true">Open</Button>
@@ -555,7 +555,7 @@ function deleted(editor: ReturnType<typeof pinnedEditor>) {
 
       <GallerySection
         title="Credential Editor · Edit"
-        note="The Linear sign-in in its editor: its fields keep their names, and a value left empty keeps the saved one. Keep until shows the time it has now; choosing one keeps it that long from now."
+        note="The Linear sign-in in its editor, kept for an hour: under its note it says when it is removed, beside Keep Always, which keeps it always once saved. Its user name is visible and its password hidden; its fields keep their names, and a value left empty keeps the saved one."
       >
         <GalleryOverlayWell size="tall">
           <Button v-if="!editedCredentialEditor.open.value" size="md" @click="editedCredentialEditor.open.value = true">Open</Button>

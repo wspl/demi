@@ -74,7 +74,7 @@
       "hours": "{hours}시간",
       "hoursMinutes": "{hours}시간 {minutes}분"
     },
-    "retry": {
+    "when": {
       "Resets": {
         "today": "{clock}에 초기화",
         "weekday": "{weekday} {clock}에 초기화",
@@ -89,6 +89,11 @@
         "today": "{clock}에 초기화",
         "weekday": "{weekday} {clock}에 초기화",
         "day": "{day} {clock}에 초기화"
+      },
+      "Removed": {
+        "today": "오늘 {clock}에 삭제됩니다",
+        "weekday": "{weekday} {clock}에 삭제됩니다",
+        "day": "{day} {clock}에 삭제됩니다"
       }
     },
     "reset": {

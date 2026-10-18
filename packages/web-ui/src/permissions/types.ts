@@ -83,34 +83,6 @@ export interface CredentialAnswer {
   values: Record<string, string>
 }
 
-/** The options of *Keep until*, in the order Settings › Credentials offers them. */
-export const KEEP_OPTIONS: readonly { value: CredentialKeep; label: string }[] = [
-  {
-    value: '1h',
-    get label() {
-      return t('keep.1h')
-    },
-  },
-  {
-    value: '1d',
-    get label() {
-      return t('keep.1d')
-    },
-  },
-  {
-    value: '30d',
-    get label() {
-      return t('keep.30d')
-    },
-  },
-  {
-    value: 'always',
-    get label() {
-      return t('keep.always')
-    },
-  },
-]
-
 /**
  * The page's words for the category `id` (`localization.md` § Text from the
  * backend): Demi's own categories' from this catalogue, a plugin's from the
