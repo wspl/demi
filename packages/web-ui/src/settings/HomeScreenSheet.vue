@@ -52,7 +52,10 @@ const phone = usePhone()
           <span class="text-explanation leading-5 text-fg-body">{{ t('notifications.homeScreen.add') }}</span>
         </li>
         <li class="flex items-center gap-3">
-          <img :src="appIcon" alt="" class="size-10 shrink-0 rounded-[0.6rem] ring-1 ring-line">
+          <!-- On the same card as the other steps' glyphs, and about as large as they look. -->
+          <span class="flex size-10 shrink-0 items-center justify-center rounded-xl bg-surface-card">
+            <img :src="appIcon" alt="" class="size-7 rounded-[0.45rem]">
+          </span>
           <span class="text-explanation leading-5 text-fg-body">{{ t('notifications.homeScreen.open') }}</span>
         </li>
       </ol>
