@@ -28,7 +28,13 @@ export interface CrumbWidths {
 export interface CrumbFit {
   /** How many crumbs, from the left, show their glyph alone. */
   collapsed: number
-  /** Even every glyph overflows: the bar keeps its right end and loses its left. */
+  /**
+   * The crumbs the ellipsis item stands for, in their place: `count` of them
+   * from `from`. The middle folders go first, from the one after the root;
+   * the root only once the last crumb is a glyph too.
+   */
+  hidden: { from: number; count: number } | null
+  /** Even the ellipsis and the last glyph overflow: the bar keeps its right end and loses its left. */
   clipped: boolean
   /** The crumb whose name is cut short with an ellipsis, and the width it is given, glyph included. */
   truncated: { index: number; width: number } | null
@@ -38,33 +44,65 @@ export interface CrumbFit {
 const MIN_TRUNCATED_NAME = 40
 
 /**
- * How a path's crumbs fit a bar `available` wide. Crumbs give up their names
- * one at a time from the left, so those nearest the end keep theirs longest.
- * When the next to give up is the widest of those still named (the last
- * excepted), it is cut short with an ellipsis to fill the room left instead,
- * as Finder's path bar shortens a long name, unless that leaves it less than
- * a few letters. The last crumb is cut short the same way when it alone
- * overflows. Only when every crumb is a glyph and the row still overflows is
- * it clipped.
+ * How a path's crumbs fit a bar `available` wide, as Finder's path bar fits
+ * a long path: no crumb is ever cut in half at an edge.
+ *
+ * 1. Crumbs give up their names one at a time from the left, the last one
+ *    excepted. When the next to give up is the widest of those still named,
+ *    it is cut short with an ellipsis to fill the room left instead, unless
+ *    that leaves it less than a few letters.
+ * 2. The middle crumbs then go behind one ellipsis item, from the one after
+ *    the first, so the first and the last stay whole.
+ * 3. The last crumb's name is cut short, then it is a glyph.
+ * 4. The first crumb goes behind the ellipsis too. Only when the ellipsis
+ *    and the last glyph still overflow is the row clipped.
  */
-export function fitCrumbs(crumbs: readonly CrumbWidths[], separator: number, available: number): CrumbFit {
+export function fitCrumbs(crumbs: readonly CrumbWidths[], separator: number, ellipsis: number, available: number): CrumbFit {
+  const fits = (fit: Partial<CrumbFit>): CrumbFit => ({ collapsed: 0, hidden: null, clipped: false, truncated: null, ...fit })
   const last = crumbs.length - 1
-  let total = crumbs.reduce((sum, crumb) => sum + crumb.full, 0) + separator * Math.max(0, crumbs.length - 1)
-  for (let collapsed = 0; collapsed < crumbs.length; collapsed += 1) {
+  if (last < 0)
+    return fits({})
+  let total = crumbs.reduce((sum, crumb) => sum + crumb.full, 0) + separator * last
+  for (let collapsed = 0; collapsed < last; collapsed += 1) {
     if (total <= available)
-      return { collapsed, clipped: false, truncated: null }
-    let widest = last
+      return fits({ collapsed })
+    let widest = collapsed
     for (let index = collapsed; index < last; index += 1) {
-      if (widest === last || crumbs[index]!.full > crumbs[widest]!.full)
+      if (crumbs[index]!.full > crumbs[widest]!.full)
         widest = index
     }
     const crumb = crumbs[collapsed]!
     if (widest === collapsed) {
       const width = Math.floor(crumb.full - (total - available))
       if (width >= crumb.icon + MIN_TRUNCATED_NAME)
-        return { collapsed, clipped: false, truncated: { index: collapsed, width } }
+        return fits({ collapsed, truncated: { index: collapsed, width } })
     }
     total -= crumb.full - crumb.icon
   }
-  return { collapsed: crumbs.length, clipped: total > available, truncated: null }
+  if (total <= available)
+    return fits({ collapsed: last })
+  // The ellipsis and its separator stand for `count` glyphs and as many separators; it
+  // stays only where it takes less room than what it stands for.
+  let hidden: CrumbFit['hidden'] = null
+  for (let count = 1; count < last; count += 1) {
+    const shown = total - crumbs.slice(1, 1 + count).reduce((sum, crumb) => sum + crumb.icon + separator, 0) + ellipsis + separator
+    if (shown <= available)
+      return fits({ collapsed: last, hidden: { from: 1, count } })
+    if (count === last - 1 && shown < total) {
+      hidden = { from: 1, count }
+      total = shown
+    }
+  }
+  const end = crumbs[last]!
+  const width = Math.floor(end.full - (total - available))
+  if (width >= end.icon + MIN_TRUNCATED_NAME)
+    return fits({ collapsed: last, hidden, truncated: { index: last, width } })
+  total -= end.full - end.icon
+  if (total <= available)
+    return fits({ collapsed: crumbs.length, hidden })
+  if (last === 0)
+    return fits({ collapsed: 1, clipped: true })
+  // Only the ellipsis and the last glyph are left.
+  total = ellipsis + separator + end.icon
+  return fits({ collapsed: crumbs.length, hidden: { from: 0, count: last }, clipped: total > available })
 }

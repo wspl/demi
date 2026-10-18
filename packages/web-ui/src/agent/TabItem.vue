@@ -11,9 +11,12 @@ import { ICON_PX } from '@demicodes/web-ui/ui/icon-metrics'
 import { iconTabsKey } from './tab-strip'
 
 /**
- * One tab of a `TabStrip`. Content-sized up to 160px, or the strip's room when it has less; in a crowded strip it
- * shrinks, as Chrome's tabs do, down to its mark, a few characters of its title and its close slot (88px), and only
- * then does the strip scroll; on a phone it never shrinks, and the strip scrolls at once. A faint line sits in the
+ * One tab of a `TabStrip`. The strip's tabs share its room equally: each grows from nothing by the same amount
+ * (`basis-0 grow`) until it fits its content, up to 160px, and the room a shorter one leaves goes to the others, so
+ * every tab whose title is cut has the same width and a longer title ends in an ellipsis instead of widening its tab.
+ * In a crowded strip they narrow, as Chrome's tabs do, down to their mark, a few characters of their title and their
+ * close slot (`--tab-min`), and only then does the strip scroll; on a phone a tab keeps its content's width, and the
+ * strip scrolls at once. Its width is the same selected or not. A faint line sits in the
  * gap after the tab and fades out while the tab or its neighbour is active or
  * hovered. The close control has a slot of its own at the tab's end, kept on
  * every tab so a tab never changes width when the pointer reaches it. The
@@ -81,7 +84,7 @@ function onAuxclick(event: MouseEvent): void {
     role="tab"
     :aria-selected="isActive"
     tabindex="0"
-    class="group relative flex h-(--tab-h) w-max [--surface-current:var(--fill-color)] [--tab-h:var(--spacing-tab)] min-w-[min(--spacing(22),var(--tab-room,--spacing(22)))] max-w-[min(--spacing(40),var(--tab-room,--spacing(40)))] shrink phone:shrink-0 cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
+    class="group relative flex h-(--tab-h) [--surface-current:var(--fill-color)] [--tab-h:var(--spacing-tab)] min-w-[min(var(--tab-min),var(--tab-room))] max-w-max shrink grow basis-0 phone:shrink-0 phone:grow-0 phone:basis-auto cursor-default items-center rounded-md text-chrome select-none after:absolute after:-right-[1.5px] after:top-1/2 after:h-3.5 after:w-px after:-translate-y-1/2 after:bg-line after:transition-opacity after:duration-150 last:after:hidden hover:after:opacity-0 has-[+:hover]:after:opacity-0 has-[+[aria-selected=true]]:after:opacity-0"
     :class="[iconOnly ? 'phone:w-11 phone:min-w-11' : '', isActive
       ? 'bg-(--tab-active) text-fg-emphasis after:opacity-0 [--fill-color:var(--tab-active)]'
       : 'text-fg-subtle hover:bg-(--tab-hover) hover:text-fg-body hover:[--fill-color:var(--tab-hover)]']"
@@ -91,12 +94,13 @@ function onAuxclick(event: MouseEvent): void {
     @keydown.enter.self="emit('select')"
     @keydown.space.self.prevent="emit('select')"
   >
-    <!-- The tooltip covers the whole tab; the tab itself stays a plain element so the strip can transition it. -->
+    <!-- The tooltip covers the whole tab; the tab itself stays a plain element so the strip can transition it.
+         Its cap is the tab's: the tab grows to its content (`max-w-max`), which this holds to 160px and the view. -->
     <Tooltip
       tag="span"
       :content="title"
       placement="bottom"
-      class="flex h-full min-w-0 flex-1 items-center"
+      class="flex h-full min-w-0 max-w-[min(--spacing(40),var(--tab-room))] flex-1 items-center"
       :class="iconOnly ? 'phone:justify-center' : ''"
     >
     <!-- The strip finds the mark by its attribute, to cover one its edge cuts. -->

@@ -328,6 +328,7 @@
     "label": "브라우저 주소"
   },
   "panel": {
+    "allTabs": "모든 탭 보기",
     "more": "더 보기",
     "windowHeight": "창 높이",
     "closeOthers": "다른 탭 닫기",

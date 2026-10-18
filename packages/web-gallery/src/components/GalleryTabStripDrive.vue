@@ -24,6 +24,8 @@ const props = withDefaults(
     pages?: number
     /** The page Reset selects. */
     select?: 'first' | 'last'
+    /** A file Reset opens in File, which it then selects. */
+    file?: string
   }>(),
   { width: '100%', pages: 6, select: 'first' },
 )
@@ -45,7 +47,9 @@ const { panel, pinned, kinds } = work
 let opened = 0
 
 function openPage(): void {
-  const title = TITLES[opened % TITLES.length]!
+  // Past the last title, each comes again numbered, so every tab of a crowded strip has a name of its own.
+  const round = Math.floor(opened / TITLES.length)
+  const title = `${TITLES[opened % TITLES.length]!}${round > 0 ? ` ${round + 1}` : ''}`
   opened += 1
   // The body never shows here, so no picture is shown; the title names the tab.
   work.add(browserTabKind.kind, { url: 'https://example.test/', title })
@@ -62,6 +66,10 @@ function reset(): void {
   for (let i = 0; i < props.pages; i++)
     openPage()
   selectAt(props.select === 'first' ? 0 : -1)
+  if (props.file) {
+    work.updatePinned('file', { path: props.file, back: [], forward: [] })
+    work.select('file')
+  }
 }
 reset()
 

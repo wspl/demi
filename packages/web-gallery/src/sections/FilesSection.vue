@@ -200,8 +200,10 @@ const addressPath = `${addressWorkspace.root}/packages/web-ui/src/files/FileBrow
 const addressWidths = [
   { variant: 'every name', width: '56rem' },
   { variant: 'names go from the left', width: '44rem' },
-  { variant: 'glyphs only', width: '26rem' },
-  { variant: 'the left clipped', width: '9rem' },
+  { variant: 'names gone but the nearest', width: '37rem' },
+  { variant: 'long path · the File view’s width, the middle behind an ellipsis', width: '23.75rem' },
+  { variant: 'the last name cut short', width: '13rem' },
+  { variant: 'the ellipsis and the file', width: '5rem' },
 ] as const
 const narrowHostId = ref(hosts[0]!.id)
 const narrowHost = computed(() => hosts.find((host) => host.id === narrowHostId.value)!)
@@ -863,7 +865,7 @@ onMounted(() => {
 
       <GallerySection
         title="Address Bar"
-        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the widest name still shown is cut short with an ellipsis rather than leave the bar half empty, the file’s crumb keeps its name longest, then the bar clips its left and never its right. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. The crumbs start at the Host’s root, the root and the home wearing their glyphs. A click beside the crumbs turns the bar into a field with the whole path that completes as it is typed, a relative path starting at the workspace and ~ naming the home."
+        note="One path at shrinking widths. Crumbs give up their names from the left, a hover shows each name; the widest name still shown is cut short with an ellipsis rather than leave the bar half empty, the file’s crumb keeps its name longest. When even the glyphs do not fit, the middle folders go behind one ellipsis item, as in Finder’s path bar, so the first and the last crumbs stay whole and no crumb is ever cut at an edge; then the file’s name is cut short, and in the narrowest bar only the ellipsis and the file remain. The ellipsis lists the folders it stands for, and one picked opens the entries beside it, as its crumb would. The last frame resizes from its corner. A crumb opens the entries beside it; the menu takes the keyboard, so typing a name moves to the first entry that starts with it and Enter opens it. The crumbs start at the Host’s root, the root and the home wearing their glyphs. A click beside the crumbs turns the bar into a field with the whole path that completes as it is typed, a relative path starting at the workspace and ~ naming the home."
       >
         <GallerySpecimen v-for="entry in addressWidths" :key="entry.variant" :variant="entry.variant" wide>
           <div class="flex" :style="{ width: entry.width }">

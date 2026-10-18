@@ -368,6 +368,18 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   page's lifetime. Its id is its kind's id. Pinned tabs are tabs of the
   strip's one tab list, before the others: they select, and the arrow keys,
   Home and End move across them, as across every tab.
+- **The strip.** The pinned tabs keep one shape whatever is selected:
+  Change shows its icon and its added and removed line counts, File its icon
+  alone, the open file's name in its tooltip, since the File view's header
+  already shows its path. A divider parts them from the user's tabs. The
+  user's tabs share the rest of the strip equally, each as wide as its title
+  needs and no narrower than 88 pixels, a longer title ending in an
+  ellipsis, so no title, a selected one included, widens a tab past its
+  share or hides another tab. When they cannot all fit at 88 pixels, the
+  strip scrolls sideways, as Chrome's and VS Code's do, and brings a tab into
+  view whenever it is selected; a button at the strip's end lists every tab
+  by its mark and title, as VS Code's Show Opened Editors does, and picking
+  one selects it. Selecting a tab changes no tab's width.
 - **Tabs.** A tab is a fact the backend keeps for the conversation: a tab of
   this kind stands here, with this `data`. The user, from any page, and the
   plugin that owns the kind change the tabs, and the backend orders every

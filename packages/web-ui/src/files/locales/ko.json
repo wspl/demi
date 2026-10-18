@@ -11,6 +11,7 @@
   "reading": "읽는 중…",
   "gone": "더 이상 없습니다.",
   "browser": {
+    "enclosingFolders": "상위 폴더",
     "device": "기기",
     "up": "상위 폴더",
     "places": "위치",

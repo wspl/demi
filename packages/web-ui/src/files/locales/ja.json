@@ -11,6 +11,7 @@
   "reading": "読み取っています…",
   "gone": "すでに存在しません。",
   "browser": {
+    "enclosingFolders": "内包しているフォルダ",
     "device": "デバイス",
     "up": "上の階層へ",
     "places": "場所",
