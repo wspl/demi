@@ -1,3 +1,4 @@
+
 CREATE TABLE nodes (
   id               TEXT PRIMARY KEY,
   number           INTEGER NOT NULL UNIQUE CHECK (number >= 0),
