@@ -64,11 +64,15 @@ const emit = defineEmits<{
   close: []
 }>()
 
-/** Each pinned kind with the data its tab shows. */
+/**
+ * Each pinned kind with the data its tab shows and its own short title, the
+ * title of the data it starts from, such as File's before a file is open, so
+ * the strip's label never follows what the tab shows.
+ */
 const pinnedTabs = computed(() =>
-  props.kinds
-    .filter((kind) => kind.pinned)
-    .map((kind) => ({ kind, data: pinnedData(props.pinned, kind) })),
+  props.kinds.flatMap((kind) => kind.pinned
+    ? [{ kind, data: pinnedData(props.pinned, kind), label: kind.title(kind.pinned.data()) }]
+    : []),
 )
 const selection = computed(() => shownSelection(props.panel, props.kinds))
 const phone = usePhone()
@@ -210,10 +214,10 @@ function reorder(from: number, to: number): void {
         :still="replacing"
         @reorder="reorder"
       >
-        <!-- The pinned tabs lead the strip in one shape whatever is selected: the mark and the badge,
-             such as Change's counts, with the title in the tooltip and for assistive technology, so
-             selecting one widens nothing and a long title never crowds the strip's tabs. Each is a tab
-             as the strip's own are: a press selects it, as do Enter and Space, and the arrows reach it. -->
+        <!-- The pinned tabs lead the strip in one shape whatever is selected: the mark, the kind's own
+             short title and the badge, such as Change's counts, with what the tab shows, such as the
+             open file's name, in the tooltip, so selecting one or opening a file widens nothing. Each
+             is a tab as the strip's own are: a press selects it, as do Enter and Space, and the arrows reach it. -->
         <template v-if="pinnedTabs.length" #leading>
           <Tooltip
             v-for="item in pinnedTabs"
@@ -231,8 +235,11 @@ function reorder(from: number, to: number): void {
             @keydown.space.self.prevent="emit('select', item.kind.kind)"
           >
             <component :is="item.kind.mark" :data="item.data" />
-            <span class="sr-only">{{ item.kind.title(item.data) }}</span>
-            <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
+            <!-- The badge's smaller figures stand on the title's baseline, not centered beside it. -->
+            <span class="flex items-baseline gap-1.5">
+              <span>{{ item.label }}</span>
+              <component :is="item.kind.badge" v-if="item.kind.badge" :data="item.data" />
+            </span>
           </Tooltip>
         </template>
         <TabItem

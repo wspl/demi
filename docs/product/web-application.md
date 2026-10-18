@@ -386,9 +386,12 @@ history     the tabs' and pinned kinds' ids this page selected, newest last
   strip's one tab list, before the others: they select, and the arrow keys,
   Home and End move across them, as across every tab.
 - **The strip.** The pinned tabs keep one shape whatever is selected:
-  Change shows its icon and its added and removed line counts, File its icon
-  alone, the open file's name in its tooltip, since the File view's header
-  already shows its path. A divider parts them from the user's tabs. The
+  each shows its icon and its kind's own short title, *Changes* with its
+  added and removed line counts after it, and *Files*, never what the tab
+  shows, so a title neither changes with the open file nor moves the tabs
+  after it; the open file's name is in File's tooltip, since the File view's
+  header already shows its path. A tab named by its icon alone made the user
+  guess which of two document icons was which. A divider parts them from the user's tabs. The
   user's tabs share the rest of the strip equally, each as wide as its title
   needs and no narrower than 88 pixels, a longer title ending in an
   ellipsis, so no title, a selected one included, widens a tab past its
