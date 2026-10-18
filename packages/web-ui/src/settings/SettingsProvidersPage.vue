@@ -871,7 +871,8 @@ function endpointCheck(value: string) {
               class="text-[11px] font-medium uppercase tracking-[0.04em] text-fg-subtle"
               >{{ t('providers.apiKeys') }}</span
             >
-            <Button size="xs" class="ml-auto" @click="addOpen = true"
+            <!-- data-add-provider: the product checks open Add Provider through it in any language (`browse.md`). -->
+            <Button size="xs" class="ml-auto" data-add-provider @click="addOpen = true"
               ><Plus :size="12" /> {{ uiText('common.add') }}</Button
             >
           </div>

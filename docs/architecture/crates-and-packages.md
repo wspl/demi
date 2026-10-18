@@ -1642,6 +1642,9 @@ demi-backend (executable: configuration, composition)
 - **Owns:** the repository's development commands: `xtask sweep`, which
   removes the build products no current selection uses
   ([Stale build products](../delivery/builds-and-releases.md#stale-build-products));
+  `xtask logos`, which refreshes the marks of the vendors the backend offers
+  from models.dev, reading the offered vendors as the backend does
+  ([Vendors from models.dev](../providers/providers.md#vendors-from-modelsdev));
   `xtask contracts` (the
   TypeScript emitter, with the page types of each plugin whose manifest
   names a page package, read from the manifests of the backend's plugins,
@@ -1950,7 +1953,7 @@ command-package-fetch -> command-protocol, command-sdk, command-package-fetch-pr
 command-package-browser -> command-package-browser-chrome, command-package-browser-protocol, command-protocol, command-sdk, shared-cli
 command-package-claude-code -> command-package-claude-code-protocol, command-protocol, command-sdk, shared-cli
 command-package-mobile -> command-package-mobile-protocol, command-protocol, command-sdk, live-view, live-view-protocol, shared-artifacts, shared-cli, shared-types
-xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-mobile-protocol, live-view-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, plugin-interface
+xtask -> conversation-socket-protocol, shared-artifacts, command-package-browser-protocol, command-package-mobile-protocol, live-view-protocol, command-package-claude-code-protocol, command-protocol, shared-types, command-package-file-protocol, command-package-fetch-protocol, machine-manager-protocol, runner-protocol, web-api-protocol, backend, backend-providers, provider-common, plugin-interface
 ```
 
 ### TypeScript packages

@@ -1,0 +1,6 @@
+# The marks kept by hand, which `bun xtask logos` never writes or removes;
+# every other mark here is models.dev's (MIT). One line each: the file, then
+# its source.
+byteplus.svg    BytePlus's own logo, traced from https://sf-bpcms.bytepluscdn.com/obj/byteplus-public-aiso/portal/assets/byteplus_logo_large.png
+claude.svg      Simple Icons (CC0), https://simpleicons.org/?q=claude
+elevenlabs.svg  Simple Icons (CC0), https://simpleicons.org/?q=elevenlabs

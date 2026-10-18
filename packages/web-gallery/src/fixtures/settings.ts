@@ -266,12 +266,12 @@ export const mockVendors: MockVendor[] = [
     logo: vendorLogo('google')
   },
   {
-    id: 'google-vertex',
-    name: 'Vertex',
-    family: 'google',
+    id: 'huggingface',
+    name: 'Hugging Face',
+    family: 'openai',
     wireApi: 'openai-chat',
-    baseUrl: 'https://us-central1-aiplatform.googleapis.com',
-    logo: vendorLogo('google-vertex')
+    baseUrl: 'https://router.huggingface.co/v1',
+    logo: vendorLogo('huggingface')
   },
   {
     id: 'deepseek',
@@ -322,12 +322,20 @@ export const mockVendors: MockVendor[] = [
     logo: vendorLogo('alibaba')
   },
   {
-    id: 'openrouter',
-    name: 'OpenRouter',
+    id: 'volcengine',
+    name: 'Volcengine Ark',
     family: 'openai',
     wireApi: 'openai-chat',
-    baseUrl: 'https://openrouter.ai/api/v1',
-    logo: vendorLogo('openrouter')
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    logo: vendorLogo('volcengine')
+  },
+  {
+    id: 'nvidia',
+    name: 'Nvidia',
+    family: 'openai',
+    wireApi: 'openai-chat',
+    baseUrl: 'https://integrate.api.nvidia.com/v1',
+    logo: vendorLogo('nvidia')
   },
 ]
 
@@ -752,8 +760,9 @@ export function mockProviders(): MockProvider[] {
       models: [model({ id: 'qwen3:32b', contextWindow: 40_000, tools: true, extensions: [] })],
     }),
     provider({
-      id: 'vertex', name: 'Google Vertex', kind: 'api_key', family: 'google', vendorId: 'google-vertex',
-      baseUrl: 'https://us-central1-aiplatform.googleapis.com', wireApi: 'openai-chat', apiKey: 'ya29.example-not-a-real-token', state: 'disabled', enabled: false,
+      // A second Google key, for work, turned off.
+      id: 'google-work', name: 'Google (Work)', kind: 'api_key', family: 'google', vendorId: 'google',
+      baseUrl: 'https://generativelanguage.googleapis.com/v1beta', wireApi: 'openai-chat', apiKey: 'ya29.example-not-a-real-token', state: 'disabled', enabled: false,
       catalogFetched: ago(HOUR),
       models: [
         model(
