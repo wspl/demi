@@ -80,7 +80,8 @@ one count: of the one kind there is, *(2 done) 整理季度报告 · demi*,
 there are several kinds, all of them as to do, *(4 to do)*, since one short
 count reads at a glance where a list does not. In Chinese *(2 个完成)*,
 *(1 个出错)*, *(1 个待办)* and *(4 个待办)*.
-The tab's icon wears one dot at its lower right, in the most urgent of those
+The tab's icon wears one small dot at its upper right, where a phone's app
+icon wears its badge, in the most urgent of those
 colors, red over yellow over green, with a ring of the tab strip's
 background around it, and none while nothing is new. The conversation open
 in a focused page is read as it happens and counts for nothing. An installed

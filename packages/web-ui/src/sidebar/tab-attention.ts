@@ -41,17 +41,19 @@ function tabTitle(news: TabNews, title: string | null): string {
   return `(${t(`tab.${kind}`, { count: total })}) ${pageTitle(title)}`
 }
 
-/** The plain icon with a dot of `fill` at its lower right, ringed with `ring`, as a data URL. */
+/** The plain icon with a dot of `fill` at its upper right, ringed with `ring`, as a data URL. */
 function dottedIcon(svg: string, fill: string, ring: string): string {
   const icon = new DOMParser().parseFromString(svg, 'image/svg+xml')
   const root = icon.documentElement
   const [x = 0, y = 0, width = 0, height = 0] = (root.getAttribute('viewBox') ?? '').split(/[\s,]+/).map(Number)
   const size = Math.min(width, height)
-  // On a 16-pixel tab icon, a dot of 6 pixels in a ring of 2.
-  const outer = size * 0.27
+  // In the corner a notification badge takes, as on a phone's app icon: on a
+  // 16-pixel tab icon a dot of 5 pixels in a ring of about 1, touching the
+  // icon's top and right edges, so it covers little of the mark.
+  const outer = size * 0.21
   const cx = x + width - outer
-  const cy = y + height - outer
-  for (const [radius, color] of [[outer, ring], [size * 0.19, fill]] as const) {
+  const cy = y + outer
+  for (const [radius, color] of [[outer, ring], [size * 0.155, fill]] as const) {
     const circle = icon.createElementNS('http://www.w3.org/2000/svg', 'circle')
     circle.setAttribute('cx', String(cx))
     circle.setAttribute('cy', String(cy))
