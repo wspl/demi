@@ -1153,6 +1153,88 @@ html[data-theme="light"] .file-pill {
   pointer-events: none;
 }
 
+/* A row over the message for what it carries besides its text (ComposerShell's
+   `context`), such as the comments' pill: its left edge on the text's. */
+.composer-shell-expanded.composer-shell-context {
+  grid-template-areas:
+    "context context context"
+    "editor editor editor"
+    "attach ruler actions";
+}
+
+.composer-context {
+  grid-area: context;
+  margin-inline: calc(-1 * var(--composer-inset));
+  padding: var(--composer-editor-pad-top) var(--composer-editor-pad-x) 0;
+}
+
+/*
+ * Comments on a reply's words (`comments-and-ask.md`), painted through the
+ * CSS Custom Highlight API so the reply's DOM stays as it rendered: a yellow
+ * tint with a solid yellow underline, deeper while its card is open, and
+ * dimmer once the comment is sent. The comment mark in the margin and the
+ * composer's pill take the same yellow.
+ */
+:root,
+[data-theme="dark"] {
+  --comment-tint: rgb(250 204 21 / 0.22);
+  --comment-ink: rgb(253 224 71);
+}
+
+[data-theme="light"] {
+  --comment-tint: rgb(250 204 21 / 0.3);
+  --comment-ink: rgb(161 98 7);
+}
+
+::highlight(comment) {
+  background-color: rgb(250 204 21 / 0.22);
+  text-decoration: underline 2px rgb(250 204 21 / 0.85);
+}
+
+::highlight(comment-sent) {
+  background-color: rgb(250 204 21 / 0.09);
+  text-decoration: underline 1px rgb(250 204 21 / 0.35);
+}
+
+::highlight(comment-active) {
+  background-color: rgb(250 204 21 / 0.38);
+  text-decoration: underline 2px rgb(250 204 21);
+}
+
+/* The text a comment box is open for keeps the system's selection color, which the field took. */
+::highlight(comment-selection) {
+  background-color: rgb(96 165 250 / 0.35);
+}
+
+[data-theme="light"] ::highlight(comment) {
+  background-color: rgb(250 204 21 / 0.3);
+  text-decoration-color: rgb(202 138 4);
+}
+
+[data-theme="light"] ::highlight(comment-sent) {
+  background-color: rgb(250 204 21 / 0.13);
+  text-decoration-color: rgb(202 138 4 / 0.45);
+}
+
+[data-theme="light"] ::highlight(comment-active) {
+  background-color: rgb(250 204 21 / 0.55);
+  text-decoration-color: rgb(202 138 4);
+}
+
+[data-theme="light"] ::highlight(comment-selection) {
+  background-color: rgb(59 130 246 / 0.3);
+}
+
+.comment-marker {
+  color: var(--comment-ink);
+  background-color: var(--comment-tint);
+}
+
+.comment-marker-sent {
+  opacity: 0.6;
+}
+
+
 .composer-shell-expanded .composer-line-ruler {
   grid-area: ruler;
 }

@@ -13,6 +13,7 @@ use demi_provider_common::{
     UserPart,
 };
 use demi_shared_types::{
+    comments_markdown,
     AgentMessage, AgentMessageEvent, B64Bytes, INSTRUCTIONS_SOURCE, BlobRef, Block, BlockId, CommandReport, CompletionOutcome,
     DocumentSource,
     PermissionOutcome,
@@ -83,10 +84,10 @@ pub fn replay(request: &RequestView) -> Replay {
         let kept_past_summary = kept.contains(&index);
         match block {
             Block::User(user) => {
-                let preamble = user.preamble.iter().map(|text| bounded(text));
+                let lead = user.lead_texts().into_iter().map(|text| bounded(&text));
                 let content = user.content.iter().map(|part| request.user_part(part));
                 items.push(InferenceItem::UserMessage {
-                    content: preamble.chain(content).collect(),
+                    content: lead.chain(content).collect(),
                 });
             }
             // The instructions are sent whole (`compaction.md` § Text bounds).
@@ -105,10 +106,10 @@ pub fn replay(request: &RequestView) -> Replay {
                 });
             }
             Block::Steer(steer) => items.push(InferenceItem::UserSteer {
-                content: steer
-                    .content
-                    .iter()
-                    .map(|part| request.user_part(part))
+                content: comments_markdown(&steer.comments)
+                    .map(|text| bounded(&text))
+                    .into_iter()
+                    .chain(steer.content.iter().map(|part| request.user_part(part)))
                     .collect(),
             }),
             Block::AgentMessage(receipt) => items.push(InferenceItem::UserSteer {

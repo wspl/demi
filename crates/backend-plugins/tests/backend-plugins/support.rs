@@ -479,6 +479,7 @@ pub fn conversation() -> NodeId {
 pub async fn turn(client: &mut TestClient<DeviceHost>, id: &str, text: &str) -> Vec<ServerFrame> {
     client
         .send(ClientFrame::Send {
+            comments: Vec::new(),
             message_id: TurnId::try_from(id).unwrap(),
             content: client_text(text),
         })

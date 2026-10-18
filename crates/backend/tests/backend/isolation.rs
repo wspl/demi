@@ -165,7 +165,7 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
         (
             Method::PUT,
             format!("/api/conversations/{c}/draft"),
-            Some(json!({ "base": 0, "text": "", "files": [] })),
+            Some(json!({ "base": 0, "text": "", "files": [], "comments": [] })),
         ),
         (
             Method::POST,
@@ -176,7 +176,7 @@ async fn another_users_objects_answer_404_on_every_route_to_users_and_admins_ali
             Method::PUT,
             format!("/api/conversations/{bobs}/draft"),
             Some(
-                json!({ "base": 0, "text": "\u{FFFC}", "files": [{ "type": "upload", "ref": image_upload, "fileName": "a.png" }] }),
+                json!({ "base": 0, "text": "\u{FFFC}", "files": [{ "type": "upload", "ref": image_upload, "fileName": "a.png" }], "comments": [] }),
             ),
         ),
         (

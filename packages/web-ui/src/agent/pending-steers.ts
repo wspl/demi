@@ -1,6 +1,6 @@
 import type { WorkGroupBlock } from './work-groups'
 import type { HeldBlock } from '@demicodes/conversation-client'
-import type { PendingCall, UserContentBlock } from '@demicodes/protocol'
+import type { MessageComment, PendingCall, UserContentBlock } from '@demicodes/protocol'
 import type { CompactionProgressBlock } from './list-tail'
 import type { QueueDividerBlock, QueuedRenderBlock } from './queued-messages'
 import type { PendingSteerMessage, PendingSubmissionState } from './types'
@@ -12,6 +12,8 @@ export interface PendingSteerRenderBlock {
   id: string
   pendingSteerId: string
   content: UserContentBlock[]
+  /** The comments it carries; absent with none. */
+  comments?: MessageComment[]
 }
 
 /**
@@ -81,6 +83,7 @@ export function pendingSteersToRenderBlocks(
     id: `pending-steer:${pending.id}`,
     pendingSteerId: pending.id,
     content: pending.content,
+    comments: pending.comments,
   }))
 }
 

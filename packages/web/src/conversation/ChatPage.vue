@@ -253,6 +253,9 @@ const files = computed<ConversationFiles | undefined>(() => {
 /** What a child's context card in the Agents window shows and opens beside its usage. */
 const card = useContextCard(() => files.value?.open)
 
+/** What the replies' comments do in the conversation's draft; an archived conversation takes none. */
+const commenting = computed(() => (conversation.value ? store.commenting(conversation.value) : undefined))
+
 /** What the header's menu and an answer's footer share with, once the conversation has a record and the page knows the backend's public address. */
 const share = computed(() => {
   const current = conversation.value
@@ -289,6 +292,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
     :shares="conversation.shares"
     :select-edit="selectEdit"
     :file-pills="conversation.projectId !== null"
+    :commenting="conversation.archived ? undefined : commenting"
     :files="files"
     :primary-host="primaryHost"
     :permission-requests="permissions.stateFor(conversation.id).requests"
@@ -303,6 +307,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
         attachments: pending.fileIds.flatMap((id) =>
           conversation?.files.filter((file) => file.id === id) ?? [],
         ),
+        comments: pending.comments,
         error: pending.error,
       }))
     "

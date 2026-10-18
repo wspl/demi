@@ -14,7 +14,7 @@ import {
   type ClientSessionEvent,
 } from '@demicodes/conversation-client'
 import { asError, createId, deferred } from '@demicodes/utils'
-import type { ClientContent, EditRequest, RegenerateRequest, SavedDelivery, TranscriptVersion } from '@demicodes/protocol'
+import type { ClientContent, EditRequest, MessageComment, RegenerateRequest, SavedDelivery, TranscriptVersion } from '@demicodes/protocol'
 import { ConversationSocketError } from '../transport/conversation-socket'
 import { pendingReturnCheck, waitToReconnect } from '../transport/liveness'
 import { failureHeadline } from './error-detail'
@@ -131,9 +131,9 @@ export class ConversationRuntime {
    * nothing: the send waits for the connection to come back, then sends the
    * message again with its id, which the session takes only once
    * (`runtime.md` § Messages and the queue), unless what the reopened
-   * conversation shows already holds it.
+   * conversation shows already holds it. `comments` are those it carries.
    */
-  async submit(content: ClientContent[], messageId: string = createId()): Promise<void> {
+  async submit(content: ClientContent[], messageId: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
     this.options.state.lastError = null
     for (;;) {
       const client = await this.ensureOpen()
@@ -141,7 +141,7 @@ export class ConversationRuntime {
         return
       }
       try {
-        await client.submit(content, messageId)
+        await client.submit(content, messageId, comments)
         return
       } catch (error) {
         if (!(error instanceof ConversationSocketError)) {
@@ -161,11 +161,11 @@ export class ConversationRuntime {
    * holds in the transcript is sent as a message, so it is never lost and
    * never delivered twice.
    */
-  async steer(content: ClientContent[], id: string = createId()): Promise<void> {
+  async steer(content: ClientContent[], id: string = createId(), comments: readonly MessageComment[] = []): Promise<void> {
     this.options.state.lastError = null
     const client = await this.ensureOpen()
     try {
-      await client.steer(content, id)
+      await client.steer(content, id, comments)
       return
     } catch (error) {
       if (error instanceof ConversationSocketError) {
@@ -176,7 +176,7 @@ export class ConversationRuntime {
         throw error
       }
     }
-    await this.submit(content, id)
+    await this.submit(content, id, comments)
   }
 
   /**

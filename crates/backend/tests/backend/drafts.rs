@@ -6,7 +6,9 @@
 //! names is readable from every session, with the opening its record keeps.
 
 use demi_web_api_protocol::attachments::AttachmentAnswer;
+use demi_shared_types::{BlockId, MessageComment};
 use demi_web_api_protocol::drafts::{ConversationDraft, DraftAnswer, DraftFile, ReplacedDraft};
+use demi_web_api_protocol::saved::{FromDraftAnswer, SavedList};
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::state::SyncEvent;
 use reqwest::{Method, StatusCode};
@@ -50,7 +52,7 @@ async fn put(
     text: &str,
     files: &Value,
 ) -> Answer {
-    let body = json!({ "base": base, "text": text, "files": files });
+    let body = json!({ "base": base, "text": text, "files": files, "comments": [] });
     backend
         .put(&format!("/api/conversations/{id}/draft"), session, body)
         .await
@@ -156,6 +158,7 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
             revision: 1,
             text: text(""),
             files: stored.clone(),
+            comments: Vec::new(),
             replaced: None,
         }
     );
@@ -181,6 +184,7 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
         revision: 2,
         text: text(" test"),
         files: stored.clone(),
+        comments: Vec::new(),
     };
     assert_eq!(
         (bug.revision, bug.text.as_str(), &bug.replaced),
@@ -215,6 +219,7 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
         revision: 6,
         text: text(" bug now, more"),
         files: stored.clone(),
+        comments: Vec::new(),
     };
     assert_eq!(
         restored,
@@ -222,6 +227,7 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
             revision: 7,
             text: text(" test"),
             files: stored.clone(),
+            comments: Vec::new(),
             replaced: Some(displaced),
         }
     );
@@ -258,22 +264,22 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
 
     let refusals = [
         (
-            json!({ "base": 11, "text": "one mark", "files": files }),
+            json!({ "base": 11, "text": "one mark", "files": files, "comments": [] }),
             StatusCode::BAD_REQUEST,
             ErrorCode::InvalidBody,
         ),
         (
-            json!({ "base": 9, "text": format!("{MARK}"), "files": [{ "type": "text", "text": "not a file" }] }),
+            json!({ "base": 9, "text": format!("{MARK}"), "files": [{ "type": "text", "text": "not a file" }], "comments": [] }),
             StatusCode::BAD_REQUEST,
             ErrorCode::InvalidBody,
         ),
         (
-            json!({ "base": 9, "text": format!("{MARK}"), "files": [{ "type": "upload", "ref": "no-such-upload", "fileName": "a.txt" }] }),
+            json!({ "base": 9, "text": format!("{MARK}"), "files": [{ "type": "upload", "ref": "no-such-upload", "fileName": "a.txt" }], "comments": [] }),
             StatusCode::NOT_FOUND,
             ErrorCode::UploadNotFound,
         ),
         (
-            json!({ "base": 9, "text": "x".repeat(256 * 1024), "files": [] }),
+            json!({ "base": 9, "text": "x".repeat(256 * 1024), "files": [], "comments": [] }),
             StatusCode::PAYLOAD_TOO_LARGE,
             ErrorCode::TooLarge,
         ),
@@ -313,4 +319,107 @@ async fn a_draft_reaches_every_session_and_a_save_built_on_an_older_revision_kee
         (StatusCode::CONFLICT, ErrorCode::ConversationArchived)
     );
     backend.close().await;
+}
+
+/// A comment as a draft holds it, on the reply's text block `text-1`.
+fn comment(id: &str, start: u64, quote: &str, text: &str) -> MessageComment {
+    MessageComment {
+        id: id.into(),
+        block_id: BlockId::try_from("text-1").unwrap(),
+        start,
+        end: start + quote.chars().count() as u64,
+        quote: quote.into(),
+        text: text.into(),
+    }
+}
+
+async fn save_comments(
+    backend: &TestBackend,
+    session: &Session,
+    id: &str,
+    base: u64,
+    text: &str,
+    comments: &[MessageComment],
+) -> ConversationDraft {
+    let body = json!({ "base": base, "text": text, "files": [], "comments": comments });
+    let saved = backend
+        .put(&format!("/api/conversations/{id}/draft"), session, body)
+        .await;
+    assert_eq!(saved.status, StatusCode::OK, "{}", String::from_utf8_lossy(&saved.body));
+    saved.json::<DraftAnswer>().draft
+}
+
+/// Comments wait in the draft as its text does (`comments-and-ask.md`
+/// § Waiting comments): every session reads the ones another saved, a save
+/// built on an older revision keeps the comments it replaced with their
+/// text, and Save for Later takes the text into the list while the comments
+/// stay waiting, as Edit on a saved message leaves them too.
+#[tokio::test]
+async fn waiting_comments_reach_every_session_and_stay_in_the_draft_when_its_text_is_saved_for_later() {
+    let harness = Harness::new();
+    let (backend, laptop) = harness.start_set_up().await;
+    let phone = backend.login(MASTER_EMAIL, MASTER_PASSWORD).await;
+    let id = uuid::Uuid::new_v4().to_string();
+    let created = backend
+        .post("/api/conversations", Some(&laptop), json!({ "id": id }))
+        .await;
+    assert_eq!(created.status, StatusCode::CREATED);
+    let mut phone_page = backend.sync(&phone).await;
+    phone_page.snapshot().await;
+
+    let chunks = comment("c1", 120, "Upload in chunks of 4 MB.", "4 MB feels large on 2G.");
+    let timeout = comment("c2", 40, "the same 30-second timeout", "Should uploads get their own?");
+    let first = save_comments(&backend, &laptop, &id, 0, "", &[chunks.clone()]).await;
+    assert_eq!((first.revision, first.comments.clone()), (1, vec![chunks.clone()]));
+    until_draft(&mut phone_page, &id, 1).await;
+    assert_eq!(read(&backend, &phone, &id).await, first);
+
+    // Both change the comments on revision 1: the laptop's save wins and
+    // keeps the phone's version, comments included.
+    let both = [chunks.clone(), timeout.clone()];
+    let phone_saved = save_comments(&backend, &phone, &id, 1, "", &both).await;
+    assert_eq!(phone_saved.comments, both);
+    let edited = comment("c1", 120, "Upload in chunks of 4 MB.", "Start at 1 MB.");
+    let laptop_saved = save_comments(&backend, &laptop, &id, 1, "Otherwise go ahead", &[edited.clone()]).await;
+    assert_eq!(
+        laptop_saved.replaced,
+        Some(ReplacedDraft { revision: 2, text: String::new(), files: Vec::new(), comments: both.to_vec() })
+    );
+    until_draft(&mut phone_page, &id, 3).await;
+    assert_eq!(read(&backend, &phone, &id).await, laptop_saved);
+
+    // Save for Later takes the text; the comment stays waiting.
+    let saved = backend
+        .post(
+            &format!("/api/conversations/{id}/saved/from-draft"),
+            Some(&laptop),
+            json!({ "id": uuid::Uuid::new_v4().to_string(), "base": 3, "text": "Otherwise go ahead", "files": [] }),
+        )
+        .await;
+    assert_eq!(saved.status, StatusCode::CREATED, "{}", String::from_utf8_lossy(&saved.body));
+    let FromDraftAnswer { message, draft, .. } = saved.json();
+    assert_eq!((message.text.as_str(), draft.text.as_str()), ("Otherwise go ahead", ""));
+    assert_eq!(draft.comments, vec![edited.clone()]);
+
+    // Edit on it brings the text back beside the comment, which no saved
+    // message takes.
+    let typed = save_comments(&backend, &laptop, &id, draft.revision, "Also check retries", &[edited.clone()]).await;
+    let opened = backend
+        .post(
+            &format!("/api/conversations/{id}/saved/{}/edit", message.id),
+            Some(&laptop),
+            json!({ "op": uuid::Uuid::new_v4().to_string(), "id": uuid::Uuid::new_v4().to_string() }),
+        )
+        .await;
+    assert_eq!(opened.status, StatusCode::OK, "{}", String::from_utf8_lossy(&opened.body));
+    let after = read(&backend, &laptop, &id).await;
+    assert_eq!((after.text.as_str(), after.comments.clone()), ("Otherwise go ahead", vec![edited]));
+    let list = backend
+        .get(&format!("/api/conversations/{id}/saved"), Some(&laptop))
+        .await
+        .json::<SavedList>();
+    assert_eq!(
+        list.messages.iter().map(|each| each.text.as_str()).collect::<Vec<_>>(),
+        [typed.text.as_str()]
+    );
 }

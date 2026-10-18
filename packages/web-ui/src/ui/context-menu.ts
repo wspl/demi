@@ -40,6 +40,12 @@ export interface ContextMenuEntry {
   run?: () => unknown
   /** The operation choosing the row starts, as a menu row's (`operations.ts`). */
   operation?: Operation
+  /**
+   * A selection entry that acts on the selected text where it stands, as a
+   * comment on it does: the selection's toolbar offers it on the desktop
+   * too, where every other row is the right-click menu's alone.
+   */
+  inPlace?: boolean
   /** The row's submenu, drawn as it opens; on a phone a sheet over the menu. */
   submenu?: () => VNode
 }
@@ -65,7 +71,7 @@ export interface ContextMenuDeclaration {
   text?: boolean
   /**
    * What the object offers for text selected in it, after the selection's
-   * Copy, in its menu and on the selection's toolbar.
+   * Copy in its menu, and on the selection's toolbar (`selectionTools`).
    */
   selectionEntries?: (text: string) => readonly ContextMenuEntry[]
 }
@@ -444,11 +450,14 @@ export interface SelectionTools {
 
 /**
  * The tools for the selection `selection` holds, when it holds text inside
- * one object that offers tools for its selected text, as a message does:
- * Copy, then the object's (`selectionEntries`). Null for any other
+ * one object that offers tools for its selected text, as a message does
+ * (`selectionEntries`). On the desktop they are those that act in place
+ * (`inPlace`), since the right-click menu holds Copy and the rest; on a
+ * phone, which has no right-click, every one of the object's, Copy being
+ * the system's callout's. Null when there are none, and for any other
  * selection, one across two messages or in a text field included.
  */
-export function selectionTools(selection: Selection | null, copy: (text: string) => void): SelectionTools | null {
+export function selectionTools(selection: Selection | null, phone: boolean): SelectionTools | null {
   if (!selection || selection.isCollapsed || selection.rangeCount === 0)
     return null
   const text = selection.toString()
@@ -464,11 +473,8 @@ export function selectionTools(selection: Selection | null, copy: (text: string)
       continue
     if (!declaration.selectionEntries || !el.contains(range.endContainer))
       return null
-    return {
-      text,
-      range,
-      entries: [{ icon: Copy, label: shared('common.copy'), run: () => copy(text) }, ...declaration.selectionEntries(text)],
-    }
+    const entries = declaration.selectionEntries(text).filter((entry) => phone || entry.inPlace === true)
+    return entries.length > 0 ? { text, range, entries } : null
   }
   return null
 }

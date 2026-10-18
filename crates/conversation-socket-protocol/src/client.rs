@@ -1,6 +1,6 @@
 //! What the web app sends (`rendering.md` § Client frames).
 
-use demi_shared_types::{BlobRef, BlockId, CommandId, NodeId, OperationId, TurnId, is_blank};
+use demi_shared_types::{BlobRef, BlockId, CommandId, MessageComment, NodeId, OperationId, TurnId, is_blank};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -35,6 +35,12 @@ pub enum ClientFrame {
         message_id: TurnId,
         #[garde(dive)]
         content: Vec<ClientContent>,
+        /// The comments the message carries, which may make it without
+        /// content (`comments-and-ask.md` § Sending them); omitted when there
+        /// are none.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[garde(dive)]
+        comments: Vec<MessageComment>,
     },
     /// Continue from a new version of a user message
     /// (`message-editing.md` § Versions).
@@ -65,6 +71,11 @@ pub enum ClientFrame {
         steer_id: BlockId,
         #[garde(dive)]
         content: Vec<ClientContent>,
+        /// The comments the steer carries, as a message's; omitted when
+        /// there are none.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        #[garde(dive)]
+        comments: Vec<MessageComment>,
     },
     /// Send a message saved for later as the composer would, as the message
     /// `turn_id`, and remove it from the list in the same step (`web-api-conversations.md`

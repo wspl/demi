@@ -1,4 +1,14 @@
 {
+  "comments": {
+    "comment": "评论",
+    "placeholder": "添加评论",
+    "waitReply": "请等待这条回复完成。",
+    "count": "{count} 条评论",
+    "remove": "移除评论",
+    "sent": "已发送",
+    "writeFirst": "请先输入评论。",
+    "title": "评论"
+  },
   "transcript": {
     "accountSwitch": {
       "usage": "{from} 已达到用量限额，改用 {to} 继续。",

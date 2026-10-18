@@ -1,4 +1,14 @@
 {
+  "comments": {
+    "comment": "コメント",
+    "placeholder": "コメントを追加",
+    "waitReply": "この返信が終わるまでお待ちください。",
+    "count": "コメント {count} 件",
+    "remove": "コメントを削除",
+    "sent": "送信済み",
+    "writeFirst": "先にコメントを入力してください。",
+    "title": "コメント"
+  },
   "transcript": {
     "accountSwitch": {
       "usage": "{from} が利用上限に達したため、{to} で続けます。",

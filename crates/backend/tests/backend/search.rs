@@ -124,6 +124,7 @@ async fn a_search_lists_title_matches_then_the_newest_messages_and_follows_edits
     vendor.received(3).await;
     third
         .send(&ClientFrame::Steer {
+            comments: Vec::new(),
             steer_id: BlockId::try_from("s1").unwrap(),
             content: client_text("Also check the kubeconfig"),
         })

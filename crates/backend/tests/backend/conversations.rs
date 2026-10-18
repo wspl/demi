@@ -321,6 +321,7 @@ impl Socket {
 
 pub(crate) fn send(id: &str, text: &str) -> ClientFrame {
     ClientFrame::Send {
+        comments: Vec::new(),
         message_id: TurnId::try_from(id).unwrap(),
         content: client_text(text),
     }

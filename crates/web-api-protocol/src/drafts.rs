@@ -5,7 +5,7 @@
 //! keeps the version it replaced, which a page restores or dismisses.
 
 use demi_conversation_socket_protocol::ClientContent;
-use demi_shared_types::{BlobRef, MAX_SAFE_INTEGER, Nullable};
+use demi_shared_types::{BlobRef, MAX_SAFE_INTEGER, MessageComment, Nullable};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
@@ -21,7 +21,7 @@ pub const DRAFT_BYTES_MAX: usize = 256 * 1024;
 
 /// `PUT /conversations/:id/draft`: the message's Markdown and its files in
 /// the order of their marks, each named as a frame names it, an `upload` or
-/// a `remote_file`.
+/// a `remote_file`, and the comments waiting to be sent with it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DraftSave {
@@ -32,6 +32,8 @@ pub struct DraftSave {
     pub text: String,
     #[garde(dive)]
     pub files: Vec<ClientContent>,
+    #[garde(dive)]
+    pub comments: Vec<MessageComment>,
 }
 
 /// What the page asks of the version a save replaced.
@@ -97,6 +99,9 @@ pub struct ConversationDraft {
     pub text: String,
     /// The files in the order of their marks.
     pub files: Vec<DraftFile>,
+    /// The comments waiting to be sent, in the order they were saved
+    /// (`comments-and-ask.md` § Waiting comments).
+    pub comments: Vec<MessageComment>,
     /// The version a save replaced without having been built on it.
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<ReplacedDraft>")]
@@ -110,6 +115,7 @@ impl ConversationDraft {
             revision: 0,
             text: String::new(),
             files: Vec::new(),
+            comments: Vec::new(),
             replaced: None,
         }
     }
@@ -124,6 +130,7 @@ pub struct ReplacedDraft {
     pub revision: u64,
     pub text: String,
     pub files: Vec<DraftFile>,
+    pub comments: Vec<MessageComment>,
 }
 
 /// A file of a draft as every page shows it.

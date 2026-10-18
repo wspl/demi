@@ -17,6 +17,7 @@ mod account;
 mod agent_message;
 pub mod audio;
 mod block;
+mod comment;
 mod bytes;
 mod catalog;
 mod content;
@@ -55,6 +56,7 @@ pub use block::{
     client_blocks, WakeupPlacement,
 };
 pub use bytes::B64Bytes;
+pub use comment::{MessageComment, comments_markdown};
 pub use cost::{Cost, Currency};
 pub use catalog::{ModelCost, ProviderModel, ProviderModelList, ServiceTier, UnavailableSetting};
 pub use content::{

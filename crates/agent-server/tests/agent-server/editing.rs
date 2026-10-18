@@ -27,7 +27,7 @@ use demi_provider_common::{
 };
 use demi_shared_types::{
     Attachment, B64Bytes, BlobRef, Block, BlockId, DocumentSource, FileExtension, MediaSource,
-    NodeId, OperationId, SessionPhase, Timestamp, TurnId, UserContentBlock, attachment_tag,
+    MessageComment, NodeId, OperationId, SessionPhase, Timestamp, TurnId, UserContentBlock, attachment_tag,
 };
 use serde_json::json;
 
@@ -488,6 +488,7 @@ async fn an_edit_keeps_the_files_its_message_holds_and_refuses_one_it_does_not()
     };
     client
         .send(ClientFrame::Send {
+            comments: Vec::new(),
             message_id: TurnId::try_from("m1").unwrap(),
             content: vec![
                 ClientContent::Text {
@@ -693,6 +694,7 @@ async fn a_fork_seed_keeps_the_history_through_a_completed_text_from_a_live_or_a
     assert_eq!(seeded[..], blocks[..2]);
     forked
         .send(ClientFrame::Send {
+            comments: Vec::new(),
             message_id: TurnId::try_from("m3").unwrap(),
             content: client_text("U3"),
         })
@@ -876,4 +878,182 @@ async fn a_completion_whose_saves_failed_refuses_an_edit_until_a_later_save_deli
         EditOutcome::Accepted { .. }
     ));
     assert!(model.is_done());
+}
+
+/// Two comments on the reply `reply`, one quoting two lines.
+fn two_comments(reply: &BlockId) -> Vec<MessageComment> {
+    let comment = |id: &str, quote: &str, text: &str| MessageComment {
+        id: id.into(),
+        block_id: reply.clone(),
+        start: 0,
+        end: quote.chars().count() as u64,
+        quote: quote.into(),
+        text: text.into(),
+    };
+    vec![
+        comment("c1", "Upload in chunks\nof 4 MB.", "4 MB feels large on 2G."),
+        comment("c2", "the same 30-second timeout", "Should uploads get their own?"),
+    ]
+}
+
+/// The model's text for [`two_comments`]: each quote, then its comment.
+const TWO_COMMENTS_READ: &str = "> Upload in chunks\n> of 4 MB.\n\n4 MB feels large on 2G.\n\n\
+    > the same 30-second timeout\n\nShould uploads get their own?";
+
+/// A steer carries its comments as a message does (`comments-and-ask.md` §
+/// Sending them): the page's pending steer shows them, the model reads them
+/// as quotes before the steer's text, and its `steer` block keeps them.
+#[tokio::test(flavor = "local")]
+async fn a_steers_comments_reach_the_model_as_quotes_before_its_text() {
+    let gate = Gate::new();
+    let script = ScriptedRuntime::new([
+        said("Uploads fail because"),
+        held(&gate, vec![event::text("Checking the logs"), event::response(1, 1)]),
+        said("Starting at 1 MB"),
+    ]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "Why do uploads fail?")).await;
+    client.next_until(is_idle).await;
+    let reply = session_of(&fixture).transcript().blocks[1].id().clone();
+    let comments = two_comments(&reply);
+    client.send(send("m2", "Check the logs")).await;
+    until(|| script.requests().len() == 2).await;
+    let steer_id = BlockId::try_from("s1").unwrap();
+    client
+        .send(ClientFrame::Steer {
+            steer_id: steer_id.clone(),
+            content: client_text("Otherwise go ahead"),
+            comments: comments.clone(),
+        })
+        .await;
+    let answered = client
+        .next_until(|frame| matches!(frame, ServerFrame::SteerResult { .. }))
+        .await;
+    let pending: Vec<_> = answered
+        .iter()
+        .filter_map(|frame| match frame {
+            ServerFrame::PendingSteers { pending_steers } => Some(pending_steers.clone()),
+            _ => None,
+        })
+        .flatten()
+        .map(|steer| steer.comments)
+        .collect();
+    assert_eq!(pending, [comments.clone()]);
+    gate.open();
+    client.next_until(is_idle).await;
+
+    let requests = script.requests();
+    assert_eq!(
+        requests[2].items.last(),
+        Some(&InferenceItem::UserSteer {
+            content: vec![UserPart::Text(TWO_COMMENTS_READ.into()), UserPart::Text("Otherwise go ahead".into())]
+        })
+    );
+    let held = session_of(&fixture).transcript();
+    let Some(Block::Steer(steer)) = held.blocks.iter().find(|block| block.id() == &steer_id) else {
+        panic!("{:?}", held.blocks)
+    };
+    assert_eq!(steer.comments, comments);
+}
+
+/// Fork copies a message's comments with it (`comments-and-ask.md` §
+/// Sending them): the fork's model reads them as the source's did.
+#[tokio::test(flavor = "local")]
+async fn a_fork_keeps_a_messages_comments_and_its_model_reads_them() {
+    let script = ScriptedRuntime::new([said("Uploads fail because"), said("Starting at 1 MB"), said("Done")]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "Why do uploads fail?")).await;
+    client.next_until(is_idle).await;
+    let reply = session_of(&fixture).transcript().blocks[1].id().clone();
+    let comments = two_comments(&reply);
+    client
+        .send(ClientFrame::Send {
+            message_id: crate::support::turn("m2"),
+            content: client_text("Otherwise go ahead"),
+            comments: comments.clone(),
+        })
+        .await;
+    client.next_until(is_idle).await;
+    let answer = session_of(&fixture).transcript().blocks[4].id().clone();
+
+    let seed = fixture
+        .server
+        .prepare_fork(&conversation(), &answer)
+        .await
+        .unwrap();
+    let destination = NodeId::try_from("fork").unwrap();
+    fixture
+        .server
+        .initialize_fork(&destination, seed)
+        .await
+        .unwrap();
+    let mut forked = TestClient::connect(&fixture.server, &destination);
+    forked.send(open()).await;
+    forked.received();
+    forked.send(send("m3", "And the retries?")).await;
+    until(|| script.requests().len() == 3).await;
+
+    let requests = script.requests();
+    let Some(InferenceItem::UserMessage { content }) = requests[2].items.get(2) else {
+        panic!("{:#?}", requests[2].items)
+    };
+    assert_eq!(
+        content[..],
+        [UserPart::Text(TWO_COMMENTS_READ.into()), UserPart::Text("Otherwise go ahead".into())]
+    );
+}
+
+/// A message's comments (`comments-and-ask.md` § Sending them): the model
+/// reads each quoted text as a `>` quote with its comment after it, then the
+/// typed text; the `user` block keeps them apart from its content, and an
+/// edit of the message changes its text and keeps them.
+#[tokio::test(flavor = "local")]
+async fn a_messages_comments_reach_the_model_as_quotes_before_its_text_and_an_edit_keeps_them() {
+    let script = ScriptedRuntime::new([said("Uploads fail because"), said("Starting smaller"), said("Starting at 1 MB")]);
+    let fixture = Fixture::new(&script);
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "Why do uploads fail?")).await;
+    client.next_until(is_idle).await;
+    let reply = session_of(&fixture).transcript().blocks[1].id().clone();
+    let comments = two_comments(&reply);
+    client
+        .send(ClientFrame::Send {
+            message_id: crate::support::turn("m2"),
+            content: client_text("Otherwise go ahead"),
+            comments: comments.clone(),
+        })
+        .await;
+    client.next_until(is_idle).await;
+
+    let quoted = TWO_COMMENTS_READ;
+    let read = |request: &demi_provider_common::InferenceRequest| match request.items.get(2) {
+        Some(InferenceItem::UserMessage { content }) => content.clone(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(
+        read(&script.requests()[1]),
+        [UserPart::Text(quoted.into()), UserPart::Text("Otherwise go ahead".into())]
+    );
+    let target = user_block(&fixture, "m2");
+    let held = session_of(&fixture).transcript();
+    let Some(Block::User(sent)) = held.blocks.iter().find(|block| block.id() == &target) else {
+        panic!("{:?}", held.blocks)
+    };
+    assert_eq!((sent.content.clone(), sent.comments.clone()), (demi_agent_store::testing::text("Otherwise go ahead"), comments.clone()));
+
+    client
+        .send(edit("op1", &target, &held.version, client_text("Start at 1 MB")))
+        .await;
+    client.next_until(is_idle).await;
+    let edited = session_of(&fixture).transcript();
+    let Some(Block::User(replacement)) = edited.blocks.get(3) else {
+        panic!("{:?}", edited.blocks)
+    };
+    assert_eq!((replacement.content.clone(), replacement.comments.clone()), (demi_agent_store::testing::text("Start at 1 MB"), comments));
+    assert_eq!(
+        read(script.requests().last().unwrap()),
+        [UserPart::Text(quoted.into()), UserPart::Text("Start at 1 MB".into())]
+    );
 }

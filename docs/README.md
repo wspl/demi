@@ -22,6 +22,7 @@ layout and interaction; these documents do not repeat it.
   - [Hosts](product/hosts.md): a device's mark, where a conversation runs, the host menu and the Cloud's settings.
   - [Turns](product/turns.md): steer or queue, recovering an unfinished turn, following the agent's work and notifications.
   - [Writing a message](product/composer.md): the composer, input methods and attachments.
+  - [Comments and side questions](product/comments-and-ask.md): commenting on a reply's words and sending the comments with a message.
 - [Web application](product/web-application.md): the web app's packages, work panel, backend communication, [page synchronization](product/web-application.md#page-synchronization), authentication, persistence, [drafts](product/web-application.md#drafts) and development loop.
 - [Web API](product/web-api.md): every HTTP and WebSocket route with its request, response, status and error codes.
   - [Conversations](product/web-api-conversations.md), [Hosts and files](product/web-api-hosts.md), [Accounts and settings](product/web-api-settings.md), [Page synchronization and plugins](product/web-api-sync.md).

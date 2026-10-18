@@ -1397,6 +1397,7 @@ pub(crate) fn child_record(
 
 fn user(id: &str, words: &str) -> Block {
     Block::User(UserBlock {
+        comments: Vec::new(),
         entries: Vec::new(),
         id: BlockId::try_from(id).unwrap(),
         turn_id: TurnId::try_from(id).unwrap(),
@@ -1431,6 +1432,7 @@ async fn a_restore_runs_a_lost_brief_closes_a_quiet_child_and_delivers_a_missed_
     // with a profile the user has deleted since, and restores with the
     // instructions it was spawned with.
     let brief = QueuedMessage {
+        comments: Vec::new(),
         id: TurnId::try_from("brief").unwrap(),
         content: text("task lost"),
         automation: None,
@@ -2354,6 +2356,7 @@ async fn a_childs_lists_hold_only_what_it_changed_in_its_own_directory() {
         .await
         .unwrap();
     let brief = QueuedMessage {
+        comments: Vec::new(),
         id: TurnId::try_from("brief").unwrap(),
         content: text("task edit"),
         automation: None,

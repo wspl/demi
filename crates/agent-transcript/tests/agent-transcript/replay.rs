@@ -21,6 +21,7 @@ use demi_shared_types::{
 fn replayed_text(text: &str) -> String {
     let model = test_model();
     let message = Block::User(UserBlock {
+        comments: Vec::new(),
         entries: Vec::new(),
         id: BlockId::try_from("u1").unwrap(),
         turn_id: TurnId::try_from("t1").unwrap(),
@@ -147,6 +148,7 @@ fn a_messages_reference_and_attachment_record_reach_the_model_as_their_text() {
     };
     let reference = "file:///home/demi/notes.md?host=laptop";
     let message = Block::User(UserBlock {
+        comments: Vec::new(),
         entries: Vec::new(),
         id: BlockId::try_from("u1").unwrap(),
         turn_id: TurnId::try_from("t1").unwrap(),

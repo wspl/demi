@@ -4,7 +4,7 @@
 //! replaced. Every change reads the row and writes it in one transaction, so
 //! two saves never build on the same revision.
 
-use demi_shared_types::BlobRef;
+use demi_shared_types::{BlobRef, MessageComment};
 use demi_web_api_protocol::drafts::{
     ConversationDraft, DRAFT_BYTES_MAX, DraftFile, DraftWritten, ReplacedAction, ReplacedDraft,
     Revisions,
@@ -41,8 +41,10 @@ pub enum DraftRefusal {
     Changed,
 }
 
-/// A draft's text and files, as its row stores the draft and the replaced
-/// version, and as a message saved for later stores them.
+/// A draft's text, files and waiting comments, as its row stores the draft
+/// and the replaced version, and as a message saved for later stores its
+/// text and files: a saved message holds no comments, which stay waiting in
+/// the draft, so its stored version omits them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Version {
@@ -50,6 +52,9 @@ pub(super) struct Version {
     pub(super) text: String,
     #[garde(skip)]
     pub(super) files: Vec<DraftFile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(skip)]
+    pub(super) comments: Vec<MessageComment>,
 }
 
 impl Version {
@@ -57,13 +62,21 @@ impl Version {
         Self {
             text: String::new(),
             files: Vec::new(),
+            comments: Vec::new(),
         }
     }
 
-    /// Nothing a restore could bring back: no text but blank space, and no
-    /// file.
+    /// Nothing a restore could bring back: no text but blank space, no file
+    /// and no comment.
     pub(super) fn is_empty(&self) -> bool {
-        self.text.trim().is_empty() && self.files.is_empty()
+        self.text.trim().is_empty() && self.files.is_empty() && self.comments.is_empty()
+    }
+
+    /// The version's text and files, as a message saved for later keeps
+    /// them, and its comments apart.
+    pub(super) fn into_message(self) -> (Self, Vec<MessageComment>) {
+        let Self { text, files, comments } = self;
+        (Self { text, files, comments: Vec::new() }, comments)
     }
 
     /// Whether the version as stored is over a draft's limit.
@@ -152,10 +165,12 @@ impl Stored {
             revision: self.revision,
             text: self.version.text,
             files: self.version.files,
+            comments: self.version.comments,
             replaced: self.replaced.map(|(revision, version)| ReplacedDraft {
                 revision,
                 text: version.text,
                 files: version.files,
+                comments: version.comments,
             }),
         }
     }
@@ -175,7 +190,7 @@ impl ControlService {
         .await
     }
 
-    /// Saves `text` and `files` as the draft of `owner`'s conversation. The
+    /// Saves `text`, `files` and `comments` as the draft of `owner`'s conversation. The
     /// save always takes effect; when `base` is not the current revision, the
     /// version it replaces is kept as the replaced one, unless that version
     /// is empty or the one saved. Each upload is presented with what its
@@ -187,6 +202,7 @@ impl ControlService {
         base: u64,
         text: String,
         files: Vec<StagedFile>,
+        comments: Vec<MessageComment>,
     ) -> Result<Result<DraftWritten, DraftRefusal>, StorageError> {
         self.call(move |connection, now| {
             let transaction = connection.transaction()?;
@@ -194,7 +210,7 @@ impl ControlService {
                 return Ok(Err(DraftRefusal::Archived));
             }
             let version = match staged_version(&transaction, &owner, text, files)? {
-                Ok(version) => version,
+                Ok(version) => Version { comments, ..version },
                 Err(missing) => return Ok(Err(DraftRefusal::UploadNotFound(missing))),
             };
             if version.too_large() {
@@ -287,6 +303,7 @@ pub(super) fn staged_version(
     Ok(Ok(Version {
         text,
         files: presented,
+        comments: Vec::new(),
     }))
 }
 

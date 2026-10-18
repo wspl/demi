@@ -27,7 +27,7 @@ const reply = `The relogin test still reads the old cookie name. The [cookie ref
 bun run test packages/web/src/auth.test.ts
 \`\`\`
 
-Select a few words of this paragraph: the selection's toolbar stands above them with Copy and Send to Conversation, and a right-click on them leads its menu with the same.`
+Select a few words of this paragraph: a right-click on them leads its menu with Copy and Send to Conversation, and on a phone the selection's toolbar stands under them with Send to Conversation. A conversation's reply adds Comment, which the toolbar offers on the desktop too (Session › Comments).`
 
 const user = [{ type: 'text' as const, text: 'The login test fails after the session cookie rename. Can you fix it?' }]
 
@@ -78,7 +78,7 @@ function rowMenu(row: Row): () => ContextMenuGroup[] {
       />
     </div>
   </GallerySpecimen>
-  <GallerySpecimen variant="text in the middle of a reply: no menu; a selection in it still gets the toolbar" wide>
+  <GallerySpecimen variant="text in the middle of a reply: no menu; a selection in it still gets the selection’s" wide>
     <div class="w-[40rem] max-w-full rounded-lg bg-surface ring-1 ring-line">
       <AssistantTextBlock content="Reading the config first, then the test." :created-at="createdAt" />
     </div>

@@ -1,4 +1,4 @@
-import type { ContextUsage, InstructionEntry, PendingCall, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { ContextUsage, InstructionEntry, MessageComment, PendingCall, PendingSteer, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import type { ShownError } from '../infra/errors'
 import type { HeldTranscript } from '@demicodes/conversation-client'
 import type { PendingAction } from './activity-slot'
@@ -13,7 +13,7 @@ import type { SendWay } from './send-way'
 export type { ModelSettings } from './model-selection'
 
 /** A steer the server holds for the running turn, as it sends them. */
-export type PendingSteerMessage = Pick<PendingSteer, 'id' | 'content'>
+export type PendingSteerMessage = Pick<PendingSteer, 'id' | 'content' | 'comments'>
 
 /** A message sent but not yet confirmed: the composer's own text and attachments, shown as the message they will become. */
 export interface PendingSubmissionState {
@@ -26,6 +26,8 @@ export interface PendingSubmissionState {
   way: SendWay
   text: string
   attachments: ComposerAttachment[]
+  /** The comments it carries (`comments-and-ask.md` § Sending them); absent with none. */
+  comments?: readonly MessageComment[]
   /** Why the delivery failed; null while the message is on its way. */
   error: string | null
 }

@@ -53,6 +53,7 @@ pub(super) async fn save(
             save.base,
             save.text,
             files,
+            save.comments,
         )
         .await?
         .map_err(refused)?;

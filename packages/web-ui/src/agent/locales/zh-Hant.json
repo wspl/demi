@@ -1,4 +1,14 @@
 {
+  "comments": {
+    "comment": "註解",
+    "placeholder": "新增註解",
+    "waitReply": "請等這則回覆完成。",
+    "count": "{count} 則註解",
+    "remove": "移除註解",
+    "sent": "已傳送",
+    "writeFirst": "請先輸入註解。",
+    "title": "註解"
+  },
   "transcript": {
     "accountSwitch": {
       "usage": "{from} 已達使用上限，改用 {to} 繼續。",

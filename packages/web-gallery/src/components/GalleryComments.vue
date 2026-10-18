@@ -1,0 +1,107 @@
+<script setup lang="ts">
+import { computed, nextTick, onMounted, ref } from 'vue'
+import type { MessageComment, UserContentBlock } from '@demicodes/protocol'
+import ChatSession from '@demicodes/web-ui/agent/ChatSession.vue'
+import WaitingComments from '@demicodes/web-ui/agent/comments/WaitingComments.vue'
+import { anchorOfText } from '@demicodes/web-ui/agent/comments/anchors'
+import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
+import { useMessageFiles } from '@demicodes/web-ui/markdown/message-files'
+import { COMMENTED_REPLY_ID, TWO_COMMENTS, commentedConversation } from '../fixtures/comments'
+import { WORKSPACE_ROOT } from '../fixtures/workspace'
+import { useTurnFlow, type SentMessage } from '../turn-flow'
+import GalleryComposer from './GalleryComposer.vue'
+
+/**
+ * Comments on a reply's words (`comments-and-ask.md`), live: select text in
+ * the reply and choose Comment, write one and press Return; it marks the
+ * text and waits in the composer's pill, which lists the waiting comments
+ * and whose × removes them. Send sends them with what is typed, the bubble
+ * showing each quoted text and its comment, and the reply keeps their marks,
+ * dimmer. `seed` pins a state: two waiting comments, or two sent with a
+ * message. Comments stay in the specimen, where the product keeps them in
+ * the conversation's draft.
+ */
+const props = defineProps<{
+  seed: 'waiting' | 'sent'
+}>()
+
+const flow = useTurnFlow({ id: `comments-${props.seed}`, title: 'Slow uploads', cwd: WORKSPACE_ROOT, blocks: commentedConversation() })
+const session = flow.state
+const messageFiles = useMessageFiles()
+const waiting = ref<MessageComment[]>([])
+
+const commenting: ReplyCommenting = {
+  get waiting() {
+    return waiting.value
+  },
+  add: (comment) => (waiting.value = [...waiting.value, comment]),
+  edit: (id, text) => (waiting.value = waiting.value.map((each) => (each.id === id ? { ...each, text } : each))),
+  remove: (id) => (waiting.value = waiting.value.filter((each) => each.id !== id)),
+}
+
+const ordered = computed(() => inReadingOrder(waiting.value, session.blocks.map((block) => block.id)))
+
+/** Send, Steer and Queue each carry the waiting comments, which leave the pill, as the product's composer sends them. */
+function carrying(go: (content: UserContentBlock[], message: SentMessage, comments: MessageComment[]) => void) {
+  return (content: UserContentBlock[], message: SentMessage): void => {
+    go(content, message, ordered.value)
+    waiting.value = []
+  }
+}
+const send = carrying(flow.turn)
+const steer = carrying(flow.steer)
+const queue = carrying(flow.queue)
+
+// The seed's comments are found by the words they quote once the reply has rendered.
+onMounted(async () => {
+  await nextTick()
+  await new Promise((done) => requestAnimationFrame(done))
+  const root = document.querySelector<HTMLElement>(`[data-comments-seed="${props.seed}"] [data-reply-text="${COMMENTED_REPLY_ID}"] .markdown-body`)
+  if (!root)
+    return
+  const comments = TWO_COMMENTS.flatMap((each, index): MessageComment[] => {
+    const anchor = anchorOfText(root, each.quote)
+    return anchor ? [{ id: `${props.seed}-${index}`, blockId: COMMENTED_REPLY_ID, ...anchor, quote: each.quote, text: each.text }] : []
+  })
+  if (props.seed === 'waiting') {
+    waiting.value = comments
+    return
+  }
+  flow.turn([{ type: 'text', text: 'Otherwise go ahead.' }], { text: 'Otherwise go ahead.', attachments: [] }, inReadingOrder(comments, [COMMENTED_REPLY_ID]))
+})
+</script>
+
+<template>
+  <div :data-comments-seed="seed" class="h-full">
+    <ChatSession
+      :conversation="session"
+      :files="messageFiles()"
+      :commenting="commenting"
+      has-provider
+      @rename="session.title = $event"
+      @save-scroll="(_id, state) => (session.scroll = state)"
+      @retry="flow.resume()"
+    >
+      <template #composer>
+        <GalleryComposer
+          :running="session.phase === 'running' || flow.startingTurn.value"
+          :flow="flow"
+          @send="send"
+          @steer="steer"
+          @queue="queue"
+          @stop="flow.stop"
+          @compact="flow.compact"
+        >
+          <template v-if="ordered.length > 0" #context>
+            <WaitingComments
+              :comments="ordered"
+              @edit="commenting.edit"
+              @remove="commenting.remove"
+              @clear="waiting = []"
+            />
+          </template>
+        </GalleryComposer>
+      </template>
+    </ChatSession>
+  </div>
+</template>

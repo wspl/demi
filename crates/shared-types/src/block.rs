@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
 use crate::{
-    AgentMessage, AutomationId, AutomationRunId, BlockId, CommandId, MAX_SAFE_INTEGER, ModelSelection, Nullable, ProviderErrorDiagnostics,
+    AgentMessage, AutomationId, AutomationRunId, BlockId, CommandId, MAX_SAFE_INTEGER, MessageComment, ModelSelection, comments_markdown, Nullable, ProviderErrorDiagnostics,
     QuotaWindowName, Timestamp, TokenUsage, ToolResultContentBlock, ToolView, TurnId, UserContentBlock,
 };
 
@@ -246,6 +246,12 @@ pub struct UserBlock {
     /// The content as submitted.
     #[garde(dive)]
     pub content: Vec<UserContentBlock>,
+    /// The comments sent with the message, in the order they were saved,
+    /// which the model reads before the content (`comments-and-ask.md`
+    /// § Sending them); omitted when there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub comments: Vec<MessageComment>,
     /// The runtime's text for the turn, a subagent's identity, which the
     /// model receives before the content; null for the root.
     #[serde(deserialize_with = "Option::deserialize")]
@@ -272,6 +278,19 @@ pub struct UserBlock {
     #[schemars(skip)]
     #[garde(skip)]
     pub entries: Vec<serde_json::Value>,
+}
+
+impl UserBlock {
+    /// The texts the model reads before the message's content, in order: the
+    /// preamble, then the comments sent with it (`transcript.md` § Block
+    /// types).
+    pub fn lead_texts(&self) -> Vec<String> {
+        self.preamble
+            .iter()
+            .cloned()
+            .chain(comments_markdown(&self.comments))
+            .collect()
+    }
 }
 
 /// The automation's run a message came from (`automations.md` § What a run
@@ -590,6 +609,12 @@ pub struct SteerBlock {
     pub model: ModelSelection,
     #[garde(dive)]
     pub content: Vec<UserContentBlock>,
+    /// The comments sent with it, which the model reads before its content
+    /// as a message's (`comments-and-ask.md` § Sending them); omitted when
+    /// there are none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[garde(dive)]
+    pub comments: Vec<MessageComment>,
     /// The entries of the vendor's own record of the session that belong to
     /// this block, as its provider gave them (`claude-code.md` § The session
     /// a process resumes); omitted when there are none. They never leave

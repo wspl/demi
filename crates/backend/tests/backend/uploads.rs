@@ -100,6 +100,7 @@ fn naming(text: &str, uploads: &[(&AttachmentDto, &str)]) -> Vec<ClientContent> 
 
 pub(crate) fn with_upload(id: &str, text: &str, uploads: &[(&AttachmentDto, &str)]) -> ClientFrame {
     ClientFrame::Send {
+        comments: Vec::new(),
         message_id: TurnId::try_from(id).unwrap(),
         content: naming(text, uploads),
     }
@@ -459,6 +460,7 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
     socket.send(&send("m3", "Wait for the file")).await;
     vendor.received(3).await;
     let steer = ClientFrame::Steer {
+        comments: Vec::new(),
         steer_id: BlockId::try_from("s1").unwrap(),
         content: naming("And this one", &[(&image, "shot.png")]),
     };
@@ -942,6 +944,7 @@ async fn a_restored_conversation_reads_each_replayed_blob_once_and_none_before_i
     long.insert(1, ClientContent::Text { text: wide });
     socket
         .send(&ClientFrame::Send {
+            comments: Vec::new(),
             message_id: TurnId::try_from("m1").unwrap(),
             content: long,
         })

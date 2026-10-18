@@ -14,6 +14,7 @@ fn id(value: &str) -> BlockId {
 
 fn user(value: &str) -> Block {
     Block::User(UserBlock {
+        comments: Vec::new(),
         entries: Vec::new(),
         id: id(value),
         turn_id: TurnId::try_from(value).unwrap(),

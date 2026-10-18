@@ -265,8 +265,9 @@ impl Candidate {
             Some(content) => {
                 let content = Self::content(target, content)?;
                 let mut candidate = TranscriptLog::new(prefix, s.ids.clone(), core.clock());
-                // A new version is the user's own, whoever sent the first.
-                candidate.push_user(turn.clone(), &model, content, preamble, None);
+                // A new version is the user's own, whoever sent the first, and keeps
+                // the comments sent with the first (`comments-and-ask.md`).
+                candidate.push_user(turn.clone(), &model, content, target.comments.clone(), preamble, None);
                 candidate.blocks().to_vec()
             }
             // The message stays, and the new answer follows it.

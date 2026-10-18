@@ -272,6 +272,7 @@ async fn an_uploaded_image_reaches_the_model_inline_and_travels_and_rests_by_ref
     client.next_until(is_pending_steers).await;
     client
         .send(ClientFrame::Send {
+            comments: Vec::new(),
             message_id: crate::support::turn("m1"),
             content: vec![
                 ClientContent::Text {
@@ -403,6 +404,7 @@ async fn a_restored_conversation_whose_history_replays_an_image_is_readied_with_
     client.next_until(is_pending_steers).await;
     client
         .send(ClientFrame::Send {
+            comments: Vec::new(),
             message_id: crate::support::turn("m1"),
             content: vec![ClientContent::Upload {
                 r#ref: "upload-1".into(),
@@ -476,6 +478,7 @@ async fn a_reopened_page_is_told_the_usage_an_open_cannot_tell_without_a_read() 
     client.next_until(is_pending_steers).await;
     client
         .send(ClientFrame::Send {
+            comments: Vec::new(),
             message_id: crate::support::turn("m1"),
             content: vec![ClientContent::Upload {
                 r#ref: "upload-1".into(),
@@ -962,6 +965,7 @@ async fn removing_a_waiting_message_is_answered_after_its_list() {
     let steer_id = demi_shared_types::BlockId::try_from("s1").unwrap();
     client
         .send(ClientFrame::Steer {
+            comments: Vec::new(),
             steer_id: steer_id.clone(),
             content: demi_agent_server::testing::client_text("also this"),
         })

@@ -743,8 +743,10 @@ fn sent_saved(message: SavedMessage, turn: TurnId, delivery: SavedDelivery) -> C
         SavedDelivery::Message | SavedDelivery::Queue => ClientFrame::Send {
             message_id: turn,
             content,
+            comments: Vec::new(),
         },
         SavedDelivery::Steer => ClientFrame::Steer {
+            comments: Vec::new(),
             steer_id: BlockId::try_from(turn.into_string()).expect("a turn id is not empty"),
             content,
         },

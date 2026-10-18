@@ -1,4 +1,4 @@
-import type { Block, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
+import type { Block, MessageComment, PendingCall, ProviderFailureFacts, QueuedMessage, SessionPhase } from '@demicodes/protocol'
 import type { ShownError } from '@demicodes/web-ui/infra/errors'
 import type { FileBrowserPlatform } from '@demicodes/web-ui/files/types'
 import type { DeviceStart } from '@demicodes/web-ui/devices/installation'
@@ -82,6 +82,12 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   draft: string
   /** Counts the drafts shown from outside, another page's or a restored one, which the editor then shows anew. */
   draftShown: number
+  /**
+   * The comments waiting to be sent with the next message, in the order
+   * they were saved, which belong to the draft as its text does
+   * (`comments-and-ask.md` § Waiting comments).
+   */
+  comments: MessageComment[]
   /**
    * The conversation's draft and its messages saved for later, newest first
    * (`web-api-conversations.md` § Messages saved for later): one slot, which the backend

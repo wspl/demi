@@ -916,6 +916,7 @@ pub mod store_contract {
 
     fn message(turn: &str) -> QueuedMessage {
         QueuedMessage {
+            comments: Vec::new(),
             id: TurnId::try_from(turn).expect("a test turn id is not empty"),
             content: text("brief"),
             automation: None,
@@ -1185,6 +1186,7 @@ pub mod store_contract {
         assert_eq!(children, [id("child")]);
         assert_eq!(queue(store, "child").await, [message("m1")]);
         let user = Block::User(UserBlock {
+            comments: Vec::new(),
             entries: Vec::new(),
             id: "u1".try_into().expect("a test block id is not empty"),
             turn_id: TurnId::try_from("m1").expect("a test turn id is not empty"),

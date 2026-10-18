@@ -331,6 +331,7 @@ async fn two_connections_of_one_tree_receive_its_events_and_each_its_own_replies
 
     second
         .send(ClientFrame::Steer {
+            comments: Vec::new(),
             steer_id: BlockId::try_from("s1").unwrap(),
             content: client_text("too late"),
         })
@@ -538,6 +539,7 @@ async fn frames_that_need_a_session_are_refused_without_one_and_while_it_is_busy
             message_id: turn("m1"),
         },
         ClientFrame::Steer {
+            comments: Vec::new(),
             steer_id: steer_id.clone(),
             content: demi_agent_server::testing::client_text("steer"),
         },

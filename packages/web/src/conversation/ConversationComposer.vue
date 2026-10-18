@@ -7,6 +7,8 @@ import { baseName } from '@demicodes/utils'
 import SessionComposer from '@demicodes/web-ui/agent/SessionComposer.vue'
 import { loadedInstructions } from '@demicodes/web-ui/agent/instructions'
 import { latestBlocks } from '@demicodes/web-ui/agent/history'
+import WaitingComments from '@demicodes/web-ui/agent/comments/WaitingComments.vue'
+import { inReadingOrder } from '@demicodes/web-ui/agent/comments/comments'
 import { refusedForSize } from '@demicodes/web-ui/agent/session-status'
 
 import { composerRemoteAttachment } from '@demicodes/web-ui/agent/message-input/attachments'
@@ -112,6 +114,12 @@ function openProviders() {
 function send(way: SendWay) {
   void store.send(props.conversation, way)
 }
+
+/** The comments waiting in the draft, in the order the conversation reads them, as the pill lists them. */
+const waitingComments = computed(() =>
+  inReadingOrder(props.conversation.comments, latestBlocks(props.conversation.history).map((block) => block.id)),
+)
+const commenting = computed(() => store.commenting(props.conversation))
 
 /** What the model holds of the user's and the project's instructions, which the context card lists. */
 const instructions = computed(() => loadedInstructions(latestBlocks(props.conversation.history), props.conversation.instructions))
@@ -288,7 +296,16 @@ function attachRemote(file: { deviceId: string; host: string; path: string }) {
       @stop="store.stop(conversation)"
       @compact="store.compact(conversation)"
       @open-instruction="card.openInstruction"
-    />
+    >
+      <template v-if="waitingComments.length > 0" #context>
+        <WaitingComments
+          :comments="waitingComments"
+          @edit="(id, text) => commenting.edit(id, text)"
+          @remove="commenting.remove($event)"
+          @clear="store.clearComments(conversation)"
+        />
+      </template>
+    </SessionComposer>
     <RemoteFilePicker
       ref="remotePicker"
       :overlay-store="appOverlayStore"

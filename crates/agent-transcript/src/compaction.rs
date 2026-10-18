@@ -4,7 +4,7 @@
 //! summary. Each is a pure reading of the blocks, weighed by the token
 //! estimates of the request the pass serves.
 
-use demi_shared_types::{Block, KeptMessage, ModelSelection, UserContentBlock};
+use demi_shared_types::{Block, KeptMessage, ModelSelection, UserContentBlock, comments_markdown};
 
 use super::{
     estimate::{block_tokens, content_tokens},
@@ -150,15 +150,20 @@ pub fn kept_messages(window: &[Block], request: &RequestView, budget: u64) -> Ve
         match block {
             Block::CompactionBoundary(boundary) => messages.extend(boundary.kept.iter().cloned()),
             Block::User(user) => {
-                let preamble = user.preamble.iter().map(|text| UserContentBlock::Text {
-                    text: text.clone(),
-                });
+                let lead = user
+                    .lead_texts()
+                    .into_iter()
+                    .map(|text| UserContentBlock::Text { text });
                 messages.push(KeptMessage {
-                    content: preamble.chain(user.content.iter().cloned()).collect(),
+                    content: lead.chain(user.content.iter().cloned()).collect(),
                 });
             }
             Block::Steer(steer) => messages.push(KeptMessage {
-                content: steer.content.clone(),
+                content: comments_markdown(&steer.comments)
+                    .map(|text| UserContentBlock::Text { text })
+                    .into_iter()
+                    .chain(steer.content.iter().cloned())
+                    .collect(),
             }),
             _ => {}
         }

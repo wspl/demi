@@ -380,7 +380,7 @@ async fn a_change_in_one_session_reaches_the_other_sessions_page_as_one_message(
         summary(&renamed, FIRST).and_then(|conversation| conversation.title.as_deref()),
         Some("Fix the login")
     );
-    let draft = json!({ "base": 0, "text": "The login fails", "files": [] });
+    let draft = json!({ "base": 0, "text": "The login fails", "files": [], "comments": [] });
     let saved = backend
         .put(&format!("/api/conversations/{FIRST}/draft"), &laptop, draft)
         .await;

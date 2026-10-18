@@ -105,8 +105,21 @@ impl ControlService {
                 Err(refusal) => return Ok(Err(refusal)),
             };
             let message = insert(&transaction, &conversation, &id, version, now)?;
-            let mut draft =
-                Stored::saved_on(stored(&transaction, &conversation)?, base, Version::empty());
+            // The draft's comments stay waiting there: a saved message keeps
+            // the text and the files alone.
+            let current = stored(&transaction, &conversation)?;
+            let comments = current
+                .as_ref()
+                .map(|draft| draft.version.comments.clone())
+                .unwrap_or_default();
+            let mut draft = Stored::saved_on(
+                current,
+                base,
+                Version {
+                    comments,
+                    ..Version::empty()
+                },
+            );
             draft.saved_revision += 1;
             write(&transaction, &conversation, &draft, now.as_millisecond())?;
             transaction.commit()?;
@@ -180,11 +193,16 @@ impl ControlService {
             let Some(document) = remove(&transaction, &conversation, &id)? else {
                 return Ok(Err(SavedRefusal::NotFound));
             };
+            // The draft's text and files go into the list and the saved
+            // message's come in; the draft's comments stay waiting.
             let current = stored(&transaction, &conversation)?;
-            if let Some(draft) = current.as_ref().filter(|draft| !draft.version.is_empty()) {
-                insert(&transaction, &conversation, &becomes, draft.version.clone(), now)?;
+            let (moved, comments) = current
+                .as_ref()
+                .map_or_else(|| Version::empty().into_message(), |draft| draft.version.clone().into_message());
+            if !moved.is_empty() {
+                insert(&transaction, &conversation, &becomes, moved, now)?;
             }
-            let mut draft = Stored::written(current, document);
+            let mut draft = Stored::written(current, Version { comments, ..document });
             draft.saved_revision += 1;
             write(&transaction, &conversation, &draft, now.as_millisecond())?;
             let kept = KeptEdit {
@@ -251,7 +269,7 @@ impl ControlService {
                     conversation.as_str(),
                     turn.as_str(),
                     message.saved_at.as_millisecond(),
-                    to_json(&Version { text: message.text, files: message.files }),
+                    to_json(&Version { text: message.text, files: message.files, comments: Vec::new() }),
                     now.as_millisecond()
                 ],
             )?;

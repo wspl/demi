@@ -87,7 +87,7 @@ beforeEach(() => {
     if (path.startsWith('/api/models')) return Response.json({ providers: [], smallModel: null })
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
     if (path.endsWith('/subagents')) return Response.json({ subagents: [] })
-    if (path.endsWith('/draft')) return Response.json({ draft: { revision: 0, text: '', files: [], replaced: null } })
+    if (path.endsWith('/draft')) return Response.json({ draft: { revision: 0, text: '', files: [], comments: [], replaced: null } })
     if (path.endsWith('/saved')) return Response.json({ revision: 0, messages: [] })
     if (path.endsWith('/read') && init?.method === 'POST') return new Response(null, { status: 204 })
     const transcript = /^\/api\/conversations\/([^/]+)\/transcript$/.exec(path)

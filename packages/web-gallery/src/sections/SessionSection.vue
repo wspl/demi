@@ -139,6 +139,7 @@ import GalleryCommandWakeup from '../components/GalleryCommandWakeup.vue'
 import GalleryBusyRequest from '../components/GalleryBusyRequest.vue'
 import GalleryStreamingText from '../components/GalleryStreamingText.vue'
 import GalleryConnectedSession from '../components/GalleryConnectedSession.vue'
+import GalleryComments from '../components/GalleryComments.vue'
 import GalleryMessageEditing from '../components/GalleryMessageEditing.vue'
 import GalleryAssistantMessages from '../components/GalleryAssistantMessages.vue'
 import GalleryModelPreference from '../components/GalleryModelPreference.vue'
@@ -3353,6 +3354,16 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection title="Edit and Resend" note="Shared editor, durable confirmation and recovery states. Regenerate in the last answer’s footer sends the last message again unchanged, without opening the editor: its answer dims until the outcome, which the buttons choose as for a save; a lost confirmation opens the editor with Retry, a conflict opens it with the message. Up Arrow in the empty composer opens the editor on the last message. An edited message shows its versions under it, and a regenerated answer in its footer: the arrows show the version before and after, and wait while an edit is sent.">
         <GalleryMessageEditing />
+      </GallerySection>
+      <GallerySection title="Comments" note="Two comments waiting in the draft (`comments-and-ask.md`): each marks its text yellow, with a comment mark in the reply's margin, and the composer shows 2 Comments inside its box. Pointing at a marked text or its mark shows the comment with Delete and Edit; a click pins it. Select other words of the reply and choose Comment in the toolbar above them, write one and press Return to add it; while a reply is still being written, Comment says to wait. The pill lists the waiting comments, each with its quote, and × removes them all. Send sends them with the typed text, or alone.">
+        <div class="h-[36rem] overflow-hidden rounded-xl border border-line">
+          <GalleryComments seed="waiting" />
+        </div>
+      </GallerySection>
+      <GallerySection title="Sent Comments" note="A message sent with two comments: its bubble shows each quoted text as a quote, its comment under it, then the typed text, and the reply keeps their marks, dimmer; their card says Sent. A share's page shows the same bubble and no marks.">
+        <div class="h-[40rem] overflow-hidden rounded-xl border border-line">
+          <GalleryComments seed="sent" />
+        </div>
       </GallerySection>
       <GallerySection
         title="Product Session"
