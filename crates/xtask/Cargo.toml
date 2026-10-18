@@ -48,11 +48,15 @@ zstd = { version = "0.13", default-features = false }
 
 [features]
 default = ["developer"]
-# `xtask contracts` and `xtask dev`, which only a developer runs. The release
+# `xtask contracts`, `xtask dev` and `xtask logos`, which only a developer runs. The release
 # workflow builds xtask without them, and so without the backend they compile
 # (`builds-and-releases.md` § Release workflow).
 developer = [
   "dep:demi-backend",
+  "dep:demi-backend-providers",
+  "dep:demi-provider-common",
+  "dep:log",
+  "dep:resvg",
   "dep:demi-conversation-socket-protocol",
   "dep:demi-plugin-interface",
   "dep:demi-web-api-protocol",
@@ -67,6 +71,15 @@ developer = [
 # starts its programs in.
 [target.'cfg(unix)'.dependencies]
 demi-backend = { path = "../backend", optional = true }
+# The vendors the backend offers, read from models.dev as it reads them
+# (`xtask logos`).
+demi-backend-providers = { path = "../backend-providers", optional = true }
+demi-provider-common = { path = "../provider-common", optional = true }
+# Reads and draws a vendor's mark to tell whether a mask can paint it
+# (`xtask logos`).
+resvg = { version = "0.48", default-features = false, optional = true }
+# usvg's warning that it could not read a mark's color (`xtask logos`).
+log = { version = "0.4", optional = true }
 demi-conversation-socket-protocol = { path = "../conversation-socket-protocol", optional = true }
 demi-plugin-interface = { path = "../plugin-interface", optional = true }
 demi-web-api-protocol = { path = "../web-api-protocol", optional = true }

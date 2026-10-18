@@ -1,65 +1,39 @@
 /**
- * The vendors' marks, monochrome SVGs (models.dev's, Claude's own, and
- * Simple Icons' for ElevenLabs, a vendor of media models.dev lacks) that
- * `VendorMark` paints in the text's color: one for each models.dev vendor Demi
- * has a mark for, and each subscription wears its vendor's. A vendor without a
- * mark here shows its initial.
+ * The vendors' marks, monochrome SVGs that `VendorMark` paints in the text's
+ * color, found by file name: `logos/<vendor>.svg`. `bun xtask logos` keeps
+ * models.dev's for every vendor the backend offers; the others are kept by
+ * hand, their sources in `logos/hand-kept.txt`. A vendor without a mark shows
+ * its initial.
+ *
+ * Each mark is a file of its own that the browser loads when a page shows
+ * it: inlined, the two hundred marks would add half a megabyte to the bundle.
  */
-import alibaba from './logos/alibaba.svg?url'
-import amazonBedrock from './logos/amazon-bedrock.svg?url'
-import anthropic from './logos/anthropic.svg?url'
-import azure from './logos/azure.svg?url'
-import cerebras from './logos/cerebras.svg?url'
-import claude from './logos/claude.svg?url'
-import deepseek from './logos/deepseek.svg?url'
-import elevenlabs from './logos/elevenlabs.svg?url'
-import fireworksAi from './logos/fireworks-ai.svg?url'
-import google from './logos/google.svg?url'
-import googleVertex from './logos/google-vertex.svg?url'
-import groq from './logos/groq.svg?url'
-import minimax from './logos/minimax.svg?url'
-import mistral from './logos/mistral.svg?url'
-import moonshotai from './logos/moonshotai.svg?url'
-import openai from './logos/openai.svg?url'
-import openrouter from './logos/openrouter.svg?url'
-import perplexity from './logos/perplexity.svg?url'
-import togetherai from './logos/togetherai.svg?url'
-import xai from './logos/xai.svg?url'
-import zhipuai from './logos/zhipuai.svg?url'
+const MARKS = import.meta.glob<string>('./logos/*.svg', {
+  eager: true,
+  query: '?url&no-inline',
+  import: 'default',
+})
 
-const VENDOR_LOGOS: Record<string, string> = {
-  alibaba,
-  'amazon-bedrock': amazonBedrock,
-  anthropic,
-  azure,
-  cerebras,
-  deepseek,
-  elevenlabs,
-  'fireworks-ai': fireworksAi,
-  google,
-  'google-vertex': googleVertex,
-  groq,
-  minimax,
-  mistral,
-  moonshotai,
-  openai,
-  openrouter,
-  perplexity,
-  togetherai,
-  xai,
-  zhipuai,
+/**
+ * The vendor whose mark another wears: each subscription its vendor's,
+ * Claude Code Claude's own, and each speech vendor its company's.
+ */
+const WORN: Record<string, string> = {
+  'claude-code': 'claude',
+  codex: 'openai',
+  'grok-build': 'xai',
+  'byteplus-speech': 'byteplus',
+  'doubao-speech': 'volcengine',
 }
 
-/** The vendor whose mark each subscription wears; Claude Code wears Claude's own. */
-const SUBSCRIPTION_LOGOS: Record<string, string> = {
-  'claude-code': claude,
-  codex: openai,
-  'grok-build': xai,
+/** The mark of `id` itself, by its file name; null when there is none. */
+function mark(id: string): string | null {
+  return MARKS[`./logos/${id}.svg`] ?? null
 }
 
-/** The mark of models.dev vendor `vendorId`; null when Demi has none for it. */
+/** The mark of vendor `vendorId`; null when Demi has none for it. */
 export function vendorLogo(vendorId: string | null): string | null {
-  return (vendorId && VENDOR_LOGOS[vendorId]) || null
+  return vendorId ? mark(WORN[vendorId] ?? vendorId) : null
 }
 
 /**
@@ -73,6 +47,6 @@ export function providerLogo(entry: {
   vendorId: string | null
 }): string | null {
   return entry.kind === 'subscription'
-    ? SUBSCRIPTION_LOGOS[entry.providerType] ?? null
+    ? vendorLogo(entry.providerType)
     : vendorLogo(entry.vendorId)
 }

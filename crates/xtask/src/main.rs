@@ -7,6 +7,10 @@ mod boundaries;
 mod browser;
 mod cloud_image;
 mod deploy;
+// Reads the offered vendors as the backend does, which builds only where
+// the backend runs.
+#[cfg(all(unix, feature = "developer"))]
+mod logos;
 // Generating the contracts reads the backend's plugins, whose library builds
 // only where the backend runs; on Windows xtask builds the native releases.
 #[cfg(all(unix, feature = "developer"))]
@@ -57,6 +61,9 @@ enum Command {
     /// Compares the vendored crates with their upstream releases.
     #[command(subcommand)]
     Vendor(vendor::Command),
+    /// Refreshes the vendors' marks from models.dev.
+    #[cfg(all(unix, feature = "developer"))]
+    Logos(logos::Options),
     /// Removes the build products no current build of the checkout uses.
     #[cfg(unix)]
     Sweep(sweep::Options),
@@ -316,6 +323,14 @@ fn main() -> ExitCode {
             Ok(()) => ExitCode::SUCCESS,
             Err(error) => {
                 eprintln!("xtask vendor: {error}");
+                ExitCode::FAILURE
+            }
+        },
+        #[cfg(all(unix, feature = "developer"))]
+        Command::Logos(options) => match logos::run(options) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(error) => {
+                eprintln!("xtask logos: {error}");
                 ExitCode::FAILURE
             }
         },

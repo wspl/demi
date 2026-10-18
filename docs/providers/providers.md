@@ -94,6 +94,21 @@ as OpenAI's, earlier reasoning replayed encrypted rather than stored on
 xAI's servers. Other mappings are not offered. `github-copilot` is excluded because its
 credential scheme is not the API-key scheme of these families.
 
+Each vendor wears its mark wherever it is named, in Add Provider, its entry
+and the model menu, as a monochrome SVG painted in the text's color; a
+vendor without one shows its initial. The marks of models.dev's vendors are
+models.dev's own (`https://models.dev/logos/<vendor>.svg`, MIT), kept in the
+repository for every vendor Demi offers and refreshed by `bun xtask logos`,
+which a maintainer runs when models.dev adds vendors: it writes each vendor's
+mark and leaves out the generic sparkle models.dev answers for a vendor it
+has no mark for, so such a vendor shows its initial rather than a mark that
+is not its own. A vendor models.dev does not list, a media-only one or a
+subscription, has a mark kept by hand, its source named beside it: Claude's
+own for Claude Code, OpenAI's for Codex and xAI's for Grok Build, as models.dev
+draws them, and for ElevenLabs, BytePlus, BytePlus Speech and Doubao Speech
+the vendor's own mark or Simple Icons' (CC0). The page finds a vendor's mark
+by its ID, so a refreshed set needs no code.
+
 ### Media-only vendors
 
 ElevenLabs and Stability AI make media and no text, so models.dev, a

@@ -48,11 +48,15 @@ import GallerySpecimen from '../components/GallerySpecimen.vue'
 import { useGalleryView } from '../gallery-views'
 
 const { view } = useGalleryView()
-/** A subscription, two vendors, and a vendor with no mark, which shows its initial. */
+/**
+ * A subscription, two vendors with models.dev's marks, one with a mark kept
+ * by hand, and a vendor with no mark, which shows its initial.
+ */
 const vendorMarks = [
   { label: 'Claude Code', src: providerLogo({ kind: 'subscription', providerType: 'claude-code', vendorId: null }) },
   { label: 'Anthropic', src: vendorLogo('anthropic') },
-  { label: 'OpenAI', src: vendorLogo('openai') },
+  { label: 'Volcengine', src: vendorLogo('volcengine') },
+  { label: 'BytePlus', src: vendorLogo('byteplus') },
   { label: 'Ollama', src: vendorLogo('ollama') },
 ]
 /** The accounts the Avatar specimens draw: two words, one word, one CJK character, only an email, two letters. */
@@ -1125,7 +1129,7 @@ const DEVICE_STATES: { variant: string; state: DeviceState | null; mark: DeviceM
 
       <GallerySection
         title="VendorMark"
-        note="A vendor’s mark in the text’s color, from the one map of marks (vendor-logos): a subscription wears its vendor’s, Claude Code Claude’s own; a vendor without a mark shows its initial. Bare at a row’s size as a menu row’s icon or a dropdown’s face, small on a tile in lists, medium beside a title."
+        note="A vendor’s mark in the text’s full ink, hidden from assistive technology since a name always stands beside it, found by the vendor’s ID among the marks’ files (vendor-logos), models.dev’s or kept by hand: a subscription wears its vendor’s, Claude Code Claude’s own; a vendor without a mark shows its initial. Bare at a row’s size as a menu row’s icon or a dropdown’s face, small on a tile in lists, medium beside a title."
       >
         <div class="specimen-row">
           <GallerySpecimen v-for="mark in vendorMarks" :key="mark.label" :variant="mark.label">

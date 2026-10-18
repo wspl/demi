@@ -64,6 +64,7 @@ const ACCEPTED: [&str; 18] = [
 /// package, with its notice in the repository.
 struct Library {
     name: &'static str,
+    /// Empty for one its source does not version.
     version: &'static str,
     license: &'static str,
     /// Its notice, from the repository's root.
@@ -74,8 +75,9 @@ struct Library {
 /// (`mobile.md` § iOS); openatx's UI automation server, demi-mobile's
 /// Android helper, and Cisco's OpenH264 binary, which demi-mobile downloads
 /// for the Android view and whose binary license asks the product to credit
-/// it (`mobile.md` § Android).
-const LIBRARIES: [Library; 3] = [
+/// it (`mobile.md` § Android); and the vendors' marks the web app shows,
+/// models.dev's and Simple Icons' (`providers.md` § Vendors from models.dev).
+const LIBRARIES: [Library; 5] = [
     Library {
         name: "idb",
         version: "1.7.6",
@@ -93,6 +95,18 @@ const LIBRARIES: [Library; 3] = [
         version: "2.6.0",
         license: "BSD-2-Clause",
         notice: "crates/command-package-mobile/android/LICENSE-openh264",
+    },
+    Library {
+        name: "models.dev logos",
+        version: "",
+        license: "MIT",
+        notice: "packages/web-ui/src/settings/logos/LICENSE-models.dev",
+    },
+    Library {
+        name: "Simple Icons",
+        version: "",
+        license: "CC0-1.0",
+        notice: "packages/web-ui/src/settings/logos/LICENSE-simple-icons",
     },
 ];
 
@@ -410,9 +424,13 @@ fn render(crates: &[Notice], packages: &[Notice], libraries: &[Notice]) -> Strin
         for notice in notices {
             let _ = write!(out, "\n{}\n{}\n\n", notice.license, "-".repeat(notice.license.len()));
             for package in &notice.packages {
+                let _ = write!(out, "{}", package.name);
+                if !package.version.is_empty() {
+                    let _ = write!(out, " {}", package.version);
+                }
                 let _ = match &package.source {
-                    Some(source) => writeln!(out, "{} {}, source: {source}", package.name, package.version),
-                    None => writeln!(out, "{} {}", package.name, package.version),
+                    Some(source) => writeln!(out, ", source: {source}"),
+                    None => writeln!(out),
                 };
             }
             let _ = write!(out, "\n{}\n", notice.text);
@@ -435,14 +453,19 @@ mod tests {
 
     /// The notices credit Cisco's OpenH264 as its binary license asks,
     /// with that license's link, though the binary is downloaded at run
-    /// time rather than shipped. Planted defect this catches: OpenH264 left
-    /// out of the notices. Milliseconds.
+    /// time rather than shipped; and the sources of the vendors' marks,
+    /// which have no version. Planted defect this catches: OpenH264 or a
+    /// marks' source left out of the notices. Milliseconds.
     #[test]
-    fn the_notices_credit_ciscos_openh264() {
+    fn the_notices_credit_ciscos_openh264_and_the_marks_sources() {
         let notices = render(&[], &[], &libraries(&crate::repository()).unwrap());
         assert!(notices.contains("OpenH264 2.6.0"), "{notices}");
         assert!(notices.contains("OpenH264 Video Codec provided by Cisco Systems, Inc."));
         assert!(notices.contains("https://www.openh264.org/BINARY_LICENSE.txt"));
+        assert!(notices.contains("\nmodels.dev logos\n"));
+        assert!(notices.contains("Copyright (c) 2025 models.dev"));
+        assert!(notices.contains("\nSimple Icons\n"));
+        assert!(notices.contains("CC0 1.0 Universal"));
     }
 
     #[test]

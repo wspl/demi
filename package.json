@@ -31,7 +31,7 @@
     "changeset": "changeset",
     "changeset:version": "changeset version",
     "release": "bun run scripts/release.ts",
-    "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/plugin-browser/src ./packages/plugin-mobile/src ./packages/plugin-changes/src ./packages/plugin-file-browser/src ./packages/plugin-skills/src ./packages/web/src ./packages/web-gallery/src ./packages/browse/src ./scripts/__tests__ ./crates/command-package-browser-chrome/src/driver/capture ./crates/command-package-browser-chrome/src/page",
+    "test": "bun run contracts && DEMI_TEST_PROGRAMS=target/debug bun scripts/test.ts --preload ./scripts/vite-glob.ts --conditions development --parallel --timeout=20000 ./packages/utils/src ./packages/conversation-client/src ./packages/protocol/src ./packages/web-ui/src ./packages/plugin-browser/src ./packages/plugin-mobile/src ./packages/plugin-changes/src ./packages/plugin-file-browser/src ./packages/plugin-skills/src ./packages/web/src ./packages/web-gallery/src ./packages/browse/src ./scripts/__tests__ ./crates/command-package-browser-chrome/src/driver/capture ./crates/command-package-browser-chrome/src/page",
     "web:gallery": "bun scripts/web-gallery.ts",
     "web:dev": "bun scripts/web-dev.ts",
     "web:build": "bun run build"
