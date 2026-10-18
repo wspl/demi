@@ -27,7 +27,7 @@ const METRICS = [
   { control: 'Buttons with a label', face: '36 px (small), 40 px, 44 px (large)', icon: '16 px', text: '15 px' },
   { control: 'Work rows, Settings’ rows and list items', face: '44 px', icon: '18 px', text: '15 px; Settings 17 px' },
   { control: 'The work panel’s, Agents’ and Running’s tabs, in a 44 px bar', face: '36 px, 4 px above and below', icon: '18 px', text: '15 px' },
-  { control: 'Chips under the composer: the model, the workflow, Running, Agents', face: '32 px', icon: '16 px', text: '15 px' },
+  { control: 'Chips under the composer: the model, the workflow, Agents, Running', face: '32 px', icon: '16 px', text: '15 px' },
   { control: 'File-change pills under a work row', face: '28 px, 8 px apart', icon: '16 px', text: '13 px' },
   { control: 'Segmented controls', face: '36 px', icon: '18 px', text: '15 px' },
   { control: 'Form fields', face: '44 px', icon: '—', text: '16 px' },

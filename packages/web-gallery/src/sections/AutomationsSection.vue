@@ -40,7 +40,7 @@ const loaded = ref(0)
     </GallerySection>
     <GallerySection
       title="A Conversation Automations Wake"
-      note="A conversation an automation wakes shows a chip above its composer beside Running and Agents: the bolt and the count. It opens a menu upward of the automations, each by its name and trigger, a paused one dimmed; an entry opens that automation. Its sidebar row shows the bolt before the device mark, a mark only: Price watch is woken by one automation, Orders dashboard by two, one of them paused. The run's message in the transcript is marked with its automation."
+      note="A conversation an automation wakes shows a chip above its composer after Agents and Running: the bolt and the count. It opens a menu upward of the automations, each by its name and trigger, a paused one dimmed; an entry opens that automation. Its sidebar row shows the bolt before the device mark, a mark only: Price watch is woken by one automation, Orders dashboard by two, one of them paused. The run's message in the transcript is marked with its automation."
     >
       <div class="flex w-full flex-col gap-6">
         <GalleryAutomationsApp :start="{ kind: 'conversation', id: 'c-price-watch' }" />

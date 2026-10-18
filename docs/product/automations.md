@@ -189,7 +189,7 @@ the page and the automation, with Move to Conversations at its end. Opening
 it marks the run read.
 
 A conversation an automation wakes, its target, shows a chip above its
-composer beside *Running* and *Agents*: the automations' bolt and the
+composer after *Agents* and *Running*: the automations' bolt and the
 count, *2 Automations*. Clicking it opens a menu upward, one entry per automation
 with its name and trigger, a paused one dimmed, as *Agents* lists the
 subagents; an entry opens that automation. Its sidebar row shows the bolt

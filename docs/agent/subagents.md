@@ -1432,7 +1432,8 @@ blocks are for nested UI, such as cards and inspection, not a second
 user-facing reply.
 
 The dock's agents chip counts live children only: *2 Agents* while two run,
-beside the terminal chip's *N Running*, and shows only while one runs, as
+before the terminal chip's *N Running*, the agents first since they are the
+work the user follows, the commands its means, and shows only while one runs, as
 the Running chip shows only while a command runs. A finished child stays one
 click away where the transcript names it: its receipt's name and a link to it
 open the Agents window on its tab ([Linking an agent](#linking-an-agent)). The panel's tabs are the live children: the chip opens it

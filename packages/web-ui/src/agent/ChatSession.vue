@@ -823,15 +823,15 @@ watch(
                 <Settings2 :size="ICON_PX.in28" />
                 {{ t('dock.openProviders') }}
               </SessionDockChip>
-              <TerminalChip
-                :terminals="terminals"
-                :open="activeTerminalId !== null"
-                @open="toggleTerminals"
-              />
               <AgentsChip
                 :agents="shownAgents"
                 :open="agentsOpen"
                 @open="toggleAgents"
+              />
+              <TerminalChip
+                :terminals="terminals"
+                :open="activeTerminalId !== null"
+                @open="toggleTerminals"
               />
               <AutomationsChip
                 v-if="automations?.length"
