@@ -14,6 +14,7 @@ import { reportError } from '@demicodes/web-ui/infra/errors'
 import { t } from './locales/text'
 import {
   openSocket,
+  pingOn,
   waitToReconnect,
   watchSilence,
   type ReconnectWait,
@@ -128,7 +129,7 @@ export class DeviceSignaling implements PeerSignaling {
       if (this.socket !== socket)
         return
       opened = true
-      this.silence = watchSilence('direct channel signaling socket', () => this.lose(socket))
+      this.silence = watchSilence('direct channel signaling socket', () => this.lose(socket), pingOn(socket))
       this.failures = 0
       this.opened()
     })
@@ -170,6 +171,9 @@ export class DeviceSignaling implements PeerSignaling {
       return
     }
     if (message.type === 'pong') {
+      // The backend's answer to the return's ping and the runner's to a
+      // relay probe are the same message; each side takes the ids it sent.
+      this.silence?.ponged(message.id)
       for (const listener of [...this.pongs])
         listener(message.id)
       return

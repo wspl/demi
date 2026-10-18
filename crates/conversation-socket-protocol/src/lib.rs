@@ -9,12 +9,14 @@
 //! tolerant, so a page accepts fields it does not know.
 
 mod client;
+mod ping;
 mod server;
 mod transcript;
 
 pub use client::{
     ClientContent, ClientFrame, ClientFrameKind, EditRequest, MediaRef, RegenerateRequest, SavedDelivery,
 };
+pub use ping::PagePing;
 pub use server::{
     AbortResult, AbortTarget, AgentCode, CommandView, EditOutcome, Failures, JobModel, JobPhase, Refusal,
     ServerFrame, RemoveOutcome, ShellStatus, SteerOutcome, SubagentChild, SubagentEvent, SubagentJob, SubagentSummary,

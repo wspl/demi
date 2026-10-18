@@ -5,6 +5,7 @@
  * Automatic's choice until the next one.
  */
 import type { PathFigures } from '@demicodes/web-ui/devices/direct'
+import { nextPingId } from '@demicodes/web-ui/transport/liveness'
 
 /** The probes a measurement sends on each path. */
 export const MEASURE_PROBES = 20
@@ -36,9 +37,6 @@ export interface Measured {
   relay: PathFigures | null
 }
 
-/** Probe ids grow across measurements, so a late answer of an earlier one is never taken for one of this one's. */
-let nextProbeId = 1
-
 /** One path's probes of a measurement. */
 class PathRun {
   private readonly sent = new Map<number, number>()
@@ -68,8 +66,9 @@ class PathRun {
   }
 
   probe(): void {
-    const id = nextProbeId
-    nextProbeId = (nextProbeId % 0xffff_ffff) + 1
+    // Ids grow across measurements, and with the return's pings, so a late
+    // answer of another ping is never taken for one of this run's.
+    const id = nextPingId()
     this.sent.set(id, this.clock.now())
     this.path.send(id)
   }

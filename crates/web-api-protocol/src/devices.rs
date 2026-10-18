@@ -349,7 +349,9 @@ pub enum DirectMessage {
     /// A candidate the runner found after its answer, such as the address a
     /// STUN server saw it at; it may come before the answer.
     Candidate { candidate: String },
-    /// The runner's answer to the page's probe `id`.
+    /// The runner's answer to the page's probe `id`, or the backend's own,
+    /// at once, to the page's `{ ping: id }` (`web-application.md`
+    /// § Liveness and reconnection).
     Pong { id: u32 },
     /// The runner did not answer the page's last offer.
     Unanswered { code: Unanswered },

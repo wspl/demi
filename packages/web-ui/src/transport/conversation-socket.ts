@@ -1,5 +1,5 @@
 import { ConversationClient, createWebSocketTransport } from '@demicodes/conversation-client'
-import { openSocket, watchSilence } from './liveness'
+import { openSocket, pingOn, watchSilence } from './liveness'
 
 /**
  * The connection itself could not be made, was lost, or went silent: a
@@ -52,12 +52,14 @@ export function connectConversationClient(url: string, signal?: AbortSignal): Pr
       })
       const silence = watchSilence('conversation socket', () => {
         client.disconnect(new ConversationSocketError('The agent socket went silent'))
-      })
+      }, pingOn(socket))
       const heard = () => silence.heard()
       socket.addEventListener('message', heard)
       // Every end of the client, the watch's own included, disconnects it.
       client.subscribe((event) => {
-        if (event.type === 'disconnected') {
+        if (event.type === 'pong') {
+          silence.ponged(event.id)
+        } else if (event.type === 'disconnected') {
           silence.stop()
           socket.removeEventListener('message', heard)
         }

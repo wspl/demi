@@ -686,6 +686,33 @@ async fn the_channel_opens_for_a_signed_in_page_of_the_product_and_ends_with_its
     assert_eq!(closed, (1001, "backend_closing".to_owned()));
 }
 
+/// A page that returns asks each socket that still looks open whether it is
+/// alive, with `{ ping: id }`, and only a `pong` that comes at once tells it
+/// so (`web-application.md` § Liveness and reconnection): the channel
+/// answers while it is busy with a change, ahead of that change, and a
+/// conversation socket answers beside its frames. Cost: one backend, no
+/// waits beyond the messages.
+#[tokio::test]
+async fn each_socket_of_a_page_answers_a_ping_at_once_ahead_of_what_it_has_yet_to_send() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    create(&backend, &master, FIRST).await;
+    let mut page = backend.sync(&master).await;
+    page.snapshot().await;
+    let held = backend.hold_sync(SyncStep::Changes);
+    theme(&backend, &master, "dark").await;
+    held.until_arrived(1).await;
+    page.send_text(r#"{"ping":7}"#).await;
+    assert_eq!(page.next().await, SyncEvent::Pong { id: 7 });
+    held.release();
+    assert!(themed(&page.next().await, Theme::Dark));
+
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.send_text(r#"{"ping":8}"#.to_owned()).await;
+    assert_eq!(socket.frame().await, ServerFrame::Pong { id: 8 });
+    backend.close().await;
+}
+
 /// A page tells a quiet socket from one that died without a close by the
 /// heartbeat each of its sockets sends once it has sent nothing else for the
 /// interval (`web-application.md` § Liveness and reconnection): the channel

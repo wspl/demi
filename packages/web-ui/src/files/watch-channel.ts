@@ -55,11 +55,17 @@ export type WatchMessage =
   | { type: 'renewed'; keys: string[] }
   | { type: 'offline' }
   | { type: 'heartbeat' }
+  | { type: 'pong'; id: number }
 
 /** What one connection of a watch tells the watch. */
 export interface WatchLinkHandlers {
-  /** It opened: what it says from now on counts. */
-  opened(): void
+  /**
+   * It opened: what it says from now on counts. With `ping`, which sends
+   * the far end a ping it answers with `pong`, as the backend's relay does
+   * and a direct channel's runner does not, the page's return asks it
+   * whether it is alive (`web-application.md` § Liveness and reconnection).
+   */
+  opened(ping?: (id: number) => void): void
   message(message: WatchMessage): void
   /** It closed, failed, or brought what did not read. */
   closed(): void
@@ -268,11 +274,11 @@ export class WatchChannel {
     let link: WatchLink | null = null
     const current = () => link !== null && this.link === link
     link = this.open({
-      opened: () => {
+      opened: (ping) => {
         if (!current())
           return
         this.opened = true
-        this.silence = watchSilence(this.name, () => this.lose(link!))
+        this.silence = watchSilence(this.name, () => this.lose(link!), ping)
         this.renewal = setInterval(() => this.renew(), RENEW_MS)
         this.toSubscribe.clear()
         this.toUnsubscribe.clear()
@@ -333,6 +339,9 @@ export class WatchChannel {
   private receive(message: WatchMessage): void {
     switch (message.type) {
       case 'heartbeat':
+        return
+      case 'pong':
+        this.silence?.ponged(message.id)
         return
       case 'live': {
         const subscription = this.carried.get(message.key)

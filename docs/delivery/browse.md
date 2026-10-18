@@ -123,7 +123,9 @@ conversation no longer runs, its subagents and background jobs included.
   nor drop one without a close. `demi.net.latency(ms)`, `.bandwidth(kbps)`,
   `.offline()`, `.unreachable()` (the page's traffic goes nowhere while the
   browser still reports a network), `.cut(pattern)` (sockets close without a
-  close frame, as a lost connection does) and `.reset()`. They apply to the
+  close frame, as a lost connection does), `.stall(pattern)` (open
+  connections go silent without closing, as one the phone's system cut while
+  the page was in the background, while new ones still work) and `.reset()`. They apply to the
   app's requests and sockets; the development server's own files stay fast.
   The web app's live-update connection bypasses the forwarder, so a restart of
   the tool never reloads the page.

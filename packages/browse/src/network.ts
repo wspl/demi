@@ -1,7 +1,8 @@
 // The slot's network (browse.md § What `demi` adds): the browser reaches
 // the web app through this forwarder, which passes each of the page's
 // connections, requests and sockets alike, on to the web server, and adds
-// what `demi.net` sets: latency, a bandwidth limit, an offline spell, or a cut.
+// what `demi.net` sets: latency, a bandwidth limit, an offline spell, a cut,
+// or a stall of connections already open.
 // The browser's own network emulation cannot do these to a WebSocket, and
 // cannot end a connection without a close.
 //
@@ -27,6 +28,8 @@ interface Connection {
   socket: boolean
   /** Whether its latest request is the app's with its backend, which latency and bandwidth slow. */
   paced: boolean
+  /** Whether it carries nothing more either way, though it stays open ([`Network.stall`]). */
+  stalled: boolean
   lanes: Lane[]
 }
 
@@ -154,14 +157,17 @@ export class Network {
       requests: [],
       socket: false,
       paced: false,
+      stalled: false,
       lanes: [],
     }
     this.nextId += 1
     this.connections.set(connection.id, connection)
     client.on('data', (chunk: Buffer) => this.observe(connection, chunk))
-    const conditions = (): Conditions => connection.paced
-      ? this.conditions
-      : { ...NORMAL, reach: this.conditions.reach }
+    const conditions = (): Conditions => connection.stalled
+      ? { ...NORMAL, reach: 'unreachable' }
+      : connection.paced
+        ? this.conditions
+        : { ...NORMAL, reach: this.conditions.reach }
     connection.lanes = [new Lane(client, server, conditions), new Lane(server, client, conditions)]
     // A failure on either side ends both at once, as a broken connection
     // does; the connection is gone once both sides have closed.
@@ -247,6 +253,26 @@ export class Network {
     return cut
   }
 
+  /**
+   * Holds, from now on and in both ways, what every open connection a
+   * request of which matches `pattern` carries, and keeps it open: the
+   * page's socket goes silent without a close, as one a phone's system cut
+   * while the page was in the background does, and new connections go
+   * through. Answers what it stalled.
+   */
+  stall(pattern: string | RegExp): string[] {
+    const matches = (request: string) => typeof pattern === 'string' ? request.includes(pattern) : pattern.test(request)
+    const stalled: string[] = []
+    for (const connection of this.connections.values()) {
+      if (connection.stalled || !connection.requests.some(matches)) {
+        continue
+      }
+      connection.stalled = true
+      stalled.push(describe(connection))
+    }
+    return stalled
+  }
+
   /** The open connections, one line each. */
   list(): string[] {
     return [...this.connections.values()].map(describe)
@@ -262,7 +288,7 @@ export class Network {
 }
 
 function describe(connection: Connection): string {
-  const kind = connection.socket ? 'socket' : 'http'
+  const kind = `${connection.socket ? 'socket' : 'http'}${connection.stalled ? ' (stalled)' : ''}`
   const last = connection.requests.at(-1) ?? '(no request yet)'
   const age = ((Date.now() - connection.opened) / 1000).toFixed(1)
   return `${kind} ${last} (open ${age} s)`

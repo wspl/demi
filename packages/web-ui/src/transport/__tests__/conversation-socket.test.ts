@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, jest, test } from 'bun:test'
 import { ConversationSocketError, connectConversationClient } from '../conversation-socket'
-import { pageReturned } from '../liveness'
+import { reportPageErrorsWith } from '../../infra/errors'
+import { followPage, pageReturned, pageWentAway, pendingReturnCheck } from '../liveness'
 import { playSockets } from './test-socket'
 
 let sockets: ReturnType<typeof playSockets>
@@ -70,11 +71,62 @@ test('a socket that brings nothing for 75 seconds is let go as broken, and each 
   }
 })
 
-// `web-application.md` § Liveness and reconnection: the return reads what
-// came in while the page was away before it judges a socket. Cost: fake
+/** Collects the page's error reports until the answer is called. */
+function collectReports(): { messages: string[]; stop: () => void } {
+  const messages: string[] = []
+  const stop = reportPageErrorsWith(async (report) => {
+    messages.push(report.message)
+    return null
+  })
+  return { messages, stop }
+}
+
+// `web-application.md` § Liveness and reconnection: what the return reads
+// may have waited in the browser since before the page went away, so only
+// a pong to the return's own ping shows the socket alive. Cost: fake
 // timers, a few milliseconds.
-test('a page back from a long freeze reads the heartbeat its socket holds before it judges the socket, and keeps it', async () => {
+test('a page back with a heartbeat that waited in its queue asks its socket for a pong, and replaces a socket that brings none within 5 seconds', async () => {
   jest.useFakeTimers()
+  const reports = collectReports()
+  try {
+    const opening = connectConversationClient('ws://fixture')
+    const socket = sockets.last()
+    socket.open()
+    const client = await opening
+    const endings: unknown[] = []
+    client.subscribe((event) => {
+      if (event.type === 'disconnected') {
+        endings.push(event.error)
+      }
+    })
+    // The phone's system cut the connection without a close while the page
+    // was away; the heartbeat that came just before waits in the tab's
+    // queue, delivered once the tab runs again.
+    jest.setSystemTime(Date.now() + 120_000)
+    setTimeout(() => socket.receive({ type: 'heartbeat' }), 0)
+    const returned = pageReturned()
+    jest.advanceTimersByTime(0)
+    expect(socket.pings).toHaveLength(1)
+    jest.advanceTimersByTime(4_999)
+    jest.advanceTimersByTime(0)
+    expect(socket.closed).toBe(false)
+    jest.advanceTimersByTime(1)
+    // The judgement waits for the messages already queued.
+    jest.advanceTimersByTime(0)
+    expect(socket.closed).toBe(true)
+    expect(endings).toHaveLength(1)
+    expect(endings[0]).toBeInstanceOf(ConversationSocketError)
+    expect(reports.messages).toEqual(['The conversation socket brought no pong at return within 5 seconds'])
+    await returned
+  } finally {
+    reports.stop()
+    jest.useRealTimers()
+  }
+})
+
+test('a page back whose socket answers the return\'s ping keeps it, and the return ends with the pong', async () => {
+  jest.useFakeTimers()
+  const reports = collectReports()
   try {
     const opening = connectConversationClient('ws://fixture')
     const socket = sockets.last()
@@ -84,23 +136,114 @@ test('a page back from a long freeze reads the heartbeat its socket holds before
     client.subscribe((event) => {
       disconnected ||= event.type === 'disconnected'
     })
-    // The browser froze the hidden tab for 80 seconds: the clock went on,
-    // the watch's timer did not, and the heartbeat the backend sent meanwhile
-    // waits in the tab's queue, delivered once the tab runs again, after the
-    // event that says the page is visible.
-    jest.setSystemTime(Date.now() + 80_000)
-    setTimeout(() => socket.receive({ type: 'heartbeat' }), 0)
+    // Away for less than the silence the watch allows by the clock.
+    jest.setSystemTime(Date.now() + 60_000)
+    let ended = false
+    const returned = pageReturned().then(() => {
+      ended = true
+    })
+    jest.advanceTimersByTime(0)
+    const [id] = socket.pings
+    await Promise.resolve()
+    expect(ended).toBe(false)
+    socket.receive({ type: 'pong', id: id! })
+    await returned
+    jest.advanceTimersByTime(5_000)
+    jest.advanceTimersByTime(0)
+    expect(socket.closed).toBe(false)
+    expect(disconnected).toBe(false)
+    expect(reports.messages).toEqual([])
+    // Its watch would otherwise be asked at the next test's return.
+    client.disconnect()
+  } finally {
+    reports.stop()
+    jest.useRealTimers()
+  }
+})
+
+// A pong that answers an earlier return's ping says nothing of the socket
+// after the page went away again. Cost: fake timers, a few milliseconds.
+test('a page that goes away again before its ping is answered asks again at the next return, and an old pong does not keep a dead socket', async () => {
+  jest.useFakeTimers()
+  try {
+    const opening = connectConversationClient('ws://fixture')
+    const socket = sockets.last()
+    socket.open()
+    const client = await opening
+    jest.setSystemTime(Date.now() + 60_000)
+    pageReturned()
+    jest.advanceTimersByTime(0)
+    expect(socket.pings).toHaveLength(1)
+    // Hidden again before the pong; the connection dies meanwhile, after
+    // the pong to the first ping reached the browser, which delivers it
+    // only once the page runs again.
+    pageWentAway()
+    jest.advanceTimersByTime(1_000)
+    setTimeout(() => socket.receive({ type: 'pong', id: socket.pings[0]! }), 0)
     const returned = pageReturned()
     jest.advanceTimersByTime(0)
-    await returned
-    expect(disconnected).toBe(false)
+    expect(socket.pings).toHaveLength(2)
+    jest.advanceTimersByTime(4_999)
+    jest.advanceTimersByTime(0)
     expect(socket.closed).toBe(false)
-    // The heartbeat started its silence again.
-    jest.advanceTimersByTime(75_000)
-    // The judgement waits for the messages already queued.
+    jest.advanceTimersByTime(1)
     jest.advanceTimersByTime(0)
     expect(socket.closed).toBe(true)
+    await returned
+    client.disconnect()
   } finally {
+    jest.useRealTimers()
+  }
+})
+
+test('a socket still opening when the page went away is abandoned at its return, and one opened since is left to open', async () => {
+  jest.useFakeTimers()
+  try {
+    const before = connectConversationClient('ws://fixture').catch((error: unknown) => error)
+    const opening = sockets.last()
+    pageWentAway()
+    const since = connectConversationClient('ws://fixture')
+    const later = sockets.last()
+    pageReturned()
+    jest.advanceTimersByTime(0)
+    expect(opening.closed).toBe(true)
+    // A transport failure, which the runtime answers by connecting again.
+    expect(await before).toBeInstanceOf(ConversationSocketError)
+    expect(later.closed).toBe(false)
+    later.open()
+    ;(await since).disconnect()
+  } finally {
+    jest.useRealTimers()
+  }
+})
+
+test('the browser showing the page from its back-forward cache, or resuming a frozen page, is a return; a first show is not', async () => {
+  jest.useFakeTimers()
+  const window = new EventTarget()
+  const document = Object.assign(new EventTarget(), { visibilityState: 'visible' as DocumentVisibilityState })
+  const stop = followPage(window, document)
+  try {
+    const opening = connectConversationClient('ws://fixture')
+    const socket = sockets.last()
+    socket.open()
+    const client = await opening
+    window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: false }))
+    jest.advanceTimersByTime(0)
+    expect(socket.pings).toHaveLength(0)
+    window.dispatchEvent(new Event('pagehide'))
+    window.dispatchEvent(Object.assign(new Event('pageshow'), { persisted: true }))
+    jest.advanceTimersByTime(0)
+    expect(socket.pings).toHaveLength(1)
+    socket.receive({ type: 'pong', id: socket.pings[0]! })
+    await pendingReturnCheck()
+    document.dispatchEvent(new Event('freeze'))
+    document.dispatchEvent(new Event('resume'))
+    jest.advanceTimersByTime(0)
+    expect(socket.pings).toHaveLength(2)
+    socket.receive({ type: 'pong', id: socket.pings[1]! })
+    client.disconnect()
+  } finally {
+    stop()
     jest.useRealTimers()
   }
 })

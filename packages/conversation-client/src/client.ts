@@ -799,6 +799,11 @@ export class ConversationClient {
       // (`rendering.md` § Order and delivery); it changes nothing here.
       case 'heartbeat':
         return
+      // The answer to the page's ping as it returns, for the socket's
+      // liveness watch (`web-application.md` § Liveness and reconnection).
+      case 'pong':
+        this.emit(frame)
+        return
     }
   }
 

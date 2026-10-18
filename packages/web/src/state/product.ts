@@ -4,7 +4,7 @@ import { z } from 'zod'
 import { schemaRefusal } from '@demicodes/protocol'
 import { errorMessage, reportError } from '@demicodes/web-ui/infra/errors'
 import { Slot, type SlotAnswer } from '@demicodes/web-ui/infra/slot'
-import { browserOnline, openSocket, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
+import { browserOnline, openSocket, pingOn, reconnectNow, waitToReconnect, waitWhileRestarting, watchSilence, type ReconnectWait, type SilenceWatch } from '@demicodes/web-ui/transport/liveness'
 import { connectionProblem } from '@demicodes/web-ui/transport/connection'
 import { t } from './locales/text'
 import { apiRequest, apiUrl, notifySessionEnded, readResponse, waitForBackendWith } from '../api/client'
@@ -31,7 +31,7 @@ const BACKEND_CLOSING = 1001
 const ABNORMAL_CLOSURE = 1006
 
 /** A message that carries one part of the product state, as a write's answer can. */
-export type PartEvent = Exclude<SyncEvent, { type: 'snapshot' | 'heartbeat' }>
+export type PartEvent = Exclude<SyncEvent, { type: 'snapshot' | 'heartbeat' | 'pong' }>
 
 /** A part of the product state, which a message or a write's answer replaces whole. */
 export type Part = `conversation:${string}` | `plugin:${string}` | Exclude<PartEvent['type'], 'conversation' | 'conversation_deleted' | 'plugin'>
@@ -412,7 +412,7 @@ export const useProduct = defineStore('product', () => {
       }
       opened = true
       // A channel that brings nothing, heartbeats included, for too long is broken.
-      silence = watchSilence('synchronization channel', replace)
+      silence = watchSilence('synchronization channel', replace, pingOn(channel))
       if (showing !== null) {
         sendShowing(channel)
       }
@@ -494,6 +494,10 @@ export const useProduct = defineStore('product', () => {
 
   function receive(event: SyncEvent): void {
     if (event.type === 'heartbeat') {
+      return
+    }
+    if (event.type === 'pong') {
+      silence?.ponged(event.id)
       return
     }
     if (event.type === 'snapshot') {
