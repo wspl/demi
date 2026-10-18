@@ -358,17 +358,16 @@ link's color, as GitHub shows it.
 | `http` or `https` URL | Opens in a new tab of the user's browser | Loaded from that URL |
 | `commit:3f2a9c1`, a commit of the repository the agent that wrote it worked in, by its id or at least 7 of its first hex digits | Opens the Change view in Commits mode on that commit ([Commits mode](../execution/edit-tracking.md#commits-mode)) | Its alt text |
 | `agent:4`, an agent of the conversation ([Linking an agent](../agent/subagents.md#linking-an-agent)) | Opens the Agents window on that agent's tab | Its alt text |
-| `attachment:a3`, an attachment of the conversation ([Attachment commands](../execution/commands.md#attachment-commands)) | Opens it: an image or a video in the [media viewer](#the-media-viewer), audio in its inline player, any other file as a download | An image shows; a video shows its first frame with a play mark, at an image's bounds, and a click plays it in the viewer; audio shows as an inline player with its name, length, play and a seek bar, as a voice message does in Messages, and plays where it is |
 | `data:` URL | Shown as text | Shown as it is |
 | Anything else | Shown as text | Its alt text |
 
 A Host path names the file as it is now: the image changes when the file
 does, and is gone with it, with the Host out of reach, with an archive or with
 a target change. A file the agent gives the user is therefore an attachment,
-a copy that stays; a Host path suits a file of the workspace the user should
-see as it is, such as a chart the repository keeps. An attachment number the
-conversation does not have shows its alt text with *No attachment a9 in this
-conversation*. A number above the conversation's latest names one still to
+a copy that stays, delivered as its block; a Host path suits a file of the workspace the user should
+see as it is, such as a chart the repository keeps. An attachment block whose number the
+conversation does not have shows *No attachment a9 in this
+conversation* in its place. A number above the conversation's latest names one still to
 come: for example, a reply names `a9` before the agent uploads it, and shows
 it missing; the upload stores `a9`, the conversation's summary carries 9 as
 its latest attachment ([Sidebar mutations and read state](web-api-conversations.md#sidebar-mutations-and-read-state)),
@@ -430,6 +429,48 @@ for each. Paths name files on the conversation's Host; a file on another Host
 the conversation reaches does not show. Loading an image is a Host operation,
 so it wakes a stopped Cloud like any other
 ([Sessions and targets](../execution/sessions-and-targets.md#host-operations)).
+
+### Attachment blocks
+
+A file the agent delivers to the user stands in its reply as a block of its
+own, as a file stands in a Notion or Feishu document, not as a link in a
+sentence. The agent writes `<attachment id="a3" />` on a line of its own,
+naming an attachment it uploaded ([Attachment commands](../execution/commands.md#attachment-commands)),
+and the reply shows it by what it is:
+
+- **An image or a video** as the reply shows one today, at an image's
+  bounds, a click opening it in the [media viewer](#the-media-viewer).
+- **Audio** as its inline player.
+- **Any other file** as a card the reply's width at most: the file's icon,
+  the one the file tree shows for it, at the left; its name, and its kind
+  and size in secondary text, *PDF Document · 2.4 MB*, the kind as the File
+  view names it, beside it; and
+  Download at the right end. A click on the card opens the file in the work
+  panel, previewed as the File view previews a file but from the
+  attachment's copy, with its name, its size and Download in the preview's
+  bar; only Download downloads.
+
+Images and videos on consecutive lines sit side by side as a reply's images
+do; cards stack, each its own. In a shared conversation a card shows its
+name, kind and size and Download, and a click on it does nothing else, as a
+share has no work panel.
+
+What is a block is decided once, by one rule both the page that renders a
+reply and the backend that lists a reply's attachments for a share follow,
+so a share serves exactly the files its reply shows and no other: a line
+whose whole content, after the Markdown that places it (a list item's
+marker, a quote's `>`), is the tag. The tag is `<attachment id="a3" />`, the
+space before `/>` optional and nothing else varying: single quotes, a
+closing `</attachment>` or another attribute make it text. A tag in code
+(fenced, indented or inline), in an HTML comment or block, or in a line
+with anything else on it, emphasis included, is text, and names no
+attachment the share serves. The block is the only way
+a reply shows an attachment: a link or an image whose address is
+`attachment:a3` is an address the reply does not open, shown as its text, as
+any other one is. The tag in the middle of a sentence is not a block and
+shows as its text, as Markdown shows a tag it does not render. A number the conversation does not have
+shows *No attachment a9 in this conversation* in the block's place, and a
+number still to come shows once the upload stores it, as below.
 
 ## Media a tool returned
 

@@ -1,7 +1,7 @@
 //! The product's `demi attachment` group (`commands.md` § Attachment
 //! commands): `upload` copies files of the Host into the conversation as
-//! attachments `a1`, `a2`, …, which the agent's messages then show as
-//! `attachment:a3`. The runner of the invocation's Host, the conversation's
+//! attachments `a1`, `a2`, …, which the agent's messages then deliver as
+//! `<attachment id="a3" />` blocks. The runner of the invocation's Host, the conversation's
 //! primary Host or an attached one a `demi host shell` job runs on, first
 //! hashes each file beside the invocation, through the conversation's host
 //! access, and refuses one over 25 MiB before reading a byte; a blob the
@@ -42,9 +42,9 @@ const SUMMARY: &str = "Give the user files of this host as attachments of the co
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Gives the user files from the Host as attachments of the conversation, which stay viewable whatever later becomes of the file. Use it to deliver a screenshot, a recording, a download or a file you made, and embed it in your reply as `![…](attachment:a3)`. A file the user should see as it changes on the Host is linked by its path instead.";
+const ENTRY: &str = "Gives the user files from the Host as attachments of the conversation, which stay viewable whatever later becomes of the file. Use it to deliver a screenshot, a recording, a download or a file you made, and place it in your reply as `<attachment id=\"a3\" />` on a line of its own, and not also a link to its path.";
 
-const UPLOAD_SUMMARY: &str = "Copy files into the conversation as attachments a1, a2, ..., each kept as it is now, whatever later becomes of the file, and print each one's number. Show one in a message as ![description](attachment:a3): an image shows and a video plays; link any other file as [name](attachment:a3). A file is at most 25 MiB. Returns no medium: an attachment is for the user, not for you to see.";
+const UPLOAD_SUMMARY: &str = "Copy files into the conversation as attachments a1, a2, ..., each kept as it is now, whatever later becomes of the file, and print each one's number. Deliver one in your reply as <attachment id=\"a3\" /> on a line of its own, not also a link to its path: an image shows, a video and audio play, and any other file is a card the user opens. A file is at most 25 MiB. Returns no medium: an attachment is for the user, not for you to see.";
 
 /// What the media type falls back to when neither the bytes nor the file's
 /// name tell it.

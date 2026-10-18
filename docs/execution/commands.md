@@ -827,15 +827,16 @@ a3  out/login.png  image/png  421888 bytes
 a4  demo.mp4       video/mp4  8598311 bytes
 ```
 
-Its reply then shows both, the image as an image and the video playing in
-place ([Files named in messages](../product/file-previews.md#files-named-in-messages)):
+Its reply then delivers both as attachment blocks, each on a line of its
+own, the image showing as an image and the video playing in place
+([Attachment blocks](../product/file-previews.md#attachment-blocks)):
 
 ```markdown
 The sign-in page works again:
 
-![The fixed sign-in page](attachment:a3)
+<attachment id="a3" />
 
-![The flow from sign-in to the dashboard](attachment:a4)
+<attachment id="a4" />
 ```
 
 - **A copy, kept.** An attachment is the file's bytes as they were when the

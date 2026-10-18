@@ -440,25 +440,97 @@ fn keep_attachments(
     Ok(())
 }
 
-/// The attachments a text names by a link's or an image's target
-/// `attachment:a3`, as the web app's renderer reads them: the target,
-/// trimmed, is `attachment:` and the number whole (`attachmentId` in
-/// `packages/web-ui/src/markdown/filePath.ts`).
+/// The attachments a text delivers as blocks (`file-previews.md` §
+/// Attachment blocks): each line whose whole content, after the Markdown that
+/// places it (a list item's marker, a quote's `>`), is the tag
+/// `<attachment id="a3" />`, the space before `/>` optional. A tag in code, in
+/// an HTML comment or block, or among other content on its line names none,
+/// nor does a link or an image to `attachment:a3`. The web app's renderer
+/// follows the same rule (`packages/web-ui/src/markdown/attachment-block.ts`);
+/// both are held to the cases of
+/// `crates/shared-types/tests/shared-types/fixtures/attachment-blocks.json`.
+///
+/// CommonMark reads the tag as raw HTML, which starts an HTML block that runs
+/// on to the next blank line, while the renderer gives the tag's line a block
+/// of its own. So each tag is read as a word of its own first, a mark no text
+/// holds, and a block is a paragraph's line that holds only that word: code,
+/// an HTML block or comment keep it as their text, emphasis wraps it, other
+/// words join it.
 pub fn named_attachments(text: &str) -> BTreeSet<AttachmentNumber> {
+    if !text.contains("<attachment") {
+        return BTreeSet::new();
+    }
+    let marked = mark_tags(text);
     let arena = Arena::new();
+    // The page's renderer reads GitHub's tables, strikethrough and autolinks
+    // and `$`-math too, each of which can take a tag's line as its text; the
+    // same extensions here keep the two on one reading.
     let mut options = Options::default();
+    options.extension.table = true;
+    options.extension.strikethrough = true;
     options.extension.autolink = true;
-    let root = parse_document(&arena, text, &options);
+    options.extension.math_dollars = true;
+    let root = parse_document(&arena, &marked, &options);
+    let alone = |node: Option<&comrak::nodes::AstNode<'_>>| {
+        node.is_none_or(|node| matches!(node.data.borrow().value, NodeValue::SoftBreak | NodeValue::LineBreak))
+    };
     root.descendants()
-        .filter_map(|node| match &node.data.borrow().value {
-            NodeValue::Link(link) | NodeValue::Image(link) => link
-                .url
-                .trim()
-                .strip_prefix("attachment:")
-                .and_then(|number| number.parse().ok()),
-            _ => None,
+        .filter_map(|node| {
+            let data = node.data.borrow();
+            let NodeValue::Text(word) = &data.value else {
+                return None;
+            };
+            let number = word.strip_prefix(TAG_MARK)?.strip_suffix(TAG_MARK)?.parse().ok()?;
+            let line = node.parent()?;
+            let line_data = line.data.borrow();
+            let placed = match &line_data.value {
+                NodeValue::Paragraph => true,
+                // The line above a rule, as in `<attachment id="a1" />` then `---`.
+                NodeValue::Heading(heading) => heading.setext,
+                _ => false,
+            };
+            // A line indented four columns past its paragraph is the
+            // paragraph's text, as it would be indented code at a block's start.
+            let indented = data.sourcepos.start.column >= line_data.sourcepos.start.column + 4;
+            (placed && !indented && alone(node.previous_sibling()) && alone(node.next_sibling())).then_some(number)
         })
         .collect()
+}
+
+/// What stands for a tag in the text CommonMark reads: a private-use
+/// character, which no Markdown syntax gives a meaning, on each side of the
+/// number.
+const TAG_MARK: char = '\u{E000}';
+
+/// `text` with each `<attachment id="a3" />` as the number between two
+/// [`TAG_MARK`]s.
+fn mark_tags(text: &str) -> String {
+    let mut marked = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("<attachment id=\"") {
+        marked.push_str(&rest[..start]);
+        let after = &rest[start + "<attachment id=\"".len()..];
+        let tag = after.split_once('"').and_then(|(id, tail)| {
+            let tail = tail.strip_prefix(' ').unwrap_or(tail).strip_prefix("/>")?;
+            let digits = id.strip_prefix('a')?;
+            let number = !digits.is_empty() && !digits.starts_with('0') && digits.bytes().all(|byte| byte.is_ascii_digit());
+            number.then_some((id, tail))
+        });
+        match tag {
+            Some((id, tail)) => {
+                marked.extend([TAG_MARK]);
+                marked.push_str(id);
+                marked.extend([TAG_MARK]);
+                rest = tail;
+            }
+            None => {
+                marked.push('<');
+                rest = &rest[start + 1..];
+            }
+        }
+    }
+    marked.push_str(rest);
+    marked
 }
 
 /// Removes the share `token`'s list and copies.
@@ -530,6 +602,27 @@ mod tests {
     // A share's list of a conversation's transcripts (`sharing.md` § Storage
     // and routes), made and read on a conversation database in a temporary
     // directory; a few milliseconds each.
+
+    /// Which attachments a share keeps of a text: exactly those its
+    /// blocks deliver, by the cases the web app's renderer is held to.
+    // Cost: parses thirty short texts, a millisecond.
+    #[test]
+    fn a_text_names_the_attachments_its_blocks_deliver() {
+        #[derive(serde::Deserialize)]
+        struct Case {
+            case: String,
+            text: String,
+            blocks: Vec<String>,
+        }
+        let cases: Vec<Case> = serde_json::from_str(include_str!(
+            "../../shared-types/tests/shared-types/fixtures/attachment-blocks.json"
+        ))
+        .unwrap();
+        for Case { case, text, blocks } in cases {
+            let named: Vec<String> = super::named_attachments(&text).into_iter().map(|number| number.to_string()).collect();
+            assert_eq!(named, blocks, "{case}");
+        }
+    }
 
     fn token() -> ShareToken {
         ShareToken::try_from("s1").unwrap()

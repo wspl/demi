@@ -444,7 +444,7 @@ async fn a_fork_keeps_the_attachments_of_its_source_and_numbers_on_from_them() {
         )
     };
     vendor.respond(shell("toolu_upload", "demi attachment upload shot.png"));
-    vendor.respond(answer(&["![The page](attachment:a1)"], 1, 1));
+    vendor.respond(answer(&["<attachment id=\"a1\" />"], 1, 1));
     source.chat("m1", "Show me").await;
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     let shown = texts(&blocks)[0].clone();

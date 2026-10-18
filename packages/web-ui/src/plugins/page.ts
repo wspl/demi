@@ -277,6 +277,14 @@ export interface PanelKind<Data, Session = undefined> {
   /** A tab's `data`, checked where saved state enters the page. */
   schema: z.ZodType<Data>
   title(data: Data, tab: KindTab<Session>): string
+  /**
+   * What makes a tab of a kind that is not pinned the one it is, such as an
+   * attachment's number: an intent whose new data has the key of a tab the
+   * strip holds selects that tab instead of adding another
+   * (`plugin-pages.md` § Intents). Without it, each intent adds a tab, as a
+   * browser opens each link in a tab of its own.
+   */
+  key?(data: Data): string
   /** The strip's mark. Props: `data`. */
   mark: Component
   /**
@@ -321,6 +329,7 @@ export interface PanelKind<Data, Session = undefined> {
     file?(payload: IntentPayloads['file'], current: Data | null): Data
     edit?(payload: IntentPayloads['edit'], current: Data | null): Data
     commit?(payload: IntentPayloads['commit'], current: Data | null): Data
+    attachment?(payload: IntentPayloads['attachment'], current: Data | null): Data
     web?(payload: IntentPayloads['web'], current: Data | null): Data
   }
 }

@@ -115,11 +115,14 @@ order:
   reading only the entry weighs the split against doing the work itself and
   keeps choosing to do it alone: the five-site pricing comparison took 140
   requests and six million input tokens in one context.
-- **Files for the user.** Replies render as Markdown. A file the user should
-  keep goes out as an attachment
-  ([Attachment commands](../execution/commands.md#attachment-commands)); a
-  Host path in a link or image shows the file as it is now. Images and
-  videos are embedded, other files linked.
+- **Files for the user.** Replies render as Markdown. A file delivered to
+  the user, one they asked for or the work made for them, an image included,
+  goes out as an attachment
+  ([Attachment commands](../execution/commands.md#attachment-commands)),
+  placed as its block, `<attachment id="a3" />` on a line of its own, and
+  alone, not also a link to its path: two links to one file leave the user
+  to tell them apart. A file the reply only mentions is linked by its path,
+  as the next rule says.
 - **Links in replies.** What the reply names that the user can open is a
   link, never bare code: a file of the Host is a link whose text is its
   short name and whose target is its path from the working directory, with
@@ -191,8 +194,8 @@ emphasis too eagerly and reaches for the capability where it does not fit.
 For example, `demi attachment`'s entry: "Gives the user files from the Host
 as attachments of the conversation, which stay viewable whatever becomes of
 the file. Use it to deliver a screenshot, a recording, a download or a file
-you made; embed it in your reply as `![…](attachment:a3)`. A file the user
-should see as it changes on the Host is linked by its path instead."
+you made; place it in your reply as `<attachment id="a3" />` on a line of its
+own, and not also a link to its path."
 
 A group whose whole help is under about 1,000 tokens and that nearly every
 conversation uses may list its operations' usage lines in place of their

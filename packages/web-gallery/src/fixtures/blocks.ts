@@ -692,7 +692,7 @@ export function viewerTranscriptBlocks(): Block[] {
     ...inRun(shots),
     {
       type: 'text', id: 'viewer-answer', createdAt: iso(580_000), model: demoModel,
-      text: 'The tabs differ only in the button. The test pattern and the whole page, from the workspace:\n\n![The test pattern](assets/photo.png)\n![The whole page](assets/page-full.png)\n\nAnd the timeline of the steps:\n\n![The timeline of the steps](attachment:a5)',
+      text: 'The tabs differ only in the button. The test pattern and the whole page, from the workspace:\n\n![The test pattern](assets/photo.png)\n![The whole page](assets/page-full.png)\n\nAnd the timeline of the steps:\n\n<attachment id=\"a5\" />',
     },
   ]
 }

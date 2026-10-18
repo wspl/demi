@@ -2250,6 +2250,17 @@ html[data-theme="light"] .file-pill {
   color: var(--fg-muted);
 }
 
+/* An attachment block's card stands on a line of its own, 12px from the
+   text above and below, as a lone medium does; cards on consecutive lines
+   stack 8px apart (`markdown/render.ts`). */
+.markdown-body .attachment-block {
+  margin-block: 12px;
+}
+
+.markdown-body .attachment-block + .attachment-block {
+  margin-block-start: -4px;
+}
+
 /* A capsule never makes its line taller and never reaches into the next
    line, at every text size, in a sent message as in the composer: its box,
    border and thumbnail included, is the line's height less 2 px, hung from

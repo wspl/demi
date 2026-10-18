@@ -37,7 +37,7 @@ const facts = computed(() => [
     <TruncatedText class="mt-1 max-w-full text-chrome text-fg" :text="name" />
     <div class="text-detail text-fg-muted">{{ facts }}</div>
     <div v-if="note" class="text-detail text-fg-muted">{{ note }}</div>
-    <Button v-if="download" class="mt-2" size="sm" @click="downloadUrl(download)">
+    <Button v-if="download" class="mt-2" size="sm" @click="downloadUrl(download, name)">
       <Download :size="ICON_PX.in24" />
       {{ t('actions.download') }}
     </Button>

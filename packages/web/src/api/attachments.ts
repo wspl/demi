@@ -67,6 +67,7 @@ async function ask(source: AttachmentSource, id: string, key: string): Promise<v
         name: attachment.name,
         mediaType: attachment.mediaType,
         url: source.blobUrl(attachment.blob, attachment.mediaType),
+        size: attachment.size,
         sha256: attachment.blob,
         width: attachment.width,
         height: attachment.height,

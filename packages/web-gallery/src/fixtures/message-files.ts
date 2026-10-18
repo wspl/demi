@@ -22,16 +22,19 @@ function isFile(root: MemoryDirectory, path: string): boolean {
  * `open`, and a commit a link names to `openCommit`. The Host's answer about a reply's inline code paths is the
  * gallery's: the files of its demo workspace, answered at once. A file link's Show in Files goes to
  * `showInFiles`, which outside a panel says what the product would do, and a commit link's Copy Commit
- * Hash reads the gallery's one repository.
+ * Hash reads the gallery's one repository. An attachment block's card opens its file through
+ * `openAttachment`, which outside a panel says what the product would do.
  */
 export function galleryConversationFiles(
   source: MemoryFileSource,
   open: NonNullable<ConversationFiles['open']>,
   openCommit: NonNullable<ConversationFiles['openCommit']>,
   showInFiles: NonNullable<ConversationFiles['showInFiles']> = ({ path }) => productWould(`Show ${baseName(path)} in the File View’s Tree`),
+  openAttachment: NonNullable<ConversationFiles['openAttachment']> = (_id, { name }) => productWould(`Open ${name} in the Work Panel`),
 ): ConversationFiles {
   return {
     openCommit,
+    openAttachment,
     home: source.home,
     contents: source.contents,
     attachment: galleryAttachment,

@@ -701,6 +701,9 @@ const sessionFiles = galleryConversationFiles(workspace.source, ({ path, line })
 }, ({ path }) => {
   panelWork.openIn({ intent: 'file', payload: { path, tree: true } })
   view.value = 'panel'
+}, (id, { name, size, url }) => {
+  panelWork.openIn({ intent: 'attachment', payload: { id, name, size, url } })
+  view.value = 'panel'
 })
 // The tabs specimen starts on an empty strip, which only the agent's tabs fill.
 const exhibitWork = useWorkTabs('file', { browser: galleryBrowser([]) })
@@ -2106,7 +2109,7 @@ onBeforeUnmount(() => {
       </GallerySection>
       <GallerySection
         title="Attachments in a Message"
-        note="What the agent gave the user with demi attachment upload, named as attachment:a3. Every image, and every video’s first frame with its play mark, is a tile: scaled down with its proportions kept to fit a third of the message’s width less the two 8px gaps, and 240px tall, never enlarged and never cropped, so three fill a line; the tall page and the wide timeline each show whole. Its box comes from its record’s pixel size before its bytes arrive and follows the message’s width; the demo’s record carries no size, so its frame is 16:9 until it arrives. Every image has a 1px edge in the theme’s faint line over its outermost pixels and the same small corner as the tile, so a screenshot on white or on dark does not melt into the page. A lone one stands on a line of its own 12px from the text above and below; images and videos that follow each other, with nothing but white space between them, stand side by side 8px apart and wrap. Resting the pointer on any of them for 300 ms shows it large in a card above it, with its alt text and pixel size under it; a phone shows none. A click shows an image large and plays a video in the viewer. A link opens the attachment, an image or a video in the viewer and any other file as a download, and a number the conversation does not have says so. In a list, a screenshot on the line after an item’s words stands on its own line under them, and two after an item’s words stand side by side under them."
+        note="What the agent gave the user with demi attachment upload, delivered as a block of its own: <attachment id=&quot;a3&quot; /> on a line of its own. An image, and a video’s first frame with its play mark, is a tile: scaled down with its proportions kept to fit a third of the message’s width less the two 8px gaps, and 240px tall, never enlarged and never cropped, so three fill a line; the tall page and the wide timeline each show whole. Its box comes from its record’s pixel size before its bytes arrive and follows the message’s width; the demo’s record carries no size, so its frame is 16:9 until it arrives. Every image has a 1px edge in the theme’s faint line over its outermost pixels and the same small corner as the tile, so a screenshot on white or on dark does not melt into the page. A lone one stands on a line of its own 12px from the text above and below; images and videos whose blocks follow each other stand side by side 8px apart and wrap. Resting the pointer on any of them for 300 ms shows it large in a card above it, with its name and pixel size under it; a phone shows none. A click shows an image large and plays a video in the viewer. Audio is its inline player. Any other file is a card, 360px wide at most, with the file tree’s icon, its name, and its kind and size: a click opens it in the work panel, previewed as the File view previews a file from the attachment’s copy, and only Download downloads; cards on consecutive lines stack. The tag in a sentence, and a link to attachment:a3, are text, and a number the conversation does not have says so in the block’s place. In a list, a screenshot’s block on the line after an item’s words stands on its own line under them, and two stand side by side under them."
       >
         <GallerySpecimen variant="a lone image" wide>
           <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="loneImageMarkdown" />
@@ -2123,7 +2126,7 @@ onBeforeUnmount(() => {
         <GallerySpecimen variant="a voice-over, played where it is" wide>
           <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="audioAttachmentMarkdown" />
         </GallerySpecimen>
-        <GallerySpecimen variant="links, a missing number, a recording of unknown size" wide>
+        <GallerySpecimen variant="files as cards, the tag in a sentence, a missing number, a recording of unknown size" wide>
           <GalleryMessageFiles :files="sessionFiles" :cwd="workspace.root" :content="attachmentMarkdown" />
         </GallerySpecimen>
         <GallerySpecimen variant="after a list item’s words" wide>

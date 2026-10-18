@@ -4012,7 +4012,7 @@ CREATE TABLE block_blobs (
   FOREIGN KEY (node_id, idx) REFERENCES blocks (node_id, idx) ON DELETE CASCADE
 ) STRICT, WITHOUT ROWID;
 CREATE INDEX block_blobs_by_blob ON block_blobs (blob);
--- Each attachment a block's text names by `attachment:a3`, by the block's
+-- Each attachment a block's text delivers as an attachment block, by the block's
 -- node and index; written with the block like block_blobs, so a share lists
 -- the attachments it shows without reading a block (`storage.md`).
 CREATE TABLE block_attachments (
@@ -5997,7 +5997,7 @@ mod tests {
             .unwrap();
         // The root's message names the blob, and its answer an attachment.
         let mut named = serde_json::to_value(reply("t0")).unwrap();
-        named["text"] = serde_json::json!("See ![the shot](attachment:a1).");
+        named["text"] = serde_json::json!("See the shot:\n\n<attachment id=\"a1\" />");
         let named: Block = serde_json::from_value(named).unwrap();
         connection
             .execute(

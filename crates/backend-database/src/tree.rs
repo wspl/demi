@@ -716,7 +716,7 @@ pub(crate) fn name_block(
         blob.execute(params![node, index, named.as_str()])?;
     }
     if let Block::Text(text) = block
-        && text.text.contains("attachment:")
+        && text.text.contains("<attachment")
     {
         let mut attachment = transaction.prepare_cached(
             "INSERT OR IGNORE INTO block_attachments (node_id, idx, attachment) VALUES (?1, ?2, ?3)",

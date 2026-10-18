@@ -182,6 +182,7 @@ its tabs.
 | `icon(data)` | The strip's icon for a tab, such as a page's favicon; the kind's own icon otherwise |
 | `commands(data)` | The kind's own entries in a tab's menu, ahead of the strip's Close entries, such as a browser tab's Reload |
 | `badge` | What the strip shows after a pinned tab's title, such as the Change view's counts (props: `conversation`, `data`) |
+| `key(data)` | What makes a tab of a kind that is not pinned the one it is, such as an attachment's number; an intent whose new data has the key of a tab the strip already holds selects that tab instead of adding another, as clicking a card a second time shows its file's tab again. A kind without it, such as the browser's, opens a new tab each time, as a browser does |
 | `intents` | The [intents](#intents) it opens: for each, the data its tab shows next, from the payload and the data the tab shows now, or none |
 | `shows(data)` | How many times something asked that the user see this tab, from its data. When the count is higher than the one the page last applied for the tab, the panel opens and selects the tab, whether the panel was open or closed, and records the count beside its selection history; the browser's agent-shown tabs use it ([Showing a tab](../browser/live-view.md#showing-a-tab)) |
 
@@ -214,11 +215,13 @@ by who shows it. The SDK defines each intent and its payload:
 | --- | --- | --- |
 | `file` | `{ path, tree? }`, an absolute path on the conversation's Host; `tree: true` shows the file's row in the File view's tree, selected and in view, the tree shown if it was hidden | A file a message names ([Files named in messages](../product/file-previews.md#files-named-in-messages)), an attachment's capsule, a Host image; *Show in Files* on a file link |
 | `web` | `{ url }`, an `http` or `https` address | *Open in Work Panel* on a link in a reply ([Context menus](../product/web-application.md#context-menus)) |
+| `attachment` | `{ id, name, size, url }`: the attachment's number, its file name, its size in bytes and the address of its stored copy | An attachment's card ([Attachment blocks](../product/file-previews.md#attachment-blocks)) |
 | `edit` | A request's changes: the agent (`node`, null for the conversation's own), the request, and a file with one call's edit of it (`{ call, segment }`) or null for All Changes ([A request](../execution/edit-tracking.md#a-request)) | A tool call's file pill, a request's changed-files line |
 
 To open an intent, the panel takes the first kind, in registration order, of
 a page the user has on that declares it. A pinned kind's tab takes the data
-the kind returns and is selected; another kind gets a new tab with that data,
+the kind returns and is selected; another kind selects the tab of the same
+`key`, when the strip holds one, and otherwise gets a new tab with that data,
 selected. The panel opens if it was closed. Whoever shows a control that opens
 an intent asks first whether any page opens it, and shows plain text
 otherwise.
