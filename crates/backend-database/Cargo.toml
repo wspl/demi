@@ -15,8 +15,8 @@ bench = false
 [features]
 # A control database with the master account and raw statements behind the
 # service's back (`control::testing`), for tests of what the service must
-# refuse; and a hold on the commits of the conversations' checkpoints
-# (`CommitHold`).
+# refuse, and a hold on its database thread, for tests of what waits for it;
+# and a hold on the commits of the conversations' checkpoints (`CommitHold`).
 testing = []
 
 [dependencies]

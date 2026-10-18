@@ -46,7 +46,7 @@ impl World {
         let log = logs.path().join("backend.log");
         let file = Arc::new(std::fs::File::create(&log).unwrap());
         let subscriber =
-            tracing::subscriber::set_default(tracing_subscriber::fmt().with_writer(file).finish());
+            demi_log_capture::capture(tracing_subscriber::fmt().with_writer(file).finish());
         let scripts = Arc::new(Scripts::default());
         let mut harness = Harness::new();
         harness.shards = Some(ShardPlacement::Inline);

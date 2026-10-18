@@ -657,6 +657,38 @@ pub mod testing {
         execute(control, "UPDATE devices SET home = ?1 WHERE id = ?2", vec![home.to_owned(), device.to_string()]).await;
     }
 
+    /// Keeps the control database's thread busy until the hold is dropped,
+    /// for a test that must find an operation waiting for the database
+    /// however the threads are scheduled: every call made while the hold
+    /// stands waits behind it.
+    pub async fn hold(control: &ControlService) -> DatabaseHold {
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (held, holding) = tokio::sync::oneshot::channel();
+        let control = control.clone();
+        // The work runs on the database thread whether or not the task
+        // still waits for it; the task ends once the hold is dropped.
+        tokio::spawn(async move {
+            control
+                .call(move |_, _| {
+                    // The test waits for this; a test gone already needs
+                    // no answer.
+                    let _ = held.send(());
+                    // Nothing is ever sent: the hold's drop, which ends the
+                    // receive with an error, is the release.
+                    let _ = released.recv();
+                    Ok(())
+                })
+                .await
+        });
+        holding.await.expect("the database thread takes the hold");
+        DatabaseHold { _release: release }
+    }
+
+    /// The database thread kept busy, until this is dropped.
+    pub struct DatabaseHold {
+        _release: std::sync::mpsc::Sender<()>,
+    }
+
     /// Runs `sql` on the control database with text parameters, for a test
     /// that changes a row behind the service's back.
     pub async fn execute(control: &ControlService, sql: &'static str, parameters: Vec<String>) {

@@ -82,7 +82,7 @@ async fn an_agent_asks_for_a_credential_and_pipes_the_answer_into_a_file_and_the
     // The backend's log, its debug lines included, as `main` writes it;
     // here it serves this test's thread and the shard threads its backend
     // starts.
-    let _log = tracing::subscriber::set_default(
+    let _log = demi_log_capture::capture(
         tracing_subscriber::fmt()
             .with_max_level(tracing::Level::DEBUG)
             .with_writer(file)

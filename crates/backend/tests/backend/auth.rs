@@ -372,7 +372,7 @@ async fn a_request_whose_origin_a_proxy_dropped_passes_and_the_log_says_so_once(
     // The backend's log as `main` writes it; here it serves this test's
     // thread, which runs the edge, and not the other tests of this process.
     let _log =
-        tracing::subscriber::set_default(tracing_subscriber::fmt().with_writer(file).finish());
+        demi_log_capture::capture(tracing_subscriber::fmt().with_writer(file).finish());
     let warnings = || {
         std::fs::read_to_string(&path)
             .unwrap()
