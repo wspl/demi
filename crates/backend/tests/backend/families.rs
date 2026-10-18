@@ -344,9 +344,9 @@ impl ImageMaker for ScriptedImages {
             }
             let script = &self.script;
             let result = if let Some(message) = script.refusal.lock().unwrap().clone() {
-                Err(MediaFailure::Refused { message, code: None })
+                Err(MediaFailure::Refused { message, code: None, trace: Default::default() })
             } else if script.used_up.lock().unwrap().contains(&self.account) {
-                Err(MediaFailure::UsageLimit { retry_at: None })
+                Err(MediaFailure::UsageLimit { retry_at: None, trace: Default::default() })
             } else {
                 Ok(MadeImage {
                     bytes: script.image.lock().unwrap().clone(),
@@ -450,14 +450,14 @@ impl VideoMaker for ScriptedVideos {
         VideoShape::Grok
     }
 
-    fn ask<'a>(&'a self, _: &'a demi_provider_common::ProviderHttp, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+    fn ask<'a>(&'a self, _: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         let mut asks = self.script.asks.lock().unwrap();
         asks.push((self.account.clone(), request));
         let count = asks.len();
         drop(asks);
         self.script.counts.send_modify(|(asked, _)| *asked += 1);
         let result = if self.script.used_up.lock().unwrap().contains(&self.account) {
-            Err(MediaFailure::UsageLimit { retry_at: None })
+            Err(MediaFailure::UsageLimit { retry_at: None, trace: Default::default() })
         } else {
             Ok(format!("job-{count}"))
         };
@@ -468,7 +468,7 @@ impl VideoMaker for ScriptedVideos {
         })
     }
 
-    fn state<'a>(&'a self, _: &'a demi_provider_common::ProviderHttp, _: &'a str) -> BoxFuture<'a, MediaAnswer<JobState>> {
+    fn state<'a>(&'a self, _: &'a demi_provider_common::ProviderHttp, _: demi_provider_common::videos::JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>> {
         let next = self.script.states.lock().unwrap().pop_front();
         self.script.counts.send_modify(|(_, read)| *read += 1);
         let result = next.unwrap_or(Ok(JobState::Running { progress: None }));

@@ -24,6 +24,8 @@ mod automations;
 mod blobs;
 mod browser;
 mod builtin_families;
+mod bytedance;
+mod minimax;
 mod claude;
 mod claude_code;
 mod cloud;

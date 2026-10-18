@@ -1,7 +1,8 @@
 # Audio generation
 
 The agent makes speech, music and sound effects with the `demi audio`
-group, through an OpenAI, Google or ElevenLabs API key or a compatible API
+group, through an OpenAI, Google, ElevenLabs, BytePlus Speech or Doubao
+Speech API key or a compatible API
 that speaks OpenAI's speech shape. For example, a user asks for a voice-over
 and a short jingle for their app's intro: the agent runs
 
@@ -92,11 +93,18 @@ states wrongly or not at all fails the call, never guessed.
 | ElevenLabs key | speech | `POST /v1/text-to-speech/<voice>`: `text`, `model_id`; `output_format` as a query | The audio's bytes |
 | ElevenLabs key | music | `POST /v1/music`: `prompt`, `music_length_ms`, `model_id`, `force_instrumental` (its `seed` is refused with a prompt, so `--seed` is not sent) | The audio's bytes; `pcm_44100` for `--format wav`, wrapped |
 | ElevenLabs key | effect | `POST /v1/sound-generation`: `text`, `duration_seconds`, `loop`, `model_id` | The audio's bytes |
+| MiniMax key | speech | `POST /v1/t2a_v2`: `model`, `text`, `voice_setting: { voice_id, speed }`, `audio_setting: { format }`, `output_format: "hex"` | `data.audio`, the audio as hexadecimal text, decoded; a `base_resp.status_code` other than 0 is the failure |
+| BytePlus Speech key, Doubao Speech key | speech (Seed speech) | `POST /api/v3/tts/unidirectional` with `X-Api-Key` and the model as `X-Api-Resource-Id`, such as `seed-tts-2.0`, and on BytePlus the fixed `X-Api-App-Key` its reference requires: `req_params: { text, speaker, audio_params: { format, sample_rate: 24000, speech_rate } }`; `--speed 1.5` is `speech_rate: 50`, as the vendor counts 0.5× to 2× from −50 to 100; a speed outside that range is sent as the nearer end and the summary warns that it was | A chunked series of JSON objects, whose base64 `data` is joined until the object whose `code` is `20000000`; `pcm` for `--format wav`, at the 24 kHz mono 16-bit the request asked, wrapped |
+| BytePlus Speech key, Doubao Speech key | speech and effect (Seed Audio) | `POST /api/v3/tts/create` with `X-Api-Key`: `model: "seed-audio-1.0"`, `text_prompt`, the text to speak or the effect to make, with the instructions before it, `references: [{ speaker }]` for speech, as `--voice` names a Seed speech 2.0 speaker, and `audio_config: { format, speech_rate }`, the speed counted as Seed speech counts it | The answer's base64 `audio` |
 
 Voices come from each vendor's own list, read when asked for: OpenAI's
-built-in voices, which no endpoint lists, from the catalog, a custom voice
+built-in voices, which no endpoint lists, from the catalog, as ByteDance's
+speakers are, since its speaker list answers only a request signed with an
+access key pair, Seed Audio taking the Seed speech 2.0 speakers, a custom voice
 `voice_…` being sent as given, as the object `{ "id": … }` OpenAI takes; Google's
-`GET /v1beta/voices`; ElevenLabs' `GET /v2/voices`, every page. A
+`GET /v1beta/voices`; ElevenLabs' `GET /v2/voices`, every page; MiniMax's
+`POST /v1/get_voice` with `voice_type: "all"`, its system, cloned and designed
+voices. A
 compatible API's voices are what its `GET /v1/audio/voices` lists, or none,
 in which case `--voice` is sent as given. Making a voice, a clone or a
 designed one, is not a Demi command: each vendor asks for the speaker's
@@ -104,11 +112,16 @@ consent its own way, on its own site.
 
 An entry's models are those its vendor lists for it, where it lists them
 (ElevenLabs' `GET /v1/models` with `can_do_text_to_speech`), and the
-catalog's otherwise, as a key's image models are. Stability AI, xAI's
-speech, ByteDance's Seed speech and Seed Audio and MiniMax come with later
-work: Stability's audio API has no reference that reads without a browser,
-xAI's speech takes no model, and ByteDance's and MiniMax's come with those
-vendors' entries ([Which entries make which media](media.md#which-entries-make-which-media)).
+catalog's otherwise, as a key's image models are. The two ByteDance speech
+endpoints are `https://voice.ap-southeast-1.bytepluses.com` (BytePlus) and
+`https://openspeech.bytedance.com` (Doubao Speech); neither has a default
+speaker, so a speech call without `--voice` fails before asking, as
+OpenAI's does, and so does MiniMax's. ByteDance's songs (豆包音乐) are left out, as their API takes
+only requests signed with an access key pair, which no entry holds.
+MiniMax makes no music, as it closed its music API to new users on
+2026-08-20. Stability AI and xAI's speech come with later work: Stability's
+audio API has no reference that reads without a browser, and xAI's speech
+takes no model.
 
 Each entry that makes audio has **Audio Generation** on its page, below
 Videos, with its audio models newest first where the vendor dates them,

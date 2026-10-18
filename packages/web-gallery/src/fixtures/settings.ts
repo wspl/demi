@@ -231,6 +231,113 @@ export const elevenLabsAudio: MockProvider['media']['audio'] = {
   ],
 }
 
+/** BytePlus ModelArk's Seedream and Seedance models, as the media catalog lists them, newest first. */
+export const modelArkMedia: Pick<MockProvider['media'], 'image' | 'video'> = {
+  image: {
+    shape: 'seedream',
+    enabled: true,
+    models: [
+      { id: 'dola-seedream-5-0-flash-260915', name: 'Dola Seedream 5.0 Flash', released: '2026-09-15' },
+      { id: 'dola-seedream-5-0-pro-260628', name: 'Dola Seedream 5.0 Pro', released: '2026-06-28' },
+      { id: 'seedream-5-0-260128', name: 'Seedream 5.0 lite', released: '2026-01-28' },
+      { id: 'seedream-4-5-251128', name: 'Seedream 4.5', released: '2025-11-28' },
+      { id: 'seedream-4-0-250828', name: 'Seedream 4.0', released: '2025-08-28' },
+    ],
+  },
+  video: {
+    shape: 'ark-tasks',
+    enabled: true,
+    models: [
+      { id: 'dreamina-seedance-2-5-260628', name: 'Dreamina Seedance 2.5', released: '2026-06-28' },
+      { id: 'dreamina-seedance-2-0-mini-260615', name: 'Dreamina Seedance 2.0 Mini', released: '2026-06-15' },
+      { id: 'dreamina-seedance-2-0-260128', name: 'Dreamina Seedance 2.0', released: '2026-01-28' },
+      { id: 'dreamina-seedance-2-0-fast-260128', name: 'Dreamina Seedance 2.0 Fast', released: '2026-01-28' },
+      { id: 'seedance-1-5-pro-251215', name: 'Seedance 1.5 Pro', released: '2025-12-15' },
+    ],
+  },
+}
+
+/** Doubao Speech's Seed speech and Seed Audio models, as the media catalog lists them, in its order. */
+export const doubaoSpeechAudio: MockProvider['media']['audio'] = {
+  shape: 'seed',
+  enabled: true,
+  models: [
+    { id: 'seed-audio-1.0', name: '豆包音频生成模型1.0', released: '2026-07-20', kinds: ['speech', 'effect'] },
+    { id: 'seed-tts-2.0', name: '豆包语音合成模型2.0', released: '2025-10-16', kinds: ['speech'] },
+    { id: 'seed-tts-1.0', name: '豆包语音合成模型1.0', released: null, kinds: ['speech'] },
+  ],
+}
+
+/** BytePlus Speech's, the same models under their English names. */
+export const byteplusSpeechAudio: MockProvider['media']['audio'] = {
+  shape: 'seed',
+  enabled: true,
+  models: [
+    { id: 'seed-audio-1.0', name: 'Seed Audio 1.0', released: '2026-07-20', kinds: ['speech', 'effect'] },
+    { id: 'seed-tts-2.0', name: 'Seed TTS 2.0', released: '2025-10-16', kinds: ['speech'] },
+    { id: 'seed-tts-1.0', name: 'Seed TTS 1.0', released: null, kinds: ['speech'] },
+  ],
+}
+
+/** MiniMax's image, Hailuo and speech models, as the media catalog lists them, in its order: MiniMax dates none. */
+export const minimaxMedia: Pick<MockProvider['media'], 'image' | 'video' | 'audio'> = {
+  image: {
+    shape: 'minimax',
+    enabled: true,
+    models: [
+      { id: 'image-01', name: 'MiniMax Image-01', released: '2025-02-15' },
+      { id: 'image-01-live', name: 'MiniMax Image-01 Live', released: null },
+    ],
+  },
+  video: {
+    shape: 'hailuo',
+    enabled: true,
+    models: [
+      { id: 'MiniMax-H3', name: 'MiniMax H3', released: '2026-07-31' },
+      { id: 'MiniMax-Hailuo-2.3', name: 'MiniMax Hailuo 2.3', released: '2025-10-28' },
+      { id: 'MiniMax-Hailuo-2.3-Fast', name: 'MiniMax Hailuo 2.3 Fast', released: '2025-10-28' },
+      { id: 'MiniMax-Hailuo-02', name: 'MiniMax Hailuo 02', released: '2025-06-18' },
+      { id: 'MiniMax-H3-Max', name: 'MiniMax H3 Max', released: null },
+    ],
+  },
+  audio: {
+    shape: 'minimax',
+    enabled: true,
+    models: [
+      { id: 'speech-2.8-hd', name: 'MiniMax Speech 2.8 HD', released: '2026-01-23', kinds: ['speech'] },
+      { id: 'speech-2.8-turbo', name: 'MiniMax Speech 2.8 Turbo', released: '2026-01-23', kinds: ['speech'] },
+      { id: 'speech-2.6-hd', name: 'MiniMax Speech 2.6 HD', released: '2025-10-29', kinds: ['speech'] },
+      { id: 'speech-2.6-turbo', name: 'MiniMax Speech 2.6 Turbo', released: '2025-10-29', kinds: ['speech'] },
+      { id: 'speech-02-hd', name: 'MiniMax Speech 02 HD', released: '2025-04-02', kinds: ['speech'] },
+      { id: 'speech-02-turbo', name: 'MiniMax Speech 02 Turbo', released: '2025-04-02', kinds: ['speech'] },
+    ],
+  },
+}
+
+/** What an entry of `vendorId` makes, as the backend's vendor shapes and the catalog say; none for a vendor of text alone. */
+export function vendorMedia(vendorId: string): Partial<MockProvider['media']> {
+  switch (vendorId) {
+    case 'elevenlabs':
+      return { audio: elevenLabsAudio }
+    case 'byteplus':
+      return modelArkMedia
+    case 'volcengine':
+      return {
+        image: { ...modelArkMedia.image, models: [{ id: 'doubao-seedream-5-0-flash-260915', name: 'Doubao Seedream 5.0 Flash', released: '2026-09-15' }] },
+        video: { ...modelArkMedia.video, models: [{ id: 'doubao-seedance-2-5-260628', name: 'Doubao Seedance 2.5', released: '2026-06-28' }] },
+      }
+    case 'byteplus-speech':
+      return { audio: byteplusSpeechAudio }
+    case 'doubao-speech':
+      return { audio: doubaoSpeechAudio }
+    case 'minimax':
+    case 'minimax-cn':
+      return minimaxMedia
+    default:
+      return {}
+  }
+}
+
 export const mockVendors: MockVendor[] = [
   {
     id: 'anthropic',
@@ -256,6 +363,40 @@ export const mockVendors: MockVendor[] = [
     wireApi: null,
     baseUrl: 'https://api.elevenlabs.io',
     logo: vendorLogo('elevenlabs')
+  },
+  {
+    // ByteDance's Ark outside China: its own API, images and videos.
+    id: 'byteplus',
+    name: 'BytePlus ModelArk',
+    family: 'media',
+    wireApi: null,
+    baseUrl: 'https://ark.ap-southeast.bytepluses.com/api/v3',
+    logo: vendorLogo('byteplus')
+  },
+  {
+    id: 'byteplus-speech',
+    name: 'BytePlus Speech',
+    family: 'media',
+    wireApi: null,
+    baseUrl: 'https://voice.ap-southeast-1.bytepluses.com',
+    logo: vendorLogo('byteplus-speech')
+  },
+  {
+    id: 'doubao-speech',
+    name: 'Doubao Speech',
+    family: 'media',
+    wireApi: null,
+    baseUrl: 'https://openspeech.bytedance.com',
+    logo: vendorLogo('doubao-speech')
+  },
+  {
+    // A models.dev vendor whose key also makes Seedream and Seedance.
+    id: 'volcengine',
+    name: 'Volcengine Ark',
+    family: 'openai',
+    wireApi: 'openai-chat',
+    baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+    logo: vendorLogo('volcengine')
   },
   {
     id: 'google',
@@ -661,8 +802,8 @@ export function mockProviders(): MockProvider[] {
         { id: 'gpt-image-1.5', name: 'GPT-Image-1.5', released: '2025-12-16' },
         { id: 'gpt-image-1-mini', name: 'GPT-Image-1 Mini', released: '2025-10-06' },
       ] }, video: { shape: null, enabled: true }, audio: { shape: 'openai-speech', enabled: true, models: [
-        { id: 'gpt-4o-mini-tts-2025-12-15', name: 'GPT-4o Mini TTS', released: '2025-12-15', kinds: ['speech'] },
-        { id: 'gpt-4o-mini-tts-2025-03-20', name: 'GPT-4o Mini TTS', released: '2025-03-20', kinds: ['speech'] },
+        { id: 'gpt-4o-mini-tts-2025-12-15', name: 'GPT-4o Mini TTS (2025-12-15)', released: '2025-12-15', kinds: ['speech'] },
+        { id: 'gpt-4o-mini-tts-2025-03-20', name: 'GPT-4o Mini TTS (2025-03-20)', released: '2025-03-20', kinds: ['speech'] },
         { id: 'tts-1-hd', name: 'TTS-1 HD', released: null, kinds: ['speech'] },
         { id: 'tts-1', name: 'TTS-1', released: null, kinds: ['speech'] },
       ] } },
@@ -713,6 +854,20 @@ export function mockProviders(): MockProvider[] {
       baseUrl: 'https://api.elevenlabs.io', apiKey: 'sk_example-not-a-real-key', makesText: false,
       testPassed: true, testedWith: 'Eleven v4', testedIn: '286 ms',
       media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: elevenLabsAudio },
+    }),
+    provider({
+      // ByteDance's Ark outside China, of media alone: its key, its Images and Videos, no Models.
+      id: 'modelark', name: 'BytePlus ModelArk', kind: 'api_key', family: 'media', vendorId: 'byteplus',
+      baseUrl: 'https://ark.ap-southeast.bytepluses.com/api/v3', apiKey: 'ark-example-not-a-real-key', makesText: false,
+      testPassed: true, testedWith: 'Dola Seedream 5.0 Flash', testedIn: '341 ms',
+      media: { ...modelArkMedia, audio: { shape: null, enabled: true } },
+    }),
+    provider({
+      // ByteDance's speech in China: its key and its Audio.
+      id: 'doubao-speech', name: 'Doubao Speech', kind: 'api_key', family: 'media', vendorId: 'doubao-speech',
+      baseUrl: 'https://openspeech.bytedance.com', apiKey: 'example-not-a-real-key', makesText: false,
+      testPassed: true, testedWith: '豆包音频生成模型1.0', testedIn: '198 ms',
+      media: { image: { shape: null, enabled: true }, video: { shape: null, enabled: true }, audio: doubaoSpeechAudio },
     }),
     provider({
       id: 'kimi', name: 'Kimi', kind: 'api_key', family: 'anthropic', vendorId: 'moonshotai',

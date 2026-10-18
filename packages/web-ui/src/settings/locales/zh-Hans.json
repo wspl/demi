@@ -596,7 +596,7 @@
       "keyPaste": "粘贴你的 API 密钥",
       "test": "测试连接",
       "testDescription": "向第一个已启用的文本模型发送一条简短的聊天消息。",
-      "testMediaDescription": "用 API 密钥读取供应商的模型列表。",
+      "testMediaDescription": "向供应商验证 API 密钥，不生成任何内容。",
       "testing": "正在测试…",
       "connected": "已连接",
       "failed": "失败",

@@ -46,6 +46,37 @@ pub trait AudioMaker: MediaMaker {
         model: &'a str,
         search: Option<&'a str>,
     ) -> BoxFuture<'a, Result<Option<Vec<Voice>>, MediaFailure>>;
+
+    /// The options `request` gives that its request has no field for,
+    /// which are not sent: its shape's ([`unsent`]), unless the maker's
+    /// models take different requests, as ByteDance's Seed Audio and Seed
+    /// speech do.
+    fn unsent(&self, _catalog: &Catalog, request: &AudioRequest) -> Vec<AudioOption> {
+        unsent(self.shape(), request)
+    }
+
+    /// How a call of `request` names the request it takes, such as `Lyria
+    /// takes no --duration`: its shape's name for its kind, unless the
+    /// maker's models take different requests.
+    fn shape_name(&self, _catalog: &Catalog, request: &AudioRequest) -> &'static str {
+        self.shape().name(request.kind)
+    }
+
+    /// The factors of the voice's speed the vendor takes, ends included; a
+    /// speed outside them is sent as the nearer end, which the call's
+    /// summary warns of (`audio.md` § Vendors). None for a vendor that
+    /// states none, whose speed is sent as asked.
+    fn speeds(&self) -> Option<(f64, f64)> {
+        None
+    }
+}
+
+/// `speed` as `maker` takes it: the nearer end of its range when outside.
+pub fn sent_speed(maker: &dyn AudioMaker, speed: f64) -> f64 {
+    match maker.speeds() {
+        Some((slowest, fastest)) => speed.clamp(slowest, fastest),
+        None => speed,
+    }
 }
 
 /// One file of audio to make; an option left out is the vendor's default.
@@ -116,7 +147,20 @@ pub fn unsent(shape: AudioShape, request: &AudioRequest) -> Vec<AudioOption> {
         (AudioShape::Elevenlabs, AudioKind::Speech) => &[Instructions],
         // ElevenLabs takes no seed with a prompt, the only way a call asks.
         (AudioShape::Elevenlabs, _) => &[Seed],
+        // Seed speech's; Seed Audio's speech takes instructions too.
+        (AudioShape::Seed, AudioKind::Speech) => &[Instructions, Seed],
+        // Seed Audio states an effect's length and loop in its prompt.
+        (AudioShape::Seed, _) => &[Duration, Instrumental, Seed, Loop],
+        // MiniMax makes speech alone, which takes neither.
+        (AudioShape::Minimax, _) => &[Instructions, Seed],
     };
+    unsent_of(lacks, request)
+}
+
+/// The options `request` gives among those a request `lacks`, in the order
+/// of the options.
+pub fn unsent_of(lacks: &[AudioOption], request: &AudioRequest) -> Vec<AudioOption> {
+    use AudioOption::{Duration, Instructions, Instrumental, Loop, Seed, Speed};
     let given = [
         (Instructions, request.instructions.is_some()),
         (Speed, request.speed.is_some()),

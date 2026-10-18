@@ -11,7 +11,7 @@ const SUMMARY: &str = "Make videos through the user's provider entries, one MP4 
 
 /// The group's entry in the model's capability index (`system-prompt.md`
 /// § Capability index).
-const ENTRY: &str = "Makes videos through the user's Grok subscription, xAI or Google API key, or a compatible API: `generate` makes one MP4 from a prompt with the model `--model` names, optionally from a first frame, a last frame and reference images of the Host; `models` lists the models with their durations, resolutions, prices per second and the entry a call takes. The call waits for the vendor's job, minutes at most, saying on stderr how it moves; the video's bytes go to stdout: `> clip.mp4` saves it. Use it when the user asks for a video, a clip or an animation.";
+const ENTRY: &str = "Makes videos through the user's Grok subscription, xAI, Google, MiniMax, BytePlus ModelArk or Volcengine Ark API key, or a compatible API: `generate` makes one MP4 from a prompt with the model `--model` names, optionally from a first frame, a last frame and reference images of the Host; `models` lists the models with their durations, resolutions, prices per second and the entry a call takes. The call waits for the vendor's job, minutes at most, saying on stderr how it moves; the video's bytes go to stdout: `> clip.mp4` saves it. Use it when the user asks for a video, a clip or an animation.";
 
 const GENERATE_SUMMARY: &str = "Make one video from the prompt, waiting for the vendor's job, and write its MP4 to stdout; stderr names the job at once, says each change of its state, then the video's length, size, sound, model, entry and cost. An option the result does not honour, or the entry's API has no field for, adds a warning and still succeeds.";
 
@@ -25,7 +25,7 @@ const LAST_FRAME: &str = "The last frame, which needs --image; a file as --image
 const REFERENCE: &str = "An image the video keeps to, such as a character or a product; repeat it for several. A file as --image takes.";
 const DURATION: &str = "The length in seconds; the model's default without it.";
 const ASPECT: &str = "The shape to ask for, as W:H, such as 16:9.";
-const RESOLUTION: &str = "The resolution to ask for.";
+const RESOLUTION: &str = "The resolution to ask for: a height such as 720p or 768p, or 2k or 4k, any the vendor names; `demi video models` lists each model's.";
 const AUDIO: &str = "Ask for the sound the model makes.";
 const NO_AUDIO: &str = "Ask for a silent video.";
 const SEED: &str = "A seed, for the vendors that take one.";

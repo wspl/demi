@@ -16,7 +16,7 @@ use demi_provider_common::{
     media::MediaVendor,
     media_catalog::Catalog,
     testing::{FixedClock, MockResponse, MockVendor},
-    videos::{JobState, Resolution, VideoOption, VideoRequest, unsent},
+    videos::{JobState, VideoOption, VideoRequest, unsent},
 };
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_shared_types::VideoShape;
@@ -91,15 +91,15 @@ async fn veo_lists_its_models_asks_with_instances_and_parameters_and_downloads_w
         references: vec![image(b"tower")],
         duration: Some(8),
         aspect: Some(Aspect { width: 9, height: 16 }),
-        resolution: Some(Resolution::P720),
+        resolution: Some(demi_shared_types::VideoResolution::Height(720)),
         audio: Some(false),
         seed: Some(7),
     };
     assert_eq!(unsent(maker.shape(), &request), [VideoOption::Audio]);
-    let job = maker.ask(&http, request).await.result.unwrap();
+    let job = maker.ask(&http, empty_catalog(), request).await.result.unwrap();
     assert_eq!(job, OPERATION);
-    assert_eq!(maker.state(&http, &job).await.result.unwrap(), JobState::Running { progress: None });
-    let JobState::Done(done) = maker.state(&http, &job).await.result.unwrap() else {
+    assert_eq!(maker.state(&http, taken(&job)).await.result.unwrap(), JobState::Running { progress: None });
+    let JobState::Done(done) = maker.state(&http, taken(&job)).await.result.unwrap() else {
         panic!("the operation is not done");
     };
     assert_eq!(done.cost, None);
@@ -137,11 +137,23 @@ async fn a_failed_or_filtered_operation_is_told_in_googles_words() {
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
     assert_eq!(
-        maker.state(&http, OPERATION).await.result.unwrap(),
-        JobState::Failed { message: "Video generation failed due to an internal error.".into() }
+        maker.state(&http, taken(OPERATION)).await.result.unwrap(),
+        JobState::Failed { message: "Video generation failed due to an internal error.".into(), trace: Default::default() }
     );
     assert_eq!(
-        maker.state(&http, OPERATION).await.result.unwrap(),
-        JobState::Failed { message: "The prompt could not be submitted.".into() }
+        maker.state(&http, taken(OPERATION)).await.result.unwrap(),
+        JobState::Failed { message: "The prompt could not be submitted.".into(), trace: Default::default() }
     );
+}
+
+/// A catalog of no models, for a maker whose requests are one.
+fn empty_catalog() -> &'static Catalog {
+    static EMPTY: std::sync::LazyLock<Catalog> =
+        std::sync::LazyLock::new(|| Catalog::decode(br#"{ "updated": "2026-10-01T00:00:00Z", "models": [] }"#).unwrap());
+    &EMPTY
+}
+
+/// The job `id`, as the backend names a taken job to its maker.
+fn taken(id: &str) -> demi_provider_common::videos::JobRef<'_> {
+    demi_provider_common::videos::JobRef { id, model: "", catalog: empty_catalog() }
 }

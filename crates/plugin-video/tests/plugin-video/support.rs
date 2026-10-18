@@ -59,6 +59,15 @@ impl Plugged {
         self.demi.host_files.replace(Some(files));
     }
 
+    /// What the command line refuses `demi <line>` for before the plugin
+    /// is called, as the backend's parser says it.
+    pub fn refused(&self, line: &[&str]) -> String {
+        match parse(&self.root, line, None) {
+            Ok(_) => panic!("{line:?} parses"),
+            Err(error) => format!("{error:?}"),
+        }
+    }
+
     /// Runs `demi <line>` from `/workspace` as the backend's dispatch hands
     /// it to the plugin: its exit status, stdout and stderr.
     pub async fn run(&self, line: &[&str]) -> (u8, Vec<u8>, String) {

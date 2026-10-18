@@ -17,9 +17,11 @@ use demi_provider_common::credentials::SubscriptionAccounts;
 use demi_provider_common::quota::{MemorySnapshots, QuotaSnapshotStore};
 use demi_provider_common::media::MediaVendor;
 use demi_provider_common::{Provider, ProviderRuntime, RuntimeEnv};
+use demi_provider_bytedance::{Ark, ArkConfig, ArkProvider, Speech, SpeechConfig, SpeechProvider};
 use demi_provider_elevenlabs::{ElevenLabsConfig, ElevenLabsProvider};
 use demi_provider_google::{GoogleConfig, GoogleProvider};
 use demi_provider_grok_build::{GrokConfig, GrokProvider, GrokReleases};
+use demi_provider_minimax::{MinimaxConfig, MinimaxProvider, Region};
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider};
 use demi_shared_types::{AudioShape, ImageShape, VideoShape, WireApi};
 use demi_web_api_protocol::providers::CredentialKind;
@@ -30,8 +32,9 @@ pub fn builtin() -> FamilyRegistry {
         .with_compatible_images(Arc::new(|args: CompatibleImagesArgs| {
             demi_provider_openai_api::compatible_images(args.name, args.key, &args.base, args.models, args.clock)
         }))
-        .with_compatible_videos(Arc::new(|args: CompatibleVideosArgs| {
-            demi_provider_openai_api::compatible_videos(args.name, args.shape, args.key, &args.base, args.models, args.clock)
+        .with_compatible_videos(Arc::new(|args: CompatibleVideosArgs| match args.shape {
+            VideoShape::ArkTasks => demi_provider_bytedance::compatible_videos(args.name, args.key, &args.base, args.models, args.clock),
+            shape => demi_provider_openai_api::compatible_videos(args.name, shape, args.key, &args.base, args.models, args.clock),
         }))
         .with_compatible_audio(Arc::new(|args: CompatibleAudioArgs| {
             demi_provider_openai_api::compatible_audio(args.name, args.key, &args.base, args.models, args.clock)
@@ -61,12 +64,40 @@ impl ProviderFamily for AnthropicFamily {
         let FamilyCredential::ApiKey(settings) = args.credential else {
             return Err(FamilyError::WrongCredential);
         };
+        // A MiniMax entry's text is its Anthropic-shaped API's, and its
+        // media are MiniMax's crate's.
+        let minimax = settings.vendor_id.as_deref().and_then(Region::of).map(|region| MinimaxConfig {
+            region,
+            api_key: settings.api_key.clone(),
+            base_url: settings.base_url.clone(),
+            makes_images: settings.image_shape == Some(ImageShape::Minimax),
+            makes_videos: settings.video_shape == Some(VideoShape::Hailuo),
+            makes_audio: settings.audio_shape == Some(AudioShape::Minimax),
+        });
         let config = AnthropicConfig {
             api_key: settings.api_key,
             base_url: settings.base_url,
             policy: settings.vendor,
         };
-        Ok(Arc::new(AnthropicProvider::new(config, args.clock)))
+        let text: Arc<dyn Provider> = Arc::new(AnthropicProvider::new(config, args.clock.clone()));
+        match minimax {
+            Some(minimax) => Ok(Arc::new(MinimaxProvider::new(minimax, text, args.clock))),
+            None => Ok(text),
+        }
+    }
+
+    /// A MiniMax key makes images, Hailuo's videos and speech; its coding
+    /// plans make none (`media.md` § Which entries make which media).
+    fn image_shape(&self, vendor_id: Option<&str>) -> Option<ImageShape> {
+        vendor_id.and_then(Region::of).map(|_| ImageShape::Minimax)
+    }
+
+    fn video_shape(&self, vendor_id: Option<&str>) -> Option<VideoShape> {
+        vendor_id.and_then(Region::of).map(|_| VideoShape::Hailuo)
+    }
+
+    fn audio_shape(&self, vendor_id: Option<&str>) -> Option<AudioShape> {
+        vendor_id.and_then(Region::of).map(|_| AudioShape::Minimax)
     }
 }
 
@@ -91,6 +122,16 @@ impl ProviderFamily for OpenAiFamily {
         let FamilyCredential::ApiKey(settings) = args.credential else {
             return Err(FamilyError::WrongCredential);
         };
+        // Volcengine Ark's text is its OpenAI-compatible API's, and its
+        // media are ByteDance's crate's.
+        let ark = (settings.vendor_id.as_deref() == Some(MediaVendor::Volcengine.id())).then(|| ArkConfig {
+            ark: Ark::Volcengine,
+            api_key: settings.api_key.clone(),
+            base_url: settings.base_url.clone(),
+            makes_images: settings.image_shape == Some(ImageShape::Seedream),
+            makes_videos: settings.video_shape == Some(VideoShape::ArkTasks),
+            text: None,
+        });
         let config = OpenAiConfig {
             api_key: settings.api_key,
             base_url: settings.base_url,
@@ -102,19 +143,33 @@ impl ProviderFamily for OpenAiFamily {
             makes_videos: settings.video_shape == Some(VideoShape::XaiVideos),
             makes_audio: settings.audio_shape == Some(AudioShape::OpenaiSpeech),
         };
-        Ok(Arc::new(OpenAiProvider::new(config, args.clock)))
+        let text: Arc<dyn Provider> = Arc::new(OpenAiProvider::new(config, args.clock.clone()));
+        match ark {
+            Some(ark) => Ok(Arc::new(ArkProvider::new(ArkConfig { text: Some(text), ..ark }, args.clock))),
+            None => Ok(text),
+        }
     }
 
     /// An OpenAI or xAI key makes images through the OpenAI-shaped image
-    /// API (`media.md` § Which entries make which media).
+    /// API, a Volcengine Ark key through Seedream's (`media.md` § Which
+    /// entries make which media).
     fn image_shape(&self, vendor_id: Option<&str>) -> Option<ImageShape> {
-        matches!(vendor_id, Some("openai" | "xai")).then_some(ImageShape::OpenaiImages)
+        match vendor_id {
+            Some("openai" | "xai") => Some(ImageShape::OpenaiImages),
+            Some(id) if id == MediaVendor::Volcengine.id() => Some(ImageShape::Seedream),
+            _ => None,
+        }
     }
 
-    /// An xAI key makes videos through xAI's video API; OpenAI's was shut
-    /// down (`videos.md` § Vendors).
+    /// An xAI key makes videos through xAI's video API, a Volcengine Ark
+    /// key through Ark Tasks; OpenAI's was shut down (`videos.md`
+    /// § Vendors).
     fn video_shape(&self, vendor_id: Option<&str>) -> Option<VideoShape> {
-        (vendor_id == Some("xai")).then_some(VideoShape::XaiVideos)
+        match vendor_id {
+            Some("xai") => Some(VideoShape::XaiVideos),
+            Some(id) if id == MediaVendor::Volcengine.id() => Some(VideoShape::ArkTasks),
+            _ => None,
+        }
     }
 
     /// An OpenAI key makes speech; xAI's speech comes later (`audio.md`
@@ -167,9 +222,9 @@ impl ProviderFamily for GoogleFamily {
 }
 
 /// The `media` family (`providers.md` § Media-only vendors): an API-key
-/// entry of a vendor that makes media and no text, such as ElevenLabs,
-/// built by its vendor's crate. A vendor whose shapes are not built yet,
-/// Stability AI, has none here, so it is not offered.
+/// entry of a vendor that makes media and no text, such as ElevenLabs or
+/// BytePlus ModelArk, built by its vendor's crate. A vendor whose shapes
+/// are not built yet, Stability AI, has none here, so it is not offered.
 struct MediaFamily;
 
 impl ProviderFamily for MediaFamily {
@@ -186,6 +241,22 @@ impl ProviderFamily for MediaFamily {
                 let config = ElevenLabsConfig { api_key: settings.api_key, base_url: settings.base_url };
                 Ok(Arc::new(ElevenLabsProvider::new(config, args.clock)))
             }
+            Some(MediaVendor::Byteplus) => {
+                let config = ArkConfig {
+                    ark: Ark::Byteplus,
+                    api_key: settings.api_key,
+                    base_url: settings.base_url,
+                    makes_images: settings.image_shape == Some(ImageShape::Seedream),
+                    makes_videos: settings.video_shape == Some(VideoShape::ArkTasks),
+                    text: None,
+                };
+                Ok(Arc::new(ArkProvider::new(config, args.clock)))
+            }
+            Some(vendor @ (MediaVendor::ByteplusSpeech | MediaVendor::DoubaoSpeech)) => {
+                let speech = if vendor == MediaVendor::ByteplusSpeech { Speech::Byteplus } else { Speech::Doubao };
+                let config = SpeechConfig { speech, api_key: settings.api_key, base_url: settings.base_url };
+                Ok(Arc::new(SpeechProvider::new(config, args.clock)))
+            }
             _ => Err(FamilyError::Invalid(format!(
                 "the media family makes nothing for vendor {}",
                 settings.vendor_id.as_deref().unwrap_or("none")
@@ -197,9 +268,24 @@ impl ProviderFamily for MediaFamily {
         false
     }
 
-    /// An ElevenLabs key makes speech, music and sound effects.
+    /// A BytePlus ModelArk key makes Seedream's images.
+    fn image_shape(&self, vendor_id: Option<&str>) -> Option<ImageShape> {
+        (vendor_id == Some(MediaVendor::Byteplus.id())).then_some(ImageShape::Seedream)
+    }
+
+    /// A BytePlus ModelArk key makes Seedance's videos through Ark Tasks.
+    fn video_shape(&self, vendor_id: Option<&str>) -> Option<VideoShape> {
+        (vendor_id == Some(MediaVendor::Byteplus.id())).then_some(VideoShape::ArkTasks)
+    }
+
+    /// An ElevenLabs key makes speech, music and sound effects; a BytePlus
+    /// Speech or Doubao Speech key Seed speech and Seed Audio's effects.
     fn audio_shape(&self, vendor_id: Option<&str>) -> Option<AudioShape> {
-        (vendor_id == Some(MediaVendor::Elevenlabs.id())).then_some(AudioShape::Elevenlabs)
+        match vendor_id.and_then(MediaVendor::from_id) {
+            Some(MediaVendor::Elevenlabs) => Some(AudioShape::Elevenlabs),
+            Some(MediaVendor::ByteplusSpeech | MediaVendor::DoubaoSpeech) => Some(AudioShape::Seed),
+            _ => None,
+        }
     }
 }
 

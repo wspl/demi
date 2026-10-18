@@ -60,6 +60,8 @@ members = [
   "crates/provider-codex",
   "crates/provider-google",
   "crates/provider-elevenlabs",
+  "crates/provider-bytedance",
+  "crates/provider-minimax",
   "crates/provider-grok-build",
   "crates/provider-openai-api",
   "crates/runner",

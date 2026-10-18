@@ -9,13 +9,12 @@
 
 use std::{
     collections::HashMap,
-    sync::{Arc, LazyLock},
+    sync::Arc,
 };
 
 use bytes::Bytes;
 use demi_shared_types::{FailureSource, ProviderErrorDiagnostics, TokenUsage};
 use futures_util::{Stream, StreamExt, future};
-use regex::Regex;
 use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
@@ -674,7 +673,7 @@ impl Mapper {
                     .clone()
                     .or_else(|| error.request_id_camel.0.clone())
             })
-            .or_else(|| request_id_in(&message));
+            .or_else(|| crate::failure::request_id_in(&message));
         let failure = ProviderFailure {
             code: ErrorCode::classify(code.as_deref(), &message),
             message,
@@ -707,14 +706,3 @@ fn stream_diagnostics(
     }
 }
 
-/// The request id OpenAI embeds in a failure's message, which it asks users
-/// to quote.
-fn request_id_in(message: &str) -> Option<String> {
-    static REQUEST_ID: LazyLock<Regex> = LazyLock::new(|| {
-        // A constant of this module; a test reads a message through it.
-        Regex::new(r"(?i)request ID ([A-Za-z0-9-]+)").expect("the request id pattern compiles")
-    });
-    REQUEST_ID
-        .captures(message)
-        .map(|captures| captures[1].to_owned())
-}

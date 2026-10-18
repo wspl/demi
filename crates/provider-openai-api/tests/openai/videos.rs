@@ -14,7 +14,7 @@ use demi_provider_common::{
     media::{MediaModelInfo, MediaVendor},
     media_catalog::Catalog,
     testing::{FixedClock, MockResponse, MockVendor, RecordedRequest},
-    videos::{Done, JobState, Resolution, VideoOption, VideoRequest, unsent},
+    videos::{Done, JobState, VideoOption, VideoRequest, unsent},
 };
 use demi_provider_openai_api::{OpenAiConfig, OpenAiProvider, compatible_videos};
 use demi_shared_types::{Cost, Currency, VideoShape, WireApi};
@@ -42,7 +42,7 @@ fn request(model: &str) -> VideoRequest {
         references: vec![image(b"boat")],
         duration: Some(4),
         aspect: Some(Aspect { width: 16, height: 9 }),
-        resolution: Some(Resolution::P480),
+        resolution: Some(demi_shared_types::VideoResolution::Height(480)),
         audio: Some(true),
         seed: Some(7),
     }
@@ -107,8 +107,8 @@ async fn an_xai_key_lists_its_video_models_asks_in_the_xai_shape_and_downloads_w
     let ids: Vec<&str> = models.iter().map(|model| model.id.as_str()).collect();
     assert_eq!(ids, ["grok-imagine-video", "grok-imagine-video-latest"]);
     assert_eq!(unsent(maker.shape(), &request("grok-imagine-video")), [VideoOption::Seed]);
-    let job = maker.ask(&http, request("grok-imagine-video")).await.result.unwrap();
-    let JobState::Done(done) = maker.state(&http, &job).await.result.unwrap() else {
+    let job = maker.ask(&http, empty_catalog(), request("grok-imagine-video")).await.result.unwrap();
+    let JobState::Done(done) = maker.state(&http, taken(&job)).await.result.unwrap() else {
         panic!("the job is not done");
     };
     assert_eq!(done.cost, Some(Cost { amount: 0.32, currency: Currency::Usd }));
@@ -142,16 +142,16 @@ async fn openai_videos_sends_a_form_reads_queued_to_completed_takes_its_content_
         unsent(maker.shape(), &request("wan-2.2")),
         [VideoOption::LastFrame, VideoOption::Reference, VideoOption::Audio, VideoOption::Seed]
     );
-    let job = maker.ask(&http, request("wan-2.2")).await.result.unwrap();
+    let job = maker.ask(&http, empty_catalog(), request("wan-2.2")).await.result.unwrap();
     assert_eq!(job, "video_1");
-    assert_eq!(maker.state(&http, &job).await.result.unwrap(), JobState::Queued);
-    assert_eq!(maker.state(&http, &job).await.result.unwrap(), JobState::Running { progress: Some(40) });
-    let JobState::Done(done) = maker.state(&http, &job).await.result.unwrap() else {
+    assert_eq!(maker.state(&http, taken(&job)).await.result.unwrap(), JobState::Queued);
+    assert_eq!(maker.state(&http, taken(&job)).await.result.unwrap(), JobState::Running { progress: Some(40) });
+    let JobState::Done(done) = maker.state(&http, taken(&job)).await.result.unwrap() else {
         panic!("the job is not done");
     };
     assert_eq!(done.url.as_str(), vendor.url("/v1/videos/video_1/content"));
     maker.download(&http, &done).await.result.unwrap();
-    maker.cancel(&http, &job).expect("OpenAI Videos cancels").await.result.unwrap();
+    maker.cancel(&http, taken(&job)).expect("OpenAI Videos cancels").await.result.unwrap();
 
     let sent = vendor.requests();
     let ask = &sent[0];
@@ -186,16 +186,16 @@ async fn openrouter_videos_asks_with_frames_answers_202_pending_and_downloads_wi
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
     assert_eq!(unsent(maker.shape(), &request("wan-2.2")), []);
-    let job = maker.ask(&http, request("wan-2.2")).await.result.unwrap();
+    let job = maker.ask(&http, empty_catalog(), request("wan-2.2")).await.result.unwrap();
     assert_eq!(job, "job-1");
-    assert_eq!(maker.state(&http, &job).await.result.unwrap(), JobState::Queued);
-    assert_eq!(maker.state(&http, &job).await.result.unwrap(), JobState::Running { progress: None });
-    let JobState::Done(done) = maker.state(&http, &job).await.result.unwrap() else {
+    assert_eq!(maker.state(&http, taken(&job)).await.result.unwrap(), JobState::Queued);
+    assert_eq!(maker.state(&http, taken(&job)).await.result.unwrap(), JobState::Running { progress: None });
+    let JobState::Done(done) = maker.state(&http, taken(&job)).await.result.unwrap() else {
         panic!("the job is not done");
     };
     assert_eq!(done.cost, Some(Cost { amount: 0.25, currency: Currency::Usd }));
     maker.download(&http, &done).await.result.unwrap();
-    assert!(maker.cancel(&http, &job).is_none(), "OpenRouter documents no cancellation");
+    assert!(maker.cancel(&http, taken(&job)).is_none(), "OpenRouter documents no cancellation");
 
     let sent = vendor.requests();
     assert_eq!(
@@ -250,10 +250,11 @@ async fn a_failed_job_of_either_compatible_shape_is_told_in_the_vendors_words() 
         "error": { "code": "video_generation_failed", "message": "The worker ran out of memory" } })));
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
-    let openrouter = compatible(&vendor, VideoShape::OpenrouterVideos).state(&http, "job-1").await.result.unwrap();
-    assert_eq!(openrouter, JobState::Failed { message: "Content policy violation".into() });
-    let openai = compatible(&vendor, VideoShape::OpenaiVideos).state(&http, "video_1").await.result.unwrap();
-    assert_eq!(openai, JobState::Failed { message: "The worker ran out of memory".into() });
+    let openrouter = compatible(&vendor, VideoShape::OpenrouterVideos).state(&http, taken("job-1")).await.result.unwrap();
+    assert_eq!(openrouter, JobState::Failed { message: "Content policy violation".into(), trace: Default::default() });
+    let openai = compatible(&vendor, VideoShape::OpenaiVideos).state(&http, taken("video_1")).await.result.unwrap();
+    let trace = demi_shared_types::VendorTrace { code: Some("video_generation_failed".into()), id: None };
+    assert_eq!(openai, JobState::Failed { message: "The worker ran out of memory".into(), trace });
 }
 
 /// The device route of a test: it keeps each request and answers an
@@ -298,11 +299,23 @@ async fn an_openai_videos_ask_reaches_a_server_on_a_devices_exposed_port() {
     );
     let http = demi_provider_common::ProviderHttp::with_devices(reqwest::Client::new(), device.clone(), "user-1");
 
-    let job = maker.ask(&http, request("wan-2.2")).await.result.unwrap();
+    let job = maker.ask(&http, empty_catalog(), request("wan-2.2")).await.result.unwrap();
 
     assert_eq!(job, "video_1");
     let sent = device.0.lock().unwrap();
     assert_eq!((sent[0].method.as_str(), sent[0].path.as_str()), ("POST", "/v1/videos"));
     let body = String::from_utf8_lossy(sent[0].body.as_deref().expect("the form is sent whole")).into_owned();
     assert!(body.contains("name=\"model\"\r\n\r\nwan-2.2\r\n"));
+}
+
+/// A catalog of no models, for a maker whose requests are one.
+fn empty_catalog() -> &'static Catalog {
+    static EMPTY: std::sync::LazyLock<Catalog> =
+        std::sync::LazyLock::new(|| Catalog::decode(br#"{ "updated": "2026-10-01T00:00:00Z", "models": [] }"#).unwrap());
+    &EMPTY
+}
+
+/// The job `id`, as the backend names a taken job to its maker.
+fn taken(id: &str) -> demi_provider_common::videos::JobRef<'_> {
+    demi_provider_common::videos::JobRef { id, model: "", catalog: empty_catalog() }
 }

@@ -22,6 +22,7 @@
 //! reads of it, the plugin words.
 
 use std::rc::Rc;
+use std::sync::Arc;
 use std::time::Duration;
 
 use demi_backend_database::usage::{UsageRow, merge_windows};
@@ -35,15 +36,15 @@ use demi_plugin_interface::{
     AskedVideo, AudioAsk, AudioFacts, AudioFileFormat, AudioOption, AudioVoices, MadeAudio, PcmShape, VoiceInfo,
     CustomSizeRule, EntryStatus, ImageAsk, ImageFacts, MadeImage, MadeVideo, MediaListing, MediaModel,
     MediaPrice, MediaRefusal, MediaUnlisted, ModelEntry, PortFailure, PortRefusal, PriceRate, Unable, VideoAsk,
-    VideoFacts, VideoResolution, VideoStep,
+    VideoFacts, VideoStep,
 };
 use demi_provider_common::credentials::AuthReason;
 use demi_provider_common::audio::{self, AudioFormatAsk, AudioRequest};
 use demi_provider_common::images::{Aspect, ImageRequest, InputImage};
 use demi_provider_common::media::{MediaFailure, MediaModelInfo, MediaVendor};
 use demi_provider_common::media_catalog::{self, AudioOutput, Catalog, Currency, Modality, PriceUnit, Voices};
-use demi_provider_common::videos::{self, Done, JobState, Resolution, VideoOption, VideoRequest};
-use demi_shared_types::{AudioKind, MediaKind, Model, QuotaWindow, Rotation, Timestamp, TurnId, mp4};
+use demi_provider_common::videos::{Done, JobRef, JobState, VideoOption, VideoRequest};
+use demi_shared_types::{AudioKind, MediaKind, Model, QuotaWindow, Rotation, Timestamp, TurnId, VendorTrace, mp4};
 use demi_web_api_protocol::ids::{ConversationId, CredentialId};
 use demi_web_api_protocol::providers::EntryMediaModel;
 use futures_util::StreamExt as _;
@@ -701,12 +702,7 @@ pub(crate) async fn make_video(
             width: aspect.width,
             height: aspect.height,
         }),
-        resolution: ask.resolution.map(|resolution| match resolution {
-            VideoResolution::P480 => Resolution::P480,
-            VideoResolution::P720 => Resolution::P720,
-            VideoResolution::P1080 => Resolution::P1080,
-            VideoResolution::K4 => Resolution::K4,
-        }),
+        resolution: ask.resolution,
         audio: ask.audio,
         seed: ask.seed,
     };
@@ -934,7 +930,7 @@ impl Call<'_> {
         if let Some((route, standing)) = offering.iter().zip(&standings).next() {
             let vendor = route.media().name().to_owned();
             return Err(refused(match standing {
-                Standing::UsedUp(resets_at) => MediaRefusal::UsedUp { vendor, resets_at: *resets_at },
+                Standing::UsedUp(resets_at) => MediaRefusal::UsedUp { vendor, resets_at: *resets_at, trace: Default::default() },
                 Standing::Off => MediaRefusal::Off { model, provider: route.entry.label.clone() },
                 Standing::NotSignedIn | Standing::TurnedOff | Standing::Ready => MediaRefusal::Cannot {
                     provider: route.entry.label.clone(),
@@ -1055,8 +1051,12 @@ impl Asking for AudioCall {
     ) -> Result<MadeAudio, MediaFailure> {
         let audio = maker.audio().expect("an audio call's maker makes audio");
         let (mut row, span) = making.open_row("audio", account);
-        let request = AudioRequest { model: making.name.clone(), ..self.request.clone() };
-        let unsent = audio::unsent(audio.shape(), &request)
+        let asked_speed = self.request.speed;
+        let speed = asked_speed.map(|speed| audio::sent_speed(audio, speed));
+        let request = AudioRequest { model: making.name.clone(), speed, ..self.request.clone() };
+        let shape = audio.shape_name(making.catalog, &request).to_owned();
+        let unsent = audio
+            .unsent(making.catalog, &request)
             .into_iter()
             .map(|option| match option {
                 audio::AudioOption::Instructions => AudioOption::Instructions,
@@ -1096,8 +1096,9 @@ impl Asking for AudioCall {
             provider: making.route.entry.label.clone(),
             vendor: audio.name().to_owned(),
             account: label,
-            shape: audio.shape().name(self.request.kind).to_owned(),
+            shape,
             unsent,
+            speed: speed.filter(|sent| Some(*sent) != asked_speed),
             cost: made.cost,
         })
     }
@@ -1166,7 +1167,7 @@ impl Asking for VideoCall {
         // (`videos.md` § The job).
         let asked_at = tokio::time::Instant::now();
         let answer = videos
-            .ask(&http, request.clone())
+            .ask(&http, making.catalog, request.clone())
             .instrument(span.clone())
             .await;
         row.observe(&answer.observed);
@@ -1181,21 +1182,22 @@ impl Asking for VideoCall {
         };
         span.in_scope(|| tracing::info!(job = %job, "a video's job was asked for"));
         row.row().vendor_id = Some(job.clone());
-        let shape = videos.shape();
         let asked = AskedVideo {
             job: job.clone(),
             model: making.name.clone(),
             provider: making.route.entry.label.clone(),
             vendor: videos.name().to_owned(),
             account: label.clone(),
-            shape: shape.name().to_owned(),
-            unsent: videos::unsent(shape, &request).into_iter().map(plugin_option).collect(),
+            shape: videos.shape().name().to_owned(),
+            unsent: videos.unsent(making.catalog, &request).into_iter().map(plugin_option).collect(),
         };
         let tuning = making.shard.services().media_tuning;
         let job = Job {
             maker: maker.clone(),
             http,
             id: job,
+            model: making.name.clone(),
+            catalog: making.catalog.clone(),
             vendor: videos.name().to_owned(),
             label,
             manages: making.manages,
@@ -1238,6 +1240,10 @@ struct Job {
     http: demi_provider_common::ProviderHttp,
     /// The vendor's id of the job.
     id: String,
+    /// The model as it was sent, and the call's catalog, by which a vendor
+    /// whose models take different requests reads the job's state.
+    model: String,
+    catalog: Arc<Catalog>,
     vendor: String,
     label: Option<String>,
     manages: bool,
@@ -1290,7 +1296,8 @@ impl Job {
         let videos = self.maker.videos().expect("a video's job is a video maker's");
         loop {
             tokio::time::sleep(self.every).await;
-            let answer = videos.state(&self.http, &self.id).await;
+            let job = JobRef { id: &self.id, model: &self.model, catalog: &self.catalog };
+            let answer = videos.state(&self.http, job).await;
             self.row.observe(&answer.observed);
             let state = match answer.result {
                 Ok(state) => state,
@@ -1300,8 +1307,8 @@ impl Job {
                 JobState::Queued => VideoStep::Queued,
                 JobState::Running { progress } => VideoStep::Running { progress },
                 JobState::Done(done) => return self.download(&done).await,
-                JobState::Failed { message } => {
-                    let result = Err(refused(MediaRefusal::JobFailed { vendor: self.vendor.clone(), message }));
+                JobState::Failed { message, trace } => {
+                    let result = Err(refused(MediaRefusal::JobFailed { vendor: self.vendor.clone(), message, trace }));
                     return Waited::Ended { outcome: "failed".to_owned(), result };
                 }
                 JobState::Expired => {
@@ -1357,11 +1364,14 @@ impl Drop for Job {
         let maker = self.maker.clone();
         let http = self.http.clone();
         let id = self.id.clone();
+        let model = self.model.clone();
+        let catalog = self.catalog.clone();
         // Nothing awaits a stopped call; a vendor that cannot cancel runs
         // the job to its end, as the call's first line said.
         tokio::spawn(
             async move {
-                let Some(cancel) = maker.videos().and_then(|videos| videos.cancel(&http, &id)) else {
+                let job = JobRef { id: &id, model: &model, catalog: &catalog };
+                let Some(cancel) = maker.videos().and_then(|videos| videos.cancel(&http, job)) else {
                     return;
                 };
                 if let Err(failure) = cancel.await.result {
@@ -1380,7 +1390,7 @@ impl Drop for Job {
 struct Making<'a> {
     shard: &'a Shard,
     /// What the model takes, as the call's catalog says.
-    catalog: &'a Catalog,
+    catalog: &'a Arc<Catalog>,
     /// The model as the entry's listing names it.
     listed: MediaModelInfo,
     route: &'a Route,
@@ -1422,14 +1432,19 @@ impl Making<'_> {
         // rotation has no other.
         let mut tried: Vec<CredentialId> = Vec::new();
         let mut last_moment = None;
+        // What the vendor named to trace the last usage limit, which the
+        // call's words end with.
+        let mut last_trace = VendorTrace::default();
         loop {
-            let used_up = |resets_at| refused(MediaRefusal::UsedUp { vendor: vendor.clone(), resets_at });
+            let used_up = |resets_at, trace: &VendorTrace| {
+                refused(MediaRefusal::UsedUp { vendor: vendor.clone(), resets_at, trace: trace.clone() })
+            };
             // Another account is sent to only while the entry may still
             // make its kind.
             if !tried.is_empty()
                 && current(services, self.shard.user(), self.route).await.map_err(failed)?.is_none()
             {
-                return Err(used_up(last_moment));
+                return Err(used_up(last_moment, &last_trace));
             }
             let (account, running) = match rotation {
                 Rotation::Manual => {
@@ -1440,10 +1455,10 @@ impl Making<'_> {
                     let (choice, _) = assembly.take_account(entry, &self.model).await.map_err(failed)?;
                     match choice {
                         Some(Choice::Account(running)) if tried.contains(running.account()) => {
-                            return Err(used_up(last_moment));
+                            return Err(used_up(last_moment, &last_trace));
                         }
                         Some(Choice::Account(running)) => (running.account().clone(), Some(running)),
-                        Some(Choice::AllUsedUp { earliest }) => return Err(used_up(earliest)),
+                        Some(Choice::AllUsedUp { earliest }) => return Err(used_up(earliest, &last_trace)),
                         None => unreachable!("a rotating entry takes an account or finds them used up"),
                     }
                 }
@@ -1457,7 +1472,7 @@ impl Making<'_> {
             // A Manual entry whose account a call used up is not asked
             // again until it resets: Automatic goes on with the next entry.
             if rotation == Rotation::Manual && assembly.rotation().is_used_up(&entry.id, &account, now) {
-                return Err(used_up(provider.quota().and_then(|quota| quota.used_up_until(now))));
+                return Err(used_up(provider.quota().and_then(|quota| quota.used_up_until(now)), &last_trace));
             }
             // The account is named only to whoever manages the entry: on a
             // shared instance it is the administrator's (`providers.md`
@@ -1480,7 +1495,7 @@ impl Making<'_> {
                 Ok(made) => return Ok(made),
                 Err(failure) => failure,
             };
-            let MediaFailure::UsageLimit { retry_at } = failure else {
+            let MediaFailure::UsageLimit { retry_at, trace } = failure else {
                 return Err(refused(vendor_refusal(failure, vendor, label, self.manages)));
             };
             let now = services.clock.now();
@@ -1495,10 +1510,11 @@ impl Making<'_> {
             // next.
             assembly.mark_used_up(&entry.id, &account, until);
             if rotation == Rotation::Manual {
-                return Err(used_up(moment));
+                return Err(used_up(moment, &trace));
             }
             tried.push(account);
             last_moment = moment;
+            last_trace = trace;
         }
     }
 
@@ -1550,11 +1566,11 @@ fn vendor_refusal(failure: MediaFailure, vendor: String, account: Option<String>
             MediaRefusal::Failed { message: failure.message() }
         }
         MediaFailure::SignIn(_) => MediaRefusal::Expired { vendor, account },
-        MediaFailure::KeyRefused { .. } => MediaRefusal::KeyRefused { vendor, manages },
-        MediaFailure::Refused { message, .. } => MediaRefusal::Refused { vendor, message },
-        MediaFailure::Shape { takes, .. } => MediaRefusal::Shape { vendor, takes },
-        MediaFailure::Unanswered { cause, .. } => MediaRefusal::Unanswered { vendor, cause },
-        MediaFailure::UsageLimit { retry_at } => MediaRefusal::UsedUp { vendor, resets_at: retry_at },
+        MediaFailure::KeyRefused { trace, .. } => MediaRefusal::KeyRefused { vendor, manages, trace },
+        MediaFailure::Refused { message, trace, .. } => MediaRefusal::Refused { vendor, message, trace },
+        MediaFailure::Shape { takes, trace, .. } => MediaRefusal::Shape { vendor, takes, trace },
+        MediaFailure::Unanswered { cause, trace, .. } => MediaRefusal::Unanswered { vendor, cause, trace },
+        MediaFailure::UsageLimit { retry_at, trace } => MediaRefusal::UsedUp { vendor, resets_at: retry_at, trace },
     }
 }
 

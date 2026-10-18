@@ -12,7 +12,7 @@ use demi_provider_common::{
     media::MediaVendor,
     media_catalog::Catalog,
     testing::{MockResponse, MockVendor},
-    videos::{JobState, Resolution, VideoOption, VideoRequest, unsent},
+    videos::{JobState, VideoOption, VideoRequest, unsent},
 };
 use demi_shared_types::{Cost, Currency, VideoShape};
 use serde_json::json;
@@ -32,7 +32,7 @@ fn request() -> VideoRequest {
         references: vec![image(b"cat")],
         duration: Some(1),
         aspect: Some(Aspect { width: 16, height: 9 }),
-        resolution: Some(Resolution::P480),
+        resolution: Some(demi_shared_types::VideoResolution::Height(480)),
         audio: Some(false),
         seed: Some(7),
     }
@@ -59,10 +59,10 @@ async fn a_video_is_asked_in_the_xai_shape_read_to_done_and_downloaded_without_t
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
     assert_eq!(unsent(maker.shape(), &request()), [VideoOption::Seed]);
-    let job = maker.ask(&http, request()).await.result.unwrap();
+    let job = maker.ask(&http, empty_catalog(), request()).await.result.unwrap();
     assert_eq!(job, "d97415a1");
-    assert_eq!(maker.state(&http, &job).await.result.unwrap(), JobState::Running { progress: Some(40) });
-    let JobState::Done(done) = maker.state(&http, &job).await.result.unwrap() else {
+    assert_eq!(maker.state(&http, taken(&job)).await.result.unwrap(), JobState::Running { progress: Some(40) });
+    let JobState::Done(done) = maker.state(&http, taken(&job)).await.result.unwrap() else {
         panic!("the job is not done");
     };
     assert_eq!(done.cost, Some(Cost { amount: 0.05, currency: Currency::Usd }));
@@ -102,11 +102,11 @@ async fn a_failed_a_withheld_and_an_expired_job_are_read_as_such() {
     let maker = provider.videos().unwrap();
     let http = demi_provider_common::ProviderHttp::new(reqwest::Client::new());
 
-    let read = || maker.state(&http, "d97415a1");
-    assert_eq!(read().await.result.unwrap(), JobState::Failed { message: "Video generation failed".into() });
+    let read = || maker.state(&http, taken("d97415a1"));
+    assert_eq!(read().await.result.unwrap(), JobState::Failed { message: "Video generation failed".into(), trace: Default::default() });
     assert_eq!(
         read().await.result.unwrap(),
-        JobState::Failed { message: "the video was withheld by its moderation".into() }
+        JobState::Failed { message: "the video was withheld by its moderation".into(), trace: Default::default() }
     );
     assert_eq!(read().await.result.unwrap(), JobState::Expired);
 }
@@ -131,4 +131,16 @@ async fn the_video_models_are_the_catalogs_for_grok() {
     .unwrap();
     let listed = provider.videos().unwrap().models(&demi_provider_common::ProviderHttp::new(reqwest::Client::new()), &catalog).await.unwrap();
     assert_eq!(listed.iter().map(|model| model.id.as_str()).collect::<Vec<_>>(), ["grok-imagine-video"]);
+}
+
+/// A catalog of no models, for a maker whose requests are one.
+fn empty_catalog() -> &'static Catalog {
+    static EMPTY: std::sync::LazyLock<Catalog> =
+        std::sync::LazyLock::new(|| Catalog::decode(br#"{ "updated": "2026-10-01T00:00:00Z", "models": [] }"#).unwrap());
+    &EMPTY
+}
+
+/// The job `id`, as the backend names a taken job to its maker.
+fn taken(id: &str) -> demi_provider_common::videos::JobRef<'_> {
+    demi_provider_common::videos::JobRef { id, model: "", catalog: empty_catalog() }
 }

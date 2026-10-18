@@ -82,16 +82,16 @@ fn a_failure_is_told_in_the_designs_words() {
             (
                 MediaRefusal::UsedUp {
                     vendor: "ChatGPT".into(),
-                    resets_at: Some("2030-01-01T13:00:00Z".parse().unwrap()),
+                    resets_at: Some("2030-01-01T13:00:00Z".parse().unwrap()), trace: Default::default(),
                 },
                 "ChatGPT's usage limit is reached, resetting at Jan 1, 9:00 PM",
             ),
             (
-                MediaRefusal::UsedUp { vendor: "Grok".into(), resets_at: None },
+                MediaRefusal::UsedUp { vendor: "Grok".into(), resets_at: None, trace: Default::default() },
                 "Grok's usage limit is reached",
             ),
             (
-                MediaRefusal::Refused { vendor: "ChatGPT".into(), message: "Your request was rejected.".into() },
+                MediaRefusal::Refused { vendor: "ChatGPT".into(), message: "Your request was rejected.".into(), trace: Default::default() },
                 "ChatGPT refused the request: Your request was rejected.",
             ),
             (
@@ -103,7 +103,7 @@ fn a_failure_is_told_in_the_designs_words() {
                 "the ChatGPT sign-in has expired; ask your administrator to sign in again",
             ),
             (
-                MediaRefusal::Unanswered { vendor: "Grok".into(), cause: "no answer in 120 s".into() },
+                MediaRefusal::Unanswered { vendor: "Grok".into(), cause: "no answer in 120 s".into(), trace: Default::default() },
                 "Grok did not answer: no answer in 120 s",
             ),
             (
@@ -111,16 +111,16 @@ fn a_failure_is_told_in_the_designs_words() {
                 "image generation is off for ChatGPT and Grok; turn it on in Settings › Providers",
             ),
             (
-                MediaRefusal::KeyRefused { vendor: "OpenAI".into(), manages: true },
+                MediaRefusal::KeyRefused { vendor: "OpenAI".into(), manages: true, trace: Default::default() },
                 "OpenAI refused the API key; check it in Settings › Providers",
             ),
             (
-                MediaRefusal::KeyRefused { vendor: "xAI".into(), manages: false },
+                MediaRefusal::KeyRefused { vendor: "xAI".into(), manages: false, trace: Default::default() },
                 "xAI refused the API key; ask your administrator to check it",
             ),
             (
                 MediaRefusal::NoProvider,
-                "no provider makes images; sign in to ChatGPT or Grok, or add an OpenAI, xAI or Google key, in Settings › Providers",
+                "no provider makes images; sign in to ChatGPT or Grok, or add an OpenAI, xAI, Google, MiniMax, BytePlus ModelArk or Volcengine Ark key, in Settings › Providers",
             ),
             (
                 MediaRefusal::Off { model: "gpt-image-2".into(), provider: "ChatGPT".into() },
@@ -282,7 +282,7 @@ fn a_refused_shape_names_the_shapes_the_vendor_takes() {
             Err(PortRefusal::Media {
                 refusal: MediaRefusal::Shape {
                     vendor: "Grok".into(),
-                    takes: vec!["1:1".into(), "3:4".into(), "19.5:9".into()],
+                    takes: vec!["1:1".into(), "3:4".into(), "19.5:9".into()], trace: Default::default(),
                 },
             })
         });
@@ -410,7 +410,7 @@ fn the_models_are_a_table_one_model_is_labelled_lines_and_json_prints_the_same()
             ],
             unlisted: vec![MediaUnlisted {
                 provider: "Gemini".into(),
-                refusal: MediaRefusal::KeyRefused { vendor: "Google".into(), manages: true },
+                refusal: MediaRefusal::KeyRefused { vendor: "Google".into(), manages: true, trace: Default::default() },
             }],
             none: None,
         });

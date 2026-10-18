@@ -51,12 +51,26 @@ that kind, its *shape*, or that it makes none:
 | OpenAI key | OpenAI Images | — | OpenAI Speech |
 | Google key | Gemini | Veo | Gemini speech, Lyria music |
 | xAI key | OpenAI Images | xAI Videos | xAI Speech |
-| BytePlus key | Seedream | Seedance | Seed speech and Seed Audio |
-| Volcengine key (火山引擎) | Seedream | Seedance | Seed speech and Seed Audio |
+| BytePlus key (ModelArk) | Seedream | Seedance | — |
+| Volcengine key (火山方舟) | Seedream | Seedance | — |
+| BytePlus Speech key | — | — | Seed speech, Seed Audio sound effects |
+| Doubao Speech key (豆包语音) | — | — | Seed speech, Seed Audio sound effects |
 | MiniMax key | MiniMax image | Hailuo | MiniMax speech |
 | ElevenLabs key | — | — | ElevenLabs speech, music and sound effects |
 | Stability AI key | — | — | Stable Audio music and sound effects |
 | A compatible API | chosen by the user: OpenAI Images or none | chosen: OpenAI Videos, xAI Videos, Ark Tasks, OpenRouter Videos or none | chosen: OpenAI Speech or none |
+
+ByteDance sells its speech apart from Ark, under its own console and key, in
+both of its regions, so a ByteDance speech key is an entry of its own, as
+the key a user copies from that console is; a user whose one key works for
+both pastes it into both. Volcengine Ark is a vendor of models.dev, whose
+entry also makes text; BytePlus ModelArk and both speech services are
+[media-only vendors](../providers/providers.md#media-only-vendors).
+
+A MiniMax entry, models.dev's `minimax` or `minimax-cn`, whose endpoint is
+MiniMax's Anthropic-shaped text API, makes its media through the same key on
+the endpoint's origin, `https://api.minimax.io` or `https://api.minimax.cn`;
+MiniMax's coding plans make none.
 
 Audio is speech, music and sound effects, `demi audio speech`, `music`
 and `effect`, and a shape says which of them it makes. An ElevenLabs or

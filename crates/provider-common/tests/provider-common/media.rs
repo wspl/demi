@@ -55,7 +55,7 @@ async fn a_file_answer_past_the_limit_fails_as_it_arrives() {
         .await;
 
     match answer.result {
-        Err(MediaFailure::Unanswered { cause, code: None }) => assert_eq!(cause, "its answer is over 256 MiB"),
+        Err(MediaFailure::Unanswered { cause, code: None, .. }) => assert_eq!(cause, "its answer is over 256 MiB"),
         other => panic!("not refused for its size: {other:?}"),
     }
 }

@@ -312,7 +312,7 @@ fn read_answer(text: &[u8]) -> Result<MadeImage, MediaFailure> {
             Some(said) => format!("{said} ({reason})"),
             None => format!("the prompt was blocked ({reason})"),
         };
-        return Err(MediaFailure::Refused { message, code: Some(ErrorCode::Vendor(reason)) });
+        return Err(MediaFailure::Refused { message, code: Some(ErrorCode::Vendor(reason)), trace: Default::default() });
     }
     let candidate = answer.candidates.into_iter().next();
     let image = candidate
@@ -326,7 +326,7 @@ fn read_answer(text: &[u8]) -> Result<MadeImage, MediaFailure> {
                     Some(said) => format!("{said} ({reason})"),
                     None => format!("the answer was stopped ({reason})"),
                 };
-                MediaFailure::Refused { message, code: Some(ErrorCode::Vendor(reason)) }
+                MediaFailure::Refused { message, code: Some(ErrorCode::Vendor(reason)), trace: Default::default() }
             }
             _ => unreadable("its answer held no image".to_owned()),
         });

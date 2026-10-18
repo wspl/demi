@@ -53,7 +53,8 @@ impl KeyImages {
     pub(crate) fn new(vendor: MediaVendor, key: Secret, base: &Url, clock: Arc<dyn Clock>) -> Self {
         let flavor = match vendor {
             MediaVendor::Xai => Flavor::Xai,
-            MediaVendor::OpenAi | MediaVendor::Google | MediaVendor::Elevenlabs => Flavor::OpenAi,
+            // Only OpenAI's and xAI's keys make images through this crate.
+            _ => Flavor::OpenAi,
         };
         Self::of(flavor, Some(key), base, clock)
     }

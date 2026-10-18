@@ -8,7 +8,7 @@
 //! a dollar ([Cost Tracking](https://docs.x.ai/developers/cost-tracking)).
 
 use bytes::Bytes;
-use demi_shared_types::{Cost, Currency, TokenUsage};
+use demi_shared_types::{Cost, Currency, TokenUsage, VideoResolution};
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 
@@ -34,7 +34,7 @@ struct Body<'a> {
     #[serde(skip_serializing_if = "Option::is_none")]
     aspect_ratio: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    resolution: Option<&'static str>,
+    resolution: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     generate_audio: Option<bool>,
 }
@@ -57,7 +57,7 @@ pub fn encode(request: &VideoRequest) -> Bytes {
         reference_images: request.references.iter().map(image).collect(),
         duration: request.duration,
         aspect_ratio: request.aspect.map(|aspect| aspect.to_string()),
-        resolution: request.resolution.map(|resolution| resolution.as_str()),
+        resolution: request.resolution.map(VideoResolution::lowercase),
         generate_audio: request.audio,
     };
     Bytes::from(json_body(&body))
@@ -119,7 +119,7 @@ pub fn read_state(body: &[u8]) -> Result<JobState, MediaFailure> {
     match state.status.as_str() {
         "pending" => Ok(JobState::Running { progress: state.progress }),
         "failed" => Ok(JobState::Failed {
-            message: state.error.map_or_else(|| "the job failed".to_owned(), |error| error.message),
+            message: state.error.map_or_else(|| "the job failed".to_owned(), |error| error.message), trace: Default::default(),
         }),
         "expired" => Ok(JobState::Expired),
         "done" => {
@@ -129,7 +129,7 @@ pub fn read_state(body: &[u8]) -> Result<JobState, MediaFailure> {
                     message: match video.respect_moderation {
                         Some(false) => "the video was withheld by its moderation".to_owned(),
                         _ => "its finished job named no video".to_owned(),
-                    },
+                    }, trace: Default::default(),
                 });
             };
             let url = Url::parse(&url).map_err(|error| unreadable(format!("its video's address could not be read: {error}")))?;

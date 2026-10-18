@@ -147,7 +147,7 @@ async fn a_failed_call_says_whether_the_account_is_used_up_the_vendor_refused_or
 
     let failure = maker.make(&http, &catalog(), request(Vec::new())).await.result.unwrap_err();
     let lifts = demi_shared_types::Timestamp::from_millisecond((NOW_SECONDS + 3_600) * 1000).unwrap();
-    assert_eq!(failure, MediaFailure::UsageLimit { retry_at: Some(lifts) });
+    assert_eq!(failure, MediaFailure::UsageLimit { retry_at: Some(lifts), trace: Default::default() });
     assert_eq!(failure.outcome(), "usage_limit");
     match maker.make(&http, &catalog(), request(Vec::new())).await.result.unwrap_err() {
         MediaFailure::Refused { message, .. } => {

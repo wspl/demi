@@ -596,7 +596,7 @@
       "keyPaste": "Paste your API key",
       "test": "Test connection",
       "testDescription": "Sends one short chat message to the first enabled text model.",
-      "testMediaDescription": "Reads the vendor’s list of models with the API key.",
+      "testMediaDescription": "Checks the API key with the vendor without making anything.",
       "testing": "Testing…",
       "connected": "Connected",
       "failed": "Failed",

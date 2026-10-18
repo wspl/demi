@@ -99,6 +99,10 @@ pub struct MediaModel {
     pub image: Option<ImageCapabilities>,
     pub video: Option<VideoCapabilities>,
     pub audio: Option<AudioCapabilities>,
+    /// For a vendor whose models take different requests, which one the
+    /// model takes, read only by that vendor's requests, such as MiniMax's
+    /// `v2` for its H3 models and `v1` for Hailuo.
+    pub api: Option<String>,
     pub price: Option<Price>,
     /// The subscriptions that make the model without listing it.
     #[serde(default)]

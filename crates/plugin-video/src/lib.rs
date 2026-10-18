@@ -23,7 +23,7 @@ impl Video {
         let mut manifest = Manifest::new(
             PluginId::try_from("video").expect("a valid plugin id"),
             "Video Generation",
-            "Makes videos through your Grok subscription, an xAI or Google key or a compatible API with demi video.",
+            "Makes videos through your Grok subscription, an xAI, Google, MiniMax, BytePlus ModelArk or Volcengine Ark key or a compatible API with demi video.",
         );
         manifest.commands = commands::commands().manifest_commands();
         Self { manifest }

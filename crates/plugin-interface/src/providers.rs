@@ -7,7 +7,8 @@
 //! account, rotates them, renews their sign-in, runs the job and records
 //! the call in the usage ledger; no token or key reaches the plugin.
 
-use demi_shared_types::{AudioKind, B64Bytes, Cost, Timestamp};
+pub use demi_shared_types::VideoResolution;
+use demi_shared_types::{AudioKind, B64Bytes, Cost, Timestamp, VendorTrace};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -379,43 +380,6 @@ pub struct VideoAsk {
     pub provider: Option<String>,
 }
 
-/// The resolutions a video is asked in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-pub enum VideoResolution {
-    #[serde(rename = "480p")]
-    P480,
-    #[serde(rename = "720p")]
-    P720,
-    #[serde(rename = "1080p")]
-    P1080,
-    #[serde(rename = "4k")]
-    K4,
-}
-
-impl VideoResolution {
-    pub const ALL: [Self; 4] = [Self::P480, Self::P720, Self::P1080, Self::K4];
-
-    /// As `--resolution` writes it.
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Self::P480 => "480p",
-            Self::P720 => "720p",
-            Self::P1080 => "1080p",
-            Self::K4 => "4k",
-        }
-    }
-
-    /// The shorter side of a picture of it, in pixels.
-    pub fn short_side(self) -> u32 {
-        match self {
-            Self::P480 => 480,
-            Self::P720 => 720,
-            Self::P1080 => 1080,
-            Self::K4 => 2160,
-        }
-    }
-}
-
 /// An option of `demi video generate`, as a shape that has no field for it
 /// is said not to take it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -578,6 +542,10 @@ pub struct MadeAudio {
     pub shape: String,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unsent: Vec<AudioOption>,
+    /// The speed sent, the nearer end of the vendor's range, when the one
+    /// asked was outside it; none when it was sent as asked.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub speed: Option<f64>,
     /// The cost the vendor reported, in its documented unit; none
     /// otherwise.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -661,17 +629,34 @@ pub enum MediaRefusal {
         vendor: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         resets_at: Option<Timestamp>,
+        #[serde(default, skip_serializing_if = "VendorTrace::is_empty")]
+        trace: VendorTrace,
     },
     /// The vendor refused the entry's API key; `manages` says whether the
     /// user manages the entry, and so can check it.
     #[error("{vendor} refused the API key")]
-    KeyRefused { vendor: String, manages: bool },
+    KeyRefused {
+        vendor: String,
+        manages: bool,
+        #[serde(default, skip_serializing_if = "VendorTrace::is_empty")]
+        trace: VendorTrace,
+    },
     /// The vendor refused the prompt or an image, in its own words.
     #[error("{vendor} refused the request: {message}")]
-    Refused { vendor: String, message: String },
+    Refused {
+        vendor: String,
+        message: String,
+        #[serde(default, skip_serializing_if = "VendorTrace::is_empty")]
+        trace: VendorTrace,
+    },
     /// The vendor refused the shape asked for, naming the shapes it takes.
     #[error("{vendor} takes none of the shape asked for")]
-    Shape { vendor: String, takes: Vec<String> },
+    Shape {
+        vendor: String,
+        takes: Vec<String>,
+        #[serde(default, skip_serializing_if = "VendorTrace::is_empty")]
+        trace: VendorTrace,
+    },
     /// The account's sign-in expired and cannot be renewed; the account is
     /// named as [`MadeImage`] names it.
     #[error("the {vendor} sign-in has expired")]
@@ -682,10 +667,20 @@ pub enum MediaRefusal {
     },
     /// The vendor failed, or did not answer in time.
     #[error("{vendor} did not answer: {cause}")]
-    Unanswered { vendor: String, cause: String },
+    Unanswered {
+        vendor: String,
+        cause: String,
+        #[serde(default, skip_serializing_if = "VendorTrace::is_empty")]
+        trace: VendorTrace,
+    },
     /// The vendor failed the video's job, in its own words.
     #[error("{vendor} failed the video: {message}")]
-    JobFailed { vendor: String, message: String },
+    JobFailed {
+        vendor: String,
+        message: String,
+        #[serde(default, skip_serializing_if = "VendorTrace::is_empty")]
+        trace: VendorTrace,
+    },
     /// The job expired at the vendor before it ran.
     #[error("the job expired at {vendor} before it ran")]
     JobExpired { vendor: String },

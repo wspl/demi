@@ -1,7 +1,8 @@
 # Image generation
 
 The agent makes and edits images with the `demi image` group, through the
-user's ChatGPT or Grok subscription or an OpenAI, xAI or Google API key.
+user's ChatGPT or Grok subscription or an OpenAI, xAI, Google, BytePlus
+ModelArk or Volcengine Ark API key.
 For example, a user asks for an icon
 for their app: the agent runs
 `demi image generate "a flat red fox head icon" --model gpt-image-2 --transparent > fox.png`,
@@ -156,6 +157,29 @@ The API keys, as each vendor's API reference documents them in October
 | Models | `GET /v1/models`: those whose ID starts with `gpt-image-` or `chatgpt-image-`; `created` is the release date | `GET /v1/image-generation-models`, every one, with its `aliases`; `created` is the release date | `GET /v1beta/models`, every page: those whose ID has the word `image` or `banana`, as `gemini-3-pro-image` and `gemini-nano-banana-2.1`, and that list `generateContent`; `description` is the vendor's line, and no date is given |
 | Result | `data[0].b64_json` | `data[0].b64_json`, with `mime_type` | The first `inlineData` part of `candidates[0].content.parts`; a block is `promptFeedback.blockReason` or the candidate's `finishReason` |
 
+ByteDance's Seedream, through a BytePlus or a Volcengine key, as Ark's API
+reference documents it in October 2026:
+
+| | Seedream (BytePlus, Volcengine) |
+| --- | --- |
+| Endpoints | `POST https://ark.ap-southeast.bytepluses.com/api/v3/images/generations` (BytePlus), `POST https://ark.cn-beijing.volces.com/api/v3/images/generations` (Volcengine) |
+| Headers | `Authorization: Bearer <key>` |
+| Generate body | `model`, `prompt`, `size` as the catalog's `WxH` for the asked aspect, else none, `response_format: "b64_json"`, `watermark: false`, `sequential_image_generation: "disabled"`, `output_format: "png"` |
+| Edit body | The same, with `image`: one data URI, or an array of them for several |
+| Models | The catalog's: Ark lists its models only to a request signed with an access key pair, not to the API key. The two vendors name a model differently, `doubao-seedream-5-0-pro-260628` and `dola-seedream-5-0-pro-260628`, and the catalog holds each |
+| Result | `data[0].b64_json`; an image the vendor refused carries its own `error` |
+
+MiniMax's images, as its API reference documents them in October 2026:
+
+| | MiniMax image |
+| --- | --- |
+| Endpoints | `POST /v1/image_generation` on the entry's origin |
+| Headers | `Authorization: Bearer <key>` |
+| Generate body | `model`, `prompt`, `aspect_ratio` when asked, `response_format: "base64"`, `n: 1` |
+| Edit body | The same, with `subject_reference: [{ type: "character", image_file: "data:…" }]`, one image, which only `image-01` and `image-01-live` take |
+| Models | The catalog's: MiniMax lists only its text models |
+| Result | `data.image_base64[0]`; the answer is HTTP 200 even when it failed, so a `base_resp.status_code` other than 0 is the failure, in its `status_msg` |
+
 A key's models are those its vendor lists for it, read when the list is
 asked for, so a model the vendor adds needs no Demi release. What Demi
 knows of a vendor's models, the one-line description, the release date
@@ -180,7 +204,12 @@ its vendor reads its failures for text
 ([Failures](../providers/providers.md#failures)): a usage or billing limit
 is `usage_limit`, a refused key fails the call naming it, and a policy
 block is a refusal in the vendor's words; a failure the provider does not
-recognise prints the vendor's own message. Each call writes a row of the
+recognise prints the vendor's own message. Whatever the vendor's failure
+names to trace it, its error code and its request or trace ID (OpenAI's
+`x-request-id`, MiniMax's `trace_id`, Ark's `code` and request ID, Seed
+speech's `X-Tt-Logid`), ends the words in parentheses, a usage limit's
+included, as `(code 1042, trace 0a1b2c…)`, since a vendor's support asks for
+it first. Each call writes a row of the
 [usage ledger](../providers/usage-and-quota.md#usage-ledger), with the
 purpose `image`, the account, the model asked and the counts the vendor
 reported. The quota a response reports, as the ChatGPT backend's `x-codex-*`
@@ -193,7 +222,7 @@ The words a failure prints, on stderr with exit status 1:
 
 | Cause | Words |
 | --- | --- |
-| No entry makes images | `demi image generate: no provider makes images; sign in to ChatGPT or Grok, or add an OpenAI, xAI or Google key, in Settings › Providers` |
+| No entry makes images | `demi image generate: no provider makes images; sign in to ChatGPT or Grok, or add an OpenAI, xAI, Google, BytePlus ModelArk or Volcengine Ark key, in Settings › Providers` |
 | No `--model` | `demi image generate: --model is required; demi image models lists them` |
 | The key was refused | `demi image generate: OpenAI refused the API key; check it in Settings › Providers`; for a user of a shared instance's entries, `ask your administrator to check it` |
 | Every entry that could has Image Generation off | `demi image generate: image generation is off for ChatGPT and Grok; turn it on in Settings › Providers` |

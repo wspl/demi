@@ -30,6 +30,7 @@ fn made(bytes: &[u8], shape: &str, unsent: Vec<AudioOption>) -> MadeAudio {
         account: None,
         shape: shape.into(),
         unsent,
+        speed: None,
         cost: None,
     }
 }

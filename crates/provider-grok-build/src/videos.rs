@@ -46,7 +46,7 @@ impl VideoMaker for GrokVideos {
         VideoShape::Grok
     }
 
-    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
+    fn ask<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, _: &'a demi_provider_common::media_catalog::Catalog, request: VideoRequest) -> BoxFuture<'a, MediaAnswer<String>> {
         Box::pin(async move {
             let shared = &*self.0;
             shared
@@ -59,7 +59,8 @@ impl VideoMaker for GrokVideos {
         })
     }
 
-    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: &'a str) -> BoxFuture<'a, MediaAnswer<JobState>> {
+    fn state<'a>(&'a self, http: &'a demi_provider_common::ProviderHttp, job: demi_provider_common::videos::JobRef<'a>) -> BoxFuture<'a, MediaAnswer<JobState>>  {
+        let job = job.id;
         Box::pin(async move {
             let shared = &*self.0;
             let url = endpoint_url(&shared.proxy_url, &format!("/videos/{job}"));

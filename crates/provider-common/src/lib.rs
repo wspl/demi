@@ -50,7 +50,7 @@ pub use contract::{
     offers,
 };
 pub use endpoint::endpoint_url;
-pub use failure::{EarlyEnd, ErrorCode, FailureReader, ProviderFailure};
+pub use failure::{EarlyEnd, ErrorCode, FailureReader, ProviderFailure, request_id_in};
 pub use http_record::{HttpFailureRecord, http_failure, read_http_failure, retry_at};
 pub use model_words::model_words;
 pub use secret::{Secret, SecretError};

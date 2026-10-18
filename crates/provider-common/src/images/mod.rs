@@ -17,7 +17,7 @@ use futures_util::future::BoxFuture;
 use serde::Deserialize;
 
 use crate::media::{MediaAnswer, MediaFailure, MediaMaker, unreadable};
-use crate::media_catalog::Catalog;
+use crate::media_catalog::{Catalog, ImageSize};
 
 /// A provider's image role.
 pub trait ImageMaker: MediaMaker {
@@ -54,6 +54,16 @@ impl Aspect {
             (side(self.width, self.height), long)
         }
     }
+}
+
+/// The size of `vendor`'s `model` nearest the shape `aspect`, among the
+/// only sizes the catalog says it takes, or the sizes it lists for each
+/// shape; none when the catalog lists none.
+pub fn nearest_size(catalog: &Catalog, vendor: &str, model: &str, aspect: Aspect) -> Option<ImageSize> {
+    let sizes = catalog.model(vendor, model).and_then(|model| catalog.image(model)).and_then(|image| image.sizes.as_deref())?;
+    let asked = f64::from(aspect.width) / f64::from(aspect.height);
+    let off = |size: &ImageSize| (f64::from(size.width) / f64::from(size.height) / asked).ln().abs();
+    sizes.iter().min_by(|a, b| off(a).total_cmp(&off(b))).copied()
 }
 
 impl fmt::Display for Aspect {

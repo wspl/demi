@@ -105,7 +105,7 @@ fn what_the_shape_does_not_take_and_the_result_does_not_honour_are_warnings() {
         let ask = plugged.demi.videos_asked.borrow()[0].clone();
         assert_eq!(
             (ask.duration, ask.resolution, ask.audio, ask.seed),
-            (Some(5), Some(VideoResolution::P480), Some(false), Some(7))
+            (Some(5), Some(VideoResolution::Height(480)), Some(false), Some(7))
         );
 
         plugged.answer(|_| Ok(asked("OpenAI Videos", vec![VideoOption::Audio])));
@@ -113,6 +113,36 @@ fn what_the_shape_does_not_take_and_the_result_does_not_honour_are_warnings() {
         let (_, _, stderr) = plugged.run(&["video", "generate", "a boat", "--model", "m", "--no-audio"]).await;
         let warnings: Vec<&str> = stderr.lines().filter(|line| line.contains("warning")).collect();
         assert_eq!(warnings, ["demi video generate: warning: OpenAI Videos takes no --no-audio; the video has sound"]);
+    });
+}
+
+/// `--resolution` takes any height or count of thousands across a vendor
+/// names, as MiniMax's `768P` and `2K`, and sends it as read; one the
+/// result does not honour is a warning in `--resolution`'s words, and a
+/// value of neither form is refused before anything is asked.
+/// Planted defects this catches: a closed list of resolutions, which
+/// refuses MiniMax's; a `2k` result never checked; a malformed value
+/// passed to the plugin.
+// Two calls against a scripted Providers service and one parse: milliseconds.
+#[test]
+fn a_resolution_is_any_height_or_thousands_across() {
+    local(async {
+        let plugged = Plugged::new();
+        for resolution in ["768P", "2k"] {
+            plugged.answer(|_| Ok(asked("Hailuo", Vec::new())));
+            plugged.steps([made(CLIP)]);
+            let (code, _, stderr) =
+                plugged.run(&["video", "generate", "a boat", "--model", "MiniMax-H3", "--resolution", resolution]).await;
+            assert_eq!(code, 0, "{stderr}");
+            let asked = resolution.to_lowercase();
+            let warnings: Vec<&str> = stderr.lines().filter(|line| line.contains("warning")).collect();
+            assert_eq!(warnings, [format!("demi video generate: warning: asked for {asked}, got 64×36")]);
+        }
+        let sent: Vec<_> = plugged.demi.videos_asked.borrow().iter().map(|ask| ask.resolution).collect();
+        assert_eq!(sent, [Some(VideoResolution::Height(768)), Some(VideoResolution::K(2))]);
+
+        let refused = plugged.refused(&["video", "generate", "a boat", "--model", "MiniMax-H3", "--resolution", "hd"]);
+        assert!(refused.contains("\\\"hd\\\" is not a height such as 720p, or 2k or 4k"), "{refused}");
     });
 }
 
@@ -179,7 +209,7 @@ fn a_failure_is_told_in_the_designs_words() {
         let plugged = Plugged::new();
         let ended = [
             (
-                MediaRefusal::JobFailed { vendor: "Grok".into(), message: "Video generation failed".into() },
+                MediaRefusal::JobFailed { vendor: "Grok".into(), message: "Video generation failed".into(), trace: Default::default() },
                 "Grok failed the video: Video generation failed",
             ),
             (MediaRefusal::JobExpired { vendor: "Grok".into() }, "the job expired at Grok before it ran"),
@@ -205,7 +235,7 @@ fn a_failure_is_told_in_the_designs_words() {
         let refused = [
             (
                 MediaRefusal::NoProvider,
-                "no provider makes videos; sign in to Grok, or add an xAI or Google key or a compatible API with a video shape, in Settings › Providers",
+                "no provider makes videos; sign in to Grok, or add an xAI, Google, MiniMax, BytePlus ModelArk or Volcengine Ark key or a compatible API with a video shape, in Settings › Providers",
             ),
             (
                 MediaRefusal::AllOff { providers: vec!["Grok".into()] },
