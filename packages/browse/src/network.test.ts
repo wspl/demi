@@ -85,6 +85,22 @@ test('a cut resets the connections whose requests match, and no other', async ()
   expect(network.list()).toEqual([expect.stringContaining('/api/sync')])
 })
 
+test('a stall holds what the matching connections carry and keeps them open, and new connections go through', async () => {
+  const network = await setUp()
+  const sync = await connect(network, SYNC)
+  expect(network.stall('/api/sync')).toEqual([expect.stringContaining('/api/sync')])
+  let heard = false
+  sync.on('data', () => {
+    heard = true
+  })
+  sync.write('lost')
+  const fresh = await connect(network, SYNC)
+  await roundTrip(fresh, 'through')
+  expect(heard).toBe(false)
+  expect(sync.destroyed).toBe(false)
+  expect(network.list()).toEqual([expect.stringContaining('(stalled)'), expect.not.stringContaining('(stalled)')])
+})
+
 test('latency delays the app\'s traffic with its backend by its round trip, and not the dev server\'s files', async () => {
   const network = await setUp()
   const api = await connect(network, SYNC)

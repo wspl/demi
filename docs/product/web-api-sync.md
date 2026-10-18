@@ -19,7 +19,8 @@ answers 403 `forbidden_origin` ([Authentication](web-api.md#authentication)). A 
 that is not an upgrade answers 426 `upgrade_required`.
 
 After the upgrade, the backend sends JSON text messages, each a `SyncEvent`.
-The page sends one kind, `{ showing }`: the id of the conversation it shows
+The page sends two kinds: `{ ping: id }`, which the backend answers with a
+`pong` at once, as every page socket of the backend does; and `{ showing }`: the id of the conversation it shows
 while it is focused and visible, or null, each time that changes. The backend
 keeps it with the connection and forgets it when the connection ends, and
 sends no [push notification](../product/turns.md#notifications) of a
@@ -49,6 +50,7 @@ later one is the current value of one part of it that changed:
 | `logins` | `logins`, the user's sign-ins that are running or ended within ten minutes, each as `GET /api/providers/subscription-login/:id` answers it, with its `providerId` or `providerType` | One starts, moves to another stage, shows its link or code, is refused a code, completes, fails, is cancelled or is dropped |
 | `plugin` | `plugin`, the plugin's id, and `state`, its user state | The plugin marks its user state changed ([The page](../architecture/plugins.md#the-page)) |
 | `heartbeat` | Nothing | 30 seconds pass without another message |
+| `pong` | `id`, the number of the page's `ping` | The page sent `{ ping: id }`, which it does as it returns ([A dropped connection](web-application.md#liveness-and-reconnection)) |
 
 The product state holds the current user, the instance mode, whether the
 backend can send email (`mail`, without which changing the email address is

@@ -150,6 +150,7 @@ impl Shard {
         let mut handling: Option<LocalBoxFuture<'_, Handled>> = None;
         let relay = async {
             'relay: loop {
+                let busy = handling.is_some();
                 tokio::select! {
                     handled = async { handling.as_mut().expect("the branch runs only while a frame is handled").await },
                         if handling.is_some() =>
@@ -165,7 +166,9 @@ impl Shard {
                             }
                         }
                     }
-                    message = stream.next(), if handling.is_none() => match message {
+                    // While a frame is handled, the page's next message
+                    // waits for its turn, and its pings are answered meanwhile.
+                    message = stream.next_unless_busy(busy) => match message {
                         Some(Ok(Message::Text(text))) => {
                             let shard = self.clone();
                             let connection = &connection;

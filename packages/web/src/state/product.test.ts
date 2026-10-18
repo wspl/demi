@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, jest, spyOn, test } from 'bun:test'
 import { waitFor } from '@demicodes/utils'
-import { browserCameOnline, browserWentOffline, pageReturned, waitToReconnect } from '@demicodes/web-ui/transport/liveness'
+import { browserCameOnline, browserWentOffline, pageReturned, pageWentAway, waitToReconnect } from '@demicodes/web-ui/transport/liveness'
 import { createPinia, disposePinia, setActivePinia } from 'pinia'
 import { onSessionExpired } from '../api/client'
 import { conversationSummary as summary, productState } from '../__tests__/product-state'
@@ -513,6 +513,46 @@ test('a page back from sleep replaces a channel silent for 75 seconds at once, a
   // The judgement waits for the messages already queued.
   jest.advanceTimersByTime(0)
   expect(next.closed).toBe(true)
+})
+
+// `web-application.md` § Liveness and reconnection: the return asks the
+// channel for a pong; one that answers was never broken, and the page shows
+// nothing of the check. Cost: fake timers, a few milliseconds.
+test('a page back whose channel answers the return\'s ping keeps it and shows no banner', async () => {
+  jest.useFakeTimers()
+  const product = started()
+  const channel = channels.last()
+  jest.setSystemTime(Date.now() + 60_000)
+  const returned = pageReturned()
+  jest.advanceTimersByTime(0)
+  const pings = channel.fromPage.filter((sent): sent is { ping: number } => typeof sent === 'object' && sent !== null && 'ping' in sent)
+  expect(pings).toHaveLength(1)
+  channel.send({ type: 'pong', id: pings[0]!.ping })
+  await returned
+  jest.advanceTimersByTime(10_000)
+  jest.advanceTimersByTime(0)
+  expect(channel.closed).toBe(false)
+  expect(channels.last()).toBe(channel)
+  expect(product.connection).toBeNull()
+})
+
+test('a channel still connecting when the page went away is abandoned at the return and connects again at once', () => {
+  jest.useFakeTimers()
+  const random = spyOn(Math, 'random').mockReturnValue(0)
+  try {
+    const product = useProduct()
+    product.start()
+    const stale = channels.last()
+    pageWentAway()
+    pageReturned()
+    jest.advanceTimersByTime(0)
+    expect(stale.closed).toBe(true)
+    // Not after the wait the failed attempt counts toward.
+    jest.advanceTimersByTime(0)
+    expect(channels.last()).not.toBe(stale)
+  } finally {
+    random.mockRestore()
+  }
 })
 
 // `web-application.md` § Liveness and reconnection: the browser's word that

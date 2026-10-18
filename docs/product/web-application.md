@@ -850,12 +850,34 @@ the page shows again, and replaces the channel and each conversation socket
 at once rather than after up to 75 seconds more of a watch that did not count
 the hour.
 
-The return reads what came in while the page was away before it judges a
-socket. A browser that froze a hidden tab holds the messages that arrived
-meanwhile and delivers them only once the tab runs again, so a heartbeat may
-be waiting to be read when the page becomes visible: the check runs after the
-page has read what its sockets hold, and a socket that brought anything is
-not broken. Likewise, the browser's word that it went offline counts only
+The return reads what came in while the page was away, and then asks each
+socket that still looks open whether it is alive. A browser that froze a
+hidden tab holds the messages that arrived meanwhile and delivers them only
+once the tab runs again, so a heartbeat read at the return may be one that
+arrived minutes ago on a connection the phone's system has since cut without
+a close: what the return reads says nothing about the socket now. So the
+page sends each such socket a `ping` with a number of its own, and the far
+end answers `pong` with the same number at once; a socket that brings no
+`pong` within 5 seconds, where a working one answers in well under one, is
+broken, and the page replaces it then rather than after 75 seconds more of
+silence. The backend answers a ping as soon as it reads it, ahead of
+anything it has yet to send, even while it is busy with the page's last
+message, such as a send that waits for an upload to reach the Host: it reads
+on, answering pings and keeping up to 8 of the page's other messages in
+their order for when it is done, and reads no further past them. For example, the user leaves the app on her phone for two minutes
+and comes back: iOS cut its sockets while it was in the background, a
+heartbeat that came just before is read at the return, and the page still
+shows the conversation live within about five seconds. Meanwhile the page
+shows nothing of the check, as a socket that answers in time was never
+broken. A socket still opening when the page went away is abandoned at the
+return and opened again at once, as its handshake belongs to a connection
+the system may have cut too. Three kinds of socket are not asked, as their
+far end has no `pong`: the live view's, which keeps its own heartbeat every
+quarter second; a file watch carried over a direct channel, whose far end
+is the runner; and a user stream, which carries only bytes. The page counts as returning when it becomes
+visible, when the browser shows it again from its back-forward cache
+(`pageshow` with `persisted`), when a frozen page resumes (`resume`), and
+when the browser comes back online. Likewise, the browser's word that it went offline counts only
 once it has held for a second: a network the system re-evaluates, as macOS
 does when it changes its primary interface, may report offline for a moment
 while every socket stays open, and the page neither shows the connection

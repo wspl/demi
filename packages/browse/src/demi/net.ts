@@ -6,7 +6,10 @@
 // holds the page's traffic and refuses its new connections while the
 // browser still reports a network, as when the way to a far server is lost:
 // the page sees its sockets go quiet and its reconnects fail, not that it is
-// offline. Each answers the conditions as they now are.
+// offline. A stall of the connections whose requests match a pattern holds
+// what they carry and keeps them open, while new connections go through, as
+// when a phone's system cut a hidden page's sockets without a close. Each
+// answers the conditions as they now are.
 import { NORMAL } from '../network'
 import { updateState, type Conditions } from '../state'
 import { Failure, type Tool } from '../tool'
@@ -43,6 +46,15 @@ export function net(tool: Tool) {
         throw new Failure([`No connection of the page matches ${pattern}. Open now:`, ...network.list().map((line) => `  ${line}`)].join('\n'))
       }
       return cut
+    },
+    /** Stalls the open connections a request of which matches `pattern`, as `cut` matches; answers what it stalled. */
+    stall: async (pattern: string | RegExp): Promise<string[]> => {
+      const network = await tool.network()
+      const stalled = network.stall(pattern)
+      if (stalled.length === 0) {
+        throw new Failure([`No open connection of the page matches ${pattern}. Open now:`, ...network.list().map((line) => `  ${line}`)].join('\n'))
+      }
+      return stalled
     },
     /** The conditions, and the page's open connections, one line each. */
     status: async (): Promise<{ conditions: Conditions, connections: string[] }> => {

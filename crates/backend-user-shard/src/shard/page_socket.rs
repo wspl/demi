@@ -6,7 +6,18 @@
 //! interval, so that the page can tell a quiet socket from one that died
 //! without a close (`web-application.md` § Liveness and reconnection), and
 //! each ends with a close frame that a page which stopped reading cannot hold
-//! up (`backend.md` § Startup and shutdown).
+//! up (`backend.md` § Startup and shutdown). Each but a user stream, which
+//! carries bytes alone, answers the page's `{ ping: id }` with `pong` at
+//! once, ahead of any message its owner has yet to send, whatever the owner
+//! is doing meanwhile: the page asks so as it returns, to learn whether the
+//! socket is still alive (`web-application.md` § Liveness and reconnection).
+//! The ping never reaches the owner.
+//!
+//! So that a pong never waits for the owner, one writer task per socket
+//! sends everything the socket sends: the owner's messages, one at a time
+//! and each awaited, and the pongs the receiving half reads, which go first
+//! at each message's end. The task ends with the socket's sending half, the
+//! close's bound included, whether the owner ends it or is dropped.
 //!
 //! Each socket is logged here, and only here, once as it opens and once as it
 //! ends, under the request ID of its upgrade, which ties the two lines, so
@@ -14,17 +25,22 @@
 //! § Liveness and reconnection).
 //! The lines never carry what the socket carried.
 
+use std::collections::VecDeque;
 use std::net::IpAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use axum::body::Bytes;
 use axum::extract::ws::{CloseFrame, Message, WebSocket};
+use demi_conversation_socket_protocol::PagePing;
 use demi_shared_types::RequestId;
 use demi_web_api_protocol::ids::{ConversationId, DeviceId, UserId};
 use futures_util::stream::{SplitSink, SplitStream};
 use futures_util::{SinkExt as _, Stream, StreamExt as _};
+use serde::Serialize;
+use tokio::sync::{mpsc, oneshot};
 use tokio::time::{Instant, Sleep};
+use tokio_util::task::AbortOnDropHandle;
 
 use crate::tuning::PageTuning;
 
@@ -47,6 +63,12 @@ impl PageSocketKind {
             Self::DirectSignaling => "direct_signaling",
             Self::UserStream => "user_stream",
         }
+    }
+
+    /// Whether the page pings the socket: every one but a user stream, whose
+    /// text messages are refused.
+    fn answers_pings(self) -> bool {
+        self != Self::UserStream
     }
 }
 
@@ -73,9 +95,17 @@ pub struct PageSocketOrigin {
     pub user_agent: Option<String>,
 }
 
+/// One of the owner's messages for the writer, with where it says whether
+/// the message went.
+type Outgoing = (Message, oneshot::Sender<Result<(), PageGone>>);
+
 /// The sending half of a socket to a page, which knows when it last sent.
 pub struct PageSocket {
-    sink: SplitSink<WebSocket, Message>,
+    /// The writer's queue of the owner's messages; the owner awaits each.
+    to_writer: mpsc::Sender<Outgoing>,
+    /// Ends the writer when the socket is dropped, as when its owner was
+    /// cancelled in the middle of a send to a page that stopped reading.
+    writer: AbortOnDropHandle<()>,
     tuning: PageTuning,
     /// When the socket last sent a message, or was opened.
     sent_at: Instant,
@@ -86,7 +116,8 @@ pub struct PageSocket {
 }
 
 /// The receiving half of a socket to a page, which notes when the page last
-/// sent anything and the close frame it ended with.
+/// sent anything and the close frame it ended with, and answers the page's
+/// pings as it reads them.
 pub struct PageStream {
     stream: SplitStream<WebSocket>,
     /// When the page last sent a message, a ping or a close included, or the
@@ -94,6 +125,21 @@ pub struct PageStream {
     received_at: Instant,
     /// The page's close, once it came: with its frame, or without one.
     closed: Option<Option<CloseFrame>>,
+    /// Whether the page's `{ ping: id }` is answered here.
+    answers_pings: bool,
+    /// The ids of the pings read, for the writer to answer.
+    pongs: mpsc::Sender<u32>,
+    /// What was read while the owner was busy, in order, for its next reads
+    /// ([`Self::next_unless_busy`]); the end of the page's side last, if it came.
+    held: VecDeque<Option<Result<Message, axum::Error>>>,
+}
+
+/// The answer to the page's ping `id`, as every page socket's protocol has
+/// it: `{"type":"pong","id":id}`.
+#[derive(Serialize)]
+#[serde(tag = "type", rename = "pong")]
+struct Pong {
+    id: u32,
 }
 
 /// A send failed: the page closed the socket, or it broke.
@@ -134,19 +180,26 @@ pub fn open_page_socket(
         "a page socket opened"
     );
     let (sink, stream) = socket.split();
+    let (to_writer, messages) = mpsc::channel(1);
+    let (pongs, pings) = mpsc::channel(MAX_PINGS);
+    let writer = AbortOnDropHandle::new(tokio::spawn(write(sink, messages, pings)));
     let now = Instant::now();
+    let stream = PageStream {
+        stream,
+        received_at: now,
+        closed: None,
+        answers_pings: origin.kind.answers_pings(),
+        pongs,
+        held: VecDeque::new(),
+    };
     let page = PageSocket {
-        sink,
+        to_writer,
+        writer,
         tuning,
         sent_at: now,
         sent: 0,
         opened_at: now,
         origin,
-    };
-    let stream = PageStream {
-        stream,
-        received_at: now,
-        closed: None,
     };
     (page, stream)
 }
@@ -168,10 +221,18 @@ impl PageSocket {
     }
 
     async fn send_message(&mut self, message: Message) -> Result<(), PageGone> {
-        self.sink.send(message).await.map_err(|_| PageGone)?;
+        self.write(message).await?;
         self.sent_at = Instant::now();
         self.sent += 1;
         Ok(())
+    }
+
+    /// Has the writer send `message`, and resolves once it went.
+    async fn write(&self, message: Message) -> Result<(), PageGone> {
+        let (sent, went) = oneshot::channel();
+        // A writer that ended did so as a send failed.
+        self.to_writer.send((message, sent)).await.map_err(|_| PageGone)?;
+        went.await.map_err(|_| PageGone)?
     }
 
     /// Resolves once the socket has sent nothing for the heartbeat interval,
@@ -184,7 +245,7 @@ impl PageSocket {
     /// the page at most the close's bound: behind it may be the rest of a
     /// message the socket was sending when its owner stopped, which a page
     /// that stopped reading never takes.
-    pub async fn end(mut self, from_page: PageStream, end: PageEnd) {
+    pub async fn end(self, from_page: PageStream, end: PageEnd) {
         let mut warn = matches!(end, PageEnd::Fail(_));
         let since_sent = self.sent_at.elapsed();
         let (reason, code, close_reason) = match &end {
@@ -204,7 +265,7 @@ impl PageSocket {
             // socket ends the connection all the same.
             close_late = tokio::time::timeout(
                 self.tuning.close_wait,
-                self.sink.send(Message::Close(Some(frame.clone()))),
+                self.write(Message::Close(Some(frame.clone()))),
             )
             .await
             .is_err();
@@ -234,6 +295,112 @@ impl PageSocket {
         } else {
             ended!(info);
         }
+        // Dropping the socket ends the writer, wherever it waits.
+        drop(self.writer);
+    }
+}
+
+/// The socket's writer: sends the pongs due and the owner's messages, a
+/// pong first whenever both wait, until the owner's queue closes or a send
+/// fails. Each of the owner's messages is answered with whether it went.
+async fn write(
+    mut sink: SplitSink<WebSocket, Message>,
+    mut messages: mpsc::Receiver<Outgoing>,
+    mut pings: mpsc::Receiver<u32>,
+) {
+    let mut reading = true;
+    loop {
+        tokio::select! {
+            biased;
+            ping = pings.recv(), if reading => match ping {
+                Some(id) => {
+                    let pong = serde_json::to_string(&Pong { id }).expect("a pong serializes");
+                    // A page gone meanwhile hears nothing; the owner's next
+                    // send finds the writer ended.
+                    if sink.send(Message::Text(pong.into())).await.is_err() {
+                        return;
+                    }
+                }
+                // The receiving half is gone; the owner may still send.
+                None => reading = false,
+            },
+            message = messages.recv() => {
+                let Some((message, sent)) = message else {
+                    return;
+                };
+                let went = sink.send(message).await.map_err(|_| PageGone);
+                let failed = went.is_err();
+                // An owner that stopped waiting no longer asks.
+                let _ = sent.send(went);
+                if failed {
+                    return;
+                }
+            }
+        }
+    }
+}
+
+/// The most pings a socket holds unanswered: a page sends one as it returns
+/// and waits for its pong, so more are a page that does not follow the
+/// protocol, whose further pings go unanswered.
+const MAX_PINGS: usize = 16;
+
+/// The most messages a socket reads ahead while its owner is busy: a page
+/// sends a few while one is handled, such as a steer behind an upload. Past
+/// them it reads no more, its pings included, until the owner reads: the
+/// page's messages may each be a megabyte.
+const MAX_HELD: usize = 8;
+
+/// Whether `read` is the end of the page's side, after which nothing is read.
+fn ends(read: &Option<Result<Message, axum::Error>>) -> bool {
+    !matches!(read, Some(Ok(message)) if !matches!(message, Message::Close(_)))
+}
+
+impl PageStream {
+    /// The page's next message; while `busy`, as while a conversation
+    /// socket handles the last one, none: it reads on meanwhile, answering
+    /// the page's pings at once, and holds the other messages in their
+    /// order for the reads once it is not busy.
+    pub async fn next_unless_busy(&mut self, busy: bool) -> Option<Result<Message, axum::Error>> {
+        if !busy {
+            return self.next().await;
+        }
+        std::future::poll_fn(|cx| {
+            while self.held.len() < MAX_HELD && !self.held.back().is_some_and(ends) {
+                match self.poll_read(cx) {
+                    Poll::Ready(read) => self.held.push_back(read),
+                    Poll::Pending => break,
+                }
+            }
+            // Never ready: what it holds waits for a read that is not busy,
+            // which the owner's next turn makes.
+            Poll::<Option<Result<Message, axum::Error>>>::Pending
+        })
+        .await
+    }
+
+    /// Reads the page's next message other than a ping, which it answers.
+    fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<Option<Result<Message, axum::Error>>> {
+        loop {
+            let polled = self.stream.poll_next_unpin(cx);
+            let Poll::Ready(Some(Ok(message))) = &polled else {
+                return polled;
+            };
+            self.received_at = Instant::now();
+            match message {
+                Message::Close(frame) => self.closed = Some(frame.clone()),
+                Message::Text(text) if self.answers_pings => {
+                    if let Ok(PagePing { ping }) = serde_json::from_str::<PagePing>(text.as_str()) {
+                        // Past `MAX_PINGS` unanswered, or once the writer
+                        // ended with the socket, the ping goes unanswered.
+                        let _ = self.pongs.try_send(ping);
+                        continue;
+                    }
+                }
+                _ => {}
+            }
+            return polled;
+        }
     }
 }
 
@@ -242,13 +409,9 @@ impl Stream for PageStream {
 
     fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let this = self.get_mut();
-        let polled = this.stream.poll_next_unpin(cx);
-        if let Poll::Ready(Some(Ok(message))) = &polled {
-            this.received_at = Instant::now();
-            if let Message::Close(frame) = message {
-                this.closed = Some(frame.clone());
-            }
+        if let Some(held) = this.held.pop_front() {
+            return Poll::Ready(held);
         }
-        polled
+        this.poll_read(cx)
     }
 }

@@ -243,4 +243,6 @@ pub enum SyncEvent {
     },
     /// Nothing else was sent for 30 seconds.
     Heartbeat,
+    /// The answer to the page's `{ ping: id }`, sent at once.
+    Pong { id: u32 },
 }

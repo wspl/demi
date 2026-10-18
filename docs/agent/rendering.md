@@ -439,6 +439,7 @@ Host, with the handle checks of [Running shell tools](shell-tool.md#running-shel
 | `subagent`, `subagent_transcript_reset`, `subagent_transcript_patch` | Subagent lifecycle and transcripts ([Protocol](subagents.md#protocol)) |
 | `closed` | The connection is detached: its tree was disposed, or it sent `close` while attached to none |
 | `heartbeat` | Nothing: the connection sent no other frame for 30 seconds ([Order and delivery](#order-and-delivery)) |
+| `pong` | `id`: the page's `ping` it answers, at once and ahead of any other frame waiting ([A dropped connection](../product/web-application.md#liveness-and-reconnection)) |
 
 `failures` is the backend's reading of the error blocks a frame carries,
 attached when the frame is sent and never stored

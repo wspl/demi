@@ -863,7 +863,7 @@ impl SyncChannel {
         }
     }
 
-    /// Sends the backend a text message, which a page never does.
+    /// Sends the backend a text message of the test's own.
     pub async fn send_text(&mut self, text: &str) {
         self.socket.send(Message::Text(text.into())).await.unwrap();
     }

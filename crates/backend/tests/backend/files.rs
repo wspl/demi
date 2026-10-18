@@ -1289,6 +1289,10 @@ async fn a_quiet_file_watch_sends_a_heartbeat_after_the_interval() {
         .expect("a heartbeat comes");
     assert_eq!(heartbeat, json!({ "type": "heartbeat" }));
     assert!(quiet.elapsed() >= Duration::from_millis(200), "no heartbeat before the interval");
+    // The page's question whether the watch is alive, as it returns, is
+    // answered at once (`web-application.md` § Liveness and reconnection).
+    send_watch(&mut socket, json!({ "ping": 3 })).await;
+    assert_eq!(watch_message(&mut socket).await, json!({ "type": "pong", "id": 3 }));
     device.backend.close().await;
 }
 

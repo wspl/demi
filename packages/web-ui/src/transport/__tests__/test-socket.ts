@@ -1,4 +1,4 @@
-import type { ClientFrame, ServerFrame } from '@demicodes/protocol'
+import type { ClientFrame, PagePing, ServerFrame } from '@demicodes/protocol'
 
 /**
  * A conversation socket in a test, which the test plays as the backend
@@ -14,6 +14,8 @@ export class TestSocket extends EventTarget {
   closed = false
   /** What the page sent, as frames. */
   readonly sent: ClientFrame[] = []
+  /** The ids of the pings the page sent as it returned. */
+  readonly pings: number[] = []
 
   constructor(readonly url: string) {
     super()
@@ -21,7 +23,12 @@ export class TestSocket extends EventTarget {
   }
 
   send(data: string): void {
-    this.sent.push(JSON.parse(data))
+    const message: ClientFrame | PagePing = JSON.parse(data)
+    if ('ping' in message) {
+      this.pings.push(message.ping)
+    } else {
+      this.sent.push(message)
+    }
   }
 
   /** The page closes it. */

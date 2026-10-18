@@ -296,6 +296,11 @@ async fn a_quiet_socket_hears_a_heartbeat_and_closes_when_the_runner_goes() {
     let mut paired = backend.pair(&master, "laptop").await;
     let mut socket = signaling(&backend, &master, &paired).await;
     assert_eq!(next(&mut socket).await.unwrap(), json!({ "type": "heartbeat" }));
+    // The page's question whether the socket is alive, as it returns, is
+    // the backend's to answer, at once (`web-application.md` § Liveness and
+    // reconnection).
+    socket.send(Message::Text(json!({ "ping": 3 }).to_string().into())).await.unwrap();
+    assert_eq!(next(&mut socket).await.unwrap(), json!({ "type": "pong", "id": 3 }));
 
     paired.runner.stop().await;
     let closed = loop {

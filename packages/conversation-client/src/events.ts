@@ -37,6 +37,7 @@ export type ClientSessionEvent =
   | ServerFrameOf<'error'>
   | ServerFrameOf<'subagent'>
   | ServerFrameOf<'subagents'>
+  | ServerFrameOf<'pong'>
   | {
       /** The blocks from `start` on (`rendering.md` § Where a reset starts). */
       type: 'transcript_reset'

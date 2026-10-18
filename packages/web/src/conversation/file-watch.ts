@@ -12,7 +12,7 @@ import type { HostFiles } from '@demicodes/web-ui/files/file-cache'
 import { WatchChannel, type WatchLink, type WatchLinkHandlers, type WatchRequest } from '@demicodes/web-ui/files/watch-channel'
 import { reportError } from '@demicodes/web-ui/infra/errors'
 import { t } from './locales/text'
-import { openSocket } from '@demicodes/web-ui/transport/liveness'
+import { openSocket, pingOn } from '@demicodes/web-ui/transport/liveness'
 import { apiUrl } from '../api/client'
 import {
   fileWatchMessageSchema,
@@ -75,7 +75,7 @@ function socketWatchLink(path: string, handlers: WatchLinkHandlers, host?: strin
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
   const socket = openSocket(url, 'file watch')
   const receive = watchReceiver(handlers, () => socket.close(1000))
-  socket.addEventListener('open', () => handlers.opened())
+  socket.addEventListener('open', () => handlers.opened(pingOn(socket)))
   socket.addEventListener('message', (event) => receive(event.data))
   socket.addEventListener('close', () => handlers.closed())
   return {

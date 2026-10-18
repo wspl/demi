@@ -461,6 +461,7 @@ messages:
 | `subscribe` | `subscriptions`, each `{ key, kind, path, host? }`, `kind` one of `file`, `folder_names`, `folder_details`, `worktree`, `head`, as the runner's kinds, and `host` the attached device for a file of an attached host |
 | `unsubscribe` | `keys`, the subscriptions the page no longer holds, as when an entry leaves its cache |
 | `renew` | `keys`, every subscription the page still holds, once every 3 minutes |
+| `{ ping: id }` | A number of the page's own, which the backend answers with `pong` at once ([Liveness and reconnection](web-application.md#liveness-and-reconnection)) |
 
 The backend sends:
 
@@ -473,6 +474,7 @@ The backend sends:
 | `renewed` | `keys` | A `renew` reached the backend; the page counts each lease from when it sent the `renew` this answers |
 | `offline` | Nothing | The Host is out of reach or a stopped Cloud; no subscription is live until the next `live` |
 | `heartbeat` | Nothing | 30 seconds pass without another message, so the page tells a quiet watch from a dead one ([Liveness and reconnection](web-application.md#liveness-and-reconnection)) |
+| `pong` | `id`, the number of the page's `ping` | The page sent `{ ping: id }`, which it does as it returns |
 
 Pages that subscribe to the same subject share one subscription on the Host,
 which the backend renews while any page still renews it and ends when the last
@@ -506,6 +508,7 @@ The page sends:
 | `offer` | `sdp` | The page makes a peer: at first, and on each new attempt |
 | `candidate` | `candidate` | The browser found another address for the peer, such as its public one once the STUN server answered |
 | `ping` | `id` | A probe of a measurement of the relay path ([Measuring the paths](../execution/direct-channel.md#measuring-the-paths)) |
+| `{ ping: id }` | `id` | The page returned and asks whether the socket is alive ([Liveness and reconnection](web-application.md#liveness-and-reconnection)) |
 
 The backend sends:
 
@@ -513,7 +516,7 @@ The backend sends:
 | --- | --- | --- |
 | `answer` | `sdp` | The runner answered the offer |
 | `candidate` | `candidate` | The runner learned another address, such as its public one |
-| `pong` | `id` | The runner answered the page's `ping` |
+| `pong` | `id` | The runner answered the page's `ping`, or the backend, at once, its `{ ping: id }`; the page numbers both from one count, so each `id` answers one of them |
 | `unanswered` | `code` | The runner refused the offer (`busy`) or did not answer within 10 seconds |
 | `closed` | Nothing | The runner closed the socket's peer because the user turned a plugin on or off; the page offers again at once |
 | `heartbeat` | Nothing | 30 seconds pass without another message |

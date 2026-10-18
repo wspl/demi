@@ -254,6 +254,59 @@ async fn an_edit_reaches_the_page_and_the_model_only_once_its_transaction_commit
     backend.close().await;
 }
 
+/// A conversation socket busy with one frame, here an edit waiting for its
+/// commit, reads on: the page's next frame waits its turn, and a ping
+/// behind it is answered at once, so a page that returns meanwhile keeps a
+/// healthy socket (`web-application.md` § Liveness and reconnection).
+#[tokio::test]
+async fn a_socket_busy_with_a_frame_answers_a_ping_behind_the_next_one_and_keeps_their_order() {
+    let vendor = MockVendor::start().await;
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    vendor.respond(answer(&["answer-A"], 1, 1));
+    socket.chat("m1", "A-sent").await;
+    let request = edit_request(&mut socket, "A-sent", "edit-1", "A-edited").await;
+
+    let hold = backend.hold_commits();
+    vendor.respond(answer(&["answer-edited"], 1, 1));
+    socket.send(&ClientFrame::EditAndSend { request }).await;
+    tokio::time::timeout(Duration::from_secs(10), hold.until_waiting(1))
+        .await
+        .expect("the edit reaches its commit");
+    socket.send(&ClientFrame::SyncTranscript { from: None, edge: None }).await;
+    socket.send_text(r#"{"ping":9}"#.to_owned()).await;
+    // The pong comes while the edit still waits: after what the turn sent
+    // already, before the edit's result and the sync's reset.
+    let before = socket
+        .until(|frame| matches!(frame, ServerFrame::Pong { id: 9 }))
+        .await;
+    assert!(
+        !before.iter().any(|frame| matches!(
+            frame,
+            ServerFrame::EditResult { .. } | ServerFrame::TranscriptReset { .. }
+        )),
+        "{before:?}"
+    );
+
+    // The frame read ahead is handled after the one before it.
+    hold.release();
+    let answered = socket
+        .until(|frame| matches!(frame, ServerFrame::TranscriptReset { .. }))
+        .await;
+    assert!(
+        answered
+            .iter()
+            .any(|frame| matches!(frame, ServerFrame::EditResult { .. })),
+        "the edit's result comes before the sync's reset: {answered:?}"
+    );
+    backend.close().await;
+}
+
 #[tokio::test]
 async fn the_page_sees_a_turn_end_once_its_save_commits_and_an_edit_sent_then_is_admitted() {
     let vendor = MockVendor::start().await;

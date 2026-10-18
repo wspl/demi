@@ -316,6 +316,12 @@ pub enum ServerFrame {
     /// backend's socket sends it, not the tree, so that a page can tell a
     /// quiet connection from a dead one (`rendering.md` § Order and delivery).
     Heartbeat,
+    /// The answer to the page's `{ ping: id }`, sent at
+    /// once and ahead of any other frame waiting.
+    Pong {
+        #[garde(skip)]
+        id: u32,
+    },
 }
 
 /// How an edit ended.

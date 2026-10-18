@@ -207,6 +207,10 @@ pub enum FileWatchMessage {
     Offline,
     /// Nothing else was sent for 30 seconds: the watch is quiet, not dead.
     Heartbeat,
+    /// The backend's answer to the page's `{ ping: id }` on its socket, sent
+    /// at once (`web-application.md` § Liveness and reconnection); a direct
+    /// channel's watch, whose far end is the runner, carries none.
+    Pong { id: u32 },
 }
 
 impl FileWatchMessage {
