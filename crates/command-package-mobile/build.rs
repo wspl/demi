@@ -171,6 +171,11 @@ fn build(package: &Path, cache: &Path) -> Result<Vec<u8>, Failure> {
         }
         fs::create_dir_all(&unpacking)?;
         tar::Archive::new(flate2::read::GzDecoder::new(fs::File::open(&archive)?)).unpack(&unpacking)?;
+        // A source without its license is a partial one, such as a CI
+        // cache that kept some of its files: it is replaced whole.
+        if source.exists() {
+            fs::remove_dir_all(&source)?;
+        }
         fs::rename(unpacking.join(IDB_DIRECTORY), &source)?;
         fs::remove_dir_all(&unpacking)?;
     }
