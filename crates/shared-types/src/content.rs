@@ -122,17 +122,20 @@ pub enum UserContentBlock {
     Attachment(#[garde(dive)] Attachment),
 }
 
-/// The record of a file that came with a message: on the conversation's Host
-/// at `path`, never inlined. The model reads it as a tag that names the file
-/// ([`attachment_tag`]); the page draws the file's tile from it.
+/// The record of a file that came with a message, by its number among the
+/// conversation's attachments, such as `a7`, never inlined and never on a
+/// Host: the model reads it as a tag that names the file
+/// ([`attachment_tag`]) and fetches it with `demi attachment download` when
+/// a command needs it; the page draws the file's tile from it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Attachment {
+    /// Its number in the conversation, such as `a7`.
+    #[schemars(regex(pattern = r"^a[1-9][0-9]*$"))]
+    #[garde(pattern(r"^a[1-9][0-9]*$"))]
+    pub id: String,
     #[garde(length(chars, min = 1))]
     pub name: String,
-    /// Absolute, on the conversation's Host.
-    #[garde(length(chars, min = 1))]
-    pub path: String,
     #[garde(skip)]
     pub media_type: String,
     #[garde(range(max = crate::MAX_SAFE_INTEGER))]
@@ -153,16 +156,16 @@ pub struct Attachment {
 }
 
 /// The model-facing form of an attachment: one self-closing tag that names
-/// the file, its media type, its size and its path, never its content. For
-/// example `<attachment name="notes.md" type="text/markdown" size="82"
-/// path="/home/demi/.demi/attachments/c1/notes.md"/>`.
+/// the file's number, name, media type and size, never its content or a
+/// path. For example `<attachment id="a7" name="screenshot.png"
+/// type="image/png" size="160725" />`.
 pub fn attachment_tag(attachment: &Attachment) -> String {
     let size = attachment.size_bytes.to_string();
     let attributes = [
+        ("id", attachment.id.as_str()),
         ("name", attachment.name.as_str()),
         ("type", attachment.media_type.as_str()),
         ("size", size.as_str()),
-        ("path", attachment.path.as_str()),
     ];
     let mut tag = String::from("<attachment");
     for (key, value) in attributes {
@@ -172,7 +175,7 @@ pub fn attachment_tag(attachment: &Attachment) -> String {
         push_escaped(&mut tag, value);
         tag.push('"');
     }
-    tag.push_str("/>");
+    tag.push_str(" />");
     tag
 }
 

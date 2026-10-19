@@ -214,6 +214,8 @@
     "invalid_revision": "The conversation isn’t at that point yet.",
     "invalid_frame": "The request isn’t valid.",
     "frame_delivery_failed": "An update couldn’t be sent.",
+    "send_failed": "The message couldn’t be sent.",
+    "path_unquotable": "A file’s path has characters a command can’t take, such as a line break.",
     "turn_in_flight": "Wait for the conversation’s work to finish.",
     "workspace_not_found": "The project no longer exists.",
     "workspace_exists": "This folder is a project already.",

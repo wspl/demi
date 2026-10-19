@@ -19,7 +19,7 @@ fn upload<'a>(
 ) -> Upload<'a> {
     Upload {
         name,
-        path: "/home/demi/.demi/attachments/c1/file",
+        id: "a1",
         media_type,
         sha256,
         bytes,
@@ -165,7 +165,7 @@ async fn an_uploaded_image_enters_fitted_and_one_that_does_not_decode_stays_its_
         (record.size_bytes, &record.sha256),
         (wide.len() as u64, &wide_blob)
     );
-    // Bytes that only start like a PNG: the model reads the file by path.
+    // Bytes that only start like a PNG: the model fetches the file with demi attachment download.
     let broken = B64Bytes::from(PNG.to_vec());
     let broken_blob = BlobRef::of(&broken);
     let (blocks, held) = upload_blocks(

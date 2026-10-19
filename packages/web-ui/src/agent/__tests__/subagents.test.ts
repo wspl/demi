@@ -231,6 +231,6 @@ test('a child\'s brief renders as an agent\'s Markdown, and the conversation\'s 
   // A message that holds a file is the user's, wherever it stands.
   expect(childBrief('child-1', [
     { type: 'text', text: 'See ' },
-    { type: 'attachment', name: 'a.png', path: '/h/a.png', mediaType: 'image/png', sizeBytes: 4, sha256: 'a'.repeat(64) },
+    { type: 'attachment', name: 'a.png', id: 'a1', mediaType: 'image/png', sizeBytes: 4, sha256: 'a'.repeat(64) },
   ])).toBeNull()
 })

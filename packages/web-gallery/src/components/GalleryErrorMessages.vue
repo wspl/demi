@@ -130,10 +130,10 @@ const undeliveredFiles = [
 
 function failDelivery(): void {
   undeliveredFlow.undelivered(
-    joinMessageContent(undeliveredText, undeliveredFiles.map(({ name, mediaType }) => [{
+    joinMessageContent(undeliveredText, undeliveredFiles.map(({ name, mediaType }, index) => [{
       type: 'attachment',
       name,
-      path: `/home/demi/.demi/attachments/gallery/${name}`,
+      id: `a${index + 1}`,
       mediaType,
       sizeBytes: 4096,
       sha256: '0'.repeat(64),
@@ -142,7 +142,10 @@ function failDelivery(): void {
       text: undeliveredText,
       attachments: undeliveredFiles.map(({ name }) => composerAttachment({ name, phase: 'ready' })),
     },
-    'The server did not confirm the message. Retry checks whether it was accepted before sending it again.',
+    // A failure inside the backend, which has no cause of its own, names
+    // the request to quote.
+    'The message couldn’t be sent.',
+    'req_ffb05w4w6kxpdtz0',
   )
 }
 failDelivery()
@@ -156,7 +159,7 @@ const captureContent = joinMessageContent(captureText, [[
   {
     type: 'attachment',
     name: 'capture.png',
-    path: '/home/demi/.demi/attachments/gallery/capture.png',
+    id: 'a3',
     mediaType: 'image/png',
     sizeBytes: 48_213,
     sha256: galleryBlobs.screenshot,

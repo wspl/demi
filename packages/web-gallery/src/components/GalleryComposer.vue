@@ -322,7 +322,10 @@ function arrange(ids: string[]) {
   }
 }
 
-/** A sent file as the transcript records it: a record at a made-up Host path, a picture before it, or a device's file. */
+/** The number the gallery's next sent file takes, as the conversation's next attachment. */
+let nextAttachment = 1
+
+/** A sent file as the transcript records it: a record under the conversation's next attachment number, a picture before it, or a device's file. */
 function sentBlocks(item: ComposerAttachment): UserContentBlock[] {
   // The gallery's devices go by their names.
   if (item.kind === 'reference') {
@@ -332,7 +335,7 @@ function sentBlocks(item: ComposerAttachment): UserContentBlock[] {
   const record: UserContentBlock = {
     type: 'attachment',
     name: item.name,
-    path: `/home/demi/.demi/attachments/gallery/${item.name}`,
+    id: `a${nextAttachment++}`,
     mediaType: answer?.mediaType ?? 'application/octet-stream',
     sizeBytes: picked.get(item.id)?.size ?? 0,
     sha256: answer?.sha256 ?? '0'.repeat(64),

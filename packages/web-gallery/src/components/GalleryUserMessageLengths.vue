@@ -105,7 +105,7 @@ const specimens: { variant: SentenceText; content: UserContentBlock[]; pending?:
       {
         type: 'attachment',
         name: 'login-fail.png',
-        path: '/home/demi/.demi/attachments/demo/login-fail.png',
+        id: 'a1',
         mediaType: 'image/png',
         sizeBytes: 48211,
         sha256: 'demo-png',

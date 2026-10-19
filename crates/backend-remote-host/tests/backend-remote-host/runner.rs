@@ -722,6 +722,64 @@ async fn a_lost_connection_keeps_the_job_and_its_output_and_the_command_ends_as_
     fixture.stop().await;
 }
 
+/// The names in `directory`, sorted: a download leaves its file and no
+/// staging copy beside it.
+fn names_in(directory: &str) -> Vec<String> {
+    let mut names: Vec<String> = std::fs::read_dir(directory)
+        .unwrap()
+        .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
+        .collect();
+    names.sort();
+    names
+}
+
+/// A file the backend offers reaches the Host whole though the link breaks
+/// off partway through the first answer: the runner asks again from the byte
+/// it has (`native-runtime.md` § Downloads). Planted defect this catches: a
+/// download that starts over, or fails, at a break. A real runner, about a
+/// second.
+#[tokio::test(flavor = "local")]
+async fn a_download_whose_link_breaks_partway_resumes_and_lands_whole() {
+    let fixture = RunnerFixture::start(FixtureOptions {
+        offer_breaks_after: Some(64 * 1024),
+        ..FixtureOptions::default()
+    })
+    .await;
+    let home = fixture.home().to_owned();
+    std::fs::create_dir_all(format!("{home}/in")).unwrap();
+    let bytes = pattern(3 * MIB);
+    let sha256 = demi_shared_types::BlobRef::of(&bytes).to_string();
+    let name = fixture
+        .host()
+        .download_file(&format!("{home}/in/notes.bin"), Bytes::from(bytes.clone()), sha256, WriteOptions::default())
+        .await
+        .unwrap();
+    assert_eq!(name, "notes.bin");
+    assert!(std::fs::read(format!("{home}/in/notes.bin")).unwrap() == bytes);
+    assert_eq!(names_in(&format!("{home}/in")), ["notes.bin"]);
+    fixture.stop().await;
+}
+
+/// Bytes that are not the file the backend named fail the download with the
+/// cause and put nothing in place, not even a staging copy. Planted defect
+/// this catches: a download put in place before its hash is checked. A real
+/// runner, about a second.
+#[tokio::test(flavor = "local")]
+async fn a_download_whose_bytes_are_not_the_named_file_fails_and_leaves_nothing() {
+    let fixture = RunnerFixture::start(FixtureOptions::default()).await;
+    let home = fixture.home().to_owned();
+    std::fs::create_dir_all(format!("{home}/in")).unwrap();
+    let other = demi_shared_types::BlobRef::of(b"another file").to_string();
+    let failed = fixture
+        .host()
+        .download_file(&format!("{home}/in/notes.bin"), Bytes::from(pattern(4096)), other, WriteOptions::default())
+        .await
+        .expect_err("the hash differs");
+    assert!(failed.message.to_lowercase().contains("sha-256") || failed.message.to_lowercase().contains("sha256"), "{failed:?}");
+    assert!(names_in(&format!("{home}/in")).is_empty());
+    fixture.stop().await;
+}
+
 /// About 2 s here: the listing over the message limit needs some 17,000
 /// files.
 #[tokio::test(flavor = "local")]

@@ -3,7 +3,7 @@ import type { FileContents } from '../files/types'
 import type { HostImage } from '../files/host-image'
 
 /**
- * An attachment the agent uploaded to the conversation (`commands.md`
+ * An attachment of the conversation, sent in a message or uploaded by the agent (`commands.md`
  * § Attachment commands), as a message shows it.
  */
 export interface MessageAttachment {

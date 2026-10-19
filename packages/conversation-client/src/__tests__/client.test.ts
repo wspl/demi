@@ -1,6 +1,6 @@
-import { expect, test } from 'bun:test'
+import { expect, jest, test } from 'bun:test'
 import type { ClientFrame } from '@demicodes/protocol'
-import { ActionOutlivedError, EditRejectedError, SessionError } from '../client'
+import { ActionOutlivedError, EditRejectedError, RefusedError, SavedGoneError, SessionError } from '../client'
 import { createdAt, harness, pendingSteer, settle, text, user } from './harness'
 
 function sentOfType<Type extends ClientFrame['type']>(sent: ClientFrame[], type: Type): Extract<ClientFrame, { type: Type }> {
@@ -55,6 +55,40 @@ for (const outcome of ['rejected', 'error', 'closed', 'disconnected'] as const) 
     expect(await result).toBeInstanceOf(Error)
   })
 }
+
+// A send the backend received waits for the backend's word however long
+// it takes, such as a slow store of the message's files, and
+// fails only with the refusal, which says why (`turns.md` § Requesting).
+// Before, the page gave up after its own 30 seconds. Fake timers; instant.
+test('a send has no deadline of its own and fails with the backend\'s refusal and its cause', async () => {
+  const h = harness()
+  let settled = false
+  jest.useFakeTimers()
+  let sending!: Promise<unknown>
+  let saving!: Promise<unknown>
+  try {
+    sending = h.client.submit([{ type: 'text', text: 'see the screenshot' }]).catch((error: unknown) => error)
+    saving = h.client.sendSaved('saved-1', 'turn-1', 'message').catch((error: unknown) => error)
+    // Any deadline the waits set fires now.
+    jest.advanceTimersByTime(10 * 60_000)
+  } finally {
+    jest.useRealTimers()
+  }
+  void sending.then(() => { settled = true })
+  await settle()
+  expect(settled).toBe(false)
+
+  const failed = { code: 'send_failed', reason: 'database is locked', requestId: 'req_ffb05w4w6kxpdtz0' }
+  h.receive({ type: 'rejected', command: 'send', ...failed })
+  const refused = await sending
+  expect(refused).toBeInstanceOf(RefusedError)
+  expect(refused).toMatchObject({ code: failed.code, message: failed.reason, requestId: failed.requestId })
+  // A saved message's send refused for another reason is no message gone from the list.
+  h.receive({ type: 'rejected', command: 'send_saved', ...failed })
+  const savedRefusal = await saving
+  expect(savedRefusal).toBeInstanceOf(RefusedError)
+  expect(savedRefusal).not.toBeInstanceOf(SavedGoneError)
+})
 
 test('a detached client fails every wait at once and sends nothing', async () => {
   const h = harness()

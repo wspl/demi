@@ -45,6 +45,8 @@ pub struct Pipes(Rc<Inner>);
 
 struct Inner {
     slots: RefCell<HashMap<Arc<str>, Slot>>,
+    /// The files offered to the devices for download.
+    offers: crate::offers::FileOffers,
     arrival: Duration,
     /// One task per pipe: its arrival window and its removal once settled.
     tasks: TaskTracker,
@@ -218,6 +220,7 @@ impl Pipes {
     pub fn new(arrival: Duration) -> Self {
         Self(Rc::new(Inner {
             slots: RefCell::default(),
+            offers: crate::offers::FileOffers::default(),
             arrival,
             tasks: TaskTracker::new(),
             closed: Cell::new(false),
@@ -268,6 +271,11 @@ impl Pipes {
             pipes: self.clone(),
             core,
         }
+    }
+
+    /// The files offered to the user's devices for download.
+    pub fn offers(&self) -> &crate::offers::FileOffers {
+        &self.0.offers
     }
 
     /// A pipe `device`'s runner fills and this process reads.

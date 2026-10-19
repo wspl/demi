@@ -29,9 +29,9 @@ use super::{
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EditContent {
     Content(UserContentBlock),
-    /// The attachment record the edited message holds at this path, which
-    /// the session puts in its place (`message-editing.md` § Files the edit
-    /// keeps).
+    /// The attachment record the edited message holds under this number,
+    /// such as `a7`, which the session puts in its place
+    /// (`message-editing.md` § Files the edit keeps).
     KeptAttachment(String),
     /// The native media block of this kind the edited message holds by the
     /// blob it names, which the session puts in its place.
@@ -62,7 +62,7 @@ pub enum EditError {
     Stale,
     #[error(transparent)]
     Target(#[from] CutError),
-    #[error("The edited message holds no attachment at {0}")]
+    #[error("The edited message holds no attachment {0}")]
     UnknownAttachment(String),
     #[error("The edited message holds no {kind} {blob}")]
     UnknownMedia { kind: &'static str, blob: BlobRef },
@@ -314,12 +314,12 @@ impl Candidate {
             .iter()
             .map(|part| match part {
                 EditContent::Content(block) => Ok(block.clone()),
-                EditContent::KeptAttachment(path) => target
+                EditContent::KeptAttachment(id) => target
                     .content
                     .iter()
-                    .find(|kept| matches!(kept, UserContentBlock::Attachment(record) if &record.path == path))
+                    .find(|kept| matches!(kept, UserContentBlock::Attachment(record) if &record.id == id))
                     .cloned()
-                    .ok_or_else(|| EditError::UnknownAttachment(path.clone())),
+                    .ok_or_else(|| EditError::UnknownAttachment(id.clone())),
                 EditContent::KeptMedia(media) => {
                     let (kind, blob) = named(media);
                     referenced_media(&target.content)

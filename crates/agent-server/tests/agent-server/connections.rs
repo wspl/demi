@@ -34,6 +34,7 @@ fn rejected(command: ClientFrameKind, code: AgentCode, reason: &str) -> ServerFr
     ServerFrame::Rejected {
         command,
         refusal: Refusal::new(code, reason),
+        request_id: None,
     }
 }
 

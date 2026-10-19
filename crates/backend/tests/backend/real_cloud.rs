@@ -645,10 +645,10 @@ fn numbered_lines(size: usize) -> Vec<u8> {
     bytes
 }
 
-// Tens of seconds, the Cloud's boot and a message with 40 attachments of up
-// to 3 MB. Without the runner socket's workaround one of the writes never
-// ends, the message never reaches the model, and the test fails at its hang
-// guard.
+// Tens of seconds, the Cloud's boot, a message with 40 attachments of up to
+// 3 MB, and `demi attachment download` of all of them. Without the runner
+// socket's workaround one of the writes never ends, and the test fails at
+// its hang guard.
 #[tokio::test]
 #[ignore = "the Cloud suite: needs a machine manager and the suite's variables (scenarios.md § Cloud suite)"]
 async fn attachments_larger_than_the_sandbox_reads_at_once_arrive_whole() {
@@ -683,13 +683,17 @@ async fn attachments_larger_than_the_sandbox_reads_at_once_arrive_whole() {
     first.socket.send(&with_upload("large", "Look", &named)).await;
     tokio::time::timeout(PATIENCE, first.socket.until_idle())
         .await
-        .expect("every attachment was written and the turn ended");
+        .expect("the message with every attachment reached the model and the turn ended");
     measured(TEST, "a message with every attachment", started.elapsed());
 
+    let numbers: Vec<String> = (1..=files.len()).map(|number| format!("a{number}")).collect();
     let written = run(
         &mut first,
         "written",
-        &format!("cd ~/.demi/attachments/{FIRST} && sha256sum large-*.bin"),
+        &format!(
+            "mkdir -p large && demi attachment download {} --dir large > /dev/null && cd large && sha256sum large-*.bin",
+            numbers.join(" ")
+        ),
     )
     .await;
     for (name, digest, _) in &files {

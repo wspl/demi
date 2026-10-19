@@ -75,7 +75,13 @@ const PRESS_MS = 900
 const ADMIT_MS = 400
 /** The simulated server writes the sent message to the transcript, which confirms its delivery; past a second, so the wait shows its clock first. */
 const CONFIRM_MS = 1600
-const DELIVERY_ERROR = 'Connection closed before confirmation'
+/**
+ * What a simulated delivery failure says: the backend's refusal of a send
+ * for a failure inside it, with the request to quote (`turns.md`
+ * § Requesting); a lost connection marks nothing, the page sends again.
+ */
+const DELIVERY_ERROR = 'The message couldn’t be sent.'
+const DELIVERY_REQUEST = 'req_ffb05w4w6kxpdtz0'
 /** How long the simulated backend stays out of reach after an offline send. */
 const OFFLINE_MS = 2500
 const WAIT_MS = 80
@@ -754,9 +760,10 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     error: string | null,
     way: SendWay = 'send',
     comments: readonly MessageComment[] = [],
+    requestId: string | null = null,
   ): string {
     const id = nextId('message')
-    pendingSubmissions.value = [...pendingSubmissions.value, { id, way, text: message.text, attachments: message.attachments, comments, error }]
+    pendingSubmissions.value = [...pendingSubmissions.value, { id, way, text: message.text, attachments: message.attachments, comments, error, requestId }]
     contents.set(id, content)
     return id
   }
@@ -864,7 +871,7 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
   function deliver(run: number, fails: boolean, body: (run: number) => void = runTurn): void {
     if (fails) {
       at(run, CONFIRM_MS, () => {
-        undeliver(DELIVERY_ERROR)
+        undeliver(DELIVERY_ERROR, DELIVERY_REQUEST)
       })
       return
     }
@@ -894,20 +901,24 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
     }
   }
 
-  function undeliver(error: string): void {
+  function undeliver(error: string, requestId: string | null): void {
     const pending = turnMessage()
     if (pending) {
-      changeSubmission(pending.id, { error })
+      changeSubmission(pending.id, { error, requestId })
     }
   }
 
-  /** A new conversation whose first message was not delivered, as a page shows it after the failure. */
-  function undelivered(content: UserContentBlock[], message: SentMessage, error: string): void {
+  /**
+   * A new conversation whose first message was not delivered, as a page
+   * shows it after the backend refused it: `error` in the user's words, and
+   * the request ID of a failure inside the backend.
+   */
+  function undelivered(content: UserContentBlock[], message: SentMessage, error: string, requestId: string | null = null): void {
     cancel()
     state.phase = 'idle'
     state.blocks = []
     forgetSubmissions()
-    holdMessage(content, message, error)
+    holdMessage(content, message, error, 'send', [], requestId)
   }
 
   /**
@@ -922,12 +933,12 @@ export function useTurnFlow(options: TurnFlowOptions = {}) {
       return
     }
     if (agentWorks(state.phase, pendingSubmissions.value)) {
-      changeSubmission(id, { error: null, way: 'queue' })
+      changeSubmission(id, { error: null, requestId: null, way: 'queue' })
       afterUploads(id, ready, () => deliveries.set(id, window.setTimeout(() => arrive(id), nextDelivery())))
       return
     }
     cancel()
-    changeSubmission(id, { error: null, way: 'send' })
+    changeSubmission(id, { error: null, requestId: null, way: 'send' })
     afterUploads(id, ready, () => deliver(token, false))
   }
 

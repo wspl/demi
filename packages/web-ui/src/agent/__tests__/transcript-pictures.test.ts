@@ -40,7 +40,7 @@ const blocks: Block[] = [
     content: [
       { type: 'text', text: 'See ' },
       { type: 'image', source: { type: 'ref', ref: 'mine', mediaType: 'image/png', width: 480, height: 300 } },
-      { type: 'attachment', name: 'mine.png', path: '/p/mine.png', mediaType: 'image/png', sizeBytes: 1, sha256: 'mine' },
+      { type: 'attachment', name: 'mine.png', id: 'a1', mediaType: 'image/png', sizeBytes: 1, sha256: 'mine' },
       { type: 'text', text: ' and ![alt](out/typed.png).' },
     ],
   },

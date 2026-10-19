@@ -21,6 +21,14 @@ use tokio_util::sync::CancellationToken;
 
 /// How long a pipe's connection may take to open.
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
+/// How long a pipe request that fails on its connection before the backend
+/// received any of it is tried again on new connections, as a download's
+/// connections are (`native-runtime.md` § Downloads): a link through a
+/// proxy that fails a request now and then must not end the pipe.
+const RECONNECT_FOR: Duration = Duration::from_secs(60);
+/// The pause between two such attempts.
+const RECONNECT_PAUSE: Duration = Duration::from_secs(1);
+
 /// The most of a pipe's answer the runner reads: a confirmation, or the words
 /// of a refusal.
 const ANSWER_BYTES: usize = 16 * 1024;
@@ -29,6 +37,9 @@ const ANSWER_BYTES: usize = 16 * 1024;
 pub struct PipeClient {
     backend: Backend,
     http: reqwest::Client,
+    /// The client of the files the backend offers for download, which
+    /// keeps their bytes as served (`native-runtime.md` § Downloads).
+    downloads: reqwest::Client,
     origin: reqwest::Url,
     /// How long a connection may take to open, a stream pipe's WebSocket
     /// handshake included.
@@ -66,9 +77,12 @@ impl PipeClient {
             .http2_adaptive_window(true)
             .build()
             .map_err(io::Error::other)?;
+        let downloads = demi_shared_artifacts::download_client_through(|builder| backend.http(builder))
+            .map_err(io::Error::other)?;
         Ok(Self {
             backend: backend.clone(),
             http,
+            downloads,
             origin,
             connect_timeout,
             token,
@@ -87,10 +101,10 @@ impl PipeClient {
         // Out of open files, the connection waits for one (`runner.md` § Load).
         let response = tokio::select! {
             _ = cancel.cancelled() => return Err(cancelled()),
-            response = demi_command_sdk::descriptors::retry(&cancel, || async {
-                let request = self.request(reqwest::Method::GET, path)?;
-                request.send().await.map_err(io::Error::other)
-            }) => expect_ok(response?).await?,
+            response = reconnecting(|| demi_command_sdk::descriptors::retry(&cancel, || async {
+                let request = self.request(reqwest::Method::GET, path).map_err(Attempt::Refused)?;
+                request.send().await.map_err(Attempt::of)
+            })) => expect_ok(response?).await?,
         };
         let reading = Reading {
             body: response.bytes_stream().boxed(),
@@ -117,6 +131,7 @@ impl PipeClient {
             _ = cancel.cancelled() => Err(cancelled()),
             result = async {
                 let mut backoff = demi_command_sdk::descriptors::Backoff::default();
+                let mut lost_since = None;
                 let response = loop {
                     let request = self.request(reqwest::Method::PUT, path)?;
                     match request.body(reqwest::Body::wrap_stream(body.attempt())).send().await {
@@ -126,6 +141,15 @@ impl PipeClient {
                         // of the body can be made again.
                         Err(error) if body.unread() && demi_command_sdk::descriptors::exhausted(&error) => {
                             backoff.wait().await;
+                        }
+                        // A connection that failed before the body went is
+                        // tried again on a new one.
+                        Err(error) if body.unread() && lost_connection(&error) => {
+                            let since = *lost_since.get_or_insert_with(tokio::time::Instant::now);
+                            if since.elapsed() >= RECONNECT_FOR {
+                                return Err(io::Error::other(error));
+                            }
+                            tokio::time::sleep(RECONNECT_PAUSE).await;
                         }
                         Err(error) => return Err(io::Error::other(error)),
                     }
@@ -163,16 +187,24 @@ impl PipeClient {
             .max_message_size(Some(wire::STREAM_PIPE_MESSAGE_BYTES))
             .max_frame_size(Some(wire::STREAM_PIPE_MESSAGE_BYTES));
         // Out of open files, the connection waits for one (`runner.md` § Load).
-        let connecting = demi_command_sdk::descriptors::retry(cancel, || async {
-            self.backend
-                .websocket(request.clone(), config)
+        let connecting = reconnecting(|| async {
+            let connecting = demi_command_sdk::descriptors::retry(cancel, || async {
+                self.backend
+                    .websocket(request.clone(), config)
+                    .await
+                    .map_err(|error| match error {
+                        // A refused handshake reached the backend.
+                        tungstenite::Error::Http(_) => Attempt::Refused(socket_error(error)),
+                        error => Attempt::Lost(socket_error(error)),
+                    })
+            });
+            tokio::time::timeout(self.connect_timeout, connecting)
                 .await
-                .map_err(socket_error)
+                .unwrap_or_else(|_| Err(Attempt::Lost(io::Error::new(io::ErrorKind::TimedOut, "stream pipe did not open"))))
         });
         let (socket, _) = tokio::select! {
             _ = cancel.cancelled() => return Err(cancelled()),
-            connected = tokio::time::timeout(self.connect_timeout, connecting) => connected
-                .map_err(|_| io::Error::new(io::ErrorKind::TimedOut, "stream pipe did not open"))??,
+            connected = connecting => connected?,
         };
         let (mut sender, mut receiver) = socket.split();
         let sending = async {
@@ -262,6 +294,54 @@ impl PipeClient {
         }
     }
 
+    /// Downloads the file the backend offers as `offer` into `staging`,
+    /// resumed after a break or a stall (`native-runtime.md` § Downloads),
+    /// then writes its bytes, checked against the offer's size and SHA-256,
+    /// into `output`. The staging file is removed either way: a later call
+    /// is given a new offer. `progress` hears how many bytes the staging
+    /// file holds after each piece. The error names the cause beneath.
+    pub async fn download(
+        &self,
+        offer: &wire::FileOffer,
+        staging: &std::path::Path,
+        output: &mut (impl tokio::io::AsyncWrite + Unpin),
+        cancel: &CancellationToken,
+        mut progress: impl FnMut(u64),
+    ) -> io::Result<()> {
+        let url = self.url(&offer.url)?;
+        let token = self.token()?;
+        let authorization = HeaderValue::from_str(&format!("Bearer {}", token.expose()))
+            .map_err(io::Error::other)?;
+        let origin = self.origin.origin();
+        // The device token goes only to the backend's origin.
+        let headers = move |url: &reqwest::Url| {
+            let mut headers = reqwest::header::HeaderMap::new();
+            if url.origin() == origin {
+                headers.insert(AUTHORIZATION, authorization.clone());
+            }
+            headers
+        };
+        let download = demi_shared_artifacts::Download {
+            limit: offer.size,
+            headers: &headers,
+            ..demi_shared_artifacts::Download::new(url.as_str())
+        };
+        let expected = demi_shared_artifacts::Digest {
+            size: offer.size,
+            sha256: offer.sha256.clone(),
+        };
+        let written = async {
+            let received = demi_shared_artifacts::download(&self.downloads, download, staging, cancel, |held, _| progress(held)).await?;
+            received.verify(staging, &expected, output, cancel).await
+        }
+        .await;
+        demi_shared_artifacts::discard(staging).await;
+        written.map_err(|error| match error {
+            demi_shared_artifacts::Error::Io(error) => error,
+            error => io::Error::other(error.to_string()),
+        })
+    }
+
     fn request(&self, method: reqwest::Method, path: &str) -> io::Result<reqwest::RequestBuilder> {
         let url = self.url(path)?;
         let token = self.token()?;
@@ -340,6 +420,75 @@ fn broken(cause: &str) -> io::Error {
         io::ErrorKind::ConnectionAborted,
         format!("the pipe broke off before its end: {cause}"),
     )
+}
+
+/// Why one connection's attempt at a pipe request failed: on the way, so
+/// that a new connection may succeed, or for a reason another attempt would
+/// meet again, such as the backend's refusal.
+#[derive(Debug)]
+enum Attempt {
+    Lost(io::Error),
+    Refused(io::Error),
+}
+
+impl Attempt {
+    fn of(error: reqwest::Error) -> Self {
+        if lost_connection(&error) {
+            Self::Lost(io::Error::other(error))
+        } else {
+            Self::Refused(io::Error::other(error))
+        }
+    }
+
+    fn into_io(self) -> io::Error {
+        match self {
+            Self::Lost(error) | Self::Refused(error) => error,
+        }
+    }
+}
+
+impl std::fmt::Display for Attempt {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Lost(error) | Self::Refused(error) => error.fmt(formatter),
+        }
+    }
+}
+
+/// The IO error beneath, so that running out of open files is found.
+impl std::error::Error for Attempt {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Lost(error) | Self::Refused(error) => Some(error),
+        }
+    }
+}
+
+/// Whether a request failed on its connection without an answer, as through
+/// a proxy that drops a request now and then: a new connection may succeed.
+fn lost_connection(error: &reqwest::Error) -> bool {
+    !error.is_builder() && !error.is_redirect() && !error.is_status() && !error.is_decode()
+}
+
+/// Runs `attempt`, a pipe request that sends nothing the backend could have
+/// received before it is answered, again on a new connection after one is
+/// lost, for up to [`RECONNECT_FOR`]; the last failure is the request's.
+async fn reconnecting<T, F, Fut>(mut attempt: F) -> io::Result<T>
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = Result<T, Attempt>>,
+{
+    let started = tokio::time::Instant::now();
+    loop {
+        match attempt().await {
+            Ok(value) => return Ok(value),
+            Err(Attempt::Lost(error)) if started.elapsed() < RECONNECT_FOR => {
+                tracing::debug!("a pipe request lost its connection and goes again: {error}");
+                tokio::time::sleep(RECONNECT_PAUSE).await;
+            }
+            Err(error) => return Err(error.into_io()),
+        }
+    }
 }
 
 /// A stream pipe's WebSocket failure as an IO error: the system's own when

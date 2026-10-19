@@ -204,9 +204,9 @@ pub enum Sequence {
     /// Simulators `demi mobile` opens, from 1: `m2`. The `demi.mobile`
     /// service reserves them as it opens devices (`mobile.md` § Commands).
     Device,
-    /// Attachments the agent uploaded, from 1: `a3`. `demi attachment
-    /// upload` takes one per file it stores (`commands.md` § Attachment
-    /// commands).
+    /// The conversation's attachments, from 1: `a3`. Each file a message
+    /// sends and each one `demi attachment upload` stores takes one
+    /// (`commands.md` § Attachment commands).
     Attachment,
 }
 

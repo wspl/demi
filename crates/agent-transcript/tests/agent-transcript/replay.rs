@@ -177,8 +177,8 @@ fn a_picture_by_its_address_reaches_only_a_model_that_reads_images() {
 fn a_messages_reference_and_attachment_record_reach_the_model_as_their_text() {
     let model = test_model();
     let attachment = Attachment {
+        id: "a1".into(),
         name: "notes.md".into(),
-        path: "/home/demi/.demi/attachments/c1/notes.md".into(),
         media_type: "text/markdown".into(),
         size_bytes: 82,
         sha256: BlobRef::of(b"# Notes"),

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, jest, setSystemTime, spyOn, test } from 'bun:test'
 import { deferred, waitFor } from '@demicodes/utils'
 import type { ClientContent, MessageComment, ServerFrame } from '@demicodes/protocol'
+import { RefusedError } from '@demicodes/conversation-client'
 import { ConversationRuntime, RemovalRefusedError } from '@demicodes/web-ui/agent/conversation-runtime'
 import { listTailBlocks } from '@demicodes/web-ui/agent/list-tail'
 import { rowKey } from '@demicodes/web-ui/agent/row-key'
@@ -1318,7 +1319,7 @@ function withPicture(id: string) {
     id,
     content: [
       { type: 'text' as const, text: 'Compare ' },
-      { type: 'attachment' as const, name: 'before.png', path: '/home/demi/.demi/attachments/before.png', mediaType: 'image/png', sizeBytes: 4, sha256: SHA },
+      { type: 'attachment' as const, name: 'before.png', id: 'a1', mediaType: 'image/png', sizeBytes: 4, sha256: SHA },
       { type: 'text' as const, text: ' with the old one' },
     ],
   }
@@ -2032,6 +2033,54 @@ test('a message whose upload fails is not delivered and keeps its file, and Retr
       { type: 'upload', ref: expect.stringMatching(/^att-/), fileName: 'shot.png' },
     ]])
     expect(current.pendingSends).toEqual([])
+  })
+})
+
+// The backend decides that a delivery failed and says why; the bubble says
+// it as the page words the refusal's code (`turns.md` § Requesting,
+// `localization.md` § Text from the backend), and a failure inside the
+// backend, which has no cause of its own, with the request to quote. Before,
+// a slow send read as a failure the page made up after 30 seconds, with no
+// cause and no request.
+test('a message the backend refused for a cause of its own is not delivered, and says why', async () => {
+  await withSession(async (current) => {
+    const refusal = new RefusedError({
+      code: 'device_offline',
+      reason: 'Referenced device laptop is offline',
+      requestId: 'req_offline',
+    })
+    const submit = spyOn(ConversationRuntime.prototype, 'submit').mockRejectedValue(refusal)
+    try {
+      pastePicture(current, 'What is wrong here? ')
+      await useConversations().send(current)
+      expect(current.pendingSends.map((pending) => pending.error)).toEqual(['The device is offline.'])
+    } finally {
+      submit.mockRestore()
+    }
+  })
+})
+
+test('a message the backend failed to send says so with the request ID, which Retry clears', async () => {
+  await withSession(async (current) => {
+    const refusal = new RefusedError({
+      code: 'send_failed',
+      reason: 'database is locked',
+      requestId: 'req_ffb05w4w6kxpdtz0',
+    })
+    const submit = spyOn(ConversationRuntime.prototype, 'submit').mockRejectedValueOnce(refusal)
+    try {
+      pastePicture(current, 'What is wrong here? ')
+      await useConversations().send(current)
+      expect(current.pendingSends.map(({ error, requestId }) => ({ error, requestId }))).toEqual([
+        { error: 'The message couldn’t be sent.', requestId: 'req_ffb05w4w6kxpdtz0' },
+      ])
+      submit.mockResolvedValueOnce(undefined)
+      const retried = useConversations().retrySend(current, current.pendingSends[0]!.id)
+      expect(current.pendingSends[0]?.requestId).toBeUndefined()
+      await retried
+    } finally {
+      submit.mockRestore()
+    }
   })
 })
 

@@ -60,14 +60,13 @@ pub fn upload_media_type(sent: &str, bytes: &[u8]) -> String {
     sniff_media_type(bytes).map_or_else(|| sent.to_owned(), str::to_owned)
 }
 
-/// An upload written to the conversation's Host, as its message receives it.
+/// An upload numbered as the conversation's attachment, as its message receives it.
 #[derive(Debug, Clone, Copy)]
 pub struct Upload<'a> {
     /// The name the user gave it.
     pub name: &'a str,
-    /// Where it was written, absolute, on the conversation's Host: under its
-    /// name, or that name with a number when another file had it.
-    pub path: &'a str,
+    /// Its number among the conversation's attachments, such as `a7`.
+    pub id: &'a str,
     /// The media type it was recorded with ([`upload_media_type`]).
     pub media_type: &'a str,
     pub sha256: &'a BlobRef,
@@ -89,7 +88,7 @@ pub async fn upload_blocks(
 ) -> Result<(Vec<UserContentBlock>, HeldMedia), StoreError> {
     let record = UserContentBlock::Attachment(Attachment {
         name: upload.name.to_owned(),
-        path: upload.path.to_owned(),
+        id: upload.id.to_owned(),
         media_type: upload.media_type.to_owned(),
         size_bytes: upload.bytes.len() as u64,
         sha256: upload.sha256.clone(),

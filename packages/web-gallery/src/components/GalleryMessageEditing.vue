@@ -119,7 +119,7 @@ function reset(): void {
     { type: 'text', text: 'Review the result against ' },
     { type: 'image', source: { type: 'url', url: demoImageUrl } },
     {
-      type: 'attachment', name: 'before.png', path: '/home/demi/.demi/attachments/editing/before.png',
+      type: 'attachment', name: 'before.png', id: 'a1',
       mediaType: 'image/png', sizeBytes: 48211, sha256: 'e'.repeat(64),
     },
     { type: 'text', text: ', and keep the **padding** as it is.' },

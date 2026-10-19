@@ -65,6 +65,9 @@ export function galleryUploads() {
     return blobs.get(sha256)?.url ?? galleryBlobUrl(sha256, mediaType)
   }
 
+  /** The number the next file received takes, as the conversation's next attachment. */
+  let nextAttachment = 1
+
   /**
    * An edit's content as the transcript would record it once the backend
    * took it: each file the edit added becomes its attachment record, with its
@@ -82,7 +85,7 @@ export function galleryUploads() {
       const record: UserContentBlock = {
         type: 'attachment',
         name: part.fileName,
-        path: `/home/demi/.demi/attachments/gallery/${part.fileName}`,
+        id: `a${nextAttachment++}`,
         mediaType: part.mediaType,
         sizeBytes: blob?.file.size ?? 0,
         sha256: part.sha256,

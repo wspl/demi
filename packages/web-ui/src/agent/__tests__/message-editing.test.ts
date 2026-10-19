@@ -41,7 +41,7 @@ test('an edit keeps the message\'s files by reference and names added files by t
       { type: 'text', text: 'compare' },
       { type: 'image', source: { type: 'ref', ref: SHA('a'), mediaType: 'image/png' } },
       {
-        type: 'attachment', name: 'chart.png', path: '/home/demi/.demi/attachments/c/chart.png',
+        type: 'attachment', name: 'chart.png', id: 'a1',
         mediaType: 'image/png', sizeBytes: 4, sha256: SHA('a'),
       },
       { type: 'document', source: { type: 'ref', ref: SHA('b'), mediaType: 'application/pdf', fileName: 'a.pdf' } },
@@ -54,7 +54,7 @@ test('an edit keeps the message\'s files by reference and names added files by t
   expect(sentEditRequest(edit.request).content).toEqual([
     { type: 'text', text: 'compare' },
     { type: 'media', media: { type: 'image', ref: SHA('a'), mediaType: 'image/png' } },
-    { type: 'attachment', path: '/home/demi/.demi/attachments/c/chart.png' },
+    { type: 'attachment', id: 'a1' },
     { type: 'media', media: { type: 'document', ref: SHA('b'), mediaType: 'application/pdf', fileName: 'a.pdf' } },
     { type: 'reference', reference: 'file:///notes.md?host=laptop' },
     { type: 'upload', ref: 'upload-1', fileName: 'new.txt' },

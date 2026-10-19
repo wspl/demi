@@ -265,7 +265,7 @@ fn content_part_estimate<'a>(
         UserContentBlock::Text { text } => (bound_text(text), 0),
         UserContentBlock::Reference { reference } => (Cow::Borrowed(reference.as_str()), 0),
         UserContentBlock::Attachment(attachment) => (
-            Cow::Owned(format!("{} {}", attachment.name, attachment.path)),
+            Cow::Owned(format!("{} {}", attachment.id, attachment.name)),
             0,
         ),
         UserContentBlock::Image { source } => match request.medium(ModelMediaKind::Image, source) {

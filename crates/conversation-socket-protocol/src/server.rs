@@ -45,6 +45,17 @@ pub enum ServerFrame {
         #[serde(flatten)]
         #[garde(skip)]
         refusal: Refusal,
+        /// The request ID of the socket's upgrade, which the socket gives
+        /// every `rejected` frame it sends, as it does an `error` frame;
+        /// the agent's frames leave it to the socket.
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            with = "unwrap_or_skip"
+        )]
+        #[schemars(with = "String")]
+        #[garde(skip)]
+        request_id: Option<RequestId>,
     },
     /// The blocks from `start` to the end, whole, with the transcript's
     /// length and version (`rendering.md` § Where a reset starts).

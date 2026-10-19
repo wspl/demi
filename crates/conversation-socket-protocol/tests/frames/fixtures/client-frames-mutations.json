@@ -168,7 +168,7 @@
       "set": {
         "/content/0": {
           "type": "attachment",
-          "path": "/home/demi/.demi/attachments/c1/a.txt"
+          "id": "a1"
         }
       },
       "webAppRefuses": false

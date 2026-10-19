@@ -161,7 +161,7 @@ function sentEditContent(part: MessageEditContent): ClientContent {
     case 'reference':
       return { type: 'reference', reference: part.reference }
     case 'attachment':
-      return { type: 'attachment', path: part.path }
+      return { type: 'attachment', id: part.id }
     case 'upload':
       return { type: 'upload', ref: part.ref, fileName: part.fileName }
     case 'remote_file':

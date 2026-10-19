@@ -339,6 +339,7 @@ async function fork(request: MessageForkRequest): Promise<void> {
         ),
         comments: pending.comments,
         error: pending.error,
+        requestId: pending.requestId ?? null,
       }))
     "
     :removing="conversation.removing"

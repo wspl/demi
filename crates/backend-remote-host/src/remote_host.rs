@@ -419,6 +419,42 @@ impl RemoteHost {
         }
     }
 
+    /// Writes the file `path` with `bytes`, whose SHA-256 is `sha256`, which
+    /// the runner downloads from this backend as every file Demi downloads
+    /// (`native-runtime.md` § Downloads): resumed after a break or a stall,
+    /// with no overall deadline, and checked before it is put in place as
+    /// `options` says. Answers the name the file has, or the cause of the
+    /// failure.
+    pub async fn download_file(
+        &self,
+        path: &str,
+        bytes: Bytes,
+        sha256: String,
+        options: WriteOptions,
+    ) -> Result<String, HostError> {
+        let link = self.link()?;
+        let _lease = self.admit()?;
+        let offer = link.pipes().offers().offer(link.device(), bytes, sha256);
+        let written = link
+            // The runner answers as it answers a write.
+            .call(Expected::Fs("writeFile"), |id| Inbound::FsDownloadFile {
+                id,
+                path: path.into(),
+                cwd: self.cwd(),
+                exists: match options.exists {
+                    WhenExists::Replace => wire::WriteExists::Replace,
+                    WhenExists::Refuse => wire::WriteExists::Refuse,
+                    WhenExists::Rename => wire::WriteExists::Rename,
+                },
+                source: offer.wire(),
+            })
+            .await?;
+        match written {
+            Answer::Fs(FsResult::WriteFile(name), _) => Ok(name),
+            _ => Err(mismatch()),
+        }
+    }
+
     /// Writes the directory `path` whole with one request (`runner.md`
     /// § Host operations): each of `files` by its path inside it, with its
     /// mode and bytes, and every directory in it with `directory_mode`. The

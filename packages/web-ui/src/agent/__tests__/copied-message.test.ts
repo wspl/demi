@@ -29,9 +29,9 @@ const FITTED = 'f'.repeat(64)
 const sent: UserContentBlock[] = [
   { type: 'text', text: 'Compare **before** ' },
   { type: 'image', source: { type: 'ref', ref: FITTED, mediaType: 'image/png' } },
-  { type: 'attachment', name: 'before.png', path: '/home/demi/.demi/attachments/c/before.png', mediaType: 'image/png', sizeBytes: 1200, sha256: BEFORE },
+  { type: 'attachment', name: 'before.png', id: 'a1', mediaType: 'image/png', sizeBytes: 1200, sha256: BEFORE },
   { type: 'text', text: ' with ' },
-  { type: 'attachment', name: 'after.png', path: '/home/demi/.demi/attachments/c/after.png', mediaType: 'image/png', sizeBytes: 900, sha256: AFTER },
+  { type: 'attachment', name: 'after.png', id: 'a2', mediaType: 'image/png', sizeBytes: 900, sha256: AFTER },
   { type: 'text', text: ', notes in ' },
   { type: 'reference', reference: encodeRemoteReference('alex-mbp', '/Users/alex/notes.md', 'device-1') },
 ]

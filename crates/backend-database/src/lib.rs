@@ -1,7 +1,7 @@
 //! The SQLite databases (`storage.md`): the control service and every
 //! control record, the conversation index, each conversation's database with
 //! the tree store over it, its records of commands' outputs and of the
-//! attachments the agent uploaded, the schemas and their migrations, and the
+//! conversation's attachments, the schemas and their migrations, and the
 //! encodings of stored values, and each user's search index; and the record
 //! types it stores, which the domains above use. The object store is
 //! `backend-blobs`'.

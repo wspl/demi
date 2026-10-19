@@ -437,11 +437,16 @@ them without reading the file itself.
 Send, steer and edit content refers to uploads and remote files with typed
 `upload` and `remote_file` references; a frame never carries media bytes. The
 socket validates the entire frame before changing metadata or granting
-attachments. It resolves upload references to caller-owned blobs and writes
-them under the selected Host's `~/.demi/attachments/<conversation>/`, outside
-the workspace. The agent receives an attachment record, with the same snippet
-for a text file, and the native media block of an image, a video or a PDF,
-which references the upload's own blob. An image enters fitted to what every
+attachments. It resolves upload references to caller-owned blobs and gives
+each file the conversation's next attachment number, `a7`, from the sequence
+`demi attachment upload` takes its numbers from
+([Attachment commands](../execution/commands.md#attachment-commands)); the
+message enters at once and writes nothing to a Host, so a slow or broken link
+to the Host never holds a send and no stopped Cloud wakes for one. The agent
+receives an attachment record, with the same snippet for a text file, and the
+native media block of an image, a video or a PDF, which references the
+upload's own blob; a command that needs the file fetches it with
+`demi attachment download`. An image enters fitted to what every
 provider accepts
 ([Images in the transcript](../agent/transcript.md#images-in-the-transcript)):
 when fitting changes it, its block references the fitted image's blob, which

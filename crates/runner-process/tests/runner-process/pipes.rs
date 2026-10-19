@@ -123,6 +123,106 @@ async fn explicit_cancel_interrupts_quiet_input_and_urls_cannot_change_origin() 
     .unwrap();
 }
 
+/// A pipe request whose connection fails before the backend answered, as a
+/// device's proxy fails one now and then, goes again on a new connection
+/// and the pipe completes: before, the one failed request ended the pipe
+/// with "error sending request". The first connection is closed unanswered;
+/// about a second, the pause before the new one.
+#[tokio::test]
+async fn a_pipe_request_whose_connection_fails_unanswered_goes_again_on_a_new_one() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            // The first connection reads the request and closes unanswered.
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut header = Vec::new();
+            while !header.ends_with(b"\r\n\r\n") {
+                header.push(socket.read_u8().await.unwrap());
+            }
+            drop(socket);
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut header = Vec::new();
+            while !header.ends_with(b"\r\n\r\n") {
+                header.push(socket.read_u8().await.unwrap());
+            }
+            let body = [data(b"whole"), wire::end_frame(&Ok(())).to_vec()].concat();
+            socket.write_all(&response_head(body.len())).await.unwrap();
+            socket.write_all(&body).await.unwrap();
+        });
+        let token = tokio::sync::watch::Sender::new(Some("token".parse().unwrap())).subscribe();
+        let client = PipeClient::new(&origin.parse().unwrap(), token).unwrap();
+        let mut stream = client.get("/pipe", CancellationToken::new()).await.unwrap();
+        let mut bytes = Vec::new();
+        while let Some(chunk) = stream.next().await {
+            bytes.extend(chunk.unwrap());
+        }
+        assert_eq!(bytes, b"whole");
+        server.await.unwrap();
+    })
+    .await
+    .unwrap();
+}
+
+/// A download its caller cancels partway stops, writes nothing to its
+/// output and leaves no staging file behind (`native-runtime.md`
+/// § Downloads): the transfer it served is gone, and a later one is given a
+/// new offer. Planted defect this catches: a cancelled download that keeps
+/// its partial staging file. A local server that sends the first half and
+/// then waits; milliseconds.
+#[tokio::test]
+async fn a_cancelled_download_writes_nothing_and_leaves_no_staging_file() {
+    tokio::time::timeout(Duration::from_secs(30), async {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let (finished, until_finished) = tokio::sync::oneshot::channel::<()>();
+        let server = tokio::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut header = Vec::new();
+            while !header.ends_with(b"\r\n\r\n") {
+                header.push(socket.read_u8().await.unwrap());
+            }
+            socket
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 8\r\nConnection: close\r\n\r\nhalf")
+                .await
+                .unwrap();
+            // Half sent and held: the rest never comes while the client waits.
+            let _ = until_finished.await;
+        });
+        let token = tokio::sync::watch::Sender::new(Some("token".parse().unwrap())).subscribe();
+        let client = PipeClient::new(&origin.parse().unwrap(), token).unwrap();
+        let directory = tempfile::tempdir().unwrap();
+        let staging = directory.path().join(".notes.bin.download");
+        let offer = wire::FileOffer {
+            url: "/api/offers/o1".to_owned(),
+            size: 8,
+            sha256: "0".repeat(64),
+        };
+        let cancel = CancellationToken::new();
+        let mut output = Vec::new();
+        // Partway: the staging file holds the first half, as the downloader
+        // tells once it is written.
+        let (held, half_held) = tokio::sync::watch::channel(0);
+        let downloading = client.download(&offer, &staging, &mut output, &cancel, |bytes| {
+            held.send_replace(bytes);
+        });
+        let cancelling = async {
+            let mut half_held = half_held;
+            half_held.wait_for(|bytes| *bytes >= 4).await.unwrap();
+            cancel.cancel();
+        };
+        let (downloaded, ()) = tokio::join!(downloading, cancelling);
+        assert!(downloaded.is_err(), "{downloaded:?}");
+        assert!(output.is_empty());
+        assert!(!staging.exists());
+        assert_eq!(std::fs::read_dir(directory.path()).unwrap().count(), 0);
+        drop(finished);
+        server.await.unwrap();
+    })
+    .await
+    .unwrap();
+}
+
 /// `bytes` as a pipe's data frames.
 fn data(bytes: &[u8]) -> Vec<u8> {
     let mut frames = bytes::BytesMut::new();

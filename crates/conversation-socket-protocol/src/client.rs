@@ -344,11 +344,11 @@ pub enum ClientContent {
         #[garde(dive)]
         media: MediaRef,
     },
-    /// In an edit: an attachment record of the edited message, by the path
-    /// the record holds (`message-editing.md` § Files the edit keeps).
+    /// In an edit: an attachment record of the edited message, by its
+    /// number, such as `a7` (`message-editing.md` § Files the edit keeps).
     Attachment {
-        #[garde(length(chars, min = 1, max = 4096))]
-        path: String,
+        #[garde(length(chars, min = 1, max = 32))]
+        id: String,
     },
 }
 

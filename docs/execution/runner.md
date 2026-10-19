@@ -542,7 +542,7 @@ The filesystem requests have the shapes that keep it so:
   replace the file, refuse with `file_exists`, or take the first free name of
   the form `name-2.ext`, `name-3.ext`, and answer the name it took; taking a
   name stops early at a name that already holds exactly the same bytes, and
-  answers it without writing, so the same file sent again is one file. A write
+  answers it without writing, so the same file fetched again is one file. A write
   makes the missing parent directories of its path. No check precedes a
   write.
 

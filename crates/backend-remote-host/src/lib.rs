@@ -25,6 +25,7 @@ mod output_records;
 mod pipes;
 mod relay;
 mod remote_host;
+mod offers;
 mod shell_environment;
 #[cfg(feature = "edge")]
 mod runner_socket;
@@ -41,6 +42,9 @@ pub use link::{
     END_GRACE, OUTBOUND_FRAMES, PING_INTERVAL, WeakLink,
 };
 pub use manifest::{ArtifactResolver, CommandCatalog, CommandSelection};
+pub use offers::{FileOffers, Offer};
+#[cfg(feature = "edge")]
+pub use offers::offer_response;
 pub use output_records::{decode_output, encode_output};
 pub use pipes::{
     ARRIVAL, DeviceSink, DeviceSource, Pipe, PipeError, PipeFailure, PipeReader, PipeRefusal,

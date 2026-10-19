@@ -121,7 +121,7 @@ fn a_message_that_is_not_json_is_told_from_an_invalid_frame() {
         &with(
             fixture("send"),
             "/content/0",
-            json!({"type": "attachment", "path": "/a"}),
+            json!({"type": "attachment", "id": "a1"}),
         )
         .to_string(),
     )

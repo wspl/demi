@@ -17,13 +17,12 @@
 //! it names, which leaves the list as the session takes it; one the list no
 //! longer holds is answered with a `rejected` frame (`saved_not_found`).
 
-use std::cell::RefCell;
 use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use axum::extract::ws::{CloseFrame, Message, Utf8Bytes, WebSocket, close_code};
 use demi_agent_server::{ContentError, ContentResolver, FileReference, Outgoing, ResolvedFiles};
-use demi_agent_store::media::{HeldMedia, READS_AT_ONCE};
+use demi_agent_store::media::HeldMedia;
 use demi_backend_database::StorageError;
 use demi_backend_database::conversation_index::ConversationRecord;
 use demi_backend_page_sync::Part;
@@ -32,22 +31,19 @@ use demi_conversation_socket_protocol::{
     ClientContent, ClientFrame, ClientFrameKind, EditOutcome, FrameError, Refusal, RemoveOutcome,
     SavedDelivery, ServerFrame, TranscriptPatch, decode_client_frame,
 };
-use demi_shared_gates::{GateLease, Purpose};
+use demi_shared_gates::Purpose;
 use demi_shared_types::{Block, BlockId, TurnId, UserContentBlock};
 use demi_web_api_protocol::drafts::{ATTACHMENT_MARK, DraftFile};
 use demi_web_api_protocol::saved::SavedMessage;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::ids::{ConversationId, ProviderId};
-use futures_util::{StreamExt as _, TryStreamExt as _};
 use futures_util::future::LocalBoxFuture;
-use tokio_util::sync::CancellationToken;
 
 use super::failure_facts;
 use crate::shard::page_socket::{PageSocketOrigin, open_page_socket};
 use crate::sync::ChannelSession;
 use crate::shard::{PageEnd, PageSocket, Shard};
-use demi_backend_host_access::access::{Admitted, ConversationHost, Waits};
-use demi_backend_host_access::remote_files::RemoteFile;
+use demi_backend_host_access::remote_files::{RemoteFile, RemoteFileRefusal};
 use demi_backend_host_access::root_of;
 
 /// The close code of a socket whose page fell a full outbox behind; the page
@@ -143,7 +139,6 @@ impl Shard {
         let resolver = Rc::new(ConversationFiles {
             shard: Rc::downgrade(&self),
             conversation: id.clone(),
-            host: RefCell::new(None),
         });
         let (connection, mut frames) = self.agent().connect(root_of(&id), resolver.clone());
         let (mut page, mut stream) = open_page_socket(socket, self.services().pages, origin);
@@ -161,7 +156,7 @@ impl Shard {
                             Handled::NotJson => break Ending::NotJson,
                         };
                         for reply in replies {
-                            if !self.send_frame(&mut page, reply).await {
+                            if !self.send_frame(&id, &mut page, reply).await {
                                 break 'relay Ending::Gone;
                             }
                         }
@@ -172,10 +167,9 @@ impl Shard {
                         Some(Ok(Message::Text(text))) => {
                             let shard = self.clone();
                             let connection = &connection;
-                            let resolver = &resolver;
                             let id = id.clone();
                             handling = Some(Box::pin(async move {
-                                shard.handle_message(&id, connection, resolver, text.as_str()).await
+                                shard.handle_message(&id, connection, text.as_str()).await
                             }));
                         }
                         Some(Ok(Message::Binary(_))) => break Ending::NotJson,
@@ -204,7 +198,7 @@ impl Shard {
                                     }
                                 }
                             }
-                            if !self.send_frames(&mut page, batch).await {
+                            if !self.send_frames(&id, &mut page, batch).await {
                                 break Ending::Gone;
                             }
                             if let Some(ending) = after {
@@ -326,7 +320,6 @@ impl Shard {
         &self,
         conversation: &ConversationId,
         connection: &demi_agent_server::Connection<super::ShardHosts>,
-        files: &ConversationFiles,
         text: &str,
     ) -> Handled {
         let frame = match decode_client_frame(text) {
@@ -360,17 +353,11 @@ impl Shard {
                                 Handled::Replies(sent_again(turn_id, delivery))
                             }
                             Ok(_) => Handled::Replies(vec![saved_gone()]),
-                            Err(error) => Handled::Replies(vec![refusal(
-                                ErrorCode::FrameDeliveryFailed,
-                                error.to_string(),
-                            )]),
+                            Err(error) => Handled::Replies(vec![send_failed(error.to_string())]),
                         };
                     }
                     Err(error) => {
-                        return Handled::Replies(vec![refusal(
-                            ErrorCode::FrameDeliveryFailed,
-                            error.to_string(),
-                        )]);
+                        return Handled::Replies(vec![send_failed(error.to_string())]);
                     }
                 }
             }
@@ -379,37 +366,14 @@ impl Shard {
         // The frame is handled under the conversation's file gate, which a
         // transition holding the conversation makes it wait for, never
         // refuse (`sessions-and-targets.md` § How a conversation uses a
-        // device). A frame whose uploads go to the Host is admitted there,
-        // once, and its resolver writes through that admission: nothing
-        // enters the file gate while holding it (§ Host operations).
-        let _admitted = if carries_uploads(&frame) {
-            match self
-                .host_shard()
-                .admit_host(
-                    conversation,
-                    None,
-                    Waits::request(&CancellationToken::new()),
-                )
-                .await
-            {
-                Ok(admitted) => {
-                    files.host.replace(Some(admitted.host.clone()));
-                    Admission::Host(admitted)
-                }
-                Err(error) => {
-                    let (code, _) = error.code();
-                    return Handled::Replies(vec![refused_frame(frame, code, error.to_string())]);
-                }
-            }
-        } else {
-            Admission::Files(
-                self.conversations()
-                    .slot(conversation)
-                    .file_gate()
-                    .enter(Purpose::Demand)
-                    .await,
-            )
-        };
+        // device). Its uploads go to no Host (`backend.md` § Media by
+        // reference).
+        let _files = self
+            .conversations()
+            .slot(conversation)
+            .file_gate()
+            .enter(Purpose::Demand)
+            .await;
         // An open takes its turn among the changes of the model settings: the
         // tree opens with the selection the record holds, never with one a
         // change is about to replace.
@@ -423,27 +387,31 @@ impl Shard {
             ),
             _ => None,
         };
+        // A refusal names the command the page sent: a saved message's is
+        // its `send_saved`'s, whatever frame it became.
+        let command = if saved.is_some() { ClientFrameKind::SendSaved } else { frame.kind() };
         let handled = match self.prepare_frame(conversation, &frame).await {
             Ok(Prepared::Deliver) => {
-                let taken = connection.handle(frame).await;
+                let taken = connection.handle_as(frame, command).await;
                 if let (true, Some((id, turn))) = (taken, saved) {
                     self.take_saved(conversation, id, turn).await;
                 }
                 Handled::Replies(Vec::new())
             }
             Ok(Prepared::Refused(code, message)) => {
-                Handled::Replies(vec![refused_frame(frame, code, message)])
+                Handled::Replies(vec![refused_frame(frame, command, code, message)])
             }
             Err(error) => {
                 tracing::error!(%conversation, error = &error as &dyn std::error::Error, "a frame was not prepared");
-                Handled::Replies(vec![refused_frame(
-                    frame,
-                    ErrorCode::FrameDeliveryFailed,
-                    error.to_string(),
-                )])
+                // A send's failure inside the backend is told as one, with
+                // the request ID beside it (`turns.md` § Requesting).
+                let code = match command {
+                    ClientFrameKind::Send | ClientFrameKind::SendSaved => ErrorCode::SendFailed,
+                    _ => ErrorCode::FrameDeliveryFailed,
+                };
+                Handled::Replies(vec![refused_frame(frame, command, code, error.to_string())])
             }
         };
-        files.host.replace(None);
         handled
     }
 
@@ -530,20 +498,37 @@ impl Shard {
 
     /// Sends one server frame, presented as the page receives it; false when
     /// the socket is gone.
-    async fn send_frame(&self, page: &mut PageSocket, frame: ServerFrame) -> bool {
-        self.send_frames(page, vec![frame]).await
+    async fn send_frame(&self, conversation: &ConversationId, page: &mut PageSocket, frame: ServerFrame) -> bool {
+        self.send_frames(conversation, page, vec![frame]).await
     }
 
     /// Sends `frames` as one message: a frame alone as itself, several as
     /// a JSON array of them in order, which the page applies as one change
-    /// (`turns.md` § Following the agent's work). Every `error` frame
-    /// carries the request ID of the socket's upgrade.
-    async fn send_frames(&self, page: &mut PageSocket, frames: Vec<ServerFrame>) -> bool {
+    /// (`turns.md` § Following the agent's work). Every `error` and
+    /// `rejected` frame carries the request ID of the socket's upgrade, and every refused
+    /// send of `conversation` is logged.
+    async fn send_frames(&self, conversation: &ConversationId, page: &mut PageSocket, frames: Vec<ServerFrame>) -> bool {
         let mut texts = Vec::with_capacity(frames.len());
         for frame in frames {
             let mut frame = self.present(frame).await;
-            if let ServerFrame::Error { request_id, .. } = &mut frame {
+            if let ServerFrame::Error { request_id, .. } | ServerFrame::Rejected { request_id, .. } = &mut frame {
                 *request_id = Some(page.request().clone());
+            }
+            if let ServerFrame::Rejected {
+                command: command @ (ClientFrameKind::Send | ClientFrameKind::SendSaved),
+                refusal,
+                ..
+            } = &frame
+            {
+                // The backend decides a send failed, and says so here, under
+                // the socket's request ID (`turns.md` § Requesting).
+                tracing::warn!(
+                    %conversation,
+                    command = ?command,
+                    code = %refusal.code,
+                    cause = %refusal.reason,
+                    "a send was refused"
+                );
             }
             let Some(text) = serialize(frame).await else {
                 return false;
@@ -637,33 +622,22 @@ enum Prepared {
     Refused(ErrorCode, String),
 }
 
-/// How a frame is admitted while it is handled.
-enum Admission {
-    /// Under a lease of the conversation's file gate.
-    Files(#[expect(dead_code, reason = "held for its drop")] GateLease),
-    /// On the conversation's primary Host, for its uploads.
-    Host(#[expect(dead_code, reason = "held for its drop")] Admitted),
-}
-
-/// Whether the frame's content names an upload, which is written to the
-/// conversation's Host before the session sees it.
-fn carries_uploads(frame: &ClientFrame) -> bool {
-    let content = match frame {
-        ClientFrame::Send { content, .. } | ClientFrame::Steer { content, .. } => content,
-        ClientFrame::EditAndSend { request } => &request.content,
-        _ => return false,
-    };
-    content
-        .iter()
-        .any(|part| matches!(part, ClientContent::Upload { .. }))
-}
-
 /// The answer to a frame the backend refused: an edit's or a Regenerate's
 /// `edit_result`, a
 /// removal's `remove_result` `gone_on`, since it reached no session to hold
-/// what it names (`runtime.md` § Pending steers), and an `error` frame for
-/// any other.
-fn refused_frame(frame: ClientFrame, code: ErrorCode, message: String) -> ServerFrame {
+/// what it names (`runtime.md` § Pending steers), a send's `rejected` as
+/// the page's `command`, a saved message's whichever frame it became, and
+/// an `error` frame for any other.
+fn refused_frame(frame: ClientFrame, command: ClientFrameKind, code: ErrorCode, message: String) -> ServerFrame {
+    if matches!(command, ClientFrameKind::Send | ClientFrameKind::SendSaved) {
+        // A send is refused as itself, so the page marks its message not
+        // delivered with the cause (`turns.md` § Requesting).
+        return ServerFrame::Rejected {
+            command,
+            refusal: Refusal::new(code, message),
+            request_id: None,
+        };
+    }
     match frame {
         ClientFrame::EditAndSend { request } => ServerFrame::EditResult {
             operation_id: request.operation_id,
@@ -694,6 +668,33 @@ fn saved_gone() -> ServerFrame {
     ServerFrame::Rejected {
         command: ClientFrameKind::SendSaved,
         refusal: Refusal::new(ErrorCode::SavedNotFound, "No such message saved for later"),
+        request_id: None,
+    }
+}
+
+/// The answer to a `send_saved` the backend failed on inside, such as a
+/// storage failure of the list, which has no cause of its own for the user.
+fn send_failed(message: String) -> ServerFrame {
+    ServerFrame::Rejected {
+        command: ClientFrameKind::SendSaved,
+        refusal: Refusal::new(ErrorCode::SendFailed, message),
+        request_id: None,
+    }
+}
+
+/// The refusal of a message whose files on devices cannot be referenced:
+/// each cause the user can act on as its own code, a storage failure as a
+/// failure inside the backend.
+fn remote_file_refused(refusal: RemoteFileRefusal) -> ContentError {
+    let code = match &refusal {
+        RemoteFileRefusal::NotAccessible => ErrorCode::DeviceNotFound,
+        RemoteFileRefusal::Offline(_) => ErrorCode::DeviceOffline,
+        RemoteFileRefusal::Unquotable => ErrorCode::PathUnquotable,
+        RemoteFileRefusal::Storage(_) => ErrorCode::SendFailed,
+    };
+    ContentError {
+        message: refusal.to_string(),
+        code: Some(code.to_string()),
     }
 }
 
@@ -796,17 +797,15 @@ fn to_text(frame: &ServerFrame) -> String {
     serde_json::to_string(frame).expect("a server frame serializes to JSON")
 }
 
-/// The files of a frame's content: an upload is written to the
-/// conversation's Host and becomes its blocks, and a remote file becomes its
-/// reference once its device may be read. The uploads are written first, so a
-/// frame whose upload cannot be written grants no remote file.
+/// The files of a frame's content: an upload becomes its blocks under the
+/// conversation's next attachment number, and a remote file becomes its
+/// reference once its device may be read. The uploads are numbered first, in
+/// the order of the content, so a frame whose upload cannot be read grants
+/// no remote file.
 struct ConversationFiles {
     /// Weak: the shard owns the agent server that holds this resolver.
     shard: Weak<Shard>,
     conversation: ConversationId,
-    /// The Host the frame being handled was admitted on, while its uploads
-    /// are written there.
-    host: RefCell<Option<ConversationHost>>,
 }
 
 impl ContentResolver for ConversationFiles {
@@ -815,19 +814,18 @@ impl ContentResolver for ConversationFiles {
         files: Vec<FileReference>,
     ) -> LocalBoxFuture<'a, Result<ResolvedFiles, ContentError>> {
         Box::pin(async move {
+            // A failure inside the backend has no cause of its own for the
+            // user; it is shown with the socket's request ID.
             let refused = |message: String| ContentError {
                 message,
-                code: Some(ErrorCode::FrameDeliveryFailed.to_string()),
+                code: Some(ErrorCode::SendFailed.to_string()),
             };
-            let shard = self
-                .shard
-                .upgrade()
-                .ok_or_else(|| refused("The backend is shutting down".into()))?;
+            let shard = self.shard.upgrade().ok_or_else(|| ContentError {
+                message: "The backend is shutting down".into(),
+                code: Some(ErrorCode::BackendClosing.to_string()),
+            })?;
             // Each file's blocks by its place, the remote files' once they
-            // are granted together, and the bytes of the uploads' media. The
-            // uploads are written together, as many at once as blobs are
-            // read, since each reads its own: each write takes a free name
-            // itself, so two of one name never meet.
+            // are granted together, and the bytes of the uploads' media.
             let mut uploads = Vec::new();
             let mut remote = Vec::new();
             for file in &files {
@@ -841,19 +839,17 @@ impl ContentResolver for ConversationFiles {
             }
             let mut written = Vec::new().into_iter();
             if !uploads.is_empty() {
-                // A frame with uploads is admitted on its Host first.
-                let host = self.host.borrow().clone();
-                let host =
-                    host.ok_or_else(|| refused("The frame's Host was not admitted".into()))?;
+                // One at a time, so the numbers follow the content's order.
                 let host_shard = shard.host_shard();
-                let writes = uploads.into_iter().map(|(reference, file_name)| {
-                    host_shard.resolve_upload(&self.conversation, &host, reference, file_name)
-                });
-                let writes: Vec<_> = futures_util::stream::iter(writes)
-                    .buffered(READS_AT_ONCE)
-                    .try_collect()
-                    .await
-                    .map_err(|error| refused(error.to_string()))?;
+                let mut writes = Vec::with_capacity(uploads.len());
+                for (reference, file_name) in uploads {
+                    writes.push(
+                        host_shard
+                            .resolve_upload(&self.conversation, reference, file_name)
+                            .await
+                            .map_err(refused)?,
+                    );
+                }
                 written = writes.into_iter();
             }
             let mut media = HeldMedia::default();
@@ -875,7 +871,7 @@ impl ContentResolver for ConversationFiles {
                     .host_shard()
                     .reference_remote_files(&self.conversation, &remote)
                     .await
-                    .map_err(|refusal| refused(refusal.to_string()))?
+                    .map_err(remote_file_refused)?
                     .into_iter()
             };
             let blocks = resolved

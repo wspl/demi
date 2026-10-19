@@ -214,6 +214,8 @@
     "invalid_revision": "대화가 아직 해당 위치에 도달하지 않았습니다.",
     "invalid_frame": "잘못된 요청입니다.",
     "frame_delivery_failed": "업데이트를 보낼 수 없습니다.",
+    "send_failed": "메시지를 보낼 수 없습니다.",
+    "path_unquotable": "파일 경로에 줄 바꿈처럼 명령에서 쓸 수 없는 문자가 있습니다.",
     "turn_in_flight": "대화의 작업이 끝날 때까지 기다리십시오.",
     "workspace_not_found": "프로젝트가 더 이상 없습니다.",
     "workspace_exists": "이 폴더는 이미 프로젝트입니다.",

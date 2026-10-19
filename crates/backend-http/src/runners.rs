@@ -17,11 +17,11 @@ use axum::http::header::{CACHE_CONTROL, CONTENT_TYPE, UPGRADE};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum_extra::TypedHeader;
-use axum_extra::headers::Authorization;
+use axum_extra::headers::{Authorization, Range};
 use axum_extra::headers::authorization::Bearer;
 use demi_backend_database::accounts::TokenHash;
 use demi_backend_database::devices::DeviceRecord;
-use demi_backend_remote_host::{DeviceSource, PipeRefusal, accept_stream_pipe};
+use demi_backend_remote_host::{DeviceSource, PipeRefusal, accept_stream_pipe, offer_response};
 use demi_runner_protocol::release::{
     RELEASE_HEADER, RunnerUpdate, TARGET_HEADER, TOKEN_HEADER, UpdateExecutable,
 };
@@ -33,7 +33,7 @@ use tracing::Instrument as _;
 
 use super::AppState;
 use super::error::ApiError;
-use super::install::current_runner_release;
+use super::install::{current_runner_release, range_start};
 use super::listener::Peer;
 use super::runner_socket::accept;
 
@@ -204,6 +204,39 @@ pub(super) async fn get(
         Body::from_stream(frames),
     )
         .into_response()
+}
+
+/// `GET /api/offers/:id`: a file the backend offers the requesting device's
+/// runner for download, such as an attachment placed on its Host, from the
+/// byte a Range request names on, as a download that broke off resumes
+/// (`native-runtime.md` § Downloads). An offer withdrawn, unknown or made
+/// to another device answers 404.
+pub(super) async fn offer(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    authorization: Option<TypedHeader<Authorization<Bearer>>>,
+    range: Option<TypedHeader<Range>>,
+) -> Response {
+    let device = match device_of(&state, authorization).await {
+        Ok(device) => device,
+        Err(refusal) => return *refusal,
+    };
+    let owner = device.user.clone();
+    let offered = state
+        .shards
+        .of(&owner)
+        .call_while_closing(move |shard, _| async move {
+            shard.pipes().offers().bytes(&id, device.id.as_str())
+        })
+        .await;
+    match offered {
+        Ok(Some(bytes)) => {
+            let from = range.map_or(0, |TypedHeader(range)| range_start(&range));
+            offer_response(bytes, from)
+        }
+        Ok(None) => (StatusCode::NOT_FOUND, "no such offer").into_response(),
+        Err(_) => StatusCode::SERVICE_UNAVAILABLE.into_response(),
+    }
 }
 
 /// The source end of pipe `id`, which `device` claims; the refusal answers

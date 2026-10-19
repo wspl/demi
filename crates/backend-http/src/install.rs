@@ -280,7 +280,7 @@ pub(super) async fn native_artifact(
 /// Where a download from a byte on starts, as one that broke off resumes; a
 /// range with an end, or several, is answered with the whole, as HTTP
 /// allows.
-fn range_start(range: &Range) -> u64 {
+pub(super) fn range_start(range: &Range) -> u64 {
     match range.satisfiable_ranges(u64::MAX).collect::<Vec<_>>()[..] {
         [(Bound::Included(from), Bound::Unbounded)] => from,
         _ => 0,

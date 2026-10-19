@@ -1,6 +1,7 @@
-//! The attachments the agent uploaded (`commands.md` § Attachment commands,
-//! `storage.md` § Conversation state and transactions): `demi attachment
-//! upload` stores each file's bytes as a blob of the conversation owner's
+//! The conversation's attachments, the files its messages sent and those
+//! the agent uploaded (`commands.md` § Attachment commands,
+//! `storage.md` § Conversation state and transactions): a sent file's
+//! bytes, and those `demi attachment upload` stores, are a blob of the conversation owner's
 //! namespace, and the conversation's `attachments` table holds one row per
 //! attachment, keyed by its number in the conversation's `attachment`
 //! sequence, with the file's name, its media type, its size, an image's or a
