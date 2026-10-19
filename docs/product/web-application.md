@@ -732,7 +732,11 @@ work allows, and never one per item:
   hosts. The socket's `open` names the blocks the page read
   ([Where a reset starts](../agent/rendering.md#where-a-reset-starts)), so it
   goes once both the page and the connection are there; the socket connects
-  meanwhile. The first load starts the
+  meanwhile. Nothing else holds the conversation back: it shows as soon as
+  its transcript page and its draft are read, and the subagents, hosts,
+  permission requests and panel each join it when they arrive. A subagent's
+  panel reads its transcript only when it opens, and shows that it loads
+  while it does, and a failed read with Retry, never an empty transcript. The first load starts the
   synchronization channel beside the session check, and opens the
   conversation its URL names by its id, without waiting for the channel's
   first state, unless the URL is a new conversation the browser made and has

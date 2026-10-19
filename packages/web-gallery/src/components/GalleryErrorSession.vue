@@ -395,7 +395,7 @@ const cases: SessionCase[] = [
               class="flex h-[26rem] min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface-base"
             >
               <ConnectionBanner v-if="item.banner" :problem="item.banner" />
-              <ChatSession
+              <ChatSession @show-subagents="() => {}"
                 :conversation="item.session"
                 has-provider
                 :backend-away="item.banner !== undefined"

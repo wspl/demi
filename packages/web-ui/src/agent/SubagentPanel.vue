@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, reactive, ref, watch } from 'vue'
 import { Bot, CircleStop, X } from '@lucide/vue'
 import type { InstructionEntry } from '@demicodes/protocol'
 import { vContextMenu, type ContextMenuGroup } from '../ui/context-menu'
@@ -20,6 +20,7 @@ import type { UsageLimits } from './context-usage'
 import { loadedInstructions } from './instructions'
 import { refusedForSize } from './session-status'
 import { agentMenu } from './agent-menu'
+import { shownError, type ShownError } from '../infra/errors'
 
 const props = withDefaults(
   defineProps<{
@@ -30,9 +31,23 @@ const props = withDefaults(
     reveal?: TranscriptReveal | null
     /** The usage limits of the account a provider entry runs on, which a child's context card shows; absent, it shows none. */
     usageLimits?: (providerId: string, account: string | null) => UsageLimits | null
+    /**
+     * Reads the latest page of a child's transcript, for a child the panel
+     * shows and holds none of, unless the session sends it (`streamed`);
+     * it resolves once the page is in the child's record. The panel shows the child loading meanwhile, and a failed read
+     * with Retry. Absent, the panel reads nothing and shows what it is given.
+     */
+    readLatest?: (id: string) => Promise<void>
+    /**
+     * Whether the page has, or is opening, a session that sends a live
+     * child's transcript once the panel shows it; without one the panel
+     * reads a live child's latest page as it reads a finished one's.
+     */
+    streamed?: boolean
   }>(),
   {
     terminals: () => [],
+    streamed: false,
   },
 )
 
@@ -42,11 +57,10 @@ const emit = defineEmits<{
   /** Stop Agent in a live tab's menu: that child and its subtree. */
   abortAgent: [id: string]
   /**
-   * Read a page of the child's transcript: its latest when the panel shows
-   * a child it holds none of, or the one before the window shown as the
+   * Read the page of the child's transcript before the window shown, as the
    * reader nears its start (`web-application.md` § Transcript windows).
    */
-  read: [id: string, at: 'latest' | 'before']
+  read: [id: string]
   /** The block `reveal` names is in view. */
   revealed: []
   /** Compact in the shown child's context card: that child's context. */
@@ -70,15 +84,64 @@ provideLiveCalls((toolUseId) => active.value ? commandOf(active.value.id, toolUs
 // A child's transcript shows its latest window, and earlier pages as the reader scrolls up.
 const shown = computed(() => active.value ? shownWindow(active.value.history, null) : null)
 const shownEdges = computed(() => active.value && shown.value ? windowEdges(active.value.history, shown.value) : null)
+/**
+ * Each child's read of its latest page while it runs, or once it failed, by
+ * the child's id; a child the map does not name was read, or never needed
+ * to be.
+ */
+const reads = reactive(new Map<string, { phase: 'loading' } | { phase: 'failed'; error: ShownError }>())
+function readLatest(id: string): Promise<void> | undefined {
+  const read = props.readLatest
+  if (!read) {
+    return undefined
+  }
+  reads.set(id, { phase: 'loading' })
+  return read(id).then(
+    () => {
+      reads.delete(id)
+    },
+    (error: unknown) => {
+      reads.set(id, { phase: 'failed', error: shownError(error) })
+    },
+  )
+}
+/** Whether the session sends the child `agent`'s transcript once the panel shows it: it is live, and the page has a session. */
+function sent(agent: SubagentRecord): boolean {
+  return agent.phase === 'running' && props.streamed
+}
+// A child the panel holds none of reads its latest page when it shows,
+// unless the session sends it: a live child's transcript comes with the
+// socket's reset once the page shows it (`subagents.md` § Protocol). One
+// whose read failed waits for Retry; one that ends, or whose page loses its
+// session, before its reset came reads then.
 watch(
-  () => active.value,
-  (agent) => {
-    if (agent && agent.history.windows.length === 0) {
-      emit('read', agent.id, 'latest')
+  () => {
+    const agent = active.value
+    return agent && agent.history.windows.length === 0 && !sent(agent) ? agent.id : null
+  },
+  (id) => {
+    if (id !== null && !reads.has(id)) {
+      void readLatest(id)
     }
   },
   { immediate: true },
 )
+/**
+ * The shown child's load while the panel holds none of its transcript:
+ * never an empty transcript in its place. A child the session sends loads
+ * until its reset arrives, whatever the socket's own state; a page that
+ * arrives shows at once.
+ */
+const load = computed(() => {
+  const agent = active.value
+  if (!agent || agent.history.windows.length > 0) {
+    return null
+  }
+  return reads.get(agent.id) ?? (sent(agent) ? { phase: 'loading' as const } : null)
+})
+function retryRead(): Promise<void> | undefined {
+  return active.value ? readLatest(active.value.id) : undefined
+}
 
 function activate(id: string): void {
   activeId.value = id
@@ -174,7 +237,18 @@ function closeTab(id: string): void {
       />
     </template>
     <div v-if="active" class="flex h-full flex-col">
+      <RegionStatus
+        v-if="load"
+        class="min-h-0 flex-1"
+        :status="load.phase"
+        :label="load.phase === 'failed' ? t('subagents.loadFailed') : t('subagents.loading')"
+        :loading-label="t('subagents.loading')"
+        :detail="load.phase === 'failed' ? load.error.message : null"
+        :request-id="load.phase === 'failed' ? load.error.requestId : null"
+        :on-retry="retryRead"
+      />
       <AgentMessageList
+        v-else
         class="min-h-0 flex-1"
         :conversation-id="active.id"
         :node="active.id"
@@ -193,7 +267,7 @@ function closeTab(id: string): void {
         read-only
         :reveal-block-id="reveal?.node === active.id ? reveal.blockId : null"
         @revealed="emit('revealed')"
-        @read-before="emit('read', active.id, 'before')"
+        @read-before="emit('read', active.id)"
       />
       <AgentStatusBar
         :run="active"

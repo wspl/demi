@@ -80,6 +80,12 @@ export interface ConversationRuntimeOptions {
   state: RuntimeState
   connect: (signal: AbortSignal) => Promise<ConversationClient>
   onEvent?: (event: ClientSessionEvent) => void
+  /**
+   * The children whose transcripts the page shows now, which each connection
+   * names before its `open` (`subagents.md` § Protocol); `showSubagents`
+   * names them again when they change.
+   */
+  shownSubagents?: () => readonly string[]
 }
 
 const OPEN_TIMEOUT_MS = 30_000
@@ -123,6 +129,11 @@ export class ConversationRuntime {
 
   get connected(): boolean {
     return this.client.value !== null
+  }
+
+  /** Whether a session of this view has opened, whose handshake the page has applied. */
+  get hasOpened(): boolean {
+    return this.opened
   }
 
   /**
@@ -373,6 +384,19 @@ export class ConversationRuntime {
     await (await this.ensureOpen()).abort()
   }
 
+  /**
+   * Names the children the page shows now to the open connection; a
+   * connection still opening names them once it has, and one made later
+   * before its `open`.
+   */
+  showSubagents(): void {
+    this.client.value?.showSubagents(this.shownSubagents())
+  }
+
+  private shownSubagents(): readonly string[] {
+    return this.options.shownSubagents?.() ?? []
+  }
+
   async abortSubagents(): Promise<void> {
     const client = await this.ensureOpen()
     client.abortSubagents()
@@ -594,15 +618,33 @@ export class ConversationRuntime {
         this.applyEvent(event)
         triggerRef(this.client)
       })
+      // The children the page shows go first, so the open's handshake
+      // brings their transcripts and no other child's.
+      const named = this.shownSubagents()
+      if (named.length > 0) {
+        client.showSubagents(named)
+      }
       await client.open(() => heldEdge(this.options.state.history))
       attempt.signal.throwIfAborted()
       this.client.value = client
       this.unsubscribe = unsubscribe
+      const shown = this.shownSubagents()
+      if (shown.length !== named.length || shown.some((id) => !named.includes(id))) {
+        client.showSubagents(shown)
+      }
+      // A child the page stopped showing while the handshake came, whose
+      // transcript the page let go of, takes none of what it brought; a side
+      // question's, which no page names, goes on.
+      const dropped = named.filter((id) => !shown.includes(id))
       // Applied once, then let go: the subscription lives as long as the
       // connection, and the frames it held must not.
       const held = handshake
       handshake = null
       for (const event of held) {
+        const childTranscript = event.type === 'subagent_transcript_reset' || event.type === 'subagent_transcript_patch'
+        if (childTranscript && dropped.includes(event.subagentId)) {
+          continue
+        }
         this.applyEvent(event)
       }
       this.opened = true

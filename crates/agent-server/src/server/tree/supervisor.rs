@@ -8,6 +8,7 @@
 use tracing::Instrument as _;
 use std::{
     cell::{Cell, RefCell},
+    collections::HashSet,
     rc::{Rc, Weak},
 };
 
@@ -931,7 +932,7 @@ impl<H: HostResolver> Tree<H> {
                                     now,
                                 );
                             }
-                            sink.emit(ServerFrame::SubagentTranscriptPatch {
+                            sink.emit_shown(&id, ServerFrame::SubagentTranscriptPatch {
                                 subagent_id: id.clone(),
                                 patches: patches.clone(),
                                 revision: *revision,
@@ -989,8 +990,12 @@ impl<H: HostResolver> Tree<H> {
             .insert(child.id().clone(), child.clone());
         self.remember(&child.node.record(), &child.runs_on, 0);
         self.bump();
-        for frame in child_frames(&child, placement, self.on_path(&child.node.record())) {
-            self.sink.emit(frame);
+        let shown = self.sink.shows(child.id());
+        for frame in child_frames(&child, placement, self.on_path(&child.node.record()), shown) {
+            match frame {
+                reset @ ServerFrame::SubagentTranscriptReset { .. } => self.sink.emit_shown(child.id(), reset),
+                frame => self.sink.emit(frame),
+            }
         }
         child
     }
@@ -1037,6 +1042,7 @@ impl<H: HostResolver> Tree<H> {
                     continue;
                 }
                 let id = record.id.clone();
+                let restoring = std::time::Instant::now();
                 let origin = match self.stored(&id).await {
                     Ok(origin) => origin,
                     Err(error) => {
@@ -1057,7 +1063,14 @@ impl<H: HostResolver> Tree<H> {
                 };
                 if let Err(error) = self.start_child(&server, owner, origin, runtime, None, None).await {
                     self.close_unrebuilt(owner, record, error).await;
+                    continue;
                 }
+                tracing::info!(
+                    root = %self.root.id(),
+                    node = %id,
+                    restore_ms = restoring.elapsed().as_millis(),
+                    "a live subagent was restored"
+                );
             }
         })
     }
@@ -1485,13 +1498,25 @@ impl<H: HostResolver> Tree<H> {
         Ok(recipient.record().number)
     }
 
-    /// Each live child's `started` frame and transcript, depth first in
-    /// spawn order: what a connection that attaches or syncs receives.
-    /// Each works where the conversation's placement `placement` puts it.
-    pub(super) fn replay(&self, placement: Option<&Placement>) -> Vec<ServerFrame> {
+    /// Each live child's `started` frame, with its transcript when it is
+    /// one of `shown`, depth first in spawn order: what a connection that
+    /// attaches or syncs receives. Each works where the conversation's
+    /// placement `placement` puts it.
+    pub(super) fn replay(&self, placement: Option<&Placement>, shown: &HashSet<NodeId>) -> Vec<ServerFrame> {
         self.descendants()
             .iter()
-            .flat_map(|child| child_frames(child, placement, self.on_path(&child.node.record())))
+            .flat_map(|child| {
+                child_frames(child, placement, self.on_path(&child.node.record()), shown.contains(child.id()))
+            })
+            .collect()
+    }
+
+    /// The transcript of each live child of `ids`, for a connection that
+    /// starts showing them; a child that is not live has none to send.
+    pub(crate) fn subagent_resets(&self, ids: &[NodeId]) -> Vec<ServerFrame> {
+        ids.iter()
+            .filter_map(|id| self.child(id))
+            .map(|child| child_reset(&child))
             .collect()
     }
 
@@ -1880,29 +1905,23 @@ pub(super) async fn stop_all(session: &AgentSession) {
     while session.abort().await.target.is_some() {}
 }
 
-/// A child's `started` frame, its transcript, its phase, the calls it is
-/// writing and its wait for the model.
-fn child_frames<H: HostResolver>(child: &Child<H>, placement: Option<&Placement>, on_path: bool) -> [ServerFrame; 5] {
+/// A child's `started` frame, its transcript when `shown`, its phase, the
+/// calls it is writing and its wait for the model.
+fn child_frames<H: HostResolver>(
+    child: &Child<H>,
+    placement: Option<&Placement>,
+    on_path: bool,
+    shown: bool,
+) -> Vec<ServerFrame> {
     let session = child.node.session();
-    let transcript = session.transcript();
-    [
-        ServerFrame::Subagent {
-            event: SubagentEvent::Started,
-            job: child.job(&child.node.record(), placement, on_path),
-        },
-        {
-            // The page holds none of a child's blocks until it shows it
-            // (`rendering.md` § Where a reset starts).
-            let start = latest_page_start(&transcript.blocks);
-            ServerFrame::SubagentTranscriptReset {
-                subagent_id: child.id().clone(),
-                start: index_u32(start),
-                length: index_u32(transcript.blocks.len()),
-                blocks: transcript.blocks[start..].to_vec(),
-                revision: transcript.version.revision,
-                failures: None,
-            }
-        },
+    let mut frames = vec![ServerFrame::Subagent {
+        event: SubagentEvent::Started,
+        job: child.job(&child.node.record(), placement, on_path),
+    }];
+    if shown {
+        frames.push(child_reset(child));
+    }
+    frames.extend([
         ServerFrame::Phase {
             subagent_id: Some(child.id().clone()),
             phase: session.phase(),
@@ -1915,7 +1934,25 @@ fn child_frames<H: HostResolver>(child: &Child<H>, placement: Option<&Placement>
             subagent_id: Some(child.id().clone()),
             waited_ms: session.waited_ms(),
         },
-    ]
+    ]);
+    frames
+}
+
+/// A child's transcript from its latest page: the page holds none of a
+/// child's blocks until it shows it (`rendering.md` § Where a reset starts).
+/// Only that page is copied, never the whole transcript.
+fn child_reset<H: HostResolver>(child: &Child<H>) -> ServerFrame {
+    child.node.session().read_transcript(|blocks, version| {
+        let start = latest_page_start(blocks);
+        ServerFrame::SubagentTranscriptReset {
+            subagent_id: child.id().clone(),
+            start: index_u32(start),
+            length: index_u32(blocks.len()),
+            blocks: blocks[start..].to_vec(),
+            revision: version.revision,
+            failures: None,
+        }
+    })
 }
 
 /// A closed round's completion message (`subagents.md` § Message

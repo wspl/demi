@@ -181,6 +181,8 @@
     "closeTab": "關閉分頁",
     "stopAll": "全部停止",
     "none": "沒有執行中的智慧體",
+    "loading": "正在載入智慧體…",
+    "loadFailed": "無法載入此智慧體。",
     "completed": "已完成",
     "searchCompleted": "搜尋已完成",
     "noneCompleted": "沒有已完成的子智慧體",

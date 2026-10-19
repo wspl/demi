@@ -461,6 +461,7 @@ export const useConversations = defineStore('conversations', () => {
       // Its opening reads the hosts at least this new.
       attachedHosts: askedAt(new Slot<AttachedHost[]>([]), record.hostsRevision),
       subagents: [],
+      shownSubagents: [],
       sides: [],
       sidesHeld: null,
       terminals: [],
@@ -1267,6 +1268,7 @@ export const useConversations = defineStore('conversations', () => {
         attempt.throwIfAborted()
         return connectConversationClient(streamUrl(conversation.id), attempt)
       },
+      shownSubagents: () => conversation.shownSubagents,
       onEvent: (next) => {
         applyConversationEvent(conversation, next)
         reconcileSubmission(conversation)
@@ -1335,12 +1337,12 @@ export const useConversations = defineStore('conversations', () => {
   /**
    * Reads what the page shows of a conversation it opens, all at once: its
    * transcript, its agents, its hosts and its draft, and shows the first
-   * step of its opening, the transcript with its agents, as one change
+   * step of its opening, the transcript, once it and the draft are read
    * (`web-application.md` § Opening a conversation shows in two steps):
    * `runnable`, its session opens next, which the second step shows;
-   * otherwise it stops there. It answers once the transcript is held, with
-   * the hosts' read, which neither the transcript nor the session's opening
-   * waits for.
+   * otherwise it stops there. The agents and the hosts join when they
+   * arrive; it answers once the transcript is held, with the hosts' read,
+   * which neither the transcript nor the session's opening waits for.
    */
   async function readOpening(
     conversation: Conversation,
@@ -1373,7 +1375,7 @@ export const useConversations = defineStore('conversations', () => {
     // opens from it below, as if it had never shown the copy.
     let answered = false
     void reads.unreachable.then(() => openFromCopy(conversation, signal, () => answered))
-    const [page, listed] = await Promise.all([reads.transcript, reads.subagents, draftRead])
+    const [page] = await Promise.all([reads.transcript, draftRead])
     answered = true
     signal.throwIfAborted()
     // The latest page is the transcript's end until the stream says more.
@@ -1384,15 +1386,49 @@ export const useConversations = defineStore('conversations', () => {
     conversation.summaries = Object.fromEntries(page.summaries.map((summary) => [summary.marker, summary.summaryTokens]))
     reconcileSubmission(conversation)
     clearSession(conversation)
-    // The first copy of the children, which the open's `subagents` frame
-    // replaces whole (`subagents.md` § Protocol); while the tree is live the
-    // read is the tree's own list, so the frame takes back none of them.
-    // The session that sends it starts only after this read is applied, so
-    // the read never overwrites a frame.
-    conversation.subagents = listed.subagents.map(subagentRecord)
+    // The first copy of the children, which joins when it arrives and which
+    // the open's `subagents` frame replaces whole (`subagents.md`
+    // § Protocol); while the tree is live the read is the tree's own list,
+    // so the frame takes back none of them. A read that arrives once the
+    // session has opened is older than its frame, and gives way to it, its
+    // failure too: the frame listed the children.
+    const sessionOpened = () => cache.get(conversation.id)?.runtime?.hasOpened ?? false
+    void reads.subagents.then(
+      (listed) => {
+        if (!signal.aborted && !sessionOpened()) {
+          conversation.subagents = listed.subagents.map(subagentRecord)
+        }
+      },
+      (error: unknown) => {
+        if (!signal.aborted && !sessionOpened()) {
+          report(t('failures.readAgents'), error)
+        }
+      },
+    )
     // The status stays the summary's until the session tells its phase.
     conversation.load = runnable ? 'opening' : 'ready'
     return { hosts: hostsRead }
+  }
+
+  /**
+   * Takes `ids` as the children whose transcripts the page shows, and tells
+   * the session. A running child it stops showing streams no more, so the
+   * page lets go of its transcript, which would go stale, and reads or
+   * receives it again when it shows the child again; a finished one keeps it.
+   */
+  function showSubagents(conversation: Conversation, ids: string[]): void {
+    const dropped = conversation.shownSubagents.filter((id) => !ids.includes(id))
+    if (dropped.length === 0 && ids.every((id) => conversation.shownSubagents.includes(id))) {
+      return
+    }
+    conversation.shownSubagents = ids
+    for (const agent of conversation.subagents) {
+      if (dropped.includes(agent.id) && agent.phase === 'running') {
+        agent.history = EMPTY_TRANSCRIPT
+        agent.failures = {}
+      }
+    }
+    cache.get(conversation.id)?.runtime?.showSubagents()
   }
 
   /** A child as the page holds it before its session says more, from its job. */
@@ -3116,6 +3152,15 @@ export const useConversations = defineStore('conversations', () => {
       action(conversation, (runtime) => runtime.abortSubagents()),
     abortSubagent: (conversation: Conversation, id: string) =>
       action(conversation, (runtime) => runtime.abortSubagent(id)),
+    showSubagents,
+    /**
+     * Whether the page has, or is opening, a session of the conversation,
+     * which sends a live child's transcript once the page shows it
+     * (`subagents.md` § Protocol): none when the opening started none, as
+     * for a conversation whose model is gone, or failed.
+     */
+    streamsSubagents: (conversation: Conversation) =>
+      conversation.load === 'opening' || (cache.get(conversation.id)?.runtime != null && conversation.load !== 'failed'),
     abortTerminal: (conversation: Conversation, id: string) =>
       action(conversation, (runtime) => runtime.abortTerminal(id)),
     start: (conversation: Conversation) =>

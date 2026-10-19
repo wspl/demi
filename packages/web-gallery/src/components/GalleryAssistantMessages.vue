@@ -76,7 +76,7 @@ onBeforeUnmount(() => completion.value?.reject(new Error('Preview closed')))
       <Button v-if="current.id !== source.id" @click="current = source">Back to Source</Button>
     </div>
     <div class="gallery-frame flex h-[440px] bg-surface">
-      <ChatSession :conversation="current" :has-provider="true" :fork="fork" :share="share" :shares="shares" />
+      <ChatSession @show-subagents="() => {}" :conversation="current" :has-provider="true" :fork="fork" :share="share" :shares="shares" />
     </div>
   </div>
 </template>

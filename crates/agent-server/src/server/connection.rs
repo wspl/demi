@@ -6,7 +6,9 @@
 
 use std::{
     cell::{Cell, RefCell},
+    collections::HashSet,
     rc::Rc,
+    time::Instant,
 };
 
 use demi_agent_session::{
@@ -24,7 +26,7 @@ use tokio::sync::mpsc::{self, error::TrySendError};
 use super::{
     AgentServer,
     content::{ContentResolver, resolve_edit, resolve_message},
-    tree::Tree,
+    tree::{Shown, Tree},
 };
 
 /// The refusal of a frame that needs a session when the connection has
@@ -138,6 +140,9 @@ pub struct Connection<H: HostResolver> {
     server: Rc<AgentServer<H>>,
     resolver: Rc<dyn ContentResolver>,
     outbox: Rc<Outbox>,
+    /// The children whose transcripts the page shows, as its last
+    /// `show_subagents` named them, attached or not.
+    shown: Shown,
 }
 
 impl<H: HostResolver> Connection<H> {
@@ -154,6 +159,7 @@ impl<H: HostResolver> Connection<H> {
             server,
             resolver,
             outbox,
+            shown: Shown::default(),
         };
         (connection, frames)
     }
@@ -182,6 +188,10 @@ impl<H: HostResolver> Connection<H> {
             }
             ClientFrame::Close {} => {
                 self.close().await;
+                false
+            }
+            ClientFrame::ShowSubagents { ids } => {
+                self.show(ids);
                 false
             }
             frame => match self.attached() {
@@ -249,6 +259,20 @@ impl<H: HostResolver> Connection<H> {
         self.send(ServerFrame::RemoveResult { id, outcome });
     }
 
+    /// Takes `ids` as the children the page shows: one it adds gets its
+    /// transcript now when the connection is attached, and the open sends
+    /// it otherwise; one it drops streams no more to it.
+    fn show(&self, ids: Vec<NodeId>) {
+        let ids: HashSet<NodeId> = ids.into_iter().collect();
+        let added: Vec<NodeId> = ids.difference(&self.shown.borrow()).cloned().collect();
+        self.shown.replace(ids);
+        if let Some(tree) = self.attached() {
+            for frame in tree.subagent_resets(&added) {
+                self.send(frame);
+            }
+        }
+    }
+
     /// Attaches the connection to the conversation's tree beside any other,
     /// restoring the tree when it is not live; a live tree already follows
     /// the conversation's model selection. A second `open` on one connection
@@ -264,7 +288,11 @@ impl<H: HostResolver> Connection<H> {
             );
             return;
         }
+        let asked = Instant::now();
         let _turn = self.server.opening.acquire(self.root.clone()).await;
+        let lock_wait_ms = asked.elapsed().as_millis();
+        let opening = Instant::now();
+        let was_live = self.server.tree(&self.root).is_some();
         let (tree, continuation) = match self.server.live_or_open(&self.root).await {
             Ok(opened) => opened,
             Err(error) => {
@@ -272,9 +300,21 @@ impl<H: HostResolver> Connection<H> {
                 return;
             }
         };
+        let open_ms = opening.elapsed().as_millis();
         // Read before the attach, which takes its frames in one step.
         let placement = tree.placement().await;
-        tree.attach(self.id, self.outbox.clone(), from, edge, placement.as_ref());
+        let building = Instant::now();
+        let frames = tree.attach(self.id, self.outbox.clone(), self.shown.clone(), from, edge, placement.as_ref());
+        tracing::info!(
+            root = %self.root,
+            was_live,
+            lock_wait_ms,
+            open_ms,
+            handshake_ms = building.elapsed().as_millis(),
+            handshake_frames = frames,
+            shown = self.shown.borrow().len(),
+            "a page opened the conversation"
+        );
         // Each node's usage follows the handshake, since the window in use
         // is asked for (`compaction.md` § Context estimate). It is the
         // estimate at the moment it is sent, so a later change still
@@ -420,7 +460,8 @@ impl<H: HostResolver> Connection<H> {
             }
             ClientFrame::SyncTranscript { from, edge } => {
                 let placement = tree.placement().await;
-                for frame in tree.fresh_transcripts(from, edge.as_ref(), placement.as_ref()) {
+                let frames = tree.fresh_transcripts(from, edge.as_ref(), placement.as_ref(), &self.shown.borrow());
+                for frame in frames {
                     self.send(frame);
                 }
             }
@@ -485,8 +526,8 @@ impl<H: HostResolver> Connection<H> {
                     self.error(AgentCode::ShellStopFailed, error);
                 }
             }
-            ClientFrame::Open { .. } | ClientFrame::Close {} => {
-                unreachable!("open and close are handled before dispatch")
+            ClientFrame::Open { .. } | ClientFrame::Close {} | ClientFrame::ShowSubagents { .. } => {
+                unreachable!("open, close and show_subagents are handled before dispatch")
             }
         }
         false

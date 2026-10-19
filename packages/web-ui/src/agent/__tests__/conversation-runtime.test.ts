@@ -745,6 +745,54 @@ test('the handshake\'s frames are applied once the session opens and are not kep
   }
 })
 
+// A page that hides a child while its open's handshake is on its way lets
+// go of the child's transcript (`subagents.md` § Protocol); the reset the
+// handshake held for it revived it, stale from then on. A side question's
+// transcript, which no page names, still comes. Cost: one opening.
+test('a child the page hides while the handshake arrives takes nothing of it, and a side question its own', async () => {
+  let shown = ['child']
+  let deliver: (frame: unknown) => void = () => {}
+  const sent: string[] = []
+  const reset = (subagentId: string) => ({ type: 'subagent_transcript_reset', subagentId, start: 0, length: 0, blocks: [], revision: 1 })
+  const client = new ConversationClient({
+    send(frame) {
+      sent.push(frame.type === 'show_subagents' ? `show ${frame.ids.join(',')}` : frame.type)
+      if (frame.type === 'open') {
+        deliver({ type: 'opened' })
+        deliver(reset('child'))
+        deliver(reset('side'))
+        // The user closes the Agents window before the session has opened.
+        shown = []
+      }
+    },
+    onFrame(handler) {
+      deliver = handler
+      return () => {}
+    },
+    onClose: () => () => {},
+    close() {},
+  })
+  const applied: string[] = []
+  const runtime = new ConversationRuntime({
+    state: state(),
+    connect: async () => client,
+    shownSubagents: () => shown,
+    onEvent: (event) => {
+      if (event.type === 'subagent_transcript_reset') {
+        applied.push(event.subagentId)
+      }
+    },
+  })
+  try {
+    await runtime.connect()
+
+    expect(sent).toEqual(['show child', 'open', 'show '])
+    expect(applied).toEqual(['side'])
+  } finally {
+    runtime.dispose()
+  }
+})
+
 test('a session that refuses to open is a failure told once', async () => {
   const current = state()
   // A record that holds no model opens as ready, not failed: the refusal

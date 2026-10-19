@@ -169,6 +169,103 @@ async fn a_page_that_opens_while_a_child_waits_for_its_model_is_told_the_wait() 
     assert!(frames.iter().any(|frame| waits(frame, false)), "{frames:?}");
 }
 
+/// Whether `frame` carries the child `child`'s transcript.
+fn transcript_of(child: &NodeId) -> impl Fn(&ServerFrame) -> bool + '_ {
+    move |frame| {
+        matches!(frame, ServerFrame::SubagentTranscriptReset { subagent_id, .. }
+            | ServerFrame::SubagentTranscriptPatch { subagent_id, .. } if subagent_id == child)
+    }
+}
+
+// A page receives a child's transcript only while it shows the child
+// (`subagents.md` § Protocol): a running child's brief streams to nobody
+// until the page names it, which answers with the child's transcript, and
+// its changes follow from then on. Before, every page received every live
+// child's transcript, which made a conversation with large children slow
+// to open.
+#[tokio::test(flavor = "local")]
+async fn a_page_receives_a_childs_transcript_only_once_it_shows_the_child() {
+    let gate = Gate::new();
+    let model = Model::default();
+    model.root([said("working"), said("got it")]);
+    model.child("Read notes.md", [held_said(&gate, "the file says 42")]);
+    let fixture = fixture(&model, TestProduct::default());
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "start")).await;
+    client.next_until(is_idle).await;
+    let child = spawn(
+        &fixture,
+        &root(),
+        json!({ "prompt": "Read notes.md and report its content", "description": "reader" }),
+    )
+    .await;
+    let waits = |frame: &ServerFrame| {
+        matches!(frame, ServerFrame::Waiting { subagent_id: Some(id), waited_ms: Some(_) } if id == &child)
+    };
+    let unshown = client.next_until(waits).await;
+
+    client
+        .send(ClientFrame::ShowSubagents { ids: vec![child.clone()] })
+        .await;
+    let shown = client.received();
+    gate.open();
+    let followed = client.next_until(is_closed(&child)).await;
+
+    assert!(!unshown.iter().any(transcript_of(&child)), "{unshown:#?}");
+    let [ServerFrame::SubagentTranscriptReset { blocks, .. }] = shown.as_slice() else {
+        panic!("the child's transcript alone: {shown:#?}")
+    };
+    assert!(brief_of(blocks).contains("Read notes.md"), "{blocks:#?}");
+    assert!(
+        followed.iter().any(|frame| matches!(frame, ServerFrame::SubagentTranscriptPatch { subagent_id, .. } if subagent_id == &child)),
+        "{followed:#?}"
+    );
+}
+
+// The children a page names before its `open` are those whose transcripts
+// the open's handshake sends; a page that names none opens with the
+// children's summaries and states, and none of their transcripts.
+#[tokio::test(flavor = "local")]
+async fn an_open_sends_the_transcripts_of_the_children_the_page_shows_alone() {
+    let gate = Gate::new();
+    let model = Model::default();
+    model.root([said("working")]);
+    model.child("Read notes.md", [held_said(&gate, "the file says 42")]);
+    model.child("Read todo.md", [held_said(&gate, "nothing to do")]);
+    let fixture = fixture(&model, TestProduct::default());
+    let mut client = fixture.opened().await;
+    client.send(send("m1", "start")).await;
+    client.next_until(is_idle).await;
+    let notes = spawn(&fixture, &root(), json!({ "prompt": "Read notes.md", "description": "notes" })).await;
+    let todo = spawn(&fixture, &root(), json!({ "prompt": "Read todo.md", "description": "todo" })).await;
+
+    let mut showing = fixture.client();
+    showing.send(ClientFrame::ShowSubagents { ids: vec![todo.clone()] }).await;
+    showing.send(open()).await;
+    let shown = showing.received();
+    let mut plain = fixture.client();
+    plain.send(open()).await;
+    let summaries_only = plain.received();
+    gate.open();
+
+    assert!(shown.iter().any(transcript_of(&todo)), "{shown:#?}");
+    assert!(!shown.iter().any(transcript_of(&notes)), "{shown:#?}");
+    assert!(!summaries_only.iter().any(transcript_of(&notes)), "{summaries_only:#?}");
+    assert!(!summaries_only.iter().any(transcript_of(&todo)), "{summaries_only:#?}");
+    assert_eq!(lifecycle(&summaries_only).len(), 2, "{summaries_only:#?}");
+}
+
+/// The text of the user blocks of `blocks`, where a child's brief is.
+fn brief_of(blocks: &[Block]) -> String {
+    blocks
+        .iter()
+        .filter_map(|block| match block {
+            Block::User(user) => Some(format!("{:?}", user.content)),
+            _ => None,
+        })
+        .collect()
+}
+
 /// The children an open's snapshot lists, each as its number, its phase
 /// and whether it ended.
 fn summaries(frames: &[ServerFrame]) -> Vec<(u64, JobPhase, bool)> {
@@ -366,8 +463,6 @@ async fn an_inherited_child_starts_from_its_brief_and_its_completion_wakes_the_i
             None
         )
     );
-    assert!(frames.iter().any(|frame| matches!(frame,
-        ServerFrame::SubagentTranscriptReset { subagent_id, blocks, .. } if subagent_id == &child && blocks.is_empty())));
     let closed = frames
         .iter()
         .position(is_closed(&child))

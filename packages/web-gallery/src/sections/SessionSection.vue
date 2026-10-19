@@ -215,6 +215,7 @@ import { composerModels, setGalleryContextLimit } from '../fixtures/context-limi
 import { galleryBlobs } from '../fixtures/blobs'
 import { agentLinksWrapMarkdown, agentReceiptMessages, briefSubagent, gallerySubagents, mainAgentMessage, workSubagent } from '../fixtures/subagents'
 import GalleryAgentDirectory from '../components/GalleryAgentDirectory.vue'
+import GalleryAgentLoading from '../components/GalleryAgentLoading.vue'
 import GalleryReceipts from '../components/GalleryReceipts.vue'
 import { galleryTerminals, leftRunningCommand, runningRunCommand, steppedRunCommands } from '../fixtures/terminals'
 import { demoDeviceStart } from '../fixtures/device-installation'
@@ -3178,6 +3179,12 @@ onBeforeUnmount(() => {
         <GalleryAgentDirectory />
       </GallerySection>
       <GallerySection
+        title="Loading an Agent"
+        note="A conversation opens without its agents' transcripts, so the Agents window may show a child the page holds none of: a live child's transcript comes from its session once the window shows it, and a finished child's latest page is read. Until it is there the window says Loading agent… in place of the transcript, never an empty one; Finish Loading here brings the live child's transcript. A read that fails says the agent couldn’t load, with the reason under it and Retry, which loads again: here Retry's read brings the transcript a moment later, and Fail Again shows the failure anew. The status bar stays under either, since it reads the child's record, not its transcript."
+      >
+        <GalleryAgentLoading />
+      </GallerySection>
+      <GallerySection
         title="What an Agent Runs On"
         note="The Agents window's bar says what a child is doing and what it runs on in segments, as an editor's status bar does: each item stands in its own segment, told apart by spacing, never by dividers. A segment that acts when pressed, the folder, Forked from agent N and the context indicator, shows a hover background over its whole extent, reaching to within the bar's small inset of the window's edge, the same on every side it touches, and Tab reaches it with a focus ring (one specimen pins that background); a segment that only explains, the state, the profile and the model, shows its tip and no background. Two groups say what a child is doing and what it runs on. On the left: the child's state dot, the one its tab wears, the state, Running, Finished, Stopped or Failed, how long the round has run, in the duration words of the reset times (42s, 16m 48s, 1h 5m) and counting with the page's clock while it runs, the folder it works in, its own name with the whole path as its tip, which opens the File view on that directory's tree (a toast here, naming the directory; the next section opens a real panel), and Forked from agent N for a fork, a link to that agent: its mark and the click of a message's link, which opens the Agents window on its tab here, shown in its own segment. The round is not shown. On the right: the profile as a tag, none for the inherit profile; the model's name as the model menu shows it, pointed at naming the provider and the full name, and for the inherit profile Inherited from this conversation; the effort, or Thinking off; Fast when it is on. Where the room runs out, Forked from gives way first, then the model's name and the folder's name, which leaves the folder's icon and its tip; the state and the time always stay (the last three specimens, by width). The Agents window shows it as a bar along its bottom edge (an ended child's bar has no context indicator: finished, stopped and failed show none)."
       >
@@ -3516,9 +3523,9 @@ onBeforeUnmount(() => {
               {{ historyModelsLoaded ? 'Load Models Again' : 'Finish Loading' }}
             </Button>
           </GallerySpecimen>
-          <GallerySpecimen variant="opening · transcript with its agents, then the session" wide>
+          <GallerySpecimen variant="opening · transcript, then the session; the agents when listed" wide>
             <p class="pb-2 text-[12px] leading-4 text-fg-muted">
-              A conversation the page opens shows in two steps. Read History: the transcript appears with everything that names its agents, the Agents chip among them, and the composer; the turn is not known yet, so no tail row, Running or Resume shows, and the sidebar keeps the summary’s status. Open Session: the session’s turn and its running command join in one change. Lose the Socket shows a first opening that cannot connect: it says it connects, never a session it never had.
+              A conversation the page opens shows in two steps. Read History: the transcript appears with the composer as soon as it and the draft are read, waiting for nothing else; the turn is not known yet, so no tail row, Running or Resume shows, and the sidebar keeps the summary’s status. Open Session: the session’s turn and its running command join in one change. The agents join whenever their list arrives, before the session or after it: List the Agents brings everything that names them, the Agents chip among them. Lose the Socket shows a first opening that cannot connect: it says it connects, never a session it never had.
             </p>
             <GalleryOpeningSteps />
           </GallerySpecimen>
@@ -3661,7 +3668,7 @@ onBeforeUnmount(() => {
                   @sign-out="productWould('Sign Out')"
                 />
               </template>
-              <ChatSession
+              <ChatSession @show-subagents="() => {}"
                 :conversation="session"
                 has-provider
                 :reveal="frameReveal"
@@ -4025,7 +4032,7 @@ onBeforeUnmount(() => {
     </template>
 
     <template v-if="view === 'session'">
-      <ChatSession
+      <ChatSession @show-subagents="() => {}"
         :conversation="session"
         has-provider
         :share="shareService"

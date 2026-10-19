@@ -165,6 +165,14 @@ export class ConversationClient {
   private asked: number | undefined
   /** Each subagent transcript's revision, for the same patch rule as the root's. */
   private readonly subagentRevisions = new Map<string, number>()
+  /** The children whose transcripts the page shows, as it last named them (`subagents.md` § Protocol). */
+  private shown = new Set<string>()
+  /**
+   * The children the page stopped showing: a frame of their transcripts
+   * still on its way is dropped, until the page shows them again and their
+   * reset arrives. A side question's node, which no page names, is never one.
+   */
+  private readonly hidden = new Set<string>()
   /** Each live subagent's phase, which a compact of that child follows. */
   private readonly subagentPhases = new Map<string, SessionPhase>()
   private phase: SessionPhase | null = null
@@ -418,6 +426,25 @@ export class ConversationClient {
       this.abortWaiters.push({ resolve, reject })
       this.sendFrame({ type: 'abort' })
     })
+  }
+
+  /**
+   * Names the children whose transcripts the page shows, the whole set: a
+   * live child it adds streams its transcript from its reset on, and one it
+   * drops streams no more. Sent before `open`, it names those the open sends.
+   */
+  showSubagents(ids: readonly string[]): void {
+    for (const id of this.shown) {
+      if (!ids.includes(id)) {
+        this.hidden.add(id)
+        this.subagentRevisions.delete(id)
+      }
+    }
+    for (const id of ids) {
+      this.hidden.delete(id)
+    }
+    this.shown = new Set(ids)
+    this.sendFrame({ type: 'show_subagents', ids: [...ids] })
   }
 
   /** Stops every live subagent; each settles through its own `subagent` frame. */
@@ -730,6 +757,9 @@ export class ConversationClient {
         this.abortWaiters.shift()?.resolve(frame.result)
         return
       case 'subagent_transcript_reset':
+        if (this.hidden.has(frame.subagentId)) {
+          return
+        }
         this.subagentRevisions.set(frame.subagentId, frame.revision)
         this.emit({
           type: 'subagent_transcript_reset',
@@ -842,7 +872,7 @@ export class ConversationClient {
 
   /** The root's rule, for each subagent's stream. */
   private patchSubagentTranscript(frame: ServerFrameOf<'subagent_transcript_patch'>): void {
-    if (this.transcriptState.status === 'stale') {
+    if (this.transcriptState.status === 'stale' || this.hidden.has(frame.subagentId)) {
       return
     }
     const revision = this.subagentRevisions.get(frame.subagentId)

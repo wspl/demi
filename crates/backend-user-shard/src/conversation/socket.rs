@@ -508,6 +508,11 @@ impl Shard {
     /// `rejected` frame carries the request ID of the socket's upgrade, and every refused
     /// send of `conversation` is logged.
     async fn send_frames(&self, conversation: &ConversationId, page: &mut PageSocket, frames: Vec<ServerFrame>) -> bool {
+        // An open's handshake starts with `opened`; its size and how long it
+        // takes to write are logged, as what a page waits for to open.
+        let handshake = matches!(frames.first(), Some(ServerFrame::Opened));
+        let count = frames.len();
+        let building = std::time::Instant::now();
         let mut texts = Vec::with_capacity(frames.len());
         for frame in frames {
             let mut frame = self.present(frame).await;
@@ -540,7 +545,22 @@ impl Shard {
         } else {
             format!("[{}]", texts.join(","))
         };
-        page.send(text).await.is_ok()
+        if !handshake {
+            return page.send(text).await.is_ok();
+        }
+        let bytes = text.len();
+        let build_ms = building.elapsed().as_millis();
+        let writing = std::time::Instant::now();
+        let sent = page.send(text).await.is_ok();
+        tracing::info!(
+            frames = count,
+            bytes,
+            build_ms,
+            write_ms = writing.elapsed().as_millis(),
+            sent,
+            "a conversation's open handshake was written"
+        );
+        sent
     }
 
     /// A server frame as the page receives it: a transcript frame carries

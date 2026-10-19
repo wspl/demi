@@ -2565,7 +2565,8 @@ async function startOpening(
   id: string,
   { handshake, subagents = [], models }: {
     handshake?: ServerFrame[]
-    subagents?: unknown[]
+    /** The subagent list's answer, or when it comes. */
+    subagents?: unknown[] | Promise<unknown[]>
     models?: Promise<void>
   } = {},
 ) {
@@ -2580,7 +2581,7 @@ async function startOpening(
       return Response.json(stubCatalog())
     }
     if (path.endsWith('/hosts')) return Response.json({ hosts: [] })
-    if (path.endsWith('/subagents')) return Response.json({ subagents })
+    if (path.endsWith('/subagents')) return Response.json({ subagents: await subagents })
     if (path.endsWith('/transcript')) {
       requests.push({ path, body: null })
       return Response.json({ start: 0, length: 1, blocks: [shownBlock], instructions: [], summaries: [] })
@@ -2647,6 +2648,8 @@ test('a conversation opens in two steps: its transcript with its agents, then it
   await waitFor(() => sockets[0]?.sent.some((frame) => frame.type === 'open') === true, () => 'no open sent')
 
   // The first step: the transcript with its agents, the status the summary's.
+  // The session that opens sends a live child's transcript when shown.
+  expect(useConversations().streamsSubagents(conversation)).toBe(true)
   expect(shownStep(conversation)).toEqual({
     load: 'opening', transcript: ['shown'], agents: ['reader completed'], phase: 'idle', commands: [], status: 'active',
   })
@@ -2667,6 +2670,29 @@ test('a conversation opens in two steps: its transcript with its agents, then it
   expect(shownStep(conversation)).toEqual({
     load: 'ready', transcript: ['shown'], agents: ['reader completed'], phase: 'running', commands: ['cmd-1'], status: 'active',
   })
+})
+
+// A large tree's subagent list took a minute to answer after a restart, and
+// the page showed the conversation loading all that time, since its first
+// step waited for the list and its `open` for the first step
+// (`web-application.md` § round trips). The transcript and the session wait
+// for nothing else; the session's own list names the children. Cost: one
+// opening, no wait; the list's read never ends, which holds no timer.
+test('a conversation whose subagent list does not answer shows its transcript and opens its session', async () => {
+  const never = new Promise<unknown[]>(() => {})
+  const { conversation, sockets, opening } = await startOpening(FIRST, { subagents: never })
+  await waitFor(() => sockets[0]?.sent.some((frame) => frame.type === 'open') === true, () => 'no open sent')
+  const first = shownStep(conversation)
+  sockets[0]!.receive(
+    { type: 'opened' },
+    { type: 'transcript_reset', start: 0, length: 1, blocks: [shownBlock], version: { epoch: 'epoch', revision: 1 } },
+    { type: 'phase', phase: 'idle' },
+    { type: 'subagents', subagents: [{ ...child('reader', 1, 'running'), revision: 2 }] },
+  )
+  await opening
+
+  expect(first).toMatchObject({ load: 'opening', transcript: ['shown'], agents: [] })
+  expect(shownStep(conversation)).toMatchObject({ load: 'ready', transcript: ['shown'], agents: ['reader running'] })
 })
 
 // Marking read needs only the transcript, so it comes with the first step,
@@ -2870,6 +2896,8 @@ test('a conversation whose record holds no model opens to its transcript, not as
     expect(conversation.load).toBe('ready')
     expect(conversation.lastError).toBeNull()
     expect(shownStep(conversation).transcript).toEqual(['shown'])
+    // No session sends a child's transcript: the Agents window reads it.
+    expect(store.streamsSubagents(conversation)).toBe(false)
   } finally {
     globalThis.fetch = answering
   }

@@ -15,9 +15,10 @@ import GalleryComposer from './GalleryComposer.vue'
 /**
  * A conversation the page opens, step by step, as the product's store sets
  * its state (`web-application.md` § Opening a conversation shows in two
- * steps): the reads, then the transcript with its agents, then the session
- * with its turn and its running command. The buttons stand in for the
- * backend's answers.
+ * steps): the reads, then the transcript, which waits for nothing else,
+ * then the session with its turn and its running command; the agents join
+ * whenever their list arrives. The buttons stand in for the backend's
+ * answers.
  */
 const session = reactive<ChatSessionState>({
   id: 'opening-steps',
@@ -52,13 +53,17 @@ function startOver(): void {
   })
 }
 
-/** The first step: the transcript and the agents read, the session opening. */
+/** The first step: the transcript and the draft read, the session opening. */
 function readHistory(): void {
   Object.assign(session, {
     history: wholeHistory(shortTranscriptBlocks()),
-    subagents: gallerySubagents().slice(0, 2),
     load: 'opening',
   })
+}
+
+/** The agents' list arrives, at either step: what names them joins the conversation. */
+function listAgents(): void {
+  session.subagents = gallerySubagents().slice(0, 2)
 }
 
 /** The second step: the session's handshake, with its turn and its running command. */
@@ -86,7 +91,7 @@ const step = computed(() => {
 <template>
   <div class="space-y-2">
     <div class="flex h-[26rem] min-w-0 flex-col overflow-hidden rounded-xl border border-line bg-surface-base">
-      <ChatSession
+      <ChatSession @show-subagents="() => {}"
         :conversation="session"
         has-provider
         @retry="productWould('Resume the Turn')"
@@ -125,6 +130,9 @@ const step = computed(() => {
     </div>
     <div class="flex items-center gap-2">
       <Button v-if="step" size="sm" @click="step.next">{{ step.label }}</Button>
+      <Button v-if="session.load !== 'loading' && session.subagents.length === 0" size="sm" variant="ghost" @click="listAgents">
+        List the Agents
+      </Button>
       <Button v-if="session.load === 'opening'" size="sm" variant="ghost" @click="session.load = 'connecting'">
         Lose the Socket
       </Button>

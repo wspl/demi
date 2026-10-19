@@ -119,6 +119,15 @@ pub enum ClientFrame {
         #[garde(skip)]
         subagent_id: NodeId,
     },
+    /// The children whose transcripts this connection shows, the whole set
+    /// each time it changes (`subagents.md` § Protocol): a child it adds is
+    /// answered with its `subagent_transcript_reset`, and only the children
+    /// it names stream their transcripts to it. Sent before `open`, it names
+    /// the children the open's handshake sends.
+    ShowSubagents {
+        #[garde(skip)]
+        ids: Vec<NodeId>,
+    },
     Retry {},
     Resume {},
     /// Compact the context of `node`, the root when absent: a subagent's
@@ -173,6 +182,7 @@ pub enum ClientFrameKind {
     Abort,
     AbortSubagents,
     AbortSubagent,
+    ShowSubagents,
     Retry,
     Resume,
     Compact,
@@ -203,6 +213,7 @@ impl ClientFrame {
             Self::Abort {} => ClientFrameKind::Abort,
             Self::AbortSubagents {} => ClientFrameKind::AbortSubagents,
             Self::AbortSubagent { .. } => ClientFrameKind::AbortSubagent,
+            Self::ShowSubagents { .. } => ClientFrameKind::ShowSubagents,
             Self::Retry {} => ClientFrameKind::Retry,
             Self::Resume {} => ClientFrameKind::Resume,
             Self::Compact { .. } => ClientFrameKind::Compact,

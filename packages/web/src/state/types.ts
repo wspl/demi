@@ -123,6 +123,12 @@ export interface Conversation extends Omit<SidebarConversation, 'device'> {
   attachedHosts: Raw<Slot<AttachedHost[]>>
   subagents: SubagentRecord[]
   /**
+   * The children whose transcripts the page shows, the child its Agents
+   * window shows, which the socket streams to it and no other
+   * (`subagents.md` § Protocol).
+   */
+  shownSubagents: string[]
+  /**
    * Its side questions as this page last read them, each with the
    * transcript the page holds of it (`comments-and-ask.md` § Side
    * questions), in the order they were asked.

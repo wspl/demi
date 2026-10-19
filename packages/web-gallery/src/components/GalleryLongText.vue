@@ -65,7 +65,7 @@ const place = {
       <AxisPicker v-model="surface" label="Shown As" :values="SURFACES" :names="SURFACE_NAMES" />
     </div>
     <div class="gallery-frame flex min-h-0 flex-1 bg-surface" :class="surface === 'narrow' ? 'w-80 max-w-full self-start' : ''">
-      <ChatSession v-if="surface !== 'document'" :key="language" :conversation="conversation" :has-provider="true" />
+      <ChatSession @show-subagents="() => {}" v-if="surface !== 'document'" :key="language" :conversation="conversation" :has-provider="true" />
       <MarkdownDocument v-else :key="language" class="flex-1" :text="text" :place="place" />
     </div>
   </div>

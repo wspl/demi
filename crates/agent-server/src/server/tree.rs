@@ -13,7 +13,7 @@ mod told;
 
 use std::{
     cell::{Cell, RefCell},
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     rc::{Rc, Weak},
     sync::Arc,
     time::Duration,
@@ -147,7 +147,14 @@ pub(crate) struct FrameSink {
 pub(crate) struct Attachment {
     pub(crate) connection: u64,
     pub(crate) outbox: Rc<Outbox>,
+    /// The children whose transcripts the connection shows, which its
+    /// `show_subagents` names (`subagents.md` § Protocol).
+    pub(crate) shown: Shown,
 }
+
+/// The children whose transcripts a connection shows: its own, shared with
+/// its attachment.
+pub(crate) type Shown = Rc<RefCell<HashSet<NodeId>>>;
 
 impl FrameSink {
     fn new() -> Self {
@@ -161,10 +168,30 @@ impl FrameSink {
     /// whose outbox is full, or whose socket is gone, is detached; the
     /// others keep receiving.
     pub(crate) fn emit(&self, frame: ServerFrame) {
+        self.emit_where(|_| true, frame);
+    }
+
+    /// Sends the child `subagent`'s transcript frame `frame` to every
+    /// attached connection that shows the child, and to no other.
+    pub(crate) fn emit_shown(&self, subagent: &NodeId, frame: ServerFrame) {
+        self.emit_where(|attachment| attachment.shown.borrow().contains(subagent), frame);
+    }
+
+    /// Whether an attached connection shows the child `subagent`.
+    pub(crate) fn shows(&self, subagent: &NodeId) -> bool {
+        self.attachments
+            .borrow()
+            .iter()
+            .any(|attachment| attachment.shown.borrow().contains(subagent))
+    }
+
+    /// Sends `frame` to the attached connections `to` picks.
+    fn emit_where(&self, to: impl Fn(&Attachment) -> bool, frame: ServerFrame) {
         let refused: Vec<u64> = self
             .attachments
             .borrow()
             .iter()
+            .filter(|attachment| to(attachment))
             .filter(|attachment| !attachment.outbox.push(frame.clone()))
             .map(|attachment| attachment.connection)
             .collect();
@@ -698,20 +725,23 @@ impl<H: HostResolver> Tree<H> {
     /// handshake in one step, so nothing happens to the tree between
     /// `opened` and the last live command: the root's snapshot frames, its
     /// transcript from the blocks the page holds (`from`, `edge`), the
-    /// summary of every child, then each live child's `started` and
-    /// transcript, depth first in spawn order, then the view of each live
-    /// command of the tree.
+    /// summary of every child, then each live child's `started`, with its
+    /// transcript when the connection shows it (`shown`), depth first in
+    /// spawn order, then the view of each live command of the tree. Answers
+    /// how many frames it sent.
     pub(crate) fn attach(
         &self,
         connection: u64,
         outbox: Rc<Outbox>,
+        shown: Shown,
         from: Option<u32>,
         edge: Option<&BlockId>,
         placement: Option<&Placement>,
-    ) {
+    ) -> usize {
         self.sink.attach(Attachment {
             connection,
             outbox: outbox.clone(),
+            shown: shown.clone(),
         });
         let session = self.root.session();
         let root = [
@@ -739,29 +769,34 @@ impl<H: HostResolver> Tree<H> {
                 subagents: self.subagent_summaries(placement),
             },
         ];
+        let mut sent = 0;
         for frame in root
             .into_iter()
-            .chain(self.replay(placement))
+            .chain(self.replay(placement, &shown.borrow()))
             .chain(self.replay_sides())
             .chain(self.live_commands())
         {
             // A frame the fresh outbox refuses belongs to a socket that is
             // gone; the next emit detaches the connection.
             outbox.push(frame);
+            sent += 1;
         }
+        sent
     }
 
-    /// Fresh transcripts of the root and of every live child, with the view
-    /// of each live command of the tree: the answer to a connection that saw
-    /// a gap in the patch revisions, which goes to that connection alone.
+    /// Fresh transcripts of the root and of every live child the connection
+    /// shows (`shown`), with the view of each live command of the tree: the
+    /// answer to a connection that saw a gap in the patch revisions, which
+    /// goes to that connection alone.
     pub(crate) fn fresh_transcripts(
         &self,
         from: Option<u32>,
         edge: Option<&BlockId>,
         placement: Option<&Placement>,
+        shown: &HashSet<NodeId>,
     ) -> Vec<ServerFrame> {
         std::iter::once(self.root_reset(from, edge))
-            .chain(self.replay(placement))
+            .chain(self.replay(placement, shown))
             .chain(self.replay_sides())
             .chain(self.live_commands())
             .collect()
@@ -826,7 +861,14 @@ impl<H: HostResolver> Tree<H> {
         continuation: Continuation,
     ) -> Result<(), StoreError> {
         let continued = self.root.continue_from(continuation).await;
+        let restoring = std::time::Instant::now();
         self.restore_children(&self.root).await;
+        tracing::info!(
+            root = %self.root.id(),
+            children = self.children.borrow().len(),
+            restore_ms = restoring.elapsed().as_millis(),
+            "a restored tree's subagents were restored"
+        );
         self.restore_sides().await;
         continued
     }
