@@ -43,7 +43,7 @@
     },
     "conversation_organize": {
       "action": "organize conversations",
-      "description": "Organize Conversations lets the agents of this conversation rename it, list your projects, make a project of a directory, and move this conversation into or out of one. Projects show in your sidebar on every device."
+      "description": "Organize Conversations lets the agents of this conversation rename it and list your projects."
     },
     "agent_profiles": {
       "action": "change subagent profiles",
