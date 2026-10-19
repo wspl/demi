@@ -238,6 +238,19 @@ pub fn family_name(family: &str) -> &str {
     }
 }
 
+/// The models.dev vendor whose API sells the models subscription family
+/// `family` runs, whose prices are its calls' (`usage-and-quota.md` § How
+/// the figures are counted); none for a family of API keys, whose catalog
+/// has its own prices.
+pub fn api_vendor(family: &str) -> Option<&'static str> {
+    match family {
+        "claude-code" => Some("anthropic"),
+        "codex" => Some("openai"),
+        "grok-build" => Some("xai"),
+        _ => None,
+    }
+}
+
 /// The families of a backend by name.
 #[derive(Clone, Default)]
 pub struct FamilyRegistry {

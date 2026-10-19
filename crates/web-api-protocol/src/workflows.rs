@@ -51,6 +51,10 @@ pub struct MenuWorkflow {
     #[serde(deserialize_with = "Option::deserialize")]
     #[schemars(with = "Nullable<String>")]
     pub unavailable: Option<String>,
+    /// The ids of the profiles it declares, their `--profile` values, which
+    /// the context card's cost part follows; none for a file that does not
+    /// read.
+    pub profiles: Vec<String>,
 }
 
 /// A subject the page subscribes to on the file watch.

@@ -369,6 +369,7 @@ fn router(state: AppState, closing: CancellationToken, web_directory: Option<Pat
             get(history::block),
         )
         .route("/conversations/{id}/subagents", get(history::subagents))
+        .route("/conversations/{id}/cost", get(history::cost))
         .route(
             "/conversations/{id}/commands/{command}",
             get(history::command),

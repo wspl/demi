@@ -22,6 +22,7 @@ use demi_backend_cloud::reset::recover_clouds;
 use demi_backend_database::StorageError;
 use demi_backend_database::server_log::ServerLog;
 use demi_backend_http::{AppState, Edge, Site, WebBuildError, manage_socket, runner_socket, web_build};
+use demi_backend_user_shard::conversation::cost::follow_usage;
 use demi_backend_user_shard::conversation::search::{follow_resets, index_at_start};
 use demi_backend_user_shard::conversation::{
     finish_deletions, recover_forks, resume_after_restart, settle_pending,
@@ -49,6 +50,8 @@ pub struct Backend {
     /// Has the users whose search index is reset index their conversations
     /// again (`storage.md` § Search index).
     resets: AbortOnDropHandle<()>,
+    /// Announces each ledger row to its conversation's pages.
+    usage: AbortOnDropHandle<()>,
     /// Sources the runner executables of the paired devices' systems
     /// (`native-runtime.md` § Runner releases); a close ends it.
     runners: Option<AbortOnDropHandle<()>>,
@@ -315,6 +318,10 @@ impl Backend {
             services.control.clone(),
             shards.shards(),
         )));
+        let usage = AbortOnDropHandle::new(tokio::spawn(follow_usage(
+            services.control.usage_written(),
+            shards.shards(),
+        )));
         // Before the backend serves, the machine manager settles what an
         // earlier backend left, which keeps every running Cloud, and resets
         // it left unfinished commit their disks; each running Cloud's shard
@@ -509,6 +516,7 @@ impl Backend {
             edge,
             deaths,
             resets,
+            usage,
             runners,
             ahead,
         })
@@ -733,6 +741,7 @@ impl Backend {
         // No shard is left to route a death to.
         drop(self.deaths);
         drop(self.resets);
+        drop(self.usage);
         // A runner or package executable still being sourced is no longer
         // needed.
         drop(self.runners);

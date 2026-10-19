@@ -341,6 +341,34 @@
     "instructions": "指示",
     "personalInstructions": "個人指示",
     "workflowInstructions": "工作流程：{name}",
+    "cost": {
+      "title": "費用",
+      "price": "依 API 計價",
+      "hitRate": "快取命中率",
+      "loadFailed": "無法載入費用。",
+      "kind": {
+        "input": "未快取輸入",
+        "cacheWrite": "快取寫入",
+        "cacheRead": "快取讀取",
+        "output": "輸出 Token"
+      },
+      "profiles": "設定檔",
+      "mainConversation": "主對話",
+      "requests": "請求",
+      "time": "時間",
+      "request": "請求 #{number}",
+      "firstRequest": "首個請求",
+      "afterCompaction": "壓縮後",
+      "miss": "快取未命中 · {cause}",
+      "rewritten": "重新快取的 Token",
+      "cause": {
+        "model_changed": "模型已變更",
+        "tools_changed": "工具已變更",
+        "system_prompt_changed": "系統提示詞已變更",
+        "cache_expired": "快取已過期",
+        "not_cached": "供應商未快取"
+      }
+    },
     "row": {
       "messages": "訊息",
       "systemPrompt": "系統提示詞",

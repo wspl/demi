@@ -2372,6 +2372,30 @@ fn subagents_sql() -> String {
     )
 }
 
+/// An agent of the conversation as its cost names it: its number and the
+/// profile it was started with.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentLabel {
+    pub number: u64,
+    pub profile: Option<String>,
+}
+
+/// Every agent of the conversation, the root's included; a side question
+/// is no agent.
+pub fn agent_labels(connection: &Connection) -> Result<Vec<AgentLabel>, StorageError> {
+    let mut statement =
+        connection.prepare_cached("SELECT number, profile FROM nodes WHERE number IS NOT NULL")?;
+    let mut rows = statement.query([])?;
+    let mut labels = Vec::new();
+    while let Some(row) = rows.next()? {
+        labels.push(AgentLabel {
+            number: decode("nodes", "number", u64::try_from(row.get::<_, i64>("number")?))?,
+            profile: row.get("profile")?,
+        });
+    }
+    Ok(labels)
+}
+
 /// The subagents of the tree, in the order they started.
 pub fn subagents(connection: &Connection) -> Result<Vec<Subagent>, StorageError> {
     let mut statement = connection.prepare(&subagents_sql())?;

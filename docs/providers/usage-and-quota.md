@@ -63,6 +63,8 @@ says so ([Vendor quota](#vendor-quota)).
 | `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens`, `cache_write_1h_tokens` | The vendor's counts for this call alone ([Usage](providers.md#usage)), each null when the vendor reported none, as for a call cancelled before it answered; `cache_write_1h_tokens` is the part of the cache write kept for an hour, which a vendor prices apart, 0 where the vendor has no such tier |
 | `media_seconds` | The length of the video or audio the call made, in seconds, as the file states it; null for any other call or when nothing was made |
 | `cost`, `cost_currency` | What the vendor says the call cost, in its documented unit converted to the currency it names (`usd` or `cny`, never converted between them), as xAI's `cost_in_usd_ticks` are ten-billionths of a dollar; null when the vendor reports no cost or one in an undocumented unit |
+| `api_price_input`, `api_price_cache_write`, `api_price_cache_read`, `api_price_output` | What each kind of the call's tokens would cost on the vendor's API, in dollars, fixed when the row is written ([A conversation's cost](#a-conversations-cost)); null when the model has no price for them |
+| `system_hash`, `tools_hash` | Hashes of the system prompt and of the tool definitions as the request sent them, so a cache miss can be told apart from a prompt that changed; null for a request outside a session |
 | `outcome` | `answered`; the failure code of a call the vendor refused ([Failures and recovery](../agent/failures-and-recovery.md)); `failed` for a failure with no code; `cancelled` |
 | `quota` | The windows of the account's quota that this call's own response reported, each as the snapshot names a window, its kind, period and scope, with `usedPercent` and `resetsAt`; null when the call reported none. Windows the snapshot holds from other calls are not repeated here. A window the vendor reports after the call's end and before the next call starts, as Claude Code's `rate_limit_event` follows its `message_stop`, is this call's and is added to its row when it arrives |
 | `started_at`, `ended_at` | When the call was sent and when it ended |
@@ -100,6 +102,173 @@ says so ([Vendor quota](#vendor-quota)).
   [Web API](../product/web-api.md#resource-index)).
 - **Kept** as long as the account that made the calls; deleting a
   conversation keeps its rows ([Storage](../backend/storage.md#control-records)).
+
+## A conversation's cost
+
+The context card shows what a conversation has cost and how well the
+vendor's prompt cache served it, under the context window's part and above
+the usage limits ([What fills the context](../agent/compaction.md#what-fills-the-context)).
+It answers two questions a user asks of a long conversation: what would
+this have cost on the API, and is something breaking the cache. For
+example, a conversation whose main agent made 180 calls and whose
+subagents made 40 more:
+
+```text
+Cost
+$41.20                       97%
+Equivalent API price         Cache hit rate
+```
+
+Opened with the context window's list, the same `⌄`:
+
+```text
+Cost
+Equivalent API price                     $41.20
+Uncached input            53.8K           $0.07
+Cache write                3.2M          $12.64
+Cache read                51.9M          $22.96
+Output tokens              308K           $5.53
+
+Profiles
+Main conversation                        $36.37
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+research                                  $2.64
+━━━━━
+review                                    $1.32
+━━
+
+Cache hit rate  97%          [Requests | Time]
+▁▇█▇█▇█▇▆█▇█│▇█▇█▇█▁▇█▇█▇█│▇▇█▇█▁▇█▇█▇█▇█▇█▇█▇█
+#1        50        100        150          180
+```
+
+- **Closed**, the section is the caption *Cost* and two figures side by
+  side: the equivalent API price at the text's left edge and the cache hit
+  rate at the middle, each its value in the primary color over its label in
+  small secondary text.
+- **Opened**, the figures become rows as the context window's are: the
+  price, then the four token kinds, each its tokens and its price in the
+  secondary color, the price row's total in the primary color.
+- **Profiles** is a sub-caption, in the caption's style, with the price
+  of the subagents of each profile the conversation's workflow offers now
+  ([Workflows of a project](../agent/subagents.md#workflows-of-a-project)):
+  a project workflow's profiles, or under Global Workflow the user's enabled
+  profiles, none while the user has subagents turned off. The main conversation comes first for scale, then each such
+  profile whose subagents made priced calls, each a row with its price and
+  a thin bar under it whose length is its share of the largest. A subagent
+  started with no profile, or with one the current workflow does not offer,
+  has no row. With No Subagents, or when no profile of the current workflow
+  ran a subagent, the part is left out.
+- **Cache hit rate** is a sub-caption too, its value after it in the
+  primary color, with the switch *Requests | Time* at the row's end. The
+  chart under it plots the main conversation's turn calls, each at its
+  call's hit rate, by its number or by its start time: no axis labels on
+  the side, faint lines at 0, 50 and 100%, the numbers or times under it.
+  A cache miss is a red dot at its call, a compaction a grey dashed line
+  between the calls it separates. Resting the pointer on the chart, or a
+  tap on a phone, shows the nearest call's tip: its number, its time, its
+  hit rate and its price, and for a miss its cause in red and the tokens it
+  wrote again; the first call reads *First request* and the first after a
+  compaction *After compaction*, in the secondary color, saying why their
+  low rate is no miss. The time is the clock time and how long ago,
+  *13:17 · 1h 27m ago*, with the date when it is not today. The card keeps
+  the Requests or Time choice in the browser, as it keeps the agents'. The tip stands beside the point where it fits, otherwise
+  above it, and never past the card's edges. The chart, and the switch
+  with it, shows only once the main conversation has made 4 calls: with
+  fewer a line shows nothing a user can read, and the rate alone says it.
+- **A read that fails says so.** When the page cannot read the cost, the
+  section shows its caption and, in the secondary color, *Couldn't load
+  the cost* with the request's id and a Retry button, as the usage limits
+  show a failed refresh, never an empty section a user would take for no
+  calls.
+- **Nothing to show is no part.** A conversation with no calls yet has no
+  Cost section; a figure that cannot be computed, a price when no call has
+  one, is left out with its label.
+
+### How the figures are counted
+
+The figures come from the conversation's [ledger rows](#usage-ledger), all
+of its calls: every agent, compactions and titles included, cancelled
+calls with no counts adding nothing.
+
+| Figure | Counted as |
+|---|---|
+| Uncached input, Cache write, Cache read, Output tokens | The sums of `input_tokens`, `cache_write_tokens`, `cache_read_tokens` and `output_tokens` |
+| A token kind's price | The sum of that kind's `api_price_…` over the calls that have one |
+| Equivalent API price | The sum of each call's price: its four parts, or, for a call whose tokens have no price, such as an image's, the vendor's own cost in dollars. The kinds' prices then add up to less than it by those calls |
+| Cache hit rate | Over the main conversation's turn calls: cache read ÷ (uncached input + cache write + cache read), which is the share of the prompt the vendor read from its cache. Subagents are left out: each has its own cache, and a short-lived one starts cold by nature |
+
+A call's **price** is fixed when its row is written, at the catalog's
+prices at that moment, so a later change of price never rewrites history
+and a price the catalog learns mid-conversation applies from the next
+call. It is the call's tokens at the model's
+catalog prices ([Models](models.md)), one part per kind: input, cache read
+and cache write at their rates, the part of the write kept for an hour at
+twice the input rate, as the Messages API prices it, and output at its
+rate. A model without a price for a kind the call used leaves the call's
+parts null; such a call is priced at the vendor's own cost when it reports
+one in dollars ([Usage ledger](#usage-ledger)), and otherwise has no price.
+The catalog's price comes first even when the vendor reports a cost, so the
+kinds always add up to the call's price. A subscription's call, such as Claude Code's or Codex's, is priced as
+its model is on the vendor's API: that is the *equivalent*. A
+subscription's catalog has no prices, so its model's are those of the same
+model on the vendor's API, Anthropic's for Claude Code, OpenAI's for Codex
+and xAI's for Grok Build, from the same price source the API entries' catalogs
+use; a model the API does not sell has no price.
+
+**A cache miss** is a turn call of the main conversation that wrote again
+what an earlier call had cached: uncached input plus cache write over 5% of
+the call's prompt and at least 2,000 tokens, as Claude Code's own cache
+diagnosis counts one. The first call of the conversation, and the first
+after a compaction, which starts a new prompt, are expected to write and are
+never misses. A miss's cause is read from its row and the previous turn
+call's, the first that applies:
+
+| Cause | When |
+|---|---|
+| Model changed | The two rows' models differ |
+| Tools changed | Their `tools_hash` differ |
+| System prompt changed | Their `system_hash` differ, as when an instructions file changed |
+| Cache expired | The time between the previous call's end and this call's start is longer than the vendor keeps a prompt: an hour after a write kept for an hour, five minutes otherwise, the write being the latest one of the same model |
+| Not cached by the provider | None of the above: the vendor dropped or never stored the prompt |
+
+### Reading it
+
+`GET /api/conversations/:id/cost` answers the section's data, computed from
+the ledger when read ([Conversation history](../product/web-api-conversations.md#subagents-and-commands)):
+
+```json
+{
+  "totals": { "inputTokens": 53800, "cacheWriteTokens": 3200000,
+              "cacheReadTokens": 51900000, "outputTokens": 308000,
+              "price": { "total": 41.2, "input": 0.07, "cacheWrite": 12.64,
+                         "cacheRead": 22.96, "output": 5.53 } },
+  "agents": [ { "agent": 0, "profile": null, "price": 36.37 } ],
+  "calls": [ { "startedAt": "…", "inputTokens": 1200, "cacheWriteTokens": 900,
+               "cacheReadTokens": 104000, "price": 0.17,
+               "afterCompaction": false, "miss": null } ]
+}
+```
+
+`agents` lists every agent with a priced call; `calls` is the main
+conversation's turn calls in order, `miss` the cause when the call is one.
+Each price is null when no call it sums has one. A call is
+`afterCompaction` when the main conversation answered a compaction between
+it and the previous turn call. The page reads it when the card opens and
+keeps it while the card is open; the backend announces each new row of the
+conversation with a `cost` frame carrying what the row adds, to the totals,
+to its agent and, for a main conversation's turn call, the call itself,
+which the page adds, so an open card follows the conversation without
+asking again. The answer and each frame carry the number of the
+conversation's ledger rows they include, so the page applies a frame only
+when it follows what it holds: a frame it already holds, as one that
+crossed the read, is dropped, and one past a gap makes it read the cost again, because it knows rows
+are missing rather than hoping some are. A connection that attaches again
+after it was down receives the conversation's row count with the state an
+attach brings, so a page that missed the last rows, with no frame after
+them to show the gap, reads the cost again too. Prices tiered by a
+request's length, as some models charge more past 200K tokens, are not
+modelled: a call is priced at the model's base rates.
 
 ## Rate limit
 

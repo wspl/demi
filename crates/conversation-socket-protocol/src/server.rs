@@ -13,7 +13,7 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_with::rust::unwrap_or_skip;
 
-use crate::{BlockVersions, ClientFrameKind, TranscriptPatch, TranscriptVersion};
+use crate::{AgentCost, BlockVersions, ClientFrameKind, CostCall, CostTotals, TranscriptPatch, TranscriptVersion};
 
 /// What the providers read out of the error blocks a frame carries, by block
 /// id (`backend.md` § Failure facts). Attached when the frame is sent, never
@@ -22,7 +22,7 @@ pub type Failures = BTreeMap<BlockId, ProviderFailureFacts>;
 
 /// A frame the backend sends on a conversation's socket. Every frame for one
 /// attachment goes through one outbox in causal order.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, garde::Validate)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, garde::Validate)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
@@ -129,6 +129,37 @@ pub enum ServerFrame {
         #[schemars(with = "Nullable<ContextUsage>")]
         #[garde(dive)]
         usage: Option<ContextUsage>,
+    },
+    /// What a new usage ledger row of the conversation adds to its cost
+    /// (`usage-and-quota.md` § Reading it): to the totals, to its agent's
+    /// price when it has one, and the call itself when it is a turn call
+    /// of the main conversation. A page that holds the cost adds it; any
+    /// other ignores it.
+    Cost {
+        /// The number of the conversation's ledger rows up to this one: the
+        /// page adds the frame when it holds one fewer, drops it when it
+        /// holds as many already and reads the cost again when it holds
+        /// fewer still.
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        rows: u64,
+        #[garde(dive)]
+        totals: CostTotals,
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<AgentCost>")]
+        #[garde(dive)]
+        agent: Option<AgentCost>,
+        #[serde(deserialize_with = "Option::deserialize")]
+        #[schemars(with = "Nullable<CostCall>")]
+        #[garde(dive)]
+        call: Option<CostCall>,
+    },
+    /// The number of the conversation's ledger rows, which the backend
+    /// sends with an open's handshake: a page that holds fewer rows of the
+    /// cost missed the last ones while its connection was down and reads
+    /// the cost again (`usage-and-quota.md` § Reading it).
+    CostRows {
+        #[garde(range(max = MAX_SAFE_INTEGER))]
+        rows: u64,
     },
     /// The whole queue.
     Queue {

@@ -97,8 +97,8 @@ async fn demis_own_files_and_the_chosen_workflow_reach_the_root_and_its_spawns()
         json!({
             "directory": path(&workflows),
             "workflows": [
-                { "id": "broken", "name": null, "path": path(&workflows.join("broken.yaml")), "unavailable": broken },
-                { "id": "review", "name": "Review Team", "path": path(&workflows.join("review.yaml")), "unavailable": null },
+                { "id": "broken", "name": null, "path": path(&workflows.join("broken.yaml")), "unavailable": broken, "profiles": [] },
+                { "id": "review", "name": "Review Team", "path": path(&workflows.join("review.yaml")), "unavailable": null, "profiles": ["explore", "slow"] },
             ],
             "watch": [
                 { "kind": "folder_names", "path": path(&web.join(".demi")) },
@@ -274,9 +274,9 @@ async fn links_are_refused_check_lets_the_host_resolve_and_a_new_choice_reads_it
     assert_eq!(
         listed["workflows"],
         json!([
-            { "id": "docs", "name": "Docs Review", "path": path(&workflows.join("docs.yaml")), "unavailable": null },
-            { "id": "linked", "name": null, "path": path(&workflows.join("linked.yaml")), "unavailable": "Workflows are files of the project, not links." },
-            { "id": "review", "name": "Review Team", "path": path(&workflows.join("review.yaml")), "unavailable": null },
+            { "id": "docs", "name": "Docs Review", "path": path(&workflows.join("docs.yaml")), "unavailable": null, "profiles": [] },
+            { "id": "linked", "name": null, "path": path(&workflows.join("linked.yaml")), "unavailable": "Workflows are files of the project, not links.", "profiles": [] },
+            { "id": "review", "name": "Review Team", "path": path(&workflows.join("review.yaml")), "unavailable": null, "profiles": ["explore", "slow"] },
         ])
     );
 

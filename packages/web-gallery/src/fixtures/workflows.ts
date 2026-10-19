@@ -4,14 +4,15 @@ import type { WorkflowList } from '@demicodes/web-ui/agent/workflow-menu'
 export const projectWorkflows: WorkflowList = {
   state: 'read',
   workflows: [
-    { id: 'docs', name: 'Docs Review', path: '/Users/alex/app/.demi/workflows/docs.yaml', unavailable: null },
+    { id: 'docs', name: 'Docs Review', path: '/Users/alex/app/.demi/workflows/docs.yaml', unavailable: null, profiles: ['scout'] },
     {
       id: 'release',
       name: null,
       path: '/Users/alex/app/.demi/workflows/release.yaml',
       unavailable: '/Users/alex/app/.demi/workflows/release.yaml does not read: line 4 column 9: validation error: is not 1 to 40 lowercase letters, digits and hyphens starting with a letter for `profiles[0].id`',
+      profiles: [],
     },
-    { id: 'review', name: 'Review Team', path: '/Users/alex/app/.demi/workflows/review.yaml', unavailable: null },
+    { id: 'review', name: 'Review Team', path: '/Users/alex/app/.demi/workflows/review.yaml', unavailable: null, profiles: ['explore', 'reviewer'] },
   ],
 }
 

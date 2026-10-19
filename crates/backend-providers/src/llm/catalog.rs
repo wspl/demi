@@ -8,13 +8,14 @@
 use std::sync::Arc;
 
 use demi_provider_common::Provider;
-use demi_shared_types::{ModelSelection, ProviderModel, ProviderModelList, ServiceTier, Timestamp};
+use demi_shared_types::{ModelCost, ModelSelection, ProviderModel, ProviderModelList, ServiceTier, Timestamp};
 use demi_web_api_protocol::providers::{CatalogModel, CatalogProvider, ConfiguredModel, ModelKind};
 use futures_util::future::join_all;
 use sha2::{Digest, Sha256};
 
 use super::assembly::{AssemblyError, ProviderAssembly};
 use super::catalog_cache::CatalogFetch;
+use super::families::api_vendor;
 use crate::vault::entries::{EntryCredential, ProviderEntry};
 
 /// A model the entry's configured list does not name; its request fails.
@@ -157,6 +158,30 @@ impl ProviderAssembly {
         }
     }
 
+    /// The prices `model` of the entry is priced at as its calls' rows are
+    /// written (`usage-and-quota.md` § How the figures are counted): its
+    /// catalog's, and for a subscription, whose catalog has none, the same
+    /// model's on the vendor's API, from the backend's models.dev copy,
+    /// which asks models.dev at most once a day. None for a model the API
+    /// does not sell. `provider` is the entry's, as for its catalog.
+    pub async fn model_price(
+        &self,
+        entry: &ProviderEntry,
+        provider: &Result<Arc<dyn Provider>, AssemblyError>,
+        model: &str,
+    ) -> Option<ModelCost> {
+        let catalog = self.entry_catalog(entry, provider, false).await;
+        let listed = catalog.models.into_iter().find(|listed| listed.id == model);
+        if let Some(cost) = listed.and_then(|listed| listed.cost) {
+            return Some(cost);
+        }
+        let vendor = api_vendor(&entry.family)?;
+        // Without the document the calls are unpriced, as a model the API
+        // does not sell; the next runtime asks again.
+        let document = self.vendors().models_dev().current().await.ok()?;
+        document.listing(vendor, model)?.model.cost
+    }
+
     /// The catalog of every entry in `entries`, each with its provider's
     /// health: one entry's failure leaves the others intact.
     pub async fn model_catalog(
@@ -229,13 +254,22 @@ fn catalog_key(entry: &ProviderEntry) -> String {
 
 #[cfg(test)]
 mod tests {
+    use demi_backend_database::control::{ControlService, testing};
     use demi_provider_common::Secret;
-    use demi_shared_types::{Model, ThinkingConfig};
+    use demi_provider_common::models_dev::ModelsDevClient;
+    use demi_provider_common::testing::{MockResponse, MockVendor};
+    use demi_shared_types::{Model, Rotation, SystemClock, ThinkingConfig};
     use demi_web_api_protocol::ids::{ProviderId, UserId};
     use demi_web_api_protocol::providers::ConfiguredModels;
+    use demi_web_api_protocol::settings::InstanceMode;
 
     use super::*;
-    use crate::vault::entries::ApiKeyConfig;
+    use crate::llm::catalog_cache::ModelCatalogCache;
+    use crate::llm::families::FamilyRegistry;
+    use crate::llm::vendors::VendorCatalog;
+    use crate::vault::entries::{ApiKeyConfig, Vault};
+    use crate::vault::quotas::AccountQuotas;
+    use crate::vault::seal::VaultKey;
 
     fn entry(models: Option<serde_json::Value>) -> ProviderEntry {
         let models =
@@ -329,4 +363,65 @@ mod tests {
         );
         assert_eq!(configured_selection(&entry(None), chosen()), Ok(chosen()));
     }
+
+    /// A subscription's model is priced as the same model on the vendor's
+    /// API, from the backend's models.dev copy, Codex's at OpenAI's; a model
+    /// the API does not sell, and an API entry whose own catalog has no
+    /// price, stay unpriced (`usage-and-quota.md` § How the figures are
+    /// counted). Planted defects: a subscription priced from its own catalog
+    /// alone, or every entry priced from the vendor's listing.
+    /// One served document on an empty ledger: milliseconds.
+    #[tokio::test]
+    async fn a_subscription_is_priced_as_its_model_on_the_vendors_api() {
+        let vendor = MockVendor::start().await;
+        let document = serde_json::json!({ "openai": { "id": "openai", "name": "OpenAI", "models": {
+            "gpt-5.5": { "cost": { "input": 1.25, "output": 10.0, "cache_read": 0.125 } },
+        } } });
+        vendor.respond_at(
+            "/api.json",
+            MockResponse::status(200).header("content-type", "application/json").chunk(document.to_string()),
+        );
+        let data = tempfile::tempdir().unwrap();
+        let clock: Arc<dyn demi_shared_types::Clock> = Arc::new(SystemClock);
+        let control = ControlService::open(
+            &data.path().join("control.sqlite"),
+            clock.clone(),
+            Arc::new(demi_backend_database::providers::NoSealedConfigs),
+        )
+        .await
+        .unwrap();
+        testing::master(&control).await;
+        let vault = Vault::new(control.clone(), VaultKey::new([3; 32]), InstanceMode::Shared, Default::default());
+        let edge = tokio::runtime::Handle::current();
+        let models_dev = ModelsDevClient::new(reqwest::Client::new(), vendor.url("/api.json").parse().unwrap(), clock.clone());
+        let assembly = ProviderAssembly::new(
+            vault.clone(),
+            FamilyRegistry::default(),
+            AccountQuotas::new(vault, edge.clone(), clock.clone()),
+            ModelCatalogCache::new(control.clone(), clock.clone(), edge),
+            VendorCatalog::new(models_dev),
+            reqwest::Client::new(),
+            clock,
+            demi_provider_common::media_catalog::MediaCatalog::new(
+                reqwest::Client::new(),
+                None,
+                demi_provider_common::media_catalog::Catalog::carried(),
+            ),
+        );
+        let codex = ProviderEntry {
+            family: "codex".into(),
+            credential: EntryCredential::Subscription { active: None, rotation: Rotation::Manual },
+            ..entry(None)
+        };
+        let unbuilt = Err(AssemblyError::Incomplete);
+        assert_eq!(
+            assembly.model_price(&codex, &unbuilt, "gpt-5.5").await,
+            Some(ModelCost { input: Some(1.25), output: Some(10.0), cache_read: Some(0.125), cache_write: None })
+        );
+        assert_eq!(assembly.model_price(&codex, &unbuilt, "codex-internal").await, None);
+        let configured = entry(Some(serde_json::json!([model(4_000)])));
+        assert_eq!(assembly.model_price(&configured, &unbuilt, "gpt-5.5").await, None);
+        control.close().await.unwrap();
+    }
+
 }

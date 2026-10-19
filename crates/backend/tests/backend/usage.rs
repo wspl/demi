@@ -8,12 +8,12 @@
 //! a Claude Code run, of a title request and of a refused call are their
 //! modules' (`claude`, `titles`, `rotation`).
 
-use demi_conversation_socket_protocol::ClientFrame;
+use demi_conversation_socket_protocol::{ClientFrame, CostCall, ServerFrame};
 use demi_provider_common::testing::MockVendor;
 use demi_web_api_protocol::auth::Role;
 use demi_web_api_protocol::error::ErrorCode;
 use demi_web_api_protocol::settings::InstanceMode;
-use demi_web_api_protocol::usage::{InstanceUsage, UsageTotals};
+use demi_web_api_protocol::usage::{ConversationCost, InstanceUsage, UsageTotals};
 use reqwest::StatusCode;
 
 use serde_json::json;
@@ -310,5 +310,75 @@ async fn each_call_is_a_row_a_compaction_says_so_and_a_ledger_that_fails_fails_n
     let blocks = transcript(&backend, &master, FIRST).await.blocks;
     assert_eq!(last_text(&blocks), "Second answer.");
     assert!(!kinds(&blocks).iter().any(|kind| kind == "error"), "{:?}", kinds(&blocks));
+    backend.close().await;
+}
+
+/// Each call of a conversation reaches its open page as a `cost` frame of
+/// what its row adds, the call itself for a turn call of the main
+/// conversation, and `GET /api/conversations/:id/cost` sums the rows, its
+/// second call a miss once it wrote the prompt again (`usage-and-quota.md`
+/// § Reading it). Each frame and the answer count the rows they include, so
+/// the page can tell a frame it holds from one past a gap, and a page that
+/// opens the conversation again receives the count with the handshake,
+/// which tells it of a row whose frame it missed. An entry whose
+/// models have no price leaves every price null and lists no agent. Planted
+/// defect: no frame, which the socket waits for until the test's timeout.
+// A backend and two answers of a scripted vendor: about half a second.
+#[tokio::test]
+async fn each_call_reaches_the_open_page_as_a_cost_frame_and_the_cost_sums_the_rows() {
+    let harness = Harness::new();
+    let (backend, master) = harness.start_set_up().await;
+    let vendor = MockVendor::start().await;
+    let provider = anthropic(&backend, &master, &vendor).await;
+    create(&backend, &master, FIRST).await;
+    choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
+    let mut socket = Socket::connect(&backend, &master, FIRST).await;
+    socket.open().await;
+    let usage = |input: u64, write: u64, read: u64| {
+        json!({
+            "input_tokens": input, "output_tokens": 0, "cache_read_input_tokens": read,
+            "cache_creation_input_tokens": write,
+        })
+    };
+    let cost_frame = |frame: &ServerFrame| matches!(frame, ServerFrame::Cost { .. });
+    let mut calls: Vec<CostCall> = Vec::new();
+    let mut counts = Vec::new();
+    for (id, (input, write, read)) in [("m1", (1_000, 20_000, 0)), ("m2", (10, 30_000, 0))] {
+        vendor.respond(message(vec![text_block(0, &["Answer."])], "end_turn", usage(input, write, read), 7));
+        let mut frames = socket.chat(id, "Question").await;
+        // The frame follows the row's write, which may come after the turn's end.
+        if !frames.iter().any(cost_frame) {
+            frames = socket.until(cost_frame).await;
+        }
+        let Some(ServerFrame::Cost { rows, totals, agent, call }) = frames.into_iter().find(|frame| cost_frame(frame))
+        else {
+            unreachable!()
+        };
+        counts.push(rows);
+        assert_eq!(
+            (totals.input_tokens, totals.cache_write_tokens, totals.output_tokens, totals.price.total, agent),
+            (input, write, 7, None, None)
+        );
+        calls.push(call.expect("a turn call of the main conversation"));
+    }
+    assert_eq!(
+        calls.iter().map(|call| (call.cache_write_tokens, call.after_compaction, call.miss)).collect::<Vec<_>>(),
+        [(20_000, false, None), (30_000, false, Some(demi_conversation_socket_protocol::CacheMiss::NotCached))]
+    );
+
+    let cost = backend
+        .get(&format!("/api/conversations/{FIRST}/cost"), Some(&master))
+        .await
+        .json::<ConversationCost>();
+    assert_eq!(
+        (cost.totals.input_tokens, cost.totals.cache_write_tokens, cost.totals.output_tokens),
+        (1_010, 50_000, 14)
+    );
+    assert_eq!((cost.calls, cost.agents.len(), cost.totals.price.total), (calls, 0, None));
+    assert_eq!((counts, cost.rows), (vec![1, 2], 2));
+    let mut again = Socket::connect(&backend, &master, FIRST).await;
+    again.open().await;
+    let opened = again.until(|frame| matches!(frame, ServerFrame::CostRows { .. })).await;
+    assert_eq!(opened.last(), Some(&ServerFrame::CostRows { rows: 2 }));
     backend.close().await;
 }

@@ -22,6 +22,8 @@ export interface WorkflowOption {
   path: string
   /** Why it cannot be used, a link or a file that does not read; null while it can. */
   unavailable: string | null
+  /** The ids of the profiles it declares, their `--profile` values. */
+  profiles: readonly string[]
 }
 
 /**
@@ -57,6 +59,26 @@ export interface WorkflowShown {
 
 function sameChoice(a: WorkflowChoice, b: WorkflowChoice): boolean {
   return a.type === b.type && (a.type !== 'workflow' || (b.type === 'workflow' && a.id === b.id))
+}
+
+/** The user's subagent settings as Global Workflow reads them: the Subagents switch and each profile's. */
+export interface GlobalProfiles {
+  enabled: boolean
+  profiles: readonly { name: string, enabled: boolean }[]
+}
+
+/**
+ * The profiles `choice` offers now, by their `--profile` values: a project
+ * workflow's, from `list` while it is read; under Global Workflow the user's
+ * enabled profiles while the Subagents switch is on, none while it is off;
+ * and none under No Subagents (`usage-and-quota.md` § A conversation's cost).
+ */
+export function workflowProfiles(choice: WorkflowChoice, list: WorkflowList, global: GlobalProfiles): readonly string[] {
+  if (choice.type === 'default')
+    return global.enabled ? global.profiles.filter((profile) => profile.enabled).map((profile) => profile.name) : []
+  if (choice.type === 'none' || list.state !== 'read')
+    return []
+  return list.workflows.find((workflow) => workflow.id === choice.id)?.profiles ?? []
 }
 
 /** What the trigger shows for `choice`, its name from `list` while it is read. */

@@ -1,7 +1,7 @@
 //! A conversation's history as its database holds it (`web-api-conversations.md`
 //! § Conversation history): one page of an agent's transcript at a time,
-//! in light form, a block whole, the conversation's subagents, and where
-//! the call that started a command lies. Every route reads the database
+//! in light form, a block whole, the conversation's subagents, where
+//! the call that started a command lies, and what the conversation cost. Every route reads the database
 //! alone: it wakes no Host and needs no live session.
 
 use axum::Json;
@@ -17,6 +17,7 @@ use demi_web_api_protocol::conversations::{
     CommandCall, NodeQuery, Subagents, TranscriptPage, TranscriptQuery, WholeBlock,
 };
 use demi_web_api_protocol::error::ErrorCode;
+use demi_web_api_protocol::usage::ConversationCost;
 
 use super::AppState;
 use super::conversations::owned;
@@ -186,6 +187,26 @@ pub(super) async fn subagents(
             SubagentsError::Unreadable(error) => ApiError::conversation_unreadable(error),
         })?;
     Ok(Json(Subagents { subagents }))
+}
+
+/// `GET /conversations/:id/cost`: the conversation's cost from its ledger
+/// rows, its subagents named as its database holds them
+/// (`usage-and-quota.md` § Reading it).
+pub(super) async fn cost(
+    State(state): State<AppState>,
+    AuthUser(user): AuthUser,
+    Path(id): Path<String>,
+) -> Result<Json<ConversationCost>, ApiError> {
+    let services = &state.services;
+    let record = owned(services, &user.id, &id).await?;
+    let labels = services
+        .conversations
+        .read(&record.id, tree::agent_labels)
+        .await
+        .map_err(ApiError::conversation_unreadable)?
+        .unwrap_or_default();
+    let cost = services.control.conversation_cost(record.id.clone(), labels).await?;
+    Ok(Json(cost))
 }
 
 /// `GET /conversations/:id/commands/:commandId`: where the call that started

@@ -60,6 +60,7 @@
   "dates": {
     "fewSecondsAgo": "몇 초 전",
     "inFewSeconds": "몇 초 후",
+    "spanAgo": "{span} 전",
     "age": {
       "now": "지금",
       "minutes": "{count}분 전",

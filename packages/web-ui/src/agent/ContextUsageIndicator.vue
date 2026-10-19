@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { t } from './locales/text'
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { FileText, Network, RefreshCw, UserRound } from '@lucide/vue'
 import type { ContextRowKind, ContextUsage, InstructionEntry } from '@demicodes/protocol'
 import ProviderQuota from '../settings/ProviderQuota.vue'
@@ -35,6 +35,8 @@ import {
   useContextListOpen,
 } from './context-usage'
 import { instructionRows } from './instructions'
+import ContextCost from './ContextCost.vue'
+import { type CostState, hasCost } from './context-cost'
 
 /**
  * The composer's context meter: a ring of how full the next request is, as
@@ -45,7 +47,9 @@ import { instructionRows } from './instructions'
  * card's header shows. The card
  * holds the estimate against the window, a header that opens and closes the list of rows, a
  * bar of what fills the context, the rows largest first while the list is
- * open, and the room before compaction with Compact; then the usage limits
+ * open, and the room before compaction with Compact; then what the
+ * conversation cost, opened and closed with the list, while the host holds
+ * it (`usage-and-quota.md` § A conversation's cost); then the usage limits
  * of the conversation's account, and last the instructions the model holds
  * (`instructions.md` § What the card lists), each of which opens where it
  * is written. While the usage or the window is unknown the card holds the
@@ -70,6 +74,19 @@ const props = defineProps<{
    * width, not a rounded square, and Tab reaches it with the focus ring.
    */
   segment?: boolean
+  /**
+   * The conversation's cost, which the host reads when the card opens
+   * (`costShown`) and keeps while it is open, or the failure of its read;
+   * none while it reads it, and for a card that shows no conversation's
+   * cost.
+   */
+  cost?: CostState | null
+  /** The list stands open or closed whatever the browser keeps, as a gallery specimen pins it. */
+  listOpen?: boolean
+  /** The cost chart's call whose tip shows without the pointer, as a gallery specimen pins it. */
+  costTip?: number | null
+  /** The names of the profiles the conversation's workflow offers now, which the cost's Profiles part shows. */
+  costProfiles?: readonly string[]
 }>()
 
 const emit = defineEmits<{
@@ -81,6 +98,10 @@ const emit = defineEmits<{
    * automatic when the limits showed, otherwise the Refresh usage button.
    */
   refreshLimits: [automatic: boolean]
+  /** The card opened, and the host reads the conversation's cost, or closed, and the host lets it go. */
+  costShown: [shown: boolean]
+  /** Read the cost again after a read that failed. */
+  retryCost: []
 }>()
 
 /** Whether the card shows the context's part, the usage limits, or neither, when the meter is not there. */
@@ -99,7 +120,7 @@ const icons = useIconPx()
 const ringPx = computed(() => (props.segment ? icons.value.chip : icons.value.in28))
 
 /** Whether the rows show; the header opens and closes them, and the browser keeps the choice. */
-const listOpen = useContextListOpen()
+const listOpen = props.listOpen === undefined ? useContextListOpen() : ref(props.listOpen)
 
 /** Whether the card shows: a click opens it; a pinned specimen stays open whatever closes it. */
 const clicked = ref(false)
@@ -111,6 +132,23 @@ const open = computed({
   },
 })
 const elevation = useLayerElevation()
+watch(open, (shown) => emit('costShown', shown), { immediate: true })
+// A card that goes, open, as its conversation's page closes or the page
+// signs out, lets the cost go with it.
+onBeforeUnmount(() => {
+  if (open.value)
+    emit('costShown', false)
+})
+/**
+ * The Cost section shows under the context's part once the conversation
+ * made a call, or once a read of it failed.
+ */
+const costShown = computed(() => {
+  const cost = props.cost
+  if (!parts.value.context || !cost)
+    return false
+  return cost.status === 'failed' || hasCost(cost.cost)
+})
 
 /** Compact is an action of the card, which closes it as a menu's action does. */
 function compact(close: () => void): void {
@@ -150,7 +188,7 @@ const percent = computed(() => contextPercent(props.usage ?? null))
 const ratio = computed(() => contextRatio(props.usage ?? null) ?? 0)
 const blockedReason = computed(() => props.unavailableReason ?? compactionRefusal(props.usage ?? null, props.sizeRefused))
 /** While compacting the card holds no Compact; it has details while anything else is left to show. */
-const hasDetails = computed(() => (parts.value.context && !props.isCompacting) || rows.value.length > 0 || parts.value.limits || instructionList.value.length > 0)
+const hasDetails = computed(() => (parts.value.context && !props.isCompacting) || rows.value.length > 0 || costShown.value || parts.value.limits || instructionList.value.length > 0)
 
 /** The ring's tip is Context and the card header's figure; without a usage or a window the ring has none. */
 const tip = computed(() => contextTip(props.usage ?? null))
@@ -177,6 +215,7 @@ const ringColor = computed(() => {
     <Dropdown v-model:open="open" :overlay-store="appOverlayStore" side="top" :offset="8">
       <template #trigger="{ isOpen }">
         <button
+          data-context-ring
           type="button"
           :aria-label="label"
           aria-haspopup="dialog"
@@ -219,7 +258,7 @@ const ringColor = computed(() => {
       </template>
       <template #content="{ close }">
         <!-- On a phone the card is a sheet's content, read at a sheet's size. -->
-        <div class="overlay-shell rounded-md text-detail leading-4 text-fg phone:text-[15px] phone:leading-5" :style="{ '--elevation': elevation }">
+        <div data-context-card class="overlay-shell rounded-md text-detail leading-4 text-fg phone:text-[15px] phone:leading-5" :style="{ '--elevation': elevation }">
           <div v-if="parts.context" class="context-card-head">
             <span v-if="isCompacting" class="text-fg-body">{{ t('context.compacting') }}</span>
             <!-- The header is the list's disclosure, as a Finder disclosure row is. -->
@@ -230,8 +269,9 @@ const ringColor = computed(() => {
               class="flex w-full min-w-0 cursor-default items-baseline gap-3 whitespace-nowrap rounded-sm text-left phone:min-h-row phone:items-center"
               @click="listOpen = !listOpen"
             >
-              <span class="font-medium text-fg-emphasis">{{ t('context.window') }}</span>
-              <span class="ml-auto tabular-nums text-fg-muted">
+              <!-- The name gives way on a narrow card; the figure and the chevron stay whole. -->
+              <span class="min-w-0 truncate font-medium text-fg-emphasis">{{ t('context.window') }}</span>
+              <span class="ml-auto shrink-0 tabular-nums text-fg-muted">
                 {{ contextFigure(usage) }}
               </span>
               <FoldChevron :open="listOpen" :size="ICON_PX.in20" class="self-center text-fg-subtle" />
@@ -277,6 +317,7 @@ const ringColor = computed(() => {
                     {{ t('context.compact') }}
                   </Button>
                 </div>
+                <ContextCost v-if="costShown && cost" :state="cost" :open="listOpen" :pinned-tip="costTip" :profiles="costProfiles" @retry="emit('retryCost')" />
                 <div v-if="limits" class="pb-3" :class="parts.context ? 'border-t border-line' : 'pt-1'">
                   <SectionRow class="text-caption font-medium text-fg-subtle">
                     <span class="shrink-0">{{ t('context.usageLimits') }}</span>

@@ -341,6 +341,34 @@
     "instructions": "지침",
     "personalInstructions": "개인 지침",
     "workflowInstructions": "워크플로: {name}",
+    "cost": {
+      "title": "비용",
+      "price": "API 환산 가격",
+      "hitRate": "캐시 적중률",
+      "loadFailed": "비용을 불러올 수 없습니다.",
+      "kind": {
+        "input": "캐시되지 않은 입력",
+        "cacheWrite": "캐시 쓰기",
+        "cacheRead": "캐시 읽기",
+        "output": "출력 토큰"
+      },
+      "profiles": "프로필",
+      "mainConversation": "메인 대화",
+      "requests": "요청",
+      "time": "시간",
+      "request": "요청 #{number}",
+      "firstRequest": "첫 요청",
+      "afterCompaction": "압축 후",
+      "miss": "캐시 미스 · {cause}",
+      "rewritten": "다시 캐시한 토큰",
+      "cause": {
+        "model_changed": "모델 변경됨",
+        "tools_changed": "도구 변경됨",
+        "system_prompt_changed": "시스템 프롬프트 변경됨",
+        "cache_expired": "캐시 만료됨",
+        "not_cached": "제공업체가 캐시하지 않음"
+      }
+    },
     "row": {
       "messages": "메시지",
       "systemPrompt": "시스템 프롬프트",

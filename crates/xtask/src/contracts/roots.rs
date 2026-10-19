@@ -225,6 +225,7 @@ pub fn web() -> Vec<Root> {
         receives::<files::GitCommit>(),
         receives::<usage::UsageTotals>(),
         receives::<usage::InstanceUsage>(),
+        receives::<usage::ConversationCost>(),
         receives::<users::Users>(),
         sends::<users::CreateUser>(),
         receives::<users::CreatedUser>(),

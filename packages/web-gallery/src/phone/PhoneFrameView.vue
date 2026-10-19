@@ -213,6 +213,10 @@ onMounted(async () => {
     case 'model':
       press('[aria-label="Model"]')
       break
+    case 'context':
+      // By its hook, so the scene opens in every language.
+      press('[data-context-ring]')
+      break
     case 'change':
       work.select('change')
       work.open.value = true

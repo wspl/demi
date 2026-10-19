@@ -27,6 +27,8 @@ export type ClientSessionEvent =
   | ServerFrameOf<'rejected'>
   | ServerFrameOf<'phase'>
   | ServerFrameOf<'context_usage'>
+  | ServerFrameOf<'cost'>
+  | ServerFrameOf<'cost_rows'>
   | ServerFrameOf<'queue'>
   | ServerFrameOf<'steer_result'>
   | ServerFrameOf<'remove_result'>
