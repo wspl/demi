@@ -317,17 +317,28 @@ async fn an_upload_reaches_the_model_through_the_conversations_host_and_the_page
             Vec::new(),
             (StatusCode::BAD_REQUEST, ErrorCode::InvalidBody),
         ),
-        (
-            "?name=a.bin",
-            Some("application/octet-stream"),
-            vec![0; ATTACHMENT_MAX_BYTES + 1],
-            (StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::TooLarge),
-        ),
     ];
     for (query, media_type, bytes, refusal) in refusals {
         let refused = post(&backend, &master, query, media_type, bytes).await;
         assert_eq!(refused.refusal(), refusal, "{query} {media_type:?}");
     }
+    // A declared length over the limit is refused before any of the body
+    // is read: the head alone gets the answer (`TestBackend::declaring`).
+    let declared = backend
+        .declaring(
+            Method::POST,
+            "/api/attachments?name=a.bin",
+            &[
+                ("content-type", "application/octet-stream"),
+                ("cookie", &master.cookie),
+            ],
+            ATTACHMENT_MAX_BYTES + 1,
+        )
+        .await;
+    assert_eq!(
+        declared.refusal(),
+        (StatusCode::PAYLOAD_TOO_LARGE, ErrorCode::TooLarge)
+    );
 
     choose(&backend, &master, FIRST, &provider, "claude-opus-4-8").await;
     let mut socket = Socket::connect(&backend, &master, FIRST).await;
