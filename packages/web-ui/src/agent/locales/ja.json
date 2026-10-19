@@ -354,8 +354,6 @@
       },
       "profiles": "プロファイル",
       "mainConversation": "メインの会話",
-      "requests": "リクエスト",
-      "time": "時間",
       "request": "リクエスト #{number}",
       "firstRequest": "最初のリクエスト",
       "afterCompaction": "圧縮後",

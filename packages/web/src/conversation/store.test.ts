@@ -26,6 +26,7 @@ import { ATTACHMENT_MARK } from '@demicodes/web-ui/markdown/user-markdown'
 import { contentCopy } from '@demicodes/web-ui/agent/message-input/copied-message'
 import { quotedWords, textWords } from '@demicodes/web-ui/agent/send-to-conversation'
 import { EMPTY_TRANSCRIPT } from '@demicodes/web-ui/transport/protocol'
+import { NO_COST } from '@demicodes/web-ui/agent/context-cost'
 import { latestBlocks, wholeHistory } from '@demicodes/web-ui/agent/history'
 import { TestSocket } from '@demicodes/web-ui/transport/__tests__/test-socket'
 
@@ -365,6 +366,9 @@ beforeEach(async () => {
     }
     if (path.endsWith('/read')) {
       return new Response(null, { status: 204 })
+    }
+    if (/^\/api\/conversations\/[^/]+\/cost$/.test(path)) {
+      return Response.json(NO_COST)
     }
     const draft = /^\/api\/conversations\/([^/]+)\/draft(\/replaced)?$/.exec(path)
     if (draft) {
@@ -4485,12 +4489,12 @@ test('a child\'s usage frame sets its own record\'s usage', () => {
 })
 
 /**
- * A conversation open with a session whose `/cost` reads wait for the test:
- * each read is a request the test answers with a cost, or with a response,
- * as a failure, and whose signal it can look at.
+ * A conversation opening with a session whose `/cost` reads wait for the
+ * test: each read is a request the test answers with a cost, or with a
+ * response, as a failure, and whose signal it can look at. The opening's
+ * own read has been sent; the opening ends once the test answers it.
  */
 async function costScene() {
-  const { conversation, sockets } = await openWithSession(FIRST)
   const totals = (input: number, price: number | null) => ({
     inputTokens: input, cacheWriteTokens: 0, cacheReadTokens: 0, outputTokens: 0,
     price: { total: price, input: price, cacheWrite: null, cacheRead: null, output: null },
@@ -4516,42 +4520,49 @@ async function costScene() {
     const answer = await read.answer.promise
     return answer instanceof Response ? answer : Response.json(answer)
   }) as typeof fetch
-  return { conversation, sockets, store: useConversations(), totals, call, frame, cost, reads }
+  const { conversation, sockets, opening } = await startOpening(FIRST, { handshake: [] })
+  await waitFor(() => reads.length === 1, () => 'the opening did not read the cost')
+  return { conversation, sockets, opening, store: useConversations(), totals, call, frame, cost, reads }
 }
 
-// The page holds a conversation's cost only while its context card is open,
-// and adds each `cost` frame that follows what it holds (`usage-and-quota.md`
-// § Reading it): a frame that crossed the read is dropped, one that came
-// while the read was on its way and is not in its answer is added after it,
-// and one past a gap, as after frames lost while the connection was down,
-// reads the cost again. Cost: one opening, two reads, no wait.
-test('the cost a page holds adds each frame that follows it, drops one it holds and reads again past a gap', async () => {
-  const { conversation, sockets, store, totals, call, frame, reads } = await costScene()
-
-  // The card is closed: the page holds no cost and adds nothing.
-  sockets[0]!.receive(frame(1, 0, 0.5))
+// Production: the context card showed without its Cost, which popped in
+// when the read it sent as it opened returned. The page reads the cost with
+// the conversation's other reads, and the transcript shows once it holds
+// it, so the card is whole the moment it opens (`usage-and-quota.md`
+// § Reading it). Cost: one opening, one read, no wait.
+test('a conversation shows once the page holds its cost, read with its transcript', async () => {
+  const { conversation, opening, cost, reads } = await costScene()
+  const shownWith: unknown[] = []
+  watch(() => conversation.load, (load) => {
+    if (load !== 'loading')
+      shownWith.push(conversation.cost)
+  }, { flush: 'sync' })
   await nextTick()
-  expect(conversation.cost).toBeNull()
+  expect(conversation.load).toBe('loading')
+  reads[0]!.answer.resolve(cost(3, 100, 1))
+  await opening
+  expect(shownWith[0]).toEqual({ status: 'read', cost: cost(3, 100, 1) })
+  expect(reads).toHaveLength(1)
+})
 
-  // The card opens. Rows 2 and 3 are written while the read is on its
-  // way, and its answer includes row 2 but not row 3.
-  store.showCost(conversation, true)
-  await waitFor(() => reads.length === 1, () => 'the cost was not read')
-  sockets[0]!.receive(frame(2, 0, 0.5), frame(3, 2, 0.25))
-  reads[0]!.answer.resolve({
-    rows: 2,
-    totals: totals(100, 1),
-    agents: [{ agent: 0, profile: null, price: 1 }],
-    calls: [call],
-  })
-  await waitFor(() => conversation.cost !== null, () => 'the answer was not kept')
-  sockets[0]!.receive(frame(4, 3, null))
+// The page adds each `cost` frame that follows what it holds
+// (`usage-and-quota.md` § Reading it): a frame it holds is dropped, one past
+// a gap, as after frames lost while the connection was down, reads the cost
+// again, and of the frames that came while that read was on its way, one
+// its answer includes is dropped and one it does not is added after it.
+// Cost: one opening, two reads, no wait.
+test('the cost a page holds adds each frame that follows it, drops one it holds and reads again past a gap', async () => {
+  const { conversation, sockets, opening, totals, call, frame, reads } = await costScene()
+  reads[0]!.answer.resolve({ rows: 1, totals: totals(100, 1), agents: [{ agent: 0, profile: null, price: 1 }], calls: [call] })
+  await opening
+
+  sockets[0]!.receive(frame(2, 2, 0.25), frame(1, 0, 0.5))
   await nextTick()
   expect(conversation.cost).toEqual({
     status: 'read',
     cost: {
-      rows: 4,
-      totals: totals(120, 1.25),
+      rows: 2,
+      totals: totals(110, 1.25),
       agents: [
         { agent: 0, profile: null, price: 1 },
         { agent: 2, profile: null, price: 0.25 },
@@ -4560,29 +4571,31 @@ test('the cost a page holds adds each frame that follows it, drops one it holds 
     },
   })
 
-  // Row 5 was lost: row 6 reads the cost again, and the card shows what
-  // it holds until the answer comes.
-  sockets[0]!.receive(frame(6, 0, 0.5))
+  // Row 3 was lost: row 4 reads the cost again, and the card shows what it
+  // holds until the answer comes. Rows 5 and 6 are written meanwhile, and
+  // the answer includes row 5 but not row 6.
+  sockets[0]!.receive(frame(4, 0, 0.5))
   await waitFor(() => reads.length === 2, () => 'a gap did not read the cost again')
-  expect(conversation.cost).toMatchObject({ status: 'read', cost: { rows: 4 } })
-  const reread = { rows: 6, totals: totals(140, 2), agents: [{ agent: 0, profile: null, price: 2 }], calls: [call, call] }
-  reads[1]!.answer.resolve(reread)
-  await waitFor(() => conversation.cost?.status === 'read' && conversation.cost.cost.rows === 6, () => 'the second answer was not kept')
-  expect(conversation.cost).toEqual({ status: 'read', cost: reread })
+  expect(conversation.cost).toMatchObject({ status: 'read', cost: { rows: 2 } })
+  sockets[0]!.receive(frame(5, 0, 0.5), frame(6, 3, null))
+  reads[1]!.answer.resolve({ rows: 5, totals: totals(140, 2), agents: [{ agent: 0, profile: null, price: 2 }], calls: [call, call] })
+  await waitFor(() => conversation.cost?.status === 'read' && conversation.cost.cost.rows === 6, () => 'the answer was not kept with the frame after it')
+  expect(conversation.cost).toEqual({
+    status: 'read',
+    cost: { rows: 6, totals: totals(150, 2), agents: [{ agent: 0, profile: null, price: 2 }], calls: [call, call] },
+  })
   expect(reads).toHaveLength(2)
 })
 
-// A call that ends while the page's connection is down leaves the open card
+// A call that ends while the page's connection is down leaves the cost
 // stale with no later frame to show it: the connection that attaches again
 // brings the conversation's row count, and a page that holds fewer reads the
 // cost again; one that holds as many reads nothing (`usage-and-quota.md`
 // § Reading it). Cost: two sockets, two reads, no wait.
 test('a page whose connection missed the last row reads the cost again as it attaches again', async () => {
-  const { conversation, sockets, store, cost, reads } = await costScene()
-  store.showCost(conversation, true)
-  await waitFor(() => reads.length === 1, () => 'the cost was not read')
+  const { conversation, sockets, opening, cost, reads } = await costScene()
   reads[0]!.answer.resolve(cost(2, 100, 1))
-  await waitFor(() => conversation.cost?.status === 'read', () => 'the answer was not kept')
+  await opening
 
   // The connection drops; row 3 is written meanwhile, its frame lost.
   sockets[0]!.end()
@@ -4603,18 +4616,18 @@ test('a page whose connection missed the last row reads the cost again as it att
 })
 
 // A read of the cost that fails shows the failure with its request's id,
-// never an empty section a user would take for no calls, and Retry reads
-// it again (`usage-and-quota.md` § A conversation's cost). Cost: one
-// opening, two reads, no wait.
+// never an empty section a user would take for no calls, and the
+// conversation opens all the same; Retry reads it again
+// (`usage-and-quota.md` § A conversation's cost). Cost: one opening, two
+// reads, no wait.
 test('a failed read of the cost shows its failure, and Retry reads it again', async () => {
-  const { conversation, store, cost, reads } = await costScene()
-  store.showCost(conversation, true)
-  await waitFor(() => reads.length === 1, () => 'the cost was not read')
+  const { conversation, opening, store, cost, reads } = await costScene()
   reads[0]!.answer.resolve(new Response(
     JSON.stringify({ code: 'internal_error', message: 'The database is busy' }),
     { status: 500, headers: { 'Content-Type': 'application/json', 'X-Request-Id': 'req_cost00000000001' } },
   ))
-  await waitFor(() => conversation.cost !== null, () => 'the failure was not kept')
+  await opening
+  expect(conversation.load).toBe('ready')
   expect(conversation.cost).toMatchObject({ status: 'failed', error: { requestId: 'req_cost00000000001' } })
 
   store.retryCost(conversation)
@@ -4624,30 +4637,53 @@ test('a failed read of the cost shows its failure, and Retry reads it again', as
   expect(conversation.cost).toEqual({ status: 'read', cost: cost(1, 100, 1) })
 })
 
-// A card that closes or goes, and a page that signs out, let the cost and
-// its read go: the read is cancelled, and an answer that comes anyway is
-// kept nowhere (`usage-and-quota.md` § Reading it). Cost: one opening, two
+// A conversation that goes from the page while a read of its cost has no
+// answer yet, its opening's or the one a gap started, cancels that read,
+// and an answer that comes anyway is shown nowhere: each read lives as long
+// as the conversation's stay in the page's cache (`usage-and-quota.md`
+// § Reading it). Cost: one opening and one read, then one opening and two
 // reads, no wait.
-test('the cost and its read go as the card closes and as the page signs out', async () => {
-  const { conversation, store, cost, reads } = await costScene()
-  store.showCost(conversation, true)
-  await waitFor(() => reads.length === 1, () => 'the cost was not read')
-  store.showCost(conversation, false)
+test('a conversation that goes while its opening reads its cost cancels the read', async () => {
+  const { conversation, opening, cost, reads } = await costScene()
+  channels.last().send({ type: 'conversation_deleted', id: FIRST })
+  await nextTick()
   expect(reads[0]!.signal?.aborted).toBe(true)
+  // The stub answers whatever the signal says, as a response already on its way does.
   reads[0]!.answer.resolve(cost(1, 100, 1))
-  await nextTick()
-  expect(conversation.cost).toBeNull()
-
-  store.showCost(conversation, true)
-  await waitFor(() => reads.length === 2, () => 'the cost was not read again')
-  store.stopAll()
-  expect(reads[1]!.signal?.aborted).toBe(true)
-  reads[1]!.answer.resolve(cost(1, 100, 1))
-  await nextTick()
+  await opening.catch(() => {})
   expect(conversation.cost).toBeNull()
 })
 
-// Under 50 ms each: the backend is the stub above.
+test('a conversation that goes cancels the read of its cost a gap started', async () => {
+  const { conversation, sockets, opening, cost, frame, reads } = await costScene()
+  reads[0]!.answer.resolve(cost(1, 100, 1))
+  await opening
+  sockets[0]!.receive(frame(3, 0, 0.5))
+  await waitFor(() => reads.length === 2, () => 'a gap did not read the cost again')
+  channels.last().send({ type: 'conversation_deleted', id: FIRST })
+  await nextTick()
+  expect(reads[1]!.signal?.aborted).toBe(true)
+  reads[1]!.answer.resolve(cost(3, 100, 2))
+  await nextTick()
+  expect(conversation.cost).toEqual({ status: 'read', cost: cost(1, 100, 1) })
+})
+
+// A page that signs out lets the cost's read go: the read is cancelled, and
+// an answer that comes anyway is kept nowhere (`usage-and-quota.md`
+// § Reading it). Cost: one opening, two reads, no wait.
+test('the cost\'s read goes as the page signs out', async () => {
+  const { conversation, sockets, opening, store, cost, frame, reads } = await costScene()
+  reads[0]!.answer.resolve(cost(1, 100, 1))
+  await opening
+  sockets[0]!.receive(frame(3, 0, 0.5))
+  await waitFor(() => reads.length === 2, () => 'a gap did not read the cost again')
+  store.stopAll()
+  expect(reads[1]!.signal?.aborted).toBe(true)
+  reads[1]!.answer.resolve(cost(3, 100, 1))
+  await nextTick()
+  expect(conversation.cost).toEqual({ status: 'read', cost: cost(1, 100, 1) })
+})
+
 // Under 50 ms each: the backend is the stub above.
 test('the messages saved for later show as the conversation opens, and a raised revision reads them again, once', async () => {
   serveHistory()

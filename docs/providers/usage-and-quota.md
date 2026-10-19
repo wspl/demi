@@ -119,7 +119,8 @@ $41.20                       97%
 Equivalent API price         Cache hit rate
 ```
 
-Opened with the context window's list, the same `⌄`:
+Opened with its own `⌄`, which closes the context window's list, since the
+card opens one part at a time:
 
 ```text
 Cost
@@ -137,9 +138,9 @@ research                                  $2.64
 review                                    $1.32
 ━━
 
-Cache hit rate  97%          [Requests | Time]
-▁▇█▇█▇█▇▆█▇█│▇█▇█▇█▁▇█▇█▇█│▇▇█▇█▁▇█▇█▇█▇█▇█▇█▇█
-#1        50        100        150          180
+Cache hit rate  97%
+▇█▇█▇█▇▆█▇█│▇█▇█▇█▁▇█▇█▇█▇▇█▇█▁▇█▇█▇█▇█▇█▇█▇█
+#131        140        150        160        170        180
 ```
 
 - **Closed**, the section is the caption *Cost* and two figures side by
@@ -160,10 +161,11 @@ Cache hit rate  97%          [Requests | Time]
   has no row. With No Subagents, or when no profile of the current workflow
   ran a subagent, the part is left out.
 - **Cache hit rate** is a sub-caption too, its value after it in the
-  primary color, with the switch *Requests | Time* at the row's end. The
-  chart under it plots the main conversation's turn calls, each at its
-  call's hit rate, by its number or by its start time: no axis labels on
-  the side, faint lines at 0, 50 and 100%, the numbers or times under it.
+  primary color. The chart under it plots the main conversation's last 50
+  turn calls, each at its call's hit rate, by its number in the
+  conversation: no axis labels on the side, faint lines at 0, 50 and 100%,
+  the numbers under it. A conversation of 1,200 calls shows #1151 to #1200;
+  more would crowd the chart past reading.
   A cache miss is a red dot at its call, a compaction a grey dashed line
   between the calls it separates. Resting the pointer on the chart, or a
   tap on a phone, shows the nearest call's tip: its number, its time, its
@@ -171,10 +173,9 @@ Cache hit rate  97%          [Requests | Time]
   wrote again; the first call reads *First request* and the first after a
   compaction *After compaction*, in the secondary color, saying why their
   low rate is no miss. The time is the clock time and how long ago,
-  *13:17 · 1h 27m ago*, with the date when it is not today. The card keeps
-  the Requests or Time choice in the browser, as it keeps the agents'. The tip stands beside the point where it fits, otherwise
-  above it, and never past the card's edges. The chart, and the switch
-  with it, shows only once the main conversation has made 4 calls: with
+  *13:17 · 1h 27m ago*, with the date when it is not today. The tip stands beside the point where it fits, otherwise
+  above it, and never past the card's edges. The chart shows only once the
+  main conversation has made 4 calls: with
   fewer a line shows nothing a user can read, and the rate alone says it.
 - **A read that fails says so.** When the page cannot read the cost, the
   section shows its caption and, in the secondary color, *Couldn't load
@@ -196,7 +197,7 @@ calls with no counts adding nothing.
 | Uncached input, Cache write, Cache read, Output tokens | The sums of `input_tokens`, `cache_write_tokens`, `cache_read_tokens` and `output_tokens` |
 | A token kind's price | The sum of that kind's `api_price_…` over the calls that have one |
 | Equivalent API price | The sum of each call's price: its four parts, or, for a call whose tokens have no price, such as an image's, the vendor's own cost in dollars. The kinds' prices then add up to less than it by those calls |
-| Cache hit rate | Over the main conversation's turn calls: cache read ÷ (uncached input + cache write + cache read), which is the share of the prompt the vendor read from its cache. Subagents are left out: each has its own cache, and a short-lived one starts cold by nature |
+| Cache hit rate | Over the main conversation's last 50 turn calls, the ones the chart plots, so the card never shows two rates under one name: cache read ÷ (uncached input + cache write + cache read), which is the share of the prompt the vendor read from its cache. Subagents are left out: each has its own cache, and a short-lived one starts cold by nature |
 
 A call's **price** is fixed when its row is written, at the catalog's
 prices at that moment, so a later change of price never rewrites history
@@ -254,12 +255,13 @@ the ledger when read ([Conversation history](../product/web-api-conversations.md
 conversation's turn calls in order, `miss` the cause when the call is one.
 Each price is null when no call it sums has one. A call is
 `afterCompaction` when the main conversation answered a compaction between
-it and the previous turn call. The page reads it when the card opens and
-keeps it while the card is open; the backend announces each new row of the
+it and the previous turn call. The page reads it with the conversation, when
+it opens it, and keeps it while the conversation is open, so the card is
+whole the moment it opens; the backend announces each new row of the
 conversation with a `cost` frame carrying what the row adds, to the totals,
 to its agent and, for a main conversation's turn call, the call itself,
-which the page adds, so an open card follows the conversation without
-asking again. The answer and each frame carry the number of the
+which the page adds, so the card follows the conversation without asking
+again. The answer and each frame carry the number of the
 conversation's ledger rows they include, so the page applies a frame only
 when it follows what it holds: a frame it already holds, as one that
 crossed the read, is dropped, and one past a gap makes it read the cost again, because it knows rows

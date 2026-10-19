@@ -573,13 +573,18 @@ browser for the next time it opens, as a disclosure in Finder does.
 - **Nothing to show is no part.** While the usage or the window is
   unknown, as in a new conversation before its first answer, the card leaves
   out the whole context part, its header, bar, rows and Compact line, and
-  shows the usage limits alone; a model with no limits to show, such as one
-  on an API key, then has no indicator.
+  shows the cost and the usage limits alone; a model with no limits to
+  show, such as one on an API key, then has no indicator, whatever it cost.
 - **A row with no tokens is left out**, and so are Summary before the first
   compaction and Skills while no skill is on.
 
 Under this part the card shows the conversation's cost and cache hit rate,
-closed and opened with it ([A conversation's cost](../providers/usage-and-quota.md#a-conversations-cost)).
+whether or not the context part is there
+([A conversation's cost](../providers/usage-and-quota.md#a-conversations-cost)).
+Each part that opens has its own `⌄` in its header, the context list's
+while a compaction runs too, and the card opens one part at a time: opening
+one closes the other, and the browser keeps which part was open for the
+next card.
 
 ### Text bounds
 

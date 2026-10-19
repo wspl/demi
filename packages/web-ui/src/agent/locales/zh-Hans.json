@@ -354,8 +354,6 @@
       },
       "profiles": "配置",
       "mainConversation": "主对话",
-      "requests": "请求",
-      "time": "时间",
       "request": "请求 #{number}",
       "firstRequest": "首个请求",
       "afterCompaction": "压缩后",

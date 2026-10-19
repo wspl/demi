@@ -5,7 +5,7 @@ import type { HeadlineText, TitleText } from '@demicodes/web-ui/ui/ui-text'
 import type { ClientContent, MessageComment } from '@demicodes/protocol'
 import { inReadingOrder, type ReplyCommenting } from '@demicodes/web-ui/agent/comments/comments'
 import { ConversationCache, type CachedConversation } from '@demicodes/web-ui/agent/conversation-cache'
-import { addCost, costStep, type CostAddition } from '@demicodes/web-ui/agent/context-cost'
+import { NO_COST, addCost, costStep, type ConversationCostView, type CostAddition } from '@demicodes/web-ui/agent/context-cost'
 import { latestBlocks, type TranscriptReveal } from '@demicodes/web-ui/agent/history'
 import { conversationTitle } from '@demicodes/web-ui/agent/conversation-title'
 import { ConversationRuntime, RemovalRefusedError, isRecordedTurnFailure } from '@demicodes/web-ui/agent/conversation-runtime'
@@ -1132,8 +1132,9 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * The reads an opening needs that name only the conversation: the latest
-   * page of its transcript, its subagents, its attached hosts and its
-   * draft, sent together (`web-application.md` § Requests for one action).
+   * page of its transcript, its subagents, its attached hosts, its draft
+   * and its cost, sent together (`web-application.md` § Requests for one
+   * action).
    */
   interface OpeningReads {
     transcript: Promise<TranscriptPage>
@@ -1142,6 +1143,7 @@ export const useConversations = defineStore('conversations', () => {
     subagents: Promise<Subagents>
     hosts: Promise<AttachedHosts>
     draft: Promise<ConversationDraft>
+    cost: Promise<ConversationCostView>
   }
 
   /** Reads the first load started for the conversation its address names, before the channel's first state. */
@@ -1158,6 +1160,7 @@ export const useConversations = defineStore('conversations', () => {
       subagents: apiRequest(`${path}/subagents`, { signal }).then((response) => readResponse(response, subagentsSchema)),
       hosts: apiRequest(`${path}/hosts`, { signal }).then((response) => readResponse(response, attachedHostsSchema)),
       draft: loadDraft(id, signal),
+      cost: readCostOf(id, signal),
     }
     // The opening that takes them reports their failures; one never taken has nobody to tell.
     for (const read of Object.values(reads)) {
@@ -1210,8 +1213,9 @@ export const useConversations = defineStore('conversations', () => {
       let hostsRead: Promise<void> = Promise.resolve()
       if (madeHere.delete(conversation.id)) {
         // Its record is what the page created: no transcript yet, the hosts
-        // its answer listed, and the composer's draft.
+        // its answer listed, the composer's draft, and no call to cost.
         await draftRestored
+        conversation.cost = { status: 'read', cost: NO_COST }
         conversation.load = 'ready'
       } else {
         hostsRead = (await readOpening(conversation, signal, draftRestored, runnable)).hosts
@@ -1336,6 +1340,8 @@ export const useConversations = defineStore('conversations', () => {
     conversation.summaries = {}
     conversation.subagents = []
     conversation.lastError = null
+    costReads.get(conversation.id)?.controller.abort()
+    conversation.cost = null
     clearSession(conversation)
   }
 
@@ -1356,8 +1362,9 @@ export const useConversations = defineStore('conversations', () => {
 
   /**
    * Reads what the page shows of a conversation it opens, all at once: its
-   * transcript, its agents, its hosts and its draft, and shows the first
-   * step of its opening, the transcript, once it and the draft are read
+   * transcript, its agents, its hosts, its draft and its cost, and shows
+   * the first step of its opening, the transcript, once it, the draft and
+   * the cost are read, so its context card never shows without its cost
    * (`web-application.md` § Opening a conversation shows in two steps):
    * `runnable`, its session opens next, which the second step shows;
    * otherwise it stops there. The agents and the hosts join when they
@@ -1395,7 +1402,8 @@ export const useConversations = defineStore('conversations', () => {
     // opens from it below, as if it had never shown the copy.
     let answered = false
     void reads.unreachable.then(() => openFromCopy(conversation, signal, () => answered))
-    const [page] = await Promise.all([reads.transcript, draftRead])
+    const costRead = readCost(conversation, signal, reads.cost)
+    const [page] = await Promise.all([reads.transcript, draftRead, costRead])
     answered = true
     signal.throwIfAborted()
     // The latest page is the transcript's end until the stream says more.
@@ -1452,69 +1460,88 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   /**
-   * The read of each conversation's cost under way, while its context card
-   * is open, with the `cost` frames that came while it was on its way and
-   * the most rows an attach said the conversation has meanwhile.
+   * The read of each conversation's cost under way, with the `cost` frames
+   * that came while it was on its way and the most rows an attach said the
+   * conversation has meanwhile. A read leaves it as it settles, whether it
+   * was answered, failed or cancelled.
    */
-  const costReads = new Map<string, { controller: AbortController, frames: CostAddition[], rows: number }>()
+  interface CostRead {
+    controller: AbortController
+    frames: CostAddition[]
+    rows: number
+  }
+  const costReads = new Map<string, CostRead>()
 
-  /**
-   * The context card of `conversation` opened, and the page reads what the
-   * conversation cost, keeps it and adds each `cost` frame to it; or the
-   * card closed or went, and the page lets the cost and its read go
-   * (`usage-and-quota.md` § Reading it).
-   */
-  function showCost(conversation: Conversation, shown: boolean): void {
-    costReads.get(conversation.id)?.controller.abort()
-    costReads.delete(conversation.id)
-    conversation.cost = null
-    if (shown)
-      readCost(conversation)
+  /** The backend's answer for what the conversation `id` cost (`usage-and-quota.md` § Reading it). */
+  function readCostOf(id: string, signal: AbortSignal): Promise<ConversationCostView> {
+    return apiRequest(`/conversations/${encodeURIComponent(id)}/cost`, { signal })
+      .then((response) => readResponse(response, conversationCostSchema))
   }
 
   /** Retry on a failed read of the cost of `conversation`. */
   function retryCost(conversation: Conversation): void {
     if (conversation.cost?.status === 'failed')
-      readCost(conversation)
+      readCostAgain(conversation)
+  }
+
+  /** Reads the cost of `conversation` again while the page keeps it open; one it let go reads nothing. */
+  function readCostAgain(conversation: Conversation): void {
+    const entry = cache.get(conversation.id)
+    if (entry)
+      void readCost(conversation, entry.controller.signal)
   }
 
   /**
-   * Reads the cost of `conversation`, keeping what it shows until the
-   * answer comes, then adds to the answer the frames that came meanwhile
-   * and that it does not include, and reads again when an attach said the
-   * conversation has more rows than it holds then. A failed read is shown
-   * as one, with Retry.
+   * Reads the cost of `conversation`, which the page holds while the
+   * conversation is open (`usage-and-quota.md` § Reading it), keeping what
+   * it shows until the answer comes, then adds to the answer the frames
+   * that came meanwhile and that it does not include, and reads again when
+   * an attach said the conversation has more rows than it holds then. A
+   * failed read is shown as one, with Retry. `open` is the signal of the
+   * conversation's stay in the cache, which cancels the read when the
+   * conversation goes or its opening ends; `answer` is the read an opening
+   * sent with the conversation's other reads under that signal, otherwise
+   * the read is sent now. Settles, never failing, once the page holds the
+   * answer or the failure, or the read gave way to a newer one or to the
+   * conversation's going; it leaves `costReads` either way.
    */
-  function readCost(conversation: Conversation): void {
+  function readCost(conversation: Conversation, open: AbortSignal, answer?: Promise<ConversationCostView>): Promise<void> {
     costReads.get(conversation.id)?.controller.abort()
-    const reading = { controller: new AbortController(), frames: [] as CostAddition[], rows: 0 }
+    const reading: CostRead = { controller: new AbortController(), frames: [], rows: 0 }
     costReads.set(conversation.id, reading)
-    const { signal } = reading.controller
-    apiRequest(`/conversations/${encodeURIComponent(conversation.id)}/cost`, { signal })
-      .then((response) => readResponse(response, conversationCostSchema))
-      .then((cost) => {
-        if (signal.aborted)
-          return
+    const signal = AbortSignal.any([reading.controller.signal, open])
+    // The entry goes as the read settles, or at once as it is cancelled,
+    // since an opening's read sent before the conversation was cached may
+    // answer later; an entry a newer read replaced stays.
+    const release = () => {
+      signal.removeEventListener('abort', release)
+      if (costReads.get(conversation.id) === reading)
         costReads.delete(conversation.id)
-        conversation.cost = { status: 'read', cost }
-        for (const frame of reading.frames)
-          followCost(conversation, frame)
-        followCostRows(conversation, reading.rows)
-      }, (error: unknown) => {
-        // An aborted read belongs to a card that went or to a newer read.
-        if (signal.aborted)
-          return
-        costReads.delete(conversation.id)
-        conversation.cost = { status: 'failed', error: shownError(error) }
-      })
+    }
+    signal.addEventListener('abort', release)
+    return (answer ?? readCostOf(conversation.id, signal)).then((cost) => {
+      release()
+      if (signal.aborted)
+        return
+      conversation.cost = { status: 'read', cost }
+      for (const frame of reading.frames)
+        followCost(conversation, frame)
+      followCostRows(conversation, reading.rows)
+    }, (error: unknown) => {
+      release()
+      // A cancelled read belongs to a conversation that went, an opening
+      // that ended or a newer read, none of which shows it.
+      if (signal.aborted)
+        return
+      conversation.cost = { status: 'failed', error: shownError(error) }
+    })
   }
 
   /**
    * A `cost` frame of `conversation`: held for the read on its way, added
    * when it follows the cost the page holds, dropped when the cost includes
    * it, and a reason to read the cost again when rows before it are
-   * missing. A page that holds no cost, its card closed or its read
-   * failed, ignores it.
+   * missing. A page that holds no cost, its read failed, ignores it.
    */
   function followCost(conversation: Conversation, frame: CostAddition): void {
     const reading = costReads.get(conversation.id)
@@ -1528,7 +1555,7 @@ export const useConversations = defineStore('conversations', () => {
     if (step === 'next')
       conversation.cost = { status: 'read', cost: addCost(conversation.cost.cost, frame) }
     else if (step === 'gap')
-      readCost(conversation)
+      readCostAgain(conversation)
   }
 
   /**
@@ -1544,7 +1571,7 @@ export const useConversations = defineStore('conversations', () => {
       return
     }
     if (conversation.cost?.status === 'read' && rows > conversation.cost.cost.rows)
-      readCost(conversation)
+      readCostAgain(conversation)
   }
 
   /** A child as the page holds it before its session says more, from its job. */
@@ -3291,9 +3318,9 @@ export const useConversations = defineStore('conversations', () => {
   }
 
   function stopAll(): void {
-    for (const reading of costReads.values())
+    // Each read leaves `costReads` as it is cancelled.
+    for (const reading of [...costReads.values()])
       reading.controller.abort()
-    costReads.clear()
     copies.clear()
     pendingChanges.value = []
     cache.clear()
@@ -3394,7 +3421,6 @@ export const useConversations = defineStore('conversations', () => {
     abortSubagent: (conversation: Conversation, id: string) =>
       action(conversation, (runtime) => runtime.abortSubagent(id)),
     showSubagents,
-    showCost,
     retryCost,
     /**
      * Whether the page has, or is opening, a session of the conversation,

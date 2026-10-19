@@ -4,9 +4,10 @@ import { pageLanguage } from '../i18n/text'
 import { t as shared } from '../locales/text'
 import Button from '../ui/Button.vue'
 import Fold from '../ui/Fold.vue'
+import FoldChevron from '../ui/FoldChevron.vue'
+import { ICON_PX } from '../ui/icon-metrics'
 import RequestIdLine from '../ui/RequestIdLine.vue'
 import SectionRow from '../ui/SectionRow.vue'
-import Segmented from '../ui/Segmented.vue'
 import { formatDollars } from '../ui/numbers'
 import { formatTokens } from '../ui/token-count'
 import CacheHitChart from './CacheHitChart.vue'
@@ -15,25 +16,27 @@ import {
   CHART_CALLS,
   hitRate,
   profileRows,
-  useChartAxis,
+  recentCalls,
 } from './context-cost'
 import { t } from './locales/text'
 
 /**
  * The context card's Cost section (`usage-and-quota.md` § A conversation's
  * cost): closed, the equivalent API price and the main conversation's cache
- * hit rate side by side; opened with the card's list, the price by kind of
- * token, the share of the profiles the conversation's workflow offers and
- * the chart of the main conversation's
- * cache hits. A figure that cannot be computed is left out with its label.
- * A read that failed says so under the caption, with its request's id and
- * Retry.
+ * hit rate side by side; opened by its caption, a disclosure of its own,
+ * the price by kind of token, the share of the profiles the conversation's
+ * workflow offers and the chart of the main conversation's recent cache
+ * hits. A figure that cannot be computed is left out with its label. A read
+ * that failed says so under the caption, with its request's id and Retry,
+ * and has nothing to open.
  */
 const props = defineProps<{
   state: CostState
-  /** Whether the card's list is open, which opens the section with it. */
+  /** Whether the section stands opened. */
   open: boolean
-  /** The call whose tip the chart shows without the pointer, as a gallery specimen pins it. */
+  /** The section is the card's first, with no divider above it. */
+  first?: boolean
+  /** The call, by its place among the conversation's, whose tip the chart shows without the pointer, as a gallery specimen pins it. */
   pinnedTip?: number | null
   /**
    * The names of the profiles the conversation's workflow offers now, whose
@@ -44,18 +47,20 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** Read the cost again after a read that failed. */
   retry: []
+  /** The caption was clicked, which opens or closes the section. */
+  toggle: []
 }>()
 
 /** The cost the section shows; none while it shows a failed read. */
 const cost = computed(() => (props.state.status === 'read' ? props.state.cost : null))
 
-const axis = useChartAxis()
-
 const price = computed(() => cost.value?.totals.price.total ?? null)
-const rate = computed(() => (cost.value ? hitRate(cost.value.calls) : null))
+/** The main conversation's recent calls, which the rate counts and the chart draws. */
+const recent = computed(() => recentCalls(cost.value?.calls ?? []))
+const rate = computed(() => (cost.value ? hitRate(recent.value.calls) : null))
 const percent = new Intl.NumberFormat(pageLanguage(), { style: 'percent', maximumFractionDigits: 0 })
-/** The chart and its switch show once the main conversation made enough calls to draw a line. */
-const charted = computed(() => (cost.value?.calls.length ?? 0) >= CHART_CALLS)
+/** The chart shows once the main conversation made enough calls to draw a line. */
+const charted = computed(() => recent.value.calls.length >= CHART_CALLS)
 
 /** The two figures of the closed section, each that can be computed. */
 const figures = computed(() => [
@@ -80,16 +85,26 @@ const largest = computed(() => Math.max(0, ...rows.value.map((row) => row.price)
 function share(price: number): string {
   return `${largest.value > 0 ? (price / largest.value) * 100 : 0}%`
 }
-
-const axes = computed(() => [
-  { value: 'requests' as const, label: t('context.cost.requests') },
-  { value: 'time' as const, label: t('context.cost.time') },
-])
 </script>
 
 <template>
-  <div class="border-t border-line" :class="open ? 'pb-2' : 'pb-1'">
-    <SectionRow class="text-caption font-medium text-fg-subtle">
+  <div :class="[first ? 'pt-1' : 'border-t border-line', cost && open ? 'pb-2' : 'pb-1']">
+    <!-- The caption is the section's disclosure, as the context window's header is. -->
+    <button
+      v-if="cost"
+      type="button"
+      :aria-expanded="open"
+      class="block w-full cursor-default text-left"
+      @click="emit('toggle')"
+    >
+      <SectionRow class="text-caption font-medium text-fg-subtle">
+        <span class="shrink-0">{{ t('context.cost.title') }}</span>
+        <template #end>
+          <FoldChevron :open="open" :size="ICON_PX.in20" />
+        </template>
+      </SectionRow>
+    </button>
+    <SectionRow v-else class="text-caption font-medium text-fg-subtle">
       <span class="shrink-0">{{ t('context.cost.title') }}</span>
     </SectionRow>
     <div v-if="state.status === 'failed'" class="px-3 pb-2 text-detail leading-4 text-fg-subtle">
@@ -122,7 +137,7 @@ const axes = computed(() => [
       </ul>
       <template v-if="rows.length">
         <div class="cost-caption px-3">
-          <span class="cost-caption-text text-caption font-medium text-fg-subtle">{{ t('context.cost.profiles') }}</span>
+          <span class="text-caption font-medium text-fg-subtle">{{ t('context.cost.profiles') }}</span>
         </div>
         <ul class="px-3">
           <li v-for="row in rows" :key="row.key" class="flex flex-col gap-[3px] pt-1 pb-[3px]">
@@ -138,14 +153,13 @@ const axes = computed(() => [
       </template>
       <template v-if="cost && rate !== null">
         <div class="cost-caption px-3">
-          <span class="cost-caption-text text-caption font-medium">
+          <span class="text-caption font-medium">
             <span class="text-fg-subtle">{{ t('context.cost.hitRate') }}</span>
             <span class="ml-1.5 tabular-nums text-fg-emphasis">{{ percent.format(rate) }}</span>
           </span>
-          <Segmented v-if="charted" v-model="axis" class="shrink-0" size="sm" :options="axes" />
         </div>
         <div v-if="charted" class="px-3">
-          <CacheHitChart :calls="cost.calls" :axis="axis" :pinned-tip="pinnedTip" />
+          <CacheHitChart :calls="recent.calls" :before="recent.before" :pinned-tip="pinnedTip" />
         </div>
       </template>
     </Fold>
@@ -189,22 +203,12 @@ const axes = computed(() => [
   min-height: 1.5rem;
 }
 
-/* A part's caption, with its switch at the row's end; a switch whose labels
-   do not fit beside the caption whole goes on a line of its own under it, at
-   the text's edge, and never truncates its labels. */
+/* A part's caption. */
 .cost-caption {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  column-gap: 0.75rem;
-  row-gap: 0.25rem;
   min-height: 1.75rem;
   padding-top: 0.5rem;
   padding-bottom: 0.125rem;
-}
-
-/* The caption takes the row's room, which puts a switch beside it at the end. */
-.cost-caption-text {
-  flex-grow: 1;
 }
 </style>

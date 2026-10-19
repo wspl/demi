@@ -108,7 +108,7 @@ const props = withDefaults(
     instructions?: readonly InstructionEntry[]
     /** The usage limits of the account the model runs on, which the context card shows; none on an API key. */
     limits?: UsageLimits | null
-    /** What the conversation cost, or the failure of its read, which the context card shows while the host holds it. */
+    /** What the conversation cost, or the failure of its read, which the host holds while the conversation is open and the context card shows. */
     cost?: CostState | null
     /** The names of the profiles the conversation's workflow offers now, which the cost's Profiles part shows. */
     costProfiles?: readonly string[]
@@ -188,8 +188,6 @@ const emit = defineEmits<{
   openInstruction: [entry: InstructionEntry]
   /** The host asks the vendor for the usage limits again: automatic when the card showed them, otherwise its Refresh usage button. */
   refreshLimits: [automatic: boolean]
-  /** The context card opened, so the host reads the conversation's cost, or closed. */
-  costShown: [shown: boolean]
   /** Read the cost again after a read that failed. */
   retryCost: []
   /** Files to attach; their capsules land where they were dropped, pasted or picked. */
@@ -763,7 +761,6 @@ function changeDraft(markdown: string, attachments: MessageCapsule[]): void {
             @compact="emit('compact')"
             @open-instruction="emit('openInstruction', $event)"
             @refresh-limits="emit('refreshLimits', $event)"
-            @cost-shown="emit('costShown', $event)"
             @retry-cost="emit('retryCost')"
           />
         </template>

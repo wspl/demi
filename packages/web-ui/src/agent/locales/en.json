@@ -354,8 +354,6 @@
       },
       "profiles": "Profiles",
       "mainConversation": "Main conversation",
-      "requests": "Requests",
-      "time": "Time",
       "request": "Request #{number}",
       "firstRequest": "First request",
       "afterCompaction": "After compaction",

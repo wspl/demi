@@ -229,7 +229,7 @@ function compact() {
   }
   productWould('Compact the Conversation')
 }
-/** What the conversation cost, which the context card shows while it is open, as the product reads it. */
+/** What the conversation cost, which the page holds while the conversation is open, as the product does. */
 const cardCost = useCardCost('profiles')
 const composer = ref<InstanceType<typeof SessionComposer>>()
 const uploads = new AttachmentUploadQueue()
@@ -721,7 +721,6 @@ onBeforeUnmount(() => {
     :instructions="demoInstructions"
     :cost="cardCost.cost.value"
     :cost-profiles="costProfiles"
-    @cost-shown="cardCost.shown"
     @retry-cost="cardCost.retry"
     :replaced="replacedVersion && { markdown: replacedVersion.text, fileNames: replacedVersion.files.map((file) => file.name) }"
     :draft-shown="shown"
