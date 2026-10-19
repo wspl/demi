@@ -387,6 +387,7 @@ open { from: 2999, edge: b_2999 } -> attach to the live tree
 | `clear_message_queue` | Remove every queued message | `queue` |
 | `abort` | Stop one thing ([Stop](runtime.md#stop)) | `abort_result`, in request order |
 | `abort_subagents`, `abort_subagent { subagentId }` | Stop subagents ([Abort](subagents.md#abort)) | `subagent` frames |
+| `show_subagents { ids }` | The children whose transcripts this connection shows ([Protocol](subagents.md#protocol)) | A `subagent_transcript_reset` for each child it adds |
 | `retry`, `resume`, `compact` | Run the action; `compact` takes `node`, the root when absent, so a subagent's context card compacts that child | `rejected` when the session is busy |
 | `shell_write { commandId, stdin }` | Write stdin to a running command | `shell_write_result` |
 | `shell_abort { commandId }` | Stop a running command | None; the command's `shell_output` shows its end |

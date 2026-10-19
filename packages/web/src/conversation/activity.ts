@@ -113,13 +113,14 @@ export function applyConversationEvent(
   } else if (event.type === 'subagents') {
     // Every child as the open's snapshot lists it, which the page takes
     // whole (`subagents.md` § Protocol). A running child's frames follow
-    // with its state and its latest page; a finished one keeps the
-    // transcript the page holds while its revision has not moved, and is
-    // read again when shown otherwise.
+    // with its state, and its latest page when the page shows it; any other
+    // keeps the transcript the page holds while its revision has not moved,
+    // and is read again when shown otherwise.
     const held = new Map(conversation.subagents.map((agent) => [agent.id, agent]))
     conversation.subagents = event.subagents.map((summary) => {
       const agent = held.get(summary.subagentId)
-      const current = agent !== undefined && (summary.phase === 'running' || agent.revision === summary.revision)
+      const streams = summary.phase === 'running' && conversation.shownSubagents.includes(summary.subagentId)
+      const current = agent !== undefined && (streams || agent.revision === summary.revision)
       return {
         ...subagentJobFields(summary),
         revision: summary.revision,

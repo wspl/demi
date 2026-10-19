@@ -145,6 +145,17 @@ const props = withDefaults(defineProps<{
   /** Reads a block whole for a row the page holds light (`web-api-conversations.md` § Light form); absent, no row is light. */
   readBlock?: BlockReader
   /**
+   * Reads the latest page of a subagent's transcript that the session does
+   * not send (`subagentsStreamed`), for its panel, which shows it loading
+   * meanwhile and a failure with Retry. Absent, the panel reads nothing.
+   */
+  readSubagentLatest?: (id: string) => Promise<void>
+  /**
+   * Whether the page has, or is opening, a session that sends a live
+   * child's transcript once its panel shows it (`subagents.md` § Protocol).
+   */
+  subagentsStreamed?: boolean
+  /**
    * The usage limits of the account a provider entry runs on, which a
    * child's context card in the Agents window shows; absent, it shows none.
    */
@@ -260,8 +271,14 @@ const emit = defineEmits<{
   readAfter: []
   /** Show the latest window, as the scroll-to-bottom button asks while another is shown. */
   showLatest: []
-  /** Read a page of a subagent's transcript, for its panel. */
-  readSubagent: [id: string, at: 'latest' | 'before']
+  /** Read the page of a subagent's transcript before the window its panel shows. */
+  readSubagent: [id: string]
+  /**
+   * The children whose transcripts the page shows, the whole set, at first
+   * and whenever it changes: the child the Agents window shows, none while
+   * it is closed (`subagents.md` § Protocol).
+   */
+  showSubagents: [ids: string[]]
   /** Compact in a child's context card, in the Agents window: that child's context. */
   compactSubagent: [id: string]
   /** A child's context card asks for the usage limits of the account it runs on, `account` of its entry `providerId`, again. */
@@ -559,6 +576,13 @@ provideMessageAgents(() => ({
     }
   },
 }))
+// The child the Agents window shows is the one whose transcript streams, as
+// a receipt's name and a followed link open it there.
+watch(
+  () => (agentsOpen.value ? activeSubagentId.value : null),
+  (id) => emit('showSubagents', id === null ? [] : [id]),
+  { immediate: true },
+)
 // A block in a subagent's transcript shows in the panel, on that subagent's tab.
 watch(
   () => props.reveal?.node,
@@ -855,7 +879,9 @@ watch(
             @abort="emit('abortSubagents')"
             @abort-agent="(id) => emit('abortSubagent', id)"
             :reveal="reveal?.node ? reveal : null"
-            @read="(id, at) => emit('readSubagent', id, at)"
+            :read-latest="readSubagentLatest"
+            :streamed="subagentsStreamed"
+            @read="(id) => emit('readSubagent', id)"
             @revealed="emit('revealed')"
             :usage-limits="usageLimits"
             @compact-agent="(id) => emit('compactSubagent', id)"

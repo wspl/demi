@@ -766,6 +766,13 @@ impl AgentSession {
         self.shared.read(|core| core.transcript.version())
     }
 
+    /// Reads the transcript's blocks and version where the session holds
+    /// them, for a reader that takes a part of them and would otherwise
+    /// copy the whole transcript.
+    pub fn read_transcript<R>(&self, read: impl FnOnce(&[Block], TranscriptVersion) -> R) -> R {
+        self.shared.read(|core| read(core.transcript.blocks(), core.transcript.version()))
+    }
+
     pub fn transcript(&self) -> TranscriptSnapshot {
         self.shared.read(|core| TranscriptSnapshot {
             blocks: core.transcript.blocks().to_vec(),

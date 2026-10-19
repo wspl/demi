@@ -181,6 +181,8 @@
     "closeTab": "Close Tab",
     "stopAll": "Stop All",
     "none": "No agents running",
+    "loading": "Loading agent…",
+    "loadFailed": "Couldn’t load this agent.",
     "completed": "Completed",
     "searchCompleted": "Search completed",
     "noneCompleted": "No completed subagents",

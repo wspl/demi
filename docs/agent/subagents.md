@@ -1198,12 +1198,25 @@ Subagent traffic for the whole tree travels on the conversation's socket,
 beside the root's frames ([Frame protocol](rendering.md#frame-protocol)). Each
 session's inference transcript is only its own transcript frames.
 
+A connection receives every child's `subagent` and `subagents` frames, which
+are small, but a child's transcript only while it shows that child: the page
+sends `show_subagents { ids }`, the children whose transcripts it shows, in
+its panel, an expanded receipt or a link it followed, and sends it again as
+that set changes. A page that shows no subagent receives none of their
+transcripts, so opening a conversation whose five children each hold
+megabytes of command output costs the root's latest page and five summaries. A
+live child's transcript comes from that reset when the page starts showing
+it; the page reads a child's latest page from the history route when the
+child is not live, or when the page opens no session that would send its
+reset, as for a conversation whose model is gone, whose children the record
+still calls running; and earlier pages of either from it as it scrolls.
+
 | Server frame | Fields | Sent |
 | --- | --- | --- |
 | `subagent` | `event` (`started`, `changed` or `closed`), `job` | When a child starts (spawn, resume, or restore), when its record changes, as when it moves to another directory, and when it closes |
 | `subagents` | `subagents`, every child's summary as the open's snapshot lists them | Each open, after the root's state |
-| `subagent_transcript_reset` | `subagentId`, `start`, `blocks` from that index on, `length`, `revision`, optional `failures` | After `started`, and for every live child when a page opens the conversation or syncs its transcript; it starts at the child's latest page ([Where a reset starts](rendering.md#where-a-reset-starts)) |
-| `subagent_transcript_patch` | `subagentId`, `patches`, `revision`, optional `failures` | When a child's transcript changes |
+| `subagent_transcript_reset` | `subagentId`, `start`, `blocks` from that index on, `length`, `revision`, optional `failures` | To a connection that shows the child: when it starts showing it, after `started` while it shows it, and when it syncs its transcript; it starts at the child's latest page ([Where a reset starts](rendering.md#where-a-reset-starts)) |
+| `subagent_transcript_patch` | `subagentId`, `patches`, `revision`, optional `failures` | To a connection that shows the child, when its transcript changes |
 
 A job describes one child:
 

@@ -1905,16 +1905,19 @@ pub struct Subagent {
 }
 
 /// Whether the call that started the node `nodes` names is on its parent's
-/// current path.
+/// current path. The unary `+` takes the TEXT affinity off `started_by`:
+/// with it, SQLite would apply that affinity to the indexed expression,
+/// which has none, and scan the whole `blocks_by_id` index for every node
+/// instead of searching it.
 const STARTED_ON_PATH: &str = "(nodes.started_by IS NULL OR EXISTS (
      SELECT 1 FROM blocks AS start INDEXED BY blocks_by_id CROSS JOIN path_runs AS run
        ON run.node_id = start.node_id AND start.idx >= run.first AND start.idx < run.first + run.length
-     WHERE json_extract(start.block, '$.id') = nodes.started_by AND start.node_id = nodes.parent_id
+     WHERE json_extract(start.block, '$.id') = +nodes.started_by AND start.node_id = nodes.parent_id
    ))";
 
-/// The subagents of the tree, in the order they started.
-pub fn subagents(connection: &Connection) -> Result<Vec<Subagent>, StorageError> {
-    let mut statement = connection.prepare(&format!(
+/// The query [`subagents`] runs.
+fn subagents_sql() -> String {
+    format!(
         "WITH RECURSIVE on_path (id) AS (
            SELECT id FROM nodes WHERE parent_id IS NULL
            UNION ALL
@@ -1923,7 +1926,12 @@ pub fn subagents(connection: &Connection) -> Result<Vec<Subagent>, StorageError>
          SELECT {NODE_COLUMNS}, json_extract(state, '$.model') AS model,
            {STARTED_ON_PATH} AS started_on_path, id IN (SELECT id FROM on_path) AS on_path
          FROM {NODES} WHERE parent_id IS NOT NULL AND number IS NOT NULL ORDER BY number"
-    ))?;
+    )
+}
+
+/// The subagents of the tree, in the order they started.
+pub fn subagents(connection: &Connection) -> Result<Vec<Subagent>, StorageError> {
+    let mut statement = connection.prepare(&subagents_sql())?;
     let mut rows = statement.query([])?;
     let mut nodes = Vec::new();
     while let Some(row) = rows.next()? {
@@ -2185,6 +2193,46 @@ pub(crate) mod tests {
             .unwrap()
             .map(|(node, _)| node);
         assert_eq!(found, Some(id("source")));
+    }
+
+    // A conversation's subagent list finds each child's start by the block
+    // id index: a scan of that index per child took a minute on a tree of
+    // 668 children over 178k blocks. The plan says which it does, whatever
+    // the machine's speed; a few dozen children check the answer as well.
+    #[tokio::test(flavor = "local")]
+    async fn the_subagent_list_searches_the_block_index_for_each_childs_start() {
+        let (tree, stores, _data) = store().await;
+        let blocks: Vec<(usize, Block)> = (0..400).map(|index| (index, user(&format!("u{index}")))).collect();
+        tree.create_node(record("root", None, 0), update(blocks, 400))
+            .await
+            .unwrap();
+        for number in 1..=40_u64 {
+            let mut child = record(&format!("child{number}"), Some("root"), number);
+            child.started_by = Some(BlockId::try_from(format!("u{}", number * 7)).unwrap());
+            tree.create_node(child, update(Vec::new(), 0)).await.unwrap();
+        }
+
+        let (listed, plan) = stores
+            .read(&conversation(), |connection| {
+                let listed = subagents(connection)?;
+                let mut explain = connection.prepare(&format!("EXPLAIN QUERY PLAN {}", subagents_sql()))?;
+                let plan = explain
+                    .query_map([], |row| row.get::<_, String>("detail"))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok::<_, StorageError>((listed, plan))
+            })
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(listed.len(), 40);
+        assert!(listed.iter().all(|child| child.started_on_path && child.on_path));
+        let starts: Vec<&String> = plan.iter().filter(|detail| detail.contains(" start ")).collect();
+        assert!(!starts.is_empty(), "{plan:#?}");
+        assert!(
+            starts.iter().all(|detail| detail.starts_with("SEARCH start USING INDEX blocks_by_id")),
+            "{plan:#?}"
+        );
     }
 
     #[tokio::test(flavor = "local")]

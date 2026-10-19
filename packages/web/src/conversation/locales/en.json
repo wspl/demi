@@ -14,6 +14,7 @@
     "readDraft": "Could Not Read the Draft",
     "readSaved": "Could Not Read the Saved Messages",
     "readHosts": "Could Not Read the Hosts",
+    "readAgents": "Could Not Read the Agents",
     "updateConversations": "Could Not Update Conversations",
     "deleteConversations": "Could Not Delete Conversations",
     "renameConversation": "Could Not Rename the Conversation",

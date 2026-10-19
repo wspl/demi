@@ -325,6 +325,34 @@ test('each subagent transcript follows the same revision rule', () => {
   expect(h.sent).toEqual([{ type: 'sync_transcript' }])
 })
 
+// A child the page stops showing streams no more (`subagents.md`
+// § Protocol); a frame of it already on its way is dropped, so it neither
+// writes the transcript the page let go of nor asks for every transcript
+// again, and showing the child again takes its next reset.
+test('a child the page stops showing drops its frames on their way until its reset', () => {
+  const h = harness()
+  h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [], version: { epoch: 'e', revision: 0 } })
+  h.client.showSubagents(['child'])
+  h.receive({ type: 'subagent_transcript_reset', subagentId: 'child', start: 0, length: 0, blocks: [], revision: 3 })
+  h.client.showSubagents([])
+  h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [], revision: 4 })
+  h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [], revision: 6 })
+  h.client.showSubagents(['child'])
+  h.receive({ type: 'subagent_transcript_reset', subagentId: 'child', start: 0, length: 0, blocks: [], revision: 7 })
+  h.receive({ type: 'subagent_transcript_patch', subagentId: 'child', patches: [], revision: 8 })
+
+  expect(h.sent).toEqual([
+    { type: 'show_subagents', ids: ['child'] },
+    { type: 'show_subagents', ids: [] },
+    { type: 'show_subagents', ids: ['child'] },
+  ])
+  expect(h.events.filter((event) => event.type.startsWith('subagent_transcript')).map((event) => event.type)).toEqual([
+    'subagent_transcript_reset',
+    'subagent_transcript_reset',
+    'subagent_transcript_patch',
+  ])
+})
+
 test('closed clears the transcript, the version and the pending steers, and ends the actions', async () => {
   const h = harness()
   h.receive({ type: 'transcript_reset', start: 0, length: 1, blocks: [text('a', 'one')], version: { epoch: 'e', revision: 1 } })

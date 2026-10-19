@@ -181,6 +181,8 @@
     "closeTab": "关闭标签页",
     "stopAll": "全部停止",
     "none": "没有运行中的智能体",
+    "loading": "正在加载智能体…",
+    "loadFailed": "无法加载此智能体。",
     "completed": "已完成",
     "searchCompleted": "搜索已完成",
     "noneCompleted": "没有已完成的子智能体",

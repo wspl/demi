@@ -181,6 +181,8 @@
     "closeTab": "탭 닫기",
     "stopAll": "모두 중지",
     "none": "실행 중인 에이전트 없음",
+    "loading": "에이전트를 불러오는 중…",
+    "loadFailed": "이 에이전트를 불러올 수 없습니다.",
     "completed": "완료됨",
     "searchCompleted": "완료된 항목 검색",
     "noneCompleted": "완료된 서브에이전트 없음",

@@ -181,6 +181,8 @@
     "closeTab": "タブを閉じる",
     "stopAll": "すべて停止",
     "none": "実行中のエージェントはありません",
+    "loading": "エージェントを読み込んでいます…",
+    "loadFailed": "このエージェントを読み込めませんでした。",
     "completed": "完了済み",
     "searchCompleted": "完了したものを検索",
     "noneCompleted": "完了したサブエージェントはありません",

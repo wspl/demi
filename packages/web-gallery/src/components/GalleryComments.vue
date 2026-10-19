@@ -103,7 +103,7 @@ onMounted(async () => {
 
 <template>
   <div :data-comments-seed="seed" class="h-full">
-    <ChatSession
+    <ChatSession @show-subagents="() => {}"
       :conversation="session"
       :files="messageFiles()"
       :commenting="commenting"

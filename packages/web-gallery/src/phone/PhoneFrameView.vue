@@ -287,7 +287,7 @@ onMounted(async () => {
           @sign-out="productWould('Sign Out')"
         />
       </template>
-      <ChatSession
+      <ChatSession @show-subagents="() => {}"
         :conversation="session"
         has-provider
         :aside-open="work.open.value"
