@@ -382,6 +382,36 @@ async fn kill_ends_a_job_whose_utility_a_system_call_holds() {
     std::mem::ManuallyDrop::into_inner(shell).shutdown_background();
 }
 
+/// A utility reading a FIFO ends once its writer closes it, as `cat < f`
+/// does in bash: here a background list writes `y` into the FIFO, and the
+/// job prints `y`, then `after`, and ends. Before, on macOS, `cat` waited
+/// for input with `poll()`, which never reports a FIFO's writer closing, and
+/// the job never ended; the `demi` builtins read their input the same way.
+/// Well under a second.
+#[cfg(unix)]
+#[tokio::test]
+async fn a_utility_reading_a_fifo_ends_when_its_writer_closes_it() {
+    let root = tempfile::tempdir().unwrap();
+    let fifo = std::ffi::CString::new(root.path().join("f").to_str().unwrap()).unwrap();
+    assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+    let scope = Scope::new(CancellationToken::new(), None);
+    let mut job = Job::start(
+        "{ printf y; } > f & cat < f; printf after".into(),
+        root.path().into(),
+        crate::home(root.path()),
+        false,
+        scope.clone(),
+        &ShellRuntime::current(),
+    )
+    .await
+    .unwrap();
+    output_until(&mut job, &mut String::new(), "yafter").await;
+    let exit = tokio::time::timeout(Duration::from_secs(60), job.wait())
+        .await
+        .expect("cat ends at the FIFO's end");
+    assert_eq!(exit.code, Some(0));
+}
+
 /// A walk that prints nothing checks the job's cancellation at each entry
 /// it reads, so a stop ends it at its next entry. Before, `find`, `rg`,
 /// `grep -r` and `du` walked on, deaf to their stop, until they had read
