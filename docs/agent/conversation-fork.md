@@ -65,10 +65,13 @@ no source runtime or persistence handle. The backend gives the seed the
 model selection of the source's record, which the Fork operation records, so
 the destination's root and its record start with the same one.
 
-For a live source, the session captures and copies the selected prefix in one
-step, before any preparation or persistence waits. For a stored source, the
-server reads one committed checkpoint through the tree store; the source must
-be a root. Both paths use the same prefix preparation. Preparation never aborts
+For a live source, the session fixes the selected point at once, then waits
+for a save it has in progress, so the database holds every block up to that
+point, and the prefix's rows are copied inside the database in one
+transaction; the prefix never passes through memory
+([What a session holds](runtime.md#what-a-session-holds)). For a stored
+source, the server reads one committed checkpoint through the tree store;
+the source must be a root. Both paths use the same prefix preparation. Preparation never aborts
 the source, waits for its whole turn to finish, or uses the source's
 tree-mutation reservation. A racing history rewrite either precedes the
 capture, in which case the target is validated against the rewritten history,
