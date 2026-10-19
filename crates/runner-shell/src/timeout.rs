@@ -7,9 +7,10 @@
 
 use std::{ffi::OsString, future::Future, io::Write, sync::Arc, time::Duration};
 
-use brush_core::traps::TrapSignal;
-
-use crate::scope::{Scope, UtilityControl};
+use crate::{
+    scope::{Scope, UtilityControl},
+    signals,
+};
 
 /// The name `timeout` goes by, as a builtin and as a utility's child
 /// program.
@@ -97,7 +98,7 @@ const LONG: &[(&str, bool)] = &[
 /// reads them: options end at the first operand, short options may come
 /// together, and a long option may be any unambiguous prefix of its name.
 pub(crate) fn parse(args: &[String]) -> Parsed {
-    let mut signal = libc::SIGTERM;
+    let mut signal = signals::TERM;
     let mut kill_after = None;
     let mut preserve_status = false;
     let mut foreground = false;
@@ -257,19 +258,11 @@ fn duration(text: &str) -> Result<Option<Duration>, Parsed> {
 }
 
 /// A SIGNAL as GNU reads it: a number, or a name in any case with or
-/// without `SIG`.
+/// without `SIG`, which `EXIT` is not.
 fn signal_number(text: &str) -> Result<i32, Parsed> {
-    let parsed = if text.bytes().all(|byte| byte.is_ascii_digit()) {
-        text.parse::<i32>()
-            .ok()
-            .and_then(|number| TrapSignal::try_from(number).ok())
-    } else {
-        TrapSignal::try_from(text)
-            .ok()
-            .filter(|signal| matches!(signal, TrapSignal::Signal(_)))
-    };
-    parsed
-        .and_then(|signal| i32::try_from(signal).ok())
+    let numeric = text.bytes().all(|byte| byte.is_ascii_digit());
+    signals::number(text)
+        .filter(|&number| numeric || number != 0)
         .ok_or_else(|| Parsed::Usage(Some(format!("‘{text}’: invalid signal"))))
 }
 
@@ -304,7 +297,9 @@ pub(crate) fn not_run(command: &str, reason: &str, not_found: bool, stderr: &mut
 /// own, and stops that part as the options say once the time runs out.
 /// Gives `command`'s own end, or the status a timeout gives: `124`, or `137`
 /// once `KILL` was sent, or with `--preserve-status` COMMAND's own, 128 plus
-/// the signal that stopped it when it gave none.
+/// the signal that stopped it when it gave none. On Windows, where nothing
+/// catches a signal, it is always 128 plus the signal, the status COMMAND
+/// would give on Unix (`runner.md` § Builtins that act on a process).
 pub(crate) async fn supervise<E>(
     options: &Options,
     scope: &Scope,
@@ -312,13 +307,10 @@ pub(crate) async fn supervise<E>(
     stderr: &mut impl Write,
 ) -> Result<u8, E> {
     tokio::pin!(command);
-    let kill = libc::SIGKILL;
+    let kill = signals::KILL;
     let mut send = |signal: i32| {
         if options.verbose {
-            let name = TrapSignal::try_from(signal).map_or_else(
-                |_| signal.to_string(),
-                |signal| signal.as_str().trim_start_matches("SIG").to_owned(),
-            );
+            let name = signals::name(signal).unwrap_or_else(|| signal.to_string());
             // The signal goes whether or not standard error takes the line.
             let _unwritten = writeln!(
                 stderr,
@@ -357,9 +349,11 @@ pub(crate) async fn supervise<E>(
         return Ok(TIMED_OUT);
     }
     match end {
-        Ok(status) => Ok(status),
+        // On Windows a signal but 0 ended COMMAND: a process its Job
+        // Object ended gives the status that ending set, not the signal's.
+        Ok(status) if cfg!(unix) || options.signal == 0 => Ok(status),
         // COMMAND's shell work ended at the signal and gave no status.
-        Err(_) => Ok(128 + options.signal as u8),
+        _ => Ok(128 + options.signal as u8),
     }
 }
 

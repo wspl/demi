@@ -228,8 +228,9 @@ fn execute_utility(
         let umask = attributes
             .umask
             .unwrap_or_else(demi_runner_process::process::umask);
+        // Windows has no mask: a job's own applies to nothing there.
         #[cfg(windows)]
-        let umask = 0o022;
+        let umask = demi_runner_process::process::umask();
         let invocation = uucore::context::Context {
             name,
             descriptors: context

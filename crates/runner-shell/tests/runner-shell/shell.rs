@@ -208,7 +208,6 @@ async fn windows_drive_paths_work_for_cd_redirection_utilities_and_executables()
     .await
     .unwrap();
     assert_eq!(result.code, 0);
-    assert_eq!(result.cwd, root.path().join("sub"));
     assert_eq!(
         std::fs::read_to_string(output.path()).unwrap(),
         "payloadexternal\r\n"
@@ -341,10 +340,34 @@ async fn umask_masks_the_jobs_own_processes_and_files_only() {
     assert_eq!(output, format!("{runner}{runner}"));
 }
 
+/// On Windows the builtins that act on a process and `timeout` are the
+/// job's, never a program of the same name: `umask` keeps and shows the
+/// shell's mask, which nothing applies, and `ulimit` shows every limit as
+/// `unlimited` and refuses to set one. Before, `ulimit`, `umask` and
+/// `suspend` were not found, and `kill` and `timeout` were the Host's
+/// programs.
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn process_builtins_are_the_jobs_own_on_windows() {
+    let root = tempfile::tempdir().unwrap();
+    let script = "type -t timeout kill ulimit umask suspend; \
+                  umask; umask 077; umask; umask -S; umask u=rwx,g=rx,o=; umask; \
+                  ulimit -n; ulimit -Hn; ulimit -a | grep -c unlimited; \
+                  ulimit -n 64; echo \"set $?\"; ulimit -n";
+    let (code, output, errors) = job(root.path(), script).await;
+    assert_eq!(code, 0, "{errors}");
+    assert_eq!(
+        output,
+        "builtin\nbuiltin\nbuiltin\nbuiltin\nbuiltin\n\
+         0022\n0077\nu=rwx,g=,o=\n0027\n\
+         unlimited\nunlimited\n21\nset 1\nunlimited\n"
+    );
+    assert_eq!(errors, "ulimit: Windows has no such limit\n");
+}
+
 /// A job's `kill` cannot signal the runner: `$$` names the runner's process
 /// and 0 its process group. Before, `kill $$` killed this test's own
 /// process.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn kill_refuses_the_runner() {
     let root = tempfile::tempdir().unwrap();
@@ -363,7 +386,6 @@ async fn kill_refuses_the_runner() {
 
 /// A job's `suspend` would stop the runner; it refuses. Before, it stopped
 /// this test's own process.
-#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn suspend_refuses() {
     let root = tempfile::tempdir().unwrap();

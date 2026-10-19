@@ -434,6 +434,14 @@ pub fn umask() -> u32 {
     })
 }
 
+/// Windows has no mask (`runner.md` § Builtins that act on a process): a
+/// job's shell shows `022`, the mask a Unix runner most often has, until
+/// its `umask` sets another, and nothing applies either.
+#[cfg(windows)]
+pub fn umask() -> u32 {
+    0o022
+}
+
 /// Gives a process the runner starts its attributes before it runs its
 /// program: the open-file limits the runner was started with, the ones it
 /// would have from a terminal (`runner.md` § Load), and what its job's
@@ -768,6 +776,72 @@ pub fn signal_target(target: i32, signal: i32) -> io::Result<()> {
         (true, _) => system::kill_process_group(pid, named()?),
     };
     sent.map_err(io::Error::from)
+}
+
+/// Windows has no signals (`runner.md` § Builtins that act on a process):
+/// signal 0 asks whether the process `target` runs, and any other ends it
+/// with `TerminateProcess` and the exit status 128 plus the signal, the
+/// status a shell gives a process that signal ended on Unix. A negative
+/// target, a process group on Unix, is `InvalidInput`, as Windows has no
+/// process groups; a target no process has is `NotFound`, worded as
+/// kill(2)'s `ESRCH`.
+#[cfg(windows)]
+pub fn signal_target(target: i32, signal: i32) -> io::Result<()> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::{
+        Foundation::{ERROR_ACCESS_DENIED, ERROR_INVALID_PARAMETER, STILL_ACTIVE},
+        System::Threading::{
+            GetExitCodeProcess, OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
+            PROCESS_TERMINATE, TerminateProcess,
+        },
+    };
+    let no_such_process = || io::Error::new(io::ErrorKind::NotFound, "No such process");
+    let Ok(pid) = u32::try_from(target) else {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Windows has no process groups",
+        ));
+    };
+    let access = if signal == 0 {
+        PROCESS_QUERY_LIMITED_INFORMATION
+    } else {
+        PROCESS_TERMINATE
+    };
+    // SAFETY: OpenProcess takes no pointers.
+    let handle = unsafe { OpenProcess(access, 0, pid) };
+    if handle.is_null() {
+        let error = io::Error::last_os_error();
+        return Err(match error.raw_os_error().map(|code| code as u32) {
+            Some(ERROR_INVALID_PARAMETER) => no_such_process(),
+            Some(ERROR_ACCESS_DENIED) => {
+                io::Error::new(io::ErrorKind::PermissionDenied, "Operation not permitted")
+            }
+            _ => error,
+        });
+    }
+    // SAFETY: the handle OpenProcess just returned is open and nothing else
+    // owns it; `process` closes it when it drops.
+    let process = unsafe { OwnedHandle::from_raw_handle(handle) };
+    if signal == 0 {
+        let mut code = 0;
+        // SAFETY: `process` is a live handle with query access, and `code`
+        // outlives the call.
+        if unsafe { GetExitCodeProcess(process.as_raw_handle(), &mut code) } == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        // A process that ended but whose handle another holds still opens.
+        return if code == STILL_ACTIVE as u32 {
+            Ok(())
+        } else {
+            Err(no_such_process())
+        };
+    }
+    let status = 128 + signal.unsigned_abs();
+    // SAFETY: `process` is a live handle with terminate access.
+    if unsafe { TerminateProcess(process.as_raw_handle(), status) } == 0 {
+        return Err(io::Error::last_os_error());
+    }
+    Ok(())
 }
 
 /// Sends signal number `signal` to the process group `group`, as a stop

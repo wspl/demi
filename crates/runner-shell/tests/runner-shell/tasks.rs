@@ -5,12 +5,13 @@
 //! a task, with GNU's statuses; `disown` and `nohup` keep a task in its job,
 //! which names the tasks that outlive its script.
 
+#[cfg(unix)]
 use demi_runner_process::job_shell::ShellJob;
+#[cfg(unix)]
 use demi_runner_protocol::wire::Signal;
-use demi_runner_shell::{
-    ShellRuntime,
-    testing::{Job, Scope, ShellOptions, execute},
-};
+#[cfg(unix)]
+use demi_runner_shell::{ShellRuntime, testing::Job};
+use demi_runner_shell::testing::{Scope, ShellOptions, execute};
 use std::{fs, path::Path, time::Duration};
 use tokio_util::sync::CancellationToken;
 
@@ -21,6 +22,9 @@ async fn job(root: &Path, script: &str) -> (u8, String, String) {
     let error = tempfile::NamedTempFile::new().unwrap();
     let mut env = super::home(root);
     env.insert("PATH".into(), "/usr/bin:/bin".into());
+    // Windows' own programs, such as PowerShell, need it to start.
+    #[cfg(windows)]
+    env.insert("SystemRoot".into(), std::env::var("SystemRoot").unwrap());
     let result = tokio::time::timeout(
         Duration::from_secs(60),
         execute(
@@ -47,6 +51,7 @@ async fn job(root: &Path, script: &str) -> (u8, String, String) {
 }
 
 /// Waits until `pid` is gone; a hang guard of 60 s.
+#[cfg(unix)]
 async fn gone(pid: i32) {
     tokio::time::timeout(Duration::from_secs(60), async {
         while unsafe { libc::kill(pid, 0) } == 0 {
@@ -187,6 +192,95 @@ async fn timeout_stops_its_command_with_gnus_statuses() {
             "{script}"
         );
     }
+}
+
+/// On Windows, where a process has no signals, `kill` and `timeout` end
+/// what they would signal and give the status that signal gives on Unix: a
+/// task's id ends the task's shell work and its Job Object's processes, a
+/// process ID ends that process, and a negative process group ID fails.
+/// Before, `kill` was Git's `kill.exe`, which knows no task id, and
+/// `timeout` was Windows' `timeout.exe`, which waits for a key. About 0.3 s.
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn kill_and_timeout_end_what_they_signal_with_unix_statuses_on_windows() {
+    let root = tempfile::tempdir().unwrap();
+    let ping = format!(
+        "{}/System32/PING.EXE",
+        std::env::var("SystemRoot").unwrap().replace('\\', "/")
+    );
+    let mut outside = std::process::Command::new(&ping)
+        .args(["-n", "60", "127.0.0.1"])
+        .stdout(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+    let pid = outside.id();
+    let script = format!(
+        "sleep 30 & kill $!; wait $!; echo \"term $?\"; \
+         \"{ping}\" -n 60 127.0.0.1 > /dev/null & kill -9 $!; wait $!; echo \"kill $?\"; \
+         sleep 30 & kill -s USR1 $!; wait $!; echo \"usr1 $?\"; \
+         kill -0 {pid}; echo \"alive $?\"; kill {pid}; echo \"process $?\"; \
+         kill -- -{pid}; echo \"group $?\"; \
+         timeout 0.1 sleep 5; echo \"timeout $?\"; \
+         timeout -s KILL 0.1 \"{ping}\" -n 60 127.0.0.1 > /dev/null; echo \"killed $?\"; \
+         timeout --preserve-status 0.1 \"{ping}\" -n 60 127.0.0.1 > /dev/null; echo \"preserved $?\"; \
+         timeout 5 echo hi; echo \"ran $?\"; \
+         echo 5 | xargs timeout 0.1 sleep; echo \"xargs $?\""
+    );
+    let (code, output, errors) = job(root.path(), &script).await;
+    // Reaped whether or not `kill` ended it, so no process is left.
+    let _killed = outside.kill();
+    let ended = outside.wait().unwrap();
+    assert_eq!(code, 0, "{errors}");
+    assert_eq!(
+        output,
+        "term 143\nkill 137\nusr1 138\nalive 0\nprocess 0\ngroup 1\n\
+         timeout 124\nkilled 137\npreserved 143\nhi\nran 0\nxargs 123\n",
+        "{errors}"
+    );
+    assert_eq!(ended.code(), Some(143));
+    assert_eq!(
+        errors,
+        format!("kill: (-{pid}) - Windows has no process groups\n")
+    );
+}
+
+/// On Windows `kill` of a task and a `timeout` that runs out end the whole
+/// process tree of what they stop, every process of its Job Objects: here a
+/// program the task's program started, which killing that program alone
+/// would leave running. The grandchild writes its process ID once it runs;
+/// the script then waits until that process is gone, which within the
+/// hang guard it is only if the Job Object was ended. About 4 s: two
+/// PowerShell starts, and `timeout`'s 3 s, which must outlast PowerShell's
+/// start so that it runs out once the grandchild runs.
+#[cfg(windows)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn kill_and_timeout_end_a_tasks_whole_process_tree_on_windows() {
+    let root = tempfile::tempdir().unwrap();
+    let system = std::env::var("SystemRoot").unwrap().replace('\\', "/");
+    let powershell = format!("{system}/System32/WindowsPowerShell/v1.0/powershell.exe");
+    // A program that starts another, writes its ID to the file named as its
+    // argument, and waits for it: ping lasts two minutes, past the guard.
+    fs::write(
+        root.path().join("tree.ps1"),
+        "param($out)\r\n\
+         $p = Start-Process -FilePath \"$env:SystemRoot\\System32\\PING.EXE\" \
+         -ArgumentList '-n','120','127.0.0.1' -PassThru -WindowStyle Hidden\r\n\
+         Set-Content -Path $out -Value $p.Id -Encoding ascii -NoNewline\r\n\
+         Wait-Process -Id $p.Id\r\n",
+    )
+    .unwrap();
+    let tree = format!("\"{powershell}\" -NoProfile -ExecutionPolicy Bypass -File tree.ps1");
+    let script = format!(
+        "{tree} killed & until [ -s killed ]; do sleep 0.01; done; \
+         kill $!; wait $!; echo \"task $?\"; \
+         g=$(cat killed); until ! kill -0 $g 2>/dev/null; do sleep 0.01; done; echo \"tree gone\"; \
+         timeout 3 eval '{tree} timed & until [ -s timed ]; do sleep 0.01; done; wait'; \
+         echo \"timeout $?\"; \
+         g=$(cat timed); until ! kill -0 $g 2>/dev/null; do sleep 0.01; done; echo \"tree gone\""
+    );
+    let (code, output, errors) = job(root.path(), &script).await;
+    assert_eq!(code, 0, "{errors}");
+    assert_eq!(output, "task 143\ntree gone\ntimeout 124\ntree gone\n", "{errors}");
 }
 
 /// Starts `script` as the runner starts a job, with the system's programs

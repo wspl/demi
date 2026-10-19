@@ -1374,6 +1374,22 @@ it is made in.
 | `kill` | Signals any process but the runner, and a background task by its id ([Background tasks and timeouts](#background-tasks-and-timeouts)). `$$` is the runner's process ID and 0 its process group, so `kill $$` and `kill 0` fail with a message. |
 | `suspend`, `fg` | Fail: a job has no job control, as a bash script has none, and `suspend` would stop the runner. |
 
+These builtins and `timeout` are the job's on Windows too, never a program
+of the same name the Host has, such as Windows' own `timeout.exe`, which
+waits for a key press, or Git's `kill.exe`, which knows no task id. A
+Windows process has no signals, so there:
+
+- `kill` and `timeout` end what they would signal: a task's id ends the
+  task's shell work and every process of its Job Objects, and a process ID
+  ends that process. Every signal name and number is accepted, numbered as
+  on Linux, and the status is 128 plus that number, `143` for `TERM` and
+  `137` for `KILL`, so a script tests the same status as on Linux. A negative
+  process group ID fails, as Windows has no process groups.
+- `umask` sets and shows the shell's mask, `022` until a job sets one, which
+  nothing applies, as Windows has no mask.
+- `ulimit` shows every limit as `unlimited`, and setting one fails with
+  `ulimit: Windows has no such limit` and status 1, changing nothing.
+
 A job's limits apply to its processes only: its builtins and standard
 utilities run in the runner, with the runner's limits. The other builtins act
 on the shell alone already: `cd` and the directory stack, `trap`, which
