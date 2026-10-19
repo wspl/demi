@@ -33,7 +33,7 @@ httpdate = "1"
 indexmap = { version = "2", features = ["serde"] }
 jiff = { workspace = true, features = ["serde"] }
 regex = "1"
-reqwest = { workspace = true, features = ["rustls", "stream"] }
+reqwest = { workspace = true, features = ["form", "rustls", "stream"] }
 semver.workspace = true
 serde.workspace = true
 serde_json.workspace = true

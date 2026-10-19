@@ -26,7 +26,7 @@ pub use server::{
 pub use transcript::{
     BlockVersions, LIGHT_INPUT_BYTES, PAGE_BYTES, PageAt, TranscriptPatch, TranscriptVersion, Versions,
     index_u32, latest_page_start, latest_page_start_within, light,
-    light_bytes, page, requests, reset_start,
+    least_light_bytes, light_bytes, page, requests, reset_start,
 };
 
 use demi_shared_types::DecodeError;
