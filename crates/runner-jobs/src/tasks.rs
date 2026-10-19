@@ -628,7 +628,10 @@ impl JobConfig {
                 let stream = futures_util::stream::poll_fn(move |cx| {
                     receiver.poll_recv(cx).map(|bytes| bytes.map(Ok))
                 });
-                let result = pipes.put(&reference.url, stream, &cancel).await;
+                // A stream pipe: what the job prints must reach the backend
+                // as it prints it, however long it runs (`runner.md` § Host
+                // operations).
+                let result = pipes.stream(&reference.url, stream, &cancel).await;
                 report_pipe(&output, reference.id, result, &shutdown).await;
             });
             sender

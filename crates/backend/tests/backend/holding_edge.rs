@@ -55,7 +55,6 @@ impl HoldingEdge {
         self.cut.cancel();
     }
 
-    /// How many pipe uploads the edge carried so far.
     /// How many of the pipe uploads the edge carried hold `bytes`.
     pub fn pipe_uploads_of(&self, bytes: &[u8]) -> usize {
         let uploads = self.pipe_uploads.lock().unwrap();

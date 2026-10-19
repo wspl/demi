@@ -561,7 +561,9 @@ which the request that names it decides:
   /api/pipes/:id` on its pooled connection.
 - A **stream pipe** carries bytes that must arrive as they are written, for
   as long as they flow: the output of a service stream
-  ([Service streams](#service-streams)).
+  ([Service streams](#service-streams)), and the standard input and output
+  a job or a command's call passes on while it runs, such as what
+  `demi host shell` prints from another Host.
   The runner sends it over a WebSocket it opens at `/api/pipes/:id`, its
   bytes in binary messages and its end in the close frame. A TLS edge in
   front of the backend, such as Cloudflare's, holds a request's body until it

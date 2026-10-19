@@ -324,9 +324,9 @@ async fn a_relayed_stdout_that_breaks_ends_the_call_with_its_cause() {
 }
 
 /// A backend whose pipe `out` answers a `GET` with `stdout` in data frames
-/// and its end, and whose pipe `in` refuses a `PUT`, as the backend answers
-/// the upload of a call's input once the call ended. `serving` hears once
-/// the `GET` arrived.
+/// and its end, and whose pipe `in` refuses its stream pipe's handshake, as
+/// the backend answers the call's input once the call ended. `serving` hears
+/// once the `GET` of `out` arrived.
 async fn slow_call_pipes(stdout: Vec<u8>, serving: tokio::sync::oneshot::Sender<()>) -> String {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -361,7 +361,7 @@ async fn slow_call_pipes(stdout: Vec<u8>, serving: tokio::sync::oneshot::Sender<
                     let _ = socket.write_all(&frames).await;
                 });
             } else {
-                assert!(head.starts_with(b"PUT /api/pipes/in "));
+                assert!(head.starts_with(b"GET /api/pipes/in "), "{}", String::from_utf8_lossy(&head));
                 let refusal = "pipe failed: rpc call ended";
                 let answer = format!(
                     "HTTP/1.1 409 Conflict\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{refusal}",
