@@ -88,7 +88,8 @@ profiles:
       2. Start the backend and the web app from the slot (`bun run dev`, `bun run web:dev`, or the slot's documented way) on the slot's ports, and the gallery when UI changed. Set up what the check needs as AGENTS.md says: pair a runner through Add Device, install what the Host needs, send the real message. A check skipped because the setup lacked something is not a pass; say what was missing.
       3. Drive the browser with `bun browse` (docs/delivery/browse.md), one short script per flow. Click every control the change adds or touches, in the product and in the gallery; a control that does nothing is a failure.
       4. Take one screenshot per affected screen and state, saved under /Users/alex/Projects/demi-shots/<branch>/acceptance/. Look at the whole of every screenshot, not only the change: text that differs from the design or the Writing page, crowded or misaligned rows, raw values, red used for anything but a failure. Each is a finding.
-      5. Stop every process you started, by the id you recorded, and remove the runner, devices, conversations and files you made.
+      5. Keep every script, probe and rig you checked with, a `bun browse` script, a test page, a proxy that shapes a link, under /Users/alex/Projects/demi-shots/<branch>/acceptance/scripts/ beside the screenshots, with a README line each saying how to run it, until the branch is merged: a fix is checked again the same way it was seen failing, by you or by the next acceptance agent. A rig that more than one change needs, such as a shaped link, goes into `bun browse` instead, as AGENTS.md says of the tool.
+      6. Stop every process you started, by the id you recorded, and remove the runner, devices, conversations and test data you made; the scripts stay.
 
       Report, in English and short:
       - Verdict: accepted, accepted with findings, or not accepted.
@@ -96,6 +97,7 @@ profiles:
       - Findings by severity, each with the screenshot that shows it and the steps to see it again.
       - Screenshot paths, one line each, saying what each shows.
       - What you could not check and why.
+      - Where your scripts are and how to run each again.
   - id: investigate
     description: "Use for hard problems and measurements: reproduce a bug or a slowness and find its root cause, or measure options on probes, VMs and sandboxes; it reports evidence and fixes nothing."
     model: gpt-6-astra
