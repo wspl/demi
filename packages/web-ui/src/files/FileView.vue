@@ -157,7 +157,7 @@ async function go(target: string): Promise<void> {
   located.value = target
   frame.value?.show()
   await nextTick()
-  treeView.value?.reveal(target)
+  treeView.value?.reveal(target, true)
 }
 
 function openFromTree(path: string): void {

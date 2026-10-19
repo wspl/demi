@@ -43,9 +43,9 @@ import { DEFAULT_SORT, sortEntries } from './file-browser-state'
  * `Tree`. Each unfolded directory shows its listing as the source keeps it:
  * one unfolded again shows at once, and one read again replaces its rows in
  * place, the folds staying. A click on a directory folds or unfolds it, a
- * click on a file asks the host to open it. The selected row's ancestors unfold on their own so it is
- * always in view, and a row the host reveals is scrolled to as well, once
- * its directory's listing has put it in. A directory being listed spins at
+ * click on a file asks the host to open it. The selected row is followed:
+ * the folders above it unfold in order as their listings land, and its row
+ * is brought into view once it is in (`follow`). A directory being listed spins at
  * its row's end the first time; one that could not be listed, or listed
  * again, wears a red dot on its icon and tells why on hover. The control at
  * the caption's end lists every open directory again, turning while they
@@ -166,44 +166,74 @@ function toggle(path: string): void {
   }
 }
 
-/** Unfolds the root and every directory from it down to `path`'s own directory. */
-function unfoldTo(path: string | null): void {
-  const root = normalizePath(props.root)
-  const target = path ? normalizePath(path) : null
-  open(root)
-  if (!target || !target.startsWith(`${root}/`)) {
-    return
-  }
-  let dir = parentPath(target)
-  const ancestors: string[] = []
-  while (dir.startsWith(root) && dir !== root) {
-    ancestors.push(dir)
-    dir = parentPath(dir)
-  }
-  for (const ancestor of ancestors.reverse()) {
-    open(ancestor)
-  }
+/** Whether `path` is under the tree's root, its rows' place. */
+function inTree(path: string, root: string): boolean {
+  return root === '/' ? path !== '/' : path.startsWith(`${root}/`)
 }
 
-// Another source shows other files: its tree starts anew.
-watch(() => props.source, releaseAll)
-watch(() => [props.source, props.root, props.selected], () => unfoldTo(props.selected), { immediate: true })
-
-// A row the host asked to see: scrolled to once the listings unfolding to it have put it in.
-const revealing = ref<string | null>(null)
+// Ends the follow on its way, if any: its watch of the rows.
+let stopFollowing: (() => void) | null = null
 
 /**
- * A row the host goes to, as Finder's Go to Folder opens a folder and Show
- * in Finder a file: unfolded to, with the folders above it, a folder's own
- * listing opened, its row scrolled to.
+ * Follows `path` as an editor's explorer follows the file it shows
+ * (`file-previews.md` § The File view's bars): unfolds the root, then each
+ * folder above the path in order, each once its parent's listing has put
+ * its row in, so no folder opens before the tree knows it is one; once the
+ * path's row is in, a directory's own listing opens when `isDirectory`, and
+ * the row is brought into view if it is not. The folders opened or closed
+ * elsewhere stay as they are. Another path followed meanwhile wins, this
+ * one stopping where it was, as does a folder on the way that the user
+ * folds; a path outside the root, or the root itself, has no row to follow.
  */
-function reveal(path: string, isDirectory = true): void {
-  unfoldTo(path)
-  const target = normalizePath(path)
-  if (isDirectory)
-    open(target)
-  // The root heads the tree as its caption; it has no row to scroll to.
-  revealing.value = target === normalizePath(props.root) ? null : target
+function follow(path: string | null, isDirectory: boolean): void {
+  stopFollowing?.()
+  stopFollowing = null
+  const root = normalizePath(props.root)
+  open(root)
+  const target = path === null ? null : normalizePath(path)
+  if (target === null || !inTree(target, root))
+    return
+  const above: string[] = []
+  for (let dir = parentPath(target); dir !== root; dir = parentPath(dir))
+    above.unshift(dir)
+  const opened = new Set<string>()
+  // One step down: whether the follow is over, done or given up.
+  const step = (): boolean => {
+    for (const dir of above) {
+      if (listings.get(dir)?.open)
+        continue
+      // Opened on the way and folded since: the user went elsewhere.
+      if (opened.has(dir))
+        return true
+      const row = rows.value.find((entry) => entry.path === dir)
+      if (!row)
+        return false
+      if (!row.isDirectory)
+        return true
+      opened.add(dir)
+      open(dir)
+      return false
+    }
+    if (!rows.value.some((entry) => entry.path === target))
+      return false
+    if (isDirectory)
+      open(target)
+    void nextTick(() => tree.value?.revealRow(target))
+    return true
+  }
+  if (step())
+    return
+  // Each listing that lands changes the rows: the next step is taken then.
+  const stop = watch(rows, () => {
+    if (step())
+      end()
+  })
+  const end = (): void => {
+    stop()
+    if (stopFollowing === end)
+      stopFollowing = null
+  }
+  stopFollowing = end
 }
 
 onBeforeUnmount(releaseAll)
@@ -243,6 +273,15 @@ const laidOut = computed(() => {
   return { rows, links }
 })
 const rows = computed(() => laidOut.value.rows)
+
+// Another source shows other files: its tree starts anew.
+watch(() => props.source, releaseAll)
+// The selected row is followed wherever it comes from: the file shown, or a directory the host located.
+watch(() => [props.source, props.root, props.selected], () => follow(props.selected, false), { immediate: true })
+
+onBeforeUnmount(() => {
+  stopFollowing?.()
+})
 
 const selectedPath = computed(() => (props.selected ? normalizePath(props.selected) : null))
 const rootListing = computed(() => listings.get(normalizePath(props.root)))
@@ -512,17 +551,13 @@ async function receive(directory: string, entries: readonly (DroppedEntry | File
   await offer(directory, items)
 }
 
-watch([rows, revealing], () => {
-  const target = revealing.value
-  if (target === null || !rows.value.some((row) => row.path === target)) {
-    return
-  }
-  revealing.value = null
-  void nextTick(() => tree.value?.revealRow(target))
-})
-
 defineExpose({
-  reveal,
+  /**
+   * A row the host goes to, as Finder's Go to Folder opens a folder and Show
+   * in Finder a file: followed as the selected row is, a folder's own
+   * listing opened.
+   */
+  reveal: follow,
   scrollToRow: (path: string) => tree.value?.scrollToRow(path),
   scrollBy: (px: number) => tree.value?.scrollBy(px),
   /** Uploads items into a directory as a drop there would, asking first about the names it has. */

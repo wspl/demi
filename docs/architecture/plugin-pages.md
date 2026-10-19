@@ -213,7 +213,7 @@ by who shows it. The SDK defines each intent and its payload:
 
 | Intent | Payload | Opened by the shell from |
 | --- | --- | --- |
-| `file` | `{ path, tree? }`, an absolute path on the conversation's Host; `tree: true` shows the file's row in the File view's tree, selected and in view, the tree shown if it was hidden | A file a message names ([Files named in messages](../product/file-previews.md#files-named-in-messages)), an attachment's capsule, a Host image; *Show in Files* on a file link |
+| `file` | `{ path, tree? }`, an absolute path on the conversation's Host, whose row the File view's tree selects and shows ([The File view's bars](../product/file-previews.md#the-file-views-bars)); `tree: true` also shows the tree if it was hidden | A file a message names ([Files named in messages](../product/file-previews.md#files-named-in-messages)), an attachment's capsule, a Host image; *Show in Files* on a file link |
 | `web` | `{ url }`, an `http` or `https` address | *Open in Work Panel* on a link in a reply ([Context menus](../product/web-application.md#context-menus)) |
 | `attachment` | `{ id, name, size, url }`: the attachment's number, its file name, its size in bytes and the address of its stored copy | An attachment's card ([Attachment blocks](../product/file-previews.md#attachment-blocks)) |
 | `edit` | A request's changes: the agent (`node`, null for the conversation's own), the request, and a file with one call's edit of it (`{ call, segment }`) or null for All Changes ([A request](../execution/edit-tracking.md#a-request)) | A tool call's file pill, a request's changed-files line |
